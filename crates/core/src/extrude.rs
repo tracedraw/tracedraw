@@ -846,6 +846,80 @@ mod tests {
         assert_eq!(Some(st.color), side.fill.preview_color());
     }
 
+    /// #1281: Area Fill reaches the curved side of a circle extruded
+    /// backwards, with any Back type and wherever the body runs: the
+    /// outlines that show (the far face and the side, cut where the
+    /// filled circle hides them, and the circle) enclose the side from a
+    /// click anywhere in it, and it is one area.
+    #[test]
+    fn area_fill_reaches_the_side_of_a_back_cylinder() {
+        use crate::shaping::{enclosed_visible_area, Enclosed};
+        use kurbo::ParamCurveNearest as _;
+        let mut c = square(Fill::Solid(Color::rgb8(0, 120, 0)));
+        c.kind = ShapeKind::Ellipse {
+            rect: Rect::new(0.0, 0.0, 20.0, 20.0),
+            arc: None,
+        };
+        let center = Point::new(10.0, 10.0);
+        for kind in [
+            ExtrudeKind::SmallBack,
+            ExtrudeKind::BigBack,
+            ExtrudeKind::BackParallel,
+        ] {
+            for (vx, vy) in [(60.0, 60.0), (-40.0, 10.0), (10.0, 90.0), (37.0, -23.0)] {
+                let mut b = body(kind);
+                b.vanishing = Point::new(vx, vy);
+                b.vector = Vec2::new((vx - 10.0) / 5.0, (vy - 10.0) / 5.0);
+                let f = b.faces(&c);
+                assert_eq!(f.below.len(), 2, "{kind:?} ({vx}, {vy})");
+                let side = f.below[1].page_path();
+                let edges: Vec<kurbo::Line> = polylines(&side)
+                    .into_iter()
+                    .flat_map(|(pts, _)| {
+                        let n = pts.len();
+                        (0..n)
+                            .map(|i| kurbo::Line::new(pts[i], pts[(i + 1) % n]))
+                            .collect::<Vec<_>>()
+                    })
+                    .collect();
+                // Bottom to top, every part filled.
+                let mut parts: Vec<(BezPath, bool)> =
+                    f.below.iter().map(|s| (s.page_path(), true)).collect();
+                parts.push((c.page_path(), true));
+                let mut areas = Vec::new();
+                for i in 0..36 {
+                    // Half way from a point of the circle to its copy, well
+                    // inside the side (not on its edges, where a click makes
+                    // nothing by design) and outside the circle.
+                    let t = (i as f64 * 10.0 + 3.7).to_radians();
+                    let p = center + Vec2::new(10.0 * t.cos(), 10.0 * t.sin());
+                    let m = p.midpoint(b.copy_of(p));
+                    let clear = edges
+                        .iter()
+                        .map(|e| e.nearest(m, 1e-9).distance_sq.sqrt())
+                        .fold(f64::INFINITY, f64::min);
+                    if (m - center).hypot() <= 10.2
+                        || clear < 0.2
+                        || !kurbo::Shape::contains(&side, m)
+                    {
+                        continue;
+                    }
+                    match enclosed_visible_area(&parts, m) {
+                        Enclosed::Area(a) => areas.push(kurbo::Shape::area(&a).abs()),
+                        other => panic!("{kind:?} ({vx}, {vy}) at {m:?}: {other:?}"),
+                    }
+                }
+                // Several clicks across the side, all giving the one side.
+                assert!(areas.len() >= 3, "{kind:?} ({vx}, {vy}): {areas:?}");
+                assert!(
+                    areas.iter().all(|a| (a - areas[0]).abs() < 0.5),
+                    "{kind:?} ({vx}, {vy}): {areas:?}"
+                );
+                assert!(areas[0] > 50.0, "{kind:?} ({vx}, {vy}): {areas:?}");
+            }
+        }
+    }
+
     #[test]
     fn odd_values_give_no_faces() {
         let s = square(Fill::None);

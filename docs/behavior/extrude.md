@@ -57,7 +57,11 @@ parallel, or Small back when they have a vanishing point.
 - Area Fill takes the lines that show: an outline under an opaque fill
   (the object behind a front body, the far face behind a back body) does
   not cut the area, so a click in a side fills the whole side; through
-  an object without a fill every line counts.
+  an object without a fill every line counts. The curved side of a
+  circle with a Back type fills as one area too: the outlines cut by the
+  filled circle come back a hair off its outline, and the lines that
+  close such gaps cross it whichever way the ends round (#1281, see
+  `area-fill.md`).
 
 ## Colour and light
 
@@ -158,6 +162,8 @@ The panel shows these under the other controls; the bar has them in its
 - `extrude::tests::every_subpath_extrudes_and_holes_show_their_far_walls`
 - `extrude::tests::a_curved_side_is_one_outlined_surface`
 - `extrude::tests::odd_values_give_no_faces`
+- `extrude::tests::area_fill_reaches_the_side_of_a_back_cylinder`
+- `extrude_tool::tests::area_fill_takes_the_side_of_a_back_cylinder`
 - `extrude_tool::tests::a_drag_extrudes_toward_the_pointer`
 - `extrude_tool::tests::the_bar_edits_the_selected_extrusion`
 - `extrude_tool::tests::settings_read_older_effects_and_stay_in_range`

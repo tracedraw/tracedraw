@@ -857,10 +857,26 @@ pub enum Enclosed {
 /// #899), not a gap anyone drew.
 const GAP: f64 = 0.01;
 
+/// How far a bridge runs on past the outline it meets, and back behind
+/// the end it starts from, as a share of the outlines' extent. The overlay
+/// library cuts the faces on an integer grid of about a thousand
+/// millionth of the extent per unit, twice that at the coarsest. An end
+/// that stops within a unit of
+/// an outline, as the pieces an opaque fill cuts away do (they come back
+/// rounded to another grid, #1281), may land on either side of it once
+/// rounded, so a bridge that merely runs on from the end can miss the
+/// outline: one that runs this far through the end from behind crosses
+/// it by hundreds of units whichever way the end rounds, and stays far
+/// too short to see.
+const CROSS: f64 = 1e-6;
+
 /// The short lines that close the gaps of at most [`GAP`] between the ends
 /// of the open `lines` (`open[i]`: line `i` is open) and the lines
-/// themselves, each running from the end to the nearest point of the
-/// outline it nearly meets and a little beyond, so that it crosses it.
+/// themselves, each running through the end, from a little behind it to
+/// the nearest point of the outline it nearly meets and on beyond it, so
+/// that it crosses it. An end already on an outline gets a short line
+/// across it through the end, so the crossing holds on the grid the faces
+/// are cut on.
 fn gap_bridges(lines: &[Vec<[f64; 2]>], open: &[bool]) -> Vec<Vec<[f64; 2]>> {
     // A grid over the segments, each in the cells its box (widened by the
     // gap) covers, so an end finds its neighbours without a look at all.
@@ -899,6 +915,7 @@ fn gap_bridges(lines: &[Vec<[f64; 2]>], open: &[bool]) -> Vec<Vec<[f64; 2]>> {
             }
         }
     }
+    let cross = (bounds.width().max(bounds.height()) * CROSS).max(f64::MIN_POSITIVE);
     let mut out = Vec::new();
     for (i, l) in lines.iter().enumerate() {
         if !open[i] || l.len() < 2 {
@@ -909,7 +926,7 @@ fn gap_bridges(lines: &[Vec<[f64; 2]>], open: &[bool]) -> Vec<Vec<[f64; 2]>> {
         for (end, own) in [(l[0], 0), (l[l.len() - 1], l.len() - 2)] {
             let p = Point::new(end[0], end[1]);
             let (cx, cy) = cell_of(end[0], end[1]);
-            let mut best: Option<(f64, Point)> = None;
+            let mut best: Option<(f64, Point, kurbo::Line)> = None;
             for n in &cells[cy * nx + cx] {
                 let (j, k) = segs[*n];
                 if j == i && k == own {
@@ -922,17 +939,29 @@ fn gap_bridges(lines: &[Vec<[f64; 2]>], open: &[bool]) -> Vec<Vec<[f64; 2]>> {
                 use kurbo::ParamCurveNearest as _;
                 let nearest = seg.nearest(p, 1e-9);
                 let d = nearest.distance_sq.sqrt();
-                if d < GAP && best.is_none_or(|(b, _)| d < b) {
-                    best = Some((d, seg.eval(nearest.t)));
+                if d < GAP && best.as_ref().is_none_or(|(b, _, _)| d < *b) {
+                    best = Some((d, seg.eval(nearest.t), seg));
                 }
             }
-            if let Some((d, q)) = best {
-                // Already touching: nothing to close.
-                if d > 1e-9 {
-                    let past = q + (q - p) * 0.5;
-                    out.push(vec![end, [past.x, past.y]]);
+            let Some((d, q, seg)) = best else {
+                continue;
+            };
+            // Toward the outline; straight across it when the end is on
+            // it already.
+            let u = if d > 1e-9 {
+                (q - p) / d
+            } else {
+                let along = seg.p1 - seg.p0;
+                if along.hypot() < 1e-12 {
+                    continue;
                 }
-            }
+                kurbo::Vec2::new(-along.y, along.x).normalize()
+            };
+            // Past the outline by half the gap, and never by less than
+            // the grid allows; through the end from as far behind it.
+            let over = (d * 0.5).max(cross);
+            let (back, past) = (p - u * cross, q + u * over);
+            out.push(vec![[back.x, back.y], end, [past.x, past.y]]);
         }
     }
     out
@@ -2588,6 +2617,44 @@ mod tests {
             panic!("ring not closed");
         };
         assert!((a.bounding_box().width() - 10.0).abs() < 1e-3);
+    }
+
+    /// #1281: a line whose ends stop within a unit of the overlay grid
+    /// of the frame's sloped sides (a few hundred millionths of a
+    /// millimetre short of them or past them, as the pieces an opaque
+    /// fill cuts away come back) divides the frame all the same,
+    /// whichever side the ends round to.
+    #[test]
+    fn enclosed_area_closes_gaps_below_the_grid() {
+        use super::{enclosed_area, Enclosed};
+        use crate::geometry::{Affine, BezPath, Point, Rect};
+        use kurbo::Shape as _;
+        for turn in [0.3, 1.1, 2.0] {
+            let rot = Affine::rotate(turn);
+            let frame = rot * crate::geometry::rect_path(Rect::new(0.0, 0.0, 40.0, 20.0), 0.0);
+            for gap in [0.0, 1e-9, 5e-9, 1e-8, 2e-8, 4e-8, 8e-8, 1.6e-7] {
+                for (top, bottom) in [
+                    (gap, 20.0 - gap),
+                    (-gap, 20.0 + gap),
+                    (gap, 20.0 + gap),
+                    (-gap, 20.0 - gap),
+                ] {
+                    let mut divider = BezPath::new();
+                    divider.move_to(rot * Point::new(20.0, top));
+                    divider.line_to(rot * Point::new(20.0, bottom));
+                    let click = rot * Point::new(10.0, 10.0);
+                    let r = enclosed_area(&[frame.clone(), divider], click);
+                    let Enclosed::Area(a) = r else {
+                        panic!("turn {turn} gap {gap} ({top}, {bottom}): {r:?}");
+                    };
+                    let area = a.area().abs();
+                    assert!(
+                        (area - 400.0).abs() < 1e-2,
+                        "turn {turn} gap {gap} ({top}, {bottom}): {area}"
+                    );
+                }
+            }
+        }
     }
 
     /// #1281: the outline of a filled object hidden under another filled

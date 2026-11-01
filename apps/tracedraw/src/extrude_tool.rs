@@ -633,6 +633,65 @@ mod tests {
         assert!((a - 150.0).abs() < 0.5, "{a}");
     }
 
+    /// #1281: Area Fill fills the curved side of a circle extruded
+    /// backwards (a cylinder with a Back ending) from a click anywhere in
+    /// it: the outlines cut by the filled circle meet on the grid the
+    /// area is found on, so the side does not leak.
+    #[test]
+    fn area_fill_takes_the_side_of_a_back_cylinder() {
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: Rect::new(0.0, 0.0, 20.0, 20.0),
+                arc: None,
+            })
+            .expect("circle");
+        app.run(Command::SetFill {
+            shapes: vec![id],
+            fill: Fill::Solid(Color::rgb8(220, 40, 40)),
+        });
+        let vanishing = Point::new(60.0, 60.0);
+        app.run(Command::SetEffects {
+            shape: id,
+            effects: vec![Effect::Extrude {
+                depth: Vec2::new(0.0, 0.0),
+                vanishing: Some(vanishing),
+                amount: 0.25,
+                shade_from: None,
+                shade_to: None,
+                light_angle: 135.0,
+                light_intensity: 50.0,
+                bevel: 0.0,
+                kind: Some(ExtrudeKind::SmallBack),
+                on_object: false,
+                solid: None,
+                space: Default::default(),
+            }],
+        });
+        // Clicks across the side: half way from a point of the circle
+        // facing the vanishing point to its copy.
+        let mut areas = Vec::new();
+        for deg in [20.0f64, 45.0, 70.0] {
+            let t = deg.to_radians();
+            let p = Point::new(10.0 + 10.0 * t.cos(), 10.0 + 10.0 * t.sin());
+            let q = p + (vanishing - p) * 0.25;
+            app.select(Vec::new());
+            app.area_fill_at(p.midpoint(q));
+            let sel = app.selection.clone();
+            assert_eq!(sel.len(), 1, "an area at {deg} degrees");
+            let s = app.doc().find_shape(sel[0]).cloned().expect("area");
+            assert_eq!(s.name.as_deref(), Some("Area Fill"));
+            areas.push(tracedraw_core::geometry::Shape::area(&s.page_path()).abs());
+            app.run(Command::DeleteShapes { shapes: sel });
+        }
+        // The one side, whole, from every click.
+        assert!(
+            areas.iter().all(|a| (a - areas[0]).abs() < 0.5),
+            "{areas:?}"
+        );
+        assert!(areas[0] > 200.0 && areas[0] < 300.0, "{areas:?}");
+    }
+
     fn extrusion(app: &App, id: ShapeId) -> Option<Effect> {
         app.doc()
             .find_shape(id)?
