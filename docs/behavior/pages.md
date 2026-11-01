@@ -2,7 +2,7 @@
 
 ## Duplicate Page
 
-Layout > Duplicate Page..., the page tab menu's Duplicate Page... and the
+Page > Duplicate Page..., the page tab menu's Duplicate Page... and the
 Duplicate Page button of the Pages panel open the Duplicate Page dialog
 for the current page:
 
@@ -19,7 +19,7 @@ The copy keeps the page size, guides and background, is named after the
 page with " (copy)", and becomes the current page. It is one command,
 `Command::DuplicatePage { page, before, contents }`, so one undo step
 removes it. A saved or scripted command that names only the page copies
-it with its contents after it, as before (Print Merge works that way).
+it with its contents after it, as before (Data Merge works that way).
 
 Tests: `command::tests::duplicate_page_goes_before_or_after_with_or_without_contents`,
 `command::tests::a_saved_duplicate_page_without_options_copies_contents_after`,
@@ -41,20 +41,20 @@ orientation. Custom... opens the Page Size dialog with the page's width
 and height, to type any size (#650, #1092); the page width and height fields
 next to the list also take any size at once. Both resize the current
 page or every page as the All Pages / Current Page buttons say.
-Edit This List... opens Document Options > Page Size, where the
+Edit This List... opens Document Setup > Page Size, where the
 save button next to Size keeps a custom size under a typed name and the
 delete button forgets the saved size shown; saved sizes are kept in the
 preferences and listed in every page size list (the property bar, the
-Page Size dialog, Document Options and Create a New Document).
+Page Size dialog, Document Setup and Create a New Document).
 Checked by `ui::propbar::tests::the_page_size_list_offers_a_custom_size`,
 `ui::dialogs::tests::page_size_presets_are_distinct_and_keep_their_names`,
 `ui::dialogs::tests::a_page_size_finds_its_name`.
 
 ## Fit Page to Selection, Fit Page to Drawing
 
-Layout > Fit Page to Selection (pale with nothing selected) and Fit
+Page > Fit Page to Selection (pale with nothing selected) and Fit
 Page to Drawing (pale on an empty page), also as buttons on the
-Document Options > Page Size page and, Fit Page to Drawing, on the
+Document Setup > Page Size page and, Fit Page to Drawing, on the
 property bar with nothing selected (after the page width and height):
 the current page takes the size of
 the selection's bounds (effects included), or of everything on the page,
@@ -90,7 +90,7 @@ Autofit Page closes it
 
 ## Delete Page
 
-Layout > Delete Page... and the Delete Page... button of the Pages panel
+Page > Delete Page... and the Delete Page... button of the Pages panel
 open the Delete Page dialog (#500): Delete page (the current page to start
 with) and a Through to page check box with the last page of a range, off
 to start with (the range may be given in either order; numbers are kept to

@@ -2,11 +2,11 @@
 
 Tools > Options is a submenu: TraceDraw
 (Ctrl+J), Customization, Tools, Global, Workspaces and AI each open the
-Options window on their pages. Layout > Document Options opens it on the
+Options window on their pages. Page > Document Setup opens it on the
 document's pages (also a double-click on a ruler, the page border or its
 shadow). The window has a tab for each of them along the top, so every
 option is a click away: TraceDraw, Customization, Tools, Global,
-Workspaces, AI and, while a drawing is open, Document Options. A tab
+Workspaces, AI and, while a drawing is open, Document Setup. A tab
 shows its set's page list and the page of that set shown last (else its
 first page); the title follows the tab, and OK and Cancel cover what
 was changed on every tab (#633).
@@ -30,7 +30,7 @@ was changed on every tab (#633).
 - Section headings are a label followed by a light line to the right
   edge. Indented groups have no guide line.
 - Bottom row: the help button (27 x 27) at the left (and Save as Default
-  in Document Options), OK and Cancel (100 x 27) at the right.
+  in Document Setup), OK and Cancel (100 x 27) at the right.
 - Changes show at once. OK keeps them and writes the preferences; Cancel,
   the close button and Esc put back everything the dialog changed,
   including document settings (their commands are undone).
@@ -48,7 +48,7 @@ was changed on every tab (#633).
 | Alignment Guides | On or off; guides for the selection as one or each object; edges, centres, the page, equal spacing, equal sizes; margins with offset and inset; colour and line style; Reset (see `live-guides.md`) |
 | Dynamic Guides | On or off; angles (check boxes every 15 degrees, others added by value); distance and angle tip; tick marks, their spacing, snap to ticks; colour and line style; Reset (see `live-guides.md`) |
 | Save | Back up original file before saving (on): `backup_of_<name>` next to the file or in a chosen folder; Auto-backup every 20 minutes (on): each open drawing with unsaved changes as `AutoBackup_of_<name>.tdraw` in `TraceDraw` under the temporary folder or a chosen folder; a session that ended without closing offers them at the next start (see `recovery.md`) |
-| Text | Five tabs (`options_text_tab`). Display: keyboard text increment (1 pt: Ctrl+8 and Ctrl+2 grow and shrink the selected text), text units (points at first, any unit of the rulers: font sizes on the property bar, the Text docker, the table bar, this page and the object information show and take sizes in it, a unit typed with the value counts; sizes are kept in points, `settings.text_units`, `pick_drag_tests::font_sizes_show_and_type_in_the_text_units`, #529), default font and size (of new text: they do not follow the text selected and can be changed while a text is selected; with no text selected the Text tool's bar shows and sets them, `the_default_text_font_does_not_follow_the_selection`, #449), non-printing characters. Paragraph Text: show text frames, hyphenation, hyphenation patterns (Built-in (English) or a `hyph_*.dic` file found in the dictionary folders, shown without `hyph_`; see `text.md`). Fonts: show recently used fonts at the top of the font lists (on) and how many (5, 1 to 20; the lists keep the last 20), font sample size. Spelling: ignore words with numbers, ignore words in capitals (both off, also under Options in the Spell Checker), add corrections to Autocorrect (off: a word replaced in the Spell Checker becomes a replacement row, its row replaced if it has one). Dictionaries: the Hunspell dictionaries found (and on Windows its own spell checker), each with a check box, TraceDraw's dictionaries folder with Open Folder and Also read dictionaries from (a folder, Browse and Clear), both not in a browser, Download dictionary (a language and Download), Add Files and Read Again (see `writing-tools.md`, #1405). Autocorrect: see `writing-tools.md`; Text > Writing Tools > Autocorrect opens this tab |
+| Text | Five tabs (`options_text_tab`). Display: keyboard text increment (1 pt: Ctrl+8 and Ctrl+2 grow and shrink the selected text), text units (points at first, any unit of the rulers: font sizes on the property bar, the Text docker, the table bar, this page and the object information show and take sizes in it, a unit typed with the value counts; sizes are kept in points, `settings.text_units`, `pick_drag_tests::font_sizes_show_and_type_in_the_text_units`, #529), default font and size (of new text: they do not follow the text selected and can be changed while a text is selected; with no text selected the Text tool's bar shows and sets them, `the_default_text_font_does_not_follow_the_selection`, #449), non-printing characters. Paragraph Text: show text frames, hyphenation, hyphenation patterns (Built-in (English) or a `hyph_*.dic` file found in the dictionary folders, shown without `hyph_`; see `text.md`). Fonts: show recently used fonts at the top of the font lists (on) and how many (5, 1 to 20; the lists keep the last 20), font sample size. Spelling: ignore words with numbers, ignore words in capitals (both off, also under Options in the Spell Checker), add corrections to Autocorrect (off: a word replaced in the Spell Checker becomes a replacement row, its row replaced if it has one). Dictionaries: the Hunspell dictionaries found (and on Windows its own spell checker), each with a check box, TraceDraw's dictionaries folder with Open Folder and Also read dictionaries from (a folder, Browse and Clear), both not in a browser, Download dictionary (a language and Download), Add Files and Read Again (see `writing-tools.md`, #1405). Autocorrect: see `writing-tools.md`; Text > Proofing > Autocorrect opens this tab |
 
 ## Customization
 
@@ -163,9 +163,9 @@ starts at the CDR type for a drawing without a file (#613).
 
 ### Bitmap Tracing
 
-Quick Trace uses (`tracing`): one of the nine presets (Optimized by
+Automatic trace uses (`tracing`): one of the nine presets (Optimized by
 default, which chooses the detail for each picture; Clipart before). Every trace starts with: Remove background (on) and Delete
-original image (off); Quick Trace and the Trace dialog's presets take
+original image (off); Automatic trace and the Trace dialog's presets take
 them, and the dialog can still change them for one trace.
 
 ### Warnings
@@ -262,7 +262,7 @@ per inch are that resolution over the interface's zoom (96 at 100 %),
 so the interface size never changes real sizes. Reset puts
 96 back.
 
-## Document Options
+## Document Setup
 
 General (rendering resolution; Fill open curves, off: an open curve's
 fill shows only in its closed subpaths, on screen, in hit testing and in

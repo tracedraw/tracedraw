@@ -50,7 +50,7 @@ the same.
 Uniform transparency with Normal is the object's opacity. With any
 other merge mode it is kept as a mask of one grey (its lightness the
 opacity, `mixed::uniform_mask`), drawn the same way, so Multiply and the
-rest work on uniform transparency too, as in the reference program; the
+rest work on uniform transparency too; the
 Transparency part reads it back as Uniform with its amount and merge
 mode (`mockup_tests::mockup_steps`).
 

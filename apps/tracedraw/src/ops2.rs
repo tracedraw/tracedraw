@@ -42,7 +42,7 @@ pub struct ClipEditMark {
     pub begins: bool,
 }
 
-/// Step and Repeat docker state.
+/// Repeat Copies docker state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StepRepeat {
     pub copies: u32,
@@ -148,7 +148,7 @@ impl App {
             .reduce(|a, b| a.union(b))
     }
 
-    /// Layout > Fit Page to Selection: the current page takes the size
+    /// Page > Fit Page to Selection: the current page takes the size
     /// of the selection's bounds and the page's objects move so the
     /// selection sits on the page from its bottom-left corner; one undo
     /// step. Nothing happens without a selection.
@@ -158,7 +158,7 @@ impl App {
         }
     }
 
-    /// Layout > Fit Page to Drawing: as [`Self::fit_page_to_selection`],
+    /// Page > Fit Page to Drawing: as [`Self::fit_page_to_selection`],
     /// for everything on the page.
     pub fn fit_page_to_drawing(&mut self) {
         self.fit_page_to_drawing_with_margin(0.0);
@@ -269,7 +269,7 @@ impl App {
 
     // ----- layout ----------------------------------------------------------------
 
-    /// Layout > Insert Page Number: an artistic text "1", "2"... on the
+    /// Page > Insert Page Number: an artistic text "1", "2"... on the
     /// chosen pages (bottom centre), named "page-number". With a master
     /// layer active it is one field on that layer that shows the number
     /// of each page it is drawn on (#807).
@@ -1844,7 +1844,7 @@ impl App {
         }
     }
 
-    /// Bitmaps > Inflate Bitmap > Manually Inflate Bitmap: grow every
+    /// Image > Bitmap Padding > Custom: grow every
     /// selected bitmap's canvas to `pw` by `ph` percent of its size (100
     /// or more), centred, with transparent margins; one undo step. The
     /// bitmap keeps its resolution, so it grows on the page too.
@@ -1896,7 +1896,7 @@ impl App {
         }
     }
 
-    /// The Bitmap Mask docker's Apply: hide (or keep only) the colours of
+    /// The Color Mask docker's Apply: hide (or keep only) the colours of
     /// the slots in use in the selected bitmaps. True when a bitmap changed.
     pub fn apply_bitmap_mask(&mut self) -> bool {
         let slots = self.mask.active();
@@ -2018,7 +2018,7 @@ impl App {
         });
     }
 
-    /// Bitmaps > Convert to Bitmap: the selection becomes one bitmap with
+    /// Image > Convert to Bitmap: the selection becomes one bitmap with
     /// the dialog's resolution, colour mode, dithering, anti-aliasing,
     /// background and overprint, in one undo step.
     pub fn convert_to_bitmap_with(&mut self, o: &crate::bitmap_modes::ConvertOptions) {
@@ -2093,7 +2093,7 @@ impl App {
 
     // ----- tracing ---------------------------------------------------------------------
 
-    /// Bitmaps > Quick Trace: the preset and choices of Options > Global >
+    /// Image > Trace > Automatic: the preset and choices of Options > Global >
     /// Bitmap Tracing.
     pub fn quick_trace(&mut self) {
         let prefs = &self.settings.tracing;
@@ -3412,8 +3412,8 @@ impl App {
 
     // ----- step and repeat ---------------------------------------------------------------
 
-    /// The Step and Repeat values belong to the objects they were set
-    /// The values typed in the Step and Repeat docker stay as typed, for
+    /// The Repeat Copies values belong to the objects they were set
+    /// The values typed in the Repeat Copies docker stay as typed, for
     /// this selection, the copies an Apply makes and any object picked
     /// next, until they are changed again (#1198; until 0.27.0 they went
     /// back to the defaults at every change of the selection, so a
@@ -3882,7 +3882,7 @@ mod tests {
         }
     }
 
-    /// The Step and Repeat values stay as typed: after an Apply (its copies
+    /// The Repeat Copies values stay as typed: after an Apply (its copies
     /// are selected) and for another object picked next, the same count
     /// and distances are used until changed (#1198).
     #[test]

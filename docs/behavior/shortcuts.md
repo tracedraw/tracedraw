@@ -14,7 +14,7 @@ Customization > Commands lists them and takes shortcuts of your own
 | Ctrl+F4, Alt+F4 | Close window, Exit |
 | Ctrl+Z, Ctrl+Shift+Z, Ctrl+R | Undo, Redo, Repeat |
 | Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+Shift+V | Cut, Copy, Paste, Paste in view |
-| Ctrl+D, Ctrl+Shift+D | Duplicate, Step and Repeat panel |
+| Ctrl+D, Ctrl+Shift+D | Duplicate, Repeat Copies panel |
 | + (Pick tool, with a selection) | Duplicate in place |
 | Ctrl+Space | the Pick tool, from any tool |
 | Space | the Pick tool (not while a text or table cell is edited, where it types a space, nor during a drag, where it drops a copy); on the Pick tool, back to the tool used before it (`App::previous_tool`); Shift+Space and other combinations leave the tool alone |
@@ -71,7 +71,7 @@ original, #471). Checks:
 | Shift+PgUp, Shift+PgDn | To front and back of the layer |
 | Ctrl+PgUp, Ctrl+PgDn | Forward one, back one |
 | Alt+Enter | Properties panel |
-| Ctrl+Shift+A | Copy Properties From: a dialog with Outline pen, Outline color, Fill and Text properties (all ticked at first, kept), then a click on the object to copy them from to the other selected objects, one undo step; a right click or Esc cancels the wait (#1345, `pick_drag_tests::ctrl_shift_a_copies_the_ticked_properties_from_the_object_clicked`) |
+| Ctrl+Shift+A | Paste Style From: a dialog with Outline pen, Outline color, Fill and Text properties (all ticked at first, kept), then a click on the object to copy them from to the other selected objects, one undo step; a right click or Esc cancels the wait (#1345, `pick_drag_tests::ctrl_shift_a_copies_the_ticked_properties_from_the_object_clicked`) |
 | Alt+F7, Alt+F8, Alt+F9, Alt+F10 | Transformations panel on Position, Rotate, Scale and Mirror, Size |
 | Ctrl+M | Merge table cells |
 | Alt+Shift+F8, Alt+F11 | Run Macro, Macro Editor (Tools > Macros) |
@@ -167,7 +167,7 @@ name.
 - The bars' own buttons (listed under Toolbar Buttons) that run a menu
   command show that command's keys on their Shortcut Keys tab and set
   them: New, Open, Save, Print, Cut, Copy, Paste, Undo, Redo, Import,
-  Export, Publish to PDF, Full-screen Preview, Rulers, Grid,
+  Export, Export as PDF, Full-screen Preview, Rulers, Grid,
   Guidelines, Snap Off, Zoom In, Zoom Out and Zoom to Fit
   (`bar_items::menu_command`, #1148). The buttons the menus lack (the
   zoom levels list, Snap To, the other zoom buttons, Options, Launch)

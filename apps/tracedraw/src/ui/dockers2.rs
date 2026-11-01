@@ -1,7 +1,7 @@
 //! Dockers added with the full workspace: Align and Distribute, Shaping,
-//! Step and Repeat, Text, Glyphs, Color, Color Styles, Object Styles,
+//! Repeat Copies, Text, Glyphs, Color, Color Styles, Object Styles,
 //! Find and Replace, Scripts, Palettes, Lens, Blend, Contour, Envelope,
-//! Extrude, Bevel, Brush Strokes, Bitmap Mask, Object Data, Links,
+//! Extrude, Bevel, Brush Strokes, Color Mask, Object Data, Links,
 //! Symbols, Pages, Guidelines, Fonts.
 
 use crate::app::{App, DockerTab};
@@ -2130,7 +2130,7 @@ fn icon_btn(
     resp.rich_tip(tip)
 }
 
-/// Bitmaps > Bitmap Mask: ten colour slots (in use, colour, tolerance),
+/// Image > Color Mask: ten colour slots (in use, colour, tolerance),
 /// hide or show the colours in use, Apply on the selected bitmaps.
 fn bitmap_mask(app: &mut App, ui: &mut Ui) {
     use crate::bitmap_fx::MASK_SLOTS;

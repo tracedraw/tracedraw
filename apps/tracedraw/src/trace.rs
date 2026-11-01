@@ -3782,7 +3782,7 @@ mod tests {
     /// Flat art saved as a compressed image (#611: a bee with a black
     /// band, a short dark bar like a letter's stroke, anti-aliased, with
     /// noise and its colours bled a pixel sideways as compression does),
-    /// traced with Quick Trace's Clipart preset of 32 colours. Each colour
+    /// traced with the automatic trace's Clipart preset of 32 colours. Each colour
     /// stays one region with smooth edges: no notches, specks or slivers
     /// along the edges (before, a shade split by noise made regions of
     /// its own and the edges hundreds of bits), and the bar stays.

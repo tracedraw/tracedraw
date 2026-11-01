@@ -529,7 +529,7 @@ impl FormatPrefs {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TracePrefs {
-    /// The preset Bitmaps > Quick Trace uses.
+    /// The preset Image > Trace > Automatic uses.
     pub quick_preset: crate::trace::Preset,
     /// Every trace starts with these.
     pub remove_background: bool,
@@ -538,7 +538,7 @@ pub struct TracePrefs {
 
 impl Default for TracePrefs {
     fn default() -> Self {
-        // Quick Trace draws the picture as it is in the fewest nodes it
+        // The automatic trace draws the picture as it is in the fewest nodes it
         // can.
         let s = crate::trace::Preset::Optimized.settings();
         TracePrefs {

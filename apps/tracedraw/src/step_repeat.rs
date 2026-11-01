@@ -1,4 +1,4 @@
-//! Step and Repeat's live preview (#1197): while the Step and Repeat
+//! Repeat Copies' live preview (#1197): while the Repeat Copies
 //! panel is being worked in (the pointer on it, one of its fields being
 //! typed in, or the last click was in it), the copies an Apply would make
 //! are outlined on the canvas, dashed in the selection colour as the other

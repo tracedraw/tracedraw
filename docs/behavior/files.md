@@ -79,7 +79,7 @@ One window, 760 px wide, the same on every system:
 - Only the versions checked in other programs are offered (14 to 27).
 - **Title**, **Subject** and **Rating** (five stars; clicking the lit
   last star takes it off): the document's properties, also in File >
-  Document Properties; changed ones are set (one undo step each) before
+  Document Info; changed ones are set (one undo step each) before
   the file is written.
 - **Save** (or Enter) writes the file; a file that exists asks "<name>
   already exists. Replace it?" with Replace and Cancel. Cancel closes

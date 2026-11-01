@@ -132,7 +132,7 @@ pub struct Settings {
     /// outline widths).
     #[serde(default)]
     pub custom_dashes: Vec<Vec<f64>>,
-    /// Page sizes saved in Document Options > Page Size, listed in every
+    /// Page sizes saved in Document Setup > Page Size, listed in every
     /// page size list after the favourites.
     #[serde(default)]
     pub page_sizes: Vec<PageSizePreset>,
@@ -146,7 +146,7 @@ pub struct Settings {
     #[serde(default = "default_outline_units")]
     pub text_units: String,
     /// Grid, ruler and guideline settings new drawings start with
-    /// (Document Options > Save as Default).
+    /// (Document Setup > Save as Default).
     #[serde(default)]
     pub document_defaults: DocumentDefaults,
     /// Options > Text > Autocorrect.
@@ -155,7 +155,7 @@ pub struct Settings {
     /// Options > Text > Spelling.
     #[serde(default)]
     pub spelling: SpellingPrefs,
-    /// Thesaurus file picked by the user (Text > Writing Tools > Thesaurus).
+    /// Thesaurus file picked by the user (Text > Proofing > Thesaurus).
     #[serde(default)]
     pub thesaurus_file: Option<PathBuf>,
     /// Options > General: show the Create a New Document dialog for File >
@@ -372,7 +372,7 @@ pub struct Settings {
     /// File > Preflight: the checks to run and their thresholds.
     #[serde(default)]
     pub preflight: crate::preflight::PreflightPrefs,
-    /// File > Publish to PDF: the choices used last (never the passwords).
+    /// File > Export as PDF: the choices used last (never the passwords).
     #[serde(default)]
     pub publish_pdf: crate::ui::publish_pdf::PublishPrefs,
     /// What a fill or outline chosen with nothing selected changes.
@@ -1675,6 +1675,7 @@ impl Settings {
         }
         self.upgrades = self.upgrades.max(UPGRADES);
         self.migrate_ai();
+        migrate_command_keys(&mut self.shortcuts);
         self
     }
 
@@ -1767,6 +1768,22 @@ impl Settings {
         self.recent_files.retain(|p| p != path);
         self.recent_files.insert(0, path.to_path_buf());
         self.recent_files.truncate(10);
+    }
+}
+
+/// Command keys that earlier versions wrote into a shortcut list under
+/// another name, and the key they go by now. A key is renamed only when a
+/// name had to go; the menus keep their keys otherwise, so a saved
+/// shortcut keeps working whatever its command is called or where it sits.
+pub const RENAMED_COMMAND_KEYS: [(&str, &str); 1] = [("menu.text.grammatik", "menu.text.grammar")];
+
+/// Bring the command keys of a shortcut list (the preferences' or a
+/// workspace file's) up to date. Safe to run again.
+pub fn migrate_command_keys(shortcuts: &mut [(String, String)]) {
+    for (key, _) in shortcuts.iter_mut() {
+        if let Some((_, now)) = RENAMED_COMMAND_KEYS.iter().find(|(old, _)| *old == key) {
+            *key = (*now).to_string();
+        }
     }
 }
 
@@ -2142,6 +2159,49 @@ mod tests {
     fn migrated(json: &str) -> Settings {
         let s: Settings = serde_json::from_str(json).expect("old preferences");
         s.upgrade()
+    }
+
+    /// A shortcut saved for the grammar checker under its old key goes
+    /// by the new key; the other shortcuts, and one already under the new
+    /// key, stay as they are.
+    #[test]
+    fn a_shortcut_saved_under_the_old_grammar_key_moves_to_the_new_one() {
+        let s = migrated(
+            r#"{"shortcuts": [["menu.text.grammatik", "Ctrl+Shift+G"],
+                ["menu.file.open", "Ctrl+Shift+O"], ["menu.text.grammar", "F7"]]}"#,
+        );
+        assert_eq!(
+            s.shortcuts,
+            [
+                ("menu.text.grammar".to_string(), "Ctrl+Shift+G".to_string()),
+                ("menu.file.open".into(), "Ctrl+Shift+O".into()),
+                ("menu.text.grammar".into(), "F7".into()),
+            ]
+        );
+        // An empty shortcut (a built-in one taken away) moves too.
+        let s = migrated(r#"{"shortcuts": [["menu.text.grammatik", ""]]}"#);
+        assert_eq!(
+            s.shortcuts,
+            [("menu.text.grammar".to_string(), String::new())]
+        );
+        // Running the migration again changes nothing.
+        let mut list = s.shortcuts.clone();
+        migrate_command_keys(&mut list);
+        assert_eq!(list, s.shortcuts);
+        // Every renamed key names a command that exists now, not one that
+        // was itself renamed.
+        for (old, now) in RENAMED_COMMAND_KEYS {
+            assert_ne!(old, now);
+            assert!(!RENAMED_COMMAND_KEYS.iter().any(|(o, _)| *o == now));
+            assert!(
+                crate::i18n::english_keys().iter().any(|k| k == now),
+                "{now}"
+            );
+            assert!(
+                !crate::i18n::english_keys().iter().any(|k| k == old),
+                "{old}"
+            );
+        }
     }
 
     #[test]

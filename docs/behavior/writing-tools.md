@@ -1,12 +1,12 @@
-# Writing tools
+# Proofing
 
-Text > Writing Tools: Spell Check, Grammar, Thesaurus and Autocorrect,
-plus Text > Custom Optional Hyphens, Text > Encode and Text > Make Text
-Web Compatible.
+Text > Proofing: Spell Check, Grammar, Thesaurus and Autocorrect,
+plus Text > Custom Optional Hyphens, Text > Text Encoding and Text > Use
+Web-safe Text.
 
-## Writing Tools dialog
+## Proofing dialog
 
-Text > Writing Tools > Spell Check (Ctrl+F12), Grammar and Thesaurus open
+Text > Proofing > Spell Check (Ctrl+F12), Grammar and Thesaurus open
 one dialog on that tab: Spell Checker, Grammar and Thesaurus, with "?"
 (the behaviour pages) and Close at the bottom. The checkers look at every
 text object of the page (Check: Document) or the selected ones (Check:
@@ -150,7 +150,7 @@ their text is hyphenated (they win over the patterns, capitals or not).
 
 ## Autocorrect
 
-Tools > Options > Text > Autocorrect (Text > Writing Tools > Autocorrect
+Tools > Options > Text > Autocorrect (Text > Proofing > Autocorrect
 opens that tab). Applied while typing (`App::update_text`), once a word
 is finished with a space or punctuation:
 
@@ -200,9 +200,9 @@ Checks: `autocorrect::tests::days_quotes_and_links_follow_the_options`,
 `ui::writing_tools::tests::corrections_go_to_the_autocorrect_table`,
 `ui::options::tests::every_text_tab_draws`.
 
-## Encode
+## Text Encoding
 
-Text > Encode re-interprets the characters of the selected text: each
+Text > Text Encoding re-interprets the characters of the selected text: each
 character is mapped back to the byte it came from under the "read as"
 encoding and the bytes are decoded again with the right one. Encodings:
 UTF-8, Windows-1252, ISO-8859-1, Mac OS Roman, Windows-1251. Characters
@@ -213,7 +213,7 @@ Check: "cafÃ©" read as Windows-1252, really UTF-8, becomes "café"; a
 Cyrillic word shown as "Ïðèâåò" (read as Latin-1, really Windows-1251)
 becomes "Привет".
 
-## Make Text Web Compatible
+## Use Web-safe Text
 
 For each selected text object: gradient, pattern, texture and mesh fills
 become a solid colour (first stop, front colour, first node); the outline,

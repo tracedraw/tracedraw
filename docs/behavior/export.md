@@ -1,6 +1,6 @@
 # Export
 
-File > Export (Ctrl+E) and File > Export For > Web or Office open the
+File > Export (Ctrl+E) and File > Export Presets > Web or Documents open the
 Export dialog. File > Export starts with the choices of Options > Global
 > File Formats, which can also keep those of the last export; the Web and
 Office presets start with their own (see `options.md`).
@@ -38,7 +38,7 @@ Office presets start with their own (see `options.md`).
 | PNG, WebP, GIF | resolution (1 to 2400 dpi, presets 72, 96, 150, 300), transparent background; WebP also quality (the files are lossless; below 100 the colours are first rounded to fewer levels, WebP's near-lossless way: 1 low bit from 90, 2 from 75, 3 from 50, 4 below, so a lower quality makes a smaller file; #544, `export::tests::webp_quality_shrinks_the_file`) |
 | JPEG | resolution, quality (1 to 100) |
 | BMP, TIFF, PSD | resolution |
-| PDF | Export all text as curves (off at first: every text becomes filled outlines, so the file needs no fonts and cannot be searched; #1382, `export::tests::export_pdf_text_as_curves_holds_no_font`), standard (PDF 1.4, PDF/X-1a, PDF/X-3, PDF/X-4), bleed, output condition for PDF/X; the author, subject and keywords come from the drawing's properties (File > Publish to PDF has bookmarks and protection, see `publish-to-pdf.md`) |
+| PDF | Export all text as curves (off at first: every text becomes filled outlines, so the file needs no fonts and cannot be searched; #1382, `export::tests::export_pdf_text_as_curves_holds_no_font`), standard (PDF 1.4, PDF/X-1a, PDF/X-3, PDF/X-4), bleed, output condition for PDF/X; the author, subject and keywords come from the drawing's properties (File > Export as PDF has bookmarks and protection, see `publish-to-pdf.md`) |
 | SVG, EPS, AI, DXF, HTML, EMF, WMF, PLT | none |
 | PostScript (`.ps`), PRN (`.prn`) | none; every exported page in one file (All pages, else the current page), each page setting its size with `setpagedevice` and ending with `showpage` (Document Structuring Conventions 3.0); a `.prn` print file is the same PostScript, to send to a PostScript printer |
 
@@ -67,7 +67,7 @@ Office presets start with their own (see `options.md`).
   once per page. It shows as "about 820 KB" or "about 3.4 MB".
 - Text in PDF and AI files is text with its fonts embedded as subsets
   (in PDF unless Export all text as curves is on),
-  as Publish to PDF writes it by default (see `publish-to-pdf.md`, Text
+  as Export as PDF writes it by default (see `publish-to-pdf.md`, Text
   and fonts). Vector formats write curves with their own segments:
   quadratic segments (TrueType letters, for example) become the cubic
   that draws the same curve in PDF, AI, EPS, PostScript and EMF, and

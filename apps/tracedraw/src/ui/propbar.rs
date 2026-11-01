@@ -1521,7 +1521,7 @@ pub fn guide_bar(app: &mut App, ui: &mut Ui) {
 /// The page bar's list of sizes: the presets by group, then Custom
 /// (#650), which is the one ticked when the page matches no preset and
 /// opens the Page Size dialog with the page's width and height to type
-/// any size, and Edit This List, which opens Document Options > Page Size
+/// any size, and Edit This List, which opens Document Setup > Page Size
 /// to save or delete sizes.
 fn page_size_list(app: &mut App, ui: &mut Ui, current: &str, size: Size) {
     let saved = app.settings.page_sizes.clone();

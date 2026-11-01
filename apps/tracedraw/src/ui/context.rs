@@ -244,32 +244,35 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
         ) {
             app.save_bitmap_as();
         }
-        // The trace commands of the reference program's bitmap menu
-        // (#452): Quick Trace, the last trace again or its settings, and
-        // the Centerline and Outline presets.
-        if ci(ui, close, "menu.bitmaps.quick_trace", "", true) {
-            app.quick_trace();
-        }
-        let last = app.last_trace.is_some();
-        if ci(ui, close, "menu.bitmaps.repeat_last_trace", "", last) {
-            app.repeat_last_trace();
-        }
-        if ci(ui, close, "menu.bitmaps.last_trace_settings", "", last) {
-            app.open_last_trace_settings();
-        }
-        sub(ui, "menu.bitmaps.centerline_trace", |ui| {
-            for (key, preset) in crate::ui::menus::CENTERLINE_TRACES {
-                if ci(ui, close, key, "", true) {
-                    app.open_trace(preset);
-                }
+        // The trace commands of the Image menu (#452), under Trace: the
+        // automatic trace, the last trace again or its settings, and the
+        // Centerline and Outline presets.
+        sub(ui, "menu.bitmaps.trace", |ui| {
+            if ci(ui, close, "menu.bitmaps.quick_trace", "", true) {
+                app.quick_trace();
             }
-        });
-        sub(ui, "menu.bitmaps.outline_trace", |ui| {
-            for (key, preset) in crate::ui::menus::OUTLINE_TRACES {
-                if ci(ui, close, key, "", true) {
-                    app.open_trace(preset);
-                }
+            let last = app.last_trace.is_some();
+            if ci(ui, close, "menu.bitmaps.repeat_last_trace", "", last) {
+                app.repeat_last_trace();
             }
+            if ci(ui, close, "menu.bitmaps.last_trace_settings", "", last) {
+                app.open_last_trace_settings();
+            }
+            sep(ui);
+            sub(ui, "menu.bitmaps.centerline_trace", |ui| {
+                for (key, preset) in crate::ui::menus::CENTERLINE_TRACES {
+                    if ci(ui, close, key, "", true) {
+                        app.open_trace(preset);
+                    }
+                }
+            });
+            sub(ui, "menu.bitmaps.outline_trace", |ui| {
+                for (key, preset) in crate::ui::menus::OUTLINE_TRACES {
+                    if ci(ui, close, key, "", true) {
+                        app.open_trace(preset);
+                    }
+                }
+            });
         });
         if ci(ui, close, "menu.bitmaps.crop_bitmap", "", true) {
             app.set_tool(Tool::Crop);

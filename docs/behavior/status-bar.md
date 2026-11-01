@@ -41,7 +41,7 @@ With nothing selected the fill and outline parts show the defaults for
 new objects: no fill, a 0.2 mm black (C0 M0 Y0 K100) outline. A swatch
 with no colour is a white box crossed by a red line. Double-clicking the
 fill part opens the Edit Fill dialog box (as F11); the outline part, the
-Outline Pen dialog box (as F12), as in the reference program (#465).
+Outline Pen dialog box (as F12) (#465).
 
 With no drawing open the bar shows the placeholders Tool Hints, Object
 Information, Fill Color and Outline Color.

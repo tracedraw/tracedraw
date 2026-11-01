@@ -1,7 +1,7 @@
 # Shaping
 
-Object > Shaping, the property bar's shaping buttons (with two or more
-objects selected) and the Shaping panel.
+Object > Combine Shapes, the property bar's shaping buttons (with two or more
+objects selected) and the Combine Shapes panel.
 
 ## Operations
 

@@ -61,7 +61,7 @@ same program runs in a web browser with nothing to install.
 | [Colour and fills](color-and-fills.md) | The Colour panel, palettes, every kind of fill, outlines, spot colours, transparency, eyedroppers and styles |
 | [Effects](effects.md) | Blend, Contour, Envelope, Distort, Extrude, Drop Shadow, Block Shadow, Lens, Symmetry, clip frames and copying effects |
 | [Files](files.md) | Opening and saving `.tdraw` and `.cdr` files, importing and exporting, auto-backup and recovery, updates |
-| [Printing](printing.md) | Printing, preview, imposition, marks, separations, preflight and Publish to PDF |
+| [Printing](printing.md) | Printing, preview, imposition, marks, separations, preflight and Export as PDF |
 | [Customizing](customizing.md) | Options, workspaces, keyboard shortcuts, languages, scripts and AI helpers |
 
 ## Conventions in this guide

@@ -7,7 +7,7 @@ and fixes text that came in with the wrong characters. The commands are in
 ## The Writing Tools dialog box {#writing-tools}
 
 [[menu.text > menu.text.writing_tools > menu.text.spell_check]],
-[[menu.text.grammatik]] and [[menu.text.thesaurus]] open the
+[[menu.text.grammar]] and [[menu.text.thesaurus]] open the
 [[writing.title]] dialog box at that tab. [[writing.check]] chooses whether to
 check every text of the page ([[writing.scope_document]]) or only the
 selected texts ([[writing.scope_selection]]).

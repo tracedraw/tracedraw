@@ -636,7 +636,7 @@ impl App {
         // At the resolution the file records, else 96 dpi.
         let dpi = crate::image_dpi::resolution(&bytes);
         if let Some(id) = self.place_image_at(img, name, dpi) {
-            // Remember where it came from: Bitmaps > Update from Link re-reads it.
+            // Remember where it came from: Image > Update from Link re-reads it.
             self.run(Command::SetObjectData {
                 shape: id,
                 data: vec![("bitmap.link".into(), path.display().to_string())],
@@ -677,7 +677,7 @@ impl App {
         }
     }
 
-    /// Layout > Page Background > Bitmap: an image file as the page's
+    /// Page > Page Background > Bitmap: an image file as the page's
     /// background, scaled to cover the page.
     pub fn set_page_background_image(
         &mut self,

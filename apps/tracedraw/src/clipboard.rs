@@ -3,7 +3,7 @@
 //! Copy puts the selection on the system clipboard as SVG text next to the
 //! internal clipboard, so other applications can paste it. Paste Special
 //! offers the system clipboard's content as text, as a bitmap or as vector
-//! objects (SVG). Bitmaps > Edit Bitmap hands a PNG to the system's image
+//! objects (SVG). Image > Edit Bitmap hands a PNG to the system's image
 //! editor and Update from Link reads it back.
 
 use crate::app::App;
@@ -862,7 +862,7 @@ impl App {
             });
     }
 
-    /// Bitmaps > Edit Bitmap: write the pixels to a PNG next to the system's
+    /// Image > Edit Bitmap: write the pixels to a PNG next to the system's
     /// temporary files, link the object to it and open the system editor
     /// (on Android, an editing app through "open with").
     pub fn edit_bitmap_externally(&mut self) {
@@ -912,7 +912,7 @@ impl App {
         }
     }
 
-    /// Bitmaps > Update from Link: re-read the linked file into the object.
+    /// Image > Update from Link: re-read the linked file into the object.
     pub fn update_bitmap_from_link(&mut self) {
         let Some(id) = self.selected_bitmap() else {
             return;
@@ -1025,7 +1025,7 @@ impl App {
         }
     }
 
-    /// Bitmaps > Break Link: forget the file; the pixels stay embedded.
+    /// Image > Break Link: forget the file; the pixels stay embedded.
     pub fn break_bitmap_link(&mut self) {
         let Some(id) = self.selected_bitmap() else {
             return;

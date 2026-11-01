@@ -260,7 +260,7 @@ same function (`export::print_sheets`).
   (`imposition::tests::the_back_side_runs_the_columns_right_to_left`).
 - Keep page size (a fixed sheet, #388): the pages are never scaled, not
   to make room for the marks (which take the room there is) nor to fit
-  the grid: Several Pages per Sheet and Step and Repeat keep the columns
+  the grid: Several Pages per Sheet and Repeat Copies keep the columns
   and rows as set, and pages that do not fit run off the sheet; the
   sketch shows the sheet's part and a warning says what runs off is not
   printed (#496, `imposition::overflows`,

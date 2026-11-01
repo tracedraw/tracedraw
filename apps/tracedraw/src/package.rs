@@ -437,7 +437,7 @@ fn make_folder(folder: &Path) -> Result<(), String> {
     crate::files::create_dir_all(folder).map_err(|e| e.to_string())
 }
 
-/// The PDF of `doc` with the Publish to PDF choices made last.
+/// The PDF of `doc` with the Export as PDF choices made last.
 fn write_pdf(app: &App, doc: &Document, path: &Path, title: &str) -> Result<(), String> {
     let prefs = &app.settings.publish_pdf;
     let opts = tracedraw_io::pdf::PdfOptions {

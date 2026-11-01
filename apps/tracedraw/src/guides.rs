@@ -18,7 +18,7 @@ pub const ROTATE_HANDLE_PX: f64 = 70.0;
 /// Screen radius within which a press grabs a rotation handle.
 const HANDLE_PICK_PX: f64 = 7.0;
 
-/// Which preset guidelines Document Options > Guidelines > Presets adds.
+/// Which preset guidelines Document Setup > Guidelines > Presets adds.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GuidePreset {
     /// Guidelines at a margin from each page edge.

@@ -8229,7 +8229,7 @@ fn the_options_dialogs_are_tabs_of_one_window() {
             .unwrap_or_else(|| panic!("no tab for {s:?}"))
             .center()
     };
-    // Every set has its tab, Document Options too while a drawing is open.
+    // Every set has its tab, Document Setup too while a drawing is open.
     for s in OptionsSet::ALL {
         tab(&ctx, s);
     }
@@ -12824,7 +12824,7 @@ fn the_pen_preview_is_a_blue_line_on_a_white_one() {
     assert_eq!(crate::canvas::HALO_INNER * 2.0, crate::canvas::HALO_WIDTH);
 }
 
-/// Pages added to a drawing (Layout > Insert Page, the + of the page
+/// Pages added to a drawing (Page > Insert Page, the + of the page
 /// tabs, the navigator's insert buttons) are named in the interface's
 /// language, as the first page is, and so is their layer (#1127).
 #[test]
@@ -15772,7 +15772,7 @@ fn a_pen_that_only_sends_moving_touches_sets_the_width() {
     assert!(!ctx.input(|i| i.any_touches()));
 }
 
-/// A Step and Repeat copy made at the docker: the horizontal field
+/// A Repeat Copies copy made at the docker: the horizontal field
 /// typed into (its whole value selected on focus), then Apply clicked.
 /// Returns the bounds of the copy selected after Apply.
 fn step_and_repeat_typed_then_applied(
@@ -15816,7 +15816,7 @@ fn step_and_repeat_typed_then_applied(
     bounds(app, copy)
 }
 
-/// The distance typed in the Step and Repeat docker just before Apply is
+/// The distance typed in the Repeat Copies docker just before Apply is
 /// the one the copies take (#1198): a 0 typed over the default and Apply
 /// clicked at once (the field is still being edited when the click
 /// comes), or after Enter.
@@ -16219,7 +16219,7 @@ fn zoom_100_follows_the_calibration_only_when_relative_to_1_to_1() {
     assert!((app.view.zoom * 2.0 - calibrated).abs() < 1e-3);
 }
 
-/// #1197: Step and Repeat outlines its copies on the canvas only while the
+/// #1197: Repeat Copies outlines its copies on the canvas only while the
 /// panel is worked in: a click in it shows them, a click on the canvas
 /// hides them, and closing the panel hides them; nothing is added to the
 /// drawing before Apply.

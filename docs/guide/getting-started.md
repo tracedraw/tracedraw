@@ -127,7 +127,7 @@ From top to bottom and left to right:
 - **Standard toolbar**: New, Open (its arrow lists recent drawings),
   Save and Print; Cut, Copy and Paste; Undo and Redo (their arrows list
   the steps, so you can undo several at once); Import, Export and
-  Publish to PDF; the zoom box; Show Rulers, Show Grid and Show
+  Export as PDF; the zoom box; Show Rulers, Show Grid and Show
   Guidelines; Snap Off and Snap To; Options; and Launch (Font Manager,
   Welcome Screen, Color Management).
 - **Property bar**: the settings for what you are doing right now. With

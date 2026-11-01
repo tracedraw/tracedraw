@@ -519,7 +519,7 @@ fn shots() -> Vec<(String, Shot, bool)> {
         Shot::Dialog(|_| Dialog::WebNotice),
         false,
     ));
-    // Text > Writing Tools > Autocorrect: the Autocorrect tab of
+    // Text > Proofing > Autocorrect: the Autocorrect tab of
     // Options > Text.
     v.push((
         name("text/writing-tools#autocorrect"),

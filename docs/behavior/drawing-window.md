@@ -9,9 +9,9 @@
   drawn behind the page, so a 6 px band shows on the right and a 4 px
   band at the bottom. The page rectangle is snapped to whole pixels.
   View > Page > Page Border hides the border and the shadow.
-- View > Mask Outside Page, right after the view modes (Pixels), as in
-  the reference program (off by default, kept with the other view
-  settings): an opaque colour covers everything outside the page
+- View > Mask Outside Page, right after the view modes (Pixels; off by
+  default, kept with the other view settings): an opaque colour covers
+  everything outside the page
   (outside every page in Multipage View) over the objects, and the page
   border is drawn over the objects, so the page shows as it will print
   or export. The colour is the desktop colour, or a near-black `#222222`
@@ -26,7 +26,7 @@
   `canvas::tests::the_mask_covers_everything_outside_the_pages`).
 - Double-clicking the page border (within 3 px) or its shadow with the
   Pick tool, where no object is hit, opens the page size options
-  (Layout > Document Options at Page Size).
+  (Page > Document Setup at Page Size).
 
 ## Scrollbars
 
@@ -82,7 +82,7 @@ the vertical scrollbar; see `zoom-and-pan.md`.
 
 With drawings open, Window > Cascade, Tile Horizontally and Tile
 Vertically put every drawing in a window of its own inside the drawing
-area (`ui/windows.rs`); Combine Windows and Dock Window bring the tabs
+area (`ui/windows.rs`); Merge Windows and Dock Window bring the tabs
 back. The tabs stay above the area and still choose the active drawing.
 
 - Tile Horizontally: the windows one above the other, each as wide as

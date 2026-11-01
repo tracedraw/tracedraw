@@ -1,4 +1,4 @@
-//! Bitmaps > Trace Bitmap: a window the user sizes, with the picture and
+//! Image > Trace Bitmap: a window the user sizes, with the picture and
 //! its trace large at the left (the shared Before and After preview of
 //! `before_after.rs`, with the wireframe over the picture as a view of
 //! its own; zoom and pan), the counts of the trace under them, and the

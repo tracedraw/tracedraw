@@ -21,7 +21,7 @@
 | Right click during a move, scale, rotation or skew | the original stays and a copy takes the change (the copy becomes the selection); a second right click takes it back; the status bar says which, and the pointer carries a plus in a square (beside the box of a move, at the lower right of the scale, turn and slant pointers). The transform runs until the left button goes up, whichever button is released first or both in one frame, and wherever it is dropped (bare canvas, another object): the release is never taken for a click there, a held second right press does not start it again, and a palette swatch under the pointer does not take the right click as an outline colour (#528, `pick_drag_tests::a_right_click_copy_survives_any_release_order`, `a_right_click_copy_dropped_on_another_object_copies_the_dragged_one`, `a_right_click_during_a_ctrl_mirror_leaves_a_mirrored_copy` (Ctrl and a side handle dragged across: a mirrored copy), `a_right_click_during_a_turn_or_a_slant_leaves_the_original`, `a_held_second_right_press_takes_the_copy_back_and_the_move_goes_on`); in the browser too, where the left button let go while the right one is held sends no pointer release (#1334, `a_left_release_while_the_right_button_is_held_ends_the_drag`) |
 | Right click during a marquee or a Freehand Pick lasso | ignored: the frame goes on with the pointer while the left button is held and selects when it goes up, whichever button is released first or both in one frame; no context menu or drop menu opens (#1015, `pick_drag_tests::a_right_press_during_a_selection_box_does_not_leave_it_frozen`) |
 | Esc during a move, scale, rotation or skew | cancels it; nothing changes |
-| Arrows | nudge by the nudge distance (2.54 mm default); Shift by the super nudge distance (5.08 mm), Ctrl by the micro nudge distance (0.254 mm); all three in Document Options > Rulers; with guidelines selected and no object, the guidelines move |
+| Arrows | nudge by the nudge distance (2.54 mm default); Shift by the super nudge distance (5.08 mm), Ctrl by the micro nudge distance (0.254 mm); all three in Document Setup > Rulers; with guidelines selected and no object, the guidelines move |
 | Tab / Shift+Tab | cycle selection in stacking order |
 | + (also on the numeric keypad) | duplicate the selection in place (no offset), the copies selected, one undo step |
 | Double-click | Shape tool on a curve; on text, the Text tool editing that text with the caret at the end |
@@ -129,7 +129,7 @@ the old default of 6.35 mm get none once, #1494) and selects the
 copies. While the copies stay the selection, the next
 Duplicate repeats the step from each original to its copy: the offset
 if they were left alone, or the move, scale, turn or skew done to them
-since (smart duplicate, as in the reference program): duplicate a box,
+since (a smart duplicate): duplicate a box,
 move the copy 20 mm, and each next Duplicate is 20 mm further; scale the
 copy by 10 % and each next one is 10 % larger; turn it 9 degrees and
 scale it and each next one turns and grows as much again. Deselecting
@@ -205,7 +205,7 @@ W, H, scale, angle, mirror buttons, the outline width, To Front, To Back
 and Convert to Curves. Text selected on its own adds the text fields of the
 Text tool after them. Bitmaps selected on their own replace Convert to
 Curves with the bitmap commands: Edit Bitmap, Crop Bitmap (switches to the
-Crop tool), Trace Bitmap (Quick Trace and the centreline and outline
+Crop tool), Trace Bitmap (Automatic trace and the centreline and outline
 presets), Straighten Image and Resample.
 
 With two or more objects selected, a group, or a curve of several parts,
@@ -213,7 +213,7 @@ the bar ends with the arranging buttons: Group (Ctrl+G), Ungroup
 (Ctrl+U) and Ungroup All (with a group in the selection), Combine
 (Ctrl+L) and Break Apart (Ctrl+K, with a curve of several parts), the
 shaping operations Weld, Trim, Intersect, Simplify, Front Minus Back,
-Back Minus Front and Boundary (they act as in Object > Shaping, see
+Back Minus Front and Boundary (they act as in Object > Combine Shapes, see
 `shaping.md`; Boundary works on one object too), and a button that opens the Align and
 Distribute panel. Their pictures show a square behind a
 circle: the result filled, an object that stays outlined, one that goes

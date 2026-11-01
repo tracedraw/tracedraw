@@ -15,7 +15,7 @@ As greys the choice with the reason (#1401, "On Android" below).
 | The drawing | `<name>.tdraw` | With the fonts it already carries (text pasted from other drawings). |
 | Linked pictures | `Pictures/` | Every bitmap linked to a file (an imported picture, Edit Bitmap), in groups, clip frames and symbols too; each file once; two files of one name become `logo.png` and `logo-2.png`. |
 | Font files | `Fonts/` | One file per face the text uses: the installed file that draws it (the same lookup text uses: legacy names, a family named with its weight, the regular face for a missing style), or the font the drawing carries. Only fonts whose licence allows them to go with a document (OS/2 `fsType` not restricted and not bitmap only, as for embedding, `tracedraw_text::usable_in_documents`). |
-| A PDF (optional) | `<name>.pdf` | Written with the Publish to PDF choices made last (text and fonts, bitmaps, bookmarks) and the drawing's bleed. |
+| A PDF (optional) | `<name>.pdf` | Written with the Export as PDF choices made last (text and fonts, bitmaps, bookmarks) and the drawing's bleed. |
 | A report | `<name> report.txt` (named in the interface language) | The drawing, the PDF, each picture copied (from and to), pictures not found, each font copied, fonts left out because of their licence (with their file) and families not installed (with the font drawing their text). |
 
 The copied drawing's links point to the copies as paths relative to the

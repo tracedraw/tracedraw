@@ -1,4 +1,4 @@
-//! Dialogs: pages, layers, Options (multi-page), Document Properties,
+//! Dialogs: pages, layers, Options (multi-page), Document Info,
 //! Export, Print, Print Merge, Find and Replace, tables, QR codes,
 //! bitmaps (convert, straighten, resample, inflate, trace),
 //! text (tabs, columns, bullets, drop cap, statistics, spell check),
@@ -896,11 +896,11 @@ pub enum Dialog {
     LineStyle(crate::ui::line_style::State),
     /// File > New From Template.
     NewFromTemplate(Box<crate::ui::template_dialog::TemplateState>),
-    /// Bitmaps > Mode > Black and White, Duotone and Paletted.
+    /// Image > Mode > Black and White, Duotone and Paletted.
     BitmapBw(crate::bitmap_modes::BwSettings),
     BitmapDuotone(crate::ui::bitmap_dialogs::DuotoneState),
     BitmapPaletted(crate::bitmap_modes::PalettedSettings),
-    /// Bitmaps > Remove Background (on this computer, no AI service).
+    /// Image > Remove Background (on this computer, no AI service).
     RemoveBackground(crate::ui::bitmap_dialogs::BgRemoveState),
     /// The Shape tool's Align Nodes: on a common horizontal and/or
     /// vertical.
@@ -918,14 +918,14 @@ pub enum Dialog {
         count: u32,
         after: bool,
     },
-    /// Layout > Delete Page: the page (1 = the first) and, with `through`,
+    /// Page > Delete Page: the page (1 = the first) and, with `through`,
     /// the last one of a range to delete with it (#500).
     DeletePage {
         from: usize,
         to: usize,
         through: bool,
     },
-    /// Layout > Duplicate Page and the page tab menu: where the copy goes
+    /// Page > Duplicate Page and the page tab menu: where the copy goes
     /// and whether the layers keep their objects.
     DuplicatePage {
         before: bool,
@@ -1224,7 +1224,7 @@ fn convert_fields(app: &App, ui: &mut Ui, o: &mut crate::bitmap_modes::ConvertOp
     }
 }
 
-/// Manually Inflate Bitmap: the first selected bitmap's pixel size and
+/// Bitmap Padding > Custom: the first selected bitmap's pixel size and
 /// the new size as percentages (Inflate by), shown in pixels too
 /// (Inflate to).
 #[derive(Debug, Clone, PartialEq)]
@@ -3174,7 +3174,7 @@ pub(crate) fn delete_page_size(app: &mut App, name: &str) {
     app.save_settings();
 }
 
-/// Document Options > Page Size, laid out.
+/// Document Setup > Page Size, laid out.
 pub(crate) fn page_size_page(app: &mut App, ui: &mut Ui) {
     ui.horizontal(|ui| {
         ui.radio_value(

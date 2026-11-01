@@ -406,7 +406,7 @@ Anyone who wants to help is welcome, with or without writing code:
   holds small `.cdr` files saved by TraceDraw in versions 7 to 15; telling
   us which ones open (and which do not) is what lets TraceDraw save
   versions 7 to 13 again. Releases from 2021 on open version 15 and newer only,
-  so versions 7 to 14 need CorelDRAW 2020 or older.
+  so versions 7 to 14 need a release from 2020 or older.
 - **Report bugs** with the steps and a screenshot
   ([bug report](https://github.com/tracedraw/tracedraw/issues/new?template=bug_report.yml)).
 - **Review a translation** in your language (`apps/tracedraw/lang/`):

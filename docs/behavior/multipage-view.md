@@ -27,7 +27,7 @@ off too and is lit while it is on (#1019).
   click selects there and a drag draws there. Nothing moves on screen.
 - The page tabs and the navigator change the current page the same way.
 - Zoom to Fit (F4) and turning the view on fit every page in the window.
-- Page Sorter View and Multipage View exclude each other.
+- Page Overview and Multipage View exclude each other.
 
 ## Drawing
 

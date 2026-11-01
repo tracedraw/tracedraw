@@ -161,7 +161,7 @@ See [the table notes](../behavior/table.md).
 
 ## Writing tools
 
-**Text > Writing Tools** offers:
+**Text > Proofing** offers:
 
 - **Spell Check**: unknown words with suggestions; Replace, Replace All,
   Skip, Skip All and Add to the user list.
@@ -172,9 +172,9 @@ See [the table notes](../behavior/table.md).
   types typographic quotes and replaces `(c)`, `(r)`, `(tm)` and simple
   fractions as you type.
 
-Also in the Text menu: **Change Case**, **Text Statistics**, **Encode**
+Also in the Text menu: **Change Case**, **Word Count**, **Text Encoding**
 (repairs text that was read with the wrong character encoding) and
-**Make Text Web Compatible**. **Find and Replace** (`Ctrl+F`) searches
+**Use Web-safe Text**. **Find and Replace** (`Ctrl+F`) searches
 text and object attributes, and the **Glyphs** panel shows every
 character of a font.
 

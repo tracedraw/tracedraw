@@ -24,7 +24,7 @@
   showing dashed lines across the window while dragging.
 - Dragging out of a ruler adds a guideline (horizontal from the top ruler,
   vertical from the left one) where it is released inside the window.
-- Double-clicking a ruler or the corner opens Document Options at Rulers.
+- Double-clicking a ruler or the corner opens Document Setup at Rulers.
 
 ### Origin
 
@@ -33,7 +33,7 @@ corner, 0, 0 by default). Rulers, the status bar's cursor coordinates,
 the property bar's X and Y, the Transformations summary, the Guidelines
 panel and the document grid all count from it.
 
-### Document Options > Rulers
+### Document Setup > Rulers
 
 Units (inches, millimeters, picas,
 points, pixels, ciceros, didots, feet, yards, miles, centimeters, meters,
@@ -43,7 +43,7 @@ Show rulers, and a button that puts the origin back at the page corner.
 
 ### Drawing scale
 
-Document Options > Rulers > Drawing scale makes a distance on the page
+Document Setup > Rulers > Drawing scale makes a distance on the page
 stand for a distance in the world (`drawing_scale.rs`):
 
 - Typical scales: 1:1 (default), 1:2, 1:5, 1:10, 1:20, 1:25, 1:50, 1:75,
@@ -59,13 +59,13 @@ stand for a distance in the world (`drawing_scale.rs`):
   the scale, "millimeters (1:100)"), the cursor coordinates and object
   details on the status bar, the property bar's position, size, nudge,
   duplicate distance and corner sizes, the Transformations, Object
-  Coordinates, Step and Repeat, Corners and Join Curves panels, contour
+  Coordinates, Repeat Copies, Corners and Join Curves panels, contour
   offsets, the grid spacing, guideline positions, the ruler origin and the
   symmetry centre, and the labels of new dimension lines.
 - Not through it, as printed: the page size, bleed, page margins and
   columns of the guideline presets, the baseline grid, outline widths, text
   sizes, paragraph indents, tabs and columns, barcodes and QR codes, nib
-  widths (eraser, artistic media) and Border and Grommet.
+  widths (eraser, artistic media) and Banner Hems and Eyelets.
 - The scale is saved with the drawing (`scale_page` and `scale_world` in
   mm with the units they were given in); changing it is an undo step.
 
@@ -73,7 +73,7 @@ stand for a distance in the world (`drawing_scale.rs`):
 
 - View > Grid > Document Grid shows it over the page and the desktop,
   behind objects, as 1 px `#DCDCDC` lines or `#8C8C8C` dots at the
-  intersections (Document Options > Grid > Show grid as).
+  intersections (Document Setup > Grid > Show grid as).
 - Spacing: horizontal and vertical, 10 mm by default, shown either as a
   distance ("millimeters apart") or as lines per unit. Lines pass through
   the ruler origin.
@@ -136,7 +136,7 @@ stand for a distance in the world (`drawing_scale.rs`):
   selected; the Guidelines docker's Duplicate does the same, and its
   Clear deletes every guideline of the type shown, one undo step
   (`selected_guidelines_move_copy_duplicate_and_clear_together`). The
-  duplicate offset is Layout > Document Options > General > Duplicate
+  duplicate offset is Page > Document Setup > General > Duplicate
   offset.
 - Edit > Copy (Ctrl+C) and Cut (Ctrl+X) with guidelines and no objects
   selected put them on the clipboard (status "n guideline(s) copied"; Cut
@@ -202,7 +202,7 @@ guideline as soon as it is entered (Enter or leaving the field), with no
 need for Modify, which stays for a change of type and for Add's values
 (`guides::tests::typed_values_move_the_selected_guideline_and_the_panel_follows_it`).
 
-### Document Options > Guidelines
+### Document Setup > Guidelines
 
 Show guidelines, Snap to guidelines, the default guideline colour, the
 default preset guideline colour, and presets added in the preset colour:
@@ -219,7 +219,7 @@ A preset line already present is not added twice.
 
 ## Save as Default
 
-Tools > Save Settings as Default (and the button in Options) keeps the
+Tools > Save as Defaults (and the button in Options) keeps the
 active drawing's grid, ruler and guideline settings, and its default
 properties for new objects (see `object-styles.md`), for new drawings.
 

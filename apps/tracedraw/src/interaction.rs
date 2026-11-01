@@ -3824,7 +3824,7 @@ impl App {
             }
         }
         // Arrow nudge: plain, Shift super nudge, Ctrl micro nudge
-        // (Document Options > Rulers).
+        // (Document Setup > Rulers).
         let mut d = Vec2::ZERO;
         for (key, mods) in &presses {
             let step = if mods.matches_exact(Modifiers::NONE) {

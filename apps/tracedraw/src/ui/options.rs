@@ -1,5 +1,5 @@
 //! Tools > Options (the application options and the Customization, Tools,
-//! Global and Workspaces dialogs) and Layout > Document Options: one
+//! Global and Workspaces dialogs) and Page > Document Setup: one
 //! window with a tab for each of them along the top (#633), a white page
 //! list on the left, the page on
 //! the right, the help button at the bottom left, OK and Cancel at the
@@ -72,7 +72,7 @@ pub enum OptionsPage {
     // Tools > Options > AI.
     AiGeneral,
     AiService,
-    // Layout > Document Options.
+    // Page > Document Setup.
     DocumentGeneral,
     PageSize,
     Layout,
@@ -552,7 +552,7 @@ pub fn options_dialog(app: &mut App, ctx: &Context, close: &mut bool) {
 /// Height of the tab row over the page list.
 const TABS_H: f32 = 32.0;
 
-/// The tabs along the top: one per set of pages (Document Options while
+/// The tabs along the top: one per set of pages (Document Setup while
 /// a drawing is open), the current one selected. A tab opens the page of
 /// its set shown last, else its first page (#633).
 fn set_tabs(app: &mut App, ui: &mut Ui, rect: egui::Rect, set: OptionsSet) {
@@ -4438,7 +4438,7 @@ fn workspace_page(app: &mut App, ui: &mut Ui) {
     });
 }
 
-// ----- Document Options --------------------------------------------------
+// ----- Document Setup --------------------------------------------------
 
 fn document_general_page(app: &mut App, ui: &mut Ui) {
     if !app.has_document() {
@@ -4807,6 +4807,12 @@ mod tests {
         );
         let found = command_items(&app, None, "open");
         assert!(!found.is_empty() && found.len() < all.len());
+        // Table's commands come under Text, where their submenu sits;
+        // there is no Table category.
+        let text = command_items(&app, Some("menu.text"), "");
+        assert!(text.iter().any(|c| c.id == "menu.table.create_new_table"));
+        assert!(text.iter().any(|c| c.id == "menu.text.grammar"));
+        assert!(command_items(&app, Some("menu.table"), "").is_empty());
         // A user's key shows beside the built-in one (#822).
         let open = file
             .iter()
@@ -5043,7 +5049,7 @@ mod tests {
         assert_eq!(app.settings.recent_font_count, 5);
     }
 
-    /// Text > Writing Tools > Autocorrect opens the Autocorrect tab.
+    /// Text > Proofing > Autocorrect opens the Autocorrect tab.
     #[test]
     fn the_autocorrect_command_opens_its_tab() {
         let ctx = crate::theme::ui_context();

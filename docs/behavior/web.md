@@ -14,7 +14,7 @@ refuse to load modules from `file://`).
 |---|---|---|
 | Open, Import, scripts, palettes, CSV, ICC profiles, thesaurus | system file dialog | the browser's file picker; the file is read into memory under `/upload/<name>` and opened from there |
 | Save, Save As | the Save Drawing dialog with folders, name, type, `.cdr` version and properties (`files.md`) | the same dialog without folders (name, type, version, properties), then a download under that name |
-| Export, Publish to PDF, Save as Template, palette and script saves | system save dialog | a download named after the document |
+| Export, Export as PDF, Save as Template, palette and script saves | system save dialog | a download named after the document |
 | Print | PDF opened in the system viewer | PDF downloaded; print it from the browser's viewer |
 | Send To | PDF written to Desktop, Documents or a mail folder | PDF downloaded |
 | Edit Bitmap (external editor) | system image editor | not available (a browser cannot hand files to programs) |

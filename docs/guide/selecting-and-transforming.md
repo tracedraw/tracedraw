@@ -106,13 +106,13 @@ start with):
 - `Ctrl`+arrow: the micro nudge distance (0.254 mm).
 
 Change the nudge distance on the property bar with nothing selected, or
-in **Layout > Document Options > Rulers**.
+in **Page > Document Setup > Rulers**.
 
 ### Duplicate
 
 - `Ctrl+D` duplicates the selection at the duplicate distance.
 - `+` (with the Pick tool) duplicates it in place, with no offset.
-- `Ctrl+Shift+D` opens the **Step and Repeat** panel.
+- `Ctrl+Shift+D` opens the **Repeat Copies** panel.
 
 ## Scale and stretch
 

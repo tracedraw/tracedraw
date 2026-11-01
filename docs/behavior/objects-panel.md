@@ -45,7 +45,7 @@ the right.
 - Double-click a layer to rename it; double-click an object to name it
   (Rename Object; an empty name goes back to the description).
 - Double-click the page node, or pick Rename in its context menu, to
-  rename the page (the Rename Page dialog, as in Layout > Rename Page);
+  rename the page (the Rename Page dialog, as in Page > Rename Page);
   the context menu of another page also has Go to Page.
 - A click on a layer or an object of another page makes that page the
   current one first (Layout's page change), then picks the layer or

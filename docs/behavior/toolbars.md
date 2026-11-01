@@ -12,7 +12,7 @@ and about 25 px apart; the open or hovered title is a light blue box
 (`#E0F0FF`) with a blue frame (`#00ADFE`). Menus are white with a 1 px
 `#B2B2B2` border and square corners: a 30 px `#F4F4F4` gutter holds the
 icons, the bold check marks and the dots of exclusive choices (View >
-Wireframe, Normal, Enhanced, Pixels); rows are 26 px with labels from
+Wireframe, Normal, Smooth, Pixels); rows are 26 px with labels from
 38 px and shortcuts right-aligned 28 px from the edge, all black (light
 grey when unavailable); separators are 7 px with a `#D8D8D8` line from
 the gutter; a submenu row ends in a grey triangle and stays highlighted
@@ -134,7 +134,7 @@ split by thin lines:
 2. Cut, Copy, Paste.
 3. Undo and Redo, each with its list of steps behind the arrow (choosing
    a step undoes or redoes up to it).
-4. Import, Export, Publish to PDF.
+4. Import, Export, Export as PDF.
 5. The zoom box: the zoom level as text (type a value, Enter applies it)
    and, behind its arrow, Zoom to Selected, to All Objects, to Page, to
    Page Width, to Page Height and levels from 10% to 1600%. Full-screen

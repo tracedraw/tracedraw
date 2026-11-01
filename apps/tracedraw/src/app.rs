@@ -104,7 +104,7 @@ pub fn pixel_dpi() -> f64 {
 
 thread_local! {
     /// World millimetres per page millimetre: the active drawing's scale
-    /// (Document Options > Rulers > Drawing scale), 1 at 1:1.
+    /// (Document Setup > Rulers > Drawing scale), 1 at 1:1.
     static DRAWING_SCALE: std::cell::Cell<f64> = const { std::cell::Cell::new(1.0) };
 }
 
@@ -1256,7 +1256,7 @@ pub struct App {
     /// The Help page of the dialog being drawn, for its "?" button
     /// (`help.rs`).
     pub dialog_help: &'static str,
-    /// Layout > Page Number Settings.
+    /// Page > Page Number Settings.
     pub page_numbers: PageNumberSettings,
     /// Last loaded print-merge data, for Edit / Perform without reloading.
     pub merge_state: Option<crate::ui::dialogs::PrintMergeState>,
@@ -1312,9 +1312,9 @@ pub struct App {
     /// The guideline whose values the Guidelines panel's fields hold
     /// (`sync_guide_form`); `None` with none or several selected.
     pub guide_form_for: Option<usize>,
-    /// Document Options > Guidelines presets section.
+    /// Document Setup > Guidelines presets section.
     pub guide_presets: crate::ui::layout_options::PresetForm,
-    /// Document Options > Grid shows lines per unit instead of spacing.
+    /// Document Setup > Grid shows lines per unit instead of spacing.
     pub grid_frequency: bool,
     // ----- added with the full menu structure -----
     pub settings: crate::settings::Settings,
@@ -1396,7 +1396,7 @@ pub struct App {
     /// dialog open at the start (the browser's first notes, a tip) to
     /// close before it is offered.
     pub recovery_offer: Vec<crate::recovery::Found>,
-    /// Help > Highlight What's New: the menus mark what is new.
+    /// Help > Mark New Features: the menus mark what is new.
     pub highlight_whats_new: bool,
     /// Help > Updates and the daily check at start.
     pub updates: crate::updates::Checker,
@@ -1436,7 +1436,7 @@ pub struct App {
     /// Copy Envelope Properties waits for the object to copy from.
     pub pending_copy_envelope: bool,
     pub pending_clone_effect: Option<EffectKind>,
-    /// Document Options > Page Size state.
+    /// Document Setup > Page Size state.
     pub options_labels: bool,
     /// Navigator pop-up (corner of the scrollbars).
     pub navigator_open: bool,
@@ -1481,7 +1481,7 @@ pub struct App {
     pub navigator_tex: Option<egui::TextureHandle>,
     pub options_label_index: usize,
     pub options_current_only: bool,
-    /// Document Options > Page Size: the name being typed for a page
+    /// Document Setup > Page Size: the name being typed for a page
     /// size to save (Some while the field is shown).
     pub options_page_size_name: Option<String>,
     /// Selected custom anchor index (Anchor Editing tool).
@@ -1532,7 +1532,7 @@ pub struct App {
     pub mcp_link: Option<crate::mcp_link::Link>,
     pub find_state: crate::ui::dialogs::FindReplaceState,
     pub step_repeat: crate::ops2::StepRepeat,
-    /// Step and Repeat's preview of the copies (#1197): the cached
+    /// Repeat Copies' preview of the copies (#1197): the cached
     /// outlines, whether the panel asked for it this frame, and whether
     /// the last click was in the panel.
     pub step_preview: Option<crate::step_repeat::StepPreview>,
@@ -1618,7 +1618,7 @@ pub struct App {
     pub pen_pressure: Option<f32>,
     /// The pressures along the freehand drag in progress.
     pub pen_stroke: crate::pen::PenStroke,
-    /// The Bitmap Mask docker: its colour slots, the slot picked, hide or
+    /// The Color Mask docker: its colour slots, the slot picked, hide or
     /// show the colours, and the eyedropper filling the picked slot.
     pub mask: crate::bitmap_fx::MaskSettings,
     pub font_filter: String,
@@ -1974,9 +1974,9 @@ impl DockerTab {
         DockerTab::PrintMerge,
     ];
 
-    /// Window > Panels, in groups divided by separators, in the order of
-    /// the usual Dockers menu; the effect panels go in their own submenu
-    /// (`EFFECTS_MENU`).
+    /// Window > Panels, in groups divided by separators (the object
+    /// panels first, then colour, text and the rest); the effect panels
+    /// go in their own submenu (`EFFECTS_MENU`).
     pub const MENU_GROUPS: [&'static [DockerTab]; 9] = [
         &[
             DockerTab::Properties,
@@ -2927,7 +2927,7 @@ impl App {
         self.dialog = crate::ui::dialogs::Dialog::Options;
     }
 
-    /// Layout > Page Setup and a double click on the page border or
+    /// Page > Page Setup and a double click on the page border or
     /// shadow: the Options dialog at the page size page.
     pub fn open_page_options(&mut self) {
         self.options_page = crate::ui::dialogs::OptionsPage::PageSize;
@@ -2972,7 +2972,7 @@ impl App {
         }
     }
 
-    /// Double-click on a ruler: Document Options at the Rulers page.
+    /// Double-click on a ruler: Document Setup at the Rulers page.
     pub fn open_ruler_options(&mut self) {
         self.options_page = crate::ui::dialogs::OptionsPage::Rulers;
         self.dialog = crate::ui::dialogs::Dialog::Options;
@@ -8125,7 +8125,7 @@ impl App {
         }
     }
 
-    /// File > Publish to PDF: the dialog for the active drawing.
+    /// File > Export as PDF: the dialog for the active drawing.
     /// File > Package: the Package Drawing dialog (#852).
     pub fn package_dialog(&mut self) {
         self.dialog =
@@ -8346,7 +8346,7 @@ impl App {
         self.fit_pending = true;
     }
 
-    /// Layout > Delete Page: the pages from index `a` to `b` (0 = the
+    /// Page > Delete Page: the pages from index `a` to `b` (0 = the
     /// first, both kept in range) in one undo step, never every page; the
     /// page after them (else the one before) is the current one (#500).
     pub fn delete_pages(&mut self, a: usize, b: usize) {
@@ -8374,7 +8374,7 @@ impl App {
         self.fit_pending = true;
     }
 
-    /// Layout > Delete Page asks which pages, the current one first.
+    /// Page > Delete Page asks which pages, the current one first.
     pub fn ask_delete_page(&mut self) {
         let i = self.page_index() + 1;
         self.dialog = crate::ui::dialogs::Dialog::DeletePage {

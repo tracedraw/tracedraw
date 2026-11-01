@@ -52,7 +52,7 @@ Pink 0 40 20 0, Dark Brown 0 20 20 60, Powder Blue 20 20 0 0 and so on,
 to Deep Blue 60 60 0 60).
 
 In a drawing whose primary colour mode is RGB (New Document's colour
-mode, Document Properties) the default palette shows and applies its
+mode, Document Info) the default palette shows and applies its
 colours as clean RGB values (names kept; spot inks and registration stay
 as they are). The default palette's colours come from the RGB default
 palette, a table of RGB values defined directly
