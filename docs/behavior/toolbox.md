@@ -1,10 +1,19 @@
 # Toolbox
 
-- One button per flyout, top to bottom (the last one, the Variable
-  Outline tool, after the Fill flyout), with
-  separator lines after the Shape, Zoom, Polygon, Text, Connector,
-  Transparency and Fill groups (before the "+"). A button shows the tool last used from its flyout
-  (kept in the settings); the active tool's button is tinted.
+- One button per flyout, top to bottom, with separator lines after the
+  Shape, Zoom, Polygon, Text, Connector, Transparency and Fill groups
+  (before the "+"). The Variable Outline tool has a button of its own,
+  right under the brush tools' flyout (Brush Strokes, Painterly Brush,
+  Shape Recognition, Sketch) and over the Rectangle flyout, inside the
+  drawing block, with no line between the brushes and it; it was at the
+  bottom, after the Fill flyout, before
+  (`ui::toolbox::tests::the_variable_outline_button_sits_under_the_brush_tools`).
+  A button shows the tool last used from its flyout (kept in the
+  settings as one tool id per group, in the groups' order; each id goes
+  to the group that holds its tool, so a list saved with the groups in
+  an older order still applies,
+  `ops::smoke_tests::toolbox_picks_saved_in_the_old_group_order_still_apply`);
+  the active tool's button is tinted.
 - A right click on a tool button or on the toolbox's empty part opens the
   bars' menu (Customize, button size, the bars), as on the other bars.
 - Buttons with a flyout have a small arrow at the bottom-right. Clicking
@@ -47,8 +56,12 @@ their size (#494, `ui::toolbox::tests::a_column_toolbox_fits_the_window`).
 ## Checks
 
 - `ui::toolbox::tests::flyout_groups_can_be_hidden_and_reset`
-- `ui::toolbox::tests::separators_split_the_reference_subgroups`
+- `ui::toolbox::tests::separators_split_the_toolbox_subgroups`
+- `ui::toolbox::tests::separator_lines_follow_the_same_groups`
+- `ui::toolbox::tests::the_variable_outline_button_sits_under_the_brush_tools`
+- `ui::icons::tests::coloured_icons_follow_the_toolbox_groups_and_can_be_off`
 - `ops::smoke_tests::toolbox_groups_remember_the_last_tool_used`
+- `ops::smoke_tests::toolbox_picks_saved_in_the_old_group_order_still_apply`
 
 ## The pointer over the drawing
 

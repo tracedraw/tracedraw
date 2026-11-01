@@ -3997,16 +3997,25 @@ impl App {
         self.docker_last = (self.docker_tab, self.show_dockers);
     }
 
-    /// The tool each toolbox group shows, from tool ids (one per group, in
-    /// group order); ids that name no tool of their group are skipped.
+    /// The tool each toolbox group shows, from tool ids (saved one per
+    /// group, in group order). Each id goes to the group that holds its
+    /// tool, wherever it sits in the list, so a list saved by an earlier
+    /// version with the groups in another order (the Variable Outline
+    /// button was at the bottom before it moved under the brush tools)
+    /// still shows the right tools; ids that name no tool are skipped.
     pub fn apply_toolbox_picks(&mut self, ids: &[String]) {
-        for (gi, id) in ids.iter().enumerate() {
-            let group = crate::tools::GROUPS.get(gi);
-            let tool = Tool::ALL.iter().find(|t| t.id() == id);
-            if let (Some(g), Some(t), Some(slot)) = (group, tool, self.toolbox_last.get_mut(gi)) {
-                if g.tools.contains(t) {
-                    *slot = *t;
-                }
+        for id in ids {
+            let Some(tool) = Tool::ALL.iter().copied().find(|t| t.id() == id) else {
+                continue;
+            };
+            let Some(gi) = crate::tools::GROUPS
+                .iter()
+                .position(|g| g.tools.contains(&tool))
+            else {
+                continue;
+            };
+            if let Some(slot) = self.toolbox_last.get_mut(gi) {
+                *slot = tool;
             }
         }
     }

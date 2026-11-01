@@ -1566,6 +1566,79 @@ mod smoke_tests {
         other.apply_settings(s);
         assert_eq!(other.toolbox_last[gi], Tool::Spiral);
     }
+
+    /// The tools the buttons show, saved one id per group in the order
+    /// the groups had before the Variable Outline button moved from the
+    /// bottom of the toolbox to under the brush tools, still land on the
+    /// right groups: each id goes to the group that holds its tool.
+    #[test]
+    fn toolbox_picks_saved_in_the_old_group_order_still_apply() {
+        let group_of = |t: Tool| {
+            crate::tools::GROUPS
+                .iter()
+                .position(|g| g.tools.contains(&t))
+                .expect("in a group")
+        };
+        let old_order = [
+            "pick",
+            "roughen",
+            "knife",
+            "pan",
+            "bezier",
+            "sketch",
+            "three_point_rectangle",
+            "three_point_ellipse",
+            "star",
+            "table",
+            "callout",
+            "anchor_editing",
+            "blend",
+            "transparency",
+            "attributes_eyedropper",
+            "mesh_fill",
+            "variable_outline",
+            "outline_color",
+            "no_such_tool",
+        ]
+        .map(String::from);
+        let mut app = App::headless();
+        app.apply_toolbox_picks(&old_order);
+        for (t, first) in [
+            (Tool::Roughen, Tool::Shape),
+            (Tool::Knife, Tool::Crop),
+            (Tool::Pan, Tool::Zoom),
+            (Tool::Bezier, Tool::Freehand),
+            (Tool::Sketch, Tool::BrushStrokes),
+            (Tool::ThreePointRectangle, Tool::Rectangle),
+            (Tool::ThreePointEllipse, Tool::Ellipse),
+            (Tool::Star, Tool::Polygon),
+            (Tool::Table, Tool::Text),
+            (Tool::Callout, Tool::ParallelDimension),
+            (Tool::AnchorEditing, Tool::Connector),
+            (Tool::Blend, Tool::DropShadow),
+            (Tool::AttributesEyedropper, Tool::ColorEyedropper),
+            (Tool::MeshFill, Tool::InteractiveFill),
+            (Tool::OutlineColor, Tool::OutlinePen),
+        ] {
+            let gi = group_of(t);
+            assert_eq!(gi, group_of(first));
+            assert_eq!(app.toolbox_last[gi], t, "{t:?}");
+        }
+        assert_eq!(
+            app.toolbox_last[group_of(Tool::VariableOutline)],
+            Tool::VariableOutline
+        );
+        // Saved again, the list follows the groups' order now, and comes
+        // back the same.
+        app.sync_settings();
+        let saved = app.settings.toolbox.clone();
+        assert_eq!(saved.len(), crate::tools::GROUPS.len());
+        assert_eq!(saved[group_of(Tool::VariableOutline)], "variable_outline");
+        assert_eq!(saved[group_of(Tool::Rectangle)], "three_point_rectangle");
+        let mut again = App::headless();
+        again.apply_toolbox_picks(&saved);
+        assert_eq!(again.toolbox_last, app.toolbox_last);
+    }
 }
 
 /// How Break Apart cuts a text: its lines when it has more than one

@@ -25,11 +25,16 @@ pub fn group_color(tool: Tool) -> Color32 {
         .iter()
         .position(|g| g.tools.contains(&tool))
         .unwrap_or(0);
-    // One hue per toolbox group, dark enough for light panels.
+    // One hue per toolbox group, dark enough for light panels: Pick,
+    // Shape, Crop, Zoom, Curve, the brushes and Variable Outline (one
+    // hue, as one block), Rectangle, Ellipse and Polygon (one hue), Text,
+    // Dimension, Connector, Effect, Transparency, Eyedropper, Fill,
+    // Outline.
     const HUES: [u32; 18] = [
-        0x2F6FD0, 0x8A4FD0, 0xD24A43, 0x2A9D9D, 0x2E9E4F, 0xE07B1A, 0x1E88E5, 0x1E88E5, 0x1E88E5,
-        0x5A5A5A, 0x7A8288, 0x16A085, 0xC0398B, 0x5D6D9E, 0xB9770E, 0xE67E22, 0x8A4FD0, 0x34495E,
+        0x2F6FD0, 0x8A4FD0, 0xD24A43, 0x2A9D9D, 0x2E9E4F, 0xE07B1A, 0xE07B1A, 0x1E88E5, 0x1E88E5,
+        0x1E88E5, 0x5A5A5A, 0x7A8288, 0x16A085, 0xC0398B, 0x5D6D9E, 0xB9770E, 0xE67E22, 0x34495E,
     ];
+    const _: () = assert!(HUES.len() == crate::tools::GROUPS.len());
     let v = HUES.get(group).copied().unwrap_or(0x5A5A5A);
     let c = Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
     if crate::theme::theme().is_dark() {
@@ -1121,6 +1126,29 @@ mod tests {
         );
         assert_ne!(tool_color(Tool::Pick, plain), tool_color(Tool::Crop, plain));
         assert_eq!(crate::tools::GROUPS.len(), 18);
+        // Each group keeps its colour: the Variable Outline button, under
+        // the brush tools, shares theirs; the groups after it keep the
+        // hues they had.
+        assert_eq!(
+            tool_color(Tool::VariableOutline, plain),
+            tool_color(Tool::BrushStrokes, plain)
+        );
+        assert_ne!(
+            tool_color(Tool::VariableOutline, plain),
+            tool_color(Tool::Rectangle, plain)
+        );
+        assert_eq!(
+            tool_color(Tool::Rectangle, plain),
+            tool_color(Tool::Polygon, plain)
+        );
+        assert_ne!(
+            tool_color(Tool::Text, plain),
+            tool_color(Tool::Polygon, plain)
+        );
+        assert_ne!(
+            tool_color(Tool::InteractiveFill, plain),
+            tool_color(Tool::OutlinePen, plain)
+        );
         set_colored(false);
     }
 
