@@ -2626,7 +2626,10 @@ impl EmfWriter<'_> {
         let h = self.handle();
         let mut body = Vec::new();
         push_i32(&mut body, h as i32);
-        push_i32(&mut body, -((em_mm * 100.0).round() as i32));
+        // The height is the em negated; a size that is not a number (or
+        // past what a record holds) is clamped first, so the negation
+        // cannot overflow.
+        push_i32(&mut body, -((em_mm * 100.0).round().clamp(0.0, 1e9) as i32));
         push_i32(&mut body, 0);
         push_i32(&mut body, (rot_deg * 10.0).round() as i32);
         push_i32(&mut body, (rot_deg * 10.0).round() as i32);
@@ -3286,7 +3289,10 @@ impl WmfWriter<'_> {
         // underline, strikeout, charset, out/clip precision, quality,
         // pitch, face name (32 bytes).
         let mut lf = Vec::new();
-        lf.extend_from_slice(&(-self.tw(em_mm)).to_le_bytes());
+        // The height is the em negated; `tw` clamps a size that is not
+        // a number to the ends of the range, and the smallest value has
+        // no negation, so the em is clamped to the positive half first.
+        lf.extend_from_slice(&(-self.tw(em_mm.clamp(0.0, 1e6))).to_le_bytes());
         lf.extend_from_slice(&0i16.to_le_bytes());
         lf.extend_from_slice(&((rot_deg * 10.0).round() as i16).to_le_bytes());
         lf.extend_from_slice(&((rot_deg * 10.0).round() as i16).to_le_bytes());
@@ -3464,6 +3470,70 @@ impl WmfWriter<'_> {
 mod wmf_export_tests {
     use super::*;
     use tracedraw_core::{geometry::Rect, Document};
+
+    /// A drawing with coordinates that are not numbers (a division by
+    /// zero somewhere, an import with a number too large to hold) still
+    /// exports as a metafile: the text height, page size, places,
+    /// outline widths and sizes are clamped to what the records hold.
+    /// The LOGFONT height is the em negated, and a text size of minus
+    /// infinity clamped to the smallest value a record holds overflowed
+    /// when negated, so the export panicked.
+    #[test]
+    fn export_of_a_drawing_with_infinite_coordinates_does_not_panic() {
+        for bad in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+            let mut doc = Document::new("t", Size::new(bad, 50.0));
+            let mut ids = doc.ids().clone();
+            let mut r = Shape::new(
+                ids.shape(),
+                ShapeKind::Rect {
+                    rect: Rect::new(10.0, 10.0, bad, 20.0),
+                    radius: bad,
+                    corners: None,
+                },
+            );
+            r.fill = Fill::Solid(Color::rgb8(0, 0, 255));
+            r.stroke = Some(Stroke::new(Color::rgb8(255, 0, 0), bad));
+            r.transform = Affine::new([1.0, 0.0, 0.0, 1.0, bad, 0.0]);
+            let mut t = Shape::new(
+                ids.shape(),
+                ShapeKind::Text {
+                    spans: vec![TextSpan::new("Hi", "Arial", bad)],
+                    origin: Point::new(bad, 40.0),
+                    frame: None,
+                    align: TextAlign::Left,
+                    para: ParagraphStyle::default(),
+                    on_path: None,
+                },
+            );
+            t.fill = Fill::Solid(Color::rgb8(0, 128, 0));
+            let mut e = Shape::new(
+                ids.shape(),
+                ShapeKind::Ellipse {
+                    rect: Rect::new(60.0, 5.0, 90.0, bad),
+                    arc: None,
+                },
+            );
+            e.fill = Fill::Fountain(tracedraw_core::Fountain::two(
+                tracedraw_core::style::FountainKind::Radial,
+                Color::BLACK,
+                Color::WHITE,
+                0.0,
+            ));
+            let mut path = tracedraw_core::geometry::BezPath::new();
+            path.move_to((0.0, 0.0));
+            path.line_to((bad, 10.0));
+            path.curve_to((5.0, bad), (bad, bad), (20.0, 20.0));
+            path.close_path();
+            let mut p = Shape::new(ids.shape(), ShapeKind::Path { path, closed: true });
+            p.stroke = Some(Stroke::new(Color::BLACK, 1.0));
+            doc.pages[0].layers[0].shapes.extend([r, t, e, p]);
+            doc.set_ids(ids);
+            let emf = page_to_emf(&doc, 0);
+            assert!(is_emf(&emf));
+            let wmf = page_to_wmf(&doc, 0);
+            assert!(is_wmf(&wmf));
+        }
+    }
 
     #[test]
     fn wmf_export_round_trips_through_the_reader() {
