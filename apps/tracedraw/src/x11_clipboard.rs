@@ -374,9 +374,13 @@ mod tests {
                 continue;
             }
             let display = format!(":{num}");
+            // `-noreset`: an X server resets when its last client leaves,
+            // and the check below connects and leaves at once; a test
+            // connecting while it reset was dropped ("connection reset by
+            // peer"), now and then, on a loaded machine.
             let child = std::process::Command::new("Xvfb")
                 .arg(&display)
-                .args(["-nolisten", "tcp", "-screen", "0", "64x64x24"])
+                .args(["-nolisten", "tcp", "-noreset", "-screen", "0", "64x64x24"])
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .spawn()
