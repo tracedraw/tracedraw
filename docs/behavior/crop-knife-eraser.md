@@ -53,6 +53,12 @@
   leaves it as it is. One undo step with the other objects cut
   (`knife::tests::a_cut_crops_a_bitmap_into_pieces`,
   `knife::tests::a_turned_or_cropped_picture_is_cut_where_it_is_drawn`).
+- Any other clip frame is cut through its frame as a closed object is
+  (#1606): each piece is a clip frame whose frame has the piece's
+  outline and the frame's fill and outline, holding the contents where
+  they show (the first keeps the clip frame, the others copies of the
+  contents with ids of their own); see `clip-frame.md`
+  (`knife::tests::a_clip_frame_is_cut_through_its_frame`).
 - Closed objects lose a band along the cut: Split (first choice) takes a
   hair (0.01 mm), so the pieces meet; Gap takes the width beside it.
   Each separate piece becomes an object of its own (Keep as one object:

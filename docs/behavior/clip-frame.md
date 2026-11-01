@@ -64,6 +64,23 @@ frame is edited node by node, and the clip frame stays one
   Redo of that step enters the edit again; undoing Finish goes back
   into the edit and redoing it leaves (#851,
   `clip_frame_edit_keeps_to_its_contents_and_its_own_undo`).
+- Ungroup, Break Apart and the Knife take a clip frame apart through
+  its frame, as they take the frame itself apart, and each piece is a
+  clip frame holding the contents (the first keeps the clip frame, the
+  others get ids of their own and copies of the contents), so the
+  picture stays where it shows. Ungroup (Ctrl+U, Ungroup All too) on a
+  clip frame whose frame is a group gives one clip frame per object of
+  the group (#1605,
+  `command::tests::a_clip_frame_of_a_group_ungroups_into_clip_frames_of_its_objects`);
+  Break Apart (Ctrl+K) on one whose frame is a curve of several parts
+  gives one per part (#1607,
+  `command::tests::a_clip_frame_of_a_combined_curve_breaks_into_clip_frames_of_its_parts`,
+  `ops2::clip_frame_tests::clip_frames_ungroup_and_break_apart_through_their_frame`);
+  the Knife cuts the frame as it cuts a closed object, the pieces
+  keeping the frame's fill and outline (#1606,
+  `knife::tests::a_clip_frame_is_cut_through_its_frame`). The pieces
+  come out selected; one undo step. A cropped picture (a clip frame
+  holding one bitmap) is cut as a picture, see `crop-knife-eraser.md`.
 - Lock Contents to Frame (default on, stored as `clip_frame.unlocked` in
   the object data when off): with the lock on, moving, scaling or
   rotating the frame transforms the contents too. With it off, the frame

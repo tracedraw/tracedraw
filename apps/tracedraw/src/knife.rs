@@ -391,6 +391,73 @@ impl App {
                 }
                 continue;
             }
+            if let ShapeKind::ClipFrame { frame, contents } = &s.kind {
+                // A clip frame is cut through its frame (#1606): each
+                // piece is a clip frame holding the contents, so the
+                // picture stays where it shows, as Break Apart leaves it.
+                let mut on_page = (**frame).clone();
+                on_page.transform = s.transform * frame.transform;
+                let Some(pieces) = pieces_of(&on_page, &cut, gap) else {
+                    continue;
+                };
+                let inv = s.transform.inverse();
+                let local = |p: &BezPath| inv * p.clone();
+                let pieces: Vec<(BezPath, bool)> = if self.knife.one_object {
+                    let mut all = BezPath::new();
+                    let mut closed = true;
+                    for (p, c) in &pieces {
+                        all.extend(local(p).elements().iter().copied());
+                        closed &= *c;
+                    }
+                    vec![(all, closed)]
+                } else {
+                    pieces.iter().map(|(p, c)| (local(p), *c)).collect()
+                };
+                // The frame piece: the frame's look with the piece's
+                // outline, in the clip frame's space.
+                let frame_of = |path: BezPath, closed: bool, id: ShapeId| {
+                    let mut f = (**frame).clone();
+                    f.id = id;
+                    f.transform = tracedraw_core::geometry::Affine::IDENTITY;
+                    f.kind = ShapeKind::Path { path, closed };
+                    f.node_types.clear();
+                    f.spline = None;
+                    f
+                };
+                let mut it = pieces.into_iter();
+                // The first piece keeps the clip frame (its id, its place).
+                if let Some((p, closed)) = it.next() {
+                    cmds.push(Command::SetShapeKind {
+                        shape: s.id,
+                        kind: ShapeKind::ClipFrame {
+                            frame: Box::new(frame_of(p, closed, frame.id)),
+                            contents: contents.clone(),
+                        },
+                    });
+                    new_ids.push(s.id);
+                }
+                for (p, closed) in it {
+                    let mut piece = s.clone();
+                    piece.id = self.engine.new_shape_id();
+                    piece.uid = None;
+                    let f = frame_of(p, closed, self.engine.new_shape_id());
+                    let engine = &mut self.engine;
+                    let contents: Vec<Shape> = contents
+                        .iter()
+                        .map(|c| c.with_fresh_ids(&mut || engine.new_shape_id()))
+                        .collect();
+                    piece.kind = ShapeKind::ClipFrame {
+                        frame: Box::new(f),
+                        contents,
+                    };
+                    new_ids.push(piece.id);
+                    cmds.push(Command::AddShape {
+                        layer,
+                        shape: piece,
+                    });
+                }
+                continue;
+            }
             let Some(pieces) = pieces_of(&s, &cut, gap) else {
                 continue;
             };
@@ -703,6 +770,79 @@ mod tests {
             app.doc().find_shape(id).map(|s| &s.kind),
             Some(ShapeKind::Bitmap { .. })
         ));
+    }
+
+    /// A clip frame is cut through its frame: each piece is a clip frame
+    /// with the frame's look holding the contents, so the picture stays
+    /// where it shows; the first keeps the clip frame; one undo step
+    /// (#1606).
+    #[test]
+    fn a_clip_frame_is_cut_through_its_frame() {
+        let mut app = App::headless();
+        let frame = square(&mut app);
+        let inner = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(5.0, 5.0, 35.0, 35.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape");
+        app.engine
+            .run(&Command::PlaceInside {
+                contents: vec![inner],
+                frame,
+            })
+            .expect("place inside");
+        let look = app.doc().find_shape(frame).expect("clip frame").clone();
+        let ShapeKind::ClipFrame { frame: f, .. } = &look.kind else {
+            panic!("not a clip frame");
+        };
+        let frame_fill = f.fill.clone();
+        app.select(Vec::new());
+        app.knife(Point::new(20.0, -5.0), Point::new(20.0, 45.0));
+        let shapes = app.doc().pages[0].layers[0].shapes.clone();
+        assert_eq!(shapes.len(), 2, "{shapes:#?}");
+        assert_eq!(shapes[0].id, frame, "the first keeps the clip frame");
+        let mut xs = Vec::new();
+        let mut content_ids = Vec::new();
+        for piece in &shapes {
+            let ShapeKind::ClipFrame { frame: f, contents } = &piece.kind else {
+                panic!("not a clip frame: {:?}", piece.kind);
+            };
+            assert!(matches!(f.kind, ShapeKind::Path { closed: true, .. }));
+            assert_eq!(f.fill, frame_fill, "the frame keeps its look");
+            let b = (piece.transform * f.page_path()).bounding_box();
+            assert!(b.y0.abs() < 1e-5 && (b.y1 - 40.0).abs() < 1e-5, "{b:?}");
+            xs.push((b.x0, b.x1));
+            assert_eq!(contents.len(), 1);
+            assert!(matches!(contents[0].kind, ShapeKind::Rect { .. }));
+            assert_eq!(
+                contents[0].transform,
+                Affine::IDENTITY,
+                "the contents stay where they are"
+            );
+            content_ids.push(contents[0].id);
+        }
+        xs.sort_by(|a, b| a.0.total_cmp(&b.0));
+        // Split takes a hair (0.01 mm) along the cut, as on any closed
+        // object.
+        assert!(
+            xs[0].0.abs() < 1e-5 && (xs[0].1 - 20.0).abs() < 0.01,
+            "{xs:?}"
+        );
+        assert!(
+            (xs[1].0 - 20.0).abs() < 0.01 && (xs[1].1 - 40.0).abs() < 1e-5,
+            "{xs:?}"
+        );
+        assert_eq!(content_ids[0], inner);
+        assert_ne!(
+            content_ids[0], content_ids[1],
+            "the copy has ids of its own"
+        );
+        assert_eq!(app.selection.len(), 2);
+        app.undo();
+        assert_eq!(count(&app), 1);
+        assert_eq!(app.doc().find_shape(frame).expect("back").kind, look.kind);
     }
 
     /// A turned picture is cut where it is drawn and its pieces keep its

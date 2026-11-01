@@ -533,7 +533,8 @@ impl App {
     /// subpaths: an outline warp to bake into curves (#647), or artistic
     /// text of more than one line, word or character.
     pub(crate) fn breaks_apart(shape: &Shape) -> bool {
-        if shape.has_outline_warp() {
+        // A clip frame whose frame is a curve of several parts (#1607).
+        if shape.has_outline_warp() || shape.breaks_into_parts() {
             return true;
         }
         match &shape.kind {

@@ -5565,30 +5565,55 @@ impl App {
         }
     }
 
+    /// Ungroup: the selected groups, and the selected clip frames whose
+    /// frame is a group, which come apart into one clip frame per object
+    /// of the frame (#1605). The members come out selected.
     pub fn ungroup_selection(&mut self) {
         let groups: Vec<ShapeId> = self
             .selected_shapes()
             .iter()
-            .filter(|s| matches!(s.kind, ShapeKind::Group { .. }))
+            .filter(|s| matches!(s.kind, ShapeKind::Group { .. }) || s.is_clip_frame_of_group())
             .map(|s| s.id)
             .collect();
         if groups.is_empty() {
             return;
         }
-        // The members come out selected.
+        // The members come out selected: a group's objects, and a clip
+        // frame's pieces (the clip frame itself and the new ones beside
+        // it).
+        let before = self.top_level_ids();
         let mut members: Vec<ShapeId> = Vec::new();
         for s in self.selected_shapes() {
-            if let ShapeKind::Group { children } = &s.kind {
-                members.extend(children.iter().map(|c| c.id));
+            match &s.kind {
+                ShapeKind::Group { children } => members.extend(children.iter().map(|c| c.id)),
+                ShapeKind::ClipFrame { .. } if s.is_clip_frame_of_group() => members.push(s.id),
+                _ => {}
             }
         }
         self.selection.clear();
         for g in groups {
             self.run(Command::Ungroup { group: g });
         }
+        members.extend(
+            self.top_level_ids()
+                .into_iter()
+                .filter(|id| !before.contains(id)),
+        );
         let doc = self.doc();
         members.retain(|id| doc.find_shape(*id).is_some());
         self.select(members);
+    }
+
+    /// The ids of the objects on the drawing's layers (not inside groups
+    /// or clip frames), to tell the objects a command added.
+    pub(crate) fn top_level_ids(&self) -> std::collections::HashSet<ShapeId> {
+        self.doc()
+            .pages
+            .iter()
+            .flat_map(|p| &p.layers)
+            .flat_map(|l| &l.shapes)
+            .map(|s| s.id)
+            .collect()
     }
 
     /// Convert to Curves: shapes and text become curves; a table becomes a

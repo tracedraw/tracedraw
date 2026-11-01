@@ -414,23 +414,35 @@ impl App {
     }
 
     pub fn ungroup_all(&mut self) {
-        // Repeat ungroup until no selected object is a group.
+        // Repeat ungroup until no selected object is a group (or a clip
+        // frame whose frame is one, #1605).
         for _ in 0..64 {
             let groups: Vec<ShapeId> = self
                 .selected_shapes()
                 .iter()
-                .filter(|s| matches!(s.kind, ShapeKind::Group { .. }))
+                .filter(|s| matches!(s.kind, ShapeKind::Group { .. }) || s.is_clip_frame_of_group())
                 .map(|s| s.id)
                 .collect();
             if groups.is_empty() {
                 break;
             }
+            let before = self.top_level_ids();
             let mut new_sel: Vec<ShapeId> = self
                 .selection
                 .iter()
                 .copied()
                 .filter(|s| !groups.contains(s))
                 .collect();
+            for g in &groups {
+                // A clip frame stays, as the first of its pieces.
+                if self
+                    .doc()
+                    .find_shape(*g)
+                    .is_some_and(Shape::is_clip_frame_of_group)
+                {
+                    new_sel.push(*g);
+                }
+            }
             for g in groups {
                 let children: Vec<ShapeId> = self
                     .doc()
@@ -445,6 +457,12 @@ impl App {
                 self.run(Command::Ungroup { group: g });
                 new_sel.extend(children);
             }
+            // The pieces a clip frame came apart into.
+            new_sel.extend(
+                self.top_level_ids()
+                    .into_iter()
+                    .filter(|id| !before.contains(id)),
+            );
             self.selection = new_sel;
         }
     }
@@ -4965,6 +4983,78 @@ mod clip_frame_tests {
             corners: None,
         })
         .expect("a layer")
+    }
+
+    /// Ungroup takes a clip frame whose frame is a group apart into clip
+    /// frames of the group's objects, Break Apart one whose frame is a
+    /// combined curve into clip frames of its parts; the pieces come out
+    /// selected, one undo step each (#1605, #1607).
+    #[test]
+    fn clip_frames_ungroup_and_break_apart_through_their_frame() {
+        let mut app = App::headless();
+        let a = rect(&mut app, Rect::new(0.0, 0.0, 10.0, 10.0));
+        let b = rect(&mut app, Rect::new(20.0, 0.0, 30.0, 10.0));
+        let inner = rect(&mut app, Rect::new(2.0, 2.0, 28.0, 8.0));
+        app.select(vec![a, b]);
+        app.group_selection();
+        let group = app.selection[0];
+        app.engine
+            .run(&tracedraw_core::Command::PlaceInside {
+                contents: vec![inner],
+                frame: group,
+            })
+            .expect("place inside");
+        app.select(vec![group]);
+        let count = |app: &App| app.doc().pages[0].layers[0].shapes.len();
+        assert_eq!(count(&app), 1);
+        app.ungroup_selection();
+        assert_eq!(count(&app), 2);
+        assert_eq!(app.selection.len(), 2, "the pieces are selected");
+        for id in app.selection.clone() {
+            let s = app.doc().find_shape(id).expect("piece");
+            assert!(
+                matches!(s.kind, ShapeKind::ClipFrame { .. }),
+                "{:?}",
+                s.kind
+            );
+            assert!(!s.is_clip_frame_of_group());
+        }
+        app.undo();
+        assert_eq!(count(&app), 1);
+        assert!(app
+            .doc()
+            .find_shape(group)
+            .is_some_and(|s| s.is_clip_frame_of_group()));
+        // Combined: the frame is one curve of two parts.
+        let mut app = App::headless();
+        let a = rect(&mut app, Rect::new(0.0, 0.0, 10.0, 10.0));
+        let b = rect(&mut app, Rect::new(20.0, 0.0, 30.0, 10.0));
+        let inner = rect(&mut app, Rect::new(2.0, 2.0, 28.0, 8.0));
+        app.select(vec![a, b]);
+        app.combine();
+        let combined = app.selection[0];
+        app.engine
+            .run(&tracedraw_core::Command::PlaceInside {
+                contents: vec![inner],
+                frame: combined,
+            })
+            .expect("place inside");
+        app.select(vec![combined]);
+        assert!(app.selected_shapes().iter().any(App::breaks_apart));
+        app.break_apart();
+        assert_eq!(count(&app), 2);
+        assert_eq!(app.selection.len(), 2);
+        for id in app.selection.clone() {
+            let s = app.doc().find_shape(id).expect("piece");
+            assert!(
+                matches!(s.kind, ShapeKind::ClipFrame { .. }),
+                "{:?}",
+                s.kind
+            );
+            assert!(!s.breaks_into_parts());
+        }
+        app.undo();
+        assert_eq!(count(&app), 1);
     }
 
     /// The four ways of fitting contents to a frame, and the bar's

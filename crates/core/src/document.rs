@@ -2511,6 +2511,56 @@ impl Shape {
         self.opacity = (self.opacity * parent).clamp(0.0, 1.0);
     }
 
+    /// A clip frame whose frame is a group: Ungroup takes it apart into
+    /// the group's objects, each a clip frame holding the contents (#1605).
+    pub fn is_clip_frame_of_group(&self) -> bool {
+        matches!(&self.kind, ShapeKind::ClipFrame { frame, .. }
+            if matches!(frame.kind, ShapeKind::Group { .. }))
+    }
+
+    /// Whether Break Apart has parts to give: a curve of several
+    /// subpaths, or a clip frame whose frame is one (each part then a
+    /// clip frame holding the contents, #1607).
+    pub fn breaks_into_parts(&self) -> bool {
+        let path = match &self.kind {
+            ShapeKind::Path { path, .. } => path,
+            ShapeKind::ClipFrame { frame, .. } => match &frame.kind {
+                ShapeKind::Path { path, .. } => path,
+                _ => return false,
+            },
+            _ => return false,
+        };
+        path.elements()
+            .iter()
+            .filter(|e| matches!(e, geometry::PathEl::MoveTo(_)))
+            .count()
+            > 1
+    }
+
+    /// A copy with ids from `next` for the object and everything inside
+    /// it (a group's objects, a clip frame's frame and contents), and no
+    /// uid, so the copy gets one of its own.
+    pub fn with_fresh_ids(&self, next: &mut dyn FnMut() -> ShapeId) -> Shape {
+        let mut c = self.clone();
+        c.id = next();
+        c.uid = None;
+        match &mut c.kind {
+            ShapeKind::Group { children } => {
+                let copies: Vec<Shape> =
+                    children.iter().map(|ch| ch.with_fresh_ids(next)).collect();
+                *children = copies;
+            }
+            ShapeKind::ClipFrame { frame, contents } => {
+                **frame = frame.with_fresh_ids(next);
+                let copies: Vec<Shape> =
+                    contents.iter().map(|ch| ch.with_fresh_ids(next)).collect();
+                *contents = copies;
+            }
+            _ => {}
+        }
+        c
+    }
+
     /// Put `parent` in front of the shape's own transform (ungrouping,
     /// flattening a group for a file) and keep its look. Fixed corners
     /// measure against the rectangle's own transform: a `parent` that

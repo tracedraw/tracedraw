@@ -2999,17 +2999,13 @@ pub fn zoom_bar(app: &mut App, ui: &mut Ui) {
 /// parts (break apart); `None` when nothing applies.
 pub fn arrange_offers(shapes: &[tracedraw_core::Shape]) -> Option<(bool, bool, bool)> {
     let many = shapes.len() >= 2;
+    // A clip frame whose frame is a group ungroups, one whose frame is a
+    // curve of several parts breaks apart (#1605, #1607).
     let groups = shapes
         .iter()
-        .any(|s| matches!(s.kind, ShapeKind::Group { .. }));
+        .any(|s| matches!(s.kind, ShapeKind::Group { .. }) || s.is_clip_frame_of_group());
     let parts = shapes.iter().any(|s| match &s.kind {
-        ShapeKind::Path { path, .. } => {
-            path.elements()
-                .iter()
-                .filter(|e| matches!(e, tracedraw_core::geometry::PathEl::MoveTo(_)))
-                .count()
-                > 1
-        }
+        ShapeKind::Path { .. } | ShapeKind::ClipFrame { .. } => s.breaks_into_parts(),
         _ => false,
     });
     (many || groups || parts).then_some((many, groups, parts))
