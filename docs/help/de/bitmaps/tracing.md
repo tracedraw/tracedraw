@@ -7,7 +7,7 @@ Logo, eine Skizze, ein Foto.
 ## Schnelles Nachzeichnen {#quick-trace}
 
 Wählen Sie eine Bitmap aus und wählen Sie
-[[menu.bitmaps > menu.bitmaps.quick_trace]]. Es verwendet die Vorgabe, die auf
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]]. Es verwendet die Vorgabe, die auf
 der Seite [[options.bitmap_tracing]] der globalen Optionen gewählt ist
 (anfangs [[menu.bitmaps.trace_optimized]], das das Detail für jedes Bild
 wählt: so getreu wie möglich mit den wenigsten Knoten).
@@ -16,7 +16,7 @@ wählt: so getreu wie möglich mit den wenigsten Knoten).
 
 ## Das Dialogfeld Bitmap nachzeichnen {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] und
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] und
 [[menu.bitmaps.centerline_trace]] listen Vorgaben auf; wählen Sie eine, um das
 Dialogfeld zum Nachzeichnen zu öffnen.
 

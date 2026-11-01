@@ -46,10 +46,10 @@ find out what changed and lists the highlights of the latest versions.
 - **Help in your language.** Every **?** button and <kbd>F1</kbd> open the
   page of this Help about the dialog box, panel or tool in front of you, in
   the language TraceDraw is set to.
-- **Document properties.** [[menu.file > menu.file.document_properties]]
+- **Document info.** [[menu.file > menu.file.document_properties]]
   keeps the language, title, subject, author, copyright, tags, notes and
   rating of a drawing, over a full report of what the drawing holds. See
-  [Document properties](../pages-layout/document-properties.md).
+  [Document info](../pages-layout/document-properties.md).
 - **Color management.** [[menu.tools > menu.tools.color_management]] sets
   the profiles of the drawing and the defaults for new ones, with policies
   for files that open or are imported. See

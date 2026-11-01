@@ -122,7 +122,7 @@ Detail: [the New Document notes](../behavior/new-document.md).
 From top to bottom and left to right:
 
 - **Menu bar**: every command, grouped in menus such as File, Edit,
-  View, Layout, Object, Effects, Text, Tools, Window and Help, with each
+  View, Object, Text, Image, Effects, Page, Tools, Window and Help, with each
   command's shortcut shown beside it.
 - **Standard toolbar**: New, Open (its arrow lists recent drawings),
   Save and Print; Cut, Copy and Paste; Undo and Redo (their arrows list

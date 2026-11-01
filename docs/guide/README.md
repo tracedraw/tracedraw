@@ -57,7 +57,7 @@ same program runs in a web browser with nothing to install.
 | [Selecting and transforming](selecting-and-transforming.md) | The Pick tool, marquee and lasso selection, groups, handles, rotating and skewing, snapping, nudging, the Transformations panel and alignment |
 | [Drawing](drawing.md) | Rectangles, ellipses, polygons and stars, other shapes, the curve tools, brush strokes, connectors, dimensions and callouts |
 | [Shape editing](shape-editing.md) | The Shape tool, nodes and their types, shaping operations, corners and joins, the shape brushes, Crop, Knife, Segment Delete and Eraser |
-| [Text](text.md) | Artistic and paragraph text, fonts, the Text panel, frames, text on a path, tables and the writing tools |
+| [Text](text.md) | Artistic and paragraph text, fonts, the Text panel, frames, text on a path, tables and proofing |
 | [Colour and fills](color-and-fills.md) | The Colour panel, palettes, every kind of fill, outlines, spot colours, transparency, eyedroppers and styles |
 | [Effects](effects.md) | Blend, Contour, Envelope, Distort, Extrude, Drop Shadow, Block Shadow, Lens, Symmetry, clip frames and copying effects |
 | [Files](files.md) | Opening and saving `.tdraw` and `.cdr` files, importing and exporting, auto-backup and recovery, updates |

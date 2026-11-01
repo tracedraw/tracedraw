@@ -45,7 +45,7 @@ the choice is kept. See [Workspaces](../customize/workspaces.md).
 
 What works differently:
 
-- **Files.** Open, Import, Save, Save As, Export and Publish to PDF go
+- **Files.** Open, Import, Save, Save As, Export and Export as PDF go
   through the system's document picker. Save writes an opened document back
   in place. The [[dialog.save_drawing]] dialog box asks only for the name,
   type and version; the system then asks where to save.

@@ -30,7 +30,7 @@ Rules that hold everywhere:
 - **Out parameters.** Methods that hand values back through ByRef
   arguments return them as an array in parameter order: `GetPosition`
   gives `[x, y]`, `GetSize` `[w, h]`, `GetBoundingBox` `[x, y, w, h]`.
-- **Named arguments.** Methods are declared with their reference
+- **Named arguments.** Methods are declared with their published
   parameter names (`Left`, `Top`, `Right`, `Bottom`, `CornerUL`...), so
   named arguments match by name.
 - **Collections** are 1-based, take an index or a name in `Item`, have
@@ -234,14 +234,14 @@ Checked member by member against the published developer reference
 (enumeration pages listing each member's value):
 `cdrUnit` (including `cdrUnitQ` and `cdrUnitH`, both 0.25 mm),
 `cdrReferencePoint`, `cdrShapeType`, `cdrFillType`, `cdrFilter` (every
-member, `cdrWEBP` from a later version of the reference), `cdrImageType`,
+member, `cdrWEBP`, added in a later version of the object model), `cdrImageType`,
 `cdrEffectType`, `cdrAlignment`, `cdrFontLine`, `cdrFontCase`,
 `cdrSegmentType`, `cdrOutlineType`, `cdrOutlineLineCaps`, `cdrMergeMode`,
 `cdrTransparencyAppliedTo`, `cdrDistributeArea`, `cdrAlignDistributeH`,
 `cdrAlignShapesTo`, and the members TraceDraw defines of
 `cdrTextLanguage` and `cdrCursorShape`.
 
-Checked against published type definitions rather than the reference:
+Checked against published type definitions, not the enumeration pages:
 `cdrColorType`, `cdrTextType` and `cdrTriState`.
 
 Not yet checked, with the values macros commonly assume:
@@ -255,7 +255,7 @@ bottom, 3 centre, 4 to 6 spread those lines, 7 equal gaps),
 `cdrAntiAliasingType`, `cdrImportMode`, `cdrFileVersion`,
 `cdrCompressionType` and `cdrShapeLinkType`.
 
-Method parameters carry the reference names, so named arguments match;
+Method parameters carry the published names, so named arguments match;
 checked for `CreateRectangle`, `CreateRectangle2`, `CreateEllipse2`,
 `SetPosition`, `SetSize`, `SetSizeEx`, `Move`, `Rotate`, `Duplicate`,
 `ApplyUniformFill`, `ApplyFountainFill`, `RGBAssign`, `CMYKAssign`,

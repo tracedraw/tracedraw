@@ -4,13 +4,13 @@
 
 ## 快速描繪 {#quick-trace}
 
-選取點陣圖並選擇 [[menu.bitmaps > menu.bitmaps.quick_trace]]。它會使用全域選項的 [[options.bitmap_tracing]] 頁面上所選擇的預設集（預設為 [[menu.bitmaps.trace_optimized]]，它會為每張圖片選定細節：在節點最少的情況下盡可能忠實於圖片）。
+選取點陣圖並選擇 [[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]]。它會使用全域選項的 [[options.bitmap_tracing]] 頁面上所選擇的預設集（預設為 [[menu.bitmaps.trace_optimized]]，它會為每張圖片選定細節：在節點最少的情況下盡可能忠實於圖片）。
 
 [[menu.bitmaps.repeat_last_trace]] 不開啟對話方塊，依上次的方式再次描圖所選點陣圖；[[menu.bitmaps.last_trace_settings]] 以上次的設定開啟對話方塊。點陣圖的右鍵選單中也有這些命令，以及 [[menu.bitmaps.centerline_trace]] 和 [[menu.bitmaps.outline_trace]]。
 
 ## 描繪點陣圖對話方塊 {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] 和 [[menu.bitmaps.centerline_trace]] 會列出預設集；選擇其中一個即可開啟描繪對話方塊。
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] 和 [[menu.bitmaps.centerline_trace]] 會列出預設集；選擇其中一個即可開啟描繪對話方塊。
 
 - **外框描繪**以形狀填滿色彩區域：[[menu.bitmaps.trace_line_art]]、[[menu.bitmaps.trace_logo]]、[[menu.bitmaps.trace_detailed_logo]]、[[menu.bitmaps.trace_clipart]]、[[menu.bitmaps.trace_low_quality]]、[[menu.bitmaps.trace_high_quality]] 和 [[menu.bitmaps.trace_optimized]]。
 - **中心線描繪**以開放曲線沿著線條描繪：[[menu.bitmaps.trace_technical]] 和 [[menu.bitmaps.trace_line_drawing]]。

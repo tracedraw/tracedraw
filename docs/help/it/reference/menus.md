@@ -69,7 +69,7 @@ mostrare le vostre scorciatoie; vedere
 | [[menu.edit.select_all_guidelines]] | [Selecting objects](../objects/selecting.md) |
 | [[menu.edit.select_all_nodes]] | [Selecting objects](../objects/selecting.md) |
 | [[menu.edit.find_and_replace]] | [Finding and replacing](../objects/find-replace.md) |
-| [[menu.edit.step_and_repeat]] | [Making copies with Step and Repeat](../objects/step-and-repeat.md) |
+| [[menu.edit.step_and_repeat]] | [Making copies with Repeat Copies](../objects/step-and-repeat.md) |
 
 ## [[menu.view]] {#view}
 

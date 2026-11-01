@@ -136,11 +136,11 @@ or the moon button at the right of the status bar).
       Colour modes, a colour mask, background removal on this computer (no AI needed), straighten, crop and resample complete the set.
     </td>
     <td width="50%" valign="top">
-      <img src="docs/images/tracedraw-trace.jpg" alt="The Trace Bitmap dialog with the Clipart preset: the bitmap before and its traced curves after, with the detail, smoothing and colour settings" width="100%">
+      <img src="docs/images/tracedraw-trace.jpg" alt="The Trace Bitmap dialog with the Flat Colors preset: the bitmap before and its traced curves after, with the detail, smoothing and colour settings" width="100%">
       <br>
-      <sub>Trace Bitmap with the Clipart preset: the bitmap and the curves it becomes.</sub>
+      <sub>Trace Bitmap with the Flat Colors preset: the bitmap and the curves it becomes.</sub>
       <h3>From pixels to curves</h3>
-      Trace Bitmap turns images into editable curves: Quick Trace in one click, outline tracing in up to 256 colours with background removal, centreline tracing for drawings, and eight presets from technical illustration to high quality image. The dialog previews the trace before it is made.
+      Trace Bitmap turns images into editable curves: Automatic trace in one click, outline tracing in up to 256 colours with background removal, centreline tracing for drawings, and eight presets from technical illustration to high quality image. The dialog previews the trace before it is made.
     </td>
   </tr>
   <tr>
@@ -151,7 +151,7 @@ or the moon button at the right of the status bar).
       <h3>Out in any format</h3>
       SVG, PDF (with PDF/X-1a, X-3 and X-4 and bleed), EPS, AI, DXF, EMF, WMF, HPGL, PSD and HTML, and PNG, JPEG, WebP, GIF, BMP and TIFF at any resolution. The Export dialog previews the result and estimates its size.
       <br><br>
-      Print goes through a PDF; Print Merge fills a design from a CSV file.
+      Print goes through a PDF; Data Merge fills a design from a CSV file.
     </td>
     <td width="50%" valign="top">
       <img src="docs/images/tracedraw-languages.jpg" alt="The page of type in TraceDraw with the interface in Japanese: menus, property bar, Text panel and status bar" width="100%">
@@ -207,11 +207,11 @@ or the moon button at the right of the status bar).
     </td>
     <td width="33%" valign="top">
       <h4>41 panels</h4>
-      Properties &middot; Objects &middot; Hints &middot; Transformations &middot; Undo &middot; Align and Distribute &middot; Shaping &middot; Step and Repeat &middot; Text &middot; Glyphs &middot; Colour &middot; Colour Styles &middot; Object Styles &middot; Find and Replace &middot; Scripts &middot; Palettes &middot; Lens &middot; Blend &middot; Contour &middot; Envelope &middot; Extrude &middot; Bevel &middot; Brush Strokes &middot; Bitmap Mask &middot; Object Data &middot; Links &middot; Symbols &middot; Pages &middot; Guidelines &middot; Fonts &middot; Font Sampler &middot; Corners &middot; Join Curves &middot; Coordinates &middot; Vector Mosaic &middot; Picture Mosaic &middot; Shelf &middot; Effects &middot; Export &middot; Comments &middot; AI Generate (with Draw with words)
+      Properties &middot; Objects &middot; Hints &middot; Transformations &middot; Undo &middot; Align and Distribute &middot; Combine Shapes &middot; Repeat Copies &middot; Text &middot; Glyphs &middot; Colour &middot; Colour Styles &middot; Object Styles &middot; Find and Replace &middot; Scripts &middot; Palettes &middot; Lens &middot; Blend &middot; Contour &middot; Envelope &middot; Extrude &middot; Bevel &middot; Brush Strokes &middot; Color Mask &middot; Object Data &middot; Links &middot; Symbols &middot; Pages &middot; Guidelines &middot; Fonts &middot; Font Sampler &middot; Corners &middot; Join Curves &middot; Coordinates &middot; Vector Mosaic &middot; Picture Mosaic &middot; Shelf &middot; Effects &middot; Export &middot; Comments &middot; AI Generate (with Draw with words)
     </td>
     <td width="33%" valign="top">
       <h4>Documents and pages</h4>
-      Multi-page documents with a page sorter, layers and master layers (all, odd or even pages), guides at any angle, grids, snapping to objects, page, grid, baseline, guidelines and pixels, dynamic guides, page backgrounds, bleed, tables, symbols, clip frames and metadata. Several drawings open in tabs; auto-backup keeps unsaved work.
+      Multi-page documents with a Page Overview, layers and master layers (all, odd or even pages), guides at any angle, grids, snapping to objects, page, grid, baseline, guidelines and pixels, dynamic guides, page backgrounds, bleed, tables, symbols, clip frames and metadata. Several drawings open in tabs; auto-backup keeps unsaved work.
     </td>
   </tr>
   <tr>
@@ -227,7 +227,7 @@ or the moon button at the right of the status bar).
     </td>
     <td width="33%" valign="top">
       <h4>The everyday essentials</h4>
-      Undo and redo with a history panel &middot; duplicate, clone and step and repeat &middot; align, distribute and order &middot; object and colour styles &middot; find and replace &middot; customisable shortcuts and workspaces &middot; an interface size setting &middot; Options with every preference &middot; a splash screen and a welcome screen with recent drawings and templates.
+      Undo and redo with a history panel &middot; duplicate, clone and repeat copies &middot; align, distribute and order &middot; object and colour styles &middot; find and replace &middot; customisable shortcuts and workspaces &middot; an interface size setting &middot; Options with every preference &middot; a splash screen and a welcome screen with recent drawings and templates.
     </td>
   </tr>
 </table>
@@ -401,7 +401,7 @@ Anyone who wants to help is welcome, with or without writing code:
   Files of versions 4 and 6, and old files that use perspective,
   pattern or PostScript fills, with a picture of how they look, are the
   most wanted: those are the parts still read from few samples.
-- **Open our test files in your copy of the reference program.** The
+- **Open our test files in the program you use for `.cdr` files.** The
   [`interop` branch](https://github.com/tracedraw/tracedraw/tree/interop/bundles)
   holds small `.cdr` files saved by TraceDraw in versions 7 to 15; telling
   us which ones open (and which do not) is what lets TraceDraw save
@@ -417,7 +417,7 @@ Anyone who wants to help is welcome, with or without writing code:
 - **Package it** for the system you use (Flatpak, Homebrew, winget, AUR).
 
 **A contributors team is planned:** people who help regularly (fixes,
-sample files, tests against the reference program, translations) will
+sample files, tests of `.cdr` files, translations) will
 be invited into a team, with a ranking that shows who helped most. If
 you would like to be part of it, say so in an issue.
 

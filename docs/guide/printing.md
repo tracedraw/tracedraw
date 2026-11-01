@@ -147,7 +147,7 @@ downloaded). See [the Export as PDF notes](../behavior/publish-to-pdf.md).
 You can also choose PDF in **File > Export**, with the same PDF/X levels
 and bleed; Export as PDF adds the bookmarks and protection.
 
-## Print merge
+## Data merge
 
 **Data Merge** fills a design from a CSV file: create or load the data,
 edit it, then perform the merge.

@@ -6,7 +6,7 @@ taranmış bir logo, bir eskiz, bir fotoğraf.
 
 ## Hızlı izleme {#quick-trace}
 
-Bir bitmap seçin ve [[menu.bitmaps > menu.bitmaps.quick_trace]] komutunu
+Bir bitmap seçin ve [[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]] komutunu
 seçin. Genel seçeneklerin [[options.bitmap_tracing]] sayfasında seçilen ön
 ayarı kullanır (başlangıçta [[menu.bitmaps.trace_optimized]]; bu ön ayar
 ayrıntıyı her resim için seçer: en az düğümle olabildiğince aslına uygun).
@@ -15,7 +15,7 @@ ayrıntıyı her resim için seçer: en az düğümle olabildiğince aslına uyg
 
 ## Bitmapi İzle iletişim kutusu {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] ve
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] ve
 [[menu.bitmaps.centerline_trace]] ön ayarları listeler; izleme iletişim
 kutusunu açmak için birini seçin.
 

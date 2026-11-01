@@ -67,7 +67,7 @@ From the left, after the ruler's width:
    Page dialog, see [pages.md](pages.md)), Delete Page (a page with a red
    cross; greyed when it is the only page) and Switch Page Orientation.
    Only the rows that open a dialog end in an ellipsis. Page size and
-   background are in the Layout menu
+   background are in the Page menu
    (`ui::window_bars::tests::the_page_tab_menu_has_six_rows_in_order_each_with_a_picture`,
    `the_page_tab_menu_has_no_separators`,
    `the_page_tab_menu_inserts_duplicates_turns_and_deletes_pages`).

@@ -8,8 +8,8 @@ them. This page names its parts, so the other pages of this Help make sense.
 From top to bottom and from left to right:
 
 - The **menu bar** holds every command, in the menus [[menu.file]],
-  [[menu.edit]], [[menu.view]], [[menu.layout]], [[menu.object]],
-  [[menu.effects]], [[menu.bitmaps]], [[menu.text]], [[menu.table]],
+  [[menu.edit]], [[menu.view]], [[menu.object]], [[menu.text]],
+  [[menu.bitmaps]], [[menu.effects]], [[menu.layout]],
   [[menu.tools]], [[menu.window]] and [[menu.help]]. Each command shows its
   shortcut beside it. With no drawing open, only [[menu.file]],
   [[menu.tools]], [[menu.window]] and [[menu.help]] are shown. The
@@ -33,7 +33,7 @@ The standard toolbar holds, in groups:
 2. Cut, Copy and Paste.
 3. Undo and Redo. Their arrows list the steps, so you can undo or redo
    several at once by choosing a step.
-4. Import, Export and Publish to PDF.
+4. Import, Export and Export as PDF.
 5. The zoom box: type a zoom level and press <kbd>Enter</kbd>, or open its
    list for zoom to selected, to all objects, to the page, to the page
    width or height, and levels from 10% to 1600%. Then full-screen preview.

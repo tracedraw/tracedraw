@@ -36,14 +36,14 @@ only the Welcome Screen is open. The menus can show your own shortcuts; see
 | [[menu.file.send_to_mail]] | [Printing](../printing/print.md#other) |
 | [[menu.file.publish_to_pdf]] | [Publishing to PDF](../file-formats/publish-pdf.md) |
 | [[menu.file.package]] | [Packaging a drawing](../file-formats/package.md) |
-| [[menu.file.print_merge]] | [Print merge](../printing/print-merge.md) |
-| [[menu.file.print_merge_create]] | [Print merge](../printing/print-merge.md) |
-| [[menu.file.print_merge_edit]] | [Print merge](../printing/print-merge.md) |
-| [[menu.file.print_merge_perform]] | [Print merge](../printing/print-merge.md) |
+| [[menu.file.print_merge]] | [Data merge](../printing/print-merge.md) |
+| [[menu.file.print_merge_create]] | [Data merge](../printing/print-merge.md) |
+| [[menu.file.print_merge_edit]] | [Data merge](../printing/print-merge.md) |
+| [[menu.file.print_merge_perform]] | [Data merge](../printing/print-merge.md) |
 | [[menu.file.print]] | [Printing](../printing/print.md) |
 | [[menu.file.print_preview]] | [Printing](../printing/print.md) |
 | [[menu.file.preflight]] | [Preflight](../printing/preflight.md) |
-| [[menu.file.document_properties]] | [Document properties](../pages-layout/document-properties.md) |
+| [[menu.file.document_properties]] | [Document info](../pages-layout/document-properties.md) |
 | [[menu.file.exit]] | [Opening and saving](../get-started/open-and-save.md) |
 
 ## [[menu.edit]] {#edit}
@@ -68,7 +68,7 @@ only the Welcome Screen is open. The menus can show your own shortcuts; see
 | [[menu.edit.select_all_guidelines]] | [Selecting](../objects/selecting.md) |
 | [[menu.edit.select_all_nodes]] | [Selecting](../objects/selecting.md) |
 | [[menu.edit.find_and_replace]] | [Find and replace](../objects/find-replace.md) |
-| [[menu.edit.step_and_repeat]] | [Step and Repeat](../objects/step-and-repeat.md) |
+| [[menu.edit.step_and_repeat]] | [Repeat copies](../objects/step-and-repeat.md) |
 
 ## [[menu.view]] {#view}
 
@@ -230,7 +230,7 @@ only the Welcome Screen is open. The menus can show your own shortcuts; see
 | [[menu.text.columns]] | [Paragraphs](../text/paragraphs.md) |
 | [[menu.text.bullets]] | [Paragraphs](../text/paragraphs.md) |
 | [[menu.text.drop_cap]] | [Paragraphs](../text/paragraphs.md) |
-| [[menu.text.text_statistics]] | [Writing tools](../text/writing-tools.md) |
+| [[menu.text.text_statistics]] | [Proofing](../text/writing-tools.md) |
 | [[menu.text.font_sampler]] | [Fonts and glyphs](../text/fonts.md) |
 | [[menu.text.edit_text]] | [Adding text](../text/adding-text.md) |
 | [[menu.text.insert_placeholder_text]] | [Adding text](../text/adding-text.md) |
@@ -254,15 +254,15 @@ only the Welcome Screen is open. The menus can show your own shortcuts; see
 | [[menu.text.align_to_baseline]] | [Adding text](../text/adding-text.md) |
 | [[menu.text.align_to_baseline_grid]] | [Adding text](../text/adding-text.md) |
 | [[menu.text.use_hyphenation]] | [Paragraphs](../text/paragraphs.md) |
-| [[menu.text.custom_hyphens]] | [Writing tools](../text/writing-tools.md) |
-| [[menu.text.writing_tools]] | [Writing tools](../text/writing-tools.md) |
-| [[menu.text.spell_check]] | [Writing tools](../text/writing-tools.md) |
-| [[menu.text.grammar]] | [Writing tools](../text/writing-tools.md) |
-| [[menu.text.thesaurus]] | [Writing tools](../text/writing-tools.md) |
-| [[menu.text.autocorrect]] | [Writing tools](../text/writing-tools.md) |
-| [[menu.text.change_case]] | [Writing tools](../text/writing-tools.md) |
-| [[menu.text.make_web_compatible]] | [Writing tools](../text/writing-tools.md) |
-| [[menu.text.encode]] | [Writing tools](../text/writing-tools.md) |
+| [[menu.text.custom_hyphens]] | [Proofing](../text/writing-tools.md) |
+| [[menu.text.writing_tools]] | [Proofing](../text/writing-tools.md) |
+| [[menu.text.spell_check]] | [Proofing](../text/writing-tools.md) |
+| [[menu.text.grammar]] | [Proofing](../text/writing-tools.md) |
+| [[menu.text.thesaurus]] | [Proofing](../text/writing-tools.md) |
+| [[menu.text.autocorrect]] | [Proofing](../text/writing-tools.md) |
+| [[menu.text.change_case]] | [Proofing](../text/writing-tools.md) |
+| [[menu.text.make_web_compatible]] | [Proofing](../text/writing-tools.md) |
+| [[menu.text.encode]] | [Proofing](../text/writing-tools.md) |
 | [[menu.text.text_docker]] | [Adding text](../text/adding-text.md) |
 | [[menu.text.glyphs]] | [Fonts and glyphs](../text/fonts.md) |
 
@@ -334,7 +334,7 @@ only the Welcome Screen is open. The menus can show your own shortcuts; see
 | [[menu.bitmaps.trace_high_quality]] | [Tracing](../bitmaps/tracing.md) |
 | [[menu.bitmaps.trace_optimized]] | [Tracing](../bitmaps/tracing.md) |
 | [[menu.bitmaps.plugins]] | [Bitmaps](../bitmaps/index.md) |
-| [[menu.bitmaps.bitmap_mask]] | [Bitmap mask](../bitmaps/bitmap-mask.md) |
+| [[menu.bitmaps.bitmap_mask]] | [Color mask](../bitmaps/bitmap-mask.md) |
 
 ## [[menu.effects]] {#effects}
 

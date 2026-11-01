@@ -5,7 +5,7 @@ kunt bewerken, herkleuren en schalen: een gescand logo, een schets, een foto.
 
 ## Snel overtrekken {#quick-trace}
 
-Selecteer een bitmap en kies [[menu.bitmaps > menu.bitmaps.quick_trace]].
+Selecteer een bitmap en kies [[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]].
 Het gebruikt de voorinstelling die op de pagina [[options.bitmap_tracing]]
 van de algemene opties is gekozen (aanvankelijk
 [[menu.bitmaps.trace_optimized]], dat het detail per afbeelding kiest: zo
@@ -15,7 +15,7 @@ getrouw mogelijk met zo min mogelijk knooppunten).
 
 ## Het dialoogvenster Bitmap overtrekken {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] en
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] en
 [[menu.bitmaps.centerline_trace]] tonen voorinstellingen; kies er een om het
 dialoogvenster te openen.
 

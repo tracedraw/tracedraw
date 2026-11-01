@@ -6,7 +6,7 @@ zdjęcie.
 
 ## Szybka wektoryzacja {#quick-trace}
 
-Zaznacz bitmapę i wybierz [[menu.bitmaps > menu.bitmaps.quick_trace]].
+Zaznacz bitmapę i wybierz [[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]].
 Używa ona ustawienia wstępnego wybranego na stronie
 [[options.bitmap_tracing]] opcji globalnych (początkowo
 [[menu.bitmaps.trace_optimized]], który dobiera szczegółowość do każdego
@@ -16,7 +16,7 @@ obrazu: jak najwierniej przy jak najmniejszej liczbie węzłów).
 
 ## Okno dialogowe Wektoryzuj bitmapę {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] i
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] i
 [[menu.bitmaps.centerline_trace]] wymieniają ustawienia wstępne; wybierz
 jedno, aby otworzyć okno dialogowe.
 

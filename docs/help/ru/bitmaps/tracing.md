@@ -7,7 +7,7 @@
 ## Быстрая трассировка {#quick-trace}
 
 Выделите растровое изображение и выберите
-[[menu.bitmaps > menu.bitmaps.quick_trace]]. Она использует набор параметров,
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]]. Она использует набор параметров,
 выбранный на странице [[options.bitmap_tracing]] общих параметров (по
 умолчанию [[menu.bitmaps.trace_optimized]]: он подбирает детализацию для
 каждого изображения, как можно точнее при наименьшем числе узлов).
@@ -16,7 +16,7 @@
 
 ## Диалоговое окно трассировки {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] и
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] и
 [[menu.bitmaps.centerline_trace]] содержат наборы параметров; выберите один,
 чтобы открыть диалоговое окно трассировки.
 

@@ -6,7 +6,7 @@ skicu, fotografii.
 
 ## Rychlá vektorizace {#quick-trace}
 
-Vyberte bitmapu a zvolte [[menu.bitmaps > menu.bitmaps.quick_trace]]. Použije
+Vyberte bitmapu a zvolte [[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]]. Použije
 se předvolba zvolená na stránce [[options.bitmap_tracing]] v globálních
 možnostech (výchozí [[menu.bitmaps.trace_optimized]], která volí detail pro
 každý obrázek: co nejvěrněji s co nejmenším počtem uzlů).
@@ -15,7 +15,7 @@ každý obrázek: co nejvěrněji s co nejmenším počtem uzlů).
 
 ## Dialogové okno vektorizace bitmapy {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] a
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] a
 [[menu.bitmaps.centerline_trace]] obsahují seznam předvoleb; výběrem jedné
 otevřete dialogové okno vektorizace.
 

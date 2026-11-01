@@ -4,13 +4,13 @@
 
 ## クイックトレース {#quick-trace}
 
-ビットマップを選択し、[[menu.bitmaps > menu.bitmaps.quick_trace]] を選びます。グローバルオプションの [[options.bitmap_tracing]] ページで選んだプリセット (最初は [[menu.bitmaps.trace_optimized]]。画像ごとに詳細を選び、最も少ないノードでできるだけ忠実に描きます) を使います。
+ビットマップを選択し、[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]] を選びます。グローバルオプションの [[options.bitmap_tracing]] ページで選んだプリセット (最初は [[menu.bitmaps.trace_optimized]]。画像ごとに詳細を選び、最も少ないノードでできるだけ忠実に描きます) を使います。
 
 [[menu.bitmaps.repeat_last_trace]] は選択したビットマップをダイアログを開かずに前回と同じ設定でトレースし、[[menu.bitmaps.last_trace_settings]] は前回の設定でダイアログボックスを開きます。ビットマップの右クリックメニューにも、[[menu.bitmaps.centerline_trace]] と [[menu.bitmaps.outline_trace]] とともにこれらのコマンドがあります。
 
 ## ビットマップのトレースダイアログボックス {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] と [[menu.bitmaps.centerline_trace]] にはプリセットが一覧されています。一つを選ぶとトレースのダイアログボックスが開きます。
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] と [[menu.bitmaps.centerline_trace]] にはプリセットが一覧されています。一つを選ぶとトレースのダイアログボックスが開きます。
 
 - **アウトライントレース** は、色の領域を図形で塗りつぶします: [[menu.bitmaps.trace_line_art]]、[[menu.bitmaps.trace_logo]]、[[menu.bitmaps.trace_detailed_logo]]、[[menu.bitmaps.trace_clipart]]、[[menu.bitmaps.trace_low_quality]]、[[menu.bitmaps.trace_high_quality]]、[[menu.bitmaps.trace_optimized]]。
 - **センターライントレース** は、線を開いたカーブでなぞります: [[menu.bitmaps.trace_technical]] と [[menu.bitmaps.trace_line_drawing]]。

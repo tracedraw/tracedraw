@@ -7,7 +7,7 @@ una foto.
 ## Calco rápido {#quick-trace}
 
 Seleccione un mapa de bits y elija
-[[menu.bitmaps > menu.bitmaps.quick_trace]]. Usa el ajuste preestablecido
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]]. Usa el ajuste preestablecido
 elegido en la página [[options.bitmap_tracing]] de las opciones globales
 ([[menu.bitmaps.trace_optimized]] al principio, que elige el detalle para
 cada imagen: lo más fiel posible con el menor número de nodos).
@@ -16,7 +16,7 @@ cada imagen: lo más fiel posible con el menor número de nodos).
 
 ## El cuadro de diálogo Calcar mapa de bits {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] y
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] y
 [[menu.bitmaps.centerline_trace]] muestran ajustes preestablecidos; elija
 uno para abrir el cuadro de diálogo.
 

@@ -7,7 +7,7 @@ numérisé, un croquis, une photo.
 ## Vectorisation rapide {#quick-trace}
 
 Sélectionnez un bitmap et choisissez
-[[menu.bitmaps > menu.bitmaps.quick_trace]]. Elle utilise le préréglage
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]]. Elle utilise le préréglage
 choisi sur la page [[options.bitmap_tracing]] des options globales
 ([[menu.bitmaps.trace_optimized]] au départ, qui choisit le détail pour
 chaque image : aussi fidèle que possible avec le moins de nœuds).
@@ -16,7 +16,7 @@ chaque image : aussi fidèle que possible avec le moins de nœuds).
 
 ## La boîte de dialogue Vectoriser le bitmap {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] et
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] et
 [[menu.bitmaps.centerline_trace]] proposent des préréglages ; choisissez-en
 un pour ouvrir la boîte de dialogue.
 

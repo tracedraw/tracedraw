@@ -3,9 +3,9 @@
 Tracing turns a bitmap into vector shapes that you can edit, recolor and
 scale without losing quality: a scanned logo, a sketch, a photo.
 
-## Quick trace {#quick-trace}
+## Automatic trace {#quick-trace}
 
-Select a bitmap and choose [[menu.bitmaps > menu.bitmaps.quick_trace]]. It uses
+Select a bitmap and choose [[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]]. It uses
 the preset chosen on the [[options.bitmap_tracing]] page of the global options
 ([[menu.bitmaps.trace_optimized]] at first, which chooses the detail for each
 picture: as faithful to it as it can be in the fewest nodes).
@@ -14,16 +14,16 @@ picture: as faithful to it as it can be in the fewest nodes).
 
 ## The Trace Bitmap dialog box {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] and
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] and
 [[menu.bitmaps.centerline_trace]] list presets; choose one to open the trace
 dialog box.
 
-- **Outline trace** fills areas of color with shapes:
+- **Outline** fills areas of color with shapes:
   [[menu.bitmaps.trace_line_art]], [[menu.bitmaps.trace_logo]],
   [[menu.bitmaps.trace_detailed_logo]], [[menu.bitmaps.trace_clipart]],
   [[menu.bitmaps.trace_low_quality]], [[menu.bitmaps.trace_high_quality]] and
   [[menu.bitmaps.trace_optimized]].
-- **Centerline trace** follows lines with open curves:
+- **Centerline** follows lines with open curves:
   [[menu.bitmaps.trace_technical]] and [[menu.bitmaps.trace_line_drawing]].
 
 ![The Trace Bitmap dialog box](../../img/bitmaps-tracing.png)
@@ -117,6 +117,6 @@ Reset is one step. A change made after undoing drops the steps that were
 undone.
 
 [[dialog.trace_options]] opens the [[options.bitmap_tracing]] page of the
-global options, where you choose the quick trace preset and the choices
+global options, where you choose the automatic trace preset and the choices
 every trace starts with, and then returns to the dialog box. The
 [[dialog.help_button]] button opens this page.

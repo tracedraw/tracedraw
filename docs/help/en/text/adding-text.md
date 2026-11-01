@@ -37,7 +37,7 @@ not change keep their formatting.
 | <kbd>Ctrl+B</kbd>, <kbd>Ctrl+I</kbd>, <kbd>Ctrl+U</kbd> | bold, italic, underline |
 | <kbd>Ctrl+L</kbd>, <kbd>Ctrl+E</kbd>, <kbd>Ctrl+R</kbd> | align left, center, right |
 | <kbd>Ctrl+J</kbd>, <kbd>Ctrl+H</kbd>, <kbd>Ctrl+N</kbd> | full justify, force justify, no alignment |
-| <kbd>Shift+F3</kbd> | change case (see [Writing tools](writing-tools.md#change-case)) |
+| <kbd>Shift+F3</kbd> | change case (see [Proofing](writing-tools.md#change-case)) |
 | Double-click | select a word |
 
 A new alignment keeps artistic text in place at the reference point of the X

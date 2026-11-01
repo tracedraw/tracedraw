@@ -7,7 +7,7 @@ scansionato, uno schizzo, una foto.
 ## Ricalco rapido {#quick-trace}
 
 Selezionate una bitmap e scegliete
-[[menu.bitmaps > menu.bitmaps.quick_trace]]. Usa la preimpostazione scelta
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]]. Usa la preimpostazione scelta
 nella pagina [[options.bitmap_tracing]] delle opzioni globali
 ([[menu.bitmaps.trace_optimized]] all'inizio, che sceglie il dettaglio per
 ogni immagine: il più fedele possibile con il minor numero di nodi).
@@ -16,7 +16,7 @@ ogni immagine: il più fedele possibile con il minor numero di nodi).
 
 ## La finestra di dialogo Ricalca bitmap {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] e
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] e
 [[menu.bitmaps.centerline_trace]] elencano le preimpostazioni; sceglietene
 una per aprire la finestra di dialogo.
 

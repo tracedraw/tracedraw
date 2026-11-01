@@ -6,7 +6,7 @@ esboço, uma foto.
 
 ## Vetorização rápida {#quick-trace}
 
-Selecione um bitmap e escolha [[menu.bitmaps > menu.bitmaps.quick_trace]].
+Selecione um bitmap e escolha [[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]].
 Ela usa a predefinição escolhida na página [[options.bitmap_tracing]] das
 opções globais ([[menu.bitmaps.trace_optimized]] no início, que escolhe o
 detalhe para cada imagem: o mais fiel a ela possível com o menor número de
@@ -16,7 +16,7 @@ nós).
 
 ## A caixa de diálogo Vetorizar bitmap {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] e
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] e
 [[menu.bitmaps.centerline_trace]] listam predefinições; escolha uma para
 abrir a caixa de diálogo.
 

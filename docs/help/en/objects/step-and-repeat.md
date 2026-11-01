@@ -1,11 +1,11 @@
-# Making copies with Step and Repeat
+# Making copies with Repeat Copies
 
 The [[docker.step_and_repeat]] panel makes several copies of the selection,
 each moved by the same distance from the one before: a row of buttons, a
 column of lines, a grid of tiles. Open it with
 [[menu.edit > menu.edit.step_and_repeat]] (<kbd>Ctrl+Shift+D</kbd>).
 
-![The Step and Repeat panel](../../img/objects-step-and-repeat.png)
+![The Repeat Copies panel](../../img/objects-step-and-repeat.png)
 
 ## To make copies {#copies}
 

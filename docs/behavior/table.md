@@ -1,4 +1,4 @@
-# Table tool and Table menu
+# Table tool and Table submenu
 
 ## Drawing
 
@@ -80,7 +80,7 @@ cell does nothing and says so on the status bar.
   (`table_tool::tests::dragging_lines_resizes_and_undoes_in_one_step`,
   `table_tool::tests::bar_size_insert_n_and_split_n_follow_the_selection`)
 
-## Table menu
+## Table submenu
 
 - Insert: Row Above, Row Below, Column Left, Column Right insert as many
   rows (columns) as the selected cells cover, above the first or below

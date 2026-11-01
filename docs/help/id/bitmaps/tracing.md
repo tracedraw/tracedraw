@@ -6,7 +6,7 @@ foto.
 
 ## Jiplak cepat {#quick-trace}
 
-Pilih bitmap lalu pilih [[menu.bitmaps > menu.bitmaps.quick_trace]]. Perintah
+Pilih bitmap lalu pilih [[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]]. Perintah
 ini memakai preset yang dipilih di halaman [[options.bitmap_tracing]] pada
 opsi global (awalnya [[menu.bitmaps.trace_optimized]], yang memilih detail
 untuk setiap gambar: seakurat mungkin dengan simpul sesedikit mungkin).
@@ -15,7 +15,7 @@ untuk setiap gambar: seakurat mungkin dengan simpul sesedikit mungkin).
 
 ## Kotak dialog Jiplak Bitmap {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] dan
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] dan
 [[menu.bitmaps.centerline_trace]] berisi daftar preset; pilih salah satu untuk
 membuka kotak dialog jiplak.
 

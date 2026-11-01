@@ -107,7 +107,7 @@ To save a drawing under a new name:
 6. Optionally fill in [[dialog.title]], [[dialog.subject]] and a
    [[dialog.rating]] (click the lit last star again to take it off). They
    are the drawing's properties, also shown in
-   [Document properties](../pages-layout/document-properties.md).
+   [Document info](../pages-layout/document-properties.md).
 7. Click [[dialog.save]] or press <kbd>Enter</kbd>. If the file exists,
    TraceDraw asks whether to [[dialog.replace]] it.
 

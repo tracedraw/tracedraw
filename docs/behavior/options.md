@@ -212,8 +212,8 @@ it), applied when the slider is let go.
   rows. 100 % is a zoom of 1 over the system's scaling on every system:
   one interface point per pixel at the system's scaling (`BASE_ZOOM`).
   It was 0.8 on macOS and in the browser and 12 / 13 on Windows, to make
-  the whole interface as compact as the reference drawing program; what
-  made that program compact was its small button size, which the bars
+  the whole interface compact; what
+  made it compact was its small button size, which the bars
   offer (Default Button Size: Small, also the size at first, see `toolbars.md`), so
   the text and the menus stay at the system's size (#1, #229).
 - The size is a zoom factor over the monitor's own scaling, so text stays

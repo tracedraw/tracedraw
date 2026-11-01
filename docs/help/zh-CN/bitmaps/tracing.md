@@ -4,13 +4,13 @@
 
 ## 快速描摹 {#quick-trace}
 
-选择一个位图并选择 [[menu.bitmaps > menu.bitmaps.quick_trace]]。它使用全局选项中 [[options.bitmap_tracing]] 页面上选定的预设（起初为 [[menu.bitmaps.trace_optimized]]，它为每张图片选定细节：在节点最少的情况下尽可能忠实于图片）。
+选择一个位图并选择 [[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.quick_trace]]。它使用全局选项中 [[options.bitmap_tracing]] 页面上选定的预设（起初为 [[menu.bitmaps.trace_optimized]]，它为每张图片选定细节：在节点最少的情况下尽可能忠实于图片）。
 
 [[menu.bitmaps.repeat_last_trace]] 不打开对话框，按上次的方式再次描摹所选位图；[[menu.bitmaps.last_trace_settings]] 以上次的设置打开对话框。位图的右键菜单中也有这些命令，以及 [[menu.bitmaps.centerline_trace]] 和 [[menu.bitmaps.outline_trace]]。
 
 ## 描摹位图对话框 {#trace}
 
-[[menu.bitmaps > menu.bitmaps.outline_trace]] 和 [[menu.bitmaps.centerline_trace]] 列出预设；选择一个即可打开描摹对话框。
+[[menu.bitmaps > menu.bitmaps.trace > menu.bitmaps.outline_trace]] 和 [[menu.bitmaps.centerline_trace]] 列出预设；选择一个即可打开描摹对话框。
 
 - **轮廓描摹** 用形状填充颜色区域：[[menu.bitmaps.trace_line_art]]、[[menu.bitmaps.trace_logo]]、[[menu.bitmaps.trace_detailed_logo]]、[[menu.bitmaps.trace_clipart]]、[[menu.bitmaps.trace_low_quality]]、[[menu.bitmaps.trace_high_quality]] 和 [[menu.bitmaps.trace_optimized]]。
 - **中心线描摹** 用开放曲线沿线条描摹：[[menu.bitmaps.trace_technical]] 和 [[menu.bitmaps.trace_line_drawing]]。
