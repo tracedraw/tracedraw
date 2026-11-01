@@ -692,7 +692,7 @@ fn badge(painter: &Painter, p: Pos2, tool: Tool) {
         CornerRadius::same(3),
         Color32::from_white_alpha(200),
     );
-    crate::ui::icons::draw(painter, r, tool, badge_ink());
+    crate::ui::icons::draw_on(painter, r, tool, badge_ink(), Color32::WHITE);
 }
 
 /// The outline of the arrow that picks a command's target object, its

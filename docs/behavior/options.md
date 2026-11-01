@@ -313,7 +313,8 @@ toolbox, its flyouts and the Hints panel draw each tool in its group's
 colour (pick blue, shape editing purple, crop red, zoom teal, curves
 green, drawing orange, shapes light blue, text grey, dimensions slate,
 connectors sea green, effects magenta, transparency indigo, eyedroppers
-ochre, fills orange, outlines navy), 35 % lighter on dark themes. The
+ochre, fills orange, outlines navy), 35 % lighter on dark themes: the
+hue is the icon's ink, the live point's blue stays (see `icons.md`). The
 High Contrast theme keeps one icon colour.
 
 ## Desktop accessibility settings

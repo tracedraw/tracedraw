@@ -60,6 +60,7 @@ pub mod github_dialogs;
 pub mod glyphs_docker;
 pub mod hint_pics;
 pub mod hints;
+pub mod icon_paint;
 pub mod icons;
 pub mod lab_dialog;
 pub mod layout_options;
