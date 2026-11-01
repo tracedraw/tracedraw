@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Distort: the handle follows the pointer in any direction. A Push and Pull or Zipper drag put its handle on a line to the right of the centre whichever way the pointer went, and a Twister handle turned from the right, not from where the drag began; the handle now ends where the drag ends, in every mode, for a new distortion as for a handle taken and dragged. Push and Pull takes the drag's length (half the object's larger side being 100), pushed right of the centre and pulled left of it; the Zipper's slider runs along the line; a value changed on the bar keeps the line's direction (#1442).
+
 ## 0.34.0 (2026-11-01)
 
 - Opening a PDF or AI file nested far deeper than any real one (thousands of arrays, dictionaries or parentheses inside one another) no longer closes TraceDraw: the PDF reader (`lopdf`, now 0.46) stops at a fixed depth and reports the file as damaged. A file of about 20 KB could take the program down with a stack overflow, which cannot be caught (RUSTSEC-2026-0187, GHSA-6fj4-rcr3-r7rr).

@@ -3,18 +3,20 @@
 //!
 //! A drag on an object, or anywhere with one object selected, distorts
 //! it about the point the drag started on (off the object too, #1442):
-//! Push and Pull by how far the pointer went right (pushed) or left
-//! (pulled), a full half width of the object being 100; Zipper with teeth
-//! a quarter of the drag's length high; Twister by the angle the pointer
-//! turned about the start, whole turns included. A selected distortion
-//! shows its handles: the centre (a diamond, dragged to move it), a line
-//! to the end handle (a square whose distance from the centre is the
-//! Push and Pull amount or the Zipper amplitude; a circle whose angle
-//! about the centre is the Twister angle, whole turns counted while it
-//! is dragged round) and, for the Zipper, a slider on the line for the
-//! frequency (#1122). Each drag is one undo step; a drag off the
-//! handles adds a new distortion over the ones the object has, the
-//! handles and the bar edit the newest (#1442).
+//! Push and Pull by the drag's length, a full half width of the object
+//! being 100, pushed when the pointer is right of the start and pulled
+//! when left; Zipper with teeth a quarter of the drag's length high;
+//! Twister by the angle the pointer turned about the start, whole turns
+//! included. The handle line goes from the start to the pointer in any
+//! direction, not along an axis (#1442, `HandleLine`). A selected
+//! distortion shows its handles: the centre (a diamond, dragged to move
+//! it), a line to the end handle (a square whose distance from the
+//! centre is the Push and Pull amount or the Zipper amplitude; a circle
+//! whose angle about the centre is the Twister angle, whole turns
+//! counted while it is dragged round) and, for the Zipper, a slider on
+//! the line for the frequency (#1122). Each drag is one undo step; a
+//! drag off the handles adds a new distortion over the ones the object
+//! has, the handles and the bar edit the newest (#1442).
 //!
 //! The property bar shows the selected object's distortion (or the
 //! tool's settings) and edits the selected distortions live.
@@ -227,6 +229,35 @@ pub struct DistortDrag {
     pub begun: bool,
 }
 
+/// Where a drag left an object's handle line (#1442, #1263): the line is
+/// free, it goes from the centre toward the pointer in any direction and
+/// stays there when let go. It holds for distortions of its kind; one of
+/// another kind takes the default line (to the right).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HandleLine {
+    pub mode: DistortMode,
+    /// The line's direction (radians, page space, counterclockwise from
+    /// the right): the push side for Push and Pull (a negative amount
+    /// goes the other way), the end's direction for the Zipper, the
+    /// direction of a Twister angle of zero.
+    pub angle: f64,
+    /// The Twister's handle length (page mm), as far as it was dragged;
+    /// half the object's larger side until it has been.
+    pub len: Option<f64>,
+}
+
+impl HandleLine {
+    /// The line's direction as a unit vector; to the right when the angle
+    /// is not a number.
+    pub fn dir(&self) -> Vec2 {
+        if self.angle.is_finite() {
+            Vec2::from_angle(self.angle)
+        } else {
+            Vec2::new(1.0, 0.0)
+        }
+    }
+}
+
 /// The handles of a selected distortion, page space.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DistortHandles {
@@ -234,9 +265,10 @@ pub struct DistortHandles {
     pub mode: DistortMode,
     pub center: Point,
     /// The end of the handle line: a square at the amount (Push and
-    /// Pull, half the object's larger side being 100, to the left when
+    /// Pull, half the object's larger side being 100, the other way when
     /// negative) or four times the amplitude (Zipper, as the drag that
-    /// made it) to the right of the centre; a circle on the Twister's
+    /// made it) from the centre along the line the drag left (to the
+    /// right until one has, `HandleLine`); a circle on the Twister's
     /// angle, half the larger side away.
     pub end: Point,
     /// Zipper: the frequency slider, `frequency / MAX_FREQUENCY` of the
@@ -470,10 +502,13 @@ impl App {
                 }
                 let b = s.bounds();
                 let reach = (b.width().max(b.height()) / 2.0).max(1.0);
+                let mode = DistortMode::of(&d);
+                let line = self.handle_line(*id, mode);
+                let dir = line.dir();
                 let (end, slider) = match d {
                     Distort::PushPull { amount, .. } => {
                         let a = if amount.is_finite() { amount } else { 0.0 };
-                        (center + Vec2::new(a / 100.0 * reach, 0.0), None)
+                        (center + dir * (a / 100.0 * reach), None)
                     }
                     Distort::Zipper {
                         amplitude,
@@ -487,10 +522,7 @@ impl App {
                         };
                         let len = a * AMPLITUDE_REACH;
                         let t = frequency.min(MAX_FREQUENCY) as f64 / MAX_FREQUENCY as f64;
-                        (
-                            center + Vec2::new(len, 0.0),
-                            Some(center + Vec2::new(len * t, 0.0)),
-                        )
+                        (center + dir * len, Some(center + dir * (len * t)))
                     }
                     Distort::Twister { angle_deg, .. } => {
                         let a = if angle_deg.is_finite() {
@@ -498,14 +530,18 @@ impl App {
                         } else {
                             0.0
                         };
-                        // A free handle: as long as it was dragged (#1263).
-                        let len = self
-                            .twister_handles
-                            .get(id)
-                            .copied()
+                        // A free handle: as long as it was dragged (#1263),
+                        // turned from the direction the drag began in.
+                        let len = line
+                            .len
                             .filter(|l| l.is_finite() && *l > 0.0)
                             .unwrap_or(reach);
-                        (center + Vec2::new(a.cos(), a.sin()) * len, None)
+                        let rest = if line.angle.is_finite() {
+                            line.angle
+                        } else {
+                            0.0
+                        };
+                        (center + Vec2::from_angle(rest + a) * len, None)
                     }
                 };
                 Some(DistortHandles {
@@ -517,6 +553,47 @@ impl App {
                 })
             })
             .collect()
+    }
+
+    /// The handle line of `id`'s distortion of kind `mode`: where a drag
+    /// left it, or the default (to the right, the Twister's handle half
+    /// the object's larger side long).
+    fn handle_line(&self, id: ShapeId, mode: DistortMode) -> HandleLine {
+        self.distort_lines
+            .get(&id)
+            .copied()
+            .filter(|l| l.mode == mode)
+            .unwrap_or(HandleLine {
+                mode,
+                angle: 0.0,
+                len: None,
+            })
+    }
+
+    /// The handle line of `id` for `mode` goes along `angle` (radians);
+    /// a Twister's keeps its length.
+    fn set_handle_angle(&mut self, id: ShapeId, mode: DistortMode, angle: f64) {
+        if !angle.is_finite() {
+            return;
+        }
+        let len = self.handle_line(id, mode).len;
+        self.distort_lines
+            .insert(id, HandleLine { mode, angle, len });
+    }
+
+    /// The Push and Pull amount of a drag `d` on an object of half size
+    /// `reach`, and the line's direction: the drag's length, 100 at
+    /// `reach`, pushes right of the centre and pulls left of it, so the
+    /// handle goes with the pointer in any direction (#1442).
+    fn push_pull_of(d: Vec2, reach: f64) -> (f64, f64) {
+        let amount = (100.0 * d.hypot() / reach.max(1e-9))
+            .clamp(0.0, 200.0)
+            .round();
+        if d.x < 0.0 {
+            (-amount, (-d).atan2())
+        } else {
+            (amount, d.atan2())
+        }
     }
 
     /// Start a drag at `at` (page space): on a handle, take it; on an
@@ -625,13 +702,28 @@ impl App {
     }
 
     /// The Twister's handle reaches the pointer: it is free, as long as
-    /// the drag makes it, and stays so when let go (#1263).
+    /// the drag makes it, and stays so when let go (#1263); it turns
+    /// from the direction the drag began in, so it sits under the
+    /// pointer whichever way that was (#1442).
     fn stretch_twister_handle(&mut self, dd: &DistortDrag, p: Point) {
         let len = (p - dd.start).hypot();
         let tol = 2.0 / self.view.zoom.max(1e-6) as f64;
-        if len.is_finite() && len > tol {
-            self.twister_handles.insert(dd.id, len);
+        if !(len.is_finite() && len > tol) {
+            return;
         }
+        // The pointer's angle less the turn so far: where the turn began.
+        let rest = dd.last_angle.unwrap_or(0.0) - dd.turned;
+        if !rest.is_finite() {
+            return;
+        }
+        self.distort_lines.insert(
+            dd.id,
+            HandleLine {
+                mode: DistortMode::Twister,
+                angle: rest,
+                len: Some(len),
+            },
+        );
     }
 
     /// The Twister angle (degrees) of a turn, within the bar's range.
@@ -673,17 +765,26 @@ impl App {
                 let d = p - dd.start;
                 match (sett.mode, dd.grab) {
                     (DistortMode::PushPull, _) => {
-                        sett.amount = (100.0 * d.x / dd.reach).clamp(-200.0, 200.0).round();
+                        let (amount, angle) = Self::push_pull_of(d, dd.reach);
+                        sett.amount = amount;
+                        if d.hypot() > 1e-9 {
+                            self.set_handle_angle(dd.id, DistortMode::PushPull, angle);
+                        }
                     }
                     (DistortMode::Zipper, Grab::Frequency) => {
+                        // Along the line, whichever way it goes.
                         let len = sett.amplitude * AMPLITUDE_REACH;
                         if len > 1e-9 {
-                            let t = (d.x / len).clamp(0.0, 1.0);
+                            let dir = self.handle_line(dd.id, DistortMode::Zipper).dir();
+                            let t = (d.dot(dir) / len).clamp(0.0, 1.0);
                             sett.frequency = (t * MAX_FREQUENCY as f64).round() as u32;
                         }
                     }
                     (DistortMode::Zipper, _) => {
                         sett.amplitude = (d.hypot() / AMPLITUDE_REACH).clamp(0.0, 100.0);
+                        if d.hypot() > 1e-9 {
+                            self.set_handle_angle(dd.id, DistortMode::Zipper, d.atan2());
+                        }
                     }
                     (DistortMode::Twister, _) => {
                         self.turn_toward(&mut dd, p);
@@ -706,10 +807,17 @@ impl App {
         let mode = self.distort.mode;
         match mode {
             DistortMode::PushPull => {
-                self.distort.amount = (100.0 * d.x / dd.reach).clamp(-200.0, 200.0).round();
+                let (amount, angle) = Self::push_pull_of(d, dd.reach);
+                self.distort.amount = amount;
+                if d.hypot() > 1e-9 {
+                    self.set_handle_angle(dd.id, mode, angle);
+                }
             }
             DistortMode::Zipper => {
                 self.distort.amplitude = (d.hypot() / AMPLITUDE_REACH).clamp(0.0, 100.0);
+                if d.hypot() > 1e-9 {
+                    self.set_handle_angle(dd.id, mode, d.atan2());
+                }
             }
             DistortMode::Twister => {
                 self.turn_toward(&mut dd, p);
@@ -1158,6 +1266,143 @@ mod tests {
             panic!("a twister");
         };
         assert!((again - angle_deg).abs() <= 1.0, "{again}");
+    }
+
+    /// #1442: the handle follows the pointer in any direction, not along
+    /// an axis: it ends where the drag ends (within the rounding of the
+    /// value), for a new distortion as for a handle taken and dragged,
+    /// in every mode. Push and Pull takes the drag's length, pushed to
+    /// the right of the centre and pulled to the left; the Zipper's
+    /// slider runs along the line; a value changed on the bar keeps the
+    /// line's direction.
+    #[test]
+    fn the_handles_follow_the_pointer_in_any_direction() {
+        let mut app = App::headless();
+        app.tool = Tool::Distort;
+        let id = square(&mut app);
+        app.select(vec![id]);
+        let end = |app: &App| app.distortion_handles()[0].end;
+        let near = |a: Point, b: Point, tol: f64| (a - b).hypot() <= tol;
+        // Push and Pull: up and to the right, 10 mm (the reach): 100,
+        // the handle under the pointer.
+        let c = Point::new(10.0, 10.0);
+        assert!(app.begin_distort(c));
+        app.drag_distort(Point::new(13.0, 14.0));
+        app.drag_distort(Point::new(16.0, 18.0));
+        app.distort_drag = None;
+        assert_eq!(
+            effect(&app, id),
+            Some(Distort::PushPull {
+                amount: 100.0,
+                center: Some(c),
+            })
+        );
+        assert!(
+            near(end(&app), Point::new(16.0, 18.0), 1e-6),
+            "{:?}",
+            end(&app)
+        );
+        // Taken and dragged down to the left: pulled, and still under
+        // the pointer.
+        assert!(app.begin_distort(Point::new(16.0, 18.0)));
+        assert_eq!(app.distort_drag.as_ref().map(|d| d.grab), Some(Grab::End));
+        app.drag_distort(Point::new(2.0, 16.0));
+        app.distort_drag = None;
+        assert!(matches!(
+            effect(&app, id),
+            Some(Distort::PushPull { amount, .. }) if amount == -100.0
+        ));
+        assert!(
+            near(end(&app), Point::new(2.0, 16.0), 1e-6),
+            "{:?}",
+            end(&app)
+        );
+        // Then up to the right again, half way: pushed 50.
+        assert!(app.begin_distort(Point::new(2.0, 16.0)));
+        app.drag_distort(Point::new(13.0, 6.0));
+        app.distort_drag = None;
+        assert!(matches!(
+            effect(&app, id),
+            Some(Distort::PushPull { amount, .. }) if amount == 50.0
+        ));
+        assert!(
+            near(end(&app), Point::new(13.0, 6.0), 1e-6),
+            "{:?}",
+            end(&app)
+        );
+        // The bar's value moves the handle along the same line.
+        app.distort.amount = -100.0;
+        app.apply_distort_settings();
+        assert!(
+            near(end(&app), Point::new(4.0, 18.0), 1e-6),
+            "{:?}",
+            end(&app)
+        );
+        // Zipper: a new drag (away from the handles) down to the left;
+        // the slider on the line.
+        app.distort.mode = DistortMode::Zipper;
+        app.distort.frequency = 50;
+        let c = Point::new(10.0, 2.0);
+        let far = Point::new(-6.0, -14.0);
+        assert!(app.begin_distort(c));
+        assert_eq!(
+            app.distort_drag.as_ref().map(|d| d.grab),
+            Some(Grab::Object)
+        );
+        app.drag_distort(far);
+        app.distort_drag = None;
+        let Some(Distort::Zipper { amplitude, .. }) = effect(&app, id) else {
+            panic!("a zipper: {:?}", effect(&app, id));
+        };
+        assert!(
+            (amplitude - 512f64.sqrt() / 4.0).abs() < 1e-9,
+            "{amplitude}"
+        );
+        let h = app.distortion_handles()[0].clone();
+        assert!(near(h.end, far, 1e-6), "{h:?}");
+        let along = |t: f64| c + (far - c) * t;
+        let slider = h.slider.expect("a slider");
+        assert!(near(slider, along(0.5), 1e-6), "{h:?}");
+        assert!(app.begin_distort(slider));
+        assert_eq!(
+            app.distort_drag.as_ref().map(|d| d.grab),
+            Some(Grab::Frequency)
+        );
+        app.drag_distort(along(0.9));
+        app.distort_drag = None;
+        assert!(matches!(
+            effect(&app, id),
+            Some(Distort::Zipper { frequency: 90, .. })
+        ));
+        // Twister: a new drag that starts upward and turns to the left,
+        // 15 mm out: the circle under the pointer all the way.
+        app.distort.mode = DistortMode::Twister;
+        let c = Point::new(10.0, 10.0);
+        assert!(app.begin_distort(c));
+        let mut deg: f64 = 90.0;
+        while deg <= 180.0 {
+            let p = c + Vec2::from_angle(deg.to_radians()) * 15.0;
+            app.drag_distort(p);
+            assert!(near(end(&app), p, 0.2), "{deg}: {:?} {p:?}", end(&app));
+            deg += 15.0;
+        }
+        app.distort_drag = None;
+        let Some(Distort::Twister { angle_deg, .. }) = effect(&app, id) else {
+            panic!("a twister");
+        };
+        assert!((angle_deg - 90.0).abs() <= 1.0, "{angle_deg}");
+        // Taken at its end and dragged on round, still under the pointer.
+        let p = c + Vec2::from_angle(180f64.to_radians()) * 15.0;
+        assert!(app.begin_distort(p));
+        assert_eq!(app.distort_drag.as_ref().map(|d| d.grab), Some(Grab::End));
+        let p = c + Vec2::from_angle(250f64.to_radians()) * 8.0;
+        app.drag_distort(p);
+        app.distort_drag = None;
+        assert!(near(end(&app), p, 0.2), "{:?} {p:?}", end(&app));
+        let Some(Distort::Twister { angle_deg, .. }) = effect(&app, id) else {
+            panic!("a twister");
+        };
+        assert!((angle_deg - 160.0).abs() <= 1.0, "{angle_deg}");
     }
 
     #[test]
