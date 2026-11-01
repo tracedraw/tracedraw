@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+## 0.35.0 (2026-11-01)
+
 - Visual modernization of the workspace: the default palette follows the classic order with plain colour names, and five swatches fewer among the first 50.
 
 - Clip to Frame: Edit Contents (also by Ctrl+click) and Extract Contents take a clip frame apart where it shows. A clip frame moved, turned or resized after it was made keeps that in its own transform, which the commands dropped, so the frame and its contents jumped back to where the clip frame had been created and Finish Editing left them there (#1562).
