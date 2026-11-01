@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Dependencies: rqrr 0.11 (lru 0.16, soundness advisory)
+
 ## 0.35.0 (2026-11-01)
 
 - Visual modernization of the workspace: the default palette follows the classic order with plain colour names, and five swatches fewer among the first 50.
