@@ -1931,6 +1931,62 @@ mod bitmap_node_tests {
         }
     }
 
+    /// To Curve and To Line on the start node of a closed curve act on its
+    /// closing segment, the segment ending at that node, as the property
+    /// bar's buttons do on any other node (#1618).
+    #[test]
+    fn to_curve_takes_the_closing_segment_through_the_start_node() {
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 40.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        app.convert_to_curves();
+        let path_of = |app: &App| match &app.doc().find_shape(id).expect("curve").kind {
+            ShapeKind::Path { path, .. } => path.clone(),
+            other => panic!("not a curve: {other:?}"),
+        };
+        let curves = |p: &BezPath| {
+            p.elements()
+                .iter()
+                .filter(|e| matches!(e, PathEl::CurveTo(..)))
+                .count()
+        };
+        let before = path_of(&app);
+        assert_eq!(curves(&before), 0);
+        let start = match before.elements()[0] {
+            PathEl::MoveTo(p) => p,
+            _ => Point::ZERO,
+        };
+        app.node_selection = vec![(id, 0)];
+        app.selected_segments_to_curve();
+        let after = path_of(&app);
+        assert_eq!(curves(&after), 1, "{after:?}");
+        // The closing segment is the curve: it ends on the start node, and
+        // the curve keeps its four nodes.
+        assert!(after
+            .elements()
+            .iter()
+            .any(|e| matches!(e, PathEl::CurveTo(_, _, p) if (*p - start).hypot() < 1e-9)));
+        assert_eq!(nodes::nodes(&after).len(), 4);
+        app.selected_segments_to_line();
+        assert_eq!(curves(&path_of(&app)), 0);
+        // The closing segment clicked (the Shape tool chooses the element
+        // drawing it) converts as well.
+        let z = path_of(&app)
+            .elements()
+            .iter()
+            .position(|e| matches!(e, PathEl::ClosePath))
+            .expect("closed");
+        app.node_selection = vec![(id, z)];
+        app.selected_segments_to_curve();
+        assert_eq!(curves(&path_of(&app)), 1);
+    }
+
     #[test]
     fn a_pictures_corner_crops_it_and_double_click_keeps_it_a_picture() {
         let mut app = App::headless();

@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Shape tool: To Curve, To Line and Break act on the closing segment of a closed curve through its start node, the node that segment ends at, and on a clicked closing line. The commands took the element at the node's own index, and the start node is a move with no segment of its own, so the segment where a closed curve's last node meets its first could not be made a curve, straightened or broken, on every rectangle, ellipse and polygon converted to curves (#1618).
+
 - Exporting a drawing to EMF or WMF no longer takes TraceDraw down when a text size is not a number (a division by zero somewhere, or an import with a number too large to hold, can leave one). The font record of both formats holds the em negated, and a size of minus infinity clamped to the smallest value the record holds overflowed when negated; the size is now clamped to the positive half of the range first, and the rest of such a drawing (places, outline widths, sizes) exports as before.
 
 - Drawing a page whose size is not a number (a division by zero somewhere, or a damaged file, can leave one) no longer takes TraceDraw down. Such a page asks for an image as tall as a number holds; splitting it into bands for the machine's cores, and cutting a strip of it for printing, added past the end of the range, and asking the allocator for a picture that large closed the program, which cannot be caught. The bands and strips now end at the image's last row, and an image of more than a thousand million pixels (4 GB, more than any export or print asks for) is refused as a render that failed, so the drawing stays open to be saved.

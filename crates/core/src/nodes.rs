@@ -1023,21 +1023,67 @@ pub fn bend_segment_with(
     move_handle(&bent, end_node, Which::In, n2, end_type)
 }
 
-/// Turn the segment ending at `index` into a straight line.
+/// The element drawing the segment that To Line and To Curve act on for
+/// `index`: a node's own element; for the start of a closed subpath its
+/// closing segment ([`segment_into`]); for a `ClosePath` that draws no
+/// line (the segment before it ends on the start) that segment.
+fn segment_element(n: &BezPath, index: usize) -> usize {
+    let els = n.elements();
+    match els.get(index) {
+        Some(PathEl::MoveTo(_)) => segment_into(n, index).unwrap_or(index),
+        Some(PathEl::ClosePath)
+            if index > 0 && (prev_point(els, index) - subpath_start(els, index)).hypot() < 1e-9 =>
+        {
+            index - 1
+        }
+        _ => index,
+    }
+}
+
+/// Turn the segment ending at node `index` into a straight line. For the
+/// start of a closed subpath that is its closing segment, the last one
+/// back onto the start (#1618); a `ClosePath` index (a clicked closing
+/// line) is a line already.
 pub fn to_line(path: &BezPath, index: usize) -> BezPath {
-    let mut els: Vec<PathEl> = normalize(path).elements().to_vec();
+    let n = normalize(path);
+    let mut els: Vec<PathEl> = n.elements().to_vec();
+    let index = segment_element(&n, index);
     if let Some(PathEl::CurveTo(_, _, p)) = els.get(index).copied() {
         els[index] = PathEl::LineTo(p);
     }
     BezPath::from_vec(els)
 }
 
-/// Turn the segment ending at `index` into a curve with handles at thirds.
+/// Turn the segment ending at node `index` into a curve with handles at
+/// thirds. For the start of a closed subpath that is its closing segment
+/// (#1618): the last segment back onto the start, or the closing line the
+/// `ClosePath` draws, which becomes a curve of its own before the close
+/// (also when `index` is that `ClosePath`, as a click on the closing line
+/// chooses it).
 pub fn to_curve(path: &BezPath, index: usize) -> BezPath {
-    let mut els: Vec<PathEl> = normalize(path).elements().to_vec();
-    if let Some(PathEl::LineTo(p)) = els.get(index).copied() {
-        let prev = prev_point(&els, index);
-        els[index] = PathEl::CurveTo(prev.lerp(p, 1.0 / 3.0), prev.lerp(p, 2.0 / 3.0), p);
+    let n = normalize(path);
+    let mut els: Vec<PathEl> = n.elements().to_vec();
+    let index = segment_element(&n, index);
+    match els.get(index).copied() {
+        Some(PathEl::LineTo(p)) => {
+            let prev = prev_point(&els, index);
+            els[index] = PathEl::CurveTo(prev.lerp(p, 1.0 / 3.0), prev.lerp(p, 2.0 / 3.0), p);
+        }
+        Some(PathEl::ClosePath) => {
+            let prev = prev_point(&els, index);
+            let start = subpath_start(&els, index);
+            if (start - prev).hypot() > 1e-9 {
+                els.insert(
+                    index,
+                    PathEl::CurveTo(
+                        prev.lerp(start, 1.0 / 3.0),
+                        prev.lerp(start, 2.0 / 3.0),
+                        start,
+                    ),
+                );
+            }
+        }
+        _ => {}
     }
     BezPath::from_vec(els)
 }
@@ -1056,16 +1102,35 @@ pub fn close_subpath(path: &BezPath, index: usize) -> BezPath {
 }
 
 /// Break the path at a node: the node becomes the end of one subpath and
-/// the start of another.
+/// the start of another. At the start of a closed subpath (or at its
+/// closing segment, `index` the `ClosePath` a click on the closing line
+/// chooses) the subpath opens there: its two ends stay where they are,
+/// and a closing line the `ClosePath` drew stays as a line of its own
+/// (#1618).
 pub fn break_at(path: &BezPath, index: usize) -> BezPath {
     let mut els: Vec<PathEl> = normalize(path).elements().to_vec();
-    // At a closed subpath's start, whose last segment ends on it: open the
-    // subpath there (its two ends stay where they are).
-    if let (Some(PathEl::MoveTo(_)), Some(last)) = (els.get(index), twin_of(&els, index)) {
-        if matches!(els.get(last + 1), Some(PathEl::ClosePath)) {
-            els.remove(last + 1);
-            return BezPath::from_vec(els);
+    let start = match els.get(index) {
+        Some(PathEl::MoveTo(_)) => Some(index),
+        Some(PathEl::ClosePath) => (0..index)
+            .rev()
+            .find(|&i| matches!(els[i], PathEl::MoveTo(_))),
+        _ => None,
+    };
+    if let Some(start) = start {
+        let close = (start + 1..els.len())
+            .take_while(|&i| !matches!(els[i], PathEl::MoveTo(_)))
+            .find(|&i| matches!(els[i], PathEl::ClosePath));
+        let (Some(close), Some(PathEl::MoveTo(s))) = (close, els.get(start).copied()) else {
+            // The start of an open subpath: nothing to break.
+            return path.clone();
+        };
+        let prev = prev_point(&els, close);
+        if (prev - s).hypot() > 1e-9 {
+            els[close] = PathEl::LineTo(s);
+        } else {
+            els.remove(close);
         }
+        return BezPath::from_vec(els);
     }
     let p = match els.get(index) {
         Some(PathEl::LineTo(p)) | Some(PathEl::CurveTo(_, _, p)) => *p,
@@ -2159,6 +2224,117 @@ mod tests {
             (d.x + 3.0).abs() < 1e-9 && (d.y + 2.0).abs() < 1e-9,
             "{d:?}"
         );
+    }
+
+    /// A square whose last line comes back onto the start, then the close.
+    fn square_back_on_start() -> BezPath {
+        let mut p = BezPath::new();
+        p.move_to((0.0, 0.0));
+        p.line_to((10.0, 0.0));
+        p.line_to((10.0, 10.0));
+        p.line_to((0.0, 10.0));
+        p.line_to((0.0, 0.0));
+        p.close_path();
+        p
+    }
+
+    /// A square whose closing line the ClosePath draws.
+    fn square_closed_by_z() -> BezPath {
+        let mut p = BezPath::new();
+        p.move_to((0.0, 0.0));
+        p.line_to((10.0, 0.0));
+        p.line_to((10.0, 10.0));
+        p.line_to((0.0, 10.0));
+        p.close_path();
+        p
+    }
+
+    /// Whether `el` is the curve from (0, 10) down to the origin with its
+    /// handles at thirds.
+    fn thirds_down(el: PathEl) -> bool {
+        let near = |a: Point, b: Point| (a - b).hypot() < 1e-9;
+        matches!(el, PathEl::CurveTo(c1, c2, q)
+            if near(c1, Point::new(0.0, 10.0 * 2.0 / 3.0))
+                && near(c2, Point::new(0.0, 10.0 / 3.0))
+                && near(q, Point::ZERO))
+    }
+
+    fn curves_in(p: &BezPath) -> usize {
+        p.elements()
+            .iter()
+            .filter(|e| matches!(e, PathEl::CurveTo(..)))
+            .count()
+    }
+
+    /// To Curve and To Line act on the closing segment through the start
+    /// node of a closed curve, the node the segment ends at, as on any
+    /// other node; a closing line drawn by the ClosePath becomes a curve
+    /// of its own, also when that ClosePath is the segment chosen (#1618).
+    #[test]
+    fn to_curve_and_to_line_take_the_closing_segment_through_the_start_node() {
+        // The last curve back onto the start.
+        let p = round();
+        assert_eq!(curves_in(&p), 4);
+        let lined = to_line(&p, 0);
+        assert_eq!(curves_in(&lined), 3);
+        assert_eq!(lined.elements()[4], PathEl::LineTo(Point::new(0.0, 0.0)));
+        let curved = to_curve(&lined, 0);
+        assert_eq!(curves_in(&curved), 4);
+        assert!(matches!(curved.elements()[4], PathEl::CurveTo(_, _, q) if q == Point::ZERO));
+        // The last line back onto the start.
+        let curved = to_curve(&square_back_on_start(), 0);
+        assert!(thirds_down(curved.elements()[4]), "{curved:?}");
+        assert_eq!(nodes(&curved).len(), 4);
+        // The closing line the ClosePath draws: a curve before the close.
+        let p = square_closed_by_z();
+        for index in [0, 4] {
+            let curved = to_curve(&p, index);
+            assert_eq!(curved.elements().len(), 6, "{index}: {curved:?}");
+            assert!(thirds_down(curved.elements()[4]), "{index}: {curved:?}");
+            assert_eq!(curved.elements()[5], PathEl::ClosePath);
+            assert_eq!(nodes(&curved).len(), 4);
+            // And back to a line through the start node.
+            let back = to_line(&curved, 0);
+            assert_eq!(back.elements()[4], PathEl::LineTo(Point::ZERO));
+            assert_eq!(curves_in(&back), 0);
+        }
+        // A closing line is a line already; a ClosePath right on the start
+        // draws nothing itself: the segment before it is the closing one.
+        assert_eq!(to_line(&p, 0), p);
+        assert_eq!(
+            to_curve(&square_back_on_start(), 5),
+            to_curve(&square_back_on_start(), 0)
+        );
+        // The start of an open curve has no segment ending at it.
+        let mut open = BezPath::new();
+        open.move_to((0.0, 0.0));
+        open.line_to((10.0, 0.0));
+        assert_eq!(to_curve(&open, 0), open);
+    }
+
+    /// Break at the start of a closed curve opens it there, whichever way
+    /// it was closed, and through its closing segment too (#1618).
+    #[test]
+    fn breaking_at_the_start_of_a_closed_subpath_opens_it_there() {
+        let p = square_closed_by_z();
+        for index in [0, 4] {
+            let open = break_at(&p, index);
+            assert_eq!(open.elements().len(), 5, "{index}: {open:?}");
+            assert_eq!(open.elements()[4], PathEl::LineTo(Point::ZERO));
+            assert!(!open
+                .elements()
+                .iter()
+                .any(|e| matches!(e, PathEl::ClosePath)));
+        }
+        let p = square_back_on_start();
+        for index in [0, 5] {
+            let open = break_at(&p, index);
+            assert_eq!(open.elements().len(), 5, "{index}: {open:?}");
+            assert_eq!(open.elements()[4], PathEl::LineTo(Point::ZERO));
+        }
+        // Not at a middle node, whose own break splits the curve there.
+        let split = break_at(&square_closed_by_z(), 2);
+        assert_eq!(split.elements()[3], PathEl::MoveTo(Point::new(10.0, 10.0)));
     }
 
     #[test]
