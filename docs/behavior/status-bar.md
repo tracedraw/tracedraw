@@ -18,6 +18,12 @@ It sits at the bottom of the window, or at the top below the menu bar
      language files; every tool has one). The Pick tool's hint changes
      when something is selected. A message from the last command comes
      first when there is one.
+     Hints are short and share one style: the parts are joined by " · ",
+     keys and modifiers are named as they are pressed (Ctrl+drag,
+     Shift+click, Alt+click), and a hint says what the pointer does
+     ("Double-click the tool to select all"). The Hints docker and the
+     document palette's empty-state text follow the same style
+     (`ui::status::tests::hints_share_one_style`).
    - Object Details: width, height and centre of the selection in the
      drawing units.
    - Cursor Coordinates: the pointer's page position in the drawing units.

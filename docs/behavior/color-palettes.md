@@ -40,8 +40,8 @@ downwards.
 - The No Color well comes first: white with a red diagonal.
 - The swatch under the pointer gets a white frame; the document palette's
   current swatch (the one clicked last) keeps it.
-- An empty document palette shows "Drag colors (or objects) here to store
-  these colors with your document".
+- An empty document palette shows "Drop colors or objects here to keep
+  them with the document".
 
 ## Default palette
 
