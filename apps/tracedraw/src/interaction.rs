@@ -3113,6 +3113,23 @@ impl App {
         }
     }
 
+    /// Pick `t` by its key. The Pick tool's key (Space) on the Pick tool
+    /// goes back to the tool used before it, not during a drag, where
+    /// Space drops a copy; true then, the key having done its work.
+    fn pick_tool_by_key(&mut self, t: Tool, pointer_busy: bool) -> bool {
+        if t == Tool::Pick && pointer_busy {
+            return false;
+        }
+        if t == Tool::Pick && self.tool == Tool::Pick {
+            if self.previous_tool != Tool::Pick {
+                self.choose_tool(self.previous_tool);
+            }
+            return true;
+        }
+        self.choose_tool(t);
+        false
+    }
+
     pub fn keyboard(&mut self, ctx: &egui::Context) {
         // The pen's pressure, which the raw input hook read from this
         // frame's touch events, before the tools see the pointer (#850).
@@ -3251,19 +3268,34 @@ impl App {
         let first_pressed = |k: Key, m: Modifiers| matches(&first_presses, k, m);
         let cmd = Modifiers::COMMAND;
 
-        // Menu commands with a shortcut of the user's (Options >
+        let pointer_busy = !matches!(self.drag, Drag::None) || input.pointer.any_down();
+        // Menu commands and tools with a shortcut of the user's (Options >
         // Customization > Commands) come first: they may take a built-in
-        // shortcut over.
+        // shortcut over (#1595).
         for (key, mods) in &presses {
             let text = crate::shortcuts::format(*mods, *key);
-            if let Some(id) = self
+            let Some(id) = self
                 .settings
                 .shortcuts
                 .iter()
-                .find(|(id, v)| id.starts_with("menu.") && crate::shortcuts::same(v, &text))
+                .find(|(_, v)| crate::shortcuts::same(v, &text))
                 .map(|(id, _)| id.clone())
-            {
+            else {
+                continue;
+            };
+            if id.starts_with("menu.") {
                 self.pending_command = Some(id);
+                return;
+            }
+            if let Some(t) = Tool::ALL.iter().find(|t| t.id() == id) {
+                // A key held picks its tool once (#1502); W and K during a
+                // move say what a drop on a clip frame does and pick none.
+                let drop_key = matches!(self.drag, Drag::Move { .. })
+                    && mods.is_none()
+                    && matches!(key, Key::W | Key::K);
+                if first_pressed(*key, *mods) && !drop_key {
+                    self.pick_tool_by_key(*t, pointer_busy);
+                }
                 return;
             }
         }
@@ -3814,7 +3846,6 @@ impl App {
             }
         }
         // Tool shortcuts: user overrides from Options, then the defaults.
-        let pointer_busy = !matches!(self.drag, Drag::None) || input.pointer.any_down();
         for group in crate::tools::GROUPS {
             for t in group.tools {
                 // Every key the tool has (#822).
@@ -3842,19 +3873,12 @@ impl App {
                         // repeats would send Space back and forth between
                         // the Pick tool and the tool before it (#1502).
                         if first_pressed(k, mods) && !drop_key {
-                            // The Pick tool's key (Space) on the Pick tool
-                            // goes back to the tool used before it. Not
-                            // during a drag, where Space drops a copy.
                             if *t == Tool::Pick && pointer_busy {
                                 continue;
                             }
-                            if *t == Tool::Pick && self.tool == Tool::Pick {
-                                if self.previous_tool != Tool::Pick {
-                                    self.choose_tool(self.previous_tool);
-                                }
+                            if self.pick_tool_by_key(*t, pointer_busy) {
                                 return;
                             }
-                            self.choose_tool(*t);
                         }
                     }
                 }

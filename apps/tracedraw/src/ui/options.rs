@@ -2876,9 +2876,12 @@ fn user_shortcut(app: &App, id: &str) -> Option<String> {
         .map(|(_, v)| v.clone())
 }
 
-/// Give the menu command `id` the shortcut `text`. Another command of the
-/// user's with it loses it; commands and tools that have it built in are
-/// named in the note, since the shortcut now runs this command.
+/// Give the command `id` (a menu command's key or a tool's id) the
+/// shortcut `text`. Every other command with it loses it, so one key
+/// runs one command: another command of the user's loses that entry;
+/// a command or tool that has it built in is left with an empty shortcut
+/// (as Delete leaves it, so its keys do nothing until Reset gives them
+/// back, #1595). The commands that lost the keys are named in the note.
 fn set_menu_shortcut(app: &mut App, id: &str, text: &str) {
     use crate::shortcuts::same;
     let mut others: Vec<String> = Vec::new();
@@ -2890,15 +2893,26 @@ fn set_menu_shortcut(app: &mut App, id: &str, text: &str) {
     app.settings
         .shortcuts
         .retain(|(k, v)| k == id || !same(v, text));
+    // Built-in holders without keys of their own: the key was theirs
+    // alone, so they are left without one.
+    let mut lost: Vec<String> = Vec::new();
     for e in &app.shortcut_editor.entries {
         if e.key != id && same(&e.shortcut, text) && user_shortcut(app, &e.key).is_none() {
             others.push(command_label(e));
+            lost.push(e.key.clone());
         }
     }
     for t in crate::tools::Tool::ALL {
-        if user_shortcut(app, t.id()).is_none() && t.shortcut().is_some_and(|s| same(s, text)) {
+        if t.id() != id
+            && user_shortcut(app, t.id()).is_none()
+            && t.shortcut().is_some_and(|s| same(s, text))
+        {
             others.push(t.name());
+            lost.push(t.id().to_string());
         }
+    }
+    for k in lost {
+        app.settings.shortcuts.push((k, String::new()));
     }
     // The keys it had stay (a command may have several, #822): a built-in
     // key joins the user's list first so that it keeps working.
@@ -4821,6 +4835,101 @@ mod tests {
             .expect("open");
         set_menu_shortcut(&mut app, "menu.file.open", "Ctrl+Shift+O");
         assert_eq!(current_keys(&app, &open), ["Ctrl+O", "Ctrl+Shift+O"]);
+    }
+
+    /// No two commands share a built-in shortcut in one context: every
+    /// menu command's and every tool's default keys are their own. The
+    /// one documented split is E, Align Centers Horizontally with a
+    /// selection and the Roughen tool without one (`shortcuts.md`, Align
+    /// keys and tool keys) (#1595).
+    #[test]
+    fn no_two_default_commands_share_a_shortcut() {
+        let app = app_with_commands();
+        let mut holders: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+        for c in command_items(&app, None, "") {
+            if c.built_in.is_empty() {
+                continue;
+            }
+            let (m, k) = crate::shortcuts::parse(&c.built_in)
+                .unwrap_or_else(|| panic!("{}: {} is no shortcut", c.id, c.built_in));
+            holders
+                .entry(crate::shortcuts::format(m, k))
+                .or_default()
+                .push(c.id.clone());
+        }
+        let documented_split = |keys: &str, ids: &[String]| {
+            keys == "E" && ids == ["menu.object.align_centers_h", "roughen"]
+        };
+        let shared: Vec<String> = holders
+            .iter()
+            .filter(|(keys, ids)| ids.len() > 1 && !documented_split(keys, ids))
+            .map(|(keys, ids)| format!("{keys}: {}", ids.join(", ")))
+            .collect();
+        assert!(
+            shared.is_empty(),
+            "shared shortcuts:\n{}",
+            shared.join("\n")
+        );
+    }
+
+    /// A shortcut given to a command is taken from the command or tool
+    /// that had it built in: that one is left without keys (an empty
+    /// shortcut, as Delete leaves it) and the key runs the new command
+    /// alone, a tool's too (#1595).
+    #[test]
+    fn a_shortcut_given_to_a_command_is_taken_from_its_built_in_holder() {
+        use egui::{Key, Modifiers};
+        let mut app = app_with_commands();
+        let item = |app: &App, id: &str| {
+            command_items(app, None, "")
+                .into_iter()
+                .find(|c| c.id == id)
+                .unwrap_or_else(|| panic!("{id}"))
+        };
+        // Zoom's Z given to the Rectangle tool.
+        assert_eq!(current_keys(&app, &item(&app, "zoom")), ["Z"]);
+        set_menu_shortcut(&mut app, "rectangle", "Z");
+        assert!(current_keys(&app, &item(&app, "zoom")).is_empty());
+        assert!(app
+            .settings
+            .shortcuts
+            .contains(&("zoom".to_string(), String::new())));
+        assert_eq!(current_keys(&app, &item(&app, "rectangle")), ["F6", "Z"]);
+        let note = app.shortcut_editor.note.clone().unwrap_or_default();
+        assert!(note.contains(&crate::tools::Tool::Zoom.name()), "{note}");
+        // Duplicate's Ctrl+D given to the Ellipse tool.
+        set_menu_shortcut(&mut app, "ellipse", "Ctrl+D");
+        assert!(current_keys(&app, &item(&app, "menu.edit.duplicate")).is_empty());
+        // The keys run their new commands alone: Z picks the rectangle,
+        // not the zoom, and Ctrl+D picks the ellipse without a copy.
+        let ctx = crate::theme::ui_context();
+        app.show_welcome = false;
+        let id = app
+            .new_shape(tracedraw_core::document::ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(10.0, 10.0, 40.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        let count = |app: &App| {
+            app.doc().pages[0]
+                .layers
+                .iter()
+                .map(|l| l.shapes.len())
+                .sum::<usize>()
+        };
+        let before = count(&app);
+        frame(&ctx, &mut app, vec![key(Key::Z, Modifiers::NONE)]);
+        assert_eq!(app.tool, crate::tools::Tool::Rectangle);
+        app.select(vec![id]);
+        frame(&ctx, &mut app, vec![key(Key::D, Modifiers::COMMAND)]);
+        frame(&ctx, &mut app, vec![]);
+        assert_eq!(app.tool, crate::tools::Tool::Ellipse);
+        assert_eq!(count(&app), before, "no copy");
+        // Reset gives the zoom its key back.
+        reset_category_shortcuts(&mut app, TOOLBOX);
+        assert_eq!(current_keys(&app, &item(&app, "zoom")), ["Z"]);
     }
 
     /// The app with the menu commands collected, as the Commands page has.

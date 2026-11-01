@@ -145,8 +145,14 @@ name.
 - Your shortcuts are looked at before the built-in ones, so a key a
   built-in command uses runs your command instead; the page names the
   commands and tools that lost it. Another command of yours with the
-  same keys loses them. A command's built-in shortcut keeps working
-  beside yours until another command takes it.
+  same keys loses them, and a command or tool that had them built in
+  is left without a shortcut (kept as an empty one, as Delete leaves
+  it; Reset gives it back), so one key runs one command and no two
+  commands or tools share one (#1595,
+  `ui::options::tests::a_shortcut_given_to_a_command_is_taken_from_its_built_in_holder`).
+  A command's built-in shortcut keeps working beside yours until
+  another command takes it. A key of yours on a tool picks the tool as
+  its built-in key would (once a press, not W or K during a move).
 - The menus show your shortcut in place of the built-in one. Delete
   leaves the command without a shortcut, a built-in one too: it is
   kept as an empty shortcut, the menus show none and its keys do
@@ -176,6 +182,10 @@ name.
 ## Checks
 
 - `ui::options::tests::bar_buttons_and_rows_shown_at_times_take_shortcuts`
+- `ui::options::tests::no_two_default_commands_share_a_shortcut`: no two
+  menu commands or tools have the same built-in keys, the documented
+  split of E (Align Centers Horizontally with a selection, Roughen
+  without) aside.
 
 - Given a dialog open, when Esc is pressed, then the dialog is closed
   and the tool and selection are unchanged.
