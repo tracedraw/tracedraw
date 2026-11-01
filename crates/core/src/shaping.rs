@@ -5,7 +5,7 @@
 //! of the objects it came from, with new nodes only where their outlines
 //! cross.
 
-use crate::geometry::{BezPath, PathEl, Point};
+use crate::geometry::{BezPath, PathEl, Point, Vec2};
 use i_overlay::core::fill_rule::FillRule as IFill;
 use i_overlay::core::overlay_rule::OverlayRule;
 use i_overlay::float::single::SingleFloatOverlay;
@@ -1171,6 +1171,12 @@ const STRAIGHT_RATIO: f64 = 4.0;
 /// to be a corner [`fit_polygon_curves`] keeps.
 const CORNER_DEG: f64 = 35.0;
 
+/// A straight side is tangent to the curve it meets when the polygon
+/// turns no more at the join than this many times its turn at the
+/// curve's next point: the first piece of a curve leaving a side along
+/// it turns by half a step, the pieces after it by a whole one.
+const TANGENT_TURN_RATIO: f64 = 1.5;
+
 /// A path of straight pieces (an offset, as the overlay library gives it)
 /// as curves: each contour split at its corners, and every smooth stretch
 /// between them fitted with as few curves as keep within `accuracy` mm
@@ -1202,6 +1208,16 @@ pub fn fit_polygon_curves(path: &BezPath, accuracy: f64) -> BezPath {
             continue;
         }
         let limit = CORNER_DEG.to_radians();
+        // How sharply the polygon turns at point `i`, radians.
+        let turn = |i: usize| {
+            let a = pts[i] - pts[(i + n - 1) % n];
+            let b = pts[(i + 1) % n] - pts[i];
+            let (la, lb) = (a.hypot(), b.hypot());
+            if la < 1e-12 || lb < 1e-12 {
+                return std::f64::consts::PI;
+            }
+            (a.dot(b) / (la * lb)).clamp(-1.0, 1.0).acos()
+        };
         let corner = |i: usize| {
             let a = pts[i] - pts[(i + n - 1) % n];
             let b = pts[(i + 1) % n] - pts[i];
@@ -1209,14 +1225,23 @@ pub fn fit_polygon_curves(path: &BezPath, accuracy: f64) -> BezPath {
             // Where a long straight side meets short pieces (a curve), the
             // side stays a line.
             let side = la > STRAIGHT_RATIO * lb || lb > STRAIGHT_RATIO * la;
-            la < 1e-12
-                || lb < 1e-12
-                || side
-                || (a.dot(b) / (la * lb)).clamp(-1.0, 1.0).acos() > limit
+            la < 1e-12 || lb < 1e-12 || side || turn(i) > limit
         };
+        // A corner the polygon hardly turns at, kept only because a
+        // straight side meets a curve there, and turning no more than
+        // the curve turns at its next point: the side is tangent to the
+        // curve, which leaves the side along it, as a round contour
+        // corner follows the side it rounds off (#1542). Where the join
+        // turns more than the curve does after it, the side meets the
+        // curve at an angle (a gentle corner of a warped outline), and
+        // the curve keeps its own direction.
+        let tangent_into =
+            |i: usize| turn(i) <= limit && turn(i) <= TANGENT_TURN_RATIO * turn((i + 1) % n);
+        let tangent_out_of =
+            |i: usize| turn(i) <= limit && turn(i) <= TANGENT_TURN_RATIO * turn((i + n - 1) % n);
         let corners: Vec<usize> = (0..n).filter(|i| corner(*i)).collect();
         if corners.is_empty() {
-            let fitted = fit_run(&pts, true, accuracy);
+            let fitted = fit_run(&pts, true, accuracy, (None, None));
             out.extend(
                 fitted
                     .elements()
@@ -1245,7 +1270,11 @@ pub fn fit_polygon_curves(path: &BezPath, accuracy: f64) -> BezPath {
                 out.line_to(run[run.len() - 1]);
                 continue;
             }
-            let fitted = fit_run(&run, false, accuracy);
+            // The curve starts along the side before it and ends along
+            // the side after it, where those sides are straight.
+            let start_along = tangent_into(c).then(|| pts[c] - pts[(c + n - 1) % n]);
+            let end_along = tangent_out_of(next).then(|| pts[(next + 1) % n] - pts[next]);
+            let fitted = fit_run(&run, false, accuracy, (start_along, end_along));
             out.extend(
                 fitted
                     .elements()
@@ -1279,10 +1308,21 @@ fn polygons(path: &BezPath) -> Vec<Vec<Point>> {
 /// A run of points (a whole ring when `closed`) as a smooth curve
 /// through them, fitted with as few curves as keep within `accuracy`
 /// (kurbo's fitter merges curves, not lines); straight pieces when the
-/// fit fails.
-fn fit_run(pts: &[Point], closed: bool, accuracy: f64) -> BezPath {
+/// fit fails. An open run leaves its first point along `ends.0` and
+/// arrives at its last along `ends.1`, where given: the directions of
+/// the straight sides it joins, so the curve runs on from the side
+/// instead of setting off at an angle to it (#1542).
+fn fit_run(
+    pts: &[Point],
+    closed: bool,
+    accuracy: f64,
+    ends: (Option<Vec2>, Option<Vec2>),
+) -> BezPath {
     use kurbo::simplify::{simplify_bezpath, SimplifyOptions};
-    let smooth = crate::geometry::smooth_path(pts, closed);
+    let mut smooth = crate::geometry::smooth_path(pts, closed);
+    if !closed {
+        aim_ends(&mut smooth, ends);
+    }
     let options = SimplifyOptions::default();
     let fitted = simplify_bezpath(smooth.elements().iter().copied(), accuracy, &options);
     let sane = fitted.elements().len() > 1
@@ -1301,6 +1341,32 @@ fn fit_run(pts: &[Point], closed: bool, accuracy: f64) -> BezPath {
         rest.iter().for_each(|p| line.line_to(*p));
     }
     line
+}
+
+/// Turn the first curve of an open smooth path to leave along `ends.0`
+/// and its last to arrive along `ends.1`, where given, each handle kept
+/// at its length (a third of the piece, as `smooth_path` lays them). A
+/// direction too short to point anywhere is left alone.
+fn aim_ends(path: &mut BezPath, ends: (Option<Vec2>, Option<Vec2>)) {
+    let mut els: Vec<PathEl> = path.elements().to_vec();
+    let unit = |v: Vec2| (v.hypot() > 1e-12).then(|| v / v.hypot());
+    if let Some(t) = ends.0.and_then(unit) {
+        let from = els.first().and_then(|e| match e {
+            PathEl::MoveTo(p) => Some(*p),
+            _ => None,
+        });
+        if let (Some(from), Some(PathEl::CurveTo(c1, _, _))) = (from, els.get_mut(1)) {
+            let len = (*c1 - from).hypot();
+            *c1 = from + t * len;
+        }
+    }
+    if let Some(t) = ends.1.and_then(unit) {
+        if let Some(PathEl::CurveTo(_, c2, p)) = els.last_mut() {
+            let len = (*p - *c2).hypot();
+            *c2 = *p - t * len;
+        }
+    }
+    *path = BezPath::from_vec(els);
 }
 
 /// The area swept by a round or square nib of width `width` along a
@@ -2401,6 +2467,64 @@ mod tests {
             "{:?}",
             q.elements()
         );
+    }
+
+    /// A round contour corner runs on from the straight side it rounds
+    /// off: each corner curve leaves its side along it and arrives at the
+    /// next side along it, and stays at the contour's distance all the
+    /// way round. The curves set off at an angle to the sides (14
+    /// degrees at 1 mm) and pinched toward the corner, so the rounded
+    /// corners of a contoured text looked bent and, small, crossed
+    /// each other (#1542).
+    #[test]
+    fn a_round_offset_corner_runs_on_from_its_sides() {
+        use super::{offset_with, Join};
+        use crate::geometry::{BezPath, PathEl, Point};
+        let mut sq = BezPath::new();
+        sq.move_to(Point::new(0.0, 0.0));
+        sq.line_to(Point::new(10.0, 0.0));
+        sq.line_to(Point::new(10.0, 10.0));
+        sq.line_to(Point::new(0.0, 10.0));
+        sq.close_path();
+        // Off an axis by this share of the handle's length at most: about
+        // two degrees.
+        let askew = 2f64.to_radians().sin();
+        for d in [0.5, 1.0, 3.0] {
+            let q = offset_with(&sq, d, Join::Round);
+            let mut prev = Point::ZERO;
+            let mut corners = 0;
+            for el in q.elements() {
+                match *el {
+                    PathEl::MoveTo(p) | PathEl::LineTo(p) => prev = p,
+                    PathEl::CurveTo(c1, c2, p) => {
+                        corners += 1;
+                        for (name, t) in [("leaves", c1 - prev), ("arrives", p - c2)] {
+                            let off = t.x.abs().min(t.y.abs()) / t.hypot().max(1e-12);
+                            assert!(off < askew, "{d}: the curve {name} {off} off its side");
+                        }
+                        prev = p;
+                    }
+                    _ => {}
+                }
+            }
+            assert_eq!(corners, 4, "{d}: {:?}", q.elements());
+            // At the contour's distance from the square everywhere.
+            let outside = |p: Point| {
+                let dx = (-p.x).max(p.x - 10.0).max(0.0);
+                let dy = (-p.y).max(p.y - 10.0).max(0.0);
+                dx.hypot(dy)
+            };
+            for seg in q.segments() {
+                for i in 0..=20 {
+                    let p = seg.eval(i as f64 / 20.0);
+                    assert!(
+                        (outside(p) - d).abs() < 0.03,
+                        "{d}: {p:?} is {} off",
+                        outside(p)
+                    );
+                }
+            }
+        }
     }
 
     fn glyph_square(path: &mut crate::geometry::BezPath, x: f64, y: f64, w: f64, clockwise: bool) {

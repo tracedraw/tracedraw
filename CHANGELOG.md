@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Contour with round corners: each rounded corner now runs on from the straight sides it joins, leaving one side along it and arriving at the next along it, at the contour's distance all the way round. The corner curves set off at an angle to the sides (about 14 degrees on a 1 mm contour) and pinched toward the corner, so the corners of a contoured text looked bent at the wrong angle and, on a small contour, crossed the curve opposite (#1542).
+
 - Dependencies: rqrr 0.11 (lru 0.16, soundness advisory)
 
 ## 0.35.0 (2026-11-01)

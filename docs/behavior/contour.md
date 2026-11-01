@@ -48,7 +48,11 @@ step count, side and end colours, and the steps the file stores go
   step.
 - Corners: the offset outline's corners are mitred (sharp; corners under
   about 9 degrees are cut off), round, or bevelled. Contours from older
-  files, which have no corner setting, are round.
+  files, which have no corner setting, are round. A round corner's curve
+  leaves the straight side before it along that side and arrives at the
+  next side along it, so it runs on from the sides it joins and stays at
+  the contour's distance (#1542,
+  `shaping::tests::a_round_offset_corner_runs_on_from_its_sides`).
 - Colours: step `i` of the `n` drawn takes `accelerate(i / n, colours)`
   of the way from the object's fill (and outline) colour to the last
   step's colours, mixed directly or through the hues clockwise or
