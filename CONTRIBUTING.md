@@ -120,9 +120,10 @@ reviewers and maintainers work is in [`MAINTAINING.md`](MAINTAINING.md).
 - **Every member of the organization uses two-factor authentication**;
   GitHub removes members without it.
 - `main` is protected for everyone, owners included: every change comes
-  through a pull request with one approval from someone other than its
-  author and a green build, so no single person, and no single mistake,
-  reaches `main` alone. A bad merge is reverted, never rewritten.
+  through a pull request and is merged only when the required checks
+  pass. Changes to the build, the CI, the dependencies, the packaging and
+  the agents' instructions (the paths in `.github/CODEOWNERS`) also need
+  an owner's review. A bad merge is reverted, never rewritten.
 - Roles are for people who are active. A member who has not been active
   for six months is thanked and moved back to contributor, and can come
   back at any time.

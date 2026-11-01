@@ -125,7 +125,8 @@ hold:
   reads or writes files outside what the feature needs, touches secrets,
   adds a dependency, changes a build script or a workflow, or carries
   binary or obfuscated content, without a reason in the description that
-  you checked. Changes to `.github/workflows/` need the owner's review.
+  you checked. Changes to the paths in `.github/CODEOWNERS` need an
+  owner's review.
 - **Sign-off:** every commit has a `Signed-off-by:` line with the author's
   own name and address. A sign-off by a coding assistant does not count:
   the person certifies the origin, not the tool.
@@ -149,12 +150,20 @@ everything above holds. Thank the contributor either way.
 
 ### Merging (maintainers)
 
-- `main` is protected: a pull request needs one approval from someone other
-  than its author and a green build. Nobody pushes to `main` directly.
-- Merge so the contributor stays the author of their commits (merge or
-  rebase, not a squash that takes their name off). When you have to
-  change a contribution before merging, keep the contributor as the
-  author and say what you changed.
+- `main` is protected: every change comes through a pull request, and it
+  is merged only when the required checks (`test`, `app-test`) pass.
+  Nobody pushes to `main` directly. A pull request may be set to merge by
+  itself once they pass (auto-merge).
+- Pull requests that touch the paths in `.github/CODEOWNERS` (the CI and
+  its scripts, `Cargo.toml` and `Cargo.lock`, build scripts, vendored
+  crates, packaging, the licences, `AGENTS.md` and `CLAUDE.md`) also need
+  a review from an owner before they can be merged.
+- Read a contributor's pull request in full before merging it (Reviewing,
+  above), even though GitHub would merge it on green checks alone.
+- Squash, merge and rebase are all allowed; a squash keeps the pull
+  request's author as the commit's author. When you have to change a
+  contribution before merging, keep the contributor as the author and say
+  what you changed.
 - After merging: add the contributor to `CONTRIBUTORS.md` (first
   contribution), add a line to `CHANGELOG.md` under "Unreleased" with the
   issue number, and close the issue with a link to the pull request.

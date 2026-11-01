@@ -1,0 +1,28 @@
+# Changes to these paths need a review from the organization's owners
+# before they can be merged, whoever opens the pull request. They are the
+# ones that could change what the build runs, what it downloads, what the
+# downloads contain, or what coding agents are told to do. Everything else
+# is merged once the required checks pass (see MAINTAINING.md, Merging).
+
+# Continuous integration, its scripts and the Rust toolchain settings
+/.github/                 @tracedraw/owners
+/.cargo/                  @tracedraw/owners
+/rust-toolchain*          @tracedraw/owners
+/scripts/                 @tracedraw/owners
+/web/*.py                 @tracedraw/owners
+/web/*.sh                 @tracedraw/owners
+
+# Dependencies and build scripts, in every crate
+Cargo.toml                @tracedraw/owners
+Cargo.lock                @tracedraw/owners
+build.rs                  @tracedraw/owners
+/vendor/                  @tracedraw/owners
+
+# What the downloads and store packages contain
+/packaging/               @tracedraw/owners
+/fastlane/                @tracedraw/owners
+
+# Licences and the instructions coding agents follow
+/LICENSE-*                @tracedraw/owners
+/AGENTS.md                @tracedraw/owners
+/CLAUDE.md                @tracedraw/owners

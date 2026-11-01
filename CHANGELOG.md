@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Pull requests to `main` are merged once the required checks pass, by hand or by themselves; those that change the CI, the dependencies, build scripts, packaging, the licences or the coding agents' instructions also need an owner's review (`.github/CODEOWNERS`).
+
 - Roles in the `tracedraw` organization (contributor, reviewer, maintainer, owner) are set out in `CONTRIBUTING.md`, and `MAINTAINING.md` describes how reviewers and maintainers triage issues by priority, read attached files safely, keep feature requests for later, and review and merge pull requests. Maintainers commit under their own names; only the project's own account commits as TraceDraw Maintainers.
 
 - The project is credited to TraceDraw members and contributors everywhere (README, About box, licenses, installers, packages, the browser page and the store listings); commits by the maintainers are made as TraceDraw Maintainers.
