@@ -4935,9 +4935,11 @@ impl App {
     }
 
     /// 3-point tools: the base segment `a -> b` was dragged, `c` is the third
-    /// click. Rectangle and ellipse take the base as one side and `c` as the
-    /// height; the curve passes through `c`, a bow (an arc of a circle)
-    /// with `arc` (the constrain key held at the click, #934).
+    /// click. The rectangle takes the base as one side and `c` as the
+    /// height; the ellipse takes the base as its centre line (an axis)
+    /// and grows to `c` on both sides of it (#1511); the curve passes
+    /// through `c`, a bow (an arc of a circle) with `arc` (the constrain
+    /// key held at the click, #934).
     pub fn finish_three_point(&mut self, a: Point, b: Point, c: Point, arc: bool) {
         let base = b - a;
         let len = base.hypot();
@@ -4953,7 +4955,7 @@ impl App {
                 if height.abs() < 0.05 {
                     return;
                 }
-                let local = Rect::new(0.0, height.min(0.0), len, height.max(0.0));
+                let local = three_point_box(self.tool, len, height);
                 let kind = if self.tool == Tool::ThreePointRectangle {
                     ShapeKind::rect_with_corners(local, self.rect_corners)
                 } else {
@@ -8665,6 +8667,20 @@ pub(crate) fn cdr_font_faces_from(
             italic,
         })
         .collect()
+}
+
+/// The box a 3-point rectangle or ellipse takes, in the space of its
+/// base: the base runs along x from 0 to `len`, and `height` is how far
+/// the third point lies from it (signed, across the base). The rectangle
+/// has the base as one side and reaches `height` from it; the ellipse has
+/// the base as its centre line, an axis, and reaches `height` on both
+/// sides of it, as the tool's hint says (#1511).
+pub fn three_point_box(tool: Tool, len: f64, height: f64) -> Rect {
+    if tool == Tool::ThreePointEllipse {
+        Rect::new(0.0, -height.abs(), len, height.abs())
+    } else {
+        Rect::new(0.0, height.min(0.0), len, height.max(0.0))
+    }
 }
 
 /// The curve of the 3-point curve tool from `a` to `b` through `c`: a

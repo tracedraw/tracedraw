@@ -853,7 +853,7 @@ fn three_point_preview(
     match tool {
         Tool::ThreePointCurve => crate::app::three_point_curve(a, b, c, arc),
         _ => {
-            let local = Rect::new(0.0, height.min(0.0), len, height.max(0.0));
+            let local = crate::app::three_point_box(tool, len, height);
             let t = Affine::translate(a.to_vec2()) * Affine::rotate(base.atan2());
             let p = if tool == Tool::ThreePointEllipse {
                 tracedraw_core::geometry::ellipse_path(local)

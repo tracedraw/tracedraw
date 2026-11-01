@@ -3917,6 +3917,45 @@ fn ctrl_keeps_the_three_point_base_to_the_constrain_angle() {
     assert!(k[1].abs() < 1e-9 && k[2].abs() < 1e-9, "{t:?}");
 }
 
+/// A 3-point ellipse grows from the dragged line, its centre line, to
+/// the third click on both sides alike: the line is one axis from end to
+/// end and the click sets half the other. It used to stand to one side of
+/// the line, as a 3-point rectangle does (#1511). The rectangle keeps the
+/// line as one of its sides.
+#[test]
+fn a_three_point_ellipse_grows_from_its_centre_line_to_both_sides() {
+    let (ctx, mut app, first) = setup();
+    app.select(vec![first]);
+    app.delete_selection();
+    app.set_tool(Tool::ThreePointEllipse);
+    // Off the page's centre lines, which the points would snap to.
+    let (a, b) = (Point::new(100.0, 150.0), Point::new(160.0, 150.0));
+    let (sa, sb) = (app.view.to_screen(a), app.view.to_screen(b));
+    drag(&ctx, &mut app, sa, sb, Modifiers::NONE, Vec::new());
+    assert!(app.three_point_base.is_some(), "the line waits for a click");
+    click_page(&ctx, &mut app, Point::new(130.0, 170.0));
+    let id = *app.selection.first().expect("the ellipse");
+    let e = bounds(&app, id);
+    assert!(close(e.x0, 100.0) && close(e.x1, 160.0), "{e:?}");
+    assert!(
+        close(e.y0, 130.0) && close(e.y1, 170.0),
+        "20 mm on both sides of the line: {e:?}"
+    );
+    assert!(matches!(
+        app.doc().find_shape(id).map(|s| &s.kind),
+        Some(ShapeKind::Ellipse { .. })
+    ));
+    // The rectangle: the line is its bottom side, the click its top.
+    app.set_tool(Tool::ThreePointRectangle);
+    let (c, d) = (Point::new(100.0, 220.0), Point::new(160.0, 220.0));
+    let (sc, sd) = (app.view.to_screen(c), app.view.to_screen(d));
+    drag(&ctx, &mut app, sc, sd, Modifiers::NONE, Vec::new());
+    click_page(&ctx, &mut app, Point::new(130.0, 240.0));
+    let id = *app.selection.first().expect("the rectangle");
+    let r = bounds(&app, id);
+    assert!(close(r.y0, 220.0) && close(r.y1, 240.0), "{r:?}");
+}
+
 /// Ctrl held at the third click of a 3-point curve draws a bow: the arc
 /// of the circle through the three points, standing evenly on its chord
 /// wherever the third point is (#934). Without Ctrl the curve stays the
