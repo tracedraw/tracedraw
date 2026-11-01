@@ -156,7 +156,8 @@ pub fn set_export_size(st: &mut ExportState, side_mm: f64, typed: f64) {
 }
 
 /// Where a `.cdr` file that does not open right is sent in.
-pub const CDR_ISSUE: &str = "https://github.com/tracedraw/tracedraw/issues/new?template=cdr_file.yml";
+pub const CDR_ISSUE: &str =
+    "https://github.com/tracedraw/tracedraw/issues/new?template=cdr_file.yml";
 
 pub const PDF_STANDARDS: [&str; 4] = ["PDF 1.4", "PDF/X-1a:2003", "PDF/X-3:2003", "PDF/X-4"];
 

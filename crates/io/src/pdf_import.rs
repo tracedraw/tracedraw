@@ -245,7 +245,7 @@ fn decrypt_as_read(id: lopdf::ObjectId, object: &mut Object) -> Option<(lopdf::O
             if stream.content.is_empty() && stream.start_position.is_some() {
                 pass.late.push(id);
             } else if stream.dict.has_type(b"ObjStm") {
-                if let Ok(objects) = lopdf::ObjectStream::new(&mut stream.clone()) {
+                if let Ok(objects) = lopdf::ObjectStream::new(stream) {
                     pass.members = objects.objects.keys().copied().collect();
                 }
             }
@@ -263,12 +263,8 @@ fn load(bytes: &[u8], password: &str) -> Result<PdfDoc, ImportError> {
         return PdfDoc::load_mem(bytes).map_err(|e| ImportError::Failed(format!("PDF: {e}")));
     };
     let read = |filter: fn(lopdf::ObjectId, &mut Object) -> Option<(lopdf::ObjectId, Object)>| {
-        lopdf::Reader {
-            buffer: &hidden,
-            document: PdfDoc::new(),
-        }
-        .read(Some(filter))
-        .map_err(|e| ImportError::Failed(format!("PDF: {e}")))
+        PdfDoc::load_mem_with_options(&hidden, lopdf::LoadOptions::with_filter(filter))
+            .map_err(|e| ImportError::Failed(format!("PDF: {e}")))
     };
     let probe = read(dictionaries_only)?;
     let hidden_key = &HIDDEN_ENCRYPT[1..];
@@ -887,7 +883,7 @@ impl<'a> Importer<'a> {
             .and_then(|o| self.dict_of(o))
             .cloned()
             .unwrap_or_default();
-        let content = self.doc.get_page_content(page_id).unwrap_or_default();
+        let content = self.doc.get_page_content(page_id);
         let mut gs = GState {
             ctm: base,
             ..GState::default()
@@ -4503,6 +4499,36 @@ mod tests {
         let mut ids = IdSource::default();
         assert!(parse(b"hello", &mut ids).is_err());
         assert!(parse(b"%PDF-1.4 garbage", &mut ids).is_err());
+    }
+
+    /// A file nested far deeper than any real one (RUSTSEC-2026-0187: about
+    /// 10 000 levels took the whole program down with a stack overflow, which
+    /// cannot be caught) opens with an error or a document, never a crash. Each
+    /// way in is tried: an array and a dictionary in the catalog, an array in
+    /// the page's drawing and a string of nested parentheses.
+    #[test]
+    fn deeply_nested_objects_do_not_overflow_the_stack() {
+        const DEPTH: usize = 50_000;
+        let arrays = format!("{}{}", "[".repeat(DEPTH), "]".repeat(DEPTH));
+        let dicts = format!("{}{}", "<< /A ".repeat(DEPTH), ">>".repeat(DEPTH));
+        let parens = format!("({}{})", "(".repeat(DEPTH), ")".repeat(DEPTH));
+        let files = [
+            pdf(&[
+                format!("<< /Type /Catalog /Pages 2 0 R /X {arrays} >>"),
+                "<< /Type /Pages /Kids [] /Count 0 >>".to_string(),
+            ]),
+            pdf(&[
+                format!("<< /Type /Catalog /Pages 2 0 R /X {dicts} >>"),
+                "<< /Type /Pages /Kids [] /Count 0 >>".to_string(),
+            ]),
+            one_page(&format!("BT {arrays} TJ ET"), "<< >>", &[]),
+            one_page(&format!("BT {parens} Tj ET"), "<< >>", &[]),
+        ];
+        for bytes in files {
+            let mut ids = IdSource::default();
+            // Either answer is fine; reaching the next line is the test.
+            let _ = parse(&bytes, &mut ids);
+        }
     }
 
     // ----- Protected files -----

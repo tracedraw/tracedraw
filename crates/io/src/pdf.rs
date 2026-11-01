@@ -3486,8 +3486,13 @@ mod pdfx_tests {
         assert!(doc.clone().decrypt("wrong").is_err());
         // With the owner password it decrypts everything: the document
         // information and the page content.
-        let mut d = doc.clone();
-        d.decrypt("owner").expect("decrypt");
+        // (That reader keeps the objects of a file opened without its
+        // password aside, so the password is given when it opens.)
+        let d = lopdf::Document::load_mem_with_options(
+            &bytes,
+            lopdf::LoadOptions::with_password("owner"),
+        )
+        .expect("decrypt");
         let info = d
             .trailer
             .get(b"Info")
@@ -3500,8 +3505,7 @@ mod pdfx_tests {
             .expect("title");
         assert_eq!(title, b"Secret plan");
         let page = *d.get_pages().values().next().expect("page");
-        let content =
-            String::from_utf8_lossy(&d.get_page_content(page).expect("content")).into_owned();
+        let content = String::from_utf8_lossy(&d.get_page_content(page)).into_owned();
         assert!(content.contains(" rg") && content.contains(" l\n"));
         // The user password unwraps the same file key from /UE, and /Perms
         // decrypts with it to the permissions. (That reader's own check of
