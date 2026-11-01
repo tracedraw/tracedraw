@@ -895,10 +895,21 @@ fn selection_as_page(
     page.size = Size::new(w, h);
 }
 
+/// The indexes of the drawing's pages the Print dialog's settings print,
+/// in printing order: the whole drawing, the current page, the pages
+/// listed or the selection's page, odd or even ones only when asked
+/// (`PrintState::page_indexes`). `print_sheets` imposes these pages, and
+/// the Layout sketch with the booklet summary under it counts the same
+/// ones, so the counts match what prints (#788).
+pub fn printed_pages(app: &App, st: &PrintState) -> Vec<usize> {
+    let doc = app.engine.document();
+    let current = doc.pages.iter().position(|p| p.id == app.page).unwrap_or(0);
+    st.page_indexes(doc.pages.len(), current)
+}
+
 pub fn print_sheets(app: &App, st: &PrintState) -> Document {
     let mut doc = app.engine.document().clone();
-    let current = doc.pages.iter().position(|p| p.id == app.page).unwrap_or(0);
-    let keep = st.page_indexes(doc.pages.len(), current);
+    let keep = printed_pages(app, st);
     let mut i = 0;
     doc.pages.retain(|_| {
         i += 1;

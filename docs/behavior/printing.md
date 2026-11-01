@@ -246,7 +246,13 @@ same function (`export::print_sheets`).
   - Under the sketch: the pages, the blank pages added and the sheets of
     paper (each printed on both sides), and for perfect binding the
     signatures (`imposition::booklet_info`). The page range (Pages) picks
-    the pages that go into the booklet.
+    the pages that go into the booklet, and the sketch, its sheet count
+    and the summary count those pages only (the range, the list, odd or
+    even pages, the selection: `export::printed_pages`, the page set the
+    print imposes, through `ui::dialogs::printed_page_sizes`), not the
+    whole drawing: pages 1 to 20 of a hundred report 20 pages, 0 blanks
+    and 5 sheets (#788,
+    `ui::dialogs::booklet_fields_tests::the_summary_counts_the_pages_of_the_range`).
 - Back side (n-up and step and repeat, #387): the columns run right to
   left, so a page's place on the sheet mirrors its place on the front
   about the sheet's middle and it prints behind its front on a
@@ -305,6 +311,7 @@ With any mark on, a 12 mm margin (plus the bleed) surrounds the pages.
 - `imposition::tests::perfect_binding_folds_each_signature_on_its_own`
 - `imposition::tests::booklet_gap_and_creep_move_the_pages`
 - `ui::dialogs::booklet_fields_tests::the_binding_pictures_choose_and_the_summary_counts`
+- `ui::dialogs::booklet_fields_tests::the_summary_counts_the_pages_of_the_range`
 - `imposition::tests::n_up_fills_sheets_in_reading_order_and_scales_to_fit`
 - `imposition::tests::fitted_sheets_grow_with_marks_bleed_and_gutters`
 - `imposition::tests::imposing_places_and_clips_every_page`

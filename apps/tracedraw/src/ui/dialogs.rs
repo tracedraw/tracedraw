@@ -4444,18 +4444,9 @@ pub(crate) fn print_layout_fields(app: &App, ui: &mut Ui, st: &mut PrintState) {
             }
         });
         ui.add_space(8.0);
-        // A sketch of the first sheet and the sheet count.
-        let mut doc_pages: Vec<Size> = app.doc().pages.iter().map(|p| p.size).collect();
-        if !st.all_pages {
-            doc_pages = vec![app.page_size()];
-        }
-        // The selection prints as a page the size of the area it covers
-        // (#1001).
-        if st.range == 3 {
-            if let Some(size) = selection_print_size(app) {
-                doc_pages = vec![size];
-            }
-        }
+        // A sketch of the first sheet and the sheet count, for the pages
+        // the print puts on the sheets.
+        let doc_pages = printed_page_sizes(app, st);
         let options = crate::export::print_layout(app, st, app.doc());
         let plan = crate::imposition::plan(&doc_pages, &options);
         ui.vertical_centered(|ui| {
@@ -4522,6 +4513,26 @@ pub(crate) fn print_layout_fields(app: &App, ui: &mut Ui, st: &mut PrintState) {
             }
         });
     });
+}
+
+/// The sizes of the pages the print puts on the sheets, in printing
+/// order: the pages of the chosen range, list or odd or even choice
+/// (`export::printed_pages`, the same set `export::print_sheets`
+/// imposes), or the selection as one page the size of the area it covers
+/// (#1001). The Layout sketch, its sheet count and the booklet summary
+/// count these, so a booklet of pages 1 to 20 of a hundred reports twenty
+/// pages, not a hundred (#788).
+pub(crate) fn printed_page_sizes(app: &App, st: &PrintState) -> Vec<Size> {
+    if st.range == 3 {
+        if let Some(size) = selection_print_size(app) {
+            return vec![size];
+        }
+    }
+    let pages = &app.doc().pages;
+    crate::export::printed_pages(app, st)
+        .into_iter()
+        .filter_map(|i| pages.get(i).map(|p| p.size))
+        .collect()
 }
 
 /// The Booklet layout's fields under the layout grid: the binding (two
@@ -7290,6 +7301,101 @@ mod booklet_fields_tests {
         let o = crate::export::print_layout(&app, &st, app.doc());
         assert_eq!(o.booklet.binding, crate::imposition::Binding::PerfectBound);
         assert_eq!(o.layout, crate::imposition::Layout::Booklet);
+    }
+
+    /// The summary under the sketch counts the pages that print, not the
+    /// whole drawing: a booklet of pages 1 to 3 of six reports three
+    /// pages, one blank and one sheet, as the print makes; the sketch's
+    /// sheet count is the print's for a page list, odd pages only, the
+    /// current page and the selection (#788).
+    #[test]
+    fn the_summary_counts_the_pages_of_the_range() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        for _ in 0..5 {
+            app.add_page();
+        }
+        assert_eq!(app.doc().pages.len(), 6);
+        let mut st = PrintState {
+            layout_kind: 2,
+            all_pages: true,
+            range: 2,
+            pages: "1-3".into(),
+            ..Default::default()
+        };
+        let texts = |st: &mut PrintState| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(420.0, 900.0),
+                )),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| print_layout_fields(&app, ui, st));
+            out.textures_delta.clear();
+            out.shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let shown = texts(&mut st);
+        let of_range = booklet_summary(3, &st.booklet());
+        let of_drawing = booklet_summary(6, &st.booklet());
+        assert_ne!(of_range, of_drawing);
+        assert!(shown.contains(&of_range), "{shown:?}");
+        assert!(!shown.contains(&of_drawing), "{shown:?}");
+        let info = crate::imposition::booklet_info(3, &st.booklet());
+        assert_eq!((info.pages, info.blanks, info.sheets), (3, 1, 1));
+        // The sketch's sheet count is the print's.
+        let printed = crate::export::print_sheets(&app, &st).pages.len();
+        assert_eq!(printed, 2, "two sides of one sheet");
+        assert!(shown.contains(&trf("print.sheets", &[("n", &printed.to_string())])));
+        // The sketch and the print share their page set whatever the
+        // range: odd pages of the drawing, the current page, a list of
+        // even pages, the selection.
+        let id = app
+            .new_shape(tracedraw_core::document::ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(10.0, 10.0, 60.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.selection = vec![id];
+        for (range, pages, parity, expect) in [
+            (0, "", 1, 3),
+            (1, "", 0, 1),
+            (2, "2, 5, 6", 2, 2),
+            (3, "", 0, 1),
+        ] {
+            st.range = range;
+            st.pages = pages.into();
+            st.parity = parity;
+            let sizes = printed_page_sizes(&app, &st);
+            assert_eq!(
+                sizes.len(),
+                expect,
+                "range {range} {pages:?} parity {parity}"
+            );
+            let plan =
+                crate::imposition::plan(&sizes, &crate::export::print_layout(&app, &st, app.doc()));
+            let printed = crate::export::print_sheets(&app, &st);
+            assert_eq!(plan.len(), printed.pages.len(), "range {range}");
+            assert_eq!(
+                plan.first().map(|s| s.size),
+                printed.pages.first().map(|p| p.size),
+                "range {range}"
+            );
+        }
+        // The selection prints as a page the size of the area it covers
+        // (the outline included), not the page's.
+        let area = crate::export::print_area(app.selected_rc().iter())
+            .map(|r| r.size())
+            .expect("the selection prints");
+        assert_eq!(printed_page_sizes(&app, &st), vec![area]);
+        assert!(area.width < app.page_size().width);
     }
 }
 
