@@ -4792,8 +4792,15 @@ impl Document {
     /// Write the `.tdraw` JSON of format `version` to `w` as it is made.
     /// The current format goes straight to the writer; only an older one
     /// builds the whole tree in memory first (many times the drawing's
-    /// size), to take it down.
+    /// size), to take it down. Every number written is a number: a value
+    /// that is not one (a division by zero somewhere, or an import with
+    /// a number too large to hold, can leave one in a coordinate, an
+    /// outline width, a transparency, a colour component or a font size)
+    /// is written as 0, not as `null`, which no reader before 0.35 took
+    /// for a number, so one such value made the whole file refuse to
+    /// open in those versions and the drawing was lost.
     pub fn write_json_version<W: std::io::Write>(&self, w: W, version: u32) -> Result<()> {
+        use crate::finite::{Finite, FiniteSerializer};
         if (version as usize) >= DOWN_STEPS.len() {
             #[derive(Serialize)]
             struct Versioned<'a> {
@@ -4801,16 +4808,15 @@ impl Document {
                 doc: &'a Document,
                 format_version: u32,
             }
-            serde_json::to_writer_pretty(
-                w,
-                &Versioned {
-                    doc: self,
-                    format_version: TDRAW_FORMAT_VERSION,
-                },
-            )?;
+            let mut ser = serde_json::Serializer::pretty(w);
+            Versioned {
+                doc: self,
+                format_version: TDRAW_FORMAT_VERSION,
+            }
+            .serialize(FiniteSerializer(&mut ser))?;
             return Ok(());
         }
-        let mut v = serde_json::to_value(self)?;
+        let mut v = serde_json::to_value(Finite(self))?;
         if let serde_json::Value::Object(m) = &mut v {
             m.insert(
                 FORMAT_VERSION_KEY.into(),
@@ -5100,11 +5106,112 @@ mod tests {
 
     /// A drawing with a value that is not a number anywhere in it (a
     /// division by zero's result, an imported number too large to hold)
-    /// is saved with `null` for that value, and the file still opens:
-    /// the value is read as 0 and everything else is as it was. Such a
-    /// value made the whole file refuse to open, and the drawing was
-    /// lost. A `null` where something other than a number belongs is
-    /// still an error.
+    /// is saved with 0 for that value, so the file opens in every
+    /// version: the writer wrote `null`, which no reader before 0.35
+    /// took for a number, so one such value made the whole file refuse
+    /// to open there and the drawing was lost. The `null`s in the file
+    /// are the settings that are not there, and nothing else.
+    #[test]
+    fn a_value_that_is_not_a_number_is_saved_as_zero() {
+        fn nulls(v: &serde_json::Value, key: Option<&str>, out: &mut Vec<String>) {
+            match v {
+                serde_json::Value::Null => {
+                    if !key.is_some_and(|k| NULL_SETTINGS.contains(&k)) {
+                        out.push(key.unwrap_or("[]").to_string());
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    items.iter().for_each(|x| nulls(x, None, out));
+                }
+                serde_json::Value::Object(m) => {
+                    m.iter().for_each(|(k, x)| nulls(x, Some(k), out));
+                }
+                _ => {}
+            }
+        }
+        for v in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut doc = Document::default();
+            let mut rect = Shape::new(
+                ShapeId(1),
+                ShapeKind::Rect {
+                    rect: crate::geometry::Rect::new(5.0, 5.0, v, 30.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            rect.transform = crate::geometry::Affine::new([1.0, 0.0, 0.0, 1.0, v, 0.0]);
+            rect.stroke = Some(Stroke::new(crate::Color::BLACK, v));
+            rect.opacity = v;
+            let mut text = Shape::new(
+                ShapeId(2),
+                ShapeKind::Text {
+                    spans: vec![TextSpan::new("Hello", "Sans", v)],
+                    origin: crate::geometry::Point::new(10.0, 60.0),
+                    frame: None,
+                    align: TextAlign::Left,
+                    para: ParagraphStyle::default(),
+                    on_path: None,
+                },
+            );
+            text.fill = Fill::Solid(crate::Color::Rgb {
+                r: v as f32,
+                g: 0.5,
+                b: 0.0,
+            });
+            doc.pages[0].layers[0].shapes = vec![rect, text];
+            doc.pages[0].size = crate::geometry::Size::new(100.0, v);
+            for version in [TDRAW_FORMAT_VERSION, 0] {
+                let json = doc.to_json_version(version).expect("json");
+                let tree: serde_json::Value = serde_json::from_str(&json).expect("parses");
+                let mut lost = Vec::new();
+                nulls(&tree, None, &mut lost);
+                assert!(lost.is_empty(), "version {version}: null under {lost:?}");
+                assert_eq!(tree["pages"][0]["size"]["height"], serde_json::json!(0.0));
+                let shape = &tree["pages"][0]["layers"][0]["shapes"][0];
+                assert_eq!(shape["opacity"], serde_json::json!(0.0));
+                assert_eq!(shape["stroke"]["width"], serde_json::json!(0.0));
+                let back = Document::from_json(&json).expect("opens again");
+                let shapes = &back.pages[0].layers[0].shapes;
+                assert_eq!(shapes.len(), 2);
+                let ShapeKind::Rect { rect, .. } = &shapes[0].kind else {
+                    panic!("a rectangle");
+                };
+                assert_eq!((rect.x0, rect.x1, rect.y1), (5.0, 0.0, 30.0));
+                assert_eq!(shapes[0].transform.as_coeffs()[4], 0.0);
+                assert_eq!(shapes[0].opacity, 0.0);
+                let ShapeKind::Text { spans, .. } = &shapes[1].kind else {
+                    panic!("a text");
+                };
+                assert_eq!((spans[0].text.as_str(), spans[0].size_pt), ("Hello", 0.0));
+                assert_eq!(back.pages[0].size.height, 0.0);
+            }
+        }
+        // A setting that is not there is still `null`, as the format has it.
+        fn settings(v: &serde_json::Value, key: Option<&str>, n: &mut usize) {
+            match v {
+                serde_json::Value::Null if key.is_some_and(|k| NULL_SETTINGS.contains(&k)) => {
+                    *n += 1;
+                }
+                serde_json::Value::Array(items) => {
+                    items.iter().for_each(|x| settings(x, None, n));
+                }
+                serde_json::Value::Object(m) => {
+                    m.iter().for_each(|(k, x)| settings(x, Some(k), n));
+                }
+                _ => {}
+            }
+        }
+        let json = Document::default().to_json().expect("json");
+        let tree: serde_json::Value = serde_json::from_str(&json).expect("parses");
+        let mut n = 0;
+        settings(&tree, None, &mut n);
+        assert!(n > 0, "{json}");
+    }
+
+    /// A `.tdraw` file saved before 0.35 with `null` for a value that is
+    /// not a number still opens: the value is read as 0 and everything
+    /// else is as it was. A `null` where something other than a number
+    /// belongs is still an error.
     #[test]
     fn a_file_with_a_value_that_is_not_a_number_still_opens() {
         let bad = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
