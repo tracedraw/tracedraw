@@ -25,7 +25,9 @@ pub(crate) fn export_document(app: &App, st: &ExportState) -> (Document, Rect) {
         let l = tmp.pages[0].layers[0].id;
         for s in app.selected_shapes() {
             let mut c = s.clone();
-            c.transform_by(Affine::translate((-bounds.x0, -bounds.y0)));
+            let shift = Affine::translate((-bounds.x0, -bounds.y0));
+            c.transform_by(shift);
+            carry_blend_ends(&mut c, shift);
             if let Ok(layer) = tmp.layer_mut(l) {
                 layer.shapes.push(c);
             }
@@ -865,6 +867,87 @@ pub fn print_area<'a>(shapes: impl Iterator<Item = &'a tracedraw_core::Shape>) -
     ))
 }
 
+/// The copies of their end objects that the blends of `s` (and of the
+/// objects inside it) keep, in page space, moved by `t` along with `s`:
+/// a page-space transformation of the start object alone, with no end
+/// object to bring the copy up to date from (the end was not exported
+/// with the start), would otherwise leave the steps running to where the
+/// end used to be (#1541).
+fn carry_blend_ends(s: &mut tracedraw_core::Shape, t: Affine) {
+    for e in s.effects.iter_mut() {
+        if let tracedraw_core::live::Effect::Blend { end, .. } = e {
+            end.transform_by(t);
+        }
+    }
+    match &mut s.kind {
+        ShapeKind::Group { children } => children.iter_mut().for_each(|c| carry_blend_ends(c, t)),
+        ShapeKind::ClipFrame { frame, contents } => {
+            carry_blend_ends(frame, t);
+            contents.iter_mut().for_each(|c| carry_blend_ends(c, t));
+        }
+        _ => {}
+    }
+}
+
+/// The copies of their end objects that the blends of `doc` keep brought
+/// up to date from the end objects themselves, as the editor does after
+/// every change (`App::refresh_blends`). The sheets are made from a copy
+/// of the drawing whose objects are moved, shrunk and recoloured outside
+/// the editor (Fit to page, the selection as the page, a negative, text
+/// in black, spot inks as CMYK), and a blend evaluated from a stale copy
+/// ran its steps to where the end object used to be, in the colour it
+/// used to have (#1541).
+fn refresh_blend_ends(doc: &mut Document) {
+    use tracedraw_core::live::Effect;
+    fn starts(s: &tracedraw_core::Shape, out: &mut Vec<(ShapeId, ShapeId)>) {
+        for e in &s.effects {
+            if let Effect::Blend {
+                end_id: Some(end), ..
+            } = e
+            {
+                out.push((s.id, *end));
+            }
+        }
+        match &s.kind {
+            ShapeKind::Group { children } => children.iter().for_each(|c| starts(c, out)),
+            ShapeKind::ClipFrame { frame, contents } => {
+                starts(frame, out);
+                contents.iter().for_each(|c| starts(c, out));
+            }
+            _ => {}
+        }
+    }
+    let mut pairs = Vec::new();
+    for layer in doc.all_layers() {
+        for s in &layer.shapes {
+            starts(s, &mut pairs);
+        }
+    }
+    for (start, end) in pairs {
+        // An end object that is not printed (not selected, say) leaves the
+        // copy as it is, as in the editor.
+        let Some(mut copy) = doc.shape_on_page(end) else {
+            continue;
+        };
+        copy.effects.clear();
+        let Some(s) = doc.find_shape_mut(start) else {
+            continue;
+        };
+        for e in s.effects.iter_mut() {
+            if let Effect::Blend {
+                end: kept,
+                end_id: Some(id),
+                ..
+            } = e
+            {
+                if *id == end {
+                    **kept = copy.clone();
+                }
+            }
+        }
+    }
+}
+
 /// The area the objects left on `page` and in the `master` layers cover
 /// (what prints of them: visible objects of visible, printable layers,
 /// their outlines and live effects included) made the page: the page
@@ -955,6 +1038,8 @@ pub fn print_sheets(app: &App, st: &PrintState) -> Document {
             }
         }
     }
+    // The blends' steps follow the objects as printed (#1541).
+    refresh_blend_ends(&mut doc);
     let options = print_layout(app, st, &doc);
     let mut doc = crate::imposition::impose(&doc, &options);
     for page in doc.pages.iter_mut() {
@@ -1307,6 +1392,13 @@ pub fn map_colors(
     fill(&mut s.fill, f);
     if let Some(st) = &mut s.stroke {
         st.color = f(st.color);
+    }
+    // The copy of its end object a blend keeps: the steps run to the
+    // end's colour as mapped (#1541).
+    for e in s.effects.iter_mut() {
+        if let tracedraw_core::live::Effect::Blend { end, .. } = e {
+            map_colors(end, f);
+        }
     }
     match &mut s.kind {
         ShapeKind::Group { children } => children.iter_mut().for_each(|c| map_colors(c, f)),
@@ -3306,6 +3398,144 @@ mod tests {
         let before = page.clone();
         fit_contents_to_page(&mut page, false);
         assert_eq!(page, before);
+    }
+
+    /// A blend prints as it is drawn when the print moves or recolours
+    /// its objects: with Fit to page (the end object running off the
+    /// page), with the selection printed as the page, and as a negative,
+    /// the steps lie between the start and the end as printed and their
+    /// colours run between the printed colours. The steps were evaluated
+    /// from the copy of the end object the blend keeps, which the print
+    /// left where (and as) it was on the page (#1541).
+    #[test]
+    fn a_blend_prints_between_its_objects_as_printed() {
+        use tracedraw_core::{live::Effect, Color, Fill};
+        let mut app = App::headless();
+        let square = |app: &mut App, r: Rect, c: Color| {
+            let id = app
+                .new_shape(ShapeKind::Rect {
+                    rect: r,
+                    radius: 0.0,
+                    corners: None,
+                })
+                .expect("square");
+            app.run(Command::SetFill {
+                shapes: vec![id],
+                fill: Fill::Solid(c),
+            });
+            id
+        };
+        // On an A4 page: the start inside, the end running off the right.
+        let a = square(
+            &mut app,
+            Rect::new(20.0, 100.0, 40.0, 120.0),
+            Color::rgb8(255, 0, 0),
+        );
+        let b = square(
+            &mut app,
+            Rect::new(180.0, 100.0, 260.0, 180.0),
+            Color::rgb8(0, 0, 255),
+        );
+        app.select(vec![a, b]);
+        app.blend_selection(3, 0.0, 0.0, 0.0);
+        app.refresh_blends();
+        app.selection = vec![a, b];
+        // The start, the end and the steps of the first sheet, on the
+        // sheet: (bounds, colour) each.
+        let printed_blend = |doc: &Document| {
+            let mut start = None;
+            let mut end = None;
+            let mut steps = Vec::new();
+            for c in doc.pages[0].layers.iter().flat_map(|l| &l.shapes) {
+                let ShapeKind::ClipFrame { contents, .. } = &c.kind else {
+                    continue;
+                };
+                for s in contents {
+                    let on_sheet = |s: &tracedraw_core::Shape| {
+                        let mut s = s.clone();
+                        s.transform_by(c.transform);
+                        (s.bounds(), s.fill.preview_color().expect("a colour"))
+                    };
+                    if s.effects.iter().any(|e| matches!(e, Effect::Blend { .. })) {
+                        let ev = tracedraw_core::live::evaluate(s);
+                        start = Some(on_sheet(s));
+                        steps.extend(ev.below.iter().chain(&ev.above).map(on_sheet));
+                    } else if s.effects.is_empty() {
+                        end = Some(on_sheet(s));
+                    }
+                }
+            }
+            (start.expect("start"), end.expect("end"), steps)
+        };
+        let between = |(start, end, steps): &((Rect, Color), (Rect, Color), Vec<(Rect, Color)>)| {
+            assert_eq!(steps.len(), 3);
+            let (s, e) = (start.0.center(), end.0.center());
+            // From the start to the end, the middle step half way.
+            for (i, (b, _)) in steps.iter().enumerate() {
+                let want = s.lerp(e, (i + 1) as f64 / 4.0);
+                let got = b.center();
+                assert!((got - want).hypot() < 1e-6, "{i}: {got:?}, not {want:?}");
+            }
+            let [r0, g0, b0] = start.1.to_rgb8();
+            let [r1, g1, b1] = end.1.to_rgb8();
+            let [r, g, bl] = steps[1].1.to_rgb8();
+            let mid = |x: u8, y: u8| (x as i32 + y as i32) / 2;
+            assert!(
+                (r as i32 - mid(r0, r1)).abs() <= 1
+                    && (g as i32 - mid(g0, g1)).abs() <= 1
+                    && (bl as i32 - mid(b0, b1)).abs() <= 1,
+                "{:?} between {:?} and {:?}",
+                steps[1].1,
+                start.1,
+                end.1
+            );
+        };
+        let fit = PrintState {
+            fit_to_page: true,
+            ..PrintState::default()
+        };
+        let p = printed_blend(&print_sheets(&app, &fit));
+        assert!(
+            p.1 .0.x1 <= 210.0 + 1e-6,
+            "shrunk onto the page: {:?}",
+            p.1 .0
+        );
+        between(&p);
+        let selection = PrintState {
+            range: 3,
+            ..PrintState::default()
+        };
+        between(&printed_blend(&print_sheets(&app, &selection)));
+        let negative = PrintState {
+            invert: true,
+            ..PrintState::default()
+        };
+        let p = printed_blend(&print_sheets(&app, &negative));
+        assert_eq!(p.0 .1.to_rgb8(), [0, 255, 255]);
+        between(&p);
+        // Exported alone, the start keeps its steps running to the end's
+        // place beside it.
+        app.selection = vec![a];
+        let (doc, bounds) = export_document(
+            &app,
+            &ExportState {
+                selection_only: true,
+                ..ExportState::default()
+            },
+        );
+        let s = doc.pages[0].layers[0].shapes[0].clone();
+        let ev = tracedraw_core::live::evaluate(&s);
+        let last = ev
+            .above
+            .last()
+            .or(ev.below.first())
+            .expect("steps")
+            .bounds()
+            .center();
+        // Moved with the start: the last step three quarters of the way
+        // from the start's centre (30, 110) to the end's (220, 140).
+        let want = tracedraw_core::geometry::Point::new(172.5 - bounds.x0, 132.5 - bounds.y0);
+        assert!((last - want).hypot() < 1e-6, "{last:?}, not {want:?}");
     }
 }
 
