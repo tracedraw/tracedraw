@@ -139,6 +139,65 @@ fn plate_names(doc: &Document) -> Vec<String> {
     names
 }
 
+/// The smallest and largest stretch of the page a Transform handle sets,
+/// as a factor.
+const STRETCH_MIN: f64 = 0.01;
+const STRETCH_MAX: f64 = 10.0;
+
+/// A Transform handle `(hx, hy)` (-1, 0 or 1 on each axis) dragged by
+/// `(dx, dy)` mm (x right, y up) with the page's cell `c` on the sheet:
+/// the side under the handle follows the pointer and the opposite side
+/// stays put, so the stretch grows by the move and the middle by half of
+/// it. A side handle stretches its axis alone; a corner handle keeps the
+/// page's proportions, both axes by the one factor of the axis the
+/// pointer moved most, so a drawing fitted by its corners is not
+/// distorted (#1543).
+pub fn drag_transform_handle(
+    st: &mut PrintState,
+    (hx, hy): (i8, i8),
+    c: tracedraw_core::geometry::Rect,
+    dx: f64,
+    dy: f64,
+) {
+    if !(dx.is_finite() && dy.is_finite()) || c.width() <= 1e-6 || c.height() <= 1e-6 {
+        return;
+    }
+    // The factor each axis asks for on its own.
+    let kx = (c.width() + f64::from(hx) * dx).max(1.0) / c.width();
+    let ky = (c.height() + f64::from(hy) * dy).max(1.0) / c.height();
+    let (kx, ky) = match (hx, hy) {
+        (0, _) => (1.0, ky),
+        (_, 0) => (kx, 1.0),
+        _ => {
+            // A corner: one factor for both, kept within the range on
+            // both axes so they stay in step.
+            let k = if (kx - 1.0).abs() >= (ky - 1.0).abs() {
+                kx
+            } else {
+                ky
+            };
+            let (sx, sy) = (st.art_stretch.0.max(1e-9), st.art_stretch.1.max(1e-9));
+            let low = (STRETCH_MIN / sx).max(STRETCH_MIN / sy);
+            let high = (STRETCH_MAX / sx).min(STRETCH_MAX / sy);
+            let k = if low <= high { k.clamp(low, high) } else { 1.0 };
+            (k, k)
+        }
+    };
+    if hx != 0 {
+        let before = st.art_stretch.0;
+        st.art_stretch.0 = (before * kx).clamp(STRETCH_MIN, STRETCH_MAX);
+        // The opposite side stays: the middle moves by half the growth.
+        let grown = c.width() * (st.art_stretch.0 / before.max(1e-9) - 1.0);
+        st.art_offset.0 += f64::from(hx) * grown / 2.0;
+    }
+    if hy != 0 {
+        let before = st.art_stretch.1;
+        st.art_stretch.1 = (before * ky).clamp(STRETCH_MIN, STRETCH_MAX);
+        let grown = c.height() * (st.art_stretch.1 / before.max(1e-9) - 1.0);
+        st.art_offset.1 += f64::from(hy) * grown / 2.0;
+    }
+}
+
 /// The id of the options panel at the left of Print Preview.
 const PREVIEW_OPTIONS: &str = "print_preview_options";
 /// The options panel's width at first, its narrowest and the widest its
@@ -599,22 +658,10 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                         (None, None) => egui::CursorIcon::Move,
                     });
                 }
-                if let (true, Some((hx, hy)), Some(c)) = (resp.dragged(), pv.handle_drag, cell) {
-                    // A side follows the pointer, the opposite one stays:
-                    // the stretch grows by the move, the middle by half.
+                if let (true, Some(handle), Some(c)) = (resp.dragged(), pv.handle_drag, cell) {
                     let d = resp.drag_delta();
                     let (dx, dy) = (f64::from(d.x) / zoom, -f64::from(d.y) / zoom);
-                    let st = &mut pv.st;
-                    if hx != 0 && c.width() > 1e-6 {
-                        let w = (c.width() + f64::from(hx) * dx).max(1.0);
-                        st.art_stretch.0 = (st.art_stretch.0 * w / c.width()).clamp(0.01, 10.0);
-                        st.art_offset.0 += dx / 2.0;
-                    }
-                    if hy != 0 && c.height() > 1e-6 {
-                        let h = (c.height() + f64::from(hy) * dy).max(1.0);
-                        st.art_stretch.1 = (st.art_stretch.1 * h / c.height()).clamp(0.01, 10.0);
-                        st.art_offset.1 += dy / 2.0;
-                    }
+                    drag_transform_handle(&mut pv.st, handle, c, dx, dy);
                 } else if resp.dragged() {
                     let d = resp.drag_delta();
                     match pv.margin_drag {
@@ -1023,6 +1070,76 @@ mod tests {
         assert!(all_pages.x < 330.0 && all_pages.y > printer.y + 15.0);
         assert!(at(&tr("print.collate")).is_some());
         assert!(at(&tr("print.printer")).is_some_and(|p| p.y < all_pages.y));
+    }
+
+    /// Transform's corner handles keep the page's proportions: both
+    /// stretches grow by the one factor and the opposite corner stays
+    /// put; a side handle stretches its axis alone. A corner stretched
+    /// each axis by its own move, so a drawing fitted to the sheet by a
+    /// corner came out distorted (#1543).
+    #[test]
+    fn a_corner_handle_keeps_the_page_s_proportions() {
+        let cell = tracedraw_core::geometry::Rect::new(10.0, 10.0, 110.0, 160.0);
+        let mut st = PrintState::default();
+        // The top right corner 20 mm right and 5 mm up: the width's 20 %
+        // wins and the height follows it.
+        drag_transform_handle(&mut st, (1, 1), cell, 20.0, 5.0);
+        assert!(
+            (st.art_stretch.0 - 1.2).abs() < 1e-9,
+            "{:?}",
+            st.art_stretch
+        );
+        assert!(
+            (st.art_stretch.1 - 1.2).abs() < 1e-9,
+            "{:?}",
+            st.art_stretch
+        );
+        // The bottom left corner stays where it was: the middle moves by
+        // half the growth on each axis.
+        assert!((st.art_offset.0 - 10.0).abs() < 1e-9, "{:?}", st.art_offset);
+        assert!((st.art_offset.1 - 15.0).abs() < 1e-9, "{:?}", st.art_offset);
+        // Inwards from the bottom left corner: both shrink alike.
+        drag_transform_handle(&mut st, (-1, -1), cell, 10.0, 60.0);
+        assert!(
+            (st.art_stretch.0 - st.art_stretch.1).abs() < 1e-9,
+            "{:?}",
+            st.art_stretch
+        );
+        assert!(st.art_stretch.0 < 1.2, "{:?}", st.art_stretch);
+        // A side handle: its axis alone, the other untouched.
+        let mut st = PrintState::default();
+        drag_transform_handle(&mut st, (-1, 0), cell, -30.0, 7.0);
+        assert!(
+            (st.art_stretch.0 - 1.3).abs() < 1e-9,
+            "{:?}",
+            st.art_stretch
+        );
+        assert_eq!(st.art_stretch.1, 1.0);
+        assert!((st.art_offset.0 + 15.0).abs() < 1e-9, "{:?}", st.art_offset);
+        assert_eq!(st.art_offset.1, 0.0);
+        drag_transform_handle(&mut st, (0, 1), cell, -30.0, 15.0);
+        assert!(
+            (st.art_stretch.1 - 1.1).abs() < 1e-9,
+            "{:?}",
+            st.art_stretch
+        );
+        assert!(
+            (st.art_stretch.0 - 1.3).abs() < 1e-9,
+            "{:?}",
+            st.art_stretch
+        );
+        // Nothing moves on a move that is not a number or an empty cell.
+        let before = st.clone();
+        drag_transform_handle(&mut st, (1, 1), cell, f64::NAN, 1.0);
+        drag_transform_handle(
+            &mut st,
+            (1, 1),
+            tracedraw_core::geometry::Rect::new(0.0, 0.0, 0.0, 10.0),
+            1.0,
+            1.0,
+        );
+        assert_eq!(st.art_stretch, before.art_stretch);
+        assert_eq!(st.art_offset, before.art_offset);
     }
 
     #[test]

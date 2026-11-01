@@ -209,11 +209,14 @@ same function (`export::print_sheets`).
   of the sheet by it, its clip and marks with it (#536,
   `export::tests::the_artwork_moved_in_print_preview_prints_moved`).
 - Transform (left panel, off at first) draws eight handles around the
-  artwork's cell: a corner or side handle stretches it on that axis (the
-  opposite side stays put, the resize cursor shows), a drag inside moves
-  it; the stretch shows as x and y percentages there, typed or reset to
-  100 % (#595). The handles come before the margin lines, which come
-  before moving.
+  artwork's cell: a side handle stretches it on that axis, a corner
+  handle scales it keeping its proportions (both axes by the factor of
+  the axis the pointer moved most; #1543,
+  `print_preview::tests::a_corner_handle_keeps_the_page_s_proportions`),
+  the opposite side or corner staying put and the resize cursor showing;
+  a drag inside moves it; the stretch shows as x and y percentages
+  there, typed or reset to 100 % (#595). The handles come before the
+  margin lines, which come before moving.
 - Stretch to fill (a fixed sheet): the pages stretch on each axis on
   their own to fill the room inside the paper margins (#591,
   `imposition::tests::pages_stretch_to_fill_and_follow_the_preview_transform`).
