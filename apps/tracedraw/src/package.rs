@@ -847,7 +847,10 @@ mod tests {
         assert_eq!(links(app.doc()), before);
         assert!(!r.folder.exists(), "the work folder is removed");
         let mut archive = zip::ZipArchive::new(std::io::Cursor::new(zip)).expect("a zip");
-        let names: Vec<String> = archive.file_names().map(str::to_string).collect();
+        let names: Vec<String> = archive
+            .file_names()
+            .map(|n| n.expect("name").into_owned())
+            .collect();
         for needed in [
             "Poster/Poster.tdraw",
             "Poster/Poster.pdf",

@@ -770,7 +770,11 @@ fn files_are_laid_out_as_the_versions_have_them() {
         }
         if v >= 14 {
             let z = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).expect("zip");
-            let names: Vec<&str> = z.file_names().collect();
+            let owned: Vec<String> = z
+                .file_names()
+                .map(|n| n.expect("name").into_owned())
+                .collect();
+            let names: Vec<&str> = owned.iter().map(String::as_str).collect();
             if v < 16 {
                 // The RIFF stream first and stored; without pictures the
                 // summary, names and link list follow.
@@ -1566,7 +1570,7 @@ fn version_16_and_later_files_are_a_complete_package() {
         // open with it.
         {
             let mut first = z.by_index(0).expect("first member");
-            assert_eq!(first.name(), "mimetype", "{v}");
+            assert_eq!(first.name().expect("name"), "mimetype", "{v}");
             assert_eq!(first.compression(), zip::CompressionMethod::Stored, "{v}");
             let mut t = String::new();
             first.read_to_string(&mut t).expect("text");
@@ -1611,7 +1615,9 @@ fn version_16_and_later_files_are_a_complete_package() {
     // root file only.
     let bytes = document_to_cdr_version(&doc, 17);
     let z = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).expect("zip");
-    assert!(!z.file_names().any(|n| n.starts_with("previews/")));
+    assert!(!z
+        .file_names()
+        .any(|n| n.expect("name").starts_with("previews/")));
 }
 
 #[test]
@@ -1708,7 +1714,10 @@ fn every_version_writes_what_files_of_that_version_hold() {
         }
         assert!(!has("DISP") && !has("uil"), "{v}");
         let mut z = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).expect("zip");
-        let names: Vec<String> = z.file_names().map(String::from).collect();
+        let names: Vec<String> = z
+            .file_names()
+            .map(|n| n.expect("name").into_owned())
+            .collect();
         if v < 16 {
             for n in [
                 "content/riffData.cdr",
@@ -3580,9 +3589,13 @@ fn the_package_lists_the_text_faces_and_embeds_those_allowed() {
         .map(|c| c.unwrap_or('?'))
         .collect();
         assert_eq!(family, "Selawik");
-        let embedded = z.file_names().any(|n| n == "embed/embedding0");
+        let embedded = z
+            .file_names()
+            .any(|n| n.expect("name") == "embed/embedding0");
         assert_eq!(embedded, embed);
-        assert!(!z.file_names().any(|n| n == "embed/embedding1"));
+        assert!(!z
+            .file_names()
+            .any(|n| n.expect("name") == "embed/embedding1"));
         let (back, rep) = crate::open_bytes(&bytes, "fonts").expect("reads back");
         if embed {
             let mut m = Vec::new();
@@ -3604,9 +3617,10 @@ fn the_package_lists_the_text_faces_and_embeds_those_allowed() {
     };
     let bytes = document_to_cdr_version_with(&doc, 15, &previews);
     let z = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).expect("zip");
-    assert!(!z
-        .file_names()
-        .any(|n| n.starts_with("font/") || n.starts_with("embed/")));
+    assert!(!z.file_names().any(|n| {
+        let n = n.expect("name");
+        n.starts_with("font/") || n.starts_with("embed/")
+    }));
 }
 
 /// The faces embedding leaves out, by family and reason (#1219): a font
@@ -3739,7 +3753,11 @@ fn embedded_fonts_carry_the_drawings_font_ids() {
         let mut expected = vec![selawik, selawik, missing];
         expected.sort_unstable();
         assert_eq!(numbers, expected, "{v}: {font_ids:?}");
-        assert!(!z.file_names().any(|n| n == "embed/embedding2"), "{v}");
+        assert!(
+            !z.file_names()
+                .any(|n| n.expect("name") == "embed/embedding2"),
+            "{v}"
+        );
         for (n, (font, style)) in [(REGULAR, "Regular"), (BOLD, "Bold")].iter().enumerate() {
             let m = read(&mut z, &format!("embed/embedding{n}"));
             let eot = &m[2705..];
@@ -4635,8 +4653,12 @@ fn a_font_file_two_faces_share_is_embedded_once() {
     };
     let bytes = document_to_cdr_version_with(&doc_with(Vec::new()), NEWEST_VERSION, &previews);
     let z = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).expect("zip");
-    assert!(z.file_names().any(|n| n == "embed/embedding0"));
-    assert!(!z.file_names().any(|n| n == "embed/embedding1"));
+    assert!(z
+        .file_names()
+        .any(|n| n.expect("name") == "embed/embedding0"));
+    assert!(!z
+        .file_names()
+        .any(|n| n.expect("name") == "embed/embedding1"));
     let (back, _) = crate::open_bytes(&bytes, "shared").expect("reads back");
     assert_eq!(back.fonts.len(), 1);
     assert_eq!(back.fonts[0].data.as_slice(), FONT);
@@ -5367,7 +5389,7 @@ fn repack(bytes: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
     let mut done = false;
     for i in 0..archive.len() {
         let mut m = archive.by_index(i).expect("a member");
-        let name = m.name().to_string();
+        let name = m.name().expect("name").into_owned();
         let mut data = Vec::new();
         m.read_to_end(&mut data).expect("reads");
         if !done {

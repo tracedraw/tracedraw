@@ -314,7 +314,7 @@ fn records_and_blends(bytes: &[u8]) -> Vec<u8> {
         return bytes.to_vec();
     };
     let own = |name: &str| name.starts_with("tracedraw/") && name != "tracedraw/blends.json";
-    if !z.file_names().any(own) {
+    if !z.file_names().any(|n| own(&n.expect("name"))) {
         return bytes.to_vec();
     }
     let mut out = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
@@ -322,7 +322,7 @@ fn records_and_blends(bytes: &[u8]) -> Vec<u8> {
         zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     for i in 0..z.len() {
         let mut f = z.by_index(i).expect("member");
-        let name = f.name().to_string();
+        let name = f.name().expect("name").into_owned();
         if own(&name) {
             continue;
         }
@@ -1875,7 +1875,7 @@ mod structure {
             let mut data = Vec::new();
             f.read_to_end(&mut data).expect("read");
             let stored = f.compression() == zip::CompressionMethod::Stored;
-            out.push((f.name().to_string(), data, stored));
+            out.push((f.name().expect("name").into_owned(), data, stored));
         }
         out
     }
