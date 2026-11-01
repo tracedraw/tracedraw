@@ -16,8 +16,10 @@ To select objects:
   Treat all objects as filled** is on (it is on by default).
 - **Shift+click** adds an object to the selection, or takes it out.
 - **Alt+click** selects the object *beneath* the selected one under the
-  pointer. Keep clicking to dig down through a stack; after the bottom
-  object you come back to the top.
+  pointer, or beneath the topmost one when nothing there is selected: one
+  Alt+click on the object in front takes the one hidden behind it. Keep
+  clicking to dig down through a stack; after the bottom object you come
+  back to the top.
 - **Tab** and **Shift+Tab** step through the objects in stacking order.
 - **Ctrl+A** selects everything; double-clicking the Pick tool's button
   does the same.

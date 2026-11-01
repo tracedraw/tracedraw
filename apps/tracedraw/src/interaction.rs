@@ -1744,19 +1744,19 @@ impl App {
                 return;
             }
             self.deselect_guides();
-            // Alt digs: the object beneath the selected one there (with
-            // Ctrl among the objects inside groups).
+            // Alt digs: the object beneath the selected one there, or,
+            // with none of the selection under the pointer, beneath the
+            // topmost one (the hidden object behind the one clicked,
+            // #1350); after the bottom one, the top again (with Ctrl
+            // among the objects inside groups).
             if mods.alt {
                 let hits = self.hits_at(p, mods.ctrl);
                 if !hits.is_empty() {
-                    let below = match self.selection.as_slice() {
-                        [one] => hits
-                            .iter()
-                            .position(|h| h == one)
-                            .map(|i| (i + 1) % hits.len()),
+                    let from = match self.selection.as_slice() {
+                        [one] => hits.iter().position(|h| h == one),
                         _ => None,
                     };
-                    let id = hits[below.unwrap_or(0)];
+                    let id = hits[(from.unwrap_or(0) + 1) % hits.len()];
                     if mods.shift {
                         self.select_add(id);
                     } else {

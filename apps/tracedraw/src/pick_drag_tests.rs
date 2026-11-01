@@ -1308,6 +1308,60 @@ fn alt_click_digs_to_the_object_beneath() {
     assert!(!app.rotate_mode);
 }
 
+/// One Alt+click on the object in front takes the object hidden behind
+/// it: with nothing selected, or with the selection elsewhere, the dig
+/// starts from the topmost object under the pointer (it took the
+/// topmost itself, so a shape ordered behind a larger one could not be
+/// picked with one Alt+click, #1350). An object alone under the pointer
+/// is taken, and after the bottom one the top is again.
+#[test]
+fn alt_click_takes_the_object_behind_the_front_one_at_once() {
+    let (ctx, mut app, [_a, _b, c], group) = grouped();
+    // A larger square in front of the third one, hiding it.
+    let front = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(95.0, 145.0, 125.0, 175.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![front]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        200, 200, 0,
+    )));
+    app.select(Vec::new());
+    let over_both = app.view.to_screen(Point::new(110.0, 160.0));
+    click_at(&ctx, &mut app, over_both, Modifiers::ALT);
+    assert_eq!(app.selection, vec![c], "nothing selected: the hidden one");
+    // The next Alt+click rounds to the front one, the one after digs again.
+    click_at(&ctx, &mut app, over_both, Modifiers::ALT);
+    assert_eq!(app.selection, vec![front]);
+    click_at(&ctx, &mut app, over_both, Modifiers::ALT);
+    assert_eq!(app.selection, vec![c]);
+    // With the selection elsewhere, the dig starts from the top too.
+    app.select(vec![group]);
+    click_at(&ctx, &mut app, over_both, Modifiers::ALT);
+    assert_eq!(
+        app.selection,
+        vec![c],
+        "selection elsewhere: the hidden one"
+    );
+    // Shift+Alt adds the hidden one to the front one.
+    app.select(vec![front]);
+    click_at(&ctx, &mut app, over_both, Modifiers::ALT | Modifiers::SHIFT);
+    let mut sel = app.selection.clone();
+    sel.sort_by_key(|s| s.raw());
+    let mut want = vec![front, c];
+    want.sort_by_key(|s| s.raw());
+    assert_eq!(sel, want);
+    // An object alone under the pointer is taken by Alt+click.
+    app.select(Vec::new());
+    let on_front_only = app.view.to_screen(Point::new(98.0, 148.0));
+    click_at(&ctx, &mut app, on_front_only, Modifiers::ALT);
+    assert_eq!(app.selection, vec![front]);
+    assert!(!app.rotate_mode);
+}
+
 /// Alt+drag selects by touching also when it starts over an object that
 /// is not selected, such as a background under the objects (it moved
 /// that object instead), with the Pick and the Freehand Pick tools

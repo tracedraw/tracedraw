@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Pick tool: one Alt+click on the object in front takes the object hidden behind it. With nothing selected under the pointer, Alt+click took the topmost object, so a shape ordered behind a larger one needed a second Alt+click, which read as Alt+click not working; the dig now starts from the topmost object (an object alone under the pointer is still taken) and goes round to the top again after the bottom one (#1350).
+
 - Area Fill fills the curved side of a circle extruded with a Back type (Small back, Big back or Back parallel). The outlines of the side and the far face, cut where the filled circle hides them, came back a few hundred millionths of a millimetre off the circle's outline, below the grid the areas are cut on, so the side leaked to the outside and a click in it made nothing; the short lines that close such gaps now cross the outline they meet whichever way the ends round (#1281).
 
 - Distort: the handle follows the pointer in any direction. A Push and Pull or Zipper drag put its handle on a line to the right of the centre whichever way the pointer went, and a Twister handle turned from the right, not from where the drag began; the handle now ends where the drag ends, in every mode, for a new distortion as for a handle taken and dragged. Push and Pull takes the drag's length (half the object's larger side being 100), pushed right of the centre and pulled left of it; the Zipper's slider runs along the line; a value changed on the bar keeps the line's direction (#1442).
