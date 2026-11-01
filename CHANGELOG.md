@@ -10,6 +10,8 @@ full, row-by-row status.
 
 - Print Preview, Transform: dragging a corner handle scales the page keeping its proportions, both percentages alike, with the opposite corner staying put; the side handles still stretch one axis alone. A corner stretched the width and the height each by its own move, so a drawing fitted to the sheet by its corners came out squeezed or stretched (#1543).
 
+- Print Preview: ticking Fit to page brings back a page that was dragged or stretched on the sheet. The page's move and stretch (Artwork position, Transform) stayed as they were, so a page dragged off its place kept sitting there with Fit to page on; choosing Fit to page in the Print dialog's Layout tab puts the page back the same way (#1577).
+
 - Dependencies: rqrr 0.11 (lru 0.16, soundness advisory)
 
 ## 0.35.0 (2026-11-01)

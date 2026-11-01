@@ -5078,7 +5078,7 @@ fn print_tab_composite(ui: &mut Ui, st: &mut PrintState) {
     });
 }
 
-fn print_tab_layout(app: &App, ui: &mut Ui, st: &mut PrintState) {
+pub(crate) fn print_tab_layout(app: &App, ui: &mut Ui, st: &mut PrintState) {
     print_group(ui, &tr("print.position_size"), |ui| {
         let mut mode = if st.fit_to_page {
             1
@@ -5103,7 +5103,15 @@ fn print_tab_layout(app: &App, ui: &mut Ui, st: &mut PrintState) {
                 st.fit_to_page = false;
                 st.scale = 100.0;
             }
-            1 => st.fit_to_page = true,
+            1 => {
+                // Chosen: a page moved or stretched in Print Preview
+                // comes back onto the sheet, fitted (#1577).
+                if !st.fit_to_page {
+                    st.art_offset = (0.0, 0.0);
+                    st.art_stretch = (1.0, 1.0);
+                }
+                st.fit_to_page = true;
+            }
             _ => {
                 st.fit_to_page = false;
                 if (st.scale - 100.0).abs() < 1e-9 {

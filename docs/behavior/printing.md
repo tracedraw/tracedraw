@@ -130,7 +130,12 @@ has one.
   page shows (every printed one when the range is the selection) shrink
   as one to fit it, centred, when they do not fit; objects wholly off the
   page stay out (#534, `fit_contents_to_page`,
-  `export::tests::fit_to_page_shrinks_what_runs_off_the_page`). Bleed limit
+  `export::tests::fit_to_page_shrinks_what_runs_off_the_page`). Choosing
+  Fit to page (here, or ticking it in Print Preview) also puts back a
+  page moved or stretched on the sheet in Print Preview: the artwork
+  position goes to 0 and the stretch to 100 %, so the page comes back
+  fitted on the sheet (#1577,
+  `print_preview::tests::fit_to_page_brings_a_dragged_page_back`). Bleed limit
   (how far beyond the page objects print, 4 mm by default); the
   imposition, sheet, gap, the paper margins (left, right, top, bottom,
   the same as Print Preview's; #909) and the sketch (below).

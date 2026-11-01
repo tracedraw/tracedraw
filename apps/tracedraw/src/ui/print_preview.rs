@@ -371,7 +371,17 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                         });
                         ui.end_row();
                         ui.horizontal(|ui| {
-                            ui.checkbox(&mut st.fit_to_page, tr("dialog.fit_to_page"));
+                            if ui
+                                .checkbox(&mut st.fit_to_page, tr("dialog.fit_to_page"))
+                                .changed()
+                                && st.fit_to_page
+                            {
+                                // Ticked: a page dragged or stretched
+                                // off its place comes back onto the
+                                // sheet, fitted (#1577).
+                                st.art_offset = (0.0, 0.0);
+                                st.art_stretch = (1.0, 1.0);
+                            }
                             if !st.fit_to_page {
                                 ui.add(
                                     crate::ui::field::NumField::new(&mut st.scale)
@@ -1140,6 +1150,137 @@ mod tests {
         );
         assert_eq!(st.art_stretch, before.art_stretch);
         assert_eq!(st.art_offset, before.art_offset);
+    }
+
+    /// Ticking Fit to page puts back a page dragged or stretched on the
+    /// sheet: the artwork position and the stretch go back to nothing,
+    /// so the page sits fitted on the sheet again. They stayed as they
+    /// were, so Fit to page seemed to do nothing to a dragged page
+    /// (#1577).
+    #[test]
+    fn fit_to_page_brings_a_dragged_page_back() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.print_preview(None);
+        let size = egui::vec2(1400.0, 900.0);
+        if let Some(pv) = app.print_preview.as_mut() {
+            pv.st.looking_for_printers = false;
+            pv.st.fit_to_page = false;
+            // As a drag on the sheet and a corner handle leave it.
+            pv.st.art_offset = (50.0, -40.0);
+            pv.st.art_stretch = (1.5, 1.5);
+        }
+        let mut texts = Vec::new();
+        for _ in 0..4 {
+            texts = frame_texts(&mut app, &ctx, size);
+        }
+        let label = tr("dialog.fit_to_page");
+        let at = texts
+            .iter()
+            .find(|(t, _)| *t == label)
+            .map(|(_, r)| r.center())
+            .expect("Fit to page shown");
+        let run = |app: &mut App, events: Vec<egui::Event>| {
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                    events,
+                    ..Default::default()
+                },
+                |ui| show(app, ui),
+            );
+            out.textures_delta.clear();
+        };
+        run(&mut app, vec![egui::Event::PointerMoved(at)]);
+        for pressed in [true, false] {
+            run(
+                &mut app,
+                vec![egui::Event::PointerButton {
+                    pos: at,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+        }
+        run(&mut app, Vec::new());
+        let st = &app.print_preview.as_ref().expect("preview").st;
+        assert!(st.fit_to_page, "the box was ticked");
+        assert_eq!(st.art_offset, (0.0, 0.0), "the page is back in place");
+        assert_eq!(st.art_stretch, (1.0, 1.0), "and at its size");
+        // The Print dialog's Layout tab does the same when Fit to page is
+        // chosen there.
+        let mut st = PrintState {
+            fit_to_page: false,
+            art_offset: (12.0, 3.0),
+            art_stretch: (2.0, 0.5),
+            ..PrintState::default()
+        };
+        let mut shown = Vec::new();
+        for _ in 0..3 {
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                    ..Default::default()
+                },
+                |ui| {
+                    egui::CentralPanel::default().show_inside(ui, |ui| {
+                        crate::ui::dialogs::print_tab_layout(&app, ui, &mut st);
+                    });
+                },
+            );
+            out.textures_delta.clear();
+            shown = out.shapes;
+        }
+        let mut found = Vec::new();
+        fn walk(s: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
+            match s {
+                egui::Shape::Text(t) => {
+                    out.push((t.galley.text().to_string(), t.visual_bounding_rect()))
+                }
+                egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+                _ => {}
+            }
+        }
+        shown.iter().for_each(|c| walk(&c.shape, &mut found));
+        let at = found
+            .iter()
+            .find(|(t, _)| *t == label)
+            .map(|(_, r)| r.center())
+            .expect("Fit to page in the Layout tab");
+        let tab = |app: &App, st: &mut PrintState, events: Vec<egui::Event>| {
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    egui::CentralPanel::default().show_inside(ui, |ui| {
+                        crate::ui::dialogs::print_tab_layout(app, ui, st);
+                    });
+                },
+            );
+            out.textures_delta.clear();
+        };
+        tab(&app, &mut st, vec![egui::Event::PointerMoved(at)]);
+        for pressed in [true, false] {
+            tab(
+                &app,
+                &mut st,
+                vec![egui::Event::PointerButton {
+                    pos: at,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+        }
+        tab(&app, &mut st, Vec::new());
+        assert!(st.fit_to_page, "Fit to page chosen in the Layout tab");
+        assert_eq!(st.art_offset, (0.0, 0.0));
+        assert_eq!(st.art_stretch, (1.0, 1.0));
     }
 
     #[test]
