@@ -220,10 +220,11 @@ impl<N: Numeric> NumField<'_, N> {
         // While typing, the text lives in memory until it is applied.
         let stored = ui.data(|d| d.get_temp::<String>(id));
         let mut buf = stored.clone().unwrap_or_else(|| shown.clone());
-        // A drag on the label slides the value (#1303).
+        // A drag on the label slides the value (#1303). The label is no
+        // stop for Tab, which goes from box to box (#1537).
         let mut label_resp = None;
         if !self.prefix.is_empty() {
-            let label = ui.add(egui::Label::new(&self.prefix).sense(egui::Sense::drag()));
+            let label = ui.add(egui::Label::new(&self.prefix).sense(egui::Sense::DRAG));
             if let Some(s) = &mut slot {
                 *s -= label.rect.width() + ui.spacing().item_spacing.x;
             }
@@ -243,10 +244,12 @@ impl<N: Numeric> NumField<'_, N> {
                 .vertical_align(egui::Align::Center)
                 .desired_width(width),
         );
-        // The arrows: up over down, each half the box's height.
+        // The arrows: up over down, each half the box's height. They take
+        // clicks and drags but no focus: Tab from the box goes to the next
+        // box, not to the arrows beside it (#1537).
         let (spin, spin_resp) = ui.allocate_exact_size(
             egui::vec2(SPIN_W, resp.rect.height()),
-            egui::Sense::click_and_drag(),
+            egui::Sense::CLICK | egui::Sense::DRAG,
         );
         ui.spacing_mut().item_spacing = spacing;
         // The direction of a step and the modifiers held for it.
@@ -1327,6 +1330,55 @@ mod tests {
         );
         assert!(a.right() + SPIN_W <= left + 121.0, "inside the slot: {a:?}");
         assert!(b.top() - a.top() < 30.0, "one line each: {a:?} {b:?}");
+    }
+
+    /// Tab goes from one field's box to the next field's box in one
+    /// press: the spin arrows and the label are no stops on the way
+    /// (#1537, they were, so Tab had to be pressed twice or three times).
+    #[test]
+    fn tab_goes_from_box_to_box_in_one_press() {
+        let ctx = egui::Context::default();
+        let (mut x, mut y) = (1.0f64, 2.0f64);
+        let tab = || egui::Event::Key {
+            key: egui::Key::Tab,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        };
+        // One frame; `focus` asks the keyboard for the first box. Which
+        // boxes have the focus after it.
+        let mut frame = |events: Vec<egui::Event>, focus: bool| -> (bool, bool) {
+            let mut focused = (false, false);
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(600.0, 100.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                ui.horizontal(|ui| {
+                    let a = ui.add(NumField::new(&mut x).prefix("X:"));
+                    let b = ui.add(NumField::new(&mut y).prefix("Y:"));
+                    if focus {
+                        a.request_focus();
+                    }
+                    focused = (a.has_focus(), b.has_focus());
+                });
+            });
+            out.textures_delta.clear();
+            focused
+        };
+        frame(Vec::new(), true);
+        assert_eq!(frame(Vec::new(), false), (true, false));
+        frame(vec![tab()], false);
+        assert_eq!(
+            frame(Vec::new(), false),
+            (false, true),
+            "one Tab moves to the next box"
+        );
     }
 
     #[test]

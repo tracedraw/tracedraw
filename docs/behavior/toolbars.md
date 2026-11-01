@@ -162,7 +162,9 @@ name them (hover for a tooltip), and some fields have spin arrows.
 
 Number fields show their value at the left and are typed into: a click
 selects the value, Enter or leaving the field applies it, Esc puts it
-back. A comma or a point marks decimals; sums work (`10+5`, `2*3,5`,
+back. Tab applies it and goes to the next field's box in one press: the
+spin arrows and the label of a field are no stops on the way (#1537,
+`ui::field::tests::tab_goes_from_box_to_box_in_one_press`). A comma or a point marks decimals; sums work (`10+5`, `2*3,5`,
 brackets); a distance typed with another unit is converted (`1 in` in a
 millimetre field is 25.4 mm), also inside a sum, each number in its own
 unit and a number without one in the field's: the value shown with `/ 2`
