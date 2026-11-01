@@ -1065,14 +1065,25 @@ impl<'a> Importer<'a> {
                         path.move_to(gs.ctm * current);
                     }
                 }
+                // A segment before any start point (a damaged stream)
+                // starts its subpath where the segment starts: a path
+                // cannot take a segment first.
                 "l" => {
                     if operands.len() >= 2 {
+                        if path.elements().is_empty() {
+                            path.move_to(gs.ctm * current);
+                            start = current;
+                        }
                         current = Point::new(n(0), n(1));
                         path.line_to(gs.ctm * current);
                     }
                 }
                 "c" => {
                     if operands.len() >= 6 {
+                        if path.elements().is_empty() {
+                            path.move_to(gs.ctm * current);
+                            start = current;
+                        }
                         let p1 = Point::new(n(0), n(1));
                         let p2 = Point::new(n(2), n(3));
                         current = Point::new(n(4), n(5));
@@ -1081,6 +1092,10 @@ impl<'a> Importer<'a> {
                 }
                 "v" => {
                     if operands.len() >= 4 {
+                        if path.elements().is_empty() {
+                            path.move_to(gs.ctm * current);
+                            start = current;
+                        }
                         let p1 = current;
                         let p2 = Point::new(n(0), n(1));
                         current = Point::new(n(2), n(3));
@@ -1089,6 +1104,10 @@ impl<'a> Importer<'a> {
                 }
                 "y" => {
                     if operands.len() >= 4 {
+                        if path.elements().is_empty() {
+                            path.move_to(gs.ctm * current);
+                            start = current;
+                        }
                         let p1 = Point::new(n(0), n(1));
                         current = Point::new(n(2), n(3));
                         path.curve_to(gs.ctm * p1, gs.ctm * current, gs.ctm * current);
@@ -2962,7 +2981,16 @@ fn dedup_stops(mut stops: Vec<Stop>) -> Vec<Stop> {
 }
 
 fn color_from_components(v: &[f64], cs: &ColorSpace) -> Option<Color> {
-    let c = |i: usize| v.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0) as f32;
+    // A component that is not a number (a function's 0 times infinity)
+    // is no ink; `clamp` would keep it.
+    let c = |i: usize| {
+        let x = v.get(i).copied().unwrap_or(0.0);
+        if x.is_finite() {
+            x.clamp(0.0, 1.0) as f32
+        } else {
+            0.0
+        }
+    };
     match (cs, v.len()) {
         (ColorSpace::Gray, 1) | (ColorSpace::N(1), 1) => Some(Color::Gray { v: c(0) }),
         (ColorSpace::Rgb, 3) | (ColorSpace::N(3), 3) => Some(Color::Rgb {
@@ -4411,6 +4439,43 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    /// A damaged file opens without taking the program down: a gradient
+    /// whose function gives no number (a negative exponent at 0 makes 0
+    /// times infinity) has its colours read as no ink, so every output
+    /// has a colour for them (the screen colour conversion went round
+    /// for ever on a component that is not a number); segments before
+    /// any start point begin their path where they start, instead of a
+    /// path that cannot hold them.
+    #[test]
+    fn a_damaged_file_opens_without_a_crash() {
+        let bytes = one_page(
+            "/Pattern cs /P1 scn 0 0 100 100 re f 1 0 0 RG 10 10 l 60 10 l 60 40 l S 20 20 30 30 40 40 c S 5 5 6 6 v 7 7 8 8 y S",
+            "<< /Pattern << /P1 << /PatternType 2 /Shading << /ShadingType 2 /ColorSpace /DeviceRGB /Coords [0 0 100 0] /Function << /FunctionType 2 /Domain [0 1] /C0 [1 0 0] /C1 [1 0 1] /N -1 >> >> >> >> >>",
+            &[],
+        );
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let page = &imp.pages[0];
+        assert!(page.shapes.len() >= 2, "{:?}", imp.warnings);
+        let Fill::Fountain(f) = &page.shapes[0].fill else {
+            panic!("{:?}", page.shapes[0].fill);
+        };
+        for stop in &f.stops {
+            let Color::Rgb { r, g, b } = stop.color else {
+                panic!("{:?}", stop.color);
+            };
+            assert!(
+                r.is_finite() && g.is_finite() && b.is_finite(),
+                "{:?}",
+                stop.color
+            );
+            let _ = stop.color.to_rgb8();
+        }
+        let doc = to_document(imp, "damaged");
+        let _ = crate::svg::page_to_svg(&doc, 0);
+        let _ = crate::pdf::document_to_pdf(&doc);
     }
 
     #[test]
