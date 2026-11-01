@@ -203,8 +203,20 @@ pub fn closed_subpaths(path: &BezPath) -> BezPath {
     out
 }
 
-/// Render the objects of one page onto a transparent pixmap.
+/// The most pixels a page is drawn as at once: 1 G pixels (4 GB of RGBA),
+/// more than any export or print asks for. A page whose size is not a
+/// number (left by a division by zero somewhere, or read from a damaged
+/// file) asks for an image as tall as a number holds, and asking the
+/// allocator for it takes the program down, which cannot be caught; such
+/// an image is refused instead (`None`).
+pub const MAX_PIXELS: u64 = 1 << 30;
+
+/// Render the objects of one page onto a transparent pixmap, `None` for
+/// an image of more than [`MAX_PIXELS`].
 pub fn render_page(doc: &Document, page: PageId, opts: &RenderOptions) -> Option<Pixmap> {
+    if (opts.width.max(1) as u64) * (opts.height.max(1) as u64) > MAX_PIXELS {
+        return None;
+    }
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(p) = render_page_in_bands(doc, page, opts) {
         return Some(p);
@@ -235,9 +247,9 @@ pub fn render_page_rows(
     let margin = if lens {
         h
     } else {
-        ((blur_mm * opts.view.zoom).round() as u32 * 3 + 4).div_ceil(16) * 16
+        blur_margin(blur_mm, opts.view.zoom)
     };
-    let (ry0, ry1) = (y0.saturating_sub(margin), (y1 + margin).min(h));
+    let (ry0, ry1) = (y0.saturating_sub(margin), y1.saturating_add(margin).min(h));
     let mut o = opts.clone();
     o.width = w;
     o.height = ry1 - ry0;
@@ -346,34 +358,19 @@ fn page_reach(doc: &Document, page: PageId) -> (bool, f64) {
 /// single core, a lens on the page, or blurs too wide for the bands.
 #[cfg(not(target_arch = "wasm32"))]
 fn render_page_in_bands(doc: &Document, page: PageId, opts: &RenderOptions) -> Option<Pixmap> {
-    const ALIGN: u32 = 16;
     let (w, h) = (opts.width.max(1), opts.height.max(1));
     let cores = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1)
         .min(16) as u32;
-    if cores < 2 || (w as u64) * (h as u64) < 250_000 || h < ALIGN * 4 {
+    if cores < 2 || (w as u64) * (h as u64) < 250_000 || h < BAND_ALIGN * 4 {
         return None;
     }
     let (lens, blur_mm) = page_reach(doc, page);
     if lens {
         return None;
     }
-    // A shadow is blurred with three box passes of its radius (or one of
-    // 1.7 times it), so it reaches three radii past its silhouette.
-    let margin = ((blur_mm * opts.view.zoom).round() as u32 * 3 + 4).div_ceil(ALIGN) * ALIGN;
-    let band = h.div_ceil(cores).div_ceil(ALIGN) * ALIGN;
-    if margin > band * 2 {
-        return None;
-    }
-    let bands: Vec<(u32, u32, u32, u32)> = (0..cores)
-        .map(|i| i * band)
-        .take_while(|y0| *y0 < h)
-        .map(|y0| {
-            let y1 = (y0 + band).min(h);
-            (y0, y1, y0.saturating_sub(margin), (y1 + margin).min(h))
-        })
-        .collect();
+    let bands = band_layout(h, cores, blur_margin(blur_mm, opts.view.zoom))?;
     let parts: Vec<Option<Pixmap>> = std::thread::scope(|sc| {
         let handles: Vec<_> = bands
             .iter()
@@ -402,6 +399,57 @@ fn render_page_in_bands(doc: &Document, page: PageId, opts: &RenderOptions) -> O
         }
     }
     Some(out)
+}
+
+/// Bands and strips start on rows that are multiples of this, as the
+/// coarse grid of procedural fills does.
+const BAND_ALIGN: u32 = 16;
+
+/// The rows of margin a strip of a page needs above and below for the
+/// widest drop shadow blur `blur_mm` to meet across its edges at `zoom`:
+/// a shadow is blurred with three box passes of its radius (or one of
+/// 1.7 times it), so it reaches three radii past its silhouette. The
+/// arithmetic saturates, so a blur that is not a number (read from a
+/// damaged file) gives the whole range, not an overflow.
+fn blur_margin(blur_mm: f64, zoom: f64) -> u32 {
+    ((blur_mm * zoom).round() as u32)
+        .saturating_mul(3)
+        .saturating_add(4)
+        .div_ceil(BAND_ALIGN)
+        .saturating_mul(BAND_ALIGN)
+}
+
+/// The bands of an image `h` rows high drawn on `cores` cores, each as
+/// `(y0, y1, ry0, ry1)`: its own rows `y0..y1` and the rows `ry0..ry1`
+/// it is drawn with, `margin` rows above and below. `None` when the
+/// margin is wider than two bands (the bands would draw more than the
+/// whole). The arithmetic saturates, so an image as tall as a number
+/// holds (a page whose size is not a number, read from a damaged file)
+/// gives bands that end at its last row, not an overflow.
+#[cfg(not(target_arch = "wasm32"))]
+fn band_layout(h: u32, cores: u32, margin: u32) -> Option<Vec<(u32, u32, u32, u32)>> {
+    let band = h
+        .div_ceil(cores.max(1))
+        .div_ceil(BAND_ALIGN)
+        .saturating_mul(BAND_ALIGN);
+    if margin > band.saturating_mul(2) {
+        return None;
+    }
+    Some(
+        (0..cores)
+            .map(|i| i.saturating_mul(band))
+            .take_while(|y0| *y0 < h)
+            .map(|y0| {
+                let y1 = y0.saturating_add(band).min(h);
+                (
+                    y0,
+                    y1,
+                    y0.saturating_sub(margin),
+                    y1.saturating_add(margin).min(h),
+                )
+            })
+            .collect(),
+    )
 }
 
 fn render_page_whole(doc: &Document, page: PageId, opts: &RenderOptions) -> Option<Pixmap> {
@@ -3281,6 +3329,52 @@ mod tests {
             doc.layer_mut(layer).unwrap().shapes.push(s);
         }
         (doc, page)
+    }
+
+    /// A page whose size is not a number (read from a damaged file, or
+    /// left by a division by zero) asks for an image as tall as a number
+    /// holds. Splitting it into bands for the machine's cores, and
+    /// drawing a strip of it with its margin of rows, added past the end
+    /// of the range and panicked; now the bands and the strip end at the
+    /// image's last row, and drawing the page gives no picture, as a
+    /// picture that large cannot be made, instead of taking the program
+    /// down.
+    #[test]
+    fn an_image_as_tall_as_a_number_holds_does_not_overflow_its_bands() {
+        use tracedraw_core::geometry::{Rect, Size};
+        let s = rect(1, Rect::new(20.0, 20.0, 80.0, 80.0), Color::BLACK);
+        let (mut doc, page) = doc_with(vec![s]);
+        doc.pages[0].size = Size::new(100.0, f64::INFINITY);
+        assert!(render_page_image(&doc, page, 25.4).is_none());
+        // A strip at the end of such an image is still drawn.
+        let opts = RenderOptions {
+            width: 10,
+            height: u32::MAX,
+            view: ViewTransform {
+                zoom: 1.0,
+                origin_x: 0.0,
+                origin_y: 100.0,
+            },
+            ..RenderOptions::default()
+        };
+        let strip = render_page_rows(&doc, page, &opts, u32::MAX - 16, u32::MAX).expect("strip");
+        assert_eq!((strip.width(), strip.height()), (10, 16));
+        // The bands themselves, for every core count the renderer uses,
+        // with a blur that is not a number as well.
+        assert_eq!(blur_margin(f64::INFINITY, 1.0), u32::MAX);
+        assert_eq!(blur_margin(f64::NAN, 1.0), 16);
+        for cores in 2..=16 {
+            for margin in [0, 16, u32::MAX] {
+                if let Some(bands) = band_layout(u32::MAX, cores, margin) {
+                    assert!(bands.iter().all(|b| b.0 < b.1 && b.2 <= b.0 && b.1 <= b.3));
+                    assert_eq!(bands.last().map(|b| (b.1, b.3)), Some((u32::MAX, u32::MAX)));
+                }
+            }
+        }
+        let bands = band_layout(u32::MAX, 2, 16).expect("two bands");
+        assert_eq!(bands.len(), 2);
+        assert_eq!(bands[1].0, bands[0].1);
+        assert!(band_layout(64, 2, u32::MAX).is_none());
     }
 
     /// A bevel drawn over a mid-grey square: the band on the light side is
