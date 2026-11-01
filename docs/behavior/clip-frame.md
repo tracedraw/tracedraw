@@ -37,9 +37,12 @@ frame is edited node by node, and the clip frame stays one
   show it too while they wait for their object (#379,
   `ui::cursors::tests::tools_get_their_cursors`).
 - Extract Contents: the contents become ordinary objects again; the frame
-  stays (an empty frame shows a hatched preview).
-- Edit Contents: takes the contents out of the frame to edit them; the
-  rest of the page fades to a quarter of its strength while the frame
+  stays (an empty frame shows a hatched preview). A clip frame moved,
+  turned or resized since it was made comes apart where it shows: its
+  own transform goes onto the frame and each content (#1562,
+  `command::tests::extracting_a_moved_clip_frame_keeps_the_frame_and_contents_in_place`).
+- Edit Contents: takes the contents out of the frame to edit them (where
+  they show, as Extract Contents does); the rest of the page fades to a quarter of its strength while the frame
   and the contents are drawn in full (`App::render_focus`, the
   renderer's focus option with several objects, `CLIP_EDIT_VISIBILITY`).
   Finish Editing Contents (the bar's Finish) puts them back; so does a

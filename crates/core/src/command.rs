@@ -1199,11 +1199,19 @@ impl Command {
                 let s = doc.layer_mut(lid)?.shapes.remove(i);
                 match s.kind {
                     ShapeKind::ClipFrame { frame, contents } => {
+                        // The frame and the contents sit in the clip
+                        // frame's own space: a clip frame moved, turned or
+                        // resized since it was made carries that in its
+                        // own transform, which goes onto each of them so
+                        // they stay where they show (#1562).
+                        let carried = s.transform;
                         let layer = doc.layer_mut(lid)?;
                         let mut f = *frame;
                         f.id = *clip;
+                        f.transform_by(carried);
                         layer.shapes.insert(i, f);
-                        for (k, c) in contents.into_iter().enumerate() {
+                        for (k, mut c) in contents.into_iter().enumerate() {
+                            c.transform_by(carried);
                             layer.shapes.insert(i + 1 + k, c);
                         }
                     }
@@ -2594,6 +2602,64 @@ mod tests {
             .unwrap();
         assert_eq!(doc.layer(layer).unwrap().shapes.len(), 2);
         assert!(doc.shape(ia).is_ok());
+    }
+
+    /// A clip frame moved (turned, resized) after it was made carries
+    /// that in its own transform; Extract Contents and Edit Contents take
+    /// it apart where it shows, not where it was made (#1562).
+    #[test]
+    fn extracting_a_moved_clip_frame_keeps_the_frame_and_contents_in_place() {
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let a = rect(&mut doc, 0.0);
+        let b = rect(&mut doc, 5.0);
+        let (ia, ib) = (a.id, b.id);
+        Command::AddShape { layer, shape: a }
+            .apply(&mut doc)
+            .unwrap();
+        Command::AddShape { layer, shape: b }
+            .apply(&mut doc)
+            .unwrap();
+        Command::PlaceInside {
+            contents: vec![ia],
+            frame: ib,
+        }
+        .apply(&mut doc)
+        .unwrap();
+        let moved = Affine::translate((40.0, -25.0)) * Affine::scale(2.0);
+        Command::TransformShapes {
+            shapes: vec![ib],
+            transform: moved,
+        }
+        .apply(&mut doc)
+        .unwrap();
+        let clip_box = doc.find_shape(ib).unwrap().bounds();
+        let content_box = crate::geometry::transformed_bounds(
+            &crate::geometry::rect_path(Rect::new(0.0, 0.0, 10.0, 10.0), 0.0),
+            moved,
+        );
+        Command::ExtractContents { clip: ib }
+            .apply(&mut doc)
+            .unwrap();
+        let frame_box = doc.find_shape(ib).unwrap().bounds();
+        let a_box = doc.find_shape(ia).unwrap().bounds();
+        let same = |p: Rect, q: Rect| {
+            (p.x0 - q.x0).abs() < 1e-9
+                && (p.y0 - q.y0).abs() < 1e-9
+                && (p.x1 - q.x1).abs() < 1e-9
+                && (p.y1 - q.y1).abs() < 1e-9
+        };
+        assert!(same(frame_box, clip_box), "{frame_box:?} vs {clip_box:?}");
+        assert!(same(a_box, content_box), "{a_box:?} vs {content_box:?}");
+        // Put back, the clip frame is where it was, and undo takes it
+        // all back as it was.
+        Command::PlaceInside {
+            contents: vec![ia],
+            frame: ib,
+        }
+        .apply(&mut doc)
+        .unwrap();
+        assert!(same(doc.find_shape(ib).unwrap().bounds(), clip_box));
     }
 
     /// The frame inside a clip frame has an id of its own, so it can be
