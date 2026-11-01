@@ -35,7 +35,18 @@ program help just as much; they are thanked in the issues and in
 
 | Contributor | Help |
 |---|---|
-| [@2CLC](https://github.com/2CLC) | Tested build after build on a 2010 office PC (Intel HD Graphics, OpenGL 2.1) with logs and screenshots until TraceDraw ran on it with its own card, which is why older PCs are supported (#616) |
+| [@archit995sipah-ai](https://github.com/archit995sipah-ai) | More than 130 reports that led to fixes, across printing and booklets, text and Hindi text in PDF, blends, fills, page navigation and `.cdr` files that keep their colours and pictures (#378, #771, #947, #986, #1057, #1268) |
+| [@muhammadawais052400](https://github.com/muhammadawais052400) | More than 100 precise reports with steps to repeat them: the Pen tool, node and segment editing, Arabic (right-to-left) text, frame rates with many shapes and in the multipage view, Repeat after Undo (#240, #253, #359, #366, #474, #903) |
+| [@2CLC](https://github.com/2CLC) | Tested build after build on a 2010 office PC (Intel HD Graphics, OpenGL 2.1) with logs and screenshots until TraceDraw ran on it with its own card, which is why older PCs are supported (#616); more than 35 other reports, from the Transformations panel to guidelines and text colours (#115, #376, #912) |
+| [@vistech91](https://github.com/vistech91) | Glyphs, corners that stay editable, colour conversion between CMYK and RGB and the colour readout of the eyedropper (#469, #872, #990, #1254) |
+| [@oksandao](https://github.com/oksandao) | Segment Delete, node control, Smart Fill on guidelines, fills that move with their object and text in other languages (#182, #314, #775, #899) |
+| [@elmonopascual](https://github.com/elmonopascual) | Printing: spot colour separations, print preview and missing fonts; missing icons in the panels (#779, #846, #848, #1243) |
+| [@Pink-ET](https://github.com/Pink-ET) | Toolbars and their customisation, the text cursor, the Object list, the update download on x86-64 and snapping marks (#632, #836, #1038, #1538) |
+| [@markosc](https://github.com/markosc) | Export (WebP quality, profiles and presets), groups inside frames and the start of the app on Windows 11 (#544, #570, #612, #851) |
+| [@aleksandrkirjanov-cloud](https://github.com/aleksandrkirjanov-cloud) | Perspective, the Dimension tools, the eyedropper, Drop Shadow and zoom (#458, #838, #935, #1039) |
+| [@iAyadMed](https://github.com/iAyadMed) | Contours and their offset, Segment Delete, turning shapes and editing fills (#424, #528, #754, #933) |
+| [@andresafu](https://github.com/andresafu) | Printing fitted to the page, text sizes in millimetres, boolean shaping and gradient handles (#529, #534, #539, #939) |
+| [@giuliovale](https://github.com/giuliovale) | Hyphenation, text wrapped around a shape and CMYK separation options (#470, #571, #661) |
 
 To contribute, read [`CONTRIBUTING.md`](CONTRIBUTING.md). When your pull
 request is merged, you are added here.
