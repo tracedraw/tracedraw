@@ -18,6 +18,13 @@ off too and is lit while it is on (#1019).
   the normal text colour, the others dimmed.
 - Objects outside a page's edges are not shown on the other pages; the
   current page shows them as always.
+- Every page shows its own guidelines: the current page's across the
+  whole window, as always, and each other page's within that page,
+  where it sits in the grid (#1448,
+  `multipage::tests::the_other_pages_guidelines_show_where_their_pages_sit`).
+  Guidelines belong to their page; a click on another page makes it
+  current, and its guidelines are then the ones picked, moved and
+  snapped to.
 
 ## Working
 

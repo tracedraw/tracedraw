@@ -2527,6 +2527,16 @@ pub fn draw_guides(app: &App, painter: &Painter, rect: ERect) {
         };
         draw_guide_line(app, painter, rect, g.line, color, g.style.pattern());
     }
+    // The other pages' guidelines in the Multipage View, each within its
+    // page (#1448).
+    for (g, page_rect) in app.other_page_guides() {
+        let paper = app.view.rect_to_screen(page_rect).intersect(rect);
+        if paper.width() < 1.0 || paper.height() < 1.0 {
+            continue;
+        }
+        let color = to_color32(app.guide_color(&g));
+        draw_guide_line(app, painter, paper, g.line, color, g.style.pattern());
+    }
     // The copies a right click during the drag will leave.
     if app.drag_copy {
         for (_, g) in &moving {
