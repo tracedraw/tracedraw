@@ -141,7 +141,19 @@ Text and Glyphs dockers and Options (default font):
     name, its path as the tip; `FontSystem::folder_of`, the deepest
     library or system folder a file lies under, else its own folder;
     `font_folders::fonts_count_as_in_their_library_folder`). Until
-    0.27.0 every subfolder was listed on its own (#867).
+    0.27.0 every subfolder was listed on its own (#867). The system's
+    folders (`system_font_roots`) are the ones the font database reads
+    at startup: on Windows `Fonts` under `SYSTEMROOT` and the user's
+    local and roaming `Microsoft\Windows\Fonts`; on macOS
+    `/Library/Fonts`, `/System/Library/Fonts`, each
+    `com_apple_MobileAsset_Font*` folder of the fonts downloaded on
+    demand under `/System/Library/AssetsV2` (one subfolder per font
+    inside), `/Network/Library/Fonts` and `~/Library/Fonts`; on Linux
+    the folders fontconfig lists (`FONTCONFIG_FILE`, else the user's
+    `fontconfig/fonts.conf`, else `/etc/fonts/local.conf`, and
+    `/etc/fonts/fonts.conf`), else `/usr/share/fonts`,
+    `/usr/local/share/fonts`, `~/.fonts` and `~/.local/share/fonts`
+    (`font_folders::system_folders_are_the_ones_the_database_reads`).
 
   In each section a family needs one of the choices ticked; of the
   OpenType features it needs every one ticked; it needs what every

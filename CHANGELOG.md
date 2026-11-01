@@ -22,6 +22,8 @@ full, row-by-row status.
 
 - Print and Print Preview, Layout: the sketch, its sheet count and the booklet summary under it (pages, blank pages added, sheets, signatures) count the pages that print, the page range, the page list, odd or even pages or the selection, not the whole drawing. A booklet of pages 1 to 20 of a hundred-page drawing reported 100 pages and 25 sheets while 5 sheets printed (#788).
 
+- Font list filter: the Folders section counts the system's font folders the way the font database reads them, so each is listed once. On macOS the fonts downloaded on demand, one folder each under `/System/Library/AssetsV2`, gave one entry per font; on Linux a library registered with fontconfig and sorted into subfolders gave one entry per subfolder; on Windows the user's roaming fonts folder and the system folder as `SYSTEMROOT` names it are now known (#867).
+
 ## 0.34.0 (2026-11-01)
 
 - Opening a PDF or AI file nested far deeper than any real one (thousands of arrays, dictionaries or parentheses inside one another) no longer closes TraceDraw: the PDF reader (`lopdf`, now 0.46) stops at a fixed depth and reports the file as damaged. A file of about 20 KB could take the program down with a stack overflow, which cannot be caught (RUSTSEC-2026-0187, GHSA-6fj4-rcr3-r7rr).

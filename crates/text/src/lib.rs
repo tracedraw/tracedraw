@@ -1524,31 +1524,20 @@ impl TextLayout {
 const ANDROID_FONT_DIRS: [&str; 3] = ["/system/fonts", "/product/fonts", "/vendor/fonts"];
 
 /// The folders the operating system keeps its fonts in (and the user's
-/// own font folders), the way the font database looks for them: a font
-/// under one of them counts as in it for the font list's filter (#867).
-#[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
+/// own font folders): the folders the font database reads at startup,
+/// each once. A font under one of them counts as in it for the font
+/// list's filter, whatever subfolder it lies in (#867).
 pub fn system_font_roots() -> Vec<std::path::PathBuf> {
     let mut out: Vec<std::path::PathBuf> = Vec::new();
     #[cfg(windows)]
-    {
-        if let Ok(dir) = std::env::var("WINDIR") {
-            out.push(std::path::PathBuf::from(dir).join("Fonts"));
-        } else {
-            out.push("C:\\Windows\\Fonts".into());
-        }
-        if let Ok(local) = std::env::var("LOCALAPPDATA") {
-            out.push(
-                std::path::PathBuf::from(local)
-                    .join("Microsoft")
-                    .join("Windows")
-                    .join("Fonts"),
-            );
-        }
-    }
+    out.extend(windows_font_roots(&|name| std::env::var(name).ok()));
     #[cfg(target_os = "macos")]
     {
         out.push("/Library/Fonts".into());
         out.push("/System/Library/Fonts".into());
+        out.extend(asset_font_roots(std::path::Path::new(
+            "/System/Library/AssetsV2",
+        )));
         out.push("/Network/Library/Fonts".into());
         if let Ok(home) = std::env::var("HOME") {
             out.push(std::path::PathBuf::from(home).join("Library").join("Fonts"));
@@ -1559,11 +1548,113 @@ pub fn system_font_roots() -> Vec<std::path::PathBuf> {
         out.push(dir.into());
     }
     #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
-    {
+    out.extend(fontconfig_font_roots(&|name| std::env::var(name).ok()));
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|dir| seen.insert(dir.clone()));
+    out
+}
+
+/// The folders Windows keeps fonts in, the ones the font database reads:
+/// the system's (`Fonts` under `SYSTEMROOT`, else `WINDIR`, else
+/// `C:\Windows`) and the user's, local and roaming, under the profile's
+/// `AppData` (and as `LOCALAPPDATA` and `APPDATA` name them). `var`
+/// reads an environment variable (#867).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn windows_font_roots(var: &dyn Fn(&str) -> Option<String>) -> Vec<std::path::PathBuf> {
+    let system = var("SYSTEMROOT").or_else(|| var("WINDIR")).map_or_else(
+        || std::path::PathBuf::from("C:\\Windows"),
+        std::path::PathBuf::from,
+    );
+    let mut out = vec![system.join("Fonts")];
+    if let Some(profile) = var("USERPROFILE") {
+        let app_data = std::path::PathBuf::from(profile).join("AppData");
+        for kind in ["Local", "Roaming"] {
+            out.push(
+                app_data
+                    .join(kind)
+                    .join("Microsoft")
+                    .join("Windows")
+                    .join("Fonts"),
+            );
+        }
+    }
+    for name in ["LOCALAPPDATA", "APPDATA"] {
+        if let Some(dir) = var(name) {
+            out.push(
+                std::path::PathBuf::from(dir)
+                    .join("Microsoft")
+                    .join("Windows")
+                    .join("Fonts"),
+            );
+        }
+    }
+    out
+}
+
+/// The folders of the fonts macOS downloads on demand, the ones the font
+/// database reads: each `com_apple_MobileAsset_Font*` folder under
+/// `assets` (`/System/Library/AssetsV2`), sorted. Each holds a subfolder
+/// per font, so the fonts count as in the asset folder, not one folder
+/// each (#867). None when `assets` cannot be read.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn asset_font_roots(assets: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let Ok(dir) = std::fs::read_dir(assets) else {
+        return Vec::new();
+    };
+    let mut out: Vec<std::path::PathBuf> = dir
+        .flatten()
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("com_apple_MobileAsset_Font")
+        })
+        .map(|entry| entry.path())
+        .collect();
+    out.sort();
+    out
+}
+
+/// The folders fontconfig lists for fonts, read the way the font database
+/// reads them: the file `FONTCONFIG_FILE` names alone, else the user's
+/// `fontconfig/fonts.conf` under `XDG_CONFIG_HOME` (`~/.config`) or,
+/// without one, `/etc/fonts/local.conf`, and `/etc/fonts/fonts.conf`
+/// after either; the usual folders when the configuration lists none.
+/// `var` reads an environment variable (#867).
+#[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
+fn fontconfig_font_roots(var: &dyn Fn(&str) -> Option<String>) -> Vec<std::path::PathBuf> {
+    use std::path::{Path, PathBuf};
+    let home = var("HOME").map(PathBuf::from);
+    let mut config = fontconfig_parser::FontConfig::default();
+    if let Some(file) = var("FONTCONFIG_FILE") {
+        let _ = config.merge_config(Path::new(&file));
+    } else {
+        let user = var("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .or_else(|| home.as_ref().map(|h| h.join(".config")));
+        let read_global = match user {
+            Some(dir) => config
+                .merge_config(&dir.join("fontconfig").join("fonts.conf"))
+                .is_err(),
+            None => true,
+        };
+        if read_global {
+            let _ = config.merge_config(Path::new("/etc/fonts/local.conf"));
+        }
+        let _ = config.merge_config(Path::new("/etc/fonts/fonts.conf"));
+    }
+    let mut out: Vec<PathBuf> = config
+        .dirs
+        .into_iter()
+        .filter_map(|dir| match dir.path.strip_prefix("~") {
+            Ok(rest) => home.as_ref().map(|h| h.join(rest)),
+            Err(_) => Some(dir.path),
+        })
+        .collect();
+    if out.is_empty() {
         out.push("/usr/share/fonts".into());
         out.push("/usr/local/share/fonts".into());
-        if let Ok(home) = std::env::var("HOME") {
-            let home = std::path::PathBuf::from(home);
+        if let Some(home) = home {
             out.push(home.join(".fonts"));
             out.push(home.join(".local").join("share").join("fonts"));
         }
@@ -8011,10 +8102,10 @@ mod font_folders {
         );
         // The library folder it lies under, once, whatever the subfolder.
         let g = f.generation();
-        f.set_font_roots(&[root.clone()]);
+        f.set_font_roots(std::slice::from_ref(&root));
         assert!(f.generation() > g, "cached lists read again");
         let g = f.generation();
-        f.set_font_roots(&[root.clone()]);
+        f.set_font_roots(std::slice::from_ref(&root));
         assert_eq!(f.generation(), g, "the same folders change nothing");
         assert_eq!(f.font_folders(), vec![root.clone()]);
         assert_eq!(
@@ -8025,6 +8116,115 @@ mod font_folders {
         f.set_font_roots(&[dir.clone(), root.join("google"), dir.join("Other")]);
         assert_eq!(f.folder_of(&file), Some(root.join("google")));
         assert!(!system_font_roots().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The system's folders are the ones the font database reads, so a
+    /// font in a subfolder of one counts as in it (#867).
+    #[test]
+    fn system_folders_are_the_ones_the_database_reads() {
+        use std::path::PathBuf;
+        // Windows: the system folder is named by SYSTEMROOT, the user's
+        // local and roaming folders by the profile.
+        let env = |name: &str| -> Option<String> {
+            match name {
+                "SYSTEMROOT" => Some("C:\\WINDOWS".into()),
+                "WINDIR" => Some("C:\\Windows".into()),
+                "USERPROFILE" => Some("C:\\Users\\me".into()),
+                "LOCALAPPDATA" => Some("C:\\Users\\me\\AppData\\Local".into()),
+                _ => None,
+            }
+        };
+        let roots = windows_font_roots(&env);
+        let profile = PathBuf::from("C:\\Users\\me").join("AppData");
+        let roaming = profile
+            .join("Roaming")
+            .join("Microsoft")
+            .join("Windows")
+            .join("Fonts");
+        assert_eq!(roots[0], PathBuf::from("C:\\WINDOWS").join("Fonts"));
+        assert!(roots.contains(&roaming), "{roots:?}");
+        assert!(roots.contains(
+            &profile
+                .join("Local")
+                .join("Microsoft")
+                .join("Windows")
+                .join("Fonts")
+        ));
+        let font = roaming.join("Quicksand-VF.ttf");
+        assert_eq!(folder_under(&font, &roots), Some(roaming));
+        // Without SYSTEMROOT, WINDIR; without either, C:\Windows.
+        let windir = |name: &str| (name == "WINDIR").then(|| "D:\\Win".to_string());
+        assert_eq!(
+            windows_font_roots(&windir),
+            vec![PathBuf::from("D:\\Win").join("Fonts")]
+        );
+        assert_eq!(
+            windows_font_roots(&|_| None),
+            vec![PathBuf::from("C:\\Windows").join("Fonts")]
+        );
+
+        // macOS: the on-demand fonts' asset folders, each font in a
+        // subfolder of its own, count as the asset folder.
+        let dir = std::env::temp_dir().join(format!("tracedraw-roots-{}", std::process::id()));
+        let assets = dir.join("AssetsV2");
+        let fonts7 = assets.join("com_apple_MobileAsset_Font7");
+        let font3 = assets.join("com_apple_MobileAsset_Font3");
+        let deep = fonts7.join("1234abcd.asset").join("AssetData");
+        std::fs::create_dir_all(&deep).expect("dirs");
+        std::fs::create_dir_all(&font3).expect("dirs");
+        std::fs::create_dir_all(assets.join("com_apple_MobileAsset_Other")).expect("dirs");
+        let roots = asset_font_roots(&assets);
+        assert_eq!(roots, vec![font3, fonts7.clone()]);
+        let font = deep.join("Font.ttf");
+        assert_eq!(folder_under(&font, &roots), Some(fonts7));
+        assert_eq!(folder_under(&font, &[]), Some(deep));
+        assert!(asset_font_roots(&dir.join("missing")).is_empty());
+
+        // Linux: the folders fontconfig lists, a library sorted into
+        // subfolders among them; the usual folders when it lists none.
+        #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
+        {
+            let library = dir.join("Library");
+            let conf = dir.join("fonts.conf");
+            std::fs::write(
+                &conf,
+                format!(
+                    "<?xml version=\"1.0\"?><fontconfig><dir>{}</dir><dir>/usr/share/fonts</dir></fontconfig>",
+                    library.display()
+                ),
+            )
+            .expect("conf");
+            let file = conf.to_string_lossy().into_owned();
+            let env = move |name: &str| (name == "FONTCONFIG_FILE").then(|| file.clone());
+            let roots = fontconfig_font_roots(&env);
+            assert_eq!(
+                roots,
+                vec![library.clone(), PathBuf::from("/usr/share/fonts")]
+            );
+            let font = library
+                .join("google")
+                .join("quicksand")
+                .join("Quicksand-VF.ttf");
+            assert_eq!(folder_under(&font, &roots), Some(library));
+            std::fs::write(&conf, "<?xml version=\"1.0\"?><fontconfig></fontconfig>")
+                .expect("conf");
+            let file = conf.to_string_lossy().into_owned();
+            let env = move |name: &str| match name {
+                "FONTCONFIG_FILE" => Some(file.clone()),
+                "HOME" => Some("/home/me".to_string()),
+                _ => None,
+            };
+            assert_eq!(
+                fontconfig_font_roots(&env),
+                vec![
+                    PathBuf::from("/usr/share/fonts"),
+                    PathBuf::from("/usr/local/share/fonts"),
+                    PathBuf::from("/home/me/.fonts"),
+                    PathBuf::from("/home/me/.local/share/fonts"),
+                ]
+            );
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
