@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Visual modernization of the workspace: the default palette follows the classic order with plain colour names, and five swatches fewer among the first 50.
+
 - Clip to Frame: Edit Contents (also by Ctrl+click) and Extract Contents take a clip frame apart where it shows. A clip frame moved, turned or resized after it was made keeps that in its own transform, which the commands dropped, so the frame and its contents jumped back to where the clip frame had been created and Finish Editing left them there (#1562).
 
 - Space held down no longer leaves a trail of copies or flips between tools. A key held sends its press again and again, and every one of them counted: during a move each repeat dropped another copy of the selection, and on a tool Space went back and forth between the Pick tool and the tool before it as long as it was held. Space now drops one copy a press, and the tool keys pick their tool once; the arrow keys, Delete and the menu shortcuts still repeat while held (#1502).

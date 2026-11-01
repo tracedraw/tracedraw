@@ -45,20 +45,23 @@ downwards.
 
 ## Default palette
 
-The default CMYK palette, 99 named colours, is made by a rule
-(`palette::default_cmyk`), in this order, every ink a whole percentage:
+The default CMYK palette, 94 named colours, is made by a rule
+(`palette::default_cmyk`), every ink a whole percentage:
 
-1. Black, 90% Black to 10% Black, White (11).
-2. The process colours Blue, Cyan, Green, Yellow, Red, Magenta (6).
-3. Twelve hue families, 6 swatches each (72), going round the colour wheel
-   from the pinks to the purples: Rose, Red Orange, Orange, Amber, Lime,
-   Leaf, Emerald, Teal, Azure, Indigo, Violet, Purple. A family's mix of
-   cyan, magenta and yellow (Orange is C0 M60 Y100) comes at 20%, 40%, 60%
-   and 80% of its strength ("Orange 20%" is 0 12 20 0), at full strength
-   ("Orange") and with 30% black ("Dark Orange" 0 60 100 30).
-4. Two browns: Brown 30 60 80 10 and Light Brown 10 30 50 10 (2).
-5. Warm Grey 20%, 40%, 60%, 80% (M5 Y10 with that much black) and Cool
-   Grey 20%, 40%, 60%, 80% (C10 M5 with that much black) (8).
+1. The basics (22), first in the strip: Black, 90% Black to 10% Black,
+   White, the process colours Blue, Cyan, Green, Yellow, Red, Magenta,
+   then Purple (20 80 0 20), Orange (0 60 100 0), Pink (0 40 20 0), Dark
+   Brown (0 20 20 60) and Powder Blue (20 20 0 0).
+2. The classic mixes after them (72), in 20% steps of the inks and going
+   from the blues through the greens, yellows and browns, reds and pinks
+   to the violets and purples and the deep blues. Every one has a plain
+   descriptive name ("Dusty Blue", "Slate Blue", "Pale Slate", "Olive
+   Green", "Dark Red", "Lilac"), none of them repeated.
+
+The list is the classic palette with five swatches taken out of its first
+50: after the basics, one swatch in every fourth or fifth (4 kept, 1
+out, 5 kept, 1 out and so on; the 27th, 33rd, 38th, 44th and 49th
+swatches of the classic list). Swatches after the 50th are unchanged.
 
 The palette only decides what a new window shows. A drawing keeps the
 colours it stores, so changing the palette never changes a saved
@@ -70,14 +73,14 @@ mode, Document Info) the default palette shows and applies its
 colours as clean RGB values (names kept; spot inks and registration stay
 as they are). The default palette's colours come from the RGB default
 palette, a table of RGB values defined directly
-(`palette::default_rgb`, the same 99 names in the same order, also the
+(`palette::default_rgb`, the same 94 names in the same order, also the
 Palette Manager's built-in Default RGB palette), found by name and colour
 so a default palette edited in the Palette Editor keeps them, and worked
 out when the palette changes rather than every frame: 10%
 greys (90% Black 26 26 26, 50% Black 128 128 128) and multiples of 17
 otherwise, the plain ink formula below rounded to the nearest multiple
-(Black 0 0 0, Red 255 0 0, Orange 255 102 0, Azure 0 153 255, Dark Azure
-0 85 187, Brown 153 85 17). Any other CMYK colour
+(Black 0 0 0, Red 255 0 0, Orange 255 102 0, Sky Blue 0 204 255, Dark Green
+0 51 51, Dusty Blue 102 102 204; no two swatches share a value, Deep Blue is 0 0 68). Any other CMYK colour
 takes the plain RGB of its inks, R = 255 (1 - min(1, C + K)) and so on,
 not the press simulation; other colours are converted as the colour
 management converts. A CMYK drawing keeps them CMYK (#483, #620,

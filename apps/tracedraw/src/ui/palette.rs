@@ -1266,7 +1266,7 @@ mod tests {
     #[test]
     fn the_default_palette_has_greys_process_colours_and_tints() {
         let app = App::headless();
-        assert_eq!(app.palette.len(), 99);
+        assert_eq!(app.palette.len(), 94);
         let names: Vec<&str> = app.palette.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(&names[..3], &["Black", "90% Black", "80% Black"]);
         assert_eq!(names[10], "White");
@@ -1274,18 +1274,18 @@ mod tests {
             &names[11..17],
             &["Blue", "Cyan", "Green", "Yellow", "Red", "Magenta"]
         );
-        let (_, mint) = app
+        let (_, peach) = app
             .palette
             .iter()
-            .find(|(n, _)| n == "Orange 40%")
-            .expect("orange tint");
-        assert_eq!(*mint, Color::cmyk_pct(0.0, 24.0, 40.0, 0.0));
+            .find(|(n, _)| n == "Peach")
+            .expect("peach tint");
+        assert_eq!(*peach, Color::cmyk_pct(0.0, 40.0, 60.0, 0.0));
         let dark = app
             .palette
             .iter()
-            .find(|(n, _)| n == "Dark Teal")
+            .find(|(n, _)| n == "Dark Green")
             .map(|(_, c)| *c);
-        assert_eq!(dark, Some(Color::cmyk_pct(100.0, 0.0, 30.0, 30.0)));
+        assert_eq!(dark, Some(Color::cmyk_pct(20.0, 0.0, 0.0, 80.0)));
     }
 
     #[test]
@@ -1704,7 +1704,7 @@ mod tests {
                 .map(|(_, c)| *c)
                 .expect(name)
         };
-        assert_eq!(rgb.len(), 99);
+        assert_eq!(rgb.len(), 94);
         assert_eq!(of("Black"), Color::rgb8(0, 0, 0));
         assert_eq!(of("White"), Color::rgb8(255, 255, 255));
         assert_eq!(of("50% Black"), Color::rgb8(128, 128, 128));
@@ -1715,13 +1715,14 @@ mod tests {
         assert_eq!(of("Magenta"), Color::rgb8(255, 0, 255));
         assert_eq!(of("Orange"), Color::rgb8(255, 102, 0));
         assert!(rgb.iter().all(|(_, c)| c.model_name() == "RGB"));
-        // The hue families: the colours with black in them are clean RGB
+        // The colours with black in them are clean RGB
         // values too (#620).
-        assert_eq!(of("Dark Orange"), Color::rgb8(187, 34, 0));
-        assert_eq!(of("Azure"), Color::rgb8(0, 153, 255));
-        assert_eq!(of("Dark Azure"), Color::rgb8(0, 85, 187));
-        assert_eq!(of("Rose 40%"), Color::rgb8(255, 153, 221));
-        assert_eq!(of("Brown"), Color::rgb8(153, 85, 17));
+        assert_eq!(of("Purple"), Color::rgb8(153, 0, 204));
+        assert_eq!(of("Dusty Blue"), Color::rgb8(102, 102, 204));
+        assert_eq!(of("Sky Blue"), Color::rgb8(0, 204, 255));
+        assert_eq!(of("Dark Green"), Color::rgb8(0, 51, 51));
+        assert_eq!(of("Powder Blue"), Color::rgb8(204, 204, 255));
+        assert_eq!(of("Dark Brown"), Color::rgb8(102, 51, 51));
         assert_eq!(of("90% Black"), Color::rgb8(26, 26, 26));
         // Every channel is a multiple of 17 or a 10% grey.
         for (n, c) in &rgb {
@@ -1744,11 +1745,14 @@ mod tests {
         palette.retain(|(n, _)| n != "Black");
         let rgb = as_rgb(&palette);
         let of = |name: &str| rgb.iter().find(|(n, _)| n == name).map(|(_, c)| *c);
-        assert_eq!(of("Rose"), Some(Color::rgb8(0xFF, 0x00, 0x99)));
-        assert_eq!(of("Dark Azure"), Some(Color::rgb8(0, 85, 187)));
+        assert_eq!(of("Hot Pink"), Some(Color::rgb8(255, 51, 153)));
+        assert_eq!(of("Dark Green"), Some(Color::rgb8(0, 51, 51)));
         assert_eq!(of("Mine"), Some(Color::rgb8(230, 255, 255)));
         // A default name with another colour is converted from its inks.
-        let changed = vec![("Rose".to_string(), Color::cmyk_pct(0.0, 100.0, 0.0, 0.0))];
+        let changed = vec![(
+            "Hot Pink".to_string(),
+            Color::cmyk_pct(0.0, 100.0, 0.0, 0.0),
+        )];
         assert_eq!(as_rgb(&changed)[0].1, Color::rgb8(255, 0, 255));
         let builtin = crate::palette::builtin_palettes()
             .into_iter()

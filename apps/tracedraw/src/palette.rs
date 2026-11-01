@@ -32,40 +32,24 @@ impl Palette {
     }
 }
 
-/// The hue families of the default palette: a name and the full-strength
-/// mix of cyan, magenta and yellow in percent, round to 10, in order round
-/// the colour wheel from the pinks to the purples.
-const HUE_FAMILIES: [(&str, u32, u32, u32); 12] = [
-    ("Rose", 0, 100, 40),
-    ("Red Orange", 0, 90, 100),
-    ("Orange", 0, 60, 100),
-    ("Amber", 0, 30, 100),
-    ("Lime", 30, 0, 100),
-    ("Leaf", 70, 0, 100),
-    ("Emerald", 100, 0, 60),
-    ("Teal", 100, 0, 30),
-    ("Azure", 100, 40, 0),
-    ("Indigo", 90, 70, 0),
-    ("Violet", 60, 100, 0),
-    ("Purple", 40, 100, 0),
-];
-
-/// The default CMYK palette (99 swatches), made by a rule and in this order:
+/// The default CMYK palette (94 swatches), in this order:
 ///
-/// 1. Black, then 90% to 10% Black, then White (11).
-/// 2. The six process colours: Blue, Cyan, Green, Yellow, Red, Magenta (6).
-/// 3. Twelve hue families ([`HUE_FAMILIES`], 6 each, 72): the family's mix
-///    at 20%, 40%, 60% and 80% of its strength ("Orange 20%" and so on,
-///    the cyan, magenta and yellow scaled, no black), the mix at full
-///    strength ("Orange") and the mix with 30% black ("Dark Orange").
-/// 4. Two browns, "Brown" and "Light Brown" (2).
-/// 5. Eight neutrals: "Warm Grey" (M5 Y10) and "Cool Grey" (C10 M5)
-///    with 20%, 40%, 60% and 80% black (8).
+/// 1. The basics (22): Black, 90% to 10% Black, White, the six process
+///    colours (Blue, Cyan, Green, Yellow, Red, Magenta), then Purple,
+///    Orange, Pink, Dark Brown and Powder Blue.
+/// 2. The mixes after them, in the classic order: the blues, the greens,
+///    the yellows and browns, the reds and pinks, the violets and
+///    purples, ending with the deep blues. They are tints, shades and
+///    muted mixes in 20% steps of the inks, and every one has a plain
+///    descriptive name ("Dusty Blue", "Olive Green").
 ///
-/// Every value is a whole percentage. Documents keep the colours they
-/// store, so changing the palette changes nothing in a saved drawing.
+/// Among the first 50 swatches, after the basics, every fourth or fifth
+/// swatch (4 kept, 1 left out, 5 kept, 1 left out and so on) is left out
+/// of that order, five in all, so the list is 94 long. Every value is a
+/// whole percentage. Documents keep the colours they store, so changing
+/// the palette changes nothing in a saved drawing.
 pub fn default_cmyk() -> Vec<(String, Color)> {
-    let mut v: Vec<(String, Color)> = Vec::with_capacity(99);
+    let mut v: Vec<(String, Color)> = Vec::with_capacity(94);
     let mut add = |n: &str, c: u32, m: u32, y: u32, k: u32| {
         v.push((
             n.to_string(),
@@ -73,9 +57,15 @@ pub fn default_cmyk() -> Vec<(String, Color)> {
         ));
     };
     add("Black", 0, 0, 0, 100);
-    for k in (1..=9).rev() {
-        add(&format!("{}% Black", k * 10), 0, 0, 0, k * 10);
-    }
+    add("90% Black", 0, 0, 0, 90);
+    add("80% Black", 0, 0, 0, 80);
+    add("70% Black", 0, 0, 0, 70);
+    add("60% Black", 0, 0, 0, 60);
+    add("50% Black", 0, 0, 0, 50);
+    add("40% Black", 0, 0, 0, 40);
+    add("30% Black", 0, 0, 0, 30);
+    add("20% Black", 0, 0, 0, 20);
+    add("10% Black", 0, 0, 0, 10);
     add("White", 0, 0, 0, 0);
     add("Blue", 100, 100, 0, 0);
     add("Cyan", 100, 0, 0, 0);
@@ -83,36 +73,94 @@ pub fn default_cmyk() -> Vec<(String, Color)> {
     add("Yellow", 0, 0, 100, 0);
     add("Red", 0, 100, 100, 0);
     add("Magenta", 0, 100, 0, 0);
-    for &(name, c, m, y) in &HUE_FAMILIES {
-        for t in [20, 40, 60, 80] {
-            add(
-                &format!("{name} {t}%"),
-                c * t / 100,
-                m * t / 100,
-                y * t / 100,
-                0,
-            );
-        }
-        add(name, c, m, y, 0);
-        add(&format!("Dark {name}"), c, m, y, 30);
-    }
-    add("Brown", 30, 60, 80, 10);
-    add("Light Brown", 10, 30, 50, 10);
-    for k in [20, 40, 60, 80] {
-        add(&format!("Warm Grey {k}%"), 0, 5, 10, k);
-    }
-    for k in [20, 40, 60, 80] {
-        add(&format!("Cool Grey {k}%"), 10, 5, 0, k);
-    }
+    add("Purple", 20, 80, 0, 20);
+    add("Orange", 0, 60, 100, 0);
+    add("Pink", 0, 40, 20, 0);
+    add("Dark Brown", 0, 20, 20, 60);
+    add("Powder Blue", 20, 20, 0, 0);
+    add("Pastel Blue", 40, 40, 0, 0);
+    add("Baby Blue", 60, 40, 0, 0);
+    add("Bright Blue", 60, 60, 0, 0);
+    add("Dusty Blue", 40, 40, 0, 20);
+    add("Dark Navy Blue", 40, 40, 0, 60);
+    add("Slate Blue", 40, 20, 0, 40);
+    add("Sky Blue", 100, 20, 0, 0);
+    add("Ice Blue", 40, 0, 0, 0);
+    add("Pale Slate", 20, 0, 0, 20);
+    add("Moss Green", 20, 0, 0, 60);
+    add("Dark Green", 20, 0, 0, 80);
+    add("Forest Green", 40, 0, 20, 60);
+    add("Grass Green", 60, 0, 40, 40);
+    add("Light Green", 60, 0, 40, 20);
+    add("Spring Green", 60, 0, 60, 20);
+    add("Turquoise", 60, 0, 20, 0);
+    add("Sea Green", 60, 0, 20, 20);
+    add("Grey Green", 20, 0, 20, 20);
+    add("Mint Green", 40, 0, 40, 0);
+    add("Dark Grey Green", 20, 0, 20, 40);
+    add("Olive Green", 20, 0, 40, 40);
+    add("Lime", 20, 0, 60, 20);
+    add("Chartreuse", 40, 0, 100, 0);
+    add("Pale Lime", 20, 0, 60, 0);
+    add("Dark Olive", 0, 0, 20, 80);
+    add("Olive Drab", 0, 0, 20, 60);
+    add("Khaki", 0, 0, 20, 40);
+    add("Olive", 0, 0, 40, 40);
+    add("Soft Yellow", 0, 0, 60, 20);
+    add("Light Yellow", 0, 0, 60, 0);
+    add("Cream", 0, 0, 40, 0);
+    add("Pale Yellow", 0, 0, 20, 0);
+    add("Brown", 0, 20, 40, 40);
+    add("Red Brown", 0, 40, 60, 20);
+    add("Gold", 0, 20, 60, 20);
+    add("Dark Orange", 0, 60, 80, 0);
+    add("Light Orange", 0, 40, 80, 0);
+    add("Peach", 0, 40, 60, 0);
+    add("Deep Yellow", 0, 20, 100, 0);
+    add("Sand", 0, 20, 40, 0);
+    add("Dark Tan", 0, 20, 40, 60);
+    add("Maroon", 0, 60, 60, 40);
+    add("Brick Red", 0, 60, 80, 20);
+    add("Salmon", 0, 60, 60, 0);
+    add("Soft Pink", 0, 40, 40, 0);
+    add("Faded Pink", 0, 20, 20, 0);
+    add("Crimson", 0, 100, 60, 20);
+    add("Dark Red", 0, 100, 100, 20);
+    add("Deep Rose", 0, 100, 60, 0);
+    add("Bright Red", 0, 100, 80, 0);
+    add("Deep Pink", 0, 60, 40, 0);
+    add("Hot Pink", 0, 80, 40, 0);
+    add("Dusty Rose", 0, 40, 20, 20);
+    add("Plum", 0, 60, 0, 40);
+    add("Deep Violet", 0, 60, 0, 60);
+    add("Light Violet", 0, 40, 0, 0);
+    add("Violet", 0, 40, 0, 20);
+    add("Dusty Plum", 0, 20, 0, 20);
+    add("Pale Purple", 0, 20, 0, 0);
+    add("Medium Purple", 20, 60, 0, 20);
+    add("Bright Purple", 20, 80, 0, 0);
+    add("Light Purple", 20, 60, 0, 0);
+    add("Dusty Violet", 20, 40, 0, 20);
+    add("Lilac", 20, 40, 0, 0);
+    add("Deep Purple", 20, 40, 0, 60);
+    add("Dark Violet", 20, 40, 0, 40);
+    add("Blue Violet", 40, 60, 0, 0);
+    add("Blue Purple", 40, 100, 0, 0);
+    add("Royal Blue", 60, 60, 0, 20);
+    add("Dark Blue", 60, 60, 0, 40);
+    add("Steel Blue", 40, 40, 0, 40);
+    add("Deep Blue", 60, 60, 0, 60);
     v
 }
 
 /// The default palette of an RGB drawing: the same colours as
 /// [`default_cmyk`], in the same order and with the same names, as clean
 /// RGB values defined directly (multiples of 17 and 10% greys), not
-/// converted from the inks: each channel of a hue is the plain ink
+/// converted from the inks: each channel of a colour is the plain ink
 /// formula (255 times one minus the ink plus black, to 1) rounded to the
-/// nearest multiple of 17 (#620).
+/// nearest multiple of 17 (#620). No two swatches have the same value:
+/// Deep Blue is set to 0 0 68, a step darker than the formula gives,
+/// which is also the value of Dark Navy Blue.
 pub fn default_rgb() -> Vec<(String, Color)> {
     DEFAULT_RGB
         .iter()
@@ -126,7 +174,7 @@ pub fn default_rgb() -> Vec<(String, Color)> {
 }
 
 /// [`default_rgb`]'s names and 0xRRGGBB values.
-const DEFAULT_RGB: [(&str, u32); 99] = [
+const DEFAULT_RGB: [(&str, u32); 94] = [
     ("Black", 0x000000),
     ("90% Black", 0x1A1A1A),
     ("80% Black", 0x333333),
@@ -144,88 +192,83 @@ const DEFAULT_RGB: [(&str, u32); 99] = [
     ("Yellow", 0xFFFF00),
     ("Red", 0xFF0000),
     ("Magenta", 0xFF00FF),
-    ("Rose 20%", 0xFFCCEE),
-    ("Rose 40%", 0xFF99DD),
-    ("Rose 60%", 0xFF66BB),
-    ("Rose 80%", 0xFF33AA),
-    ("Rose", 0xFF0099),
-    ("Dark Rose", 0xBB0055),
-    ("Red Orange 20%", 0xFFCCCC),
-    ("Red Orange 40%", 0xFFAA99),
-    ("Red Orange 60%", 0xFF7766),
-    ("Red Orange 80%", 0xFF4433),
-    ("Red Orange", 0xFF1100),
-    ("Dark Red Orange", 0xBB0000),
-    ("Orange 20%", 0xFFDDCC),
-    ("Orange 40%", 0xFFBB99),
-    ("Orange 60%", 0xFFAA66),
-    ("Orange 80%", 0xFF8833),
+    ("Purple", 0x9900CC),
     ("Orange", 0xFF6600),
-    ("Dark Orange", 0xBB2200),
-    ("Amber 20%", 0xFFEECC),
-    ("Amber 40%", 0xFFDD99),
-    ("Amber 60%", 0xFFCC66),
-    ("Amber 80%", 0xFFBB33),
-    ("Amber", 0xFFBB00),
-    ("Dark Amber", 0xBB6600),
-    ("Lime 20%", 0xEEFFCC),
-    ("Lime 40%", 0xDDFF99),
-    ("Lime 60%", 0xCCFF66),
-    ("Lime 80%", 0xBBFF33),
-    ("Lime", 0xBBFF00),
-    ("Dark Lime", 0x66BB00),
-    ("Leaf 20%", 0xDDFFCC),
-    ("Leaf 40%", 0xBBFF99),
-    ("Leaf 60%", 0x99FF66),
-    ("Leaf 80%", 0x77FF33),
-    ("Leaf", 0x55FF00),
-    ("Dark Leaf", 0x00BB00),
-    ("Emerald 20%", 0xCCFFDD),
-    ("Emerald 40%", 0x99FFBB),
-    ("Emerald 60%", 0x66FFAA),
-    ("Emerald 80%", 0x33FF88),
-    ("Emerald", 0x00FF66),
-    ("Dark Emerald", 0x00BB22),
-    ("Teal 20%", 0xCCFFEE),
-    ("Teal 40%", 0x99FFDD),
-    ("Teal 60%", 0x66FFCC),
-    ("Teal 80%", 0x33FFBB),
-    ("Teal", 0x00FFBB),
-    ("Dark Teal", 0x00BB66),
-    ("Azure 20%", 0xCCEEFF),
-    ("Azure 40%", 0x99DDFF),
-    ("Azure 60%", 0x66BBFF),
-    ("Azure 80%", 0x33AAFF),
-    ("Azure", 0x0099FF),
-    ("Dark Azure", 0x0055BB),
-    ("Indigo 20%", 0xCCDDFF),
-    ("Indigo 40%", 0xAABBFF),
-    ("Indigo 60%", 0x7799FF),
-    ("Indigo 80%", 0x4477FF),
-    ("Indigo", 0x1155FF),
-    ("Dark Indigo", 0x0000BB),
-    ("Violet 20%", 0xDDCCFF),
-    ("Violet 40%", 0xBB99FF),
-    ("Violet 60%", 0xAA66FF),
-    ("Violet 80%", 0x8833FF),
-    ("Violet", 0x6600FF),
-    ("Dark Violet", 0x2200BB),
-    ("Purple 20%", 0xEECCFF),
-    ("Purple 40%", 0xDD99FF),
-    ("Purple 60%", 0xBB66FF),
-    ("Purple 80%", 0xAA33FF),
-    ("Purple", 0x9900FF),
-    ("Dark Purple", 0x5500BB),
-    ("Brown", 0x995511),
-    ("Light Brown", 0xCC9966),
-    ("Warm Grey 20%", 0xCCBBBB),
-    ("Warm Grey 40%", 0x998888),
-    ("Warm Grey 60%", 0x665555),
-    ("Warm Grey 80%", 0x332211),
-    ("Cool Grey 20%", 0xBBBBCC),
-    ("Cool Grey 40%", 0x888899),
-    ("Cool Grey 60%", 0x555566),
-    ("Cool Grey 80%", 0x112233),
+    ("Pink", 0xFF99CC),
+    ("Dark Brown", 0x663333),
+    ("Powder Blue", 0xCCCCFF),
+    ("Pastel Blue", 0x9999FF),
+    ("Baby Blue", 0x6699FF),
+    ("Bright Blue", 0x6666FF),
+    ("Dusty Blue", 0x6666CC),
+    ("Dark Navy Blue", 0x000066),
+    ("Slate Blue", 0x336699),
+    ("Sky Blue", 0x00CCFF),
+    ("Ice Blue", 0x99FFFF),
+    ("Pale Slate", 0x99CCCC),
+    ("Moss Green", 0x336666),
+    ("Dark Green", 0x003333),
+    ("Forest Green", 0x006633),
+    ("Grass Green", 0x009933),
+    ("Light Green", 0x33CC66),
+    ("Spring Green", 0x33CC33),
+    ("Turquoise", 0x66FFCC),
+    ("Sea Green", 0x33CC99),
+    ("Grey Green", 0x99CC99),
+    ("Mint Green", 0x99FF99),
+    ("Dark Grey Green", 0x669966),
+    ("Olive Green", 0x669933),
+    ("Lime", 0x99CC33),
+    ("Chartreuse", 0x99FF00),
+    ("Pale Lime", 0xCCFF66),
+    ("Dark Olive", 0x333300),
+    ("Olive Drab", 0x666633),
+    ("Khaki", 0x999966),
+    ("Olive", 0x999933),
+    ("Soft Yellow", 0xCCCC33),
+    ("Light Yellow", 0xFFFF66),
+    ("Cream", 0xFFFF99),
+    ("Pale Yellow", 0xFFFFCC),
+    ("Brown", 0x996633),
+    ("Red Brown", 0xCC6633),
+    ("Gold", 0xCC9933),
+    ("Dark Orange", 0xFF6633),
+    ("Light Orange", 0xFF9933),
+    ("Peach", 0xFF9966),
+    ("Deep Yellow", 0xFFCC00),
+    ("Sand", 0xFFCC99),
+    ("Dark Tan", 0x663300),
+    ("Maroon", 0x990000),
+    ("Brick Red", 0xCC3300),
+    ("Salmon", 0xFF6666),
+    ("Soft Pink", 0xFF9999),
+    ("Faded Pink", 0xFFCCCC),
+    ("Crimson", 0xCC0033),
+    ("Dark Red", 0xCC0000),
+    ("Deep Rose", 0xFF0066),
+    ("Bright Red", 0xFF0033),
+    ("Deep Pink", 0xFF6699),
+    ("Hot Pink", 0xFF3399),
+    ("Dusty Rose", 0xCC6699),
+    ("Plum", 0x990099),
+    ("Deep Violet", 0x660066),
+    ("Light Violet", 0xFF99FF),
+    ("Violet", 0xCC66CC),
+    ("Dusty Plum", 0xCC99CC),
+    ("Pale Purple", 0xFFCCFF),
+    ("Medium Purple", 0x9933CC),
+    ("Bright Purple", 0xCC33FF),
+    ("Light Purple", 0xCC66FF),
+    ("Dusty Violet", 0x9966CC),
+    ("Lilac", 0xCC99FF),
+    ("Deep Purple", 0x330066),
+    ("Dark Violet", 0x663399),
+    ("Blue Violet", 0x9966FF),
+    ("Blue Purple", 0x9900FF),
+    ("Royal Blue", 0x3333CC),
+    ("Dark Blue", 0x000099),
+    ("Steel Blue", 0x333399),
+    ("Deep Blue", 0x000044),
 ];
 
 /// Process colours in 10% steps of C, M, Y and K combinations (a subset).
@@ -655,46 +698,64 @@ impl Harmony {
 mod tests {
     use super::*;
 
-    /// The default palette follows its rule: 99 distinct names, the generic
-    /// swatches first, whole percentages, the hue families in order, and an
-    /// RGB twin with the same names (the strip is the same in both modes).
+    /// The default palette follows its rule: the basics first (what the
+    /// strip always began with), 94 swatches, unique names, whole
+    /// percentages, and an RGB twin with the same names and no repeated
+    /// value.
     #[test]
     fn the_default_palette_follows_its_rule() {
         let cmyk = default_cmyk();
-        assert_eq!(cmyk.len(), 99);
+        assert_eq!(cmyk.len(), 94);
         let names: Vec<&str> = cmyk.iter().map(|(n, _)| n.as_str()).collect();
         let distinct: std::collections::HashSet<&&str> = names.iter().collect();
-        assert_eq!(distinct.len(), 99, "names are unique");
-        assert_eq!(names[0], "Black");
-        assert_eq!(names[10], "White");
-        assert_eq!(
-            &names[11..17],
-            &["Blue", "Cyan", "Green", "Yellow", "Red", "Magenta"]
-        );
-        // Six swatches per hue family, light to dark.
-        assert_eq!(
-            &names[17..23],
-            &[
-                "Rose 20%",
-                "Rose 40%",
-                "Rose 60%",
-                "Rose 80%",
-                "Rose",
-                "Dark Rose"
-            ]
-        );
-        assert_eq!(names[17 + 6 * 11 + 5], "Dark Purple");
-        assert_eq!(names[89], "Brown");
-        assert_eq!(names[98], "Cool Grey 80%");
+        assert_eq!(distinct.len(), 94, "names are unique");
+        // The first part is the basics, in order.
+        let basics: [(&str, [f32; 4]); 22] = [
+            ("Black", [0.0, 0.0, 0.0, 100.0]),
+            ("90% Black", [0.0, 0.0, 0.0, 90.0]),
+            ("80% Black", [0.0, 0.0, 0.0, 80.0]),
+            ("70% Black", [0.0, 0.0, 0.0, 70.0]),
+            ("60% Black", [0.0, 0.0, 0.0, 60.0]),
+            ("50% Black", [0.0, 0.0, 0.0, 50.0]),
+            ("40% Black", [0.0, 0.0, 0.0, 40.0]),
+            ("30% Black", [0.0, 0.0, 0.0, 30.0]),
+            ("20% Black", [0.0, 0.0, 0.0, 20.0]),
+            ("10% Black", [0.0, 0.0, 0.0, 10.0]),
+            ("White", [0.0, 0.0, 0.0, 0.0]),
+            ("Blue", [100.0, 100.0, 0.0, 0.0]),
+            ("Cyan", [100.0, 0.0, 0.0, 0.0]),
+            ("Green", [100.0, 0.0, 100.0, 0.0]),
+            ("Yellow", [0.0, 0.0, 100.0, 0.0]),
+            ("Red", [0.0, 100.0, 100.0, 0.0]),
+            ("Magenta", [0.0, 100.0, 0.0, 0.0]),
+            ("Purple", [20.0, 80.0, 0.0, 20.0]),
+            ("Orange", [0.0, 60.0, 100.0, 0.0]),
+            ("Pink", [0.0, 40.0, 20.0, 0.0]),
+            ("Dark Brown", [0.0, 20.0, 20.0, 60.0]),
+            ("Powder Blue", [20.0, 20.0, 0.0, 0.0]),
+        ];
+        for (i, (name, [c, m, y, k])) in basics.iter().enumerate() {
+            assert_eq!(names[i], *name);
+            assert_eq!(cmyk[i].1, Color::cmyk_pct(*c, *m, *y, *k));
+        }
+        // Five swatches are left out of the first 50: the 27th, 33rd,
+        // 38th, 44th and 49th of the classic order (Navy Blue, Ocean
+        // Green, and so on), and none of the fanciful names remain.
+        for gone in [
+            "Navy Blue",
+            "Kentucky Green",
+            "Martian Green",
+            "Easter Purple",
+        ] {
+            assert!(!names.contains(&gone), "{gone}");
+        }
+        assert_eq!(names[22], "Pastel Blue");
+        assert_eq!(names[26], "Dark Navy Blue");
+        assert_eq!(names[93], "Deep Blue");
         let find = |n: &str| cmyk.iter().find(|(m, _)| m == n).map(|(_, c)| *c);
-        assert_eq!(find("Orange"), Some(Color::cmyk_pct(0.0, 60.0, 100.0, 0.0)));
         assert_eq!(
-            find("Orange 40%"),
-            Some(Color::cmyk_pct(0.0, 24.0, 40.0, 0.0))
-        );
-        assert_eq!(
-            find("Dark Orange"),
-            Some(Color::cmyk_pct(0.0, 60.0, 100.0, 30.0))
+            find("Dusty Blue"),
+            Some(Color::cmyk_pct(40.0, 40.0, 0.0, 20.0))
         );
         // Every ink is a whole percentage.
         for (n, c) in &cmyk {
@@ -708,6 +769,9 @@ mod tests {
         let rgb = default_rgb();
         let rgb_names: Vec<&str> = rgb.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(rgb_names, names);
+        let values: std::collections::HashSet<[u8; 3]> =
+            rgb.iter().map(|(_, c)| c.to_rgb8()).collect();
+        assert_eq!(values.len(), 94, "RGB values are unique");
     }
 
     /// Open Palette lists the extensions it accepts, XML among them,
