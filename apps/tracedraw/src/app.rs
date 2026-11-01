@@ -795,9 +795,9 @@ pub const OPEN_EXTENSIONS: &[&str] = &[
 /// The extensions File > Import reads (besides those of installed script
 /// filters).
 pub const IMPORT_EXTENSIONS: &[&str] = &[
-    "cdr", "cdt", "cdrt", "cmx", "svg", "svgz", "pdf", "ai", "eps", "ps", "prn", "dxf", "psd",
-    "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx", "png", "jpg", "jpeg", "bmp",
-    "gif", "webp", "tif", "tiff",
+    "cdr", "cdt", "cdrt", "cmx", "tdraw", "svg", "svgz", "pdf", "ai", "eps", "ps", "prn", "dxf",
+    "psd", "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx", "png", "jpg", "jpeg",
+    "bmp", "gif", "webp", "tif", "tiff",
 ];
 
 /// The memory the undo steps of one drawing may hold before the oldest
@@ -7618,6 +7618,7 @@ impl App {
         dialog
             .add_filter("HPGL plotter (*.plt, *.hpgl)", &["plt", "hpgl", "hgl"])
             .add_filter("Text (*.txt, *.rtf, *.docx)", &["txt", "rtf", "docx"])
+            .add_filter("TraceDraw (*.tdraw)", &["tdraw"])
             .add_filter(crate::i18n::tr("file.cdr_files"), &["cdr", "cdt", "cdrt"])
             .add_filter("CMX (*.cmx)", &["cmx"])
             .add_filter("SVG (*.svg, *.svgz)", &["svg", "svgz"])
@@ -7730,12 +7731,31 @@ impl App {
             self.import_psd(&path);
             return;
         }
+        if ext == "tdraw" {
+            // A package's fonts, beside the drawing, before its text is
+            // laid out, as File > Open has them (#852).
+            self.load_package_fonts(&path);
+            let read = crate::files::read_to_string(&path)
+                .map_err(|e| e.to_string())
+                .and_then(|json| {
+                    tracedraw_core::Document::from_json(&json).map_err(|e| e.to_string())
+                });
+            self.import_document(read);
+            return;
+        }
         if ext != "cdr" && ext != "cmx" {
             self.import_bitmap(&path);
             return;
         }
-        match Self::open_cdr(&path) {
-            Ok((doc, _)) => {
+        self.import_document(Self::open_cdr(&path).map(|(doc, _)| doc));
+    }
+
+    /// The objects of a drawing read for File > Import (a `.cdr`, `.cmx`
+    /// or `.tdraw` file, or the error reading it): those of every page go
+    /// into the active layer, selected, as one undo step (#1142).
+    fn import_document(&mut self, read: std::result::Result<tracedraw_core::Document, String>) {
+        match read {
+            Ok(doc) => {
                 let Some(layer) = self.active_layer() else {
                     return;
                 };
@@ -7773,9 +7793,7 @@ impl App {
                 self.hyphenate_imported(&ids);
                 self.select(ids);
             }
-            Err(e) => {
-                self.status = crate::i18n::trf("status.import_failed", &[("e", &e.to_string())])
-            }
+            Err(e) => self.status = crate::i18n::trf("status.import_failed", &[("e", &e)]),
         }
     }
 

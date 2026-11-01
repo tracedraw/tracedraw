@@ -87,9 +87,9 @@ impl App {
         let openable = OPEN_EXTENSIONS.contains(&ext.as_str());
         match on {
             DropOn::Drawing if importable => Dropped::Import,
-            // Where the pointer is not known, a file that goes either way
-            // (.cdr, .svg...) is asked about; a picture goes into the
-            // drawing and a .tdraw opens (#1142).
+            // Where the pointer is not known, a drawing, which goes either
+            // way (.cdr, .svg, .tdraw...), is asked about; a picture goes
+            // into the drawing (#1142).
             DropOn::Unknown if importable && openable => Dropped::Ask,
             DropOn::Unknown if importable => Dropped::Import,
             _ if openable => Dropped::Open,
@@ -181,7 +181,7 @@ impl App {
 
     /// Would files held at `on` (their paths, where known) be imported
     /// into the drawing? Without paths (the browser) the place alone
-    /// decides; with them, a `.tdraw` over the drawing opens (#1142).
+    /// decides; with them, a file no import reads says "open" (#1142).
     pub fn drop_imports(&self, hovered: &[Option<PathBuf>], on: DropOn) -> bool {
         match on {
             DropOn::Drawing => hovered.iter().all(|p| {
@@ -376,18 +376,19 @@ mod tests {
         assert_eq!(kind("a.cdr", Drawing), Dropped::Import);
         assert_eq!(kind("a.PSD", Drawing), Dropped::Import);
         assert_eq!(kind("a.png", Drawing), Dropped::Import);
-        assert_eq!(kind("a.tdraw", Drawing), Dropped::Open, "not importable");
+        // TraceDraw's own drawings are imported like any other (#1142).
+        assert_eq!(kind("a.tdraw", Drawing), Dropped::Import);
         // On the title, menus or tabs a drawing opens in its own tab and
         // a picture gets a drawing of its own (#1142).
         assert_eq!(kind("a.cdr", Frame), Dropped::Open);
         assert_eq!(kind("a.svg", Frame), Dropped::Open);
         assert_eq!(kind("a.tdraw", Frame), Dropped::Open);
         assert_eq!(kind("a.png", Frame), Dropped::NewWithImport);
-        // Where the pointer is not known, a file that goes either way is
-        // asked about, a .tdraw opens and a picture goes into the drawing.
+        // Where the pointer is not known, a drawing, which goes either
+        // way, is asked about and a picture goes into the drawing.
         assert_eq!(kind("a.cdr", Unknown), Dropped::Ask);
         assert_eq!(kind("a.svg", Unknown), Dropped::Ask);
-        assert_eq!(kind("a.tdraw", Unknown), Dropped::Open);
+        assert_eq!(kind("a.tdraw", Unknown), Dropped::Ask);
         assert_eq!(kind("a.png", Unknown), Dropped::Import);
         assert_eq!(kind("a.svg", NoDrawing), Dropped::Open);
         assert_eq!(kind("a.cdr", NoDrawing), Dropped::Open);
@@ -493,15 +494,16 @@ mod tests {
     }
 
     /// The hint over the drawing says "import" unless a file held there
-    /// would open (a `.tdraw`); without paths, as in the browser, the
-    /// place alone decides (#1142).
+    /// would not be imported (one no import reads); without paths, as in
+    /// the browser, the place alone decides (#1142).
     #[test]
     fn the_hint_says_what_a_drop_there_does() {
         let (_ctx, app) = setup();
         let p = |n: &str| Some(PathBuf::from(n));
         assert!(app.drop_imports(&[p("a.svg")], DropOn::Drawing));
         assert!(app.drop_imports(&[p("a.cdr"), p("b.png")], DropOn::Drawing));
-        assert!(!app.drop_imports(&[p("a.tdraw")], DropOn::Drawing));
+        assert!(app.drop_imports(&[p("a.tdraw")], DropOn::Drawing));
+        assert!(!app.drop_imports(&[p("a.zip")], DropOn::Drawing));
         assert!(!app.drop_imports(&[p("a.svg")], DropOn::Frame));
         // The browser hands over no paths.
         assert!(app.drop_imports(&[None], DropOn::Drawing));
@@ -525,6 +527,42 @@ mod tests {
         // One undo step takes it all back.
         app.undo();
         assert_eq!(shape_count(&app), 0);
+    }
+
+    /// A `.tdraw` let go over the drawing window is imported into it like
+    /// a `.cdr`, not opened in a tab of its own; over the menus it opens
+    /// (#1142).
+    #[test]
+    fn a_tdraw_dropped_on_a_drawing_is_imported_into_it() {
+        let (ctx, mut app) = setup();
+        let dir = dir("tdraw");
+        // A drawing of one square, saved as TraceDraw's own format.
+        let mut other = App::headless();
+        other.import_path(&svg(&dir));
+        assert_eq!(shape_count(&other), 1);
+        let tdraw = dir.join("square.tdraw");
+        other.save_to(tdraw.clone());
+        assert!(tdraw.is_file(), "{}", other.status);
+
+        let docs = app.docs.len();
+        let inside = app.canvas_rect.center();
+        frame_at(&ctx, &mut app, vec![tdraw.clone()], false, Some(inside));
+        assert_eq!(app.docs.len(), docs, "imported, no new tab");
+        assert_eq!(shape_count(&app), 1, "{}", app.status);
+        assert_eq!(app.selection.len(), 1, "what came is selected");
+        let b = app.selection_bounds().expect("bounds");
+        assert!(close(b.center(), app.view_center()), "{b:?}");
+        app.undo();
+        assert_eq!(shape_count(&app), 0, "one undo step");
+        // Over the menus it still opens in a tab of its own.
+        frame_at(
+            &ctx,
+            &mut app,
+            vec![tdraw],
+            false,
+            Some(egui::pos2(5.0, 5.0)),
+        );
+        assert_eq!(app.docs.len(), docs + 1, "opened in a tab of its own");
     }
 
     #[test]

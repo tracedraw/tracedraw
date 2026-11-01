@@ -10,8 +10,7 @@ Where the files are let go decides for every file let go together:
 
 | Let go over | The file | Result |
 |---|---|---|
-| the drawing window of the drawing shown | File > Import reads it (vector formats, `.cdr`, `.psd`/`.psb`, pictures, installed script filters) | imported into the active layer, selected, as one undo step, its middle at the middle of the drawing window |
-| the drawing window | only File > Open reads it (`.tdraw`) | opened in a tab of its own |
+| the drawing window of the drawing shown | File > Import reads it (vector formats, `.cdr`, `.tdraw`, `.psd`/`.psb`, pictures, installed script filters) | imported into the active layer, selected, as one undo step, its middle at the middle of the drawing window |
 | the title, menus, toolbars, document tabs or dockers, with a drawing shown | File > Open reads it (`.cdr`, `.svg`, `.tdraw`...) | opened in a tab of its own, as File > Open (#1142) |
 | the same | a picture or a script filter's format | a new drawing with the file imported in the middle of its page |
 | anywhere, with no drawing shown (Welcome Screen or no drawing) | File > Open reads it | opened in a tab of its own, as File > Open, or its tab shown when it is open already (#645) |
@@ -26,9 +25,9 @@ macOS each `draggingEntered:`, `draggingUpdated:` and
 `performDragOperation:`; in the browser the patched eframe turns each
 `dragover` and the `drop` into a pointer move (`vendor/README.md`).
 Should the place still be missing, a picture is imported into the drawing
-shown, a `.tdraw` opens in a tab of its own, and a file that could go
-either way (`.cdr`, `.svg`...) is asked about in a small window in the
-middle: "Import into the drawing", "Open in its own tab" or Cancel (Esc).
+shown, and a drawing, which could go either way (`.cdr`, `.svg`,
+`.tdraw`...), is asked about in a small window in the middle: "Import into
+the drawing", "Open in its own tab" or Cancel (Esc).
 Native Wayland windows get no file drops from winit 0.30 at all; a
 Wayland desktop runs TraceDraw through XWayland for them.
 
@@ -43,10 +42,12 @@ A 3 px accent frame over a light accent tint goes round where the files
 would land: the drawing window when they would be imported there, the
 whole window otherwise. In its middle a label says what a drop would do:
 "Drop to import into the drawing" or "Drop to open". Over the drawing
-window a `.tdraw` says "Drop to open" with the frame round the whole
-window, as it opens in a tab of its own; in the browser, which names no
-files while they are dragged, the place alone decides
-(`drop_files::tests::the_hint_says_what_a_drop_there_does`).
+window a file no import reads says "Drop to open" with the frame round the
+whole window; in the browser, which names no files while they are dragged,
+the place alone decides
+(`drop_files::tests::the_hint_says_what_a_drop_there_does`). A `.tdraw`
+over the drawing window is imported like a `.cdr`
+(`a_tdraw_dropped_on_a_drawing_is_imported_into_it`, #1142).
 
 ## Browser build
 
