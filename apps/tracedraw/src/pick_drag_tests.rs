@@ -4917,6 +4917,48 @@ fn the_snap_tip_shows_while_placing_and_pulling_with_the_pen() {
 }
 
 #[test]
+fn the_snap_mark_shows_before_the_first_node_of_a_freehand_line() {
+    // #1538: the point the line would start at was snapped but not marked.
+    use crate::snap_points::SnapMode;
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.snap.off = false;
+    app.snap.grid = true;
+    app.snap.objects = false;
+    app.snap.guides = false;
+    app.snap.page = false;
+    app.set_tool(Tool::Freehand);
+    let near_grid = app.view.to_screen(Point::new(120.3, 140.2));
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(near_grid)],
+        Modifiers::NONE,
+    );
+    assert!(app.curve.is_none());
+    let mark = app
+        .snap_mark
+        .get()
+        .expect("a snap mark before the first click");
+    assert_eq!(mark.mode, SnapMode::Grid);
+    assert!(
+        (mark.point - Point::new(120.0, 140.0)).hypot() < 1e-6,
+        "{mark:?}"
+    );
+    // The first click starts the line at the marked point.
+    click_page(&ctx, &mut app, Point::new(120.3, 140.2));
+    let first = app
+        .curve
+        .as_ref()
+        .and_then(|c| c.nodes.first())
+        .map(|n| n.0);
+    assert!(
+        first.is_some_and(|q| (q - Point::new(120.0, 140.0)).hypot() < 1e-6),
+        "{first:?}"
+    );
+}
+
+#[test]
 fn space_finishes_a_bezier_curve_then_picks() {
     let (ctx, mut app, _) = setup();
     app.select(Vec::new());

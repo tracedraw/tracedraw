@@ -2219,6 +2219,16 @@ impl App {
     }
 
     fn freehand_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
+        // Resting before the first click: the pointer shows the point the
+        // line would start at, as it does for the next node once the line
+        // has begun (the preview snaps it then) (#1538).
+        if self.tool == Tool::Freehand
+            && self.curve.is_none()
+            && matches!(self.drag, Drag::None)
+            && response.hovered()
+        {
+            let _ = self.snap_point(p);
+        }
         // A click, then another: a straight line between them (Ctrl keeps
         // it to steps of the constrain angle); Esc drops the first click.
         if response.clicked_by(PointerButton::Primary) && self.tool == Tool::Freehand {
