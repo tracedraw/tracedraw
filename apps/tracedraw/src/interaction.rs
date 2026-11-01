@@ -1035,7 +1035,22 @@ impl App {
     /// Space while the selection is moved, scaled, turned or slanted drops
     /// a copy where the outline is, and the drag goes on.
     fn stamp_on_space(&mut self, response: &Response) {
-        if !response.ctx.input(|i| i.key_pressed(egui::Key::Space)) {
+        // One copy a press: a key held sends its press again and again
+        // (`repeat`), which left a trail of copies (#1502).
+        let pressed = response.ctx.input(|i| {
+            i.events.iter().any(|e| {
+                matches!(
+                    e,
+                    egui::Event::Key {
+                        key: egui::Key::Space,
+                        pressed: true,
+                        repeat: false,
+                        ..
+                    }
+                )
+            })
+        });
+        if !pressed {
             return;
         }
         let t = match &self.drag {
@@ -3192,6 +3207,9 @@ impl App {
         // Ctrl+E can be released before the frame that sees it). Shortcuts
         // match the modifiers exactly, so Ctrl+Shift+Z is not also Ctrl+Z;
         // only + and - ignore Shift, which some layouts need to type them.
+        // A key held sends its press again and again (`repeat`); the
+        // presses a held key makes are kept apart for what must happen
+        // once a press, such as picking a tool (#1502).
         let presses: Vec<(Key, Modifiers)> = input
             .events
             .iter()
@@ -3205,7 +3223,21 @@ impl App {
                 _ => None,
             })
             .collect();
-        let pressed = |k: Key, m: Modifiers| {
+        let first_presses: Vec<(Key, Modifiers)> = input
+            .events
+            .iter()
+            .filter_map(|e| match e {
+                egui::Event::Key {
+                    key,
+                    pressed: true,
+                    repeat: false,
+                    modifiers,
+                    ..
+                } => Some((*key, *modifiers)),
+                _ => None,
+            })
+            .collect();
+        let matches = |presses: &[(Key, Modifiers)], k: Key, m: Modifiers| {
             presses.iter().any(|(key, mods)| {
                 *key == k
                     && if matches!(k, Key::Plus | Key::Equals | Key::Minus) {
@@ -3215,6 +3247,8 @@ impl App {
                     }
             })
         };
+        let pressed = |k: Key, m: Modifiers| matches(&presses, k, m);
+        let first_pressed = |k: Key, m: Modifiers| matches(&first_presses, k, m);
         let cmd = Modifiers::COMMAND;
 
         // Menu commands with a shortcut of the user's (Options >
@@ -3804,7 +3838,10 @@ impl App {
                         let drop_key = matches!(self.drag, Drag::Move { .. })
                             && mods.is_none()
                             && matches!(k, Key::W | Key::K);
-                        if pressed(k, mods) && !drop_key {
+                        // A key held picks its tool once: the presses it
+                        // repeats would send Space back and forth between
+                        // the Pick tool and the tool before it (#1502).
+                        if first_pressed(k, mods) && !drop_key {
                             // The Pick tool's key (Space) on the Pick tool
                             // goes back to the tool used before it. Not
                             // during a drag, where Space drops a copy.

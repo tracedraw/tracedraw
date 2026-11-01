@@ -65,6 +65,18 @@ fn key(key: egui::Key, modifiers: Modifiers) -> Event {
     }
 }
 
+/// The key let go. A key pressed again without this in between is a
+/// held key's repeat to egui, which picks no tool (#1502).
+fn key_up(key: egui::Key, modifiers: Modifiers) -> Event {
+    Event::Key {
+        key,
+        physical_key: None,
+        pressed: false,
+        repeat: false,
+        modifiers,
+    }
+}
+
 /// A primary drag from `from` to `to` with `mods` held, `during` sent in
 /// the middle of it.
 fn drag(
@@ -346,6 +358,83 @@ fn space_while_moving_drops_a_copy() {
         "{copy:?} {moved:?}"
     );
     assert_eq!(app.tool, Tool::Pick);
+}
+
+/// Space held down sends its press again and again (key repeat, which
+/// egui marks on every press of a key still down): during a move that is
+/// still one copy, and on a tool it picks the Pick tool once and stays
+/// there instead of going back and forth between the Pick tool and the
+/// tool before it (#1502).
+#[test]
+fn holding_space_drops_one_copy_and_picks_once() {
+    let space = |pressed: bool| Event::Key {
+        key: egui::Key::Space,
+        physical_key: None,
+        pressed,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    let (ctx, mut app, id) = setup();
+    let from = app.view.to_screen(Point::new(35.0, 25.0));
+    // The press, then the presses the held key repeats, in the same
+    // frame and in the frames after; let go at the end of the move.
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(from)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(from, true, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    let to = from + egui::vec2(160.0, 0.0);
+    for i in 1..=4 {
+        let p = from + (to - from) * (i as f32 / 4.0);
+        let mut events = vec![Event::PointerMoved(p)];
+        if i >= 2 {
+            events.push(space(true));
+            events.push(space(true));
+        }
+        frame(&ctx, &mut app, events, Modifiers::NONE);
+    }
+    frame(
+        &ctx,
+        &mut app,
+        vec![
+            space(false),
+            button(to, false, PointerButton::Primary, Modifiers::NONE),
+        ],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert_eq!(shape_count(&app), 2, "one copy for one press");
+    assert!(bounds(&app, id).x0 > 15.0, "the move went on");
+    // Space held on the Rectangle tool: the Pick tool, and still the
+    // Pick tool after the presses the held key repeats.
+    app.set_tool(Tool::Rectangle);
+    frame(
+        &ctx,
+        &mut app,
+        vec![space(true), space(true)],
+        Modifiers::NONE,
+    );
+    assert_eq!(app.tool, Tool::Pick);
+    for _ in 0..3 {
+        frame(
+            &ctx,
+            &mut app,
+            vec![space(true), space(true)],
+            Modifiers::NONE,
+        );
+        assert_eq!(app.tool, Tool::Pick, "a held Space stays on Pick");
+    }
+    // Let go and pressed again: back to the tool before.
+    frame(&ctx, &mut app, vec![space(false)], Modifiers::NONE);
+    frame(&ctx, &mut app, vec![space(true)], Modifiers::NONE);
+    assert_eq!(app.tool, Tool::Rectangle);
 }
 
 /// A Free Transform drag is one undo step: Undo puts the object back as
@@ -5227,6 +5316,7 @@ fn removed_and_alt_shortcuts_act_on_the_keyboard() {
     let ctrl = Modifiers::COMMAND | Modifiers::CTRL;
     let press = |ctx: &egui::Context, app: &mut App, k: egui::Key, mods: Modifiers| {
         frame(ctx, app, vec![key(k, mods)], mods);
+        frame(ctx, app, vec![key_up(k, mods)], mods);
     };
     // Undo's Ctrl+Z removed: the key does nothing, nothing is undone.
     app.settings
@@ -6356,7 +6446,12 @@ fn space_toggles_from_the_crop_and_knife_tools() {
             vec![key(egui::Key::Space, Modifiers::NONE)],
             Modifiers::NONE,
         );
-        frame(ctx, app, Vec::new(), Modifiers::NONE);
+        frame(
+            ctx,
+            app,
+            vec![key_up(egui::Key::Space, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
     };
     for tool in [Tool::Crop, Tool::Knife] {
         app.set_tool(tool);
@@ -6385,7 +6480,12 @@ fn space_toggles_between_the_tool_and_the_pick_tool() {
     let (ctx, mut app, id) = setup();
     let space = |ctx: &egui::Context, app: &mut App, mods: Modifiers| {
         frame(ctx, app, vec![key(egui::Key::Space, mods)], mods);
-        frame(ctx, app, Vec::new(), Modifiers::NONE);
+        frame(
+            ctx,
+            app,
+            vec![key_up(egui::Key::Space, mods)],
+            Modifiers::NONE,
+        );
     };
     app.set_tool(Tool::Rectangle);
     space(&ctx, &mut app, Modifiers::NONE);
@@ -6410,6 +6510,12 @@ fn space_toggles_between_the_tool_and_the_pick_tool() {
     );
     assert_eq!(shape_count(&app), count + 1, "a copy was dropped");
     assert_eq!(app.tool, Tool::Pick, "no switch during the drag");
+    frame(
+        &ctx,
+        &mut app,
+        vec![key_up(egui::Key::Space, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
     // A Bezier curve being drawn is finished by Space, which then picks.
     app.set_tool(Tool::Bezier);
     for p in [Point::new(100.0, 100.0), Point::new(140.0, 120.0)] {
@@ -9238,7 +9344,12 @@ fn the_hints_panel_follows_every_tool_choice() {
         vec![key(egui::Key::F6, Modifiers::NONE)],
         Modifiers::NONE,
     );
-    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![key_up(egui::Key::F6, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
     assert_eq!(app.tool, Tool::Rectangle);
     assert_eq!(app.hints.current(), HintPage::Tool(Tool::Rectangle));
     app.hints.go(HintPage::Home);
