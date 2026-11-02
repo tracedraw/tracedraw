@@ -4884,7 +4884,7 @@ impl Document {
     /// date by [`migrate`]; newer ones are read as far as this version
     /// knows them (fields it does not know are left out).
     pub fn from_json(s: &str) -> Result<Self> {
-        let mut v: serde_json::Value = serde_json::from_str(s)?;
+        let mut v: serde_json::Value = json_value(s)?;
         let from = tdraw_version(&v);
         migrate(&mut v, from);
         if let serde_json::Value::Object(m) = &mut v {
@@ -4898,6 +4898,62 @@ impl Document {
         doc.refresh_text_flow();
         Ok(doc)
     }
+}
+
+/// How many brackets (`{` and `[`) of a `.tdraw` file may be open at
+/// once. A group inside a group nests four levels, so this is some 250
+/// groups inside groups, far beyond what a drawing holds (the `.cdr`
+/// reader stops at 64) and read, migrated and drawn well within the
+/// stack of every platform. The JSON reader's own limit is 128 levels,
+/// about 30 groups inside groups, which drawings do reach: such a
+/// drawing saved and then refused to open, and was lost.
+pub const MAX_JSON_DEPTH: usize = 1024;
+
+/// The JSON of a `.tdraw` text as a value, with the reader's nesting
+/// limit lifted and [`MAX_JSON_DEPTH`] in its place.
+fn json_value(s: &str) -> Result<serde_json::Value> {
+    let depth = json_depth(s);
+    if depth > MAX_JSON_DEPTH {
+        return Err(<serde_json::Error as serde::de::Error>::custom(format!(
+            "the file nests {depth} levels deep; at most {MAX_JSON_DEPTH} are read"
+        ))
+        .into());
+    }
+    let mut de = serde_json::Deserializer::from_str(s);
+    de.disable_recursion_limit();
+    let v = serde_json::Value::deserialize(&mut de)?;
+    de.end()?;
+    Ok(v)
+}
+
+/// How deep the brackets of JSON text nest: the most `{` and `[` open at
+/// once, brackets inside strings not counted. Text that is not JSON
+/// gives some number; the reader then says what is wrong with it.
+fn json_depth(s: &str) -> usize {
+    let (mut depth, mut deepest) = (0usize, 0usize);
+    let mut in_string = false;
+    let mut escaped = false;
+    for b in s.bytes() {
+        if in_string {
+            match b {
+                _ if escaped => escaped = false,
+                b'\\' => escaped = true,
+                b'"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_string = true,
+            b'{' | b'[' => {
+                depth += 1;
+                deepest = deepest.max(depth);
+            }
+            b'}' | b']' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    deepest
 }
 
 /// A `.tdraw` file whose numbers are not all numbers, read with each
@@ -4998,9 +5054,7 @@ pub fn tdraw_version(v: &serde_json::Value) -> u32 {
 
 /// The version a `.tdraw` text says it has (0 for unreadable text).
 pub fn tdraw_text_version(s: &str) -> u32 {
-    serde_json::from_str::<serde_json::Value>(s)
-        .map(|v| tdraw_version(&v))
-        .unwrap_or(0)
+    json_value(s).map(|v| tdraw_version(&v)).unwrap_or(0)
 }
 
 /// One step of [`migrate`]: the JSON of version `i` to version `i + 1`.
@@ -5913,6 +5967,52 @@ mod tests {
         assert!((b.x0 - 15.0).abs() < 1e-6 && (b.y1 - 35.0).abs() < 1e-6);
         assert_eq!(back.locate(id).unwrap(), (layer, 0));
         let _ = Point::ZERO;
+    }
+
+    /// A drawing with groups inside groups, 40 deep, saves and opens
+    /// again. The JSON reader's own nesting limit (128 levels, about 30
+    /// groups inside groups) refused such a file as "recursion limit
+    /// exceeded", so a drawing that saved fine was lost on reopening.
+    /// A file nested past [`MAX_JSON_DEPTH`] is refused with a clear
+    /// error, not a crash, and the bracket count ignores strings.
+    #[test]
+    fn deeply_nested_groups_save_and_open_again() {
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let mut ids = doc.ids().clone();
+        let mut inner = Shape::new(
+            ids.shape(),
+            ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 50.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        for _ in 0..40 {
+            inner = Shape::new(
+                ids.shape(),
+                ShapeKind::Group {
+                    children: vec![inner],
+                },
+            );
+        }
+        doc.set_ids(ids);
+        doc.layer_mut(layer).unwrap().shapes.push(inner);
+        let json = doc.to_json().unwrap();
+        assert!(json_depth(&json) > 128, "{}", json_depth(&json));
+        assert_eq!(tdraw_text_version(&json), TDRAW_FORMAT_VERSION);
+        let back = Document::from_json(&json).unwrap();
+        assert_eq!(doc, back);
+
+        assert_eq!(json_depth(r#"{"a":"[[{{","b":[1,[2,"\"]]]"]]}"#), 3);
+        let too_deep = format!(
+            "{}{}",
+            "[".repeat(MAX_JSON_DEPTH + 1),
+            "]".repeat(MAX_JSON_DEPTH + 1)
+        );
+        let err = Document::from_json(&too_deep).unwrap_err().to_string();
+        assert!(err.contains("levels deep"), "{err}");
+        assert_eq!(tdraw_text_version(&too_deep), 0);
     }
 
     #[test]

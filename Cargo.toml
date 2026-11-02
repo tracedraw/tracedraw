@@ -41,7 +41,9 @@ ttf-parser = { version = "0.25", features = ["gvar-alloc"] }
 rustybuzz = "0.20"
 unicode-general-category = "1.1"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `unbounded_depth` lets the `.tdraw` reader lift the JSON reader's
+# 128-level nesting limit (see `Document::from_json`).
+serde_json = { version = "1", features = ["unbounded_depth"] }
 thiserror = "2"
 log = "0.4"
 env_logger = "0.11"
