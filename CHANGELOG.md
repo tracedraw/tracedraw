@@ -10,6 +10,8 @@ full, row-by-row status.
 
 - Shape tool on text: the characters chosen with it take the format. Text Properties (Ctrl+T) changed the whole text, whichever characters were chosen; now the font, style, size, underline, kerning, background, strikethrough, OpenType features and font axes, a fill from the docker or a palette and an outline colour go to the chosen characters only, the docker's Character section shows the first chosen character, and the Paragraph settings go to the paragraphs holding them, as for characters selected while editing. With no character chosen a change goes to the whole text as before (#1662).
 
+- Table: the Rows and Columns fields of the property bar change the selected table (rows at the bottom, columns at the right, the other cells as they were, one undo step each), and a table selected with the Pick tool shows the table fields after the object fields. The fields only set the counts of the next table, so an existing table's rows and columns could not be changed from the bar, and the Pick tool showed no table settings at all (#1680).
+
 - Multipage View with several drawings open: each drawing now keeps its own pictures of its other pages. They were kept by page number for all drawings together, so after switching drawings the other pages first showed another drawing's pages until clicked (#1663).
 
 - Browser version: a drag with the mouse button held, or a finger held down, on the drawing no longer selects the page's text in the browser (Safari on iPad selected the whole window while dragging a marquee or an object, and offered its long-press callout); the page and the canvas turn the browser's text selection off, and the loading text stays selectable so an error message can be copied (#1654).

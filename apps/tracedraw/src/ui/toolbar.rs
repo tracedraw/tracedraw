@@ -1200,6 +1200,20 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 crate::ui::dimension_bar::dimension_bar(app, ui);
             }
             Tool::Pick | Tool::FreeformPick
+                if shapes.len() == 1
+                    && shapes
+                        .first()
+                        .is_some_and(|s| matches!(s.kind, ShapeKind::Table(_))) =>
+            {
+                // A table selected with the Pick tool: the object fields,
+                // then the Table tool's fields, so its rows, columns,
+                // fill and borders change without a change of tool
+                // (#1680).
+                object_properties(app, ui);
+                vsep(ui);
+                crate::ui::table_bar::table_bar(app, ui, false);
+            }
+            Tool::Pick | Tool::FreeformPick
                 if shapes
                     .iter()
                     .all(|s| matches!(s.kind, ShapeKind::Bitmap { .. })) =>
@@ -1392,7 +1406,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 }
             }
             Tool::CommonShapes => common_shapes_bar(app, ui),
-            Tool::Table => crate::ui::table_bar::table_bar(app, ui),
+            Tool::Table => crate::ui::table_bar::table_bar(app, ui, true),
             Tool::PainterlyBrush => crate::painterly_tool::painterly_bar(app, ui),
             Tool::BrushStrokes => {
                 ui.label(
