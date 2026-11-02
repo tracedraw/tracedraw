@@ -457,12 +457,13 @@ impl App {
                 self.run(Command::Ungroup { group: g });
                 new_sel.extend(children);
             }
-            // The pieces a clip frame came apart into.
-            new_sel.extend(
-                self.top_level_ids()
-                    .into_iter()
-                    .filter(|id| !before.contains(id)),
-            );
+            // The pieces a clip frame came apart into; a group's objects
+            // are new on the layer too and already taken, each id once.
+            for id in self.added_top_level_ids(&before) {
+                if !new_sel.contains(&id) {
+                    new_sel.push(id);
+                }
+            }
             self.selection = new_sel;
         }
     }
@@ -5055,6 +5056,133 @@ mod clip_frame_tests {
         }
         app.undo();
         assert_eq!(count(&app), 1);
+    }
+
+    /// None of the commands that take a clip frame apart (Ungroup,
+    /// Ungroup All, Break Apart, the Knife) leaves two objects of one id
+    /// in the drawing or an id twice in the selection, with contents that
+    /// hold a group (each copy's objects get ids of their own); Ungroup on
+    /// a plain group selects each object once (#1605, #1606, #1607).
+    #[test]
+    fn taking_a_clip_frame_apart_repeats_no_id() {
+        use std::collections::HashSet;
+        use tracedraw_core::geometry::Point;
+        use tracedraw_core::{Command, Shape};
+
+        fn ids_in(shapes: &[Shape], out: &mut Vec<ShapeId>) {
+            for s in shapes {
+                out.push(s.id);
+                match &s.kind {
+                    ShapeKind::Group { children } => ids_in(children, out),
+                    ShapeKind::ClipFrame { frame, contents } => {
+                        ids_in(std::slice::from_ref(frame), out);
+                        ids_in(contents, out);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        fn twice(ids: &[ShapeId]) -> Vec<ShapeId> {
+            let mut seen = HashSet::new();
+            ids.iter().copied().filter(|id| !seen.insert(*id)).collect()
+        }
+        fn check(app: &App, step: &str) {
+            let mut ids = Vec::new();
+            for layer in &app.doc().pages[0].layers {
+                ids_in(&layer.shapes, &mut ids);
+            }
+            let doubled = twice(&ids);
+            assert!(
+                doubled.is_empty(),
+                "{step}: ids twice in the drawing: {doubled:?}"
+            );
+            let doubled = twice(&app.selection);
+            assert!(
+                doubled.is_empty(),
+                "{step}: ids twice in the selection: {doubled:?}"
+            );
+            for id in &app.selection {
+                assert!(
+                    app.doc().find_shape(*id).is_some(),
+                    "{step}: {id:?} is selected but not in the drawing"
+                );
+            }
+        }
+        // The contents: a group of two objects and an object beside it.
+        fn contents(app: &mut App) -> Vec<ShapeId> {
+            let c1 = rect(app, Rect::new(2.0, 2.0, 6.0, 8.0));
+            let c2 = rect(app, Rect::new(22.0, 2.0, 28.0, 8.0));
+            app.select(vec![c1, c2]);
+            app.group_selection();
+            let group = app.selection[0];
+            let c3 = rect(app, Rect::new(10.0, 3.0, 20.0, 7.0));
+            vec![group, c3]
+        }
+        fn place(app: &mut App, frame: ShapeId) {
+            let contents = contents(app);
+            app.engine
+                .run(&Command::PlaceInside { contents, frame })
+                .expect("place inside");
+            app.select(vec![frame]);
+        }
+        let count = |app: &App| app.doc().pages[0].layers[0].shapes.len();
+
+        // Ungroup and Ungroup All: the frame a group.
+        let mut app = App::headless();
+        let a = rect(&mut app, Rect::new(0.0, 0.0, 10.0, 10.0));
+        let b = rect(&mut app, Rect::new(20.0, 0.0, 30.0, 10.0));
+        app.select(vec![a, b]);
+        app.group_selection();
+        let frame = app.selection[0];
+        place(&mut app, frame);
+        check(&app, "placed");
+        app.ungroup_selection();
+        assert_eq!(count(&app), 2);
+        assert_eq!(app.selection.len(), 2, "{:?}", app.selection);
+        check(&app, "ungroup");
+        app.undo();
+        app.select(vec![frame]);
+        app.ungroup_all();
+        assert_eq!(count(&app), 2);
+        assert_eq!(app.selection.len(), 2, "{:?}", app.selection);
+        check(&app, "ungroup all");
+
+        // Break Apart: the frame a curve of two parts.
+        let mut app = App::headless();
+        let a = rect(&mut app, Rect::new(0.0, 0.0, 10.0, 10.0));
+        let b = rect(&mut app, Rect::new(20.0, 0.0, 30.0, 10.0));
+        app.select(vec![a, b]);
+        app.combine();
+        let frame = app.selection[0];
+        place(&mut app, frame);
+        app.break_apart();
+        assert_eq!(count(&app), 2);
+        assert_eq!(app.selection.len(), 2, "{:?}", app.selection);
+        check(&app, "break apart");
+
+        // The Knife: a cut through the frame.
+        let mut app = App::headless();
+        let frame = rect(&mut app, Rect::new(0.0, 0.0, 40.0, 40.0));
+        place(&mut app, frame);
+        app.select(Vec::new());
+        app.knife(Point::new(15.0, -5.0), Point::new(15.0, 45.0));
+        assert_eq!(count(&app), 2);
+        assert_eq!(app.selection.len(), 2, "{:?}", app.selection);
+        check(&app, "knife");
+
+        // A plain group: each object selected once, in the drawing's order.
+        let mut app = App::headless();
+        let a = rect(&mut app, Rect::new(0.0, 0.0, 10.0, 10.0));
+        let b = rect(&mut app, Rect::new(20.0, 0.0, 30.0, 10.0));
+        app.select(vec![a, b]);
+        app.group_selection();
+        app.ungroup_selection();
+        assert_eq!(app.selection, vec![a, b]);
+        check(&app, "ungroup a group");
+        app.undo();
+        app.ungroup_all();
+        assert_eq!(app.selection, vec![a, b]);
+        check(&app, "ungroup all on a group");
     }
 
     /// The four ways of fitting contents to a frame, and the bar's

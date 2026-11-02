@@ -5580,7 +5580,8 @@ impl App {
         }
         // The members come out selected: a group's objects, and a clip
         // frame's pieces (the clip frame itself and the new ones beside
-        // it).
+        // it). The group's objects are new on the layer too, so the
+        // objects added are taken once, each id selected once.
         let before = self.top_level_ids();
         let mut members: Vec<ShapeId> = Vec::new();
         for s in self.selected_shapes() {
@@ -5594,11 +5595,11 @@ impl App {
         for g in groups {
             self.run(Command::Ungroup { group: g });
         }
-        members.extend(
-            self.top_level_ids()
-                .into_iter()
-                .filter(|id| !before.contains(id)),
-        );
+        for id in self.added_top_level_ids(&before) {
+            if !members.contains(&id) {
+                members.push(id);
+            }
+        }
         let doc = self.doc();
         members.retain(|id| doc.find_shape(*id).is_some());
         self.select(members);
@@ -5613,6 +5614,24 @@ impl App {
             .flat_map(|p| &p.layers)
             .flat_map(|l| &l.shapes)
             .map(|s| s.id)
+            .collect()
+    }
+
+    /// The objects on the drawing's layers that were not there in
+    /// `before` (the ids [`Self::top_level_ids`] gave), in the drawing's
+    /// order: what a command added, or brought out of a group or a clip
+    /// frame.
+    pub(crate) fn added_top_level_ids(
+        &self,
+        before: &std::collections::HashSet<ShapeId>,
+    ) -> Vec<ShapeId> {
+        self.doc()
+            .pages
+            .iter()
+            .flat_map(|p| &p.layers)
+            .flat_map(|l| &l.shapes)
+            .map(|s| s.id)
+            .filter(|id| !before.contains(id))
             .collect()
     }
 
