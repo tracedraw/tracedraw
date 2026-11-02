@@ -8,6 +8,8 @@ full, row-by-row status.
 
 - Multipage View with several drawings open: each drawing now keeps its own pictures of its other pages. They were kept by page number for all drawings together, so after switching drawings the other pages first showed another drawing's pages until clicked (#1663).
 
+- Browser version: a drag with the mouse button held, or a finger held down, on the drawing no longer selects the page's text in the browser (Safari on iPad selected the whole window while dragging a marquee or an object, and offered its long-press callout); the page and the canvas turn the browser's text selection off, and the loading text stays selectable so an error message can be copied (#1654).
+
 - Pick tool: a click anywhere on a thick outline picks the object, out to 3 px beyond its visible edge, at the width the outline is drawn (scaled with the object when it scales with it). Only the 3 px about the outline's centre line counted, so an unfilled path with a 4 or 5 pt outline was missed by a click on the visible outline away from its middle and had to be marquee-selected; a thin outline is still picked within 3 px (#1678).
 
 - Guidelines snap to the nodes of curves. A guideline dragged (or dragged out of a ruler) near a node, a segment's midpoint, an ellipse's quadrant or an object's centre now lands on it, by the snapping modes ticked in Options > Snapping, as the pointer does; only the edges and centres of the objects' boxes caught a guideline before, so with Nodes ticked a guideline still could not be put on a curve's node. The other way round, an object moved by a node under the pointer puts that node on a guideline (or a grid line) it comes near, where only the object's box edges and centre caught guidelines before (#1645).
