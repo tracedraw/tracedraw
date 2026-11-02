@@ -1082,6 +1082,99 @@ pub(crate) fn dim_labelled<R>(ui: &mut Ui, key: &str, add: impl FnOnce(&mut Ui) 
     dim_labelled_as(ui, key, &format!("{key}_desc"), add)
 }
 
+/// The Brush Strokes tool's bar: the mode list (Preset, Brush, Sprayer,
+/// Calligraphic, Expression), the width, then the mode's own fields:
+/// the nib angle (Calligraphic), the stroke shape (Preset, Brush), the
+/// sprayed shape and spacing (Sprayer), the pressure (Expression). The
+/// bar held the calligraphic fields only, with no way to another mode
+/// (#1681).
+fn brush_strokes_bar(app: &mut App, ui: &mut Ui) {
+    use crate::media::MediaMode;
+    dim_labelled_as(ui, "toolbar.brush_mode", "toolbar.brush_mode_desc", |ui| {
+        egui::ComboBox::from_id_salt("brush_mode")
+            .selected_text(tr(app.media_mode.key()))
+            .width(110.0)
+            .show_ui(ui, |ui| {
+                for m in MediaMode::ALL {
+                    ui.selectable_value(&mut app.media_mode, m, tr(m.key()))
+                        .rich_tip_with(|| {
+                            format!("{}\n{}", tr(m.key()), tr(&format!("{}_desc", m.key())))
+                        });
+                }
+            });
+    });
+    dim_labelled_as(ui, "toolbar.width", "docker.media_width_desc", |ui| {
+        ui.add(
+            crate::ui::field::NumField::new(&mut app.media_width)
+                .speed(0.1)
+                .range(0.2..=50.0)
+                .suffix(" mm"),
+        )
+    });
+    let shapes: &[&str] = match app.media_mode {
+        MediaMode::Preset | MediaMode::Brush => &crate::media::BRUSH_KEYS,
+        MediaMode::Sprayer => &crate::media::SPRAY_KEYS,
+        MediaMode::Calligraphic | MediaMode::Expression => &[],
+    };
+    if !shapes.is_empty() {
+        dim_labelled_as(
+            ui,
+            "toolbar.stroke_shape",
+            "toolbar.stroke_shape_desc",
+            |ui| {
+                let current = shapes
+                    .get(app.media_preset)
+                    .or(shapes.first())
+                    .map(|k| tr(k))
+                    .unwrap_or_default();
+                egui::ComboBox::from_id_salt("brush_shape")
+                    .selected_text(current)
+                    .width(120.0)
+                    .show_ui(ui, |ui| {
+                        for (i, k) in shapes.iter().enumerate() {
+                            ui.selectable_value(&mut app.media_preset, i, tr(k))
+                                .rich_tip_with(|| {
+                                    format!("{}\n{}", tr(k), tr("docker.media_preset_desc"))
+                                });
+                        }
+                    });
+            },
+        );
+    }
+    match app.media_mode {
+        MediaMode::Calligraphic => {
+            dim_labelled_as(ui, "docker.nib_angle", "docker.nib_angle_desc", |ui| {
+                ui.add(
+                    crate::ui::field::NumField::new(&mut app.media_angle)
+                        .speed(1.0)
+                        .range(0.0..=180.0)
+                        .suffix("°"),
+                )
+            });
+        }
+        MediaMode::Sprayer => {
+            dim_labelled_as(ui, "docker.spacing", "docker.spray_spacing_desc", |ui| {
+                ui.add(
+                    crate::ui::field::NumField::new(&mut app.media_spacing)
+                        .speed(0.5)
+                        .range(1.0..=50.0)
+                        .suffix(" mm"),
+                )
+            });
+        }
+        MediaMode::Expression => {
+            dim_labelled_as(ui, "docker.pressure", "docker.pressure_desc", |ui| {
+                ui.add(
+                    crate::ui::field::NumField::new(&mut app.media_pressure)
+                        .speed(0.05)
+                        .range(0.0..=1.0),
+                )
+            });
+        }
+        MediaMode::Preset | MediaMode::Brush => {}
+    }
+}
+
 /// [`dim_labelled`] with the description kept under `desc_key`.
 pub(crate) fn dim_labelled_as<R>(
     ui: &mut Ui,
@@ -1408,29 +1501,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
             Tool::CommonShapes => common_shapes_bar(app, ui),
             Tool::Table => crate::ui::table_bar::table_bar(app, ui, true),
             Tool::PainterlyBrush => crate::painterly_tool::painterly_bar(app, ui),
-            Tool::BrushStrokes => {
-                ui.label(
-                    egui::RichText::new(tr("media.calligraphic"))
-                        .color(Tokens::text_dim())
-                        .size(11.0),
-                );
-                dim_labelled_as(ui, "toolbar.width", "toolbar.media_width_desc", |ui| {
-                    ui.add(
-                        crate::ui::field::NumField::new(&mut app.media_width)
-                            .speed(0.1)
-                            .range(0.2..=50.0)
-                            .suffix(" mm"),
-                    )
-                });
-                dim_labelled(ui, "docker.nib_angle", |ui| {
-                    ui.add(
-                        crate::ui::field::NumField::new(&mut app.media_angle)
-                            .speed(1.0)
-                            .range(0.0..=180.0)
-                            .suffix("°"),
-                    )
-                });
-            }
+            Tool::BrushStrokes => brush_strokes_bar(app, ui),
             Tool::ParallelDimension
             | Tool::HorizontalVerticalDimension
             | Tool::SegmentDimension

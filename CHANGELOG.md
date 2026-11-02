@@ -12,6 +12,8 @@ full, row-by-row status.
 
 - Table: the Rows and Columns fields of the property bar change the selected table (rows at the bottom, columns at the right, the other cells as they were, one undo step each), and a table selected with the Pick tool shows the table fields after the object fields. The fields only set the counts of the next table, so an existing table's rows and columns could not be changed from the bar, and the Pick tool showed no table settings at all (#1680).
 
+- Brush Strokes: the property bar has the mode list (Preset, Brush, Sprayer, Calligraphic, Expression) the hint speaks of, and after the width the mode's own fields: the stroke shape, the nib angle, the sprayer's spacing, the pressure. The bar showed only the calligraphic width and nib angle, so another mode could be chosen from the Brush Strokes panel alone (#1681).
+
 - Multipage View with several drawings open: each drawing now keeps its own pictures of its other pages. They were kept by page number for all drawings together, so after switching drawings the other pages first showed another drawing's pages until clicked (#1663).
 
 - Browser version: a drag with the mouse button held, or a finger held down, on the drawing no longer selects the page's text in the browser (Safari on iPad selected the whole window while dragging a marquee or an object, and offered its long-press callout); the page and the canvas turn the browser's text selection off, and the loading text stays selectable so an error message can be copied (#1654).
