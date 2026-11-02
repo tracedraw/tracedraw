@@ -1527,7 +1527,17 @@ const ANDROID_FONT_DIRS: [&str; 3] = ["/system/fonts", "/product/fonts", "/vendo
 /// own font folders): the folders the font database reads at startup,
 /// each once. A font under one of them counts as in it for the font
 /// list's filter, whatever subfolder it lies in (#867).
+///
+/// Read once and kept: on Linux the list comes from the fontconfig
+/// configuration, which is parsed in full (some milliseconds), and the
+/// font list asked for it with every family it looked at.
 pub fn system_font_roots() -> Vec<std::path::PathBuf> {
+    static ROOTS: OnceLock<Vec<std::path::PathBuf>> = OnceLock::new();
+    ROOTS.get_or_init(read_system_font_roots).clone()
+}
+
+/// [`system_font_roots`] read from the system now.
+fn read_system_font_roots() -> Vec<std::path::PathBuf> {
     let mut out: Vec<std::path::PathBuf> = Vec::new();
     #[cfg(windows)]
     out.extend(windows_font_roots(&|name| std::env::var(name).ok()));
@@ -8117,6 +8127,24 @@ mod font_folders {
         assert_eq!(f.folder_of(&file), Some(root.join("google")));
         assert!(!system_font_roots().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The system's font folders are read once: the font list asks for
+    /// them with every family it looks at, and reading them parses the
+    /// whole fontconfig configuration on Linux (1.4 ms on a small one,
+    /// so a list of a thousand families spent over a second in it).
+    /// A thousand calls after the first take a few milliseconds, where
+    /// a thousand fresh reads took over a second.
+    #[test]
+    fn system_font_roots_are_read_once() {
+        let first = system_font_roots();
+        assert_eq!(first, read_system_font_roots());
+        let t = std::time::Instant::now();
+        for _ in 0..1000 {
+            assert_eq!(system_font_roots(), first);
+        }
+        let cached = t.elapsed();
+        assert!(cached < std::time::Duration::from_millis(100), "{cached:?}");
     }
 
     /// The system's folders are the ones the font database reads, so a

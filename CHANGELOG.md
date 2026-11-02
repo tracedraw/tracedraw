@@ -18,6 +18,8 @@ full, row-by-row status.
 
 - Opening or importing a damaged SVG file whose elements nest without end no longer takes TraceDraw down. The XML reader walks the elements by calling itself once per level, with no bound of its own, so a file of fifty thousand opening `<g>` tags (350 KB) ran the stack out, which cannot be caught, and closed the program. The nesting is now counted from the text first and a file nested deeper than 256 elements (drawings nest a few dozen at most) is refused with a clear message.
 
+- Font list on Linux: the folders the filter sorts fonts into are read once. They come from the fontconfig configuration, which was parsed in full (over a millisecond, more with many configuration files) each time the list looked at a family it had not seen, so scrolling a long list or filtering it spent whole seconds reading the same files again.
+
 - Shape tool: To Curve, To Line and Break act on the closing segment of a closed curve through its start node, the node that segment ends at, and on a clicked closing line. The commands took the element at the node's own index, and the start node is a move with no segment of its own, so the segment where a closed curve's last node meets its first could not be made a curve, straightened or broken, on every rectangle, ellipse and polygon converted to curves (#1618).
 
 - Options > Customization > Commands: a shortcut given to a command or tool is taken from the command or tool that had it built in, which is left without one (Reset gives it back), so one key runs one command. The built-in holder kept the key: a tool key given to another tool picked both tools, and a tool given a menu command's key never got it, the command running instead (#1595).
