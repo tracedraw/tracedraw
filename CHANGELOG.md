@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Opening a damaged `.cdr` or `.cmx` file whose lists nest without end no longer takes TraceDraw down. The chunk walker reads a list's chunks by calling itself once per level, and a file can nest a list at every 12 bytes, so a few hundred kilobytes of lists inside lists ran the stack out, which cannot be caught, and closed the program before the file could even be refused. Lists now nest at most 256 deep (real files nest a few dozen levels: the document, a page, a layer, then one per group inside a group); a list deeper than that is read as a leaf, with a warning, and the rest of the file opens.
+
 - Shape tool: To Curve, To Line and Break act on the closing segment of a closed curve through its start node, the node that segment ends at, and on a clicked closing line. The commands took the element at the node's own index, and the start node is a move with no segment of its own, so the segment where a closed curve's last node meets its first could not be made a curve, straightened or broken, on every rectangle, ellipse and polygon converted to curves (#1618).
 
 - Options > Customization > Commands: a shortcut given to a command or tool is taken from the command or tool that had it built in, which is left without one (Reset gives it back), so one key runs one command. The built-in holder kept the key: a tool key given to another tool picked both tools, and a tool given a menu command's key never got it, the command running instead (#1595).
