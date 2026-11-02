@@ -590,8 +590,14 @@ impl App {
                     return;
                 }
             }
-            if let Some(id) = self.hit_test(p) {
-                if !self.selection.contains(&id) {
+            // A marquee over the selected objects' nodes. It keeps the
+            // selection, also when it starts over another object (the one
+            // behind the curve, or the group holding it), so the curve
+            // being edited stays the one edited (#1594); only with
+            // nothing selected does the object under the pointer get
+            // selected, so a marquee can start on it right away.
+            if self.selection.is_empty() {
+                if let Some(id) = self.hit_test(p) {
                     self.select(vec![id]);
                 }
             }

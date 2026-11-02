@@ -1528,6 +1528,53 @@ fn alt_drag_selects_also_when_it_starts_over_an_object() {
     }
 }
 
+/// With the Shape tool a marquee that starts over another object (the
+/// one behind the curve being edited) keeps the curve selected and
+/// chooses its nodes inside the box, instead of selecting that object
+/// and leaving the curve (#1594). With nothing selected, a drag that
+/// starts over an object selects it.
+#[test]
+fn a_node_marquee_over_another_object_keeps_the_curve_being_edited() {
+    let (ctx, mut app, id) = setup();
+    app.convert_to_curves();
+    // A filled rectangle under the whole page.
+    let behind = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(0.0, 0.0, 200.0, 150.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![behind]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        30, 30, 200,
+    )));
+    app.select(vec![id]);
+    app.set_tool(Tool::Shape);
+    app.node_lasso = false;
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    // From inside the big rectangle, outside the curve, round the
+    // curve's corner node at (10, 10).
+    let from = app.view.to_screen(Point::new(4.0, 4.0));
+    let to = app.view.to_screen(Point::new(16.0, 16.0));
+    assert_eq!(app.hit_test(Point::new(4.0, 4.0)), Some(behind));
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    assert_eq!(app.selection, vec![id], "the curve stays selected");
+    let chosen = app.selected_node_points();
+    assert_eq!(chosen.len(), 1, "{chosen:?}");
+    assert!(
+        (chosen[0].2 - Point::new(10.0, 10.0)).hypot() < 1e-6,
+        "{chosen:?}"
+    );
+    // Nothing selected: the drag starts on the object under the pointer.
+    app.select(Vec::new());
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    assert_eq!(app.selection, vec![behind]);
+}
+
 /// With the Shape tool Alt+drag draws a freehand marquee whatever the
 /// bar's selection mode, and Alt+Shift adds the nodes it takes to the
 /// chosen ones (#1341).
