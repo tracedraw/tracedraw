@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Rectangle corners: the four size fields on the property bar and in the Properties docker are the corners as they lie on the page. On a rectangle turned by 180 degrees, flipped, or stretched across its own side with a handle (as a flap is made from a panel), a size typed in the top left field rounded the rectangle's own top left corner, which lay at the bottom right; each field now shows and edits the corner seen at its position, and two rectangles whose corners match as seen are not marked mixed (#1670).
+
 - Multipage View with several drawings open: each drawing now keeps its own pictures of its other pages. They were kept by page number for all drawings together, so after switching drawings the other pages first showed another drawing's pages until clicked (#1663).
 
 - Browser version: a drag with the mouse button held, or a finger held down, on the drawing no longer selects the page's text in the browser (Safari on iPad selected the whole window while dragging a marquee or an object, and offered its long-press callout); the page and the canvas turn the browser's text selection off, and the loading text stays selectable so an error message can be copied (#1654).
