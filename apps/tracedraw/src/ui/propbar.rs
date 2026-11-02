@@ -1266,6 +1266,39 @@ pub fn pic_button(ui: &mut Ui, pic: Pic, tip: &str, enabled: bool, pressed: bool
     resp.rich_tip(tip)
 }
 
+/// An icon button of the bar showing a tool's own icon (the toolbox's),
+/// for a button that picks that tool; `pressed` draws it pushed in
+/// (#1485).
+pub fn tool_button(
+    ui: &mut Ui,
+    tool: crate::tools::Tool,
+    tip: &str,
+    enabled: bool,
+    pressed: bool,
+) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(
+        Vec2::splat(btn()),
+        if enabled {
+            Sense::click()
+        } else {
+            Sense::hover()
+        },
+    );
+    frame(ui, rect, enabled && resp.hovered(), pressed);
+    let color = if enabled {
+        crate::ui::icons::tool_color(tool, Tokens::icon())
+    } else {
+        Tokens::border()
+    };
+    crate::ui::icons::draw(
+        ui.painter(),
+        Rect::from_center_size(rect.center(), Vec2::splat(18.0)),
+        tool,
+        color,
+    );
+    resp.rich_tip(tip)
+}
+
 /// A thin separator between groups.
 pub fn sep(ui: &mut Ui) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(9.0, BAR_H), Sense::hover());
