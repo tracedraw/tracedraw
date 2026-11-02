@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+## 0.37.0 (2026-11-02)
+
 - Workspace modernization: sharper, lighter tool icons. Strokes are thinner (1.25 px at the medium size) and fall on the pixel grid, so the icons are crisp at normal size. Crop, Knife, Eraser, Drop Shadow, Transparency and Interactive Fill are simpler symbols of the tool; the Rectangle is a true square with 90 degree corners; the Page menu pictures use the one blue accent. The status bar's Fill and Outline pictures follow (#1682).
 
 - Number fields: the steps one field makes in a row are one undo step. Turning the mouse wheel over a field of the property bar, a docker or a dialog (size, scale, position, rotation, outline width, corner sizes and the others), clicking its spin arrows or dragging them made one undo step per notch or click, so going from 1 to 100 filled the Undo list with about a hundred "Transform" steps. Now the steps join while they come from the same field to the same selection with less than 0.8 s between them; Undo puts back the value from before the first step and Redo the value where they stopped. A pause, another field or any other command starts a new step.
