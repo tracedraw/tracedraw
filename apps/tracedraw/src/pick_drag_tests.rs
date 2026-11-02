@@ -9023,10 +9023,11 @@ fn the_context_menu_breaks_an_enveloped_text_apart() {
     }
 }
 
-/// The Shape tool's corner widgets (#635): with no node chosen, dragging
-/// one into its corner rounds every corner of the curve together, live,
-/// in one undo step; with a node chosen only its corner shows a widget
-/// and rounds; an open curve rounds its inner corners.
+/// The Shape tool's corner widgets (#635): dragging one into its corner
+/// rounds that corner alone, live, in one undo step; with Shift every
+/// corner of the curve rounds together; with a node chosen only its
+/// corner shows a widget and rounds; an open curve rounds its inner
+/// corners.
 #[test]
 fn corner_widgets_round_every_corner_or_the_chosen_ones() {
     use tracedraw_core::geometry::{BezPath, PathEl, Shape as _};
@@ -9075,6 +9076,12 @@ fn corner_widgets_round_every_corner_or_the_chosen_ones() {
     let to = w.at + dir * (5.0 * app.view.zoom);
     let undo_before = app.engine.undo_label().map(str::to_string);
     drag(&ctx, &mut app, w.at, to, Modifiers::NONE, Vec::new());
+    assert_eq!(arcs(&path_of(&app)), 1, "the dragged corner only");
+    app.undo();
+    assert_eq!(path_of(&app), square);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    // With Shift, every corner together.
+    drag(&ctx, &mut app, w.at, to, Modifiers::SHIFT, Vec::new());
     let rounded = path_of(&app);
     assert_eq!(arcs(&rounded), 4, "every corner rounded");
     // The arc's middle came about 5 mm into the corner: a fillet of about
@@ -9096,12 +9103,17 @@ fn corner_widgets_round_every_corner_or_the_chosen_ones() {
     app.undo();
     assert_eq!(path_of(&app), square);
     assert_eq!(app.engine.undo_label().map(str::to_string), undo_before);
-    // A chosen node: only its corner has a widget, and only it rounds.
+    // A chosen node: its corner's widget is the chosen one, and only it
+    // rounds.
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
     let node = app.view.to_screen(Point::new(60.0, 60.0));
     click_at(&ctx, &mut app, node, Modifiers::NONE);
     assert_eq!(app.node_selection.len(), 1, "{:?}", app.node_selection);
-    let widgets = app.corner_widgets();
+    let widgets: Vec<_> = app
+        .corner_widgets()
+        .into_iter()
+        .filter(|w| w.chosen)
+        .collect();
     assert_eq!(widgets.len(), 1);
     let w = widgets[0];
     let dir = (centre - w.at).normalized();
@@ -9138,7 +9150,7 @@ fn corner_widgets_round_every_corner_or_the_chosen_ones() {
         &mut app,
         w.at,
         w.at + dir * 20.0,
-        Modifiers::NONE,
+        Modifiers::SHIFT,
         Vec::new(),
     );
     match &app.doc().find_shape(open).expect("zigzag").kind {
@@ -9212,9 +9224,10 @@ fn corner_widgets_follow_their_preference_on_by_default() {
     click_at(&ctx, &mut app, node, Modifiers::NONE);
     assert_eq!(app.node_selection.len(), 1, "{:?}", app.node_selection);
     assert!(app.corner_widgets().is_empty());
-    // Turned on, the chosen node's corner has its widget.
+    // Turned on, every corner has its widget, the chosen node's chosen.
     app.settings.nodes.corner_widgets = true;
-    assert_eq!(app.corner_widgets().len(), 1);
+    assert_eq!(app.corner_widgets().len(), 4);
+    assert_eq!(app.corner_widgets().iter().filter(|w| w.chosen).count(), 1);
     // Saved and read back with the other preferences.
     let json = serde_json::to_string(&app.settings).expect("settings");
     let back: crate::settings::Settings = serde_json::from_str(&json).expect("read back");
@@ -9250,6 +9263,8 @@ fn rounded_corners_keep_their_widgets_and_round_again() {
         .expect("square");
     app.select(vec![id]);
     app.set_tool(Tool::Shape);
+    // A drag rounds every corner, as with one corner at a time off.
+    app.settings.nodes.corner_one_at_a_time = false;
     // The widgets are off unless the preference turns them on (#884).
     app.settings.nodes.corner_widgets = true;
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
@@ -13009,6 +13024,8 @@ fn corner_widgets_round_stretched_curves_on_the_page() {
     });
     app.select(vec![id]);
     app.set_tool(Tool::Shape);
+    // A drag rounds every corner, as with one corner at a time off.
+    app.settings.nodes.corner_one_at_a_time = false;
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
     assert_eq!(app.corner_widgets().len(), 4);
     drag_widget(&ctx, &mut app, centre, 5.0);
@@ -16814,4 +16831,76 @@ fn a_right_click_on_a_covered_selected_object_keeps_the_selection() {
     assert!(app.drop_menu.is_some());
     assert_eq!(app.selection, vec![small]);
     app.drop_menu = None;
+}
+
+/// One corner at a time (on by default): dragging a ring rounds its
+/// corner alone, Ctrl+click on rings chooses several corners that then
+/// round together, a second Ctrl+click takes one out, and Shift+drag
+/// rounds every corner.
+#[test]
+fn corner_rings_round_one_corner_or_the_ctrl_chosen_ones() {
+    use tracedraw_core::corner_cut::fillets;
+    use tracedraw_core::geometry::BezPath;
+    let (ctx, mut app, rect) = setup();
+    app.select(vec![rect]);
+    app.delete_selection();
+    let mut square = BezPath::new();
+    square.move_to((20.0, 20.0));
+    square.line_to((60.0, 20.0));
+    square.line_to((60.0, 60.0));
+    square.line_to((20.0, 60.0));
+    square.close_path();
+    let id = app
+        .new_shape(ShapeKind::Path {
+            path: square.clone(),
+            closed: true,
+        })
+        .expect("square");
+    app.select(vec![id]);
+    app.set_tool(Tool::Shape);
+    assert!(app.settings.nodes.corner_one_at_a_time);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let path_of = |app: &App| match &app.doc().find_shape(id).expect("curve").kind {
+        ShapeKind::Path { path, .. } => path.clone(),
+        _ => panic!("a curve"),
+    };
+    let centre = app.view.to_screen(Point::new(40.0, 40.0));
+    let pull = |app: &mut App, w: crate::corner_widgets::Widget, mods: Modifiers| {
+        let dir = (centre - w.at).normalized();
+        drag(&ctx, app, w.at, w.at + dir * 30.0, mods, Vec::new());
+    };
+    // Ctrl+click two rings: both chosen, shown filled.
+    let widgets = app.corner_widgets();
+    assert_eq!(widgets.len(), 4);
+    click_at(&ctx, &mut app, widgets[0].at, Modifiers::COMMAND);
+    click_at(&ctx, &mut app, widgets[2].at, Modifiers::COMMAND);
+    assert_eq!(app.corner_widgets().iter().filter(|w| w.chosen).count(), 2);
+    assert_eq!(path_of(&app), square, "a Ctrl+click rounds nothing");
+    // A third Ctrl+click and a second on the same ring: still two.
+    click_at(&ctx, &mut app, widgets[1].at, Modifiers::COMMAND);
+    click_at(&ctx, &mut app, widgets[1].at, Modifiers::COMMAND);
+    assert_eq!(app.corner_widgets().iter().filter(|w| w.chosen).count(), 2);
+    // Dragging a chosen ring rounds the two chosen corners.
+    let chosen = app
+        .corner_widgets()
+        .into_iter()
+        .find(|w| w.chosen)
+        .expect("a chosen ring");
+    pull(&mut app, chosen, Modifiers::NONE);
+    assert_eq!(fillets(&path_of(&app)).len(), 2, "the chosen corners");
+    app.undo();
+    assert_eq!(path_of(&app), square);
+    // Nothing chosen: a drag rounds that corner alone.
+    app.select(vec![id]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let w = app.corner_widgets()[3];
+    pull(&mut app, w, Modifiers::NONE);
+    assert_eq!(fillets(&path_of(&app)).len(), 1, "that corner alone");
+    app.undo();
+    // Shift+drag: every corner.
+    app.select(vec![id]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let w = app.corner_widgets()[3];
+    pull(&mut app, w, Modifiers::SHIFT);
+    assert_eq!(fillets(&path_of(&app)).len(), 4, "every corner");
 }

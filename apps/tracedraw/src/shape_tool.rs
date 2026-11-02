@@ -527,9 +527,13 @@ impl App {
                     return;
                 }
             }
-            // A corner widget rounds the corners (#635).
+            // A corner widget rounds its own corner, the chosen nodes'
+            // corners when it is one of them, or with Shift every corner
+            // (#635); a Ctrl+click on it chooses it (see the click below).
             if let Some(w) = self.corner_widget_at(p) {
-                if self.start_corner_drag(w, p) {
+                // Ctrl+click chooses the corner, or takes it out.
+                let one_at_a_time = self.settings.nodes.corner_one_at_a_time;
+                if self.start_corner_drag(w, p, one_at_a_time && mods.shift) {
                     return;
                 }
             }
@@ -831,6 +835,14 @@ impl App {
         }
 
         if response.clicked_by(PointerButton::Primary) {
+            // Ctrl+click on a corner widget chooses its corner, or takes
+            // it out, so one or several corners round together.
+            if self.settings.nodes.corner_one_at_a_time && mods.command && !mods.shift {
+                if let Some(w) = self.corner_widget_at(p) {
+                    self.toggle_corner_widget(w);
+                    return;
+                }
+            }
             if let Some(key) = self.text_node_at(p) {
                 self.click_node(key, mods);
                 return;

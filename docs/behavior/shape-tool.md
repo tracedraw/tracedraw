@@ -168,12 +168,19 @@ can be turned off so the widgets do not get in the way of node editing
 one would sit works as any other press of the Shape tool. Rectangles
 round their corners with their own handles either way.
 
-- With no node chosen every corner has one (a curve with more than 32
-  corners shows none, so a traced outline is not covered in them); with
-  nodes chosen only their corners do.
-- Dragging a widget into its corner rounds the corners with a fillet,
-  live: with no node chosen every corner of the curve, with nodes chosen
-  only theirs. The radius is the one whose arc's middle has moved into
+- Every corner has one (a curve with more than 32 corners shows them
+  only on chosen nodes, so a traced outline is not covered in them). A
+  chosen corner's widget is filled with the node colour.
+- Options > Nodes and Handles > Round one corner at a time (on at first,
+  under the rings option): a Ctrl+click (Cmd on macOS) on a widget
+  chooses its corner, a second Ctrl+click takes it out, so one corner or
+  several can be chosen. Turned off, the widgets work as before: with
+  nodes chosen only their corners show one, a drag rounds every corner
+  or the chosen nodes' corners, and Shift and Ctrl change nothing.
+- Dragging a widget into its corner rounds that corner alone with a
+  fillet, live. When its node is one of the chosen nodes, the chosen
+  nodes' corners round together; with Shift held at the press, every
+  corner of the curve rounds together. The radius is the one whose arc's middle has moved into
   the dragged corner as far as the pointer has moved along it
   (`r = d / (1 / sin(theta / 2) - 1)` for a corner of angle `theta`), at
   most the largest radius every rounded corner still fits (a side two
@@ -190,10 +197,10 @@ round their corners with their own handles either way.
   radius is read back from the arc. Its widget sits 18 px off the
   middle of the arc, along the middle of the corner. Dragging it takes
   the corner back to the sharp corner its sides meet at and rounds that
-  again, starting from the radius it had: with no node chosen every
-  corner of the curve (sharp or rounded) takes the new radius, with
-  nodes chosen only theirs (a rounded corner is chosen by any node of
-  its arc). Dragging back past the corner makes it sharp. Arcs between
+  again, starting from the radius it had: that corner alone, the chosen
+  nodes' corners when it is one of them, or with Shift every corner of
+  the curve (sharp or rounded) takes the new radius (a rounded corner is
+  chosen by any node of its arc). Dragging back past the corner makes it sharp. Arcs between
   curved sides, scallops and chamfers are not found again.
 - On a stretched or skewed curve corners round on the page, so a new
   rounding is round, also on a curve stretched after other corners were

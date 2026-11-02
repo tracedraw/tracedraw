@@ -863,6 +863,11 @@ pub struct NodePrefs {
     /// does not get in the way of node editing (#884). Rectangles keep
     /// their own corner rounding either way.
     pub corner_widgets: bool,
+    /// Dragging a corner widget rounds its own corner, Ctrl+click
+    /// chooses corners to round together, Shift+drag rounds every
+    /// corner. Off: a drag rounds every corner, or the chosen nodes'
+    /// corners, as before.
+    pub corner_one_at_a_time: bool,
 }
 
 impl Default for NodePrefs {
@@ -879,6 +884,7 @@ impl Default for NodePrefs {
             show_direction: false,
             pick_distance: 6.0,
             corner_widgets: true,
+            corner_one_at_a_time: true,
         }
     }
 }

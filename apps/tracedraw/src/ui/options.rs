@@ -1236,6 +1236,15 @@ fn nodes_page(app: &mut App, ui: &mut Ui) {
         ));
     ui.checkbox(&mut n.corner_widgets, tr("options.corner_widgets"))
         .rich_tip(tr("options.corner_widgets_tip"));
+    ui.add_enabled_ui(n.corner_widgets, |ui| {
+        ui.indent("corner_one_at_a_time", |ui| {
+            ui.checkbox(
+                &mut n.corner_one_at_a_time,
+                tr("options.corner_one_at_a_time"),
+            )
+            .rich_tip(tr("options.corner_one_at_a_time_tip"));
+        });
+    });
     ui.horizontal(|ui| {
         ui.label(tr("options.node_pick_distance"));
         ui.add(
