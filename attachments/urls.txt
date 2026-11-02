@@ -526,3 +526,5 @@
 1684 https://github.com/user-attachments/assets/2f0b7aac-a4d5-47d9-a59b-16028429aec2
 1142 https://github.com/user-attachments/assets/07e6b5f9-6923-4e17-9467-d3623ff6ac5f
 1142 https://github.com/user-attachments/assets/0eecaad0-67cf-4f6a-88ff-d4c4494c9b23
+1645 https://github.com/user-attachments/assets/d76b416c-2931-4c4b-9fa1-64ac74b3ee3a
+1670 https://github.com/user-attachments/assets/631f46c4-e8dc-4e15-b435-578d9eebfee8
