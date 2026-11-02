@@ -8,10 +8,16 @@
 use egui::epaint::{self, CornerRadius};
 use egui::{Color32, Painter, Pos2, Rect, Stroke, Vec2};
 
-/// The standard stroke of the icon style, grid units.
+/// The standard stroke of the icon style, grid units (design width).
 pub const LINE: f32 = 2.0;
 /// Guides and handles.
 pub const THIN: f32 = 1.4;
+/// Every stroke is drawn at this share of its design width: the standard
+/// line is 1.25 px in a 22 px box at 1x (#1682, thinner icons).
+pub const WEIGHT: f32 = 0.625;
+/// Filled dots (brush dabs, drops, the blend circle) at this share of
+/// their design radius.
+pub const DOT: f32 = 0.85;
 /// The dash and gap of a ghost (something proposed or gone), grid units.
 pub const DASH: (f32, f32) = (2.4, 2.2);
 /// The alpha of an object body's ink wash.
@@ -454,7 +460,6 @@ pub fn ribbon(p: [Pos2; 4], w: impl Fn(f32) -> f32, n: usize) -> Vec<Pos2> {
 #[derive(Clone)]
 pub struct Pen {
     painter: Painter,
-    r: Rect,
     /// Pixels (points) per grid unit.
     k: f32,
     /// Ink draws the object, the accent the action, the background the
@@ -464,18 +469,43 @@ pub struct Pen {
     pub bg: Color32,
     /// Rotation applied to grid coordinates: angle and centre.
     rot: Option<(f32, Pos2)>,
+    /// Where grid (0, 0) lands, points: the grid centred on the box and
+    /// snapped so integer units sit on pixel centres (see `new`).
+    origin: Pos2,
+    /// Physical pixels per point.
+    ppp: f32,
 }
 
 impl Pen {
+    /// The grid is `r.width() / 24` points per unit, rounded to whole
+    /// physical pixels in boxes of 20 px and up (22 px box: 1 px per unit
+    /// at 1x, 2 px at 2x; smaller boxes keep the fractional scale). The
+    /// grid is centred on `r` with its origin on a pixel edge, moved half
+    /// a pixel when the standard line's pixel width is odd (or under 2
+    /// px), so that straight strokes on integer units are crisp.
     pub fn new(painter: &Painter, r: Rect, ink: Color32, acc: Color32, bg: Color32) -> Self {
+        let ppp = painter.pixels_per_point();
+        let kp = r.width() * ppp / 24.0;
+        let k = if kp >= 0.85 {
+            kp.round().max(1.0) / ppp
+        } else {
+            kp
+        };
+        let o = r.center() - Vec2::splat(12.0 * k);
+        let mut origin = Pos2::new((o.x * ppp).round() / ppp, (o.y * ppp).round() / ppp);
+        let wpx = LINE * k * WEIGHT * ppp;
+        if wpx < 1.9 || (wpx.round() as i64) % 2 == 1 {
+            origin += Vec2::splat(0.5 / ppp);
+        }
         Pen {
             painter: painter.clone(),
-            r,
-            k: r.width() / 24.0,
+            k,
             ink,
             acc,
             bg,
             rot: None,
+            origin,
+            ppp,
         }
     }
 
@@ -502,9 +532,16 @@ impl Pen {
         v * self.k
     }
 
-    /// The stroke width in pixels, never thinner than a pixel.
+    /// The stroke width in points at the icon's weight, never thinner
+    /// than a physical pixel.
     fn width(&self, w: f32) -> f32 {
-        (w * self.k).max(1.0)
+        (w * self.k * WEIGHT).max(1.0 / self.ppp)
+    }
+
+    /// The design width (grid units) that draws exactly one physical
+    /// pixel: the frames of hollow nodes and handles.
+    fn hairline(&self) -> f32 {
+        1.0 / (self.ppp * self.k * WEIGHT)
     }
 
     fn map(&self, p: Pos2) -> Pos2 {
@@ -516,7 +553,7 @@ impl Pen {
             }
             None => p,
         };
-        self.r.min + p.to_vec2() * self.k
+        self.origin + p.to_vec2() * self.k
     }
 
     /// Grid point `(x, y)` on the screen.
@@ -567,10 +604,11 @@ impl Pen {
             self.painter
                 .add(epaint::PathShape::line(pts.clone(), stroke));
         }
-        // Round caps and joins: a dot at each open end and corner. A
-        // translucent stroke keeps the plain ends, the dots would darken
-        // them.
-        if color.a() < 255 || wpx < 1.5 {
+        // Round caps and joins: a dot at each open end and corner of a
+        // stroke at least three pixels wide (on thinner lines the dots
+        // only fatten the corners). A translucent stroke keeps the plain
+        // ends, the dots would darken them.
+        if color.a() < 255 || wpx * self.ppp < 3.0 {
             return;
         }
         let rad = wpx / 2.0;
@@ -641,9 +679,36 @@ impl Pen {
         }
         self.painter.add(mesh);
         if edge {
-            self.painter
-                .add(epaint::PathShape::closed_line(scr, Stroke::new(0.7, color)));
+            // One physical pixel: a real anti-aliased edge (a thinner
+            // stroke is faded by the tessellator into a 2 px halo).
+            self.painter.add(epaint::PathShape::closed_line(
+                scr,
+                Stroke::new(1.0 / self.ppp, color),
+            ));
         }
+    }
+
+    /// A disc whose fill fades from `from` at its left to `to` at its
+    /// right (a fan with vertex colours, premultiplied).
+    pub fn fade_circle(&self, cx: f32, cy: f32, rad: f32, from: Color32, to: Color32) {
+        let mix = |t: f32| {
+            let a = from.to_array().map(|b| b as f32);
+            let b = to.to_array().map(|b| b as f32);
+            let c = |i: usize| (a[i] + (b[i] - a[i]) * t).round() as u8;
+            Color32::from_rgba_premultiplied(c(0), c(1), c(2), c(3))
+        };
+        let mut mesh = egui::Mesh::default();
+        mesh.colored_vertex(self.at(cx, cy), mix(0.5));
+        let n = 48u32;
+        for i in 0..n {
+            let a = i as f32 / n as f32 * std::f32::consts::TAU;
+            let (x, y) = (cx + rad * a.cos(), cy + rad * a.sin());
+            mesh.colored_vertex(self.at(x, y), mix((x - (cx - rad)) / (2.0 * rad)));
+        }
+        for i in 0..n {
+            mesh.add_triangle(0, 1 + i, 1 + (i + 1) % n);
+        }
+        self.painter.add(mesh);
     }
 
     /// A convex fill (nodes, arrowheads), smoothed by the tessellator.
@@ -671,7 +736,9 @@ impl Pen {
     /// A circle (`fill` transparent for a ring), stroke `w` units.
     pub fn circle(&self, cx: f32, cy: f32, rad: f32, fill: Color32, w: f32, stroke: Color32) {
         let c = self.at(cx, cy);
-        let rpx = self.px(rad);
+        // A filled dot is drawn smaller (DOT); rings keep their radius.
+        let dot = w <= 0.0 && fill.a() == 255;
+        let rpx = self.px(rad) * if dot { DOT } else { 1.0 };
         if fill.a() > 0 {
             self.painter.circle_filled(c, rpx, fill);
         }
@@ -722,18 +789,18 @@ impl Pen {
     /// point the tool acts on; hollow (background with an ink frame) a
     /// plain anchor.
     pub fn node(&self, x: f32, y: f32, live: bool) {
-        let s = 3.4;
+        let s = 3.0;
         let h = s / 2.0;
         if live {
             self.rect(x - h, y - h, s, s, 0.8, self.acc, 0.0, Color32::TRANSPARENT);
         } else {
-            self.rect(x - h, y - h, s, s, 0.8, self.bg, 1.6, self.ink);
+            self.rect(x - h, y - h, s, s, 0.8, self.bg, self.hairline(), self.ink);
         }
     }
 
-    /// A handle end: a hollow accent circle.
+    /// A handle end: a hollow accent circle, a pixel's frame.
     pub fn handle(&self, x: f32, y: f32, rad: f32) {
-        self.circle(x, y, rad, self.bg, 1.6, self.acc);
+        self.circle(x, y, rad, self.bg, self.hairline(), self.acc);
     }
 
     /// The pick arrow (slanted tail), scaled `s`, its tip at `(ox, oy)`,
@@ -756,10 +823,10 @@ impl Pen {
         self.stroke_pts(&pts, true, w, self.ink);
         if live {
             self.rect(
-                ox + 11.6 * s,
-                oy + 13.6 * s,
-                4.0,
-                4.0,
+                ox + 13.6 * s - 1.5,
+                oy + 15.6 * s - 1.5,
+                3.0,
+                3.0,
                 1.0,
                 self.acc,
                 0.0,
