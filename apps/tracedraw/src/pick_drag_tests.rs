@@ -1513,7 +1513,7 @@ fn alt_drag_selects_also_when_it_starts_over_an_object() {
         frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
         assert_eq!(bounds(&app, bg), bg_before, "{tool:?}: nothing moved");
         assert!(app.selection.contains(&id), "{tool:?}: {:?}", app.selection);
-        // Alt+drag on the selection moves it.
+        // Without Alt a drag on the selection moves it.
         app.select(vec![id]);
         let from = app.view.to_screen(Point::new(35.0, 25.0));
         drag(
@@ -1521,10 +1521,104 @@ fn alt_drag_selects_also_when_it_starts_over_an_object() {
             &mut app,
             from,
             from + egui::vec2(60.0, 0.0),
-            alt,
+            Modifiers::NONE,
             Vec::new(),
         );
         assert!(bounds(&app, id).x0 > 11.0, "{tool:?}: moved");
+    }
+}
+
+/// Alt+drag starts the touching frame or lasso also over the selected
+/// object, so a small shape ordered behind a larger, selected one can
+/// be taken by an Alt+drag over it (that drag moved the front shape, so
+/// the hidden one could not be selected by touching; #1350), with the
+/// Pick and the Freehand Pick tools. Shift keeps the front shape too.
+#[test]
+fn alt_drag_over_the_selected_front_object_selects_the_one_behind() {
+    for tool in [Tool::Pick, Tool::FreeformPick] {
+        // The shape from `setup` is the small one, hidden behind `front`.
+        let (ctx, mut app, hidden) = setup();
+        let front = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 120.0, 80.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("front");
+        app.select(vec![front]);
+        app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+            220, 220, 220,
+        )));
+        app.set_tool(tool);
+        // The front shape is selected, as right after drawing it.
+        app.select(vec![front]);
+        let front_before = bounds(&app, front);
+        let hidden_before = bounds(&app, hidden);
+        // Across the hidden shape's left edge (x = 10), inside the front.
+        let pts: Vec<Point> = if tool == Tool::Pick {
+            vec![
+                Point::new(5.0, 15.0),
+                Point::new(12.0, 20.0),
+                Point::new(20.0, 25.0),
+            ]
+        } else {
+            vec![
+                Point::new(5.0, 15.0),
+                Point::new(20.0, 15.0),
+                Point::new(20.0, 25.0),
+                Point::new(5.0, 25.0),
+                Point::new(5.0, 16.0),
+            ]
+        };
+        for (mods, front_toggled_out) in [
+            (Modifiers::ALT, false),
+            (Modifiers::ALT | Modifiers::SHIFT, true),
+        ] {
+            app.select(vec![front]);
+            let s = app.view.to_screen(pts[0]);
+            frame(&ctx, &mut app, vec![Event::PointerMoved(s)], mods);
+            frame(
+                &ctx,
+                &mut app,
+                vec![button(s, true, PointerButton::Primary, mods)],
+                mods,
+            );
+            for p in &pts[1..] {
+                let q = app.view.to_screen(*p);
+                frame(&ctx, &mut app, vec![Event::PointerMoved(q)], mods);
+                assert!(
+                    !matches!(app.drag, Drag::Move { .. }),
+                    "{tool:?} {mods:?}: not a move"
+                );
+            }
+            let e = app.view.to_screen(*pts.last().expect("point"));
+            frame(
+                &ctx,
+                &mut app,
+                vec![button(e, false, PointerButton::Primary, mods)],
+                mods,
+            );
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+            assert_eq!(bounds(&app, front), front_before, "{tool:?}: nothing moved");
+            assert_eq!(
+                bounds(&app, hidden),
+                hidden_before,
+                "{tool:?}: nothing moved"
+            );
+            assert!(
+                app.selection.contains(&hidden),
+                "{tool:?} {mods:?}: the hidden one, {:?}",
+                app.selection
+            );
+            // Shift turns the front one over: it stays out of a selection
+            // it was in; a plain Alt frame inside its fill touches it.
+            assert_eq!(
+                app.selection.contains(&front),
+                !front_toggled_out,
+                "{tool:?} {mods:?}: {:?}",
+                app.selection
+            );
+        }
     }
 }
 

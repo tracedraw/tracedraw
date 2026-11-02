@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Pick and Freehand Pick tools: Alt+drag draws the touching frame or lasso also when it starts over the selected object, so a small shape ordered behind a larger one that is selected (as right after drawing it) can be taken by an Alt+drag over it. That drag moved the front shape, so the hidden one could not be selected by touching. A drag without Alt still moves the selection (#1350).
+
 ## 0.36.0 (2026-11-02)
 
 - Variable Outline on a closed path (an ellipse, a rectangle, a closed curve): the outline's width now runs on across the path's start, easing from the last width node round to the first as between any two nodes, and a node dragged along the path slides on past the start and comes round, the nodes keeping their path order. The path's start counted as two ends, where the width fell back to the plain outline's, and a node stopped there, so the outline could not be shaped all the way round (#1322).
