@@ -858,9 +858,10 @@ pub struct NodePrefs {
     /// nodes).
     pub pick_distance: f32,
     /// The Shape tool shows a corner widget inside the corners of a curve
-    /// (or of the chosen nodes), dragged to round them (#635). Off by
-    /// default, so it does not get in the way of node editing (#884);
-    /// rectangles keep their own corner rounding either way.
+    /// (or of the chosen nodes), dragged to round them (#635). On by
+    /// default; it can be turned off in Options > Nodes and Handles so it
+    /// does not get in the way of node editing (#884). Rectangles keep
+    /// their own corner rounding either way.
     pub corner_widgets: bool,
 }
 
@@ -877,7 +878,7 @@ impl Default for NodePrefs {
             unselected_filled: true,
             show_direction: false,
             pick_distance: 6.0,
-            corner_widgets: false,
+            corner_widgets: true,
         }
     }
 }

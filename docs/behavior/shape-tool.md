@@ -162,9 +162,9 @@ A curve being edited shows a small white circle with a ring in the node
 colour inside each corner (a node where two segments meet at an angle,
 as the Corners panel counts them), 18 px from the node along the middle
 of the corner (#635), when Options > Nodes and Handles > Show corner
-rounding rings on curve nodes is on. That preference is off at first, so
-the widgets do not get in the way of node editing (#884); it is saved
-with the other preferences. With it off no widget shows and a press where
+rounding rings on curve nodes is on. That preference is on at first; it
+can be turned off so the widgets do not get in the way of node editing
+(#884), and it is saved with the other preferences. With it off no widget shows and a press where
 one would sit works as any other press of the Shape tool. Rectangles
 round their corners with their own handles either way.
 

@@ -9150,17 +9150,17 @@ fn corner_widgets_round_every_corner_or_the_chosen_ones() {
     }
 }
 
-/// The corner widgets on curve nodes are a preference, off by default
-/// (#884): with it off a selected curve's corners show no widget, a press
+/// The corner widgets on curve nodes are a preference, on by default
+/// and turned off in Options (#884): with it off a selected curve's corners show no widget, a press
 /// where one would sit does not round anything, and choosing a node works
 /// as before; turning it on shows them again. The preference is saved
 /// with the others.
 #[test]
-fn corner_widgets_follow_their_preference_off_by_default() {
+fn corner_widgets_follow_their_preference_on_by_default() {
     use tracedraw_core::geometry::{BezPath, PathEl};
-    assert!(!crate::settings::Settings::default().nodes.corner_widgets);
+    assert!(crate::settings::Settings::default().nodes.corner_widgets);
     let (ctx, mut app, rect) = setup();
-    assert!(!app.settings.nodes.corner_widgets);
+    assert!(app.settings.nodes.corner_widgets);
     app.select(vec![rect]);
     app.delete_selection();
     let mut square = BezPath::new();
@@ -9178,7 +9178,10 @@ fn corner_widgets_follow_their_preference_off_by_default() {
     app.select(vec![id]);
     app.set_tool(Tool::Shape);
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
-    assert!(app.corner_widgets().is_empty(), "off by default");
+    assert_eq!(app.corner_widgets().len(), 4, "on by default");
+    app.settings.nodes.corner_widgets = false;
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(app.corner_widgets().is_empty(), "turned off");
     // Where the widget of the corner at (20, 20) would sit: 18 px from the
     // node towards the centre.
     let node = app.view.to_screen(Point::new(20.0, 20.0));
@@ -9216,9 +9219,9 @@ fn corner_widgets_follow_their_preference_off_by_default() {
     let json = serde_json::to_string(&app.settings).expect("settings");
     let back: crate::settings::Settings = serde_json::from_str(&json).expect("read back");
     assert!(back.nodes.corner_widgets);
-    // Settings saved before the preference existed read it as off.
+    // Settings saved before the preference existed read it as on.
     let old: crate::settings::NodePrefs = serde_json::from_str("{}").expect("old prefs");
-    assert!(!old.corner_widgets);
+    assert!(old.corner_widgets);
 }
 
 /// A corner rounded with a widget can be rounded again (#872): the curve
