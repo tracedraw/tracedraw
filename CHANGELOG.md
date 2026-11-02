@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Multipage View with several drawings open: each drawing now keeps its own pictures of its other pages. They were kept by page number for all drawings together, so after switching drawings the other pages first showed another drawing's pages until clicked (#1663).
+
 ## 0.36.0 (2026-11-02)
 
 - Variable Outline on a closed path (an ellipse, a rectangle, a closed curve): the outline's width now runs on across the path's start, easing from the last width node round to the first as between any two nodes, and a node dragged along the path slides on past the start and comes round, the nodes keeping their path order. The path's start counted as two ends, where the width fell back to the plain outline's, and a node stopped there, so the outline could not be shaped all the way round (#1322).

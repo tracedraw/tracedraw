@@ -568,4 +568,75 @@ mod tests {
         assert!(!app.multipage_press(on_first));
         assert_eq!(app.fit_rect(), app.page_rect());
     }
+
+    /// Each open drawing keeps its own pictures of its other pages: the
+    /// pages of a drawing never show another drawing's pages, not even
+    /// for a moment after switching, though page ids repeat between
+    /// drawings (#1663).
+    #[test]
+    fn each_drawing_keeps_its_own_other_page_pictures() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        let fill = |app: &mut App, w: f64| {
+            for _ in 0..2 {
+                app.add_page();
+                app.new_shape(tracedraw_core::ShapeKind::Rect {
+                    rect: Rect::new(10.0, 10.0, w, 40.0),
+                    radius: 0.0,
+                    corners: None,
+                });
+            }
+            app.page = app.doc().pages[0].id;
+        };
+        fill(&mut app, 60.0);
+        let a_pages: Vec<PageId> = app.doc().pages.iter().map(|p| p.id).collect();
+        app.set_multipage(true);
+        let mut t = 0.0;
+        let mut rest = |app: &mut App| {
+            for _ in 0..400 {
+                t += 0.02;
+                frame_at(&ctx, app, t);
+                if renders(app) >= 2 {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        };
+        rest(&mut app);
+        let a_renders = renders(&app);
+        assert!(a_renders >= 2, "the first drawing's other pages rendered");
+
+        app.open_document(
+            tracedraw_core::Document::new("Second", Size::new(123.0, 45.0)),
+            None,
+        );
+        fill(&mut app, 90.0);
+        let b_pages: Vec<PageId> = app.doc().pages.iter().map(|p| p.id).collect();
+        // The ids the cache was keyed by repeat in the new drawing.
+        assert!(b_pages.iter().any(|id| a_pages.contains(id)));
+        // Nothing of the first drawing's pages is there to show.
+        assert!(app.page_rasters.borrow().is_empty());
+        assert!(app.page_snapshot.borrow().is_none());
+        rest(&mut app);
+        assert!(
+            renders(&app) >= 2,
+            "the second drawing's other pages rendered"
+        );
+
+        // Back to the first drawing: its own pictures, none of the
+        // second's, and no render needed to show them.
+        app.switch_document(0);
+        assert_eq!(renders(&app), a_renders);
+        let a_width = app.doc().pages[0].size.width;
+        assert_ne!(a_width, 123.0);
+        assert!(app
+            .page_snapshot
+            .borrow()
+            .as_ref()
+            .is_none_or(|(_, d)| d.pages[0].size.width == a_width));
+        // And to the second again: its own pictures came along.
+        app.switch_document(1);
+        assert!(renders(&app) >= 2);
+    }
 }
