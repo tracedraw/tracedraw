@@ -5249,12 +5249,10 @@ impl App {
     pub fn sync_text_defaults_from(&mut self, id: ShapeId) {
         let kind = self.doc().shape(id).map(|(_, s)| s.kind.clone());
         if let Ok(ShapeKind::Text { spans, align, .. }) = &kind {
-            // While editing, the style at the caret (of the character before it).
-            let at = self
-                .text_edit
-                .as_ref()
-                .filter(|te| te.shape == id)
-                .map(|te| te.caret.saturating_sub(1));
+            // While editing, the style at the caret (of the character
+            // before it); with the Shape tool, of the first chosen
+            // character (#1662).
+            let at = self.shown_char(id);
             let span_at = at.and_then(|at| {
                 let mut seen = 0usize;
                 spans.iter().find(|sp| {
@@ -5834,6 +5832,20 @@ impl App {
             }
             return;
         }
+        // So do characters chosen with the Shape tool (#1662).
+        if self.chosen_chars_active() {
+            let used = match &fill {
+                Fill::Solid(c) => Some(*c),
+                _ => None,
+            };
+            if self.chosen_chars_apply_fill(fill) && remember {
+                if let Some(c) = used {
+                    self.add_ink_for(c);
+                    self.remember_color(c);
+                }
+            }
+            return;
+        }
         // With the Mesh Fill or Shape tool, a colour goes to the selected
         // mesh node.
         if let Fill::Solid(c) = &fill {
@@ -5943,6 +5955,16 @@ impl App {
         // Characters selected in the text being edited take the outline.
         if self.text_selection_active() {
             if self.text_apply_outline_color(color) {
+                if let Some(c) = color {
+                    self.add_ink_for(c);
+                    self.remember_color(c);
+                }
+            }
+            return;
+        }
+        // So do characters chosen with the Shape tool (#1662).
+        if self.chosen_chars_active() {
+            if self.chosen_chars_apply_outline_color(color) {
                 if let Some(c) = color {
                     self.add_ink_for(c);
                     self.remember_color(c);

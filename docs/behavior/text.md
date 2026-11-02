@@ -674,6 +674,17 @@ Window > Panels > Glyphs. From the top:
   was not chosen); Ctrl keeps the move horizontal or vertical. The move
   becomes their offsets (layout space, so rotated text moves along its
   own axes). One undo step per drag ("Move Characters").
+- The chosen characters take the format, as characters selected while
+  editing do (#1662): the Text docker's (Ctrl+T) font, style, size,
+  underline, range kerning, background, strikethrough, OpenType
+  features and font axes, a fill from the docker or a palette
+  ("Character Fill") and an outline colour ("Character Outline") go to
+  them only, and the docker's Character fields show the first chosen
+  character (the property bar's text fields are not shown with the
+  Shape tool). The Paragraph settings go to the paragraphs holding the
+  chosen characters. With no character chosen, a change goes to the
+  whole text as before
+  (`text_nodes::tests::chosen_characters_take_the_format_fill_and_outline`).
 - The Interactive horizontal spacing arrow, below the lower right
   corner, changes the character spacing so the end of the widest line
   follows the pointer: `+dx / n` per character for `n` characters on

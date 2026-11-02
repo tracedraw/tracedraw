@@ -2591,13 +2591,19 @@ impl App {
     }
 
     /// The characters the paragraph settings act on in text `id`: the
-    /// selection (or the caret) while it is being edited; `None`, every
-    /// paragraph, when the whole object is selected.
+    /// selection (or the caret) while it is being edited, else the
+    /// characters chosen with the Shape tool; `None`, every paragraph,
+    /// when the whole object is selected.
     pub fn paragraph_range(&self, id: ShapeId) -> Option<(usize, usize)> {
-        self.text_edit
-            .as_ref()
-            .filter(|te| te.shape == id)
-            .map(|te| te.selection())
+        if let Some(te) = &self.text_edit {
+            return (te.shape == id).then(|| te.selection());
+        }
+        // The characters chosen with the Shape tool: from the first to
+        // the last (#1662).
+        let chosen = self.chosen_chars(id);
+        let first = chosen.iter().min()?;
+        let last = chosen.iter().max()?;
+        Some((*first, last + 1))
     }
 
     /// The alignment and paragraph style the paragraph controls show for a
@@ -3128,12 +3134,14 @@ impl App {
                     para,
                     on_path,
                 } => {
-                    let mut spans = spans.clone();
                     // The bar's size is the size as seen: before the text's
                     // own scale it is smaller (or larger). A size the bar
                     // shows unchanged leaves each character's as it was.
                     let scale = self.text_scale(s.id);
-                    for sp in spans.iter_mut() {
+                    // The characters chosen with the Shape tool, else all
+                    // of them (#1662).
+                    let chosen = self.chosen_chars(s.id);
+                    let spans = crate::text_nodes::apply_to_chars(spans, &chosen, |sp| {
                         if set_font {
                             sp.font_family = self.text_font.clone();
                         }
@@ -3149,7 +3157,7 @@ impl App {
                         if set_underline {
                             sp.underline = self.text_underline;
                         }
-                    }
+                    });
                     Some(Command::SetShapeKind {
                         shape: s.id,
                         kind: ShapeKind::Text {
