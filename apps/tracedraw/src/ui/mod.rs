@@ -250,7 +250,11 @@ fn set_window_title(ctx: &egui::Context, title: String) {
 }
 
 pub fn root(app: &mut App, ui: &mut Ui) {
+    let steps = app.step_merge_start();
     root_frame(app, ui);
+    // The steps a number field made one after another are one undo step.
+    let time = ui.ctx().input(|i| i.time);
+    app.step_merge_end(steps, time);
     // The copies of the last Duplicate deselected: the next one takes the
     // offset again (#1494).
     app.forget_duplicate_unless_selected();

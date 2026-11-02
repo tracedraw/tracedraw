@@ -161,6 +161,7 @@ mod spell_windows;
 mod splash;
 #[cfg(not(target_arch = "wasm32"))]
 mod startup_log;
+mod step_merge;
 mod step_repeat;
 mod storage_full;
 mod straighten;

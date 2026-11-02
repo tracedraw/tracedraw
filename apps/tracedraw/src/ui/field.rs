@@ -373,6 +373,9 @@ impl<N: Numeric> NumField<'_, N> {
                 *self.value = N::from_f64(v);
                 resp.mark_changed();
             }
+            // Steps of one turn of the wheel, clicks on the arrows or one
+            // drag are one undo step (see `crate::step_merge`).
+            note_step(id.with("wheel"), dragging);
             return with_arrows(resp, spin_resp);
         }
         if self.mixed {
@@ -480,6 +483,26 @@ pub fn hold_taken_wheel(ctx: &egui::Context) {
     ctx.input_mut(|i| i.smooth_scroll_delta = egui::Vec2::ZERO);
 }
 
+thread_local! {
+    /// The widget stepped this frame (see [`note_step`]).
+    static STEPPED: std::cell::Cell<Option<(egui::Id, bool)>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// A number field (or a list or slider stepping with the wheel) stepped
+/// its value this frame by the wheel, its arrows or a drag on them;
+/// `held` while the drag goes on. The steps one such widget makes in a
+/// row, with nothing else done in between, become one undo step
+/// (`crate::step_merge`).
+pub fn note_step(widget: egui::Id, held: bool) {
+    STEPPED.with(|s| s.set(Some((widget, held))));
+}
+
+/// The widget [`note_step`] named since the last call, forgotten.
+pub fn take_step() -> Option<(egui::Id, bool)> {
+    STEPPED.with(|s| s.take())
+}
+
 /// The wheel notches turned this frame over a widget that steps with the
 /// wheel, up positive; `None` when the wheel did not turn. An event of a
 /// notch or more is one step whatever its size; parts of a notch from a
@@ -521,6 +544,9 @@ pub fn wheel_steps(ui: &Ui, acc_id: egui::Id) -> Option<i32> {
         acc -= whole;
     }
     ui.data_mut(|d| d.insert_temp(acc_id, acc));
+    if steps != 0 {
+        note_step(acc_id, false);
+    }
     Some(steps)
 }
 

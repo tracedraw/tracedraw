@@ -191,12 +191,23 @@ pointer and notch after notch steps it (#783,
 `ui::field::tests::the_wheel_steps_a_field_in_a_long_bar_without_sliding_the_bar`,
 `ui::field::tests::the_wheel_steps_a_field_in_a_scrolling_panel_without_scrolling_it`,
 `ui::propbar::tests::the_wheel_over_the_outline_width_in_a_long_bar_keeps_the_bar_still`).
-Every step applies at once, one undo step each, whether or not the box
+Every step applies at once, whether or not the box
 holds the focus: the rotation angle, the scale percentages, the arc
 angles, the dimension text size and line width, the corner radii and the
 Transform toolbar's fields took only the first click after the box was
 clicked into (the one that took the focus from it) and then none
 (`ui::propbar::tests::every_click_on_the_rotation_arrows_turns_the_selection`).
+The steps one field makes in a row are one undo step: a turn of the
+wheel, clicks on the arrows or a drag on them or on the label, from 1 to
+100, is one step named after the change ("Transform" for the size
+fields), whose Undo puts back the value from before the first step and
+whose Redo gives the value where the steps stopped. A step joins the one
+before when it comes from the same field, to the same selection, with
+the same kind of change, at most 0.8 s after the field's last step (any
+pause while one drag is held), and nothing else changed the drawing in
+between; another command, an Undo or Redo, another field or another
+drawing starts a new step. The same holds for the outline width box and
+for sliders stepped with the wheel (`step_merge::tests`).
 
 - Pick tool, nothing selected (page bar): page size list; page width and
   height; fit page to drawing (Layout's command, pale on an empty page);
@@ -229,7 +240,8 @@ clicked into (the one that took the focus from it) and then none
   a notch as 100 points or 3 lines), parts of a notch from a touchpad or
   a fine wheel add up until they make one (50 points make a notch), and
   what has added up is dropped when the wheel turns the other way or the
-  pointer leaves the box. One undo step a notch. With nothing selected
+  pointer leaves the box. The notches of one turn of the wheel are one
+undo step, as in the number fields. With nothing selected
   the wheel does nothing (#663).
 - Zoom and Pan tools: the zoom box, Zoom In, Zoom Out, Zoom to Selected,
   to All Objects, to Page, to Page Width, to Page Height.

@@ -1656,6 +1656,9 @@ pub struct App {
     /// `Engine::begin_group`): the drag's steps, and the copy Apply to
     /// Duplicate makes, are one undo step (#1342).
     pub free_transform_group: Option<Option<u64>>,
+    /// The steps a number field made in a row, joined into one undo step
+    /// (see `step_merge`).
+    pub field_run: Option<crate::step_merge::FieldRun>,
     pub roughen_amount: f64,
     /// The shaping brushes' settings (see `ui::brush_bars`), 1 to 100 where
     /// a percentage: Smooth's rate, Smear's and Smudge's pressure, Twirl's
@@ -2757,6 +2760,7 @@ impl App {
             free_transform_duplicate: false,
             free_transform_reflected: false,
             free_transform_group: None,
+            field_run: None,
             roughen_amount: 2.0,
             brush: Default::default(),
             brush_stepped: false,
