@@ -263,6 +263,15 @@ the bar and work as there (the bar is drawn once). A bar that fits shows
 no buttons; the slide is worked out again when the window changes size
 (`ui::overflow::tests`).
 
+Ctrl+wheel over a toolbar (docked or floating) steps the default button
+size (the bars' menu > Customize > Default Button Size) by the notches
+turned: up larger, down smaller, from Small to Large; over the toolbox
+it steps the toolbox's own size (see `toolbox.md`), over a palette the
+swatch size (see `color-palettes.md`). The wheel is taken, so the bar
+does not slide with it and the drawing does not zoom; the plain wheel
+slides a bar as before (`ui::bars::ctrl_wheel_steps`,
+`ui::bars::size_buttons_by_wheel`, `settings::ButtonSize::stepped`).
+
 Dialogs taller (or wider) than the window keep their size inside a
 window that fits the screen, and their body scrolls; dockers scroll as
 before.
@@ -323,11 +332,17 @@ bar move (`ui/bars.rs`).
   below the menu bar.
 - A floating bar is a small window with a grey border and a shadow: an
   18 px title with the bar's name at 11 px and a close button, then the
-  bar. Dragging the title moves it (near an edge it docks), a double
-  click puts the bar back at its first place, and the close button hides
-  it (Window > Toolbars shows it again). The floating toolbox is a grid
-  two buttons wide whose flyouts open to its right; the floating palette
-  is one row 460 px wide.
+  bar. A name longer than the title's room (a long translation in a
+  narrow window) is cut with an ellipsis and shows whole as a tooltip
+  of the title; a window is never narrower than 68 px, room for the
+  close button and a few letters (`ui::bars::title_room`,
+  `ui::bars::tests::floating_titles_fit_their_windows`). Dragging the
+  title moves it (near an edge it docks), a double click puts the bar
+  back at its first place, and the close button hides it (Window >
+  Toolbars shows it again). The floating toolbox is a grid two buttons
+  wide at first that reflows when its window is resized by its edges
+  and corners (see "Floating toolbox" in `toolbox.md`); the floating
+  palette is one row 460 px wide.
 - The palette docks at each side in two places: at the window's edge
   (a row across the whole window inside the toolbars, or a column
   outside the toolbox and the docker column) or beside the drawing (a

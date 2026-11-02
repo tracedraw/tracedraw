@@ -568,7 +568,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
             }
         };
         if show_doc_palette {
-            side(panel("document_palette"), palette::ROW_H)
+            side(panel("document_palette"), palette::row_h(app))
                 .frame(palette_frame)
                 .show(ui, |ui| palette::document_palette_row(app, ui));
         }

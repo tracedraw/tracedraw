@@ -19,7 +19,10 @@ pode abrir mais paletas, criar as suas e editá-las.
 
 As setas nas pontas rolam a paleta, e o botão na ponta direita mostra todas as
 cores de uma vez. Passe o ponteiro sobre uma cor para ver o nome e os valores. O
-botão de menu da paleta, na ponta esquerda, abre o menu da paleta.
+botão de menu da paleta, na ponta esquerda, abre o menu da paleta. A roda do
+mouse sobre a paleta a rola; com <kbd>Ctrl</kbd> pressionado, a roda aumenta
+(roda para cima) ou diminui (roda para baixo) as amostras, de 8 a 48 px, e o
+tamanho fica guardado.
 
 A paleta pode ir para outra borda da janela, ou flutuar: arraste-a pela alça
 pontilhada. Com duas ou três linhas, a janela que mostra todas as cores abre

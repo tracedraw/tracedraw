@@ -18,11 +18,33 @@ use crate::ui::tips::RichTip;
 use egui::{pos2, vec2, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Ui};
 use tracedraw_core::{Color, Command, Fill};
 
-/// Height of a palette row: a separator line, the swatches in their frame
-/// and a pixel of space on each side.
+/// Height of a palette row at the default swatch size: a separator line,
+/// the swatches in their frame and a pixel of space on each side.
 pub const ROW_H: f32 = 25.0;
+/// The side of a swatch at first, and the distance between two (the
+/// frame line between them).
 const SWATCH: f32 = 20.0;
+#[cfg(test)]
 const STRIDE: f32 = 21.0;
+/// What a row holds besides its swatches across: the line, the frame
+/// and a pixel of space on each side.
+const ROW_PAD: f32 = ROW_H - SWATCH;
+
+/// The side of a swatch: Options > Customization > Color Palette, or
+/// Ctrl+wheel over a palette (20 px at first).
+pub fn swatch_side(app: &App) -> f32 {
+    app.settings.palette.swatch_size()
+}
+
+/// From one swatch to the next: the side and the frame line between.
+pub fn stride(app: &App) -> f32 {
+    swatch_side(app) + 1.0
+}
+
+/// The height of a palette row of one line of swatches.
+pub fn row_h(app: &App) -> f32 {
+    swatch_side(app) + ROW_PAD
+}
 /// From a row's left edge to the frame of the first swatch.
 const LEAD: f32 = 77.0;
 /// Room for the scroll and expand buttons at the right.
@@ -278,7 +300,7 @@ fn scroll_of(app: &mut App, which: Row) -> &mut usize {
 /// How thick the strip of `which` is: one row of swatches, and for the
 /// default palette one more swatch for each further row (#610).
 pub fn thickness(app: &App, which: Row) -> f32 {
-    ROW_H + (lines_of(app, which) - 1) as f32 * STRIDE
+    row_h(app) + (lines_of(app, which) - 1) as f32 * stride(app)
 }
 
 /// Rows of swatches in the strip of `which` (the document palette and
@@ -290,15 +312,44 @@ fn lines_of(app: &App, which: Row) -> usize {
     }
 }
 
-/// How many swatches fit in a row of this width (the No Color well
-/// counts as one).
-pub fn visible_slots(width: f32) -> usize {
-    ((width - LEAD - TAIL - 1.0) / STRIDE).floor().max(1.0) as usize
+/// How many swatches `stride` apart fit in a row of this width (the No
+/// Color well counts as one).
+pub fn visible_slots(width: f32, stride: f32) -> usize {
+    ((width - LEAD - TAIL - 1.0) / stride.max(1.0))
+        .floor()
+        .max(1.0) as usize
+}
+
+/// The wheel notches turned this frame without Ctrl (up positive): the
+/// plain wheel scrolls a palette, while Ctrl+wheel sizes its swatches
+/// and scrolls nothing.
+pub fn plain_wheel_notches(events: &[egui::Event]) -> f32 {
+    events
+        .iter()
+        .map(|e| match e {
+            egui::Event::MouseWheel {
+                unit,
+                delta,
+                modifiers,
+                ..
+            } if !(modifiers.ctrl || modifiers.command) => {
+                let d = delta.y + delta.x;
+                match unit {
+                    egui::MouseWheelUnit::Line => d,
+                    egui::MouseWheelUnit::Point => d / 50.0,
+                    egui::MouseWheelUnit::Page => d * 10.0,
+                }
+            }
+            _ => 0.0,
+        })
+        .sum()
 }
 
 fn row(app: &mut App, ui: &mut Ui, which: Row, vertical: bool) {
     let lines = lines_of(app, which);
     let thick = thickness(app, which);
+    let sw = swatch_side(app);
+    let st = stride(app);
     let size = if vertical {
         vec2(thick, ui.available_height())
     } else {
@@ -352,7 +403,7 @@ fn row(app: &mut App, ui: &mut Ui, which: Row, vertical: bool) {
     let count = colors.len() + usize::from(no_color);
     // Several rows fill line by line: each line holds the next run of the
     // palette, and the strip scrolls a swatch at a time (#610).
-    let cols = visible_slots(len);
+    let cols = visible_slots(len, st);
     let slots = cols * lines;
     let max_scroll = count.saturating_sub(slots);
     let scroll = (*scroll_of(app, which)).min(max_scroll);
@@ -496,33 +547,23 @@ fn row(app: &mut App, ui: &mut Ui, which: Row, vertical: bool) {
     for line in 0..shown.div_ceil(cols) {
         let n = cols.min(shown - line * cols);
         px.rect(
-            ax.rect(
-                LEAD,
-                EDGE + line as f32 * STRIDE,
-                n as f32 * STRIDE + 1.0,
-                STRIDE + 1.0,
-            ),
+            ax.rect(LEAD, EDGE + line as f32 * st, n as f32 * st + 1.0, st + 1.0),
             FRAME,
         );
     }
     px.paint(&painter);
+    // Ctrl+wheel over the strip sizes the swatches (every palette row
+    // follows); the plain wheel scrolls it.
+    if let Some(steps) = crate::ui::bars::ctrl_wheel_steps(
+        ui,
+        rect,
+        ui.id().with(("palette_size_wheel", which.key())),
+    ) {
+        app.settings.palette.swatch_size =
+            crate::settings::swatch_resized(app.settings.palette.swatch_size, steps);
+    }
     let notch: f32 = if ui.rect_contains_pointer(rect) {
-        ui.input(|i| {
-            i.events
-                .iter()
-                .map(|e| match e {
-                    egui::Event::MouseWheel { unit, delta, .. } => {
-                        let d = delta.y + delta.x;
-                        match unit {
-                            egui::MouseWheelUnit::Line => d,
-                            egui::MouseWheelUnit::Point => d / 50.0,
-                            egui::MouseWheelUnit::Page => d * 10.0,
-                        }
-                    }
-                    _ => 0.0,
-                })
-                .sum()
-        })
+        ui.input(|i| plain_wheel_notches(&i.events))
     } else {
         0.0
     };
@@ -534,10 +575,10 @@ fn row(app: &mut App, ui: &mut Ui, which: Row, vertical: bool) {
     for slot in 0..shown {
         let index = scroll + slot;
         let cell = ax.rect(
-            LEAD + 1.0 + (slot % cols) as f32 * STRIDE,
-            EDGE + 1.0 + (slot / cols) as f32 * STRIDE,
-            SWATCH,
-            SWATCH,
+            LEAD + 1.0 + (slot % cols) as f32 * st,
+            EDGE + 1.0 + (slot / cols) as f32 * st,
+            sw,
+            sw,
         );
         let color_index = if no_color {
             index.checked_sub(1)
@@ -549,7 +590,7 @@ fn row(app: &mut App, ui: &mut Ui, which: Row, vertical: bool) {
     }
     if which == Row::Document && shown < slots && colors.is_empty() && !vertical {
         painter.text(
-            ax.point(LEAD + shown as f32 * STRIDE + 9.0, EDGE + 11.0),
+            ax.point(LEAD + shown as f32 * st + 9.0, EDGE + 11.0),
             Align2::LEFT_CENTER,
             tr("palette.document_hint"),
             FontId::proportional(11.0),
@@ -983,16 +1024,18 @@ fn palette_menu(app: &mut App, ui: &mut Ui, which: Row) {
 /// Pop-ups drawn over the window: a colour's shades and the expanded
 /// palette. Called once per frame after the rows.
 pub fn popups(app: &mut App, ctx: &egui::Context) {
+    let sw = swatch_side(app);
+    let st = stride(app);
     if let Some((color, anchor)) = app.palette_shades {
         let id = egui::Id::new("palette_shades");
         let grid = shades(color);
-        let side = 5.0 * STRIDE + 1.0;
+        let side = 5.0 * st + 1.0;
         let screen = ctx.content_rect();
         // Above the swatch, kept on the screen (a palette docked at the
         // top or on a side has no room above some swatches).
         let mut pos = pos2(anchor.x - side / 2.0, anchor.y - side - 6.0);
         if pos.y < screen.top() {
-            pos.y = anchor.y + SWATCH + 6.0;
+            pos.y = anchor.y + sw + 6.0;
         }
         pos.x = pos.x.clamp(
             screen.left(),
@@ -1009,8 +1052,8 @@ pub fn popups(app: &mut App, ctx: &egui::Context) {
                 for (i, c) in grid.iter().enumerate() {
                     let (col, row) = ((i % 5) as f32, (i / 5) as f32);
                     let cell = Rect::from_min_size(
-                        r.min + vec2(1.0 + col * STRIDE, 1.0 + row * STRIDE),
-                        vec2(SWATCH, SWATCH),
+                        r.min + vec2(1.0 + col * st, 1.0 + row * st),
+                        vec2(sw, sw),
                     );
                     painter.rect_filled(cell, 0.0, crate::canvas::to_color32(*c));
                     let resp = ui
@@ -1050,7 +1093,10 @@ pub fn popups(app: &mut App, ctx: &egui::Context) {
         // Above the row, from its first swatch.
         let strip = ctx
             .data(|d| d.get_temp::<Pos2>(egui::Id::new(("palette_strip", which.key()))))
-            .unwrap_or(pos2(screen.left() + LEAD, screen.bottom() - 3.0 * ROW_H));
+            .unwrap_or(pos2(
+                screen.left() + LEAD,
+                screen.bottom() - 3.0 * row_h(app),
+            ));
         // Clear of every row of the strip.
         let thick = thickness(app, which);
         let vertical = ctx
@@ -1060,7 +1106,7 @@ pub fn popups(app: &mut App, ctx: &egui::Context) {
             // Beside a column: towards the middle of the window.
             let cols = 12usize;
             let rows = colors.len().div_ceil(cols).max(1);
-            let size = vec2(cols as f32 * STRIDE + 1.0, rows as f32 * STRIDE + 1.0);
+            let size = vec2(cols as f32 * st + 1.0, rows as f32 * st + 1.0);
             let x = if strip.x > screen.center().x {
                 strip.x - size.x - 24.0
             } else {
@@ -1072,9 +1118,9 @@ pub fn popups(app: &mut App, ctx: &egui::Context) {
                 .max(screen.top());
             (cols, size, pos2(x, y))
         } else {
-            let cols = (((screen.right() - strip.x - 24.0) / STRIDE).floor() as usize).clamp(1, 33);
+            let cols = (((screen.right() - strip.x - 24.0) / st).floor() as usize).clamp(1, 33);
             let rows = colors.len().div_ceil(cols).max(1);
-            let size = vec2(cols as f32 * STRIDE + 1.0, rows as f32 * STRIDE + 1.0);
+            let size = vec2(cols as f32 * st + 1.0, rows as f32 * st + 1.0);
             // Above the row, or below it when it is docked at the top.
             let above = strip.y - size.y - 16.0;
             let y = if above < screen.top() {
@@ -1096,8 +1142,8 @@ pub fn popups(app: &mut App, ctx: &egui::Context) {
                     for (i, (name, c)) in colors.iter().enumerate() {
                         let (col, row) = ((i % cols) as f32, (i / cols) as f32);
                         let cell = Rect::from_min_size(
-                            r.min + vec2(1.0 + col * STRIDE, 1.0 + row * STRIDE),
-                            vec2(SWATCH, SWATCH),
+                            r.min + vec2(1.0 + col * st, 1.0 + row * st),
+                            vec2(sw, sw),
                         );
                         painter.rect_filled(cell, 0.0, crate::canvas::to_color32(*c));
                         let resp = ui
@@ -1554,7 +1600,7 @@ mod tests {
         };
         // The second line starts with the swatch after the first line's
         // last (the No Color well takes the first slot).
-        let cols = visible_slots(800.0);
+        let cols = visible_slots(800.0, STRIDE);
         assert_eq!(solid(&app), app.palette[cols - 1].1);
         assert!(height.get() >= ROW_H + STRIDE, "{}", height.get());
         click(&mut app, egui::pos2(x + STRIDE, 3.0 + SWATCH / 2.0));
@@ -1779,9 +1825,84 @@ mod tests {
         );
     }
 
+    /// Ctrl+wheel over a palette row sizes its swatches (up larger, down
+    /// smaller, 2 px a notch, 8 to 48 px) and scrolls nothing; the
+    /// plain wheel scrolls it and sizes nothing.
+    #[test]
+    fn ctrl_wheel_sizes_the_swatches_and_the_plain_wheel_scrolls() {
+        let mut app = App::headless();
+        let ctx = crate::theme::ui_context();
+        let clock = std::cell::Cell::new(0.0);
+        let frame = |app: &mut App, events: Vec<egui::Event>| {
+            clock.set(clock.get() + 0.1);
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(800.0, 100.0),
+                )),
+                events,
+                time: Some(clock.get()),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| palette_row(app, ui));
+            out.textures_delta.clear();
+        };
+        let over = egui::pos2(LEAD + 60.0, 12.0);
+        let wheel = |dy: f32, modifiers: egui::Modifiers| {
+            vec![
+                egui::Event::PointerMoved(over),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Line,
+                    delta: egui::vec2(0.0, dy),
+                    phase: egui::TouchPhase::Move,
+                    modifiers,
+                },
+            ]
+        };
+        frame(&mut app, Vec::new());
+        frame(&mut app, vec![egui::Event::PointerMoved(over)]);
+        assert_eq!(swatch_side(&app), 20.0);
+        frame(&mut app, wheel(-1.0, egui::Modifiers::CTRL));
+        assert_eq!(app.settings.palette.swatch_size, 18);
+        assert_eq!(app.palette_scroll, 0, "Ctrl+wheel scrolls nothing");
+        frame(&mut app, Vec::new());
+        assert_eq!(thickness(&app, Row::Main), 23.0);
+        frame(&mut app, wheel(1.0, egui::Modifiers::CTRL));
+        frame(&mut app, wheel(1.0, egui::Modifiers::CTRL));
+        assert_eq!(app.settings.palette.swatch_size, 22);
+        for _ in 0..40 {
+            frame(&mut app, wheel(1.0, egui::Modifiers::CTRL));
+        }
+        assert_eq!(
+            app.settings.palette.swatch_size,
+            crate::settings::SWATCH_MAX
+        );
+        frame(&mut app, Vec::new());
+        assert_eq!(thickness(&app, Row::Main), 48.0 + 5.0);
+        assert_eq!(app.palette_scroll, 0);
+        // The plain wheel scrolls, a swatch a notch, and sizes nothing.
+        frame(&mut app, wheel(-1.0, egui::Modifiers::NONE));
+        assert_eq!(app.palette_scroll, 1);
+        frame(&mut app, wheel(-1.0, egui::Modifiers::NONE));
+        assert_eq!(app.palette_scroll, 2);
+        frame(&mut app, wheel(1.0, egui::Modifiers::NONE));
+        assert_eq!(app.palette_scroll, 1);
+        assert_eq!(
+            app.settings.palette.swatch_size,
+            crate::settings::SWATCH_MAX
+        );
+        // Notches with Ctrl do not count as plain ones.
+        let events = wheel(-1.0, egui::Modifiers::CTRL);
+        assert_eq!(plain_wheel_notches(&events), 0.0);
+        assert_eq!(
+            plain_wheel_notches(&wheel(-1.0, egui::Modifiers::NONE)),
+            -1.0
+        );
+    }
+
     #[test]
     fn rows_fit_whole_swatches() {
-        assert_eq!(visible_slots(LEAD + TAIL + 1.0 + 21.0 * 10.0), 10);
-        assert_eq!(visible_slots(10.0), 1);
+        assert_eq!(visible_slots(LEAD + TAIL + 1.0 + 21.0 * 10.0, STRIDE), 10);
+        assert_eq!(visible_slots(10.0, STRIDE), 1);
     }
 }

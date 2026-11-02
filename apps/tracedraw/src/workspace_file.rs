@@ -214,6 +214,14 @@ impl WorkspaceFile {
                     *pos = default;
                 }
             }
+            // The floating toolbox's size: a usable one, else as at first.
+            if l.toolbox_size.is_some_and(|size| {
+                !size
+                    .iter()
+                    .all(|v| v.is_finite() && *v > 0.0 && *v <= MAX_POSITION)
+            }) {
+                l.toolbox_size = None;
+            }
             // A pick out of bounds keeps its group's place, as nothing.
             bars.toolbox.truncate(MAX_LIST);
             for id in &mut bars.toolbox {
@@ -575,7 +583,7 @@ mod tests {
             "base": long,
             "shortcuts": shortcuts,
             "bars": {
-                "layout": {"palette_pos": [1e30, 5.0], "standard_pos": [-3.0e5, 0.0]},
+                "layout": {"palette_pos": [1e30, 5.0], "standard_pos": [-3.0e5, 0.0], "toolbox_size": [0.0, 5.0]},
                 "toolbox": ["pick", long, ""],
                 "toolbox_hidden": ["", "eraser", "x".repeat(500)]
             },
@@ -598,6 +606,7 @@ mod tests {
             (bars.layout.palette_pos, bars.layout.standard_pos),
             (d.palette_pos, d.standard_pos)
         );
+        assert_eq!(bars.layout.toolbox_size, None);
         assert_eq!(
             bars.toolbox,
             vec!["pick".to_string(), String::new(), String::new()]

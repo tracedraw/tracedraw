@@ -17,7 +17,10 @@ uses. You can open more palettes, make your own and edit them.
 
 The arrows at the ends scroll the palette, and the button at the right end
 shows every color at once. Hover a color to see its name and values. The
-palette menu button at the left end opens the palette menu.
+palette menu button at the left end opens the palette menu. The mouse wheel
+over the palette scrolls it; with <kbd>Ctrl</kbd> held, the wheel makes the
+swatches larger (wheel up) or smaller (wheel down), from 8 to 48 px, and the
+size is remembered.
 
 The palette can be moved to another edge of the window, or made to float:
 drag it by its dotted grip. With two or three rows, the window showing every

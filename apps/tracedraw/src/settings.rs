@@ -35,6 +35,16 @@ impl ButtonSize {
             ButtonSize::Large => "bars.size_large",
         }
     }
+
+    /// The size `steps` sizes up (down for a negative count) from this
+    /// one, held at Small and Large: Ctrl+wheel over a bar steps its
+    /// buttons' size by the notches turned.
+    pub fn stepped(self, steps: i32) -> ButtonSize {
+        let at = ButtonSize::ALL.iter().position(|s| *s == self).unwrap_or(0) as i64;
+        let last = (ButtonSize::ALL.len() - 1) as i64;
+        let to = (at + i64::from(steps)).clamp(0, last);
+        ButtonSize::ALL[to as usize]
+    }
 }
 
 /// What the toolbox's buttons show.
@@ -949,13 +959,40 @@ pub struct PalettePrefs {
     /// Rows of swatches the default palette shows (columns docked on a
     /// side), 1 to 3 (#610).
     pub rows: u8,
+    /// The side of a swatch (whole points), [`SWATCH_MIN`] to
+    /// [`SWATCH_MAX`]: Ctrl+wheel over a palette changes it by
+    /// [`SWATCH_STEP`] a notch. Preferences written before it existed
+    /// keep the 20 px swatches.
+    pub swatch_size: u8,
 }
+
+/// The smallest and the largest swatch, and the step a wheel notch
+/// changes the side by (points).
+pub const SWATCH_MIN: u8 = 8;
+pub const SWATCH_MAX: u8 = 48;
+pub const SWATCH_STEP: i32 = 2;
+/// The side the swatches have at first.
+pub const SWATCH_DEFAULT: u8 = 20;
 
 impl PalettePrefs {
     /// [`Self::rows`] brought into 1 to 3.
     pub fn rows(&self) -> usize {
         self.rows.clamp(1, 3) as usize
     }
+
+    /// [`Self::swatch_size`] brought into its range, as points.
+    pub fn swatch_size(&self) -> f32 {
+        f32::from(self.swatch_size.clamp(SWATCH_MIN, SWATCH_MAX))
+    }
+}
+
+/// The swatch side `steps` notches of Ctrl+wheel on from `size`: up
+/// larger, down smaller, [`SWATCH_STEP`] a notch, held between
+/// [`SWATCH_MIN`] and [`SWATCH_MAX`].
+pub fn swatch_resized(size: u8, steps: i32) -> u8 {
+    let to = i32::from(size.clamp(SWATCH_MIN, SWATCH_MAX))
+        .saturating_add(steps.saturating_mul(SWATCH_STEP));
+    to.clamp(i32::from(SWATCH_MIN), i32::from(SWATCH_MAX)) as u8
 }
 
 impl Default for PalettePrefs {
@@ -967,6 +1004,7 @@ impl Default for PalettePrefs {
             show_document: true,
             show_palette: true,
             rows: 1,
+            swatch_size: SWATCH_DEFAULT,
         }
     }
 }
@@ -2100,6 +2138,35 @@ mod tests {
     }
 
     use super::*;
+
+    /// Ctrl+wheel steps the button sizes and the swatch size within
+    /// their ranges; preferences written before the swatch size existed
+    /// keep the 20 px swatches.
+    #[test]
+    fn the_wheel_steps_the_button_and_swatch_sizes_within_their_ranges() {
+        assert_eq!(ButtonSize::Small.stepped(1), ButtonSize::Medium);
+        assert_eq!(ButtonSize::Small.stepped(2), ButtonSize::Large);
+        assert_eq!(ButtonSize::Small.stepped(5), ButtonSize::Large);
+        assert_eq!(ButtonSize::Large.stepped(-1), ButtonSize::Medium);
+        assert_eq!(ButtonSize::Small.stepped(-1), ButtonSize::Small);
+        assert_eq!(ButtonSize::Medium.stepped(0), ButtonSize::Medium);
+        assert_eq!(swatch_resized(20, 1), 22);
+        assert_eq!(swatch_resized(20, -1), 18);
+        assert_eq!(swatch_resized(20, 100), SWATCH_MAX);
+        assert_eq!(swatch_resized(20, -100), SWATCH_MIN);
+        assert_eq!(swatch_resized(47, 1), SWATCH_MAX);
+        assert_eq!(swatch_resized(0, 0), SWATCH_MIN);
+        assert_eq!(swatch_resized(20, i32::MAX), SWATCH_MAX);
+        let old: Settings = serde_json::from_str(r#"{"palette":{"rows":2}}"#).expect("old");
+        assert_eq!(old.palette.swatch_size, SWATCH_DEFAULT);
+        assert_eq!(old.palette.swatch_size(), 20.0);
+        assert_eq!(old.palette.rows(), 2);
+        let odd = PalettePrefs {
+            swatch_size: 200,
+            ..PalettePrefs::default()
+        };
+        assert_eq!(odd.swatch_size(), f32::from(SWATCH_MAX));
+    }
 
     #[test]
     fn recent_list_dedups_and_caps() {

@@ -26,6 +26,12 @@ full, row-by-row status.
 
 - Options > Nodes and Handles > Handle size: Small (6 points), Medium (8) or Large (10, the size so far and the default) for the Pick tool's selection handles; the handles' gap to the selection box, their reach for a press and the text flow tabs follow the size (#1285).
 
+- Floating toolbox: its window can be resized by its edges and corners, and the buttons reflow to fit it, live: a tall narrow window holds them two to a row (or one), a wider one more to a row in fewer rows, a wide short one in a row or two, with the separators between the tool groups kept (a vertical line between two groups in a row, a line between two rows) and the "+" button at the end. The window hugs the grid and the size is kept with the bar layout (in buttons, so it holds when the button size changes); before, the floating toolbox was always two buttons wide.
+
+- Floating bars: a bar's name too long for its title (a long translation in a narrow window) is now cut with an ellipsis and shows whole as a tooltip of the title, and a window is never narrower than its close button and a few letters; the name overflowed the window before.
+
+- Ctrl+wheel sizes: over the color palette, Ctrl+wheel makes the swatches larger (wheel up) or smaller (wheel down), 2 px a notch from 8 to 48 px, every palette row following; over a toolbar it steps the default button size, over the toolbox the toolbox's own button size, Small to Large. The sizes are kept in the preferences (older preferences keep 20 px swatches). The plain wheel still scrolls a palette or a bar that does not fit, and Ctrl+wheel over these panels does not zoom the drawing.
+
 - Multipage View with several drawings open: each drawing now keeps its own pictures of its other pages. They were kept by page number for all drawings together, so after switching drawings the other pages first showed another drawing's pages until clicked (#1663).
 
 - Browser version: a drag with the mouse button held, or a finger held down, on the drawing no longer selects the page's text in the browser (Safari on iPad selected the whole window while dragging a marquee or an object, and offered its long-press callout); the page and the canvas turn the browser's text selection off, and the loading text stays selectable so an error message can be copied (#1654).

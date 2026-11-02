@@ -22,6 +22,16 @@ downwards.
 - Each row is 25 px: a 1 px `#D8D8D8` line, a pixel of space, the
   swatches (20 x 20 px in a 1 px `#5A5A5A` frame that also separates
   them), a pixel of space. The background is the panel colour `#F4F4F4`.
+- Swatch size: Ctrl+wheel over a palette row (or column) makes the
+  swatches larger (wheel up) or smaller (wheel down), 2 px a notch,
+  from 8 to 48 px; every palette row follows, and so do the shades
+  pop-up and the window showing every colour. The size is kept in the
+  preferences (`palette.swatch_size`, whole points; preferences written
+  before it existed keep 20 px). Rows are 5 px thicker than the swatch.
+  Ctrl+wheel scrolls nothing and the drawing does not zoom; the plain
+  wheel scrolls as before (`settings::swatch_resized`,
+  `ui::palette::tests::ctrl_wheel_sizes_the_swatches_and_the_plain_wheel_scrolls`,
+  `settings::tests::the_wheel_steps_the_button_and_swatch_sizes_within_their_ranges`).
 - From the left: a dotted grip, the palette menu button (a dark triangle),
   the eyedropper (grey on the default palette, which cannot change; dark
   on the document palette), the left scroll arrow, then the swatches from
@@ -103,6 +113,7 @@ management converts. A CMYK drawing keeps them CMYK (#483, #620,
 | Drag objects (Pick tool) onto the document palette | Their fill and outline colours join it (as Add from Selection); the objects stay where they were; the pointer shows a copy sign there |
 | While dragging a swatch | A chip of the colour follows the pointer: filled over a fill, a ring over an outline; the pointer shows whether letting go changes anything; Esc drops nothing |
 | Scroll arrows, wheel | One swatch at a time (every row moves by one); holding an arrow keeps scrolling |
+| Ctrl+wheel | Larger (up) or smaller (down) swatches, 2 px a notch, 8 to 48 px, kept in the preferences; nothing scrolls or zooms |
 | The show-all button | Every colour of the row in a grid above it (below it, clear of every row, when the palette is along the top; beside a column, clear of every column; #610, `ui::palette::tests::every_colour_opens_clear_of_all_the_rows`); click to apply, click elsewhere or Esc to close |
 | Tooltip | The colour's name in bold, then its values one per line (`C: 60`, `M: 0`, `Y: 40`, `K: 20`; `R: 255`, `G: 0`, `B: 0`) |
 | No drawing shown (Welcome Screen, or none open) | The swatches keep their colours and their tooltips; clicks and drags do nothing and the eyedropper is off (#1082) |
