@@ -16556,3 +16556,65 @@ fn locked_guidelines_cannot_be_rotated_moved_nudged_or_deleted() {
     assert_eq!(app.page_guides(), before);
     assert_eq!(app.engine.history_labels().0.len(), steps, "no undo step");
 }
+
+/// A click anywhere on a thick outline picks the object, out to the
+/// tolerance beyond its visible edge, not only within 3 px of its
+/// centre line; a thin outline is still picked within 3 px (#1678).
+#[test]
+fn a_click_on_a_thick_outline_picks_the_object_away_from_its_centre_line() {
+    let (ctx, mut app, id) = setup();
+    app.apply_fill(tracedraw_core::Fill::None);
+    app.apply_outline_width(6.0);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    // 2.2 mm above the top side: on the 3 mm half of the outline, beyond
+    // the plain tolerance of 3 px.
+    let tol = 3.0 / app.view.zoom as f64;
+    assert!(tol * 1.5 < 2.2, "zoom {}", app.view.zoom);
+    let on_outline = app.view.to_screen(Point::new(35.0, 10.0 - 2.2));
+    app.select(Vec::new());
+    click_at(&ctx, &mut app, on_outline, Modifiers::NONE);
+    assert_eq!(app.selection, vec![id], "the thick outline is picked");
+    // Just past its visible edge (beyond half the width and the
+    // tolerance), away from the top side's middle handle: nothing.
+    let past = app.view.to_screen(Point::new(22.0, 10.0 - 3.0 - tol - 0.5));
+    click_at(&ctx, &mut app, past, Modifiers::NONE);
+    assert!(app.selection.is_empty(), "past the outline's edge");
+    // A thin outline keeps the plain tolerance: the same click 2.2 mm
+    // off the side picks nothing.
+    app.select(vec![id]);
+    app.apply_outline_width(0.5);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    app.select(Vec::new());
+    click_at(&ctx, &mut app, on_outline, Modifiers::NONE);
+    assert!(
+        app.selection.is_empty(),
+        "a thin outline is picked near it only"
+    );
+    // An outline that scales with the object counts at its drawn width:
+    // the 0.5 mm outline of a rectangle scaled 10 times is 5 mm wide.
+    app.select(vec![id]);
+    app.run(tracedraw_core::Command::TransformShapes {
+        shapes: vec![id],
+        transform: Affine::scale(10.0),
+    });
+    let mut stroke = app
+        .doc()
+        .find_shape(id)
+        .and_then(|s| s.stroke.clone())
+        .expect("an outline");
+    stroke.scale_with_object = true;
+    app.run(tracedraw_core::Command::SetStroke {
+        shapes: vec![id],
+        stroke: Some(stroke),
+    });
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    app.zoom_to_page();
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let b = bounds(&app, id);
+    let on_scaled = app.view.to_screen(Point::new(b.center().x, b.y0 - 2.0));
+    app.select(Vec::new());
+    click_at(&ctx, &mut app, on_scaled, Modifiers::NONE);
+    assert_eq!(app.selection, vec![id], "the scaled outline is picked");
+}
