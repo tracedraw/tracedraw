@@ -1215,7 +1215,7 @@ impl<'a> Importer<'a> {
                     let vals: Vec<f64> = operands.iter().filter_map(Self::num).collect();
                     if *cs == ColorSpace::Pattern {
                         if let Some(name) = operands.last().and_then(|o| o.as_name().ok()) {
-                            let pat = self.pattern_fill(resources, name, gs);
+                            let pat = self.pattern_fill(resources, name, gs, depth);
                             if is_fill {
                                 gs.fill_pattern = pat.clone();
                                 gs.fill = match pat {
@@ -1983,7 +1983,19 @@ impl<'a> Importer<'a> {
 
     // ----- shadings and patterns --------------------------------------------
 
-    fn pattern_fill(&mut self, resources: &Dictionary, name: &[u8], gs: &GState) -> Option<Fill> {
+    /// The fill a pattern resource gives: a fountain for a shading
+    /// pattern, a vector pattern of the tile's shapes for a tiling
+    /// pattern. `depth` is the nesting of the content stream asking, as
+    /// [`Self::run_content`] counts it: a tile is content too, and one
+    /// that paints with its own pattern (a damaged or hostile file) would
+    /// otherwise go round without end.
+    fn pattern_fill(
+        &mut self,
+        resources: &Dictionary,
+        name: &[u8],
+        gs: &GState,
+        depth: usize,
+    ) -> Option<Fill> {
         let pat = self
             .get(resources, b"Pattern")
             .and_then(|o| self.dict_of(o))
@@ -2008,6 +2020,10 @@ impl<'a> Importer<'a> {
         // Tiling pattern: the tile content is rendered into a vector
         // pattern fill when it is small enough, else its average colour.
         if let Object::Stream(tile) = self.deref(&pat).clone() {
+            if depth >= MAX_FORM_DEPTH {
+                self.warn("pattern tiles nested too deep; the pattern was left out");
+                return None;
+            }
             let bbox = self
                 .get(&tile.dict, b"BBox")
                 .and_then(|o| self.rect_of(o))?;
@@ -2027,7 +2043,7 @@ impl<'a> Importer<'a> {
                 ..GState::default()
             };
             let before = self.ops;
-            self.draw_form(&tile, &mut inner, MAX_FORM_DEPTH - 2);
+            self.draw_form(&tile, &mut inner, depth + 1);
             self.ops = before + 1;
             let shapes = std::mem::replace(&mut self.shapes, saved);
             if shapes.is_empty() {
@@ -4411,6 +4427,50 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    /// A tiling pattern whose tile paints with the pattern itself (a
+    /// damaged or hostile file) is bounded like forms inside forms: the
+    /// tile was drawn with a fixed depth whatever asked for it, so the
+    /// pattern drew its tile, whose content asked for the pattern again,
+    /// without end, until the stack ran out and the program closed. The
+    /// tile's shapes still come through, once per level up to the bound.
+    #[test]
+    fn a_pattern_painting_with_itself_is_bounded() {
+        let tile = stream(
+            "/Type /Pattern /PatternType 1 /PaintType 1 /TilingType 1 /BBox [0 0 10 10] /XStep 10 /YStep 10 /Resources << /Pattern << /P 5 0 R >> >>",
+            "0 0 1 rg 0 0 5 5 re f /Pattern cs /P scn 0 0 10 10 re f",
+        );
+        let bytes = one_page(
+            "/Pattern cs /P scn 0 0 100 100 re f",
+            "<< /Pattern << /P 5 0 R >> >>",
+            &[tile],
+        );
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let p = &imp.pages[0];
+        assert_eq!(p.shapes.len(), 1, "{:?}", imp.warnings);
+        assert!(
+            matches!(p.shapes[0].fill, Fill::Pattern(_)),
+            "{:?}",
+            p.shapes[0].fill
+        );
+        assert!(imp.warnings.iter().any(|w| w.contains("nested too deep")));
+        // A pattern used from a form inside a form is still read.
+        let form = stream(
+            "/Type /XObject /Subtype /Form /BBox [0 0 100 100] /Resources << /Pattern << /P 6 0 R >> >>",
+            "/Pattern cs /P scn 0 0 100 100 re f",
+        );
+        let tile = stream(
+            "/Type /Pattern /PatternType 1 /PaintType 1 /TilingType 1 /BBox [0 0 10 10] /XStep 10 /YStep 10",
+            "0 0 1 rg 0 0 5 5 re f",
+        );
+        let bytes = one_page("/Fx Do", "<< /XObject << /Fx 5 0 R >> >>", &[form, tile]);
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let p = &imp.pages[0];
+        assert_eq!(p.shapes.len(), 1, "{:?}", imp.warnings);
+        assert!(matches!(p.shapes[0].fill, Fill::Pattern(_)));
+        assert!(imp.warnings.is_empty(), "{:?}", imp.warnings);
     }
 
     #[test]
