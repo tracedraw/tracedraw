@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+## 0.36.0 (2026-11-02)
+
 - Variable Outline on a closed path (an ellipse, a rectangle, a closed curve): the outline's width now runs on across the path's start, easing from the last width node round to the first as between any two nodes, and a node dragged along the path slides on past the start and comes round, the nodes keeping their path order. The path's start counted as two ends, where the width fell back to the plain outline's, and a node stopped there, so the outline could not be shaped all the way round (#1322).
 
 - Shape tool: a marquee (rectangular or freehand) keeps the selected curve, also when the drag starts over another object, such as the one behind the curve or the group holding it, and chooses the curve's nodes inside the box. A drag that started over another object selected that object instead and the curve's nodes went away, so a box drawn round nodes on a background object left node editing; only with nothing selected does a drag select the object under the pointer first (#1594).
