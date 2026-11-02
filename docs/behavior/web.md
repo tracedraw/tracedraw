@@ -207,6 +207,15 @@ its copy instead of keeping the object on the pointer until Esc (#1334,
 `pick_drag_tests::a_left_release_while_the_right_button_is_held_ends_the_drag`).
 The browser's context menu does not open on the canvas.
 
+A drag with the button held, or a finger held down, on the canvas is the
+editor's (a marquee, a move), never the browser's text selection: the
+page and the canvas turn the browser's selection and its long-press
+callout off (`user-select: none`, `-webkit-touch-callout: none` in
+`web/index.html`), as Safari on iPad selected the whole page while
+dragging on the canvas; the loading text stays selectable so an error
+message can be copied (#1654,
+`web_page::tests::a_drag_on_the_page_selects_no_text`).
+
 ## Keyboard
 
 The editor's shortcuts reach the editor instead of the browser: while

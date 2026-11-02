@@ -195,6 +195,36 @@ mod tests {
     const CI: &str = include_str!("../../../.github/workflows/build.yml");
     const CHECK: &str = include_str!("../../../scripts/web/check_pwa.mjs");
 
+    /// A drag with the button held on the canvas (a marquee, a move) is
+    /// not a text selection of the page: the page and the canvas turn
+    /// the browser's selection and the long-press callout off, while the
+    /// loading text stays selectable for copying an error (#1654).
+    #[test]
+    fn a_drag_on_the_page_selects_no_text() {
+        let rule = |selector: &str| -> String {
+            let at = PAGE
+                .find(selector)
+                .unwrap_or_else(|| panic!("no rule for {selector}"));
+            let body = &PAGE[at..];
+            let open = body.find('{').expect("rule body");
+            let close = body.find('}').expect("rule end");
+            body[open..close].to_string()
+        };
+        let page = rule("html, body, canvas#tracedraw");
+        for prop in [
+            "user-select: none",
+            "-webkit-user-select: none",
+            "-webkit-touch-callout: none",
+        ] {
+            assert!(page.contains(prop), "{prop} on the page and the canvas");
+        }
+        let loading = rule("#loading {");
+        assert!(
+            loading.contains("user-select: text"),
+            "the loading text can be copied"
+        );
+    }
+
     /// Ctrl+R is Repeat in the editor, not the browser's reload; the
     /// clipboard keys and the developer tools stay with the browser.
     #[test]

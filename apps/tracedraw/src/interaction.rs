@@ -273,6 +273,27 @@ pub fn release_chorded_left(ctx: &egui::Context, raw: &mut egui::RawInput) {
     });
 }
 
+/// Half the width of the outline of `s` (in page space) as it is drawn:
+/// its own width, scaled by the object's scale when the outline scales
+/// with the object, as the renderer draws it; 0 without an outline.
+fn outline_half_width(s: &tracedraw_core::Shape) -> f64 {
+    let Some(stroke) = &s.stroke else {
+        return 0.0;
+    };
+    let scale = if stroke.scale_with_object {
+        let c = s.transform.as_coeffs();
+        (c[0] * c[3] - c[1] * c[2]).abs().sqrt()
+    } else {
+        1.0
+    };
+    let half = stroke.width * scale / 2.0;
+    if half.is_finite() {
+        half.max(0.0)
+    } else {
+        0.0
+    }
+}
+
 impl App {
     pub fn hit_test(&self, p: Point) -> Option<ShapeId> {
         self.hit_test_where(p, |_| false)
@@ -430,7 +451,15 @@ impl App {
         if let Some(own) = self.without_edited_symmetry(s) {
             return self.shape_hit(&own, p, tol);
         }
-        if !self.visual_bounds(s).inflate(tol, tol).contains(p) {
+        // A thick outline is picked anywhere it shows, out to the
+        // tolerance beyond its visible edge, not only near its centre
+        // line (#1678); a thin one within the tolerance as before.
+        let half = outline_half_width(s);
+        if !self
+            .visual_bounds(s)
+            .inflate(tol + half, tol + half)
+            .contains(p)
+        {
             return false;
         }
         if !s.effects.is_empty() {
@@ -470,7 +499,7 @@ impl App {
         if (filled || self.settings.treat_all_filled) && path.contains(p) {
             return true;
         }
-        crate::canvas::distance_to_path(&path, p) <= tol * 1.5
+        crate::canvas::distance_to_path(&path, p) <= (tol * 1.5).max(half + tol)
     }
 
     /// A part of dimension `s` (in page space) is under `p`: its label
@@ -660,6 +689,20 @@ impl App {
         }
         let chain = self.hit_chain(p);
         (!chain.is_empty()).then(|| chain.iter().any(|id| self.selection.contains(id)))
+    }
+
+    /// Whether a selected object lies under `p`, also one hidden behind
+    /// another object there (a right click on it keeps the selection and
+    /// opens the selection's menu, #1684): the objects at `p` on the
+    /// layers, or inside groups and clip frames for one chosen in there.
+    pub fn selection_under(&self, p: Point) -> bool {
+        if self.selection.is_empty() {
+            return false;
+        }
+        self.hits_at(p, false)
+            .iter()
+            .chain(self.hits_at(p, true).iter())
+            .any(|id| self.selection.contains(id))
     }
 
     /// What a Pick press at `p` takes: a selected object under `p` (an
