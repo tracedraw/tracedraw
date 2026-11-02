@@ -691,6 +691,20 @@ impl App {
         (!chain.is_empty()).then(|| chain.iter().any(|id| self.selection.contains(id)))
     }
 
+    /// Whether a selected object lies under `p`, also one hidden behind
+    /// another object there (a right click on it keeps the selection and
+    /// opens the selection's menu, #1684): the objects at `p` on the
+    /// layers, or inside groups and clip frames for one chosen in there.
+    pub fn selection_under(&self, p: Point) -> bool {
+        if self.selection.is_empty() {
+            return false;
+        }
+        self.hits_at(p, false)
+            .iter()
+            .chain(self.hits_at(p, true).iter())
+            .any(|id| self.selection.contains(id))
+    }
+
     /// What a Pick press at `p` takes: a selected object under `p` (an
     /// object chosen inside a group stays chosen, so a drag moves it alone,
     /// #849), else with `ctrl` the object one group level in, else the

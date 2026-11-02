@@ -195,7 +195,13 @@ vertical, Esc cancels it. On release a menu opens there:
 | Cancel | nothing |
 
 The four items that act on the object under the pointer are dimmed when
-there is none. A right click without a drag opens the context menu.
+there is none. A right click without a drag opens the context menu. A
+right click or a right-button drag on a selected object keeps the
+selection, also where another object covers it (an object picked with
+Alt+click or a marquee behind a larger one): the menu and the move are
+for what is selected, not for the object in front; with no selected
+object under the pointer, the topmost object there is selected first
+(#1684, `pick_drag_tests::a_right_click_on_a_covered_selected_object_keeps_the_selection`).
 
 ## Property bar
 

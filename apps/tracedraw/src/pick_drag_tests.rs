@@ -16618,3 +16618,67 @@ fn a_click_on_a_thick_outline_picks_the_object_away_from_its_centre_line() {
     click_at(&ctx, &mut app, on_scaled, Modifiers::NONE);
     assert_eq!(app.selection, vec![id], "the scaled outline is picked");
 }
+
+/// A right click on a selected object keeps the selection and opens the
+/// menu for it, also where another object covers it (an object picked
+/// with Alt+click or a marquee behind a larger one); the same for a
+/// right-button drag. Without a selected object under the pointer, the
+/// topmost object there is selected (#1684).
+#[test]
+fn a_right_click_on_a_covered_selected_object_keeps_the_selection() {
+    let (ctx, mut app, small) = setup();
+    // A larger, filled rectangle over the small one.
+    let big = rect_at(&mut app, Rect::new(0.0, 0.0, 100.0, 80.0));
+    app.select(vec![big]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        30, 30, 200,
+    )));
+    app.select(vec![small]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let right_click = |ctx: &egui::Context, app: &mut App, at: Pos2| {
+        frame(ctx, app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+        frame(
+            ctx,
+            app,
+            vec![button(at, true, PointerButton::Secondary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(
+            ctx,
+            app,
+            vec![button(at, false, PointerButton::Secondary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+    };
+    // Inside the small rectangle, under the big one: the selection stays.
+    let inside = app.view.to_screen(Point::new(35.0, 25.0));
+    right_click(&ctx, &mut app, inside);
+    assert!(app.context_menu.is_some());
+    assert_eq!(app.selection, vec![small]);
+    app.context_menu = None;
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    // Off the small rectangle, on the big one: the big one is selected.
+    let off = app.view.to_screen(Point::new(85.0, 65.0));
+    right_click(&ctx, &mut app, off);
+    assert!(app.context_menu.is_some());
+    assert_eq!(app.selection, vec![big]);
+    app.context_menu = None;
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    // A right-button drag from the covered small rectangle moves it, not
+    // the big one: the drop menu offers the small one's move.
+    app.select(vec![small]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let right = |p: Pos2, down: bool| button(p, down, PointerButton::Secondary, Modifiers::NONE);
+    let to = inside + egui::vec2(60.0, 0.0);
+    frame(&ctx, &mut app, vec![right(inside, true)], Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(to)],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, vec![right(to, false)], Modifiers::NONE);
+    assert!(app.drop_menu.is_some());
+    assert_eq!(app.selection, vec![small]);
+    app.drop_menu = None;
+}
