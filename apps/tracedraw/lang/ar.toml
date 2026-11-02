@@ -169,6 +169,7 @@ border_grommet.done = "تمت إضافة الحافة و{n} علامة حلقة 
 border_grommet.grommet = "حلقة"
 border_grommet.layer_name = "حواف اللافتة وحلقاتها" # mt
 border_grommet.margin = "الهامش:"
+border_grommet.no_room = "لا مكان للحلقات: الهامش وحجم الحلقة يتجاوزان منتصف الصفحة، لذا لا توضع أي علامة." # mt
 border_grommet.number = "عدد الحلقات"
 border_grommet.object_border = "الحافة"
 border_grommet.object_grommet = "حلقة"

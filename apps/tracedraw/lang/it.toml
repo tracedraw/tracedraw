@@ -169,6 +169,7 @@ border_grommet.done = "Bordo e {n} segni per occhielli aggiunti su un nuovo live
 border_grommet.grommet = "Occhiello"
 border_grommet.layer_name = "Orli e occhielli per striscioni" # mt
 border_grommet.margin = "Margine:"
+border_grommet.no_room = "Gli occhielli non hanno spazio: il margine e la dimensione dell'occhiello superano il centro della pagina, quindi non viene posto alcun segno." # mt
 border_grommet.number = "Numero di occhielli"
 border_grommet.object_border = "Bordo"
 border_grommet.object_grommet = "Occhiello"

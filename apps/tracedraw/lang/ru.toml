@@ -169,6 +169,7 @@ border_grommet.done = "Рамка и {n} меток люверсов добав�
 border_grommet.grommet = "Люверс"
 border_grommet.layer_name = "Подгибы и люверсы баннера" # mt
 border_grommet.margin = "Отступ:"
+border_grommet.no_room = "Люверсам не хватает места: отступ и размер люверса выходят за середину страницы, поэтому метки не ставятся." # mt
 border_grommet.number = "Число люверсов"
 border_grommet.object_border = "Рамка"
 border_grommet.object_grommet = "Люверс"

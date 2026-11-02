@@ -169,6 +169,7 @@ border_grommet.done = "नई परत पर बॉर्डर और {n} ग
 border_grommet.grommet = "आईलेट"
 border_grommet.layer_name = "बैनर हेम और आइलेट" # mt
 border_grommet.margin = "हाशिया:"
+border_grommet.no_room = "ग्रोमेट के लिए जगह नहीं है: मार्जिन और ग्रोमेट का आकार पृष्ठ के बीच से आगे निकल जाते हैं, इसलिए कोई चिह्न नहीं रखा गया।" # mt
 border_grommet.number = "आईलेट की संख्या"
 border_grommet.object_border = "बॉर्डर"
 border_grommet.object_grommet = "ग्रोमेट"

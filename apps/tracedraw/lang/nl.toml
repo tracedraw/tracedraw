@@ -169,6 +169,7 @@ border_grommet.done = "Rand en {n} oogjesmarkeringen toegevoegd op een nieuwe la
 border_grommet.grommet = "Ring"
 border_grommet.layer_name = "Bannerzomen en oogjes" # mt
 border_grommet.margin = "Marge:"
+border_grommet.no_room = "De oogjes hebben geen ruimte: de marge en de oogjesgrootte reiken voorbij het midden van de pagina, dus er wordt geen markering geplaatst." # mt
 border_grommet.number = "Aantal ringen"
 border_grommet.object_border = "Rand"
 border_grommet.object_grommet = "Oogje"

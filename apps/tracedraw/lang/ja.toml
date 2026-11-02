@@ -169,6 +169,7 @@ border_grommet.done = "新しいレイヤーに縁と {n} 個のハトメ位置�
 border_grommet.grommet = "ハトメ"
 border_grommet.layer_name = "バナーの縁とハトメ" # mt
 border_grommet.margin = "余白:"
+border_grommet.no_room = "ハトメを置く余地がありません。余白とハトメの大きさがページの中央を越えるため、位置は追加されません。" # mt
 border_grommet.number = "ハトメの数"
 border_grommet.object_border = "縁"
 border_grommet.object_grommet = "ハトメ"

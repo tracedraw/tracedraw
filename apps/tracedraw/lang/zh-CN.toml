@@ -169,6 +169,7 @@ border_grommet.done = "已在新图层上添加边框和 {n} 个扣眼标记。"
 border_grommet.grommet = "扣眼"
 border_grommet.layer_name = "横幅卷边和扣眼" # mt
 border_grommet.margin = "边距:"
+border_grommet.no_room = "扣眼没有空间：边距和扣眼尺寸超过了页面中线，因此未放置任何标记。" # mt
 border_grommet.number = "扣眼数"
 border_grommet.object_border = "边框"
 border_grommet.object_grommet = "扣眼"

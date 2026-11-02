@@ -6316,7 +6316,14 @@ fn border_grommet_dialog(
     }
     if ok {
         let n = crate::border_grommet::apply(app, st);
-        app.status = trf("border_grommet.done", &[("n", &n.to_string())]);
+        // Grommets on but none placed: the reason, not "0 marks" (#1332).
+        let no_room =
+            n == 0 && area.is_some_and(|a| !st.grommets_have_room(st.final_size(a.size())));
+        app.status = if no_room {
+            tr("border_grommet.no_room")
+        } else {
+            trf("border_grommet.done", &[("n", &n.to_string())])
+        };
     }
 }
 
@@ -6437,6 +6444,16 @@ fn border_grommet_preview(
     );
     let inner = egui::Rect::from_two_pos(at(b, b), at(b + area.width(), b + area.height()));
     p.rect_filled(inner, 0.0, egui::Color32::WHITE);
+    // Mirrored and stretched edges drawn apart: hatching for the design
+    // flipped over the edge, streaks for the edge drawn outwards; the
+    // same grey band stood for both (#1332).
+    let step = (b / 2.0).max(size.width.max(size.height) / 80.0);
+    for (a, c) in crate::border_grommet::band_marks(st.border, size, b, step) {
+        p.line_segment(
+            [at(a.x, a.y), at(c.x, c.y)],
+            egui::Stroke::new(1.0, egui::Color32::from_gray(0xB4)),
+        );
+    }
     let blue = egui::Color32::from_rgb(0x33, 0x33, 0xFF);
     for (a, c) in [
         (inner.left_top(), inner.right_top()),
@@ -6470,6 +6487,17 @@ fn border_grommet_preview(
         egui::FontId::proportional(12.0),
         Tokens::text(),
     );
+    // Grommets on but without room on the page: say so, where the
+    // marks would be; nothing was placed with no word why (#1332).
+    if !st.grommets_have_room(size) {
+        p.text(
+            rect.left_top() + egui::vec2(10.0, 8.0),
+            egui::Align2::LEFT_TOP,
+            tr("border_grommet.no_room"),
+            egui::FontId::proportional(12.0),
+            egui::Color32::from_rgb(0xC0, 0x20, 0x20),
+        );
+    }
 }
 
 fn font_manager_dialog(app: &mut App, ctx: &Context, st: &mut FontManagerState, close: &mut bool) {

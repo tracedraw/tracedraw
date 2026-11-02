@@ -169,6 +169,7 @@ border_grommet.done = "Rand und {n} Ösenmarkierungen auf einer neuen Ebene hinz
 border_grommet.grommet = "Öse"
 border_grommet.layer_name = "Bannersäume und Ösen" # mt
 border_grommet.margin = "Abstand zum Rand:"
+border_grommet.no_room = "Die Ösen haben keinen Platz: Rand und Ösengröße reichen über die Mitte der Seite hinaus, daher wird keine Markierung gesetzt." # mt
 border_grommet.number = "Anzahl der Ösen"
 border_grommet.object_border = "Rand"
 border_grommet.object_grommet = "Öse"

@@ -169,6 +169,7 @@ border_grommet.done = "Bordure et {n} repères d'œillets ajoutés sur un nouvea
 border_grommet.grommet = "Œillet"
 border_grommet.layer_name = "Ourlets et œillets de bannière" # mt
 border_grommet.margin = "Marge :"
+border_grommet.no_room = "Les œillets n'ont pas la place : la marge et la taille de l'œillet dépassent le milieu de la page, aucun repère n'est donc placé." # mt
 border_grommet.number = "Nombre d’œillets"
 border_grommet.object_border = "Bordure"
 border_grommet.object_grommet = "Œillet"

@@ -169,6 +169,7 @@ border_grommet.done = "已在新圖層上新增邊框與 {n} 個雞眼釦標記�
 border_grommet.grommet = "扣眼"
 border_grommet.layer_name = "布條摺邊與雞眼釦" # mt
 border_grommet.margin = "邊距:"
+border_grommet.no_room = "雞眼釦沒有空間：邊距和雞眼釦尺寸超過頁面中線，因此未放置任何標記。" # mt
 border_grommet.number = "扣眼數"
 border_grommet.object_border = "邊框"
 border_grommet.object_grommet = "雞眼釦"

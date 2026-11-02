@@ -169,6 +169,7 @@ border_grommet.done = "Borde y {n} marcas de ojales añadidos en una capa nueva.
 border_grommet.grommet = "Ojal"
 border_grommet.layer_name = "Dobladillos y ojales de pancarta" # mt
 border_grommet.margin = "Margen:"
+border_grommet.no_room = "Los ojales no caben: el margen y el tamaño del ojal pasan del centro de la página, así que no se coloca ninguna marca." # mt
 border_grommet.number = "Número de ojales"
 border_grommet.object_border = "Borde"
 border_grommet.object_grommet = "Ojal"

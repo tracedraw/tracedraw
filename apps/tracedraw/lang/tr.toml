@@ -169,6 +169,7 @@ border_grommet.done = "Kenarlık ve {n} kuş gözü işareti yeni bir katmana ek
 border_grommet.grommet = "Kuşgözü"
 border_grommet.layer_name = "Afiş Kenarları ve Kuş Gözleri" # mt
 border_grommet.margin = "Kenar boşluğu:"
+border_grommet.no_room = "Kuş gözleri için yer yok: kenar boşluğu ve kuş gözü boyutu sayfanın ortasını aşıyor, bu yüzden işaret konmadı." # mt
 border_grommet.number = "Kuşgözü sayısı"
 border_grommet.object_border = "Kenarlık"
 border_grommet.object_grommet = "Kuş gözü"

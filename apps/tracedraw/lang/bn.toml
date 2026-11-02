@@ -169,6 +169,7 @@ border_grommet.done = "নতুন স্তরে বর্ডার এবং
 border_grommet.grommet = "আইলেট"
 border_grommet.layer_name = "ব্যানারের হেম ও আইলেট" # mt
 border_grommet.margin = "মার্জিন:"
+border_grommet.no_room = "গ্রোমেটের জায়গা নেই: মার্জিন ও গ্রোমেটের আকার পৃষ্ঠার মাঝখান ছাড়িয়ে যায়, তাই কোনো চিহ্ন বসানো হয়নি।" # mt
 border_grommet.number = "আইলেটের সংখ্যা"
 border_grommet.object_border = "বর্ডার"
 border_grommet.object_grommet = "গ্রোমেট"

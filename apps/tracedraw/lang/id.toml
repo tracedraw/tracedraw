@@ -169,6 +169,7 @@ border_grommet.done = "Tepi dan {n} tanda lubang kancing ditambahkan di lapisan 
 border_grommet.grommet = "Mata ayam"
 border_grommet.layer_name = "Keliman dan Lubang Spanduk" # mt
 border_grommet.margin = "Margin:"
+border_grommet.no_room = "Lubang kancing tidak muat: margin dan ukuran lubang kancing melewati tengah halaman, jadi tidak ada tanda yang ditempatkan." # mt
 border_grommet.number = "Jumlah mata ayam"
 border_grommet.object_border = "Tepi"
 border_grommet.object_grommet = "Lubang kancing"

@@ -169,6 +169,7 @@ border_grommet.done = "Dodano obramowanie i znaczniki luwersów ({n}) na nowej w
 border_grommet.grommet = "Oczko"
 border_grommet.layer_name = "Obszycia i oczka banera" # mt
 border_grommet.margin = "Margines:"
+border_grommet.no_room = "Luwersy nie mieszczą się: margines i rozmiar luwersa sięgają poza środek strony, więc nie umieszczono żadnego znacznika." # mt
 border_grommet.number = "Liczba oczek"
 border_grommet.object_border = "Obramowanie"
 border_grommet.object_grommet = "Luwers"

@@ -169,6 +169,7 @@ border_grommet.done = "Borda e {n} marcas de ilhós adicionadas em uma nova cama
 border_grommet.grommet = "Ilhós"
 border_grommet.layer_name = "Bainhas e ilhós de banner" # mt
 border_grommet.margin = "Margem:"
+border_grommet.no_room = "Os ilhós não cabem: a margem e o tamanho do ilhós passam do meio da página, então nenhuma marca é colocada." # mt
 border_grommet.number = "Número de ilhoses"
 border_grommet.object_border = "Borda"
 border_grommet.object_grommet = "Ilhós"

@@ -169,6 +169,7 @@ border_grommet.done = "Okraj a značky oček přidány na novou vrstvu (počet o
 border_grommet.grommet = "Průchodka"
 border_grommet.layer_name = "Lemy a očka banneru" # mt
 border_grommet.margin = "Okraj od hrany:"
+border_grommet.no_room = "Očka se nevejdou: okraj a velikost očka sahají za střed stránky, takže se žádná značka neumístí." # mt
 border_grommet.number = "Počet průchodek"
 border_grommet.object_border = "Okraj"
 border_grommet.object_grommet = "Očko"
