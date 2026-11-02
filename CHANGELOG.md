@@ -12,6 +12,8 @@ full, row-by-row status.
 
 - Opening a damaged PDF or AI file whose pattern tile paints with the pattern itself no longer takes TraceDraw down. A tiling pattern's tile is content of its own, and it was drawn at a fixed nesting depth whatever content asked for it, so a tile that filled a shape with its own pattern drew itself without end until the stack ran out, which cannot be caught. Patterns now count toward the same nesting bound as forms inside forms (12 levels); past it the pattern is left out with a warning and the rest of the page opens.
 
+- Opening a damaged EMF file whose header bounds or frame span the whole range of their numbers no longer takes TraceDraw down. Their width and height were taken as 32-bit differences, which overflowed and panicked on such a header; they are taken in 64 bits now, and the file opens with the page size the header gives.
+
 - Shape tool: To Curve, To Line and Break act on the closing segment of a closed curve through its start node, the node that segment ends at, and on a clicked closing line. The commands took the element at the node's own index, and the start node is a move with no segment of its own, so the segment where a closed curve's last node meets its first could not be made a curve, straightened or broken, on every rectangle, ellipse and polygon converted to curves (#1618).
 
 - Options > Customization > Commands: a shortcut given to a command or tool is taken from the command or tool that had it built in, which is left without one (Reset gives it back), so one key runs one command. The built-in holder kept the key: a tool key given to another tool picked both tools, and a tool given a menu command's key never got it, the command running instead (#1595).

@@ -1000,10 +1000,14 @@ fn parse_emf(b: &[u8], ids: &mut IdSource) -> Result<Imported, String> {
     } else {
         96.0
     };
-    let bw = (bounds[2] - bounds[0] + 1).max(1) as f64;
-    let bh = (bounds[3] - bounds[1] + 1).max(1) as f64;
-    let fw = (frame[2] - frame[0]).max(1) as f64 / 100.0;
-    let fh = (frame[3] - frame[1]).max(1) as f64 / 100.0;
+    // The bounds and frame are i32 each way: a damaged header with the
+    // extremes of the range overflows their difference in i32, so it is
+    // taken in i64.
+    let span = |lo: i32, hi: i32| (i64::from(hi) - i64::from(lo)).max(0) as f64;
+    let bw = (span(bounds[0], bounds[2]) + 1.0).max(1.0);
+    let bh = (span(bounds[1], bounds[3]) + 1.0).max(1.0);
+    let fw = span(frame[0], frame[2]).max(1.0) / 100.0;
+    let fh = span(frame[1], frame[3]).max(1.0) / 100.0;
     let (page_w, page_h) = if fw > 0.0 && fh > 0.0 {
         (fw, fh)
     } else {
@@ -2245,6 +2249,36 @@ mod tests {
         for cut in (0..file.len()).step_by(7) {
             let _ = parse(&file[..cut], &mut ids);
         }
+    }
+
+    /// A header whose bounds and frame span the whole i32 range (a
+    /// damaged file) opens: their width and height overflowed in i32
+    /// and the reader panicked, which took the program down. The record
+    /// after it, claiming a thousand million points, is bounded by its
+    /// size as before.
+    #[test]
+    fn extreme_header_bounds_do_not_overflow() {
+        let mut file = emf_file(&[
+            rec(2, &[0, 0, 1, 1, 1_000_000_000, 0, 0, 0, 0]),
+            rec(43, &[0, 0, 10, 10]),
+        ]);
+        for (at, v) in [i32::MIN, i32::MIN, i32::MAX, i32::MAX]
+            .iter()
+            .chain([i32::MIN, i32::MIN, i32::MAX, i32::MAX].iter())
+            .enumerate()
+        {
+            file[8 + at * 4..12 + at * 4].copy_from_slice(&v.to_le_bytes());
+        }
+        let mut ids = IdSource::default();
+        let imp = parse(&file, &mut ids).expect("a header of extremes still opens");
+        assert!(imp.size.width.is_finite() && imp.size.height.is_finite());
+        assert!(imp.size.width > 0.0 && imp.size.height > 0.0);
+        // The frame of such a file is a quarter of a kilometre wide.
+        assert!(
+            (imp.size.width - 42_949_672.95).abs() < 0.01,
+            "{:?}",
+            imp.size
+        );
     }
 }
 
