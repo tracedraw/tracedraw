@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "मोड" # mt
 toolbar.brush_mode_desc = "खींचने पर किस तरह का स्ट्रोक बनता है: प्रीसेट, ब्रश, स्प्रेयर, कैलिग्राफ़िक या एक्सप्रेशन।" # mt
 toolbar.stroke_shape = "आकार" # mt
 toolbar.stroke_shape_desc = "वह आकार जिस पर स्ट्रोक चलता है, या स्प्रेयर रेखा के साथ जो बिखेरता है।" # mt
+options.handle_size = "हैंडल का आकार:" # mt
+options.handle_size_tip = "पिक टूल के चयन हैंडल कितने बड़े बनाए जाएँ।" # mt

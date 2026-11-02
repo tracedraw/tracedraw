@@ -14,6 +14,8 @@ full, row-by-row status.
 
 - Brush Strokes: the property bar has the mode list (Preset, Brush, Sprayer, Calligraphic, Expression) the hint speaks of, and after the width the mode's own fields: the stroke shape, the nib angle, the sprayer's spacing, the pressure. The bar showed only the calligraphic width and nib angle, so another mode could be chosen from the Brush Strokes panel alone (#1681).
 
+- Options > Nodes and Handles > Handle size: Small (6 points), Medium (8) or Large (10, the size so far and the default) for the Pick tool's selection handles; the handles' gap to the selection box, their reach for a press and the text flow tabs follow the size (#1285).
+
 - Multipage View with several drawings open: each drawing now keeps its own pictures of its other pages. They were kept by page number for all drawings together, so after switching drawings the other pages first showed another drawing's pages until clicked (#1663).
 
 - Browser version: a drag with the mouse button held, or a finger held down, on the drawing no longer selects the page's text in the browser (Safari on iPad selected the whole window while dragging a marquee or an object, and offered its long-press callout); the page and the canvas turn the browser's text selection off, and the loading text stays selectable so an error message can be copied (#1654).

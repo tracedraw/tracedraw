@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "Modo" # mt
 toolbar.brush_mode_desc = "Que tipo de traço o arrasto desenha: Predefinido, Pincel, Pulverizador, Caligráfico ou Expressão." # mt
 toolbar.stroke_shape = "Forma" # mt
 toolbar.stroke_shape_desc = "A forma que o traço segue, ou o que o pulverizador espalha ao longo da linha." # mt
+options.handle_size = "Tamanho das alças:" # mt
+options.handle_size_tip = "Com que tamanho as alças de seleção da ferramenta Seleção são desenhadas." # mt

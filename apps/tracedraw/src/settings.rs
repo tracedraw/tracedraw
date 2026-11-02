@@ -793,6 +793,37 @@ impl NodeSize {
     }
 }
 
+/// How large the Pick tool's selection handles are drawn (#1285).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum HandleSize {
+    Small,
+    Medium,
+    #[default]
+    Large,
+}
+
+impl HandleSize {
+    pub const ALL: [HandleSize; 3] = [HandleSize::Small, HandleSize::Medium, HandleSize::Large];
+
+    /// Side of a handle square, interface points.
+    pub fn px(self) -> f32 {
+        match self {
+            HandleSize::Small => 6.0,
+            HandleSize::Medium => 8.0,
+            HandleSize::Large => 10.0,
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            HandleSize::Small => "options.node_small",
+            HandleSize::Medium => "options.node_medium",
+            HandleSize::Large => "options.node_large",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeShape {
@@ -809,6 +840,8 @@ impl NodeShape {
 #[serde(default)]
 pub struct NodePrefs {
     pub size: NodeSize,
+    /// The Pick tool's selection handles (#1285).
+    pub handles: HandleSize,
     pub cusp: NodeShape,
     pub smooth: NodeShape,
     pub symmetrical: NodeShape,
@@ -835,6 +868,7 @@ impl Default for NodePrefs {
     fn default() -> Self {
         NodePrefs {
             size: NodeSize::Small,
+            handles: HandleSize::Large,
             cusp: NodeShape::Square,
             smooth: NodeShape::Circle,
             symmetrical: NodeShape::Diamond,

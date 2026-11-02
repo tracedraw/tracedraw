@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "Tryb" # mt
 toolbar.brush_mode_desc = "Jaki rodzaj pociągnięcia rysuje przeciągnięcie: Wzorzec, Pędzel, Rozpylacz, Kaligraficzne lub Ekspresja." # mt
 toolbar.stroke_shape = "Kształt" # mt
 toolbar.stroke_shape_desc = "Kształt, za którym podąża pociągnięcie, lub to, co rozpylacz rozrzuca wzdłuż linii." # mt
+options.handle_size = "Rozmiar uchwytów:" # mt
+options.handle_size_tip = "Jak duże są rysowane uchwyty zaznaczenia narzędzia Wskaźnik." # mt

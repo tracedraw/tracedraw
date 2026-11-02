@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "الوضع" # mt
 toolbar.brush_mode_desc = "نوع الضربة التي يرسمها السحب: مسبق الإعداد، فرشاة، بخاخ، خطي أو تعبيري." # mt
 toolbar.stroke_shape = "الشكل" # mt
 toolbar.stroke_shape_desc = "الشكل الذي تتبعه الضربة، أو ما ينثره البخاخ على طول الخط." # mt
+options.handle_size = "حجم المقابض:" # mt
+options.handle_size_tip = "حجم رسم مقابض التحديد لأداة الانتقاء." # mt

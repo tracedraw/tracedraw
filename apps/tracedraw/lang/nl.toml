@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "Modus" # mt
 toolbar.brush_mode_desc = "Welk soort streek een sleep tekent: Voorinstelling, Penseel, Spuitbus, Kalligrafisch of Expressie." # mt
 toolbar.stroke_shape = "Vorm" # mt
 toolbar.stroke_shape_desc = "De vorm die de streek volgt, of wat de spuitbus langs de lijn verspreidt." # mt
+options.handle_size = "Grootte van handvatten:" # mt
+options.handle_size_tip = "Hoe groot de selectiehandvatten van het selectiegereedschap worden getekend." # mt

@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "模式" # mt
 toolbar.brush_mode_desc = "拖动绘制的笔触类型：预设、画笔、喷罐、书法或表现。" # mt
 toolbar.stroke_shape = "形状" # mt
 toolbar.stroke_shape_desc = "笔触所遵循的形状，或喷罐沿线条散布的对象。" # mt
+options.handle_size = "手柄大小：" # mt
+options.handle_size_tip = "选择工具的选择手柄绘制的大小。" # mt

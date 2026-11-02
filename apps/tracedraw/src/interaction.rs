@@ -21,14 +21,6 @@ use tracedraw_core::{
     Color, Command, Fill, ShapeId,
 };
 
-/// A press this close to a handle's centre takes it: within the handle,
-/// short of the selection box (the handles stand outside it).
-const HANDLE_PX: f32 = 6.0;
-/// The selection handles' size, interface points.
-pub(crate) const HANDLE_SIZE: f32 = 10.0;
-/// How far out of the selection box the handles' centres stand,
-/// interface points: a gap of 1.5 points between handle and box.
-pub(crate) const HANDLE_OFFSET: f32 = HANDLE_SIZE / 2.0 + 1.5;
 /// How far out of the selection box the rotate and skew arrows' centres
 /// stand (rotate mode), interface points.
 pub(crate) const ROTATE_HANDLE_OFFSET: f32 = 9.0;
@@ -855,12 +847,31 @@ impl App {
         self.rotate_mode = false;
     }
 
+    /// The selection handles' size, interface points: Options > Nodes
+    /// and Handles > Handle size (Small 6, Medium 8, Large 10, the
+    /// default; #1285).
+    pub fn handle_size(&self) -> f32 {
+        self.settings.nodes.handles.px()
+    }
+
+    /// How far out of the selection box the handles' centres stand,
+    /// interface points: a gap of 1.5 points between handle and box.
+    pub fn handle_offset(&self) -> f32 {
+        self.handle_size() / 2.0 + 1.5
+    }
+
+    /// A press this close to a handle's centre takes it: within the
+    /// handle, short of the selection box (the handles stand outside it).
+    fn handle_reach(&self) -> f32 {
+        (self.handle_size() / 2.0 + 1.0).max(4.0)
+    }
+
     /// Screen-space handle positions for the selection box.
     pub fn handle_positions(&self, b: Rect) -> [(Handle, egui::Pos2); 8] {
         let off = if self.rotate_mode {
             ROTATE_HANDLE_OFFSET
         } else {
-            HANDLE_OFFSET
+            self.handle_offset()
         };
         let r = self.view.rect_to_screen(b).expand(off);
         [
@@ -1169,7 +1180,7 @@ impl App {
         let reach = if self.rotate_mode {
             ROTATE_HANDLE_PX
         } else {
-            HANDLE_PX
+            self.handle_reach()
         };
         self.handle_positions(b)
             .iter()

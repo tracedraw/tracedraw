@@ -61,8 +61,14 @@ Ctrl or Alt during the drag changes the result at once.
 The selection box has no frame of its own, so the objects' outlines
 stay in view. Eight solid black square handles with a one-pixel white
 edge (so they show on a dark drawing, #670), 10 interface points
-across, stand just outside it: their centres 6.5 points out from the box
-(a gap of 1.5 points). A corner or side handle scales from where it was
+across by default (Options > Nodes and Handles > Handle size: Small 6,
+Medium 8, Large 10 points, #1285), stand just outside it: their centres
+half a handle plus 1.5 points out from the box (a gap of 1.5 points), and
+a press within half a handle plus 1 point of a centre (never less than
+4 points) takes it
+(`pick_drag_tests::the_handle_size_option_sets_the_handles_size_and_reach`).
+The text flow tabs hang 3.5 points past the handles, whatever their
+size. A corner or side handle scales from where it was
 grabbed, so the box follows the pointer without a jump. Objects chosen
 inside a group show round handles. The centre mark is a small cross.
 

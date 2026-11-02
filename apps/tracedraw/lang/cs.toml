@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "Režim" # mt
 toolbar.brush_mode_desc = "Jaký druh tahu tažení nakreslí: Předvolba, Štětec, Rozprašovač, Kaligrafie nebo Výraz." # mt
 toolbar.stroke_shape = "Tvar" # mt
 toolbar.stroke_shape_desc = "Tvar, podle kterého tah vede, nebo co rozprašovač rozptýlí podél čáry." # mt
+options.handle_size = "Velikost úchytů:" # mt
+options.handle_size_tip = "Jak velké se kreslí úchyty výběru nástroje Výběr." # mt

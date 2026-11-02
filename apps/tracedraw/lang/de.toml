@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "Modus" # mt
 toolbar.brush_mode_desc = "Welche Art Strich ein Ziehen zeichnet: Vorgabe, Pinsel, Sprühdose, Kalligrafie oder Ausdruck." # mt
 toolbar.stroke_shape = "Form" # mt
 toolbar.stroke_shape_desc = "Die Form, der der Strich folgt, oder was die Sprühdose entlang der Linie verteilt." # mt
+options.handle_size = "Griffgröße:" # mt
+options.handle_size_tip = "Wie groß die Auswahlgriffe des Auswahlwerkzeugs gezeichnet werden." # mt

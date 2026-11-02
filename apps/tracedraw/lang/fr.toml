@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "Mode" # mt
 toolbar.brush_mode_desc = "Le type de trait tracé en glissant : Prédéfini, Pinceau, Vaporisateur, Calligraphique ou Expression." # mt
 toolbar.stroke_shape = "Forme" # mt
 toolbar.stroke_shape_desc = "La forme que suit le trait, ou ce que le vaporisateur disperse le long de la ligne." # mt
+options.handle_size = "Taille des poignées :" # mt
+options.handle_size_tip = "La taille des poignées de sélection de l'outil Sélecteur." # mt

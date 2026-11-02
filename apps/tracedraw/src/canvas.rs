@@ -1566,7 +1566,7 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
         // no frame of its own, so the objects' outlines stay in view.
         // Objects chosen inside a group show round handles.
         let nested = app.selection_nested();
-        let size = crate::interaction::HANDLE_SIZE;
+        let size = app.handle_size();
         // Black with a white edge, so they show on a dark drawing (#670).
         let edge = EStroke::new(1.0, Color32::WHITE);
         for (_, p) in app.handle_positions(bounds) {
@@ -1696,9 +1696,11 @@ pub(crate) fn text_frame_color(f: &crate::text_frames::ShownFrame) -> Color32 {
 /// screen: hanging under its middle, below the bottom handle of the
 /// selection (it sat under that handle, so dragging the frame taller
 /// started a text link instead, #503).
-pub fn flow_tab_rect(a: Pos2, b: Pos2) -> ERect {
+/// `handle` is the selection handles' size (`App::handle_size`): the tab
+/// hangs 3.5 points below the handle's far edge.
+pub fn flow_tab_rect(a: Pos2, b: Pos2, handle: f32) -> ERect {
     let mid = a + (b - a) * 0.5;
-    let top = crate::interaction::HANDLE_OFFSET + crate::interaction::HANDLE_SIZE / 2.0 + 2.0;
+    let top = handle + 3.5;
     ERect::from_min_size(mid + egui::vec2(-6.0, top), egui::vec2(12.0, 9.0))
 }
 
@@ -1706,9 +1708,9 @@ pub fn flow_tab_rect(a: Pos2, b: Pos2) -> ERect {
 /// over its middle, above the top handle of the selection, as the flow
 /// tab hangs under the bottom edge. A click on it says which frame's text
 /// flows into this one.
-pub fn flow_in_tab_rect(a: Pos2, b: Pos2) -> ERect {
+pub fn flow_in_tab_rect(a: Pos2, b: Pos2, handle: f32) -> ERect {
     let mid = a + (b - a) * 0.5;
-    let gap = crate::interaction::HANDLE_OFFSET + crate::interaction::HANDLE_SIZE / 2.0 + 2.0;
+    let gap = handle + 3.5;
     ERect::from_min_size(mid + egui::vec2(-6.0, -gap - 9.0), egui::vec2(12.0, 9.0))
 }
 
@@ -1761,7 +1763,7 @@ fn draw_text_frames(app: &App, painter: &Painter, preview: Option<Affine>) {
         // the text does not fit, two links when it flows on, empty on a
         // picked frame; a click on it says where the text flows on.
         if f.overflow || f.chosen {
-            let tab = flow_tab_rect(pts[0], pts[1]);
+            let tab = flow_tab_rect(pts[0], pts[1], app.handle_size());
             let ink = if f.overflow { red } else { color };
             painter.rect(
                 tab,
@@ -1789,7 +1791,7 @@ fn draw_text_frames(app: &App, painter: &Painter, preview: Option<Affine>) {
         // links when another frame flows into it, else empty; a click on
         // an empty one says which frame flows in.
         if f.chosen {
-            let tab = flow_in_tab_rect(pts[3], pts[2]);
+            let tab = flow_in_tab_rect(pts[3], pts[2], app.handle_size());
             painter.rect(
                 tab,
                 0.0,

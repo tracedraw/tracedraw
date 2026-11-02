@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "模式" # mt
 toolbar.brush_mode_desc = "拖曳繪製的筆觸類型：預設、筆刷、噴罐、書法或表現。" # mt
 toolbar.stroke_shape = "形狀" # mt
 toolbar.stroke_shape_desc = "筆觸所依循的形狀，或噴罐沿線條散布的物件。" # mt
+options.handle_size = "控制點大小：" # mt
+options.handle_size_tip = "選取工具的選取控制點繪製的大小。" # mt

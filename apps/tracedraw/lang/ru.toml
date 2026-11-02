@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "Режим" # mt
 toolbar.brush_mode_desc = "Какой штрих рисует перетаскивание: Заготовка, Кисть, Распылитель, Каллиграфия или Нажим." # mt
 toolbar.stroke_shape = "Форма" # mt
 toolbar.stroke_shape_desc = "Форма, которой следует штрих, или то, что распылитель рассыпает вдоль линии." # mt
+options.handle_size = "Размер маркеров:" # mt
+options.handle_size_tip = "Насколько крупно рисуются маркеры выделения инструмента Выбор." # mt

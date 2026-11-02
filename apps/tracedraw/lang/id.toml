@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "Mode" # mt
 toolbar.brush_mode_desc = "Jenis goresan yang digambar saat menyeret: Prasetel, Kuas, Penyemprot, Kaligrafi, atau Ekspresi." # mt
 toolbar.stroke_shape = "Bentuk" # mt
 toolbar.stroke_shape_desc = "Bentuk yang diikuti goresan, atau apa yang disebarkan penyemprot di sepanjang garis." # mt
+options.handle_size = "Ukuran pegangan:" # mt
+options.handle_size_tip = "Seberapa besar pegangan seleksi alat Pilih digambar." # mt

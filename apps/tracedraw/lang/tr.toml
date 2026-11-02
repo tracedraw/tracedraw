@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "Mod" # mt
 toolbar.brush_mode_desc = "Sürüklemenin hangi tür darbe çizdiği: Hazır Ayar, Fırça, Püskürtücü, Kaligrafik veya İfade." # mt
 toolbar.stroke_shape = "Şekil" # mt
 toolbar.stroke_shape_desc = "Darbenin izlediği şekil ya da püskürtücünün çizgi boyunca dağıttığı nesne." # mt
+options.handle_size = "Tutamaç boyutu:" # mt
+options.handle_size_tip = "Seçim aracının seçim tutamaçlarının ne büyüklükte çizildiği." # mt

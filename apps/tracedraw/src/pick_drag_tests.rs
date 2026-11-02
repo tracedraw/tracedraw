@@ -2959,12 +2959,48 @@ fn ctrl_v_pastes_when_only_its_release_comes_through() {
     assert_eq!(shape_count(&app), n + 2);
 }
 
+/// Options > Nodes and Handles > Handle size: the handles are drawn 6,
+/// 8 or 10 points across (Large, the default), stand half a handle plus
+/// 1.5 points out from the box, and take a press within half a handle
+/// plus 1 point of their centre (#1285).
+#[test]
+fn the_handle_size_option_sets_the_handles_size_and_reach() {
+    use crate::settings::HandleSize;
+    let (ctx, mut app, id) = setup();
+    assert_eq!(app.settings.nodes.handles, HandleSize::Large);
+    assert_eq!(app.handle_size(), 10.0);
+    let r = app.view.rect_to_screen(bounds(&app, id));
+    let e = handle(&app, Handle::E);
+    assert!((e.x - (r.right() + 6.5)).abs() < 1e-3, "{e:?} {r:?}");
+    // Within 6 points of the centre the press takes the handle, 7 off not.
+    assert!(matches!(
+        app.handle_at(e + egui::vec2(5.5, 0.0)),
+        Some(Handle::E)
+    ));
+    assert!(app.handle_at(e + egui::vec2(7.0, 0.0)).is_none());
+    app.settings.nodes.handles = HandleSize::Small;
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert_eq!(app.handle_size(), 6.0);
+    let e = handle(&app, Handle::E);
+    assert!((e.x - (r.right() + 4.5)).abs() < 1e-3, "{e:?} {r:?}");
+    assert!(matches!(
+        app.handle_at(e + egui::vec2(3.5, 0.0)),
+        Some(Handle::E)
+    ));
+    assert!(app.handle_at(e + egui::vec2(5.0, 0.0)).is_none());
+    // Medium: 8 points across, 5.5 out from the box.
+    app.settings.nodes.handles = HandleSize::Medium;
+    assert_eq!(app.handle_size(), 8.0);
+    let e = handle(&app, Handle::E);
+    assert!((e.x - (r.right() + 5.5)).abs() < 1e-3, "{e:?} {r:?}");
+}
+
 #[test]
 fn handles_stand_outside_the_box_and_grabbing_one_does_not_jump() {
     let (ctx, mut app, id) = setup();
     let before = bounds(&app, id);
     let r = app.view.rect_to_screen(before);
-    let off = crate::interaction::HANDLE_OFFSET;
+    let off = app.handle_offset();
     // Each handle stands off the box, so the outline stays in view.
     let e = handle(&app, Handle::E);
     let nw = handle(&app, Handle::NW);
@@ -9563,7 +9599,7 @@ fn text_frame_tabs_link_frames_by_drag_and_by_click() {
     app.select(vec![a]);
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
     let k = corners(&app, a);
-    let tab = crate::canvas::flow_tab_rect(k[0], k[1]);
+    let tab = crate::canvas::flow_tab_rect(k[0], k[1], app.handle_size());
     let to = middle(&app, b);
     drag(
         &ctx,
@@ -9580,7 +9616,7 @@ fn text_frame_tabs_link_frames_by_drag_and_by_click() {
     app.select(vec![c]);
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
     let k = corners(&app, c);
-    let top = crate::canvas::flow_in_tab_rect(k[3], k[2]);
+    let top = crate::canvas::flow_in_tab_rect(k[3], k[2], app.handle_size());
     assert!(
         top.bottom() < k[3].y.min(k[2].y),
         "the tab is over the frame"
@@ -9600,7 +9636,7 @@ fn text_frame_tabs_link_frames_by_drag_and_by_click() {
     app.select(vec![e]);
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
     let k = corners(&app, e);
-    let top = crate::canvas::flow_in_tab_rect(k[3], k[2]);
+    let top = crate::canvas::flow_in_tab_rect(k[3], k[2], app.handle_size());
     click_at(&ctx, &mut app, top.center(), Modifiers::NONE);
     let before = shape_count(&app);
     click_page(&ctx, &mut app, Point::new(150.0, 60.0));

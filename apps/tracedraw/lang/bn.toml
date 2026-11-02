@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "মোড" # mt
 toolbar.brush_mode_desc = "টানলে কোন ধরনের স্ট্রোক আঁকা হবে: প্রিসেট, ব্রাশ, স্প্রেয়ার, ক্যালিগ্রাফিক বা এক্সপ্রেশন।" # mt
 toolbar.stroke_shape = "আকৃতি" # mt
 toolbar.stroke_shape_desc = "স্ট্রোক যে আকৃতি অনুসরণ করে, বা স্প্রেয়ার রেখা বরাবর যা ছড়ায়।" # mt
+options.handle_size = "হ্যান্ডেলের আকার:" # mt
+options.handle_size_tip = "পিক টুলের নির্বাচন হ্যান্ডেলগুলো কত বড় আঁকা হবে।" # mt

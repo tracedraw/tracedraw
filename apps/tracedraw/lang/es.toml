@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "Modo" # mt
 toolbar.brush_mode_desc = "Qué tipo de trazo dibuja el arrastre: Preajuste, Pincel, Pulverizador, Caligráfico o Expresión." # mt
 toolbar.stroke_shape = "Forma" # mt
 toolbar.stroke_shape_desc = "La forma que sigue el trazo, o lo que el pulverizador esparce a lo largo de la línea." # mt
+options.handle_size = "Tamaño de los tiradores:" # mt
+options.handle_size_tip = "El tamaño con que se dibujan los tiradores de selección de la herramienta Selección." # mt

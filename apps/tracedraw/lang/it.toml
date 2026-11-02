@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "Modalità" # mt
 toolbar.brush_mode_desc = "Quale tipo di tratto disegna il trascinamento: Predefinito, Pennello, Spruzzatore, Calligrafico o Espressione." # mt
 toolbar.stroke_shape = "Forma" # mt
 toolbar.stroke_shape_desc = "La forma che segue il tratto, o ciò che lo spruzzatore sparge lungo la linea." # mt
+options.handle_size = "Dimensione maniglie:" # mt
+options.handle_size_tip = "Quanto grandi sono disegnate le maniglie di selezione dello strumento Puntatore." # mt

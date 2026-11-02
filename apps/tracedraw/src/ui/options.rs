@@ -7,7 +7,7 @@
 
 use crate::app::{App, Units};
 use crate::i18n::{tr, trf};
-use crate::settings::{AutoCenter, NodeShape, NodeSize, Startup};
+use crate::settings::{AutoCenter, HandleSize, NodeShape, NodeSize, Startup};
 use crate::theme::Tokens;
 use crate::ui::chrome;
 use crate::ui::tips::RichTip;
@@ -1145,6 +1145,24 @@ fn nodes_page(app: &mut App, ui: &mut Ui) {
                     "node_size",
                     &mut n.size,
                     &NodeSize::ALL,
+                    |v| tr(v.key()),
+                    100.0,
+                );
+            },
+        );
+
+        ui.end_row();
+        // The Pick tool's selection handles (#1285).
+        row_label(ui, &tr("options.handle_size"));
+        crate::ui::tips::tip_over(
+            ui,
+            crate::ui::tips::pair("options.handle_size", "options.handle_size_tip"),
+            |ui| {
+                combo(
+                    ui,
+                    "handle_size",
+                    &mut n.handles,
+                    &HandleSize::ALL,
                     |v| tr(v.key()),
                     100.0,
                 );

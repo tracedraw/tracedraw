@@ -7206,3 +7206,5 @@ toolbar.brush_mode = "モード" # mt
 toolbar.brush_mode_desc = "ドラッグで描くストロークの種類：プリセット、ブラシ、スプレー、カリグラフィ、エクスプレッション。" # mt
 toolbar.stroke_shape = "形状" # mt
 toolbar.stroke_shape_desc = "ストロークがなぞる形状、またはスプレーが線に沿って散らすもの。" # mt
+options.handle_size = "ハンドルの大きさ:" # mt
+options.handle_size_tip = "選択ツールの選択ハンドルを描く大きさ。" # mt
