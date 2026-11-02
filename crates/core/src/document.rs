@@ -506,6 +506,64 @@ impl Corners {
         self.max() <= 1e-9
     }
 
+    /// Which corner lies where once the rectangle is drawn through `t`:
+    /// the local corner seen at the top left, top right, bottom left and
+    /// bottom right of the page (the radii's order). The local x axis
+    /// counts as horizontal when it leans that way more than it rises,
+    /// else as vertical, and the y axis as the other one; the sign of
+    /// each says which way it runs. So a rectangle turned by 180 degrees
+    /// or flipped shows its corners swapped, one turned by less than 45
+    /// degrees shows them where they were, and a skewed or stretched one
+    /// still has one corner at each position (#1670).
+    pub fn seen_through(t: Affine) -> [usize; 4] {
+        let [a, b, c, d, _, _] = t.as_coeffs();
+        let sign = |v: f64| if v < 0.0 { -1 } else { 1 };
+        let mut out = [0; 4];
+        for local in 0..4 {
+            // The corner's side along the local x (right: +) and y (top: +).
+            let (lx, ly) = match local {
+                Self::TOP_LEFT => (-1, 1),
+                Self::TOP_RIGHT => (1, 1),
+                Self::BOTTOM_LEFT => (-1, -1),
+                _ => (1, -1),
+            };
+            let (px, py) = if a.abs() >= b.abs() {
+                (lx * sign(a), ly * sign(d))
+            } else {
+                (ly * sign(c), lx * sign(b))
+            };
+            let seen = match (px, py) {
+                (-1, 1) => Self::TOP_LEFT,
+                (1, 1) => Self::TOP_RIGHT,
+                (-1, -1) => Self::BOTTOM_LEFT,
+                _ => Self::BOTTOM_RIGHT,
+            };
+            out[seen] = local;
+        }
+        out
+    }
+
+    /// These corners with the radii in the order they are seen through
+    /// `t` (see `seen_through`): the size at each position on the page.
+    pub fn as_seen(&self, t: Affine) -> Corners {
+        let order = Self::seen_through(t);
+        Corners {
+            radii: order.map(|local| self.radii[local]),
+            ..*self
+        }
+    }
+
+    /// The corners `seen` in page positions (as `as_seen` gives them) back
+    /// in the rectangle's own order.
+    pub fn from_seen(seen: Corners, t: Affine) -> Corners {
+        let order = Self::seen_through(t);
+        let mut radii = seen.radii;
+        for (position, local) in order.into_iter().enumerate() {
+            radii[local] = seen.radii[position];
+        }
+        Corners { radii, ..seen }
+    }
+
     /// Each corner in drawing order (counter-clockwise from the bottom
     /// right): its index, the corner point, the edge directions into and
     /// out of it, and how far the cut runs along each edge, all in the
@@ -6238,6 +6296,66 @@ mod tests {
             assert!(path.contains(Point::new(p.0, p.1)), "{p:?}");
         }
         assert!((area(&s) - (600.0 - 18.0)).abs() < 1e-9);
+    }
+
+    /// The corner fields follow the corners as they lie on the page: a
+    /// rectangle turned by 180 degrees or flipped has its local top left
+    /// at another position (#1670).
+    #[test]
+    fn corners_are_read_where_they_are_seen() {
+        use std::f64::consts::PI;
+        let (tl, tr, bl, br) = (
+            Corners::TOP_LEFT,
+            Corners::TOP_RIGHT,
+            Corners::BOTTOM_LEFT,
+            Corners::BOTTOM_RIGHT,
+        );
+        assert_eq!(Corners::seen_through(Affine::IDENTITY), [tl, tr, bl, br]);
+        // Turned a little: where they were.
+        assert_eq!(Corners::seen_through(Affine::rotate(0.3)), [tl, tr, bl, br]);
+        assert_eq!(
+            Corners::seen_through(Affine::rotate(-0.3)),
+            [tl, tr, bl, br]
+        );
+        // Turned by 180 degrees (either way): every corner across.
+        assert_eq!(Corners::seen_through(Affine::rotate(PI)), [br, bl, tr, tl]);
+        assert_eq!(Corners::seen_through(Affine::rotate(-PI)), [br, bl, tr, tl]);
+        // Flipped across: left and right swap; upside down: top and bottom.
+        assert_eq!(
+            Corners::seen_through(Affine::scale_non_uniform(-1.0, 1.0)),
+            [tr, tl, br, bl]
+        );
+        assert_eq!(
+            Corners::seen_through(Affine::scale_non_uniform(1.0, -1.0)),
+            [bl, br, tl, tr]
+        );
+        // A quarter turn counter-clockwise: the local top left (x0, y1)
+        // goes to the bottom left.
+        assert_eq!(
+            Corners::seen_through(Affine::rotate(PI / 2.0)),
+            [tr, br, tl, bl]
+        );
+        // A stretch does not move them; a skew keeps one at each place.
+        assert_eq!(
+            Corners::seen_through(Affine::scale_non_uniform(4.0, 0.2)),
+            [tl, tr, bl, br]
+        );
+        let mut seen = Corners::seen_through(Affine::skew(1.5, 0.0));
+        seen.sort_unstable();
+        assert_eq!(seen, [0, 1, 2, 3]);
+        // Reading and writing the sizes by position.
+        let mut c = Corners::uniform(0.0, CornerKind::Round);
+        c.radii[tl] = 6.0;
+        let turned = Affine::rotate(PI);
+        assert_eq!(c.as_seen(turned).radii, [0.0, 0.0, 0.0, 6.0]);
+        assert_eq!(Corners::from_seen(c.as_seen(turned), turned), c);
+        let mut typed = Corners::uniform(0.0, CornerKind::Round);
+        typed.radii[tl] = 3.0;
+        assert_eq!(
+            Corners::from_seen(typed, turned).radii,
+            [0.0, 0.0, 0.0, 3.0]
+        );
+        assert_eq!(Corners::from_seen(typed, Affine::IDENTITY), typed);
     }
 
     #[test]
