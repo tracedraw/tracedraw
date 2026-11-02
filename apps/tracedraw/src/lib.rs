@@ -170,6 +170,8 @@ mod symbol_paste;
 mod symmetry_edit;
 mod system_chars;
 mod system_prefs;
+#[cfg(any(target_os = "macos", test))]
+mod system_quit;
 mod table;
 mod table_tool;
 mod templates;
@@ -210,6 +212,11 @@ mod winit_pen_pressure;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "../../../vendor/winit/src/opened_files.rs"]
 mod winit_opened_files;
+// The program's say on a quit of the application on macOS, of the same
+// copy (#1669).
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "../../../vendor/winit/src/quit_request.rs"]
+mod winit_quit_request;
 mod workspace_file;
 
 /// The desktop program: the window, with the command line's files and
@@ -293,6 +300,13 @@ pub fn run() -> eframe::Result<()> {
         let (sink, ctx) = (inbox.clone(), wake.clone());
         winit::platform::macos::set_open_files_handler(move |files| {
             instance::deliver_opened(&sink, ctx.get(), files);
+        });
+        // Command+Q, the application menu's and the Dock's Quit, a
+        // log-out: with unsaved drawings TraceDraw takes the quit over
+        // and asks about each, as File > Exit does (#1669).
+        let ctx = wake.clone();
+        winit::platform::macos::set_quit_handler(move || {
+            system_quit::SYSTEM_QUIT.system_asks(ctx.get())
         });
         Some(wake)
     };

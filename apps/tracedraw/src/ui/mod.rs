@@ -318,6 +318,11 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     // Closing the window with unsaved drawings asks about each first.
     #[cfg(not(target_arch = "wasm32"))]
     {
+        // So does a quit of the application on macOS (Command+Q, the
+        // application menu's and the Dock's Quit), which AppKit carries
+        // out without closing the window (#1669).
+        #[cfg(target_os = "macos")]
+        crate::system_quit::SYSTEM_QUIT.frame(app);
         if ctx.input(|i| i.viewport().close_requested())
             && !app.quit_now
             && !app.dirty_documents().is_empty()

@@ -12,6 +12,7 @@ Customization > Commands lists them and takes shortcuts of your own
 | Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S | New, Open, Save, Save As |
 | Ctrl+I, Ctrl+E, Ctrl+P | Import, Export, Print |
 | Ctrl+F4, Alt+F4 | Close window, Exit |
+| Command+Q (macOS) | Quit TraceDraw from the application menu: asks about unsaved drawings as Exit does |
 | Ctrl+Z, Ctrl+Shift+Z, Ctrl+R | Undo, Redo, Repeat |
 | Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+Shift+V | Cut, Copy, Paste, Paste in view |
 | Ctrl+D, Ctrl+Shift+D | Duplicate, Repeat Copies panel |
