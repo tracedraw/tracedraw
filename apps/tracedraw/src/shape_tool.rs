@@ -447,7 +447,9 @@ impl App {
             }
             if let Some(key) = self.text_node_at(p) {
                 if !self.node_selection.contains(&key) {
-                    if mods.ctrl || mods.command || mods.shift {
+                    // As for a curve's node: Shift adds, Ctrl alone only
+                    // constrains the drag (#1325).
+                    if mods.shift {
                         self.click_node(key, mods);
                     } else {
                         self.node_selection = vec![key];
@@ -545,9 +547,17 @@ impl App {
             if let Some(hit) = self.node_at(p) {
                 let key = (hit.shape, hit.index);
                 if !self.node_selection.contains(&key) {
-                    if mods.ctrl || mods.command || mods.shift {
+                    // Shift adds the node (or a run up to it) to the
+                    // chosen ones, which then drag together. Ctrl alone
+                    // only constrains the drag: the node pressed is the
+                    // one dragged, as with no key held; it used to be
+                    // added to the chosen ones, so Ctrl+drag on a node
+                    // moved the nodes chosen before as well (#1325).
+                    // Ctrl+click still adds or takes out a node.
+                    if mods.shift {
                         self.click_node(key, mods);
                     } else {
+                        self.node_run = None;
                         self.node_selection = vec![key];
                     }
                 }

@@ -1575,6 +1575,68 @@ fn a_node_marquee_over_another_object_keeps_the_curve_being_edited() {
     assert_eq!(app.selection, vec![behind]);
 }
 
+/// With the Shape tool, Ctrl+drag on a node that is not chosen drags
+/// that node alone, kept to one axis, from the first drag: it does not
+/// add the node to the chosen ones and move those too (#1325). Shift+drag
+/// on an unchosen node still adds it, and the chosen nodes move together.
+#[test]
+fn ctrl_drag_on_an_unchosen_node_moves_that_node_alone_constrained() {
+    let (ctx, mut app, id) = setup();
+    app.select(vec![id]);
+    app.delete_selection();
+    let mut path = tracedraw_core::BezPath::new();
+    path.move_to((20.0, 20.0));
+    path.line_to((40.0, 20.0));
+    path.line_to((60.0, 20.0));
+    path.line_to((60.0, 40.0));
+    let c = app
+        .new_shape(ShapeKind::Path {
+            path,
+            closed: false,
+        })
+        .expect("curve");
+    app.select(vec![c]);
+    app.set_tool(Tool::Shape);
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let node_pos = |app: &App, i: usize| -> Point {
+        let s = app.doc().find_shape(c).expect("curve");
+        tracedraw_core::nodes::nodes(&s.page_path())
+            .into_iter()
+            .find(|n| n.index == i)
+            .map(|n| n.pos)
+            .expect("node")
+    };
+    // The last node chosen; Ctrl+drag the first one 10 mm right and 3 mm
+    // down: it moves alone, straight along its row.
+    app.node_selection = vec![(c, 3)];
+    let from = app.view.to_screen(Point::new(20.0, 20.0));
+    let to = app.view.to_screen(Point::new(30.0, 23.0));
+    drag(&ctx, &mut app, from, to, Modifiers::CTRL, Vec::new());
+    let p0 = node_pos(&app, 0);
+    assert!((p0 - Point::new(30.0, 20.0)).hypot() < 0.5, "{p0:?}");
+    let p3 = node_pos(&app, 3);
+    assert!(
+        (p3 - Point::new(60.0, 40.0)).hypot() < 1e-6,
+        "{p3:?} moved too"
+    );
+    assert_eq!(app.node_selection, vec![(c, 0)]);
+    // Shift+drag on the third node: it joins the chosen ones (the run
+    // from the first), and they move together.
+    let from = app.view.to_screen(Point::new(60.0, 20.0));
+    let to = app.view.to_screen(Point::new(60.0, 30.0));
+    drag(&ctx, &mut app, from, to, Modifiers::SHIFT, Vec::new());
+    let p2 = node_pos(&app, 2);
+    assert!((p2 - Point::new(60.0, 30.0)).hypot() < 0.5, "{p2:?}");
+    let p0 = node_pos(&app, 0);
+    assert!(
+        (p0 - Point::new(30.0, 30.0)).hypot() < 0.5,
+        "{p0:?} came along"
+    );
+    assert!(app.node_selection.contains(&(c, 2)) && app.node_selection.contains(&(c, 0)));
+}
+
 /// With the Shape tool Alt+drag draws a freehand marquee whatever the
 /// bar's selection mode, and Alt+Shift adds the nodes it takes to the
 /// chosen ones (#1341).
