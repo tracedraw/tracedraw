@@ -3957,6 +3957,51 @@ mod tests {
         assert!(!s.page_corners().unwrap().fixed);
     }
 
+    /// A corner field takes more than half the shorter side when the
+    /// neighbouring corners leave room, and shows the size drawn when what
+    /// is typed is more than the rectangle holds (#1757).
+    #[test]
+    fn a_corner_field_takes_what_the_neighbours_leave() {
+        let mut app = App::headless();
+        app.corners_together = false;
+        let id = app
+            .new_shape(ShapeKind::rect_with_corners(
+                R::new(0.0, 0.0, 100.0, 80.0),
+                Corners::tool_default(),
+            ))
+            .expect("a rectangle");
+        app.select(vec![id]);
+        edit_corners(&mut app, CornerEdit::Size(Corners::TOP_LEFT, 10.0));
+        edit_corners(&mut app, CornerEdit::Size(Corners::TOP_RIGHT, 80.0));
+        let s = app.selected_rc()[0].clone();
+        assert_eq!(s.page_corners().unwrap().radii, [10.0, 80.0, 0.0, 0.0]);
+        assert_eq!(
+            app.corners_as_seen(&s).unwrap().radii,
+            [10.0, 80.0, 0.0, 0.0]
+        );
+        // A quarter circle of 80 about (20, 0), down the whole right side.
+        use tracedraw_core::geometry::Shape as _;
+        let path = s.page_path();
+        assert!(!path.contains(Point::new(95.0, 75.0)));
+        assert!(!path.contains(Point::new(99.5, 30.0)));
+        assert!(path.contains(Point::new(90.0, 30.0)));
+        assert!(path.contains(Point::new(99.5, 0.5)));
+        // 90 on the 80 mm right side: kept, and every corner is drawn and
+        // shown at 80 / 90 of its size.
+        edit_corners(&mut app, CornerEdit::Size(Corners::TOP_RIGHT, 90.0));
+        let s = app.selected_rc()[0].clone();
+        assert_eq!(s.page_corners().unwrap().radii, [10.0, 90.0, 0.0, 0.0]);
+        let seen = app.corners_as_seen(&s).unwrap().radii;
+        assert!((seen[0] - 80.0 / 9.0).abs() < 1e-9 && (seen[1] - 80.0).abs() < 1e-9);
+        // Back within the side, the other corner is as typed again.
+        edit_corners(&mut app, CornerEdit::Size(Corners::TOP_RIGHT, 70.0));
+        let s = app.selected_rc()[0].clone();
+        assert_eq!(
+            app.corners_as_seen(&s).unwrap().radii,
+            [10.0, 70.0, 0.0, 0.0]
+        );
+    }
+
     /// The corner fields are the corners as they lie on the page: on a
     /// rectangle turned by 180 degrees or flipped, the top left field
     /// shows and edits the corner seen at the top left (#1670).

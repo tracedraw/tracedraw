@@ -616,6 +616,23 @@ impl Corners {
             .min(fit(h, Self::TOP_RIGHT, Self::BOTTOM_RIGHT))
     }
 
+    /// The largest size corner `i` can have in `rect` (see `layout` for
+    /// `scale`) with the other corners as they are and nothing shrunk:
+    /// what its neighbour leaves of each of the two sides it is on, in
+    /// the units the radii are in. The horizontal neighbour of a corner
+    /// is `i ^ 1`, the vertical one `i ^ 2`.
+    pub fn room(&self, i: usize, rect: Rect, scale: (f64, f64)) -> f64 {
+        let rect = rect.abs();
+        let (sx, sy) = self.units(scale);
+        let (w, h) = (rect.width() * sx, rect.height() * sy);
+        let room = (w - self.radius(i ^ 1)).min(h - self.radius(i ^ 2));
+        if room.is_finite() {
+            room.max(0.0)
+        } else {
+            0.0
+        }
+    }
+
     /// These corners at the size they are drawn in `rect` (see
     /// `fit_factor`), in the units the radii are in.
     pub fn fitted(&self, rect: Rect, scale: (f64, f64)) -> Corners {

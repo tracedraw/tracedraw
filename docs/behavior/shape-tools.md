@@ -52,7 +52,18 @@ whatever tool is active.
 - Four sizes: top left, top right, bottom left, bottom right (the bar
   shows them as two columns, left corners then right ones). With Edit
   Corners Together (the lock, on by default) a size typed in one field
-  goes to all four. A corner is at most half the shorter side.
+  goes to all four. A corner is not limited to half the shorter side:
+  the two corners on a side together may be as long as the side, so on
+  a 100 x 80 mm rectangle with a 10 mm top left corner and square
+  bottom corners the top right corner can be 80 mm, a quarter circle
+  down the whole right side. When the two corners on some side are
+  longer than it, every corner is drawn smaller by the same factor (the
+  side's length over their sum, for the tightest side): equal corners
+  stop at half the shorter side. The sizes typed are kept (the drawing
+  grows back to them when the rectangle grows) and the fields show the
+  sizes drawn (#1757, `Corners::fit_factor`,
+  `document::tests::corners_shrink_only_when_a_side_is_too_short_for_its_two`,
+  `ui::propbar::tests::a_corner_field_takes_what_the_neighbours_leave`).
 - Each field is the corner seen at that position on the page, not the
   rectangle's own corner of that name: a rectangle turned by 180
   degrees, flipped, or stretched across its own side with a handle
@@ -100,6 +111,10 @@ whatever tool is active.
   the path it draws, so the corners there are exactly as shown
   (`write::tests::corners_one_radius_cannot_hold_are_written_as_curves_and_stretched_fixed_ones_as_rectangles`,
   `tests::corners_that_keep_their_size_survive_native_svg_and_pdf`).
+  A single radius is written at the size drawn (at most half the
+  shorter side), and a corner past half the shorter side goes out as
+  the curve drawn (`write::tests::corners_past_half_the_shorter_side_are_written_as_drawn`,
+  `tests::a_corner_taking_a_whole_side_survives_native_svg_and_pdf`).
 - The sizes on the bar are page sizes in the ruler unit; with relative
   scaling on a stretched rectangle shows the smaller of its two scales.
 - Double-clicking the tool button draws a page frame: a rectangle the

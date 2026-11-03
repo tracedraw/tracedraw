@@ -481,6 +481,47 @@ mod tests {
         }
     }
 
+    /// A corner past half the shorter side, where its neighbours leave it
+    /// room, is kept by the native format and drawn the same in SVG and
+    /// PDF (#1757).
+    #[test]
+    fn a_corner_taking_a_whole_side_survives_native_svg_and_pdf() {
+        use tracedraw_core::geometry::{Affine, Shape as _};
+        use tracedraw_core::{CornerKind, Corners};
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let mut c = Corners::uniform(0.0, CornerKind::Round);
+        c.fixed = true;
+        c.radii[Corners::TOP_LEFT] = 10.0;
+        c.radii[Corners::TOP_RIGHT] = 80.0;
+        let id = doc.ids_mut().shape();
+        let mut s = Shape::new(
+            id,
+            ShapeKind::rect_with_corners(Rect::new(0.0, 0.0, 100.0, 80.0), c),
+        );
+        s.transform = Affine::translate((20.0, 20.0));
+        s.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        s.stroke = None;
+        // Quarter circles of 10 and 80 mm, nothing shrunk.
+        let area = s.page_path().area().abs();
+        let want = 8000.0 - (4.0 - std::f64::consts::PI) / 4.0 * (100.0 + 6400.0);
+        assert!((area - want).abs() < 2.0, "{area} vs {want}");
+        doc.layer_mut(layer).unwrap().shapes.push(s);
+        let json = doc.to_json().unwrap();
+        assert_eq!(Document::from_json(&json).unwrap(), doc);
+        let mut ids = tracedraw_core::id::IdSource::default();
+        let svg = svg_import::parse(&svg::page_to_svg(&doc, 0), &mut ids).expect("svg");
+        let pdf = pdf_import::to_document(
+            pdf_import::parse(&pdf::document_to_pdf(&doc), &mut ids).expect("pdf"),
+            "t",
+        );
+        let pdf_shapes: Vec<Shape> = pdf.all_layers().flat_map(|l| l.shapes.clone()).collect();
+        for (what, shapes) in [("svg", svg.shapes), ("pdf", pdf_shapes)] {
+            let got: f64 = shapes.iter().map(|s| s.page_path().area().abs()).sum();
+            assert!((got - area).abs() < 1.0, "{what}: {got} vs {area}");
+        }
+    }
+
     #[test]
     fn custom_arrowhead_round_trips_through_the_native_format() {
         let mut doc = Document::default();

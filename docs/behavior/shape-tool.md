@@ -225,8 +225,8 @@ round their corners with their own handles either way.
 
 | Action | Behaviour |
 |---|---|
-| Drag a rectangle corner node | every corner grows or shrinks by the same amount, in the current corner style; a square corner has one node, a cut one a node at each end |
-| Ctrl+drag a corner node | that corner only; Ctrl counts as it is held during the drag, also pressed after the button (#1325) |
+| Drag a rectangle corner node | every corner grows or shrinks by the same amount, in the current corner style, until two corners fill a side; a square corner has one node, a cut one a node at each end |
+| Ctrl+drag a corner node | that corner only, as far as the neighbouring corners leave it room on both its sides (past half the shorter side when they are smaller, a whole side when they are square; #1757, `kind_nodes::tests::one_corner_dragged_takes_what_its_neighbours_leave`); Ctrl counts as it is held during the drag, also pressed after the button (#1325) |
 | Click a corner node; Shift+click or Ctrl+click; marquee or freehand marquee over corner nodes | chooses that corner alone; adds the corner to the chosen ones or takes it out; chooses the corners with a node inside (on every selected rectangle). Chosen corners' nodes are filled (#671) |
 | Drag a chosen corner node | the chosen corners only, all by the same amount, so two or three corners round together and the others keep theirs (#671) |
 | Drag an ellipse node | pie when the pointer is inside the ellipse, arc outside; a whole ellipse's node starts at the top and the way it turns picks which end it becomes; with Ctrl held (at the press or later) the angle goes in steps of the constrain angle (15 degrees at first; a whole ellipse's node counts its turn from the top) (#1340) |

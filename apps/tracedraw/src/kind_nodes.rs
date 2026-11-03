@@ -222,7 +222,8 @@ pub fn drag_constrained(
         (ShapeKind::Rect { .. }, KindNode::Corner { corner, vertical }) => {
             let (rect, c) = start.kind.rect_corners()?;
             let rect = rect.abs();
-            let page = start.page_corners()?;
+            // From the corners as drawn, where the nodes are.
+            let page = start.drawn_page_corners()?;
             let (sx, sy) = axis_scale(start.transform);
             let (cp, _, _) = *c.ends(rect, (sx, sy)).get(corner)?;
             // Edge directions from the corner towards the rectangle's middle.
@@ -256,7 +257,21 @@ pub fn drag_constrained(
                     }
                 }
             }
-            start.with_page_corners(next)
+            let kind = start.with_page_corners(next)?;
+            let (_, mut c) = kind.rect_corners()?;
+            if single {
+                // One corner goes as far as its neighbours leave it room on
+                // both its sides, past half the shorter side (#1757); the
+                // others keep their size.
+                let room = c.room(corner, rect, (sx, sy));
+                if let Some(r) = c.radii.get_mut(corner) {
+                    *r = r.min(room);
+                }
+            } else {
+                // Corners growing together stop where they fill a side.
+                c = c.fitted(rect, (sx, sy));
+            }
+            Some(ShapeKind::rect_with_corners(rect, c))
         }
         (ShapeKind::Ellipse { rect, arc }, KindNode::EllipseStart | KindNode::EllipseEnd) => {
             let c = rect.center();
@@ -667,6 +682,41 @@ mod tests {
         .unwrap();
         moved.kind = k;
         assert_eq!(page_radius(&moved, 0), 0.0);
+    }
+
+    /// With Ctrl one corner goes past half the shorter side as far as its
+    /// neighbours leave it room; the others keep their size (#1757).
+    #[test]
+    fn one_corner_dragged_takes_what_its_neighbours_leave() {
+        let mut c = Corners::uniform(0.0, CornerKind::Round);
+        c.radii[Corners::TOP_RIGHT] = 5.0;
+        c.radii[Corners::TOP_LEFT] = 4.0;
+        let s = rect(c);
+        let node = KindNode::Corner {
+            corner: Corners::TOP_RIGHT,
+            vertical: true,
+        };
+        let mut turn = 0.0;
+        let dragged = |c: &Shape, y: f64, turn: &mut f64| {
+            let mut moved = c.clone();
+            moved.kind = drag(c, node, Point::new(40.0, y), true, [false; 4], turn).unwrap();
+            moved
+        };
+        // Down the right side to 16 mm from the top: more than half the
+        // 20 mm side.
+        let moved = dragged(&s, 4.0, &mut turn);
+        assert!((page_radius(&moved, Corners::TOP_RIGHT) - 16.0).abs() < 1e-9);
+        assert_eq!(page_radius(&moved, Corners::TOP_LEFT), 4.0);
+        // Past the bottom: the whole side, and no further.
+        let moved = dragged(&s, -10.0, &mut turn);
+        assert!((page_radius(&moved, Corners::TOP_RIGHT) - 20.0).abs() < 1e-9);
+        assert_eq!(page_radius(&moved, Corners::TOP_LEFT), 4.0);
+        // A bottom right corner of 6 leaves it 14.
+        let mut c2 = c;
+        c2.radii[Corners::BOTTOM_RIGHT] = 6.0;
+        let moved = dragged(&rect(c2), -10.0, &mut turn);
+        assert!((page_radius(&moved, Corners::TOP_RIGHT) - 14.0).abs() < 1e-9);
+        assert_eq!(page_radius(&moved, Corners::BOTTOM_RIGHT), 6.0);
     }
 
     #[test]

@@ -495,6 +495,67 @@ fn corners_one_radius_cannot_hold_are_written_as_curves_and_stretched_fixed_ones
     }
 }
 
+/// A corner larger than half the shorter side where its neighbours leave
+/// it room goes out as the curve drawn, and equal corners given more than
+/// the rectangle holds go out at the size drawn (#1757).
+#[test]
+fn corners_past_half_the_shorter_side_are_written_as_drawn() {
+    use tracedraw_core::{CornerKind, Corners};
+    let mut doc = doc_with(Vec::new());
+    let mut ids = doc.ids().clone();
+    let mut tab = Corners::uniform(0.0, CornerKind::Round);
+    tab.radii[Corners::TOP_LEFT] = 10.0;
+    tab.radii[Corners::TOP_RIGHT] = 80.0;
+    let mut shapes = Vec::new();
+    for (rect, corners) in [
+        (Rect::new(0.0, 0.0, 100.0, 80.0), tab),
+        (
+            Rect::new(0.0, 0.0, 40.0, 20.0),
+            Corners::uniform(50.0, CornerKind::Round),
+        ),
+    ] {
+        let mut s = Shape::new(ids.shape(), ShapeKind::rect_with_corners(rect, corners));
+        s.transform = Affine::translate((20.0, 10.0));
+        s.fill = Fill::Solid(Color::BLACK);
+        shapes.push(s);
+    }
+    doc.pages[0].layers[0].shapes = shapes.clone();
+    doc.set_ids(ids);
+    let pi = std::f64::consts::PI;
+    let tab_area = 8000.0 - (4.0 - pi) / 4.0 * (100.0 + 6400.0);
+    let round_area = 800.0 - (4.0 - pi) * 100.0;
+    for v in versions() {
+        let (back, rep) =
+            crate::open_bytes(&document_to_cdr_version(&doc, v), "back").expect("reads back");
+        let read = &back.pages[0].layers[0].shapes;
+        assert_eq!(read.len(), 2, "{v}: {:?}", rep.warnings);
+        for (i, (a, b, want)) in [
+            (&shapes[0], &read[0], tab_area),
+            (&shapes[1], &read[1], round_area),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let (aa, ab) = (a.page_path().area().abs(), b.page_path().area().abs());
+            assert!((aa - want).abs() < 2.0, "{v} {i}: {aa} vs {want}");
+            assert!((aa - ab).abs() < 0.5, "{v} {i}: {aa} vs {ab}");
+            let (ba, bb) = (a.bounds(), b.bounds());
+            assert!(
+                (ba.x0 - bb.x0).abs() < 0.01 && (ba.y1 - bb.y1).abs() < 0.01,
+                "{v} {i}"
+            );
+        }
+        if v < 15 {
+            // One radius: the 10 mm the equal corners are drawn at.
+            assert!(
+                matches!(read[1].kind, ShapeKind::Rect { radius, .. } if (radius - 10.0).abs() < 0.01),
+                "{v}: {:?}",
+                read[1].kind
+            );
+        }
+    }
+}
+
 #[test]
 fn complex_stars_are_written_as_curves() {
     let mut doc = doc_with(Vec::new());
