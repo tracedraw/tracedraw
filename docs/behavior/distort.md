@@ -258,7 +258,8 @@ curve stays open.
   side 8 mm straight down, then the teeth are upright (tilt 0) and 2 mm
   high and the end handle is where the drag ended; the handle taken and
   dragged round to 30 degrees off the normal leans the teeth 30 degrees
-  (every tip on that side is 2 cos 30 mm off the side), the handle under
+  (every point on that side is still 2 mm off the side and the bases
+  stay where the upright teeth have them, #1736), the handle under
   the pointer; tilt 0 typed on the bar puts the handle back on the
   normal.
 - Given a 20 mm square with Push and Pull 50 selected, then its end

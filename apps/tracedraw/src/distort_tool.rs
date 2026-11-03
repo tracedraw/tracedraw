@@ -1666,8 +1666,8 @@ mod tests {
             assert!((p.y.abs() - 2.0).abs() < 1e-6, "upright tip {p:?}");
         }
         // Taken and dragged round, 30 degrees off the normal: the teeth
-        // lean 30 degrees (their tips 2 cos 30 off the side) and the
-        // handle is under the pointer.
+        // lean 30 degrees and the handle is under the pointer. Only the
+        // tips lean, still 2 mm off the side; the bases stay (#1736).
         assert!(app.begin_distort(down));
         assert_eq!(app.distort_drag.as_ref().map(|d| d.grab), Some(Grab::End));
         let round = c + Vec2::from_angle((-90.0f64 - 30.0).to_radians()) * 8.0;
@@ -1682,12 +1682,15 @@ mod tests {
             app.distort.lean()
         );
         assert!((end(&app) - round).hypot() < 1e-6, "{:?}", end(&app));
-        for p in tips(&app) {
-            assert!(
-                (p.y.abs() - 2.0 * 30f64.to_radians().cos()).abs() < 1e-6,
-                "leaning tip {p:?}"
-            );
+        let leaning = tips(&app);
+        for p in &leaning {
+            assert!((p.y.abs() - 2.0).abs() < 1e-6, "leaning tip {p:?}");
         }
+        let kept = low
+            .iter()
+            .filter(|p| leaning.iter().any(|q| (*q - **p).hypot() < 1e-6))
+            .count();
+        assert!(kept > 0, "bases stay: {low:?} {leaning:?}");
         // The bar: tilt 0 puts the handle back on the normal, the teeth
         // upright.
         app.distort.set_lean(0.0);
