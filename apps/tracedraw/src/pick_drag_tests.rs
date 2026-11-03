@@ -3772,6 +3772,115 @@ fn bspline_clicks_place_control_points_of_a_smooth_curve() {
     assert!(near(c.p1, pts[1]) && near(c.p2, pts[2]), "{c:?}");
 }
 
+/// The curve the B-Spline tool previews, as the canvas draws it.
+fn bspline_preview(app: &App) -> tracedraw_core::BezPath {
+    let c = app.curve.as_ref().expect("a B-spline being drawn");
+    c.path(app.curve_preview_point(false))
+}
+
+/// While a B-spline is drawn, the preview is the curve a click would
+/// make: the pointer is a tentative next control point, never a second
+/// copy of the point just placed. Right after a click the preview is the
+/// curve through the points placed so far, and finishing makes exactly
+/// that curve (#1506).
+#[test]
+fn bspline_preview_is_the_curve_that_is_made() {
+    use tracedraw_core::geometry::bspline_path;
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::BSpline);
+    let pts = [
+        Point::new(100.0, 150.0),
+        Point::new(130.0, 190.0),
+        Point::new(180.0, 180.0),
+        Point::new(190.0, 140.0),
+    ];
+    // The control points placed so far (as the screen pixels gave them).
+    let placed = |app: &App| -> Vec<Point> {
+        let c = app.curve.as_ref().expect("a B-spline being drawn");
+        c.nodes.iter().map(|n| n.0).collect()
+    };
+    for (i, p) in pts.iter().enumerate() {
+        let at = app.view.to_screen(*p);
+        click_at(&ctx, &mut app, at, Modifiers::NONE);
+        assert_eq!(placed(&app).len(), i + 1);
+        // The pointer rests on the point just placed: no doubled end.
+        assert_eq!(
+            bspline_preview(&app),
+            bspline_path(&placed(&app), false),
+            "after click {i}"
+        );
+        // Moved on, the pointer is the tentative next control point.
+        let probe_at = app.view.to_screen(Point::new(p.x + 15.0, p.y - 25.0));
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(probe_at)],
+            Modifiers::NONE,
+        );
+        let probe = app.curve_preview_point(false).expect("pointer");
+        let mut with = placed(&app);
+        with.push(probe);
+        assert_eq!(bspline_preview(&app), bspline_path(&with, false));
+    }
+    // A second click on the last point places it no second time.
+    let at_last = app.view.to_screen(pts[3]);
+    click_at(&ctx, &mut app, at_last, Modifiers::NONE);
+    assert_eq!(placed(&app).len(), pts.len());
+    // Finished (Enter) with the pointer away from the last point: the
+    // curve made is the preview without the tentative point.
+    let next_at = app.view.to_screen(Point::new(220.0, 170.0));
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(next_at)],
+        Modifiers::NONE,
+    );
+    let controls = placed(&app);
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Enter, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert!(app.curve.is_none());
+    assert_eq!(last_path(&app), bspline_path(&controls, false));
+}
+
+/// A double-click ends a B-spline with the curve previewed under the
+/// pointer before it: the double-clicked point is its last control point,
+/// once (#1506).
+#[test]
+fn bspline_double_click_makes_the_previewed_curve() {
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::BSpline);
+    let pts = [
+        Point::new(100.0, 150.0),
+        Point::new(130.0, 190.0),
+        Point::new(180.0, 180.0),
+    ];
+    for p in pts {
+        let at = app.view.to_screen(p);
+        click_at(&ctx, &mut app, at, Modifiers::NONE);
+    }
+    let end = Point::new(200.0, 130.0);
+    let at = app.view.to_screen(end);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(at)],
+        Modifiers::NONE,
+    );
+    let shown = bspline_preview(&app);
+    double_click_at(&ctx, &mut app, at);
+    assert!(app.curve.is_none());
+    assert_eq!(last_path(&app), shown);
+    let id = app.selection[0];
+    let spline = app.doc().find_shape(id).expect("shape").spline.clone();
+    assert_eq!(spline.map(|s| s.len()), Some(4));
+}
+
 /// A B-spline keeps its control points: the Shape tool shows them
 /// instead of the curve's nodes, dragging one reshapes the spline, a
 /// double-click on the control polygon adds one and a double-click on a

@@ -2494,7 +2494,10 @@ impl App {
             // is the one the preview showed, shaped by the handle of the
             // node before (straight when that node has none), arriving
             // straight at the new node (#314).
-            if drag || !c.dragging_handle {
+            // A B-Spline point on the last one is not placed twice: the
+            // curve would bend at its end where the preview showed none.
+            let again = bspline && c.on_last_control(p);
+            if (drag || !c.dragging_handle) && !again {
                 c.nodes.push((p, None));
             }
             c.dragging_handle = drag;

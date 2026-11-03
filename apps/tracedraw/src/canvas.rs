@@ -317,19 +317,15 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
         // The pointer as the next node would take it (the constrain key:
         // in steps of the constrain angle).
         let ctrl = painter.ctx().input(|i| app.constrain_held(&i.modifiers));
-        let preview = if c.dragging_handle {
-            None
-        } else {
-            app.pointer_page
-                .map(|p| app.curve_point(app.snap_point(p), ctrl))
-        };
+        let preview = app.curve_preview_point(ctrl);
         let path = c.path(preview);
         if c.bspline {
             // The control polygon, dashed, as the curve is drawn.
-            let mut poly: Vec<egui::Pos2> = c.nodes.iter().map(|n| view.to_screen(n.0)).collect();
-            if let Some(p) = preview {
-                poly.push(view.to_screen(p));
-            }
+            let poly: Vec<egui::Pos2> = c
+                .bspline_controls(preview)
+                .into_iter()
+                .map(|p| view.to_screen(p))
+                .collect();
             for w in poly.windows(2) {
                 painter.extend(egui::Shape::dashed_line(
                     &[w[0], w[1]],

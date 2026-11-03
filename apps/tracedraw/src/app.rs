@@ -615,6 +615,10 @@ pub struct PenStep {
     pub redo_to: Option<PenEnd>,
 }
 
+/// Millimetres within which a B-Spline control point is the one before
+/// it (the same pointer position, up to rounding).
+const SAME_CONTROL_POINT: f64 = 1e-9;
+
 /// Bezier / polyline tool in progress.
 #[derive(Debug, Clone, Default)]
 pub struct CurveInProgress {
@@ -725,6 +729,26 @@ impl CurveInProgress {
         path
     }
 
+    /// B-Spline: the control points of the curve a click at `preview`
+    /// would make, the pointer as a tentative next point. A pointer still
+    /// on the last point (right after a click) adds nothing: a doubled end
+    /// point would bend the curve's end, and the curve made has it once
+    /// (#1506). A click there places no second point either.
+    pub fn bspline_controls(&self, preview: Option<Point>) -> Vec<Point> {
+        let mut pts: Vec<Point> = self.nodes.iter().map(|n| n.0).collect();
+        if let Some(p) = preview.filter(|p| !self.on_last_control(*p)) {
+            pts.push(p);
+        }
+        pts
+    }
+
+    /// `p` is where the last control point already is.
+    pub fn on_last_control(&self, p: Point) -> bool {
+        self.nodes
+            .last()
+            .is_some_and(|n| (n.0 - p).hypot() <= SAME_CONTROL_POINT)
+    }
+
     fn open_path(&self, preview: Option<Point>) -> tracedraw_core::BezPath {
         let mut path = tracedraw_core::BezPath::new();
         let mut nodes: Vec<(Point, Option<Point>)> = self.nodes.clone();
@@ -732,7 +756,7 @@ impl CurveInProgress {
             nodes.push((p, None));
         }
         if self.bspline {
-            let pts: Vec<Point> = nodes.iter().map(|n| n.0).collect();
+            let pts = self.bspline_controls(preview);
             return tracedraw_core::geometry::bspline_path(&pts, false);
         }
         for (i, (p, _)) in nodes.iter().enumerate() {
@@ -5010,6 +5034,18 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// The pointer as the next node of the curve being drawn would take
+    /// it (`ctrl`, the constrain key: in steps of the constrain angle);
+    /// `None` while a handle is pulled. The preview runs the curve to it.
+    pub fn curve_preview_point(&self, ctrl: bool) -> Option<Point> {
+        let c = self.curve.as_ref()?;
+        if c.dragging_handle {
+            return None;
+        }
+        self.pointer_page
+            .map(|p| self.curve_point(self.snap_point(p), ctrl))
     }
 
     /// The curve being drawn is done: it continues the selected curve
