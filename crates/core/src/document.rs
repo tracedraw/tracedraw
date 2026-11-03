@@ -793,7 +793,10 @@ pub enum ShapeKind {
     /// star: each vertex joined to the one `complex + 1` further on, so the
     /// sides cross (`sharpness` and `twist` are then unused). `twist`
     /// turns the points between the vertices about the centre (radians,
-    /// counter-clockwise): a twisted star.
+    /// counter-clockwise): a twisted star. `sharpness` 0 is a polygon,
+    /// 0 to 1 a star whose inner points come in toward the centre, 0 to
+    /// -1 an inverted star whose inner points lie past it
+    /// (`geometry::star_inner_ratio`).
     Polygon {
         rect: Rect,
         points: u32,
@@ -6918,6 +6921,19 @@ mod tests {
         let json = serde_json::to_string(&twisted).unwrap();
         assert!(json.contains("twist"));
         assert_eq!(serde_json::from_str::<ShapeKind>(&json).unwrap(), twisted);
+        // An inverted star (#1331) keeps its negative sharpness; an older
+        // file's star reads with the sharpness it had.
+        assert!(matches!(old, ShapeKind::Polygon { sharpness, .. } if sharpness == 0.5));
+        let inverted = ShapeKind::Polygon {
+            rect: Rect::new(0.0, 0.0, 2.0, 2.0),
+            points: 5,
+            sharpness: -0.3,
+            complex: None,
+            twist: 0.0,
+        };
+        let json = serde_json::to_string(&inverted).unwrap();
+        assert!(json.contains("\"sharpness\":-0.3"), "{json}");
+        assert_eq!(serde_json::from_str::<ShapeKind>(&json).unwrap(), inverted);
     }
 
     #[test]

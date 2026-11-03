@@ -272,6 +272,50 @@ mod tests {
         Color, Fill, Pattern, Stroke,
     };
 
+    /// #1331: an inverted star (negative sharpness) reopens as it was
+    /// saved, and the SVG export
+    /// draws the inverted outline.
+    #[test]
+    fn inverted_stars_round_trip_in_native_files_and_export_their_outline() {
+        use tracedraw_core::geometry::{Affine, Shape as _};
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let id = doc.ids_mut().shape();
+        let mut s = Shape::new(
+            id,
+            ShapeKind::Polygon {
+                rect: Rect::new(20.0, 20.0, 80.0, 80.0),
+                points: 5,
+                sharpness: -0.7,
+                complex: None,
+                twist: 0.0,
+            },
+        );
+        s.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        doc.layer_mut(layer).unwrap().shapes.push(s.clone());
+        let path = std::env::temp_dir().join(format!(
+            "tracedraw-inverted-star-{}-{:?}.tdraw",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        save_native(&doc, &path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let back = load_native(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(text.contains("\"sharpness\": -0.7"), "{text}");
+        assert_eq!(back, doc);
+        // SVG: the outline as the model draws it, inner points past the
+        // centre (y flipped to the SVG's top-left origin).
+        let h = doc.pages[0].size.height;
+        let flip = Affine::new([1.0, 0.0, 0.0, -1.0, 0.0, h]);
+        let want = svg::path_data(&(flip * s.page_path()));
+        let out = svg::page_to_svg(&doc, 0);
+        assert!(out.contains(&want), "{want}\n{out}");
+        let second = s.page_path().elements()[1].end_point().unwrap();
+        assert!(second.y < 50.0, "{second:?}");
+        assert!(s.page_path().bounding_box().width() > 0.0);
+    }
+
     #[test]
     fn open_curves_lose_their_fill_in_vector_exports() {
         use tracedraw_core::geometry::{BezPath, Point};

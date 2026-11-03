@@ -2583,7 +2583,27 @@ pub fn ellipse_part(app: &mut App, ui: &mut Ui) {
     }
 }
 
-/// Points and sharpness of polygons and stars (sharpness 1 to 99);
+/// A star's sharpness from the percent typed in a sharpness field: 1 to
+/// 99, or -1 to -99 for an inverted star whose inner points lie past the
+/// centre (#1331). 0 would be no star: it keeps the side of `was`, at 1.
+pub fn sharpness_from_pct(pct: f64, was: f64) -> f64 {
+    if !pct.is_finite() {
+        return was;
+    }
+    let pct = pct.round().clamp(-99.0, 99.0);
+    if pct == 0.0 {
+        if was < 0.0 {
+            -0.01
+        } else {
+            0.01
+        }
+    } else {
+        pct / 100.0
+    }
+}
+
+/// Points and sharpness of polygons and stars (sharpness 1 to 99, or
+/// -1 to -99 inverted);
 /// complex stars count their sharpness in
 /// steps (1 up to what their points allow). With the Star tool, the Star
 /// and Complex Star buttons pick what it draws.
@@ -2681,7 +2701,10 @@ pub fn polygon_part(app: &mut App, ui: &mut Ui, star: bool) {
         .first()
         .map(|s| (s.2, s.3))
         .unwrap_or((app.polygon_points, app.star_sharpness));
-    let star = star || selected.first().is_some_and(|s| s.3 > 0.0);
+    let star = star
+        || selected
+            .first()
+            .is_some_and(|s| tracedraw_core::geometry::is_star_sharpness(s.3));
     let (n0, s0) = (n, sharp);
     crate::ui::tips::tip_over(ui, crate::ui::tips::keyed("toolbar.points_tip"), |ui| {
         ui.label(tr("toolbar.points_sides"));
@@ -2697,11 +2720,11 @@ pub fn polygon_part(app: &mut App, ui: &mut Ui, star: bool) {
             if ui
                 .add_sized(
                     [56.0, ROW + 4.0],
-                    crate::ui::field::NumField::new(&mut pct).range(1.0..=99.0),
+                    crate::ui::field::NumField::new(&mut pct).range(-99.0..=99.0),
                 )
                 .changed()
             {
-                sharp = (pct / 100.0).clamp(0.01, 0.99);
+                sharp = sharpness_from_pct(pct, sharp);
             }
         });
     }
@@ -2716,7 +2739,11 @@ pub fn polygon_part(app: &mut App, ui: &mut Ui, star: bool) {
                 kind: ShapeKind::Polygon {
                     rect: *rect,
                     points: n,
-                    sharpness: if *old > 0.0 || star { sharp } else { 0.0 },
+                    sharpness: if tracedraw_core::geometry::is_star_sharpness(*old) || star {
+                        sharp
+                    } else {
+                        0.0
+                    },
                     complex: None,
                     // A twisted star keeps its turn.
                     twist: *twist,
@@ -3431,6 +3458,89 @@ mod tests {
         // One undo step a click.
         app.undo();
         assert!((selection_angle(&app) - 3.0).abs() < 1e-6);
+    }
+
+    /// #1331: the sharpness box takes a negative value, which inverts the
+    /// selected star, and shows it back as negative.
+    #[test]
+    fn the_sharpness_box_takes_a_negative_value() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Polygon {
+                rect: R::new(10.0, 10.0, 50.0, 50.0),
+                points: 5,
+                sharpness: 0.5,
+                complex: None,
+                twist: 0.0,
+            })
+            .expect("star");
+        app.select(vec![id]);
+        let key = |key: egui::Key| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let sharpness = |app: &App| match &app.engine.document().find_shape(id).expect("star").kind {
+            ShapeKind::Polygon { sharpness, .. } => *sharpness,
+            k => panic!("{k:?}"),
+        };
+        let run = |app: &mut App, events: Vec<egui::Event>| -> String {
+            let mut shown = String::new();
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(600.0, 200.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    ui.horizontal(|ui| polygon_part(app, ui, false));
+                },
+            );
+            for shape in out.shapes.iter() {
+                if let egui::epaint::Shape::Text(t) = &shape.shape {
+                    shown.push_str(t.galley.text());
+                    shown.push('|');
+                }
+            }
+            out.textures_delta.clear();
+            shown
+        };
+        run(&mut app, Vec::new());
+        // Tab to the points box, Tab to the sharpness box, type, Enter.
+        run(&mut app, vec![key(egui::Key::Tab)]);
+        run(&mut app, vec![key(egui::Key::Tab)]);
+        run(&mut app, vec![egui::Event::Text("-40".into())]);
+        run(&mut app, vec![key(egui::Key::Enter)]);
+        run(&mut app, Vec::new());
+        assert!((sharpness(&app) + 0.4).abs() < 1e-9, "{}", sharpness(&app));
+        assert!((app.star_sharpness + 0.4).abs() < 1e-9);
+        // The box shows it back.
+        let shown = run(&mut app, Vec::new());
+        assert!(shown.contains("-40"), "{shown}");
+        // The outline is the inverted star: inner points past the centre.
+        let inner = match &app.engine.document().find_shape(id).expect("star").kind {
+            ShapeKind::Polygon { rect, .. } => {
+                let path = app.engine.document().find_shape(id).expect("star").local_path();
+                let c = rect.center();
+                let second = path.elements()[1].end_point().expect("point");
+                (second - c).y
+            }
+            k => panic!("{k:?}"),
+        };
+        // The first inner point (right of the top vertex, above the
+        // centre on a plain star) lies below the centre.
+        assert!(inner < 0.0, "{inner}");
+        // 0 is no star: the box keeps the star's side.
+        assert_eq!(sharpness_from_pct(0.0, -0.4), -0.01);
+        assert_eq!(sharpness_from_pct(0.0, 0.4), 0.01);
+        assert_eq!(sharpness_from_pct(-150.0, 0.4), -0.99);
+        assert_eq!(sharpness_from_pct(f64::NAN, -0.4), -0.4);
     }
 
     #[test]

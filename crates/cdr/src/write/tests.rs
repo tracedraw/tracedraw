@@ -578,6 +578,58 @@ fn complex_stars_are_written_as_curves() {
     }
 }
 
+/// #1331: an inverted star (negative sharpness) goes out as the curve it
+/// draws, like every polygon, and reads back with the same nodes: inner
+/// points past the centre.
+#[test]
+fn inverted_stars_are_written_as_the_curves_they_draw() {
+    let mut doc = doc_with(Vec::new());
+    let mut ids = doc.ids().clone();
+    let mut star = Shape::new(
+        ids.shape(),
+        ShapeKind::Polygon {
+            rect: Rect::new(10.0, 10.0, 50.0, 50.0),
+            points: 5,
+            sharpness: -0.6,
+            complex: None,
+            twist: 0.0,
+        },
+    );
+    star.fill = Fill::Solid(Color::BLACK);
+    doc.pages[0].layers[0].shapes = vec![star.clone()];
+    doc.set_ids(ids);
+    let points = |s: &Shape| -> Vec<Point> {
+        s.page_path()
+            .elements()
+            .iter()
+            .filter_map(|e| e.end_point())
+            .collect()
+    };
+    let want = points(&star);
+    // The first inner point, right of the top vertex on a plain star,
+    // lies past the centre (below it).
+    assert!(want[1].y < 30.0, "{want:?}");
+    for v in [7, 12, 16, 22, 27] {
+        let (back, rep) =
+            crate::open_bytes(&document_to_cdr_version(&doc, v), "back").expect("reads back");
+        let read = &back.pages[0].layers[0].shapes;
+        assert_eq!(read.len(), 1, "{:?}", rep.warnings);
+        assert!(
+            matches!(read[0].kind, ShapeKind::Path { .. }),
+            "v{v}: {:?}",
+            read[0].kind
+        );
+        let got = points(&read[0]);
+        for p in &want {
+            // Within the file's unit (0.0001 mm), rounded.
+            assert!(
+                got.iter().any(|q| (*q - *p).hypot() < 1e-3),
+                "v{v}: {p:?} not in {got:?}"
+            );
+        }
+    }
+}
+
 fn complex_star_reads_back(doc: &Document, star: &Shape, v: u16) {
     let (back, rep) =
         crate::open_bytes(&document_to_cdr_version(doc, v), "back").expect("reads back");

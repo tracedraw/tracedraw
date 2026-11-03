@@ -3444,7 +3444,8 @@ impl App {
             }
         };
         self.polygon_points = t.polygon_points.clamp(3, 500);
-        self.star_sharpness = finite(t.star_sharpness, 0.0, 1.0, 0.5);
+        // Negative: inverted stars (#1331).
+        self.star_sharpness = finite(t.star_sharpness, -1.0, 1.0, 0.5);
         self.star_complex = t.star_complex;
         use tracedraw_core::geometry::{complex_star_max_sharpness, COMPLEX_STAR_MIN_POINTS};
         self.complex_points = t.complex_points.clamp(COMPLEX_STAR_MIN_POINTS, 500);

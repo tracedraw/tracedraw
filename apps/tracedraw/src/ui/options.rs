@@ -3984,12 +3984,13 @@ fn polygon_page(app: &mut App, ui: &mut Ui) {
                 if ui
                     .add(
                         crate::ui::field::NumField::new(&mut pct)
-                            .range(1.0..=99.0)
+                            .range(-99.0..=99.0)
                             .suffix("%"),
                     )
                     .changed()
                 {
-                    app.star_sharpness = (pct / 100.0).clamp(0.01, 0.99);
+                    app.star_sharpness =
+                        crate::ui::propbar::sharpness_from_pct(pct, app.star_sharpness);
                 };
             },
         );
