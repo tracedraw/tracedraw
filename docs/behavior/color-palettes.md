@@ -6,9 +6,16 @@ Document Palette shows or hides it). The dotted grip at the start of the
 default palette moves it to another edge (on a side it is a column) or
 into a floating window with as many rows as the Rows setting (see "Moving the bars" in
 `toolbars.md`); where it is put is kept across restarts, in the browser
-too. The document palette stays a row under the drawing window wherever
+too. The document palette is a row under the drawing window wherever
 the default palette is (over the drawing window when the default palette
-is along the top). Window > Toolbars > Color Palette hides or shows the
+is along the top). Each row moves by its own grip: dragging the
+document palette's grip takes it out into a palette bar of its own
+(below) and leaves the default palette where it is, and the default
+palette's grip moves only the default palette. The document palette's
+bar let go at the row's side (the bottom, or the top while the default
+palette is there) is the row again; anywhere else it stays a bar,
+docked or floating. While the document palette has a bar of its own
+its row does not show as well. Window > Toolbars > Color Palette hides or shows the
 default palette. The rows described below are the same along a column,
 turned downwards.
 

@@ -542,7 +542,12 @@ fn row(app: &mut App, ui: &mut Ui, which: Row, vertical: bool) {
             crate::ui::palette_bars::grip_zone(app, ui, k, grip_rect);
         }
         Row::Extra(_) => {}
-        _ if !floating => {
+        // The document palette row moves by itself too (as a bar of its
+        // own), never the default palette above it.
+        Row::Document if !floating => {
+            crate::ui::palette_bars::document_grip_zone(app, ui, grip_rect);
+        }
+        Row::Main if !floating => {
             crate::ui::bars::grip_zone(
                 app,
                 ui,

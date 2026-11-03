@@ -17621,3 +17621,135 @@ fn a_blend_s_start_object_shows_its_own_box_and_handles() {
     assert!(close(g.x0, 20.0) && close(g.x1, 176.0), "{g:?}");
     assert!(close(g.y0, 100.0) && close(g.y1, 150.0), "{g:?}");
 }
+
+/// Drags with the left button from `from` to `to` over a few frames.
+fn drag_between(ctx: &egui::Context, app: &mut App, from: Pos2, to: Pos2) {
+    frame(ctx, app, vec![Event::PointerMoved(from)], Modifiers::NONE);
+    frame(
+        ctx,
+        app,
+        vec![button(from, true, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    for k in 1..=8 {
+        let p = from + (to - from) * (k as f32 / 8.0);
+        frame(ctx, app, vec![Event::PointerMoved(p)], Modifiers::NONE);
+    }
+    frame(
+        ctx,
+        app,
+        vec![button(to, false, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    for _ in 0..3 {
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    }
+}
+
+/// The rect of the docked panel `id` in the last frame.
+fn panel_rect(ctx: &egui::Context, id: egui::Id) -> Option<egui::Rect> {
+    egui::PanelState::load(ctx, id).map(|s| s.outer_rect)
+}
+
+/// The grip at the start of a docked palette row.
+fn grip_of(r: egui::Rect) -> Pos2 {
+    Pos2::new(r.left() + 5.0, r.center().y)
+}
+
+/// Dragging the document palette row out by its grip floats the document
+/// palette, not the default palette above it; dropped back at the bottom
+/// it is the row under the drawing again.
+#[test]
+fn dragging_the_document_palette_out_floats_it_alone() {
+    use crate::ui::bars::{Bar, Dock};
+    use crate::ui::palette::Row;
+    let (ctx, mut app, _) = setup();
+    assert!(app.settings.palette.show_document);
+    assert_eq!(app.settings.bars.dock(Bar::Palette), Dock::Bottom);
+    let row = panel_rect(&ctx, egui::Id::new("document_palette")).expect("the document row");
+    let main = panel_rect(&ctx, egui::Id::new("palette")).expect("the default palette");
+    assert!(row.top() >= main.bottom() - 1.0, "{row:?} under {main:?}");
+    drag_between(&ctx, &mut app, grip_of(row), Pos2::new(800.0, 450.0));
+    assert_eq!(
+        app.settings.bars.dock(Bar::Palette),
+        Dock::Bottom,
+        "the default palette stays docked"
+    );
+    assert_eq!(app.extra_palettes.len(), 1);
+    assert!(app.extra_palettes[0].document);
+    assert_eq!(app.settings.palette_bars[0].dock, Dock::Floating);
+    assert!(panel_rect(&ctx, egui::Id::new("palette")).is_some());
+    let window = ctx
+        .memory(|m| m.area_rect(crate::ui::palette_bars::window_id(Row::Extra(0))))
+        .expect("the document palette's window");
+    assert!(window.contains(Pos2::new(800.0, 450.0 + 4.0)), "{window:?}");
+    // Its title dragged to the bottom edge: the row again.
+    let title = Pos2::new(window.left() + 30.0, window.top() + 6.0);
+    drag_between(&ctx, &mut app, title, Pos2::new(800.0, 995.0));
+    assert!(app.extra_palettes.is_empty());
+    assert!(app.settings.palette_bars.is_empty());
+    assert!(app.settings.palette.show_document);
+    assert_eq!(app.settings.bars.dock(Bar::Palette), Dock::Bottom);
+    let row = panel_rect(&ctx, egui::Id::new("document_palette")).expect("the row is back");
+    let window = ctx.memory(|m| m.area_rect(crate::ui::palette_bars::window_id(Row::Extra(0))));
+    assert!(window.is_none_or(|w| !w.intersects(row)), "{window:?}");
+}
+
+/// Dragging the default palette out floats it alone; the document row
+/// stays docked under the drawing, and the default palette docks back.
+#[test]
+fn dragging_the_default_palette_out_floats_it_alone() {
+    use crate::ui::bars::{Bar, Dock};
+    let (ctx, mut app, _) = setup();
+    let main = panel_rect(&ctx, egui::Id::new("palette")).expect("the default palette");
+    drag_between(&ctx, &mut app, grip_of(main), Pos2::new(800.0, 450.0));
+    assert_eq!(app.settings.bars.dock(Bar::Palette), Dock::Floating);
+    assert!(app.settings.palette_bars.is_empty());
+    assert!(app.settings.palette.show_document);
+    assert!(panel_rect(&ctx, egui::Id::new("document_palette")).is_some());
+    let window = ctx
+        .memory(|m| {
+            m.area_rect(crate::ui::palette_bars::window_id(
+                crate::ui::palette::Row::Main,
+            ))
+        })
+        .expect("the default palette's window");
+    let title = Pos2::new(window.left() + 30.0, window.top() + 6.0);
+    drag_between(&ctx, &mut app, title, Pos2::new(800.0, 995.0));
+    assert_eq!(app.settings.bars.dock(Bar::Palette), Dock::Bottom);
+    assert!(app.settings.palette.show_document);
+    assert!(app.settings.palette_bars.is_empty());
+}
+
+/// A further palette bar dragged out by its grip floats by itself; the
+/// default palette and the document row stay, and it docks back.
+#[test]
+fn dragging_a_further_palette_bar_out_floats_it_alone() {
+    use crate::ui::bars::{Bar, Dock};
+    use crate::ui::palette::Row;
+    let (ctx, mut app, _) = setup();
+    let gray = app
+        .palettes
+        .iter()
+        .position(|p| p.key == "palette.grayscale")
+        .expect("grayscale palette");
+    let id = crate::settings::palette_id(&app.palettes[gray]);
+    app.open_palette_bar(&id);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let bar = panel_rect(&ctx, egui::Id::new(("palette_extra", Row::Extra(0)))).expect("the bar");
+    drag_between(&ctx, &mut app, grip_of(bar), Pos2::new(800.0, 450.0));
+    assert_eq!(app.settings.palette_bars[0].dock, Dock::Floating);
+    assert_eq!(app.settings.bars.dock(Bar::Palette), Dock::Bottom);
+    assert!(app.settings.palette.show_document);
+    assert!(panel_rect(&ctx, egui::Id::new("document_palette")).is_some());
+    let window = ctx
+        .memory(|m| m.area_rect(crate::ui::palette_bars::window_id(Row::Extra(0))))
+        .expect("the bar's window");
+    let title = Pos2::new(window.left() + 30.0, window.top() + 6.0);
+    drag_between(&ctx, &mut app, title, Pos2::new(800.0, 995.0));
+    assert_eq!(app.settings.palette_bars[0].dock, Dock::Bottom);
+    assert_eq!(app.settings.bars.dock(Bar::Palette), Dock::Bottom);
+    assert!(app.settings.palette.show_document);
+}

@@ -110,7 +110,13 @@ pub fn set_dock(app: &mut App, which: Row, dock: Dock, at: Option<Pos2>) {
                 }
             }
         }
-        _ => {
+        // The document palette row moves as a bar of its own.
+        Row::Document => {
+            if let Some(k) = detach_document_row(app) {
+                set_dock(app, Row::Extra(k), dock, at);
+            }
+        }
+        Row::Main => {
             let spot = if dock.horizontal() {
                 crate::ui::bars::PaletteSpot::Beside
             } else {
@@ -322,6 +328,82 @@ pub fn grip_zone(app: &mut App, ui: &mut Ui, k: usize, r: Rect) {
             last: resp.interact_pointer_pos(),
         });
     }
+}
+
+/// The side the document palette row lies at: over the drawing while the
+/// default palette is docked at the top, else under it.
+pub fn document_row_dock(app: &App) -> Dock {
+    if app.settings.bars.dock(Bar::Palette) == Dock::Top {
+        Dock::Top
+    } else {
+        Dock::Bottom
+    }
+}
+
+/// Take the document palette row out into a palette bar of its own, at
+/// the row's side, so it moves by itself and the default palette stays
+/// where it is. The bar showing the document palette, if one is open
+/// already; nothing when it cannot open.
+pub fn detach_document_row(app: &mut App) -> Option<usize> {
+    if let Some(k) = app.extra_palettes.iter().position(|r| r.document) {
+        app.settings.palette.show_document = false;
+        return Some(k);
+    }
+    let dock = document_row_dock(app);
+    app.open_palette_bar(DOCUMENT_PALETTE);
+    let k = app.extra_palettes.iter().position(|r| r.document)?;
+    if let Some(b) = app.settings.palette_bars.get_mut(k) {
+        b.dock = dock;
+        b.rows = 1;
+    }
+    app.settings.palette.show_document = false;
+    Some(k)
+}
+
+/// The document palette bar `k` dropped at `dock`: at the row's own side
+/// (with the default palette shown) it goes back to being the row under
+/// the drawing. Says whether it did.
+fn redock_document_row(app: &mut App, k: usize, dock: Dock) -> bool {
+    let document = app.extra_palettes.get(k).is_some_and(|r| r.document);
+    if !document || !app.settings.palette.show_palette || dock != document_row_dock(app) {
+        return false;
+    }
+    close_bar(app, k);
+    app.settings.palette.show_document = true;
+    true
+}
+
+/// The grip of the document palette row: dragging it takes the row out
+/// into a palette bar of its own and moves that bar (never the default
+/// palette); a right click opens the bars' menu.
+pub fn document_grip_zone(app: &mut App, ui: &mut Ui, r: Rect) {
+    let resp = ui
+        .interact(
+            r,
+            egui::Id::new("document_palette_grip"),
+            Sense::click_and_drag(),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "palette.bar",
+            if app.settings.bars.locked {
+                "bars.grip_locked_desc"
+            } else {
+                "bars.grip_desc"
+            },
+        ));
+    if !app.settings.bars.locked {
+        let resp = resp.clone().on_hover_cursor(egui::CursorIcon::Move);
+        if resp.drag_started() {
+            if let Some(k) = detach_document_row(app) {
+                app.palette_bar_drag = Some(PaletteBarDrag {
+                    bar: k,
+                    grab: vec2(12.0, TITLE_H / 2.0),
+                    last: resp.interact_pointer_pos(),
+                });
+            }
+        }
+    }
+    crate::ui::bars::bar_menu(app, &resp, Bar::Palette);
 }
 
 /// The palette bars docked at `dock`, a panel each (a row along the top
@@ -620,7 +702,9 @@ pub fn drag_overlay(app: &mut App, ctx: &egui::Context, menu_h: f32) {
     );
     if !down {
         app.palette_bar_drag = None;
-        set_dock(app, Row::Extra(drag.bar), dock, Some(p - drag.grab));
+        if !redock_document_row(app, drag.bar, dock) {
+            set_dock(app, Row::Extra(drag.bar), dock, Some(p - drag.grab));
+        }
     }
 }
 
