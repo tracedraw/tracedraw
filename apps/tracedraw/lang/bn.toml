@@ -6431,6 +6431,7 @@ dialog.export_preset_rename_desc = "বেছে নেওয়া প্রি
 dialog.export_preset_delete_desc = "বেছে নেওয়া প্রিসেট সরান।"
 dialog.export_format_desc = "লেখার ফাইলের ধরন।"
 dialog.export_dpi_desc = "ছবি প্রতি ইঞ্চিতে কত পিক্সেল পায়। বেশি হলে আরও স্পষ্ট ও বড়।"
+dialog.export_color_mode_desc = "পর্দার মতো RGB; ছাপার জন্য CMYK কালি, রং বিভাজনের মতো রূপান্তরিত ও CMYK প্রোফাইল যুক্ত; অথবা ধূসরের একটি চ্যানেল।" # mt
 dialog.export_dpi_preset_desc = "এই রেজোলিউশন ব্যবহার করুন।"
 dialog.export_transparent_desc = "ড্রয়িংয়ের চারপাশের অংশ সাদার বদলে স্বচ্ছ রাখুন।"
 dialog.webp_lossless_desc = "প্রতিটি পিক্সেল হুবহু রাখুন, বড় ফাইলের বিনিময়ে।"

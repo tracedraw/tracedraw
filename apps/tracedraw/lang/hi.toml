@@ -6431,6 +6431,7 @@ dialog.export_preset_rename_desc = "चुने गए प्रीसेट �
 dialog.export_preset_delete_desc = "चुना गया प्रीसेट हटाएँ।"
 dialog.export_format_desc = "लिखी जाने वाली फ़ाइल का प्रकार।"
 dialog.export_dpi_desc = "छवि को प्रति इंच कितने पिक्सेल मिलते हैं। अधिक से तेज़ और बड़ा।"
+dialog.export_color_mode_desc = "स्क्रीन जैसा RGB; छपाई के लिए CMYK स्याही, रंग पृथक्करण की तरह बदले गए और CMYK प्रोफ़ाइल सम्मिलित; या ग्रे का एक चैनल।" # mt
 dialog.export_dpi_preset_desc = "यह रिज़ॉल्यूशन उपयोग करें।"
 dialog.export_transparent_desc = "ड्रॉइंग के आसपास का क्षेत्र सफ़ेद की जगह पारदर्शी छोड़ें।"
 dialog.webp_lossless_desc = "हर पिक्सेल को ठीक वैसा रखें, बड़ी फ़ाइल की कीमत पर।"

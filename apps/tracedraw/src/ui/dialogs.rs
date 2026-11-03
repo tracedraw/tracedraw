@@ -83,6 +83,9 @@ pub struct ExportState {
     /// Bitmaps: the artwork's printed size against the page's, the same
     /// across and down (1 = as drawn, #617).
     pub scale: f64,
+    /// JPEG and TIFF: the colours written, an index into
+    /// [`EXPORT_COLOR_MODES`] (0 RGB, 1 CMYK, 2 Grayscale; #1763).
+    pub color_mode: usize,
 }
 
 impl Default for ExportState {
@@ -111,6 +114,53 @@ impl Default for ExportState {
             preset_name: None,
             size_unit: 0,
             scale: 1.0,
+            color_mode: 0,
+        }
+    }
+}
+
+/// The colour modes of a JPEG or TIFF export (#1763): RGB as drawn on
+/// screen, CMYK inks for print, or one channel of grey.
+pub const EXPORT_COLOR_MODES: [ExportColorMode; 3] = [
+    ExportColorMode::Rgb,
+    ExportColorMode::Cmyk,
+    ExportColorMode::Gray,
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportColorMode {
+    Rgb,
+    Cmyk,
+    Gray,
+}
+
+impl ExportColorMode {
+    /// The name shown in the Export dialog.
+    pub fn label(self) -> String {
+        match self {
+            ExportColorMode::Rgb => "RGB".into(),
+            ExportColorMode::Cmyk => "CMYK".into(),
+            ExportColorMode::Gray => tr("palette.model_gray"),
+        }
+    }
+
+    /// The bitmap formats (by extension) that take a colour mode.
+    pub fn applies_to(ext: &str) -> bool {
+        matches!(ext, "jpg" | "tif")
+    }
+}
+
+impl ExportState {
+    /// The colour mode the export writes: the one chosen for JPEG and
+    /// TIFF, RGB for every other format.
+    pub fn color_mode_for(&self, ext: &str) -> ExportColorMode {
+        if ExportColorMode::applies_to(ext) {
+            EXPORT_COLOR_MODES
+                .get(self.color_mode)
+                .copied()
+                .unwrap_or(ExportColorMode::Rgb)
+        } else {
+            ExportColorMode::Rgb
         }
     }
 }
@@ -3648,6 +3698,7 @@ fn export_preview_key(app: &App, st: &ExportState) -> u64 {
     st.dpi.to_bits().hash(&mut h);
     st.scale_or_one().to_bits().hash(&mut h);
     st.webp_lossless.hash(&mut h);
+    st.color_mode.hash(&mut h);
     if st.selection_only {
         for id in &app.selection {
             id.raw().hash(&mut h);
@@ -4046,6 +4097,25 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                         )
                         .rich_tip(crate::ui::tips::keyed("dialog.quality"));
                     }
+                    let (_, ext) = EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)];
+                    if ExportColorMode::applies_to(ext) {
+                        // RGB, CMYK inks for print or grey (#1763).
+                        ui.horizontal(|ui| {
+                            ui.label(tr("dialog.color_mode"));
+                            egui::ComboBox::from_id_salt("exp_color_mode")
+                                .selected_text(st.color_mode_for(ext).label())
+                                .show_ui(ui, |ui| {
+                                    for (i, m) in EXPORT_COLOR_MODES.iter().enumerate() {
+                                        ui.selectable_value(&mut st.color_mode, i, m.label());
+                                    }
+                                })
+                                .response
+                                .rich_tip(crate::ui::tips::pair(
+                                    "dialog.color_mode",
+                                    "dialog.export_color_mode_desc",
+                                ));
+                        });
+                    }
                     let b = if st.selection_only {
                         app.selection_bounds().unwrap_or(app.page_rect())
                     } else {
@@ -4114,8 +4184,12 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                     // What comes out: pixels, the resolution the file
                     // records and its colours.
                     let (pw, ph) = export_pixels(b.width(), b.height(), st.render_dpi());
-                    let (_, ext) = EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)];
                     let alpha = st.transparent && crate::export::keeps_alpha(ext);
+                    let mode = match st.color_mode_for(ext) {
+                        ExportColorMode::Rgb if alpha => "sRGB + alpha".to_string(),
+                        ExportColorMode::Rgb => "sRGB".to_string(),
+                        other => other.label(),
+                    };
                     ui.label(
                         egui::RichText::new(trf(
                             "dialog.export_output",
@@ -4123,7 +4197,7 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                                 ("w", &pw.to_string()),
                                 ("h", &ph.to_string()),
                                 ("dpi", &format!("{:.0}", st.dpi)),
-                                ("mode", if alpha { "sRGB + alpha" } else { "sRGB" }),
+                                ("mode", &mode),
                             ],
                         ))
                         .color(Tokens::text_dim()),

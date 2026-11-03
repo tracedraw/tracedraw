@@ -6431,6 +6431,7 @@ dialog.export_preset_rename_desc = "Dá vybrané předvolbě nový název."
 dialog.export_preset_delete_desc = "Odebere vybranou předvolbu."
 dialog.export_format_desc = "Druh souboru, který se zapíše."
 dialog.export_dpi_desc = "Kolik pixelů na palec obrázek dostane. Více je ostřejší a větší."
+dialog.export_color_mode_desc = "RGB jako na obrazovce; inkousty CMYK pro tisk, barvy převedené jako na separacích a vložený profil CMYK; nebo jeden kanál šedi." # mt
 dialog.export_dpi_preset_desc = "Použije toto rozlišení."
 dialog.export_transparent_desc = "Ponechá oblast kolem kresby průhlednou místo bílé."
 dialog.webp_lossless_desc = "Zachová každý pixel přesně, za cenu většího souboru."

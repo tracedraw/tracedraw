@@ -8,7 +8,7 @@ use crate::app::App;
 use crate::export_assets::AssetSource;
 use crate::i18n::{tr, trf};
 use crate::theme::Tokens;
-use crate::ui::dialogs::EXPORT_FORMATS;
+use crate::ui::dialogs::{ExportColorMode, EXPORT_COLOR_MODES, EXPORT_FORMATS};
 use crate::ui::field::NumField;
 use crate::ui::tips::RichTip;
 use egui::Ui;
@@ -19,6 +19,38 @@ fn raster(format: usize) -> bool {
         EXPORT_FORMATS.get(format).map(|(_, e)| *e),
         Some("png" | "jpg" | "bmp" | "tif" | "webp" | "gif" | "psd")
     )
+}
+
+/// JPEG and TIFF: RGB, CMYK or Grayscale (#1763).
+fn color_mode_combo(
+    ui: &mut Ui,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    format: usize,
+    mode: &mut usize,
+) {
+    let Some((_, ext)) = EXPORT_FORMATS.get(format) else {
+        return;
+    };
+    if !ExportColorMode::applies_to(ext) {
+        return;
+    }
+    let shown = EXPORT_COLOR_MODES
+        .get(*mode)
+        .copied()
+        .unwrap_or(ExportColorMode::Rgb);
+    egui::ComboBox::from_id_salt(salt)
+        .selected_text(shown.label())
+        .width(64.0)
+        .show_ui(ui, |ui| {
+            for (i, m) in EXPORT_COLOR_MODES.iter().enumerate() {
+                ui.selectable_value(mode, i, m.label());
+            }
+        })
+        .response
+        .rich_tip(crate::ui::tips::pair(
+            "dialog.color_mode",
+            "dialog.export_color_mode_desc",
+        ));
 }
 
 fn format_combo(ui: &mut Ui, salt: impl std::hash::Hash + std::fmt::Debug, format: &mut usize) {
@@ -72,6 +104,13 @@ pub fn export_docker(app: &mut App, ui: &mut Ui) {
             )
             .rich_tip(crate::ui::tips::keyed("export_docker.dpi"));
         }
+        let assets = &mut app.export_assets;
+        color_mode_combo(
+            ui,
+            "export_assets_mode",
+            assets.format,
+            &mut assets.color_mode,
+        );
     });
     ui.separator();
 
@@ -122,6 +161,12 @@ pub fn export_docker(app: &mut App, ui: &mut Ui) {
                             )
                             .rich_tip(crate::ui::tips::keyed("export_docker.dpi"));
                         }
+                        color_mode_combo(
+                            ui,
+                            ("asset_mode", i),
+                            asset.format,
+                            &mut asset.color_mode,
+                        );
                         let what = match &asset.source {
                             AssetSource::Page(p) => trf(
                                 "export_docker.page_n",

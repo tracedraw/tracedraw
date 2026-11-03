@@ -6431,6 +6431,7 @@ dialog.export_preset_rename_desc = "Donne un nouveau nom au préréglage choisi.
 dialog.export_preset_delete_desc = "Supprime le préréglage choisi."
 dialog.export_format_desc = "Le type de fichier à écrire."
 dialog.export_dpi_desc = "Le nombre de pixels par pouce de l'image. Plus, c'est plus net et plus lourd."
+dialog.export_color_mode_desc = "RVB comme à l'écran ; encres CMJN pour l'impression, couleurs converties comme sur les séparations et profil CMJN incorporé ; ou un seul canal de gris." # mt
 dialog.export_dpi_preset_desc = "Utilise cette résolution."
 dialog.export_transparent_desc = "Laisse transparente la zone autour du dessin au lieu de blanche."
 dialog.webp_lossless_desc = "Garde chaque pixel à l'identique, au prix d'un fichier plus lourd."

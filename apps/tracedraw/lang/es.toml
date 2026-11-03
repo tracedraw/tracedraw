@@ -6431,6 +6431,7 @@ dialog.export_preset_rename_desc = "Da un nombre nuevo al valor predefinido eleg
 dialog.export_preset_delete_desc = "Quita el valor predefinido elegido."
 dialog.export_format_desc = "El tipo de archivo que escribir."
 dialog.export_dpi_desc = "Cuántos píxeles por pulgada tiene la imagen. Más es más nítido y más grande."
+dialog.export_color_mode_desc = "RGB como en pantalla; tintas CMYK para impresión, con los colores convertidos como en las separaciones y el perfil CMYK incrustado; o un solo canal de gris." # mt
 dialog.export_dpi_preset_desc = "Usa esta resolución."
 dialog.export_transparent_desc = "Deja transparente la zona alrededor del dibujo en lugar de blanca."
 dialog.webp_lossless_desc = "Conserva cada píxel exacto, a cambio de un archivo más grande."

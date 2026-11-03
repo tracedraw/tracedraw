@@ -6431,6 +6431,7 @@ dialog.export_preset_rename_desc = "Seçilen hazır ayara yeni bir ad verir."
 dialog.export_preset_delete_desc = "Seçilen hazır ayarı kaldırır."
 dialog.export_format_desc = "Yazılacak dosya türü."
 dialog.export_dpi_desc = "Resmin inç başına kaç piksel alacağı. Fazlası daha net ve daha büyüktür."
+dialog.export_color_mode_desc = "Ekrandaki gibi RGB; baskı için CMYK mürekkepleri, renkler ayrımlardaki gibi dönüştürülür ve CMYK profili gömülür; ya da tek gri kanal." # mt
 dialog.export_dpi_preset_desc = "Bu çözünürlüğü kullanır."
 dialog.export_transparent_desc = "Çizimin çevresini beyaz yerine saydam bırakır."
 dialog.webp_lossless_desc = "Daha büyük bir dosya pahasına her pikseli aynen korur."
