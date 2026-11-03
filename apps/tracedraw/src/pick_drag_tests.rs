@@ -10345,6 +10345,68 @@ fn a_double_click_edits_a_dimension_label_in_place() {
     assert_eq!(shape_count(&app), count);
 }
 
+/// A diameter dimension on a circle dragged by its label with the Pick
+/// tool stays on the circle: its measured points stay on the circle's
+/// nodes, only its line moves, and the circle dragged next takes it
+/// along (#1492).
+#[test]
+fn a_dragged_dimension_stays_on_the_circle_it_measures() {
+    let (ctx, mut app, rect) = setup();
+    app.run(tracedraw_core::Command::DeleteShapes { shapes: vec![rect] });
+    let circle = app
+        .new_shape(ShapeKind::Ellipse {
+            rect: Rect::new(60.0, 60.0, 100.0, 100.0),
+            arc: None,
+        })
+        .expect("circle");
+    app.create_dimension(
+        Point::new(60.0, 80.0),
+        Point::new(100.0, 80.0),
+        Point::new(80.0, 50.0),
+    );
+    let g = app.selection[0];
+    let read = |app: &App| {
+        crate::dimensions::Dimension::of(app.doc().find_shape(g).expect("dimension"))
+            .expect("still a dimension")
+    };
+    assert_eq!(read(&app).anchors.len(), 2);
+    app.set_tool(Tool::Pick);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let label = match &app.doc().find_shape(g).expect("dimension").kind {
+        ShapeKind::Group { children } => children[2].clone(),
+        other => panic!("{other:?}"),
+    };
+    let from = app.view.to_screen(label.bounds().center());
+    let to = app
+        .view
+        .to_screen(label.bounds().center() + Vec2::new(10.0, -10.0));
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    // As the window does after every frame (lib.rs).
+    app.bake_dimensions();
+    assert_eq!(app.selection, vec![g], "the dimension was dragged");
+    let d = read(&app);
+    assert_eq!(d.anchors.len(), 2, "still held: {:?}", d.anchors);
+    let crate::dimensions::Measure::Linear { a, b, at } = d.measure else {
+        panic!("linear");
+    };
+    assert!((a - Point::new(60.0, 80.0)).hypot() < 1e-6, "{a:?}");
+    assert!((b - Point::new(100.0, 80.0)).hypot() < 1e-6, "{b:?}");
+    assert!(at.y < 45.0, "the line moved up: {at:?}");
+    // The circle dragged: the dimension goes along.
+    app.select(vec![circle]);
+    let from = app.view.to_screen(Point::new(80.0, 100.0));
+    let to = app.view.to_screen(Point::new(80.0, 120.0));
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    app.bake_dimensions();
+    let c = app.doc().find_shape(circle).expect("circle").bounds();
+    assert!(c.y0 > 70.0, "the circle moved: {c:?}");
+    let d = read(&app);
+    let crate::dimensions::Measure::Linear { a, .. } = d.measure else {
+        panic!("linear");
+    };
+    assert!((a.y - c.center().y).abs() < 1e-6, "{a:?} {c:?}");
+}
+
 /// The dimension bar's Options menu stays open while a field in it is
 /// clicked, typed in and confirmed with Enter, and the value applies to
 /// the selected dimension (#644).
