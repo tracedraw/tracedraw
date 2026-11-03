@@ -37,6 +37,9 @@ pub struct ImportedPdf {
     pub pages: Vec<ImportedPage>,
     pub warnings: Vec<String>,
     pub title: Option<String>,
+    /// The spot inks the pages' Separation colours name, numbered from 1
+    /// in the order they came; `Color::Spot` of the shapes refers to them.
+    pub inks: Vec<tracedraw_core::document::Ink>,
 }
 
 /// Does the buffer hold a PDF, possibly after an AI/PostScript preamble?
@@ -133,8 +136,10 @@ pub fn parse_with_options(
             ops: 0,
             curves: options.text_as_curves,
             actual: None,
+            inks: std::mem::take(&mut out.inks),
         };
         let page = imp.import_page(*page_id, index);
+        out.inks = std::mem::take(&mut imp.inks);
         out.warnings.extend(imp.warnings);
         out.pages.push(page);
     }
@@ -331,6 +336,7 @@ pub fn to_document(imp: ImportedPdf, title: &str) -> tracedraw_core::Document {
         .unwrap_or(tracedraw_core::document::paper::A4);
     let mut doc = tracedraw_core::Document::new(imp.title.as_deref().unwrap_or(title), first);
     doc.pages.clear();
+    doc.inks = imp.inks;
     for (i, p) in imp.pages.into_iter().enumerate() {
         let pid = doc.ids_mut().page();
         let lid = doc.ids_mut().layer();
@@ -575,24 +581,116 @@ struct OpenFrame {
     shapes: Vec<Shape>,
 }
 
+/// A colour space as colours are read in it (ISO 32000-1 section 8.6).
+/// ICC-based and CIE-based spaces go by their number of components.
 #[derive(Clone, Debug, PartialEq)]
 enum ColorSpace {
     Gray,
     Rgb,
     Cmyk,
-    /// Component count only (ICCBased, Lab, Separation...).
-    N(usize),
     Pattern,
+    /// A Separation space, or a DeviceN space with one colourant: one
+    /// tint, 0 = no ink, 1 = full ink.
+    Separation(Colorant),
+    /// A DeviceN space: one tint per colourant.
+    DeviceN(std::rc::Rc<[Colorant]>),
+    /// An Indexed space: one index into a table of base colours.
+    Indexed(std::rc::Rc<IndexedSpace>),
+}
+
+/// The table of an Indexed colour space.
+#[derive(Debug, PartialEq)]
+struct IndexedSpace {
+    base: ColorSpace,
+    /// The highest index.
+    hival: usize,
+    /// `hival + 1` entries of one byte per base component.
+    lookup: Vec<u8>,
+}
+
+/// The colourant of a Separation (or one of a DeviceN) colour space.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Colorant {
+    /// `All`: every separation, the registration colour.
+    All,
+    /// `None`: never marks.
+    None,
+    /// A process colourant (`Cyan`, `Magenta`, `Yellow`, `Black`): its
+    /// place in C, M, Y, K.
+    Process(usize),
+    /// A spot ink: its number among the import's inks and its process
+    /// stand-in at full tint.
+    Ink { id: u32, cmyk: [f32; 4] },
+}
+
+impl Colorant {
+    /// The colour at tint `t` (0 to 1); `None` for the `None` colourant.
+    fn color(self, t: f32) -> Option<Color> {
+        match self {
+            // Registration colour has no tint: a lighter one is the same
+            // share of every process ink.
+            Colorant::All if t >= 1.0 - 1e-4 => Some(Color::Registration),
+            Colorant::Ink { id, cmyk } => Some(Color::Spot {
+                ink: id,
+                tint: t,
+                c: cmyk[0],
+                m: cmyk[1],
+                y: cmyk[2],
+                k: cmyk[3],
+            }),
+            Colorant::None => None,
+            other => {
+                let [c, m, y, k] = other.cmyk(t);
+                Some(Color::Cmyk { c, m, y, k })
+            }
+        }
+    }
+
+    /// The process inks of tint `t`.
+    fn cmyk(self, t: f32) -> [f32; 4] {
+        match self {
+            Colorant::All => [t; 4],
+            Colorant::None => [0.0; 4],
+            Colorant::Process(i) => {
+                let mut v = [0.0; 4];
+                if let Some(x) = v.get_mut(i) {
+                    *x = t;
+                }
+                v
+            }
+            Colorant::Ink { cmyk, .. } => cmyk.map(|v| v * t),
+        }
+    }
 }
 
 impl ColorSpace {
     fn components(&self) -> usize {
         match self {
-            ColorSpace::Gray => 1,
+            ColorSpace::Gray | ColorSpace::Separation(_) | ColorSpace::Indexed(_) => 1,
             ColorSpace::Rgb => 3,
             ColorSpace::Cmyk => 4,
-            ColorSpace::N(n) => *n,
+            ColorSpace::DeviceN(c) => c.len(),
             ColorSpace::Pattern => 0,
+        }
+    }
+
+    /// The components of the colour `cs` and `CS` start with: full tint
+    /// in Separation and DeviceN spaces, black in the others (index 0 in
+    /// an Indexed space).
+    fn initial(&self) -> Vec<f64> {
+        match self {
+            ColorSpace::Separation(_) | ColorSpace::DeviceN(_) => vec![1.0; self.components()],
+            ColorSpace::Cmyk => vec![0.0, 0.0, 0.0, 1.0],
+            _ => vec![0.0; self.components()],
+        }
+    }
+
+    /// Paints nothing: the `None` colourant (ISO 32000-1 8.6.6.4).
+    fn never_marks(&self) -> bool {
+        match self {
+            ColorSpace::Separation(c) => *c == Colorant::None,
+            ColorSpace::DeviceN(cs) => cs.iter().all(|c| *c == Colorant::None),
+            _ => false,
         }
     }
 }
@@ -673,6 +771,8 @@ struct Importer<'a> {
     curves: bool,
     /// The `ActualText` of the marked content being drawn.
     actual: Option<ActualText>,
+    /// The spot inks met so far (all pages).
+    inks: Vec<tracedraw_core::document::Ink>,
 }
 
 /// The text marked content gives its glyphs, shown in place of their own
@@ -1354,23 +1454,18 @@ impl<'a> Importer<'a> {
                         .and_then(|o| o.as_name().ok())
                         .map(|name| self.color_space(resources, name))
                         .unwrap_or(ColorSpace::Gray);
-                    let initial = match cs {
-                        ColorSpace::Cmyk => Color::Cmyk {
-                            c: 0.0,
-                            m: 0.0,
-                            y: 0.0,
-                            k: 1.0,
-                        },
-                        ColorSpace::Pattern => Color::BLACK,
-                        _ => Color::BLACK,
+                    let initial = if cs.never_marks() {
+                        None
+                    } else {
+                        Some(color_from_components(&cs.initial(), &cs).unwrap_or(Color::BLACK))
                     };
                     if operator == "cs" {
                         gs.fill_cs = cs;
-                        gs.fill = Some(initial);
+                        gs.fill = initial;
                         gs.fill_pattern = None;
                     } else {
                         gs.stroke_cs = cs;
-                        gs.stroke = Some(initial);
+                        gs.stroke = initial;
                     }
                 }
                 "sc" | "scn" | "SC" | "SCN" => {
@@ -1394,6 +1489,13 @@ impl<'a> Importer<'a> {
                                     _ => Some(Color::Gray { v: 0.5 }),
                                 };
                             }
+                        }
+                    } else if cs.never_marks() {
+                        if is_fill {
+                            gs.fill = None;
+                            gs.fill_pattern = None;
+                        } else {
+                            gs.stroke = None;
                         }
                     } else {
                         let c = color_from_components(&vals, cs);
@@ -1631,15 +1733,95 @@ impl<'a> Importer<'a> {
                     }
                     b"CalRGB" | b"Lab" => ColorSpace::Rgb,
                     b"CalGray" => ColorSpace::Gray,
-                    b"Indexed" | b"I" => ColorSpace::N(1),
-                    b"Separation" => ColorSpace::N(1),
+                    b"Indexed" | b"I" => {
+                        // [/Indexed base hival lookup]
+                        let base = a
+                            .get(1)
+                            .map(|b| self.color_space_object(b, depth + 1))
+                            .unwrap_or(ColorSpace::Rgb);
+                        let hival = a
+                            .get(2)
+                            .and_then(|h| Self::num(self.deref(h)))
+                            .filter(|h| h.is_finite())
+                            .unwrap_or(0.0)
+                            .clamp(0.0, 255.0) as usize;
+                        let lookup = match a.get(3).map(|l| self.deref(l)) {
+                            Some(Object::String(s, _)) => s.clone(),
+                            Some(Object::Stream(s)) => s
+                                .decompressed_content()
+                                .unwrap_or_else(|_| s.content.clone()),
+                            _ => Vec::new(),
+                        };
+                        ColorSpace::Indexed(std::rc::Rc::new(IndexedSpace {
+                            base,
+                            hival,
+                            lookup,
+                        }))
+                    }
+                    b"Separation" => {
+                        // [/Separation name alternateSpace tintTransform]
+                        let name = a
+                            .get(1)
+                            .and_then(|n| self.deref(n).as_name().ok())
+                            .unwrap_or(b"");
+                        ColorSpace::Separation(self.colorant(name, a.get(2), a.get(3), depth, true))
+                    }
                     b"DeviceN" => {
-                        let n = a
+                        // [/DeviceN names alternateSpace tintTransform attributes]
+                        let names: Vec<Vec<u8>> = a
                             .get(1)
                             .and_then(|names| self.deref(names).as_array().ok())
-                            .map(|v| v.len())
-                            .unwrap_or(1);
-                        ColorSpace::N(n)
+                            .map(|v| {
+                                v.iter()
+                                    .filter_map(|n| {
+                                        self.deref(n).as_name().ok().map(<[u8]>::to_vec)
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        if let [name] = names.as_slice() {
+                            return ColorSpace::Separation(self.colorant(
+                                name,
+                                a.get(2),
+                                a.get(3),
+                                depth,
+                                true,
+                            ));
+                        }
+                        // The colourants mix as their process inks: the
+                        // tint transform takes more than one input, and a
+                        // spot colourant's stand-in comes from the
+                        // Separation space the attributes give it.
+                        let described = a
+                            .get(4)
+                            .and_then(|at| self.dict_of(at))
+                            .and_then(|at| self.get(at, b"Colorants"))
+                            .and_then(|c| self.dict_of(c))
+                            .cloned();
+                        let colorants: Vec<Colorant> = names
+                            .iter()
+                            .map(|name| {
+                                if let Some(c) = Self::named_colorant(name) {
+                                    return c;
+                                }
+                                let sep = described.as_ref().and_then(|d| d.get(name).ok());
+                                let sep =
+                                    sep.map(|s| self.deref(s)).and_then(|s| s.as_array().ok());
+                                match sep {
+                                    Some(sep) => {
+                                        self.colorant(name, sep.get(2), sep.get(3), depth, false)
+                                    }
+                                    None => {
+                                        self.warn(format!(
+                                            "colourant {} has no process stand-in; shown as black",
+                                            String::from_utf8_lossy(name)
+                                        ));
+                                        Colorant::Process(3)
+                                    }
+                                }
+                            })
+                            .collect();
+                        ColorSpace::DeviceN(colorants.into())
                     }
                     b"Pattern" => ColorSpace::Pattern,
                     b"DeviceGray" => ColorSpace::Gray,
@@ -1650,12 +1832,83 @@ impl<'a> Importer<'a> {
                             "colour space family {} approximated",
                             String::from_utf8_lossy(family)
                         ));
-                        ColorSpace::N(1)
+                        ColorSpace::Gray
                     }
                 }
             }
             _ => ColorSpace::Gray,
         }
+    }
+
+    /// The colourants whose names the PDF reference reserves (ISO
+    /// 32000-1 8.6.6.4): `All`, `None` and the four process colourants.
+    fn named_colorant(name: &[u8]) -> Option<Colorant> {
+        Some(match name {
+            b"All" => Colorant::All,
+            b"None" => Colorant::None,
+            b"Cyan" => Colorant::Process(0),
+            b"Magenta" => Colorant::Process(1),
+            b"Yellow" => Colorant::Process(2),
+            b"Black" => Colorant::Process(3),
+            _ => return None,
+        })
+    }
+
+    /// The colourant `name` of a Separation space whose alternate space
+    /// and tint transform are `alternate` and `tint`. Any other name than
+    /// the reserved ones is a spot ink: with `register`, one of the
+    /// import's inks (the same name, the same ink), its process stand-in
+    /// being the alternate colour at full tint.
+    fn colorant(
+        &mut self,
+        name: &[u8],
+        alternate: Option<&Object>,
+        tint: Option<&Object>,
+        depth: usize,
+        register: bool,
+    ) -> Colorant {
+        if let Some(c) = Self::named_colorant(name) {
+            return c;
+        }
+        let name = String::from_utf8_lossy(name).into_owned();
+        if register {
+            if let Some(ink) = self.inks.iter().find(|i| i.name == name) {
+                return Colorant::Ink {
+                    id: ink.id,
+                    cmyk: ink.cmyk,
+                };
+            }
+        }
+        let alt = alternate
+            .map(|a| self.color_space_object(a, depth + 1))
+            .unwrap_or(ColorSpace::Cmyk);
+        let comps = match tint {
+            Some(f) => self.eval_function(f, 1.0, 0),
+            None => Vec::new(),
+        };
+        // A transform this reader cannot evaluate (a PostScript
+        // calculator) gives a number of components that does not fit.
+        let fits = comps.len() == alt.components();
+        let stand_in = fits
+            .then(|| color_from_components(&comps, &alt))
+            .flatten()
+            .map(|c| c.convert_to("CMYK"));
+        let cmyk = match stand_in {
+            Some(Color::Cmyk { c, m, y, k }) => [c, m, y, k],
+            _ => {
+                self.warn(format!(
+                    "spot colour {name}: no process stand-in; shown as black"
+                ));
+                [0.0, 0.0, 0.0, 1.0]
+            }
+        };
+        if !register {
+            return Colorant::Ink { id: 0, cmyk };
+        }
+        let id = self.inks.iter().map(|i| i.id).max().unwrap_or(0) + 1;
+        self.inks
+            .push(tracedraw_core::document::Ink { id, name, cmyk });
+        Colorant::Ink { id, cmyk }
     }
 
     fn apply_ext_gstate(&mut self, resources: &Dictionary, name: &[u8], gs: &mut GState) {
@@ -1947,10 +2200,15 @@ impl<'a> Importer<'a> {
         let last = filters.last().map(|f| f.as_slice()).unwrap_or(b"");
         let mut rgba: Vec<u8>;
         let cs_obj = d.get(b"ColorSpace").ok().cloned();
+        // A picture keeps its pixels: the spot inks it names do not come
+        // into the drawing.
+        let inks = self.inks.len();
         let cs = cs_obj
             .as_ref()
             .map(|o| self.color_space_object(o, 0))
             .unwrap_or(ColorSpace::Gray);
+        let palette = cs_obj.as_ref().and_then(|o| self.indexed_palette(o));
+        self.inks.truncate(inks);
         let decode_arr = self
             .get(d, b"Decode")
             .map(|o| self.nums(o))
@@ -2004,6 +2262,21 @@ impl<'a> Importer<'a> {
                             px[2] = 255 - px[2];
                         }
                     }
+                    if let ColorSpace::Separation(_) = cs {
+                        // Grey samples are tints: 255 is full ink.
+                        let tints: Vec<[u8; 3]> = (0..=255u8)
+                            .map(|v| {
+                                let t = v as f64 / 255.0;
+                                let t = if inverted { 1.0 - t } else { t };
+                                color_from_components(&[t], &cs).map_or([255; 3], Color::to_rgb8)
+                            })
+                            .collect();
+                        for px in rgba.chunks_exact_mut(4) {
+                            if let Some(c) = tints.get(px[0] as usize) {
+                                px[..3].copy_from_slice(c);
+                            }
+                        }
+                    }
                     // Decoded JPEG size wins over the dictionary.
                     let (jw, jh) = (img.width(), img.height());
                     if jw != w || jh != h {
@@ -2029,10 +2302,20 @@ impl<'a> Importer<'a> {
                     self.warn("image data shorter than its size; skipped");
                     return None;
                 }
-                // Indexed palettes.
-                let palette = cs_obj.as_ref().and_then(|o| self.indexed_palette(o));
                 rgba = Vec::with_capacity((w * h * 4) as usize);
                 let max = ((1u32 << bpc) - 1) as f32;
+                // A Separation picture: the colour of each tint, 1 being
+                // full ink.
+                let tints: Vec<[u8; 3]> = match &cs {
+                    ColorSpace::Separation(_) if bpc <= 16 => (0..=max as u32)
+                        .map(|v| {
+                            let t = v as f64 / max as f64;
+                            let t = if inverted { 1.0 - t } else { t };
+                            color_from_components(&[t], &cs).map_or([255; 3], Color::to_rgb8)
+                        })
+                        .collect(),
+                    _ => Vec::new(),
+                };
                 for y in 0..h as usize {
                     let row = &data[y * row_bytes..(y + 1) * row_bytes];
                     let mut bits = BitReader::new(row);
@@ -2056,7 +2339,9 @@ impl<'a> Importer<'a> {
                             rgba.extend_from_slice(&[c[0], c[1], c[2], if on { 255 } else { 0 }]);
                             continue;
                         }
-                        let (r, g, b) = if let Some(pal) = &palette {
+                        let (r, g, b) = if let Some([r, g, b]) = tints.get(raw0 as usize) {
+                            (*r, *g, *b)
+                        } else if let Some(pal) = &palette {
                             let i = (raw0 as usize) * 3;
                             (
                                 *pal.get(i).unwrap_or(&0),
@@ -2083,6 +2368,17 @@ impl<'a> Importer<'a> {
                                         to8((1.0 - m) * (1.0 - k)),
                                         to8((1.0 - yy) * (1.0 - k)),
                                     )
+                                }
+                                ColorSpace::DeviceN(_) => {
+                                    let n = cs.components();
+                                    let tints: Vec<f64> = comps
+                                        .iter()
+                                        .take(n)
+                                        .map(|v| if inverted { 1.0 - *v } else { *v } as f64)
+                                        .collect();
+                                    let [r, g, b] = color_from_components(&tints, &cs)
+                                        .map_or([255; 3], Color::to_rgb8);
+                                    (r, g, b)
                                 }
                                 _ => {
                                     let v = if inverted { 1.0 - comps[0] } else { comps[0] };
@@ -2129,40 +2425,17 @@ impl<'a> Importer<'a> {
         Some(out)
     }
 
+    /// The RGB of each entry of an Indexed colour space's table.
     fn indexed_palette(&mut self, cs: &Object) -> Option<Vec<u8>> {
-        let Object::Array(a) = self.deref(cs) else {
+        let ColorSpace::Indexed(table) = self.color_space_object(cs, 0) else {
             return None;
         };
-        let family = a.first().and_then(|f| self.deref(f).as_name().ok())?;
-        if family != b"Indexed" && family != b"I" {
-            return None;
-        }
-        let base = self.color_space_object(a.get(1)?, 1);
-        let lookup: Vec<u8> = match self.deref(a.get(3)?) {
-            Object::String(s, _) => s.clone(),
-            Object::Stream(s) => s
-                .decompressed_content()
-                .unwrap_or_else(|_| s.content.clone()),
-            _ => return None,
-        };
-        let n = base.components().max(1);
-        let mut pal = Vec::with_capacity(lookup.len() / n * 3);
-        for e in lookup.chunks_exact(n) {
-            let (r, g, b) = match base {
-                ColorSpace::Rgb => (e[0], e[1], e[2]),
-                ColorSpace::Cmyk => {
-                    let f = |v: u8| v as f32 / 255.0;
-                    let k = f(e[3]);
-                    let to8 = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-                    (
-                        to8((1.0 - f(e[0])) * (1.0 - k)),
-                        to8((1.0 - f(e[1])) * (1.0 - k)),
-                        to8((1.0 - f(e[2])) * (1.0 - k)),
-                    )
-                }
-                _ => (e[0], e[0], e[0]),
-            };
-            pal.extend_from_slice(&[r, g, b]);
+        let n = table.base.components().max(1);
+        let mut pal = Vec::with_capacity(table.lookup.len() / n * 3);
+        for e in table.lookup.chunks_exact(n).take(table.hival + 1) {
+            let comps: Vec<f64> = e.iter().map(|b| *b as f64 / 255.0).collect();
+            let c = color_from_components(&comps, &table.base).unwrap_or(Color::BLACK);
+            pal.extend_from_slice(&c.to_rgb8());
         }
         Some(pal)
     }
@@ -3199,30 +3472,47 @@ fn color_from_components(v: &[f64], cs: &ColorSpace) -> Option<Color> {
         }
     };
     match (cs, v.len()) {
-        (ColorSpace::Gray, 1) | (ColorSpace::N(1), 1) => Some(Color::Gray { v: c(0) }),
-        (ColorSpace::Rgb, 3) | (ColorSpace::N(3), 3) => Some(Color::Rgb {
+        (ColorSpace::Gray, 1) => Some(Color::Gray { v: c(0) }),
+        (ColorSpace::Rgb, 3) => Some(Color::Rgb {
             r: c(0),
             g: c(1),
             b: c(2),
         }),
-        (ColorSpace::Cmyk, 4) | (ColorSpace::N(4), 4) => Some(Color::Cmyk {
+        (ColorSpace::Cmyk, 4) => Some(Color::Cmyk {
             c: c(0),
             m: c(1),
             y: c(2),
             k: c(3),
         }),
-        (_, 1) => Some(Color::Gray { v: 1.0 - c(0) }), // Separation tint: 1 = full ink
-        (_, 3) => Some(Color::Rgb {
-            r: c(0),
-            g: c(1),
-            b: c(2),
-        }),
-        (_, 4) => Some(Color::Cmyk {
-            c: c(0),
-            m: c(1),
-            y: c(2),
-            k: c(3),
-        }),
+        // A tint: 1 is full ink.
+        (ColorSpace::Separation(colorant), 1) => colorant.color(c(0)),
+        (ColorSpace::DeviceN(colorants), n) if n == colorants.len() => {
+            let mut ink = [0.0f32; 4];
+            for (i, colorant) in colorants.iter().enumerate() {
+                for (sum, x) in ink.iter_mut().zip(colorant.cmyk(c(i))) {
+                    *sum += x;
+                }
+            }
+            let [c, m, y, k] = ink.map(|x| x.clamp(0.0, 1.0));
+            Some(Color::Cmyk { c, m, y, k })
+        }
+        (ColorSpace::Indexed(table), 1) => {
+            let x = v.first().copied().unwrap_or(0.0);
+            let index = if x.is_finite() {
+                x.round().clamp(0.0, table.hival as f64) as usize
+            } else {
+                0
+            };
+            let n = table.base.components();
+            let entry = table.lookup.get(index * n..(index + 1) * n)?;
+            let comps: Vec<f64> = entry.iter().map(|b| *b as f64 / 255.0).collect();
+            color_from_components(&comps, &table.base)
+        }
+        // A function giving another number of components than its
+        // device space has: read by their number.
+        (ColorSpace::Rgb | ColorSpace::Cmyk, 1) => color_from_components(v, &ColorSpace::Gray),
+        (ColorSpace::Gray | ColorSpace::Cmyk, 3) => color_from_components(v, &ColorSpace::Rgb),
+        (ColorSpace::Gray | ColorSpace::Rgb, 4) => color_from_components(v, &ColorSpace::Cmyk),
         _ => None,
     }
 }
@@ -4887,6 +5177,128 @@ mod tests {
         let doc = to_document(imp, "damaged");
         let _ = crate::svg::page_to_svg(&doc, 0);
         let _ = crate::pdf::document_to_pdf(&doc);
+    }
+
+    /// Separation, DeviceN and Indexed colours read as the PDF reference
+    /// gives them: a tint of 1 is full ink (the registration colour for
+    /// `All`, a process ink for its own name, the spot ink otherwise,
+    /// one ink per name), `None` paints nothing, an index picks its
+    /// table entry (#1703).
+    #[test]
+    fn separation_devicen_and_indexed_colors() {
+        let content = "/CS0 CS 1 SCN 10 10 m 50 10 l S \
+             /CS1 CS 1 SCN 10 20 m 50 20 l S \
+             /CS2 cs 0.4 scn 0 0 10 10 re f \
+             0 0 1 rg /CS3 CS 1 SCN 20 0 10 10 re B \
+             /CS4 cs 1 scn 40 0 10 10 re f \
+             /CS5 cs 0.5 1 scn 60 0 10 10 re f \
+             /CS6 cs 80 0 10 10 re f";
+        let resources = "<< /ColorSpace << \
+             /CS0 [/Separation /All /DeviceCMYK << /FunctionType 2 /Domain [0 1] /C0 [0 0 0 0] /C1 [1 1 1 1] /N 1 >>] \
+             /CS1 [/Separation /Cyan /DeviceCMYK << /FunctionType 2 /Domain [0 1] /C0 [0 0 0 0] /C1 [1 0 0 0] /N 1 >>] \
+             /CS2 [/Separation /Warm#20Red /DeviceRGB << /FunctionType 2 /Domain [0 1] /C0 [1 1 1] /C1 [1 0 0] /N 1 >>] \
+             /CS3 [/Separation /None /DeviceCMYK << /FunctionType 2 /Domain [0 1] /C0 [0 0 0 0] /C1 [0 0 0 1] /N 1 >>] \
+             /CS4 [/Indexed /DeviceRGB 1 <FF000000FF00>] \
+             /CS5 [/DeviceN [/Cyan /Black] /DeviceCMYK << /FunctionType 4 /Domain [0 1 0 1] /Range [0 1 0 1 0 1 0 1] >>] \
+             /CS6 [/DeviceN [/Warm#20Red] /DeviceRGB << /FunctionType 2 /Domain [0 1] /C0 [1 1 1] /C1 [1 0 0] /N 1 >>] \
+             >> >>";
+        let bytes = one_page(content, resources, &[]);
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let s = &imp.pages[0].shapes;
+        assert_eq!(s.len(), 7, "{:?}", imp.warnings);
+        let stroke = |i: usize| s[i].stroke.as_ref().map(|st| st.color);
+        let fill = |i: usize| match s[i].fill {
+            Fill::Solid(c) => Some(c),
+            _ => None,
+        };
+        assert_eq!(stroke(0), Some(Color::Registration));
+        assert_eq!(
+            stroke(1),
+            Some(Color::Cmyk {
+                c: 1.0,
+                m: 0.0,
+                y: 0.0,
+                k: 0.0
+            })
+        );
+        assert_eq!(imp.inks.len(), 1, "{:?}", imp.inks);
+        let ink = &imp.inks[0];
+        assert_eq!(ink.name, "Warm Red");
+        let red = Color::Rgb {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+        };
+        let Color::Cmyk { c, m, y, k } = red.convert_to("CMYK") else {
+            panic!("CMYK");
+        };
+        assert_eq!(ink.cmyk, [c, m, y, k]);
+        assert_eq!(fill(2), Some(ink.color(0.4)));
+        // `None` never marks: the stroke goes, the fill stays.
+        assert_eq!(stroke(3), None);
+        assert_eq!(
+            fill(3),
+            Some(Color::Rgb {
+                r: 0.0,
+                g: 0.0,
+                b: 1.0
+            })
+        );
+        assert_eq!(
+            fill(4),
+            Some(Color::Rgb {
+                r: 0.0,
+                g: 1.0,
+                b: 0.0
+            })
+        );
+        assert_eq!(
+            fill(5),
+            Some(Color::Cmyk {
+                c: 0.5,
+                m: 0.0,
+                y: 0.0,
+                k: 1.0
+            })
+        );
+        // A DeviceN space of one colourant is its Separation; `cs` starts
+        // at full tint.
+        assert_eq!(fill(6), Some(ink.color(1.0)));
+        // The ink comes into the document.
+        let doc = to_document(imp, "spots");
+        assert_eq!(doc.inks.len(), 1);
+        assert_eq!(doc.inks[0].name, "Warm Red");
+    }
+
+    /// A one-bit picture in a Separation space: 0 is no ink (white), 1
+    /// full ink, not the other way round (#1703); its ink stays out of the
+    /// drawing's inks, the picture keeping its pixels.
+    #[test]
+    fn separation_picture_tints_are_ink() {
+        // '@' = 0b0100_0000: the first pixel 0, the second 1.
+        let bytes = one_page(
+            "q 20 0 0 10 10 10 cm /Im1 Do Q",
+            "<< /XObject << /Im1 5 0 R >> >>",
+            &["<< /Type /XObject /Subtype /Image /Width 2 /Height 1 /ColorSpace [/Separation /Gold /DeviceCMYK << /FunctionType 2 /Domain [0 1] /C0 [0 0 0 0] /C1 [0 0.2 0.8 0.1] /N 1 >>] /BitsPerComponent 1 /Length 1 >>\nstream\n@\nendstream".to_string()],
+        );
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        assert!(imp.inks.is_empty(), "{:?}", imp.inks);
+        let ShapeKind::Bitmap { png, .. } = &imp.pages[0].shapes[0].kind else {
+            panic!("{:?}", imp.pages[0].shapes[0].kind);
+        };
+        let pm = tiny_skia::Pixmap::decode_png(png).expect("png");
+        let px = pm.pixels();
+        assert_eq!((px[0].red(), px[0].green(), px[0].blue()), (255, 255, 255));
+        let gold = Color::Cmyk {
+            c: 0.0,
+            m: 0.2,
+            y: 0.8,
+            k: 0.1,
+        }
+        .to_rgb8();
+        assert_eq!([px[1].red(), px[1].green(), px[1].blue()], gold);
     }
 
     #[test]

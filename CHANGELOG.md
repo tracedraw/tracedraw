@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- PDF import: crop marks and spot colours come back. A colour in a Separation colour space at full tint opened as white, so the crop and registration marks of a PDF published with printers' marks were invisible when it was opened again, and every spot colour came in lighter the stronger it was. Separation tints are now ink: the `All` colourant is the registration colour, `None` paints nothing, the process colourant names are their process ink and any other name is a spot ink, added to the drawing's inks (by name, once) with the alternate colour as its process stand-in. DeviceN colours mix their colourants as process inks, Indexed colours take their table entry in the base space, and pictures in Separation and DeviceN spaces show their tints as ink. Import adds the file's inks to the drawing's, an ink of the same name being the same ink (#1703).
+
 - Standard bar: the Launch button is an icon with its list arrow, like Options; its name moved to the tooltip, so the bar is narrower.
 
 - Multipage View: the space between pages can be changed. Page > Page Spacing, next to Page Layout, offers 0, 5, 10, 20, 30 and 50 mm and Custom... for any distance in the drawing's units, and Document Setup > Layout has a Page spacing field. The spacing is saved with the drawing (drawings saved before keep 30 mm), each change is one undo step, Save as Default keeps it for new drawings, and the page grid, clicks on other pages, snapping to their objects, page labels and Zoom to Fit follow it. It was a fixed 30 mm with no setting.

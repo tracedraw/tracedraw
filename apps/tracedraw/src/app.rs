@@ -6589,6 +6589,7 @@ impl App {
                 let mut doc2 = App::localized_document(title, first);
                 let layer_name = doc2.pages[0].layers[0].name.clone();
                 doc2.pages.clear();
+                doc2.inks = std::mem::take(&mut imported.inks);
                 let mut ids = tracedraw_core::id::IdSource::default();
                 for (i, p) in imported.pages.into_iter().enumerate() {
                     let pid = ids.page();
@@ -7966,7 +7967,16 @@ impl App {
                 let Some(first) = imported.pages.into_iter().next() else {
                     return;
                 };
-                for s in first.shapes {
+                // The file's spot inks join the drawing's: one of the same
+                // name is the same ink, the others are added.
+                let (inks, map) = merge_inks(&self.doc().inks, &imported.inks);
+                if inks != self.doc().inks {
+                    cmds.push(Command::SetInks { inks });
+                }
+                for mut s in first.shapes {
+                    if !map.is_empty() {
+                        crate::color_policy::recolor_shape(&mut s, &|c| renumber_ink(c, &map));
+                    }
                     let id = self.engine.new_shape_id();
                     let shape = reid(s, id, &mut self.engine);
                     ids.push(id);
@@ -8537,6 +8547,47 @@ fn reid(mut s: Shape, id: ShapeId, engine: &mut Engine) -> Shape {
     s
 }
 
+/// The drawing's inks `have` with the inks `come` of an imported file:
+/// an ink of a name the drawing has is that ink, the others are added
+/// with numbers of their own. Gives the inks and, for each imported ink
+/// whose number changes, its old and new number.
+fn merge_inks(
+    have: &[tracedraw_core::document::Ink],
+    come: &[tracedraw_core::document::Ink],
+) -> (Vec<tracedraw_core::document::Ink>, Vec<(u32, u32)>) {
+    let mut inks = have.to_vec();
+    let mut map = Vec::new();
+    for ink in come {
+        let id = match inks.iter().find(|i| i.name == ink.name) {
+            Some(i) => i.id,
+            None => {
+                let id = inks
+                    .iter()
+                    .map(|i| i.id)
+                    .max()
+                    .map_or(1, |m| m.saturating_add(1));
+                inks.push(tracedraw_core::document::Ink { id, ..ink.clone() });
+                id
+            }
+        };
+        if id != ink.id {
+            map.push((ink.id, id));
+        }
+    }
+    (inks, map)
+}
+
+/// A spot colour of an imported ink on the number `map` gives it.
+fn renumber_ink(c: Color, map: &[(u32, u32)]) -> Color {
+    let mut c = c;
+    if let Color::Spot { ink, .. } = &mut c {
+        if let Some((_, to)) = map.iter().find(|(from, _)| from == ink) {
+            *ink = *to;
+        }
+    }
+    c
+}
+
 /// Re-number a shape tree from an id source (documents built outside the engine).
 fn reid_with(mut s: Shape, ids: &mut tracedraw_core::id::IdSource) -> Shape {
     s.id = ids.shape();
@@ -8892,6 +8943,88 @@ pub(crate) fn repeated_transform(t: Affine, before: Rect, now: Rect) -> Affine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A PDF's spot inks come with it: opened, the drawing has them;
+    /// imported, an ink of a name the drawing has is that ink and the
+    /// others are added on numbers of their own (#1703).
+    #[test]
+    fn pdf_spot_inks_come_into_the_drawing() {
+        use tracedraw_core::document::Ink;
+        let mut src = tracedraw_core::Document::new("spots", Size::new(100.0, 50.0));
+        src.inks = vec![
+            Ink {
+                id: 1,
+                name: "Gold 871".into(),
+                cmyk: [0.0, 0.2, 0.8, 0.1],
+            },
+            Ink {
+                id: 2,
+                name: "Warm Red".into(),
+                cmyk: [0.0, 0.9, 0.9, 0.0],
+            },
+        ];
+        let mut ids = src.ids().clone();
+        for (i, ink) in src.inks.clone().iter().enumerate() {
+            let mut s = Shape::new(
+                ids.shape(),
+                ShapeKind::Rect {
+                    rect: Rect::new(10.0 + 30.0 * i as f64, 10.0, 30.0 + 30.0 * i as f64, 30.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            s.fill = Fill::Solid(ink.color(0.5));
+            s.stroke = None;
+            src.pages[0].layers[0].shapes.push(s);
+        }
+        src.set_ids(ids);
+        let dir = std::env::temp_dir().join(format!("tracedraw-pdfinks-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("spots.pdf");
+        std::fs::write(&path, tracedraw_io::pdf::document_to_pdf(&src)).expect("written");
+
+        let mut app = App::headless();
+        app.run(Command::SetInks {
+            inks: vec![
+                Ink {
+                    id: 1,
+                    name: "Other".into(),
+                    cmyk: [1.0, 0.0, 0.0, 0.0],
+                },
+                Ink {
+                    id: 5,
+                    name: "Warm Red".into(),
+                    cmyk: [0.0, 0.9, 0.9, 0.0],
+                },
+            ],
+        });
+        app.import_pdf(&path);
+        let names: Vec<(u32, &str)> = app
+            .doc()
+            .inks
+            .iter()
+            .map(|i| (i.id, i.name.as_str()))
+            .collect();
+        assert_eq!(names, [(1, "Other"), (5, "Warm Red"), (6, "Gold 871")]);
+        let mut spots: Vec<u32> = app
+            .selection
+            .iter()
+            .filter_map(|id| app.doc().find_shape(*id))
+            .filter_map(|s| match s.fill {
+                Fill::Solid(Color::Spot { ink, .. }) => Some(ink),
+                _ => None,
+            })
+            .collect();
+        spots.sort();
+        assert_eq!(spots, [5, 6]);
+
+        let docs = app.docs.len();
+        app.open_path(path.clone());
+        assert_eq!(app.docs.len(), docs + 1);
+        let names: Vec<&str> = app.doc().inks.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, ["Gold 871", "Warm Red"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// Duplicate, then the copy moved or scaled while it stays selected:
     /// the next Duplicate repeats that step from the copy, as the
