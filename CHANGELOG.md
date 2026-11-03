@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+## 0.38.0 (2026-11-03)
+
 - Web and Android: every folder button does something, the same way in every dialog. A browser and the Android app cannot pick a folder, and the buttons behaved differently in each place: hidden in the Export docker, greyed without a reason in the Font Manager and Options, a note in Picture Mosaic, and on Android enabled but silent everywhere. Now no button there shows a folder dialog: the Export docker writes its assets into one zip file named after the drawing (downloaded in the browser, placed by the system's save picker on Android); Font Manager > Add Folder, Print Merge's pictures folder, Picture Mosaic's Browse and, on Android, Options > Spelling's More dictionaries pick several files at once instead (the fonts are added, the pictures serve as the folder); the backup folders in Options > Save are greyed with a tip saying why, as Package's Browse is in the browser. Each button's tip says what it does there. The browser's picker for several files now takes several at once. The desktop is unchanged (#1399).
 
 - Android: tone curve and duotone presets, masks, macro scripts and exports and palettes ask where to save them. They went to the app's own folder under the suggested name without asking; now the system's save picker asks, with that name, as Save As does (a form exported with its `.frx` asks for each file) (#1402).
