@@ -2,6 +2,7 @@
 //! native `.tdraw` file.
 
 #![allow(clippy::field_reassign_with_default)]
+pub mod ai;
 pub mod dxf;
 pub mod emf;
 pub mod eps;

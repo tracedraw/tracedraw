@@ -70,8 +70,16 @@ pub fn numbered_path(path: &Path, number: usize, ext: &str) -> std::path::PathBu
 
 pub fn export(app: &mut App, path: &Path, st: &ExportState) -> Result<String, String> {
     let (_, ext) = EXPORT_FORMATS[st.format];
-    let (doc, _) = export_document(app, st);
-    if ExportState::one_file_for_all_pages(ext) {
+    let (mut doc, _) = export_document(app, st);
+    if ext == "ai" && st.classic_ai() {
+        // The classic AI file's `%%Title`, as the PDF-compatible one's.
+        doc.title = if st.title.trim().is_empty() {
+            app.document_title().trim_end_matches('*').to_string()
+        } else {
+            st.title.trim().to_string()
+        };
+    }
+    if st.one_file_holds_the_pages(ext) {
         let bytes = document_file(app, &doc, ext, st)?;
         crate::files::write(path, bytes).map_err(|e| e.to_string())?;
         return Ok(trf(
@@ -159,6 +167,8 @@ fn page_file(doc: &Document, k: usize, ext: &str, st: &ExportState) -> Result<Ve
     Ok(match ext {
         "svg" => tracedraw_io::svg::page_to_svg(doc, k).into_bytes(),
         "eps" => tracedraw_io::eps::page_to_eps(doc, k).into_bytes(),
+        // The classic AI file: one artboard, so one page per file (#1728).
+        "ai" if st.classic_ai() => tracedraw_io::ai::page_to_ai8(doc, k).into_bytes(),
         "dxf" => tracedraw_io::dxf::page_to_dxf(doc, k).into_bytes(),
         "emf" => tracedraw_io::emf::page_to_emf(doc, k),
         "wmf" => tracedraw_io::emf::page_to_wmf(doc, k),
@@ -348,6 +358,7 @@ pub fn estimated_size(app: &App, st: &ExportState, preview: &tiny_skia::Pixmap) 
         "svg" => Some(tracedraw_io::svg::page_to_svg(&doc, 0).len() * pages),
         "eps" => Some(tracedraw_io::eps::page_to_eps(&doc, 0).len() * pages),
         "ps" | "prn" => Some(tracedraw_io::eps::document_to_ps(&doc).len()),
+        "ai" if st.classic_ai() => Some(tracedraw_io::ai::page_to_ai8(&doc, 0).len() * pages),
         "pdf" | "ai" => Some(tracedraw_io::pdf::document_to_pdf(&doc).len()),
         "png" | "jpg" | "bmp" | "tif" | "webp" | "gif" | "psd" => {
             let enc = if ext == "psd" { "tif" } else { ext };
@@ -2733,6 +2744,58 @@ mod tests {
             numbered_path(Path::new("/x/name"), 2, "png"),
             Path::new("/x/name-2.png")
         );
+    }
+
+    /// "AI" writes the PDF-compatible file by default, and the classic
+    /// version 8 file (PostScript, one page per file) when chosen, for
+    /// programs that read only those (#1728).
+    #[test]
+    fn export_ai_writes_pdf_compatible_or_classic_version_8() {
+        let mut app = App::headless();
+        for k in 0..2 {
+            if k > 0 {
+                app.add_page();
+            }
+            app.new_shape(ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 40.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            });
+        }
+        let dir = std::env::temp_dir().join(format!("tracedraw-1728-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let ai = EXPORT_FORMATS.iter().position(|f| f.1 == "ai").unwrap();
+        let st = |version: usize| ExportState {
+            format: ai,
+            all_pages: true,
+            ai_version: version,
+            title: "Logo (curves)".into(),
+            ..ExportState::default()
+        };
+        // The default: one PDF-compatible file with both pages, as before.
+        assert!(!ExportState::default().classic_ai());
+        export(&mut app, &dir.join("pdf.ai"), &st(0)).expect("pdf-compatible");
+        let bytes = std::fs::read(dir.join("pdf.ai")).unwrap();
+        assert!(bytes.starts_with(b"%PDF"));
+        // Classic: one PostScript file per page, each with the AI header.
+        assert!(st(1).classic_ai() && !st(1).one_file_holds_the_pages("ai"));
+        export(&mut app, &dir.join("old.ai"), &st(1)).expect("classic");
+        for name in ["old-1.ai", "old-2.ai"] {
+            let text = std::fs::read_to_string(dir.join(name)).expect(name);
+            assert!(text.starts_with("%!PS-Adobe-3.0\n"), "{name}");
+            assert!(text.contains("\n%%AI8_CreatorVersion: 8.0\n"));
+            assert!(text.contains("\n%AI5_FileFormat 4.0\n"));
+            assert!(text.contains("\n%%BoundingBox: 0 0 596 842\n"));
+            assert!(text.contains("\n%%Title: (Logo \\(curves\\))\n"), "{text}");
+        }
+        // It opens again as a PostScript-based .ai, with the rectangle.
+        assert_eq!(App::file_kind(&dir.join("old-1.ai")), "eps");
+        let mut ids = tracedraw_core::id::IdSource::default();
+        let bytes = std::fs::read(dir.join("old-1.ai")).unwrap();
+        let back = tracedraw_io::eps_import::parse(&bytes, &mut ids).expect("reads");
+        assert!(!back.shapes.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Export to PDF with text as curves holds no font (#1382).
