@@ -12823,6 +12823,133 @@ fn alignment_keys_while_typing() {
     }
 }
 
+/// Bursts of wheel zoom on a medium (1000 objects) and a heavy (5000
+/// objects) page, at 60 frames a second in real time: five notches in a
+/// row, each a glide of four frames (as the smoothed wheel zooms), about
+/// the middle of the canvas. Reports the frame times during the burst,
+/// how far the picture shown is blown up (the zoom on screen over the zoom
+/// it was rendered at; above 1 it looks blurry), and the time from the
+/// last zoom step to the first frame whose picture is rendered at the zoom
+/// shown. Run with
+/// `cargo test --release -p tracedraw --lib -- --ignored frame_times_of_a_zoom_burst --nocapture`.
+#[test]
+#[ignore]
+fn frame_times_of_a_zoom_burst() {
+    for (label, n) in [("medium", 1000usize), ("heavy", 5000)] {
+        let (ctx, mut app, _) = setup();
+        let mut s = 7u64;
+        let mut r = || {
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((s >> 33) as f64) / (1u64 << 31) as f64
+        };
+        for _ in 0..n {
+            let (x, y) = (r() * 200.0, r() * 280.0);
+            let mut p = tracedraw_core::geometry::BezPath::new();
+            p.move_to((x, y));
+            for _ in 0..6 {
+                p.curve_to(
+                    (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+                    (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+                    (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+                );
+            }
+            p.close_path();
+            app.new_shape(ShapeKind::Path {
+                path: p,
+                closed: true,
+            });
+        }
+        app.select(Vec::new());
+        let start = std::time::Instant::now();
+        let tick = std::time::Duration::from_secs_f64(1.0 / 60.0);
+        let mut next = start;
+        // One frame at the real time, then a wait for the next tick.
+        let mut timed = |app: &mut App| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    Pos2::ZERO,
+                    egui::vec2(1600.0, 1000.0),
+                )),
+                time: Some(start.elapsed().as_secs_f64()),
+                ..Default::default()
+            };
+            let t = std::time::Instant::now();
+            let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+            out.textures_delta.clear();
+            let d = t.elapsed();
+            next += tick;
+            let now = std::time::Instant::now();
+            if next > now {
+                std::thread::sleep(next - now);
+            } else {
+                next = now;
+            }
+            d
+        };
+        let sharp = |app: &App| {
+            let r = app.raster.borrow();
+            !r.drawing() && r.picture_zoom() == Some(app.view.zoom)
+        };
+        let blowup = |app: &App| {
+            let z = app.raster.borrow().picture_zoom().unwrap_or(app.view.zoom);
+            app.view.zoom / z
+        };
+        app.zoom_to_page();
+        for _ in 0..600 {
+            timed(&mut app);
+            if sharp(&app) {
+                break;
+            }
+        }
+        let at = app.canvas_rect.center();
+        let step = 1.15f32.powf(0.25);
+        let (mut frames, mut sum, mut worst) =
+            (0u32, std::time::Duration::ZERO, std::time::Duration::ZERO);
+        let (mut blur_sum, mut blur_worst) = (0.0f32, 1.0f32);
+        let mut waits = Vec::new();
+        for _ in 0..3 {
+            for _ in 0..20 {
+                app.view.zoom_at(at, step);
+                let d = timed(&mut app);
+                frames += 1;
+                sum += d;
+                worst = worst.max(d);
+                let b = blowup(&app);
+                blur_sum += b;
+                blur_worst = blur_worst.max(b);
+            }
+            let t0 = std::time::Instant::now();
+            for _ in 0..600 {
+                let d = timed(&mut app);
+                worst = worst.max(d);
+                if sharp(&app) {
+                    break;
+                }
+            }
+            waits.push(t0.elapsed().as_millis());
+            // Back out to where the burst started, drawn and at rest.
+            app.view.zoom_at(at, 1.0 / step.powi(20));
+            for _ in 0..600 {
+                timed(&mut app);
+                if sharp(&app) {
+                    break;
+                }
+            }
+        }
+        eprintln!(
+            "zoom burst, {label} page ({n} objects): {:?} per frame, worst {:?}; \
+             picture blown up {:.2}x on average, {:.2}x at worst; \
+             last step to sharp, ms: {waits:?}",
+            sum / frames,
+            worst,
+            blur_sum / frames as f32,
+            blur_worst
+        );
+    }
+}
+
 /// Frame times of a zoom in the Multipage View (#903): nine pages of
 /// many objects each, zoomed out step by step until they all show, then
 /// left to rest. Run with
