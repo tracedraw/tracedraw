@@ -321,7 +321,8 @@ pub struct DistortHandles {
     pub slider: Option<Point>,
 }
 
-/// How near (pixels) a press must be to a handle to take it.
+/// How near (pixels) a press must be to a handle to take it, at least:
+/// larger handles are taken anywhere on them (`App::distort_pick_px`).
 const HANDLE_PICK_PX: f64 = 6.0;
 
 /// The distance of the Zipper's end handle for an amplitude.
@@ -675,6 +676,13 @@ impl App {
             .collect()
     }
 
+    /// How near (pixels) a press must be to a handle to take it: 6, or
+    /// out to the edge of a handle drawn larger by Options > Nodes and
+    /// Handles > Handle size (#1574).
+    pub fn distort_pick_px(&self) -> f64 {
+        HANDLE_PICK_PX.max(self.handle_size() as f64 / 2.0 + 2.0)
+    }
+
     /// The handle line of `id`'s distortion of kind `mode`: where a drag
     /// left it, or the default (to the right, the Twister's handle half
     /// the object's larger side long).
@@ -719,7 +727,7 @@ impl App {
     /// Start a drag at `at` (page space): on a handle, take it; on an
     /// object, distort it about `at`. False when there is nothing there.
     pub fn begin_distort(&mut self, at: Point) -> bool {
-        let tol = HANDLE_PICK_PX / self.view.zoom.max(1e-6) as f64;
+        let tol = self.distort_pick_px() / self.view.zoom.max(1e-6) as f64;
         let near = |p: Point| (p - at).hypot() <= tol;
         let handles = self.distortion_handles();
         // The centre first, then the slider (it can sit on the line's

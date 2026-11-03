@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Distort: the handles are easy to see and stand straight. They were thin blue outlines that faded into a white page, drawn wherever the view put them between pixels, so they came out smeared and lopsided, and the Zipper's frequency slider was a narrow upright bar that looked crooked on a slanted line. Now every handle (centre, end, Zipper slider, Twister circle) is white inside a ring of the node colour of Options > Nodes and Handles with a dark edge, as large as the Handle size there, and stands on the pixel grid; the slider is a small circle, and the line is thicker with a white halo. Larger handles are taken anywhere on them (#1574).
+
 - Dimensions stay on the object they measure when they are moved by themselves: dragging, nudging, scaling or turning a dimension whose points are held to an object's nodes or edges silently let go of the object, so it no longer followed it. Now the held points stay on the object and only the dimension line (or an angle's arc) takes the move, along its normal; moving the object still takes the dimension along. Break Apart is what frees a dimension from its object (#1492).
 
 - `.cdr` files of version 16 and later: objects given a uniform transparency in the other program now open see-through when the file keeps the amount outside the object's style string, as a group made half transparent in a version 24 file does for each of its objects. Such a group opened fully opaque, hiding what lay under it. Saving keeps the transparency on each object (#1706).

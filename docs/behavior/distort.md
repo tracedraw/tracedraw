@@ -99,8 +99,9 @@ curve stays open.
   the angle the pointer turned about the start, whole turns counted.
 - Each selected distortion shows its handles (#1122): the centre as a
   diamond, a line with an arrow to the end handle, and for the Zipper a
-  slider on the line. A drag that starts on one (within 6 pixels; the
-  centre first, then the slider, then the end) takes it: the diamond
+  slider on the line (a small circle). A drag that starts on one
+  (within 6 pixels, or half the handle size and 2 more for larger
+  handles, `App::distort_pick_px`; the centre first, then the slider, then the end) takes it: the diamond
   moves the centre; the end handle is a square along the line at
   `amount / 100` of `r` for Push and Pull (the other way when negative;
   dragging it sets the amount from its distance and the side from
@@ -123,6 +124,17 @@ curve stays open.
   dragging it along the line sets the frequency. A handle drag edits the
   object's distortion in place (its centre kept) as one undo step; a
   value changed on the bar moves the handle along the same line.
+- The handles look like the Shape tool's nodes (#1574): white inside a
+  2 pixel ring in the main colour of Options > Nodes and Handles, with a
+  1 pixel dark edge (`Tokens::HANDLE`) outside, so they show on a white
+  page (the edge), on a dark drawing (the white) and on the node colour
+  itself. Squares and circles are Handle size across (6, 8 or 10 pixels,
+  the size of the selection handles, #1285), the diamond a pixel
+  more each way. The line is 2 pixels of the main colour on a white
+  halo, its arrow head touching the end handle. Each handle stands on a
+  corner of the device pixel grid and its ring and edge are whole device
+  pixels at any interface size (`distort_bar::handle_marks`), so it shows
+  crisp and upright wherever the view puts it.
 - A drag that does not start on a handle adds a new distortion over the
   ones the object has: each is applied to the outline the ones before it
   made, so distortions build up drag after drag (#1442). The handles and
@@ -183,6 +195,12 @@ curve stays open.
 - `distort_tool::tests::the_handles_follow_the_pointer_in_any_direction`
 - `distort_tool::tests::a_zipper_drag_leans_the_teeth`
 - `ui::distort_bar::tests::the_bar_draws_for_every_kind_and_shows_the_selection`
+- `ui::distort_bar::tests::the_handles_stand_upright_on_the_pixel_grid`
+- `ui::distort_bar::tests::the_handles_take_the_handle_size`
+- `ui::distort_bar::tests::the_handles_take_the_node_colour`
+- `ui::distort_bar::tests::the_handles_show_on_light_and_dark`
+- `ui::distort_bar::tests::the_marks_are_rounded_to_device_pixels`
+- `ui::distort_bar::tests::the_handles_are_taken_to_their_edge`
 - Given a 20 mm square about its middle and Push and Pull 50, then a
   corner node is 1.5 times as far from the middle and the middle of a
   side is nearer the middle than 10 mm.
