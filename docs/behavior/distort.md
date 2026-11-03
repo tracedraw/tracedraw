@@ -23,20 +23,39 @@ curve stays open.
   centre: a side bows from its middle, pushed corners become spikes and
   pulled corners curl, with the side's lobe reaching past them (#1264);
   quadratic segments are raised to cubic.
-- Zipper, `amplitude` (mm, 0 to 100) and `frequency` (0 to 100): each
-  segment is cut into `frequency + 1` equal steps of its parameter, so
-  it carries `frequency + 1` lines (#1122); the points move off the
-  segment along its normal, alternately `-amplitude` and `+amplitude`
-  along the whole subpath, the nodes included (a node moves between the
-  normals of its two segments), so every point of the zigzag is a
-  tooth's tip, the pattern runs unbroken through the nodes and the ends
-  of an open curve are tips too, not points left on the curve (#1108).
-  A closed outline whose count of tips would be odd takes one line more
-  on its last segment, so the last tip alternates with the first. Random scales each tooth by a fixed pseudo-random
-  share of its height (the same every time it is drawn); Local scales
-  it by `1 - d / d_max`, `d` its distance from the centre and `d_max`
-  the farthest node's; Smooth draws a smooth curve through the points
-  instead of straight teeth.
+- Zipper, `amplitude` (mm, 0 to 100), `frequency` (0 to 100) and
+  `tilt` (degrees, -180 to 180): each segment is cut into
+  `frequency + 1` equal steps of its parameter, so it carries
+  `frequency + 1` lines (#1122); the points move off the segment along
+  its normal turned by `tilt` (counterclockwise when positive; the
+  normal is the one on the left of the segment's direction), alternately
+  `-amplitude` and `+amplitude` along the whole subpath, the nodes
+  included (a node moves between the normals of its two segments), so
+  every point of the zigzag is a tooth's tip, the pattern runs unbroken
+  through the nodes and the ends of an open curve are tips too, not
+  points left on the curve (#1108). With a tilt the teeth lean: on a
+  line, tilted 60 degrees, every tip is `amplitude` from its point on
+  the line along the normal turned by 60 degrees, so the zigzag is
+  sheared toward a sawtooth; tilted 180 it is the same zigzag with its
+  sides swapped (#1671). A closed outline whose count of tips would be
+  odd takes one line more on its last segment, so the last tip
+  alternates with the first. Random scales each tooth by a fixed
+  pseudo-random share of its height (the same every time it is drawn);
+  Local scales it by `1 - d / d_max`, `d` its distance from the centre
+  and `d_max` the farthest node's; Smooth draws a wave through the tips
+  instead of straight teeth: from each tip to the next one cubic that
+  leaves and arrives along the outline's direction there, its handles
+  0.3642 of the distance along the outline between the two tips long,
+  the cubic nearest a sine's half wave. The handles never reach past
+  the middle, so the wave goes on along the outline between two tips
+  however high they are, crosses the outline midway and never crosses
+  or joins itself; the smoothing used before (a curve through the tips
+  with handles a third of the chord between them, which grows with the
+  teeth) made tall teeth into loops that overlapped (#1671).
+- `zipper_zero_direction(path, c)`: the outline's unit normal (left of
+  its direction) at the point nearest to `c`, the direction the teeth
+  stand in with no tilt and the one the Zipper's handle line shows; to
+  the right when the outline has no segments.
 - Twister, `angle` (degrees; whole turns times 360 plus degrees,
   clockwise negative): every point `p` is turned about `c` by
   `angle * (1 - |p - c| / d_max)`, `d_max` the distance of the farthest
@@ -70,7 +89,13 @@ curve stays open.
   `amount = 100 * |drag| / r` (`r` half the object's larger side),
   rounded to whole percents, pushed when the pointer is right of the
   start and pulled (negative) when left of it. Zipper:
-  `amplitude = |drag| / 4`, the bar's frequency and options. Twister:
+  `amplitude = |drag| / 4`, the bar's frequency and options, and the
+  teeth lean the way the drag goes: `tilt` is the turn from the
+  outline's normal at the point nearest the centre to the drag's
+  direction, measured in the object's own space on the outline the
+  zipper goes on (the object's own as the distortions it already has
+  leave it), so a drag straight off a line makes upright teeth and a
+  drag slanting away from it leans them that way (#1671). Twister:
   the angle the pointer turned about the start, whole turns counted.
 - Each selected distortion shows its handles (#1122): the centre as a
   diamond, a line with an arrow to the end handle, and for the Zipper a
@@ -80,14 +105,18 @@ curve stays open.
   `amount / 100` of `r` for Push and Pull (the other way when negative;
   dragging it sets the amount from its distance and the side from
   where it is) and at four times the amplitude for the Zipper (the
-  drag's own measure; dragging it sets the amplitude from its
-  distance), or a circle for the Twister turned by the angle from the
-  direction its drag began in (dragging it round turns the angle, whole
-  turns counted). The line is free: every handle reaches the pointer
-  during a drag (on the object or on the handle), in whichever
-  direction it goes, and the line stays there when let go, to the right
-  until the object's distortion of that kind has been dragged (#1442,
-  `App::distort_lines`); the Twister's handle is also as far out or as
+  drag's own measure; dragging it sets the amplitude from its distance
+  and the tilt from its direction), or a circle for the Twister turned
+  by the angle from the direction its drag began in (dragging it round
+  turns the angle, whole turns counted). The line is free: every handle
+  reaches the pointer during a drag (on the object or on the handle),
+  in whichever direction it goes, and the line stays there when let go.
+  The Push and Pull and Twister lines go to the right until the object's
+  distortion of that kind has been dragged (#1442,
+  `App::distort_lines`); the Zipper's line stands on the outline's
+  normal at the point nearest the centre, turned by the tilt, so it
+  leans with the teeth and moves with the centre, and a tilt typed on
+  the bar turns it (#1671); the Twister's handle is also as far out or as
   near as the drag made it, `r` until it has been dragged, and its
   length changes only the handle, not the turn (#1263); the slider sits
   `frequency / 100` of the way from the centre to the Zipper's end and
@@ -111,6 +140,7 @@ curve stays open.
 | Amplitude (Push and Pull) | 20 | -200 to 200 |
 | Amplitude (Zipper) | 2 mm | 0 to 100 mm |
 | Frequency | 6 | 0 to 100; `frequency + 1` lines per segment |
+| Tilt | 0 | -90 to 90 degrees; the teeth's lean from the outline's normal, shown folded into that range (teeth leaning `t` and `t + 180` are the same zigzag with its sides swapped), while the tilt kept with the distortion, -180 to 180, also says which side of the outline the handle line is on; a value typed keeps that side (`DistortSettings::lean`, #1671) |
 | Random, Smooth, Local | off | toggles |
 | Clockwise, Counterclockwise | Clockwise | |
 | Rotations | 0 | 0 to 9 |
@@ -139,6 +169,8 @@ curve stays open.
 - `distort::tests::zipper_teeth_on_every_segment`
 - `distort::tests::twister_keeps_the_far_points_and_turns_the_inside`
 - `distort::tests::a_zipped_line_starts_and_ends_on_tips`
+- `distort::tests::the_teeth_lean_by_the_tilt`
+- `distort::tests::smooth_teeth_are_waves_that_never_cross`
 - `distort::tests::a_twisted_line_is_a_smooth_spiral_to_its_ends`
 - `distort::tests::older_files_and_odd_values_read`
 - `distort_tool::tests::a_drag_distorts_about_where_it_started`
@@ -149,6 +181,7 @@ curve stays open.
 - `distort_tool::tests::the_handles_set_the_values_by_dragging`
 - `distort_tool::tests::the_twister_handle_is_as_long_as_it_is_dragged`
 - `distort_tool::tests::the_handles_follow_the_pointer_in_any_direction`
+- `distort_tool::tests::a_zipper_drag_leans_the_teeth`
 - `ui::distort_bar::tests::the_bar_draws_for_every_kind_and_shows_the_selection`
 - Given a 20 mm square about its middle and Push and Pull 50, then a
   corner node is 1.5 times as far from the middle and the middle of a
@@ -167,9 +200,29 @@ curve stays open.
 - Given a straight line and Zipper with frequency 6, then it is seven
   lines between eight points, all teeth's tips, the two ends included,
   alternately on each side of the line.
+- Given a 130 mm line and Zipper with amplitude 8, frequency 15 and
+  tilt 60, then each of the 17 tips is 8 mm from its point on the line
+  along the line's normal turned by 60 degrees, alternately each way;
+  with tilt 180 the tips are those of tilt 0 mirrored in the line.
+- Given a 130 mm line and a smooth Zipper with amplitude 10 and
+  frequency 15 (tips every 8.1 mm, taller than they are apart), then
+  each of the 16 waves runs on along the line within its own stretch
+  between two tips, never turning back, crosses the line midway, stays
+  within the amplitude, leaves its tips along the line and is at
+  cos(pi / 4) of the amplitude a quarter of the way, within a percent.
+- Given a 20 mm square and a Zipper drag from the middle of its bottom
+  side 8 mm straight down, then the teeth are upright (tilt 0) and 2 mm
+  high and the end handle is where the drag ended; the handle taken and
+  dragged round to 30 degrees off the normal leans the teeth 30 degrees
+  (every tip on that side is 2 cos 30 mm off the side), the handle under
+  the pointer; tilt 0 typed on the bar puts the handle back on the
+  normal.
 - Given a 20 mm square with Push and Pull 50 selected, then its end
   handle sits 5 mm right of the centre, and dragged to 10 mm left of it
-  the amount is -100.
+  the amount is -100; turned into a Zipper with amplitude 20 about the
+  middle, its end handle sits 80 mm from the centre along the normal of
+  the nearest side (the first of the equally near sides, the bottom,
+  whose normal points up).
 - Given a 20 mm square and a Push and Pull drag from its middle 6 mm
   right and 8 mm up, then the amount is 100 and the end handle sits
   where the drag ended; dragged from there to 8 mm left and 6 mm up of

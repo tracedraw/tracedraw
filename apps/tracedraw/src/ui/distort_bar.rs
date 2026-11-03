@@ -78,6 +78,24 @@ pub fn distort_bar(app: &mut App, ui: &mut Ui) {
                 )
                 .rich_tip(tr("distort.frequency_tip"))
                 .changed();
+            // The teeth's lean from the outline's normal (#1671), shown
+            // folded into -90 to 90 (`DistortSettings::lean`).
+            dim(ui, tr("distort.tilt"));
+            let mut lean = s.lean();
+            if ui
+                .add(
+                    NumField::new(&mut lean)
+                        .range(-90.0..=90.0)
+                        .max_decimals(0)
+                        .suffix("\u{b0}")
+                        .width(52.0),
+                )
+                .rich_tip(crate::ui::tips::keyed("distort.tilt"))
+                .changed()
+            {
+                s.set_lean(lean);
+                changed = true;
+            }
             for (flag, key, tip) in [
                 (&mut s.random, "distort.random", "distort.random_tip"),
                 (&mut s.smooth, "distort.smooth", "distort.smooth_tip"),

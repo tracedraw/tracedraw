@@ -3068,6 +3068,7 @@ mod tests {
                 random: false,
                 smooth: false,
                 local: true,
+                tilt_deg: 0.0,
             },
         ] {
             s.effects = vec![Effect::Distort(how)];
