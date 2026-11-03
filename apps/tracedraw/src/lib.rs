@@ -480,6 +480,10 @@ struct Shell {
     /// `splash::WindowSettle`).
     #[cfg(not(target_arch = "wasm32"))]
     window_settle: splash::WindowSettle,
+    /// The splash window growing into the main window: drawn plain until
+    /// it has its size (see `splash::WindowGrow`, #1673).
+    #[cfg(not(target_arch = "wasm32"))]
+    window_grow: Option<splash::WindowGrow>,
     /// Where the check of the OpenGL renderer stands (see
     /// `check_renderer`).
     #[cfg(not(target_arch = "wasm32"))]
@@ -558,6 +562,8 @@ impl Shell {
             #[cfg(not(target_arch = "wasm32"))]
             window_settle: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
+            window_grow: None,
+            #[cfg(not(target_arch = "wasm32"))]
             renderer_check: RendererCheck::At(gpu::CHECKED_FRAME),
             #[cfg(not(target_arch = "wasm32"))]
             blind_reads: 0,
@@ -580,6 +586,8 @@ impl Shell {
             handed_over: None,
             pacer: gpu::Pacer::new(cc),
             window_settle: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            window_grow: None,
             renderer_check: RendererCheck::At(gpu::CHECKED_FRAME),
             blind_reads: 0,
             check_frames: 0,
@@ -803,7 +811,7 @@ impl eframe::App for Shell {
                 "the editor was built in {:.0} ms",
                 built.elapsed().as_secs_f64() * 1000.0
             );
-            splash::open_main_window(ui.ctx(), &app.settings);
+            self.window_grow = Some(splash::open_main_window(ui.ctx(), &app.settings));
             // F8 held while TraceDraw started: ask before resetting.
             if reset {
                 app.dialog = ui::dialogs::Dialog::ConfirmResetSettings;
@@ -811,6 +819,19 @@ impl eframe::App for Shell {
             self.app = Some(app);
             ui.ctx().request_repaint();
             return;
+        }
+        // The window growing from the splash's size: drawn plain, the
+        // editor's first frame waits for the window's own size (#1673).
+        #[cfg(not(target_arch = "wasm32"))]
+        if let (Some(grow), Some(app)) = (self.window_grow.as_mut(), self.app.as_ref()) {
+            if !grow.step(ui) {
+                // A window that starts maximized is maximized meanwhile.
+                if self.window_settle.settling() {
+                    self.window_settle.step(ui.ctx(), &app.settings);
+                }
+                return;
+            }
+            self.window_grow = None;
         }
         #[cfg(not(target_arch = "wasm32"))]
         if self.build_deferred(ui) {
