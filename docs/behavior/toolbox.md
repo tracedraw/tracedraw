@@ -85,13 +85,19 @@
 
 The bars' menu (right-click a bar) > Customize sizes the buttons (Default
 Button Size for every bar; Toolbox Toolbar > Button Size for the toolbox
-alone) and chooses what they show: Image Only (the icon, 22 px at the
-medium size, scaled with the button), Caption Only (the tool's name) or
+alone) and chooses what they show: Image Only (the icon, its box 16,
+20, 24, 32 or 40 px from Extra Small to Extra Large, so the icon grows
+with the button; a column squeezed to fit a short window shrinks it in
+proportion, `theme::icon_in`, `ui::toolbox::tests::icons_grow_with_every_button_size`),
+Caption Only (the tool's name) or
 Caption to Right (both). See `toolbars.md`, "Moving the bars".
 
 Ctrl+wheel over the toolbox (docked or floating) steps its own button
-size by the notches turned, up larger and down smaller, from Small to
-Large, as Toolbox Toolbar > Button Size does; the wheel is taken, so the
+size by the notches turned, up larger and down smaller, through the
+five sizes from Extra Small to Extra Large (held at both ends), as
+Toolbox Toolbar > Button Size does; the floating toolbox keeps its room
+in cells, so it stays as many buttons wide at every size. The wheel is
+taken, so the
 toolbox does not slide with it and the drawing does not zoom
 (`ui::toolbox::size_by_wheel`, `settings::ButtonSize::stepped`,
 `ui::bars::tests::the_floating_toolbox_resizes_by_its_edges_and_by_ctrl_wheel`,

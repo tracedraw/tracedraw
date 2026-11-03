@@ -795,6 +795,21 @@ pub fn bar_menu(app: &mut App, resp: &egui::Response, bar: Bar) {
         .show(|ui| crate::ui::menus::body(ui, |ui| menu_body(app, ui, bar)));
 }
 
+/// The entries of a button size list in the bars' menu > Customize:
+/// the five sizes Ctrl+wheel steps through, smallest first, after
+/// "Default" (None) in the toolbox's own list (`with_default`).
+pub fn size_menu(with_default: bool) -> Vec<(&'static str, Option<crate::settings::ButtonSize>)> {
+    let default = with_default.then_some(("bars.size_default", None));
+    default
+        .into_iter()
+        .chain(
+            crate::settings::ButtonSize::ALL
+                .iter()
+                .map(|s| (s.key(), Some(*s))),
+        )
+        .collect()
+}
+
 fn menu_body(app: &mut App, ui: &mut Ui, bar: Bar) {
     use crate::ui::menus::{check, item, radio, radio_if, sep, sub};
     ui.set_min_width(200.0);
@@ -824,8 +839,9 @@ fn menu_body(app: &mut App, ui: &mut Ui, bar: Bar) {
     sep(ui);
     sub(ui, "bars.customize", |ui| {
         sub(ui, "bars.default_button_size", |ui| {
-            for size in crate::settings::ButtonSize::ALL {
-                if radio(ui, size.key(), "", app.settings.button_size == size) {
+            for (key, size) in size_menu(false) {
+                let Some(size) = size else { continue };
+                if radio(ui, key, "", app.settings.button_size == size) {
                     app.settings.button_size = size;
                 }
             }
@@ -837,12 +853,9 @@ fn menu_body(app: &mut App, ui: &mut Ui, bar: Bar) {
             sep(ui);
             sub(ui, "bars.button_size", |ui| {
                 let own = app.settings.toolbox_button_size;
-                if radio(ui, "bars.size_default", "", own.is_none()) {
-                    app.settings.toolbox_button_size = None;
-                }
-                for size in crate::settings::ButtonSize::ALL {
-                    if radio(ui, size.key(), "", own == Some(size)) {
-                        app.settings.toolbox_button_size = Some(size);
+                for (key, size) in size_menu(true) {
+                    if radio(ui, key, "", own == size) {
+                        app.settings.toolbox_button_size = size;
                     }
                 }
             });
@@ -1780,6 +1793,29 @@ fn floating_body(app: &mut App, ui: &mut Ui, bar: Bar, size: Vec2) {
 mod tests {
     use super::*;
 
+    /// Customize > Default Button Size and Toolbox Toolbar > Button Size
+    /// list the five sizes Ctrl+wheel steps through, in the same order,
+    /// each with its own name.
+    #[test]
+    fn the_size_menus_list_the_five_wheel_sizes() {
+        use crate::settings::ButtonSize;
+        let bars = size_menu(false);
+        let toolbox = size_menu(true);
+        assert_eq!(bars.len(), 5);
+        assert_eq!(toolbox.len(), 6);
+        assert_eq!(toolbox[0], ("bars.size_default", None));
+        assert_eq!(&toolbox[1..], &bars[..]);
+        let mut wheel = ButtonSize::ExtraSmall;
+        for (key, size) in &bars {
+            assert_eq!(*size, Some(wheel));
+            assert_ne!(crate::i18n::tr(key), *key, "{key} has a name");
+            wheel = wheel.stepped(1);
+        }
+        let names: std::collections::HashSet<String> =
+            bars.iter().map(|(k, _)| crate::i18n::tr(k)).collect();
+        assert_eq!(names.len(), 5);
+    }
+
     /// One frame of the whole window with `events`, the keys held first.
     fn frame(ctx: &egui::Context, app: &mut App, events: Vec<egui::Event>, mods: egui::Modifiers) {
         let mut all = vec![egui::Event::ModifiersChanged(mods)];
@@ -1987,7 +2023,10 @@ mod tests {
             wheel(over, -1.0, egui::Modifiers::CTRL),
             egui::Modifiers::CTRL,
         );
-        assert_eq!(app.settings.toolbox_button_size, Some(ButtonSize::Small));
+        assert_eq!(
+            app.settings.toolbox_button_size,
+            Some(ButtonSize::ExtraSmall)
+        );
         app.settings.toolbox_button_size = None;
         // The default button size (the other bars) stays.
         assert_eq!(app.settings.button_size, ButtonSize::Small);

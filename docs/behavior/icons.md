@@ -11,14 +11,21 @@ on a wire.
 ## Style rules
 
 - **Grid 24, stroke 2, round caps and joins**, a 2 unit safe margin.
-  The grid is mapped onto the icon's box (22 px in the toolbox at the
-  medium button size, 20 px in the Hints panel, 15 px on the cursor
-  badge). Strokes are drawn at 5/8 of their design width (`WEIGHT`), so
+  The grid is mapped onto the icon's box (16, 20, 24, 32 or 40 px in
+  the toolbox and the standard bar from the Extra Small to the Extra
+  Large button size, 24 px at Medium; 20 px in the Hints panel, 15 px
+  on the cursor badge). Strokes are drawn at 5/8 of their design width (`WEIGHT`), so
   a stroke 2 is 1.25 px in the 22 px box, never thinner than one
   physical pixel; guides and handles are thin lines (1.4 design units),
-  node and handle frames one physical pixel. In boxes of about 20 px and
-  up the grid is snapped to whole pixels per unit and centred on a pixel
-  centre, so lines fall on the pixel grid and stay sharp; round cap and
+  node and handle frames one physical pixel. A box within a twelfth of a
+  whole number of pixels per unit (22 to 26 px at 1x, 44 to 52 px at
+  2x) is snapped to that whole number, so every unit is on a pixel;
+  any other box of about 20 px and up keeps its own size with the grid's
+  side rounded to whole pixels, so a larger box always draws a larger
+  icon (`icon_paint::grid_scale`, `the_grid_grows_with_its_box`; it had
+  rounded every box from 21 to 35 px to the same 24 px grid, so larger
+  buttons kept the same icons). The grid is centred on a pixel
+  centre, so lines on whole pixels stay sharp; round cap and
   join discs are only added to strokes of 3 physical pixels or more.
   Rectangles and boxes have square 90 degree corners.
 - **Three colours, by role.** *Ink* draws the object: the shape, the

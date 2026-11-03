@@ -266,7 +266,8 @@ no buttons; the slide is worked out again when the window changes size
 
 Ctrl+wheel over a toolbar (docked or floating) steps the default button
 size (the bars' menu > Customize > Default Button Size) by the notches
-turned: up larger, down smaller, from Small to Large; over the toolbox
+turned: up larger, down smaller, through the five sizes from Extra
+Small to Extra Large (held at both ends); over the toolbox
 it steps the toolbox's own size (see `toolbox.md`), over a palette the
 swatch size (see `color-palettes.md`). The wheel is taken, so the bar
 does not slide with it and the drawing does not zoom; the plain wheel
@@ -401,13 +402,33 @@ bar move (`ui/bars.rs`).
   menu stays open after the button comes up, until an entry is picked, a
   click lands outside it or Esc is pressed; each click opens one menu,
   shown once a frame (`pick_drag_tests::a_right_click_on_any_toolbar_keeps_the_bar_menu_open`, #994).
-- Customize holds: Default Button Size (Small, Medium, Large, Small at
-  first: the buttons of every bar are 24, 32 or 40 px square, the
-  property bar's 21, 28 or 35; `settings.button_size`, `theme::set_button_sizes`); Toolbox
+- Customize holds: Default Button Size (Extra Small, Small, Medium,
+  Large, Extra Large, Small at first, the same five sizes Ctrl+wheel
+  steps through). The icons grow with the buttons; the padding around
+  them grows more slowly, and separators keep their size:
+
+  | Size | Icon box | Toolbox and standard bar button | Property bar icon | Property bar button |
+  |---|---|---|---|---|
+  | Extra Small | 16 px | 22 px | 14 px | 20 px |
+  | Small | 20 px | 26 px | 18 px | 24 px |
+  | Medium | 24 px | 32 px | 22 px | 28 px |
+  | Large | 32 px | 42 px | 28 px | 38 px |
+  | Extra Large | 40 px | 52 px | 34 px | 46 px |
+
+  The icon box is the side of the icon's 24 unit grid (16, 20, 24, 32,
+  40 px: a whole pixel every 3, 6, 1, 3 and 3 units, so the icons stay
+  sharp); the standard bar's command pictures use the same box. The
+  toolbox's flyouts list their tools with 18 px icons up to Medium, 24
+  px at Large and 30 px at Extra Large. Settings saved with three sizes
+  keep them (`settings.button_size`, `settings::ButtonSize::metrics`,
+  `theme::set_button_sizes`, `ui::bars::size_menu`,
+  `settings::tests::each_button_size_has_a_larger_icon_and_proportional_padding`,
+  `settings::tests::saved_button_sizes_keep_their_meaning`,
+  `ui::bars::tests::the_size_menus_list_the_five_wheel_sizes`); Toolbox
   Toolbar (Reset to Default: every flyout shown as at first, each button
   on its first tool, the default size and icons only; Button Size:
-  Default, which follows the default button size, or its own Small,
-  Medium or Large, `settings.toolbox_button_size`; Image Only, Caption
+  Default, which follows the default button size, or its own size
+  among the same five, `settings.toolbox_button_size`; Image Only, Caption
   Only or Caption to Right, `settings.toolbox_captions`: with captions
   every toolbox button is as wide as the widest tool name of the flyouts
   shown, plus 6 px each side, so the column keeps one width whichever

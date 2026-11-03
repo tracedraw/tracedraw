@@ -18,7 +18,11 @@ fn vsep(ui: &mut Ui) {
 fn std_btn() -> f32 {
     Tokens::bar_button()
 }
-const STD_ICON: f32 = 20.0;
+/// The side of a standard toolbar icon's box at the default button size
+/// (20 px at Small, 24 px at Medium; the bars' menu > Customize).
+fn std_icon() -> f32 {
+    Tokens::bar_icon()
+}
 
 fn std_frame(ui: &Ui, rect: egui::Rect, hovered: bool, pressed: bool) {
     if pressed {
@@ -62,7 +66,7 @@ fn std_button(
     let resp = resp.on_hover_ui(|ui| rich_tip(ui, tip));
     icons::draw_action(
         ui.painter(),
-        egui::Rect::from_center_size(rect.center(), Vec2::splat(STD_ICON)),
+        egui::Rect::from_center_size(rect.center(), Vec2::splat(std_icon())),
         action,
         if enabled {
             Tokens::icon()
@@ -82,7 +86,7 @@ fn std_list_button(ui: &mut Ui, action: icons::Action, tip: &str) -> egui::Respo
     let resp = resp.on_hover_ui(|ui| rich_tip(ui, tip));
     let icon = egui::Rect::from_center_size(
         egui::pos2(rect.left() + std_btn() / 2.0, rect.center().y),
-        Vec2::splat(STD_ICON),
+        Vec2::splat(std_icon()),
     );
     icons::draw_action(ui.painter(), icon, action, Tokens::icon());
     let c = egui::pos2(rect.right() - 7.0, rect.center().y + 1.0);
@@ -362,7 +366,7 @@ fn std_pic_button(
     let resp = resp.on_hover_ui(|ui| rich_tip(ui, tip));
     crate::ui::propbar::draw_pic(
         ui.painter(),
-        egui::Rect::from_center_size(rect.center(), Vec2::splat(STD_ICON + 2.0)),
+        egui::Rect::from_center_size(rect.center(), Vec2::splat(std_icon() + 2.0)),
         pic,
         if enabled {
             Tokens::icon()
@@ -738,7 +742,7 @@ fn tool_item(app: &mut App, ui: &mut Ui, t: Tool) {
     let resp = resp.on_hover_ui(|ui| rich_tip(ui, &t.name()));
     icons::draw(
         ui.painter(),
-        egui::Rect::from_center_size(rect.center(), Vec2::splat(STD_ICON)),
+        egui::Rect::from_center_size(rect.center(), Vec2::splat(std_icon())),
         t,
         Tokens::icon(),
     );
@@ -768,7 +772,7 @@ fn command_item(app: &mut App, ui: &mut Ui, key: &str) {
     if picture {
         crate::ui::menus::draw_menu_picture(
             ui.painter(),
-            egui::Rect::from_center_size(rect.center(), Vec2::splat(STD_ICON)),
+            egui::Rect::from_center_size(rect.center(), Vec2::splat(std_icon())),
             key,
             Tokens::icon(),
         );

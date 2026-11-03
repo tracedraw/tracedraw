@@ -476,21 +476,41 @@ pub struct Pen {
     ppp: f32,
 }
 
+/// The points per grid unit of an icon drawn in a box `width` points
+/// wide at `ppp` pixels per point. A box within a twelfth of a whole
+/// number of pixels per unit takes that whole number (a 22 px box draws
+/// the 24 unit grid at 1 px per unit, at 2x at 2 px), so every integer
+/// unit is on a pixel; any other box keeps its own size, the grid's side
+/// rounded to whole pixels (16, 20, 32 and 40 px boxes: a pixel every
+/// 3, 6, 3 and 3 units), so a larger box always draws a larger icon.
+/// Boxes under 0.85 px per unit keep the fractional scale.
+pub fn grid_scale(width: f32, ppp: f32) -> f32 {
+    let ppp = if ppp.is_finite() && ppp > 0.0 {
+        ppp
+    } else {
+        1.0
+    };
+    let kp = width * ppp / 24.0;
+    if !kp.is_finite() || kp < 0.85 {
+        return if kp.is_finite() { kp / ppp } else { 1.0 / ppp };
+    }
+    let whole = kp.round().max(1.0);
+    if (kp / whole - 1.0).abs() <= 1.0 / 12.0 + 1e-4 {
+        whole / ppp
+    } else {
+        (kp * 24.0).round() / 24.0 / ppp
+    }
+}
+
 impl Pen {
-    /// The grid is `r.width() / 24` points per unit, rounded to whole
-    /// physical pixels in boxes of 20 px and up (22 px box: 1 px per unit
-    /// at 1x, 2 px at 2x; smaller boxes keep the fractional scale). The
-    /// grid is centred on `r` with its origin on a pixel edge, moved half
-    /// a pixel when the standard line's pixel width is odd (or under 2
-    /// px), so that straight strokes on integer units are crisp.
+    /// The grid is `r.width() / 24` points per unit, snapped to whole
+    /// physical pixels (see [`grid_scale`]). The grid is centred on `r`
+    /// with its origin on a pixel edge, moved half a pixel when the
+    /// standard line's pixel width is odd (or under 2 px), so that
+    /// straight strokes on integer units are crisp.
     pub fn new(painter: &Painter, r: Rect, ink: Color32, acc: Color32, bg: Color32) -> Self {
         let ppp = painter.pixels_per_point();
-        let kp = r.width() * ppp / 24.0;
-        let k = if kp >= 0.85 {
-            kp.round().max(1.0) / ppp
-        } else {
-            kp
-        };
+        let k = grid_scale(r.width(), ppp);
         let o = r.center() - Vec2::splat(12.0 * k);
         let mut origin = Pos2::new((o.x * ppp).round() / ppp, (o.y * ppp).round() / ppp);
         let wpx = LINE * k * WEIGHT * ppp;
@@ -856,6 +876,39 @@ impl Pen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The grid grows with its box: whole pixels per unit near 1x and
+    /// 2x, the box's own size elsewhere (the button sizes' 16, 20, 24,
+    /// 32 and 40 px boxes each draw a larger icon than the one before).
+    #[test]
+    fn the_grid_grows_with_its_box() {
+        assert_eq!(grid_scale(22.0, 1.0), 1.0);
+        assert_eq!(grid_scale(24.0, 1.0), 1.0);
+        assert_eq!(grid_scale(22.0, 2.0), 1.0);
+        assert_eq!(grid_scale(48.0, 1.0), 2.0);
+        assert!((grid_scale(18.0, 1.0) - 0.75).abs() < 1e-6);
+        let sides: Vec<f32> = [16.0, 20.0, 24.0, 32.0, 40.0]
+            .iter()
+            .map(|w| grid_scale(*w, 1.0) * 24.0)
+            .collect();
+        for (side, w) in sides.iter().zip([16.0, 20.0, 24.0, 32.0, 40.0]) {
+            assert!((side - w).abs() < 1e-4, "{side} for {w}");
+        }
+        for ppp in [1.0, 1.25, 1.5, 2.0] {
+            let ks: Vec<f32> = [16.0, 20.0, 24.0, 32.0, 40.0]
+                .iter()
+                .map(|w| grid_scale(*w, ppp))
+                .collect();
+            assert!(ks.windows(2).all(|w| w[1] > w[0]), "{ppp}: {ks:?}");
+            // The grid's side is whole pixels.
+            for k in ks {
+                let px = k * 24.0 * ppp;
+                assert!((px - px.round()).abs() < 1e-3, "{ppp}: {px}");
+            }
+        }
+        assert!(grid_scale(f32::NAN, 1.0).is_finite());
+        assert!(grid_scale(22.0, 0.0).is_finite());
+    }
 
     #[test]
     fn numbers_split_at_signs_and_second_dots() {

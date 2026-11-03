@@ -1642,7 +1642,7 @@ pub(crate) mod tests {
             );
             crate::ui::icons::draw(
                 ui.painter(),
-                egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(18.0)),
+                egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(Tokens::prop_icon())),
                 Tool::ColorEyedropper,
                 crate::ui::icons::tool_color(Tool::ColorEyedropper, Tokens::icon()),
             );

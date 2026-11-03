@@ -6,39 +6,80 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-/// How large the buttons of the bars are (the bars' menu > Customize).
+/// How large the buttons of the bars are (the bars' menu > Customize),
+/// five sizes from Extra Small to Extra Large. Ctrl+wheel over a bar
+/// steps through the same sizes. Saved as `extra_small`, `small`,
+/// `medium`, `large` and `extra_large`; settings saved with three sizes
+/// keep their meaning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum ButtonSize {
+    #[serde(alias = "ExtraSmall")]
+    ExtraSmall,
     #[default]
+    #[serde(alias = "Small")]
     Small,
+    #[serde(alias = "Medium")]
     Medium,
+    #[serde(alias = "Large")]
     Large,
+    #[serde(alias = "ExtraLarge")]
+    ExtraLarge,
+}
+
+/// The pixel sizes (points, at interface size 100 %) of one button size:
+/// the icon's box (the side of its 24 unit design grid, see
+/// `ui::icon_paint::Pen`), the toolbox's and the standard bars' buttons,
+/// and the property bar's buttons and icons. The icon boxes are 16, 20,
+/// 24, 32 and 40, so the grid lands on whole pixels every few units; the
+/// padding around an icon grows more slowly than the icon.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ButtonMetrics {
+    pub icon: f32,
+    pub button: f32,
+    pub prop_icon: f32,
+    pub prop_button: f32,
 }
 
 impl ButtonSize {
-    pub const ALL: [ButtonSize; 3] = [ButtonSize::Small, ButtonSize::Medium, ButtonSize::Large];
+    pub const ALL: [ButtonSize; 5] = [
+        ButtonSize::ExtraSmall,
+        ButtonSize::Small,
+        ButtonSize::Medium,
+        ButtonSize::Large,
+        ButtonSize::ExtraLarge,
+    ];
 
-    /// The buttons' size as a share of the medium size (32 px).
-    pub fn scale(self) -> f32 {
-        match self {
-            ButtonSize::Small => 0.75,
-            ButtonSize::Medium => 1.0,
-            ButtonSize::Large => 1.25,
+    /// The sizes of the buttons and icons at this size.
+    pub fn metrics(self) -> ButtonMetrics {
+        let (icon, button, prop_icon, prop_button) = match self {
+            ButtonSize::ExtraSmall => (16.0, 22.0, 14.0, 20.0),
+            ButtonSize::Small => (20.0, 26.0, 18.0, 24.0),
+            ButtonSize::Medium => (24.0, 32.0, 22.0, 28.0),
+            ButtonSize::Large => (32.0, 42.0, 28.0, 38.0),
+            ButtonSize::ExtraLarge => (40.0, 52.0, 34.0, 46.0),
+        };
+        ButtonMetrics {
+            icon,
+            button,
+            prop_icon,
+            prop_button,
         }
     }
 
     pub fn key(self) -> &'static str {
         match self {
+            ButtonSize::ExtraSmall => "bars.size_extra_small",
             ButtonSize::Small => "bars.size_small",
             ButtonSize::Medium => "bars.size_medium",
             ButtonSize::Large => "bars.size_large",
+            ButtonSize::ExtraLarge => "bars.size_extra_large",
         }
     }
 
     /// The size `steps` sizes up (down for a negative count) from this
-    /// one, held at Small and Large: Ctrl+wheel over a bar steps its
-    /// buttons' size by the notches turned.
+    /// one, held at Extra Small and Extra Large: Ctrl+wheel over a bar
+    /// steps its buttons' size by the notches turned.
     pub fn stepped(self, steps: i32) -> ButtonSize {
         let at = ButtonSize::ALL.iter().position(|s| *s == self).unwrap_or(0) as i64;
         let last = (ButtonSize::ALL.len() - 1) as i64;
@@ -2161,6 +2202,64 @@ mod tests {
 
     use super::*;
 
+    /// Each button size draws a larger icon in a larger button than the
+    /// one before, and the padding around the icon grows no faster than
+    /// the icon (#1701 follow-up: the icons stayed one size).
+    #[test]
+    fn each_button_size_has_a_larger_icon_and_proportional_padding() {
+        let m: Vec<ButtonMetrics> = ButtonSize::ALL.iter().map(|s| s.metrics()).collect();
+        assert_eq!(
+            m.iter().map(|m| m.icon).collect::<Vec<_>>(),
+            vec![16.0, 20.0, 24.0, 32.0, 40.0]
+        );
+        for w in m.windows(2) {
+            assert!(w[1].icon > w[0].icon, "{w:?}");
+            assert!(w[1].button > w[0].button, "{w:?}");
+            assert!(w[1].prop_icon > w[0].prop_icon, "{w:?}");
+            assert!(w[1].prop_button > w[0].prop_button, "{w:?}");
+            // The padding's share of the button does not grow.
+            let pad = |m: &ButtonMetrics| (m.button - m.icon) / m.button;
+            assert!(pad(&w[1]) <= pad(&w[0]) + 1e-6, "{w:?}");
+        }
+        for m in &m {
+            // Whole, even pixel sizes: the icon sits centred on whole
+            // pixels in its button.
+            for v in [m.icon, m.button, m.prop_icon, m.prop_button] {
+                assert_eq!(v % 2.0, 0.0, "{m:?}");
+            }
+            assert!(m.icon < m.button && m.prop_icon < m.prop_button);
+        }
+        // Medium keeps the 32 px buttons it had.
+        assert_eq!(ButtonSize::Medium.metrics().button, 32.0);
+        assert_eq!(ButtonSize::Medium.metrics().prop_button, 28.0);
+    }
+
+    /// Settings saved with three sizes read as they did; the new sizes
+    /// round-trip.
+    #[test]
+    fn saved_button_sizes_keep_their_meaning() {
+        for (json, size) in [
+            ("\"small\"", ButtonSize::Small),
+            ("\"medium\"", ButtonSize::Medium),
+            ("\"large\"", ButtonSize::Large),
+            ("\"Medium\"", ButtonSize::Medium),
+            ("\"extra_small\"", ButtonSize::ExtraSmall),
+            ("\"extra_large\"", ButtonSize::ExtraLarge),
+        ] {
+            let read: ButtonSize = serde_json::from_str(json).expect(json);
+            assert_eq!(read, size, "{json}");
+        }
+        for size in ButtonSize::ALL {
+            let json = serde_json::to_string(&size).expect("write");
+            assert_eq!(serde_json::from_str::<ButtonSize>(&json).ok(), Some(size));
+        }
+        let s: Settings =
+            serde_json::from_str(r#"{"button_size": "medium", "toolbox_button_size": "large"}"#)
+                .expect("settings");
+        assert_eq!(s.button_size, ButtonSize::Medium);
+        assert_eq!(s.toolbox_button_size, Some(ButtonSize::Large));
+    }
+
     /// Ctrl+wheel steps the button sizes and the swatch size within
     /// their ranges; preferences written before the swatch size existed
     /// keep the 20 px swatches.
@@ -2168,10 +2267,27 @@ mod tests {
     fn the_wheel_steps_the_button_and_swatch_sizes_within_their_ranges() {
         assert_eq!(ButtonSize::Small.stepped(1), ButtonSize::Medium);
         assert_eq!(ButtonSize::Small.stepped(2), ButtonSize::Large);
-        assert_eq!(ButtonSize::Small.stepped(5), ButtonSize::Large);
+        assert_eq!(ButtonSize::Small.stepped(3), ButtonSize::ExtraLarge);
+        assert_eq!(ButtonSize::Small.stepped(5), ButtonSize::ExtraLarge);
         assert_eq!(ButtonSize::Large.stepped(-1), ButtonSize::Medium);
-        assert_eq!(ButtonSize::Small.stepped(-1), ButtonSize::Small);
+        assert_eq!(ButtonSize::Small.stepped(-1), ButtonSize::ExtraSmall);
+        assert_eq!(ButtonSize::Small.stepped(-5), ButtonSize::ExtraSmall);
         assert_eq!(ButtonSize::Medium.stepped(0), ButtonSize::Medium);
+        // One notch at a time walks through all five sizes and holds at
+        // the ends.
+        let mut size = ButtonSize::ExtraSmall;
+        let mut seen = vec![size];
+        for _ in 0..6 {
+            size = size.stepped(1);
+            seen.push(size);
+        }
+        assert_eq!(&seen[..5], &ButtonSize::ALL[..]);
+        assert_eq!(seen[5], ButtonSize::ExtraLarge);
+        assert_eq!(seen[6], ButtonSize::ExtraLarge);
+        for _ in 0..6 {
+            size = size.stepped(-1);
+        }
+        assert_eq!(size, ButtonSize::ExtraSmall);
         assert_eq!(swatch_resized(20, 1), 22);
         assert_eq!(swatch_resized(20, -1), 18);
         assert_eq!(swatch_resized(20, 100), SWATCH_MAX);

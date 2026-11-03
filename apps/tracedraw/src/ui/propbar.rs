@@ -18,8 +18,8 @@ use tracedraw_core::{
 /// Two fields stacked: 19 px each, sharing their middle border.
 pub const BAR_H: f32 = 37.0;
 const ROW: f32 = 19.0;
-/// Icon buttons are 28 px square with an 18 px icon.
-/// A property bar button's side: 28 px at the medium button size.
+/// A property bar button's side: 28 px at the medium button size, with
+/// a [`Tokens::prop_icon`] icon.
 fn btn() -> f32 {
     crate::theme::Tokens::prop_button()
 }
@@ -1255,7 +1255,7 @@ pub fn pic_button(ui: &mut Ui, pic: Pic, tip: &str, enabled: bool, pressed: bool
     frame(ui, rect, enabled && resp.hovered(), pressed);
     draw_pic(
         ui.painter(),
-        Rect::from_center_size(rect.center(), Vec2::splat(18.0)),
+        Rect::from_center_size(rect.center(), Vec2::splat(Tokens::prop_icon())),
         pic,
         if enabled {
             Tokens::icon()
@@ -1292,7 +1292,7 @@ pub fn tool_button(
     };
     crate::ui::icons::draw(
         ui.painter(),
-        Rect::from_center_size(rect.center(), Vec2::splat(18.0)),
+        Rect::from_center_size(rect.center(), Vec2::splat(Tokens::prop_icon())),
         tool,
         color,
     );
