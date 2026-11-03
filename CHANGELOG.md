@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Shaping a clip frame (Weld, Trim, Intersect, Simplify, Front Minus Back, Back Minus Front) keeps it a clip frame: its frame takes the new shape with its own fill and outline, and what it held stays inside; before, the result was a curve with no fill and the contents were gone (#1745 to #1750).
 - Cropping a picture that has a transparency: what is left looks as it did. Dragging a picture's corner nodes with the Shape tool, or cutting it with the Crop tool, put the picture in a clip frame that kept a copy of its transparency and opacity, so they were laid on twice and the picture turned much paler; with a gradient transparency the frame's copy also started again across the cut-down picture at each node moved. The picture inside now keeps its transparency in its place on the page, and the frame keeps none. A clip frame's own gradient transparency also stays in place when the frame's nodes are moved (#1491).
 
 - SVG import: text comes in as editable text. Every `<text>` element was left out, so a file with a rectangle and a caption imported as the rectangle alone. Text now keeps its font, size, weight, style, colour, outline, anchor and position, with styles from attributes, `style` and `<style>` sheets, `tspan` runs in their own style, lines written as one `tspan` each as one text with its line spacing, and transforms, `use` and clips as for shapes (#1820).
