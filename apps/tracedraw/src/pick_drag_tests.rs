@@ -9874,6 +9874,190 @@ fn the_hints_panel_follows_every_tool_choice() {
     assert_eq!(app.hints.current(), HintPage::Tool(Tool::Contour));
 }
 
+/// A paragraph text of `words` words in a 100 x 60 mm frame at (20, 150),
+/// selected.
+fn paragraph_frame(ctx: &egui::Context, app: &mut App, words: usize) -> ShapeId {
+    tracedraw_text::install();
+    let text = (0..words)
+        .map(|i| ["lorem", "ipsum", "dolor", "sit", "amet", "flows"][i % 6])
+        .collect::<Vec<_>>()
+        .join(" ");
+    let id = app
+        .new_shape(ShapeKind::Text {
+            spans: vec![tracedraw_core::TextSpan::new(&text, "DejaVu Sans", 10.0)],
+            origin: Point::new(20.0, 150.0),
+            frame: Some(tracedraw_core::Size::new(100.0, 60.0)),
+            align: tracedraw_core::TextAlign::Left,
+            para: Default::default(),
+            on_path: None,
+        })
+        .expect("frame");
+    app.select(vec![id]);
+    frame(ctx, app, Vec::new(), Modifiers::NONE);
+    id
+}
+
+/// The lines of paragraph text `id` that show in its frame, as it is.
+fn lines_shown(app: &App, id: ShapeId) -> usize {
+    let s = app.doc().find_shape(id).expect("text");
+    let ShapeKind::Text {
+        spans,
+        frame,
+        align,
+        para,
+        ..
+    } = &s.kind
+    else {
+        panic!("text");
+    };
+    crate::text_frames::shown_lines(&tracedraw_text::fonts().layout(
+        &tracedraw_core::document::text_outline::TextRequest {
+            spans,
+            frame: *frame,
+            align: *align,
+            para,
+            on_path: None,
+        },
+    ))
+}
+
+/// Dragging a paragraph frame's side handle in flows its text anew while
+/// the button is held: the drag outline holds the lines the release makes,
+/// more of them in the narrower frame, and the release gives that layout
+/// in one undo step (#1327).
+#[test]
+fn a_paragraph_frame_reflows_live_while_its_handle_is_dragged() {
+    let (ctx, mut app, _) = setup();
+    let id = paragraph_frame(&ctx, &mut app, 40);
+    let before = lines_shown(&app, id);
+    assert!(before > 1, "{before}");
+    let from = handle(&app, Handle::E);
+    // Half as wide: the right edge to the frame's middle.
+    let dx =
+        app.view.to_screen(Point::new(70.0, 0.0)).x - app.view.to_screen(Point::new(120.0, 0.0)).x;
+    let to = Pos2::new(from.x + dx, from.y);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(from)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(from, true, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    for i in 1..=4 {
+        let p = from + (to - from) * (i as f32 / 4.0);
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(p)],
+            Modifiers::NONE,
+        );
+    }
+    // Still held: the frame shows the text flowed in it.
+    assert!(matches!(app.drag, Drag::Scale { .. }), "{:?}", app.drag);
+    let t = app.preview_transform_of(&app.drag).expect("a scale");
+    let drawn = app.live_reflow.borrow().layouts_of(id);
+    assert!(drawn >= 1, "the canvas flowed the text");
+    let live = app.live_frame(id, t).expect("flowed live");
+    assert_eq!(
+        app.live_reflow.borrow().layouts_of(id),
+        drawn,
+        "drawn from the frame's layout"
+    );
+    assert!((live.frame.width - 50.0).abs() < 1.0, "{:?}", live.frame);
+    assert!(live.lines > before, "{} lines, {before} before", live.lines);
+    // The document waits for the release.
+    assert_eq!(lines_shown(&app, id), before);
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(to, false, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert_eq!(
+        lines_shown(&app, id),
+        live.lines,
+        "the release keeps the lines"
+    );
+    let s = app.doc().find_shape(id).expect("text").clone();
+    assert_eq!(
+        s.page_path(),
+        live.outline,
+        "and the letters where they were shown"
+    );
+    app.undo();
+    assert_eq!(lines_shown(&app, id), before, "one undo step");
+}
+
+/// `cargo test --release -p tracedraw -- --ignored frame_times_of_a_paragraph_frame_resize --nocapture`.
+/// A frame's side handle dragged back and forth over a short and a long
+/// paragraph text: the text flows anew on every frame (only its lines are
+/// broken anew, only those that show; the glyphs are shaped once) unless
+/// its layouts take longer than `LIVE_REFLOW_BUDGET` or the text is too
+/// long to shape during the drag, when the frame follows alone as before.
+#[test]
+#[ignore]
+fn frame_times_of_a_paragraph_frame_resize() {
+    // `false`: the live reflow off, the frame following alone as before.
+    for (words, live_reflow) in [200, 2000, 20000]
+        .into_iter()
+        .flat_map(|w| [(w, false), (w, true)])
+    {
+        let (ctx, mut app, _) = setup();
+        if !live_reflow {
+            app.live_reflow.borrow_mut().budget = -1.0;
+        }
+        let id = paragraph_frame(&ctx, &mut app, words);
+        let from = handle(&app, Handle::E);
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(from)],
+            Modifiers::NONE,
+        );
+        frame(
+            &ctx,
+            &mut app,
+            vec![button(from, true, PointerButton::Primary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        let n = 60;
+        let t0 = std::time::Instant::now();
+        let mut worst = 0.0f64;
+        for k in 0..n {
+            let dx = 40.0 * ((k as f32) * 0.3).sin() - 60.0;
+            let started = std::time::Instant::now();
+            frame(
+                &ctx,
+                &mut app,
+                vec![Event::PointerMoved(from + egui::vec2(dx, 0.0))],
+                Modifiers::NONE,
+            );
+            worst = worst.max(started.elapsed().as_secs_f64());
+        }
+        let mean = t0.elapsed().as_secs_f64() / n as f64;
+        let t = app.preview_transform_of(&app.drag).expect("a scale");
+        let live = app.live_frame(id, t).is_some();
+        let layouts = app.live_reflow.borrow().layouts_of(id);
+        println!(
+            "{words:>6} words, live reflow {live_reflow:>5}: {:.2} ms a frame (worst {:.2} ms), {layouts} layouts, flowing live at the end: {live}",
+            mean * 1000.0,
+            worst * 1000.0
+        );
+        frame(
+            &ctx,
+            &mut app,
+            vec![button(from, false, PointerButton::Primary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+    }
+}
+
 /// The tabs of paragraph text frames, with the pointer: a drag from a
 /// frame's bottom tab onto another frame flows its text on into it; a
 /// click on a picked frame's top tab and then a click on another frame

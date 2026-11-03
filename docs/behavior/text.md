@@ -410,7 +410,21 @@ any other object; the steps and sides follow the letters' outlines
   property bar's size and scale fields, changes its frame and the text
   flows anew in it; the letters keep their size and the text's transform
   stays as it was (`text_frames.rs`). While the handle is dragged the
-  frame follows and the letters stay. This holds for text that is
+  frame follows and the drag outline shows the text flowed anew in it,
+  with the line breaks the release makes; the frame turns red when the
+  text no longer fits (a frame of a linked chain takes what fits of the
+  text after it, which flows on). Only the lines that show are broken
+  anew on each frame of the drag, at most once a frame: the text engine
+  keeps the shaped glyphs of the texts laid out last (up to 64 texts and
+  30 000 glyphs). A text whose layout takes longer than a quarter of a
+  60 Hz frame (`LIVE_REFLOW_BUDGET`, 4 ms) three times in a row, or a
+  text longer than 4000 bytes whose glyphs are not kept (a very long
+  one, which would take long to shape), shows its frame alone during the
+  drag, its old outline stretched with it, and flows on release, until
+  the drawing changes. The release is one
+  undo step, as before (#1327,
+  `pick_drag_tests::a_paragraph_frame_reflows_live_while_its_handle_is_dragged`,
+  benchmark `frame_times_of_a_paragraph_frame_resize`). This holds for text that is
   neither turned nor slanted and a scale by positive amounts; turning,
   slanting, mirroring and moving act on the whole text, and a turned
   text scales as a whole. With other objects in the selection each is

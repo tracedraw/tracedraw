@@ -466,7 +466,7 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
             0
         };
     // Paragraph text being resized keeps its letters while the frame
-    // follows the drag (the text flows anew on release).
+    // follows the drag (the drag outline shows the text flowed anew).
     let preview_ids = preview.map(|t| {
         let ids: Vec<_> = app
             .selection
@@ -1380,8 +1380,13 @@ pub fn draw_transform_outline(app: &App, painter: &Painter, t: Affine) {
     let halo = EStroke::new(3.0, Color32::from_white_alpha(220));
     let line = EStroke::new(1.0, Tokens::DRAG_OUTLINE);
     for s in app.selected_rc().iter() {
-        // What the release will make: rounded corners keep their size.
-        let mut paths = vec![s.page_path_after(t)];
+        // What the release will make: rounded corners keep their size,
+        // and a paragraph text flows anew in the frame it is given (when
+        // that is quick enough to do every frame, #1327).
+        let mut paths = vec![match app.live_frame(s.id, t) {
+            Some(live) => live.outline.clone(),
+            None => s.page_path_after(t),
+        }];
         // A symmetry out of edit mode goes whole: its copies too, also
         // those of one inside a group.
         let mut moved = s.clone();

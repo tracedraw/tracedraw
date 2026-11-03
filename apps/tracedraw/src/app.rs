@@ -1231,6 +1231,8 @@ pub struct App {
     /// Whether each paragraph text overflows its frame, by document
     /// revision (laying text out every frame would be slow).
     pub overflow_cache: std::cell::RefCell<(u64, std::collections::HashMap<ShapeId, bool>)>,
+    /// Paragraph texts flowed in the frames a drag gives them (#1327).
+    pub live_reflow: std::cell::RefCell<crate::text_frames::LiveReflow>,
     /// The corners the Shape tool's corner widgets stand on.
     pub corner_cache: std::cell::RefCell<crate::corner_widgets::CornerCache>,
     pub wireframe: bool,
@@ -2565,6 +2567,7 @@ impl App {
             window_layout: Default::default(),
             window_layout_seen: None,
             overflow_cache: Default::default(),
+            live_reflow: Default::default(),
             corner_cache: Default::default(),
             wireframe: false,
             font_families: tracedraw_text::fonts().available_families(),
