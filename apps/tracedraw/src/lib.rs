@@ -175,6 +175,7 @@ mod styles;
 mod symbol_paste;
 mod symmetry_edit;
 mod system_chars;
+mod system_locale;
 mod system_prefs;
 #[cfg(any(target_os = "macos", test))]
 mod system_quit;
@@ -328,11 +329,9 @@ pub fn run() -> eframe::Result<()> {
         settings = settings.reset_keeping_history();
         settings.save();
     }
-    i18n::set_language(&if settings.language.is_empty() {
-        i18n::system_language().to_string()
-    } else {
-        settings.language.clone()
-    });
+    // The language picked in Options, else the installer's, else the
+    // system's (docs/behavior/language.md).
+    i18n::set_language(i18n::startup_language_here(&settings.language));
     let splash = settings.show_splash && !plain;
     let viewport = if splash {
         // The splash has no frame, so it cannot be dragged larger; it is

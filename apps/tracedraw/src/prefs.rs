@@ -4,8 +4,8 @@
 //! messages show. See docs/behavior/options.md.
 
 use crate::ui::dialogs::{
-    ExportState, PrintState, AI_VERSIONS, EXPORT_COLOR_MODES, EXPORT_FORMATS, EXPORT_SCALE_RANGE,
-    EXPORT_SIZE_UNITS, PDF_STANDARDS,
+    ExportState, PrintState, AI_VERSIONS, EXPORT_FORMATS, EXPORT_SCALE_RANGE, EXPORT_SIZE_UNITS,
+    PDF_STANDARDS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -205,8 +205,6 @@ pub struct FormatPrefs {
     pub export_size_unit: usize,
     /// Bitmaps: the scale of the artwork (1 = as drawn, #617).
     pub export_scale: f64,
-    /// JPEG and TIFF colour mode (#1763).
-    pub export_color_mode: usize,
     /// The choices of the last export of each format (the preset name
     /// unused), so choosing a format in the Export dialog brings back how
     /// it was exported last (#617).
@@ -243,7 +241,6 @@ impl Default for FormatPrefs {
             pdf_bleed_mm: st.bleed_mm,
             export_size_unit: st.size_unit,
             export_scale: st.scale,
-            export_color_mode: st.color_mode,
             export_by_format: Vec::new(),
             remember_last: true,
             import_place: ImportPlace::AsInFile,
@@ -277,9 +274,6 @@ pub struct ExportPreset {
     /// The bitmap size's unit and the scale (#617).
     pub size_unit: usize,
     pub scale: f64,
-    /// JPEG and TIFF colour mode (0 RGB, 1 CMYK, 2 Grayscale; #1763);
-    /// presets saved before have none and stay RGB.
-    pub color_mode: usize,
 }
 
 impl Default for ExportPreset {
@@ -319,7 +313,6 @@ impl ExportPreset {
             webp_lossless: st.webp_lossless,
             size_unit: st.size_unit,
             scale: st.scale,
-            color_mode: st.color_mode,
         }
     }
 
@@ -350,9 +343,6 @@ impl ExportPreset {
             st.output_condition = self.output_condition.chars().take(64).collect();
         }
         st.webp_lossless = self.webp_lossless;
-        if self.color_mode < EXPORT_COLOR_MODES.len() {
-            st.color_mode = self.color_mode;
-        }
         self.apply_size(st);
         st.preset = self.name.clone();
     }
@@ -521,11 +511,6 @@ impl FormatPrefs {
             } else {
                 d.scale
             },
-            color_mode: if self.export_color_mode < EXPORT_COLOR_MODES.len() {
-                self.export_color_mode
-            } else {
-                d.color_mode
-            },
             ..d
         }
     }
@@ -543,7 +528,6 @@ impl FormatPrefs {
         self.pdf_bleed_mm = st.bleed_mm;
         self.export_size_unit = st.size_unit;
         self.export_scale = st.scale;
-        self.export_color_mode = st.color_mode;
         keep_format_choices(&mut self.export_by_format, st);
     }
 }
@@ -713,60 +697,6 @@ mod tests {
     /// Export presets keep the format and its settings under a name;
     /// choosing one puts them back; they can be renamed and deleted, and
     /// last in the preferences (#547).
-    #[test]
-    fn export_presets_keep_the_colour_mode() {
-        // A CMYK JPEG preset comes back CMYK, through the preferences
-        // file too (#1763).
-        let st = ExportState {
-            format: 3,
-            color_mode: 1,
-            ..ExportState::default()
-        };
-        let mut prefs = FormatPrefs::default();
-        assert!(prefs.save_preset("Print JPEG", &st));
-        let json = serde_json::to_string(&prefs).expect("json");
-        let back: FormatPrefs = serde_json::from_str(&json).expect("back");
-        let mut d = ExportState::default();
-        back.export_presets[0].apply(&mut d);
-        assert_eq!((d.format, d.color_mode), (3, 1));
-        // The last export's colour mode is remembered with the rest.
-        prefs.remember(&st);
-        assert_eq!(prefs.state().color_mode, 1);
-        // Presets and preferences from before have none: RGB, as before;
-        // a mode this version does not know is ignored.
-        let old: ExportPreset =
-            serde_json::from_str(r#"{"name":"x","format":3,"quality":80}"#).expect("old");
-        assert_eq!(old.color_mode, 0);
-        let mut d = ExportState::default();
-        old.apply(&mut d);
-        assert_eq!((d.color_mode, d.quality), (0, 80));
-        let old: FormatPrefs = serde_json::from_str(r#"{"export_format":3}"#).expect("old");
-        assert_eq!(old.state().color_mode, 0);
-        let odd = ExportPreset {
-            color_mode: 9,
-            ..ExportPreset::from_state("y", &st)
-        };
-        odd.apply(&mut d);
-        assert_eq!(d.color_mode, 0);
-        assert_eq!(
-            d.color_mode_for("jpg"),
-            crate::ui::dialogs::ExportColorMode::Rgb
-        );
-        // Only JPEG and TIFF take a colour mode.
-        let cmyk = ExportState {
-            color_mode: 1,
-            ..ExportState::default()
-        };
-        assert_eq!(
-            cmyk.color_mode_for("tif"),
-            crate::ui::dialogs::ExportColorMode::Cmyk
-        );
-        assert_eq!(
-            cmyk.color_mode_for("png"),
-            crate::ui::dialogs::ExportColorMode::Rgb
-        );
-    }
-
     #[test]
     fn export_presets_save_apply_rename_and_delete() {
         let mut f = FormatPrefs::default();

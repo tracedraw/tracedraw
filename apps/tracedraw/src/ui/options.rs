@@ -4365,12 +4365,35 @@ fn global_general_page(app: &mut App, ui: &mut Ui) {
             .find(|(c, _)| *c == current)
             .map(|(_, n)| *n)
             .unwrap_or("English");
+        // Following the system shows as System language and the language
+        // it gives now.
+        let shown = if app.settings.language == crate::i18n::SYSTEM {
+            format!("{} ({name})", tr("options.language_system"))
+        } else {
+            name.to_string()
+        };
         egui::ComboBox::from_id_salt("opt_lang")
-            .selected_text(name)
+            .selected_text(shown)
             .width(200.0)
             .show_ui(ui, |ui| {
+                // System language: follow the system's language, now and
+                // when it changes (docs/behavior/language.md).
+                let follows = app.settings.language == crate::i18n::SYSTEM;
+                let system = crate::i18n::system_language();
+                let system_name = crate::i18n::LANGUAGES
+                    .iter()
+                    .find(|(c, _)| *c == system)
+                    .map(|(_, n)| *n)
+                    .unwrap_or("English");
+                let label = format!("{} ({system_name})", tr("options.language_system"));
+                if ui.selectable_label(follows, label).clicked() {
+                    crate::i18n::set_language(system);
+                    app.settings.language = crate::i18n::SYSTEM.to_string();
+                }
+                ui.separator();
                 for (code, n) in crate::i18n::LANGUAGES {
-                    if ui.selectable_label(current == code, n).clicked() {
+                    let picked = !follows && current == code;
+                    if ui.selectable_label(picked, n).clicked() {
                         crate::i18n::set_language(code);
                         app.settings.language = code.to_string();
                     }

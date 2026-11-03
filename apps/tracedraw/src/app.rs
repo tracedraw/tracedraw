@@ -3157,12 +3157,7 @@ impl App {
         s.bars.migrate();
         s.migrate_ai();
         self.ai.key = crate::ai::remembered_key(&s.ai);
-        let lang = if s.language.is_empty() {
-            crate::i18n::system_language().to_string()
-        } else {
-            s.language.clone()
-        };
-        crate::i18n::set_language(&lang);
+        crate::i18n::set_language(crate::i18n::startup_language_here(&s.language));
         self.workspace = Workspace::from_id(&s.workspace);
         self.set_workspace(self.workspace);
         // The bars as they were left, over the workspace's own.
@@ -3381,7 +3376,10 @@ impl App {
             .collect();
         self.settings.duplicate_offset_mm = [self.duplicate_offset.x, self.duplicate_offset.y];
         self.settings.units = self.units.id().into();
-        self.settings.language = crate::i18n::language();
+        // `settings.language` is what the user picked (empty for nothing
+        // yet, `system` for System language), not the language shown: a
+        // language that came from the installer or the system stays
+        // free to follow them (docs/behavior/language.md).
         self.settings.shown_bars = Some(self.shown_bars());
         self.settings.dockers = Some(self.docker_setup());
     }
@@ -9794,6 +9792,18 @@ mod tests {
 
     /// The preferences are saved when something changed, not every
     /// second, and not while Options is open (Cancel puts them back).
+    #[test]
+    fn a_language_not_picked_is_not_saved_as_picked() {
+        let mut app = App::headless();
+        // Nothing picked yet: the language shown came from the installer
+        // or the system and is not written as a choice.
+        for saved in ["", crate::i18n::SYSTEM, "de", "en"] {
+            app.settings.language = saved.into();
+            app.sync_settings();
+            assert_eq!(app.settings.language, saved);
+        }
+    }
+
     #[test]
     fn preferences_are_saved_when_they_change() {
         let mut app = App::headless();

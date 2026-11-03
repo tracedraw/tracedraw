@@ -3,7 +3,6 @@
 
 #![allow(clippy::field_reassign_with_default)]
 pub mod ai;
-pub mod cmyk_bitmap;
 pub mod dxf;
 pub mod emf;
 pub mod eps;
