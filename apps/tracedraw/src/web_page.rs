@@ -236,6 +236,35 @@ mod tests {
         }
     }
 
+    /// #1409: the editor's keys a browser lets a page cancel (Ctrl+1 to
+    /// Ctrl+9 and Ctrl+PgUp/PgDn switch tabs otherwise) are kept from it,
+    /// and so are the browser version's alternatives for the keys no page
+    /// can take (`shortcuts::BROWSER_KEYS`), so they reach the editor.
+    #[test]
+    fn the_editors_tab_keys_and_their_alternatives_are_kept_from_the_browser() {
+        for k in ["1", "5", "9", "0", "PageUp", "PageDown", "F4"] {
+            assert!(
+                guard_keeps_from_browser(k, true, false, false, false, false),
+                "{k}"
+            );
+        }
+        // Ctrl+F5 (Refresh Window) would reload the page.
+        assert!(guard_keeps_from_browser(
+            "F5", true, false, false, false, false
+        ));
+        // Alt+Shift+N, Alt+Shift+W, Alt+PgUp, Alt+PgDn.
+        for (k, c) in [
+            ("N", "KeyN"),
+            ("W", "KeyW"),
+            ("PageUp", "PageUp"),
+            ("PageDown", "PageDown"),
+        ] {
+            let mut g = AltGuard::default();
+            g.key_down("Alt", "AltLeft", false, false, true, false, false);
+            assert!(g.key_down(k, c, false, false, true, false, false), "{k}");
+        }
+    }
+
     /// AltGr on Windows comes as Ctrl and Alt with the AltGraph state: its
     /// characters reach the page's text input, while Ctrl and Ctrl+Alt
     /// shortcuts without AltGr stay kept from the browser (#1408).

@@ -239,8 +239,34 @@ Ctrl+V (clipboard) and Ctrl+Shift+I (developer tools). Ctrl+R is Repeat,
 as on the desktop, and F5 the Freehand tool, so neither reloads the
 page: use the browser's reload button
 (`web_page::tests::the_browser_keeps_only_the_clipboard_and_developer_keys`).
-Ctrl+N, Ctrl+T and Ctrl+W stay with the browser because no page can take
-them; use the File menu for New and Close.
+Ctrl+1 to Ctrl+9 (selection groups) and Ctrl+PgUp/PgDn (Forward One,
+Back One) are kept from the browser the same way, so they reach the
+editor in browsers that let a page have them instead of switching tabs
+(`web_page::tests::the_editors_tab_keys_and_their_alternatives_are_kept_from_the_browser`).
+
+Some keys stay with the browser whatever the page does (#1409). Every
+browser keeps Ctrl+N, Ctrl+T, Ctrl+W, Ctrl+Shift+T, Ctrl+F4 and Alt+F4;
+some keep Ctrl+PgUp, Ctrl+PgDn and Ctrl+1 to Ctrl+9 (tab switching) or,
+on Linux, Ctrl+Q and Ctrl+Shift+Q (quit). Their commands have keys of
+their own in the browser, shown in the menus, context menus, toolbar
+tips and hints in place of the key the browser keeps, and listed on
+Options > Customization > Commands:
+
+| Key the browser keeps | Command | Use instead |
+|---|---|---|
+| Ctrl+N | New | Alt+Shift+N |
+| Ctrl+T | Text panel | Alt+Shift+X |
+| Ctrl+Shift+T | Edit Text | Alt+Shift+T |
+| Ctrl+W | Refresh Window | Ctrl+F5 |
+| Ctrl+F4 | Close Window | Alt+Shift+W |
+| Ctrl+PgUp, Ctrl+PgDn | Forward One, Back One | Alt+PgUp, Alt+PgDn |
+| Ctrl+Q | Convert to Curves | Alt+Shift+C |
+| Ctrl+Shift+Q | Convert Outline to Object | Alt+Shift+Q |
+| Ctrl+0 to Ctrl+9 | Store selection group | Alt+Shift+0 to Alt+Shift+9 |
+| Alt+F4 | Exit | close the tab |
+
+The table is `shortcuts::BROWSER_KEYS`; see `shortcuts.md`, "In the
+browser". The desktop apps keep their own keys only.
 
 AltGr types its characters (`€ @ [ ] { } \`, the Polish, Czech and
 other letters of many keyboard layouts) in text and in every field.

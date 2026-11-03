@@ -7294,3 +7294,4 @@ palette.edge_bottom = "Embaixo" # mt
 palette.edge_left = "À esquerda" # mt
 palette.edge_right = "À direita" # mt
 palette.add_from_document_tip = "Adiciona à paleta do documento todas as cores usadas no desenho." # mt
+options.browser_keys = "O navegador reserva alguns atalhos para si. No navegador, use estas teclas: {keys}. Sair (Alt+F4): feche a aba." # mt

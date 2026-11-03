@@ -111,7 +111,10 @@ pub(crate) fn rich_tip(ui: &mut Ui, tip: &str) {
 /// The tip of the standard bar's button `key`: its title and the
 /// description kept under `key_desc`.
 fn tip(key: &str) -> String {
-    format!("{}\n{}", tr(key), tr(&format!("{key}_desc")))
+    // In the browser version a shortcut the browser keeps shows the key
+    // that replaces it (#1409).
+    let title = crate::shortcuts::shown_in(tr(key));
+    format!("{}\n{}", title, tr(&format!("{key}_desc")))
 }
 
 /// The small arrow after a button that opens its list.
@@ -2099,7 +2102,7 @@ fn text_properties(app: &mut App, ui: &mut Ui) {
     if pic_button(
         ui,
         Pic::TextProperties,
-        &format!("{} (Ctrl+T)", tr("toolbar.text_properties")),
+        &crate::shortcuts::shown_in(format!("{} (Ctrl+T)", tr("toolbar.text_properties"))),
         true,
         docker_open,
     )
@@ -2110,7 +2113,7 @@ fn text_properties(app: &mut App, ui: &mut Ui) {
     if pic_button(
         ui,
         Pic::EditText,
-        &format!("{} (Ctrl+Shift+T)", tr("menu.text.edit_text")),
+        &crate::shortcuts::shown_in(format!("{} (Ctrl+Shift+T)", tr("menu.text.edit_text"))),
         is_text,
         false,
     )
@@ -2847,7 +2850,10 @@ fn shape_tool_bar(app: &mut App, ui: &mut Ui) {
         if pic_button(
             ui,
             Pic::ToCurves,
-            &format!("{} (Ctrl+Q)", tr("menu.object.convert_to_curves")),
+            &crate::shortcuts::shown_in(format!(
+                "{} (Ctrl+Q)",
+                tr("menu.object.convert_to_curves")
+            )),
             app.can_convert_to_curves(),
             false,
         )

@@ -7294,3 +7294,4 @@ palette.edge_bottom = "Bottom"
 palette.edge_left = "Left"
 palette.edge_right = "Right"
 palette.add_from_document_tip = "Add every color the drawing uses to the document palette."
+options.browser_keys = "浏览器会保留一些快捷键自用。在浏览器中请改用以下按键：{keys}。退出 (Alt+F4)：关闭标签页。" # mt

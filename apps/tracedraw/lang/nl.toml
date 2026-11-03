@@ -7294,3 +7294,4 @@ palette.edge_bottom = "Bottom"
 palette.edge_left = "Left"
 palette.edge_right = "Right"
 palette.add_from_document_tip = "Add every color the drawing uses to the document palette."
+options.browser_keys = "De browser houdt sommige sneltoetsen voor zichzelf. Gebruik in de browser in plaats daarvan deze toetsen: {keys}. Afsluiten (Alt+F4): sluit het tabblad." # mt

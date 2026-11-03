@@ -180,6 +180,41 @@ name.
   zoom levels list, Snap To, the other zoom buttons, Options, Launch)
   have no Shortcut Keys tab.
 
+## In the browser
+
+Some of these keys stay with the browser in the browser version, which
+gives no page Ctrl+N, Ctrl+T, Ctrl+W, Ctrl+Shift+T, Ctrl+F4 or Alt+F4,
+and in some browsers or systems keeps Ctrl+PgUp, Ctrl+PgDn and Ctrl+1 to
+Ctrl+9 (tab switching) or Ctrl+Q and Ctrl+Shift+Q (quitting, on Linux).
+The page keeps from the browser every one of these it is allowed to, so
+they work where the browser lets them (`web.md`, Keyboard). Each command
+also has a key of the browser version, which the menus, context menus,
+toolbar tips and hints show there instead of the key the browser keeps
+(the desktop apps show and run their own keys only; both keys work in
+the browser):
+
+| Command | Desktop key | In the browser |
+|---|---|---|
+| File > New | Ctrl+N | Alt+Shift+N |
+| Text panel | Ctrl+T | Alt+Shift+X |
+| Edit Text | Ctrl+Shift+T | Alt+Shift+T |
+| Window > Refresh Window | Ctrl+W | Ctrl+F5 |
+| Window > Close Window | Ctrl+F4 | Alt+Shift+W |
+| Order > Forward One, Back One | Ctrl+PgUp, Ctrl+PgDn | Alt+PgUp, Alt+PgDn |
+| Convert to Curves | Ctrl+Q | Alt+Shift+C |
+| Convert Outline to Object | Ctrl+Shift+Q | Alt+Shift+Q |
+| Store selection group 0 to 9 | Ctrl+0 to Ctrl+9 | Alt+Shift+0 to Alt+Shift+9 (the digit keys whatever Shift types on them) |
+| File > Exit | Alt+F4 | none: close the tab |
+
+Each of these keys is bound to nothing else
+(`ui::menus::tests::browser_alternatives_are_free`). Options >
+Customization > Commands says which keys the browser keeps and lists
+their replacements. While typing text, the alignment keys the browser
+keeps (Ctrl+N) have their buttons on the property bar. Checks:
+`shortcuts::tests::browser_kept_keys_map_to_alternatives`,
+`ui::menus::tests::browser_kept_shortcuts_have_alternatives_in_the_menus`,
+`web_page::tests::the_editors_tab_keys_and_their_alternatives_are_kept_from_the_browser`.
+
 ## Checks
 
 - `ui::options::tests::bar_buttons_and_rows_shown_at_times_take_shortcuts`

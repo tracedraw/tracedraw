@@ -7294,3 +7294,4 @@ palette.edge_bottom = "Bottom"
 palette.edge_left = "Left"
 palette.edge_right = "Right"
 palette.add_from_document_tip = "Add every color the drawing uses to the document palette."
+options.browser_keys = "Tarayıcı bazı kısayolları kendisine ayırır. Tarayıcıda bunların yerine şu tuşları kullanın: {keys}. Çıkış (Alt+F4): sekmeyi kapatın." # mt

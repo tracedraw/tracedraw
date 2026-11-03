@@ -3413,18 +3413,29 @@ impl App {
         // A key held sends its press again and again (`repeat`); the
         // presses a held key makes are kept apart for what must happen
         // once a press, such as picking a tool (#1502).
+        // In the browser version a key that stands in for one the browser
+        // keeps (Alt+PgUp for Ctrl+PgUp, #1409) also counts as that key.
+        let web_keys = crate::shortcuts::web_keys();
         let presses: Vec<(Key, Modifiers)> = input
             .events
             .iter()
-            .filter_map(|e| match e {
+            .flat_map(|e| match e {
                 egui::Event::Key {
                     key,
+                    physical_key,
                     pressed: true,
                     modifiers,
                     ..
-                } => Some((*key, *modifiers)),
-                _ => None,
+                } => {
+                    let kept = web_keys
+                        .then(|| crate::shortcuts::browser_key_for(*key, *physical_key, *modifiers))
+                        .flatten()
+                        .map(|(m, k)| (k, m));
+                    [Some((*key, *modifiers)), kept]
+                }
+                _ => [None, None],
             })
+            .flatten()
             .collect();
         let first_presses: Vec<(Key, Modifiers)> = input
             .events

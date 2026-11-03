@@ -7294,3 +7294,4 @@ palette.edge_bottom = "Bottom"
 palette.edge_left = "Left"
 palette.edge_right = "Right"
 palette.add_from_document_tip = "Add every color the drawing uses to the document palette."
+options.browser_keys = "ব্রাউজার কিছু শর্টকাট নিজের জন্য রাখে। ব্রাউজারে এগুলোর বদলে এই কী ব্যবহার করুন: {keys}। প্রস্থান (Alt+F4): ট্যাব বন্ধ করুন।" # mt

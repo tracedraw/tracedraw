@@ -3132,6 +3132,18 @@ fn commands_page(app: &mut App, ui: &mut Ui) {
             .color(Tokens::text_dim())
             .size(11.0),
     );
+    // The shortcuts the browser keeps and the keys that replace them
+    // there (#1409).
+    if crate::shortcuts::web_keys() {
+        ui.label(
+            egui::RichText::new(trf(
+                "options.browser_keys",
+                &[("keys", &crate::shortcuts::browser_keys_list())],
+            ))
+            .color(Tokens::text_dim())
+            .size(11.0),
+        );
+    }
     let category_name = |c: Option<&str>| match c {
         None => tr("options.all_commands"),
         Some(TOOLBOX) => tr("menu.window.toolbar_toolbox"),
@@ -4347,7 +4359,7 @@ fn global_general_page(app: &mut App, ui: &mut Ui) {
         ui.label(egui::RichText::new(tr("options.mcp_window_hint")).color(Tokens::text_dim()));
         if let Some(link) = &app.mcp_link {
             ui.label(
-                egui::RichText::new(crate::i18n::trf(
+                egui::RichText::new(trf(
                     "options.mcp_window_port",
                     &[("port", &link.info.port.to_string())],
                 ))

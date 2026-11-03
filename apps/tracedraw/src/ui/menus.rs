@@ -1099,15 +1099,18 @@ pub(crate) mod invoke {
         });
     }
 
-    /// The shortcut a row shows: the user's for `key`, else `default`.
+    /// The shortcut a row shows: the user's for `key`, else `default`; in
+    /// the browser version the key that replaces one the browser keeps
+    /// (`shortcuts::BROWSER_KEYS`, #1409).
     pub fn shown_shortcut(key: &str, default: &str) -> String {
         // The first of its keys (a command may have several, #822).
-        BINDINGS.with(|b| {
+        let keys = BINDINGS.with(|b| {
             crate::shortcuts::keys_for(&b.borrow(), key, Some(default))
                 .into_iter()
                 .next()
                 .unwrap_or_default()
-        })
+        });
+        crate::shortcuts::shown(keys)
     }
 }
 
@@ -1685,6 +1688,159 @@ mod tests {
             "{}",
             app.status
         );
+    }
+
+    /// #1409: in the browser version the menus show the key that runs a
+    /// command whose own key the browser keeps, and that key runs it; the
+    /// desktop shows and runs the command's own key only.
+    #[test]
+    fn browser_kept_shortcuts_have_alternatives_in_the_menus() {
+        use egui::{Key, Modifiers};
+        let ctx = crate::theme::ui_context();
+        let mut app = mixed_app();
+        app.show_welcome = false;
+        let first = app.doc().pages[0]
+            .layers
+            .iter()
+            .find_map(|l| l.shapes.first().map(|s| s.id))
+            .expect("a shape");
+        let shapes = move |app: &App| {
+            app.doc().pages[0]
+                .layers
+                .iter()
+                .find(|l| l.shapes.iter().any(|s| s.id == first))
+                .map(|l| l.shapes.iter().map(|s| s.id).collect::<Vec<_>>())
+                .unwrap_or_default()
+        };
+        let alt_shift = Modifiers::ALT | Modifiers::SHIFT;
+        let back = |app: &mut App| app.selection = vec![first];
+
+        // Desktop: Ctrl+PgUp shown and run; Alt+PgUp does nothing.
+        crate::shortcuts::set_web_keys_for_test(false);
+        root_frame(&ctx, &mut app, vec![]);
+        assert_eq!(
+            invoke::shown_shortcut("menu.object.forward_one", "Ctrl+PgUp"),
+            "Ctrl+PgUp"
+        );
+        back(&mut app);
+        let before = shapes(&app);
+        root_frame(&ctx, &mut app, vec![key(Key::PageUp, Modifiers::ALT)]);
+        assert_eq!(shapes(&app), before);
+
+        // Browser: the rows show the alternatives (context menus too, as
+        // they draw their rows the same way), and they run the commands.
+        crate::shortcuts::set_web_keys_for_test(true);
+        for (id, own, web) in [
+            ("menu.object.forward_one", "Ctrl+PgUp", "Alt+PgUp"),
+            ("menu.object.back_one", "Ctrl+PgDn", "Alt+PgDn"),
+            ("menu.file.new", "Ctrl+N", "Alt+Shift+N"),
+            ("menu.window.refresh_window", "Ctrl+W", "Ctrl+F5"),
+            ("menu.window.close_window", "Ctrl+F4", "Alt+Shift+W"),
+            ("menu.text.text_docker", "Ctrl+T", "Alt+Shift+X"),
+            ("menu.text.edit_text", "Ctrl+Shift+T", "Alt+Shift+T"),
+            ("menu.object.convert_to_curves", "Ctrl+Q", "Alt+Shift+C"),
+            ("menu.file.exit", "Alt+F4", "Alt+F4"),
+            ("menu.file.save", "Ctrl+S", "Ctrl+S"),
+        ] {
+            assert_eq!(invoke::shown_shortcut(id, own), web, "{id}");
+        }
+        let mut entries = Vec::new();
+        run_frame(&ctx, |ui| entries = commands(&mut app, ui.ctx()));
+        assert!(entries
+            .iter()
+            .any(|e| e.key == "menu.object.forward_one" && e.shortcut == "Ctrl+PgUp"));
+        // Alt+PgUp brings the bottom object one step forward.
+        back(&mut app);
+        root_frame(&ctx, &mut app, vec![key(Key::PageUp, Modifiers::ALT)]);
+        root_frame(&ctx, &mut app, vec![]);
+        assert_ne!(shapes(&app), before);
+        assert_eq!(shapes(&app)[1], first);
+        // Alt+PgDn takes it back.
+        root_frame(&ctx, &mut app, vec![key(Key::PageDown, Modifiers::ALT)]);
+        root_frame(&ctx, &mut app, vec![]);
+        assert_eq!(shapes(&app), before);
+        // Alt+Shift+1 (the physical 1, `!` on the keyboard) stores the
+        // selection as group 1, which 1 selects again.
+        back(&mut app);
+        root_frame(
+            &ctx,
+            &mut app,
+            vec![egui::Event::Key {
+                key: Key::Exclamationmark,
+                physical_key: Some(Key::Num1),
+                pressed: true,
+                repeat: false,
+                modifiers: alt_shift,
+            }],
+        );
+        app.selection.clear();
+        root_frame(&ctx, &mut app, vec![key(Key::Num1, Modifiers::NONE)]);
+        assert_eq!(app.selection, vec![first]);
+        // Alt+Shift+N asks for a new drawing.
+        let docs = app.docs.len();
+        root_frame(&ctx, &mut app, vec![key(Key::N, alt_shift)]);
+        for _ in 0..3 {
+            root_frame(&ctx, &mut app, vec![]);
+        }
+        assert!(
+            app.docs.len() > docs || !matches!(app.dialog, Dialog::None),
+            "{}",
+            app.status
+        );
+        crate::shortcuts::set_web_keys_for_test(false);
+    }
+
+    /// #1409: each browser alternative is a key no menu command, tool or
+    /// panel uses, and no key the editor checks by itself.
+    #[test]
+    fn browser_alternatives_are_free() {
+        let ctx = crate::theme::ui_context();
+        let mut app = mixed_app();
+        app.show_welcome = false;
+        let mut entries = Vec::new();
+        run_frame(&ctx, |ui| entries = commands(&mut app, ui.ctx()));
+        let mut used: Vec<String> = entries.into_iter().map(|e| e.shortcut).collect();
+        used.extend(
+            crate::tools::Tool::ALL
+                .iter()
+                .filter_map(|t| t.shortcut())
+                .map(str::to_string),
+        );
+        used.extend(DockerTab::ALL.iter().map(|t| t.shortcut().to_string()));
+        // The keys the canvas checks itself: `pressed(Key::X, mods)`.
+        let src = include_str!("../interaction.rs");
+        for part in src.split("pressed(Key::").skip(1) {
+            let Some((k, rest)) = part.split_once(',') else {
+                continue;
+            };
+            let Some((m, _)) = rest.split_once(')') else {
+                continue;
+            };
+            let mut text = String::new();
+            if m.contains("cmd") || m.contains("COMMAND") {
+                text.push_str("Ctrl+");
+            }
+            if m.contains("ALT") {
+                text.push_str("Alt+");
+            }
+            if m.contains("SHIFT") {
+                text.push_str("Shift+");
+            }
+            let k = k.trim();
+            let k = k.strip_prefix("Num").unwrap_or(k);
+            text.push_str(k);
+            used.push(text);
+        }
+        assert!(used
+            .iter()
+            .any(|u| crate::shortcuts::same(u, "Alt+Shift+R")));
+        for (taken, alt) in crate::shortcuts::BROWSER_KEYS {
+            let Some(alt) = alt else { continue };
+            assert!(
+                !used.iter().any(|u| crate::shortcuts::same(u, alt)),
+                "{alt} (for {taken}) is used"
+            );
+        }
     }
 
     /// A frame of the menu bar alone in a window `height` tall.

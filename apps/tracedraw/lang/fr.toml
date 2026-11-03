@@ -7294,3 +7294,4 @@ palette.edge_bottom = "Bottom"
 palette.edge_left = "Left"
 palette.edge_right = "Right"
 palette.add_from_document_tip = "Add every color the drawing uses to the document palette."
+options.browser_keys = "Le navigateur garde certains raccourcis pour lui. Dans le navigateur, utilisez plutôt ces touches : {keys}. Quitter (Alt+F4) : fermez l'onglet." # mt
