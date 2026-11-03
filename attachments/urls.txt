@@ -576,3 +576,4 @@
 1666 https://github.com/user-attachments/assets/aaecb5f4-de61-4c28-a4e1-57a0833aa7a0
 1757 https://github.com/user-attachments/assets/2fabfb26-60d8-473e-ae70-742fff16811a
 1736 https://github.com/user-attachments/files/34329359/Distort.Training.Data.zip
+1733 https://github.com/user-attachments/files/34326402/TraceDraw.Italic.Font.Missing.Problem.zip
