@@ -575,5 +575,9 @@
 1666 https://github.com/user-attachments/assets/5c376d26-dc61-4f75-89e5-0097d4f31575
 1666 https://github.com/user-attachments/assets/aaecb5f4-de61-4c28-a4e1-57a0833aa7a0
 1757 https://github.com/user-attachments/assets/2fabfb26-60d8-473e-ae70-742fff16811a
-1736 https://github.com/user-attachments/files/34329359/Distort.Training.Data.zip
-1733 https://github.com/user-attachments/files/34326402/TraceDraw.Italic.Font.Missing.Problem.zip
+1779 https://github.com/user-attachments/assets/3433df0e-4d46-4452-968a-16bce006895b
+1779 https://github.com/user-attachments/assets/076e5c73-f133-43a9-9eef-6e83413ab7e3
+1779 https://github.com/user-attachments/assets/5b1d5ce1-aa1e-4995-9e02-230e083b451a
+1780 https://github.com/user-attachments/assets/a7870097-e969-47fc-af54-8f78de0985b2
+1780 https://github.com/user-attachments/assets/84cad22f-f934-4b45-ae9e-ddafbc229fcb
+1653 https://github.com/user-attachments/assets/d650e38e-bfaf-4cfa-ab64-d19c15d8d8da
