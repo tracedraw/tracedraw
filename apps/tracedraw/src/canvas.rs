@@ -476,6 +476,20 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
             .collect();
         (ids, t)
     });
+    // A render on its thread shares the copy of the drawing the pages
+    // beside take in the Multipage View, and they share its copy: the
+    // drawing is copied once a change, not once a render (a zoom renders
+    // at once, every few frames).
+    #[cfg(not(target_arch = "wasm32"))]
+    let shares = app.multipage && revision == app.engine.revision();
+    #[cfg(not(target_arch = "wasm32"))]
+    if shares {
+        if let Some((r, d)) = app.page_snapshot.borrow().as_ref() {
+            if *r == revision {
+                app.raster.borrow_mut().snapshot = Some(d.clone());
+            }
+        }
+    }
     let main = app.raster.borrow_mut().texture(
         painter.ctx(),
         doc,
@@ -492,6 +506,19 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         (app.view_mode == crate::app::ViewMode::Pixels).then(|| app.document_dpi()),
     );
     let main_rendered = app.raster.borrow().render_count() != renders_before;
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut raster = app.raster.borrow_mut();
+        raster.snapshot = None;
+        if shares {
+            if let Some((r, d)) = raster.kept_copy().filter(|(r, _)| *r == revision) {
+                let mut snap = app.page_snapshot.borrow_mut();
+                if snap.as_ref().is_none_or(|(s, _)| *s != r) {
+                    *snap = Some((r, d));
+                }
+            }
+        }
+    }
     if app.multipage {
         crate::multipage::draw_other_pages(app, painter, rect, started, main_rendered);
     }

@@ -189,6 +189,12 @@ pub struct Raster {
     /// take instead of a copy of its own (no threads in the browser).
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub snapshot: Option<std::sync::Arc<Document>>,
+    /// The copy of the drawing the last render on a thread took, with
+    /// its revision: the next renders of the same drawing (every step of
+    /// a zoom) share it instead of copying the drawing again on the
+    /// window's thread (a copy of a large drawing takes a frame's time).
+    #[cfg(not(target_arch = "wasm32"))]
+    kept: Option<(u64, std::sync::Arc<Document>)>,
     /// Renders started so far, on this thread or another.
     renders: u64,
     /// Turns other than the program's, for tests.
@@ -379,6 +385,10 @@ impl Raster {
         #[cfg(not(target_arch = "wasm32"))]
         {
             self.job = None;
+            // Freed on a thread of its own, as a render frees its copy.
+            if let Some((_, d)) = self.kept.take() {
+                std::thread::spawn(move || drop(d));
+            }
         }
     }
 
@@ -571,10 +581,10 @@ impl Raster {
                 }
                 return self.shown_meanwhile(view, screen);
             };
-            let doc = self
-                .snapshot
-                .take()
-                .unwrap_or_else(|| std::sync::Arc::new(doc.clone()));
+            let (doc, stale) = match self.snapshot.take() {
+                Some(shared) => (shared, None),
+                None => self.copy_of(doc, key.revision, zoom_now),
+            };
             let (tx, rx) = std::sync::mpsc::channel();
             let wake = ctx.clone();
             #[cfg(test)]
@@ -586,6 +596,7 @@ impl Raster {
                 let image = render_page(&doc, page, &opts).map(|pm| to_image(&pm, lut.as_deref()));
                 let _ = tx.send(image.map(|i| (i, t.elapsed().as_secs_f64())));
                 drop(doc);
+                drop(stale);
                 drop(turn);
                 wake.request_repaint();
             });
@@ -611,6 +622,36 @@ impl Raster {
         self.key = Some(key);
         self.page_rect = page_rect;
         self.texture.as_ref().map(|t| (t.id(), screen))
+    }
+
+    /// The drawing at `revision` for a render on a thread: the copy kept
+    /// from the last zoom render when it is of the same revision, or a new
+    /// copy, kept for the next steps of a zoom (`zoom`). Also the copy no
+    /// longer kept, for the render's thread to free (freeing a large
+    /// drawing takes time the window's thread does not have).
+    #[cfg(not(target_arch = "wasm32"))]
+    fn copy_of(
+        &mut self,
+        doc: &Document,
+        revision: u64,
+        zoom: bool,
+    ) -> (std::sync::Arc<Document>, Option<std::sync::Arc<Document>>) {
+        match &self.kept {
+            Some((r, d)) if *r == revision => (d.clone(), None),
+            _ => {
+                let d = std::sync::Arc::new(doc.clone());
+                let keep = zoom.then(|| (revision, d.clone()));
+                let stale = std::mem::replace(&mut self.kept, keep);
+                (d, stale.map(|(_, d)| d))
+            }
+        }
+    }
+
+    /// The copy of the drawing kept for renders on a thread, with its
+    /// revision, for other pictures of the same drawing to share.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn kept_copy(&self) -> Option<(u64, std::sync::Arc<Document>)> {
+        self.kept.clone()
     }
 
     /// True when the view asked for (`new`) differs from the picture's
@@ -1118,6 +1159,7 @@ mod tests {
         let first_step = view.zoom;
         pass(&ctx, &mut raster, &doc, &view, rect, 0.01);
         assert_eq!(raster.render_count(), renders + 1);
+        let copy = raster.kept_copy().expect("the drawing copied").1;
         // Nineteen more steps while it runs: nothing restarted, nothing
         // started beside it.
         for i in 0..19 {
@@ -1152,6 +1194,9 @@ mod tests {
         );
         assert_eq!(raster.job.as_ref().map(|j| j.key.zoom), Some(view.zoom));
         assert_eq!(raster.render_count(), renders + 2);
+        // The second render shares the first one's copy of the drawing.
+        let again = raster.kept_copy().expect("kept").1;
+        assert!(std::sync::Arc::ptr_eq(&copy, &again), "copied again");
         for i in 0..400 {
             if raster.picture_zoom() == Some(view.zoom) {
                 break;

@@ -49,6 +49,8 @@ full, row-by-row status.
 
 - Linux on X11: a large picture copied by a program that holds only the picture (`xclip -selection clipboard -t image/png` with a picture of about 1 MB) pastes with the first Ctrl+V, and the window no longer freezes. The windowing layer read the clipboard as text on every Ctrl+V; such a program answers with its picture sent in parts, the text read stopped after the first part, and the program then waited for the rest and answered nothing else, so the picture never pasted and the window froze for about 24 s while TraceDraw's own reads waited. On X11 the clipboard's text and files are now asked for only when its list of types offers them (#1488).
 
+- Zooming: the drawing now really stays sharp while zooming in quickly, as 0.39.0 announced. The change was taken out again by a later change before 0.39.0 was released, so 0.39.0 still showed the old picture blown up until the view had rested for 0.12 s. A zoom is now rendered at once on a thread, the latest zoom winning, with one shared copy of the drawing for its renders (#1773).
+
 ## 0.39.0 (2026-11-04)
 
 - Convert to Bitmap: the Grayscale and CMYK colour modes give a bitmap in that mode. Every choice gave an RGB bitmap: Grayscale made the pixels gray but kept an RGB picture, and CMYK did not even change the pixels. Grayscale now stores a grayscale picture, and the status line says "Bitmap (Grayscale)"; CMYK marks the bitmap as a CMYK picture and shows its pixels as the inks print them, as Image > Mode > CMYK Color does (#1777).
