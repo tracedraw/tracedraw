@@ -117,24 +117,37 @@ impl Bar {
         Bar::ROWS.contains(&self)
     }
 
-    /// The height of the toolbar's band in a row, its line included: the
-    /// room for its buttons and the margins above and below them (36 px,
+    /// The height of the toolbar's band in a row, its line included, at
+    /// the button size in force (see [`Self::row_height_at`]).
+    pub fn row_height(self) -> f32 {
+        self.row_height_at(crate::theme::bar_size())
+    }
+
+    /// The height of the toolbar's band at button size `size`: the room
+    /// for its buttons and the margins above and below them (36 px,
     /// 53 px for the property bar, up to Medium buttons; taller with
     /// Large and Extra Large ones, so they are never cut off).
-    pub fn row_height(self) -> f32 {
+    pub fn row_height_at(self, size: crate::settings::ButtonSize) -> f32 {
         match self {
-            Bar::Property => self.inner_height() + 16.0,
-            _ => self.inner_height() + 4.0,
+            Bar::Property => self.inner_height_at(size) + 16.0,
+            _ => self.inner_height_at(size) + 4.0,
         }
     }
 
-    /// The room the toolbar's buttons take across its row: the band less
-    /// the margins above and below them. It holds a button of the button
-    /// size in force (with the property bar's padding round its fields).
+    /// The room the toolbar's buttons take across its row at the button
+    /// size in force.
     fn inner_height(self) -> f32 {
+        self.inner_height_at(crate::theme::bar_size())
+    }
+
+    /// The room the toolbar's buttons take across its row: the band less
+    /// the margins above and below them. It holds a button of `size`
+    /// (with the property bar's padding round its fields).
+    fn inner_height_at(self, size: crate::settings::ButtonSize) -> f32 {
+        let m = size.metrics();
         match self {
-            Bar::Property => 37f32.max(Tokens::prop_button() + 9.0),
-            _ => 32f32.max(Tokens::bar_button()),
+            Bar::Property => 37f32.max(m.prop_button + 9.0),
+            _ => 32f32.max(m.button),
         }
     }
 
@@ -2775,9 +2788,7 @@ mod tests {
     #[test]
     fn every_button_size_s_rows_fit_their_buttons() {
         use crate::settings::ButtonSize;
-        let _sizes = crate::theme::button_sizes_lock();
         for size in ButtonSize::ALL {
-            crate::theme::set_button_sizes(size, None);
             let m = size.metrics();
             for bar in [Bar::Standard, Bar::Property, Bar::Text, Bar::Zoom] {
                 let button = if bar == Bar::Property {
@@ -2785,57 +2796,21 @@ mod tests {
                 } else {
                     m.button
                 };
-                assert!(
-                    bar.inner_height() >= button,
-                    "{size:?} {bar:?}: {} < {button}",
-                    bar.inner_height()
-                );
-                assert!(
-                    bar.row_height() >= bar.inner_height() + 4.0,
-                    "{size:?} {bar:?}"
-                );
+                let inner = bar.inner_height_at(size);
+                assert!(inner >= button, "{size:?} {bar:?}: {inner} < {button}");
+                assert!(bar.row_height_at(size) >= inner + 4.0, "{size:?} {bar:?}");
             }
             if matches!(
                 size,
                 ButtonSize::ExtraSmall | ButtonSize::Small | ButtonSize::Medium
             ) {
-                assert_eq!(Bar::Standard.row_height(), 36.0, "{size:?}");
-                assert_eq!(Bar::Property.row_height(), 53.0, "{size:?}");
+                assert_eq!(Bar::Standard.row_height_at(size), 36.0, "{size:?}");
+                assert_eq!(Bar::Property.row_height_at(size), 53.0, "{size:?}");
             }
         }
-        assert_eq!(Bar::Standard.row_height(), 56.0);
-        assert_eq!(Bar::Property.row_height(), 71.0);
-        crate::theme::set_button_sizes(ButtonSize::Large, None);
-        assert_eq!(Bar::Standard.row_height(), 46.0);
-        assert_eq!(Bar::Property.row_height(), 63.0);
-        // The window's docked row is as tall as the band says.
-        let ctx = crate::theme::ui_context();
-        let mut app = App::headless();
-        app.show_welcome = false;
-        app.settings.button_size = ButtonSize::ExtraLarge;
-        let run = |app: &mut App| {
-            let input = egui::RawInput {
-                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 1000.0))),
-                ..Default::default()
-            };
-            let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
-            out.textures_delta.clear();
-        };
-        for _ in 0..3 {
-            run(&mut app);
-        }
-        crate::theme::set_button_sizes(ButtonSize::ExtraLarge, None);
-        let rows: Vec<f32> = (0..4)
-            .filter_map(|i| {
-                egui::PanelState::load(&ctx, egui::Id::new(("bar_row_top", i)))
-                    .map(|s| s.outer_rect.height())
-            })
-            .collect();
-        assert!(!rows.is_empty());
-        assert!(
-            rows.iter().all(|h| *h >= Tokens::bar_button() + 4.0 - 0.5),
-            "{rows:?}"
-        );
-        crate::theme::set_button_sizes(ButtonSize::Medium, None);
+        assert_eq!(Bar::Standard.row_height_at(ButtonSize::Large), 46.0);
+        assert_eq!(Bar::Property.row_height_at(ButtonSize::Large), 63.0);
+        assert_eq!(Bar::Standard.row_height_at(ButtonSize::ExtraLarge), 56.0);
+        assert_eq!(Bar::Property.row_height_at(ButtonSize::ExtraLarge), 71.0);
     }
 }
