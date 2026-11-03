@@ -925,7 +925,7 @@ mod tests {
     #[test]
     fn icons_grow_with_every_button_size() {
         use crate::settings::ButtonSize;
-        let mut last: Option<[f32; 6]> = None;
+        let mut last: Option<[f32; 7]> = None;
         for size in ButtonSize::ALL {
             let m = size.metrics();
             let (fly_icon, fly_row) = flyout_metrics_for(m.icon);
@@ -936,9 +936,11 @@ mod tests {
                 m.prop_icon,
                 fly_icon,
                 fly_row,
+                m.bar_icon,
             ];
             assert_eq!(now[1], m.icon);
             if let Some(last) = last {
+                assert!(now[6] > last[6], "{size:?} bar icon: {now:?} vs {last:?}");
                 for i in 0..4 {
                     assert!(now[i] > last[i], "{size:?} {i}: {now:?} vs {last:?}");
                 }

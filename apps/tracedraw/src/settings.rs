@@ -28,15 +28,23 @@ pub enum ButtonSize {
 }
 
 /// The pixel sizes (points, at interface size 100 %) of one button size:
-/// the icon's box (the side of its 24 unit design grid, see
+/// the toolbox's icon box (the side of its 24 unit design grid, see
 /// `ui::icon_paint::Pen`), the toolbox's and the standard bars' buttons,
-/// and the property bar's buttons and icons. The icon boxes are 16, 20,
-/// 24, 32 and 40, so the grid lands on whole pixels every few units; the
-/// padding around an icon grows more slowly than the icon.
+/// the standard bars' icon box, and the property bar's buttons and
+/// icons. All are whole, even pixel sizes so an icon sits centred on
+/// whole pixels in its button.
+///
+/// The toolbox's icon boxes are 16, 20, 24, 32 and 40, the padding
+/// around them growing more slowly than the icon. The standard and
+/// property bars' icons are drawn smaller at Large and Extra Large,
+/// about 5/6 of the toolbox's box (standard bars 28 and 34, property bar
+/// 24 and 28), so their heavier line icons keep 7 and 9 px of margin in
+/// the button instead of nearly filling it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ButtonMetrics {
     pub icon: f32,
     pub button: f32,
+    pub bar_icon: f32,
     pub prop_icon: f32,
     pub prop_button: f32,
 }
@@ -52,16 +60,17 @@ impl ButtonSize {
 
     /// The sizes of the buttons and icons at this size.
     pub fn metrics(self) -> ButtonMetrics {
-        let (icon, button, prop_icon, prop_button) = match self {
-            ButtonSize::ExtraSmall => (16.0, 22.0, 14.0, 20.0),
-            ButtonSize::Small => (20.0, 26.0, 18.0, 24.0),
-            ButtonSize::Medium => (24.0, 32.0, 22.0, 28.0),
-            ButtonSize::Large => (32.0, 42.0, 28.0, 38.0),
-            ButtonSize::ExtraLarge => (40.0, 52.0, 34.0, 46.0),
+        let (icon, button, bar_icon, prop_icon, prop_button) = match self {
+            ButtonSize::ExtraSmall => (16.0, 22.0, 16.0, 14.0, 20.0),
+            ButtonSize::Small => (20.0, 26.0, 20.0, 18.0, 24.0),
+            ButtonSize::Medium => (24.0, 32.0, 24.0, 22.0, 28.0),
+            ButtonSize::Large => (32.0, 42.0, 28.0, 24.0, 38.0),
+            ButtonSize::ExtraLarge => (40.0, 52.0, 34.0, 28.0, 46.0),
         };
         ButtonMetrics {
             icon,
             button,
+            bar_icon,
             prop_icon,
             prop_button,
         }
@@ -2407,8 +2416,11 @@ mod tests {
     use super::*;
 
     /// Each button size draws a larger icon in a larger button than the
-    /// one before, and the padding around the icon grows no faster than
-    /// the icon (#1701 follow-up: the icons stayed one size).
+    /// one before, and the padding around the toolbox's icon grows no
+    /// faster than the icon (#1701 follow-up: the icons stayed one
+    /// size). The property bar's does too up to Medium; at Large and
+    /// Extra Large its icons keep a wider margin on purpose
+    /// (`large_bar_icons_keep_a_margin`).
     #[test]
     fn each_button_size_has_a_larger_icon_and_proportional_padding() {
         let m: Vec<ButtonMetrics> = ButtonSize::ALL.iter().map(|s| s.metrics()).collect();
@@ -2416,7 +2428,7 @@ mod tests {
             m.iter().map(|m| m.icon).collect::<Vec<_>>(),
             vec![16.0, 20.0, 24.0, 32.0, 40.0]
         );
-        for w in m.windows(2) {
+        for (i, w) in m.windows(2).enumerate() {
             assert!(w[1].icon > w[0].icon, "{w:?}");
             assert!(w[1].button > w[0].button, "{w:?}");
             assert!(w[1].prop_icon > w[0].prop_icon, "{w:?}");
@@ -2426,22 +2438,62 @@ mod tests {
             let prop_pad = |m: &ButtonMetrics| m.prop_button - m.prop_icon;
             assert!(pad(&w[1]) >= pad(&w[0]), "{w:?}");
             assert!(pad(&w[1]) - pad(&w[0]) < w[1].icon - w[0].icon, "{w:?}");
-            assert!(
-                prop_pad(&w[1]) - prop_pad(&w[0]) < w[1].prop_icon - w[0].prop_icon,
-                "{w:?}"
-            );
+            assert!(prop_pad(&w[1]) >= prop_pad(&w[0]), "{w:?}");
+            if i < 2 {
+                assert!(
+                    prop_pad(&w[1]) - prop_pad(&w[0]) < w[1].prop_icon - w[0].prop_icon,
+                    "{w:?}"
+                );
+            }
         }
         for m in &m {
             // Whole, even pixel sizes: the icon sits centred on whole
             // pixels in its button.
-            for v in [m.icon, m.button, m.prop_icon, m.prop_button] {
+            for v in [m.icon, m.button, m.bar_icon, m.prop_icon, m.prop_button] {
                 assert_eq!(v % 2.0, 0.0, "{m:?}");
             }
             assert!(m.icon < m.button && m.prop_icon < m.prop_button);
+            assert!(m.bar_icon < m.button);
+        }
+        // The bars' icons grow at every step too.
+        for w in m.windows(2) {
+            assert!(w[1].bar_icon > w[0].bar_icon, "{w:?}");
         }
         // Medium keeps the 32 px buttons it had.
         assert_eq!(ButtonSize::Medium.metrics().button, 32.0);
         assert_eq!(ButtonSize::Medium.metrics().prop_button, 28.0);
+    }
+
+    /// At Large and Extra Large the standard and property bars draw their
+    /// icons at about 5/6 of the toolbox's box, leaving 7 and 9 px of
+    /// margin each side; the smaller sizes and the toolbox are as before.
+    #[test]
+    fn large_bar_icons_keep_a_margin() {
+        let row = |s: ButtonSize| {
+            let m = s.metrics();
+            (m.icon, m.button, m.bar_icon, m.prop_icon, m.prop_button)
+        };
+        assert_eq!(row(ButtonSize::ExtraSmall), (16.0, 22.0, 16.0, 14.0, 20.0));
+        assert_eq!(row(ButtonSize::Small), (20.0, 26.0, 20.0, 18.0, 24.0));
+        assert_eq!(row(ButtonSize::Medium), (24.0, 32.0, 24.0, 22.0, 28.0));
+        assert_eq!(row(ButtonSize::Large), (32.0, 42.0, 28.0, 24.0, 38.0));
+        assert_eq!(row(ButtonSize::ExtraLarge), (40.0, 52.0, 34.0, 28.0, 46.0));
+        for (size, margin) in [(ButtonSize::Large, 7.0), (ButtonSize::ExtraLarge, 9.0)] {
+            let m = size.metrics();
+            assert_eq!((m.button - m.bar_icon) / 2.0, margin, "{size:?}");
+            assert_eq!((m.prop_button - m.prop_icon) / 2.0, margin, "{size:?}");
+            // About 5/6 of the toolbox's icon box.
+            let share = m.bar_icon / m.icon;
+            assert!((0.8..=0.9).contains(&share), "{size:?} {share}");
+        }
+        for size in [
+            ButtonSize::ExtraSmall,
+            ButtonSize::Small,
+            ButtonSize::Medium,
+        ] {
+            let m = size.metrics();
+            assert_eq!(m.bar_icon, m.icon, "{size:?}");
+        }
     }
 
     /// Settings saved with three sizes read as they did; the new sizes

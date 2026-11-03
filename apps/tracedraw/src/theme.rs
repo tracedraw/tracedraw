@@ -541,9 +541,11 @@ impl Tokens {
         bar_size().metrics().button
     }
 
-    /// The side of a standard toolbar icon's box: 24 px at Medium.
+    /// The side of a standard toolbar icon's box: 24 px at Medium, 28
+    /// and 34 px at Large and Extra Large (smaller than the toolbox's,
+    /// see `ButtonMetrics`).
     pub fn bar_icon() -> f32 {
-        bar_size().metrics().icon
+        bar_size().metrics().bar_icon
     }
 
     /// The side of a property bar button at the default button size:
@@ -552,7 +554,8 @@ impl Tokens {
         bar_size().metrics().prop_button
     }
 
-    /// The side of a property bar icon's box: 22 px at Medium.
+    /// The side of a property bar icon's box: 22 px at Medium, 24 and
+    /// 28 px at Large and Extra Large.
     pub fn prop_icon() -> f32 {
         bar_size().metrics().prop_icon
     }

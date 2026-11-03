@@ -407,17 +407,24 @@ bar move (`ui/bars.rs`).
   steps through). The icons grow with the buttons; the padding around
   them grows more slowly, and separators keep their size:
 
-  | Size | Icon box | Toolbox and standard bar button | Property bar icon | Property bar button |
-  |---|---|---|---|---|
-  | Extra Small | 16 px | 22 px | 14 px | 20 px |
-  | Small | 20 px | 26 px | 18 px | 24 px |
-  | Medium | 24 px | 32 px | 22 px | 28 px |
-  | Large | 32 px | 42 px | 28 px | 38 px |
-  | Extra Large | 40 px | 52 px | 34 px | 46 px |
+  | Size | Toolbox icon box | Toolbox and standard bar button | Standard bar icon | Property bar icon | Property bar button |
+  |---|---|---|---|---|---|
+  | Extra Small | 16 px | 22 px | 16 px | 14 px | 20 px |
+  | Small | 20 px | 26 px | 20 px | 18 px | 24 px |
+  | Medium | 24 px | 32 px | 24 px | 22 px | 28 px |
+  | Large | 32 px | 42 px | 28 px | 24 px | 38 px |
+  | Extra Large | 40 px | 52 px | 34 px | 28 px | 46 px |
 
-  The icon box is the side of the icon's 24 unit grid (16, 20, 24, 32,
-  40 px: a whole pixel every 3, 6, 1, 3 and 3 units, so the icons stay
-  sharp); the standard bar's command pictures use the same box. The
+  The icon box is the side of the icon's 24 unit grid (toolbox 16, 20,
+  24, 32, 40 px: a whole pixel every 3, 6, 1, 3 and 3 units, so the
+  icons stay sharp). The standard bars' command pictures use the same
+  box up to Medium. At Large and Extra Large the standard and property
+  bars draw their icons at about 5/6 of the toolbox's box (standard 28
+  and 34 px, property bar 24 and 28 px, whole even pixels so they sit
+  centred on the pixel grid), which leaves 7 px of margin each side at
+  Large and 9 px at Extra Large; drawn at the full box their heavier
+  pictures filled the button almost to its edges. The toolbox keeps the
+  full box (`settings::tests::large_bar_icons_keep_a_margin`). The
   toolbox's flyouts list their tools with 18 px icons up to Medium, 24
   px at Large and 30 px at Extra Large. Settings saved with three sizes
   keep them (`settings.button_size`, `settings::ButtonSize::metrics`,
