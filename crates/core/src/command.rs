@@ -572,6 +572,11 @@ impl Command {
                 doc.page_mut(*page)?.background = background.clone();
             }
             Command::SetMetadata { metadata } => {
+                // A new primary colour mode takes the black defaults of
+                // new objects along (Document Color Settings).
+                if metadata.primary_color_mode != doc.metadata.primary_color_mode {
+                    doc.defaults = doc.defaults.in_mode(metadata.primary_color_mode);
+                }
                 doc.metadata = metadata.clone();
             }
             Command::SetSavedView { view } => {
@@ -3073,6 +3078,55 @@ mod tests {
         let old: ObjectStyle = serde_json::from_value(json).unwrap();
         assert_eq!(old.parts, StyleParts::default());
         assert_eq!((old.id, old.opacity), (0, 1.0));
+    }
+
+    /// New graphics get their black outline in the drawing's primary
+    /// colour mode, and a change of mode takes the black defaults along
+    /// while a colour of the user's own stays (#1665).
+    #[test]
+    fn default_blacks_follow_the_drawings_colour_mode() {
+        use crate::document::{ObjectDefaults, PrimaryColorMode};
+        use crate::{Color, Fill, Stroke};
+        let k100 = Color::cmyk_pct(0.0, 0.0, 0.0, 100.0);
+        let outline = |d: &ObjectDefaults| d.graphic.stroke.as_ref().map(|k| (k.color, k.width));
+        let cmyk = ObjectDefaults::for_mode(PrimaryColorMode::Cmyk);
+        let rgb = ObjectDefaults::for_mode(PrimaryColorMode::Rgb);
+        assert_eq!(outline(&cmyk), Some((k100, 0.2)));
+        assert_eq!(outline(&rgb), Some((Color::BLACK, 0.2)));
+        assert_eq!(rgb.graphic.fill, Fill::None);
+        assert_eq!(rgb.artistic_text.fill, Fill::Solid(Color::BLACK));
+
+        let mut doc = Document::default();
+        let red = Fill::Solid(Color::rgb8(200, 0, 0));
+        doc.defaults.paragraph_text.fill = red.clone();
+        let mut md = doc.metadata.clone();
+        md.primary_color_mode = PrimaryColorMode::Rgb;
+        Command::SetMetadata { metadata: md }
+            .apply(&mut doc)
+            .unwrap();
+        assert_eq!(outline(&doc.defaults), Some((Color::BLACK, 0.2)));
+        assert_eq!(doc.defaults.artistic_text.fill, Fill::Solid(Color::BLACK));
+        assert_eq!(doc.defaults.paragraph_text.fill, red, "the user's own");
+        // Back to CMYK; other metadata changes leave the defaults alone.
+        let mut md = doc.metadata.clone();
+        md.primary_color_mode = PrimaryColorMode::Cmyk;
+        Command::SetMetadata { metadata: md }
+            .apply(&mut doc)
+            .unwrap();
+        assert_eq!(outline(&doc.defaults), Some((k100, 0.2)));
+        doc.defaults.graphic.stroke = Some(Stroke {
+            color: Color::BLACK,
+            ..Stroke::default()
+        });
+        let mut md = doc.metadata.clone();
+        md.resolution_dpi += 1.0;
+        Command::SetMetadata { metadata: md }
+            .apply(&mut doc)
+            .unwrap();
+        assert_eq!(
+            doc.defaults.graphic.stroke.as_ref().map(|k| k.color),
+            Some(Color::BLACK)
+        );
     }
 
     #[test]

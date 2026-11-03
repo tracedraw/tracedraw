@@ -1157,29 +1157,15 @@ impl DocumentDefaults {
 }
 
 /// The stored object defaults as a drawing in `mode` takes them: a black
-/// text fill, RGB or CMYK, is the mode's black (new text is black in the
-/// drawing's own colour mode), whatever else the stored defaults hold
-/// (an earlier version's values, a paragraph style, an outline of one's
-/// own); any other colour stays as chosen.
+/// fill or outline, RGB or CMYK, is the mode's black (new objects are
+/// black in the drawing's own colour mode), whatever else the stored
+/// defaults hold (an earlier version's values, a paragraph style, an
+/// outline width of one's own); any other colour stays as chosen.
 fn defaults_for(
     stored: &tracedraw_core::ObjectDefaults,
     mode: tracedraw_core::document::PrimaryColorMode,
 ) -> tracedraw_core::ObjectDefaults {
-    use tracedraw_core::document::PrimaryColorMode;
-    use tracedraw_core::Fill;
-    let blacks = [
-        PrimaryColorMode::Cmyk.black(),
-        PrimaryColorMode::Rgb.black(),
-    ];
-    let mut out = stored.clone();
-    for props in [&mut out.artistic_text, &mut out.paragraph_text] {
-        if let Fill::Solid(c) = &mut props.fill {
-            if blacks.contains(c) {
-                *c = mode.black();
-            }
-        }
-    }
-    out
+    stored.in_mode(mode)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2067,6 +2053,17 @@ mod tests {
         assert_eq!(
             doc.defaults.artistic_text.fill,
             Fill::Solid(PrimaryColorMode::Cmyk.black())
+        );
+        // The CMYK black outline stored for graphics turns RGB black in
+        // an RGB drawing, a width of one's own stays (#1665).
+        let mut stored = ObjectDefaults::default();
+        if let Some(s) = stored.graphic.stroke.as_mut() {
+            s.width = 0.5;
+        }
+        let rgb = super::defaults_for(&stored, PrimaryColorMode::Rgb);
+        assert_eq!(
+            rgb.graphic.stroke.as_ref().map(|s| (s.color, s.width)),
+            Some((Color::BLACK, 0.5))
         );
     }
 

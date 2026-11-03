@@ -13,9 +13,16 @@ New objects take the fill and outline of their kind:
 
 | Kind | A new drawing's defaults |
 |---|---|
-| Graphic (shapes, curves, tables, everything but text) | no fill, a 0.2 mm CMYK black outline |
+| Graphic (shapes, curves, tables, everything but text) | no fill, a 0.2 mm black outline |
 | Artistic text (text without a frame) | black fill, no outline |
 | Paragraph text (text in a frame) | black fill, no outline |
+
+The black is the one of the drawing's primary colour mode: 100 % K in a
+CMYK drawing, RGB black (0, 0, 0) in an RGB drawing. Saved defaults
+(Tools > Save as Defaults) are taken the same way: a black fill or
+outline in them, CMYK or RGB, becomes the drawing's black, and any other
+colour stays as saved. Changing the primary colour mode (Document Color
+Settings) takes the black defaults along, in the same undo step.
 
 - A fill or outline chosen with nothing selected (a palette colour, the
   Fill tool, the outline colour or width, None for the outline on the
@@ -27,7 +34,8 @@ New objects take the fill and outline of their kind:
   outline width only changes kinds that have an outline.
 - In the panel each kind shows its fill and outline swatches (a red
   stroke across means none) with From Selection (the fill and outline of
-  the first selected object) and Reset (a new drawing's defaults). The
+  the first selected object) and Reset (a new drawing's defaults, black
+  in the drawing's colour mode). The
   check box under them turns the question on or off.
 - The Properties panel with nothing selected edits the Graphic defaults.
 - Object > Create > Pattern Fill and Vector Pattern Fill make the

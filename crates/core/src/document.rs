@@ -3510,9 +3510,9 @@ impl Default for ObjectDefaults {
 }
 
 impl ObjectDefaults {
-    /// Graphics: no fill and a 0.2 mm CMYK black outline; text: a black
-    /// fill in the drawing's primary colour mode (CMYK or RGB black) and
-    /// no outline.
+    /// Graphics: no fill and a 0.2 mm black outline; text: a black fill
+    /// and no outline. The black is the one of the drawing's primary
+    /// colour mode (100 % K in CMYK, RGB black in RGB).
     pub fn for_mode(mode: PrimaryColorMode) -> Self {
         let text = DefaultProperties {
             fill: Fill::Solid(mode.black()),
@@ -3522,7 +3522,7 @@ impl ObjectDefaults {
             graphic: DefaultProperties {
                 fill: Fill::None,
                 stroke: Some(Stroke {
-                    color: crate::Color::cmyk_pct(0.0, 0.0, 0.0, 100.0),
+                    color: mode.black(),
                     width: 0.2,
                     ..Stroke::default()
                 }),
@@ -3531,6 +3531,36 @@ impl ObjectDefaults {
             paragraph_text: text,
             paragraph: ParagraphStyle::default(),
         }
+    }
+
+    /// These defaults as a drawing in `mode` takes them: a black fill or
+    /// outline colour, CMYK or RGB, of any kind becomes the mode's black
+    /// (new objects are black in the drawing's own colour mode); any
+    /// other colour, and everything else, stays as chosen.
+    pub fn in_mode(&self, mode: PrimaryColorMode) -> Self {
+        let blacks = [
+            PrimaryColorMode::Cmyk.black(),
+            PrimaryColorMode::Rgb.black(),
+        ];
+        let follow = |c: &mut crate::Color| {
+            if blacks.contains(c) {
+                *c = mode.black();
+            }
+        };
+        let mut out = self.clone();
+        for props in [
+            &mut out.graphic,
+            &mut out.artistic_text,
+            &mut out.paragraph_text,
+        ] {
+            if let Fill::Solid(c) = &mut props.fill {
+                follow(c);
+            }
+            if let Some(stroke) = &mut props.stroke {
+                follow(&mut stroke.color);
+            }
+        }
+        out
     }
 }
 
