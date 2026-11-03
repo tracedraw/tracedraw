@@ -18226,3 +18226,118 @@ fn tab_goes_from_object_to_object_press_after_press() {
     assert_eq!(three, all, "{seen:?}");
     assert_eq!(seen[3], seen[1], "{seen:?}");
 }
+
+/// A blend of two texts whose start is in front: a click on the end
+/// text, where the start's steps lie over it, picks the end text, and a
+/// colour from the palette goes to it, not to the start text 60 mm away.
+/// A click on the steps away from both texts still picks the start, and
+/// the Text tool edits the text clicked (#1739).
+#[test]
+fn a_click_on_a_blend_s_end_text_under_its_steps_picks_the_end() {
+    use tracedraw_core::{Color, Fill};
+    tracedraw_text::install();
+    let ctx = crate::theme::ui_context();
+    let mut app = App::headless();
+    app.show_welcome = false;
+    let text = |app: &mut App, x: f64, c: Color| {
+        let id = app
+            .new_shape(ShapeKind::Text {
+                spans: vec![tracedraw_core::TextSpan::new("HH", "DejaVu Sans", 72.0)],
+                origin: Point::new(x, 150.0),
+                frame: None,
+                align: Default::default(),
+                para: Default::default(),
+                on_path: None,
+            })
+            .expect("text");
+        app.select(vec![id]);
+        app.apply_fill(Fill::Solid(c));
+        id
+    };
+    // The end first (behind), the start in front of it.
+    let end = text(&mut app, 40.0, Color::rgb8(0, 160, 80));
+    let start = text(&mut app, 100.0, Color::rgb8(250, 220, 0));
+    app.select(vec![start, end]);
+    app.blend_selection(20, 0.0, 0.0, 0.0);
+    app.refresh_blends();
+    app.set_tool(Tool::Pick);
+    app.select(Vec::new());
+    // Frames a click apart in time, so that two clicks are never a
+    // double click (which edits a text).
+    let t = std::cell::Cell::new(100.0);
+    let timed = |app: &mut App, events: Vec<Event>| {
+        t.set(t.get() + 0.02);
+        let mut out = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    Pos2::ZERO,
+                    egui::vec2(1600.0, 1000.0),
+                )),
+                time: Some(t.get()),
+                events,
+                ..Default::default()
+            },
+            |ui| crate::ui::root(app, ui),
+        );
+        out.textures_delta.clear();
+    };
+    for _ in 0..3 {
+        timed(&mut app, Vec::new());
+    }
+    app.zoom_to_page();
+    for _ in 0..2 {
+        timed(&mut app, Vec::new());
+    }
+    let click = |app: &mut App, at: Point| {
+        let p = app.view.to_screen(at);
+        t.set(t.get() + 2.0);
+        timed(app, vec![Event::PointerMoved(p)]);
+        timed(
+            app,
+            vec![button(p, true, PointerButton::Primary, Modifiers::NONE)],
+        );
+        timed(
+            app,
+            vec![button(p, false, PointerButton::Primary, Modifiers::NONE)],
+        );
+        timed(app, Vec::new());
+    };
+    let fill = |app: &App, id: ShapeId| app.doc().find_shape(id).expect("text").fill.clone();
+    let eb = app.doc().find_shape(end).expect("end").bounds();
+    let sb = app.doc().find_shape(start).expect("start").bounds();
+    // On the end text's first H: the steps lie over it, the start text
+    // is 60 mm away.
+    let on_end = Point::new(eb.x0 + eb.width() * 0.3, eb.center().y);
+    let step = app.doc().find_shape(start).cloned().expect("start");
+    let steps = tracedraw_core::live::evaluate(&step);
+    assert!(
+        steps
+            .below
+            .iter()
+            .chain(&steps.above)
+            .any(|s| s.bounds().contains(on_end)),
+        "a step lies over the point"
+    );
+    click(&mut app, on_end);
+    assert_eq!(app.selection, vec![end], "the end text is picked");
+    let red = Color::rgb8(220, 0, 0);
+    let start_fill = fill(&app, start);
+    app.palette_fill(red);
+    app.refresh_blends();
+    assert_eq!(fill(&app, end), Fill::Solid(red), "the colour goes to it");
+    assert_eq!(fill(&app, start), start_fill, "not to the other end");
+    // The steps between the texts, away from both: the start.
+    let between = Point::new((eb.x1 + sb.x0) / 2.0, eb.center().y);
+    assert!(!eb.contains(between) && !sb.contains(between));
+    click(&mut app, between);
+    assert_eq!(app.selection, vec![start]);
+    // The start text itself: the start.
+    click(&mut app, sb.center());
+    assert_eq!(app.selection, vec![start]);
+    // The Text tool edits the text clicked.
+    app.select(Vec::new());
+    app.set_tool(Tool::Text);
+    timed(&mut app, Vec::new());
+    click(&mut app, on_end);
+    assert_eq!(app.text_edit.as_ref().map(|t| t.shape), Some(end));
+}
