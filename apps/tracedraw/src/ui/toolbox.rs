@@ -368,7 +368,12 @@ pub fn fitted_side(side: f32, n: usize, room: f32) -> f32 {
 /// px at Large, 30 and 36 px at Extra Large) so the list matches the
 /// buttons that open it.
 pub fn flyout_metrics() -> (f32, f32) {
-    let icon = (Tokens::tool_icon() * 0.75).round().max(18.0);
+    flyout_metrics_for(Tokens::tool_icon())
+}
+
+/// [`flyout_metrics`] for toolbox icons of side `tool_icon`.
+pub fn flyout_metrics_for(tool_icon: f32) -> (f32, f32) {
+    let icon = (tool_icon * 0.75).round().max(18.0);
     (icon, (icon + 6.0).max(24.0))
 }
 
@@ -885,6 +890,7 @@ mod tests {
     /// own; captions widen them by the widest tool name.
     #[test]
     fn buttons_follow_the_sizes_and_the_captions() {
+        let _sizes = crate::theme::button_sizes_lock();
         use crate::settings::{ButtonSize, Captions};
         let mut app = App::headless();
         crate::theme::set_button_sizes(ButtonSize::Medium, None);
@@ -913,45 +919,40 @@ mod tests {
 
     /// The icons grow with the buttons at every size step, in the
     /// toolbox, on the standard and property bars and in the flyouts;
-    /// a column squeezed to fit keeps the icon in proportion.
+    /// a column squeezed to fit keeps the icon in proportion. (From the
+    /// size table, not the sizes in force: other tests running at the
+    /// same time read those.)
     #[test]
     fn icons_grow_with_every_button_size() {
         use crate::settings::ButtonSize;
-        use crate::theme::Tokens;
-        let mut last: Option<[f32; 8]> = None;
+        let mut last: Option<[f32; 6]> = None;
         for size in ButtonSize::ALL {
-            crate::theme::set_button_sizes(size, None);
+            let m = size.metrics();
+            let (fly_icon, fly_row) = flyout_metrics_for(m.icon);
             let now = [
-                Tokens::tool_button(),
-                Tokens::tool_icon(),
-                Tokens::bar_button(),
-                Tokens::bar_icon(),
-                Tokens::prop_button(),
-                Tokens::prop_icon(),
-                flyout_metrics().0,
-                crate::theme::icon_in(
-                    Tokens::tool_button(),
-                    Tokens::tool_button(),
-                    Tokens::tool_icon(),
-                ),
+                m.button,
+                crate::theme::icon_in(m.button, m.button, m.icon),
+                m.prop_button,
+                m.prop_icon,
+                fly_icon,
+                fly_row,
             ];
-            assert_eq!(now[1], size.metrics().icon);
-            assert_eq!(now[7], now[1]);
+            assert_eq!(now[1], m.icon);
             if let Some(last) = last {
-                for i in [0, 1, 2, 3, 4, 5, 7] {
+                for i in 0..4 {
                     assert!(now[i] > last[i], "{size:?} {i}: {now:?} vs {last:?}");
                 }
-                assert!(now[6] >= last[6]);
+                assert!(now[4] >= last[4] && now[5] >= last[5]);
             }
             last = Some(now);
         }
-        // The flyouts grow at the larger sizes.
-        crate::theme::set_button_sizes(ButtonSize::ExtraLarge, None);
-        assert!(flyout_metrics().0 > 18.0 && flyout_metrics().1 > 24.0);
+        // The flyouts grow at the larger sizes and keep 18 px icons in
+        // 24 px rows up to Medium.
+        assert_eq!(flyout_metrics_for(24.0), (18.0, 24.0));
+        assert_eq!(flyout_metrics_for(40.0), (30.0, 36.0));
         // Squeezed: 32 px icons in 42 px buttons draw 16 px in 21 px.
         assert_eq!(crate::theme::icon_in(21.0, 42.0, 32.0), 16.0);
         assert_eq!(crate::theme::icon_in(50.0, 42.0, 32.0), 32.0);
-        crate::theme::set_button_sizes(ButtonSize::Medium, None);
     }
 
     #[test]

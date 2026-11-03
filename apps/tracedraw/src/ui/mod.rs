@@ -1540,6 +1540,7 @@ mod tests {
     /// measured captions widen the toolbox column.
     #[test]
     fn the_toolbox_draws_at_every_size_and_with_captions() {
+        let _sizes = crate::theme::button_sizes_lock();
         use crate::settings::{ButtonSize, Captions};
         use crate::ui::bars::{Bar, Dock};
         let ctx = crate::theme::ui_context();

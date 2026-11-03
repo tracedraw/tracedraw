@@ -1932,6 +1932,7 @@ mod tests {
     /// size than the default: the size stepped is read and put back.)
     #[test]
     fn the_floating_toolbox_resizes_by_its_edges_and_by_ctrl_wheel() {
+        let _sizes = crate::theme::button_sizes_lock();
         use crate::settings::ButtonSize;
         let ctx = crate::theme::ui_context();
         let mut app = App::headless();

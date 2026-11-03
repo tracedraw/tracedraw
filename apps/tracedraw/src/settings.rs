@@ -2217,9 +2217,15 @@ mod tests {
             assert!(w[1].button > w[0].button, "{w:?}");
             assert!(w[1].prop_icon > w[0].prop_icon, "{w:?}");
             assert!(w[1].prop_button > w[0].prop_button, "{w:?}");
-            // The padding's share of the button does not grow.
-            let pad = |m: &ButtonMetrics| (m.button - m.icon) / m.button;
-            assert!(pad(&w[1]) <= pad(&w[0]) + 1e-6, "{w:?}");
+            // The padding around the icon grows by less than the icon.
+            let pad = |m: &ButtonMetrics| m.button - m.icon;
+            let prop_pad = |m: &ButtonMetrics| m.prop_button - m.prop_icon;
+            assert!(pad(&w[1]) >= pad(&w[0]), "{w:?}");
+            assert!(pad(&w[1]) - pad(&w[0]) < w[1].icon - w[0].icon, "{w:?}");
+            assert!(
+                prop_pad(&w[1]) - prop_pad(&w[0]) < w[1].prop_icon - w[0].prop_icon,
+                "{w:?}"
+            );
         }
         for m in &m {
             // Whole, even pixel sizes: the icon sits centred on whole

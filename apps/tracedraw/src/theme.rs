@@ -603,6 +603,15 @@ pub fn toolbox_size() -> crate::settings::ButtonSize {
     stored_size(&TOOLBOX_SIZE)
 }
 
+/// Held by the tests that set the button sizes in force to another size
+/// than the default, or that count on them: the sizes are shared by the
+/// whole process.
+#[cfg(test)]
+pub(crate) fn button_sizes_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Size the bars' buttons and icons from now on: `bars` for every bar,
 /// `toolbox` for the toolbox (the bars' menu > Customize > Default Button
 /// Size and Toolbox Toolbar > Button Size).
