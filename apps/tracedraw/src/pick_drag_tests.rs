@@ -16996,3 +16996,70 @@ fn ctrl_keeps_an_interactive_fill_drag_to_the_constrain_angle() {
     assert!((e.y - s.y).abs() < 1e-6, "level: {s:?} {e:?}");
     assert!(e.x > s.x + 20.0, "{s:?} {e:?}");
 }
+
+/// The zoom keys work while a text is being edited, and the editing goes
+/// on: F3 zooms out, F4 and Shift+F4 fit, F2 zooms once with the Zoom
+/// tool and gives the text back, typing still types (#1699).
+#[test]
+fn zoom_keys_work_while_editing_text() {
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.settings.autocorrect.enabled = false;
+    app.set_tool(Tool::Text);
+    app.start_text(Point::new(30.0, 50.0), None);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Text("ab".into())],
+        Modifiers::NONE,
+    );
+    assert_eq!(app.edit_text(), "ab");
+    let press = |ctx: &egui::Context, app: &mut App, k: egui::Key, m: Modifiers| {
+        frame(ctx, app, vec![key(k, m), key_up(k, m)], m);
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+
+    // F3: a zoom step out.
+    let zoom = app.view.zoom;
+    press(&ctx, &mut app, egui::Key::F3, Modifiers::NONE);
+    assert!(app.view.zoom < zoom * 0.95, "{} {}", app.view.zoom, zoom);
+    assert!(app.text_edit.is_some());
+
+    // Shift+F4: the page again (the setup zoomed to it); F4: all
+    // objects, closer (the rectangle and the text are small).
+    press(&ctx, &mut app, egui::Key::F4, Modifiers::SHIFT);
+    let page = app.view.zoom;
+    assert!((page - zoom).abs() < 1e-6, "{page} {zoom}");
+    press(&ctx, &mut app, egui::Key::F4, Modifiers::NONE);
+    assert!(app.view.zoom > page * 1.2, "{} {}", app.view.zoom, page);
+    assert!(app.text_edit.is_some());
+    assert_eq!(app.tool, Tool::Text);
+
+    // F2: the Zoom tool for one click, then the text is edited on.
+    press(&ctx, &mut app, egui::Key::F2, Modifiers::NONE);
+    assert_eq!(app.tool, Tool::Zoom);
+    assert!(app.text_edit.is_some());
+    let zoom = app.view.zoom;
+    let at = app.view.to_screen(Point::new(35.0, 25.0));
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert!((app.view.zoom / zoom - 2.0).abs() < 1e-6);
+    assert_eq!(app.tool, Tool::Text);
+    assert!(app.text_edit.is_some());
+
+    // Typing goes on into the same text.
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Text("c".into())],
+        Modifiers::NONE,
+    );
+    assert_eq!(app.edit_text(), "abc");
+
+    // Shift+F2: the text being edited (selected) fills the window.
+    let zoom = app.view.zoom;
+    press(&ctx, &mut app, egui::Key::F2, Modifiers::SHIFT);
+    assert!(app.view.zoom > zoom * 1.5, "{} {}", app.view.zoom, zoom);
+    assert!(app.text_edit.is_some());
+    assert_eq!(app.edit_text(), "abc");
+}

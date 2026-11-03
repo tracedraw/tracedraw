@@ -53,7 +53,7 @@ original, #471). Checks:
 
 | Keys | Action |
 | --- | --- |
-| F2, Shift+F2, F3, F4, Shift+F4 | Zoom tool, zoom to selection, zoom out, zoom to fit, zoom to page |
+| F2, Shift+F2, F3, F4, Shift+F4 | Zoom tool, zoom to selection, zoom out, zoom to fit, zoom to page (also while a text is being edited, #1699) |
 | Ctrl++ (or Ctrl+=), Ctrl+- | Zoom in and out one step |
 | Alt+Shift+R | Rulers on and off |
 | Alt+Q, Alt+Shift+A, Alt+Shift+D | Snapping off, alignment guides, dynamic guides |

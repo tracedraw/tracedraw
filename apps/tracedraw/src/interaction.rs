@@ -2198,7 +2198,14 @@ impl App {
                 Tool::Zoom => Tool::Pick,
                 t => t,
             };
-            self.set_tool(back);
+            if self.text_edit.is_some() {
+                // F2 while editing a text (#1699): the editing goes on.
+                self.zoom_one_shot = false;
+                self.previous_tool = Tool::Zoom;
+                self.tool = back;
+            } else {
+                self.set_tool(back);
+            }
         }
     }
 
@@ -3229,6 +3236,81 @@ impl App {
         false
     }
 
+    /// The zoom keys while a text is being edited, which type nothing
+    /// (#1699): F3 zooms out, F4 to fit all objects, Shift+F4 to the
+    /// page, Shift+F2 to the selection, and F2 picks the Zoom tool for one
+    /// zoom, after which the text is edited on where it was. Each key
+    /// taken is consumed, so the typing does not see it; one the user
+    /// gave another command or removed (Options > Customization >
+    /// Commands) is left alone.
+    pub(crate) fn text_view_keys(&mut self, ctx: &egui::Context) {
+        let keys = [
+            (Key::F2, Modifiers::SHIFT),
+            (Key::F2, Modifiers::NONE),
+            (Key::F3, Modifiers::NONE),
+            (Key::F4, Modifiers::SHIFT),
+            (Key::F4, Modifiers::NONE),
+        ];
+        for (key, mods) in keys {
+            // Exact modifiers: Shift+F3 (Change Case) is not F3.
+            let hit = ctx.input_mut(|i| {
+                let before = i.events.len();
+                i.events.retain(|e| {
+                    !matches!(e, egui::Event::Key { key: k, pressed: true, modifiers, .. }
+                        if *k == key && modifiers.matches_exact(mods))
+                });
+                i.events.len() != before
+            });
+            if !hit || self.builtin_key_overridden(ctx, key, mods) {
+                continue;
+            }
+            match (key, mods.shift) {
+                (Key::F2, true) => self.zoom_to_selection(),
+                (Key::F2, false) => {
+                    if self.tool != Tool::Zoom {
+                        // Not `set_tool`, which would end the editing.
+                        self.previous_tool = self.tool;
+                        self.tool = Tool::Zoom;
+                        self.zoom_one_shot = true;
+                        self.flyout_open = None;
+                    }
+                }
+                (Key::F3, _) => self.zoom_step(false),
+                (Key::F4, true) => self.zoom_to_page(),
+                _ => self.zoom_to_fit(),
+            }
+        }
+    }
+
+    /// The built-in shortcut `key` with `mods` is another command's by
+    /// the user's choice, or was removed (Options > Customization >
+    /// Commands).
+    fn builtin_key_overridden(&mut self, ctx: &egui::Context, key: Key, mods: Modifiers) -> bool {
+        let text = crate::shortcuts::format(mods, key);
+        if self
+            .settings
+            .shortcuts
+            .iter()
+            .any(|(_, v)| crate::shortcuts::same(v, &text))
+        {
+            return true;
+        }
+        if !self.settings.shortcuts.iter().any(|(_, v)| v.is_empty()) {
+            return false;
+        }
+        if self.shortcut_editor.entries.is_empty() {
+            self.shortcut_editor.entries = crate::ui::menus::commands(self, ctx);
+        }
+        self.shortcut_editor.entries.iter().any(|e| {
+            crate::shortcuts::same(&e.shortcut, &text)
+                && self
+                    .settings
+                    .shortcuts
+                    .iter()
+                    .any(|(id, v)| id == &e.key && v.is_empty())
+        })
+    }
+
     pub fn keyboard(&mut self, ctx: &egui::Context) {
         // The pen's pressure, which the raw input hook read from this
         // frame's touch events, before the tools see the pointer (#850).
@@ -3261,8 +3343,10 @@ impl App {
         if ctx.egui_wants_keyboard_input() {
             return;
         }
-        // Text typing has priority.
+        // Text typing has priority; the zoom keys, which type nothing,
+        // still zoom (#1699).
         if self.text_edit.is_some() && !dialog_open {
+            self.text_view_keys(ctx);
             self.text_keyboard(ctx);
             return;
         }
