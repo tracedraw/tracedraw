@@ -17264,3 +17264,114 @@ fn zoom_keys_work_while_editing_text() {
     assert!(app.text_edit.is_some());
     assert_eq!(app.edit_text(), "abc");
 }
+
+/// A blend of a large circle into a small one, in the window (#1540): a
+/// click on the start object shows the box and handles of that object
+/// alone, as a click on the end object does for the end, not a box
+/// around the whole blend; a press on a step picks the start object
+/// with the same box; a side handle resizes the start object from its
+/// own opposite side; grouped, the two objects show the whole blend.
+#[test]
+fn a_blend_s_start_object_shows_its_own_box_and_handles() {
+    let ctx = crate::theme::ui_context();
+    let mut app = App::headless();
+    app.show_welcome = false;
+    let circle = |app: &mut App, rect: Rect, color: tracedraw_core::Color| {
+        let id = app
+            .new_shape(ShapeKind::Ellipse { rect, arc: None })
+            .expect("circle");
+        app.select(vec![id]);
+        app.apply_fill(tracedraw_core::Fill::Solid(color));
+        id
+    };
+    let a = circle(
+        &mut app,
+        Rect::new(20.0, 100.0, 70.0, 150.0),
+        tracedraw_core::Color::rgb8(240, 140, 170),
+    );
+    let b = circle(
+        &mut app,
+        Rect::new(150.0, 112.0, 176.0, 138.0),
+        tracedraw_core::Color::rgb8(20, 180, 230),
+    );
+    app.select(vec![a, b]);
+    app.blend_selection(20, 0.0, 0.0, 0.0);
+    app.set_tool(Tool::Pick);
+    app.select(Vec::new());
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    app.zoom_to_page();
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let click = |app: &mut App, at: Point| {
+        let p = app.view.to_screen(at);
+        frame(&ctx, app, vec![Event::PointerMoved(p)], Modifiers::NONE);
+        frame(
+            &ctx,
+            app,
+            vec![button(p, true, PointerButton::Primary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(
+            &ctx,
+            app,
+            vec![button(p, false, PointerButton::Primary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(&ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    let same = |r: Rect, s: Rect| {
+        close(r.x0, s.x0) && close(r.x1, s.x1) && close(r.y0, s.y0) && close(r.y1, s.y1)
+    };
+
+    // The start object: its own box, its handles around it.
+    click(&mut app, Point::new(35.0, 125.0));
+    assert_eq!(app.selection, vec![a]);
+    let own = bounds(&app, a);
+    let got = app.selection_bounds().expect("box");
+    assert!(same(got, own), "{got:?} vs the circle's {own:?}");
+    let e = app.view.to_page(handle(&app, Handle::E));
+    assert!(
+        e.x < own.x1 + 5.0,
+        "the right handle at {e:?}, beside {own:?}"
+    );
+
+    // The end object: its own box.
+    click(&mut app, Point::new(170.0, 125.0));
+    assert_eq!(app.selection, vec![b]);
+    let got = app.selection_bounds().expect("box");
+    assert!(same(got, bounds(&app, b)), "{got:?}");
+
+    // A step picks the start object, shown with the same box.
+    click(&mut app, Point::new(110.0, 125.0));
+    assert_eq!(app.selection, vec![a]);
+    let got = app.selection_bounds().expect("box");
+    assert!(same(got, own), "{got:?}");
+
+    // The right handle widens the start object; its left side stays and
+    // the end object does not move.
+    let end_before = bounds(&app, b);
+    let e = handle(&app, Handle::E);
+    drag(
+        &ctx,
+        &mut app,
+        e,
+        e + egui::vec2(40.0, 0.0),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    let after = bounds(&app, a);
+    assert!(close(after.x0, own.x0), "{after:?}");
+    assert!(after.width() > own.width() + 5.0, "{after:?}");
+    assert!(same(bounds(&app, b), end_before));
+    app.undo();
+
+    // Grouped, the blend is one object: its box spans the steps.
+    app.select(vec![a, b]);
+    app.group_selection();
+    let g = app.selection_bounds().expect("box");
+    assert!(close(g.x0, 20.0) && close(g.x1, 176.0), "{g:?}");
+    assert!(close(g.y0, 100.0) && close(g.y1, 150.0), "{g:?}");
+}

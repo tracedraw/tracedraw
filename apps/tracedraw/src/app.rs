@@ -4562,7 +4562,8 @@ impl App {
     }
 
     /// The selection's bounds as drawn: live effects (an envelope, a
-    /// contour...) included.
+    /// contour...) included, a blend's steps not (they lie between its
+    /// start and end objects, see [`Self::own_visual_bounds`]).
     pub fn selection_bounds(&self) -> Option<Rect> {
         self.selected_bounds()
             .iter()
@@ -4570,8 +4571,8 @@ impl App {
             .reduce(|a, b| a.union(b))
     }
 
-    /// The visual bounds of each of [`Self::selected_rc`], in its order:
-    /// kept with the gathered selection, since the bars, the canvas, the
+    /// The boxes ([`Self::own_visual_bounds`]) of each of
+    /// [`Self::selected_rc`], in its order: kept with the gathered selection, since the bars, the canvas, the
     /// cursor and the status bar ask for them many times a frame and
     /// thousands of selected objects made each answer slow (#345).
     pub fn selected_bounds(&self) -> std::rc::Rc<Vec<Rect>> {
@@ -4589,7 +4590,7 @@ impl App {
         let b = std::rc::Rc::new(
             shapes
                 .iter()
-                .map(|s| self.visual_bounds(s))
+                .map(|s| self.own_visual_bounds(s))
                 .collect::<Vec<_>>(),
         );
         if let Ok(cache) = self.selected_cache.try_borrow() {
@@ -4690,6 +4691,19 @@ impl App {
         b
     }
 
+    /// The box `s` (in page space) is selected and transformed by: its
+    /// visual bounds, less the steps of a blend it starts, which lie
+    /// between it and the blend's end object (#1540).
+    pub fn own_visual_bounds(&self, s: &Shape) -> Rect {
+        if !s.starts_linked_blend() {
+            return self.visual_bounds(s);
+        }
+        match self.without_edited_symmetry(s) {
+            Some(own) => own.own_visual_bounds(),
+            None => s.own_visual_bounds(),
+        }
+    }
+
     pub fn run(&mut self, cmd: Command) {
         // The box a move, turn or resize starts from, for its Repeat.
         let before = match &cmd {
@@ -4699,7 +4713,7 @@ impl App {
             Command::TransformShapes { shapes, .. } => shapes
                 .iter()
                 .filter_map(|id| self.doc().find_shape(*id))
-                .map(|s| self.visual_bounds(s))
+                .map(|s| self.own_visual_bounds(s))
                 .reduce(|a, b| a.union(b)),
             _ => None,
         };
