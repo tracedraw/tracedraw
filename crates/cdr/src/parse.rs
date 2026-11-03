@@ -3180,6 +3180,8 @@ impl<'a> Ctx<'a> {
         let mut mesh: Option<Arg> = None;
         // A graded transparency of a version 11 file (a mask and its target).
         let mut v11_mask: Option<(Fill, u8)> = None;
+        // A version 16+ uniform transparency held in argument 8000 (#1706).
+        let mut record_opacity: Option<f64> = None;
 
         for arg in &l.args {
             match arg.ty {
@@ -3191,6 +3193,8 @@ impl<'a> Ctx<'a> {
                     } else if let Some((o, m)) = self.read_transparency_v11(d, *arg) {
                         opacity = o;
                         v11_mask = m;
+                    } else if let Some(o) = self.read_uniform_transparency_record(d, *arg) {
+                        record_opacity = Some(o);
                     } else if let Some(o) = self.read_opacity(d, *arg) {
                         opacity = o;
                     }
@@ -3346,6 +3350,14 @@ impl<'a> Ctx<'a> {
         });
         if opacity >= 1.0 && mask.is_none() {
             if let Some(o) = style_string.as_deref().and_then(text::object_opacity) {
+                opacity = o;
+            } else if let Some(o) = record_opacity.filter(|_| {
+                style_string
+                    .as_deref()
+                    .is_some_and(text::object_transparency_is_uniform_fill)
+            }) {
+                // The style string names a uniform transparency without its
+                // amount; the record in argument 8000 holds it (#1706).
                 opacity = o;
             }
         }
@@ -3820,6 +3832,35 @@ impl<'a> Ctx<'a> {
             s.color = Color::Gray { v: grey };
         }
         Some((1.0, Some((Fill::Fountain(mask), 2))))
+    }
+
+    /// The uniform transparency record of a version 16+ object (#1706, a
+    /// version 24 file): argument 8000 holds a record tagged 1300 of 117
+    /// bytes whose body starts with the byte 5 and the record's number,
+    /// with the transparency in percent as an f64 at byte 61 of the body
+    /// (50 in all eight records of the file, whose preview draws those
+    /// objects at half their colour over what lies beneath). The object's
+    /// style string then has a `transparency` fill of type 1 and no amount
+    /// of its own; the caller only uses the value then. Returns the
+    /// opacity, `None` for other records.
+    fn read_uniform_transparency_record(&mut self, d: &'a [u8], arg: Arg) -> Option<f64> {
+        if self.v < 16 || arg.end.checked_sub(arg.off)? < 8 + 117 {
+            return None;
+        }
+        let data = d.get(..arg.end)?;
+        let mut r = self.reader_at(data, arg.off);
+        if r.u32()? != 0x514 || r.u32()? != 117 || r.u8()? != 5 {
+            return None;
+        }
+        r.skip(60);
+        let percent = r.f64()?;
+        if !(0.0..=100.0).contains(&percent) {
+            self.report.warn(format!(
+                "transparency value {percent} out of range; object drawn opaque"
+            ));
+            return None;
+        }
+        Some(1.0 - percent / 100.0)
     }
 
     fn read_opacity(&mut self, d: &'a [u8], arg: Arg) -> Option<f64> {
@@ -9966,6 +10007,95 @@ pub(crate) mod tests {
         // Truncated records read as no lens.
         let (doc, _) = rect_with_transparency_record(&[1, 0, 0]);
         assert!(first_shape(&doc).effects.is_empty());
+    }
+
+    /// The 117-byte body of a version 24 uniform transparency record
+    /// (tagged 1300), laid out as the file of #1706 holds it: u8 5, the
+    /// record's number, zeros, u32 1 at 29, a number at 33, -1 at 57, the
+    /// transparency in percent (f64) at 61, 2 at 81 and 4 at 105.
+    fn uniform_transparency_record_v24(number: u32, percent: f64) -> Vec<u8> {
+        let mut b = vec![5u8];
+        b.extend_from_slice(&u32s(&[number]));
+        b.resize(29, 0);
+        b.extend_from_slice(&u32s(&[1, 0xa5]));
+        b.resize(57, 0);
+        b.extend_from_slice(&i32s(&[-1]));
+        b.extend_from_slice(&f64s(&[percent, 0.0]));
+        b.resize(81, 0);
+        b.extend_from_slice(&u32s(&[2]));
+        b.resize(105, 0);
+        b.extend_from_slice(&u32s(&[4]));
+        b.resize(117, 0);
+        b
+    }
+
+    #[test]
+    fn version_24_group_with_uniform_transparency_on_its_objects() {
+        // #1706: a group given a uniform transparency of 50 in a version 24
+        // file. The group's own `loda` holds none; each object holds a
+        // style string whose transparency is a fill of type 1 without an
+        // amount, and the amount in a tagged record in argument 8000.
+        let v = 24u16;
+        let json = r#"{"transparency":{"fill":{"type":"1"}},"fill":{"type":"1","primaryColor":"RGB255,USER,102,97,143,100,00000000-0000-0000-0000-000000000000"}}"#;
+        let style_of =
+            |json: &str| [u32s(&[1, json.len() as u32]), json.as_bytes().to_vec()].concat();
+        let style = style_of(json);
+        let square_styled = |style: &[u8], number: u32, record: Option<f64>| {
+            let mut args = vec![(ARG_STYLE_STRING, style.to_vec())];
+            if let Some(p) = record {
+                let body = uniform_transparency_record_v24(number, p);
+                let op = [u32s(&[0x514, body.len() as u32]), body].concat();
+                args.insert(0, (ARG_OPACITY, op));
+            }
+            args.push((ARG_COORDS, f64s(&[254_000.0, 254_000.0, 1.0, 1.0])));
+            list(b"obj ", &chunk(b"loda", &loda(OBJ_RECT, &args)))
+        };
+        let square = |number: u32, record: Option<f64>| square_styled(&style, number, record);
+        let group_loda = loda(
+            0,
+            &[
+                (12000, u32s(&[0])),
+                (ARG_STYLE_STRING, [u32s(&[1, 2]), b"{}".to_vec()].concat()),
+                (100, u32s(&[8])),
+            ],
+        );
+        let read = |objects: Vec<u8>| {
+            let grp = list(b"grp ", &[chunk(b"loda", &group_loda), objects].concat());
+            let body = [
+                chunk(b"mcfg", &mcfg(v, 2_540_000, 2_540_000)),
+                list(b"page", &list(b"layr", &grp)),
+            ]
+            .concat();
+            let (doc, rep) = parse(&riff(b"CDRO", &body), v);
+            assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+            let ShapeKind::Group { children } = &first_shape(&doc).kind else {
+                panic!("not a group: {:?}", first_shape(&doc).kind);
+            };
+            assert_eq!(first_shape(&doc).opacity, 1.0);
+            // In the order of the file (front to back).
+            children.iter().rev().map(|c| c.opacity).collect::<Vec<_>>()
+        };
+        let got = read([square(1, Some(50.0)), square(2, Some(50.0))].concat());
+        assert_eq!(got.len(), 2);
+        assert!(got.iter().all(|o| (o - 0.5).abs() < 1e-9), "{got:?}");
+        // 75 % lets a quarter through; without the record, opaque.
+        let got = read([square(1, Some(75.0)), square(2, None)].concat());
+        assert!((got[0] - 0.25).abs() < 1e-9 && got[1] == 1.0, "{got:?}");
+        // An amount out of range is opaque.
+        let got = read([square(1, Some(250.0)), square(2, Some(50.0))].concat());
+        assert!(got[0] == 1.0 && (got[1] - 0.5).abs() < 1e-9, "{got:?}");
+        // The record counts only when the style string names a uniform
+        // transparency without its amount; its own amount wins.
+        let empty = style_of(r#"{"transparency":{}}"#);
+        let own = style_of(r#"{"transparency":{"fill":{"type":"1"},"uniformTransparency":"0.2"}}"#);
+        let got = read(
+            [
+                square_styled(&empty, 1, Some(50.0)),
+                square_styled(&own, 2, Some(50.0)),
+            ]
+            .concat(),
+        );
+        assert!(got[0] == 1.0 && (got[1] - 0.8).abs() < 1e-9, "{got:?}");
     }
 
     // Arrowheads.
