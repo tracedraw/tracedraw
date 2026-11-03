@@ -3508,6 +3508,8 @@ struct Writer<'a> {
     /// [`Previews::embed_fonts`]).
     embed_fonts: bool,
     split_families: HashMap<(String, bool), Option<(String, u16)>>,
+    /// What [`fonts::drawn_style`] said for each face the runs name.
+    drawn_styles: HashMap<(String, bool, bool), Option<(u16, bool)>>,
     /// The technology and version of the faces the runs name (see
     /// [`fonts::FaceTech`]).
     tech: fonts::FaceTech,
@@ -3651,6 +3653,7 @@ impl<'a> Writer<'a> {
             faces: &[],
             embed_fonts: false,
             split_families: HashMap::new(),
+            drawn_styles: HashMap::new(),
             tech: fonts::FaceTech::new(),
             run_faces: Vec::new(),
             layer_slots: Vec::new(),
@@ -3680,6 +3683,36 @@ impl<'a> Writer<'a> {
                 }
             };
             let Some((family, weight)) = split else {
+                // Text drawn by a face of its family that is not the one
+                // it asks for (regular text drawn by the bold file) goes
+                // out as that face (#1733).
+                let key = (sp.font_family.clone(), sp.bold, sp.italic);
+                let drawn = match self.drawn_styles.get(&key) {
+                    Some(d) => *d,
+                    None => {
+                        let d = self
+                            .faces
+                            .iter()
+                            .find(|f| {
+                                f.family == sp.font_family
+                                    && f.bold == sp.bold
+                                    && f.italic == sp.italic
+                            })
+                            .and_then(fonts::drawn_style);
+                        self.drawn_styles.insert(key, d);
+                        d
+                    }
+                };
+                if let Some((weight, italic)) = drawn {
+                    if let Some(file_sp) = out.get_or_insert_with(|| spans.to_vec()).get_mut(i) {
+                        file_sp.italic = italic;
+                        match weight {
+                            700 => file_sp.bold = true,
+                            400 => {}
+                            w => file_sp.set_variation("wght", Some(f64::from(w))),
+                        }
+                    }
+                }
                 continue;
             };
             if let Some(file_sp) = out.get_or_insert_with(|| spans.to_vec()).get_mut(i) {
