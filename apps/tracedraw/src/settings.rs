@@ -431,6 +431,10 @@ pub struct Settings {
     /// its own name. Built-in palettes' files are never changed.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub palette_names: std::collections::BTreeMap<String, String>,
+    /// The palettes the user made in TraceDraw (New Palette, Duplicate),
+    /// which have no file: their names and colours, in the list's order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub user_palettes: Vec<UserPalette>,
     /// Tool settings new objects take.
     #[serde(default)]
     pub tools: ToolPrefs,
@@ -1091,6 +1095,15 @@ pub fn palette_id(p: &crate::palette::Palette) -> String {
     }
 }
 
+/// A palette made in TraceDraw (no file behind it), kept in the
+/// preferences: its name (its [`palette_id`]) and its colours.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UserPalette {
+    pub name: String,
+    pub colors: Vec<(String, tracedraw_core::Color)>,
+}
+
 /// [`PaletteBarPrefs::palette`] of a bar showing the document palette.
 pub const DOCUMENT_PALETTE: &str = "document";
 
@@ -1733,6 +1746,7 @@ impl Default for Settings {
             palette_bars: Vec::new(),
             main_palette: String::new(),
             palette_names: Default::default(),
+            user_palettes: Vec::new(),
             tools: ToolPrefs::default(),
             view: ViewPrefs::default(),
             panels: PanelPrefs::default(),

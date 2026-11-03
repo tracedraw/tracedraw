@@ -1623,6 +1623,13 @@ pub struct App {
     pub palette_drag: Option<Option<Color>>,
     /// Where the document palette is this frame (a drop target).
     pub doc_palette_rect: Option<egui::Rect>,
+    /// Where the bars of the user's own palettes were last drawn, by
+    /// palette: a colour dropped there joins that palette (while its bar
+    /// is still shown). Kept from frame to frame, since a drop is handled
+    /// while the rows are drawn, before later bars say where they are.
+    pub palette_drop_rects: Vec<(usize, egui::Rect)>,
+    /// The New Palette window, open: the name typed.
+    pub palette_new: Option<String>,
     /// The pointer on screen, wherever it is (drops outside the drawing).
     pub pointer_screen: Option<egui::Pos2>,
     /// The Shaping docker's operation, and what Weld, Trim and Intersect
@@ -2669,6 +2676,8 @@ impl App {
             export_assets: crate::export_assets::ExportAssets::new(),
             palette_drag: None,
             doc_palette_rect: None,
+            palette_drop_rects: Vec::new(),
+            palette_new: None,
             pointer_screen: None,
             page_size_all: true,
             object_origin: (1, 1),
@@ -3159,7 +3168,8 @@ impl App {
         self.units = Units::from_id(&s.units);
         self.settings = s;
         self.apply_color_settings();
-        // The palette bars as they were left.
+        // The palettes made in TraceDraw, then the bars as they were left.
+        self.restore_user_palettes();
         self.rebuild_palette();
     }
 
@@ -3326,6 +3336,7 @@ impl App {
     /// Copy the editor's state (workspace, snapping, toolbox, units...)
     /// into the preferences, without writing them.
     pub fn sync_settings(&mut self) {
+        self.store_user_palettes();
         self.settings.workspace = self.workspace.id().into();
         self.settings.snap.grid = self.snap.grid;
         self.settings.snap.guides = self.snap.guides;

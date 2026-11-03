@@ -300,6 +300,58 @@ pub fn rename_window(app: &mut App, ctx: &egui::Context) {
     }
 }
 
+/// New Palette: ask for the new palette's name ("Palette 1", "Palette
+/// 2"... at first).
+pub fn start_new_palette(app: &mut App) {
+    app.palette_new = Some(app.next_palette_name());
+}
+
+/// The New Palette window: the name, OK and Cancel. OK makes the empty
+/// palette under My Palettes and shows it in a bar of its own.
+pub fn new_palette_window(app: &mut App, ctx: &egui::Context) {
+    let Some(mut name) = app.palette_new.take() else {
+        return;
+    };
+    let mut keep = true;
+    let mut done = false;
+    egui::Window::new(tr("palette.new_title"))
+        .id(egui::Id::new("palette_new"))
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+        .show(ctx, |ui| {
+            ui.label(tr("palette.new_label"));
+            let resp = ui.add(egui::TextEdit::singleline(&mut name).desired_width(260.0));
+            if !resp.has_focus() && !resp.lost_focus() {
+                resp.request_focus();
+            }
+            let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(tr("palette.new_help"))
+                    .small()
+                    .color(Tokens::text_dim()),
+            );
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui.button(tr("dialog.ok")).clicked() || enter {
+                    done = true;
+                }
+                if ui.button(tr("dialog.cancel")).clicked()
+                    || ui.input(|i| i.key_pressed(egui::Key::Escape))
+                {
+                    keep = false;
+                }
+            });
+        });
+    if done {
+        app.new_palette(&name);
+        app.settings.save();
+    } else if keep {
+        app.palette_new = Some(name);
+    }
+}
+
 /// The grip of a docked palette bar: dragging it moves the bar, a right
 /// click opens the palette menu (the strip's own).
 pub fn grip_zone(app: &mut App, ui: &mut Ui, k: usize, r: Rect) {

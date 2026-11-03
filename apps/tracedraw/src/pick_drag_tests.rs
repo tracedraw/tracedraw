@@ -17753,3 +17753,56 @@ fn dragging_a_further_palette_bar_out_floats_it_alone() {
     assert_eq!(app.settings.bars.dock(Bar::Palette), Dock::Bottom);
     assert!(app.settings.palette.show_document);
 }
+
+/// A palette made with New Palette shows in a bar of its own at the
+/// bottom; a swatch of the default palette dragged onto that bar joins
+/// the new palette (and its bar shows it), and the objects stay as
+/// they were.
+#[test]
+fn a_colour_dropped_on_a_new_palette_s_bar_joins_it() {
+    use crate::ui::palette::Row;
+    let (ctx, mut app, id) = setup();
+    let i = app.new_palette("Brand").expect("a new palette");
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let k = app
+        .extra_palettes
+        .iter()
+        .position(|r| r.index == i)
+        .expect("its bar");
+    let bar = egui::PanelState::load(&ctx, egui::Id::new(("palette_extra", Row::Extra(k))))
+        .map(|s| s.outer_rect)
+        .expect("the bar shows");
+    let main = egui::PanelState::load(&ctx, egui::Id::new("palette"))
+        .map(|s| s.outer_rect)
+        .expect("the default palette");
+    assert!(app.palettes[i].colors.is_empty());
+    let fill_before = app.doc().find_shape(id).map(|s| s.fill.clone());
+    // The fourth swatch of the default palette.
+    let from = Pos2::new(main.left() + 77.0 + 21.0 * 3.5, main.top() + 12.0);
+    drag(
+        &ctx,
+        &mut app,
+        from,
+        Pos2::new(bar.center().x, bar.center().y),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    assert_eq!(app.palettes[i].colors.len(), 1, "the colour joined");
+    assert_eq!(app.extra_palettes[k].colors.len(), 1, "its bar shows it");
+    assert_eq!(app.settings.user_palettes[0].colors.len(), 1, "kept");
+    assert_eq!(
+        app.doc().find_shape(id).map(|s| s.fill.clone()),
+        fill_before
+    );
+    // Add Colors from Selection: the selected object's fill joins too.
+    assert!(app.add_selection_colors_to_palette(i));
+    assert!(app.palettes[i]
+        .colors
+        .iter()
+        .any(|(_, c)| *c == tracedraw_core::Color::rgb8(200, 30, 30)));
+}
