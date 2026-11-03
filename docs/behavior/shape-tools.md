@@ -135,7 +135,19 @@ whatever tool is active.
   vertices lie on, so the ellipse is computed from the unit polygon's
   vertex bounds `(x0, x1, y0, y1)` as `rx = w / (x1 - x0)`,
   `ry = h / (y1 - y0)`, centre `(left - x0 rx, bottom - y0 ry)`.
-- Star sharpness: default 0.5 (0 = polygon, 1 = thinnest spikes).
+- Star sharpness: default 0.5 (0 = polygon, 1 = thinnest spikes). The
+  inner points sit at `1 - sharpness` of the vertices' radius. A
+  negative sharpness, down to -0.99, makes an inverted star (#1331): the
+  inner points lie past the centre, on the far side, at
+  `-(1 - |sharpness|)` of the radius, so -0.99 is next to the centre
+  and -0.01 near the rim opposite; the outline crosses itself. The
+  property bar, the Coordinates docker and Options show it from -99 to
+  99 percent; 0 typed keeps the star's side at 1 or -1. `.tdraw` files
+  keep the negative value (older files read as before); SVG, PDF, EPS
+  and `.cdr` get the outline as drawn (`.cdr` writes every polygon as a
+  curve). A `.cdr` polygon record is read with its inner point's
+  distance only, so it is never an inverted star: no file holding one
+  was available to learn how the format stores it.
 - The Star tool's property bar starts with the Star and Complex Star
   buttons, which pick what it draws. A complex star (default 9 points,
   sharpness 2) joins each vertex to the one `sharpness + 1` further on,
@@ -219,6 +231,13 @@ terminator's ends, a rounded callout) keep their size in long boxes.
   (30,20) (centre at the start point).
 - Given a 5-point star with sharpness 0.5 in a 40 mm square, then its
   bounds are 40 x 40 mm and it has 10 nodes.
+- Given a 5-point star with sharpness -0.7 in a 20 mm circle, then its
+  vertices are a sharpness 0.7 star's and each inner point is that
+  star's mirrored through the centre
+  (`geometry::tests::negative_sharpness_inverts_the_star`; the property
+  bar takes -40: `ui::propbar::tests::the_sharpness_box_takes_a_negative_value`;
+  files: `tracedraw_io::tests::inverted_stars_round_trip_in_native_files_and_export_their_outline`,
+  `write::tests::inverted_stars_are_written_as_the_curves_they_draw`).
 - `geometry::tests::complex_stars_cross_their_sides` (pentagram winding
   2 in the middle, two triangles for 6 points, sharpness limits) and
   `ui::propbar::tests::the_star_tool_draws_complex_stars_that_fill_the_drag`.

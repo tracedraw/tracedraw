@@ -3483,7 +3483,8 @@ mod tests {
             repeat: false,
             modifiers: egui::Modifiers::NONE,
         };
-        let sharpness = |app: &App| match &app.engine.document().find_shape(id).expect("star").kind {
+        let sharpness = |app: &App| match &app.engine.document().find_shape(id).expect("star").kind
+        {
             ShapeKind::Polygon { sharpness, .. } => *sharpness,
             k => panic!("{k:?}"),
         };
@@ -3526,7 +3527,12 @@ mod tests {
         // The outline is the inverted star: inner points past the centre.
         let inner = match &app.engine.document().find_shape(id).expect("star").kind {
             ShapeKind::Polygon { rect, .. } => {
-                let path = app.engine.document().find_shape(id).expect("star").local_path();
+                let path = app
+                    .engine
+                    .document()
+                    .find_shape(id)
+                    .expect("star")
+                    .local_path();
                 let c = rect.center();
                 let second = path.elements()[1].end_point().expect("point");
                 (second - c).y

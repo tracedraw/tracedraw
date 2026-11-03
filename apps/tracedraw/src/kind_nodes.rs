@@ -1043,7 +1043,11 @@ mod tests {
             assert!((nodes(&inverted)[1].1 - p).hypot() < 1e-9);
             // The outline draws the same points.
             let path = inverted.page_path();
-            let drawn: Vec<Point> = path.elements().iter().filter_map(|e| e.end_point()).collect();
+            let drawn: Vec<Point> = path
+                .elements()
+                .iter()
+                .filter_map(|e| e.end_point())
+                .collect();
             for (_, q) in nodes(&inverted) {
                 assert!(drawn.iter().any(|d| (*d - q).hypot() < 1e-9), "{q:?}");
             }
@@ -1071,7 +1075,15 @@ mod tests {
             index: 0,
         };
         let mut turn = 0.0;
-        let k = drag(&inverted, top, Point::new(0.0, 20.0), false, [false; 4], &mut turn).unwrap();
+        let k = drag(
+            &inverted,
+            top,
+            Point::new(0.0, 20.0),
+            false,
+            [false; 4],
+            &mut turn,
+        )
+        .unwrap();
         assert!(
             matches!(k, ShapeKind::Polygon { sharpness, .. } if (sharpness + 0.85).abs() < 1e-9),
             "{k:?}"
