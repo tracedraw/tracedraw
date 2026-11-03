@@ -376,6 +376,8 @@ struct BitmapDef {
     /// A CMYK image (colour model 3, 32 bits): the object keeps that
     /// colour mode (`Shape::cmyk_bitmap`, #1254).
     cmyk: bool,
+    /// A CMYK image's ink bytes, which separations print (#1659).
+    inks: Option<tracedraw_core::picture_inks::PictureInks>,
 }
 
 // One entry of a `loda` argument table (type, payload start and end) and
@@ -441,6 +443,8 @@ struct Ctx<'a> {
     pending_crop: Option<BezPath>,
     /// The bitmap object being read shows a CMYK image.
     pending_cmyk: bool,
+    /// The ink channels of the CMYK image it shows.
+    pending_inks: Option<tracedraw_core::picture_inks::PictureInks>,
     /// Groups of `LIST clpt` by their `spnd` number: the contents of clip
     /// containers.
     clip_groups: HashMap<u32, &'a Chunk>,
@@ -526,6 +530,7 @@ impl<'a> Ctx<'a> {
             arrows: HashMap::new(),
             pending_crop: None,
             pending_cmyk: false,
+            pending_inks: None,
             clip_groups: HashMap::new(),
             pending_clip: None,
             guides: Vec::new(),
@@ -3529,6 +3534,11 @@ impl<'a> Ctx<'a> {
                         if std::mem::take(&mut self.pending_cmyk) {
                             shape.cmyk_bitmap = true;
                         }
+                        if let Some(inks) = self.pending_inks.take() {
+                            if matches!(shape.kind, ShapeKind::Bitmap { .. }) {
+                                shape.picture_inks = Some(Box::new(inks));
+                            }
+                        }
                         if let Some(crop) = self.pending_crop.take() {
                             shape = crop_to_clip_frame(shape, crop, ids);
                         }
@@ -4112,6 +4122,7 @@ impl<'a> Ctx<'a> {
                     return None;
                 };
                 self.pending_cmyk = bm.cmyk;
+                self.pending_inks = bm.inks.clone();
                 Some(ShapeKind::Bitmap {
                     rect,
                     width_px: bm.width_px,
@@ -4165,6 +4176,7 @@ impl<'a> Ctx<'a> {
                     return None;
                 };
                 self.pending_cmyk = bm.cmyk;
+                self.pending_inks = bm.inks.clone();
                 Some(ShapeKind::Bitmap {
                     rect,
                     width_px: bm.width_px,
@@ -4309,6 +4321,14 @@ fn decode_bitmap(
     }
     let cmyk = h.model == BITMAP_CMYK && bpp == 32;
     let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
+    // A CMYK image's inks, plane after plane (cyan, magenta, yellow,
+    // black), for separations (#1659).
+    let plane = width as usize * height as usize;
+    let mut planes = if cmyk {
+        vec![0u8; plane * 4]
+    } else {
+        Vec::new()
+    };
     for row in 0..height as usize {
         // Bottom-up rows.
         let src = &pixels[(height as usize - 1 - row) * stride..][..stride];
@@ -4316,6 +4336,12 @@ fn decode_bitmap(
             let px: [u8; 4] = match bpp {
                 32 if cmyk => {
                     let ink = [src[x * 4], src[x * 4 + 1], src[x * 4 + 2], src[x * 4 + 3]];
+                    let at = row * width as usize + x;
+                    for (i, v) in ink.iter().enumerate() {
+                        if let Some(p) = planes.get_mut(i * plane + at) {
+                            *p = *v;
+                        }
+                    }
                     cmyk_pixel(ink, lut)
                 }
                 32 => [src[x * 4 + 2], src[x * 4 + 1], src[x * 4], 255],
@@ -4347,6 +4373,10 @@ fn decode_bitmap(
         }
     }
     let png = encode_png(width, height, &rgba);
+    let inks = cmyk.then(|| {
+        let planes = encode_gray_png(width, height.saturating_mul(4), &planes);
+        tracedraw_core::picture_inks::PictureInks::cmyk(&png, planes.into())
+    });
     Some(Ok((
         image_id,
         BitmapDef {
@@ -4354,6 +4384,7 @@ fn decode_bitmap(
             height_px: height,
             png: png.into(),
             cmyk,
+            inks,
         },
     )))
 }
@@ -5316,15 +5347,6 @@ pub(crate) fn raw_rows(png: &[u8]) -> Vec<u8> {
 /// every undo step and copy of the drawing used to hold it.
 pub(crate) fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
     use std::io::Write;
-    fn chunk(out: &mut Vec<u8>, tag: &[u8; 4], body: &[u8]) {
-        out.extend_from_slice(&(body.len() as u32).to_be_bytes());
-        let mut crc = flate2::Crc::new();
-        crc.update(tag);
-        crc.update(body);
-        out.extend_from_slice(tag);
-        out.extend_from_slice(body);
-        out.extend_from_slice(&crc.sum().to_be_bytes());
-    }
     let row = width as usize * 4;
     let pixels = rgba.get(..row * height as usize).unwrap_or(rgba);
     // Rows the data does not reach are blank (clear).
@@ -5361,14 +5383,61 @@ pub(crate) fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
     } else {
         Vec::new()
     };
+    png_file(width, height, if opaque { 2 } else { 6 }, &idat)
+}
+
+/// 8-bit grey levels, row by row, as PNG bytes; rows the data does not
+/// reach are zeros.
+pub(crate) fn encode_gray_png(width: u32, height: u32, gray: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+    let row = width as usize;
+    let mut enc = flate2::write::ZlibEncoder::new(
+        Vec::with_capacity(gray.len() / 4),
+        flate2::Compression::fast(),
+    );
+    let blank = vec![0u8; row];
+    let mut line = Vec::with_capacity(1 + row);
+    let mut ok = true;
+    for y in 0..height as usize {
+        let src = gray.get(y * row..(y + 1) * row).unwrap_or(&blank[..]);
+        line.clear();
+        line.push(1);
+        line.extend_from_slice(src);
+        // Filter type 1 (Sub), as in `encode_png`.
+        let px = &mut line[1..];
+        for i in (1..px.len()).rev() {
+            px[i] = px[i].wrapping_sub(px[i - 1]);
+        }
+        ok &= enc.write_all(&line).is_ok();
+    }
+    let idat = if ok {
+        enc.finish().unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    png_file(width, height, 0, &idat)
+}
+
+/// A PNG file of 8-bit samples of the colour type `color_type` from its
+/// compressed image data.
+fn png_file(width: u32, height: u32, color_type: u8, idat: &[u8]) -> Vec<u8> {
+    fn chunk(out: &mut Vec<u8>, tag: &[u8; 4], body: &[u8]) {
+        out.extend_from_slice(&(body.len() as u32).to_be_bytes());
+        let mut crc = flate2::Crc::new();
+        crc.update(tag);
+        crc.update(body);
+        out.extend_from_slice(tag);
+        out.extend_from_slice(body);
+        out.extend_from_slice(&crc.sum().to_be_bytes());
+    }
     let mut out = Vec::with_capacity(idat.len() + 64);
     out.extend_from_slice(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]);
     let mut ihdr = Vec::with_capacity(13);
     ihdr.extend_from_slice(&width.to_be_bytes());
     ihdr.extend_from_slice(&height.to_be_bytes());
-    ihdr.extend_from_slice(&[8, if opaque { 2 } else { 6 }, 0, 0, 0]);
+    ihdr.extend_from_slice(&[8, color_type, 0, 0, 0]);
     chunk(&mut out, b"IHDR", &ihdr);
-    chunk(&mut out, b"IDAT", &idat);
+    chunk(&mut out, b"IDAT", idat);
     chunk(&mut out, b"IEND", &[]);
     out
 }
@@ -7589,6 +7658,15 @@ pub(crate) mod tests {
         // Without a profile: one minus the ink, times one minus the black.
         assert_eq!(&raw[1..5], &[0, 255, 255, 255]);
         assert_eq!(&raw[5..9], &[127, 127, 127, 255]);
+        // The ink bytes are kept for separations (#1659): one grey plane
+        // per ink, cyan, magenta, yellow, black, fitting the pixels.
+        let inks = first_shape(&doc).picture_inks.clone().expect("inks kept");
+        assert!(inks.fits(png));
+        let planes: Vec<u8> = raw_rows(&inks.png)
+            .chunks(9)
+            .flat_map(|row| [row[1], row[5]])
+            .collect();
+        assert_eq!(planes, [255, 0, 0, 0, 0, 0, 0, 128]);
         // Through a table, the table decides.
         let lut =
             tracedraw_core::icc::CmykLut::with_points(3, |[c, _, _, k]| Some([1.0 - c, 0.5, k]))

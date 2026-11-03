@@ -134,6 +134,7 @@ mod perspective_draw;
 #[cfg(test)]
 mod pick_drag_tests;
 mod picture_mosaic;
+mod picture_plates;
 mod placeholder;
 mod preflight;
 mod prefs;

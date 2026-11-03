@@ -1928,6 +1928,11 @@ pub struct Shape {
     /// object never set it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cmyk_bitmap: bool,
+    /// A bitmap's ink channels as it prints (a `.cdr` CMYK image's C,
+    /// M, Y and K bytes), which colour separations print from while they
+    /// fit the pixels (#1659, [`crate::picture_inks`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub picture_inks: Option<Box<crate::picture_inks::PictureInks>>,
     /// Further fills, painted over `fill` in order (see [`Shape::layers`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra_fills: Vec<Fill>,
@@ -2237,6 +2242,7 @@ impl Shape {
             opacity_mask: None,
             parked_effects: Vec::new(),
             cmyk_bitmap: false,
+            picture_inks: None,
             extra_fills: Vec::new(),
             extra_strokes: Vec::new(),
             raster_fx: None,
