@@ -18007,3 +18007,94 @@ fn a_move_snaps_to_where_the_selection_started() {
         "{b:?}"
     );
 }
+
+/// With the Pick tool and a text selected, a click in the property bar's
+/// font field and then Down and Up step the text through the fonts, each
+/// applied at once in the list's order, as the wheel does; the field
+/// keeps the keyboard and the text does not move. Once the field lets
+/// the keyboard go (Enter), the arrows nudge the text again (#1754).
+#[test]
+fn arrows_in_the_font_field_step_the_selected_texts_font() {
+    let ctx = crate::theme::ui_context();
+    let mut app = App::headless();
+    app.show_welcome = false;
+    let families = app.font_families.clone();
+    assert!(families.len() >= 4, "{families:?}");
+    let id = app
+        .new_shape(ShapeKind::Text {
+            spans: vec![tracedraw_core::TextSpan::new("Text", &families[1], 24.0)],
+            origin: Point::new(30.0, 50.0),
+            frame: None,
+            align: Default::default(),
+            para: Default::default(),
+            on_path: None,
+        })
+        .expect("text");
+    app.set_tool(Tool::Pick);
+    app.select(vec![id]);
+    app.sync_text_defaults_from(id);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let font = |app: &App| match &app.doc().find_shape(id).expect("text").kind {
+        ShapeKind::Text { spans, .. } => spans[0].font_family.clone(),
+        _ => panic!("text"),
+    };
+    let place = |app: &App| app.doc().find_shape(id).expect("text").transform;
+    let at = frame_shapes(&ctx, &mut app, Vec::new())
+        .iter()
+        .find_map(|s| match s {
+            egui::Shape::Text(t) if t.galley.text() == families[1] => {
+                Some(t.visual_bounding_rect().center())
+            }
+            _ => None,
+        })
+        .expect("the font field");
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(at)],
+        Modifiers::NONE,
+    );
+    let press = |app: &mut App, pressed| {
+        frame(
+            &ctx,
+            app,
+            vec![button(at, pressed, PointerButton::Primary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+    };
+    press(&mut app, true);
+    press(&mut app, false);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(
+        ctx.egui_wants_keyboard_input(),
+        "the field has the keyboard"
+    );
+    let start = place(&app);
+    let tap = |app: &mut App, k: egui::Key| {
+        frame(&ctx, app, vec![key(k, Modifiers::NONE)], Modifiers::NONE);
+        frame(&ctx, app, vec![key_up(k, Modifiers::NONE)], Modifiers::NONE);
+    };
+    let history = app.engine.history_labels().0.len();
+    tap(&mut app, egui::Key::ArrowDown);
+    assert_eq!(font(&app), families[2]);
+    tap(&mut app, egui::Key::ArrowDown);
+    assert_eq!(font(&app), families[3]);
+    tap(&mut app, egui::Key::ArrowUp);
+    assert_eq!(font(&app), families[2]);
+    assert_eq!(app.text_font, families[2], "the bar shows it");
+    assert!(app.engine.history_labels().0.len() > history, "applied");
+    assert_eq!(place(&app), start, "no nudge");
+    assert!(
+        ctx.egui_wants_keyboard_input(),
+        "the field keeps the keyboard"
+    );
+    // Enter leaves the field: the arrows move the text again.
+    tap(&mut app, egui::Key::Enter);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(!ctx.egui_wants_keyboard_input());
+    tap(&mut app, egui::Key::ArrowDown);
+    assert_eq!(font(&app), families[2]);
+    assert_ne!(place(&app), start, "nudged");
+}
