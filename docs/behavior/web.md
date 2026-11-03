@@ -25,6 +25,31 @@ refuse to load modules from `file://`).
 | Fonts | installed system fonts | bundled at build time: Liberation Sans, Serif and Mono, DejaVu Sans, Noto Sans Devanagari and Bengali; the published page's font folder adds about a hundred free families (stand-ins of the same widths for common office faces, popular families, Chinese, Japanese, Korean, Arabic, Hebrew and Thai) and its font catalog every other family of the google/fonts collection (about 2,000), each fetched the first time a drawing's text needs it or a font list's pointer rests on it (see `web/FONTS.md`); Chinese and Japanese UI text needs a font the build machine had. A font added with Font Manager > Add Font is kept in the page's IndexedDB (`tracedraw-fonts`) and installed again at the next visit (#1400) |
 | System clipboard | text, images and copied files (arboard) | Ctrl+V takes text, pictures and files copied in other programs from the browser's paste event; Edit > Paste reads the clipboard with the browser's clipboard API, which asks once for permission, and pastes the copy made here when the browser refuses (see `clipboard.md`) |
 | Help links | system browser | a new tab |
+| Folder buttons | the system's folder dialog | see "Folder buttons" below (#1399) |
+
+## Folder buttons
+
+A browser and the Android app cannot pick a folder, so no button there
+shows a folder dialog: each asks `files::FolderUse::action` what to do
+on the running platform, and the folder dialog (`files::pick_folder`)
+takes a token only the desktop's answer carries
+(`files::tests::folder_buttons_pick_a_folder_on_the_desktop_only`,
+`no_dialog_picks_a_folder_without_asking_the_platform`). Every button
+that does something else says why in its tip.
+
+| Button | Desktop | Browser | Android |
+|---|---|---|---|
+| Export docker, Browse and Export | picks the folder the assets go to | one zip file named after the drawing (`<name>.zip`, each asset in a folder of that name), downloaded; the folder row says so | the same zip file, where the system's save picker says |
+| File > Package, Browse | picks the folder | greyed with the reason (File > Package is greyed, #1416) | no folder row: the package is one zip file the save picker places (#1401) |
+| Font Manager, Add Folder | picks a folder of fonts | picks several font files at once, each added as Add Font adds one | the same |
+| Print Merge, Pictures folder | picks the folder | picks several pictures at once, kept together as the pictures folder (the docker shows how many) | the same, copied into the app's temporary folder |
+| Picture Mosaic, Browse | picks the library folder | picks several pictures at once as the library | the same |
+| Options > Text > Spelling, More dictionaries, Browse | picks a folder of dictionaries | (the row is not shown; Add Files does it) | picks `.dic` and `.aff` files, added as Add Files adds them |
+| Options > Save, backup folders, Browse | picks the folder | greyed: backups live in the page's storage | greyed: backups stay in the app's folder |
+
+In the browser, the pickers that take several files (`Dialog::pick_files`:
+the buttons above, Add Files for dictionaries) take several at once; they
+took one before.
 
 ## Storage
 

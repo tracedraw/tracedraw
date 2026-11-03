@@ -941,13 +941,13 @@ fn scripts(app: &mut App, ui: &mut Ui) {
             ))
             .clicked()
         {
-            if let Some(p) = crate::files::Dialog::new()
+            // The save dialog, a download, or the system's save picker on
+            // Android (#1402).
+            let source = app.script_source.clone();
+            crate::files::Dialog::new()
                 .add_filter(lang, &[ext])
                 .set_file_name(format!("macro.{ext}"))
-                .save_path()
-            {
-                let _ = crate::files::write(p, &app.script_source);
-            }
+                .save_bytes(app, source);
         }
         if ui
             .button(tr("docker.clear"))
@@ -2136,16 +2136,13 @@ fn bitmap_mask(app: &mut App, ui: &mut Ui) {
         })
         .clicked()
         {
+            // The save dialog, a download, or the system's save picker on
+            // Android (#1402).
             let text = app.mask.to_text();
-            if let Some(path) = crate::files::Dialog::new()
+            crate::files::Dialog::new()
                 .add_filter(tr("docker.mask_file"), &["msk"])
                 .set_file_name("mask.msk".to_string())
-                .save_path()
-            {
-                if let Err(e) = crate::files::write(&path, text) {
-                    app.status = e.to_string();
-                }
-            }
+                .save_bytes(app, text);
         }
         if icon_btn(ui, true, &tr("docker.mask_open"), |p, r, c| {
             crate::ui::icons::draw_action(p, r, crate::ui::icons::Action::Open, c)

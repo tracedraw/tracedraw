@@ -1736,12 +1736,23 @@ fn dynamic_guides_page(app: &mut App, ui: &mut Ui) {
     });
 }
 
-/// A read-only path with a Browse button that picks a folder (desktop).
-fn path_field(ui: &mut Ui, dir: &mut Option<std::path::PathBuf>, fallback: String) {
+/// A read-only path with a Browse button for the folder of `place`: it
+/// picks a folder on the desktop; elsewhere it is greyed with the reason,
+/// or (a folder that is read) true comes back when it is pressed, for the
+/// caller to pick the files (#1399).
+fn path_field(
+    ui: &mut Ui,
+    dir: &mut Option<std::path::PathBuf>,
+    fallback: String,
+    place: crate::files::FolderUse,
+) -> bool {
+    use crate::files::FolderAction;
     let text = dir
         .as_ref()
         .map(|p| p.display().to_string())
         .unwrap_or(fallback);
+    let action = place.action();
+    let mut files = false;
     ui.horizontal(|ui| {
         ui.add_enabled(
             false,
@@ -1751,19 +1762,29 @@ fn path_field(ui: &mut Ui, dir: &mut Option<std::path::PathBuf>, fallback: Strin
             "options.folder",
             "options.folder_tip",
         ));
-        if ui
-            .add_enabled(!crate::files::WEB, egui::Button::new(tr("options.browse")))
-            .rich_tip(crate::ui::tips::pair(
-                "options.browse",
-                "options.browse_tip",
-            ))
-            .clicked()
-        {
-            if let Some(p) = crate::files::pick_folder() {
-                *dir = Some(p);
+        let tip = match place.tip() {
+            Some(why) => crate::ui::tips::pair("options.browse", why),
+            None => crate::ui::tips::pair("options.browse", "options.browse_tip"),
+        };
+        let browse = ui
+            .add_enabled(
+                !matches!(action, FolderAction::Unavailable(_)),
+                egui::Button::new(tr("options.browse")),
+            )
+            .rich_tip_always(tip);
+        if browse.clicked() {
+            match action {
+                FolderAction::PickFolder(token) => {
+                    if let Some(p) = crate::files::pick_folder(token) {
+                        *dir = Some(p);
+                    }
+                }
+                FolderAction::OpenFiles => files = true,
+                FolderAction::SaveZip | FolderAction::Unavailable(_) => {}
             }
         }
     });
+    files
 }
 
 fn save_page(app: &mut App, ui: &mut Ui) {
@@ -1798,7 +1819,12 @@ fn save_page(app: &mut App, ui: &mut Ui) {
                 b.before_save_dir = None;
             }
             ui.add_enabled_ui(choose, |ui| {
-                path_field(ui, &mut b.before_save_dir, String::new());
+                path_field(
+                    ui,
+                    &mut b.before_save_dir,
+                    String::new(),
+                    crate::files::FolderUse::BackupFolder,
+                );
             });
         });
     });
@@ -1820,18 +1846,18 @@ fn save_page(app: &mut App, ui: &mut Ui) {
             ));
             ui.label(tr("options.minutes"));
         });
-        // A browser keeps them in the page's storage: no folder.
-        if !crate::files::WEB {
-            ui.add_enabled_ui(b.auto, |ui| {
-                path_field(
-                    ui,
-                    &mut b.auto_dir,
-                    crate::app::App::auto_backup_dir_default()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_default(),
-                );
-            });
-        }
+        // A browser keeps them in the page's storage and Android in the
+        // app's folder: Browse is greyed with the reason (#1399).
+        ui.add_enabled_ui(b.auto, |ui| {
+            path_field(
+                ui,
+                &mut b.auto_dir,
+                crate::app::App::auto_backup_dir_default()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default(),
+                crate::files::FolderUse::AutoBackupFolder,
+            );
+        });
     });
 }
 
@@ -2124,16 +2150,21 @@ fn dictionary_download_row(app: &mut App, ui: &mut Ui) {
             ))
             .clicked()
         {
-            crate::files::Dialog::new()
-                .add_filter("Hunspell", &["dic", "aff"])
-                .pick_files(app, |app, paths| {
-                    let n = dl::add_files(&paths);
-                    app.status =
-                        crate::i18n::trf("status.dictionaries_added", &[("n", &n.to_string())]);
-                });
+            add_dictionary_files(app);
         }
     });
     ui.data_mut(|d| d.insert_temp(chosen_id, code));
+}
+
+/// Pick Hunspell files (`.dic` and `.aff`, several at once) and add them
+/// to TraceDraw's own dictionaries.
+fn add_dictionary_files(app: &mut App) {
+    crate::files::Dialog::new()
+        .add_filter("Hunspell", &["dic", "aff"])
+        .pick_files(app, |app, paths| {
+            let n = crate::dictionary_download::add_files(&paths);
+            app.status = crate::i18n::trf("status.dictionaries_added", &[("n", &n.to_string())]);
+        });
 }
 
 /// The dictionary offered first: the interface language's when the
@@ -2253,6 +2284,7 @@ fn spelling_tab(app: &mut App, ui: &mut Ui) {
                 });
         });
     let own = crate::spell::own_folder();
+    let mut add_files = false;
     grid("dictionary_folders").show(ui, |ui| {
         // A browser has no folders: its dictionaries are downloaded or
         // added below.
@@ -2308,7 +2340,14 @@ fn spelling_tab(app: &mut App, ui: &mut Ui) {
             crate::ui::tips::pair("options.more_dictionaries", "options.more_dictionaries_tip"),
             |ui| {
                 ui.horizontal(|ui| {
-                    path_field(ui, &mut p.dictionary_folder, String::new());
+                    // Where no folder can be read, Browse picks the
+                    // Hunspell files, as Add Dictionary Files does (#1399).
+                    add_files = path_field(
+                        ui,
+                        &mut p.dictionary_folder,
+                        String::new(),
+                        crate::files::FolderUse::DictionaryFolder,
+                    );
                     if ui
                         .add_enabled(
                             p.dictionary_folder.is_some(),
@@ -2324,6 +2363,9 @@ fn spelling_tab(app: &mut App, ui: &mut Ui) {
 
         ui.end_row();
     });
+    if add_files {
+        add_dictionary_files(app);
+    }
     dictionary_download_row(app, ui);
     if ui
         .button(tr("options.refresh_dictionaries"))

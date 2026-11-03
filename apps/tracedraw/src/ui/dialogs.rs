@@ -6576,6 +6576,7 @@ fn palette_editor_dialog(
         // A locked palette shows as a built-in one does: nothing changes
         // it until it is unlocked in the Palette Manager (#1343).
         let locked = app.palette_locked(st.palette);
+        let mut save_as = None;
         let Some(pal) = app.palettes.get_mut(st.palette) else {
             *close = true;
             return;
@@ -6676,20 +6677,7 @@ fn palette_editor_dialog(
                     .rich_tip(crate::ui::tips::keyed("dialog.save_palette"))
                     .clicked()
                 {
-                    if let Some(p) = crate::files::Dialog::new()
-                        .add_filter(
-                            crate::palette::filter_label(&tr("file.palettes"), &["tdpal", "gpl"]),
-                            &["tdpal", "gpl"],
-                        )
-                        .set_file_name(format!("{}.tdpal", pal.name))
-                        .save_path()
-                    {
-                        if let Err(e) = crate::palette::save_palette(pal, &p) {
-                            log::warn!("{e}");
-                        } else {
-                            pal.path = Some(p);
-                        }
-                    }
+                    save_as = Some(pal.name.clone());
                 }
             });
         } else {
@@ -6702,6 +6690,26 @@ fn palette_editor_dialog(
                 .color(Tokens::text_dim())
                 .size(11.0),
             );
+        }
+        // The save dialog, a download, or the system's save picker on
+        // Android (#1402); the palette keeps the file it was saved as.
+        if let Some(name) = save_as {
+            let index = st.palette;
+            crate::files::Dialog::new()
+                .add_filter(
+                    crate::palette::filter_label(&tr("file.palettes"), &["tdpal", "gpl"]),
+                    &["tdpal", "gpl"],
+                )
+                .set_file_name(format!("{name}.tdpal"))
+                .save_file(app, move |app, p| {
+                    let Some(pal) = app.palettes.get_mut(index) else {
+                        return;
+                    };
+                    match crate::palette::save_palette(pal, &p) {
+                        Ok(()) => pal.path = Some(p),
+                        Err(e) => app.status = e.to_string(),
+                    }
+                });
         }
         if ui
             .button(tr("dialog.close"))
