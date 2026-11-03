@@ -23,6 +23,10 @@ pub enum BlendHandle {
     Start,
     /// The crossed square on the end object.
     End,
+    /// The line between the squares, away from them and the sliders: a
+    /// drag moves the start and the end objects together, so the whole
+    /// blend moves.
+    Line,
 }
 
 /// A drag of the start or end square: the object it moves, where the
@@ -34,6 +38,9 @@ pub struct EndDrag {
     pub shape: ShapeId,
     pub press: Point,
     pub applied: bool,
+    /// A drag of the line: the end object, which moves with the start
+    /// one (`shape`).
+    pub with: Option<ShapeId>,
 }
 
 /// The undo label of a start or end square's move.
@@ -82,6 +89,7 @@ impl BlendControls {
             BlendHandle::Colors => self.accel_colors,
             BlendHandle::Start => return self.start,
             BlendHandle::End => return self.end,
+            BlendHandle::Line => return self.start + (self.end - self.start) * 0.5,
         };
         self.start + (self.end - self.start) * slider_fraction(a)
     }
@@ -156,16 +164,40 @@ impl App {
         }
         let n = screen_normal(a, b) * SLIDER_OFFSET_PX;
         // The object slider wins where the two overlap.
-        [(BlendHandle::Objects, n), (BlendHandle::Colors, -n)]
+        let slider = [(BlendHandle::Objects, n), (BlendHandle::Colors, -n)]
             .into_iter()
             .find(|(h, off)| (view.to_screen(c.slider_point(*h)) + *off - at).length() <= HANDLE_PX)
-            .map(|(h, _)| h)
+            .map(|(h, _)| h);
+        if slider.is_some() {
+            return slider;
+        }
+        // The line, within the pick distance, when both ends are objects
+        // that can move.
+        let movable = matches!(
+            self.selected_blends().into_iter().next(),
+            Some((
+                _,
+                Effect::Blend {
+                    end_id: Some(_),
+                    ..
+                }
+            ))
+        );
+        (movable && crate::effect_line::near_segment(c.start, c.end, p, self.line_pick_tol()))
+            .then_some(BlendHandle::Line)
     }
 
     /// The slider `h` dragged to `p`: the blend's acceleration follows,
     /// the other one too when the accelerations are linked. A drag is one
     /// undo step.
+    #[cfg(test)]
     pub fn drag_blend_handle(&mut self, h: BlendHandle, p: Point) {
+        self.drag_blend_handle_to(h, p, false);
+    }
+
+    /// [`App::drag_blend_handle`]; a drag of the line keeps its move
+    /// horizontal or vertical with `ctrl`.
+    pub fn drag_blend_handle_to(&mut self, h: BlendHandle, p: Point, ctrl: bool) {
         let Some(c) = self.blend_controls() else {
             return;
         };
@@ -174,7 +206,8 @@ impl App {
         let (objects, colors) = match h {
             BlendHandle::Objects => (true, link),
             BlendHandle::Colors => (link, true),
-            BlendHandle::Start | BlendHandle::End => return self.drag_blend_end(p),
+            BlendHandle::Start | BlendHandle::End => return self.drag_blend_end(p, false),
+            BlendHandle::Line => return self.drag_blend_end(p, ctrl),
         };
         if objects {
             self.blend_accel_objects = a;
@@ -211,12 +244,21 @@ impl App {
         self.blend_handle_drag = Some(h);
         self.effect_edit_step = None;
         self.blend_end_drag = None;
-        if matches!(h, BlendHandle::Start | BlendHandle::End) {
+        if matches!(h, BlendHandle::Start | BlendHandle::End | BlendHandle::Line) {
             let Some((start, e)) = self.selected_blends().into_iter().next() else {
                 return false;
             };
+            let with = match (h, &e) {
+                (
+                    BlendHandle::Line,
+                    Effect::Blend {
+                        end_id: Some(end), ..
+                    },
+                ) => Some(*end),
+                _ => None,
+            };
             let shape = match (h, e) {
-                (BlendHandle::Start, _) => start,
+                (BlendHandle::Start | BlendHandle::Line, _) => start,
                 (
                     _,
                     Effect::Blend {
@@ -231,18 +273,21 @@ impl App {
                 shape,
                 press: p,
                 applied: false,
+                with,
             });
         }
         true
     }
 
     /// The start or end square dragged to `p`: its object moves with it,
-    /// the steps following, as one undo step for the whole drag.
-    fn drag_blend_end(&mut self, p: Point) {
+    /// the steps following, as one undo step for the whole drag. The line
+    /// dragged moves both objects (kept straight with `ctrl`), so the
+    /// whole blend keeps its length and angle.
+    fn drag_blend_end(&mut self, p: Point, ctrl: bool) {
         let Some(d) = self.blend_end_drag else {
             return;
         };
-        let delta = p - d.press;
+        let delta = crate::effect_line::constrain_move(p - d.press, ctrl);
         if !delta.x.is_finite() || !delta.y.is_finite() {
             return;
         }
@@ -250,7 +295,7 @@ impl App {
             let _ = self.engine.undo();
         }
         let cmd = tracedraw_core::Command::TransformShapes {
-            shapes: vec![d.shape],
+            shapes: std::iter::once(d.shape).chain(d.with).collect(),
             transform: tracedraw_core::geometry::Affine::translate(delta),
         };
         match self.engine.run_batch(MOVE_LABEL, &[cmd]) {
@@ -273,6 +318,10 @@ impl App {
         let Some(d) = self.blend_end_drag.take() else {
             return;
         };
+        // The line moved the whole blend: nothing to drop it on.
+        if d.handle == BlendHandle::Line {
+            return;
+        }
         let Some((start, e)) = self.selected_blends().into_iter().next() else {
             return;
         };

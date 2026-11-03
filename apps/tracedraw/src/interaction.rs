@@ -1472,12 +1472,24 @@ impl App {
                         self.drag = Drag::ShadowHandle {
                             handle,
                             grab: Vec2::ZERO,
+                            begun: false,
                         };
+                    } else if self.shadow_on_line(press) {
+                        // On the line between the handles: the whole
+                        // shadow moves with the pointer.
+                        if let Some((_, sh, b)) = self.selected_shadow() {
+                            self.drag = Drag::ShadowLine {
+                                press,
+                                end: sh.end_point(b),
+                                begun: false,
+                            };
+                        }
                     } else if let Some(grab) = self.grab_shadow(press) {
                         // On the shadow itself: it moves with the pointer.
                         self.drag = Drag::ShadowHandle {
                             handle: crate::shadow_tool::ShadowHandle::End,
                             grab,
+                            begun: false,
                         };
                     } else if let Some(id) = self.hit_test(press) {
                         self.select(vec![id]);
@@ -1494,14 +1506,31 @@ impl App {
                             self.drag_new_shadow(shape, start, p, first);
                             self.drag = Drag::Shadow { shape, start };
                         }
-                        Drag::ShadowHandle { handle, grab } => {
-                            self.drag_shadow_handle(handle, p + grab)
+                        Drag::ShadowHandle {
+                            handle,
+                            grab,
+                            begun,
+                        } => {
+                            self.drag_shadow_handle(handle, p + grab, begun);
+                            self.drag = Drag::ShadowHandle {
+                                handle,
+                                grab,
+                                begun: true,
+                            };
+                        }
+                        Drag::ShadowLine { press, end, begun } => {
+                            self.drag_shadow_line(press, end, p, mods.ctrl || mods.command, begun);
+                            self.drag = Drag::ShadowLine {
+                                press,
+                                end,
+                                begun: true,
+                            };
                         }
                         _ => {}
                     }
                 }
                 if response.clicked_by(PointerButton::Primary) {
-                    if self.shadow_handle_at(p).is_some() {
+                    if self.shadow_handle_at(p).is_some() || self.shadow_on_line(p) {
                         return;
                     }
                     match self.pick_at(p) {
@@ -1531,14 +1560,13 @@ impl App {
                     }
                 }
                 if response.drag_started_by(PointerButton::Primary) {
-                    if let Some(h) = self.fountain_handle_at(p) {
-                        if let Some(i) = self.fountain_stop_of(h) {
-                            self.fill_node = Some(i);
-                        }
-                        self.drag = Drag::FountainHandle {
-                            handle: h,
-                            begun: false,
-                        };
+                    // A node, a slider, or the line (the whole mask moves).
+                    let press = response
+                        .ctx
+                        .input(|i| i.pointer.press_origin())
+                        .map(|o| self.view.to_page(o))
+                        .unwrap_or(p);
+                    if self.begin_fountain_drag(p, press) {
                         return;
                     }
                     // The selection takes the mask; an unselected object
@@ -1552,12 +1580,7 @@ impl App {
                     }
                 }
                 if response.dragged_by(PointerButton::Primary) {
-                    if let Drag::FountainHandle { handle, begun } = self.drag {
-                        self.drag_fountain_handle(handle, p, begun);
-                        self.drag = Drag::FountainHandle {
-                            handle,
-                            begun: true,
-                        };
+                    if self.fountain_drag_to(p, mods.ctrl || mods.command) {
                         return;
                     }
                     self.fill_gradient_drag_to(p, mods);
@@ -2761,14 +2784,13 @@ impl App {
             }
         }
         if response.drag_started_by(PointerButton::Primary) {
-            if let Some(h) = self.fountain_handle_at(p) {
-                if let Some(i) = self.fountain_stop_of(h) {
-                    self.fill_node = Some(i);
-                }
-                self.drag = Drag::FountainHandle {
-                    handle: h,
-                    begun: false,
-                };
+            // A node, a slider, or the line (the whole fill moves).
+            let press = response
+                .ctx
+                .input(|i| i.pointer.press_origin())
+                .map(|o| self.view.to_page(o))
+                .unwrap_or(p);
+            if self.begin_fountain_drag(p, press) {
                 return;
             }
             if let Some(id) = self.hit_test_inside(p) {
@@ -2781,12 +2803,7 @@ impl App {
             }
         }
         if response.dragged_by(PointerButton::Primary) {
-            if let Drag::FountainHandle { handle, begun } = self.drag {
-                self.drag_fountain_handle(handle, p, begun);
-                self.drag = Drag::FountainHandle {
-                    handle,
-                    begun: true,
-                };
+            if self.fountain_drag_to(p, mods.ctrl || mods.command) {
                 return;
             }
             self.fill_gradient_drag_to(p, mods);
@@ -3110,6 +3127,8 @@ impl App {
             | Drag::ContourDrag { .. }
             | Drag::Shadow { .. }
             | Drag::ShadowHandle { .. }
+            | Drag::ShadowLine { .. }
+            | Drag::FountainLine { .. }
             | Drag::RulerOrigin { .. }
             | Drag::Node { .. }
             | Drag::KindNode { .. }

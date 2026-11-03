@@ -72,6 +72,15 @@ the move is taken back and that object becomes the new start or end
 with the blend's settings, the old start staying a plain object and the
 selection moving to the new start (#965,
 `text_effect_tests::the_blend_tool_s_end_squares_move_and_pick_the_end_objects`).
+
+Dragging the line between the squares (within the pick distance of
+Options > Nodes and Handles, away from the squares and the sliders, which
+win where they overlap it) moves the start and the end objects together,
+so the whole blend moves with its length and angle kept; Ctrl keeps the
+move horizontal or vertical. One undo step for the drag, and the pointer
+is the move cursor over the line. A blend whose end lives only in the
+effect (no end object) has no line to drag
+(`effect_line_tests::the_blend_line_moves_the_whole_blend`).
 Not yet on the canvas: dropping colours on the squares.
 
 The steps lie between the two objects in the stacking order: with the

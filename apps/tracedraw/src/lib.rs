@@ -62,6 +62,9 @@ mod documents;
 mod drawing_scale;
 mod drop_files;
 mod drop_menu;
+mod effect_line;
+#[cfg(test)]
+mod effect_line_tests;
 mod effects_ui;
 mod encode;
 mod envelope_edit;

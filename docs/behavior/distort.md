@@ -102,7 +102,11 @@ curve stays open.
   slider on the line (a small circle). A drag that starts on one
   (within 6 pixels, or half the handle size and 2 more for larger
   handles, `App::distort_pick_px`; the centre first, then the slider, then the end) takes it: the diamond
-  moves the centre; the end handle is a square along the line at
+  moves the centre; a drag on the line between them (within the pick
+  distance of Options > Nodes and Handles) moves the centre by the
+  pointer's way, the line with it at its length and angle, Ctrl keeping
+  that move horizontal or vertical, the pointer the move cursor over the
+  line (`effect_line_tests::the_distortion_line_moves_its_centre`); the end handle is a square along the line at
   `amount / 100` of `r` for Push and Pull (the other way when negative;
   dragging it sets the amount from its distance and the side from
   where it is) and at four times the amplitude for the Zipper (the

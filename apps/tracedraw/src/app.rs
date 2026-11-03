@@ -505,6 +505,22 @@ pub enum Drag {
         /// The drag's undo step is recorded (the next moves join it).
         begun: bool,
     },
+    /// Moving the whole fill (or transparency) by its line: the press
+    /// point and the start node's place then (Interactive Fill,
+    /// Transparency).
+    FountainLine {
+        press: Point,
+        origin: Point,
+        /// The drag's undo step is recorded (the next moves join it).
+        begun: bool,
+    },
+    /// Moving a drop shadow by its line: the press point and the shadow's
+    /// end then (Drop Shadow).
+    ShadowLine {
+        press: Point,
+        end: Point,
+        begun: bool,
+    },
     /// Zoom tool rubber band.
     ZoomBox {
         start: Point,
@@ -536,6 +552,8 @@ pub enum Drag {
     ShadowHandle {
         handle: crate::shadow_tool::ShadowHandle,
         grab: tracedraw_core::geometry::Vec2,
+        /// The drag's undo step is recorded (the next moves replace it).
+        begun: bool,
     },
     /// Dragging a selection across the text being edited (Text tool).
     TextSelect,
