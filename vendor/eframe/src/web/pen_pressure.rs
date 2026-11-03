@@ -16,7 +16,7 @@ pub(crate) const PEN: &str = "pen";
 
 /// The touch device id of the pen's moving touches; the touch events of
 /// the published layer use 0.
-pub(crate) const PEN_DEVICE: egui::TouchDeviceId = egui::TouchDeviceId(0x7065_6e);
+pub(crate) const PEN_DEVICE: egui::TouchDeviceId = egui::TouchDeviceId(1);
 
 /// `buttons` bits that mean the pen touches the surface: its tip (the
 /// primary button) or its eraser end.
