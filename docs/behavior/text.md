@@ -259,7 +259,7 @@ concatenated spans; the layout's line boxes give its place on the page.
 | Typing, paste | inserts at the caret, replacing the selection, with the style of the character before the caret |
 | Backspace / Delete | the selection, else the character before / after the caret |
 | Enter / Shift+Enter | paragraph break / line break (U+2028) |
-| Tab | a tab character |
+| Tab | a tab character: the text after it starts at the next tab stop (every 12.7 mm unless the paragraph sets its own); the keyboard stays on the text, no field of the bars takes it (#1667, `pick_drag_tests::tab_in_paragraph_text_moves_the_text_to_the_next_stop`) |
 | Left / Right, Ctrl+Left / Right | one character, one word; Shift extends the selection |
 | Up / Down | the same x on the previous / next line (the x is remembered across moves) |
 | Home / End, Ctrl+Home / End | line start / end, text start / end |

@@ -18098,3 +18098,131 @@ fn arrows_in_the_font_field_step_the_selected_texts_font() {
     assert_eq!(font(&app), families[2]);
     assert_ne!(place(&app), start, "nudged");
 }
+
+/// Tab in paragraph text being edited types a tab: the text after it
+/// starts at the next tab stop (every 12.7 mm), and the keyboard stays
+/// on the text, no field or button of the window taking the focus
+/// (#1667).
+#[test]
+fn tab_in_paragraph_text_moves_the_text_to_the_next_stop() {
+    let (ctx, mut app, _) = setup();
+    tracedraw_text::install();
+    app.select(Vec::new());
+    app.settings.autocorrect.enabled = false;
+    app.text_font = "DejaVu Sans".into();
+    app.text_size_pt = 10.0;
+    app.set_tool(Tool::Text);
+    app.start_text(
+        Point::new(30.0, 150.0),
+        Some(tracedraw_core::Size::new(100.0, 60.0)),
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let tab = |app: &mut App| {
+        frame(
+            &ctx,
+            app,
+            vec![key(egui::Key::Tab, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(
+            &ctx,
+            app,
+            vec![key_up(egui::Key::Tab, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+    };
+    for (typed, tabbed) in [("Ab", true), ("Cd", true), ("Ef", false)] {
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::Text(typed.into())],
+            Modifiers::NONE,
+        );
+        if tabbed {
+            tab(&mut app);
+        }
+    }
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    assert_eq!(app.edit_text(), "Ab\tCd\tEf");
+    assert!(app.text_edit.is_some(), "still editing");
+    assert_eq!(
+        ctx.memory(|m| m.focused()),
+        None,
+        "no widget took the focus"
+    );
+    assert!(!ctx.egui_wants_keyboard_input());
+    // Laid out: "Cd" at the first stop, "Ef" at the second.
+    app.finish_text();
+    let id = *app.selection.first().expect("the text");
+    let s = app.doc().find_shape(id).expect("text");
+    let ShapeKind::Text {
+        spans,
+        frame: f,
+        align,
+        para,
+        ..
+    } = &s.kind
+    else {
+        panic!("text");
+    };
+    assert!(f.is_some(), "paragraph text");
+    let layout =
+        tracedraw_text::fonts().layout(&tracedraw_core::document::text_outline::TextRequest {
+            spans,
+            frame: *f,
+            align: *align,
+            para,
+            on_path: None,
+        });
+    let x = |i: usize| layout.caret(i).expect("caret").0;
+    let start = x(0);
+    assert!((x(3) - start - 12.7).abs() < 0.01, "{} {}", x(3), start);
+    assert!((x(6) - start - 25.4).abs() < 0.01, "{} {}", x(6), start);
+    assert_eq!(layout.lines.len(), 1);
+}
+
+/// Tab and Shift+Tab with the Pick tool go from object to object, one
+/// press after another, and no field of the window takes the keyboard
+/// on the way (#1667).
+#[test]
+fn tab_goes_from_object_to_object_press_after_press() {
+    let (ctx, mut app, a) = setup();
+    let b = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(80.0, 10.0, 120.0, 40.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    let c = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(140.0, 10.0, 180.0, 40.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(Vec::new());
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let mut seen = Vec::new();
+    for mods in [
+        Modifiers::NONE,
+        Modifiers::NONE,
+        Modifiers::NONE,
+        Modifiers::SHIFT,
+    ] {
+        frame(&ctx, &mut app, vec![key(egui::Key::Tab, mods)], mods);
+        frame(&ctx, &mut app, vec![key_up(egui::Key::Tab, mods)], mods);
+        assert_eq!(ctx.memory(|m| m.focused()), None, "no field took the keys");
+        assert_eq!(app.selection.len(), 1);
+        seen.push(app.selection[0]);
+    }
+    // Three presses visit the three objects; Shift+Tab goes back one.
+    let mut three = seen[..3].to_vec();
+    three.sort();
+    let mut all = vec![a, b, c];
+    all.sort();
+    assert_eq!(three, all, "{seen:?}");
+    assert_eq!(seen[3], seen[1], "{seen:?}");
+}
