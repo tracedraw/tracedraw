@@ -107,6 +107,8 @@ mod kind_nodes;
 mod knife;
 mod lens;
 mod live_guides;
+#[cfg(test)]
+mod macos_package;
 mod macro_forms;
 mod macros;
 mod mcp;
