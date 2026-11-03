@@ -1262,11 +1262,15 @@ impl DocumentDefaults {
     }
 }
 
-/// The stored object defaults as a drawing in `mode` takes them: a black
-/// fill or outline, RGB or CMYK, is the mode's black (new objects are
-/// black in the drawing's own colour mode), whatever else the stored
-/// defaults hold (an earlier version's values, a paragraph style, an
-/// outline width of one's own); any other colour stays as chosen.
+/// The stored object defaults as a drawing in `mode` takes them: a fill
+/// or outline that is still the untouched default black is the mode's
+/// black (new objects are black in the drawing's own colour mode),
+/// whatever else the stored defaults hold (a paragraph style, an outline
+/// width of one's own); a colour the user picked, a black included,
+/// stays exactly as saved. Settings saved before the mark existed: a
+/// black outline of graphics or black text fill, where the built-in
+/// defaults put one, counts as untouched
+/// ([`tracedraw_core::DefaultProperties::follows`]).
 fn defaults_for(
     stored: &tracedraw_core::ObjectDefaults,
     mode: tracedraw_core::document::PrimaryColorMode,
@@ -2174,6 +2178,100 @@ mod tests {
             rgb.graphic.stroke.as_ref().map(|s| (s.color, s.width)),
             Some((Color::BLACK, 0.5))
         );
+    }
+
+    /// Saved defaults: the untouched default black follows the new
+    /// drawing's mode, a black the user picked stays exactly as saved,
+    /// and so does any other colour (#1665).
+    #[test]
+    fn saved_defaults_keep_chosen_blacks() {
+        use crate::defaults::DefaultChange;
+        use tracedraw_core::document::PrimaryColorMode;
+        use tracedraw_core::{Color, Fill};
+        let k100 = PrimaryColorMode::Cmyk.black();
+        let outline =
+            |d: &tracedraw_core::ObjectDefaults| d.graphic.stroke.as_ref().map(|s| s.color);
+        let open_in = |prefs: &super::DocumentDefaults, mode| {
+            let mut doc = tracedraw_core::Document::default();
+            doc.metadata.primary_color_mode = mode;
+            prefs.apply(&mut doc);
+            doc.defaults
+        };
+        // Untouched defaults saved from a CMYK drawing follow both modes.
+        let mut app = crate::app::App::headless();
+        app.settings.new_document.values.rgb = false;
+        app.new_document();
+        let untouched = super::DocumentDefaults::of(app.doc());
+        let rgb = open_in(&untouched, PrimaryColorMode::Rgb);
+        assert_eq!(outline(&rgb), Some(Color::BLACK));
+        assert_eq!(rgb.artistic_text.fill, Fill::Solid(Color::BLACK));
+        let cmyk = open_in(&untouched, PrimaryColorMode::Cmyk);
+        assert_eq!(outline(&cmyk), Some(k100));
+        // The user picks CMYK black for graphics' outline: it stays CMYK
+        // in an RGB drawing, the untouched text black still follows.
+        app.change_defaults(
+            &DefaultChange::OutlineColor(Some(k100)),
+            [true, false, false],
+        );
+        let chosen = super::DocumentDefaults::of(app.doc());
+        let json = serde_json::to_string(&chosen).unwrap();
+        let chosen: super::DocumentDefaults = serde_json::from_str(&json).unwrap();
+        let rgb = open_in(&chosen, PrimaryColorMode::Rgb);
+        assert_eq!(outline(&rgb), Some(k100));
+        assert_eq!(rgb.artistic_text.fill, Fill::Solid(Color::BLACK));
+        // A saved colour that is not black stays.
+        let blue = Color::rgb8(0, 0, 200);
+        app.change_defaults(
+            &DefaultChange::Fill(Fill::Solid(blue)),
+            [false, true, false],
+        );
+        let rgb = open_in(
+            &super::DocumentDefaults::of(app.doc()),
+            PrimaryColorMode::Rgb,
+        );
+        assert_eq!(rgb.artistic_text.fill, Fill::Solid(blue));
+        // Reset in the Object Styles panel makes the outline follow again.
+        app.set_default_properties(tracedraw_core::DefaultKind::Graphic, |p| {
+            *p = tracedraw_core::ObjectDefaults::for_mode(PrimaryColorMode::Cmyk).graphic
+        });
+        let rgb = open_in(
+            &super::DocumentDefaults::of(app.doc()),
+            PrimaryColorMode::Rgb,
+        );
+        assert_eq!(outline(&rgb), Some(Color::BLACK));
+    }
+
+    /// Settings saved before the mark existed: the stock CMYK black
+    /// outline and text black (the old built-in defaults) follow the
+    /// drawing's mode; a black elsewhere and other colours stay.
+    #[test]
+    fn old_settings_with_the_stock_blacks_follow() {
+        use tracedraw_core::document::PrimaryColorMode;
+        use tracedraw_core::{Color, Fill};
+        let k100 = PrimaryColorMode::Cmyk.black();
+        let mut stored = super::DocumentDefaults::default();
+        stored.objects.graphic.fill = Fill::Solid(k100);
+        stored.objects.paragraph_text.fill = Fill::Solid(Color::rgb8(0, 120, 0));
+        let mut json = serde_json::to_value(&stored).unwrap();
+        for kind in ["graphic", "artistic_text", "paragraph_text"] {
+            json["objects"][kind]
+                .as_object_mut()
+                .unwrap()
+                .remove("follow");
+        }
+        let old: super::DocumentDefaults = serde_json::from_value(json).unwrap();
+        assert!(old.objects.graphic.follow.is_none());
+        let mut doc = tracedraw_core::Document::default();
+        doc.metadata.primary_color_mode = PrimaryColorMode::Rgb;
+        old.apply(&mut doc);
+        let d = &doc.defaults;
+        assert_eq!(
+            d.graphic.stroke.as_ref().map(|s| s.color),
+            Some(Color::BLACK)
+        );
+        assert_eq!(d.artistic_text.fill, Fill::Solid(Color::BLACK));
+        assert_eq!(d.graphic.fill, Fill::Solid(k100), "a black of one's own");
+        assert_eq!(d.paragraph_text.fill, Fill::Solid(Color::rgb8(0, 120, 0)));
     }
 
     #[test]

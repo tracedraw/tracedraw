@@ -23,14 +23,21 @@ pub enum DefaultChange {
 }
 
 impl DefaultChange {
-    pub fn apply(&self, p: &mut DefaultProperties) {
+    /// Apply the change to the defaults of `kind`. A fill or outline
+    /// colour picked is the user's own, even the same black as the
+    /// default: it no longer follows the drawing's colour mode.
+    pub fn apply(&self, kind: DefaultKind, p: &mut DefaultProperties) {
         match self {
-            DefaultChange::Fill(f) => p.fill = f.clone(),
+            DefaultChange::Fill(f) => {
+                p.fill = f.clone();
+                p.choose_fill(kind);
+            }
             DefaultChange::OutlineColor(None) => p.stroke = None,
             DefaultChange::OutlineColor(Some(c)) => {
                 let mut s = p.stroke.clone().unwrap_or_default();
                 s.color = *c;
                 p.stroke = Some(s);
+                p.choose_outline(kind);
             }
             DefaultChange::OutlineWidth(w) => {
                 if let Some(s) = &mut p.stroke {
@@ -117,7 +124,7 @@ impl App {
         let mut names = Vec::new();
         for (kind, on) in DefaultKind::ALL.into_iter().zip(kinds) {
             if on {
-                change.apply(defaults.get_mut(kind));
+                change.apply(kind, defaults.get_mut(kind));
                 names.push(tr(kind_key(kind)));
             }
         }
@@ -215,10 +222,11 @@ mod tests {
         let mut p = DefaultProperties {
             fill: Fill::None,
             stroke: None,
+            follow: None,
         };
-        DefaultChange::OutlineWidth(1.0).apply(&mut p);
+        DefaultChange::OutlineWidth(1.0).apply(DefaultKind::Graphic, &mut p);
         assert!(p.stroke.is_none());
-        DefaultChange::OutlineColor(None).apply(&mut p);
+        DefaultChange::OutlineColor(None).apply(DefaultKind::Graphic, &mut p);
         assert!(p.stroke.is_none());
     }
 

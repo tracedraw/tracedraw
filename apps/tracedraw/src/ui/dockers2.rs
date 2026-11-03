@@ -370,6 +370,8 @@ fn default_properties(app: &mut App, ui: &mut Ui) {
                     .rich_tip(tr("defaults.reset_hint"))
                     .clicked()
                 {
+                    // The defaults of the drawing's mode, their black
+                    // following the colour mode again.
                     let mode = app.doc().metadata.primary_color_mode;
                     let fresh = ObjectDefaults::for_mode(mode).get(kind).clone();
                     app.set_default_properties(kind, |p| *p = fresh);
@@ -383,9 +385,13 @@ fn default_properties(app: &mut App, ui: &mut Ui) {
                 if from.clicked() {
                     if let Some(s) = &first {
                         let (fill, stroke) = (s.fill.clone(), s.stroke.clone());
+                        // Colours taken from an object are the user's
+                        // own, even a black.
                         app.set_default_properties(kind, |p| {
                             p.fill = fill;
                             p.stroke = stroke;
+                            p.choose_fill(kind);
+                            p.choose_outline(kind);
                         });
                     }
                 }

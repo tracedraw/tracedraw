@@ -3474,6 +3474,70 @@ pub struct ObjectDefaults {
 pub struct DefaultProperties {
     pub fill: Fill,
     pub stroke: Option<Stroke>,
+    /// Which of the fill and outline colours are the untouched default
+    /// black, the one that follows the drawing's colour mode (see
+    /// [`ObjectDefaults::in_mode`]); a colour the user picked is never
+    /// marked. `None` in files and settings from before the mark: see
+    /// [`DefaultProperties::follows`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub follow: Option<FollowBlack>,
+}
+
+/// The parts of one kind's defaults that are the default black and
+/// follow the drawing's colour mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FollowBlack {
+    pub fill: bool,
+    pub outline: bool,
+}
+
+/// The blacks of the two colour modes.
+fn mode_blacks() -> [crate::Color; 2] {
+    [
+        PrimaryColorMode::Cmyk.black(),
+        PrimaryColorMode::Rgb.black(),
+    ]
+}
+
+impl DefaultProperties {
+    /// Which parts follow the drawing's black. Defaults saved before the
+    /// mark existed carry none; for them a black (CMYK 100 % K or RGB
+    /// black) where the built-in defaults put one counts as the
+    /// untouched default and follows: the outline of graphics and the
+    /// fill of text. Any other colour, and a black anywhere else, counts
+    /// as chosen.
+    pub fn follows(&self, kind: DefaultKind) -> FollowBlack {
+        if let Some(f) = self.follow {
+            return f;
+        }
+        let black = |c: &crate::Color| mode_blacks().contains(c);
+        match kind {
+            DefaultKind::Graphic => FollowBlack {
+                fill: false,
+                outline: self.stroke.as_ref().is_some_and(|s| black(&s.color)),
+            },
+            DefaultKind::ArtisticText | DefaultKind::ParagraphText => FollowBlack {
+                fill: matches!(&self.fill, Fill::Solid(c) if black(c)),
+                outline: false,
+            },
+        }
+    }
+
+    /// The fill is the user's own from now on (picked, even when it is
+    /// the same black).
+    pub fn choose_fill(&mut self, kind: DefaultKind) {
+        let mut f = self.follows(kind);
+        f.fill = false;
+        self.follow = Some(f);
+    }
+
+    /// The outline colour is the user's own from now on.
+    pub fn choose_outline(&mut self, kind: DefaultKind) {
+        let mut f = self.follows(kind);
+        f.outline = false;
+        self.follow = Some(f);
+    }
 }
 
 /// The kinds of new objects with their own defaults.
@@ -3517,6 +3581,10 @@ impl ObjectDefaults {
         let text = DefaultProperties {
             fill: Fill::Solid(mode.black()),
             stroke: None,
+            follow: Some(FollowBlack {
+                fill: true,
+                outline: false,
+            }),
         };
         ObjectDefaults {
             graphic: DefaultProperties {
@@ -3526,6 +3594,10 @@ impl ObjectDefaults {
                     width: 0.2,
                     ..Stroke::default()
                 }),
+                follow: Some(FollowBlack {
+                    fill: false,
+                    outline: true,
+                }),
             },
             artistic_text: text.clone(),
             paragraph_text: text,
@@ -3533,32 +3605,58 @@ impl ObjectDefaults {
         }
     }
 
-    /// These defaults as a drawing in `mode` takes them: a black fill or
-    /// outline colour, CMYK or RGB, of any kind becomes the mode's black
-    /// (new objects are black in the drawing's own colour mode); any
-    /// other colour, and everything else, stays as chosen.
+    /// These defaults as a drawing in `mode` takes them: a fill or
+    /// outline that is still the untouched default black (see
+    /// [`DefaultProperties::follows`]) becomes the mode's black, so new
+    /// objects are black in the drawing's own colour mode; a colour the
+    /// user picked, black or not, and everything else, stays exactly as
+    /// saved. The marks come out filled in.
     pub fn in_mode(&self, mode: PrimaryColorMode) -> Self {
-        let blacks = [
-            PrimaryColorMode::Cmyk.black(),
-            PrimaryColorMode::Rgb.black(),
-        ];
-        let follow = |c: &mut crate::Color| {
-            if blacks.contains(c) {
-                *c = mode.black();
-            }
-        };
         let mut out = self.clone();
-        for props in [
-            &mut out.graphic,
-            &mut out.artistic_text,
-            &mut out.paragraph_text,
-        ] {
-            if let Fill::Solid(c) = &mut props.fill {
-                follow(c);
+        for kind in DefaultKind::ALL {
+            let props = out.get_mut(kind);
+            let follow = props.follows(kind);
+            props.follow = Some(follow);
+            let to_mode = |c: &mut crate::Color| {
+                if mode_blacks().contains(c) {
+                    *c = mode.black();
+                }
+            };
+            if follow.fill {
+                if let Fill::Solid(c) = &mut props.fill {
+                    to_mode(c);
+                }
             }
-            if let Some(stroke) = &mut props.stroke {
-                follow(&mut stroke.color);
+            if follow.outline {
+                if let Some(stroke) = &mut props.stroke {
+                    to_mode(&mut stroke.color);
+                }
             }
+        }
+        out
+    }
+
+    /// `self`, about to replace `before`, with the marks kept honest: a
+    /// part still marked as following the default black only because the
+    /// mark was copied along with the rest loses it when its colour
+    /// changed (the user picked another colour); a mark set afresh (a
+    /// reset to the defaults of the mode) stays. A width or anything
+    /// else changing leaves the mark.
+    pub fn settled(&self, before: &ObjectDefaults) -> Self {
+        let mut out = self.clone();
+        for kind in DefaultKind::ALL {
+            let old = before.get(kind);
+            let props = out.get_mut(kind);
+            let was = old.follows(kind);
+            let mut now = props.follows(kind);
+            if was.fill && now.fill && props.fill != old.fill {
+                now.fill = false;
+            }
+            let color = |s: &Option<Stroke>| s.as_ref().map(|s| s.color);
+            if was.outline && now.outline && color(&props.stroke) != color(&old.stroke) {
+                now.outline = false;
+            }
+            props.follow = Some(now);
         }
         out
     }

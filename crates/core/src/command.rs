@@ -112,7 +112,10 @@ pub enum Command {
         shapes: Vec<ShapeId>,
         style: Option<u32>,
     },
-    /// Replace the fill and outline new objects get.
+    /// Replace the fill and outline new objects get. A fill or outline
+    /// colour that changed from the default black is the user's own and
+    /// stops following the drawing's colour mode
+    /// ([`crate::document::ObjectDefaults::settled`]).
     SetObjectDefaults {
         defaults: crate::document::ObjectDefaults,
     },
@@ -649,7 +652,9 @@ impl Command {
                 }
             }
             Command::SetObjectDefaults { defaults } => {
-                doc.defaults = defaults.clone();
+                // A colour picked in place of the default black is the
+                // user's own and no longer follows the colour mode.
+                doc.defaults = defaults.settled(&doc.defaults);
             }
             Command::SetColorStyles { styles } => {
                 doc.color_styles = styles.clone();
@@ -3129,6 +3134,113 @@ mod tests {
         );
     }
 
+    /// Only the untouched default black follows the colour mode; a black
+    /// the user picked stays exactly as picked, and Reset makes the
+    /// default black follow again (#1665).
+    #[test]
+    fn chosen_blacks_stay_as_chosen_when_the_mode_changes() {
+        use crate::document::{DefaultKind, ObjectDefaults, PrimaryColorMode};
+        use crate::Color;
+        let k100 = PrimaryColorMode::Cmyk.black();
+        let outline = |d: &ObjectDefaults| d.graphic.stroke.as_ref().map(|k| k.color);
+        let set_mode = |doc: &mut Document, mode| {
+            let mut md = doc.metadata.clone();
+            md.primary_color_mode = mode;
+            Command::SetMetadata { metadata: md }.apply(doc).unwrap();
+        };
+        let set = |doc: &mut Document, d: ObjectDefaults| {
+            Command::SetObjectDefaults { defaults: d }
+                .apply(doc)
+                .unwrap();
+        };
+
+        // Untouched defaults follow both ways, a width change keeps that.
+        let mut doc = Document::default();
+        let mut d = doc.defaults.clone();
+        if let Some(k) = d.graphic.stroke.as_mut() {
+            k.width = 0.5;
+        }
+        set(&mut doc, d);
+        set_mode(&mut doc, PrimaryColorMode::Rgb);
+        assert_eq!(outline(&doc.defaults), Some(Color::BLACK));
+        set_mode(&mut doc, PrimaryColorMode::Cmyk);
+        assert_eq!(outline(&doc.defaults), Some(k100));
+
+        // A CMYK black picked for the outline (even the same colour)
+        // stays CMYK in RGB.
+        let mut d = doc.defaults.clone();
+        d.graphic.choose_outline(DefaultKind::Graphic);
+        set(&mut doc, d);
+        set_mode(&mut doc, PrimaryColorMode::Rgb);
+        assert_eq!(outline(&doc.defaults), Some(k100));
+        assert_eq!(
+            doc.defaults.artistic_text.fill,
+            Fill::Solid(Color::BLACK),
+            "the untouched text black still follows"
+        );
+
+        // Reset: the defaults of the mode, following again.
+        let mut d = doc.defaults.clone();
+        d.graphic = ObjectDefaults::for_mode(PrimaryColorMode::Rgb).graphic;
+        set(&mut doc, d);
+        set_mode(&mut doc, PrimaryColorMode::Cmyk);
+        assert_eq!(outline(&doc.defaults), Some(k100));
+
+        // A colour changed by editing the defaults (the mark copied
+        // along) is chosen: going red and back to RGB black keeps the
+        // RGB black in CMYK.
+        for c in [Color::rgb8(200, 0, 0), Color::BLACK] {
+            let mut d = doc.defaults.clone();
+            if let Some(k) = d.graphic.stroke.as_mut() {
+                k.color = c;
+            }
+            set(&mut doc, d);
+        }
+        set_mode(&mut doc, PrimaryColorMode::Rgb);
+        set_mode(&mut doc, PrimaryColorMode::Cmyk);
+        assert_eq!(outline(&doc.defaults), Some(Color::BLACK));
+
+        // The marks are saved with the drawing.
+        let back = Document::from_json(&doc.to_json().unwrap()).unwrap();
+        assert_eq!(back.defaults, doc.defaults);
+    }
+
+    /// Drawings saved before the mark: the stock black outline of
+    /// graphics and black text follow, any other black is chosen.
+    #[test]
+    fn older_drawings_work_out_which_blacks_follow() {
+        use crate::document::{ObjectDefaults, PrimaryColorMode};
+        use crate::Color;
+        let k100 = PrimaryColorMode::Cmyk.black();
+        let mut doc = Document::default();
+        doc.defaults.graphic.fill = Fill::Solid(k100);
+        let mut json: serde_json::Value = serde_json::from_str(&doc.to_json().unwrap()).unwrap();
+        for kind in ["graphic", "artistic_text", "paragraph_text"] {
+            json["defaults"][kind]
+                .as_object_mut()
+                .unwrap()
+                .remove("follow");
+        }
+        let mut old = Document::from_json(&json.to_string()).unwrap();
+        assert!(old.defaults.graphic.follow.is_none());
+        let mut md = old.metadata.clone();
+        md.primary_color_mode = PrimaryColorMode::Rgb;
+        Command::SetMetadata { metadata: md }
+            .apply(&mut old)
+            .unwrap();
+        let d: &ObjectDefaults = &old.defaults;
+        assert_eq!(
+            d.graphic.stroke.as_ref().map(|k| k.color),
+            Some(Color::BLACK)
+        );
+        assert_eq!(d.artistic_text.fill, Fill::Solid(Color::BLACK));
+        assert_eq!(
+            d.graphic.fill,
+            Fill::Solid(k100),
+            "not where the default black goes"
+        );
+    }
+
     #[test]
     fn new_objects_take_the_defaults_of_their_kind() {
         use crate::document::{DefaultKind, ObjectDefaults};
@@ -3140,7 +3252,11 @@ mod tests {
         }
         .apply(&mut doc)
         .unwrap();
-        assert_eq!(doc.defaults, defaults);
+        assert_eq!(
+            doc.defaults.paragraph_text.fill,
+            defaults.paragraph_text.fill
+        );
+        assert_eq!(doc.defaults.graphic, defaults.graphic);
         let mut s = rect(&mut doc, 0.0);
         s.fill = Fill::Solid(Color::BLACK);
         doc.defaults.apply_to(&mut s);
