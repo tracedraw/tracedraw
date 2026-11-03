@@ -811,6 +811,11 @@ impl eframe::App for Shell {
                 "the editor was built in {:.0} ms",
                 built.elapsed().as_secs_f64() * 1000.0
             );
+            // This frame shows plain, not the splash: the window system
+            // may grow the window before the next frame is drawn, and the
+            // last splash frame stayed in its corner meanwhile (#1673).
+            let fill = ui.ctx().global_style().visuals.panel_fill;
+            ui.painter().rect_filled(ui.max_rect(), 0.0, fill);
             self.window_grow = Some(splash::open_main_window(ui.ctx(), &app.settings));
             // F8 held while TraceDraw started: ask before resetting.
             if reset {
