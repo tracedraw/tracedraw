@@ -3020,7 +3020,7 @@ impl<'a> Ctx<'a> {
     /// so the blend gets the default 20 steps with a warning naming the
     /// value. It used to be kept to 999, which drew such blends with 999
     /// steps each and could take all the memory (#980).
-    fn blend_steps(&mut self, group: &Chunk) -> Option<u32> {
+    fn blend_steps(&mut self, group: &Chunk) -> Option<(u32, crate::blend_record::Settings)> {
         let lgob = group.children.iter().find(|k| k.is(b"lgob"))?;
         let loda = lgob.children.iter().find(|k| k.is(b"loda"))?;
         let d = self.data(loda);
@@ -3039,7 +3039,12 @@ impl<'a> Ctx<'a> {
         // The count is the low 16 bits: versions 9 and 13 leave the high
         // ones 0, version 25 keeps another value there (#980).
         let raw = self.reader_at(d, arg.off).u16().map(u32::from);
-        Some(match raw {
+        // The accelerations, rotation and colour direction (#1192).
+        let settings = d
+            .get(arg.off..arg.end)
+            .and_then(|a| crate::blend_record::decode(a, self.v))
+            .unwrap_or_default();
+        let steps = match raw {
             Some(n @ 1..=tracedraw_core::live::MAX_BLEND_STEPS) => n,
             other => {
                 let value = other.map_or_else(|| "nothing".to_owned(), |n| n.to_string());
@@ -3053,7 +3058,8 @@ impl<'a> Ctx<'a> {
                 ));
                 BLEND_DEFAULT_STEPS
             }
-        })
+        };
+        Some((steps, settings))
     }
 
     /// The offset (mm) of a contour's linked group (`LIST lnkg` whose own
@@ -3508,7 +3514,7 @@ impl<'a> Ctx<'a> {
         // Blends found in this list: where their linked group stood among
         // the objects read, and their step count (see `blend_steps`).
         let first = out.len();
-        let mut blends: Vec<(usize, u32)> = Vec::new();
+        let mut blends: Vec<(usize, u32, crate::blend_record::Settings)> = Vec::new();
         // Contours found in this list: where their steps start and end
         // among the objects read, and their offset (see `contour_record`).
         let mut contours: Vec<(usize, usize, f64)> = Vec::new();
@@ -3598,9 +3604,9 @@ impl<'a> Ctx<'a> {
                 // between its two end objects, its `loda` of object type 7
                 // holding the step count (#597).
                 if out.len() == before {
-                    if let Some(steps) = self.blend_steps(c) {
+                    if let Some((steps, settings)) = self.blend_steps(c) {
                         let steps = self.budget_blend_steps(steps);
-                        blends.push((before, steps));
+                        blends.push((before, steps, settings));
                     }
                 } else if let Some(offset) = self.contour_record(c) {
                     // A contour keeps its steps as objects of its linked
@@ -3623,40 +3629,42 @@ impl<'a> Ctx<'a> {
                 }
             }
         }
-        for (at, steps) in blends {
+        for (at, steps, set) in blends {
             // The objects on either side of the group are its ends.
             if at <= first || at >= out.len() {
                 self.report
                     .warn("a blend without both end objects; left out");
                 continue;
             }
-            let end = out[at].clone();
-            let end_id = end.id;
             // The steps pair the two outlines from their first nodes, as
             // the file's program draws them (twists and folds included),
-            // and lie between the two: the start, read first, is the
-            // upper one (#597).
-            let map_nodes = match (blend_nodes(&out[at - 1]), blend_nodes(&end)) {
+            // and lie between the two (#597). The record counts the
+            // steps, their accelerations and their turn from the lower
+            // object (#1192), read later: that object is the start and
+            // holds the blend, its steps drawn above it.
+            let end = out[at - 1].clone();
+            let end_id = end.id;
+            let map_nodes = match (blend_nodes(&out[at]), blend_nodes(&end)) {
                 (Some(start), Some(end)) => Some(tracedraw_core::live::BlendNodes { start, end }),
                 _ => None,
             };
-            out[at - 1]
-                .effects
-                .push(tracedraw_core::live::Effect::Blend {
-                    end: Box::new(end),
-                    steps,
-                    accel_objects: 0.0,
-                    accel_colors: 0.0,
-                    rotation: 0.0,
-                    path: None,
-                    rotate_on_path: false,
-                    end_id: Some(end_id),
-                    options: tracedraw_core::live::BlendOptions {
-                        steps_below: true,
-                        map_nodes,
-                        ..Default::default()
-                    },
-                });
+            out[at].effects.push(tracedraw_core::live::Effect::Blend {
+                end: Box::new(end),
+                steps,
+                accel_objects: set.accel_objects,
+                accel_colors: set.accel_colors,
+                rotation: set.rotation,
+                path: None,
+                rotate_on_path: false,
+                end_id: Some(end_id),
+                options: tracedraw_core::live::BlendOptions {
+                    map_nodes,
+                    loop_rotation: set.loop_rotation,
+                    accel_sizing: set.accel_sizing,
+                    color_blend: set.color_blend,
+                    ..Default::default()
+                },
+            });
         }
         self.make_contours_live(out, &contours);
     }
@@ -4973,6 +4981,20 @@ fn blend_nodes(s: &Shape) -> Option<[Point; 2]> {
         return ((next - first).hypot() > 1e-9).then_some([first, next]);
     }
     use tracedraw_core::geometry::PathEl;
+    // A whole ellipse runs, like a rectangle, from the side of its box
+    // nearest the origin: from the middle of its top or bottom (the one
+    // at the origin's height) toward its left or right (the one at the
+    // origin's side). Run from its right as its outline is built, the
+    // steps of the blends of #1192 (version 27, a rectangle into an
+    // ellipse) twisted and pinched in the middle where the file's
+    // picture shows none.
+    if let ShapeKind::Ellipse { rect, arc: None } = &s.kind {
+        let near = |a: f64, b: f64| if a.abs() <= b.abs() { a } else { b };
+        let c = rect.center();
+        let first = Point::new(c.x, near(rect.y0, rect.y1));
+        let next = Point::new(near(rect.x0, rect.x1), c.y);
+        return ((next - first).hypot() > 1e-9).then_some([first, next]);
+    }
     let path = s.local_path();
     let mut nodes = path.elements().iter().filter_map(|el| match el {
         PathEl::MoveTo(p) | PathEl::LineTo(p) | PathEl::QuadTo(_, p) | PathEl::CurveTo(_, _, p) => {
@@ -8085,6 +8107,107 @@ pub(crate) mod tests {
         }
     }
 
+    /// A version 27 blend record holds the settings after the two
+    /// centres (#1192): flags, the rotation in millionths of a degree and
+    /// the colour and object acceleration factors, counted from the lower
+    /// object, which gets the blend. Here: object acceleration 53 (the
+    /// steps packed toward the upper object), colour -15, a loop of -90
+    /// degrees and the hue falling from the lower object, as the
+    /// reporter's files hold them. Version 22 records keep other bytes
+    /// there and read as even.
+    #[test]
+    fn a_version_27_blend_reads_its_settings_from_the_lower_object() {
+        let identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let read = |v: u16| {
+            let ellipse = |x: i32| {
+                let mut c = i32s(&[x, -100_000, x + 200_000, 100_000]);
+                c.extend_from_slice(&u32s(&[0]));
+                list(
+                    b"obj ",
+                    &[
+                        chunk(b"loda", &loda(OBJ_ELLIPSE, &[(ARG_COORDS, c)])),
+                        chunk(b"trfd", &trfd(v, identity)),
+                    ]
+                    .concat(),
+                )
+            };
+            let mut a = Vec::new();
+            a.extend_from_slice(&50u16.to_le_bytes());
+            a.extend_from_slice(&0u16.to_le_bytes());
+            a.extend_from_slice(&100_000u32.to_le_bytes());
+            a.extend_from_slice(&[0; 20]);
+            a.extend_from_slice(&i32s(&[700_000, 0, 100_000, 0]));
+            a.extend_from_slice(&u32s(&[0x12]));
+            a.extend_from_slice(&i32s(&[-90_000_000, 0]));
+            a.extend_from_slice(&1.3f64.powf(-15.0 / 4.0).to_le_bytes());
+            a.extend_from_slice(&1.3f64.powf(53.0 / 4.0).to_le_bytes());
+            a.extend_from_slice(&[0; 16]);
+            assert_eq!(a.len(), 88);
+            let group = list(
+                b"lnkg",
+                &list(
+                    b"lgob",
+                    &chunk(b"loda", &loda(7, &[(12040, vec![0; 16]), (3000, a)])),
+                ),
+            );
+            let objects = [ellipse(0), group, ellipse(600_000)].concat();
+            let body = [
+                chunk(b"mcfg", &mcfg(v, 2_540_000, 2_540_000)),
+                list(b"page", &list(b"layr", &objects)),
+            ]
+            .concat();
+            let (doc, rep) = parse(&riff(b"CDRD", &body), v);
+            assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+            doc.pages[0].layers[0].shapes.clone()
+        };
+        let shapes = read(27);
+        assert_eq!(shapes.len(), 2);
+        assert!(shapes[1].effects.is_empty(), "the upper object");
+        let [tracedraw_core::live::Effect::Blend {
+            steps,
+            accel_objects,
+            accel_colors,
+            rotation,
+            end_id,
+            options,
+            ..
+        }] = shapes[0].effects.as_slice()
+        else {
+            panic!("{:?}", shapes[0].effects);
+        };
+        assert_eq!((*steps, *end_id), (50, Some(shapes[1].id)));
+        assert!((accel_objects + 0.53).abs() < 1e-9, "{accel_objects}");
+        assert!((accel_colors - 0.15).abs() < 1e-9, "{accel_colors}");
+        assert_eq!(*rotation, -90.0);
+        assert!(options.loop_rotation && !options.accel_sizing && !options.steps_below);
+        assert_eq!(
+            options.color_blend,
+            tracedraw_core::live::ColorBlend::CounterClockwise
+        );
+        // The steps lie above the start, the loop takes the middle one
+        // off the straight way between the two.
+        let ev = tracedraw_core::live::evaluate(&shapes[0]);
+        assert_eq!(ev.above.len(), 50);
+        let way = shapes[0].bounds().center().y;
+        let middle = ev.above[24].bounds().center();
+        assert!((middle.y - way).abs() > 5.0, "{middle:?} {way}");
+        let read22 = read(22);
+        let [tracedraw_core::live::Effect::Blend {
+            accel_objects,
+            rotation,
+            options,
+            ..
+        }] = read22[0].effects.as_slice()
+        else {
+            panic!("{:?}", read22[0].effects);
+        };
+        assert_eq!((*accel_objects, *rotation), (0.0, 0.0));
+        assert_eq!(
+            options.color_blend,
+            tracedraw_core::live::ColorBlend::Direct
+        );
+    }
+
     /// Version 25 keeps the step count in the first u16 of the 3000
     /// argument and another value in the u16 after it (the file of #980:
     /// 0x3a05_0004 for 4 steps, 0x28ae_0096 for 150). Read as one u32 the
@@ -8204,8 +8327,10 @@ pub(crate) mod tests {
             .find(|s| s.effects.is_empty())
             .expect("the other end");
         assert_eq!(blends[0].1, Some(other.id));
-        // The steps lie below the start (the upper object) and pair the
-        // two outlines from their first nodes (#597).
+        // The lower object is the start, as the record counts its steps
+        // from it (#1192); the steps lie above it and pair the two
+        // outlines from their first nodes (#597).
+        assert!(!shapes[0].effects.is_empty() && shapes[1].effects.is_empty());
         let options = shapes
             .iter()
             .flat_map(|s| &s.effects)
@@ -8214,7 +8339,7 @@ pub(crate) mod tests {
                 _ => None,
             })
             .expect("blend");
-        assert!(options.steps_below);
+        assert!(!options.steps_below);
         let nodes = options.map_nodes.expect("nodes");
         assert!((nodes.start[0] - nodes.start[1]).hypot() > 1e-6);
         assert!((nodes.end[0] - nodes.end[1]).hypot() > 1e-6);

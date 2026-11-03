@@ -4552,11 +4552,22 @@ fn a_blend_goes_out_live_from_version_9() {
                     "{v} {end_below}: centre {got:?}, not {want:?}"
                 );
             }
-            assert_eq!(
-                u32::from_le_bytes(b[44..48].try_into().expect("u32")),
-                0x780,
-                "{v}"
-            );
+            // The settings from version 23 (#1192), counted from the
+            // lower object: the accelerations (0.25 and -0.5 from the
+            // start) as their factors, the flags without the even marks;
+            // before 23 the default record.
+            let flags = u32::from_le_bytes(b[44..48].try_into().expect("u32"));
+            let factor = |at: usize| f64::from_le_bytes(b[at..at + 8].try_into().expect("f64"));
+            if v >= 23 {
+                let sign = if end_below { -1.0 } else { 1.0 };
+                let k = tracedraw_core::live::BLEND_ACCEL_FACTOR;
+                assert_eq!(flags, 0x80, "{v}");
+                assert!((factor(56) - k.powf(sign * 0.5)).abs() < 1e-9, "{v}");
+                assert!((factor(64) - k.powf(sign * -0.25)).abs() < 1e-9, "{v}");
+            } else {
+                assert_eq!(flags, 0x780, "{v}");
+                assert_eq!((factor(56), factor(64)), (0.0, 0.0), "{v}");
+            }
             // The list: text, group, text.
             let order = orders
                 .iter()
@@ -4569,8 +4580,8 @@ fn a_blend_goes_out_live_from_version_9() {
                 ("obj ", "obj "),
                 "{v}: {order:?}"
             );
-            // Read without the member: two texts, the upper one with the
-            // blend to the lower.
+            // Read without the member: two texts, the lower one with the
+            // blend to the upper (the record counts from the lower one).
             let back = open_as_drawn(&bytes);
             let read = &back.pages[0].layers[0].shapes;
             assert_eq!(read.len(), 2, "{v}: {read:?}");
@@ -4583,19 +4594,84 @@ fn a_blend_goes_out_live_from_version_9() {
                 ("ABC".into(), "XYZ".into()),
                 "{v}"
             );
-            let (holder, other) = if end_below { (si, ei) } else { (ei, si) };
+            let (holder, other) = (0, 1);
             assert!(
                 read[other].effects.is_empty(),
                 "{v} {end_below}: {:?}",
                 read[other].effects
             );
-            let [tracedraw_core::live::Effect::Blend { steps, end_id, .. }] =
-                read[holder].effects.as_slice()
+            let [tracedraw_core::live::Effect::Blend {
+                steps,
+                end_id,
+                accel_objects,
+                accel_colors,
+                ..
+            }] = read[holder].effects.as_slice()
             else {
                 panic!("{v} {end_below}: {:?}", read[holder].effects);
             };
             assert_eq!((*steps, *end_id), (7, Some(read[other].id)), "{v}");
+            // From 23 the accelerations come back, seen from the lower
+            // object (the other way round when the start was the upper).
+            let (o, c) = match (v >= 23, end_below) {
+                (false, _) => (0.0, 0.0),
+                (true, false) => (0.25, -0.5),
+                (true, true) => (-0.25, 0.5),
+            };
+            assert!(
+                (*accel_objects - o).abs() < 1e-9 && (*accel_colors - c).abs() < 1e-9,
+                "{v} {end_below}: {accel_objects} {accel_colors}"
+            );
             assert_eq!(step_boxes(&read[holder]).len(), 7, "{v}");
+        }
+    }
+}
+
+/// From version 23 the blend record carries the rotation, Loop, Apply
+/// to sizing and the colour direction too (#1192), counted from the
+/// lower object: read back without TraceDraw's member, a blend from the
+/// lower object keeps them all, one from the upper object comes back on
+/// the lower one with its colours turning the other way. The files pass
+/// the checker.
+#[test]
+fn a_blend_s_rotation_loop_and_colours_go_into_the_record() {
+    use tracedraw_core::live::{ColorBlend, Effect};
+    for end_below in [false, true] {
+        let mut doc = text_blend(6, end_below);
+        let si = if end_below { 1 } else { 0 };
+        if let Some(Effect::Blend {
+            rotation, options, ..
+        }) = doc.pages[0].layers[0].shapes[si].effects.first_mut()
+        {
+            *rotation = -45.5;
+            options.loop_rotation = true;
+            options.accel_sizing = true;
+            options.color_blend = ColorBlend::Clockwise;
+        }
+        for v in [23u16, 25, 27] {
+            let bytes = document_to_cdr_version(&doc, v);
+            let findings = crate::check::check_bytes(&bytes).expect("checks");
+            assert!(findings.is_empty(), "{v} {end_below}: {findings:?}");
+            let back = open_as_drawn(&bytes);
+            let read = &back.pages[0].layers[0].shapes;
+            let [Effect::Blend {
+                rotation,
+                accel_objects,
+                options,
+                ..
+            }] = read[0].effects.as_slice()
+            else {
+                panic!("{v} {end_below}: {:?}", read[0].effects);
+            };
+            assert_eq!(*rotation, -45.5, "{v}");
+            assert!(options.loop_rotation && options.accel_sizing, "{v}");
+            let (colour, accel) = if end_below {
+                (ColorBlend::CounterClockwise, -0.25)
+            } else {
+                (ColorBlend::Clockwise, 0.25)
+            };
+            assert_eq!(options.color_blend, colour, "{v} {end_below}");
+            assert!((accel_objects - accel).abs() < 1e-9, "{v} {end_below}");
         }
     }
 }
@@ -5662,7 +5738,7 @@ fn a_face_with_typographic_names_is_written_under_its_family() {
 /// again (#986): from version 14 (a package) the start text comes back
 /// with its blend to the end text, settings and all, its steps where
 /// they were. Versions 9 to 13 (RIFF files, no member) read the blend
-/// the file holds: on the upper text, with the file's settings (#1192);
+/// the file holds: on the lower text, with the record's settings (#1192);
 /// versions 7 and 8 keep the drawn group.
 #[test]
 fn a_text_blend_opens_live_again() {
@@ -5697,7 +5773,7 @@ fn a_text_blend_opens_live_again_with(end_below: bool) {
             continue;
         }
         if v < 14 {
-            let holder = if end_below { si } else { ei };
+            let holder = 0;
             let [tracedraw_core::live::Effect::Blend { steps, end_id, .. }] =
                 read[holder].effects.as_slice()
             else {
@@ -5748,8 +5824,8 @@ fn a_text_blend_opens_live_again_with(end_below: bool) {
 
 /// A blend whose objects another program changed (its start object
 /// gone, its end another object), or a member that does not read, opens
-/// as the reader made it from the file (the blend on the upper text,
-/// with the file's settings), never fails (#986, #1192).
+/// as the reader made it from the file (the blend on the lower text,
+/// with the record's settings), never fails (#986, #1192).
 #[test]
 fn a_kept_blend_that_no_longer_matches_opens_as_drawn() {
     let doc = text_blend(4, false);
@@ -5783,20 +5859,20 @@ fn a_kept_blend_that_no_longer_matches_opens_as_drawn() {
     ));
     assert_eq!((accel(&live, 0), accel(&live, 1)), (Some(0.25), None));
     // A start the file no longer has: the file's blend stays as read,
-    // on the upper text with even acceleration.
+    // on the lower text (here the start) with the record's acceleration.
     kept[0].group = 9999;
     let drawn = open(&kept);
-    assert_eq!((accel(&drawn, 0), accel(&drawn, 1)), (None, Some(0.0)));
+    assert_eq!((accel(&drawn, 0), accel(&drawn, 1)), (Some(0.25), None));
     // An end that is another object: the same.
     kept = crate::kept_blends::decode(&member);
     kept[0].end = Some(9999);
     let drawn = open(&kept);
-    assert_eq!((accel(&drawn, 0), accel(&drawn, 1)), (None, Some(0.0)));
+    assert_eq!((accel(&drawn, 0), accel(&drawn, 1)), (Some(0.25), None));
     // A member of a drawn group that is not a group: left alone.
     kept = crate::kept_blends::decode(&member);
     kept[0].count = 5;
     let drawn = open(&kept);
-    assert_eq!((accel(&drawn, 0), accel(&drawn, 1)), (None, Some(0.0)));
+    assert_eq!((accel(&drawn, 0), accel(&drawn, 1)), (Some(0.25), None));
     for junk in [&b""[..], b"{", b"{\"format\":2,\"blends\":[]}", b"[1,2]"] {
         assert!(crate::kept_blends::decode(junk).is_empty());
     }

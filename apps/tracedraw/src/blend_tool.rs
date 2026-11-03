@@ -53,17 +53,27 @@ pub const SLIDER_OFFSET_PX: f32 = 6.0;
 
 /// Where along the line, from the start (0) to the end (1), the middle
 /// step of a blend with acceleration `a` lands: where the slider shows
-/// (`tracedraw_core::live::blend_middle`: `0.5 - 0.45 a`, so the slider
-/// goes as far toward the start at +1 as toward the end at -1, #1261).
+/// (`tracedraw_core::live::blend_middle`, so the slider goes as far
+/// toward the start at +1 as toward the end at -1, #1261).
 pub fn slider_fraction(a: f64) -> f64 {
     tracedraw_core::live::blend_middle(a)
 }
 
 /// The acceleration that puts the middle step at `f` along the line,
-/// within -1..1 (the inverse of [`slider_fraction`]).
+/// within -1..1 (the inverse of [`slider_fraction`], which falls as the
+/// acceleration rises).
 pub fn accel_for_fraction(f: f64) -> f64 {
     let f = if f.is_finite() { f } else { 0.5 };
-    let a = (0.5 - f) / 0.45;
+    let (mut lo, mut hi) = (-1.0f64, 1.0f64);
+    for _ in 0..60 {
+        let mid = (lo + hi) / 2.0;
+        if slider_fraction(mid) > f {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    let a = (lo + hi) / 2.0;
     // Two decimals, as the bar and the panel show it (in percent).
     ((a * 100.0).round() / 100.0).clamp(-1.0, 1.0)
 }
@@ -429,7 +439,7 @@ mod tests {
         assert!(slider_fraction(-0.5) > 0.5);
         // As far one way as the other (#1261).
         assert!((slider_fraction(1.0) + slider_fraction(-1.0) - 1.0).abs() < 1e-9);
-        assert!((slider_fraction(1.0) - 0.05).abs() < 1e-9);
+        assert!((slider_fraction(1.0) - 0.1055).abs() < 1e-4);
         for a in [-0.9, -0.5, -0.25, 0.0, 0.3, 0.75, 1.0] {
             let back = accel_for_fraction(slider_fraction(a));
             assert!((back - a).abs() < 0.011, "{a} -> {back}");
