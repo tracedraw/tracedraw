@@ -2478,6 +2478,7 @@ convert_colors.title = "Kleuren omzetten" # mt
 convert_colors.to = "Omzetten naar" # mt
 convert_colors.cmyk = "CMYK" # mt
 convert_colors.rgb = "RGB" # mt
+convert_colors.gray = "Grijswaarden" # mt
 convert_colors.which = "Kleuren van" # mt
 convert_colors.selection = "De geselecteerde objecten" # mt
 convert_colors.drawing = "De hele tekening" # mt

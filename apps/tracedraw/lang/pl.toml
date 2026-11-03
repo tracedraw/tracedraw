@@ -2478,6 +2478,7 @@ convert_colors.title = "Konwertuj kolory" # mt
 convert_colors.to = "Konwertuj na" # mt
 convert_colors.cmyk = "CMYK" # mt
 convert_colors.rgb = "RGB" # mt
+convert_colors.gray = "Skala szarości" # mt
 convert_colors.which = "Kolory" # mt
 convert_colors.selection = "Zaznaczonych obiektów" # mt
 convert_colors.drawing = "Całego rysunku" # mt

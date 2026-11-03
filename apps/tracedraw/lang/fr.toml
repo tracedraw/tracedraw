@@ -2478,6 +2478,7 @@ convert_colors.title = "Convertir les couleurs" # mt
 convert_colors.to = "Convertir en" # mt
 convert_colors.cmyk = "CMJN" # mt
 convert_colors.rgb = "RVB" # mt
+convert_colors.gray = "Niveaux de gris" # mt
 convert_colors.which = "Couleurs de" # mt
 convert_colors.selection = "Les objets sélectionnés" # mt
 convert_colors.drawing = "Tout le dessin" # mt
