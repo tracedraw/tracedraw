@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Toolbars: Large and Extra Large buttons are no longer cut off at the bottom. A docked toolbar's row kept the height of Medium buttons (36 px, 53 px for the property bar), so the standard toolbar's 42 and 52 px buttons lost their lower edge. The rows now grow with the button size, with the same margins; Extra Small to Medium keep today's heights.
+
 - Default properties: a black the user chose stays as chosen. Since 0.38.0 every black fill or outline of the defaults turned into the drawing's black, so a CMYK 100 % K outline saved on purpose with Tools > Save as Defaults became RGB black in an RGB drawing, and changing a drawing's colour mode converted it too. Now only the untouched default black (the outline of graphics and the fill of text, as a new drawing or Reset gives them) follows the colour mode; a colour picked for the defaults, even the same black, stays exactly as picked, and changing only the outline width keeps the default black following. Drawings and settings saved before count a black where the built-in defaults put one as untouched and any other as chosen (#1665).
 
 - Toolbars: at the Large and Extra Large button sizes the standard bar's and the property bar's icons keep a margin. They were drawn at the toolbox's icon size and filled their buttons almost to the edges, which looked heavy. They are now about 5/6 of that size (standard bar 28 and 34 px in 42 and 52 px buttons, property bar 24 and 28 px in 38 and 46 px buttons), whole pixels so they stay sharp, with 7 and 9 px of margin each side. The smaller sizes and the toolbox are unchanged.
