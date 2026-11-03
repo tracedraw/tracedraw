@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Standard bar: the Launch button is an icon with its list arrow, like Options; its name moved to the tooltip, so the bar is narrower.
+
 - PDF import: clipped objects open clipped. Objects drawn under a clipping path that is not a rectangle (a disc holding a pattern of lines, say) kept the parts outside it whenever they lay inside the clip's bounding box, and every other object got a clip frame of its own, so a drawing came in with dozens of frames. Now the objects drawn under one clip go together in one clip frame shaped as that clip. Nested clips are their exact overlap, a clip read with the nonzero rule keeps an outline drawn twice (as some producers write it) or the middle of a star, and a thick outline is judged by where its ink reaches (#1616).
 
 ## 0.37.0 (2026-11-02)

@@ -144,7 +144,8 @@ split by thin lines:
 7. Snap Off (Alt+Q), pressed while snapping is off; Snap To with the
    snapping list.
 8. Options (the TraceDraw options).
-9. Launch: Font Manager, Welcome Screen, Color Management.
+9. Launch, an icon with the list arrow (its name in the tooltip): Font
+   Manager, Welcome Screen, Color Management.
 
 Buttons that need a drawing, and Snap To, are disabled on the Welcome
 Screen, also when drawings are open behind it; the property bar and the

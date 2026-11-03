@@ -867,36 +867,9 @@ fn snap_to_button(app: &mut App, ui: &mut Ui, bar: &str, doc: bool) {
 
 /// Launch: the other tools that come with the editor.
 fn launch_button(app: &mut App, ui: &mut Ui, bar: &str) {
-    // Launch: the other tools that come with the editor.
-    let (rect, launch) = ui.allocate_exact_size(Vec2::new(108.0, std_btn()), egui::Sense::click());
-    let launch = launch.rich_tip(crate::ui::tips::keyed("toolbar.launch"));
-    std_frame(ui, rect, launch.hovered(), false);
-    icons::draw_action(
-        ui.painter(),
-        egui::Rect::from_center_size(
-            egui::pos2(rect.left() + 14.0, rect.center().y),
-            Vec2::splat(STD_ICON),
-        ),
-        icons::Action::Launch,
-        Tokens::icon(),
-    );
-    ui.painter().text(
-        egui::pos2(rect.left() + 30.0, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        tr("toolbar.launch"),
-        egui::FontId::proportional(13.0),
-        Tokens::text(),
-    );
-    let c = egui::pos2(rect.right() - 9.0, rect.center().y);
-    ui.painter().add(egui::epaint::PathShape::convex_polygon(
-        vec![
-            c + Vec2::new(-4.0, -2.0),
-            c + Vec2::new(4.0, -2.0),
-            c + Vec2::new(0.0, 2.5),
-        ],
-        Tokens::text_dim(),
-        egui::Stroke::NONE,
-    ));
+    // Launch: the other tools that come with the editor. An icon with
+    // the list arrow, like Options; the name is in the tooltip.
+    let launch = std_list_button(ui, icons::Action::Launch, &tip("toolbar.launch"));
     egui::Popup::menu(&launch)
         .id(egui::Id::new(("launch_menu", bar)))
         .show(|ui| {
