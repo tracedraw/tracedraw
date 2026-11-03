@@ -464,7 +464,7 @@ pub fn docked(app: &mut App, ui: &mut Ui, dock: Dock) {
     if dock == Dock::Floating {
         return;
     }
-    let bars: Vec<usize> = (0..app.extra_palettes.len())
+    let mut bars: Vec<usize> = (0..app.extra_palettes.len())
         .filter(|k| {
             app.settings
                 .palette_bars
@@ -472,6 +472,12 @@ pub fn docked(app: &mut App, ui: &mut Ui, dock: Dock) {
                 .is_some_and(|b| b.dock == dock)
         })
         .collect();
+    // Along the bottom a panel added later lies above the earlier ones:
+    // the last bar goes first, so the bars read from the top down in
+    // their order (a new palette's bar under the others).
+    if dock == Dock::Bottom {
+        bars.reverse();
+    }
     for k in bars {
         let which = Row::Extra(k);
         let id = egui::Id::new(("palette_extra", which));

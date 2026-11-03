@@ -139,16 +139,19 @@ pub fn model_key(colors: &[(String, Color)]) -> &'static str {
 }
 
 /// Where `sel` shows, in words.
+/// The short name of a bar's place (Top, Bottom, Left, Right, Floating).
+fn place_key(dock: Dock) -> &'static str {
+    match dock {
+        Dock::Top => "palette.edge_top",
+        Dock::Bottom => "palette.edge_bottom",
+        Dock::Left => "palette.edge_left",
+        Dock::Right => "palette.edge_right",
+        Dock::Floating => "palette.float",
+    }
+}
+
 fn shown_text(app: &App, sel: Selected) -> String {
-    let place = |dock: Dock| {
-        tr(match dock {
-            Dock::Top => "palette.edge_top",
-            Dock::Bottom => "palette.edge_bottom",
-            Dock::Left => "palette.edge_left",
-            Dock::Right => "palette.edge_right",
-            Dock::Floating => "palette.float",
-        })
-    };
+    let place = |dock: Dock| tr(place_key(dock));
     match bar_of(app, sel) {
         Some(Row::Main) => trf(
             "palette.shown_default",
@@ -718,9 +721,15 @@ fn bar_controls(
     } else {
         "palette.show_bar"
     });
-    let resp = ui
-        .put(
-            button,
+    // In a child of its own: the row's layout stays as it is.
+    let mut at = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(button)
+            .id_salt(id.with("btn")),
+    );
+    let resp = at
+        .add_sized(
+            button.size(),
             egui::Button::new(egui::RichText::new(label).size(11.0))
                 .truncate()
                 .selected(shown),
@@ -736,12 +745,7 @@ fn bar_controls(
     }
     if let Some(bar) = bar_of(app, sel).filter(|_| shown) {
         let now = crate::ui::palette::strip_prefs(app, bar).dock;
-        let name = |dock: Dock| {
-            crate::ui::palette_bars::PLACES
-                .iter()
-                .find(|(d, _)| *d == dock)
-                .map_or_else(String::new, |(_, key)| tr(key))
-        };
+        let name = |dock: Dock| tr(place_key(dock));
         let place = Rect::from_min_size(pos2(left, rect.top() + 28.0), vec2(BAR_CONTROLS_W, 20.0));
         let locked = app.settings.bars.locked;
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(place).id_salt(id));
@@ -750,8 +754,8 @@ fn bar_controls(
                 .selected_text(egui::RichText::new(name(now)).size(11.0))
                 .width(BAR_CONTROLS_W - 4.0)
                 .show_ui(ui, |ui| {
-                    for (dock, key) in crate::ui::palette_bars::PLACES {
-                        if ui.selectable_label(now == dock, tr(key)).clicked() {
+                    for (dock, _) in crate::ui::palette_bars::PLACES {
+                        if ui.selectable_label(now == dock, name(dock)).clicked() {
                             crate::ui::palette_bars::set_dock(app, bar, dock, None);
                         }
                     }

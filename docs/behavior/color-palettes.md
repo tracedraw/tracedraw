@@ -253,7 +253,9 @@ Palette.
   2"..., the first no palette has; a name taken gets a number) and makes
   an empty palette of the user's under My Palettes, shown at once in a
   bar of its own docked at the bottom, under the bars there, so several
-  palettes stand in bars one above the other. An empty bar says "Drop
+  palettes stand in bars one above the other (bars docked at the bottom
+  read from the top down in their order, as the Palette Manager lists
+  them). An empty bar says "Drop
   colors here to add them to this palette". A swatch dragged from any
   palette onto the bar of a palette of the user's (not locked) joins it,
   and the bar's menu has Add Colors from Selection (the fill and outline

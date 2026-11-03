@@ -17806,3 +17806,25 @@ fn a_colour_dropped_on_a_new_palette_s_bar_joins_it() {
         .iter()
         .any(|(_, c)| *c == tracedraw_core::Color::rgb8(200, 30, 30)));
 }
+
+/// Bars docked at the bottom read from the top down in their order: a
+/// new palette's bar comes under the bars opened before it.
+#[test]
+fn bottom_palette_bars_stack_in_their_order() {
+    use crate::ui::palette::Row;
+    let (ctx, mut app, _) = setup();
+    for name in ["One", "Two", "Three", "Four"] {
+        app.new_palette(name).expect("a new palette");
+    }
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let tops: Vec<f32> = (0..4)
+        .map(|k| {
+            egui::PanelState::load(&ctx, egui::Id::new(("palette_extra", Row::Extra(k))))
+                .map(|s| s.outer_rect.top())
+                .expect("each bar shows")
+        })
+        .collect();
+    assert!(tops.windows(2).all(|w| w[0] < w[1]), "{tops:?}");
+}
