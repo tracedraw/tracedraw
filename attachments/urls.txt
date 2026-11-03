@@ -535,3 +535,8 @@
 1674 https://github.com/user-attachments/files/34275903/Distort.Star.Video.zip
 1671 https://github.com/user-attachments/files/34273416/CorelDraw.Zipper.Traning.zip
 1671 https://github.com/user-attachments/assets/40cf3542-4cc6-4685-9db8-065bc700ea06
+1616 https://github.com/user-attachments/files/34244654/test_traceDraw_fromCorelDraw27.pdf
+1616 https://github.com/user-attachments/files/34244653/test_traceDraw_fromVectorcraft.pdf
+1616 https://github.com/user-attachments/files/34244655/test_tracedraw_fromInkscape.pdf
+1616 https://github.com/user-attachments/assets/a0c1dc08-2250-4a30-a7d6-d7f37a9b338b
+1616 https://github.com/user-attachments/assets/09e0f844-c39a-4c97-b9f3-07d89805b24f
