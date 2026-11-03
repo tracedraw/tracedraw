@@ -6042,6 +6042,7 @@ docker.corners_b = "Odległość B"
 docker.corners_b_desc = "W jakiej odległości od narożnika zaczyna się fazka na drugim boku."
 docker.corners_radius_desc = "Rozmiar zaokrąglonych lub wklęsłych narożników."
 docker.corners_apply_desc = "Zmienia narożniki tak, jak pokazuje podgląd."
+docker.corners_preview_desc = "Pokazuje wynik na rysunku jako przerywany kontur, gdy panel jest otwarty." # mt
 docker.join_mode_tip = "Połączenie"
 docker.join_mode_desc = "Jak łączone są końce krzywych: przedłużeniem, fazą, zaokrągleniem lub krzywą."
 docker.join_gap_desc = "Jak daleko mogą być dwa końce i nadal zostać połączone."

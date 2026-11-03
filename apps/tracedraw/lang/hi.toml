@@ -6042,6 +6042,7 @@ docker.corners_b = "दूरी B"
 docker.corners_b_desc = "दूसरी भुजा पर कोने से कितनी दूर चैम्फ़र शुरू होता है।"
 docker.corners_radius_desc = "गोल या स्कैलप कोनों का आकार।"
 docker.corners_apply_desc = "पूर्वावलोकन के अनुसार कोने बदलें।"
+docker.corners_preview_desc = "पैनल खुला रहने पर परिणाम को ड्रॉइंग पर डैश वाली रूपरेखा के रूप में दिखाएँ।" # mt
 docker.join_mode_tip = "जोड़"
 docker.join_mode_desc = "कर्व के सिरे कैसे जुड़ते हैं: बढ़ाकर, चैम्फ़र, फ़िलेट या कर्व से।"
 docker.join_gap_desc = "दो सिरे कितनी दूर होकर भी जोड़े जा सकते हैं।"

@@ -6042,6 +6042,7 @@ docker.corners_b = "দূরত্ব B"
 docker.corners_b_desc = "অন্য বাহুতে কোণ থেকে কত দূরে চ্যামফার শুরু হয়।"
 docker.corners_radius_desc = "গোল বা স্ক্যালপ কোণের আকার।"
 docker.corners_apply_desc = "প্রিভিউ যেমন দেখায় সেভাবে কোণ বদলান।"
+docker.corners_preview_desc = "প্যানেল খোলা থাকলে ফলাফলটি অঙ্কনে ড্যাশ রেখার আউটলাইন হিসেবে দেখান।" # mt
 docker.join_mode_tip = "জোড়"
 docker.join_mode_desc = "কার্ভের প্রান্ত কীভাবে জোড়া হয়: বাড়িয়ে, চ্যামফার, ফিলেট বা কার্ভ দিয়ে।"
 docker.join_gap_desc = "দুটি প্রান্ত কতদূরে থেকেও জোড়া যায়।"

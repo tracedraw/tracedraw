@@ -6042,6 +6042,7 @@ docker.corners_b = "المسافة B"
 docker.corners_b_desc = "المسافة من الزاوية التي يبدأ عندها الشطف على الجانب الآخر."
 docker.corners_radius_desc = "حجم الزوايا المستديرة أو المحززة."
 docker.corners_apply_desc = "غيّر الزوايا كما تظهر المعاينة."
+docker.corners_preview_desc = "عرض النتيجة على الرسم كمخطط متقطع أثناء فتح اللوحة." # mt
 docker.join_mode_tip = "الوصلة"
 docker.join_mode_desc = "كيفية ضم نهايات المنحنيات: بالتمديد أو الشطف أو التدوير أو بمنحنى."
 docker.join_gap_desc = "أقصى مسافة بين طرفين يمكن ضمهما."

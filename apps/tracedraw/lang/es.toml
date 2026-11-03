@@ -6042,6 +6042,7 @@ docker.corners_b = "Distancia B"
 docker.corners_b_desc = "A qué distancia de la esquina empieza el chaflán en el otro lado."
 docker.corners_radius_desc = "El tamaño de las esquinas redondeadas o festoneadas."
 docker.corners_apply_desc = "Cambia las esquinas como muestra la vista previa."
+docker.corners_preview_desc = "Muestra el resultado en el dibujo como un contorno discontinuo mientras el panel está abierto." # mt
 docker.join_mode_tip = "Unión"
 docker.join_mode_desc = "Cómo se unen los extremos de las curvas: extendidos, achaflanados, redondeados o con una curva."
 docker.join_gap_desc = "A qué distancia pueden estar dos extremos y aún unirse."

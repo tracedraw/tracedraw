@@ -6042,6 +6042,7 @@ docker.corners_b = "距離 B"
 docker.corners_b_desc = "倒角沿另一條邊距轉角開始的距離。"
 docker.corners_radius_desc = "圓角或扇形角的大小。"
 docker.corners_apply_desc = "依預覽所示變更轉角。"
+docker.corners_preview_desc = "面板開啟時，在繪圖上以虛線輪廓顯示結果。" # mt
 docker.join_mode_tip = "接合方式"
 docker.join_mode_desc = "曲線末端的連接方式：延伸、倒角、圓角或曲線。"
 docker.join_gap_desc = "兩個端點相距多遠仍可連接。"

@@ -6042,6 +6042,7 @@ docker.corners_b = "Vzdálenost B"
 docker.corners_b_desc = "Jak daleko od rohu začíná zkosení na druhé straně."
 docker.corners_radius_desc = "Velikost zaoblených nebo vykrojených rohů."
 docker.corners_apply_desc = "Změní rohy podle náhledu."
+docker.corners_preview_desc = "Zobrazí výsledek na kresbě jako přerušovaný obrys, dokud je panel otevřený." # mt
 docker.join_mode_tip = "Spoj"
 docker.join_mode_desc = "Jak se spojí konce křivek: prodloužením, zkosením, zaoblením nebo křivkou."
 docker.join_gap_desc = "Jak daleko od sebe smí být dva konce a přesto se spojit."

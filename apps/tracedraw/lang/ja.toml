@@ -6042,6 +6042,7 @@ docker.corners_b = "距離 B"
 docker.corners_b_desc = "もう一方の辺で角から面取りが始まる距離。"
 docker.corners_radius_desc = "丸めた角や扇形の角の大きさ。"
 docker.corners_apply_desc = "プレビューのとおりに角を変更します。"
+docker.corners_preview_desc = "パネルを開いている間、結果を図面上に破線の輪郭で表示します。" # mt
 docker.join_mode_tip = "接合"
 docker.join_mode_desc = "曲線の端をつなぐ方法：延長、面取り、丸め、または曲線。"
 docker.join_gap_desc = "2つの端がどれだけ離れていてもつなげるか。"

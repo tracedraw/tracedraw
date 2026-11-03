@@ -341,6 +341,10 @@ pub struct Settings {
     /// symmetry is edited (off at first: outlines in red).
     #[serde(default)]
     pub symmetry_full_preview: bool,
+    /// The Corners docker's Preview: the result drawn on the page as a
+    /// dashed outline while the docker is open (on at first, #1759).
+    #[serde(default = "default_true")]
+    pub corners_preview: bool,
     /// Options > Edit: decimal places of distances in the property bar
     /// and the status bar.
     #[serde(default = "default_precision")]
@@ -1723,6 +1727,7 @@ impl Default for Settings {
             constrain_angle: default_constrain_angle(),
             symmetry_show_lines: true,
             symmetry_full_preview: false,
+            corners_preview: true,
             precision: default_precision(),
             nodes: NodePrefs::default(),
             clip_frame: ClipFramePrefs::default(),
