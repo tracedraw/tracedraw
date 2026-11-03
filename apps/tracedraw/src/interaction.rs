@@ -1445,7 +1445,7 @@ impl App {
                     self.eyedropper_click(p, attrs, mods.shift);
                 }
             }
-            Tool::InteractiveFill => self.fill_input(response, p),
+            Tool::InteractiveFill => self.fill_input(response, p, mods),
             Tool::Crop => self.crop_input(response, p),
             Tool::Contour => self.contour_input(response, p),
             Tool::Knife
@@ -1541,10 +1541,11 @@ impl App {
                         };
                         return;
                     }
-                    if let Some(id) = self.hit_test(p) {
-                        self.select(vec![id]);
+                    // The selection takes the mask; an unselected object
+                    // pressed outside it is picked and takes it (#1661).
+                    if let Some(shape) = self.transparency_drag_target(p) {
                         self.drag = Drag::FillGradient {
-                            shape: id,
+                            shape,
                             start: p,
                             current: p,
                         };
@@ -1559,9 +1560,7 @@ impl App {
                         };
                         return;
                     }
-                    if let Drag::FillGradient { current, .. } = &mut self.drag {
-                        *current = p;
-                    }
+                    self.fill_gradient_drag_to(p, mods);
                 }
                 if response.clicked() {
                     if let Some(h) = self.fountain_handle_at(p) {
@@ -2733,7 +2732,7 @@ impl App {
         }
     }
 
-    fn fill_input(&mut self, response: &Response, p: Point) {
+    fn fill_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
         // A double click on a colour node removes it; on the line, it adds
         // one there.
         if response.double_clicked_by(PointerButton::Primary) {
@@ -2780,9 +2779,7 @@ impl App {
                 };
                 return;
             }
-            if let Drag::FillGradient { current, .. } = &mut self.drag {
-                *current = p;
-            }
+            self.fill_gradient_drag_to(p, mods);
         }
         if response.clicked_by(PointerButton::Primary) {
             // A click on a node picks it (the node bar opens under it).
@@ -2816,6 +2813,44 @@ impl App {
                     fill,
                 });
             }
+        }
+    }
+
+    /// The gradient line of an Interactive Fill or Transparency drag
+    /// follows the pointer to `p`; with Ctrl (Cmd) it turns in steps of
+    /// the constrain angle about where the drag began (#1661).
+    fn fill_gradient_drag_to(&mut self, p: Point, mods: Modifiers) {
+        let step = self.settings.constrain_angle;
+        if let Drag::FillGradient { start, current, .. } = &mut self.drag {
+            *current = if mods.ctrl || mods.command {
+                constrain_from(*start, p, step)
+            } else {
+                p
+            };
+        }
+    }
+
+    /// The object a Transparency drag starting at `p` puts its mask on,
+    /// picking it when it was not selected: with a selection, the
+    /// selection (pressed on a selected object, even where another one
+    /// covers it, or on no object); an unselected object pressed outside
+    /// the selected ones is picked alone; with nothing selected, the
+    /// object under the press (#1661).
+    fn transparency_drag_target(&mut self, p: Point) -> Option<ShapeId> {
+        let on_selected = self.selection.iter().copied().find(|id| {
+            self.doc()
+                .shape_on_page(*id)
+                .is_some_and(|s| s.bounds().contains(p))
+        });
+        if let Some(id) = on_selected {
+            return Some(id);
+        }
+        match self.hit_test(p) {
+            Some(id) => {
+                self.select(vec![id]);
+                Some(id)
+            }
+            None => self.selection.first().copied(),
         }
     }
 
@@ -3017,7 +3052,13 @@ impl App {
                 current,
             } if self.tool == Tool::Transparency => {
                 if (current - start).hypot() > 0.5 {
-                    self.transparency_from_drag(shape, start, current);
+                    // The whole selection when the drag began on it (#1661).
+                    let ids = if self.selection.contains(&shape) {
+                        self.selection.clone()
+                    } else {
+                        vec![shape]
+                    };
+                    self.transparency_from_drag_on(&ids, start, current);
                 }
             }
             Drag::FillGradient {

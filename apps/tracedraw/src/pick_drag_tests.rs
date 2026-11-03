@@ -16904,3 +16904,95 @@ fn corner_rings_round_one_corner_or_the_ctrl_chosen_ones() {
     pull(&mut app, w, Modifiers::SHIFT);
     assert_eq!(fillets(&path_of(&app)).len(), 4, "every corner");
 }
+
+/// The gradient mask an object has, its start and end on the page.
+fn mask_line(app: &App, id: ShapeId) -> Option<(Point, Point)> {
+    use tracedraw_core::geometry::Shape as _;
+    let s = app.doc().shape_on_page(id)?;
+    let b = s.page_path().bounding_box();
+    s.effects.iter().find_map(|e| match e {
+        tracedraw_core::live::Effect::Transparency {
+            mask: tracedraw_core::Fill::Fountain(f),
+            ..
+        } => {
+            let hs = crate::fill_tool::fountain_handles(f, b);
+            Some((hs.first()?.1, hs.get(1)?.1))
+        }
+        _ => None,
+    })
+}
+
+/// A Transparency drag puts the mask on the selection, also where an
+/// unselected object covers it; an unselected object pressed outside the
+/// selection is picked and takes it; Ctrl keeps the line to the
+/// constrain angle (#1661).
+#[test]
+fn the_transparency_tool_drags_on_the_selection_and_ctrl_constrains() {
+    let (ctx, mut app, back) = setup();
+    // A second object over the right half of the first one and beyond.
+    let front = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(40.0, 15.0, 100.0, 35.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![front]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        30, 30, 200,
+    )));
+    app.select(vec![back]);
+    app.set_tool(Tool::Transparency);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let at = |app: &App, x: f64, y: f64| app.view.to_screen(Point::new(x, y));
+
+    // Pressed where the front object covers the selected one.
+    let (a, b) = (at(&app, 50.0, 25.0), at(&app, 58.0, 25.0));
+    drag(&ctx, &mut app, a, b, Modifiers::NONE, Vec::new());
+    assert!(
+        mask_line(&app, back).is_some(),
+        "the selection has the mask"
+    );
+    assert!(mask_line(&app, front).is_none(), "the other one is left");
+    assert_eq!(app.selection, vec![back]);
+
+    // Pressed on the front object outside the selection: it is picked.
+    let (a, b) = (at(&app, 90.0, 25.0), at(&app, 98.0, 25.0));
+    drag(&ctx, &mut app, a, b, Modifiers::NONE, Vec::new());
+    assert!(mask_line(&app, front).is_some());
+    assert_eq!(app.selection, vec![front]);
+
+    // Both selected, pressed on no object: both take the line, with Ctrl
+    // level (5 degrees off comes back to 0 at 15 degree steps).
+    app.select(vec![back, front]);
+    let off = 5f64.to_radians().tan() * 40.0;
+    let (a, b) = (at(&app, 20.0, 60.0), at(&app, 60.0, 60.0 + off));
+    drag(&ctx, &mut app, a, b, Modifiers::CTRL, Vec::new());
+    for id in [back, front] {
+        let (s, e) = mask_line(&app, id).expect("mask");
+        assert!((s.y - 60.0).abs() < 0.05, "{s:?}");
+        assert!((e.y - s.y).abs() < 1e-6, "level: {s:?} {e:?}");
+        assert!(e.x > s.x + 30.0, "{s:?} {e:?}");
+    }
+    assert_eq!(app.selection, vec![back, front]);
+    assert_eq!(app.engine.undo_label(), Some("Transparency"));
+}
+
+/// Ctrl keeps an Interactive Fill drag to the constrain angle, as its
+/// page says (#1661).
+#[test]
+fn ctrl_keeps_an_interactive_fill_drag_to_the_constrain_angle() {
+    let (ctx, mut app, id) = setup();
+    app.set_tool(Tool::InteractiveFill);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let off = 5f64.to_radians().tan() * 30.0;
+    let a = app.view.to_screen(Point::new(20.0, 25.0));
+    let b = app.view.to_screen(Point::new(50.0, 25.0 + off));
+    drag(&ctx, &mut app, a, b, Modifiers::CTRL, Vec::new());
+    let (_, f, bx) = app.selected_fountain().expect("a gradient fill");
+    assert_eq!(app.selection, vec![id]);
+    let hs = crate::fill_tool::fountain_handles(&f, bx);
+    let (s, e) = (hs[0].1, hs[1].1);
+    assert!((e.y - s.y).abs() < 1e-6, "level: {s:?} {e:?}");
+    assert!(e.x > s.x + 20.0, "{s:?} {e:?}");
+}
