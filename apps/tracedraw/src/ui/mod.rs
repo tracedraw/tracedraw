@@ -77,6 +77,8 @@ pub mod outline_pen;
 pub mod overflow;
 pub mod package_dialog;
 pub mod palette;
+pub mod palette_bars;
+pub mod palette_manager;
 pub mod pdf_import_dialog;
 pub mod pdf_password;
 pub mod picture_mosaic_docker;
@@ -469,20 +471,12 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
             )
             .frame(palette_frame)
             .show(ui, |ui| palette::palette_column(app, ui));
-            // A column for each further palette shown, inside it (#1164).
-            for which in palette::extra_rows(app) {
-                let id = egui::Id::new(("palette_extra", which));
-                let panel = if palette_dock == Dock::Left {
-                    Panel::left(id)
-                } else {
-                    Panel::right(id)
-                };
-                side(panel, palette::thickness(app, which))
-                    .frame(palette_frame)
-                    .show(ui, |ui| palette::extra_palette_column(app, ui, which));
-            }
         }
     }
+    // The palette bars docked at the left or the right: columns at the
+    // window's edge, inside the default palette there.
+    palette_bars::docked(app, ui, Dock::Left);
+    palette_bars::docked(app, ui, Dock::Right);
 
     // The toolbox: a column on a side, a row along the top or the bottom.
     if app.show_toolbox {
@@ -576,6 +570,10 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
             palette_rows(app, ui, palette_dock == Dock::Top, palette_frame);
         }
     }
+    // The palette bars docked along the top or the bottom: rows beside
+    // the drawing, inside the default palette there.
+    palette_bars::docked(app, ui, Dock::Bottom);
+    palette_bars::docked(app, ui, Dock::Top);
     // The AI prompt bar, over the palette rows, while a service is set up.
     if ai_bar::visible(app) {
         side(Panel::bottom("ai_prompt_bar"), ai_bar::BAR_H)
@@ -594,7 +592,9 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     bars::floating_bars(app, &ctx);
     let room = ui.available_rect_before_wrap();
     ctx.data_mut(|d| d.insert_temp(egui::Id::new(bars::DRAWING_ROOM), room));
+    palette_bars::floating(app, &ctx);
     bars::drag_overlay(app, &ctx, 24.0);
+    palette_bars::drag_overlay(app, &ctx, 24.0);
     bar_items::drop_overlay(app, &ctx);
     dockers::floating_dockers(app, &ctx);
     dockers::drag_overlay(app, &ctx, 24.0);
@@ -702,8 +702,8 @@ fn docker_column(
     rect
 }
 
-/// The default palette and each further palette shown as rows, at the top
-/// or the bottom of the room left (#1164).
+/// The default palette as a row, at the top or the bottom of the room
+/// left (the palette bars come in `palette_bars::docked`).
 fn palette_rows(app: &mut App, ui: &mut Ui, top: bool, frame: Frame) {
     let panel = |id: egui::Id| {
         if top {
@@ -718,18 +718,10 @@ fn palette_rows(app: &mut App, ui: &mut Ui, top: bool, frame: Frame) {
         .show_separator_line(false)
         .frame(frame)
         .show(ui, |ui| palette::palette_row(app, ui));
-    for which in palette::extra_rows(app) {
-        panel(egui::Id::new(("palette_extra", which)))
-            .exact_size(palette::thickness(app, which))
-            .resizable(false)
-            .show_separator_line(false)
-            .frame(frame)
-            .show(ui, |ui| palette::extra_palette_row(app, ui, which));
-    }
 }
 
-/// The default palette and each further palette shown as columns, at the
-/// left or the right of the room left (#1164).
+/// The default palette as a column, at the left or the right of the room
+/// left.
 fn palette_columns(app: &mut App, ui: &mut Ui, left: bool, frame: Frame) {
     let panel = |id: egui::Id| {
         if left {
@@ -744,14 +736,6 @@ fn palette_columns(app: &mut App, ui: &mut Ui, left: bool, frame: Frame) {
         .show_separator_line(false)
         .frame(frame)
         .show(ui, |ui| palette::palette_column(app, ui));
-    for which in palette::extra_rows(app) {
-        panel(egui::Id::new(("palette_extra", which)))
-            .exact_size(palette::thickness(app, which))
-            .resizable(false)
-            .show_separator_line(false)
-            .frame(frame)
-            .show(ui, |ui| palette::extra_palette_column(app, ui, which));
-    }
 }
 
 /// Raw wheel units one notch of a mouse wheel sends. The desktop

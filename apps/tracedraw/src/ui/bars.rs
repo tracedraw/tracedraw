@@ -200,13 +200,9 @@ impl Bar {
     pub fn floating_size(self, app: &App) -> Vec2 {
         match self {
             Bar::Toolbox => toolbox_window_size(app),
-            Bar::Palette => vec2(
-                460.0,
-                crate::ui::palette::thickness(app, crate::ui::palette::Row::Main)
-                    + crate::ui::palette::row_h(app) * app.extra_palettes.len() as f32
-                    + TITLE_H
-                    + 4.0,
-            ),
+            Bar::Palette => {
+                crate::ui::palette_bars::floating_window_size(app, crate::ui::palette::Row::Main)
+            }
             Bar::Standard => vec2(940.0, 36.0 + TITLE_H + 4.0),
             Bar::Property => vec2(1100.0, 53.0 + TITLE_H + 4.0),
             Bar::Status => vec2(900.0, 40.0),
@@ -1381,8 +1377,9 @@ pub fn floating_bars(app: &mut App, ctx: &egui::Context) {
         Bar::Zoom,
         Bar::Transform,
         Bar::TimeTracker,
-        Bar::Palette,
     ] {
+        // The floating palette is drawn with the palette bars
+        // (`palette_bars::floating`), which flow and resize.
         if !bar.visible(app) || app.settings.bars.dock(bar) != Dock::Floating {
             continue;
         }
@@ -1755,10 +1752,6 @@ fn floating_body(app: &mut App, ui: &mut Ui, bar: Bar, size: Vec2) {
         Bar::Palette => {
             ui.set_width(size.x);
             crate::ui::palette::palette_row(app, ui);
-            // The further palettes shown, under it (#1164).
-            for which in crate::ui::palette::extra_rows(app) {
-                crate::ui::palette::extra_palette_row(app, ui, which);
-            }
         }
         Bar::Standard => {
             egui::Frame::new()

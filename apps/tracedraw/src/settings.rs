@@ -408,6 +408,20 @@ pub struct Settings {
     /// Options > Customization > Color Palette.
     #[serde(default)]
     pub palette: PalettePrefs,
+    /// The palette bars open besides the default one, in order, each
+    /// with its own place, rows and swatch size. Preferences written
+    /// before they existed have none: one palette at the bottom.
+    #[serde(default)]
+    pub palette_bars: Vec<PaletteBarPrefs>,
+    /// The palette the default palette bar shows ([`palette_id`]); empty
+    /// for the default palette.
+    #[serde(default)]
+    pub main_palette: String,
+    /// Names the user gave palettes, by [`palette_id`] (the document
+    /// palette by [`DOCUMENT_PALETTE`]); a palette missing here keeps
+    /// its own name. Built-in palettes' files are never changed.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub palette_names: std::collections::BTreeMap<String, String>,
     /// Tool settings new objects take.
     #[serde(default)]
     pub tools: ToolPrefs,
@@ -983,7 +997,7 @@ impl Default for ClipFramePrefs {
 
 /// The colour palettes docked under the drawing window (Options >
 /// Customization > Color Palette).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PalettePrefs {
     /// Colours applied to objects join the document palette.
@@ -998,14 +1012,36 @@ pub struct PalettePrefs {
     /// The default palette itself (Window > Toolbars, the bars' menu).
     pub show_palette: bool,
     /// Rows of swatches the default palette shows (columns docked on a
-    /// side), 1 to 3 (#610).
+    /// side), 1 to [`MAX_ROWS`] (#610); [`ROWS_FIT`] for as many as
+    /// show every colour (at most [`MAX_ROWS`]).
     pub rows: u8,
     /// The side of a swatch (whole points), [`SWATCH_MIN`] to
     /// [`SWATCH_MAX`]: Ctrl+wheel over a palette changes it by
     /// [`SWATCH_STEP`] a notch. Preferences written before it existed
     /// keep the 20 px swatches.
     pub swatch_size: u8,
+    /// The room asked for the floating palette's swatches (points, the
+    /// title left out): its rows or columns flow from it (see
+    /// `ui::palette::floating_flow`).
+    pub float_size: [f32; 2],
 }
+
+/// The most rows (or columns) a docked palette bar shows.
+pub const MAX_ROWS: u8 = 8;
+/// [`PalettePrefs::rows`] for "Fit": the rows every colour needs.
+pub const ROWS_FIT: u8 = 0;
+/// The swatch sizes the palette menu and the Palette Manager offer, with
+/// their names (points, all even so Ctrl+wheel reaches each from the
+/// first size): Medium is the first size.
+pub const SWATCH_STEPS: [(u8, &str); 5] = [
+    (10, "palette.size_xs"),
+    (14, "palette.size_s"),
+    (20, "palette.size_m"),
+    (28, "palette.size_l"),
+    (40, "palette.size_xl"),
+];
+/// The room a floating palette asks for at first.
+pub const FLOAT_SIZE: [f32; 2] = [460.0, 25.0];
 
 /// The smallest and the largest swatch, and the step a wheel notch
 /// changes the side by (points).
@@ -1016,11 +1052,6 @@ pub const SWATCH_STEP: i32 = 2;
 pub const SWATCH_DEFAULT: u8 = 20;
 
 impl PalettePrefs {
-    /// [`Self::rows`] brought into 1 to 3.
-    pub fn rows(&self) -> usize {
-        self.rows.clamp(1, 3) as usize
-    }
-
     /// [`Self::swatch_size`] brought into its range, as points.
     pub fn swatch_size(&self) -> f32 {
         f32::from(self.swatch_size.clamp(SWATCH_MIN, SWATCH_MAX))
@@ -1030,6 +1061,80 @@ impl PalettePrefs {
 /// The swatch side `steps` notches of Ctrl+wheel on from `size`: up
 /// larger, down smaller, [`SWATCH_STEP`] a notch, held between
 /// [`SWATCH_MIN`] and [`SWATCH_MAX`].
+/// A rows setting as rows: None for [`ROWS_FIT`], else 1 to
+/// [`MAX_ROWS`].
+pub fn rows_of(rows: u8) -> Option<usize> {
+    (rows != ROWS_FIT).then(|| rows.min(MAX_ROWS) as usize)
+}
+
+/// The named size of [`SWATCH_STEPS`] a swatch side is, if any.
+pub fn swatch_step_of(size: u8) -> Option<usize> {
+    SWATCH_STEPS.iter().position(|(s, _)| *s == size)
+}
+
+/// The palette's place in the Palette Manager's list stated so it holds
+/// across sessions: its file, else its built-in key, else its name.
+pub fn palette_id(p: &crate::palette::Palette) -> String {
+    match (&p.path, p.key) {
+        (Some(path), _) => path.display().to_string(),
+        (None, key) if !key.is_empty() => key.to_string(),
+        _ => p.name.clone(),
+    }
+}
+
+/// [`PaletteBarPrefs::palette`] of a bar showing the document palette.
+pub const DOCUMENT_PALETTE: &str = "document";
+
+/// A palette bar besides the default one: which palette it shows, where
+/// it is, and its own rows and swatch size.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PaletteBarPrefs {
+    /// [`palette_id`] of its palette, or [`DOCUMENT_PALETTE`].
+    pub palette: String,
+    pub dock: crate::ui::bars::Dock,
+    /// Its window's top-left corner while floating (screen points).
+    pub pos: [f32; 2],
+    /// As [`PalettePrefs::float_size`].
+    pub float_size: [f32; 2],
+    /// As [`PalettePrefs::rows`].
+    pub rows: u8,
+    /// As [`PalettePrefs::swatch_size`].
+    pub swatch_size: u8,
+}
+
+impl Default for PaletteBarPrefs {
+    fn default() -> Self {
+        PaletteBarPrefs {
+            palette: String::new(),
+            dock: crate::ui::bars::Dock::Bottom,
+            pos: [320.0, 420.0],
+            float_size: FLOAT_SIZE,
+            rows: 1,
+            swatch_size: SWATCH_DEFAULT,
+        }
+    }
+}
+
+impl PaletteBarPrefs {
+    /// Out-of-range values of a hand-edited file brought back.
+    pub fn sanitize(&mut self) {
+        let d = PaletteBarPrefs::default();
+        if !self.pos.iter().all(|v| v.is_finite() && v.abs() <= 1.0e5) {
+            self.pos = d.pos;
+        }
+        if !self
+            .float_size
+            .iter()
+            .all(|v| v.is_finite() && *v > 0.0 && *v <= 1.0e5)
+        {
+            self.float_size = d.float_size;
+        }
+        self.rows = self.rows.min(MAX_ROWS);
+        self.swatch_size = self.swatch_size.clamp(SWATCH_MIN, SWATCH_MAX);
+    }
+}
+
 pub fn swatch_resized(size: u8, steps: i32) -> u8 {
     let to = i32::from(size.clamp(SWATCH_MIN, SWATCH_MAX))
         .saturating_add(steps.saturating_mul(SWATCH_STEP));
@@ -1046,6 +1151,7 @@ impl Default for PalettePrefs {
             show_palette: true,
             rows: 1,
             swatch_size: SWATCH_DEFAULT,
+            float_size: FLOAT_SIZE,
         }
     }
 }
@@ -1611,6 +1717,9 @@ impl Default for Settings {
             wheel_zoom_centers: false,
             pan_right_click_out: false,
             palette: PalettePrefs::default(),
+            palette_bars: Vec::new(),
+            main_palette: String::new(),
+            palette_names: Default::default(),
             tools: ToolPrefs::default(),
             view: ViewPrefs::default(),
             panels: PanelPrefs::default(),
@@ -2301,7 +2410,7 @@ mod tests {
         let old: Settings = serde_json::from_str(r#"{"palette":{"rows":2}}"#).expect("old");
         assert_eq!(old.palette.swatch_size, SWATCH_DEFAULT);
         assert_eq!(old.palette.swatch_size(), 20.0);
-        assert_eq!(old.palette.rows(), 2);
+        assert_eq!(rows_of(old.palette.rows), Some(2));
         let odd = PalettePrefs {
             swatch_size: 200,
             ..PalettePrefs::default()

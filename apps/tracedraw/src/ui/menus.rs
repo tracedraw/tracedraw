@@ -642,6 +642,25 @@ pub(crate) fn check(ui: &mut Ui, key: &str, shortcut: &str, on: bool) -> bool {
     mark_item(ui, key, shortcut, Mark::Check(on))
 }
 
+/// A checkable item with a ready label (a palette's name); `id` names it
+/// for the command list and the test replay.
+pub(crate) fn check_label(ui: &mut Ui, label: &str, id: &str, on: bool) -> bool {
+    if invoke::active() {
+        return invoke::hit(id, "", true);
+    }
+    let (r, _) = menu_row(ui, label, "", true, Mark::Check(on));
+    #[cfg(test)]
+    if replay::hit(id, true) {
+        return true;
+    }
+    if r.clicked() {
+        ui.close();
+        true
+    } else {
+        false
+    }
+}
+
 /// The width of the picture slot of a [`check_pic`] row, between the
 /// gutter and the label.
 const PIC_SLOT: f32 = 22.0;
@@ -3805,7 +3824,7 @@ fn window_menu(app: &mut App, ui: &mut Ui) {
         }
     });
     sub(ui, "menu.window.color_palettes", |ui| {
-        let entries: Vec<(usize, String, bool)> = app
+        let entries: Vec<(usize, String, String, bool)> = app
             .palettes
             .iter()
             .enumerate()
@@ -3813,6 +3832,7 @@ fn window_menu(app: &mut App, ui: &mut Ui) {
                 (
                     i,
                     p.name_key().to_string(),
+                    app.palette_name(i),
                     app.visible_palettes.contains(&i),
                 )
             })
@@ -3826,9 +3846,17 @@ fn window_menu(app: &mut App, ui: &mut Ui) {
             app.settings.palette.show_document = !app.settings.palette.show_document;
             app.settings.save();
         }
-        for (i, key, on) in entries {
-            if check(ui, &key, "", on) {
+        for (i, key, name, on) in entries {
+            if check_label(ui, &name, &key, on) {
                 app.toggle_palette(i);
+            }
+        }
+        let doc_open = app.extra_palettes.iter().any(|r| r.document);
+        let doc_name = app.document_palette_name();
+        if check_label(ui, &doc_name, "palette.document_bar", doc_open) {
+            match app.extra_palettes.iter().position(|r| r.document) {
+                Some(k) => crate::ui::palette_bars::close_bar(app, k),
+                None => app.open_palette_bar(crate::settings::DOCUMENT_PALETTE),
             }
         }
         sep(ui);

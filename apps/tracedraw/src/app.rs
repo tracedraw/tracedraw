@@ -1149,6 +1149,15 @@ pub struct App {
     pub extra_palettes: Vec<crate::ui::palette::ExtraRow>,
     /// What a strip no longer there scrolls (nothing reads it).
     pub palette_scroll_spare: usize,
+    /// The length each palette strip had last (by its row key), for
+    /// the rows "Fit" gives it.
+    pub palette_lens: std::collections::HashMap<u8, f32>,
+    /// A palette bar being dragged to a new place.
+    pub palette_bar_drag: Option<crate::ui::palette_bars::PaletteBarDrag>,
+    /// The palette being renamed: its id and the name typed so far.
+    pub palette_rename: Option<(String, String)>,
+    /// The Palette Manager's selection, filter and row being dragged.
+    pub palette_manager: crate::ui::palette_manager::ManagerState,
     /// The document palette swatch clicked last (Delete color acts on it).
     pub doc_palette_current: Option<usize>,
     /// Pop-up of a palette colour's shades (click and hold a swatch): the
@@ -2513,6 +2522,10 @@ impl App {
             doc_palette_scroll: 0,
             extra_palettes: Vec::new(),
             palette_scroll_spare: 0,
+            palette_lens: Default::default(),
+            palette_bar_drag: None,
+            palette_rename: None,
+            palette_manager: Default::default(),
             doc_palette_current: None,
             palette_shades: None,
             palette_expanded: None,
@@ -3119,6 +3132,8 @@ impl App {
         self.units = Units::from_id(&s.units);
         self.settings = s;
         self.apply_color_settings();
+        // The palette bars as they were left.
+        self.rebuild_palette();
     }
 
     /// Install the colour engine from the settings: ICC profiles loaded from

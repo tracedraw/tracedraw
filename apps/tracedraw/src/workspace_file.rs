@@ -9,7 +9,7 @@
 
 use crate::app::{App, Workspace};
 use crate::i18n::{tr, trf};
-use crate::settings::{PalettePrefs, ShownBars};
+use crate::settings::{PaletteBarPrefs, PalettePrefs, ShownBars};
 use crate::ui::bars::BarLayout;
 use crate::ui::status::StatusInfo;
 use serde::{Deserialize, Serialize};
@@ -137,6 +137,16 @@ pub struct WorkspaceFile {
     pub bars: Option<BarsPart>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub palette: Option<PalettePrefs>,
+    /// The palette bars open besides the default one (with the palette
+    /// part).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub palette_bars: Option<Vec<PaletteBarPrefs>>,
+    /// The palette the default bar shows (with the palette part).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub main_palette: Option<String>,
+    /// The names given to palettes (with the palette part).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub palette_names: Option<std::collections::BTreeMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub appearance: Option<AppearancePart>,
 }
@@ -241,6 +251,15 @@ impl WorkspaceFile {
                 list.retain(|id| short_text(id));
             }
         }
+        if let Some(bars) = &mut self.palette_bars {
+            bars.truncate(MAX_LIST);
+            // A palette's id may be a file's whole path.
+            bars.retain(|b| !b.palette.trim().is_empty() && b.palette.len() <= 4096);
+            bars.iter_mut().for_each(PaletteBarPrefs::sanitize);
+        }
+        if let Some(names) = &mut self.palette_names {
+            names.retain(|id, name| id.len() <= 4096 && !id.is_empty() && short_text(name));
+        }
         if let Some(a) = &mut self.appearance {
             if !(a.ui_size == 0.0 || (0.5..=4.0).contains(&a.ui_size)) {
                 a.ui_size = 0.0;
@@ -297,6 +316,9 @@ impl App {
                 bar_items: s.bar_items.clone(),
             }),
             palette: parts.palette.then_some(s.palette),
+            palette_bars: parts.palette.then(|| s.palette_bars.clone()),
+            main_palette: parts.palette.then(|| s.main_palette.clone()),
+            palette_names: parts.palette.then(|| s.palette_names.clone()),
             appearance: parts.appearance.then_some(AppearancePart {
                 ui_size: s.ui_size,
                 desktop_rgb: s.desktop_rgb,
@@ -338,6 +360,14 @@ impl App {
         }
         if let (true, Some(p)) = (parts.palette, file.palette) {
             self.settings.palette = p;
+            // A file written before palette bars existed: the default
+            // palette alone.
+            self.settings.palette_bars = file.palette_bars.clone().unwrap_or_default();
+            self.settings.main_palette = file.main_palette.clone().unwrap_or_default();
+            if let Some(names) = &file.palette_names {
+                self.settings.palette_names = names.clone();
+            }
+            self.rebuild_palette();
             applied.push(PART_PALETTE);
         }
         if let (true, Some(a)) = (parts.appearance, &file.appearance) {

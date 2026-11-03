@@ -2817,7 +2817,7 @@ fn color_palette_page(app: &mut App, ui: &mut Ui) {
             "options.palette_no_color_tip",
         ));
     // Rows of the default palette (columns docked on a side, #610).
-    p.rows = p.rows.clamp(1, 3);
+    p.rows = p.rows.min(crate::settings::MAX_ROWS);
     grid("palette_rows").show(ui, |ui| {
         row_label(ui, &tr("options.palette_rows"));
         crate::ui::tips::tip_over(
@@ -2828,13 +2828,50 @@ fn color_palette_page(app: &mut App, ui: &mut Ui) {
                     ui,
                     "opt_palette_rows",
                     &mut p.rows,
-                    &[1, 2, 3],
-                    |n| n.to_string(),
-                    60.0,
+                    &[1, 2, 3, 4, 5, 6, 7, 8, crate::settings::ROWS_FIT],
+                    |n| {
+                        if n == crate::settings::ROWS_FIT {
+                            tr("palette.rows_fit")
+                        } else {
+                            n.to_string()
+                        }
+                    },
+                    90.0,
                 );
             },
         );
-
+        ui.end_row();
+        // The swatch size, as the palette menu names its steps; a size
+        // set with Ctrl+wheel between two shows as it is.
+        row_label(ui, &tr("options.palette_swatch_size"));
+        crate::ui::tips::tip_over(
+            ui,
+            crate::ui::tips::pair(
+                "options.palette_swatch_size",
+                "options.palette_swatch_size_tip",
+            ),
+            |ui| {
+                let mut sizes: Vec<u8> = crate::settings::SWATCH_STEPS
+                    .iter()
+                    .map(|(s, _)| *s)
+                    .collect();
+                if !sizes.contains(&p.swatch_size) {
+                    sizes.push(p.swatch_size);
+                    sizes.sort_unstable();
+                }
+                combo(
+                    ui,
+                    "opt_palette_swatch_size",
+                    &mut p.swatch_size,
+                    &sizes,
+                    |n| match crate::settings::swatch_step_of(n) {
+                        Some(i) => tr(crate::settings::SWATCH_STEPS[i].1),
+                        None => crate::i18n::trf("palette.size_custom", &[("n", &n.to_string())]),
+                    },
+                    140.0,
+                );
+            },
+        );
         ui.end_row();
     });
     crate::ui::chrome::section(ui, &tr("options.palette_right_button"));

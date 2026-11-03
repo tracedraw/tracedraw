@@ -1057,6 +1057,98 @@ fn every_palette_shown_gets_a_strip() {
     assert_eq!(app.extra_palettes[0].index, gray);
 }
 
+/// A palette bar of its own applies its colours wherever it is: docked
+/// at the right edge (a column) a click fills and a right click colours
+/// the outline, as the default palette does; floating, a click on its
+/// window fills too.
+#[test]
+fn every_palette_bar_applies_its_colours_docked_or_floating() {
+    use crate::ui::bars::Dock;
+    use crate::ui::palette::Row;
+    let (ctx, mut app, id) = setup();
+    let gray = app
+        .palettes
+        .iter()
+        .position(|p| p.key == "palette.grayscale")
+        .expect("grayscale palette");
+    let gray_id = crate::settings::palette_id(&app.palettes[gray]);
+    app.open_palette_bar(&gray_id);
+    assert_eq!(app.extra_palettes.len(), 1);
+    app.settings.palette_bars[0].dock = Dock::Right;
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let column = egui::PanelState::load(&ctx, egui::Id::new(("palette_extra", Row::Extra(0))))
+        .map(|s| s.outer_rect)
+        .expect("the column shows");
+    assert!(column.right() >= 1599.0, "{column:?} at the right edge");
+    assert!(column.height() > column.width(), "{column:?} is a column");
+    let greys = |app: &App| {
+        let mut all: Vec<_> = app.palettes[gray].colors.iter().map(|(_, c)| *c).collect();
+        all.extend(
+            crate::ui::palette::as_rgb(&app.palettes[gray].colors)
+                .into_iter()
+                .map(|(_, c)| c),
+        );
+        all
+    };
+    let fill = |app: &App| {
+        app.doc()
+            .find_shape(id)
+            .and_then(|s| s.fill.preview_color())
+            .expect("a solid fill")
+    };
+    let at = Pos2::new(column.center().x, column.top() + 77.0 + 21.0 * 3.5);
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert!(greys(&app).contains(&fill(&app)), "{:?}", fill(&app));
+    // A right click colours the outline.
+    let at = Pos2::new(column.center().x, column.top() + 77.0 + 21.0 * 5.5);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(at)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(at, true, PointerButton::Secondary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(at, false, PointerButton::Secondary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    let outline = app
+        .doc()
+        .find_shape(id)
+        .and_then(|s| s.stroke.as_ref().map(|st| st.color))
+        .expect("an outline");
+    assert!(greys(&app).contains(&outline), "{outline:?}");
+    // Floating: its window, and a click on a swatch in it fills.
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        200, 30, 30,
+    )));
+    app.settings.palette_bars[0].dock = Dock::Floating;
+    app.settings.palette_bars[0].pos = [500.0, 300.0];
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let window = ctx
+        .memory(|m| m.area_rect(crate::ui::palette_bars::window_id(Row::Extra(0))))
+        .expect("the floating palette shows");
+    assert_eq!(
+        window.size(),
+        crate::ui::palette_bars::floating_window_size(&app, Row::Extra(0))
+    );
+    let body_top = window.top() + 1.0 + crate::ui::bars::TITLE_H;
+    let at = Pos2::new(window.left() + 1.0 + 77.0 + 21.0 * 4.5, body_top + 12.0);
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert!(greys(&app).contains(&fill(&app)), "{:?}", fill(&app));
+}
+
 /// Where the default palette's swatch of `name` is drawn.
 fn swatch_of(ctx: &egui::Context, app: &mut App, name: &str) -> Pos2 {
     let c = app

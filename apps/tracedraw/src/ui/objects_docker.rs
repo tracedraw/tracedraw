@@ -124,7 +124,7 @@ pub fn object_label(s: &Shape) -> String {
 }
 
 /// An eye, open when `on`, else closed (a lid line), centred in `r`.
-fn paint_eye(ui: &Ui, r: Rect, on: bool) {
+pub(crate) fn paint_eye(ui: &Ui, r: Rect, on: bool) {
     let p = ui.painter();
     let c = r.center();
     let color = if on {
@@ -200,7 +200,7 @@ fn paint_lock(ui: &Ui, r: Rect, locked: bool) {
 }
 
 /// A padlock in `color`, shut when `locked`, else open.
-fn paint_padlock(p: &Painter, r: Rect, locked: bool, color: Color32) {
+pub(crate) fn paint_padlock(p: &Painter, r: Rect, locked: bool, color: Color32) {
     let c = r.center();
     let body = Rect::from_center_size(c + Vec2::new(0.0, 2.0), Vec2::new(9.0, 7.0));
     p.rect_filled(body, 1.0, color);
