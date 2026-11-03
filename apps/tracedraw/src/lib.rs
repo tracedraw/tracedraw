@@ -214,6 +214,11 @@ mod x11_clipboard;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "../../../vendor/winit/src/pen_pressure.rs"]
 mod winit_pen_pressure;
+// The pen pressure of the patched eframe's web layer, with its tests
+// (vendor/README.md, #1410), so that the gate runs them.
+#[cfg(test)]
+#[path = "../../../vendor/eframe/src/web/pen_pressure.rs"]
+mod eframe_web_pen_pressure;
 // The queue of files macOS asks to open, of the same copy (#646).
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "../../../vendor/winit/src/opened_files.rs"]

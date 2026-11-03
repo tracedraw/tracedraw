@@ -16630,6 +16630,94 @@ fn a_pen_that_only_sends_moving_touches_sets_the_width() {
     assert!(!ctx.input(|i| i.any_touches()));
 }
 
+/// A primary drag from `from` to `to` in the browser, as the patched web
+/// layer turns it into egui events (#1410): each pointer event of kind
+/// `pointer_type` gives a pointer move (the browser's mouse event) and,
+/// through `PenPressure::reading`, the pen's moving touch with the
+/// `pressure(t)` the browser reported at `t` along the drag. The pointer
+/// hovers first, and the last frame lifts it (`buttons` 0).
+fn browser_drag(
+    ctx: &egui::Context,
+    app: &mut App,
+    pointer_type: &str,
+    from: Pos2,
+    to: Pos2,
+    pressure: &dyn Fn(f32) -> f32,
+) {
+    use crate::eframe_web_pen_pressure::{pen_touch, PenPressure};
+    let mut pen = PenPressure::default();
+    let mut pointer = |pos: Pos2, pressure: f32, buttons: u16| -> Vec<Event> {
+        let mut events = vec![Event::PointerMoved(pos)];
+        if let Some(force) = pen.reading(pointer_type, pressure, buttons) {
+            events.push(pen_touch(1, pos, force));
+        }
+        events
+    };
+    let mods = Modifiers::NONE;
+    frame(ctx, app, pointer(from, 0.0, 0), mods);
+    let mut down = pointer(from, pressure(0.0), 1);
+    down.push(button(from, true, PointerButton::Primary, mods));
+    frame(ctx, app, down, mods);
+    let steps = 20;
+    for i in 1..=steps {
+        let t = i as f32 / steps as f32;
+        frame(
+            ctx,
+            app,
+            pointer(from + (to - from) * t, pressure(t), 1),
+            mods,
+        );
+    }
+    let mut up = pointer(to, 0.0, 0);
+    up.push(button(to, false, PointerButton::Primary, mods));
+    frame(ctx, app, up, mods);
+    frame(ctx, app, Vec::new(), mods);
+}
+
+/// A pen in the browser (#1410): its pointer events' pressure sets the
+/// width of a Freehand line as on the desktop, and egui never takes it
+/// for a touch screen. The mouse, whose pointer events report 0.5 while
+/// pressed, and a pen that cannot measure pressure (a constant 0.5) draw
+/// an even outline.
+#[test]
+fn a_pen_in_the_browser_sets_the_width() {
+    let (ctx, mut app, _) = setup();
+    app.set_tool(Tool::Freehand);
+    app.select(Vec::new());
+    let at = |y: f64| {
+        (
+            app.view.to_screen(Point::new(80.0, y)),
+            app.view.to_screen(Point::new(180.0, y)),
+        )
+    };
+    let (row1, row2, row3) = (at(100.0), at(120.0), at(140.0));
+    let before = shape_count(&app);
+    let hard_then_light = |t: f32| if t < 0.5 { 0.9 } else { 0.2 };
+    browser_drag(&ctx, &mut app, "pen", row1.0, row1.1, &hard_then_light);
+    assert_eq!(shape_count(&app), before + 1);
+    let st = last_stroke(&app);
+    assert!(!st.widths.is_empty(), "the outline follows the pressure");
+    let (start, end) = end_widths(&st.widths);
+    assert!(start > end * 2.0, "{start} vs {end}");
+    assert!(app.pen_pressure.is_none(), "the pen was lifted");
+    assert!(!ctx.input(|i| i.has_touch_screen()));
+    assert!(!ctx.input(|i| i.any_touches()));
+
+    // The mouse: 0.5 while pressed is no pressure.
+    browser_drag(&ctx, &mut app, "mouse", row2.0, row2.1, &|_| 0.5);
+    assert_eq!(shape_count(&app), before + 2);
+    assert!(last_stroke(&app).widths.is_empty());
+
+    // A pen without pressure (a fresh page: no pen measured yet).
+    let (ctx, mut app, _) = setup();
+    app.set_tool(Tool::Freehand);
+    app.select(Vec::new());
+    let before = shape_count(&app);
+    browser_drag(&ctx, &mut app, "pen", row3.0, row3.1, &|_| 0.5);
+    assert_eq!(shape_count(&app), before + 1);
+    assert!(last_stroke(&app).widths.is_empty());
+}
+
 /// A Repeat Copies copy made at the docker: the horizontal field
 /// typed into (its whole value selected on focus), then Apply clicked.
 /// Returns the bounds of the copy selected after Apply.
