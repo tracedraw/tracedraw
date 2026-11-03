@@ -718,6 +718,45 @@ pub fn axis_scale(t: Affine) -> (f64, f64) {
     (a.hypot(b), c.hypot(d))
 }
 
+/// Fit corner sizes (`Corners` order) to a `width` x `height` box: the two
+/// corners on a side together at most as long as the side. `changed`, the
+/// corner just set, first takes at most the room its neighbours leave on
+/// its two sides; then each corner still too large shrinks by the factor
+/// its tighter side needs, so the corners that fit keep their size.
+fn fit_corners(radii: &mut [f64; 4], width: f64, height: f64, changed: Option<usize>) {
+    // The corner beside each one on its horizontal and on its vertical side.
+    const ACROSS: [usize; 4] = [
+        Corners::TOP_RIGHT,
+        Corners::TOP_LEFT,
+        Corners::BOTTOM_RIGHT,
+        Corners::BOTTOM_LEFT,
+    ];
+    const UP_DOWN: [usize; 4] = [
+        Corners::BOTTOM_LEFT,
+        Corners::BOTTOM_RIGHT,
+        Corners::TOP_LEFT,
+        Corners::TOP_RIGHT,
+    ];
+    let (w, h) = (width.max(0.0), height.max(0.0));
+    if let Some(i) = changed.filter(|i| *i < 4) {
+        let room = (w - radii[ACROSS[i]]).min(h - radii[UP_DOWN[i]]).max(0.0);
+        radii[i] = radii[i].min(room);
+    }
+    let fit = |r: &[f64; 4], side: f64, a: usize, b: usize| {
+        let sum = r[a] + r[b];
+        if sum > side && sum > 0.0 {
+            side / sum
+        } else {
+            1.0
+        }
+    };
+    let factors: [f64; 4] =
+        std::array::from_fn(|i| fit(radii, w, i, ACROSS[i]).min(fit(radii, h, i, UP_DOWN[i])));
+    for (r, f) in radii.iter_mut().zip(factors) {
+        *r *= f;
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ShapeKind {
@@ -2538,26 +2577,32 @@ impl Shape {
     }
 
     /// This rectangle with corners measured on the page (as
-    /// `page_corners` gives them), each at most half the shorter side.
+    /// `page_corners` gives them). The two corners on a side together are
+    /// at most as long as the side: equal corners are at most half the
+    /// shorter side, while one corner alone can take a whole side (#1757).
     /// `None` for other kinds.
     pub fn with_page_corners(&self, page: Corners) -> Option<ShapeKind> {
+        self.with_page_corners_at(page, None)
+    }
+
+    /// Like `with_page_corners`, `changed` being the corner just set (its
+    /// index in the rectangle's own order): it takes at most the room its
+    /// two neighbours leave on its sides, and they keep their size. With
+    /// the rectangle 100 x 80 and the corner beside it on the top 10, the
+    /// one below it 0, the top right corner can be 80 (#1757).
+    pub fn with_page_corners_at(&self, page: Corners, changed: Option<usize>) -> Option<ShapeKind> {
         let (rect, _) = self.kind.rect_corners()?;
         let rect = rect.abs();
         let (sx, sy) = axis_scale(self.transform);
-        let limit = (rect.width() * sx).min(rect.height() * sy) / 2.0;
         let mut c = page;
-        let fit = |r: f64, limit: f64| {
-            if r.is_finite() {
-                r.clamp(0.0, limit.max(0.0))
-            } else {
-                0.0
-            }
-        };
-        c.radii = c.radii.map(|r| fit(r, limit));
+        c.radii = c
+            .radii
+            .map(|r| if r.is_finite() { r.max(0.0) } else { 0.0 });
+        fit_corners(&mut c.radii, rect.width() * sx, rect.height() * sy, changed);
         if !c.fixed {
             let k = sx.min(sy).max(1e-9);
-            let local_limit = rect.width().min(rect.height()) / 2.0;
-            c.radii = c.radii.map(|r| fit(r / k, local_limit));
+            c.radii = c.radii.map(|r| r / k);
+            fit_corners(&mut c.radii, rect.width(), rect.height(), None);
         }
         Some(ShapeKind::rect_with_corners(rect, c))
     }
@@ -6657,6 +6702,56 @@ mod tests {
             s.plain_rect(),
             Some((Rect::new(0.0, 0.0, 20.0, 10.0), r, s.transform))
         );
+    }
+
+    /// #1757: a corner is limited by the corners beside it, not by half
+    /// the side: on a 100 x 80 rectangle with the top left corner 10 and
+    /// the bottom ones square, the top right corner can be 80 (the whole
+    /// right side), not 40. Equal corners still stop at half the shorter
+    /// side, and two corners too large for their side share it.
+    #[test]
+    fn one_corner_can_take_the_room_its_neighbours_leave() {
+        let s = rect_shape(100.0, 80.0, Corners::tool_default());
+        let mut c = Corners::tool_default();
+        let tr = Corners::TOP_RIGHT;
+        let set = |c: &Corners, changed| {
+            s.with_page_corners_at(*c, changed)
+                .and_then(|k| k.rect_corners())
+                .map(|(_, c)| c.radii)
+                .expect("a rectangle")
+        };
+        c.radii = [10.0, 80.0, 0.0, 0.0];
+        assert_eq!(set(&c, Some(tr)), [10.0, 80.0, 0.0, 0.0]);
+        // More than the room: the corner set gets the room, the others stay.
+        c.radii = [10.0, 95.0, 0.0, 0.0];
+        assert_eq!(set(&c, Some(tr)), [10.0, 80.0, 0.0, 0.0]);
+        c.radii = [30.0, 95.0, 0.0, 0.0];
+        assert_eq!(set(&c, Some(tr)), [30.0, 70.0, 0.0, 0.0]);
+        // Read as stored (no corner set): one large corner is kept.
+        c.radii = [0.0, 60.0, 0.0, 0.0];
+        assert_eq!(set(&c, None), [0.0, 60.0, 0.0, 0.0]);
+        // Equal corners: half the shorter side, as before.
+        c.radii = [50.0; 4];
+        assert_eq!(set(&c, None), [40.0; 4]);
+        // Two corners too large for the top share it; the bottom keeps.
+        c.radii = [70.0, 70.0, 5.0, 5.0];
+        let r = set(&c, None);
+        assert!(
+            (r[0] - 50.0).abs() < 1e-9 && (r[1] - 50.0).abs() < 1e-9,
+            "{r:?}"
+        );
+        assert_eq!([r[2], r[3]], [5.0, 5.0]);
+        // The outline is drawn with the corner as set: the right side is
+        // the whole quarter circle, its area that of the box less the
+        // corners' cuts.
+        let mut big = Corners::tool_default();
+        big.radii = [10.0, 80.0, 0.0, 0.0];
+        let mut shape = s.clone();
+        shape.kind = shape.with_page_corners_at(big, Some(tr)).expect("rect");
+        let cut = |r: f64| r * r * (1.0 - std::f64::consts::PI / 4.0);
+        let want = 8000.0 - cut(10.0) - cut(80.0);
+        // The quarter circles are cubic curves, a few parts in 10000 off.
+        assert!((area(&shape) - want).abs() < 2.0, "{} {want}", area(&shape));
     }
 
     #[test]

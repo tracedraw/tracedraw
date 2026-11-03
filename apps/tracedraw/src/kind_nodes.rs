@@ -256,7 +256,7 @@ pub fn drag_constrained(
                     }
                 }
             }
-            start.with_page_corners(next)
+            start.with_page_corners_at(next, single.then_some(corner))
         }
         (ShapeKind::Ellipse { rect, arc }, KindNode::EllipseStart | KindNode::EllipseEnd) => {
             let c = rect.center();

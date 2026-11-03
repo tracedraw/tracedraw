@@ -36,8 +36,10 @@ when nothing is selected:
 - The corner style: **Round** (a quarter circle), **Scalloped** (a quarter
   circle cut inwards) or **Chamfered** (a straight cut).
 - The four sizes: top left, top right, bottom left and bottom right. The size
-  is the radius, or for a chamfer how far from the corner the cut starts. A
-  corner is at most half the shorter side.
+  is the radius, or for a chamfer how far from the corner the cut starts. Two
+  corners on a side together can be at most as long as the side: equal
+  corners stop at half the shorter side, while a single corner can take all
+  the room the corners beside it leave, up to a whole side.
 - **Edit corners together** (the lock, on at first) gives all four the size
   you type in one.
 - **Relative corner scaling** (on at first): the corners grow and shrink with

@@ -40,7 +40,9 @@ novos quando nada está selecionado:
   quarto de círculo cortado para dentro) ou **Chanfrado** (um corte reto).
 - Os quatro tamanhos: superior esquerdo, superior direito, inferior esquerdo e
   inferior direito. O tamanho é o raio, ou, para o chanfro, a que distância do
-  canto o corte começa. Um canto tem no máximo metade do lado menor.
+  canto o corte começa. Dois cantos de um mesmo lado juntos medem no máximo o
+  lado: cantos iguais param na metade do lado menor, enquanto um canto sozinho
+  pode ocupar todo o espaço que os cantos ao lado deixam, até um lado inteiro.
 - **Editar cantos juntos** (o cadeado, ativado de início) dá aos quatro o
   tamanho que você digitar em um.
 - **Escala relativa dos cantos** (ativada de início): os cantos crescem e

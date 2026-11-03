@@ -52,7 +52,15 @@ whatever tool is active.
 - Four sizes: top left, top right, bottom left, bottom right (the bar
   shows them as two columns, left corners then right ones). With Edit
   Corners Together (the lock, on by default) a size typed in one field
-  goes to all four. A corner is at most half the shorter side.
+  goes to all four. The two corners on a side together are at most as
+  long as the side: equal corners stop at half the shorter side, while a
+  corner set on its own takes the room the corners beside it leave,
+  `min(width - the one beside it on its horizontal side, height - the one
+  on its vertical side)`, on the page, and they keep their size; on a
+  100 x 80 mm rectangle with the top left 10 mm and the bottom corners
+  square, the top right can be 80 mm, a whole quarter circle (#1757,
+  `Shape::with_page_corners_at`). Corners read from a file that are too
+  large for a side shrink each by what its tighter side needs.
 - Each field is the corner seen at that position on the page, not the
   rectangle's own corner of that name: a rectangle turned by 180
   degrees, flipped, or stretched across its own side with a handle

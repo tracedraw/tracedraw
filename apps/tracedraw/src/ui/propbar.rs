@@ -2836,7 +2836,13 @@ pub fn edit_corners(app: &mut App, edit: CornerEdit) {
         .filter_map(|s| {
             let t = app.seen_transform(s);
             let seen = edit.apply(s.page_corners()?.as_seen(t), together);
-            let kind = s.with_page_corners(Corners::from_seen(seen, t))?;
+            // One corner set on its own takes the room its neighbours
+            // leave, they keep their size (#1757).
+            let changed = match edit {
+                CornerEdit::Size(i, _) if !together && i < 4 => Some(Corners::seen_through(t)[i]),
+                _ => None,
+            };
+            let kind = s.with_page_corners_at(Corners::from_seen(seen, t), changed)?;
             (kind != s.kind).then_some(Command::SetShapeKind { shape: s.id, kind })
         })
         .collect();
@@ -3908,6 +3914,42 @@ mod tests {
             outline_text(&app, Some(tracedraw_core::Stroke::HAIRLINE)),
             tr("toolbar.hairline")
         );
+    }
+
+    /// #1757: unlocked, the top right field of a 100 x 80 rectangle
+    /// takes 80 with the top left 10 and the bottom corners square; 95 is
+    /// brought down to the 80 the right side has, the others unchanged.
+    #[test]
+    fn a_corner_field_allows_what_the_neighbours_leave() {
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::rect_with_corners(
+                R::new(0.0, 0.0, 100.0, 80.0),
+                Corners::tool_default(),
+            ))
+            .expect("a rectangle");
+        app.select(vec![id]);
+        app.corners_together = false;
+        let radii = |app: &App| app.selected_rc()[0].page_corners().unwrap().radii;
+        edit_corners(&mut app, CornerEdit::Size(Corners::TOP_LEFT, 10.0));
+        edit_corners(&mut app, CornerEdit::Size(Corners::TOP_RIGHT, 80.0));
+        assert_eq!(radii(&app), [10.0, 80.0, 0.0, 0.0]);
+        edit_corners(&mut app, CornerEdit::Size(Corners::TOP_RIGHT, 95.0));
+        assert_eq!(radii(&app), [10.0, 80.0, 0.0, 0.0]);
+        // Flipped upside down, the 80 corner is at the bottom right of the
+        // page: the bottom left field gets what it leaves on the bottom
+        // side, 20, measured on the page (#1670).
+        app.transform_selection(Affine::scale_non_uniform(1.0, -1.0));
+        edit_corners(&mut app, CornerEdit::Size(Corners::BOTTOM_LEFT, 70.0));
+        let seen = app.selected_rc()[0].clone();
+        let t = app.seen_transform(&seen);
+        let page = seen.page_corners().unwrap().as_seen(t).radii;
+        assert_eq!(page, [0.0, 0.0, 20.0, 80.0]);
+        // The top left, with nothing beside it on top and 20 below, 60.
+        edit_corners(&mut app, CornerEdit::Size(Corners::TOP_LEFT, 100.0));
+        let seen = app.selected_rc()[0].clone();
+        let page = seen.page_corners().unwrap().as_seen(t).radii;
+        assert_eq!(page, [60.0, 0.0, 20.0, 80.0]);
     }
 
     #[test]
