@@ -6700,10 +6700,11 @@ mod tests {
         for fixed in [true, false] {
             let mut s = rect_shape(100.0, 80.0, Corners::default());
             s.transform = Affine::scale(2.0);
-            let mut c = Corners::default();
-            c.fixed = fixed;
-            c.radii[Corners::TOP_LEFT] = 20.0;
-            c.radii[Corners::TOP_RIGHT] = 160.0;
+            let c = Corners {
+                radii: [20.0, 160.0, 0.0, 0.0],
+                fixed,
+                ..Corners::default()
+            };
             s.kind = s.with_page_corners(c).unwrap();
             assert_eq!(s.page_corners().unwrap().radii, [20.0, 160.0, 0.0, 0.0]);
             assert_eq!(
