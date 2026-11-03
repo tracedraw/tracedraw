@@ -348,6 +348,11 @@ pub enum Drag {
         /// The selection's snap point under the pointer when the move
         /// began: it snaps to other objects' points.
         source: Option<Point>,
+        /// Where the selection's points and edges were when the move
+        /// began, built once the pointer has gone further than the
+        /// snapping radius from there: from then on the grabbed point
+        /// snaps to them too (#1765).
+        start_geometry: Option<std::rc::Rc<crate::snap::StillGeometry>>,
     },
     /// Scaling the selection with a handle; `anchor` stays fixed (the
     /// centre with Shift).

@@ -1036,6 +1036,7 @@ impl App {
             total: Vec2::ZERO,
             start_bounds: self.selection_bounds().unwrap_or(Rect::ZERO),
             source: self.selection_snap_source(p),
+            start_geometry: None,
         };
     }
 
@@ -1978,11 +1979,33 @@ impl App {
             self.drag_guide_to(p);
             return;
         }
+        // Once the pointer has left the snapping radius of where the move
+        // began, the selection's start geometry attracts it (#1765); not
+        // before, or every move begun on a node would stick to it.
+        let away = match &self.drag {
+            Drag::Move {
+                start,
+                start_geometry: None,
+                ..
+            } => {
+                self.snap_enabled()
+                    && self.snap.objects
+                    && (p - *start).hypot() > self.snap_tolerance()
+            }
+            _ => false,
+        };
+        if away {
+            let g = std::rc::Rc::new(self.selection_start_geometry());
+            if let Drag::Move { start_geometry, .. } = &mut self.drag {
+                *start_geometry = Some(g);
+            }
+        }
         let snapped_move = match &self.drag {
             Drag::Move {
                 start,
                 start_bounds,
                 source,
+                start_geometry,
                 ..
             } => {
                 // The pointer's way since the press, snapped; Ctrl
@@ -1994,7 +2017,8 @@ impl App {
                     Some(false) => d.x = 0.0,
                     None => {}
                 }
-                let mut t = self.snap_move_from(*source, *start_bounds, d);
+                let mut t =
+                    self.snap_move_from(*source, *start_bounds, d, start_geometry.as_deref());
                 match axis {
                     Some(true) => t.y = 0.0,
                     Some(false) => t.x = 0.0,
