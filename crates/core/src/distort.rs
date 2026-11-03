@@ -17,10 +17,12 @@
 //!   the nodes stay. Random scales each tooth by a fixed pseudo-random
 //!   share; Local scales them by how near they are to the centre (full at
 //!   the centre, none at the farthest node); Smooth rounds the teeth.
-//! - Twister turns every point about the centre by `angle` times its
-//!   distance over the farthest distance, so the centre stays and the
-//!   farthest point turns by the whole angle. The outline is first cut
-//!   into short steps so the turn bends it smoothly.
+//! - Twister turns every point about the centre by `angle` times one
+//!   less its distance over the farthest distance, so the points at the
+//!   centre turn by the whole angle and the farthest point stays where it
+//!   is: the outline keeps its place and its outer shape, the inside
+//!   swirls (#1674). The outline is first cut into short steps so the
+//!   turn bends it smoothly.
 
 use crate::geometry::{
     BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveDeriv, PathEl, PathSeg, Point,
@@ -53,8 +55,8 @@ pub enum Distort {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         local: bool,
     },
-    /// Turned about the centre, `angle_deg` at the farthest point
-    /// (counterclockwise when positive).
+    /// Turned about the centre, `angle_deg` at the centre and none at
+    /// the farthest point (counterclockwise when positive).
     Twister {
         angle_deg: f64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -459,9 +461,11 @@ fn twister(path: &BezPath, c: Point, angle: f64) -> BezPath {
     let b = path.bounding_box();
     let size = b.width().max(b.height()).max(1e-6);
     let step = size / 64.0;
-    // The farthest point from the centre turns by the whole angle
-    // (measured on points along the segments; the turn is clamped at
-    // the whole angle for the little a curve may reach beyond them).
+    // The farthest point from the centre stays where it is and the turn
+    // grows toward the centre, where it is the whole angle (#1674): the
+    // outline keeps its outer shape and swirls inside. The distance is
+    // measured on points along the segments; the little a curve may
+    // reach beyond them does not turn either.
     let far = subs
         .iter()
         .flat_map(|s| {
@@ -473,15 +477,21 @@ fn twister(path: &BezPath, c: Point, angle: f64) -> BezPath {
         .map(|p| (p - c).hypot())
         .fold(0.0f64, f64::max)
         .max(1e-9);
-    let rate = angle / far;
+    // The turn falls by `rate` for every unit of distance from the centre.
+    let rate = -angle / far;
     // A point and the direction a curve through it goes after the turn:
-    // `p` turned about `c` by `angle * |p - c| / far`, and its tangent
-    // `d` turned the same with the extra swing of the turn growing with
-    // the distance (the derivative of the turn along the curve).
+    // `p` turned about `c` by `angle * (1 - |p - c| / far)`, and its
+    // tangent `d` turned the same with the extra swing of the turn
+    // changing with the distance (the derivative of the turn along the
+    // curve).
     let turn = |p: Point, d: Vec2| -> (Point, Vec2) {
         let v = p - c;
         let r = v.hypot();
-        let a = (rate * r).clamp(-angle.abs(), angle.abs());
+        let a = if r > far {
+            0.0
+        } else {
+            (angle + rate * r).clamp(-angle.abs(), angle.abs())
+        };
         let (sin, cos) = a.sin_cos();
         let rot = |w: Vec2| Vec2::new(w.x * cos - w.y * sin, w.x * sin + w.y * cos);
         let swing = if r < 1e-12 || r > far {
@@ -862,7 +872,9 @@ mod tests {
 
     /// A straight line with the Twister (#1108) is a smooth spiral from
     /// end to end: every step lies on the true turned curve and the ends
-    /// leave along its direction, not along a straight tail.
+    /// leave along its direction, not along a straight tail. The ends,
+    /// the farthest points, stay where they are and the middle turns by
+    /// the whole angle (#1674).
     #[test]
     fn a_twisted_line_is_a_smooth_spiral_to_its_ends() {
         let mut line = BezPath::new();
@@ -882,12 +894,19 @@ mod tests {
         let segs: Vec<PathSeg> = out.segments().collect();
         assert!(segs.len() >= 2 * 24 * turns as usize, "{}", segs.len());
         // The true curve: a point at distance r from the middle turned
-        // by r / 50 of the angle.
+        // by 1 - r / 50 of the angle, so the ends stay.
         let angle = (-360.0f64 * turns).to_radians();
         let truth = |y: f64| -> Point {
-            let a = angle * y.abs() / 50.0;
+            let a = angle * (1.0 - y.abs() / 50.0);
             Point::new(-y * a.sin(), y * a.cos())
         };
+        let n = nodes(&out);
+        assert!((n[0] - Point::new(0.0, -50.0)).hypot() < 1e-9, "{:?}", n[0]);
+        assert!(
+            (n[n.len() - 1] - Point::new(0.0, 50.0)).hypot() < 1e-9,
+            "{:?}",
+            n[n.len() - 1]
+        );
         for seg in &segs {
             for k in 0..=4 {
                 let p = seg.eval(k as f64 / 4.0);
@@ -918,8 +937,11 @@ mod tests {
         }
     }
 
+    /// #1674: the farthest points keep their places and the turn grows
+    /// toward the centre, so the outline does not look rotated as a
+    /// whole: a square's corners stay at the corners and its sides swirl.
     #[test]
-    fn twister_turns_the_far_points_by_the_angle() {
+    fn twister_keeps_the_far_points_and_turns_the_inside() {
         let sq = square(-10.0, -10.0, 20.0);
         let t = distort(
             &sq,
@@ -928,18 +950,64 @@ mod tests {
                 center: None,
             },
         );
-        // A corner (farthest) turned a quarter: (10, 10) to (-10, 10).
+        // The corners (farthest) stay; the middle of the top side, at
+        // 10 of the corners' 14.14, turns by 90 * (1 - 10 / 14.14).
         let n = nodes(&t);
-        assert!(
-            n.iter()
-                .any(|p| (p.x + 10.0).abs() < 1e-6 && (p.y - 10.0).abs() < 1e-6),
-            "{n:?}"
-        );
+        for corner in [(10.0, 10.0), (-10.0, 10.0), (-10.0, -10.0), (10.0, -10.0)] {
+            let c = Point::new(corner.0, corner.1);
+            assert!(n.iter().any(|p| (*p - c).hypot() < 1e-6), "{c:?} in {n:?}");
+        }
+        let a = (90.0f64 * (1.0 - 10.0 / 200f64.sqrt())).to_radians();
+        let mid = Point::new(-10.0 * a.sin(), 10.0 * a.cos());
+        let off = t
+            .segments()
+            .map(|s| s.nearest(mid, 1e-9).distance_sq.sqrt())
+            .fold(f64::INFINITY, f64::min);
+        assert!(off < 0.02, "{mid:?} off by {off}");
         assert_eq!((subpath_count(&t), closes(&t)), (1, 1));
         // The bounds of a quarter turn of a square about its middle stay
         // near the square's.
         let b = t.bounding_box();
         assert!(b.width() < 30.0 && b.width() > 18.0, "{b:?}");
+        // A star turned two whole turns about its own middle keeps its
+        // tips in place while its inner nodes turn by 1 - 16 / 40 of the
+        // angle.
+        let mut star = BezPath::new();
+        let tip = |i: usize| {
+            let a = std::f64::consts::FRAC_PI_2 + i as f64 * std::f64::consts::PI / 5.0;
+            let r = if i % 2 == 0 { 40.0 } else { 16.0 };
+            Point::new(r * a.cos(), r * a.sin())
+        };
+        star.move_to(tip(0));
+        for i in 1..10 {
+            star.line_to(tip(i));
+        }
+        star.close_path();
+        let ts = distort(
+            &star,
+            Distort::Twister {
+                angle_deg: -720.0,
+                center: Some(Point::ZERO),
+            },
+        );
+        let n = nodes(&ts);
+        let inner_turn = (-720.0f64 * (1.0 - 16.0 / 40.0)).to_radians();
+        for i in 0..10 {
+            let want = if i % 2 == 0 {
+                tip(i)
+            } else {
+                let p = tip(i);
+                let (s, c) = inner_turn.sin_cos();
+                Point::new(p.x * c - p.y * s, p.x * s + p.y * c)
+            };
+            assert!(
+                n.iter().any(|p| (*p - want).hypot() < 1e-6),
+                "node {i}: {want:?} not among the nodes"
+            );
+        }
+        let sb = ts.bounding_box();
+        let ob = star.bounding_box();
+        assert!((sb.y1 - ob.y1).abs() < 1e-6, "the top tip stays: {sb:?}");
         // An ellipse (no closing element, but closed) stays closed.
         let e = crate::geometry::ellipse_path(Rect::new(0.0, 0.0, 30.0, 20.0));
         let te = distort(

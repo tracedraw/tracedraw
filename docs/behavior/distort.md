@@ -39,8 +39,14 @@ curve stays open.
   instead of straight teeth.
 - Twister, `angle` (degrees; whole turns times 360 plus degrees,
   clockwise negative): every point `p` is turned about `c` by
-  `angle * |p - c| / d_max`, so the centre stays and the farthest point
-  turns by the whole angle. Each segment is cut into steps along which
+  `angle * (1 - |p - c| / d_max)`, `d_max` the distance of the farthest
+  point of the outline from `c`, so the farthest point stays where it
+  is and the turn grows toward the centre, where it is the whole angle.
+  The outline keeps its place and its outer shape (a square's corners
+  stay at its corners, a star's tips where they were) and swirls inside;
+  turned the other way round, with the farthest point taking the whole
+  angle, the object looked rotated as a whole and its orientation
+  followed the pointer (#1674). Each segment is cut into steps along which
   that turn changes by at most 15 degrees (the distance from the
   centre changes by at most the length walked), and a cubic joins each
   step's ends with the true directions of the turned curve there (the
@@ -131,7 +137,7 @@ curve stays open.
 
 - `distort::tests::push_and_pull_move_nodes_and_bow_the_sides`
 - `distort::tests::zipper_teeth_on_every_segment`
-- `distort::tests::twister_turns_the_far_points_by_the_angle`
+- `distort::tests::twister_keeps_the_far_points_and_turns_the_inside`
 - `distort::tests::a_zipped_line_starts_and_ends_on_tips`
 - `distort::tests::a_twisted_line_is_a_smooth_spiral_to_its_ends`
 - `distort::tests::older_files_and_odd_values_read`
@@ -147,13 +153,17 @@ curve stays open.
 - Given a 20 mm square about its middle and Push and Pull 50, then a
   corner node is 1.5 times as far from the middle and the middle of a
   side is nearer the middle than 10 mm.
-- Given Twister 90 on a 20 mm square about its middle, then the corner
-  (10, 10) is at (-10, 10).
+- Given Twister 90 on a 20 mm square about its middle, then its four
+  corners stay where they are and the middle of a side has turned by
+  90 times one less its distance over the corners' (26.4 degrees);
+  given a five-pointed star (tips 40 mm from its middle, inner nodes
+  16 mm) and two whole turns about its middle, then its tips stay and
+  its inner nodes turn by 1 - 16 / 40 of the angle.
 - Given a straight 100 mm line and Twister of four turns about its
   middle, then the result is one smooth spiral from end to end: every
   point of every step lies on the turned curve within 0.03 mm, the two
-  ends leave along the spiral's own direction, and no two steps meet at
-  a corner.
+  ends stay where they were and leave along the spiral's own direction,
+  and no two steps meet at a corner.
 - Given a straight line and Zipper with frequency 6, then it is seven
   lines between eight points, all teeth's tips, the two ends included,
   alternately on each side of the line.
