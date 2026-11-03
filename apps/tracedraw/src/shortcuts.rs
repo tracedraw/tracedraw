@@ -150,11 +150,6 @@ pub const BROWSER_KEYS: &[(&str, Option<&str>)] = &[
     ("Ctrl+9", Some("Alt+Shift+9")),
 ];
 
-/// Whether `shortcut` may stay with the browser in the browser version.
-pub fn browser_keeps(shortcut: &str) -> bool {
-    BROWSER_KEYS.iter().any(|(k, _)| same(k, shortcut))
-}
-
 /// The browser version's key for a command whose `shortcut` the browser
 /// may keep ([`BROWSER_KEYS`]); `None` for any other shortcut, or one
 /// with no alternative.
@@ -328,6 +323,11 @@ mod tests {
             !allowed(Modifiers::ALT, Key::AltLeft)
                 && !allowed(Modifiers::COMMAND, Key::ControlRight)
         );
+    }
+
+    /// Whether `shortcut` may stay with the browser in the browser version.
+    fn browser_keeps(shortcut: &str) -> bool {
+        BROWSER_KEYS.iter().any(|(k, _)| same(k, shortcut))
     }
 
     /// #1409: the keys browsers keep map to the browser version's keys,
