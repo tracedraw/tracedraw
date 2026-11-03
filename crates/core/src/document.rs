@@ -3632,9 +3632,32 @@ pub struct Metadata {
     /// Document Options > General: Auto inflate bitmaps for effects is on
     /// unless this is set.
     pub no_auto_inflate: bool,
+    /// Space between the pages of the Multipage View, mm (Page > Page
+    /// Spacing, Document Setup > Layout); `None`: the default
+    /// [`DEFAULT_PAGE_SPACING`]. Left out of the file while unset, so
+    /// older drawings read and write as before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_spacing: Option<f64>,
 }
 
+/// The space between pages in the Multipage View when a drawing sets
+/// none, mm.
+pub const DEFAULT_PAGE_SPACING: f64 = 30.0;
+
+/// The largest space between pages the Multipage View takes, mm.
+pub const MAX_PAGE_SPACING: f64 = 1000.0;
+
 impl Metadata {
+    /// The space between the pages of the Multipage View, mm: the
+    /// drawing's own, kept between 0 and [`MAX_PAGE_SPACING`], else the
+    /// default (also for a value that is not a number).
+    pub fn page_spacing(&self) -> f64 {
+        match self.page_spacing {
+            Some(v) if v.is_finite() => v.clamp(0.0, MAX_PAGE_SPACING),
+            _ => DEFAULT_PAGE_SPACING,
+        }
+    }
+
     /// Bitmap effects that spread past the edges grow the bitmap first.
     pub fn auto_inflate_bitmaps(&self) -> bool {
         !self.no_auto_inflate
@@ -6000,6 +6023,31 @@ mod tests {
         assert_eq!(m.rulers.tick_divisions, 10);
         assert!((m.grid.baseline_spacing - 4.938_888).abs() < 1e-5);
         assert_eq!(m.guides, GuideSettings::default());
+    }
+
+    #[test]
+    fn the_page_spacing_defaults_to_30_mm_and_round_trips() {
+        // A drawing saved before the setting existed.
+        let m: Metadata = serde_json::from_str(r#"{"author":"a"}"#).unwrap();
+        assert_eq!(m.page_spacing, None);
+        assert_eq!(m.page_spacing(), DEFAULT_PAGE_SPACING);
+        assert_eq!(DEFAULT_PAGE_SPACING, 30.0);
+        assert_eq!(Document::default().metadata.page_spacing(), 30.0);
+        // Unset, it stays out of the file.
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(!json.contains("page_spacing"), "{json}");
+        // Set, it is saved and read back.
+        let mut m = m;
+        m.page_spacing = Some(12.5);
+        let back: Metadata = serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
+        assert_eq!(back.page_spacing(), 12.5);
+        // Out of range values are kept in range.
+        m.page_spacing = Some(-4.0);
+        assert_eq!(m.page_spacing(), 0.0);
+        m.page_spacing = Some(1e9);
+        assert_eq!(m.page_spacing(), MAX_PAGE_SPACING);
+        m.page_spacing = Some(f64::NAN);
+        assert_eq!(m.page_spacing(), DEFAULT_PAGE_SPACING);
     }
 
     #[test]

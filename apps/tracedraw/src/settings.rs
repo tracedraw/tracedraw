@@ -1089,6 +1089,10 @@ pub struct DocumentDefaults {
     /// The fill and outline new objects get.
     #[serde(default)]
     pub objects: tracedraw_core::ObjectDefaults,
+    /// The space between pages in the Multipage View, mm (`None`: the
+    /// default 30 mm).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_spacing: Option<f64>,
 }
 
 impl DocumentDefaults {
@@ -1098,6 +1102,7 @@ impl DocumentDefaults {
             rulers: doc.metadata.rulers.clone(),
             guides: doc.metadata.guides,
             objects: doc.defaults.clone(),
+            page_spacing: doc.metadata.page_spacing,
         }
     }
 
@@ -1105,6 +1110,7 @@ impl DocumentDefaults {
         doc.metadata.grid = self.grid;
         doc.metadata.rulers = self.rulers.clone();
         doc.metadata.guides = self.guides;
+        doc.metadata.page_spacing = self.page_spacing;
         doc.defaults = defaults_for(&self.objects, doc.metadata.primary_color_mode);
     }
 }
@@ -2021,6 +2027,22 @@ mod tests {
             doc.defaults.artistic_text.fill,
             Fill::Solid(PrimaryColorMode::Cmyk.black())
         );
+    }
+
+    #[test]
+    fn the_page_spacing_is_saved_as_a_default_for_new_drawings() {
+        let mut doc = tracedraw_core::Document::default();
+        // Settings saved before the field existed keep the default.
+        let old: super::DocumentDefaults = serde_json::from_str("{}").unwrap();
+        old.apply(&mut doc);
+        assert_eq!(doc.metadata.page_spacing(), 30.0);
+        doc.metadata.page_spacing = Some(10.0);
+        let saved = super::DocumentDefaults::of(&doc);
+        let json = serde_json::to_string(&saved).unwrap();
+        let back: super::DocumentDefaults = serde_json::from_str(&json).unwrap();
+        let mut fresh = tracedraw_core::Document::default();
+        back.apply(&mut fresh);
+        assert_eq!(fresh.metadata.page_spacing(), 10.0);
     }
 
     #[test]

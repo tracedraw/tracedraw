@@ -914,6 +914,11 @@ pub enum Dialog {
     GoToPage {
         page: usize,
     },
+    /// Page > Page Spacing > Custom: the space between the pages of the
+    /// Multipage View, in the document's units.
+    PageSpacing {
+        value: f64,
+    },
     InsertPage {
         count: u32,
         after: bool,
@@ -1596,6 +1601,27 @@ pub fn show(app: &mut App, ctx: &Context) {
                 });
                 if ok_cancel(ui, &mut close) {
                     app.goto_page(page.saturating_sub(1));
+                }
+            });
+        }
+        Dialog::PageSpacing { value } => {
+            let u = app.units;
+            window(ctx, tr("dialog.page_spacing")).show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(tr("dialog.page_spacing_label"));
+                    ui.add(
+                        crate::ui::field::NumField::new(value)
+                            .range(0.0..=u.from_mm(tracedraw_core::document::MAX_PAGE_SPACING))
+                            .speed(0.1)
+                            .suffix(format!(" {}", u.short())),
+                    )
+                    .rich_tip(crate::ui::tips::pair(
+                        "dialog.page_spacing_label",
+                        "dialog.page_spacing_desc",
+                    ));
+                });
+                if ok_cancel(ui, &mut close) {
+                    app.set_page_spacing(u.to_mm(*value));
                 }
             });
         }
@@ -6784,6 +6810,7 @@ pub(crate) mod tests {
                 name: "Page".into(),
             },
             Dialog::GoToPage { page: 1 },
+            Dialog::PageSpacing { value: 30.0 },
             Dialog::InsertPage {
                 count: 1,
                 after: true,
@@ -7029,6 +7056,23 @@ pub(crate) mod tests {
         assert_eq!(m.rows, vec![vec!["a3".to_string(), "b3".to_string()]]);
         crate::print_merge::delete_records(&mut m, 5..=9);
         assert_eq!(m.rows.len(), 1, "past the end deletes nothing");
+    }
+
+    /// Page > Page Spacing > Custom: the value is in the drawing's units
+    /// and OK sets the drawing's page spacing in mm, one undo step.
+    #[test]
+    fn the_page_spacing_dialog_sets_the_drawing_s_spacing() {
+        let mut app = App::headless();
+        app.units = crate::app::Units::Centimeters;
+        app.dialog = Dialog::PageSpacing { value: 1.5 };
+        let ctx = crate::theme::ui_context();
+        frame(&ctx, &mut app, false);
+        frame(&ctx, &mut app, true);
+        assert!(matches!(app.dialog, Dialog::None));
+        assert!((app.page_spacing() - 15.0).abs() < 1e-9);
+        assert_eq!(app.doc().metadata.page_spacing, Some(15.0));
+        app.undo();
+        assert_eq!(app.page_spacing(), 30.0);
     }
 
     #[test]

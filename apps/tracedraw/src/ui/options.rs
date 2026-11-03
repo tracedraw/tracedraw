@@ -4596,6 +4596,7 @@ fn layout_page(app: &mut App, ui: &mut Ui) {
         });
         app.fit_pending = true;
     }
+    page_spacing_row(app, ui);
     ui.separator();
     ui.strong(tr("options.master_layers"));
     type MasterRow = (
@@ -4661,6 +4662,33 @@ fn layout_page(app: &mut App, ui: &mut Ui) {
     // Which kinds of master layer are drawn in front of the page's
     // layers, now and when made (#1132, #1477).
     crate::ui::objects_docker::master_front_choices(app, ui);
+}
+
+/// Document Setup > Layout: the space between the pages of the
+/// Multipage View, in the document's units (a document property; Save as
+/// Default keeps it for new drawings).
+fn page_spacing_row(app: &mut App, ui: &mut Ui) {
+    let u = app.units;
+    grid("doc_page_spacing").show(ui, |ui| {
+        row_label(ui, &tr("options.page_spacing"));
+        let mut v = u.from_mm(app.page_spacing());
+        let r = ui
+            .add_sized(
+                [100.0, 22.0],
+                crate::ui::field::NumField::new(&mut v)
+                    .range(0.0..=u.from_mm(tracedraw_core::document::MAX_PAGE_SPACING))
+                    .speed(0.1)
+                    .suffix(format!(" {}", u.short())),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "options.page_spacing",
+                "options.page_spacing_tip",
+            ));
+        if r.changed() {
+            app.set_page_spacing(u.to_mm(v));
+        }
+        ui.end_row();
+    });
 }
 
 fn background_page(app: &mut App, ui: &mut Ui) {

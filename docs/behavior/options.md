@@ -268,7 +268,14 @@ General (rendering resolution; Fill open curves, off: an open curve's
 fill shows only in its closed subpaths, on screen, in hit testing and in
 vector exports; duplicate distance), Page Size, Layout, Background, Bleed,
 Rulers, Grid, Guidelines (see `rulers-grid-guidelines.md`). Save as
-Default keeps the grid, ruler and guideline settings for new drawings.
+Default keeps the grid, ruler and guideline settings and the page spacing
+for new drawings.
+
+Layout has Page spacing, a number field in the document's units (0 to
+1000 mm, 30 mm at first): the space between the pages of the Multipage
+View, a document property saved with the drawing, each change one undo
+step (see `multipage-view.md`,
+`settings::tests::the_page_spacing_is_saved_as_a_default_for_new_drawings`).
 
 ## Checks
 

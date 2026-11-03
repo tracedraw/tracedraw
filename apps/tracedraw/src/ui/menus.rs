@@ -1405,6 +1405,43 @@ mod tests {
 
     /// The menus list their commands with the menus they sit in and their
     /// built-in shortcuts, and run one by its key with nothing shown.
+    /// Page > Page Spacing: the presets and Custom... (the dialog in the
+    /// drawing's units), next to Page Layout.
+    #[test]
+    fn the_page_menu_sets_the_page_spacing() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let mut entries = Vec::new();
+        run_frame(&ctx, |ui| entries = commands(&mut app, ui.ctx()));
+        let pos = |key: &str| entries.iter().position(|e| e.key == key);
+        let custom = pos("menu.layout.page_spacing_custom").expect("Custom...");
+        assert_eq!(
+            entries[custom].path,
+            ["menu.layout", "menu.layout.page_spacing"]
+        );
+        let layout = pos("menu.layout.page_layout").expect("Page Layout");
+        assert_eq!(pos("menu.layout.page_spacing_0"), Some(layout + 1));
+        for (mm, key) in crate::multipage::SPACING_PRESETS {
+            let mut ran = false;
+            run_frame(&ctx, |ui| ran = run_command(&mut app, ui.ctx(), key));
+            assert!(ran, "{key}");
+            assert_eq!(app.page_spacing(), mm, "{key}");
+        }
+        run_frame(&ctx, |ui| {
+            run_command(&mut app, ui.ctx(), "menu.layout.page_spacing_10");
+        });
+        app.units = crate::app::Units::Inches;
+        let mut ran = false;
+        run_frame(&ctx, |ui| {
+            ran = run_command(&mut app, ui.ctx(), "menu.layout.page_spacing_custom")
+        });
+        assert!(ran);
+        match app.dialog {
+            Dialog::PageSpacing { value } => assert!((value - 10.0 / 25.4).abs() < 1e-9),
+            ref d => panic!("{d:?}"),
+        }
+    }
+
     #[test]
     fn menu_commands_are_listed_and_run_by_key() {
         let ctx = crate::theme::ui_context();
@@ -2495,6 +2532,21 @@ pub(crate) fn layout_menu(app: &mut App, ui: &mut Ui) {
         app.dialog = Dialog::Options;
         app.options_page = crate::ui::dialogs::OptionsPage::Layout;
     }
+    // The space between the pages of the Multipage View.
+    sub(ui, "menu.layout.page_spacing", |ui| {
+        let now = app.page_spacing();
+        for (mm, key) in crate::multipage::SPACING_PRESETS {
+            if radio(ui, key, "", (now - mm).abs() < 1e-9) {
+                app.set_page_spacing(mm);
+            }
+        }
+        sep(ui);
+        if item(ui, "menu.layout.page_spacing_custom", "", true) {
+            app.dialog = Dialog::PageSpacing {
+                value: app.units.from_mm(now),
+            };
+        }
+    });
     if item(
         ui,
         "menu.layout.fit_page_selection",
