@@ -10815,7 +10815,7 @@ fn the_wrap_style_list_starts_with_none() {
     // styles.
     let arrows: Vec<Pos2> = texts(&mut app)
         .into_iter()
-        .filter(|(t, p)| t == "\u{25BE}" && p.y < 140.0)
+        .filter(|(t, p)| t == "\u{23F7}" && p.y < 140.0)
         .map(|(_, p)| p)
         .collect();
     let mut opened = None;

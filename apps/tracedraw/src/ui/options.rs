@@ -1126,9 +1126,9 @@ fn edit_page(app: &mut App, ui: &mut Ui) {
 
 fn shape_label(s: NodeShape) -> String {
     match s {
-        NodeShape::Square => "\u{25A1}".into(),
+        NodeShape::Square => "\u{25FB}".into(),
         NodeShape::Circle => "\u{25CB}".into(),
-        NodeShape::Diamond => "\u{25C7}".into(),
+        NodeShape::Diamond => "\u{2666}".into(),
     }
 }
 
