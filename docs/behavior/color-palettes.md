@@ -108,7 +108,10 @@ opening such a file names the palette from it.
   side), each further row making it 21 px thicker. The swatches fill
   line by line: each line holds as many swatches as fit and the next
   line goes on where it ends (with 2 rows, Black and 90% Black sit side
-  by side on the first line). The arrows and the wheel scroll one swatch,
+  by side on the first line). The arrows and the wheel scroll one swatch
+  (a wheel notch is one swatch in the browser too, parts of a notch
+  from a touchpad adding up, #1406,
+  `ui::palette::tests::a_browser_wheel_notch_steps_a_palette_row_once`),
   and the buttons stay on the first row. The document palette keeps one
   row (#610, `ui::palette::tests::the_default_palette_can_show_several_rows`,
   `ui::palette::tests::the_palette_menu_picks_the_rows`).

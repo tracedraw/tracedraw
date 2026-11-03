@@ -121,6 +121,7 @@ use crate::app::App;
 use crate::canvas;
 use crate::i18n::tr;
 use crate::theme::Tokens;
+use crate::ui::field::wheel_notch;
 use crate::ui::tips::RichTip;
 use egui::{Frame, Panel, Sense, Ui};
 pub use slider::Slider;
@@ -738,21 +739,6 @@ fn palette_columns(app: &mut App, ui: &mut Ui, left: bool, frame: Frame) {
         .show(ui, |ui| palette::palette_column(app, ui));
 }
 
-/// Raw wheel units one notch of a mouse wheel sends. The desktop
-/// backends report a notch as one line (or 50 points from a
-/// trackpad); browsers report it as three lines or as 100 pixels, so
-/// read as desktop notches a browser notch zoomed three or two notches
-/// at once (#1016).
-fn wheel_notch(unit: egui::MouseWheelUnit, web: bool) -> f32 {
-    match (unit, web) {
-        (egui::MouseWheelUnit::Line, false) => 1.0,
-        (egui::MouseWheelUnit::Line, true) => 3.0,
-        (egui::MouseWheelUnit::Point, false) => 50.0,
-        (egui::MouseWheelUnit::Point, true) => 100.0,
-        (egui::MouseWheelUnit::Page, _) => 0.1,
-    }
-}
-
 /// Points of egui's smoothed scroll delta that one wheel notch in
 /// `unit` adds up to: egui turns a line into `line_speed` points and a
 /// page into the window's height. On the desktop a notch stays at
@@ -807,7 +793,7 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                 .map(|e| match e {
                     egui::Event::MouseWheel { unit: u, delta, .. } => {
                         unit = Some(*u);
-                        delta.y / wheel_notch(*u, cfg!(target_arch = "wasm32"))
+                        delta.y / wheel_notch(*u, crate::ui::field::web_wheel())
                     }
                     _ => 0.0,
                 })
@@ -873,7 +859,7 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                         unit,
                         line,
                         ui.ctx().content_rect().height(),
-                        cfg!(target_arch = "wasm32"),
+                        crate::ui::field::web_wheel(),
                     );
                     app.view.zoom_at(anchor, 1.15f32.powf(scroll.y / per_notch));
                 }

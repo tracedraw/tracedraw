@@ -207,6 +207,20 @@ its copy instead of keeping the object on the pointer until Esc (#1334,
 `pick_drag_tests::a_left_release_while_the_right_button_is_held_ends_the_drag`).
 The browser's context menu does not open on the canvas.
 
+A browser reports one notch of the mouse wheel as three lines (Firefox)
+or as 100 pixels (Chromium, Safari), where the desktop reports one line
+(or 50 points from a touchpad). Everything that steps with the wheel
+reads it through one notch count (`ui::field::wheel_notch`,
+`ui::field::wheel_steps`), so a notch is one step on every platform:
+the canvas zoom (#1016), number fields, sliders, the Objects docker's
+thumbnail size, a palette's scroll and Ctrl+wheel swatch size, and
+Ctrl+wheel over the toolbars and the toolbox. Parts of a notch from a
+touchpad add up to a browser's notch before they make a step (#1406,
+`ui::field::tests::a_wheel_notch_is_one_step_on_the_desktop_and_in_the_browser`,
+`ui::field::tests::a_browser_wheel_notch_steps_a_field_once`,
+`ui::objects_docker::tests::a_browser_wheel_notch_steps_the_thumbnail_size_once`,
+`ui::palette::tests::a_browser_wheel_notch_steps_a_palette_row_once`).
+
 A drag with the button held, or a finger held down, on the canvas is the
 editor's (a marquee, a move), never the browser's text selection: the
 page and the canvas turn the browser's selection and its long-press

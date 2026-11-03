@@ -483,31 +483,6 @@ pub fn visible_slots(width: f32, stride: f32) -> usize {
         .max(1.0) as usize
 }
 
-/// The wheel notches turned this frame without Ctrl (up positive): the
-/// plain wheel scrolls a palette, while Ctrl+wheel sizes its swatches
-/// and scrolls nothing.
-pub fn plain_wheel_notches(events: &[egui::Event]) -> f32 {
-    events
-        .iter()
-        .map(|e| match e {
-            egui::Event::MouseWheel {
-                unit,
-                delta,
-                modifiers,
-                ..
-            } if !(modifiers.ctrl || modifiers.command) => {
-                let d = delta.y + delta.x;
-                match unit {
-                    egui::MouseWheelUnit::Line => d,
-                    egui::MouseWheelUnit::Point => d / 50.0,
-                    egui::MouseWheelUnit::Page => d * 10.0,
-                }
-            }
-            _ => 0.0,
-        })
-        .sum()
-}
-
 fn row(app: &mut App, ui: &mut Ui, which: Row, vertical: bool) {
     let lines = lines_of(app, which);
     let thick = thickness(app, which);
@@ -747,15 +722,24 @@ fn row(app: &mut App, ui: &mut Ui, which: Row, vertical: bool) {
             crate::settings::swatch_resized(now, steps),
         );
     }
-    let notch: f32 = if ui.rect_contains_pointer(rect) {
-        ui.input(|i| plain_wheel_notches(&i.events))
+    // The plain wheel: a swatch a notch, on the desktop and in the
+    // browser alike (#1406).
+    let steps = if ui.rect_contains_pointer(rect) {
+        crate::ui::field::wheel_steps_with(
+            ui,
+            ui.id().with(("palette_scroll_wheel", which.key())),
+            |m| !(m.ctrl || m.command),
+            true,
+        )
+        .unwrap_or(0)
     } else {
-        0.0
+        0
     };
-    if notch < -0.5 {
-        *scroll_of(app, which) = (scroll + 1).min(max_scroll);
-    } else if notch > 0.5 {
-        *scroll_of(app, which) = scroll.saturating_sub(1);
+    let by = steps.unsigned_abs() as usize;
+    if steps < 0 {
+        *scroll_of(app, which) = (scroll + by).min(max_scroll);
+    } else if steps > 0 {
+        *scroll_of(app, which) = scroll.saturating_sub(by);
     }
     for slot in 0..shown {
         let index = scroll + slot;
@@ -2077,13 +2061,73 @@ mod tests {
             app.settings.palette.swatch_size,
             crate::settings::SWATCH_MAX
         );
-        // Notches with Ctrl do not count as plain ones.
-        let events = wheel(-1.0, egui::Modifiers::CTRL);
-        assert_eq!(plain_wheel_notches(&events), 0.0);
+    }
+
+    /// In the browser a wheel notch comes as three lines (Firefox) or as
+    /// 100 pixels (Chromium): the plain wheel scrolls a palette row one
+    /// swatch a notch and Ctrl+wheel sizes its swatches one size a notch,
+    /// as on the desktop (#1406). Parts of a notch from a touchpad add
+    /// up to one step; each half of a browser notch scrolled a whole one.
+    #[test]
+    fn a_browser_wheel_notch_steps_a_palette_row_once() {
+        let mut app = App::headless();
+        let ctx = crate::theme::ui_context();
+        let clock = std::cell::Cell::new(0.0);
+        let frame = |app: &mut App, events: Vec<egui::Event>| {
+            clock.set(clock.get() + 0.1);
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(800.0, 100.0),
+                )),
+                events,
+                time: Some(clock.get()),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| palette_row(app, ui));
+            out.textures_delta.clear();
+        };
+        let over = egui::pos2(LEAD + 60.0, 12.0);
+        let turn = |unit, dy: f32, modifiers| {
+            vec![
+                egui::Event::PointerMoved(over),
+                egui::Event::MouseWheel {
+                    unit,
+                    delta: egui::vec2(0.0, dy),
+                    phase: egui::TouchPhase::Move,
+                    modifiers,
+                },
+            ]
+        };
+        use egui::MouseWheelUnit::{Line, Point};
+        let none = egui::Modifiers::NONE;
+        frame(&mut app, Vec::new());
+        frame(&mut app, vec![egui::Event::PointerMoved(over)]);
+        crate::ui::field::set_web_wheel(true);
+        let mut scroll = 0i64;
+        for (unit, dy, step) in [
+            (Line, -3.0, 1),
+            (Point, -100.0, 1),
+            (Line, 3.0, -1),
+            (Point, -50.0, 0),
+            (Point, -50.0, 1),
+            (Point, -40.0, 0),
+            (Point, 40.0, 0),
+        ] {
+            frame(&mut app, turn(unit, dy, none));
+            scroll += step;
+            assert_eq!(app.palette_scroll as i64, scroll, "{unit:?} {dy}");
+        }
+        assert_eq!(swatch_side(&app), 20.0);
+        frame(&mut app, turn(Line, 3.0, egui::Modifiers::CTRL));
+        assert_eq!(app.settings.palette.swatch_size, 22);
+        frame(&mut app, turn(Point, -100.0, egui::Modifiers::CTRL));
+        assert_eq!(app.settings.palette.swatch_size, 20);
         assert_eq!(
-            plain_wheel_notches(&wheel(-1.0, egui::Modifiers::NONE)),
-            -1.0
+            app.palette_scroll as i64, scroll,
+            "Ctrl+wheel scrolls nothing"
         );
+        crate::ui::field::set_web_wheel(false);
     }
 
     #[test]
