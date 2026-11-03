@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- PDF import: clipped objects open clipped. Objects drawn under a clipping path that is not a rectangle (a disc holding a pattern of lines, say) kept the parts outside it whenever they lay inside the clip's bounding box, and every other object got a clip frame of its own, so a drawing came in with dozens of frames. Now the objects drawn under one clip go together in one clip frame shaped as that clip. Nested clips are their exact overlap, a clip read with the nonzero rule keeps an outline drawn twice (as some producers write it) or the middle of a star, and a thick outline is judged by where its ink reaches (#1616).
+
 ## 0.37.0 (2026-11-02)
 
 - Eraser: a selected clip frame (or the one under the pointer) is erased. The band is taken out of its frame, which becomes a curve keeping its fill and outline, and the contents stay inside, clipped by what is left of the frame, so the frame and its contents disappear along the band and nowhere else. A clip frame erased away is deleted. One undo step. The Eraser did nothing on a clip frame (#1672).

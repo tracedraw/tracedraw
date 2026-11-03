@@ -15,10 +15,21 @@ the active layer.
   CTM, constant alpha from ExtGStates (`ca`, `CA`).
 - Colour: DeviceGray/RGB/CMYK, ICCBased (by component count), Indexed,
   Separation and DeviceN (as tints), CalRGB/Lab (as RGB).
-- Clipping: `W`/`W*` paths become clip frames around the objects they
-  clip; the intersection of nested clips is approximated by the inner
-  one (or the shared rectangle). Objects fully inside a clip are not
-  wrapped; text that is at least 60 % inside is left unclipped because
+- Clipping (ISO 32000-1, 8.5.4): the clipping path is set after the
+  painting operator that follows `W` or `W*`, is saved and restored with
+  `q`/`Q`, and each new one is intersected with the one in force (the
+  exact overlap of the two areas; a rectangle round the old clip leaves
+  it as it is). `W` reads the path with the nonzero rule: it is turned
+  into its nonzero area, so an outline drawn twice or the middle of a
+  self-crossing star stays inside; `W*` reads it even-odd. Subpaths with
+  no segment (a lone `m` before `W n`) are left out. A form's `BBox`
+  clips its content the same way. The objects drawn one after the other
+  under the same clip go together in one clip frame whose frame is that
+  clip; another clip, or an object the clip leaves alone, closes it.
+  Objects are judged by the box their ink covers (the outline's box
+  grown by the stroke's reach): one outside the clip is dropped, one
+  inside a rectangular clip goes on the page without a frame. Text that
+  is at least 60 % inside a rectangular clip is left unclipped because
   substitute fonts change its width.
 - Form XObjects (recursively, 12 levels), annotation appearance streams
   (stamps, form fields; links and popups skipped).
@@ -123,6 +134,11 @@ their own crypt filter and signature contents are left alone.
   12 pt bold; `[(Se) -250 (cond)] TJ` gives "Se cond".
 - A form XObject with a Matrix is placed by it and takes the page's
   `ca`; a rectangle painted under `W n` becomes a clip frame.
+- A disc set as the clip, then twelve lines crossing it, gives one clip
+  frame with the disc as frame and every line that reaches the disc
+  inside it; lines that miss it are dropped (#1616).
+- Two overlapping discs set as clips one inside the other give a clip
+  frame shaped as their lens; after `Q` the first disc clips again.
 - A type 2 axial shading pattern becomes a two-stop linear gradient.
 - A raw 2 x 1 RGB image gives a 2 x 1 bitmap at the CTM's rectangle,
   also when the file starts with a PostScript preamble (`.ai`).
