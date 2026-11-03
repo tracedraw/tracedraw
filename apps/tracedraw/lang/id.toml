@@ -6435,6 +6435,7 @@ dialog.export_preset_rename_desc = "Beri nama baru untuk preset yang dipilih."
 dialog.export_preset_delete_desc = "Hapus preset yang dipilih."
 dialog.export_format_desc = "Jenis berkas yang ditulis."
 dialog.export_dpi_desc = "Berapa piksel per inci gambar. Lebih banyak lebih tajam dan lebih besar."
+dialog.export_color_mode_desc = "RGB seperti di layar; tinta CMYK untuk cetak, warna dikonversi seperti pada separasi dan profil CMYK disematkan; atau satu kanal abu-abu." # mt
 dialog.export_dpi_preset_desc = "Gunakan resolusi ini."
 dialog.export_transparent_desc = "Biarkan area di sekitar gambar transparan, bukan putih."
 dialog.webp_lossless_desc = "Pertahankan setiap piksel persis, dengan berkas lebih besar."

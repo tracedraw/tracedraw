@@ -6435,6 +6435,7 @@ dialog.export_preset_rename_desc = "إعطاء الإعداد المسبق ال�
 dialog.export_preset_delete_desc = "إزالة الإعداد المسبق المحدد."
 dialog.export_format_desc = "نوع الملف المراد كتابته."
 dialog.export_dpi_desc = "عدد وحدات البكسل في البوصة للصورة. الأكثر أوضح وأكبر."
+dialog.export_color_mode_desc = "RGB كما على الشاشة؛ أحبار CMYK للطباعة، تُحوَّل الألوان كما في فصل الألوان ويُضمَّن ملف تعريف CMYK؛ أو قناة رمادية واحدة." # mt
 dialog.export_dpi_preset_desc = "استخدام هذه الدقة."
 dialog.export_transparent_desc = "ترك المنطقة حول الرسم شفافة بدلًا من بيضاء."
 dialog.webp_lossless_desc = "الاحتفاظ بكل بكسل كما هو، على حساب ملف أكبر."

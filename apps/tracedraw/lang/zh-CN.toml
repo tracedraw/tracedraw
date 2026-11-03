@@ -6435,6 +6435,7 @@ dialog.export_preset_rename_desc = "为所选预设起新名称。"
 dialog.export_preset_delete_desc = "删除所选预设。"
 dialog.export_format_desc = "要写入的文件类型。"
 dialog.export_dpi_desc = "图像的每英寸像素数。越高越清晰，文件越大。"
+dialog.export_color_mode_desc = "与屏幕相同的 RGB；用于印刷的 CMYK 油墨（颜色按分色版转换，并嵌入 CMYK 配置文件）；或单通道灰度。" # mt
 dialog.export_dpi_preset_desc = "使用此分辨率。"
 dialog.export_transparent_desc = "使绘图周围的区域透明，而不是白色。"
 dialog.webp_lossless_desc = "精确保留每个像素，代价是文件更大。"

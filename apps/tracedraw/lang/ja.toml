@@ -6435,6 +6435,7 @@ dialog.export_preset_rename_desc = "選択したプリセットに新しい名�
 dialog.export_preset_delete_desc = "選択したプリセットを削除します。"
 dialog.export_format_desc = "書き出すファイルの種類。"
 dialog.export_dpi_desc = "画像の1インチあたりのピクセル数。多いほど鮮明でサイズも大きくなります。"
+dialog.export_color_mode_desc = "画面どおりの RGB、印刷用の CMYK インキ (色分解と同じ変換で、CMYK プロファイルを埋め込み)、またはグレー 1 チャンネル。" # mt
 dialog.export_dpi_preset_desc = "この解像度を使います。"
 dialog.export_transparent_desc = "図面の周囲を白ではなく透明にします。"
 dialog.webp_lossless_desc = "ファイルが大きくなる代わりに、すべてのピクセルを正確に保ちます。"

@@ -6435,6 +6435,7 @@ dialog.export_preset_rename_desc = "Gibt der gewählten Vorgabe einen neuen Name
 dialog.export_preset_delete_desc = "Entfernt die gewählte Vorgabe."
 dialog.export_format_desc = "Die Art der zu schreibenden Datei."
 dialog.export_dpi_desc = "Wie viele Pixel pro Zoll das Bild erhält. Mehr ist schärfer und größer."
+dialog.export_color_mode_desc = "RGB wie am Bildschirm; CMYK-Druckfarben für den Druck, die Farben wie in den Farbauszügen umgerechnet und das CMYK-Profil eingebettet; oder ein Graukanal." # mt
 dialog.export_dpi_preset_desc = "Verwendet diese Auflösung."
 dialog.export_transparent_desc = "Lässt die Fläche um die Zeichnung durchsichtig statt weiß."
 dialog.webp_lossless_desc = "Behält jedes Pixel exakt, auf Kosten einer größeren Datei."
