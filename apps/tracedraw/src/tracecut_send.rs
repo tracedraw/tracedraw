@@ -170,7 +170,9 @@ pub fn poll(app: &mut crate::app::App) {
     let Ok(mut f) = FINISHED.try_lock() else {
         return;
     };
-    if let Some(last) = f.drain(..).last() {
+    let last = f.pop();
+    f.clear();
+    if let Some(last) = last {
         app.status = last;
     }
 }

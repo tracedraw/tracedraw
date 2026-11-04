@@ -55,6 +55,123 @@ damaged file gives no presets and is logged.
 
 ## Cut tools
 
+The Cut group lists, in this order: Plotter Output, Weeding, Bridges,
+Cut Order, CutContour, Registration Marks, Find Duplicates and Find
+Crossings. A new window opens on Plotter Output.
+
+### Plotter Output
+
+The job is the outlines of the selection (groups opened, a clip frame
+by its frame), flattened within 0.02 mm, written as HPGL: the
+machine's start string, `VS` speed and `FS` force when not 0, then for
+each outline `PU` to its first point and `PD` with up to 64 points per
+command, then the end string. Coordinates are whole plotter units, 40 a
+millimetre (0.025 mm), counted from the chosen **origin** corner of the
+job's box (bottom left at first) into the job.
+
+- **Machine**: the command set. HPGL (`IN;` ... `PU0,0;`), HPGL with pen
+  select (`IN;PA;SP1;` ... `PU0,0;SP0;`), HPGL with a command per line.
+  Choosing one keeps the knife settings; a profile whose commands differ
+  shows as Custom. Machines are named by what they send; a cutter's own
+  settings are kept as a preset.
+- **Knife offset** (0.25 mm at first, 0 to 2): the holder moves to
+  `P + d u` to cut `P` going in direction `u`; where the direction turns
+  by more than 15 degrees it draws an arc of radius `d` round the node in
+  steps of at most 10 degrees, so the blade turns on the spot.
+- **Overcut** (1 mm): closed outlines are cut on past their start.
+- **Passes** (1 to 10): each outline is cut again, the whole job over.
+- **Speed**, **force**: sent as `VS` and `FS` in the cutter's own units;
+  0 sends nothing.
+- **Mirror** left to right, **Turn 90°** counter-clockwise.
+- **Weeding frame** with its margin (5 mm): a rectangle round the job,
+  cut last.
+- **Plan the cut order** (on): nearest outline next from the job's
+  bottom-left corner, with **Inner outlines first**; off, the stacking
+  order. The drawing does not change (Cut Order changes it).
+- **Send to**: **File** (OK saves a `.plt` where you say), **Port** (a
+  device path such as `/dev/ttyUSB0`, `/dev/cu.usbserial` or `COM3`;
+  `COMn` is opened as `\\.\COMn`, so ports past 9 work; nothing is
+  created, the device must exist) or **Network** (`host` or
+  `host:port`, port 9100 at first, raw TCP, 5 s to connect). Sending
+  runs on a thread of its own and the status line says how it went.
+  TraceDraw does not set the port's speed: set it to the cutter's once
+  with the system's tools (or the cutter's driver). In the browser and
+  on Android only File is offered.
+- **Test cut**: cuts, at once and with these settings, a square of the
+  **test square** side (20 mm at first, 5 to 200) with a triangle inside
+  (its base a quarter of the side in from the square's, its apex a
+  quarter below the top), the triangle first.
+
+Apply shows the outlines and the moves with the knife up (blue), and
+the status line gives the outlines, the length cut and travelled and the
+job's size. OK saves or sends; the drawing does not change.
+
+### Weeding
+
+Extra cuts in the waste, added on OK as one group named Weeding of
+hairlines (no fill) on the active layer, in one undo step ("Weeding").
+
+- **Weeding lines** (at first): from each object, lines run out of its
+  box (**lines per side**, 1 at first, up to 20, evenly spaced) until
+  they meet a neighbour or the frame; every object is grown by the
+  **gap** (2 mm) and the lines stop there, each end at an object pulled
+  back by **shorten ends** (1 mm). Lines shorter than 0.5 mm and lines
+  lying on another are dropped.
+- **Weeding boxes**: a rectangle round each object grown by the box
+  margins (2 mm each way); overlapping boxes are welded into one
+  outline.
+- **Weeding frame** (on) the margin (5 mm) round everything.
+
+### Bridges
+
+Short uncut stretches in the closed outlines of the selected shapes and
+curves (groups opened; text, pictures and objects with live effects
+left alone). Each closed outline longer than **only outlines longer
+than** (0) gets **per outline** (2) bridges, or **one every** so much
+length (at least one), each **bridge length** long (2 mm), spread
+evenly by arc length, the first half a spacing from the start; a bridge
+moves to the nearest straight segment within a quarter spacing. An
+outline the bridges would take more than nine tenths of is left whole.
+OK makes each object a curve of the open pieces between the bridges, in
+one undo step ("Bridges"); the preview rings the bridges.
+
+### Cut Order
+
+For the selection, layer by layer (locked layers and objects left
+alone): the objects in the order with the least travel with the knife
+up (nearest first, then 2-opt on up to 2000 objects), with **inner
+outlines first** (on) so a part does not move once free; inside shapes
+and curves, their subpaths ordered the same way, each closed outline
+starting at the node nearest the knife (or the bottom-left one, or as
+it is) and running as drawn, all clockwise or all counter-clockwise.
+OK reorders the objects in their layers and rewrites the changed shapes
+as curves in one undo step ("Cut Order"); the status line gives the
+travel before and after.
+
+### CutContour
+
+Marks the selected objects' outlines as cut lines for print and cut: OK
+gives them an outline in the spot colour named **CutContour** (added to
+the drawing's spot colours once, its stand-in 100 % magenta), a hairline
+or the **outline width** given, and with **Remove the fill** no fill, in
+one undo step ("CutContour"). The name is kept on export: PDF writes a
+Separation colour space named CutContour (as for every spot colour), EPS
+and PostScript a Separation colour space with the ink's name and its
+process stand-in, and SVG, which has no spot colours, writes the colour
+and `data-spot-stroke="CutContour"` (`data-spot-fill` for a fill).
+
+### Registration Marks
+
+Filled black marks a cutter's optical sensor finds, added on OK as one
+group named Registration marks in one undo step ("Registration
+Marks"): **around the selection** (outside each corner of its box,
+**distance** 10 mm away) or **inside the page** (inside each corner,
+the distance in from both edges). **Mark**: square or circle of
+**size** 5 mm, or an L whose arms (**arm length** 20 mm, **arm width**
+1 mm) run along the corner. On a side longer than **extra marks every**
+(400 mm, 0 for none) marks also go between the corners, evenly (a square
+for the L). These are generic marks; no maker's layout is built in.
+
 ### Find Duplicates
 
 Objects lying on top of another would be cut twice. Two objects are the

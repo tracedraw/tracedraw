@@ -227,8 +227,7 @@ impl ToolSettings {
     /// result is out of date).
     pub fn to_json(&self, tool: ToolId) -> serde_json::Value {
         let mut copy = self.clone();
-        with_settings!(copy, tool, v => serde_json::to_value(&*v))
-            .unwrap_or(serde_json::Value::Null)
+        with_settings!(copy, tool, v => serde_json::to_value(v)).unwrap_or(serde_json::Value::Null)
     }
 
     /// Load `tool`'s settings from JSON; false when it does not read.

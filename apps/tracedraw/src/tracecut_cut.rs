@@ -156,7 +156,7 @@ pub enum Change {
         style: AddStyle,
     },
     /// A command as it is.
-    Cmd(Command),
+    Cmd(Box<Command>),
 }
 
 /// How new objects look.
@@ -446,13 +446,14 @@ impl App {
             n += b.bridges;
             out.points.extend(b.centres.iter().copied());
             out.preview.push(b.path.clone());
-            out.changes.push(Change::Cmd(Command::SetShapeKind {
-                shape: id,
-                kind: ShapeKind::Path {
-                    path: inv * b.path,
-                    closed: false,
-                },
-            }));
+            out.changes
+                .push(Change::Cmd(Box::new(Command::SetShapeKind {
+                    shape: id,
+                    kind: ShapeKind::Path {
+                        path: inv * b.path,
+                        closed: false,
+                    },
+                })));
         }
         out.summary = if n == 0 {
             tr("tracecut.no_bridges")
@@ -548,11 +549,11 @@ impl App {
                 if let Some(from_i) = now.iter().position(|x| x == id) {
                     let moved = now.remove(from_i);
                     now.insert(i, moved);
-                    out.changes.push(Change::Cmd(Command::Reorder {
+                    out.changes.push(Change::Cmd(Box::new(Command::Reorder {
                         shape: *id,
                         layer: layer.id,
                         index: i,
-                    }));
+                    })));
                 }
             }
             for (i, changed) in route.changed.iter().enumerate() {
@@ -571,13 +572,14 @@ impl App {
                     path.extend(c.elements().iter().copied());
                 }
                 let closed = all_closed(&path);
-                out.changes.push(Change::Cmd(Command::SetShapeKind {
-                    shape: *id,
-                    kind: ShapeKind::Path {
-                        path: inv * path,
-                        closed,
-                    },
-                }));
+                out.changes
+                    .push(Change::Cmd(Box::new(Command::SetShapeKind {
+                        shape: *id,
+                        kind: ShapeKind::Path {
+                            path: inv * path,
+                            closed,
+                        },
+                    })));
             }
         }
         let u = self.units;
@@ -633,7 +635,7 @@ impl App {
         }
         let (color, add) = self.tracecut_contour_ink();
         if let Some(c) = add {
-            out.changes.push(Change::Cmd(c));
+            out.changes.push(Change::Cmd(Box::new(c)));
         }
         let width = if s.width.is_finite() && s.width > Stroke::HAIRLINE {
             s.width.min(10.0)
@@ -642,15 +644,15 @@ impl App {
         };
         let mut stroke = Stroke::hairline(color);
         stroke.width = width;
-        out.changes.push(Change::Cmd(Command::SetStroke {
+        out.changes.push(Change::Cmd(Box::new(Command::SetStroke {
             shapes: ids.clone(),
             stroke: Some(stroke),
-        }));
+        })));
         if s.remove_fill {
-            out.changes.push(Change::Cmd(Command::SetFill {
+            out.changes.push(Change::Cmd(Box::new(Command::SetFill {
                 shapes: ids.clone(),
                 fill: Fill::None,
-            }));
+            })));
         }
         let outlines = self.tracecut_outlines(&ids);
         out.preview = outlines.into_iter().flatten().collect();
@@ -710,7 +712,7 @@ impl App {
         let mut added = Vec::new();
         for ch in &c.changes {
             match ch {
-                Change::Cmd(cmd) => cmds.push(cmd.clone()),
+                Change::Cmd(cmd) => cmds.push((**cmd).clone()),
                 Change::AddGroup { name, paths, style } => {
                     let Some(layer) = self.active_layer() else {
                         continue;

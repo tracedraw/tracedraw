@@ -21,6 +21,51 @@ Each tool keeps its settings under names you give. Pick a preset from the
 list to load it. The gear button shows the row to **Save** the settings
 under a name, **Delete** a preset, or go back to the **Defaults**.
 
+## Plotter Output {#plotter-output}
+
+Cuts the selection on a cutting plotter. Choose the **machine** (the commands
+your cutter understands), the **knife offset** of your blade (often 0.25 mm),
+the **overcut** that closes each outline, the **passes** for thick material,
+and where the job goes:
+
+- **File** saves a .plt file;
+- **Port** sends it to a serial or USB-serial port, such as /dev/ttyUSB0 or
+  COM3 (set the port's speed to the cutter's first, with your system's tools);
+- **Network** sends it to the cutter's address, port 9100 unless you give
+  another.
+
+**Plan the cut order** cuts the nearest outline next and the inner outlines
+first. **Test cut** cuts a small square with a triangle inside, to check the
+knife before the real job. Save your cutter's settings as a preset.
+
+## Weeding {#weeding}
+
+Adds weeding lines from each object to its neighbours, or a box around each
+object, and a weeding frame, so the waste peels off in small pieces.
+
+## Bridges {#bridges}
+
+Leaves short uncut stretches in closed outlines, so the parts stay in the
+sheet until you break them out.
+
+## Cut Order {#cut-order}
+
+Reorders the objects and their outlines for the shortest travel of the knife,
+inner outlines first, and sets where each outline starts and which way it
+runs.
+
+## CutContour {#cutcontour}
+
+Gives the selected objects an outline in the spot color CutContour, the name
+print and cut workflows look for, and can remove their fill. The name is kept
+when you export to PDF, EPS or SVG.
+
+## Registration Marks {#registration-marks}
+
+Adds the marks a cutter's sensor reads for print and cut, around the selection
+or inside the page: squares, circles or L-shaped corners, with more along long
+sides.
+
 ## Find Duplicates {#find-duplicates}
 
 Objects lying exactly on top of another one would be cut twice. Set the
