@@ -562,7 +562,7 @@ fn news(ui: &mut Ui) -> Option<String> {
         ui.add_space(24.0);
         ui.vertical(|ui| {
             ui.set_max_width(640.0);
-            for (i, r) in RELEASES.iter().enumerate() {
+            for (i, r) in RELEASES.iter().take(HISTORY_LEN).enumerate() {
                 ui.add_space(4.0);
                 let heading = egui::RichText::new(news_heading(r)).strong().size(14.0);
                 egui::CollapsingHeader::new(heading)
