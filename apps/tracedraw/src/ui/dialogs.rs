@@ -923,7 +923,29 @@ pub struct OpenNotes {
     /// Fonts the drawing uses that are not installed (empty: none, or the
     /// warning is off).
     pub fonts: Vec<String>,
+    /// Pictures read smaller than the file holds them, each "from to" in
+    /// pixels (#1835); told whatever the warnings say.
+    pub shrunk: Vec<String>,
     pub dont_show: bool,
+}
+
+/// The sizes of pictures shrunk on reading, as the message gives them:
+/// "11160 x 14794 to 5580 x 7397".
+pub fn shrunk_sizes(pictures: &[tracedraw_io::pdf_import::ShrunkPicture]) -> Vec<String> {
+    pictures
+        .iter()
+        .map(|p| {
+            trf(
+                "notes.shrunk_size",
+                &[
+                    ("w", &p.width.to_string()),
+                    ("h", &p.height.to_string()),
+                    ("nw", &p.new_width.to_string()),
+                    ("nh", &p.new_height.to_string()),
+                ],
+            )
+        })
+        .collect()
 }
 
 impl OpenNotes {
@@ -942,6 +964,20 @@ impl OpenNotes {
                 &[
                     ("name", &self.name),
                     ("fonts", &crate::ops2::with_stand_ins(&self.fonts)),
+                ],
+            ));
+        }
+        if !self.shrunk.is_empty() {
+            let mut sizes: Vec<String> = self.shrunk.iter().take(5).cloned().collect();
+            if self.shrunk.len() > 5 {
+                sizes.push("...".into());
+            }
+            parts.push(trf(
+                "notes.shrunk_pictures",
+                &[
+                    ("n", &self.shrunk.len().to_string()),
+                    ("name", &self.name),
+                    ("sizes", &sizes.join("; ")),
                 ],
             ));
         }
@@ -2235,14 +2271,24 @@ pub fn show(app: &mut App, ctx: &Context) {
                 vec![&ok]
             };
             let text = notes.text();
-            let picked = crate::ui::chrome::message_box_check(
-                ctx,
-                crate::ui::chrome::MessageIcon::Info,
-                &text,
-                &buttons,
-                &tr("notes.dont_show"),
-                &mut notes.dont_show,
-            );
+            // Shrunk pictures alone: no warning to turn off.
+            let picked = if notes.unread == 0 && notes.fonts.is_empty() {
+                crate::ui::chrome::message_box(
+                    ctx,
+                    crate::ui::chrome::MessageIcon::Info,
+                    &text,
+                    &buttons,
+                )
+            } else {
+                crate::ui::chrome::message_box_check(
+                    ctx,
+                    crate::ui::chrome::MessageIcon::Info,
+                    &text,
+                    &buttons,
+                    &tr("notes.dont_show"),
+                    &mut notes.dont_show,
+                )
+            };
             if let Some(i) = picked {
                 if notes.dont_show {
                     if notes.unread > 0 {

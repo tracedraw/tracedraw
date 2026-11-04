@@ -227,6 +227,11 @@ pub struct FormatPrefs {
     pub pdf_text_as_curves: bool,
     /// Ask how to read a PDF's text each time one is opened or imported.
     pub pdf_ask_text: bool,
+    /// PDF and AI files: pictures larger than 80 megapixels come in
+    /// shrunk (Reduce very large pictures). Off: they come in at their
+    /// own size, unless the memory guard says otherwise (#1835). The
+    /// browser and Android always reduce them.
+    pub pdf_reduce_pictures: bool,
 }
 
 impl Default for FormatPrefs {
@@ -252,6 +257,7 @@ impl Default for FormatPrefs {
             skip_export_dialog: false,
             pdf_text_as_curves: false,
             pdf_ask_text: true,
+            pdf_reduce_pictures: false,
             export_presets: Vec::new(),
         }
     }

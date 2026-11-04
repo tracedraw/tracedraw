@@ -1331,6 +1331,9 @@ pub struct App {
     pub dialog_return: Option<Box<crate::ui::dialogs::Dialog>>,
     /// The Import PDF question was answered for the file about to be read.
     pub pdf_text_chosen: bool,
+    /// The pictures of the PDF just opened that came in smaller than the
+    /// file holds them, for the message after opening (#1835).
+    pub pdf_shrunk: Vec<tracedraw_io::pdf_import::ShrunkPicture>,
     /// Where a drag for the new frame of a flow began.
     pub text_link_drag: Option<Point>,
     /// The pending link came from a frame's top tab: the frame clicked
@@ -2635,6 +2638,7 @@ impl App {
             pending_text_link: None,
             dialog_return: None,
             pdf_text_chosen: false,
+            pdf_shrunk: Vec::new(),
             text_link_drag: None,
             text_link_incoming: false,
             text_link_from_tab: false,
@@ -6521,6 +6525,7 @@ impl App {
         }
         // Objects of a `.cdr` file left out because they could not be read.
         let mut unread = 0usize;
+        let mut shrunk = Vec::new();
         // The version of an opened `.cdr` file: saving keeps it.
         let mut cdr_version = None;
         let mut opened_version = None;
@@ -6773,6 +6778,7 @@ impl App {
                 for w in &imported.warnings {
                     log::warn!("pdf: {w}");
                 }
+                shrunk = std::mem::take(&mut imported.shrunk_pictures);
                 let pages = imported.pages.len();
                 let n: usize = imported.pages.iter().map(|p| p.shapes.len()).sum();
                 let title = imported.title.clone().unwrap_or(title);
@@ -6938,6 +6944,7 @@ impl App {
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_default();
+                self.pdf_shrunk = shrunk;
                 self.show_open_notes(name, unread);
             }
             Err(e) => {
@@ -7681,6 +7688,9 @@ impl App {
     /// which fonts are missing, as far as Options > Global > Warnings asks
     /// for it, unless another dialog is up.
     pub fn show_open_notes(&mut self, name: String, unread: usize) {
+        // Pictures shrunk on reading are told whatever the warnings say,
+        // after the missing fonts' dialog when it comes first (#1835).
+        let shrunk = crate::ui::dialogs::shrunk_sizes(&std::mem::take(&mut self.pdf_shrunk));
         if !matches!(self.dialog, crate::ui::dialogs::Dialog::None) {
             return;
         }
@@ -7698,6 +7708,9 @@ impl App {
                     &self.missing_fonts,
                 ),
             );
+            if let crate::ui::dialogs::Dialog::MissingFonts(st) = &mut self.dialog {
+                st.shrunk = shrunk;
+            }
             return;
         }
         // Without the dialog, the status line's note of the fonts (set
@@ -7718,9 +7731,10 @@ impl App {
             } else {
                 Vec::new()
             },
+            shrunk,
             dont_show: false,
         };
-        if notes.unread > 0 || !notes.fonts.is_empty() {
+        if notes.unread > 0 || !notes.fonts.is_empty() || !notes.shrunk.is_empty() {
             self.dialog = crate::ui::dialogs::Dialog::OpenNotes(notes);
         }
     }
@@ -8185,6 +8199,25 @@ impl App {
                 }
                 self.hyphenate_imported(&ids);
                 self.select(ids);
+                // The first page's pictures that came in smaller (#1835).
+                let shrunk: Vec<_> = imported
+                    .shrunk_pictures
+                    .iter()
+                    .filter(|p| p.page == 0)
+                    .copied()
+                    .collect();
+                if !shrunk.is_empty() && matches!(self.dialog, crate::ui::dialogs::Dialog::None) {
+                    let name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    self.dialog =
+                        crate::ui::dialogs::Dialog::OpenNotes(crate::ui::dialogs::OpenNotes {
+                            name,
+                            shrunk: crate::ui::dialogs::shrunk_sizes(&shrunk),
+                            ..Default::default()
+                        });
+                }
             }
             Err(e) => self.status = crate::i18n::trf("status.import_failed", &[("e", &e)]),
         }
