@@ -194,3 +194,81 @@ of one subpath and segments running along each other do not count, and
 crossings closer than the tolerance for the same objects are one. With
 **Also between objects** (off at first) crossings between different
 objects count too. OK selects the objects that have crossings.
+
+## Nesting tools
+
+Both place the selected objects (locked ones left alone) on the
+material and move them there on OK, in one undo step ("Shape Nesting",
+"Rectangle Nesting"); with **Draw the sheets** (on) the sheets, or the
+length of roll used, are added as a group of hairline rectangles named
+Sheets. An object that fits nowhere stays where it is and the status
+line says how many. The preview shows the objects where they will go,
+and the sheets.
+
+**Material**: **sheets** of a **width** and **height** (1220 x 2440 mm
+at first), laid side by side from the page's origin to the right, 20 mm
+apart, as many as it takes; or a **roll** of a **width** with no end,
+its length running to the right or up the page. **Margin** (0) is kept
+free along the edges, **spacing** (2 mm) between objects, and the
+layout starts from the **start corner** (bottom left).
+
+### Shape Nesting
+
+Objects by their true outlines: each becomes a region (its closed
+outlines flattened, open curves by their boxes; holes filled unless
+**use holes** is on, 0.5 mm **accuracy** at first), grown by half the
+spacing and drawn on a grid. Objects go largest first, each to the
+lowest, then leftmost, place where it fits on the first sheet that has
+one, slid down and left in exact geometry until it touches, in each
+allowed **turn** (none, 0 and 180 degrees, every 90 at first, every 45);
+the turn whose top ends lowest wins. Then, for up to the **search time**
+(2 s at first) and 30 rounds, two objects of the order swap and the
+layout is kept when it is no worse: fewer left out, fewer sheets, less
+length on the last sheet, a lower sum of tops. The search is seeded, so
+the same selection gives the same layout. Apply waits for the search.
+
+### Rectangle Nesting
+
+Objects by their bounding boxes, largest area first, each in the free
+rectangle that leaves the shortest side over (on a roll, the lowest
+place, then the leftmost); with **boxes may turn 90°** (on) a box may
+turn when that fits better. Quick, for parts that are nearly
+rectangular.
+
+## Measure tools
+
+They change nothing: Apply (or OK) shows the result in a box over the
+preview and the first line on the status line. Lengths and areas are in
+the document's units.
+
+### Perimeter and Area
+
+The length of every outline (curves by arc length, the closing segment
+of a closed outline included), the area by the even-odd rule within
+each object (a closed outline inside an odd number of others is a hole:
+the letter O counts its ring), the outer and hole areas, the box of the
+selection and its area, and the counts of objects, closed and open
+outlines and nodes. Objects are measured on their own: one lying on
+another adds its own area.
+
+### Cutting Time
+
+- cutting = outline length / **cutting speed** (300 mm/s) x
+  **slow-down factor** (1.2)
+- moves = travel with the knife up / **travel speed** (600 mm/s) x the
+  factor, the head going to the **nearest outline next** (on; else in
+  stacking order) from 0,0, a closed outline entered at its nearest node
+- lifts = outlines x **lift and lower** (0.2 s)
+- total = (cutting + moves + lifts) x **passes** (1)
+
+### Cost
+
+Each object is a block, its box grown on every side by the **reserve
+per side** (5 mm). The material is billed **by the roll** (at first:
+the running metres of a roll of the **roll width**, 630 mm, the blocks
+laid on it) or **by area** (square metres of the blocks), at the
+**material price**; then, when not 0, **cutting per metre** of outline
+(0.5), **weeding per m²** of the blocks (12), a price **per object**
+and **machine time per hour** (the cutting time from the Cutting Time
+settings). Everything is multiplied by the **copies**. Prices carry no
+currency; the **currency** typed is shown after the amounts.

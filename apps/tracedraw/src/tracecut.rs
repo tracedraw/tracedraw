@@ -12,6 +12,9 @@ use crate::i18n::{tr, trf};
 use crate::tracecut_cut::{
     BridgeSettings, Changes, CutContourSettings, Job, MarksSettings, OrderSettings, PlotterSettings,
 };
+use crate::tracecut_nest::{
+    CostSettings, RectNestSettings, Report, ShapeNestSettings, TimeSettings,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tracedraw_core::geometry::{BezPath, Point, Rect, Shape as _};
@@ -61,10 +64,15 @@ pub enum ToolId {
     RegistrationMarks,
     FindDuplicates,
     FindCrossings,
+    ShapeNesting,
+    RectNesting,
+    Measure,
+    CuttingTime,
+    Cost,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 8] = [
+    pub const ALL: [ToolId; 13] = [
         ToolId::PlotterOutput,
         ToolId::Weeding,
         ToolId::Bridges,
@@ -73,10 +81,19 @@ impl ToolId {
         ToolId::RegistrationMarks,
         ToolId::FindDuplicates,
         ToolId::FindCrossings,
+        ToolId::ShapeNesting,
+        ToolId::RectNesting,
+        ToolId::Measure,
+        ToolId::CuttingTime,
+        ToolId::Cost,
     ];
 
     pub fn group(self) -> Group {
-        Group::Cut
+        match self {
+            ToolId::ShapeNesting | ToolId::RectNesting => Group::Nesting,
+            ToolId::Measure | ToolId::CuttingTime | ToolId::Cost => Group::Measure,
+            _ => Group::Cut,
+        }
     }
 
     /// The name used for the tool's presets (never translated).
@@ -90,6 +107,11 @@ impl ToolId {
             ToolId::RegistrationMarks => "registration_marks",
             ToolId::FindDuplicates => "find_duplicates",
             ToolId::FindCrossings => "find_crossings",
+            ToolId::ShapeNesting => "shape_nesting",
+            ToolId::RectNesting => "rect_nesting",
+            ToolId::Measure => "measure",
+            ToolId::CuttingTime => "cutting_time",
+            ToolId::Cost => "cost",
         }
     }
 
@@ -104,6 +126,11 @@ impl ToolId {
             ToolId::RegistrationMarks => "tracecut.registration_marks",
             ToolId::FindDuplicates => "tracecut.find_duplicates",
             ToolId::FindCrossings => "tracecut.find_crossings",
+            ToolId::ShapeNesting => "tracecut.shape_nesting",
+            ToolId::RectNesting => "tracecut.rect_nesting",
+            ToolId::Measure => "tracecut.measure",
+            ToolId::CuttingTime => "tracecut.cutting_time",
+            ToolId::Cost => "tracecut.cost",
         }
     }
 }
@@ -180,7 +207,16 @@ pub struct ToolSettings {
     pub marks: MarksSettings,
     pub duplicates: DuplicatesSettings,
     pub crossings: CrossingsSettings,
+    pub shape_nest: ShapeNestSettings,
+    pub rect_nest: RectNestSettings,
+    pub measure: MeasureSettings,
+    pub time: TimeSettings,
+    pub cost: CostSettings,
 }
+
+/// Perimeter and Area has nothing to set; its presets are empty.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct MeasureSettings {}
 
 /// Run `$body` with `$v` bound to `tool`'s settings in `$s`.
 macro_rules! with_settings {
@@ -216,6 +252,26 @@ macro_rules! with_settings {
             }
             ToolId::FindCrossings => {
                 let $v = &mut $s.crossings;
+                $body
+            }
+            ToolId::ShapeNesting => {
+                let $v = &mut $s.shape_nest;
+                $body
+            }
+            ToolId::RectNesting => {
+                let $v = &mut $s.rect_nest;
+                $body
+            }
+            ToolId::Measure => {
+                let $v = &mut $s.measure;
+                $body
+            }
+            ToolId::CuttingTime => {
+                let $v = &mut $s.time;
+                $body
+            }
+            ToolId::Cost => {
+                let $v = &mut $s.cost;
                 $body
             }
         }
@@ -374,6 +430,8 @@ pub enum Outcome {
     Job { job: Box<Job>, summary: String },
     /// Changes of the drawing a Cut tool worked out.
     Changes(Box<Changes>),
+    /// A result to read; OK changes nothing.
+    Report(Box<Report>),
     /// Each object repeating an earlier one, with that one.
     Duplicates(Vec<(ShapeId, ShapeId)>),
     /// The places where outlines cross, and the objects that have them.
@@ -389,6 +447,7 @@ impl Outcome {
         match self {
             Outcome::Job { summary, .. } => summary.clone(),
             Outcome::Changes(c) => c.summary.clone(),
+            Outcome::Report(r) => r.lines.first().cloned().unwrap_or_default(),
             Outcome::Duplicates(d) if d.is_empty() => tr("tracecut.no_duplicates"),
             Outcome::Duplicates(d) => {
                 trf("tracecut.duplicates_found", &[("n", &d.len().to_string())])
@@ -526,6 +585,17 @@ impl App {
             ToolId::RegistrationMarks => {
                 Outcome::Changes(Box::new(self.tracecut_marks(&settings.marks)))
             }
+            ToolId::ShapeNesting => {
+                Outcome::Changes(Box::new(self.tracecut_shape_nest(&settings.shape_nest)))
+            }
+            ToolId::RectNesting => {
+                Outcome::Changes(Box::new(self.tracecut_rect_nest(&settings.rect_nest)))
+            }
+            ToolId::Measure => Outcome::Report(Box::new(self.tracecut_measure())),
+            ToolId::CuttingTime => Outcome::Report(Box::new(self.tracecut_time(&settings.time).0)),
+            ToolId::Cost => {
+                Outcome::Report(Box::new(self.tracecut_cost(&settings.cost, &settings.time)))
+            }
             ToolId::FindDuplicates => {
                 let found =
                     cleanup::find_duplicates(&outlines, clamp(settings.duplicates.tolerance));
@@ -598,7 +668,11 @@ impl App {
                 }
                 Outcome::Crossings { points, .. } => scene.points = points.clone(),
                 Outcome::Job { job, .. } => scene.moves = job.moves.clone(),
+                Outcome::Report(_) => {}
                 Outcome::Changes(c) => {
+                    if c.hide_objects {
+                        scene.objects.clear();
+                    }
                     scene.marked = c.preview.clone();
                     scene.points = c.points.clone();
                     scene.moves = c.moves.clone();
@@ -637,6 +711,10 @@ impl App {
                 true
             }
             Outcome::Changes(c) => self.tracecut_apply_changes(c),
+            Outcome::Report(r) => {
+                self.status = r.lines.first().cloned().unwrap_or_default();
+                false
+            }
             Outcome::Duplicates(d) => {
                 let doc = self.doc();
                 let dups: Vec<ShapeId> = d

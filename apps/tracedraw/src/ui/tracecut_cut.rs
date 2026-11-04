@@ -300,7 +300,7 @@ pub fn settings(ui: &mut Ui, units: Units, st: &mut TraceCutState) -> Option<Act
                 )
             });
         }
-        ToolId::FindDuplicates | ToolId::FindCrossings => {}
+        _ => {}
     }
     action
 }

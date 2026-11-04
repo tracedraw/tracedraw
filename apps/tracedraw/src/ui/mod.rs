@@ -105,6 +105,7 @@ pub mod time_tracker;
 pub mod trace_dialog;
 pub mod tracecut;
 pub mod tracecut_cut;
+pub mod tracecut_nest;
 // The audit reads widget names, which egui keeps only in debug builds.
 #[cfg(all(test, debug_assertions))]
 mod tip_audit;

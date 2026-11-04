@@ -140,6 +140,7 @@ fn tool_pane(app: &mut App, ui: &mut Ui, st: &mut TraceCutState, width: f32) -> 
         .auto_shrink([false, true])
         .show(ui, |ui| {
             let a = crate::ui::tracecut_cut::settings(ui, app.units, st);
+            crate::ui::tracecut_nest::settings(ui, app.units, st);
             settings(ui, app.units, st);
             a
         })
@@ -158,6 +159,24 @@ fn tool_pane(app: &mut App, ui: &mut Ui, st: &mut TraceCutState, width: f32) -> 
         .as_ref()
         .filter(|w| app.tracecut_current(w, st.tool, &st.settings));
     let scene = app.tracecut_scene(current);
+    // A calculation's result, to read.
+    if let Some(crate::tracecut::Outcome::Report(r)) = current.map(|w| &w.outcome) {
+        egui::Frame::new()
+            .fill(Tokens::field())
+            .stroke(Stroke::new(1.0, Tokens::border()))
+            .inner_margin(egui::Margin::same(6))
+            .show(ui, |ui| {
+                ui.set_width(width - 18.0);
+                for (i, line) in r.lines.iter().enumerate() {
+                    let text = egui::RichText::new(line);
+                    ui.label(if i == 0 {
+                        text.strong().size(14.0)
+                    } else {
+                        text
+                    });
+                }
+            });
+    }
     let h = (ui.available_height() - BELOW_PREVIEW).max(120.0);
     preview(ui, Vec2::new(width - 4.0, h), &scene);
     let has_targets = !scene.objects.is_empty() || !app.selection.is_empty();

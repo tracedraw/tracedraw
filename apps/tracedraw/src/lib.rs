@@ -201,6 +201,7 @@ mod trace;
 mod trace_preview;
 mod tracecut;
 mod tracecut_cut;
+mod tracecut_nest;
 mod tracecut_send;
 mod ui;
 mod updates;

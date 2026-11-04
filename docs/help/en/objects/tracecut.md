@@ -79,3 +79,19 @@ Outlines that cross themselves cut badly, and objects that cross each other
 usually need a weld first. TraceCut finds the crossings, shows them as red
 rings in the preview, and OK selects the objects that have them. Tick
 **Also between objects** to find crossings between different objects too.
+
+## Nesting {#nesting}
+
+**Shape Nesting** places the selected objects on sheets or a roll by their
+true outlines, turning them and fitting small ones into holes, to waste as
+little material as possible. **Rectangle Nesting** does the same by their
+boxes, faster. Set the sheet or roll size, the margin and the spacing between
+objects; OK moves the objects onto the material and can draw the sheets.
+
+## Measuring {#measuring}
+
+**Perimeter and Area** gives the outline length and the area of the
+selection, holes taken away. **Cutting Time** works out how long the cutter
+takes, from its speeds. **Cost** prices the job: the material by area or by
+the length of roll, cutting, weeding, pieces and machine time. These tools
+change nothing in the drawing.

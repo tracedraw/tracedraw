@@ -181,6 +181,8 @@ pub struct Changes {
     /// Moves with the knife up, for the preview.
     pub moves: Vec<(Point, Point)>,
     pub summary: String,
+    /// The preview shows the result in place of the objects (nesting).
+    pub hide_objects: bool,
 }
 
 /// A plotter job worked out for the preview and for OK.
