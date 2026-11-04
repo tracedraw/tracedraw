@@ -1568,6 +1568,8 @@ pub struct App {
     pub show_transform_toolbar: bool,
     /// Right-click context menu anchor (screen position, page position).
     pub context_menu: Option<(egui::Pos2, Point)>,
+    /// The rulers' right-click menu, where it was opened (#1831).
+    pub ruler_menu: Option<egui::Pos2>,
     /// A locked object right-clicked with a pick tool: the context menu
     /// offers to unlock it (it is not selected, so it cannot be edited).
     pub context_locked: Option<ShapeId>,
@@ -2757,6 +2759,7 @@ impl App {
             show_zoom_toolbar: false,
             show_transform_toolbar: false,
             context_menu: None,
+            ruler_menu: None,
             context_locked: None,
             scripts_output: Vec::new(),
             script_source: String::new(),
@@ -3051,6 +3054,18 @@ impl App {
     /// Double-click on a ruler: Document Setup at the Rulers page.
     pub fn open_ruler_options(&mut self) {
         self.options_page = crate::ui::dialogs::OptionsPage::Rulers;
+        self.dialog = crate::ui::dialogs::Dialog::Options;
+    }
+
+    /// Open the grid settings (Options, Document, Grid).
+    pub fn open_grid_options(&mut self) {
+        self.options_page = crate::ui::dialogs::OptionsPage::Grid;
+        self.dialog = crate::ui::dialogs::Dialog::Options;
+    }
+
+    /// Open the guideline settings (Options, Document, Guidelines).
+    pub fn open_guidelines_options(&mut self) {
+        self.options_page = crate::ui::dialogs::OptionsPage::Guidelines;
         self.dialog = crate::ui::dialogs::Dialog::Options;
     }
 

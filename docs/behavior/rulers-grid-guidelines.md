@@ -25,6 +25,13 @@
 - Dragging out of a ruler adds a guideline (horizontal from the top ruler,
   vertical from the left one) where it is released inside the window.
 - Double-clicking a ruler or the corner opens Document Setup at Rulers.
+- Right-clicking a ruler or the corner opens the rulers' menu where it
+  was clicked (#1831): Ruler Setup..., Grid Setup... and Guidelines
+  Setup... open Document Setup at Rulers, Grid and Guidelines, and Rulers
+  (checked, Alt+Shift+R) hides the rulers, as View > Rulers does. A click
+  outside closes it
+  (`ui::rulers::tests::a_right_click_on_a_ruler_opens_its_menu`,
+  `ui::rulers::tests::the_ruler_menu_opens_the_setup_pages_and_hides_the_rulers`).
 
 ### Origin
 

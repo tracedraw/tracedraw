@@ -49,6 +49,8 @@ full, row-by-row status.
 
 - Opening `.cdr`: an object distorted two or more times (a Push and Pull, Zipper or Twister applied again over the first) opens with all its distortions. It opened with the first one only, and saved that wrong shape again. The earlier distortions are now part of the outline and the last one stays live and editable; the shapes match the pictures the files carry (Refs #1824).
 
+- Rulers: a right click on a ruler or on the corner where they meet opens a menu with Ruler Setup, Grid Setup and Guidelines Setup (Document Setup at that page) and Rulers to hide them. A right click on a ruler did nothing (#1831).
+
 - Cropping a picture that has a transparency: what is left looks as it did. Dragging a picture's corner nodes with the Shape tool, or cutting it with the Crop tool, put the picture in a clip frame that kept a copy of its transparency and opacity, so they were laid on twice and the picture turned much paler; with a gradient transparency the frame's copy also started again across the cut-down picture at each node moved. The picture inside now keeps its transparency in its place on the page, and the frame keeps none. A clip frame's own gradient transparency also stays in place when the frame's nodes are moved (#1491).
 
 - Blend, Apply to sizing: each step takes the outline and the size of its accelerated place. A square blended into a circle with the steps packed toward the circle kept square steps right up to the circle, because only their size followed the acceleration; the steps by the circle are now round, as the pictures of the `.cdr` files saved with that setting show (#1576).
