@@ -842,6 +842,7 @@ impl Command {
             }
             Command::SetShapeKind { shape, kind } => {
                 let parent = doc.parent_transform(*shape).unwrap_or(Affine::IDENTITY);
+                let holder = clip_frame_of_frame(doc, *shape);
                 let s = any_mut(doc, *shape)?;
                 // A new outline of the same object (nodes moved, an area
                 // cropped off): its gradient fill and transparency stay
@@ -871,12 +872,14 @@ impl Command {
                     let after = crate::geometry::Shape::bounding_box(&(parent * s.page_path()));
                     s.keep_paint_in_place(before, after);
                 }
+                keep_clip_frame_paint(doc, holder);
             }
             Command::SetSpline { shape, points } => {
                 if points.len() < 2 || points.iter().any(|p| !p.is_finite()) {
                     return Err(Error::BadSpline);
                 }
                 let parent = doc.parent_transform(*shape).unwrap_or(Affine::IDENTITY);
+                let holder = clip_frame_of_frame(doc, *shape);
                 let s = any_mut(doc, *shape)?;
                 let closed = matches!(s.kind, ShapeKind::Path { closed: true, .. });
                 let before = crate::geometry::Shape::bounding_box(&(parent * s.page_path()));
@@ -889,6 +892,7 @@ impl Command {
                 s.keep_paint_in_place(before, after);
                 s.node_types.clear();
                 s.spline = Some(points.clone());
+                keep_clip_frame_paint(doc, holder);
             }
             Command::SetNodeTypes { shape, types } => {
                 any_mut(doc, *shape)?.node_types = types.clone()
@@ -1482,6 +1486,41 @@ fn each_shape_mut(doc: &mut Document, f: &mut dyn FnMut(&mut Shape)) {
 }
 
 /// Any object to change, nested ones too.
+/// The page box of the object `id`, nested ones too.
+fn page_box(doc: &Document, id: ShapeId) -> Option<crate::geometry::Rect> {
+    let parent = doc.parent_transform(id)?;
+    let s = doc.find_shape(id)?;
+    Some(crate::geometry::Shape::bounding_box(
+        &(parent * s.page_path()),
+    ))
+}
+
+/// When `id` is the frame of a clip frame: that clip frame and its page
+/// box. A clip frame's gradient transparency is placed on its frame's
+/// box, so a new outline of the frame must keep it in place (#1491).
+fn clip_frame_of_frame(doc: &Document, id: ShapeId) -> Option<(ShapeId, crate::geometry::Rect)> {
+    let holder = *doc.ancestors(id).last()?;
+    match &doc.find_shape(holder)?.kind {
+        ShapeKind::ClipFrame { frame, .. } if frame.id == id => {
+            Some((holder, page_box(doc, holder)?))
+        }
+        _ => None,
+    }
+}
+
+/// Keep the paint of the clip frame found by [`clip_frame_of_frame`]
+/// where it lay on the page, now that its frame has a new outline.
+fn keep_clip_frame_paint(doc: &mut Document, holder: Option<(ShapeId, crate::geometry::Rect)>) {
+    let Some((id, before)) = holder else {
+        return;
+    };
+    if let Some(after) = page_box(doc, id) {
+        if let Some(s) = doc.find_shape_mut(id) {
+            s.keep_paint_in_place(before, after);
+        }
+    }
+}
+
 fn any_mut(doc: &mut Document, id: ShapeId) -> Result<&mut Shape> {
     doc.find_shape_mut(id).ok_or(Error::ShapeNotFound(id))
 }
@@ -2284,6 +2323,78 @@ mod tests {
         let s = eng.document().find_shape(id).unwrap();
         assert!(matches!(s.kind, ShapeKind::Rect { .. }));
         assert!(matches!(&s.fill, Fill::Fountain(f) if f.handles.is_none()));
+    }
+
+    /// #1491: a picture cropped with the Shape tool is a clip frame whose
+    /// frame gets the moved nodes. The clip frame's gradient transparency
+    /// lies on the frame's box, so it stays where it was on the page when
+    /// the frame takes a new outline, as it does for any other object.
+    #[test]
+    fn a_new_frame_outline_keeps_the_clip_frames_gradient_in_place() {
+        use crate::geometry::Point;
+        use crate::style::{Fountain, FountainKind};
+        let mut eng = crate::Engine::new(Document::new("t", Size::new(200.0, 200.0)));
+        let layer = eng.document().pages[0].layers[0].id;
+        let square = |x0: f64| {
+            let mut p = BezPath::new();
+            p.move_to((x0, 0.0));
+            p.line_to((100.0, 0.0));
+            p.line_to((100.0, 50.0));
+            p.line_to((x0, 50.0));
+            p.close_path();
+            ShapeKind::Path {
+                path: p,
+                closed: true,
+            }
+        };
+        let frame_id = eng.new_shape_id();
+        let mut frame = Shape::new(frame_id, square(0.0));
+        frame.fill = Fill::None;
+        let inner = Shape::new(eng.new_shape_id(), square(0.0));
+        let id = eng.new_shape_id();
+        let mut clip = Shape::new(
+            id,
+            ShapeKind::ClipFrame {
+                frame: Box::new(frame),
+                contents: vec![inner],
+            },
+        );
+        clip.effects.push(crate::live::Effect::Transparency {
+            mask: Fill::Fountain(Fountain::two(
+                FountainKind::Linear,
+                Color::BLACK,
+                Color::WHITE,
+                0.0,
+            )),
+            merge: Default::default(),
+            target: 2,
+        });
+        eng.run(&Command::AddShape { layer, shape: clip }).unwrap();
+        eng.run(&Command::SetShapeKind {
+            shape: frame_id,
+            kind: square(50.0),
+        })
+        .unwrap();
+        let s = eng.document().find_shape(id).unwrap().clone();
+        let b = crate::geometry::Shape::bounding_box(&s.page_path());
+        assert!((b.x0 - 50.0).abs() < 1e-9, "{b:?}");
+        let Some(crate::live::Effect::Transparency {
+            mask: Fill::Fountain(f),
+            ..
+        }) = s.effects.first()
+        else {
+            panic!("a gradient transparency");
+        };
+        // Three quarters of the way along the ramp at x = 75, as before.
+        let t = f.param_at(b, Point::new(75.0, 25.0)).unwrap();
+        assert!((t - 0.75).abs() < 1e-9, "{t}");
+        eng.undo().unwrap();
+        let s = eng.document().find_shape(id).unwrap();
+        assert!(matches!(
+            s.effects.first(),
+            Some(crate::live::Effect::Transparency { mask: Fill::Fountain(f), .. })
+                if f.handles.is_none()
+        ));
     }
 
     fn rect(doc: &mut Document, x: f64) -> Shape {
