@@ -988,22 +988,24 @@ impl<'a> Checker<'a> {
 }
 
 /// Findings of a version 16+ paragraph text record (the frame flag
-/// clear), held against every paragraph text of the files of versions 19,
-/// 22 and 27: layout 1800 from version 19, and paragraph styles with
-/// the hyphenation, bullet, drop cap, indent and tab members
-/// ([`crate::write::FRAME_TEXT_PARAGRAPH`]). TraceDraw wrote paragraph
-/// text with artistic text's layout 1700 and members, and the program
-/// that reads the files hung on opening it (#1698).
+/// clear), held against every paragraph text of the files of versions 16
+/// to 27: from version 19 layout 1700, which none holds (the files of
+/// the program's 2019 release hold 1500, those of its recent releases
+/// 1800),
+/// and paragraph styles with the hyphenation, bullet, drop cap, indent
+/// and tab members ([`crate::write::FRAME_TEXT_PARAGRAPH`]). TraceDraw
+/// wrote paragraph text with artistic text's layout 1700 and members,
+/// and the program that reads the files hung on opening it (#1698).
 pub(crate) fn frame_text_findings(t: &text::Txsm, v: u16) -> Vec<String> {
     let mut out = Vec::new();
     if t.frame_text_styles.is_empty() {
         return out;
     }
-    if v >= 19 && t.layout != Some(1800) {
-        out.push(format!(
-            "paragraph text of layout {}; the files of version 19 on hold 1800",
-            t.layout.map_or("?".to_string(), |l| l.to_string())
-        ));
+    if v >= 19 && t.layout == Some(1700) {
+        out.push(
+            "paragraph text of layout 1700; the files of version 19 on hold 1500 or 1800"
+                .to_string(),
+        );
     }
     for (i, style) in t.frame_text_styles.iter().enumerate() {
         let missing: Vec<&str> = crate::write::FRAME_TEXT_PARAGRAPH
@@ -1241,8 +1243,10 @@ mod tests {
             old[1].contains("tabs") && old[1].contains("leftMargin"),
             "{old:?}"
         );
-        // Layout 1700 before 19, where no paragraph text was seen.
-        assert!(frame_text_findings(&txsm(1700, vec![full]), 18).is_empty());
+        // Layout 1700 before 19, where TraceDraw keeps it.
+        assert!(frame_text_findings(&txsm(1700, vec![full.clone()]), 18).is_empty());
+        // The 2019 release's paragraph text of layout 1500 (#1852, #1833).
+        assert!(frame_text_findings(&txsm(1500, vec![full]), 21).is_empty());
         // Artistic text keeps its own.
         assert!(frame_text_findings(&txsm(1700, Vec::new()), 27).is_empty());
     }
