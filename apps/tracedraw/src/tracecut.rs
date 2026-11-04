@@ -9,10 +9,14 @@
 
 use crate::app::App;
 use crate::i18n::{tr, trf};
+use crate::tracecut_cut::{
+    BridgeSettings, Changes, CutContourSettings, Job, MarksSettings, OrderSettings, PlotterSettings,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tracedraw_core::geometry::{BezPath, Point, Rect, Shape as _};
 use tracedraw_core::{Command, ShapeId};
+use tracedraw_tracecut::cut::weed::WeedSpec;
 use tracedraw_tracecut::{cleanup, crossings};
 
 /// The groups of the tool list, in the order they are shown.
@@ -49,22 +53,41 @@ impl Group {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ToolId {
     #[default]
+    PlotterOutput,
+    Weeding,
+    Bridges,
+    CutOrder,
+    CutContour,
+    RegistrationMarks,
     FindDuplicates,
     FindCrossings,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 2] = [ToolId::FindDuplicates, ToolId::FindCrossings];
+    pub const ALL: [ToolId; 8] = [
+        ToolId::PlotterOutput,
+        ToolId::Weeding,
+        ToolId::Bridges,
+        ToolId::CutOrder,
+        ToolId::CutContour,
+        ToolId::RegistrationMarks,
+        ToolId::FindDuplicates,
+        ToolId::FindCrossings,
+    ];
 
     pub fn group(self) -> Group {
-        match self {
-            ToolId::FindDuplicates | ToolId::FindCrossings => Group::Cut,
-        }
+        Group::Cut
     }
 
     /// The name used for the tool's presets (never translated).
     pub fn id(self) -> &'static str {
         match self {
+            ToolId::PlotterOutput => "plotter_output",
+            ToolId::Weeding => "weeding",
+            ToolId::Bridges => "bridges",
+            ToolId::CutOrder => "cut_order",
+            ToolId::CutContour => "cut_contour",
+            ToolId::RegistrationMarks => "registration_marks",
             ToolId::FindDuplicates => "find_duplicates",
             ToolId::FindCrossings => "find_crossings",
         }
@@ -73,6 +96,12 @@ impl ToolId {
     /// The i18n key of the tool's name; `<key>_desc` describes it.
     pub fn key(self) -> &'static str {
         match self {
+            ToolId::PlotterOutput => "tracecut.plotter_output",
+            ToolId::Weeding => "tracecut.weeding",
+            ToolId::Bridges => "tracecut.bridges",
+            ToolId::CutOrder => "tracecut.cut_order",
+            ToolId::CutContour => "tracecut.cut_contour",
+            ToolId::RegistrationMarks => "tracecut.registration_marks",
             ToolId::FindDuplicates => "tracecut.find_duplicates",
             ToolId::FindCrossings => "tracecut.find_crossings",
         }
@@ -143,39 +172,85 @@ pub const TOLERANCE_RANGE: (f64, f64) = (0.001, 10.0);
 /// The settings of every tool, as the window shows them.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ToolSettings {
+    pub plotter: PlotterSettings,
+    pub weeding: WeedSpec,
+    pub bridges: BridgeSettings,
+    pub order: OrderSettings,
+    pub contour: CutContourSettings,
+    pub marks: MarksSettings,
     pub duplicates: DuplicatesSettings,
     pub crossings: CrossingsSettings,
+}
+
+/// Run `$body` with `$v` bound to `tool`'s settings in `$s`.
+macro_rules! with_settings {
+    ($s:expr, $tool:expr, $v:ident => $body:expr) => {
+        match $tool {
+            ToolId::PlotterOutput => {
+                let $v = &mut $s.plotter;
+                $body
+            }
+            ToolId::Weeding => {
+                let $v = &mut $s.weeding;
+                $body
+            }
+            ToolId::Bridges => {
+                let $v = &mut $s.bridges;
+                $body
+            }
+            ToolId::CutOrder => {
+                let $v = &mut $s.order;
+                $body
+            }
+            ToolId::CutContour => {
+                let $v = &mut $s.contour;
+                $body
+            }
+            ToolId::RegistrationMarks => {
+                let $v = &mut $s.marks;
+                $body
+            }
+            ToolId::FindDuplicates => {
+                let $v = &mut $s.duplicates;
+                $body
+            }
+            ToolId::FindCrossings => {
+                let $v = &mut $s.crossings;
+                $body
+            }
+        }
+    };
 }
 
 impl ToolSettings {
     /// `tool`'s settings as JSON (for its presets and to tell when a
     /// result is out of date).
     pub fn to_json(&self, tool: ToolId) -> serde_json::Value {
-        let v = match tool {
-            ToolId::FindDuplicates => serde_json::to_value(&self.duplicates),
-            ToolId::FindCrossings => serde_json::to_value(&self.crossings),
-        };
-        v.unwrap_or(serde_json::Value::Null)
+        let mut copy = self.clone();
+        with_settings!(copy, tool, v => serde_json::to_value(&*v))
+            .unwrap_or(serde_json::Value::Null)
     }
 
     /// Load `tool`'s settings from JSON; false when it does not read.
-    pub fn load_json(&mut self, tool: ToolId, v: &serde_json::Value) -> bool {
-        match tool {
-            ToolId::FindDuplicates => serde_json::from_value(v.clone())
-                .map(|s| self.duplicates = s)
-                .is_ok(),
-            ToolId::FindCrossings => serde_json::from_value(v.clone())
-                .map(|s| self.crossings = s)
-                .is_ok(),
+    pub fn load_json(&mut self, tool: ToolId, json: &serde_json::Value) -> bool {
+        fn load<T: serde::de::DeserializeOwned>(to: &mut T, json: &serde_json::Value) -> bool {
+            match serde_json::from_value(json.clone()) {
+                Ok(v) => {
+                    *to = v;
+                    true
+                }
+                Err(_) => false,
+            }
         }
+        with_settings!(self, tool, v => load(v, json))
     }
 
     /// Put `tool`'s settings back to their defaults.
     pub fn reset(&mut self, tool: ToolId) {
-        match tool {
-            ToolId::FindDuplicates => self.duplicates = DuplicatesSettings::default(),
-            ToolId::FindCrossings => self.crossings = CrossingsSettings::default(),
+        fn clear<T: Default>(v: &mut T) {
+            *v = T::default();
         }
+        with_settings!(self, tool, v => clear(v))
     }
 }
 
@@ -296,6 +371,10 @@ impl PresetStore {
 /// What a tool found, ready to show in the preview and to apply.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
+    /// A plotter job and its line for the status strip.
+    Job { job: Box<Job>, summary: String },
+    /// Changes of the drawing a Cut tool worked out.
+    Changes(Box<Changes>),
     /// Each object repeating an earlier one, with that one.
     Duplicates(Vec<(ShapeId, ShapeId)>),
     /// The places where outlines cross, and the objects that have them.
@@ -309,6 +388,8 @@ impl Outcome {
     /// The line under the preview that says what was found.
     pub fn summary(&self) -> String {
         match self {
+            Outcome::Job { summary, .. } => summary.clone(),
+            Outcome::Changes(c) => c.summary.clone(),
             Outcome::Duplicates(d) if d.is_empty() => tr("tracecut.no_duplicates"),
             Outcome::Duplicates(d) => {
                 trf("tracecut.duplicates_found", &[("n", &d.len().to_string())])
@@ -369,6 +450,8 @@ pub struct Scene {
     pub marked: Vec<BezPath>,
     /// Points the result points at (drawn as rings).
     pub points: Vec<Point>,
+    /// Moves with the knife up (drawn as thin lines).
+    pub moves: Vec<(Point, Point)>,
     pub extent: Option<Rect>,
 }
 
@@ -425,6 +508,25 @@ impl App {
             }
         };
         let outcome = match tool {
+            ToolId::PlotterOutput => {
+                let job = self.tracecut_job(&settings.plotter);
+                let summary = self.tracecut_job_summary(&job);
+                Outcome::Job {
+                    job: Box::new(job),
+                    summary,
+                }
+            }
+            ToolId::Weeding => Outcome::Changes(Box::new(self.tracecut_weeding(&settings.weeding))),
+            ToolId::Bridges => Outcome::Changes(Box::new(self.tracecut_bridges(&settings.bridges))),
+            ToolId::CutOrder => {
+                Outcome::Changes(Box::new(self.tracecut_cut_order(&settings.order)))
+            }
+            ToolId::CutContour => {
+                Outcome::Changes(Box::new(self.tracecut_cut_contour(&settings.contour)))
+            }
+            ToolId::RegistrationMarks => {
+                Outcome::Changes(Box::new(self.tracecut_marks(&settings.marks)))
+            }
             ToolId::FindDuplicates => {
                 let found =
                     cleanup::find_duplicates(&outlines, clamp(settings.duplicates.tolerance));
@@ -496,11 +598,18 @@ impl App {
                     }
                 }
                 Outcome::Crossings { points, .. } => scene.points = points.clone(),
+                Outcome::Job { job, .. } => scene.moves = job.moves.clone(),
+                Outcome::Changes(c) => {
+                    scene.marked = c.preview.clone();
+                    scene.points = c.points.clone();
+                    scene.moves = c.moves.clone();
+                }
             }
         }
         scene.extent = scene
             .objects
             .iter()
+            .chain(scene.marked.iter())
             .map(|p| p.bounding_box())
             .filter(|b| {
                 b.x0.is_finite() && b.y0.is_finite() && b.x1.is_finite() && b.y1.is_finite()
@@ -513,8 +622,22 @@ impl App {
     /// in one undo step (or selects them), Find Crossings selects the
     /// objects that have crossings. Returns whether anything was done;
     /// the status line says what.
-    pub fn tracecut_commit(&mut self, w: &Worked, settings: &ToolSettings) -> bool {
+    pub fn tracecut_commit(
+        &mut self,
+        w: &Worked,
+        settings: &ToolSettings,
+        ctx: Option<egui::Context>,
+    ) -> bool {
         match &w.outcome {
+            Outcome::Job { job, summary } => {
+                if job.plot.outlines == 0 {
+                    self.status = summary.clone();
+                    return false;
+                }
+                self.tracecut_output(&settings.plotter, &job.plot, ctx);
+                true
+            }
+            Outcome::Changes(c) => self.tracecut_apply_changes(c),
             Outcome::Duplicates(d) => {
                 let doc = self.doc();
                 let dups: Vec<ShapeId> = d
@@ -601,7 +724,7 @@ mod tests {
         // Working it out changes nothing.
         assert!(app.doc().find_shape(b).is_some());
         let undo_before = app.engine.history_labels().0.len();
-        assert!(app.tracecut_commit(&w, &settings));
+        assert!(app.tracecut_commit(&w, &settings, None));
         assert!(app.doc().find_shape(b).is_none());
         assert!(app.doc().find_shape(a).is_some() && app.doc().find_shape(c).is_some());
         let (undo, _) = app.engine.history_labels();
@@ -621,7 +744,7 @@ mod tests {
         settings.duplicates.delete = false;
         let w = app.tracecut_work_out(ToolId::FindDuplicates, &settings);
         let rev = app.engine.revision();
-        assert!(app.tracecut_commit(&w, &settings));
+        assert!(app.tracecut_commit(&w, &settings, None));
         assert_eq!(app.selection, vec![b]);
         assert_eq!(app.engine.revision(), rev);
     }
@@ -643,7 +766,7 @@ mod tests {
         };
         assert_eq!(points.len(), 2);
         assert_eq!(objects, &vec![a, b]);
-        assert!(app.tracecut_commit(&w, &settings));
+        assert!(app.tracecut_commit(&w, &settings, None));
         assert_eq!(app.selection, vec![a, b]);
     }
 

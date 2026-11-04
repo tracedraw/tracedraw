@@ -406,6 +406,30 @@ pub fn write_creating(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> std::i
     std::fs::write(path, bytes)
 }
 
+/// Write `bytes` to a device such as a serial port (`/dev/ttyUSB0`,
+/// `COM3`) without creating or truncating anything: the device must
+/// exist. A bare Windows port name (`COM10`) is opened through the
+/// device namespace (`\\.\COM10`), which every port number needs past
+/// 9. Not in a browser or on Android, which have no such devices.
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+pub fn write_device(path: &str, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
+    let path = path.trim();
+    let upper = path.to_ascii_uppercase();
+    let device = if cfg!(windows)
+        && upper.starts_with("COM")
+        && upper.len() > 3
+        && upper[3..].bytes().all(|b| b.is_ascii_digit())
+    {
+        format!("\\\\.\\{path}")
+    } else {
+        path.to_string()
+    };
+    let mut f = std::fs::OpenOptions::new().write(true).open(device)?;
+    f.write_all(bytes)?;
+    f.flush()
+}
+
 /// Delete a file (in a browser, only in the auto-backup folder and the
 /// folders kept in memory).
 pub fn remove(path: impl AsRef<Path>) -> std::io::Result<()> {

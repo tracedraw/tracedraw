@@ -1557,6 +1557,8 @@ fn unit_value(ui: &mut Ui, label: &str, tip: &str, mm: &mut f64, units: Units) -
 }
 
 pub fn show(app: &mut App, ctx: &Context) {
+    // A plotter job sent on a thread of its own tells how it went.
+    crate::tracecut_send::poll(app);
     crate::ui::chrome::set_center_dialogs(ctx, app.settings.center_dialogs);
     // An options dialog replaced by another dialog keeps its changes.
     if !matches!(app.dialog, Dialog::Options) {

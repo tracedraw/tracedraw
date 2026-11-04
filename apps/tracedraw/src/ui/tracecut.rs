@@ -30,6 +30,8 @@ const BELOW_PREVIEW: f32 = 74.0;
 /// Colours of the preview.
 const OBJECT: Color32 = Color32::from_gray(70);
 const MARKED: Color32 = Color32::from_rgb(0xD0, 0x20, 0x20);
+/// Moves with the knife up.
+const MOVE: Color32 = Color32::from_rgb(0x30, 0x80, 0xD0);
 /// The status line under the preview.
 const STRIP: Color32 = Color32::from_rgb(0xFF, 0xF4, 0xB0);
 
@@ -82,8 +84,8 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut TraceCutState, close: &mut 
                 Some(w) if app.tracecut_current(&w, st.tool, &st.settings) => w,
                 _ => app.tracecut_work_out(st.tool, &st.settings),
             };
-            if !worked.targets.is_empty() {
-                app.tracecut_commit(&worked, &st.settings);
+            if !worked.targets.is_empty() || st.tool == ToolId::RegistrationMarks {
+                app.tracecut_commit(&worked, &st.settings, Some(ctx.clone()));
             }
             *close = true;
         }
@@ -130,7 +132,23 @@ fn tool_pane(app: &mut App, ui: &mut Ui, st: &mut TraceCutState, width: f32) -> 
     preset_row(ui, st);
     ui.add_space(4.0);
     let before = st.settings.clone();
-    settings(ui, app.units, st);
+    // A long list of settings scrolls; the preview keeps its room.
+    let max_h = (ui.available_height() * 0.5).max(120.0);
+    let action = egui::ScrollArea::vertical()
+        .id_salt(("tracecut_settings", st.tool.id()))
+        .max_height(max_h)
+        .auto_shrink([false, true])
+        .show(ui, |ui| {
+            let a = crate::ui::tracecut_cut::settings(ui, app.units, st);
+            settings(ui, app.units, st);
+            a
+        })
+        .inner;
+    if action == Some(crate::ui::tracecut_cut::Action::TestCut) {
+        let plot = app.tracecut_test_job(&st.settings.plotter);
+        let s = st.settings.plotter.clone();
+        app.tracecut_output(&s, &plot, Some(ui.ctx().clone()));
+    }
     if st.settings != before {
         // A setting changed: the result shown is not this one's.
         st.worked = None;
@@ -237,16 +255,20 @@ fn preset_row(ui: &mut Ui, st: &mut TraceCutState) {
 }
 
 /// A settings row: the label on the left, `add` after it.
-fn row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+pub(crate) fn row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
     ui.horizontal(|ui| {
-        ui.add_sized([LABEL_W, 22.0], egui::Label::new(label).truncate());
+        if label.is_empty() {
+            ui.add_space(LABEL_W);
+        } else {
+            ui.add_sized([LABEL_W, 22.0], egui::Label::new(label).truncate());
+        }
         add(ui)
     })
     .inner
 }
 
 /// A length field in the document's units holding millimetres.
-fn length(ui: &mut Ui, u: Units, mm: &mut f64, range: (f64, f64), tip: &str) {
+pub(crate) fn length(ui: &mut Ui, u: Units, mm: &mut f64, range: (f64, f64), tip: &str) {
     let mut v = u.world_from_mm(*mm);
     let r = ui
         .add_sized(
@@ -300,6 +322,8 @@ fn settings(ui: &mut Ui, units: Units, st: &mut TraceCutState) {
                     .rich_tip(crate::ui::tips::keyed("tracecut.crossings_between"));
             });
         }
+        // The other Cut tools: ui/tracecut_cut.rs.
+        _ => {}
     }
 }
 
@@ -362,6 +386,9 @@ fn preview(ui: &mut Ui, size: Vec2, scene: &Scene) {
     }
     for q in &scene.points {
         p.circle_stroke(to(*q), 6.0, Stroke::new(2.0, MARKED));
+    }
+    for (a, b) in &scene.moves {
+        p.line_segment([to(*a), to(*b)], Stroke::new(1.0, MOVE));
     }
 }
 
@@ -482,6 +509,7 @@ mod tests {
         let ctx = crate::theme::ui_context();
         let mut app = App::headless();
         let (a, b) = two_squares(&mut app);
+        app.settings.tracecut.tool = ToolId::FindDuplicates;
         app.open_tracecut();
         frame(&ctx, &mut app, false);
         let before = app.engine.history_labels().0.len();
