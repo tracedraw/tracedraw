@@ -18993,8 +18993,22 @@ fn tab_in_paragraph_text_moves_the_text_to_the_next_stop() {
         });
     let x = |i: usize| layout.caret(i).expect("caret").0;
     let start = x(0);
-    assert!((x(3) - start - 12.7).abs() < 0.01, "{} {}", x(3), start);
-    assert!((x(6) - start - 25.4).abs() < 0.01, "{} {}", x(6), start);
+    // The default stops are every 5 mm from the frame's edge (#1852): each
+    // tab goes to the first one past the text before it.
+    let stop_after = |end: f64| ((end - start) / 5.0 + 1e-9).floor() * 5.0 + 5.0;
+    assert!(
+        (x(3) - start - stop_after(x(2))).abs() < 0.01,
+        "{} {}",
+        x(3),
+        start
+    );
+    assert!(
+        (x(6) - start - stop_after(x(5))).abs() < 0.01,
+        "{} {}",
+        x(6),
+        start
+    );
+    assert!(x(6) > x(3) + 4.99);
     assert_eq!(layout.lines.len(), 1);
 }
 

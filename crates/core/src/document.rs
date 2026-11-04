@@ -1351,8 +1351,9 @@ pub struct ParagraphStyle {
     pub bullet_indent: f64,
     /// Drop cap height in lines; 0 = none.
     pub drop_cap_lines: u32,
-    /// Tab stops in mm from the left edge; empty = default every 12.7 mm.
-    pub tabs: Vec<f64>,
+    /// Tab stops, in order from the frame's left edge; empty = a left
+    /// stop every [`DEFAULT_TAB_STEP`] mm.
+    pub tabs: Vec<TabStop>,
     pub hyphenate: bool,
     /// Fit text to frame: scale the font so the text fills the frame height.
     pub fit_to_frame: bool,
@@ -1379,6 +1380,111 @@ pub struct ParagraphStyle {
     /// [`crate::text_flow`]); not saved.
     #[serde(skip)]
     pub flow: crate::text_flow::FrameFlow,
+}
+
+/// The distance between the default tab stops of a paragraph with no
+/// stops of its own, mm.
+pub const DEFAULT_TAB_STEP: f64 = 5.0;
+
+/// How the text after a tab sits against its stop (Text > Tabs and the
+/// tab ruler).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TabKind {
+    /// The text starts at the stop.
+    #[default]
+    Left,
+    /// The text is centred on the stop.
+    Center,
+    /// The text ends at the stop.
+    Right,
+    /// The text's decimal separator (its first `.` or `,`) sits on the
+    /// stop; text without one ends at the stop.
+    Decimal,
+}
+
+impl TabKind {
+    pub const ALL: [TabKind; 4] = [
+        TabKind::Left,
+        TabKind::Center,
+        TabKind::Right,
+        TabKind::Decimal,
+    ];
+}
+
+/// One tab stop of a paragraph.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct TabStop {
+    /// Distance from the frame's left edge, mm.
+    pub pos: f64,
+    pub kind: TabKind,
+    /// The character repeated over the gap the tab leaves (a dot leader
+    /// in a menu or a table of contents); `None` = blank.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub leader: Option<char>,
+}
+
+impl TabStop {
+    /// A left stop at `pos` mm with no leader.
+    pub fn left(pos: f64) -> Self {
+        TabStop {
+            pos,
+            kind: TabKind::Left,
+            leader: None,
+        }
+    }
+
+    pub fn new(pos: f64, kind: TabKind) -> Self {
+        TabStop {
+            pos,
+            kind,
+            leader: None,
+        }
+    }
+}
+
+/// Files from before tab kinds hold each stop as a bare number (a left
+/// stop at that many mm).
+impl<'de> Deserialize<'de> for TabStop {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Full {
+            #[serde(default)]
+            pos: f64,
+            #[serde(default)]
+            kind: TabKind,
+            #[serde(default)]
+            leader: Option<char>,
+        }
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Either {
+            Pos(f64),
+            Full(Full),
+        }
+        Ok(match Either::deserialize(d)? {
+            Either::Pos(pos) => TabStop::left(pos),
+            Either::Full(f) => TabStop {
+                pos: f.pos,
+                kind: f.kind,
+                leader: f.leader,
+            },
+        })
+    }
+}
+
+/// The stops of `tabs` in order of position, with stops closer than
+/// 0.01 mm to one before them dropped and positions that are not finite
+/// left out (what an edit hands the paragraph).
+pub fn normalized_tabs(tabs: &[TabStop]) -> Vec<TabStop> {
+    let mut out: Vec<TabStop> = tabs
+        .iter()
+        .copied()
+        .filter(|t| t.pos.is_finite() && t.pos >= 0.0)
+        .collect();
+    out.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+    out.dedup_by(|b, a| (b.pos - a.pos).abs() < 0.01);
+    out
 }
 
 /// The unit of a paragraph's line spacing (the Text docker's list next to

@@ -18,7 +18,7 @@ baseline point; paragraph text: a frame with wrapping. Shortcut F8.
 | Columns | 1, gutter 5 mm |
 | Bullets | off; indent 5 mm, bullet "*" from the paragraph font |
 | Drop cap | off; 3 lines. The paragraph's first letter is scaled so it sits on the baseline of the last line it spans and its top meets the top of the first line's letters; the lines beside it are narrowed by its width plus 1 mm, so they wrap and justify inside the column |
-| Tabs | every 12.7 mm (0.5 in) |
+| Tabs | none of the paragraph's own: a left stop every 5 mm from the frame's left edge (see Tab stops below) |
 | Text on path | distance 0, offset 0, orientation "rotate letters" |
 
 ## Property bar
@@ -259,7 +259,7 @@ concatenated spans; the layout's line boxes give its place on the page.
 | Typing, paste | inserts at the caret, replacing the selection, with the style of the character before the caret |
 | Backspace / Delete | the selection, else the character before / after the caret |
 | Enter / Shift+Enter | paragraph break / line break (U+2028) |
-| Tab | a tab character: the text after it starts at the next tab stop (every 12.7 mm unless the paragraph sets its own); the keyboard stays on the text, no field of the bars takes it (#1667, `pick_drag_tests::tab_in_paragraph_text_moves_the_text_to_the_next_stop`) |
+| Tab | a tab character: the text after it goes to the next tab stop (every 5 mm unless the paragraph sets its own, see Tab stops); the keyboard stays on the text, no field of the bars takes it (#1667, `pick_drag_tests::tab_in_paragraph_text_moves_the_text_to_the_next_stop`) |
 | Left / Right, Ctrl+Left / Right | one character, one word; Shift extends the selection |
 | Up / Down | the same x on the previous / next line (the x is remembered across moves) |
 | Home / End, Ctrl+Home / End | line start / end, text start / end |
@@ -556,6 +556,44 @@ on its own line, which is why the lines are joined first.
   line spacing, space before and after (version 16+ style strings) or
   indents differ from one another keep their own; text whose paragraphs
   agree keeps one object-level format as before.
+
+### Tab stops
+
+- Each paragraph has its own tab stops (`ParagraphStyle::tabs`, a
+  `TabStop` each: position in mm from the frame's left edge, kind and
+  leader). A paragraph with none has a left stop every 5 mm
+  (`DEFAULT_TAB_STEP`), and past its last stop the same 5 mm grid goes
+  on (`tracedraw_text::tests::default_tab_stops_every_5_mm`).
+- A tab goes to the first stop past where it stands. The text after it,
+  up to the next tab or the line's end, sits against the stop by the
+  stop's kind: **left** starts it at the stop, **centre** centres it on
+  the stop, **right** ends it at the stop, **decimal** puts its first
+  `.` or `,` on the stop (text with neither ends at the stop). Text too
+  wide for the room before the stop starts where the tab stands: the
+  pen never goes back (#1852,
+  `tracedraw_text::tests::tab_kinds_place_the_text_after_the_tab`,
+  `tracedraw_text::tests::right_and_decimal_tabs_line_up_prices`).
+- A stop's leader (none, dots, dashes or a line) repeats its character,
+  in the font of the tab, over the gap the tab leaves; the copies sit on
+  a grid from the frame's edge, so the leaders of neighbouring lines line
+  up, and stop a quarter of a copy before the text.
+- Lines break with the tabs measured to their stops. A tab at a line's
+  end takes no room, so a stop past the frame's right edge sends the
+  text after the tab to the next line, as in the other program
+  (`tracedraw_text::tests::a_tab_past_the_line_end_wraps_what_follows`).
+- Text > Tabs lists the stops of the paragraphs at the caret (or of the
+  selected text's first paragraph): each row has the position, the kind
+  (Left, Center, Right, Decimal tab), the leader and a button that
+  removes the stop. **Add tab** adds a left stop 10 mm past the last one
+  (the first at 10 mm). With no stops the dialog says that the 5 mm grid
+  is in use. Each change is one undo step. It works on a paragraph frame
+  just drawn, before any text is typed: the stop used to be stored on
+  the empty text where nothing read it back, so Add tab seemed to do
+  nothing (#1852,
+  `ui::dialogs::tests::add_tab_works_on_a_new_empty_paragraph_frame`).
+- `.tdraw` files write each stop as `{"pos", "kind", "leader"}`; files
+  from before tab kinds hold a bare number per stop, read as a left
+  stop (`paragraphs::tests::tab_stops_save_their_kind_and_read_old_numbers`).
 
 ## Text docker
 
