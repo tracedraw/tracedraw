@@ -7,7 +7,7 @@
 //! - [`rects`]: rectangle nesting by bounding boxes (MaxRects).
 //! - [`shapes`]: nesting by true outlines, holes allowed, with an
 //!   improvement loop.
-//! - [`fill`]: Multiply, a grid of copies filling a sheet.
+//! - [`fill`]: Fill Sheet, a grid of copies filling a sheet.
 //!
 //! Every layout is worked out in a *normalised frame*: `u` across the
 //! sheet (or roll) from the origin corner, `v` along it, the usable area

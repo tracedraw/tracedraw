@@ -1,4 +1,4 @@
-//! Multiply: fill a sheet with copies of one box in a grid.
+//! Fill Sheet: fill a sheet with copies of one box in a grid.
 //!
 //! The grid runs from the origin corner, `gap` between copies and the
 //! margin kept along the edges. With turning allowed, six plans are
@@ -13,7 +13,7 @@ use tracedraw_core::geometry::{Affine, Rect, Vec2};
 /// Copies made at most, whatever the limit.
 pub const MAX_COPIES: usize = 10_000;
 
-/// What Multiply does.
+/// What Fill Sheet does.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FillSettings {
     /// The sheet: width, height, margin and corner (a roll is taken as
