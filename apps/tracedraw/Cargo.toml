@@ -29,6 +29,7 @@ tracedraw-text.workspace = true
 tracedraw-render.workspace = true
 tracedraw-vba.workspace = true
 tracedraw-vba-project.workspace = true
+tracedraw-tracecut.workspace = true
 kurbo.workspace = true
 tiny-skia.workspace = true
 serde.workspace = true

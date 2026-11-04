@@ -6,7 +6,7 @@ checked screenshot behind it.
 "partial" names what is missing. "baked" means the result is applied once
 instead of staying live and editable. The goal is every row at "works".
 
-Counts: works 189, partial 7 (`.cdr` content coverage; CMX import; print preview; data merge; colour styles; Find and Replace; the Android app), missing 1 (system windows), not applicable 4.
+Counts: works 190, partial 7 (`.cdr` content coverage; CMX import; print preview; data merge; colour styles; Find and Replace; the Android app), missing 1 (system windows), not applicable 4.
 
 ## 1. Selection and navigation
 
@@ -272,6 +272,7 @@ Counts: works 189, partial 7 (`.cdr` content coverage; CMX import; print preview
 | Help > Updates and a daily check at start (asked at first start, Always check / Never check; Options > Global > General): a newer release offers the file for this system, its processor and how it was installed (none rather than another one), its notes, or skipping it; a Linux AppImage installs it in place after checking its digest | works (see `behavior/updates.md`) |
 | Help > Mark New Features: the menus mark the rows new in this version and the menus leading to them | works (see `behavior/whats-new.md`) |
 | Banner Hems and Eyelets (large-format finishing) | works |
+| TraceCut (Tools > TraceCut, Launch): a window with the cutting plotter tools grouped (Cut, Nesting, Measure), presets per tool, a preview of the selection, Apply / OK / Cancel with OK one undo step, hidden by an Options setting; Cut: Find Duplicates, Find Crossings | works (see `behavior/tracecut.md`) |
 | Vector Mosaic (vector mosaics): density, scale, screen angle, keep original, limit colors, uniform, opacity and luminosity tracking, merge adjacent, weld adjacent overlap, circle, square and custom tiles | works (see `behavior/vector-mosaic.md`); made at once rather than in the background |
 | Picture Mosaic (bitmap mosaics from an image library folder): columns and rows from the shape, blending, duplicates with tile spacing, Single, Stack and Array composition, Stretch and Remove edges, document, custom, tile and output size priorities, keep original | works (see `behavior/picture-mosaic.md`); a library is one folder, read on worker threads |
 | Bitmap plug-ins (third-party filters) | not applicable: no plug-in host; the built-in bitmap effects cover the stock filters |

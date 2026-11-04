@@ -4293,6 +4293,7 @@ dependencies = [
  "tracedraw-io",
  "tracedraw-render",
  "tracedraw-text",
+ "tracedraw-tracecut",
  "tracedraw-vba",
  "tracedraw-vba-project",
  "ttf-parser",

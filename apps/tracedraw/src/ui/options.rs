@@ -784,6 +784,8 @@ fn general_page(app: &mut App, ui: &mut Ui) {
             ui.checkbox(&mut app.settings.show_splash, tr("options.show_splash"))
                 .rich_tip(crate::ui::tips::keyed("options.show_splash"));
         }
+        ui.checkbox(&mut app.settings.tracecut.show, tr("options.show_tracecut"))
+            .rich_tip(crate::ui::tips::keyed("options.show_tracecut"));
         #[cfg(not(target_arch = "wasm32"))]
         hardware_acceleration(app, ui);
     });

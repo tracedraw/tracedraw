@@ -1116,6 +1116,8 @@ pub enum Dialog {
     /// Tools > Convert Colors (#972).
     ConvertColors(crate::ui::convert_colors::ConvertColorsState),
     FontManager(FontManagerState),
+    /// Launch > TraceCut, Tools > TraceCut.
+    TraceCut(Box<crate::tracecut::TraceCutState>),
     PaletteEditor(PaletteEditorState),
     NewDocument(crate::new_document::NewDocState),
     About,
@@ -2772,6 +2774,7 @@ pub fn show(app: &mut App, ctx: &Context) {
             crate::ui::color_management::dialog(app, ctx, st, &mut close)
         }
         Dialog::FontManager(st) => font_manager_dialog(app, ctx, st, &mut close),
+        Dialog::TraceCut(st) => crate::ui::tracecut::dialog(app, ctx, st, &mut close),
         Dialog::PaletteEditor(st) => palette_editor_dialog(app, ctx, st, &mut close),
         Dialog::NewDocument(st) => {
             crate::new_document::new_document_dialog(app, ctx, st, &mut close)
@@ -7081,6 +7084,7 @@ pub(crate) mod tests {
             Dialog::BorderGrommet(crate::border_grommet::BorderGrommetState::default()),
             Dialog::ColorManagement(Default::default()),
             Dialog::FontManager(FontManagerState::default()),
+            Dialog::TraceCut(Box::default()),
             Dialog::PaletteEditor(PaletteEditorState::default()),
             Dialog::NewDocument(crate::new_document::NewDocState::from_settings(
                 &Default::default(),

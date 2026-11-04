@@ -322,6 +322,10 @@ pub struct Settings {
     /// collections.
     #[serde(default)]
     pub font_manager: crate::ui::font_manager::FontManagerPrefs,
+    /// TraceCut: shown or not (Options > General) and the tool picked
+    /// last.
+    #[serde(default)]
+    pub tracecut: crate::tracecut::TraceCutPrefs,
     #[serde(default)]
     pub hide_bbox_curve_tools: bool,
     /// Options > Display: the Pick tool selects and drags the nodes of a
@@ -1721,6 +1725,7 @@ impl Default for Settings {
             undo_levels: default_undo_levels(),
             show_tooltips: true,
             font_manager: Default::default(),
+            tracecut: Default::default(),
             hide_bbox_curve_tools: false,
             node_tracking: false,
             preview_page_border: true,

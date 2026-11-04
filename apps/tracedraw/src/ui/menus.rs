@@ -3795,6 +3795,9 @@ fn tools_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.tools.font_manager", "", true) {
         app.dialog = Dialog::FontManager(Default::default());
     }
+    if crate::ui::tracecut::shown(app) && item(ui, "menu.tools.tracecut", "", true) {
+        app.open_tracecut();
+    }
     if item(ui, "menu.tools.border_and_grommet", "", true) {
         app.dialog = Dialog::BorderGrommet(Default::default());
     }

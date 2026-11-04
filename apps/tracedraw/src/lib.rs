@@ -199,6 +199,7 @@ mod tools;
 mod tools2;
 mod trace;
 mod trace_preview;
+mod tracecut;
 mod ui;
 mod updates;
 mod variable_outline;

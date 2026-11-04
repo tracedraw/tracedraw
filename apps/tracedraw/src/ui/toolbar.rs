@@ -884,6 +884,10 @@ fn launch_button(app: &mut App, ui: &mut Ui, bar: &str) {
                 app.dialog = crate::ui::dialogs::Dialog::FontManager(Default::default());
                 ui.close();
             }
+            if crate::ui::tracecut::shown(app) && ui.button(tr("menu.tools.tracecut")).clicked() {
+                app.open_tracecut();
+                ui.close();
+            }
             if ui.button(tr("menu.window.welcome_screen")).clicked() {
                 app.show_welcome = true;
                 ui.close();
