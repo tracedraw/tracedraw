@@ -3488,6 +3488,9 @@ struct Writer<'a> {
     /// objects' drop shadows the caller rendered (see
     /// [`Previews::shadows`]).
     effects: Vec<crate::kept_effects::Written>,
+    /// How deep inside [`Self::drawn_as`] the writer is: what an object
+    /// with effects is drawn as is kept by that object's entry.
+    drawing_effects: usize,
     shadow_pictures: HashMap<tracedraw_core::ShapeId, &'a ShadowPicture>,
     /// Clip containers (#1222): the groups of the document's `LIST clpt`
     /// holding the contents of the clip frames written; the number the
@@ -3651,6 +3654,7 @@ impl<'a> Writer<'a> {
             embed_fonts: false,
             split_families: HashMap::new(),
             drawn_styles: HashMap::new(),
+            drawing_effects: 0,
             tech: fonts::FaceTech::new(),
             run_faces: Vec::new(),
             layer_slots: Vec::new(),
@@ -3712,8 +3716,20 @@ impl<'a> Writer<'a> {
                 }
                 continue;
             };
+            // Italic of an upright file goes out upright (#1733).
+            let upright = sp.italic
+                && self
+                    .faces
+                    .iter()
+                    .find(|f| {
+                        f.family == sp.font_family && f.bold == sp.bold && f.italic == sp.italic
+                    })
+                    .is_some_and(fonts::slanted_upright);
             if let Some(file_sp) = out.get_or_insert_with(|| spans.to_vec()).get_mut(i) {
                 file_sp.font_family = family;
+                if upright {
+                    file_sp.italic = false;
+                }
                 // Bold text drawn by the family's bold face stays bold
                 // (written at 700); another weight is carried on the
                 // weight axis the style codes are taken from.
@@ -5015,7 +5031,9 @@ impl<'a> Writer<'a> {
             all.insert(0, picture);
             main_at += 1;
         }
+        self.drawing_effects += 1;
         let (placed, ids) = self.objects_with_ids(&all, centre, depth + 1);
+        self.drawing_effects -= 1;
         if self.v.zip() {
             if let (Some(objects), Some(main)) = (
                 ids.into_iter().collect::<Option<Vec<u32>>>(),
@@ -5037,6 +5055,22 @@ impl<'a> Writer<'a> {
             }
         }
         placed
+    }
+
+    /// Name text `s` written with its slant left out (`bounds`, the box
+    /// of the text as written, see [`Self::file_spans`]) in the package's
+    /// own member by the static id it took, so TraceDraw opens it as it
+    /// was (#1733); text given no static id (inside clip contents) opens
+    /// as written.
+    fn keep_slanted(&mut self, s: &Shape, bounds: Option<Rect>, usdn_before: u32) {
+        if let Some(bounds) = bounds.filter(|_| self.next_usdn > usdn_before) {
+            self.effects.push(crate::kept_effects::Written {
+                objects: vec![self.next_usdn - 1],
+                main: 0,
+                bounds,
+                source: s.clone(),
+            });
+        }
     }
 
     fn object(&mut self, s: &Shape, centre: Point, depth: usize) -> Placed {
@@ -5296,6 +5330,31 @@ impl<'a> Writer<'a> {
                 // paragraph's.
                 let own_align = *align;
                 let file_spans = self.file_spans(spans);
+                // Italic TraceDraw slants from an upright file goes out
+                // upright (#1733); the package's own member keeps the
+                // text, so TraceDraw opens it italic again. The box is the
+                // written text's, as it reads back.
+                let slant_kept = file_spans
+                    .as_ref()
+                    .filter(|f| {
+                        spans
+                            .iter()
+                            .zip(f.iter())
+                            .any(|(a, b)| a.italic && !b.italic)
+                    })
+                    .filter(|_| self.v.zip() && self.drawing_effects == 0)
+                    .map(|f| {
+                        let mut written = s.clone();
+                        if let ShapeKind::Text { spans, .. } = &mut written.kind {
+                            spans.clone_from(f);
+                        }
+                        if self.writes_frame(&written) {
+                            written.bounds()
+                        } else {
+                            drawn_bounds(&written)
+                        }
+                    });
+                let usdn_before = self.next_usdn;
                 let spans = file_spans.as_deref().unwrap_or(spans);
                 let first_align = paragraph_aligns(spans, own_align)
                     .first()
@@ -5349,7 +5408,7 @@ impl<'a> Writer<'a> {
                             .unwrap_or_else(|| r#""character":{}"#.to_string()),
                         justify_code(*align)
                     );
-                    return self.place(
+                    let placed = self.place(
                         s,
                         OBJ_PARAGRAPH_TEXT,
                         paragraph_coords(v, f),
@@ -5359,6 +5418,8 @@ impl<'a> Writer<'a> {
                         Some((record, character, style_for(*align))),
                         centre,
                     );
+                    self.keep_slanted(s, slant_kept, usdn_before);
+                    return placed;
                 }
                 // The character settings of the first run, the width of
                 // the lines as the frame's one column (files give artistic
@@ -5381,7 +5442,7 @@ impl<'a> Writer<'a> {
                 );
                 let mut c = Buf::default();
                 c.i32(0).i32(0);
-                self.place(
+                let placed = self.place(
                     s,
                     OBJ_ARTISTIC_TEXT,
                     c.done(),
@@ -5390,7 +5451,9 @@ impl<'a> Writer<'a> {
                     page_box,
                     Some((record, character, style_for(*align))),
                     centre,
-                )
+                );
+                self.keep_slanted(s, slant_kept, usdn_before);
+                placed
             }
             _ => {
                 let coords = match &s.kind {

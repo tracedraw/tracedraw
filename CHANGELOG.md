@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Saving .cdr with Embed fonts: italic text in a font that has no italic face no longer makes the program that reads .cdr files report the font missing. TraceDraw slants such text itself (RAJ 100 or Khand, whose files are all upright), but saved it as an italic face beside the embedded upright one, so that program asked for "RAJ 100-Bold-Italic", which neither the file nor the system has, and drew "RAJ 100-Bold" instead. The text is now saved as the upright face that draws it and is embedded, for every weight (Light, Medium, SemiBold, Bold) and with or without underline; that program, which offers no italic for such fonts, shows it upright. TraceDraw opens its own file with the text italic again (#1733).
+
 ## 0.39.0 (2026-11-04)
 
 - Convert to Bitmap: the Grayscale and CMYK colour modes give a bitmap in that mode. Every choice gave an RGB bitmap: Grayscale made the pixels gray but kept an RGB picture, and CMYK did not even change the pixels. Grayscale now stores a grayscale picture, and the status line says "Bitmap (Grayscale)"; CMYK marks the bitmap as a CMYK picture and shows its pixels as the inks print them, as Image > Mode > CMYK Color does (#1777).
