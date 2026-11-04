@@ -45,6 +45,9 @@ i_overlay = "9"
 eframe.workspace = true
 egui.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif", "webp", "tiff"] }
+# Reading CMYK TIFF files with their inks (Edit Bitmap, #1834); the same
+# version the image crate reads TIFF with.
+tiff = "0.11"
 log.workspace = true
 env_logger.workspace = true
 flate2 = "1"

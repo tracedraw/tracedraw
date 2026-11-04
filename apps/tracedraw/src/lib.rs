@@ -28,6 +28,7 @@ mod app;
 mod autocorrect;
 mod barcode;
 mod bg_remove;
+mod bitmap_file;
 mod bitmap_fx;
 mod bitmap_modes;
 mod blend_link;
