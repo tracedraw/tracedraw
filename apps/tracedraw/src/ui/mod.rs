@@ -1399,6 +1399,124 @@ mod tests {
         frame(&ctx, &mut app);
     }
 
+    /// The Touch workspace with a finger only (#1611): the Standard
+    /// toolbar's Delete deletes the selection, its Panels button shows
+    /// the dockers the workspace starts without, and a finger held on an
+    /// object opens the object's menu (egui's long press, the right
+    /// click of a touch screen), whose Delete works too.
+    #[test]
+    fn a_finger_deletes_opens_the_panels_and_the_object_menu() {
+        use crate::ui::bar_items::{items, ItemBar};
+        let ctx = crate::theme::ui_context();
+        let mut app = mixed_app();
+        app.show_welcome = false;
+        app.set_workspace(crate::app::Workspace::Touch);
+        let clock = std::cell::Cell::new(0.0);
+        let timed = |app: &mut App, events: Vec<egui::Event>, dt: f64| {
+            clock.set(clock.get() + dt);
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1600.0, 1000.0),
+                )),
+                events,
+                time: Some(clock.get()),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| root(app, ui));
+            out.textures_delta.clear();
+        };
+        // A finger down at `at` for `secs`, then lifted.
+        let finger = |app: &mut App, at: egui::Pos2, secs: f64| {
+            let touch = |phase| egui::Event::Touch {
+                device_id: egui::TouchDeviceId(1),
+                id: egui::TouchId(3),
+                phase,
+                pos: at,
+                force: None,
+            };
+            timed(
+                app,
+                vec![
+                    touch(egui::TouchPhase::Start),
+                    egui::Event::PointerMoved(at),
+                    button(at, true, egui::PointerButton::Primary),
+                ],
+                0.05,
+            );
+            let mut held = 0.0;
+            while held + 0.05 < secs {
+                timed(app, Vec::new(), 0.05);
+                held += 0.05;
+            }
+            timed(
+                app,
+                vec![
+                    touch(egui::TouchPhase::End),
+                    button(at, false, egui::PointerButton::Primary),
+                    egui::Event::PointerGone,
+                ],
+                0.05,
+            );
+            timed(app, Vec::new(), 0.05);
+        };
+        for _ in 0..5 {
+            timed(&mut app, Vec::new(), 0.05);
+        }
+        app.zoom_to_page();
+        timed(&mut app, Vec::new(), 0.05);
+        let button_at = |app: &App, id: &str| {
+            let i = items(app, ItemBar::Standard)
+                .iter()
+                .position(|b| b == id)
+                .expect("on the bar");
+            let slot = app
+                .shown_bar_slots
+                .iter()
+                .find(|s| s.bar == ItemBar::Standard)
+                .expect("the Standard toolbar is drawn");
+            let r = slot.items[i];
+            assert!(
+                r.right() <= 1600.0 && r.bottom() <= 1000.0,
+                "{id} is on the screen: {r:?}"
+            );
+            r.center()
+        };
+        // Delete.
+        let before = shape_count(&app);
+        assert!(!app.selection.is_empty());
+        let at = button_at(&app, "delete");
+        finger(&mut app, at, 0.1);
+        assert!(app.selection.is_empty());
+        assert!(shape_count(&app) < before, "the toolbar's Delete deleted");
+        app.undo();
+        assert_eq!(shape_count(&app), before);
+        // The panels.
+        assert!(!app.show_dockers);
+        let at = button_at(&app, "dockers");
+        finger(&mut app, at, 0.1);
+        assert!(app.show_dockers, "the Panels button shows the dockers");
+        finger(&mut app, at, 0.1);
+        assert!(!app.show_dockers);
+        // A finger held on an object: its menu, with it selected.
+        app.select(Vec::new());
+        timed(&mut app, Vec::new(), 0.05);
+        let on_rect = app.view.to_screen(Point::new(35.0, 25.0));
+        let before = shape_count(&app);
+        finger(&mut app, on_rect, 1.2);
+        assert!(app.context_menu.is_some(), "a long press opens the menu");
+        assert_eq!(app.selection.len(), 1, "of the object under the finger");
+        assert_eq!(shape_count(&app), before, "the hold moved or drew nothing");
+        // The bare page: the page's menu.
+        app.context_menu = None;
+        timed(&mut app, Vec::new(), 0.05);
+        let empty = app.view.to_screen(Point::new(150.0, 250.0));
+        app.select(Vec::new());
+        finger(&mut app, empty, 1.2);
+        assert!(app.context_menu.is_some(), "a long press on the page");
+        assert_eq!(shape_count(&app), before);
+    }
+
     fn key(ctx: &egui::Context, app: &mut App, key: egui::Key, modifiers: egui::Modifiers) {
         // Press and release inside one frame, with the modifiers released
         // too: what a fast typist or a test driver produces.

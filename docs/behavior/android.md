@@ -23,6 +23,7 @@ the owner does to publish it and what to test on a tablet first.
 |---|---|---|
 | The editor: drawing tools, shapes, text, effects, menus, dockers, undo | yes | yes, the same code |
 | Workspace | the one chosen | a fresh install starts in the Touch workspace (`workspaces.md`: bars and buttons 1.4 times larger, no rulers, panels or status bar, two fingers pan, a pinch zooms); Window > Workspace picks another and it is kept |
+| Right click and keys, by finger | mouse and keyboard | Delete and Panels on the standard toolbar (with Cut, Copy, Paste, Undo, Redo); a finger held 0.8 s on the drawing opens the object's or the page's menu; on a palette swatch a hold of 0.5 s sets the outline, 1 s shows the shades (#1611, #1707) |
 | Open, Import, palettes, scripts, ICC profiles, every "pick a file" | system file dialog | the system's document picker (Storage Access Framework, `ACTION_OPEN_DOCUMENT`, any type): the picked document opens by the extension of its display name; the closure runs on a later frame, as in the browser |
 | Save on an opened drawing | writes the file | writes the document back through its content URI (the picker grants read and write, kept across restarts) |
 | Save As, Export, Export as PDF, Save Bitmap As, exports of dockers that use `save_file` | the Save Drawing dialog with folders, or the system save dialog | the Save Drawing dialog shows name, type and version only, then the system's picker (`ACTION_CREATE_DOCUMENT`) asks where, with that name and the type's MIME; the file is written when it answers. Export as PDF has no Browse button: OK opens the picker |
@@ -353,8 +354,7 @@ Now:
 ## Later phases
 
 1. Opening a `.cdr` or `.tdraw` from a file manager (`ACTION_VIEW`).
-2. Pen pressure and tilt (#850), palm rejection, a long press as the
-   right click.
+2. Pen pressure and tilt (#850), palm rejection.
 3. The Help inside the app.
 4. A 32-bit ARM library for older devices; the store listing's
    screenshots from a device.

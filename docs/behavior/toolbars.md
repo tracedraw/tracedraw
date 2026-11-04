@@ -131,7 +131,10 @@ split by thin lines:
 
 1. New (a page with a green plus), Open with the recent drawings behind
    its arrow, Save, Print.
-2. Cut, Copy, Paste.
+2. Cut, Copy, Paste, Delete (a waste bin: what the Delete key does to
+   the selection: the selected characters of the text being edited, the
+   chosen nodes with the Shape tool, the selected guidelines, else the
+   selected objects; for a screen with no keyboard, #1611).
 3. Undo and Redo, each with its list of steps behind the arrow (choosing
    a step undoes or redoes up to it).
 4. Import, Export, Export as PDF.
@@ -143,7 +146,9 @@ split by thin lines:
    with a grey frame) while on.
 7. Snap Off (Alt+Q), pressed while snapping is off; Snap To with the
    snapping list.
-8. Options (the TraceDraw options).
+8. Options (the TraceDraw options); Panels (a window with a side panel),
+   pressed while the dockers show: shows or hides them (the Touch
+   workspace starts without them, #1611).
 9. Launch, an icon with the list arrow (its name in the tooltip): Font
    Manager, Welcome Screen, Color Management.
 

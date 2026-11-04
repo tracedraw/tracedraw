@@ -17,7 +17,16 @@ fingers pan and a pinch zooms about its centre, with any tool; the
 gesture drops what the first finger had begun, so it neither drags an
 object nor draws a marquee. Picking another workspace brings the
 interface back to the size chosen.
-Checks: `ui::tests::the_touch_workspace_is_larger_and_keeps_real_sizes`,
+
+With a finger only (#1611, #1707): the standard toolbar's Delete deletes
+the selection and its Panels button shows the dockers (Properties and
+the rest); a finger held still on the drawing for 0.8 s is the right
+click (egui's long press), so it opens the menu of the object under it
+(picking it) or of the page, with Delete, Copy, Order, Group and the
+rest; on a palette swatch a tap fills, a hold of 0.5 s let go sets the
+outline and a hold of 1 s shows the shades (`color-palettes.md`).
+Checks: `ui::tests::a_finger_deletes_opens_the_panels_and_the_object_menu`,
+`ui::tests::the_touch_workspace_is_larger_and_keeps_real_sizes`,
 `pick_drag_tests::two_fingers_pan_without_dragging_anything`.
 
 ## Kept across restarts

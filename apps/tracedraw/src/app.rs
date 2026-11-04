@@ -5478,6 +5478,36 @@ impl App {
         self.run(Command::DeleteShapes { shapes });
     }
 
+    /// Whether the toolbar's Delete button has something to delete: the
+    /// selected characters of the text being edited, the chosen nodes
+    /// with the Shape tool, the selected guidelines or objects.
+    pub fn can_delete(&self) -> bool {
+        if self.editing_text() {
+            return self.text_selection_active();
+        }
+        (self.tool == Tool::Shape && !self.node_selection.is_empty())
+            || !self.selected_guides.is_empty()
+            || !self.selection.is_empty()
+    }
+
+    /// The toolbar's Delete button (#1611): what the Delete key does to
+    /// the selection, for a screen with no keyboard.
+    pub fn delete_command(&mut self) {
+        if self.editing_text() {
+            if self.text_selection_active() {
+                self.text_delete_forward();
+            }
+        } else if self.tool == Tool::Shape && !self.node_selection.is_empty() {
+            self.delete_selected_nodes();
+        } else if !self.selected_guides.is_empty() && self.selection.is_empty() {
+            if !self.delete_selected_guides() {
+                self.status = crate::i18n::tr("status.guideline_locked");
+            }
+        } else {
+            self.delete_selection();
+        }
+    }
+
     pub fn select_all(&mut self) {
         let ids = self
             .page_layers()

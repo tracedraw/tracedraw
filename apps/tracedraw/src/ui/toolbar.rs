@@ -278,6 +278,7 @@ pub(crate) fn item_action(id: &str) -> Option<icons::Action> {
         "cut" => A::Cut,
         "copy" => A::Copy,
         "paste" => A::Paste,
+        "delete" => A::Delete,
         "undo" => A::Undo,
         "redo" => A::Redo,
         "import" => A::Import,
@@ -289,6 +290,7 @@ pub(crate) fn item_action(id: &str) -> Option<icons::Action> {
         "guidelines" => A::ShowGuidelines,
         "snap_off" | "snap_to" => A::SnapOff,
         "options" => A::Options,
+        "dockers" => A::Dockers,
         "launch" | "ai" => A::Launch,
         _ => return None,
     })
@@ -308,6 +310,7 @@ pub(crate) fn item_name(id: &str) -> Option<String> {
         "cut" => "toolbar.cut",
         "copy" => "toolbar.copy",
         "paste" => "toolbar.paste",
+        "delete" => "toolbar.delete",
         "undo" => "toolbar.undo",
         "redo" => "toolbar.redo",
         "import" => "toolbar.import",
@@ -321,6 +324,7 @@ pub(crate) fn item_name(id: &str) -> Option<String> {
         "snap_off" => "toolbar.snap_off",
         "snap_to" => "menu.view.snap_to",
         "options" => "toolbar.options",
+        "dockers" => "toolbar.dockers",
         "launch" => "toolbar.launch",
         "ai" => "toolbar.ai_generate",
         "zoom_in" => "menu.view.zoom_in",
@@ -496,6 +500,35 @@ pub(crate) fn draw_item(app: &mut App, ui: &mut Ui, bar: &str, id: &str) {
             .clicked()
             {
                 app.paste_any();
+            }
+        }
+        // What the Delete key does, for a finger with no keyboard (#1611).
+        "delete" => {
+            let can = doc && app.can_delete();
+            if std_button(
+                ui,
+                icons::Action::Delete,
+                &tip("toolbar.delete"),
+                can,
+                false,
+            )
+            .clicked()
+            {
+                app.delete_command();
+            }
+        }
+        // The dockers, which the Touch workspace starts without (#1611).
+        "dockers" => {
+            if std_button(
+                ui,
+                icons::Action::Dockers,
+                &tip("toolbar.dockers"),
+                true,
+                app.show_dockers,
+            )
+            .clicked()
+            {
+                app.show_dockers = !app.show_dockers;
             }
         }
         // Undo and Redo, each with the list of steps behind its arrow.
