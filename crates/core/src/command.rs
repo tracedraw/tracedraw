@@ -3535,7 +3535,7 @@ mod tests {
         assert!(p.stroke.is_none());
         // Paragraph layout defaults reach paragraph text, not artistic text.
         doc.defaults.paragraph.columns = 3;
-        doc.defaults.paragraph.tabs = vec![10.0];
+        doc.defaults.paragraph.tabs = vec![crate::document::TabStop::left(10.0)];
         let mut p = Shape::new(crate::id::ShapeId(98), text(Some(Size::new(10.0, 10.0))));
         doc.defaults.apply_to(&mut p);
         let mut a = Shape::new(crate::id::ShapeId(97), text(None));
@@ -3544,7 +3544,7 @@ mod tests {
             ShapeKind::Text { para, .. } => (para.columns, para.tabs.clone()),
             _ => (0, Vec::new()),
         };
-        assert_eq!(cols(&p), (3, vec![10.0]));
+        assert_eq!(cols(&p), (3, vec![crate::document::TabStop::left(10.0)]));
         assert_eq!(cols(&a), (1, Vec::new()));
         // Older files have none: the defaults of a new drawing.
         let mut json: serde_json::Value = serde_json::from_str(&doc.to_json().unwrap()).unwrap();

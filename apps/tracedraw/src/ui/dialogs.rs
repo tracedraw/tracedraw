@@ -6113,6 +6113,29 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
     });
 }
 
+/// The name of a tab kind, as the Tabs dialog and the tab ruler show it.
+pub(crate) fn tab_kind_name(k: tracedraw_core::TabKind) -> String {
+    use tracedraw_core::TabKind;
+    tr(match k {
+        TabKind::Left => "text.tab_left",
+        TabKind::Center => "text.tab_center",
+        TabKind::Right => "text.tab_right",
+        TabKind::Decimal => "text.tab_decimal",
+    })
+}
+
+/// `v` with at most three decimals and no trailing zeros.
+fn trim_number(v: f64) -> String {
+    let s = format!("{v:.3}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+/// Where Add tab puts a new stop: 10 mm past the last one (the first at
+/// 10 mm).
+pub(crate) fn next_tab_position(tabs: &[tracedraw_core::TabStop]) -> f64 {
+    tabs.iter().map(|t| t.pos).fold(0.0, f64::max) + 10.0
+}
+
 fn paragraph_dialog(app: &mut App, ctx: &Context, which: &Dialog, close: &mut bool) {
     let title = match which {
         Dialog::TextTabs => tr("menu.text.tabs"),
@@ -6133,12 +6156,55 @@ fn paragraph_dialog(app: &mut App, ctx: &Context, which: &Dialog, close: &mut bo
     window(ctx, title).show(ctx, |ui| {
         match which {
             Dialog::TextTabs => {
+                use tracedraw_core::{TabKind, TabStop};
                 ui.label(tr("dialog.tab_stops"));
+                if p.tabs.is_empty() {
+                    ui.label(
+                        egui::RichText::new(crate::i18n::trf(
+                            "dialog.tab_default_grid",
+                            &[(
+                                "step",
+                                &format!(
+                                    "{} {}",
+                                    trim_number(u.from_mm(tracedraw_core::DEFAULT_TAB_STEP)),
+                                    u.short()
+                                ),
+                            )],
+                        ))
+                        .color(Tokens::text_dim()),
+                    );
+                }
                 let mut remove = None;
                 for (i, t) in p.tabs.iter_mut().enumerate() {
                     ui.horizontal(|ui| {
                         let tip = crate::ui::tips::pair("dialog.tab_stop", "dialog.tab_stop_desc");
-                        changed |= unit_value(ui, &format!("{}", i + 1), &tip, t, u);
+                        changed |= unit_value(ui, &format!("{}", i + 1), &tip, &mut t.pos, u);
+                        egui::ComboBox::from_id_salt(("tab_kind", i))
+                            .selected_text(tab_kind_name(t.kind))
+                            .show_ui(ui, |ui| {
+                                for k in TabKind::ALL {
+                                    changed |= ui
+                                        .selectable_value(&mut t.kind, k, tab_kind_name(k))
+                                        .changed();
+                                }
+                            })
+                            .response
+                            .rich_tip(crate::ui::tips::keyed("dialog.tab_kind"));
+                        let leader_name = |l: Option<char>| match l {
+                            None => tr("dialog.tab_leader_none"),
+                            Some(c) => format!("{c}{c}{c}"),
+                        };
+                        egui::ComboBox::from_id_salt(("tab_leader", i))
+                            .selected_text(leader_name(t.leader))
+                            .show_ui(ui, |ui| {
+                                for l in [None, Some('.'), Some('-'), Some('_')] {
+                                    changed |= ui
+                                        .selectable_value(&mut t.leader, l, leader_name(l))
+                                        .changed();
+                                }
+                            })
+                            .response
+                            .rich_tip(crate::ui::tips::keyed("dialog.tab_leader"));
                         if ui
                             .small_button("x")
                             .rich_tip(crate::ui::tips::keyed("dialog.remove_tab"))
@@ -6157,8 +6223,7 @@ fn paragraph_dialog(app: &mut App, ctx: &Context, which: &Dialog, close: &mut bo
                     .rich_tip(crate::ui::tips::keyed("dialog.add_tab"))
                     .clicked()
                 {
-                    let last = p.tabs.last().copied().unwrap_or(0.0);
-                    p.tabs.push(last + 12.7);
+                    p.tabs.push(TabStop::left(next_tab_position(&p.tabs)));
                     changed = true;
                 }
             }
@@ -7156,6 +7221,62 @@ pub(crate) mod tests {
             walk(&c.shape, &mut texts);
         }
         texts
+    }
+
+    /// Text > Tabs on a paragraph frame just drawn (no text yet, being
+    /// edited with the Text tool): Add tab puts a stop on that frame, the
+    /// dialog lists it, and a second click adds the next one (#1852).
+    #[test]
+    fn add_tab_works_on_a_new_empty_paragraph_frame() {
+        use egui::{Event, Modifiers, PointerButton};
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.start_text(
+            tracedraw_core::Point::new(20.0, 20.0),
+            Some(tracedraw_core::Size::new(100.0, 60.0)),
+        );
+        let id = app.text_edit.as_ref().expect("editing").shape;
+        app.dialog = Dialog::TextTabs;
+        let tabs = |app: &App| {
+            let s = app.doc().find_shape(id).expect("frame").clone();
+            app.paragraph_style_of(&s).expect("text").1.tabs
+        };
+        let click = |ctx: &Context, app: &mut App, t: &str| {
+            let mut texts = Vec::new();
+            for _ in 0..2 {
+                texts = frame_texts(ctx, app, Vec::new());
+            }
+            let p = texts
+                .iter()
+                .find(|(s, _)| s == t)
+                .map(|(_, p)| *p)
+                .unwrap_or_else(|| panic!("{t} not drawn: {texts:?}"));
+            let press = |pressed| Event::PointerButton {
+                pos: p,
+                button: PointerButton::Primary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            };
+            frame_texts(ctx, app, vec![Event::PointerMoved(p)]);
+            frame_texts(ctx, app, vec![press(true)]);
+            frame_texts(ctx, app, vec![press(false)]);
+        };
+        assert!(tabs(&app).is_empty());
+        click(&ctx, &mut app, &tr("dialog.add_tab"));
+        assert_eq!(tabs(&app).len(), 1, "{:?}", tabs(&app));
+        click(&ctx, &mut app, &tr("dialog.add_tab"));
+        assert_eq!(tabs(&app).len(), 2, "{:?}", tabs(&app));
+        assert!(tabs(&app)[1].pos > tabs(&app)[0].pos);
+        // The rows show each stop with its kind; text typed afterwards
+        // keeps the stops.
+        let texts = frame_texts(&ctx, &mut app, Vec::new());
+        let left = tr("text.tab_left");
+        assert_eq!(texts.iter().filter(|(t, _)| *t == left).count(), 2);
+        // One undo step per click.
+        app.undo();
+        assert_eq!(tabs(&app).len(), 1, "{:?}", tabs(&app));
+        app.insert_text("Mango\t89,-");
+        assert_eq!(tabs(&app).len(), 1, "{:?}", tabs(&app));
     }
 
     /// A drag from one cell of the Print Merge grid to another selects the
