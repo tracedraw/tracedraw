@@ -1029,6 +1029,9 @@ fn pages_refer_to_the_master_layers_by_their_guids() {
     let mut doc = doc_with(Vec::new());
     let mut second = doc.pages[0].clone();
     second.layers[0].name = "Second".into();
+    // The name a reader gives the page at its place: no `lgob` of its
+    // own (a page named otherwise has one, #1807).
+    second.name = "Page 2".into();
     doc.pages.push(second);
     for v in versions() {
         let bytes = document_to_cdr_version(&doc, v);
