@@ -81,6 +81,29 @@ change marked `TraceDraw:` in a comment.
   0.5 while pressed. The arithmetic is in `web/pen_pressure.rs`, which
   uses nothing of the crate but egui; TraceDraw's tests include and run
   it (`eframe_web_pen_pressure::tests`).
+- Change: the application can keep a paste shortcut from egui-winit's
+  clipboard text read (#1488). egui-winit reads the clipboard as text on
+  every Ctrl+V, before the application sees the key. On X11, an owner
+  that holds a picture alone (`xclip -selection clipboard -t image/png`
+  with a picture of about 1 MB) answers that text request with its
+  picture in parts (INCR); the clipboard library stops after the first
+  part, and the owner then waits for the rest of that transfer forever
+  and answers no other request, so TraceDraw's own picture read timed
+  out, the picture never pasted and the window froze for about 24 s.
+  `native/paste_gate.rs` holds `set_paste_text_gate` (exported from the
+  crate root) and `blocks`, which `EpiIntegration::on_window_event`
+  calls before handing an event to egui-winit: a real paste key press
+  (`is_paste_key`, egui-winit's `is_paste_command` with its logical or
+  physical key) is not handed over when the gate answers `false`, so
+  egui-winit neither reads the clipboard nor sends a paste event, as when
+  the clipboard holds no text; the application sees the key's release
+  and pastes by itself. `blocks` also follows the modifier keys from
+  `ModifiersChanged`. With no gate set, nothing changes. TraceDraw's
+  gate (`clipboard::paste_may_read_text`) reads the X11 clipboard's
+  types and lets the text be read only when a text type is offered.
+  TraceDraw's tests include and run the key test
+  (`clipboard::eframe_paste_gate::tests`). When moving to a newer egui,
+  check whether egui-winit still reads the text this way.
 - Drop the copy and the `[patch.crates-io]` entry when the workspace moves
   to egui/eframe 0.37 or later: what holds that back is the egui 0.37
   API migration across the app. The fixed-function painter has no

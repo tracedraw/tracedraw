@@ -284,6 +284,16 @@ impl EpiIntegration {
             self.can_drag_window = true;
         }
 
+        // TraceDraw: a paste shortcut that the application's gate says
+        // must not read the clipboard's text is not handed to egui-winit,
+        // which would read it (see vendor/README.md, #1488).
+        if super::paste_gate::blocks(event) {
+            return EventResponse {
+                repaint: true,
+                consumed: egui_winit.egui_ctx().egui_wants_keyboard_input(),
+            };
+        }
+
         egui_winit.on_window_event(window, event)
     }
 

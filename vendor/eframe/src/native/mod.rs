@@ -16,6 +16,10 @@ pub(crate) mod winit_integration;
 // (see vendor/README.md, #787).
 mod window_start;
 
+// TraceDraw: the application may keep a paste shortcut from egui-winit's
+// clipboard text read (see vendor/README.md, #1488).
+pub(crate) mod paste_gate;
+
 #[cfg(feature = "glow")]
 mod glow_integration;
 
