@@ -3314,17 +3314,71 @@ fn line_spacing_factor(f: &tracedraw_core::ParagraphFormat, size_pt: f64) -> f64
     }
 }
 
+/// The members of a paragraph text's paragraph style (versions 16+)
+/// beyond those artistic text has: hyphenation, bullets, drop caps,
+/// indents and tabs. Every paragraph of every paragraph text of the
+/// files of versions 19, 22 and 27 holds them (18 paragraphs, 2026-11-04,
+/// #1698); TraceDraw gave its paragraph text the members of artistic
+/// text only, and the program that reads the files hung on opening any
+/// of them. The values are those of the version 27 file when nothing is
+/// set (no hyphenation, bullet or drop cap, no indent), each a JSON value.
+pub(crate) const FRAME_TEXT_PARAGRAPH: &[(&str, &str)] = &[
+    ("autoHyphenate", r#""0""#),
+    ("breakAllCapWords", r#""0""#),
+    ("breakCapitalizedWords", r#""0""#),
+    ("bulletAngle", r#""0""#),
+    ("bulletChar", r#""22200000""#),
+    ("bulletFill", r#"{"type":"0"}"#),
+    ("bulletFirstCharIndent", r#""37500""#),
+    (
+        "bulletFont",
+        r#"{"charset":"0","effect":"0","font":"Arial","overline":"0","script":"0","size":"42333","strikeout":"0","technology":"0","underline":"0","version":"","weight":"12480"}"#,
+    ),
+    ("bulletHShift", r#""0""#),
+    ("bulletHanging", r#""1""#),
+    ("bulletOn", r#""0""#),
+    ("bulletOutline", r#"{"width":"0"}"#),
+    ("bulletVShift", r#""0""#),
+    ("dropCapOn", r#""0""#),
+    ("firstLineIndent", r#""0""#),
+    ("hangingIndent", r#""0""#),
+    ("hyphenateHotZone", r#""127000""#),
+    ("hyphenateMinCharsAfter", r#""2""#),
+    ("hyphenateMinCharsBefore", r#""3""#),
+    ("hyphenateMinWordLength", r#""6""#),
+    ("leftMargin", r#""0""#),
+    ("linesToDrop", r#""3""#),
+    ("restOfLinesIndent", r#""0""#),
+    ("spacingFromText", r#""0""#),
+    ("tabLeaderChar", r#""2e000000""#),
+    ("tabLeaderSpacing", r#""1""#),
+    (
+        "tabs",
+        r#""0,0,75000|0,0,150000|0,0,225000|0,0,300000|0,0,375000|0,0,450000|0,0,525000|0,0,600000|0,0,675000|0,0,750000|0,0,825000|0,0,900000""#,
+    ),
+];
+
 /// A text paragraph's whole default style, as files of versions 16 and
 /// later write it: the first run's font, size, weight and colour, the
 /// alignment, and every other member with the values files hold when it
-/// is not set.
+/// is not set; paragraph text (`frame_text`) with the members of
+/// [`FRAME_TEXT_PARAGRAPH`] too.
 fn full_text_style(
     sp: Option<&TextSpan>,
     fill: Option<&Fill>,
     align: TextAlign,
     leading: f64,
     tech: &fonts::FaceTech,
+    frame_text: bool,
 ) -> String {
+    let frame_members: String = if frame_text {
+        FRAME_TEXT_PARAGRAPH
+            .iter()
+            .map(|(k, v)| format!(r#""{k}":{v},"#))
+            .collect()
+    } else {
+        String::new()
+    };
     let colour = fill
         .and_then(fill_colour)
         .map(colour_spec)
@@ -3334,7 +3388,7 @@ fn full_text_style(
             r#"{{"character":{{{fill},"#,
             r#""angle":"0","outline":{outline},"#,
             r#""RTL":{rtl},"latin":{latin},"h_shift":"0","v_shift":"0","farEast":{far}}},"frame":{{}},"#,
-            r#""paragraph":{{"interCharSpacing":"0","thickOverlineAbsolute":"0","thickAbsolute":"0","dblStrikeout2Thickness":"45455","dblStrikeout2Distance":"287878","dblOverline1Absolute":"0","maxInterCharSpacing":"2000000","dblUnderline1Distance":"-90909","dblOverline2Absolute":"0","dblStrikeout1Distance":"378788","dblStrikeout1Absolute":"0","thickThickness":"90909","dblUnderline2Distance":"-181819","dblUnderline2Thickness":"45455","interLineSpacing":"{leading}","dblOverline1Thickness":"45455","afterParaSpacing":"0","thickOverlineThickness":"90909","spacingMethod":"0","dblStrikeout2Absolute":"0","thickStrikeoutAbsolute":"0","thinThickness":"45455","interLangSpacing":"0","interWordSpacing":"1000000","maxInterWordSpacing":"3000000","thinAbsolute":"0","dblUnderline1Absolute":"0","dblUnderline2Absolute":"0","dblUnderline1Thickness":"45455","thinOverlineAbsolute":"0","thinOverlineThickness":"45455","thinDistance":"-90909","beforeParaSpacing":"1000000","dblOverline2Distance":"890910","thinOverlineDistance":"845455","dblOverline2Thickness":"45455","thinStrikeoutAbsolute":"0","dblOverline1Distance":"800000","thinStrikeoutDistance":"333333","minInterWordSpacing":"600000","thinStrikeoutThickness":"45455","thickDistance":"-90909","thickOverlineDistance":"868182","thickStrikeoutDistance":"356060","thickStrikeoutThickness":"90909","dblStrikeout1Thickness":"45455","justify":"{justify}"}}}}"#
+            r#""paragraph":{{{frame_members}"interCharSpacing":"0","thickOverlineAbsolute":"0","thickAbsolute":"0","dblStrikeout2Thickness":"45455","dblStrikeout2Distance":"287878","dblOverline1Absolute":"0","maxInterCharSpacing":"2000000","dblUnderline1Distance":"-90909","dblOverline2Absolute":"0","dblStrikeout1Distance":"378788","dblStrikeout1Absolute":"0","thickThickness":"90909","dblUnderline2Distance":"-181819","dblUnderline2Thickness":"45455","interLineSpacing":"{leading}","dblOverline1Thickness":"45455","afterParaSpacing":"0","thickOverlineThickness":"90909","spacingMethod":"0","dblStrikeout2Absolute":"0","thickStrikeoutAbsolute":"0","thinThickness":"45455","interLangSpacing":"0","interWordSpacing":"1000000","maxInterWordSpacing":"3000000","thinAbsolute":"0","dblUnderline1Absolute":"0","dblUnderline2Absolute":"0","dblUnderline1Thickness":"45455","thinOverlineAbsolute":"0","thinOverlineThickness":"45455","thinDistance":"-90909","beforeParaSpacing":"1000000","dblOverline2Distance":"890910","thinOverlineDistance":"845455","dblOverline2Thickness":"45455","thinStrikeoutAbsolute":"0","dblOverline1Distance":"800000","thinStrikeoutDistance":"333333","minInterWordSpacing":"600000","thinStrikeoutThickness":"45455","thickDistance":"-90909","thickOverlineDistance":"868182","thickStrikeoutDistance":"356060","thickStrikeoutThickness":"90909","dblStrikeout1Thickness":"45455","justify":"{justify}"}}}}"#
         ),
         fill = fill_json(&colour),
         outline = character_outline_json(),
@@ -3343,6 +3397,7 @@ fn full_text_style(
         far = font_json(sp, 128, tech),
         justify = justify_code(align),
         leading = (leading * 1_000_000.0).round() as i64,
+        frame_members = frame_members,
     )
 }
 
@@ -5875,22 +5930,35 @@ impl<'a> Writer<'a> {
     ) -> Vec<u8> {
         let v = self.v;
         let mut t = Buf::default();
+        // Paragraph text from version 19 has the header of every paragraph
+        // text of the files of versions 19, 22 and 27: 1 where
+        // artistic text of layout 1700 has -1, 14 from version 22 and
+        // layout 1800, then 4 zero bytes after its paragraphs from 22.
+        // TraceDraw wrote it with artistic text's 1700 header, which no
+        // paragraph text of any file has, and the program that reads the
+        // files hung on opening it (#1698).
+        let frame_layout = frame.is_some() && v.0 >= 19;
+        let none = if frame_layout { 1 } else { u32::MAX };
         // Paragraph text starts with 0: its frames hold their size and
         // its paragraphs no flag byte.
         t.u32(if frame.is_some() { 0 } else { u32::MAX })
-            .u32(u32::MAX)
+            .u32(none)
             .u32(0)
-            .u32(u32::MAX)
+            .u32(none)
             .u32(8)
             // 12 in version 16, 13 from 17; the layout is 1700 in both,
             // as files saved for those versions have them (a version 16
             // file with 13 and 1600 was refused as holding an invalid
             // object).
-            .u32(if v.0 >= 17 { 13 } else { 12 })
+            .u32(match v.0 {
+                22.. if frame_layout => 14,
+                17.. => 13,
+                _ => 12,
+            })
             .u32(0)
             .u32(3)
             .u32(0)
-            .u16(1700)
+            .u16(if frame_layout { 1800 } else { 1700 })
             .zeros(3);
         // One frame, numbered as the text object (its `spnd`), the text's
         // matrix, not on a path, 8 unknown. A frame number other than the
@@ -5943,7 +6011,14 @@ impl<'a> Writer<'a> {
             // The colour is the first run's own when it has one: a
             // paragraph of one run keeps its colour only here (#1057).
             let first_fill = first.and_then(|sp| sp.fill.as_ref()).unwrap_or(fill);
-            let default = full_text_style(first, Some(first_fill), align, leading, &self.tech);
+            let default = full_text_style(
+                first,
+                Some(first_fill),
+                align,
+                leading,
+                &self.tech,
+                frame.is_some(),
+            );
             t.u32(style_for(align)).zeros(1);
             if frame.is_none() {
                 t.u8(0);
@@ -6015,6 +6090,9 @@ impl<'a> Writer<'a> {
                 }
             }
             t.u32(bytes.len() as u32).bytes(&bytes).u8(0);
+        }
+        if frame_layout && v.0 >= 22 {
+            t.u32(0);
         }
         t.done()
     }

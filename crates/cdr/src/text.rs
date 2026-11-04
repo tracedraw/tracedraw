@@ -835,6 +835,11 @@ pub(crate) struct Txsm {
     /// The settings of the first paragraph frame (version 16+: the style
     /// string of its frame record, holding its columns).
     pub frame_style: Option<String>,
+    /// Version 16+: the record's layout version (1700, 1800 ...).
+    pub layout: Option<u16>,
+    /// Version 16+ paragraph text (the frame flag clear): each
+    /// paragraph's default style string as stored, for the checker.
+    pub frame_text_styles: Vec<String>,
 }
 
 /// How a text fitted to a path sits on it: the 40 bytes after the
@@ -935,6 +940,8 @@ fn early_paragraphs(chars: &[u8], size_pt: Option<f64>) -> Txsm {
         paragraphs,
         inert_styles: 0,
         frame_style: None,
+        layout: None,
+        frame_text_styles: Vec::new(),
     }
 }
 
@@ -1073,6 +1080,8 @@ fn read_txsm_7_frames(
         paragraphs: Vec::new(),
         inert_styles: 0,
         frame_style: None,
+        layout: None,
+        frame_text_styles: Vec::new(),
     };
     for _ in 0..np {
         let style_id = r.u32()?;
@@ -1444,6 +1453,8 @@ fn read_txsm_16(d: &[u8], v: u16, charset: u8, warn: &mut dyn FnMut(String)) -> 
         paragraphs: Vec::new(),
         inert_styles: 0,
         frame_style,
+        layout: Some(layout),
+        frame_text_styles: Vec::new(),
     };
     for _ in 0..np {
         let style_id = r.u32()?;
@@ -1462,6 +1473,9 @@ fn read_txsm_16(d: &[u8], v: u16, charset: u8, warn: &mut dyn FnMut(String)) -> 
         if layout < 1700 && !frame && style_string_at(d, r.pos, v) {
             base = parse_style_string(&first);
             first = read_style_string(&mut r, d, v, charset)?;
+        }
+        if !frame {
+            out.frame_text_styles.push(first.clone());
         }
         let default = parse_style_string(&first).over(&base);
         let nr = r.u32()? as usize;

@@ -7074,6 +7074,81 @@ fn paragraph_text_goes_out_with_its_frame() {
     }
 }
 
+/// Paragraph text has the text record every paragraph text of the files
+/// of versions 19, 22 and 27 has: 1 at bytes 4 and 12, 14 at byte 20
+/// from 22 (13 before), layout 1800, 4 zero bytes after the paragraphs
+/// from 22, and paragraph styles with the hyphenation, bullet, drop cap,
+/// indent and tab members. Any .cdr TraceDraw saved with paragraph text
+/// made the program that reads them hang (#1698): it had artistic
+/// text's layout 1700 header and members. Artistic text, which opens
+/// there as TraceDraw writes it, keeps its record.
+#[test]
+fn paragraph_text_has_the_text_record_of_the_files() {
+    let mut ids = tracedraw_core::id::IdSource::default();
+    let para = paragraph_shape(&mut ids, ParagraphStyle::default());
+    let artistic = text_shape(
+        &mut ids,
+        vec![TextSpan::new("Artistic", "Arial", 12.0)],
+        TextAlign::Center,
+    );
+    let u32_at = |d: &[u8], at: usize| u32::from_le_bytes(d[at..at + 4].try_into().expect("4"));
+    let u16_at = |d: &[u8], at: usize| u16::from_le_bytes(d[at..at + 2].try_into().expect("2"));
+    let mut sizes = std::collections::BTreeMap::new();
+    for v in 16..=NEWEST_VERSION {
+        let bytes = document_to_cdr_version(&doc_with(vec![para.clone()]), v);
+        let findings = crate::check::check_bytes(&bytes).expect("checks");
+        assert!(findings.is_empty(), "{v}: {findings:?}");
+        let (_, txsm) = first_text_records(&bytes);
+        let header = (
+            u32_at(&txsm, 0),
+            u32_at(&txsm, 4),
+            u32_at(&txsm, 12),
+            u32_at(&txsm, 20),
+            u16_at(&txsm, 36),
+        );
+        let want = match v {
+            22.. => (0, 1, 1, 14, 1800),
+            19.. => (0, 1, 1, 13, 1800),
+            17.. => (0, u32::MAX, u32::MAX, 13, 1700),
+            _ => (0, u32::MAX, u32::MAX, 12, 1700),
+        };
+        assert_eq!(header, want, "{v}");
+        sizes.insert(v, txsm.len());
+        let parsed =
+            crate::text::read_txsm(&txsm, v, 0, &mut |w| panic!("{v}: {w}")).expect("reads");
+        assert_eq!(parsed.frame_text_styles.len(), 3, "{v}");
+        for s in &parsed.frame_text_styles {
+            for (k, _) in FRAME_TEXT_PARAGRAPH {
+                assert!(s.contains(&format!("\"{k}\":")), "{v}: {k} in {s}");
+            }
+        }
+        // Artistic text as before: -1, 13 and layout 1700, no tail.
+        let bytes = document_to_cdr_version(&doc_with(vec![artistic.clone()]), v);
+        let (_, tree, riff) = chunk_ids(&bytes);
+        let mut txsm = None;
+        tree.root.walk(&mut |c, _| {
+            if c.is(b"txsm") && txsm.is_none() {
+                txsm = Some(tree.data(&riff, c).to_vec());
+            }
+        });
+        let txsm = txsm.expect("a text record");
+        assert_eq!(
+            (u32_at(&txsm, 4), u16_at(&txsm, 36)),
+            (u32::MAX, 1700),
+            "{v}"
+        );
+        let parsed =
+            crate::text::read_txsm(&txsm, v, 0, &mut |w| panic!("{v}: {w}")).expect("reads");
+        assert!(parsed.frame_text_styles.is_empty(), "{v}");
+        assert!(!txsm.windows(15).any(|w| w == br#""autoHyphenate""#), "{v}");
+    }
+    // The tail: the same record grows by 4 bytes from 21 to 22, by
+    // nothing from 20 to 21.
+    assert_eq!(sizes[&21], sizes[&20], "{sizes:?}");
+    assert_eq!(sizes[&22], sizes[&21] + 4, "{sizes:?}");
+    assert_eq!(sizes[&27], sizes[&22], "{sizes:?}");
+}
+
 /// Columns go out in the frame's settings from version 16 and come back.
 #[test]
 fn paragraph_columns_round_trip_from_version_16() {
