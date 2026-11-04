@@ -7074,14 +7074,15 @@ fn paragraph_text_goes_out_with_its_frame() {
     }
 }
 
-/// Paragraph text has the text record every paragraph text of the files
-/// of versions 19, 22 and 27 has: 1 at bytes 4 and 12, 14 at byte 20
-/// from 22 (13 before), layout 1800, 4 zero bytes after the paragraphs
-/// from 22, and paragraph styles with the hyphenation, bullet, drop cap,
-/// indent and tab members. Any .cdr TraceDraw saved with paragraph text
-/// made the program that reads them hang (#1698): it had artistic
-/// text's layout 1700 header and members. Artistic text, which opens
-/// there as TraceDraw writes it, keeps its record.
+/// Asked for (see [`Previews::paragraph_frames`]), paragraph text has
+/// the text record every paragraph text of the files of versions 19, 22
+/// and 27 has: 1 at bytes 4 and 12, 14 at byte 20 from 22 (13 before),
+/// layout 1800, 4 zero bytes after the paragraphs from 22, and
+/// paragraph styles with the hyphenation, bullet, drop cap, indent and
+/// tab members. Any .cdr TraceDraw saved with paragraph frames made the
+/// program that reads them hang (#1698): it had artistic text's layout
+/// 1700 header and members. Artistic text, which opens there as
+/// TraceDraw writes it, keeps its record.
 #[test]
 fn paragraph_text_has_the_text_record_of_the_files() {
     let mut ids = tracedraw_core::id::IdSource::default();
@@ -7095,7 +7096,7 @@ fn paragraph_text_has_the_text_record_of_the_files() {
     let u16_at = |d: &[u8], at: usize| u16::from_le_bytes(d[at..at + 2].try_into().expect("2"));
     let mut sizes = std::collections::BTreeMap::new();
     for v in 16..=NEWEST_VERSION {
-        let bytes = document_to_cdr_version(&doc_with(vec![para.clone()]), v);
+        let bytes = with_paragraph_frames(&doc_with(vec![para.clone()]), v);
         let findings = crate::check::check_bytes(&bytes).expect("checks");
         assert!(findings.is_empty(), "{v}: {findings:?}");
         let (_, txsm) = first_text_records(&bytes);
