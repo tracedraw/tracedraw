@@ -183,6 +183,25 @@ the repository's settings and secrets belong to the organization's owners
 changelog, the version numbers) in a pull request and ask an owner to tag
 it.
 
+Preparing a release, in that pull request:
+
+1. Give the "Unreleased" section of `CHANGELOG.md` its version and date
+   (`## 0.40.0 (2026-11-05)`) and set the version in `Cargo.toml`.
+2. What's New on the Welcome Screen: add the new version's row on top of
+   `RELEASES` in `apps/tracedraw/src/ui/welcome.rs` and drop the oldest,
+   so it keeps the last ten releases. Write its title and its paragraph
+   (`welcome.news.v0_40_title`, `welcome.news.v0_40_body`) in
+   `apps/tracedraw/lang/en.toml` from the version's changelog section:
+   one short paragraph for everyone, with only what a user notices and no
+   technical details, record names or issue numbers. Translate both into
+   the other seventeen languages (`# mt` for machine translations) and
+   delete the dropped version's keys from every language. A test fails
+   while the top row is not the version in `Cargo.toml`.
+3. Help > Highlight What's New: replace `NEW_IN_THIS_VERSION` in
+   `apps/tracedraw/src/ui/menus.rs` with the menu rows new in this
+   version, and update the highlights in
+   `docs/help/*/welcome/whats-new.md`.
+
 ## Replying
 
 Write in English, plainly and politely, as the rest of the project does.

@@ -6,7 +6,10 @@ zjistit, co se změnilo, a uvádí hlavní novinky posledních verzí.
 ## Novinky v programu {#in-the-program}
 
 - Zvolte [[menu.help > menu.help.whats_new]] a otevře se stránka novinek
-  uvítací obrazovky se zprávami o této verzi.
+  uvítací obrazovky. Uvádí posledních deset verzí, od nejnovější, každou
+  s datem a krátkým názvem. Klepnutím na verzi si přečtete krátké shrnutí
+  toho, co se změnilo; nejnovější je už otevřená. **Chcete vědět víc?** pod
+  shrnutím otevře stránku dané verze na GitHubu s úplným seznamem změn.
 - Zapněte [[menu.help > menu.help.highlight_whats_new]] a v nabídkách se
   označí, co je v této verzi nové: na konci každého nového příkazu se objeví
   malá tečka, také vedle šipky podnabídky, která k němu vede, a nad názvem

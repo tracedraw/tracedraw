@@ -7,7 +7,12 @@ der letzten Versionen.
 ## Neues im Programm sehen {#in-the-program}
 
 - Wählen Sie [[menu.help > menu.help.whats_new]], um die Seite mit den
-  Neuigkeiten des Begrüßungsbildschirms für diese Version zu öffnen.
+  Neuigkeiten des Begrüßungsbildschirms zu öffnen. Sie zeigt die letzten
+  zehn Versionen, die neueste zuerst, jede mit Datum und kurzem Titel. Ein
+  Klick auf eine Version zeigt eine kurze Zusammenfassung der Änderungen;
+  die neueste ist schon geöffnet. **Mehr erfahren?** unter einer
+  Zusammenfassung öffnet die Seite dieser Version auf GitHub mit der
+  vollständigen Liste der Änderungen.
 - Schalten Sie [[menu.help > menu.help.highlight_whats_new]] ein, um in den
   Menüs zu markieren, was in dieser Version neu ist: Ein kleiner Punkt
   erscheint am Ende jedes neuen Befehls, neben dem Pfeil eines Untermenüs, das

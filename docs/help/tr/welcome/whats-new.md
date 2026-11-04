@@ -6,8 +6,13 @@ listeler.
 
 ## Programdaki yenilikleri görme {#in-the-program}
 
-- Bu sürümün haberleriyle karşılama ekranının yenilikler sayfasını açmak için
-  [[menu.help > menu.help.whats_new]] komutunu seçin.
+- Karşılama ekranının yenilikler sayfasını açmak için
+  [[menu.help > menu.help.whats_new]] komutunu seçin. Sayfa son on sürümü, en yenisi
+  başta olmak üzere tarihi ve kısa bir başlığıyla listeler. Neyin
+  değiştiğine dair kısa bir özeti okumak için bir sürüme tıklayın; en yenisi
+  zaten açıktır. Bir özetin altındaki **Daha fazlasını öğrenmek ister
+  misiniz?** bağlantısı, o sürümün GitHub sayfasını tüm değişiklik
+  listesiyle açar.
 - Bu sürümde yeni olanları menülerde işaretlemek için
   [[menu.help > menu.help.highlight_whats_new]] komutunu açın: her yeni
   komutun sonunda, ona giden bir alt menünün okunun yanında ve yeni bir komut

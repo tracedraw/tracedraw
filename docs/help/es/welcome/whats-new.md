@@ -6,7 +6,11 @@ cómo saber qué ha cambiado y enumera lo más destacado de las últimas version
 ## Ver las novedades en el programa {#in-the-program}
 
 - Elija [[menu.help > menu.help.whats_new]] para abrir la página de novedades
-  de la pantalla de bienvenida, con las noticias de esta versión.
+  de la pantalla de bienvenida. Muestra las diez últimas versiones, de la
+  más reciente a la más antigua, cada una con su fecha y un título corto.
+  Haga clic en una versión para leer un breve resumen de lo que cambió; la
+  más reciente ya está abierta. **¿Quieres saber más?** debajo de un resumen
+  abre la página de esa versión en GitHub, con la lista completa de cambios.
 - Active [[menu.help > menu.help.highlight_whats_new]] para marcar en los menús
   lo nuevo de esta versión: aparece un pequeño punto al final de cada comando
   nuevo, junto a la flecha de un submenú que lleva a uno, y sobre el título de

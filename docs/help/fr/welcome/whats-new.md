@@ -7,7 +7,12 @@ dernières versions.
 ## Voir les nouveautés dans le programme {#in-the-program}
 
 - Choisissez [[menu.help > menu.help.whats_new]] pour ouvrir la page des
-  nouveautés de l'écran d'accueil, avec les nouvelles de cette version.
+  nouveautés de l'écran d'accueil. Elle présente les dix dernières versions,
+  de la plus récente à la plus ancienne, chacune avec sa date et un titre
+  court. Cliquez sur une version pour lire un bref résumé de ce qui a
+  changé ; la plus récente est déjà ouverte. **Envie d'en savoir plus ?**
+  sous un résumé ouvre la page de cette version sur GitHub, avec la liste
+  complète des changements.
 - Activez [[menu.help > menu.help.highlight_whats_new]] pour marquer dans les
   menus ce qui est nouveau dans cette version : un petit point apparaît à la
   fin de chaque nouvelle commande, à côté de la flèche d'un sous-menu qui y

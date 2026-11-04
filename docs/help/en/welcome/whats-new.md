@@ -6,7 +6,11 @@ find out what changed and lists the highlights of the latest versions.
 ## Seeing what is new in the program {#in-the-program}
 
 - Choose [[menu.help > menu.help.whats_new]] to open the What's New page of
-  the Welcome Screen, with the news of this version.
+  the Welcome Screen. It lists the last ten versions, newest first, each
+  with its date and a short title. Click a version to read a short summary
+  of what changed; the newest one is open already. **Want to know more?**
+  under a summary opens that version's page on GitHub with the full list of
+  changes.
 - Turn on [[menu.help > menu.help.highlight_whats_new]] to mark what is new
   in this version in the menus: a small dot appears at the end of each new
   command, beside the arrow of a submenu that leads to one, and over the

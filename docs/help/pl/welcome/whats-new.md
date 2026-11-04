@@ -6,7 +6,11 @@ sprawdzić, co się zmieniło, i wymienia najważniejsze nowości ostatnich wers
 ## Nowości w programie {#in-the-program}
 
 - Wybierz [[menu.help > menu.help.whats_new]], aby otworzyć stronę nowości na
-  ekranie powitalnym, z wiadomościami o tej wersji.
+  ekranie powitalnym. Zawiera ostatnie dziesięć wersji, od najnowszej, każdą
+  z datą i krótkim tytułem. Kliknij wersję, aby przeczytać krótkie
+  podsumowanie zmian; najnowsza jest już otwarta. **Chcesz wiedzieć więcej?**
+  pod podsumowaniem otwiera stronę tej wersji w serwisie GitHub z pełną
+  listą zmian.
 - Włącz [[menu.help > menu.help.highlight_whats_new]], aby oznaczyć w menu to,
   co nowe w tej wersji: mała kropka pojawia się na końcu każdego nowego
   polecenia, obok strzałki podmenu, które do niego prowadzi, i nad tytułem

@@ -6,7 +6,11 @@ cara mengetahui apa yang berubah dan mencantumkan sorotan versi-versi terbaru.
 ## Melihat yang baru di program {#in-the-program}
 
 - Pilih [[menu.help > menu.help.whats_new]] untuk membuka halaman Yang Baru di
-  Layar Sambutan, berisi berita versi ini.
+  Layar Sambutan. Halaman itu memuat sepuluh versi terakhir, dari yang
+  terbaru, masing-masing dengan tanggal dan judul singkat. Klik sebuah versi
+  untuk membaca ringkasan singkat tentang apa yang berubah; versi terbaru
+  sudah terbuka. **Ingin tahu lebih banyak?** di bawah ringkasan membuka
+  halaman versi itu di GitHub, dengan daftar lengkap perubahan.
 - Aktifkan [[menu.help > menu.help.highlight_whats_new]] untuk menandai yang
   baru di versi ini pada menu: titik kecil muncul di ujung setiap perintah
   baru, di samping panah submenu yang menuju ke sana, dan di atas judul menu

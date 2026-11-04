@@ -61,6 +61,8 @@ full, row-by-row status.
 
 - Page Down on the last page opens Insert Page with one page after it, and Page Up on the first page opens it with one page before it. The keys did nothing there. Between the first and the last page they still go to the next and the previous page (#1752).
 
+- Welcome Screen, What's New: a history of the last ten releases instead of three highlights that no longer matched the version shown. Each row shows a version, its date and a short title; a click opens a plain paragraph about what changed and a "Want to know more?" link to that release's page with the full list. The newest release is open at first. Help > What's New opens it.
+
 - Shaping a clip frame (Weld, Trim, Intersect, Simplify, Front Minus Back, Back Minus Front) keeps it a clip frame: its frame takes the new shape with its own fill and outline, and what it held stays inside; before, the result was a curve with no fill and the contents were gone (#1745 to #1750).
 
 - Opening .cdr: paragraph text saved with the older text layout comes in. A version 21 file opened with every paragraph text missing (84 frames of a two-page manual), and the report gave the warning "implausible style record count". Its paragraphs hold one style each, where TraceDraw expected two, so the rest of each text record was misread. Both forms are now read (#1833).

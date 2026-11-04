@@ -331,6 +331,12 @@ pub(crate) fn item_label(ui: &mut Ui, label: &str, shortcut: &str, enabled: bool
     item_text(ui, label, shortcut, enabled, None, label)
 }
 
+/// Help > What's New: the Welcome Screen's history of the last releases.
+pub(crate) fn open_whats_new(app: &mut App) {
+    app.show_welcome = true;
+    app.welcome_tab = crate::app::WelcomeTab::News;
+}
+
 /// A menu item with a ready label and an optional icon; `id` names it for
 /// the test replay.
 /// Help > Mark New Features: the menu rows new in this version and the
@@ -4206,8 +4212,7 @@ fn help_menu(app: &mut App, ui: &mut Ui) {
     }
     sep(ui);
     if item(ui, "menu.help.whats_new", "", true) {
-        app.show_welcome = true;
-        app.welcome_tab = crate::app::WelcomeTab::News;
+        open_whats_new(app);
     }
     if check(
         ui,

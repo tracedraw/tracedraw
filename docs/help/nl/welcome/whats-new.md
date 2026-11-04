@@ -7,7 +7,11 @@ versies.
 ## Nieuwe dingen in het programma zien {#in-the-program}
 
 - Kies [[menu.help > menu.help.whats_new]] om de nieuwspagina van het
-  welkomstscherm te openen, met het nieuws van deze versie.
+  welkomstscherm te openen. Die toont de laatste tien versies, de nieuwste
+  bovenaan, elk met datum en een korte titel. Klik op een versie voor een
+  korte samenvatting van wat er veranderd is; de nieuwste staat al open.
+  **Meer weten?** onder een samenvatting opent de pagina van die versie op
+  GitHub, met de volledige lijst van wijzigingen.
 - Zet [[menu.help > menu.help.highlight_whats_new]] aan om in de menu's te
   markeren wat nieuw is in deze versie: er verschijnt een kleine stip aan het
   eind van elke nieuwe opdracht, naast de pijl van een submenu dat ernaar
