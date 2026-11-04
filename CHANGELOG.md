@@ -12,6 +12,8 @@ full, row-by-row status.
 
 - Browser: the mouse wheel scrolls dockers, lists and dialogs as far a notch as on the desktop. egui's own browser units made a notch scroll 100 points in Chromium and 24 in Firefox, where the desktop scrolls 40. A touchpad scrolls the distance it reports, as before (Refs #1406).
 
+- Export dialog: deleting a preset asks first. The "−" beside the preset list deleted the chosen preset with one click, for good. It now asks 'Delete the preset "name"?' in a row under the list, with Yes and No (#1816).
+
 - Opening a PDF: a very large picture (more than 20000 pixels on a side or more than 80 megapixels) comes in shrunk to fit those limits instead of being left out. A PDF holding an 11160 x 14794 pixel picture opened with only the outline around it; the picture now comes in at 5580 x 7397 pixels, in its place, with its soft mask (#1804).
 
 - Several monitors: TraceDraw opens on the primary monitor, centred on it. The splash screen and the main window were centred by the monitor's size from the top-left corner of the whole desktop, so with the primary monitor below or right of others (X11, four monitors) the window opened on the top-left monitor (#1800).

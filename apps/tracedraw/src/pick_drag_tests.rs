@@ -10360,6 +10360,93 @@ fn the_edge_of_the_shape_being_drawn_shows_over_a_wide_outline() {
     }
 }
 
+/// The Export dialog's delete button asks before it deletes the chosen
+/// preset (#1816): one click on it lost the preset for good. No keeps
+/// it; Yes deletes it.
+#[test]
+fn the_export_dialog_asks_before_deleting_a_preset() {
+    use crate::ui::dialogs::{Dialog, ExportState};
+    /// The centre of the last text `label` drawn in one frame.
+    fn last_text(ctx: &egui::Context, app: &mut App, label: &str) -> Option<Pos2> {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                Pos2::ZERO,
+                egui::vec2(1600.0, 1000.0),
+            )),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+        out.textures_delta.clear();
+        fn walk(s: &egui::Shape, label: &str, at: &mut Option<Pos2>) {
+            match s {
+                egui::Shape::Text(t) if t.galley.text() == label => {
+                    *at = Some(t.galley.rect.translate(t.pos.to_vec2()).center())
+                }
+                egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, label, at)),
+                _ => {}
+            }
+        }
+        let mut at = None;
+        out.shapes
+            .iter()
+            .for_each(|c| walk(&c.shape, label, &mut at));
+        at
+    }
+    let (ctx, mut app, _) = setup();
+    let png = ExportState {
+        format: 2,
+        ..ExportState::default()
+    };
+    assert!(app.settings.formats.save_preset("FB-WEB", &png));
+    app.export();
+    let Dialog::Export(st) = &mut app.dialog else {
+        panic!("no Export dialog");
+    };
+    st.format = 2;
+    st.preset = "FB-WEB".into();
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let question = crate::i18n::trf(
+        "dialog.export_preset_delete_question",
+        &[("name", "FB-WEB")],
+    );
+    let (yes, no) = (crate::i18n::tr("dialog.yes"), crate::i18n::tr("dialog.no"));
+    let click = |ctx: &egui::Context, app: &mut App, label: &str| {
+        let at = last_text(ctx, app, label).unwrap_or_else(|| panic!("no {label:?} shown"));
+        click_at(ctx, app, at, Modifiers::NONE);
+        for _ in 0..2 {
+            frame(ctx, app, Vec::new(), Modifiers::NONE);
+        }
+    };
+    let kept = |app: &App| app.settings.formats.export_presets.len();
+    assert!(last_text(&ctx, &mut app, &question).is_none());
+    // The delete button only asks.
+    click(&ctx, &mut app, "\u{2212}");
+    assert_eq!(kept(&app), 1, "deleted without asking");
+    assert!(
+        last_text(&ctx, &mut app, &question).is_some(),
+        "no question"
+    );
+    // No keeps the preset, chosen.
+    click(&ctx, &mut app, &no);
+    assert_eq!(kept(&app), 1);
+    assert!(last_text(&ctx, &mut app, &question).is_none());
+    let Dialog::Export(st) = &app.dialog else {
+        panic!("the Export dialog closed");
+    };
+    assert_eq!(st.preset, "FB-WEB");
+    // Asked again, Yes deletes it.
+    click(&ctx, &mut app, "\u{2212}");
+    click(&ctx, &mut app, &yes);
+    assert_eq!(kept(&app), 0);
+    let Dialog::Export(st) = &app.dialog else {
+        panic!("the Export dialog closed");
+    };
+    assert!(st.preset.is_empty() && st.preset_delete.is_none());
+    assert!(last_text(&ctx, &mut app, &question).is_none());
+}
+
 /// The Export dialog lists every saved preset, with its format, from
 /// the start; changing the format leaves the chosen preset unchosen
 /// while the list stays whole, and choosing a preset of another format
