@@ -1185,11 +1185,12 @@ impl App {
         }
     }
 
-    /// A selection box or freehand selection of the Pick tools is being
-    /// dragged.
+    /// A selection box or freehand selection of the Pick tools, or one of
+    /// the Shape tool's over nodes, is being dragged.
     pub fn selecting(&self) -> bool {
-        matches!(self.drag, Drag::Marquee { .. } | Drag::Lasso { .. })
-            && matches!(self.tool, Tool::Pick | Tool::FreeformPick)
+        (matches!(self.drag, Drag::Marquee { .. } | Drag::Lasso { .. })
+            && matches!(self.tool, Tool::Pick | Tool::FreeformPick))
+            || matches!(self.drag, Drag::NodeMarquee { .. } | Drag::NodeLasso { .. })
     }
 
     /// A selection box (or freehand selection) runs from the press until
@@ -1199,7 +1200,10 @@ impl App {
     /// end of the drag, so the box stayed on the canvas, frozen, until the
     /// next one replaced it (#1015). While the left button is held the box
     /// follows the latest pointer position even when egui reports no
-    /// hover after the right press.
+    /// hover after the right press. The Shape tool's selection box and
+    /// freehand selection over nodes go the same way: the right press
+    /// opened the node menu during the drag and left the box on the
+    /// canvas (#1848).
     fn selection_drag_input(
         &mut self,
         response: &Response,
@@ -1212,7 +1216,16 @@ impl App {
             let p = self.view.to_page(s);
             self.pointer_page = Some(p);
             if held {
-                self.pick_drag_to(p, mods);
+                let step = 0.2 / self.view.zoom as f64;
+                match &mut self.drag {
+                    Drag::NodeMarquee { current, .. } => *current = p,
+                    Drag::NodeLasso { points } => {
+                        if points.last().is_none_or(|q| (*q - p).hypot() > step) {
+                            points.push(p);
+                        }
+                    }
+                    _ => self.pick_drag_to(p, mods),
+                }
             }
         }
         if !held {

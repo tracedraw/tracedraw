@@ -3634,6 +3634,85 @@ fn a_right_press_during_a_selection_box_does_not_leave_it_frozen() {
     }
 }
 
+/// The Shape tool's selection box (and freehand selection) over a
+/// curve's nodes, as the Pick tool's: a right press during the drag opens
+/// no node menu, the box goes on with the pointer and ends with the left
+/// button, choosing the nodes it encloses, and nothing of it stays on the
+/// canvas. The menu opened in the middle of the drag and the box stayed
+/// frozen on screen, also after another tool was chosen (#1848).
+#[test]
+fn a_right_press_during_a_shape_tool_selection_box_opens_no_menu() {
+    let n = Modifiers::NONE;
+    let right = |p: Pos2, down: bool| button(p, down, PointerButton::Secondary, n);
+    let left = |p: Pos2, down: bool| button(p, down, PointerButton::Primary, n);
+    for lasso in [false, true] {
+        for left_first in [false, true] {
+            let (ctx, mut app, rect) = setup();
+            app.select(vec![rect]);
+            app.delete_selection();
+            let mut path = tracedraw_core::BezPath::new();
+            path.move_to(Point::new(20.0, 20.0));
+            path.line_to(Point::new(60.0, 20.0));
+            let curve = app
+                .new_shape(ShapeKind::Path {
+                    path,
+                    closed: false,
+                })
+                .expect("curve");
+            app.set_tool(Tool::Shape);
+            app.node_lasso = lasso;
+            app.select(vec![curve]);
+            frame(&ctx, &mut app, Vec::new(), n);
+            let what = format!("lasso {lasso} left first {left_first}");
+            // From an empty spot above and left of the curve, around it.
+            let from = app.view.to_screen(Point::new(5.0, 35.0));
+            frame(&ctx, &mut app, vec![Event::PointerMoved(from)], n);
+            frame(&ctx, &mut app, vec![left(from, true)], n);
+            let mut p = from;
+            for _ in 0..4 {
+                p += egui::vec2(15.0, 0.0);
+                frame(&ctx, &mut app, vec![Event::PointerMoved(p)], n);
+            }
+            assert!(
+                matches!(app.drag, Drag::NodeMarquee { .. } | Drag::NodeLasso { .. }),
+                "{what}: {:?}",
+                app.drag
+            );
+            frame(&ctx, &mut app, vec![right(p, true)], n);
+            let corner = app.view.to_screen(Point::new(75.0, 35.0));
+            let mut end = app.view.to_screen(Point::new(75.0, 5.0));
+            frame(&ctx, &mut app, vec![Event::PointerMoved(corner)], n);
+            frame(&ctx, &mut app, vec![Event::PointerMoved(end)], n);
+            if lasso {
+                end = app.view.to_screen(Point::new(5.0, 5.0));
+                frame(&ctx, &mut app, vec![Event::PointerMoved(end)], n);
+            }
+            assert!(
+                app.context_menu.is_none(),
+                "{what}: no menu during the drag"
+            );
+            assert!(
+                !matches!(app.drag, Drag::None),
+                "{what}: the box goes on while the left button is held"
+            );
+            let ups = if left_first {
+                vec![left(end, false), right(end, false)]
+            } else {
+                vec![right(end, false), left(end, false)]
+            };
+            for e in ups {
+                frame(&ctx, &mut app, vec![e], n);
+            }
+            frame(&ctx, &mut app, Vec::new(), n);
+            assert!(matches!(app.drag, Drag::None), "{what}: {:?}", app.drag);
+            assert!(app.context_menu.is_none(), "{what}: no menu after it");
+            assert_eq!(app.node_selection.len(), 2, "{what}: the box chooses");
+            assert_eq!(app.selection, vec![curve], "{what}");
+            assert!(app.right_drag.is_none(), "{what}");
+        }
+    }
+}
+
 #[test]
 fn selection_groups_store_recall_add_and_zoom() {
     let (ctx, mut app, id) = setup();
