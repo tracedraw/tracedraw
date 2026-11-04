@@ -20,6 +20,10 @@ mod window_start;
 // clipboard text read (see vendor/README.md, #1488).
 pub(crate) mod paste_gate;
 
+// TraceDraw: windows are centred where the primary monitor lies on the
+// desktop (see vendor/README.md, #1800).
+pub(crate) mod monitor_place;
+
 #[cfg(feature = "glow")]
 mod glow_integration;
 

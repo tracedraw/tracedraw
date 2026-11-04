@@ -206,6 +206,11 @@ pub use native::run::EframePumpStatus;
 #[cfg(any(feature = "glow", feature = "wgpu_no_default_features"))]
 pub use native::paste_gate::set_paste_text_gate;
 
+// TraceDraw: see vendor/README.md (#1800).
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(feature = "glow", feature = "wgpu_no_default_features"))]
+pub use native::monitor_place::primary_monitor;
+
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(any(feature = "glow", feature = "wgpu_no_default_features"))]
 #[cfg(feature = "persistence")]

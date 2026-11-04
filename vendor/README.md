@@ -104,6 +104,21 @@ change marked `TraceDraw:` in a comment.
   TraceDraw's tests include and run the key test
   (`clipboard::eframe_paste_gate::tests`). When moving to a newer egui,
   check whether egui-winit still reads the text this way.
+- Change: a window started `centered` is centred where the primary
+  monitor lies on the desktop, and the primary monitor's rectangle is
+  kept for the application (#1800). `epi_integration::viewport_builder`
+  centred the window by the monitor's size from the desktop's top-left
+  corner, and egui's `ViewportInfo` gives the application a monitor's
+  size but not its position, so on a desktop whose primary monitor does
+  not hold that corner (X11, the primary at (1544, 2160) below two
+  others) the splash screen and the main window opened on the top-left
+  monitor. `native/monitor_place.rs` holds `centred_on` (the
+  arithmetic), `remember_primary` and `primary_monitor` (exported from
+  the crate root: `[x, y, width, height]` in system points); the
+  application centres its main window with them
+  (`splash::open_main_window`). TraceDraw's tests include and run it
+  (`splash::eframe_monitor_place::tests`). When moving to a newer
+  eframe, check whether it centres with the monitor's position.
 - Drop the copy and the `[patch.crates-io]` entry when the workspace moves
   to egui/eframe 0.37 or later: what holds that back is the egui 0.37
   API migration across the app. The fixed-function painter has no
