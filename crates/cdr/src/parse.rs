@@ -701,10 +701,14 @@ pub(crate) fn parse_document_kept(
 
     let mut master_flags: Vec<bool> = Vec::new();
     let mut master_background: Option<Fill> = None;
+    // The master page is no page of its own when the file has others: its
+    // guidelines show on every page and the objects on its layers (its
+    // desktop layer) go to master layers, drawn on every page (#1775).
+    let has_pages = pages.iter().any(|pc| !ctx.page_is_master(pc));
+    let mut master_guides: Vec<tracedraw_core::document::Guide> = Vec::new();
     for pc in pages.iter() {
         let page_id = doc.ids_mut().page();
         let is_master = ctx.page_is_master(pc);
-        master_flags.push(is_master);
         if is_master {
             master_background = ctx.page_background(pc);
         }
@@ -761,6 +765,16 @@ pub(crate) fn parse_document_kept(
         // (a version 21 file: the layer of the lettering first, then the
         // layer whose full-page background its preview shows under it).
         page.layers.reverse();
+        if is_master && has_pages {
+            master_guides.append(&mut ctx.guides);
+            for mut layer in page.layers {
+                layer.scope = tracedraw_core::document::MasterScope::All;
+                layer.in_front = false;
+                doc.master.push(layer);
+            }
+            continue;
+        }
+        master_flags.push(is_master);
         if page.layers.is_empty() {
             page.layers
                 .push(Layer::new(doc.ids_mut().layer(), "Layer 1"));
@@ -771,9 +785,12 @@ pub(crate) fn parse_document_kept(
         doc.pages.push(page);
     }
 
-    // Drop a leading master page that carries nothing, keeping at least one page.
+    // Drop a leading master page that carries nothing, keeping at least one
+    // page; a flagged master page next to other pages was read above.
     let first_is_master = master_flags.first().copied().unwrap_or(false);
-    if doc.pages.len() > 1
+    let master_read = has_pages && pages.iter().any(|pc| ctx.page_is_master(pc));
+    if !master_read
+        && doc.pages.len() > 1
         && (first_is_master || doc.pages[0].layers.iter().all(|l| l.shapes.is_empty()))
         && doc.pages[0].layers.iter().all(|l| l.shapes.is_empty())
     {
@@ -784,6 +801,13 @@ pub(crate) fn parse_document_kept(
                 if !p.guides.contains(g) {
                     p.guides.push(*g);
                 }
+            }
+        }
+    }
+    for p in doc.pages.iter_mut() {
+        for g in &master_guides {
+            if !p.guides.contains(g) {
+                p.guides.push(*g);
             }
         }
     }
@@ -8143,6 +8167,139 @@ pub(crate) mod tests {
         assert_eq!(doc.pages.len(), 1, "{:?}", rep.warnings);
         assert_eq!(doc.pages[0].layers[0].name, "Ink");
         assert_eq!(doc.pages[0].layers[0].shapes.len(), 1);
+    }
+
+    /// Objects on the master page's desktop layer and guidelines on its
+    /// guides layer, as the version 7 to 21 files of #1775 hold them
+    /// (master layer flags [2, 1, 1, 0x98] guides, [0, 1, 1, 0x98]
+    /// desktop): no page of their own; the objects go to a master layer
+    /// shown on every page, the guidelines to every page.
+    #[test]
+    fn master_desktop_objects_and_guides_make_no_page_of_their_own() {
+        let far = 228_600_000;
+        let guide = |pts: &[i32], angle: i32| {
+            let mut a = vec![0u8; 12];
+            a.extend_from_slice(&i32s(&[angle]));
+            a.extend_from_slice(&i32s(pts));
+            list(
+                b"obj ",
+                &chunk(b"loda", &loda(OBJ_GUIDE, &[(ARG_GUIDE_LINE, a)])),
+            )
+        };
+        let vertical = |x: i32| guide(&[x, -far, x, far, x, far], 90_000_000);
+        let rect_obj = list(
+            b"obj ",
+            &chunk(
+                b"loda",
+                &loda(OBJ_RECT, &[(ARG_COORDS, i32s(&[254000, 254000, 0]))]),
+            ),
+        );
+        let layer = |flags: [u8; 4], objs: &[u8]| {
+            list(b"layr", &[chunk(b"flgs", &flags), objs.to_vec()].concat())
+        };
+        let master = list(
+            b"page",
+            &[
+                chunk(b"flgs", &[0, 0, 1, 0x90]),
+                list(
+                    b"gobj",
+                    &[
+                        layer([2, 1, 1, 0x98], &vertical(-1_050_000)),
+                        layer([0, 1, 1, 0x98], &rect_obj),
+                        layer([0x12, 0, 1, 0x98], &[]),
+                    ]
+                    .concat(),
+                ),
+            ]
+            .concat(),
+        );
+        let page = |own: &[u8]| {
+            list(
+                b"page",
+                &[
+                    chunk(b"flgs", &[0, 0, 0, 0x90]),
+                    list(
+                        b"gobj",
+                        &[
+                            layer([0x0a, 0, 1, 0x98], &[]),
+                            layer([0x08, 0, 1, 0x98], &[]),
+                            layer([0x0a, 0, 0, 0x98], own),
+                            layer([0, 0, 0, 0x98], &[]),
+                            layer([0x1a, 1, 1, 0x98], &[]),
+                        ]
+                        .concat(),
+                    ),
+                ]
+                .concat(),
+            )
+        };
+        let body = [
+            chunk(b"mcfg", &mcfg(12, 2_100_000, 2_970_000)),
+            master,
+            page(&[]),
+            page(&vertical(0)),
+            page(&[]),
+        ]
+        .concat();
+        let (doc, rep) = parse(&riff(b"CDRC", &body), 12);
+        assert_eq!(doc.pages.len(), 3, "{:?}", rep.warnings);
+        let names: Vec<&str> = doc.pages.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["Page 1", "Page 2", "Page 3"]);
+        assert!(doc
+            .pages
+            .iter()
+            .all(|p| p.layers.iter().all(|l| l.shapes.is_empty())));
+        assert_eq!(doc.master.len(), 1);
+        assert_eq!(doc.master[0].shapes.len(), 1);
+        assert_eq!(
+            doc.master[0].scope,
+            tracedraw_core::document::MasterScope::All
+        );
+        use tracedraw_core::document::GuideLine;
+        let xs = |i: usize| -> Vec<f64> {
+            doc.pages[i]
+                .guides
+                .iter()
+                .filter_map(|g| match g.line {
+                    GuideLine::Vertical { x } => Some((x * 1000.0).round() / 1000.0),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert_eq!(xs(0), [0.0]);
+        assert_eq!(xs(1), [105.0, 0.0]);
+        assert_eq!(xs(2), [0.0]);
+        // Every page draws the master's desktop objects.
+        let shown = doc.layers_for_page(doc.pages[1].id).unwrap_or_default();
+        assert_eq!(shown.iter().map(|l| l.shapes.len()).sum::<usize>(), 1);
+    }
+
+    /// A file holding only a master page keeps its objects as a page.
+    #[test]
+    fn a_lone_master_page_with_objects_stays_a_page() {
+        let rect_obj = list(
+            b"obj ",
+            &chunk(
+                b"loda",
+                &loda(OBJ_RECT, &[(ARG_COORDS, i32s(&[254000, 254000, 0]))]),
+            ),
+        );
+        let master = list(
+            b"page",
+            &[
+                chunk(b"flgs", &[0, 0, 1, 0x90]),
+                list(
+                    b"layr",
+                    &[chunk(b"flgs", &[0, 1, 1, 0x98]), rect_obj].concat(),
+                ),
+            ]
+            .concat(),
+        );
+        let body = [chunk(b"mcfg", &mcfg(12, 2_100_000, 2_970_000)), master].concat();
+        let (doc, rep) = parse(&riff(b"CDRC", &body), 12);
+        assert_eq!(doc.pages.len(), 1, "{:?}", rep.warnings);
+        assert_eq!(doc.pages[0].layers[0].shapes.len(), 1);
+        assert!(doc.master.is_empty());
     }
 
     /// A page the user named carries the name in its own `lgob` `loda`
