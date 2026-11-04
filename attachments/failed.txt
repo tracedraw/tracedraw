@@ -19,3 +19,6 @@ FAILED 1775 https://github.com/user-attachments/assets/64edd64d-7973-4854-97e9-a
 FAILED 1147 https://github.com/user-attachments/assets/9e1a0a9b-6a7a-4403-b4f0-e48ce5d40dbe,
 FAILED 1775 https://github.com/user-attachments/assets/67fc3569-6d12-4aac-9fc4-489496c84004
 FAILED 1775 https://github.com/user-attachments/assets/64edd64d-7973-4854-97e9-a886874ed7a6
+FAILED 1147 https://github.com/user-attachments/assets/9e1a0a9b-6a7a-4403-b4f0-e48ce5d40dbe,
+FAILED 1775 https://github.com/user-attachments/assets/67fc3569-6d12-4aac-9fc4-489496c84004
+FAILED 1775 https://github.com/user-attachments/assets/64edd64d-7973-4854-97e9-a886874ed7a6
