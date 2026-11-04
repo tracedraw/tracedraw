@@ -10,6 +10,8 @@ full, row-by-row status.
 
 - Opening a PDF: Hindi from a word processor's PDF comes in as typed in many more words. Such files give the glyphs of each syllable the wrong characters in their `ToUnicode` map: the characters are handed out in typed order to glyphs in drawn order, and a glyph keeps the characters of the first word it appears in. Matras, the reph, half letters and conjuncts then swapped in later words, so वार्ड came in as वार्ि, वर्ष as वषि and निर्गत as र्रि्ति. TraceDraw now checks the map against the embedded font's own character map and works out the other glyphs from where they first appear. On the reporter's file 56 of 68 words come in right (25 before). The file holds the characters of the other 12 nowhere, such as the द्र conjunct in पुष्पेन्द्र, so those still come in wrong (#1806).
 
+- Browser: the mouse wheel scrolls dockers, lists and dialogs as far a notch as on the desktop. egui's own browser units made a notch scroll 100 points in Chromium and 24 in Firefox, where the desktop scrolls 40. A touchpad scrolls the distance it reports, as before (Refs #1406).
+
 - Opening a PDF: a very large picture (more than 20000 pixels on a side or more than 80 megapixels) comes in shrunk to fit those limits instead of being left out. A PDF holding an 11160 x 14794 pixel picture opened with only the outline around it; the picture now comes in at 5580 x 7397 pixels, in its place, with its soft mask (#1804).
 
 - Several monitors: TraceDraw opens on the primary monitor, centred on it. The splash screen and the main window were centred by the monitor's size from the top-left corner of the whole desktop, so with the primary monitor below or right of others (X11, four monitors) the window opened on the top-left monitor (#1800).
