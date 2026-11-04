@@ -2719,6 +2719,26 @@ mod tests {
     }
 
     /// Preferences as an older version saved them, migrated as at start.
+    /// A first start snaps to guidelines and the page but not to objects,
+    /// within 10 screen pixels (#1814); a choice saved before is kept,
+    /// either way, and the app takes it.
+    #[test]
+    fn new_installs_do_not_snap_to_objects_and_saved_choices_stay() {
+        let s = Settings::default();
+        assert!(!s.snap.objects, "snapping to objects starts off");
+        assert!(s.snap.guides && s.snap.page && !s.snap.off);
+        assert_eq!(s.snap.threshold_px, 10.0);
+        let on = migrated(r#"{"upgrades": 5, "snap": {"objects": true, "page": true}}"#);
+        assert!(on.snap.objects);
+        let old = migrated(r#"{"snap": {"objects": true, "page": false}}"#);
+        assert!(old.snap.objects && !old.snap.page);
+        let mut app = crate::app::App::headless();
+        app.apply_settings(Settings::default());
+        assert!(!app.snap.objects && app.snap.page && app.snap.guides);
+        app.apply_settings(on);
+        assert!(app.snap.objects);
+    }
+
     fn migrated(json: &str) -> Settings {
         let s: Settings = serde_json::from_str(json).expect("old preferences");
         s.upgrade()

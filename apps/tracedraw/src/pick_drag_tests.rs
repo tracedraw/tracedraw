@@ -2202,6 +2202,8 @@ fn a_right_click_in_the_shape_tool_takes_the_node_or_segment_under_it() {
 #[test]
 fn scale_handles_snap_to_other_objects_not_to_the_selection() {
     let (ctx, mut app, id) = setup();
+    // Snapping to objects, off at first (#1814).
+    app.snap.objects = true;
     // A second rectangle whose left edge is at x = 80.
     let other = app
         .new_shape(ShapeKind::Rect {
@@ -2575,6 +2577,8 @@ fn join_of_the_two_ends_of_one_curve_closes_it_at_one_node() {
 #[test]
 fn a_dragged_node_snaps_to_another_node_of_its_own_curve() {
     let (ctx, mut app, id) = setup();
+    // Snapping to objects, off at first (#1814).
+    app.snap.objects = true;
     app.convert_to_curves();
     app.set_tool(Tool::Shape);
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
@@ -2601,6 +2605,8 @@ fn a_dragged_node_snaps_to_another_node_of_its_own_curve() {
 fn a_ctrl_dragged_node_snaps_to_its_own_curve_on_its_axis() {
     use tracedraw_core::geometry::BezPath;
     let (ctx, mut app, _) = setup();
+    // Snapping to objects, off at first (#1814).
+    app.snap.objects = true;
     let mut p = BezPath::new();
     p.move_to((20.0, 60.0));
     p.line_to((60.0, 60.0));
@@ -3217,6 +3223,8 @@ fn handles_stand_outside_the_box_and_grabbing_one_does_not_jump() {
 #[test]
 fn turning_snaps_the_pointer_to_another_objects_node() {
     let (ctx, mut app, id) = setup();
+    // Snapping to objects, off at first (#1814).
+    app.snap.objects = true;
     // Another rectangle up and to the right; its bottom left corner is a
     // node at (100, 80).
     let other = app
@@ -3294,6 +3302,8 @@ fn turning_follows_the_pointer_across_edges() {
 #[test]
 fn a_node_dragged_in_rotate_mode_turns_the_selection_onto_a_line() {
     let (ctx, mut app, id) = setup();
+    // Snapping to objects, off at first (#1814).
+    app.snap.objects = true;
     app.select(vec![id]);
     app.delete_selection();
     let mut line = tracedraw_core::BezPath::new();
@@ -11359,6 +11369,8 @@ fn combined_ornament(nodes: usize) -> (egui::Context, App, ShapeId) {
 #[test]
 fn a_combined_curve_of_many_nodes_moves_and_snaps_to_its_nodes() {
     let (ctx, mut app, c) = combined_ornament(60);
+    // Snapping to objects, off at first (#1814).
+    app.snap.objects = true;
     let before = app.doc().find_shape(c).map(|s| s.bounds()).expect("curve");
     // The first ring's rightmost node, at (100 + 60 + 12, 150).
     let node = Point::new(172.0, 150.0);
@@ -18655,6 +18667,8 @@ fn bottom_palette_bars_stack_in_their_order() {
 #[test]
 fn a_move_snaps_to_where_the_selection_started() {
     let (ctx, mut app, id) = setup();
+    // Snapping to objects, off at first (#1814).
+    app.snap.objects = true;
     let start = bounds(&app, id);
     let centre = app.view.to_screen(Point::new(35.0, 25.0));
     let off = egui::vec2(3.0, 3.0);
