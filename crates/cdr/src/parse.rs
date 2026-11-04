@@ -2296,10 +2296,35 @@ impl<'a> Ctx<'a> {
                 tr.skip(8);
             }
             // Record type 0x08 is an affine matrix, 0x01 (version 16+) an
-            // envelope; others are ignored.
+            // envelope, 0x10 (version 16+) a distortion; others are
+            // ignored.
             match tr.u16() {
                 Some(0x08) => {}
+                Some(0x10) if v >= 16 => {
+                    match distortion_entry(d, tr.pos) {
+                        Some(_) if !chain.warps.is_empty() || chain.distortion.is_some() => {
+                            self.report.warn(
+                                "a distortion after an envelope or another distortion is not applied",
+                            );
+                        }
+                        Some(entry) => {
+                            chain.distortion = Some(Distortion {
+                                entry,
+                                after: Affine::IDENTITY,
+                            });
+                        }
+                        None => self
+                            .report
+                            .warn("a distortion could not be read; not applied"),
+                    }
+                    continue;
+                }
                 Some(0x01) if v >= 16 => {
+                    if chain.distortion.is_some() {
+                        self.report
+                            .warn("an envelope after a distortion is not applied");
+                        continue;
+                    }
                     let Some(envd) = envds.next() else {
                         self.report
                             .warn("an envelope without its outline record is not applied");
@@ -3500,6 +3525,41 @@ impl<'a> Ctx<'a> {
                 }
             }
         }
+        // A version 16+ distortion (#1715) becomes TraceDraw's live
+        // distortion, in the space the matrices before it make: the
+        // object keeps its kind when they only turn, move and scale it
+        // evenly (the distortion is applied in its own space, the centre
+        // taken back there), else it becomes its outline through them.
+        let mut distortion = None;
+        if let Some(dist) = chain.distortion {
+            use tracedraw_core::geometry::Shape as _;
+            let local = Shape::new(id, kind.clone()).local_path();
+            match bendable(&kind) {
+                Some(_) if even_scale(chain.before).is_some() => {
+                    let center = chain.before.inverse() * dist.entry.center;
+                    distortion = live_distortion(&dist.entry, center, local.bounding_box());
+                }
+                Some(closed) => {
+                    let path = chain.before * local;
+                    distortion =
+                        live_distortion(&dist.entry, dist.entry.center, path.bounding_box());
+                    if distortion.is_some() {
+                        kind = ShapeKind::Path { path, closed };
+                        fill_axes = Some(transform);
+                        transform = self.outer_transform * dist.after;
+                    }
+                }
+                None => self
+                    .report
+                    .warn("a distortion of a text or picture is not applied"),
+            }
+            if distortion.is_none() && bendable(&kind).is_some() {
+                self.report.warn(format!(
+                    "a distortion of kind {} is not read; the object opens undistorted",
+                    dist.entry.kind
+                ));
+            }
+        }
 
         // Version 16+: the outline's mitre limit is in the object's style
         // string (the outline record leaves it out, #384).
@@ -3587,6 +3647,9 @@ impl<'a> Ctx<'a> {
         shape.keep_corner_size();
         shape.name = name;
         shape.opacity = opacity;
+        if let Some(d) = distortion {
+            shape.effects.push(tracedraw_core::live::Effect::Distort(d));
+        }
         if let Some((mask, target)) = mask {
             shape
                 .effects
@@ -5393,6 +5456,32 @@ fn linear_frame(d: &[u8]) -> Option<tracedraw_core::style::FountainHandles> {
 struct TransformChain {
     before: Affine,
     warps: Vec<Warp>,
+    /// A distortion (version 16+, #1715) after `before`, with the
+    /// matrices after it; never with envelopes.
+    distortion: Option<Distortion>,
+}
+
+/// The distortion entry of a version 16+ `trfd` (type 0x10) and the
+/// matrices after it.
+#[derive(Debug, Clone, Copy)]
+struct Distortion {
+    entry: DistortEntry,
+    after: Affine,
+}
+
+/// What a distortion entry holds (see docs/cdr-format.md, `trfd`
+/// transforms): its kind (2 Zipper, 3 Twister), its centre (file space,
+/// millimetres from the page centre, in the space the matrices before
+/// it make), the option bits (1 Smooth for a Zipper) and two values: a
+/// Zipper's amplitude (0 to 100) and frequency, a Twister's angle in
+/// degrees (counterclockwise when positive).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct DistortEntry {
+    kind: u16,
+    center: Point,
+    flags: u32,
+    first: i32,
+    second: i32,
 }
 
 /// An envelope of a version 16+ `trfd`: the box it maps from, the frame
@@ -5408,15 +5497,21 @@ struct Warp {
 impl TransformChain {
     /// `m` after everything so far.
     fn then(&mut self, m: Affine) {
+        if let Some(d) = &mut self.distortion {
+            d.after = m * d.after;
+            return;
+        }
         match self.warps.last_mut() {
             Some(w) => w.after = m * w.after,
             None => self.before = m * self.before,
         }
     }
 
-    /// All the matrices one after the other, the envelopes left out.
+    /// All the matrices one after the other, the envelopes and the
+    /// distortion left out.
     fn matrices(&self) -> Affine {
-        self.warps.iter().fold(self.before, |m, w| w.after * m)
+        let m = self.warps.iter().fold(self.before, |m, w| w.after * m);
+        self.distortion.map_or(m, |d| d.after * m)
     }
 
     /// The matrices after the first envelope, one after the other.
@@ -5474,6 +5569,72 @@ fn transform_chunks(lgob: &Chunk) -> (Option<&Chunk>, Vec<&Chunk>) {
         }
     });
     (trfd, envds)
+}
+
+/// The distortion entry of a version 16+ `trfd` whose body starts at `at`
+/// (after its type): 6 zero bytes, the kind (u16), the centre (two i32),
+/// the option bits (u32), two values (i32) and a u32 the Zipper's
+/// random teeth seem to start from (#1715). `None` when it is cut short.
+fn distortion_entry(d: &[u8], at: usize) -> Option<DistortEntry> {
+    let bytes = |k: usize| d.get(at + k..at + k + 4).map(|b| [b[0], b[1], b[2], b[3]]);
+    let int = |k: usize| bytes(k).map(i32::from_le_bytes);
+    let kind = d
+        .get(at + 6..at + 8)
+        .map(|b| u16::from_le_bytes([b[0], b[1]]))?;
+    Some(DistortEntry {
+        kind,
+        center: Point::new(f64::from(int(8)?) * UNIT_MM, f64::from(int(12)?) * UNIT_MM),
+        flags: bytes(16).map(u32::from_le_bytes)?,
+        first: int(20)?,
+        second: int(24)?,
+    })
+}
+
+/// The Zipper's amplitude in millimetres for the amplitude value `a` of
+/// a distortion entry (0 to 100) and the box of the outline it bends:
+/// `a` percent of an eighth of the box's longer side. The Zipper files
+/// of #1715 and #1671 (lines 133.39 and 118.42 mm long) have teeth that
+/// reach `a / 800` of the line's length to either side for every value
+/// (the longer side for other outlines is assumed).
+fn zipper_amplitude(a: i32, b: Rect) -> f64 {
+    f64::from(a.clamp(0, 100)) / 100.0 * b.width().max(b.height()) / 8.0
+}
+
+/// TraceDraw's live distortion for a distortion entry, applied to an
+/// outline whose box is `b`, in the space where the centre is `center`;
+/// `None` for a kind not known.
+fn live_distortion(
+    e: &DistortEntry,
+    center: Point,
+    b: Rect,
+) -> Option<tracedraw_core::effects::Distort> {
+    use tracedraw_core::effects::Distort;
+    match e.kind {
+        2 => Some(Distort::Zipper {
+            amplitude: zipper_amplitude(e.first, b),
+            frequency: u32::try_from(e.second.clamp(0, 100)).unwrap_or(0),
+            center: Some(center),
+            random: false,
+            smooth: e.flags & 1 != 0,
+            local: false,
+            tilt_deg: 0.0,
+            shifted_tips: true,
+        }),
+        3 => Some(Distort::Twister {
+            angle_deg: f64::from(e.first),
+            center: Some(center),
+        }),
+        _ => None,
+    }
+}
+
+/// `m` turns, moves and scales evenly, without a mirror: a distortion
+/// before it may be applied in the space it maps from.
+fn even_scale(m: Affine) -> Option<f64> {
+    let [a, b, c, d, _, _] = m.as_coeffs();
+    let det = a * d - b * c;
+    let tol = 1e-9 * (a.abs() + b.abs() + c.abs() + d.abs()).max(1e-12);
+    ((a - d).abs() <= tol && (b + c).abs() <= tol && det > 1e-18).then(|| det.sqrt())
 }
 
 /// The envelope entry of a version 16+ `trfd` whose body starts at `at`
@@ -11710,6 +11871,222 @@ pub(crate) mod tests {
         assert!(
             (b.height() - 10.0).abs() < 1e-6 && (b.y0 - (c + 5.0)).abs() < 1e-6,
             "{b:?}"
+        );
+    }
+
+    /// A distortion entry (version 16+, type 0x10) as the version 27
+    /// files of #1715 hold one: 6 zero bytes, the kind, the centre (file
+    /// units), the option bits, two values, the seed and 36 zero bytes.
+    fn trfd_distortion(kind: u16, center: (i32, i32), flags: u32, values: (i32, i32)) -> Vec<u8> {
+        let mut b = vec![0u8; 6];
+        b.extend_from_slice(&u16s(&[kind]));
+        b.extend_from_slice(&i32s(&[center.0, center.1]));
+        b.extend_from_slice(&u32s(&[flags]));
+        b.extend_from_slice(&i32s(&[values.0, values.1]));
+        b.extend_from_slice(&u32s(&[0x6aea_07df]));
+        b.extend_from_slice(&[0; 36]);
+        trfd_entry(16, &b)
+    }
+
+    /// A version 27 file of one straight line of `length` file units from
+    /// the page centre to the right (the control object of the Zipper
+    /// files of #1715), with `trfd`.
+    fn line_file(length: i32, trfd: Vec<u8>) -> (Document, ParseReport) {
+        let mut coords = u32s(&[2]);
+        coords.extend_from_slice(&i32s(&[0, 0, length, 0]));
+        coords.extend_from_slice(&[0x04, 0x44]);
+        let obj = list(
+            b"obj ",
+            &list(
+                b"lgob",
+                &[
+                    chunk(b"loda", &loda(OBJ_CURVE, &[(ARG_COORDS, coords)])),
+                    list(b"trfl", &chunk(b"trfd", &trfd)),
+                ]
+                .concat(),
+            ),
+        );
+        let body = [
+            chunk(b"mcfg", &mcfg(27, 2_540_000, 2_540_000)),
+            list(b"page", &list(b"layr", &obj)),
+        ]
+        .concat();
+        parse(&riff(b"CDRR", &body), 27)
+    }
+
+    /// The outline a shape's live effects draw, on the page.
+    fn drawn_page_path(s: &Shape) -> BezPath {
+        let ev = tracedraw_core::live::evaluate(s);
+        ev.main.page_path()
+    }
+
+    /// Version 16+ Zipper distortions (#1715): "Zipper Traning Data 20"
+    /// of #1736, a 133.39 mm line moved by the matrix before the entry,
+    /// a Zipper (kind 2) of amplitude 41 and frequency 15 about a centre
+    /// near its left end and 1.86 mm under it, then stretched 2.04 times
+    /// upwards by the matrix after it. It opened as a straight line; it
+    /// opens as the line with a live Zipper whose outline has the file's
+    /// box (x -78.00 to 59.12, y 27.25 to 54.39 mm from the page centre)
+    /// and 17 points: the teeth reach 41 / 800 of the line's length to
+    /// either side, the tips (the first point among them) moved by a
+    /// fifth of the way from the line's middle to the centre.
+    #[test]
+    fn version_16_zipper_distortions_open_live() {
+        use tracedraw_core::{effects::Distort, live::Effect};
+        let t = trfd_v16(&[
+            trfd_matrix([1.0, 0.0, -659_298.0, 0.0, 1.0, 313_103.0]),
+            trfd_distortion(2, (-595_628, 294_550), 0, (41, 15)),
+            trfd_matrix([1.0, 0.0, 0.0, 0.0, 2.04072, -226_944.0]),
+        ]);
+        let (doc, rep) = line_file(1_333_870, t);
+        assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+        assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+        let s = first_shape(&doc);
+        let Some(Effect::Distort(Distort::Zipper {
+            amplitude,
+            frequency,
+            center: Some(center),
+            smooth,
+            shifted_tips,
+            ..
+        })) = s.effects.first().cloned()
+        else {
+            panic!("no Zipper: {:?}", s.effects);
+        };
+        assert!(
+            (amplitude - 41.0 / 100.0 * 133.387 / 8.0).abs() < 1e-3,
+            "{amplitude}"
+        );
+        assert_eq!(frequency, 15);
+        assert!(shifted_tips && !smooth);
+        // The centre in the line's own space (the matrix before the
+        // entry only moves it).
+        let local = s.local_path().bounding_box();
+        assert!(
+            (center.x - (local.x0 + 6.3670)).abs() < 1e-3,
+            "{center:?} {local:?}"
+        );
+        assert!(
+            (center.y - (local.y0 - 1.8553)).abs() < 1e-3,
+            "{center:?} {local:?}"
+        );
+        let drawn = drawn_page_path(s);
+        assert_eq!(
+            drawn
+                .elements()
+                .iter()
+                .filter(|e| !matches!(e, tracedraw_core::geometry::PathEl::ClosePath))
+                .count(),
+            17
+        );
+        let b = drawn.bounding_box();
+        let c = 127.0;
+        for (got, want) in [
+            (b.x0, c - 78.00),
+            (b.x1, c + 59.12),
+            (b.y0, c + 27.25),
+            (b.y1, c + 54.39),
+        ] {
+            assert!((got - want).abs() < 0.02, "{b:?}");
+        }
+        // Saved again by TraceDraw (drawn as curves, the package's own
+        // member keeping the object), it opens with the same live Zipper.
+        let bytes = crate::write::document_to_cdr_version(&doc, 27);
+        let (back, _) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let again = first_shape(&back);
+        match again.effects.first() {
+            Some(Effect::Distort(Distort::Zipper {
+                amplitude: a2,
+                frequency: 15,
+                center: Some(c2),
+                shifted_tips: true,
+                ..
+            })) => {
+                assert!((a2 - amplitude).abs() < 1e-9 && (*c2 - center).hypot() < 1e-6);
+            }
+            e => panic!("{e:?}"),
+        }
+        let b2 = drawn_page_path(again).bounding_box();
+        assert!(
+            (b2.x0 - b.x0).abs() < 0.01 && (b2.y1 - b.y1).abs() < 0.01,
+            "{b2:?}"
+        );
+        // The Smooth bit.
+        let t = trfd_v16(&[trfd_distortion(2, (0, 10_000), 1, (82, 20))]);
+        let (doc, _) = line_file(1_184_155, t);
+        assert!(matches!(
+            first_shape(&doc).effects.first(),
+            Some(Effect::Distort(Distort::Zipper {
+                smooth: true,
+                frequency: 20,
+                ..
+            }))
+        ));
+    }
+
+    /// Version 16+ Twister distortions (#1715): kind 3, the angle in
+    /// degrees, the centre where the matrices before the entry put it
+    /// ("Distord Twister" of #1674: the square's middle, -74 to -1001
+    /// degrees). Moved only, the object keeps its kind and the centre is
+    /// taken back into its own space; stretched, it becomes its outline
+    /// through the stretch and the centre stays. Another kind (no file
+    /// seen) is left out with a warning.
+    #[test]
+    fn version_16_twister_distortions_open_live() {
+        use tracedraw_core::{effects::Distort, live::Effect};
+        let twister = |s: &Shape| match s.effects.first() {
+            Some(Effect::Distort(Distort::Twister {
+                angle_deg,
+                center: Some(c),
+            })) => (*angle_deg, *c),
+            e => panic!("no Twister: {e:?}"),
+        };
+        let t = trfd_v16(&[
+            trfd_matrix([1.0, 0.0, 20_000.0, 0.0, 1.0, 0.0]),
+            trfd_distortion(3, (70_000, 50_000), 0, (-214, 0)),
+        ]);
+        let (doc, rep) = envelope_file(t, &[], false);
+        assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+        let s = first_shape(&doc);
+        let (angle, c) = twister(s);
+        assert_eq!(angle, -214.0);
+        assert!((c - Point::new(5.0, 5.0)).hypot() < 1e-9, "{c:?}");
+        // The square swirls about its middle (129 to 139, 127 to 137 mm
+        // on the page), which stays.
+        let drawn = drawn_page_path(s);
+        let b = drawn.bounding_box();
+        assert!(
+            (b.center() - Point::new(134.0, 132.0)).hypot() < 1e-6,
+            "{b:?}"
+        );
+        assert!(drawn != s.page_path());
+
+        let t = trfd_v16(&[
+            trfd_matrix([2.0, 0.0, 0.0, 0.0, 1.0, 0.0]),
+            trfd_distortion(3, (100_000, 50_000), 0, (-74, 0)),
+            trfd_matrix([1.0, 0.0, 0.0, 0.0, 1.0, 50_000.0]),
+        ]);
+        let (doc, rep) = envelope_file(t, &[], false);
+        assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+        let s = first_shape(&doc);
+        let (angle, c) = twister(s);
+        assert_eq!(angle, -74.0);
+        assert!((c - Point::new(10.0, 5.0)).hypot() < 1e-9, "{c:?}");
+        let b = s.page_path().bounding_box();
+        assert!(
+            (b.width() - 20.0).abs() < 1e-6 && (b.y0 - 132.0).abs() < 1e-6,
+            "{b:?}"
+        );
+
+        let t = trfd_v16(&[trfd_distortion(1, (50_000, 50_000), 0, (40, 0))]);
+        let (doc, rep) = envelope_file(t, &[], false);
+        assert!(first_shape(&doc).effects.is_empty());
+        assert!(
+            rep.warnings
+                .iter()
+                .any(|w| w.contains("distortion of kind 1")),
+            "{:?}",
+            rep.warnings
         );
     }
 

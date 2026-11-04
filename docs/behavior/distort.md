@@ -61,6 +61,17 @@ curve stays open.
   or joins itself; the smoothing used before (a curve through the tips
   with handles a third of the chord between them, which grows with the
   teeth) made tall teeth into loops that overlapped (#1671).
+- Shifted tips (`shifted_tips`, the Zipper of a `.cdr` file, #1715):
+  the teeth as `.cdr` files hold them. The points alternate from a tip
+  on the normal's side, the outline's first point being a tip; every
+  tip is moved by `0.2 * (centre - middle of the outline's box)`,
+  whatever the amplitude, instead of leaning by the tilt, and the
+  bases stay `amplitude` straight out on the other side. The handle's
+  place so sets the lean: under the middle the teeth stand upright,
+  toward one end they lean that way. Random, Local and Smooth work as
+  above. TraceDraw's own Zipper never has it; a Zipper read from a
+  `.cdr` file keeps it while its values are edited (the tilt then has
+  no effect).
 - `zipper_zero_direction(path, c)`: the outline's unit normal (left of
   its direction) at the point nearest to `c`, the direction the teeth
   stand in with no tilt and the one the Zipper's handle line shows; to
@@ -198,6 +209,9 @@ curve stays open.
 - `distort::tests::tilted_teeth_keep_their_bases_and_their_height`
 - `distort::tests::tilted_teeth_still_follow_the_handle_and_smooth_ones_never_cross`
 - `distort::tests::smooth_teeth_are_waves_that_never_cross`
+- `distort::tests::shifted_tips_start_with_a_tip_moved_toward_the_centre`
+- `parse::tests::version_16_zipper_distortions_open_live` (tracedraw-cdr)
+- `parse::tests::version_16_twister_distortions_open_live` (tracedraw-cdr)
 - `distort::tests::a_twisted_line_is_a_smooth_spiral_to_its_ends`
 - `distort::tests::older_files_and_odd_values_read`
 - `distort_tool::tests::a_drag_distorts_about_where_it_started`

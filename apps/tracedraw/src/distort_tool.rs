@@ -83,6 +83,11 @@ pub struct DistortSettings {
     pub local: bool,
     #[serde(default)]
     pub tilt: f64,
+    /// Zipper: the teeth of a `.cdr` file (see
+    /// `Distort::Zipper::shifted_tips`), kept while its values are
+    /// changed; not a setting of its own.
+    #[serde(skip)]
+    pub shifted_tips: bool,
     /// Twister: whole turns, degrees more (0 to 359) and the direction.
     pub turns: u32,
     pub degrees: f64,
@@ -100,6 +105,7 @@ impl Default for DistortSettings {
             smooth: false,
             local: false,
             tilt: 0.0,
+            shifted_tips: false,
             turns: 0,
             degrees: 90.0,
             clockwise: true,
@@ -190,6 +196,8 @@ impl DistortSettings {
                 smooth: self.smooth,
                 local: self.local,
                 tilt_deg: self.tilt,
+                // A new distortion (no centre yet) has TraceDraw's teeth.
+                shifted_tips: self.shifted_tips && center.is_some(),
             },
             DistortMode::Twister => Distort::Twister {
                 angle_deg: self.angle(),
@@ -210,8 +218,10 @@ impl DistortSettings {
                 smooth,
                 local,
                 tilt_deg,
+                shifted_tips,
                 ..
             } => {
+                self.shifted_tips = shifted_tips;
                 self.amplitude = amplitude;
                 self.frequency = frequency;
                 self.random = random;
@@ -771,8 +781,10 @@ impl App {
                 }
                 _ => (0.0, None),
             };
-            if let Some(d) = distortion_of(&s.effects) {
-                self.distort.take(&d);
+            match distortion_of(&s.effects) {
+                Some(d) => self.distort.take(&d),
+                // A new distortion has TraceDraw's teeth (#1715).
+                None => self.distort.shifted_tips = false,
             }
             self.distort_drag = Some(DistortDrag {
                 id: h.id,
