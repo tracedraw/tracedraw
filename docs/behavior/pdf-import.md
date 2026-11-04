@@ -241,4 +241,36 @@ their own crypt filter and signature contents are left alone.
   signs lost or a space inside the word)
   (`crates/io/tests/devanagari_pdf.rs`, a test binary of its own so the
   test font stays out of the other tests' fonts). Latin text gets no
-  marked content.
+  marked content. 30 more hard Hindi and Sanskrit words from the lists
+  sent with #1806 come back the same way.
+- Hindi from a word processor's PDF whose `ToUnicode` map is scrambled
+  (#1806). Such a map gives the glyphs of each syllable, taken in drawn
+  order, the syllable's characters in typed order: every glyph after the
+  first gets one character and the first gets the rest. A glyph keeps the
+  text of the first syllable it appears in, so in later words letters,
+  signs and the reph swap (वार्ड came in as वार्ि, वर्ष as वषि). When the
+  map contradicts the embedded font's own `cmap` on an Indic letter or
+  sign, the map is put right for the whole file:
+  - glyphs the `cmap` names take that character;
+  - every other glyph takes, at its first appearance (all pages, in
+    drawing order), the text that gives back the map's entries for the
+    new glyphs of that string under that rule. The candidates are the
+    pieces of those entries' text, the short i sign, the reph (only for
+    a glyph with no advance) and the half form of a letter. Texts no other
+    glyph stands for win, then the glyph's own entry, then texts starting
+    with it, then shorter ones. A tie, or more than three such glyphs in
+    one string, leaves the entries as they are.
+
+  The text of such a font is in drawn order glyph by glyph, so every
+  short i sign before a consonant moves after its cluster, also after
+  another consonant (पिश्चम becomes पश्चिम).
+
+  On the reporter's file, 56 of its 68 words now come in as typed (25
+  before). The other 12 cannot be worked out from the file: their glyphs'
+  characters went to a glyph seen earlier, so the map holds them nowhere.
+  Those are the द्र conjunct in 8 words (पुष्पेन्द्र, देवेंद्र and so on,
+  read as र), क्त in प्रतिनियुक्ति, थ् in स्वास्थ्य, the reph joined to
+  the o sign in पूर्वोत्तर, and one word typed as प्रड्यूसर in the file.
+  (`crates/io/tests/devanagari_pdf.rs`,
+  `hindi_with_a_scrambled_tounicode_map_imports_as_the_typed_words`, and
+  `pdf_import::tests::a_scrambled_tounicode_map_is_put_right`.)

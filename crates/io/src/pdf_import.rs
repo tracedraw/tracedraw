@@ -125,10 +125,12 @@ pub fn parse_with_options(
     if pages.is_empty() {
         return Err(ImportError::Failed("PDF has no pages".into()));
     }
+    let mut tounicode_fixes = HashMap::new();
     for (index, page_id) in pages.iter().enumerate() {
         let mut imp = Importer {
             doc: &doc,
             ids,
+            tounicode_fixes: &mut tounicode_fixes,
             warnings: Vec::new(),
             shapes: Vec::new(),
             open: None,
@@ -702,6 +704,9 @@ struct FontInfo {
     /// Two-byte codes (Type0).
     two_byte: bool,
     to_unicode: Option<HashMap<u32, String>>,
+    /// The ToUnicode map was scrambled and put right: its glyphs' texts
+    /// come in drawn order, one glyph at a time.
+    drawn_order: bool,
     one_byte: Option<[Option<char>; 256]>,
     widths: HashMap<u32, f64>,
     default_width: f64,
@@ -761,6 +766,10 @@ impl FontInfo {
 struct Importer<'a> {
     doc: &'a PdfDoc,
     ids: &'a mut IdSource,
+    /// The corrected ToUnicode entries of each two-byte font whose map
+    /// is scrambled (see [`unscramble_tounicode`]), worked out once for
+    /// the whole file.
+    tounicode_fixes: &'a mut HashMap<lopdf::ObjectId, HashMap<u32, String>>,
     warnings: Vec<String>,
     shapes: Vec<Shape>,
     /// The clip frame being filled, behind the last of `shapes`.
@@ -902,6 +911,11 @@ pub(crate) fn devanagari_compose(text: &str) -> String {
     out.into_iter().collect()
 }
 
+#[cfg(test)]
+fn devanagari_logical_order(text: &str, reph_glyph: bool) -> String {
+    devanagari_typed_order(text, reph_glyph, false)
+}
+
 /// Devanagari text taken from a PDF in the order its glyphs are drawn,
 /// put back in the order it is typed (#585). A PDF draws the short i sign
 /// (ि) before the consonant cluster it follows when typed, and the reph
@@ -909,7 +923,13 @@ pub(crate) fn devanagari_compose(text: &str) -> String {
 /// drawn order, so the signs went on the wrong letters. Only text that
 /// shows the drawn order is changed: an i sign at the start of a word or
 /// after another sign never happens in typed text.
-pub(crate) fn devanagari_logical_order(text: &str, reph_glyph: bool) -> String {
+///
+/// With `drawn` the font is known to give each glyph its own characters
+/// in drawn order (a ToUnicode map put right by [`unscramble_tounicode`]):
+/// there every short i sign before a consonant is drawn before it, also
+/// after another consonant (वि is drawn ि व), so it moves wherever it is
+/// (#1806).
+fn devanagari_typed_order(text: &str, reph_glyph: bool, drawn: bool) -> String {
     let chars: Vec<char> = text.chars().collect();
     let at = |i: Option<usize>| i.and_then(|i| chars.get(i)).copied();
     // A reph (र्) after a consonant or a sign at the end of a word, when
@@ -929,12 +949,13 @@ pub(crate) fn devanagari_logical_order(text: &str, reph_glyph: bool) -> String {
             && before.is_some_and(|b| b != DEVA_VIRAMA && (deva_consonant(b) || deva_mark(b)))
             && !at(Some(j)).is_some_and(|n| deva_consonant(n) || deva_mark(n) || is_joiner(n))
     };
-    let visual = chars.iter().enumerate().any(|(i, &c)| {
-        (c == DEVA_SIGN_I
-            && at(Some(i + 1)).is_some_and(deva_consonant)
-            && !at(i.checked_sub(1)).is_some_and(|b| deva_consonant(b) || b == DEVA_NUKTA))
-            || final_reph(i)
-    });
+    let visual = drawn
+        || chars.iter().enumerate().any(|(i, &c)| {
+            (c == DEVA_SIGN_I
+                && at(Some(i + 1)).is_some_and(deva_consonant)
+                && !at(i.checked_sub(1)).is_some_and(|b| deva_consonant(b) || b == DEVA_NUKTA))
+                || final_reph(i)
+        });
     if !visual {
         return text.to_string();
     }
@@ -1004,6 +1025,351 @@ pub(crate) fn devanagari_logical_order(text: &str, reph_glyph: bool) -> String {
         i += 1;
     }
     out.into_iter().collect()
+}
+
+/// The order in which pieces of Devanagari text, given in the order
+/// their glyphs are drawn, are typed: `order[j]` is the drawn index of
+/// the `j`th typed piece. A piece is the text of one glyph: a short i
+/// sign (ि) goes after the consonant cluster it is drawn before (half
+/// forms, then one full consonant or conjunct), a reph (र्) before the
+/// syllable it is drawn after, as in [`devanagari_typed_order`].
+fn devanagari_piece_order(pieces: &[&str]) -> Vec<usize> {
+    let first = |p: &str| p.chars().next();
+    let consonant = |p: &str| first(p).is_some_and(deva_consonant) && p != "\u{0930}\u{094D}";
+    let half = |p: &str| consonant(p) && p.ends_with(DEVA_VIRAMA);
+    let mark = |p: &str| first(p).is_some_and(deva_mark);
+    let mut out: Vec<usize> = Vec::with_capacity(pieces.len());
+    let mut i = 0;
+    while i < pieces.len() {
+        let p = pieces[i];
+        if p == "\u{093F}" && pieces.get(i + 1).is_some_and(|n| consonant(n)) {
+            let mut j = i + 1;
+            while pieces.get(j).is_some_and(|n| half(n)) {
+                j += 1;
+            }
+            if pieces.get(j).is_some_and(|n| consonant(n)) {
+                j += 1;
+            }
+            while pieces.get(j) == Some(&"\u{093C}") {
+                j += 1;
+            }
+            out.extend(i + 1..j);
+            out.push(i);
+            i = j;
+            continue;
+        }
+        if p == "\u{0930}\u{094D}" {
+            let mut start = out.len();
+            while start > 0 && mark(pieces[out[start - 1]]) {
+                start -= 1;
+            }
+            if start > 0 && consonant(pieces[out[start - 1]]) && !half(pieces[out[start - 1]]) {
+                start -= 1;
+                while start > 0 && half(pieces[out[start - 1]]) {
+                    start -= 1;
+                }
+                out.insert(start, i);
+                i += 1;
+                continue;
+            }
+        }
+        out.push(i);
+        i += 1;
+    }
+    out
+}
+
+/// The syllables of typed Devanagari text, as char ranges: consonants
+/// joined by viramas (each with its nukta) and the signs on the last, or
+/// an independent vowel and its signs; any other character alone.
+fn devanagari_syllables(chars: &[char]) -> Vec<std::ops::Range<usize>> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let start = i;
+        if deva_consonant(chars[i]) {
+            loop {
+                i += 1;
+                if chars.get(i) == Some(&DEVA_NUKTA) {
+                    i += 1;
+                }
+                if chars.get(i) == Some(&DEVA_VIRAMA)
+                    && chars.get(i + 1).is_some_and(|c| deva_consonant(*c))
+                {
+                    i += 1;
+                    continue;
+                }
+                break;
+            }
+        } else {
+            i += 1;
+        }
+        if !chars[start].is_whitespace() {
+            while chars.get(i).is_some_and(|c| deva_mark(*c) || is_joiner(*c)) {
+                i += 1;
+            }
+        }
+        out.push(start..i);
+    }
+    out
+}
+
+/// Pieces of text one glyph of a Devanagari font can stand for: a
+/// consonant cluster (consonants joined by viramas, with nuktas, maybe
+/// ending in a virama), an independent vowel, or one or two signs.
+fn devanagari_piece(p: &[char]) -> bool {
+    match p {
+        [] => false,
+        [a] => deva_mark(*a) || deva_consonant(*a) || ('\u{0904}'..='\u{0914}').contains(a),
+        [a, b] if deva_mark(*a) && deva_mark(*b) => true,
+        [first, ..] if deva_consonant(*first) => {
+            let mut i = 0;
+            loop {
+                if !p.get(i).is_some_and(|c| deva_consonant(*c)) {
+                    return false;
+                }
+                i += 1;
+                if p.get(i) == Some(&DEVA_NUKTA) {
+                    i += 1;
+                }
+                if i == p.len() {
+                    return true;
+                }
+                if p[i] != DEVA_VIRAMA {
+                    return false;
+                }
+                i += 1;
+                if i == p.len() {
+                    return true;
+                }
+            }
+        }
+        _ => false,
+    }
+}
+
+/// Correct a ToUnicode map that gives glyphs the characters of other
+/// glyphs of the syllable they first appear in (#1806). An office word
+/// processor's PDFs of Hindi in a font with a `cmap` were seen to map
+/// the glyphs of each syllable, taken in drawn order, to its characters
+/// in typed order: every glyph after the first to one character, the
+/// first to the rest. A glyph keeps the text of the first syllable it
+/// appears in. In उर्मिला, drawn उ ि म र् ल ा, the i sign glyph was
+/// mapped to र् and the reph glyph to ि; in वार्ड, drawn व ा ड र्, the
+/// letter ड was mapped to र्; in सम्प्रभुता the half म glyph to म्प्.
+///
+/// `nominal` gives the glyphs whose letter the font's `cmap` names, which
+/// are taken as they are; `marks` the glyphs with no advance (only they
+/// can be a reph); `units` the codes each text operator shows, in
+/// drawing order. Each other glyph gets, at its first appearance, the
+/// text that gives back the map's entries for the new glyphs of its unit
+/// under that rule, tried among the pieces of the text those entries
+/// spell, the short i sign and the reph (at most three such glyphs in one
+/// unit). Gives the codes whose
+/// text changes.
+fn unscramble_tounicode(
+    map: &HashMap<u32, String>,
+    nominal: &HashMap<u32, char>,
+    marks: &std::collections::HashSet<u32>,
+    units: &[Vec<u32>],
+) -> HashMap<u32, String> {
+    let mut known: HashMap<u32, String> =
+        nominal.iter().map(|(k, c)| (*k, c.to_string())).collect();
+    let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    for unit in units {
+        // The first appearance of each code new in this unit.
+        let mut fresh: Vec<usize> = Vec::new();
+        for (j, code) in unit.iter().enumerate() {
+            if seen.insert(*code) {
+                fresh.push(j);
+            }
+        }
+        let mut unknown: Vec<u32> = fresh
+            .iter()
+            .map(|&j| unit[j])
+            .filter(|c| !known.contains_key(c) && map.contains_key(c))
+            .collect();
+        unknown.dedup();
+        if unknown.is_empty() || unknown.len() > 3 {
+            continue;
+        }
+        // The pieces of the text the entries of the unit's new glyphs
+        // spell (the others were given text elsewhere).
+        let spelled: Vec<char> = fresh
+            .iter()
+            .filter_map(|&j| map.get(&unit[j]))
+            .flat_map(|t| t.chars())
+            .collect();
+        let mut options: Vec<String> = Vec::new();
+        for a in 0..spelled.len() {
+            for b in a + 1..=(a + 8).min(spelled.len()) {
+                if devanagari_piece(&spelled[a..b]) {
+                    options.push(spelled[a..b].iter().collect());
+                }
+            }
+        }
+        for t in unknown.iter().filter_map(|c| map.get(c)) {
+            options.push(t.clone());
+            // A letter that has a glyph of its own: this one is likely
+            // its half form.
+            let mut c = t.chars();
+            if let (Some(l), None) = (c.next(), c.next()) {
+                if deva_consonant(l) && nominal.values().any(|n| *n == l) {
+                    options.push(format!("{l}{DEVA_VIRAMA}"));
+                }
+            }
+        }
+        // The short i sign and the reph, which the map often gives to
+        // another glyph of their syllable.
+        options.extend(["\u{093F}".to_string(), "\u{0930}\u{094D}".to_string()]);
+        options.sort_unstable();
+        options.dedup();
+        let Some(combos) = options
+            .len()
+            .checked_pow(unknown.len() as u32)
+            .filter(|n| (1..=20_000).contains(n))
+        else {
+            continue;
+        };
+        // Texts other glyphs already stand for: a glyph is seldom another
+        // glyph's letter or conjunct again (signs often have variants).
+        let taken: std::collections::HashSet<&str> = known
+            .values()
+            .map(String::as_str)
+            .filter(|t| !t.chars().next().is_some_and(deva_mark))
+            .collect();
+        // (no other glyph's text, own entry, starts with it, shortness)
+        type Score = (usize, usize, usize, usize);
+        let mut best: Option<(Score, Vec<usize>)> = None;
+        let mut tied = false;
+        for n in 0..combos {
+            let mut pick = Vec::with_capacity(unknown.len());
+            let mut k = n;
+            for _ in &unknown {
+                pick.push(k % options.len());
+                k /= options.len();
+            }
+            // Only a glyph with no advance is a reph.
+            if unknown
+                .iter()
+                .zip(&pick)
+                .any(|(u, p)| options[*p] == "\u{0930}\u{094D}" && !marks.contains(u))
+            {
+                continue;
+            }
+            let text = |code: u32| -> &str {
+                match unknown.iter().position(|u| *u == code) {
+                    Some(i) => options[pick[i]].as_str(),
+                    None => known
+                        .get(&code)
+                        .or_else(|| map.get(&code))
+                        .map_or("", String::as_str),
+                }
+            };
+            let pieces: Vec<&str> = unit.iter().map(|c| text(*c)).collect();
+            if !fits_scrambled(map, unit, &fresh, &pieces) {
+                continue;
+            }
+            // Prefer texts no other glyph stands for,
+            // then glyphs keeping their entry, then texts that start with
+            // it, then the shorter texts.
+            let plausible = pick
+                .iter()
+                .filter(|p| !taken.contains(options[**p].as_str()))
+                .count();
+            let own = unknown
+                .iter()
+                .zip(&pick)
+                .filter(|(u, p)| map.get(u) == Some(&options[**p]))
+                .count();
+            // Texts that start with the glyph's entry (its half form).
+            let related = unknown
+                .iter()
+                .zip(&pick)
+                .filter(|(u, p)| {
+                    map.get(u)
+                        .is_some_and(|t| options[**p].starts_with(t.as_str()))
+                })
+                .count();
+            let len: usize = pick.iter().map(|p| options[*p].chars().count()).sum();
+            let score = (plausible, own, related, usize::MAX - len);
+            match &best {
+                Some((b, _)) if score < *b => {}
+                Some((b, _)) if score == *b => tied = true,
+                _ => {
+                    best = Some((score, pick));
+                    tied = false;
+                }
+            }
+        }
+        // Two equally good readings: the file does not tell which.
+        if tied {
+            continue;
+        }
+        if let Some((_, pick)) = best {
+            for (code, p) in unknown.iter().zip(pick) {
+                known.insert(*code, options[p].clone());
+            }
+        }
+    }
+    known
+        .into_iter()
+        .filter(|(code, text)| map.get(code).is_some_and(|t| t != text))
+        .collect()
+}
+
+/// Whether glyphs standing for `pieces` (drawn order) would have been
+/// given the map's entries at the first appearances `fresh`, under the
+/// rule [`unscramble_tounicode`] describes.
+fn fits_scrambled(
+    map: &HashMap<u32, String>,
+    unit: &[u32],
+    fresh: &[usize],
+    pieces: &[&str],
+) -> bool {
+    let order = devanagari_piece_order(pieces);
+    // The typed text, and the char range each glyph's piece takes in it.
+    let mut chars: Vec<char> = Vec::new();
+    let mut span = vec![0..0; pieces.len()];
+    for &g in &order {
+        let start = chars.len();
+        chars.extend(pieces[g].chars());
+        span[g] = start..chars.len();
+    }
+    // Typed text has a vowel sign or a virama only after a consonant.
+    let sign = |c: char| {
+        matches!(c, '\u{093A}'..='\u{094F}' | '\u{0955}'..='\u{0957}' | '\u{0962}' | '\u{0963}')
+            && c != DEVA_NUKTA
+    };
+    if chars.iter().enumerate().any(|(i, &c)| {
+        sign(c) && !(i > 0 && (deva_consonant(chars[i - 1]) || chars[i - 1] == DEVA_NUKTA))
+    }) {
+        return false;
+    }
+    let syllables = devanagari_syllables(&chars);
+    // What each glyph of each syllable is given.
+    let mut given: Vec<Option<String>> = vec![None; pieces.len()];
+    for syl in &syllables {
+        let mut glyphs: Vec<usize> = (0..pieces.len())
+            .filter(|&g| !span[g].is_empty() && syl.contains(&span[g].start))
+            .collect();
+        glyphs.sort_unstable();
+        let (m, k) = (syl.len(), glyphs.len());
+        if k == 0 || m < k {
+            continue;
+        }
+        for (i, &g) in glyphs.iter().enumerate() {
+            let r = if i == 0 {
+                syl.start..syl.start + m - k + 1
+            } else {
+                syl.start + m - k + i..syl.start + m - k + i + 1
+            };
+            given[g] = Some(chars[r].iter().collect());
+        }
+    }
+    fresh
+        .iter()
+        .all(|&j| given[j].is_some() && given[j].as_ref() == map.get(&unit[j]))
 }
 
 impl<'a> Importer<'a> {
@@ -1937,7 +2303,7 @@ impl<'a> Importer<'a> {
             ) {
                 let key = (0u32, 0u16);
                 let _ = key;
-                gs.font = Some(std::rc::Rc::new(self.font_info(&fd)));
+                gs.font = Some(std::rc::Rc::new(self.font_info(&fd, None)));
                 gs.font_size = size;
             }
         }
@@ -2913,14 +3279,14 @@ impl<'a> Importer<'a> {
             }
         }
         let fd = self.dict_of(entry)?.clone();
-        let info = std::rc::Rc::new(self.font_info(&fd));
+        let info = std::rc::Rc::new(self.font_info(&fd, key));
         if let Some(k) = key {
             self.fonts.insert(k, info.clone());
         }
         Some(info)
     }
 
-    fn font_info(&mut self, fd: &Dictionary) -> FontInfo {
+    fn font_info(&mut self, fd: &Dictionary, key: Option<lopdf::ObjectId>) -> FontInfo {
         let subtype = self
             .get(fd, b"Subtype")
             .and_then(|o| o.as_name().ok())
@@ -3049,6 +3415,18 @@ impl<'a> Importer<'a> {
                 }
             }
         }
+        // A scrambled ToUnicode map put right (#1806).
+        let mut drawn_order = false;
+        let mut to_unicode = to_unicode;
+        if let (Some(map), Some(key), true) = (to_unicode.as_mut(), key, two_byte) {
+            let marks = map
+                .keys()
+                .copied()
+                .filter(|c| widths.get(c).copied().unwrap_or(default_width).abs() < 150.0)
+                .collect();
+            drawn_order =
+                self.fix_scrambled_tounicode(map, key, &desc_font, descriptor.as_ref(), &marks);
+        }
         let type3_matrix = if subtype == b"Type3" {
             self.get(fd, b"FontMatrix").and_then(|o| self.matrix_of(o))
         } else {
@@ -3075,6 +3453,7 @@ impl<'a> Importer<'a> {
             italic,
             two_byte,
             to_unicode,
+            drawn_order,
             one_byte,
             widths,
             default_width,
@@ -3125,6 +3504,178 @@ impl<'a> Importer<'a> {
             None
         };
         crate::pdf_glyphs::GlyphSource::new(data, cff, two_byte, cid_to_gid, encoding)
+    }
+
+    /// Correct a two-byte font's ToUnicode map that gives Indic glyphs
+    /// the characters of other glyphs (#1806; see
+    /// [`unscramble_tounicode`]). Only a map that contradicts the
+    /// embedded font's own `cmap` on a glyph of an Indic letter or sign
+    /// is touched. Whether it was.
+    fn fix_scrambled_tounicode(
+        &mut self,
+        map: &mut HashMap<u32, String>,
+        key: lopdf::ObjectId,
+        desc_font: &Dictionary,
+        descriptor: Option<&Dictionary>,
+        marks: &std::collections::HashSet<u32>,
+    ) -> bool {
+        if let Some(fixes) = self.tounicode_fixes.get(&key) {
+            map.extend(fixes.iter().map(|(k, v)| (*k, v.clone())));
+            return !fixes.is_empty();
+        }
+        let nominal = self.nominal_indic(desc_font, descriptor, map);
+        let scrambled = nominal
+            .iter()
+            .any(|(code, c)| map.get(code).is_some_and(|t| *t != c.to_string()));
+        let fixes = if scrambled {
+            let units = self.text_units(key, map);
+            unscramble_tounicode(map, &nominal, marks, &units)
+        } else {
+            HashMap::new()
+        };
+        map.extend(fixes.iter().map(|(k, v)| (*k, v.clone())));
+        let fixed = !fixes.is_empty();
+        self.tounicode_fixes.insert(key, fixes);
+        fixed
+    }
+
+    /// The codes of a two-byte TrueType font whose glyph the font's own
+    /// `cmap` gives to one Indic character (U+0900 to U+0DFF), with that
+    /// character, for the codes `map` lists.
+    fn nominal_indic(
+        &self,
+        desc_font: &Dictionary,
+        descriptor: Option<&Dictionary>,
+        map: &HashMap<u32, String>,
+    ) -> HashMap<u32, char> {
+        let mut out = HashMap::new();
+        let Some(Object::Stream(s)) = descriptor.and_then(|d| self.get(d, b"FontFile2")) else {
+            return out;
+        };
+        let Some(data) = s.decompressed_content().ok() else {
+            return out;
+        };
+        let Ok(face) = ttf_parser::Face::parse(&data, 0) else {
+            return out;
+        };
+        let cid_to_gid: Option<Vec<u16>> = match self.get(desc_font, b"CIDToGIDMap") {
+            Some(Object::Stream(m)) => m.decompressed_content().ok().map(|b| {
+                b.chunks_exact(2)
+                    .map(|c| u16::from_be_bytes([c[0], c[1]]))
+                    .collect()
+            }),
+            _ => None,
+        };
+        // Glyph to the characters the font maps to it.
+        let mut chars: HashMap<u16, Vec<char>> = HashMap::new();
+        if let Some(cmap) = face.tables().cmap {
+            for st in cmap.subtables {
+                if !st.is_unicode() {
+                    continue;
+                }
+                st.codepoints(|cp| {
+                    if let (Some(c), Some(g)) = (char::from_u32(cp), st.glyph_index(cp)) {
+                        let v = chars.entry(g.0).or_default();
+                        if !v.contains(&c) {
+                            v.push(c);
+                        }
+                    }
+                });
+            }
+        }
+        for &code in map.keys() {
+            let gid = match &cid_to_gid {
+                Some(m) => m.get(code as usize).copied(),
+                None => u16::try_from(code).ok(),
+            };
+            if let Some([c]) = gid.and_then(|g| chars.get(&g)).map(Vec::as_slice) {
+                if ('\u{0900}'..='\u{0DFF}').contains(c) {
+                    out.insert(code, *c);
+                }
+            }
+        }
+        out
+    }
+
+    /// The codes every text-showing operator of the file shows in font
+    /// `key`, page by page in drawing order: one list for each `Tj` or
+    /// `TJ`, split at spaces.
+    fn text_units(&self, key: lopdf::ObjectId, map: &HashMap<u32, String>) -> Vec<Vec<u32>> {
+        let mut units = Vec::new();
+        let mut ops = 0usize;
+        for page_id in self.doc.page_iter() {
+            let Ok(page) = self.doc.get_dictionary(page_id) else {
+                continue;
+            };
+            let Some(fonts) = self
+                .page_attr(page, b"Resources")
+                .and_then(|o| self.dict_of(o))
+                .and_then(|r| self.get(r, b"Font"))
+                .and_then(|o| self.dict_of(o))
+            else {
+                continue;
+            };
+            let names: Vec<Vec<u8>> = fonts
+                .iter()
+                .filter(|(_, v)| matches!(v, Object::Reference(id) if *id == key))
+                .map(|(k, _)| k.clone())
+                .collect();
+            if names.is_empty() {
+                continue;
+            }
+            let Ok(content) = Content::decode(&self.doc.get_page_content(page_id)) else {
+                continue;
+            };
+            let mut current = false;
+            for op in &content.operations {
+                ops += 1;
+                if ops > MAX_OPS {
+                    return units;
+                }
+                let strings: Vec<&Vec<u8>> = match op.operator.as_str() {
+                    "Tf" => {
+                        current = op
+                            .operands
+                            .first()
+                            .and_then(|o| o.as_name().ok())
+                            .is_some_and(|n| names.iter().any(|k| k == n));
+                        continue;
+                    }
+                    "Tj" | "'" | "\"" => match op.operands.last() {
+                        Some(Object::String(s, _)) => vec![s],
+                        _ => continue,
+                    },
+                    "TJ" => match op.operands.first() {
+                        Some(Object::Array(items)) => items
+                            .iter()
+                            .filter_map(|o| match o {
+                                Object::String(s, _) => Some(s),
+                                _ => None,
+                            })
+                            .collect(),
+                        _ => continue,
+                    },
+                    _ => continue,
+                };
+                if !current {
+                    continue;
+                }
+                let mut unit = Vec::new();
+                for s in strings {
+                    for c in s.chunks_exact(2) {
+                        let code = u32::from(u16::from_be_bytes([c[0], c[1]]));
+                        if map.get(&code).is_some_and(|t| t.trim().is_empty()) {
+                            units.push(std::mem::take(&mut unit));
+                        } else {
+                            unit.push(code);
+                        }
+                    }
+                }
+                units.push(unit);
+            }
+        }
+        units.retain(|u| !u.is_empty());
+        units
     }
 
     fn simple_encoding(
@@ -3407,9 +3958,10 @@ impl<'a> Importer<'a> {
             .chain(std::iter::once(&(r.text.len()..r.text.len())))
         {
             if let Some(between) = r.text.get(from..part.start) {
-                text.push_str(&devanagari_logical_order(
+                text.push_str(&devanagari_typed_order(
                     &devanagari_compose(between),
                     r.reph_glyph,
+                    r.font.drawn_order,
                 ));
             }
             if let Some(given) = r.text.get(part.clone()) {
@@ -4833,6 +5385,76 @@ mod tests {
             ),
             ["क त"]
         );
+    }
+
+    /// A ToUnicode map scrambled as an office word processor's Hindi PDF
+    /// was (#1806): उर्मिला drawn उ ि म र् ल ा with the i sign glyph (2)
+    /// mapped to र् and the reph glyph (4) to ि, then वार्ड drawn व ा ड र्
+    /// with ड (7) mapped to र्. The font's cmap names 2 and 7; the reph
+    /// glyph, which has no advance, is worked out from the first word.
+    #[test]
+    fn a_scrambled_tounicode_map_is_put_right() {
+        let map: HashMap<u32, String> = [
+            (1, "\u{0909}"),
+            (2, "\u{0930}\u{094D}"),
+            (3, "\u{092E}"),
+            (4, "\u{093F}"),
+            (5, "\u{0932}"),
+            (6, "\u{093E}"),
+            (7, "\u{0930}\u{094D}"),
+            (8, "\u{0935}"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k, v.to_string()))
+        .collect();
+        let nominal: HashMap<u32, char> = [
+            (1, '\u{0909}'),
+            (2, '\u{093F}'),
+            (3, '\u{092E}'),
+            (5, '\u{0932}'),
+            (6, '\u{093E}'),
+            (7, '\u{0921}'),
+            (8, '\u{0935}'),
+        ]
+        .into_iter()
+        .collect();
+        let marks = [4].into_iter().collect();
+        let fixes = unscramble_tounicode(
+            &map,
+            &nominal,
+            &marks,
+            &[vec![1, 2, 3, 4, 5, 6], vec![8, 6, 7, 4]],
+        );
+        let mut got: Vec<(u32, String)> = fixes.into_iter().collect();
+        got.sort();
+        assert_eq!(
+            got,
+            [
+                (2, "\u{093F}".to_string()),
+                (4, "\u{0930}\u{094D}".to_string()),
+                (7, "\u{0921}".to_string())
+            ]
+        );
+        // Those glyphs in drawn order give the words as typed.
+        assert_eq!(
+            devanagari_typed_order(
+                "\u{0909}\u{093F}\u{092E}\u{0930}\u{094D}\u{0932}\u{093E}",
+                true,
+                true
+            ),
+            "उर्मिला"
+        );
+        assert_eq!(
+            devanagari_typed_order("\u{0935}\u{093E}\u{0921}\u{0930}\u{094D}", true, true),
+            "वार्ड"
+        );
+        // A short i sign after a consonant moves only when the font is
+        // known to give drawn order.
+        assert_eq!(devanagari_typed_order("पिश्चम", false, true), "पश्चिम");
+        assert_eq!(devanagari_typed_order("पिश्चम", false, false), "पिश्चम");
+        // A map that agrees with the font is left alone.
+        let ok: HashMap<u32, String> = nominal.iter().map(|(k, c)| (*k, c.to_string())).collect();
+        assert!(unscramble_tounicode(&ok, &nominal, &marks, &[vec![1, 2, 3]]).is_empty());
     }
 
     /// The Devanagari test corpus written to PDF by an office suite
