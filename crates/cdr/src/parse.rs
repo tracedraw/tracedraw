@@ -3365,8 +3365,12 @@ impl<'a> Ctx<'a> {
         let mut opacity = 1.0;
         let mut lens: Option<tracedraw_core::live::Lens> = None;
         let mut mesh: Option<Arg> = None;
-        // A graded transparency of a version 11 file (a mask and its target).
+        // A graded transparency of a version 11 or 15 file (a mask and its
+        // target).
         let mut v11_mask: Option<(Fill, u8)> = None;
+        // Where a version 15 graded transparency starts and ends, in the
+        // object's own space.
+        let mut v15_mask_axis: Option<(Point, Point)> = None;
         // A version 16+ uniform transparency held in argument 8000 (#1706).
         let mut record_opacity: Option<f64> = None;
 
@@ -3380,6 +3384,9 @@ impl<'a> Ctx<'a> {
                     } else if let Some((o, m)) = self.read_transparency_v11(d, *arg) {
                         opacity = o;
                         v11_mask = m;
+                    } else if let Some((m, axis)) = self.read_graded_transparency_v15(d, *arg) {
+                        v11_mask = Some(m);
+                        v15_mask_axis = axis;
                     } else if let Some(o) = self.read_uniform_transparency_record(d, *arg) {
                         record_opacity = Some(o);
                     } else if let Some(o) = self.read_opacity(d, *arg) {
@@ -3587,7 +3594,7 @@ impl<'a> Ctx<'a> {
 
         // Version 16+: a graded transparency in the object's style string
         // becomes a mask; otherwise its uniform transparency an opacity.
-        let mask = v11_mask.or_else(|| {
+        let mut mask = v11_mask.or_else(|| {
             style_string
                 .as_deref()
                 .and_then(text::object_transparency_mask)
@@ -3664,6 +3671,23 @@ impl<'a> Ctx<'a> {
         shape.opacity = opacity;
         if let Some(d) = distortion {
             shape.effects.push(tracedraw_core::live::Effect::Distort(d));
+        }
+        // A version 15 graded transparency runs between its record's two
+        // points: they become the mask's nodes on the page.
+        if let (Some((Fill::Fountain(f), _)), Some((start, end))) = (&mut mask, v15_mask_axis) {
+            use tracedraw_core::geometry::Shape as _;
+            let pb = (shape.transform * shape.local_path()).bounding_box();
+            let (s, e) = (shape.transform * start, shape.transform * end);
+            let place = |p: Point| Fountain::page_to_rel(pb, p);
+            f.edge_pad = 0.0;
+            f.set_handles(
+                pb,
+                tracedraw_core::style::FountainHandles {
+                    start: place(s),
+                    end: place(e),
+                    skew: place(s + (e - s).turn_90()),
+                },
+            );
         }
         if let Some((mask, target)) = mask {
             shape
@@ -4129,13 +4153,57 @@ impl<'a> Ctx<'a> {
             ));
             return None;
         };
-        let mut mask = f.clone();
-        for s in &mut mask.stops {
-            let [red, g, b] = s.color.to_rgb_f32_builtin();
-            let grey = (red * 0.2126 + g * 0.7152 + b * 0.0722).clamp(0.0, 1.0);
-            s.color = Color::Gray { v: grey };
+        Some((1.0, Some((grey_mask(f), 2))))
+    }
+
+    /// The graded transparency record of a version 15 file (#1257, two
+    /// files saved by the program that wrote them, a sky blue to white and
+    /// a red to white background): argument 8000 holds a record tagged
+    /// 1300 of 117 bytes, the version 11 record with a one-byte head (the
+    /// byte 5, then the record's number): the object's box at byte 13, u32
+    /// 1 at 29, the fountain's number at 33, its type (u16) at 37, its
+    /// start and end points at 41 and 49 (coordinates in the object's own
+    /// space: the opaque end first), the start and end transparency in
+    /// percent (f64, 0 and 100) at 61 and 69, u32 2 at 81, the fill id
+    /// at 105 (20 zero bytes before it, 8 after), which names a fountain
+    /// fill of greys (255 to 0), the transparency, as in version 11. The points place the fountain
+    /// (the fill's own angle and edge pad only approximate them: the
+    /// files' previews draw the band between the points). Returns the
+    /// mask and, for a linear fountain, its start and end, when the
+    /// record names such a fill; other records (not seen in version 15)
+    /// keep the reading of the opacity argument.
+    fn read_graded_transparency_v15(
+        &mut self,
+        d: &'a [u8],
+        arg: Arg,
+    ) -> Option<(Mask, Option<(Point, Point)>)> {
+        if self.v != 15 || arg.end.checked_sub(arg.off)? < 8 + 117 {
+            return None;
         }
-        Some((1.0, Some((Fill::Fountain(mask), 2))))
+        let data = d.get(..arg.end)?;
+        let mut r = self.reader_at(data, arg.off);
+        if r.u32()? != 0x514 || r.u32()? != 117 || r.u8()? != 5 {
+            return None;
+        }
+        r.skip(28);
+        if r.u32()? != 1 {
+            return None;
+        }
+        r.skip(8);
+        let start = Point::new(r.coord()?, r.coord()?);
+        let end = Point::new(r.coord()?, r.coord()?);
+        r.skip(48);
+        let fill_id = r.u32()?;
+        let Some(Fill::Fountain(f)) = self.fills.get(&fill_id).map(|f| &f.fill) else {
+            return None;
+        };
+        let axis = (f.kind == FountainKind::Linear
+            && (end - start).hypot() > 1e-6
+            && [start.x, start.y, end.x, end.y]
+                .iter()
+                .all(|x| x.is_finite()))
+        .then_some((start, end));
+        Some(((grey_mask(f), 2), axis))
     }
 
     /// The uniform transparency record of a version 16+ object (#1706, a
@@ -6155,6 +6223,20 @@ fn paragraph_spacing(style: &text::RunStyle, base: &ParagraphStyle) -> Paragraph
     p
 }
 
+/// A transparency mask and the part of the object it applies to.
+type Mask = (Fill, u8);
+
+/// A fountain of greys whose luminance is the opacity: a graded
+/// transparency's fill (versions 11 and 15: 255 opaque, 0 see-through).
+fn grey_mask(f: &tracedraw_core::Fountain) -> Fill {
+    let mut mask = f.clone();
+    for s in &mut mask.stops {
+        let [red, g, b] = s.color.to_rgb_f32_builtin();
+        let grey = (red * 0.2126 + g * 0.7152 + b * 0.0722).clamp(0.0, 1.0);
+        s.color = Color::Gray { v: grey };
+    }
+    Fill::Fountain(mask)
+}
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -10938,6 +11020,117 @@ pub(crate) mod tests {
         ]
         .concat();
         parse(&riff(b"CDRE", &body), 14)
+    }
+
+    /// The background of the reporter's version 15 files (#1257): a sky
+    /// blue rectangle whose argument 8000 holds a graded transparency
+    /// record naming a fountain of greys, white (opaque) to black
+    /// (see-through). It opened as a flat blue.
+    #[test]
+    fn version_15_graded_transparency_record() {
+        use tracedraw_core::live::Effect;
+        let record = |graded: u32, fill: u32| {
+            let mut b = vec![5u8];
+            b.extend_from_slice(&u32s(&[1, 0, 1]));
+            b.extend_from_slice(&i32s(&[-2_286_000, 1_524_000, 4_852_444, -2_584_380]));
+            b.extend_from_slice(&u32s(&[graded, 3008, 1]));
+            b.extend_from_slice(&i32s(&[3_881_258, -2_978_060, 3_256_163, -1_130_321]));
+            b.extend_from_slice(&u32s(&[125]));
+            b.extend_from_slice(&f64s(&[0.0, 100.0]));
+            b.extend_from_slice(&u32s(&[0, 2, 0, 0, 0, 0, 0, fill, 0, 0]));
+            assert_eq!(b.len(), 117);
+            let mut op = u32s(&[0x514, 117]);
+            op.extend_from_slice(&b);
+            op
+        };
+        // A version 15 linear fountain of greys (45-byte stops): white at
+        // the start, black at the end.
+        let mut g = vec![0u8; 8];
+        g.push(1);
+        g.extend_from_slice(&[0; 17]);
+        g.extend_from_slice(&i16s(&[0]));
+        g.extend_from_slice(&i32s(&[90_000_000]));
+        g.extend_from_slice(&i32s(&[0, 0]));
+        g.extend_from_slice(&[0; 2]);
+        g.extend_from_slice(&u32s(&[0]));
+        g.extend_from_slice(&[50, 0]);
+        g.extend_from_slice(&u32s(&[2]));
+        g.extend_from_slice(&[0; 3]);
+        for (c, pos) in [(255u8, 0u32), (0, 100)] {
+            g.extend_from_slice(&color_bgr(c, c, c));
+            g.extend_from_slice(&[0; 26]);
+            g.extend_from_slice(&u32s(&[pos]));
+            g.extend_from_slice(&[0; 3]);
+        }
+        let mut ramp = u32s(&[7, 1300, (g.len() + 2) as u32]);
+        ramp.extend_from_slice(&u16s(&[2]));
+        ramp.extend_from_slice(&g);
+        let doc_of = |v: u16, op: Vec<u8>| {
+            let mut coords = u32s(&[5]);
+            coords.extend_from_slice(&i32s(&[0, 0, 254000, 0, 254000, 254000, 0, 254000, 0, 0]));
+            coords.extend_from_slice(&[0x08, 0x40, 0x40, 0x40, 0x48]);
+            let obj = list(
+                b"obj ",
+                &chunk(
+                    b"loda",
+                    &loda(
+                        OBJ_CURVE,
+                        &[
+                            (ARG_COORDS, coords),
+                            (ARG_FILL, u32s(&[3])),
+                            (ARG_OPACITY, op),
+                        ],
+                    ),
+                ),
+            );
+            let body = [
+                chunk(b"mcfg", &mcfg(v, 2_540_000, 2_540_000)),
+                chunk(b"fild", &solid_fild_v13(3, (214, 238, 252))),
+                chunk(b"fild", &ramp),
+                list(b"page", &list(b"layr", &obj)),
+            ]
+            .concat();
+            parse(&riff(b"CDRF", &body), v)
+        };
+        let (doc, rep) = doc_of(15, record(1, 7));
+        assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+        let s = first_shape(&doc);
+        assert_eq!(s.opacity, 1.0);
+        assert!(matches!(s.fill, Fill::Solid(_)), "{:?}", s.fill);
+        match s.effects.as_slice() {
+            [Effect::Transparency {
+                mask: Fill::Fountain(f),
+                target: 2,
+                ..
+            }] => {
+                assert_eq!(f.kind, FountainKind::Linear);
+                assert_eq!(f.stops.len(), 2);
+                assert_eq!(f.stops[0].color, Color::Gray { v: 1.0 });
+                assert_eq!(f.stops[1].color, Color::Gray { v: 0.0 });
+                // Placed by the record's points, not the fill's angle (90)
+                // and edge pad: from (388.1, -297.8) to (325.6, -113.0) mm
+                // in the object's space, the opaque end first.
+                assert!((f.angle - 108.69).abs() < 0.01, "{}", f.angle);
+                assert_eq!(f.edge_pad, 0.0);
+                let h = f.handles.expect("placed by its points");
+                use tracedraw_core::geometry::Shape as _;
+                let b = (s.transform * s.local_path()).bounding_box();
+                let near = |rel: Point, x: f64, y: f64| {
+                    let p = Fountain::rel_to_page(b, rel);
+                    let o = s.transform * Point::new(x, y);
+                    (p - o).hypot() < 1e-3
+                };
+                assert!(near(h.start, 388.1258, -297.806), "{h:?}");
+                assert!(near(h.end, 325.6163, -113.0321), "{h:?}");
+            }
+            other => panic!("{other:?}"),
+        }
+        // A record naming a solid fill, or not marked 1, reads as before.
+        for op in [record(1, 3), record(0, 7)] {
+            let (doc, _) = doc_of(15, op);
+            assert!(first_shape(&doc).effects.is_empty());
+            assert_eq!(first_shape(&doc).opacity, 1.0);
+        }
     }
 
     #[test]
