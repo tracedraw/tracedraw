@@ -260,6 +260,14 @@ pub enum Command {
         shape: ShapeId,
         effects: Vec<crate::live::Effect>,
     },
+    /// The effect stack and the opacity of each of many objects, as a
+    /// transparency set on a selection gives them: found in one walk of
+    /// the drawing, where a [`Command::SetEffects`] and a
+    /// [`Command::SetOpacity`] for each object searched it twice each
+    /// (a transparency slider dragged over 2000 objects, #1335).
+    SetEffectsAndOpacity {
+        changes: Vec<EffectsAndOpacity>,
+    },
     /// The whole effect stack of `shape`: the effects drawn and the ones
     /// switched off (see `Shape::effect_stack`).
     SetEffectStack {
@@ -391,6 +399,14 @@ pub enum Command {
     },
 }
 
+/// One object's change in [`Command::SetEffectsAndOpacity`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EffectsAndOpacity {
+    pub shape: ShapeId,
+    pub effects: Vec<crate::live::Effect>,
+    pub opacity: f64,
+}
+
 /// How many nodes a curve has (0 for other kinds).
 fn node_count(kind: &ShapeKind) -> usize {
     match kind {
@@ -482,6 +498,7 @@ impl Command {
             Command::SetEffects { effects, .. } if effects.is_empty() => "Clear Effects",
             Command::SetEffects { .. } => "Effect",
             Command::SetEffectStack { .. } => "Effects",
+            Command::SetEffectsAndOpacity { .. } => "Transparency",
             Command::SetExtraPaint { .. } => "Fills and Outlines",
             Command::SetOverprint { .. } => "Overprint",
             Command::SetLink { .. } => "Hyperlink",
@@ -959,6 +976,27 @@ impl Command {
             Command::SetEffects { shape, effects } => {
                 any_mut(doc, *shape)?.effects = effects.clone();
             }
+            Command::SetEffectsAndOpacity { changes } => {
+                // The last change of an object counts, as when applied
+                // one after another.
+                let wanted: std::collections::HashMap<ShapeId, &EffectsAndOpacity> =
+                    changes.iter().map(|c| (c.shape, c)).collect();
+                let mut found = std::collections::HashSet::with_capacity(wanted.len());
+                each_shape(doc, &mut |s| {
+                    if wanted.contains_key(&s.id) {
+                        found.insert(s.id);
+                    }
+                });
+                if let Some(c) = changes.iter().find(|c| !found.contains(&c.shape)) {
+                    return Err(Error::ShapeNotFound(c.shape));
+                }
+                each_shape_mut(doc, &mut |s| {
+                    if let Some(c) = wanted.get(&s.id) {
+                        s.effects = c.effects.clone();
+                        s.opacity = c.opacity.clamp(0.0, 1.0);
+                    }
+                });
+            }
             Command::SetEffectStack {
                 shape,
                 effects,
@@ -1404,6 +1442,43 @@ impl Command {
 /// Any object, nested ones too.
 fn any(doc: &Document, id: ShapeId) -> Result<&Shape> {
     doc.find_shape(id).ok_or(Error::ShapeNotFound(id))
+}
+
+/// Every object of the drawing, nested ones too (the objects of groups,
+/// the frames and contents of clip frames), as [`any`] finds them.
+fn each_shape(doc: &Document, f: &mut dyn FnMut(&Shape)) {
+    fn walk(s: &Shape, f: &mut dyn FnMut(&Shape)) {
+        f(s);
+        match &s.kind {
+            ShapeKind::Group { children } => children.iter().for_each(|c| walk(c, f)),
+            ShapeKind::ClipFrame { frame, contents } => {
+                walk(frame, f);
+                contents.iter().for_each(|c| walk(c, f));
+            }
+            _ => {}
+        }
+    }
+    for s in doc.all_layers().flat_map(|l| &l.shapes) {
+        walk(s, f);
+    }
+}
+
+/// [`each_shape`], to change them.
+fn each_shape_mut(doc: &mut Document, f: &mut dyn FnMut(&mut Shape)) {
+    fn walk(s: &mut Shape, f: &mut dyn FnMut(&mut Shape)) {
+        f(s);
+        match &mut s.kind {
+            ShapeKind::Group { children } => children.iter_mut().for_each(|c| walk(c, f)),
+            ShapeKind::ClipFrame { frame, contents } => {
+                walk(frame, f);
+                contents.iter_mut().for_each(|c| walk(c, f));
+            }
+            _ => {}
+        }
+    }
+    for s in doc.all_layers_mut().flat_map(|l| &mut l.shapes) {
+        walk(s, f);
+    }
 }
 
 /// Any object to change, nested ones too.
@@ -2460,6 +2535,78 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Effects and opacity for many objects in one command (#1335): the
+    /// objects of groups and clip frames too, the last change of an
+    /// object counting, and nothing changed when one is missing.
+    #[test]
+    fn effects_and_opacity_reach_nested_objects_at_once() {
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let shapes: Vec<Shape> = (0..4).map(|i| rect(&mut doc, i as f64 * 20.0)).collect();
+        let ids: Vec<ShapeId> = shapes.iter().map(|s| s.id).collect();
+        for shape in shapes {
+            Command::AddShape { layer, shape }.apply(&mut doc).unwrap();
+        }
+        Command::Group {
+            shapes: vec![ids[1], ids[2]],
+        }
+        .apply(&mut doc)
+        .unwrap();
+        Command::PlaceInside {
+            frame: ids[3],
+            contents: vec![ids[0]],
+        }
+        .apply(&mut doc)
+        .unwrap();
+        let glow = vec![crate::live::Effect::Transparency {
+            mask: Fill::Solid(Color::rgb8(128, 128, 128)),
+            merge: crate::live::MergeMode::Normal,
+            target: 2,
+        }];
+        let change =
+            |shape: ShapeId, effects: Vec<crate::live::Effect>, opacity: f64| EffectsAndOpacity {
+                shape,
+                effects,
+                opacity,
+            };
+        let before = doc.clone();
+        let missing = Command::SetEffectsAndOpacity {
+            changes: vec![
+                change(ids[1], Vec::new(), 0.5),
+                change(ShapeId(9999), Vec::new(), 0.5),
+            ],
+        };
+        assert!(matches!(
+            missing.apply(&mut doc),
+            Err(Error::ShapeNotFound(ShapeId(9999)))
+        ));
+        assert_eq!(doc, before, "nothing changed");
+        Command::SetEffectsAndOpacity {
+            changes: vec![
+                change(ids[0], glow.clone(), 1.0),
+                change(ids[1], Vec::new(), 0.3),
+                change(ids[2], Vec::new(), 2.0),
+                change(ids[1], Vec::new(), 0.6),
+                change(ids[3], glow.clone(), 0.25),
+            ],
+        }
+        .apply(&mut doc)
+        .unwrap();
+        let get = |id: ShapeId| doc.find_shape(id).expect("shape");
+        assert_eq!(get(ids[0]).effects, glow, "inside the clip frame");
+        assert_eq!(get(ids[1]).opacity, 0.6, "the last change counts");
+        assert_eq!(get(ids[2]).opacity, 1.0, "clamped");
+        assert_eq!(get(ids[3]).opacity, 0.25, "the clip frame");
+        assert_eq!(get(ids[3]).effects, glow);
+        assert_eq!(
+            Command::SetEffectsAndOpacity {
+                changes: Vec::new()
+            }
+            .label(),
+            "Transparency"
+        );
     }
 
     #[test]

@@ -18341,3 +18341,125 @@ fn a_click_on_a_blend_s_end_text_under_its_steps_picks_the_end() {
     click(&mut app, on_end);
     assert_eq!(app.text_edit.as_ref().map(|t| t.shape), Some(end));
 }
+
+/// Frame times while the Properties docker's transparency slider is
+/// dragged with many objects selected (#1335): run with
+/// `cargo test --release -p tracedraw -- --ignored frame_times_of_a_transparency_drag --nocapture`.
+#[test]
+#[ignore]
+fn frame_times_of_a_transparency_drag() {
+    let (ctx, mut app, _) = setup();
+    let n: usize = std::env::var("FRAME_N")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(2000);
+    let mut s = 11u64;
+    let mut r = || {
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((s >> 33) as f64) / (1u64 << 31) as f64
+    };
+    for _ in 0..n {
+        let (x, y) = (r() * 190.0, r() * 270.0);
+        let mut p = tracedraw_core::geometry::BezPath::new();
+        p.move_to((x, y));
+        for _ in 0..6 {
+            p.curve_to(
+                (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+                (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+                (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+            );
+        }
+        p.close_path();
+        app.new_shape(ShapeKind::Path {
+            path: p,
+            closed: true,
+        });
+    }
+    app.select_all();
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        20, 90, 200,
+    )));
+    let mut set = app.transparency_default.clone();
+    set.kind = 0;
+    set.amount = 50.0;
+    app.patch_transparency(&set, &[crate::mixed::TransparencyField::Amount]);
+    app.show_dockers = true;
+    app.docker_tab = crate::app::DockerTab::Properties;
+    app.settings.properties_closed = ["summary", "fill", "outline", "corners", "effects"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    until_the_page_is_drawn(&ctx, &mut app);
+    let label = crate::i18n::tr("docker.transparency_lc");
+    let rail = crate::ui::slider::rail_rect(&ctx, &label).expect("the slider is drawn");
+    let time = |what: &str, app: &mut App, f: &mut dyn FnMut(&mut App, usize)| {
+        let mut worst = std::time::Duration::ZERO;
+        let t = std::time::Instant::now();
+        for i in 0..20 {
+            let one = std::time::Instant::now();
+            f(app, i);
+            worst = worst.max(one.elapsed());
+        }
+        eprintln!("{what}: {:?} per frame, worst {worst:?}", t.elapsed() / 20);
+    };
+    time("panel open, idle", &mut app, &mut |app, _| {
+        frame(&ctx, app, Vec::new(), Modifiers::NONE);
+    });
+    let at = |i: usize| {
+        egui::pos2(
+            rail.left() + 5.0 + (i % 20) as f32 * rail.width() / 24.0,
+            rail.center().y,
+        )
+    };
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(at(0))],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(at(0), true, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    time("transparency slider drag", &mut app, &mut |app, i| {
+        frame(
+            &ctx,
+            app,
+            vec![Event::PointerMoved(at(i + 1))],
+            Modifiers::NONE,
+        );
+    });
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(
+            at(1),
+            false,
+            PointerButton::Primary,
+            Modifiers::NONE,
+        )],
+        Modifiers::NONE,
+    );
+    let amount = crate::mixed::ShapeTransparency::of(&app.selected_shapes()[0]).amount;
+    assert!(
+        (amount - 50.0).abs() > 1.0,
+        "the drag changed the amount: {amount}"
+    );
+    // The same changes without the panel's frame: what the commands cost.
+    let mut k = 0.0;
+    time("patch alone", &mut app, &mut |app, _| {
+        k += 3.0;
+        set.amount = 10.0 + k % 80.0;
+        app.patch_transparency(&set, &[crate::mixed::TransparencyField::Amount]);
+    });
+    time("frame after a patch", &mut app, &mut |app, _| {
+        k += 3.0;
+        set.amount = 10.0 + k % 80.0;
+        app.patch_transparency(&set, &[crate::mixed::TransparencyField::Amount]);
+        frame(&ctx, app, Vec::new(), Modifiers::NONE);
+    });
+}
