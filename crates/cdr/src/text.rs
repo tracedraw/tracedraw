@@ -1378,6 +1378,25 @@ pub(crate) fn decode_style_bytes(b: &[u8], charset: u8) -> String {
     }
 }
 
+/// Whether a style string starts at `at`: its length, then (after any
+/// white space) the `{` that opens it, in UTF-16 before version 17.
+fn style_string_at(d: &[u8], at: usize, v: u16) -> bool {
+    let Some(len) = d
+        .get(at..at + 4)
+        .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
+    else {
+        return false;
+    };
+    let unit = if v < 17 { 2 } else { 1 };
+    let Some(body) = len
+        .checked_mul(unit)
+        .and_then(|n| d.get(at + 4..at + 4 + n))
+    else {
+        return false;
+    };
+    body.iter().step_by(unit).find(|c| !c.is_ascii_whitespace()) == Some(&b'{')
+}
+
 fn read_txsm_16(d: &[u8], v: u16, charset: u8, warn: &mut dyn FnMut(String)) -> Option<Txsm> {
     let mut r = Reader::new(d, false);
     // Not zero: the frame layout of the records below (artistic text has
@@ -1433,12 +1452,18 @@ fn read_txsm_16(d: &[u8], v: u16, charset: u8, warn: &mut dyn FnMut(String)) -> 
         if flag == 1 {
             r.skip(64);
         }
+        // Paragraph text of a layout before 1700 may hold the paragraph's
+        // base style before its default (public notes), or only the
+        // default, as the 84 paragraph texts of layout 1500 in a version
+        // 21 file do (#1833: the record count follows it). A second string
+        // is taken only when one starts there.
         let mut base = RunStyle::default();
-        if layout < 1700 && !frame {
-            let s = read_style_string(&mut r, d, v, charset)?;
-            base = parse_style_string(&s);
+        let mut first = read_style_string(&mut r, d, v, charset)?;
+        if layout < 1700 && !frame && style_string_at(d, r.pos, v) {
+            base = parse_style_string(&first);
+            first = read_style_string(&mut r, d, v, charset)?;
         }
-        let default = parse_style_string(&read_style_string(&mut r, d, v, charset)?).over(&base);
+        let default = parse_style_string(&first).over(&base);
         let nr = r.u32()? as usize;
         if nr > MAX_RUNS || nr > r.remaining() / 6 {
             return finish(out, warn, "style record count");

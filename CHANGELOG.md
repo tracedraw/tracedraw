@@ -10,6 +10,9 @@ full, row-by-row status.
 
 
 - Shaping a clip frame (Weld, Trim, Intersect, Simplify, Front Minus Back, Back Minus Front) keeps it a clip frame: its frame takes the new shape with its own fill and outline, and what it held stays inside; before, the result was a curve with no fill and the contents were gone (#1745 to #1750).
+
+- Opening .cdr: paragraph text saved with the older text layout comes in. A version 21 file opened with every paragraph text missing (84 frames of a two-page manual), and the report gave the warning "implausible style record count". Its paragraphs hold one style each, where TraceDraw expected two, so the rest of each text record was misread. Both forms are now read (#1833).
+
 - Cropping a picture that has a transparency: what is left looks as it did. Dragging a picture's corner nodes with the Shape tool, or cutting it with the Crop tool, put the picture in a clip frame that kept a copy of its transparency and opacity, so they were laid on twice and the picture turned much paler; with a gradient transparency the frame's copy also started again across the cut-down picture at each node moved. The picture inside now keeps its transparency in its place on the page, and the frame keeps none. A clip frame's own gradient transparency also stays in place when the frame's nodes are moved (#1491).
 
 - Blend, Apply to sizing: each step takes the outline and the size of its accelerated place. A square blended into a circle with the steps packed toward the circle kept square steps right up to the circle, because only their size followed the acceleration; the steps by the circle are now round, as the pictures of the `.cdr` files saved with that setting show (#1576).

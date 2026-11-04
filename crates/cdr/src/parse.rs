@@ -9733,6 +9733,82 @@ pub(crate) mod tests {
         }
     }
 
+    /// Paragraph text of layout 1500 in a version 21 file (#1833, saved by
+    /// the program that wrote the samples): each paragraph holds one style
+    /// string, its default, as in layout 1700. The reader took a second
+    /// one for the paragraph's base, read the record count as a string
+    /// and dropped all 84 paragraph texts of the file. The form with a
+    /// base string before the default still reads.
+    #[test]
+    fn paragraph_text_of_layout_1500_with_one_style_string() {
+        let v = 21u16;
+        let read = |base: Option<&str>| {
+            let mut t = u32s(&[0, 0xffff_ffff, 0, 0xffff_ffff, 8, 13, 0, 3, 0]);
+            t.extend_from_slice(&u16s(&[1500]));
+            t.extend_from_slice(&[0; 3]);
+            t.extend_from_slice(&u32s(&[1, 1])); // one frame, id 1
+            for x in [1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+                t.extend_from_slice(&f64s(&[x]));
+            }
+            t.extend_from_slice(&u32s(&[0])); // not on a path
+            t.extend_from_slice(&[0; 8]);
+            t.extend_from_slice(&i32s(&[0, -100_000, 0, 500_000]));
+            t.extend_from_slice(&style_string(v, r#"{"frame":{}}"#));
+            t.extend_from_slice(&u32s(&[1])); // one paragraph
+            t.extend_from_slice(&u32s(&[1]));
+            t.push(0);
+            if let Some(b) = base {
+                t.extend_from_slice(&style_string(v, b));
+            }
+            t.extend_from_slice(&style_string(
+                v,
+                r#"{"character":{"latin":{"font":"Arial","size":"35278"}},"paragraph":{"justify":"2"}}"#,
+            ));
+            t.extend_from_slice(&u32s(&[1])); // one record: the plain one
+            t.extend_from_slice(&u16s(&[6, 0, 4]));
+            t.extend_from_slice(&u32s(&[3]));
+            t.extend_from_slice(&utf16("PTG"));
+            t.extend_from_slice(&style_string(v, "{\n  \"character\": {\n  }\n}"));
+            t.extend_from_slice(&u32s(&[5]));
+            for _ in 0..5 {
+                t.extend_from_slice(&[0; 8]);
+            }
+            t.extend_from_slice(&u32s(&[5]));
+            t.extend_from_slice(b"Pump.");
+            t.push(0);
+            let mut coords = vec![0u8; 4];
+            coords.extend_from_slice(&i32s(&[500_000, 100_000]));
+            text_doc(
+                v,
+                b"CDRL",
+                Vec::new(),
+                OBJ_PARAGRAPH_TEXT,
+                &[(ARG_COORDS, coords)],
+                t,
+            )
+        };
+        for base in [None, Some(r#"{"paragraph":{"justify":"2"}}"#)] {
+            let (doc, rep) = read(base);
+            assert_eq!(rep.shapes, 1, "{base:?}: {:?}", rep.warnings);
+            assert!(rep.warnings.is_empty(), "{base:?}: {:?}", rep.warnings);
+            match &first_shape(&doc).kind {
+                ShapeKind::Text {
+                    spans,
+                    frame,
+                    align,
+                    ..
+                } => {
+                    assert!(frame.is_some(), "{base:?}");
+                    assert_eq!(*align, TextAlign::Center, "{base:?}");
+                    let text: String = spans.iter().map(|s| s.text.as_str()).collect();
+                    assert_eq!(text, "Pump.", "{base:?}");
+                    assert_eq!(spans[0].font_family, "Arial", "{base:?}");
+                }
+                other => panic!("{base:?}: {other:?}"),
+            }
+        }
+    }
+
     /// A run set in a semibold face (style code 1024, weight 600) reads
     /// as that face, named by the family and its weight, not as bold;
     /// regular (64) and bold (4096) runs keep the family's name (#624).
