@@ -115,6 +115,19 @@ behind it, and never add a feature without updating the row.
   warning-free (CI runs clippy with `-D warnings` on the library crates,
   on the pinned toolchain 1.97.0; use the same version locally so the
   lint set matches).
+- **Never undo merged work.** Branch from a freshly fetched `origin/main`
+  (`git fetch origin main` right before creating the branch or worktree)
+  and rebase on a fresh `origin/main` before pushing when the work took
+  long. Never copy whole files from an older checkout, another worktree,
+  a stash or a patch made on an older base, and never
+  `git checkout <old> -- <file>`: edit only the lines the change needs.
+  Two merged features were lost this way, together with their tests.
+- Never delete or weaken a test silently. When a change must remove a
+  test, list it under "Removed tests:" in the pull request description
+  with the reason; when it deliberately replaces another pull request's
+  work, list that pull request under "Replaces:". The `merged-work` CI
+  check (`scripts/ci/check_merged_work.py`, see `CONTRIBUTING.md`) fails
+  otherwise; run it before opening the pull request.
 - Keep `docs/roadmap.md` honest: a feature is "done" when it has tests
   and works on a real file, not when the menu item exists.
 
