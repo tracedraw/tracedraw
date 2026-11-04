@@ -583,6 +583,11 @@ pub struct Settings {
     /// A release the user chose to skip: not offered again at start.
     #[serde(default)]
     pub skipped_update: String,
+    /// The newest release the last check found that this version is
+    /// older than: while it is not installed or skipped, every start asks
+    /// again, so the update card shows at each start until it is done.
+    #[serde(default)]
+    pub pending_update: String,
     /// Scripts panel > Install as Filter: file formats that scripts read
     /// or write (see `behavior/script-filters.md`).
     #[serde(default)]
@@ -1881,6 +1886,7 @@ impl Default for Settings {
             update_check_asked: false,
             last_update_check: 0,
             skipped_update: String::new(),
+            pending_update: String::new(),
             script_filters: Vec::new(),
             github: Default::default(),
             tracing: Default::default(),

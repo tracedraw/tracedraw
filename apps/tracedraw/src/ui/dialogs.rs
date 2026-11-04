@@ -2100,7 +2100,11 @@ pub fn show(app: &mut App, ctx: &Context) {
                         }
                         InstallState::Installed(v) => (
                             trf("updates.installed", &[("new", v)]),
-                            vec![close_label.clone()],
+                            vec![tr("updates.restart"), tr("updates.later")],
+                        ),
+                        InstallState::Ready(v) => (
+                            trf("updates.ready", &[("new", v)]),
+                            vec![tr("updates.restart_install"), tr("updates.later")],
                         ),
                         InstallState::Failed(e) => (
                             trf("updates.install_failed", &[("error", e)]),
@@ -2118,6 +2122,20 @@ pub fn show(app: &mut App, ctx: &Context) {
                         Some(0) if matches!(install, InstallState::Failed(_)) => {
                             let url = r.download.clone().unwrap_or_else(|| r.page.clone());
                             app.open_url(&url);
+                            close = true;
+                        }
+                        // Restart: exit the usual way (asking about unsaved
+                        // drawings); the new version starts when the
+                        // program has exited.
+                        Some(0)
+                            if matches!(
+                                install,
+                                InstallState::Installed(_) | InstallState::Ready(_)
+                            ) =>
+                        {
+                            if app.installer.arm() {
+                                app.request_exit();
+                            }
                             close = true;
                         }
                         Some(_) => close = true,
@@ -2160,9 +2178,9 @@ pub fn show(app: &mut App, ctx: &Context) {
                         tr("updates.notes"),
                         tr("updates.skip"),
                     );
-                    // A running AppImage can be replaced in place.
-                    let target = crate::updates::appimage_target();
-                    let in_place = r.appimage.clone().zip(target);
+                    // An AppImage, a Windows setup copy and a macOS app
+                    // update themselves in place.
+                    let in_place = r.installer.clone().zip(crate::updates::install_target());
                     let install_label = tr("updates.install");
                     let mut labels: Vec<&str> = Vec::new();
                     if in_place.is_some() {
@@ -7924,7 +7942,7 @@ pub(crate) mod tests {
             version: "9.0.0".into(),
             page: "https://example.org/r".into(),
             download: None,
-            appimage: Some(Package {
+            installer: Some(Package {
                 url: "https://example.org/a.AppImage".into(),
                 sha256: "0".repeat(64),
                 size: 3 << 20,
@@ -7944,6 +7962,7 @@ pub(crate) mod tests {
                 total: 3 << 20,
             },
             InstallState::Installed("9.0.0".into()),
+            InstallState::Ready("9.0.0".into()),
             InstallState::Failed("digest".into()),
         ];
         for check in &checks {
