@@ -18558,3 +18558,199 @@ fn the_menu_converts_to_curves_like_ctrl_q() {
         assert_eq!(app.selection, vec![id], "case {case}: still selected");
     }
 }
+
+/// Where the property bar draws `value` (the text of one of its fields).
+fn bar_field(ctx: &egui::Context, app: &mut App, value: &str) -> Pos2 {
+    let (_, texts) = painted(ctx, app);
+    texts
+        .iter()
+        .find(|(t, p)| t == value && p.y < 120.0)
+        .map(|(_, p)| *p)
+        .unwrap_or_else(|| {
+            let bar: Vec<_> = texts.iter().filter(|(_, p)| p.y < 120.0).collect();
+            panic!("no field showing {value:?} in the property bar: {bar:?}")
+        })
+}
+
+/// How a value typed into a property bar field is left.
+#[derive(Clone, Copy, Debug)]
+enum Leave {
+    /// Enter, a frame after the text.
+    Enter,
+    /// The text, Enter and its release in one frame (a slow browser).
+    EnterInOneFrame,
+    /// Tab, to the next field.
+    Tab,
+    /// The window loses the focus and gets it back (the browser's canvas
+    /// taking it), then Enter: the typed value waits in the field.
+    FocusLost,
+    /// A click on empty canvas, which also takes the selection away.
+    ClickCanvas,
+}
+
+/// Click the property bar field showing `value`, type `typed` and leave
+/// it as `leave` says.
+fn type_in_bar(ctx: &egui::Context, app: &mut App, value: &str, typed: &str, leave: Leave) {
+    let at = bar_field(ctx, app, value);
+    click_at(ctx, app, at, Modifiers::NONE);
+    let text = Event::Text(typed.into());
+    match leave {
+        Leave::Enter => {
+            frame(ctx, app, vec![text], Modifiers::NONE);
+            frame(
+                ctx,
+                app,
+                vec![key(egui::Key::Enter, Modifiers::NONE)],
+                Modifiers::NONE,
+            );
+            frame(
+                ctx,
+                app,
+                vec![key_up(egui::Key::Enter, Modifiers::NONE)],
+                Modifiers::NONE,
+            );
+        }
+        Leave::EnterInOneFrame => frame(
+            ctx,
+            app,
+            vec![
+                text,
+                key(egui::Key::Enter, Modifiers::NONE),
+                key_up(egui::Key::Enter, Modifiers::NONE),
+            ],
+            Modifiers::NONE,
+        ),
+        Leave::Tab => {
+            frame(ctx, app, vec![text], Modifiers::NONE);
+            frame(
+                ctx,
+                app,
+                vec![key(egui::Key::Tab, Modifiers::NONE)],
+                Modifiers::NONE,
+            );
+            frame(
+                ctx,
+                app,
+                vec![key_up(egui::Key::Tab, Modifiers::NONE)],
+                Modifiers::NONE,
+            );
+        }
+        Leave::FocusLost => {
+            frame(ctx, app, vec![text], Modifiers::NONE);
+            frame(ctx, app, vec![Event::WindowFocused(false)], Modifiers::NONE);
+            frame(ctx, app, vec![Event::WindowFocused(true)], Modifiers::NONE);
+            frame(
+                ctx,
+                app,
+                vec![key(egui::Key::Enter, Modifiers::NONE)],
+                Modifiers::NONE,
+            );
+            frame(
+                ctx,
+                app,
+                vec![key_up(egui::Key::Enter, Modifiers::NONE)],
+                Modifiers::NONE,
+            );
+        }
+        Leave::ClickCanvas => {
+            frame(ctx, app, vec![text], Modifiers::NONE);
+            let empty = app.view.to_screen(Point::new(150.0, 250.0));
+            click_at(ctx, app, empty, Modifiers::NONE);
+        }
+    }
+    for _ in 0..5 {
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    }
+}
+
+/// A value typed into the property bar's width or height is applied by
+/// Enter (also when the text and Enter arrive in one frame, as a slow
+/// browser sends them), by Tab, and by a click on empty canvas; the
+/// window losing the focus keeps it typed for Enter. It stays applied
+/// after a click on empty canvas takes the selection away (#1329): for a
+/// rectangle, and for a pasted picture set to the page's size by typing
+/// its width and height.
+#[test]
+fn property_bar_values_commit_and_stay_after_a_click_outside() {
+    let size = |app: &App| {
+        let b = app.selection_bounds().expect("selection");
+        (b.width(), b.height())
+    };
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-3;
+    for leave in [
+        Leave::Enter,
+        Leave::EnterInOneFrame,
+        Leave::Tab,
+        Leave::FocusLost,
+        Leave::ClickCanvas,
+    ] {
+        let (ctx, mut app, id) = setup();
+        type_in_bar(&ctx, &mut app, "50.000 mm", "80", leave);
+        let b = app.doc().find_shape(id).expect("rect").bounds();
+        assert!(near(b.width(), 80.0), "{leave:?}: width {}", b.width());
+        assert!(near(b.height(), 30.0), "{leave:?}: height {}", b.height());
+        // A click on empty canvas: the selection goes, the size stays.
+        let empty = app.view.to_screen(Point::new(150.0, 250.0));
+        click_at(&ctx, &mut app, empty, Modifiers::NONE);
+        assert!(app.selection.is_empty(), "{leave:?}: deselected");
+        let b = app.doc().find_shape(id).expect("rect").bounds();
+        assert!(near(b.width(), 80.0), "{leave:?}: kept {}", b.width());
+        if matches!(leave, Leave::Enter) {
+            // One step: Undo puts the old width back.
+            app.undo();
+            let b = app.doc().find_shape(id).expect("rect").bounds();
+            assert!(near(b.width(), 50.0), "undone: {}", b.width());
+        }
+    }
+
+    // A picture set to the page's size by its width and height.
+    let (ctx, mut app, rect) = setup();
+    app.select(vec![rect]);
+    app.delete_selection();
+    let img = image::RgbaImage::from_pixel(40, 30, image::Rgba([200, 60, 20, 255]));
+    app.paste_as_bitmap(img);
+    let pic = app.selection.first().copied().expect("the pasted picture");
+    assert!(matches!(
+        app.doc().find_shape(pic).map(|s| &s.kind),
+        Some(ShapeKind::Bitmap { .. })
+    ));
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let page = app.doc().pages[0].size;
+    let (w0, h0) = size(&app);
+    let shown = |v: f64| format!("{v:.3} mm");
+    type_in_bar(
+        &ctx,
+        &mut app,
+        &shown(w0),
+        &format!("{}", page.width),
+        Leave::Enter,
+    );
+    let (w1, h1) = size(&app);
+    assert!(near(w1, page.width), "picture width {w1}");
+    type_in_bar(
+        &ctx,
+        &mut app,
+        &shown(h1),
+        &format!("{}", page.height),
+        Leave::Enter,
+    );
+    let (w2, h2) = size(&app);
+    assert!(
+        near(w2, page.width) && near(h2, page.height),
+        "{w2} x {h2}, was {w0} x {h0}"
+    );
+    let outside = app
+        .view
+        .to_screen(Point::new(page.width + 30.0, page.height / 2.0));
+    click_at(&ctx, &mut app, outside, Modifiers::NONE);
+    assert!(app.selection.is_empty(), "deselected");
+    let b = app.doc().find_shape(pic).expect("picture").bounds();
+    assert!(
+        near(b.width(), page.width) && near(b.height(), page.height),
+        "kept the page's size: {} x {}",
+        b.width(),
+        b.height()
+    );
+}
