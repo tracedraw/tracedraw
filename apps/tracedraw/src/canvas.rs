@@ -1556,7 +1556,10 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
             .rotation_center()
             .map(|c| app.view.to_screen(c))
             .unwrap_or(r.center());
-        // The centre of rotation: a ring with a dot.
+        // The centre of rotation: a ring with a dot, black on a white
+        // edge so it shows on a dark drawing (#1664).
+        painter.circle_stroke(c, 8.0, EStroke::new(2.0 + ROTATE_EDGE, Color32::WHITE));
+        painter.circle_filled(c, 2.0 + ROTATE_EDGE / 2.0, Color32::WHITE);
         painter.circle_stroke(c, 8.0, EStroke::new(2.0, Color32::BLACK));
         painter.circle_filled(c, 2.0, Color32::BLACK);
         for (h, p) in app.handle_positions(bounds) {
@@ -1600,13 +1603,29 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
     );
 }
 
+/// How much wider the white edge under the rotate mode handles and the
+/// centre of rotation is than their black lines (a point on each side).
+pub(crate) const ROTATE_EDGE: f32 = 2.0;
+
 /// A rotate mode handle at `p`: a curved double arrow around each
 /// corner, a straight double arrow along each side (sideways at the top
 /// and bottom, up and down at the left and right). Black, 2 points thick,
-/// with solid heads.
+/// with solid heads, over the same arrow in white a point wider all
+/// round, so it shows on a dark drawing (#1664).
 fn draw_rotate_handle(painter: &Painter, p: Pos2, h: Handle) {
-    let ink = Color32::BLACK;
-    let stroke = EStroke::new(2.0, ink);
+    rotate_handle_shape(painter, p, h, Color32::WHITE, ROTATE_EDGE);
+    rotate_handle_shape(painter, p, h, Color32::BLACK, 0.0);
+}
+
+/// One pass of a rotate mode handle in `ink`, its lines and heads `grow`
+/// points wider.
+fn rotate_handle_shape(painter: &Painter, p: Pos2, h: Handle, ink: Color32, grow: f32) {
+    let stroke = EStroke::new(2.0 + grow, ink);
+    let edge = if grow > 0.0 {
+        EStroke::new(grow, ink)
+    } else {
+        EStroke::NONE
+    };
     // A solid head with its tip at `tip`, pointing along `dir`.
     let head = |tip: Pos2, dir: egui::Vec2| {
         let d = dir.normalized();
@@ -1614,7 +1633,7 @@ fn draw_rotate_handle(painter: &Painter, p: Pos2, h: Handle) {
         epaint::PathShape::convex_polygon(
             vec![tip, tip - d * 4.5 + n * 3.0, tip - d * 4.5 - n * 3.0],
             ink,
-            EStroke::NONE,
+            edge,
         )
     };
     if h.is_corner() {

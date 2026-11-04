@@ -76,7 +76,9 @@ In rotate mode the handles are black arrows 2 points thick with solid
 heads, their centres 9 points out from the box: a curved double arrow
 around each corner, bulging outwards, and a straight double arrow along
 each side. The centre of rotation is a ring 8 points in radius with a
-dot in the middle.
+dot in the middle. Arrows, ring and dot are drawn over the same shapes
+in white, a point wider all round, so they show on a dark drawing
+(#1664, `pick_drag_tests::rotate_mode_handles_are_drawn_on_a_white_edge`).
 
 ## Large selections
 

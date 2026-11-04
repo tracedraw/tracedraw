@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Rotate mode: the turning and slanting arrows and the centre of rotation have a white edge, like the selection handles, so they show on a dark drawing (#1664).
 - Opening a PDF: a very large picture (more than 20000 pixels on a side or more than 80 megapixels) comes in shrunk to fit those limits instead of being left out. A PDF holding an 11160 x 14794 pixel picture opened with only the outline around it; the picture now comes in at 5580 x 7397 pixels, in its place, with its soft mask (#1804).
 
 - Several monitors: TraceDraw opens on the primary monitor, centred on it. The splash screen and the main window were centred by the monitor's size from the top-left corner of the whole desktop, so with the primary monitor below or right of others (X11, four monitors) the window opened on the top-left monitor (#1800).

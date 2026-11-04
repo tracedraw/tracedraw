@@ -9706,6 +9706,71 @@ fn overlays_are_drawn_on_a_white_line() {
         if stroke.color == egui::Color32::WHITE && (stroke.width - crate::canvas::HALO_INNER).abs() < 1e-3)));
 }
 
+/// Rotate mode's arrows and centre of rotation are black on a white edge,
+/// so they show on a dark drawing (#1664): each black line has a wider
+/// white one drawn under it.
+#[test]
+fn rotate_mode_handles_are_drawn_on_a_white_edge() {
+    let (ctx, mut app, _) = setup();
+    app.rotate_mode = true;
+    let shapes = frame_shapes(&ctx, &mut app, Vec::new());
+    let wide = 2.0 + crate::canvas::ROTATE_EDGE;
+    let solid = |c: egui::Color32| egui::epaint::ColorMode::Solid(c);
+    // The corner arcs: open paths, white ones under black ones.
+    let arcs = |c: egui::Color32, w: f32| {
+        shapes
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| {
+                matches!(s, egui::Shape::Path(ps) if !ps.closed && ps.points.len() > 3
+                    && ps.stroke.color == solid(c) && (ps.stroke.width - w).abs() < 1e-3)
+            })
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>()
+    };
+    let (white, black) = (
+        arcs(egui::Color32::WHITE, wide),
+        arcs(egui::Color32::BLACK, 2.0),
+    );
+    assert_eq!(white.len(), 4, "corner arcs on white");
+    assert_eq!(black.len(), 4, "corner arcs in black");
+    assert!(
+        white.iter().zip(&black).all(|(w, b)| w < b),
+        "black over white"
+    );
+    // The side arrows: white lines under black ones.
+    let lines = |c: egui::Color32, w: f32| {
+        shapes
+            .iter()
+            .filter(|s| {
+                matches!(s, egui::Shape::LineSegment { stroke, .. }
+                    if stroke.color == c && (stroke.width - w).abs() < 1e-3)
+            })
+            .count()
+    };
+    assert!(lines(egui::Color32::WHITE, wide) >= 4);
+    assert!(lines(egui::Color32::BLACK, 2.0) >= 4);
+    // Every arrow head has a white edge under it.
+    let heads = shapes
+        .iter()
+        .filter(|s| {
+            matches!(s, egui::Shape::Path(ps) if ps.closed && ps.points.len() == 3
+                && ps.fill == egui::Color32::WHITE && ps.stroke.color == solid(egui::Color32::WHITE))
+        })
+        .count();
+    assert_eq!(heads, 16, "two heads on each of the eight arrows");
+    // The centre of rotation: a white ring under the black one.
+    let ring = |c: egui::Color32, w: f32| {
+        shapes.iter().position(|s| {
+            matches!(s, egui::Shape::Circle(cs) if (cs.radius - 8.0).abs() < 1e-3
+                && cs.stroke.color == c && (cs.stroke.width - w).abs() < 1e-3)
+        })
+    };
+    let w = ring(egui::Color32::WHITE, wide).expect("a white ring");
+    let b = ring(egui::Color32::BLACK, 2.0).expect("a black ring");
+    assert!(w < b, "black over white");
+}
+
 /// An idle window asks for no frame (#616): once the start has settled,
 /// frames with no input request no repaint, with a drawing open (and its
 /// dockers) and on the Welcome Screen, the window's per-frame work (the
