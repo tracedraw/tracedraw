@@ -5102,6 +5102,13 @@ impl App {
     /// when it starts or ends on one of its end nodes, otherwise it becomes
     /// a curve of its own (see `curve_join.rs`).
     pub fn finish_curve(&mut self) {
+        self.finish_curve_as(false);
+    }
+
+    /// [`Self::finish_curve`]; `closes`: the last node is the other end
+    /// of the curve the line goes on from, so the curve is closed and a
+    /// redo of this step ends it, as a close by hand does (#1846).
+    pub(crate) fn finish_curve_as(&mut self, closes: bool) {
         let history = std::mem::take(&mut self.curve_steps.undo);
         self.curve_steps.clear();
         let Some(c) = self.curve.take() else { return };
@@ -5128,7 +5135,8 @@ impl App {
         }
         let id = self.add_drawn_line(line.clone());
         if let Some(id) = id {
-            self.note_pen_curve_step(id, c.nodes.first().copied(), c.nodes.last().copied());
+            let redo_to = c.nodes.last().copied().filter(|_| !closes);
+            self.note_pen_curve_step(id, c.nodes.first().copied(), redo_to);
         }
         if c.bspline {
             // A B-spline of its own keeps its control points (one that

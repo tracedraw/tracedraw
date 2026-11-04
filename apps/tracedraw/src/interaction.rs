@@ -2511,7 +2511,7 @@ impl App {
                 if let Some(c) = &mut self.curve {
                     c.nodes.push((end, None));
                 }
-                self.finish_curve();
+                self.finish_curve_as(true);
                 return;
             }
             if start_close {

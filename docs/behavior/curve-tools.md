@@ -76,12 +76,17 @@ meets the start) `Path` objects with the toolbox defaults.
   dashed preview curves as before. A click goes on drawing and joins
   the same curve, so the curve can be undone anchor by anchor and drawn
   on at once; a click on the curve's other end closes it again. A
-  redone close ends the line, the curve closed and selected. Redo leaves
+  redone close ends the line, the curve closed and selected, as a close
+  by hand does; that holds for a close made by that click on the other
+  end too, where the Pen went on drawing from the first node until
+  #1846. Redo leaves
   a curve being drawn alone, and while nodes are drawn on from a curve
   taken up this way there is nothing to redo
   (`pick_drag_tests::undoing_pen_steps_goes_back_to_drawing_the_curve`,
   `pick_drag_tests::redo_keeps_the_curve_being_drawn`,
-  `pick_drag_tests::undo_goes_back_to_the_end_drawing_went_on_from`).
+  `pick_drag_tests::undo_goes_back_to_the_end_drawing_went_on_from`,
+  `pick_drag_tests::redoing_a_pen_close_ends_the_curve`,
+  `pick_drag_tests::redoing_a_close_made_after_an_undo_ends_the_curve`).
   A press on the first node (within the join distance, 5 screen pixels
   by default, once the curve has two nodes with the Bezier and Pen
   tools, three with the others: two curved nodes close into a leaf or a
@@ -327,6 +332,9 @@ Medium (first), High, Highest; kept in the preferences
 - `pick_drag_tests::undoing_pen_steps_goes_back_to_drawing_the_curve`
   (#631)
 - `pick_drag_tests::redo_keeps_the_curve_being_drawn` (#631)
+- `pick_drag_tests::redoing_a_pen_close_ends_the_curve` (#1846)
+- `pick_drag_tests::redoing_a_close_made_after_an_undo_ends_the_curve`
+  (#1846)
 - `pick_drag_tests::undo_goes_back_to_the_end_drawing_went_on_from`
   (#631)
 - `curve_join::tests` (from either end, closing, two subpaths made one,

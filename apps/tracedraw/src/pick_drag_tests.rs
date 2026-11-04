@@ -11665,6 +11665,107 @@ fn undoing_pen_steps_goes_back_to_drawing_the_curve() {
     assert_eq!(nodes_of(&app), 4);
 }
 
+/// Redo of a Pen close, with the Pen still chosen: the curve is closed
+/// and done, as after closing it by hand; no line goes on from any of its
+/// nodes, and the next click starts a new curve instead of changing the
+/// closed one (#1846).
+#[test]
+fn redoing_a_pen_close_ends_the_curve() {
+    let (ctx, mut app, first) = setup();
+    app.select(vec![first]);
+    app.delete_selection();
+    app.set_tool(Tool::Pen);
+    let (a, b, c) = (
+        Point::new(100.0, 150.0),
+        Point::new(140.0, 150.0),
+        Point::new(140.0, 190.0),
+    );
+    pull(&ctx, &mut app, a, Point::new(110.0, 140.0));
+    pull(&ctx, &mut app, b, Point::new(150.0, 160.0));
+    pull(&ctx, &mut app, c, Point::new(130.0, 200.0));
+    click_page(&ctx, &mut app, a);
+    assert!(app.curve.is_none(), "closed");
+    let id = app.selection[0];
+    let shape_of = |app: &App| app.doc().find_shape(id).map(|s| s.kind.clone());
+    let closed_kind = shape_of(&app);
+    let ctrl = Modifiers::COMMAND | Modifiers::CTRL;
+    let press = |ctx: &egui::Context, app: &mut App, mods: Modifiers| {
+        frame(ctx, app, vec![key(egui::Key::Z, mods)], mods);
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    let hover = |ctx: &egui::Context, app: &mut App, p: Point| {
+        let at = app.view.to_screen(p);
+        frame(ctx, app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+        frame(ctx, app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+    };
+    // Undo: the Pen draws on from c.
+    press(&ctx, &mut app, ctrl);
+    hover(&ctx, &mut app, Point::new(80.0, 200.0));
+    assert!(app.curve.is_some(), "drawing again");
+    // Redo: closed again and done.
+    press(&ctx, &mut app, ctrl | Modifiers::SHIFT);
+    hover(&ctx, &mut app, Point::new(80.0, 200.0));
+    assert_eq!(app.tool, Tool::Pen);
+    assert!(app.curve.is_none(), "{:?}", app.curve);
+    assert_eq!(shape_of(&app), closed_kind);
+    assert_eq!(app.selection, vec![id]);
+    // A click away from the curve starts a new one and leaves it alone.
+    click_page(&ctx, &mut app, Point::new(60.0, 220.0));
+    assert_eq!(shape_of(&app), closed_kind, "the closed curve is unchanged");
+    let cur = app.curve.clone().expect("a new curve");
+    assert_eq!(cur.nodes.len(), 1);
+    assert!(near(cur.nodes[0].0, Point::new(60.0, 220.0)), "{cur:?}");
+}
+
+/// The close after an undo, made by a click on the curve's first node
+/// (the line goes on from an end of the reopened curve and closes it):
+/// redoing it after another undo ends the curve too; before, the Pen went
+/// on drawing from the first node and the next click changed the closed
+/// curve (#1846).
+#[test]
+fn redoing_a_close_made_after_an_undo_ends_the_curve() {
+    let (ctx, mut app, first) = setup();
+    app.select(vec![first]);
+    app.delete_selection();
+    app.set_tool(Tool::Pen);
+    let (a, b, c) = (
+        Point::new(100.0, 150.0),
+        Point::new(140.0, 150.0),
+        Point::new(140.0, 190.0),
+    );
+    pull(&ctx, &mut app, a, Point::new(110.0, 140.0));
+    pull(&ctx, &mut app, b, Point::new(150.0, 160.0));
+    pull(&ctx, &mut app, c, Point::new(130.0, 200.0));
+    click_page(&ctx, &mut app, a);
+    let id = app.selection[0];
+    let shape_of = |app: &App| app.doc().find_shape(id).map(|s| s.kind.clone());
+    let ctrl = Modifiers::COMMAND | Modifiers::CTRL;
+    let press = |ctx: &egui::Context, app: &mut App, mods: Modifiers| {
+        frame(ctx, app, vec![key(egui::Key::Z, mods)], mods);
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    // Undo, close again on a, undo that close, redo it.
+    press(&ctx, &mut app, ctrl);
+    assert!(app.curve.is_some(), "drawing again");
+    click_page(&ctx, &mut app, a);
+    assert!(app.curve.is_none(), "closed again");
+    let closed_kind = shape_of(&app);
+    assert!(
+        matches!(&closed_kind, Some(ShapeKind::Path { path, .. })
+            if tracedraw_core::nodes::nodes(path).len() == 3),
+        "{closed_kind:?}"
+    );
+    press(&ctx, &mut app, ctrl);
+    assert!(app.curve.is_some(), "drawing again");
+    press(&ctx, &mut app, ctrl | Modifiers::SHIFT);
+    assert_eq!(shape_of(&app), closed_kind);
+    assert!(app.curve.is_none(), "{:?}", app.curve);
+    assert_eq!(app.tool, Tool::Pen);
+    assert_eq!(app.selection, vec![id]);
+    click_page(&ctx, &mut app, Point::new(60.0, 220.0));
+    assert_eq!(shape_of(&app), closed_kind, "the closed curve is unchanged");
+}
+
 /// Redo leaves a curve being drawn alone: a fresh one stays, and nodes
 /// drawn on from a curve an undo took up are not thrown away for the
 /// step that undo took back (#631).
