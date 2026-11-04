@@ -5485,9 +5485,10 @@ struct Distortion {
 }
 
 /// What a distortion entry holds (see docs/cdr-format.md, `trfd`
-/// transforms): its kind (2 Zipper, 3 Twister), its centre (file space,
-/// millimetres from the page centre, in the space the matrices before
-/// it make), the option bits (1 Smooth for a Zipper) and two values: a
+/// transforms): its kind (1 Push and Pull, 2 Zipper, 3 Twister), its
+/// centre (file space, millimetres from the page centre, in the space the
+/// matrices before it make), the option bits (1 Smooth for a Zipper) and
+/// two values: a Push and Pull's amount (-200 to 200, then 0), a
 /// Zipper's amplitude (0 to 100) and frequency, a Twister's angle in
 /// degrees (counterclockwise when positive).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -5625,6 +5626,13 @@ fn live_distortion(
 ) -> Option<tracedraw_core::effects::Distort> {
     use tracedraw_core::effects::Distort;
     match e.kind {
+        // Push and Pull (#1824): the first value is the amount in percent,
+        // -200 to 200, negative pulling (petals) and positive pushing
+        // (spikes), as TraceDraw's own amount.
+        1 => Some(Distort::PushPull {
+            amount: f64::from(e.first.clamp(-200, 200)),
+            center: Some(center),
+        }),
         2 => Some(Distort::Zipper {
             amplitude: zipper_amplitude(e.first, b),
             frequency: u32::try_from(e.second.clamp(0, 100)).unwrap_or(0),
@@ -12161,16 +12169,59 @@ pub(crate) mod tests {
             "{b:?}"
         );
 
-        let t = trfd_v16(&[trfd_distortion(1, (50_000, 50_000), 0, (40, 0))]);
+        let t = trfd_v16(&[trfd_distortion(9, (50_000, 50_000), 0, (40, 0))]);
         let (doc, rep) = envelope_file(t, &[], false);
         assert!(first_shape(&doc).effects.is_empty());
         assert!(
             rep.warnings
                 .iter()
-                .any(|w| w.contains("distortion of kind 1")),
+                .any(|w| w.contains("distortion of kind 9")),
             "{:?}",
             rep.warnings
         );
+    }
+
+    /// Version 16+ Push and Pull distortions (#1824): kind 1, the amount
+    /// in percent (-200 to 200, negative pulls) and 0. "Push and Pull 1"
+    /// and "8" of #1824 are a 56.0022 mm square pulled by 118 and pushed
+    /// by 200 about its middle; their boxes (the objects' `bbox`) are
+    /// 1.5901 and 3.0000 times the square's side, centred on it. The
+    /// outline TraceDraw's Push and Pull draws for this 10 mm square has
+    /// boxes of 15.901 and 30.000 mm, the same shares.
+    #[test]
+    fn version_16_push_and_pull_distortions_open_live() {
+        use tracedraw_core::{effects::Distort, live::Effect};
+        for (amount, side) in [(-118, 15.901), (200, 30.0)] {
+            let t = trfd_v16(&[trfd_distortion(1, (50_000, 50_000), 0, (amount, 0))]);
+            let (doc, rep) = envelope_file(t, &[], false);
+            assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+            let s = first_shape(&doc);
+            match s.effects.first() {
+                Some(Effect::Distort(Distort::PushPull {
+                    amount: a,
+                    center: Some(c),
+                })) => {
+                    assert_eq!(*a, f64::from(amount));
+                    assert!((*c - Point::new(5.0, 5.0)).hypot() < 1e-9, "{c:?}");
+                }
+                e => panic!("no Push and Pull: {e:?}"),
+            }
+            let b = drawn_page_path(s).bounding_box();
+            let middle = s.page_path().bounding_box().center();
+            assert!((b.center() - middle).hypot() < 0.005, "{b:?}");
+            assert!((b.width() - side).abs() < 0.005, "{amount}: {b:?}");
+            assert!((b.height() - side).abs() < 0.005, "{amount}: {b:?}");
+        }
+        // Saved again by TraceDraw (drawn as curves, the package's own
+        // member keeping the object), it opens with the same live effect.
+        let t = trfd_v16(&[trfd_distortion(1, (50_000, 50_000), 0, (-118, 0))]);
+        let (doc, _) = envelope_file(t, &[], false);
+        let bytes = crate::write::document_to_cdr_version(&doc, 27);
+        let (back, _) = crate::open_bytes(&bytes, "back").expect("reads back");
+        assert!(matches!(
+            first_shape(&back).effects.first(),
+            Some(Effect::Distort(Distort::PushPull { amount, .. })) if *amount == -118.0
+        ));
     }
 
     /// A group's envelope (#1668): the group's own `lgob` holds the

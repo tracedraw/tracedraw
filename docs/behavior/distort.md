@@ -22,7 +22,10 @@ curve stays open.
   on their nodes, so they move along the nodes' own lines from the
   centre: a side bows from its middle, pushed corners become spikes and
   pulled corners curl, with the side's lobe reaching past them (#1264);
-  quadratic segments are raised to cubic.
+  quadratic segments are raised to cubic. A Push and Pull of a `.cdr`
+  file opens with the file's amount and centre as they are: the boxes
+  drawn so match the boxes the files give their objects to 0.01 mm
+  (#1824).
 - Zipper, `amplitude` (mm, 0 to 100), `frequency` (0 to 100) and
   `tilt` (degrees, -180 to 180): each segment is cut into
   `frequency + 1` equal steps of its parameter, so it carries
@@ -223,6 +226,7 @@ curve stays open.
 - `distort::tests::shifted_tips_start_with_a_tip_moved_toward_the_centre`
 - `parse::tests::version_16_zipper_distortions_open_live` (tracedraw-cdr)
 - `parse::tests::version_16_twister_distortions_open_live` (tracedraw-cdr)
+- `parse::tests::version_16_push_and_pull_distortions_open_live` (tracedraw-cdr)
 - `distort::tests::a_twisted_line_is_a_smooth_spiral_to_its_ends`
 - `distort::tests::older_files_and_odd_values_read`
 - `distort_tool::tests::a_drag_distorts_about_where_it_started`

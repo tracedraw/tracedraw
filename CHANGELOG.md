@@ -16,6 +16,8 @@ full, row-by-row status.
 
 - Text tool: paragraph text frames dragged one after the other all stay. Dragging a second frame (or clicking to start an artistic text) deleted the first one while it was still empty, so only the last empty frame was left on the page. An empty frame now stays as a frame to type or flow text into later; an artistic text left with no characters still leaves nothing (#1822).
 
+- Opening .cdr: Push and Pull distortions made in the program that writes .cdr files open distorted and live, as Zipper and Twister already did. A pulled square opened as the plain square with the note "a distortion of kind 1 is not read"; it now opens as TraceDraw's live Push and Pull with the file's amount and centre, drawn as the previews inside the files show, and the distort tool adjusts it. A distortion applied again over another one opens with the first only, with a note; saving to .cdr still writes distortions as the curves they draw (#1824, refs #1715).
+
 - Opening a PDF: a very large picture (more than 20000 pixels on a side or more than 80 megapixels) comes in shrunk to fit those limits instead of being left out. A PDF holding an 11160 x 14794 pixel picture opened with only the outline around it; the picture now comes in at 5580 x 7397 pixels, in its place, with its soft mask (#1804).
 
 - Several monitors: TraceDraw opens on the primary monitor, centred on it. The splash screen and the main window were centred by the monitor's size from the top-left corner of the whole desktop, so with the primary monitor below or right of others (X11, four monitors) the window opened on the top-left monitor (#1800).
