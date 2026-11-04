@@ -598,6 +598,37 @@ on its own line, which is why the lines are joined first.
   the empty text where nothing read it back, so Add tab seemed to do
   nothing (#1852,
   `ui::dialogs::tests::add_tab_works_on_a_new_empty_paragraph_frame`).
+- The tab ruler (#1852, `apps/tracedraw/src/tab_ruler.rs`): while a
+  paragraph frame is edited with the Text tool, a strip 14 points tall
+  runs along the frame's top edge, 4 points beyond the selection
+  handles, with a tick every millimetre (every 5 mm when they would be
+  closer than 3 points), longer ones every 5 and 10 mm. It shows the
+  stops of the paragraphs at the caret as markers of their kind: a
+  corner opening right (left stop), opening left (right stop), an
+  upturned T (centre stop) and a T with a dot (decimal stop). A
+  paragraph with no stops shows the default grid (Default tab spacing,
+  12.7 mm unless set) in a lighter colour.
+  - A click on the strip away from a marker adds a left stop there.
+  - A drag of a marker (within 6 points) moves it, by 0.1 mm, with a
+    line down the frame where it would go; a drag starting away from a
+    marker adds a stop and moves it. Released more than 18 points away
+    from the strip, the stop is removed (its marker fades while it is
+    that far).
+  - A right click on the strip opens a menu of the four kinds (Left,
+    Center, Right, Decimal tab), the stop's own kind checked: a pick
+    changes the stop under the pointer, or with none there adds a stop
+    of that kind; Remove tab is under them on a stop.
+  - A change made on the default grid gives the paragraph the whole
+    grid as its own stops, the change made to it. Each change is one
+    undo step and reaches the paragraphs the text selection touches
+    (the one holding the caret), as the Tabs dialog does. Stops come
+    out sorted. No ruler for artistic text, text on a path, vertical
+    text or other tools
+    (`pick_drag_tests::the_tab_ruler_adds_moves_removes_and_turns_stops`,
+    `pick_drag_tests::the_tab_ruler_shows_the_default_grid_and_a_drag_keeps_it`,
+    `pick_drag_tests::the_tab_ruler_is_for_paragraph_text_being_edited`).
+  - The text is laid out again when the stop is let go, not while it
+    is dragged, so the drag costs no more than any other.
 - `.tdraw` files write each stop as `{"pos", "kind", "leader"}`; files
   from before tab kinds hold a bare number per stop, read as a left
   stop (`paragraphs::tests::tab_stops_save_their_kind_and_read_old_numbers`).

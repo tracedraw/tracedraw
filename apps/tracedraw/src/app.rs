@@ -1342,6 +1342,12 @@ pub struct App {
     /// The press that started the pending link is still held on its tab:
     /// releasing it says where the text flows (a drag from the tab).
     pub text_link_from_tab: bool,
+    /// A tab stop dragged on the tab ruler of the frame being edited
+    /// (#1852).
+    pub tab_drag: Option<crate::tab_ruler::TabDrag>,
+    /// The right click that opened the context menu was on the tab ruler:
+    /// the menu picks that stop's kind.
+    pub tab_ruler_menu: Option<crate::tab_ruler::RulerHit>,
     /// Clip frame being edited in place: (frame id, the page's other
     /// objects when editing began; see `clip_edit_contents`).
     pub clip_frame_edit: Option<(ShapeId, std::collections::HashSet<ShapeId>)>,
@@ -2642,6 +2648,8 @@ impl App {
             text_link_drag: None,
             text_link_incoming: false,
             text_link_from_tab: false,
+            tab_drag: None,
+            tab_ruler_menu: None,
             clip_frame_edit: None,
             clip_edit_marks: Vec::new(),
             symmetry_edit: None,

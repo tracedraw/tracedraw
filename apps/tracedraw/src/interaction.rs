@@ -1358,6 +1358,10 @@ impl App {
             return;
         }
 
+        // The tab ruler over the paragraph frame being edited (#1852).
+        if self.tool == Tool::Text && self.tab_ruler_input(response, screen) {
+            return;
+        }
         // With the Zoom tool a right click zooms out by default; with the
         // Pan tool when Options > Tools > Zoom/Pan says so.
         if response.secondary_clicked()

@@ -118,6 +118,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     crate::comments::draw_comments(app, painter);
     crate::perspective_draw::draw_grid(app, painter, rect);
     draw_frame_links(app, painter);
+    crate::tab_ruler::draw(app, painter);
     if app.pending_text_link.is_some() {
         let pointer = painter.ctx().pointer_hover_pos();
         draw_pending_text_link(app, painter, pointer);

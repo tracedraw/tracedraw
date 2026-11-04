@@ -19660,3 +19660,167 @@ fn page_down_on_the_last_page_offers_to_insert_one() {
     );
     assert_eq!(app.doc().pages.len(), 2, "nothing inserted until OK");
 }
+
+/// The tab stops of the first paragraph of text `id`.
+fn tab_stops_of(app: &App, id: ShapeId) -> Vec<tracedraw_core::TabStop> {
+    let s = app.doc().find_shape(id).expect("text").clone();
+    app.paragraph_style_of(&s).expect("text").1.tabs
+}
+
+/// A paragraph frame being edited with the Text tool, its stops `tabs`,
+/// zoomed in so the ruler has room.
+fn editing_with_ruler(tabs: Vec<tracedraw_core::TabStop>) -> (egui::Context, App, ShapeId) {
+    let (ctx, mut app, _) = setup();
+    let id = paragraph_frame(&ctx, &mut app, 12);
+    app.set_tool(Tool::Text);
+    app.begin_text_edit(id);
+    if !tabs.is_empty() {
+        app.set_tab_stops(id, tabs);
+    }
+    let c = bounds(&app, id).center();
+    app.view.zoom_at(app.view.to_screen(c), 2.0);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    (ctx, app, id)
+}
+
+/// The tab ruler over the paragraph frame being edited (#1852): a click
+/// adds a left stop, a drag moves one, a drag away from the strip
+/// removes it, and the right-click menu picks a stop's kind. Each change
+/// is one undo step.
+#[test]
+fn the_tab_ruler_adds_moves_removes_and_turns_stops() {
+    use tracedraw_core::{TabKind, TabStop};
+    let (ctx, mut app, id) = editing_with_ruler(vec![TabStop::left(20.0)]);
+    let r = app.tab_ruler().expect("a ruler while the frame is edited");
+    assert!(!r.defaults);
+    assert_eq!(r.stops, vec![TabStop::left(20.0)]);
+    let none = Modifiers::NONE;
+    let pos = |s: &[TabStop]| {
+        s.iter()
+            .map(|t| (t.pos * 10.0).round() / 10.0)
+            .collect::<Vec<_>>()
+    };
+    // A click: a left stop there.
+    click_at(&ctx, &mut app, r.on_strip(60.0), none);
+    let after_click = tab_stops_of(&app, id);
+    assert_eq!(after_click.len(), 2, "{after_click:?}");
+    assert!((after_click[1].pos - 60.0).abs() < 0.6, "{after_click:?}");
+    assert!(app.text_edit.is_some(), "still editing");
+    // A drag moves it.
+    let r = app.tab_ruler().expect("ruler");
+    let from = r.on_strip(after_click[1].pos);
+    drag(&ctx, &mut app, from, r.on_strip(80.0), none, Vec::new());
+    let moved = tab_stops_of(&app, id);
+    assert_eq!(moved.len(), 2, "{moved:?}");
+    assert!((moved[1].pos - 80.0).abs() < 0.6, "{moved:?}");
+    // One undo step takes the move back.
+    app.undo();
+    assert_eq!(pos(&tab_stops_of(&app, id)), pos(&after_click));
+    app.redo();
+    assert_eq!(pos(&tab_stops_of(&app, id)), pos(&moved));
+    // (Undo ends the editing: back to it.)
+    app.begin_text_edit(id);
+    frame(&ctx, &mut app, Vec::new(), none);
+    // Dragged off the strip: it goes.
+    let r = app.tab_ruler().expect("ruler");
+    let from = r.on_strip(20.0);
+    drag(&ctx, &mut app, from, from - r.up * 60.0, none, Vec::new());
+    let left = tab_stops_of(&app, id);
+    assert_eq!(pos(&left), pos(&moved[1..]), "{left:?}");
+    // The right-click menu turns the stop into a right stop.
+    let r = app.tab_ruler().expect("ruler");
+    let at = r.on_strip(left[0].pos);
+    frame(&ctx, &mut app, vec![Event::PointerMoved(at)], none);
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(at, true, PointerButton::Secondary, none)],
+        none,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(at, false, PointerButton::Secondary, none)],
+        none,
+    );
+    assert!(app.tab_ruler_menu.is_some());
+    let mut texts = Vec::new();
+    for _ in 0..3 {
+        texts = texts_drawn(&ctx, &mut app, Vec::new());
+    }
+    let item =
+        text_at(&texts, &crate::i18n::tr("text.tab_right")).expect("the menu shows the kinds");
+    assert!(text_at(&texts, &crate::i18n::tr("text.tab_decimal")).is_some());
+    click_at(&ctx, &mut app, item, none);
+    let turned = tab_stops_of(&app, id);
+    assert_eq!(turned.len(), 1);
+    assert_eq!(turned[0].kind, TabKind::Right);
+    assert!(app.tab_ruler_menu.is_none() && app.context_menu.is_none());
+    app.undo();
+    assert_eq!(tab_stops_of(&app, id)[0].kind, TabKind::Left);
+}
+
+/// A paragraph with no stops shows the 5 mm grid on the ruler; dragging
+/// one of its stops gives the paragraph the grid as its own, that stop
+/// moved (#1852).
+#[test]
+fn the_tab_ruler_shows_the_default_grid_and_a_drag_keeps_it() {
+    let (ctx, mut app, id) = editing_with_ruler(Vec::new());
+    let r = app.tab_ruler().expect("ruler");
+    assert!(r.defaults);
+    // A 100 mm frame: the default grid (Default tab spacing, 12.7 mm
+    // unless set) inside it.
+    let step = tracedraw_core::default_tab_step();
+    let n = ((100.0 - 1e-6) / step).floor() as usize;
+    assert_eq!(r.stops.len(), n);
+    assert!((r.stops[0].pos - step).abs() < 1e-9);
+    assert!(tab_stops_of(&app, id).is_empty());
+    let from = 4.0 * step;
+    drag(
+        &ctx,
+        &mut app,
+        r.on_strip(from),
+        r.on_strip(from + 2.5),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    let own = tab_stops_of(&app, id);
+    assert_eq!(own.len(), n, "{own:?}");
+    assert!(
+        own.iter().any(|t| (t.pos - from - 2.5).abs() < 0.6),
+        "{own:?}"
+    );
+    assert!(!own.iter().any(|t| (t.pos - from).abs() < 0.01), "{own:?}");
+    // One undo step: back to no stops of its own.
+    app.undo();
+    assert!(tab_stops_of(&app, id).is_empty());
+}
+
+/// The ruler shows only while a paragraph frame is edited with the Text
+/// tool: not for the Pick tool, nor for artistic text.
+#[test]
+fn the_tab_ruler_is_for_paragraph_text_being_edited() {
+    let (ctx, mut app, id) = editing_with_ruler(Vec::new());
+    assert!(app.tab_ruler().is_some());
+    app.finish_text();
+    assert!(app.tab_ruler().is_none());
+    app.set_tool(Tool::Pick);
+    app.select(vec![id]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(app.tab_ruler().is_none());
+    let art = app
+        .new_shape(ShapeKind::Text {
+            spans: vec![tracedraw_core::TextSpan::new("Hi", "DejaVu Sans", 10.0)],
+            origin: Point::new(20.0, 20.0),
+            frame: None,
+            align: tracedraw_core::TextAlign::Left,
+            para: Default::default(),
+            on_path: None,
+        })
+        .expect("artistic text");
+    app.set_tool(Tool::Text);
+    app.begin_text_edit(art);
+    assert!(app.tab_ruler().is_none());
+}

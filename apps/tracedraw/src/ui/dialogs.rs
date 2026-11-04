@@ -6161,13 +6161,18 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
 
 /// The name of a tab kind, as the Tabs dialog and the tab ruler show it.
 pub(crate) fn tab_kind_name(k: tracedraw_core::TabKind) -> String {
+    tr(tab_kind_key(k))
+}
+
+/// The i18n key of a tab kind's name.
+pub(crate) fn tab_kind_key(k: tracedraw_core::TabKind) -> &'static str {
     use tracedraw_core::TabKind;
-    tr(match k {
+    match k {
         TabKind::Left => "text.tab_left",
         TabKind::Center => "text.tab_center",
         TabKind::Right => "text.tab_right",
         TabKind::Decimal => "text.tab_decimal",
-    })
+    }
 }
 
 /// `v` with at most three decimals and no trailing zeros.

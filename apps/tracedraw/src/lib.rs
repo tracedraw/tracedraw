@@ -180,6 +180,7 @@ mod system_locale;
 mod system_prefs;
 #[cfg(any(target_os = "macos", test))]
 mod system_quit;
+mod tab_ruler;
 mod table;
 mod table_tool;
 mod templates;
