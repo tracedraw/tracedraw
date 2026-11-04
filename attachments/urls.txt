@@ -584,3 +584,6 @@
 1733 https://github.com/user-attachments/files/34326402/TraceDraw.Italic.Font.Missing.Problem.zip
 1733 https://github.com/user-attachments/assets/041d6b1a-d5cf-472c-ad3b-39d44b5babb8
 1736 https://github.com/user-attachments/files/34329359/Distort.Training.Data.zip
+1804 https://github.com/user-attachments/assets/ed09cc60-94e8-4224-8fac-9d3f08ae219a
+1804 https://github.com/user-attachments/files/34348478/test_file.pdf
+1806 https://github.com/user-attachments/files/34349339/Hindi.Language.Matras.Training.PDF.and.Photo.zip
