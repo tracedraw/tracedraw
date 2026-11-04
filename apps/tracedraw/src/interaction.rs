@@ -4079,14 +4079,29 @@ impl App {
                 self.set_tool(Tool::Pick);
             }
         }
+        // Page Down and Page Up go to the next and the previous page; past
+        // the last or the first page they offer a new one there: the
+        // Insert Page dialog, after or before it (#1752).
         if pressed(Key::PageDown, Modifiers::NONE) {
             let i = self.page_index();
-            self.goto_page(i + 1);
+            if i + 1 < self.doc().pages.len() {
+                self.goto_page(i + 1);
+            } else {
+                self.dialog = crate::ui::dialogs::Dialog::InsertPage {
+                    count: 1,
+                    after: true,
+                };
+            }
         }
         if pressed(Key::PageUp, Modifiers::NONE) {
             let i = self.page_index();
             if i > 0 {
                 self.goto_page(i - 1);
+            } else {
+                self.dialog = crate::ui::dialogs::Dialog::InsertPage {
+                    count: 1,
+                    after: false,
+                };
             }
         }
         // The Shape tool with nodes chosen: C turns cusp nodes smooth and

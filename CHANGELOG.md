@@ -41,6 +41,8 @@ full, row-by-row status.
 - Saving as `.cdr`: a drawing with paragraph text opens in the other program again. Since 0.33 paragraph text went out as paragraph text with its frame, and the 2026 release of the program that wrote the samples (27.2) hung or closed on opening such files (versions 20 and 27), while the same drawing opened with its text converted to curves, and TraceDraw's files with artistic text open there. Paragraph text goes out again as one artistic text per line, in its place and with its looks, as before 0.33, so the frame is not kept in the other program; TraceDraw's paragraph frame records are kept behind `TRACEDRAW_CDR_PARAGRAPH_FRAMES=1` in `tracedraw-cli` until a layout of them is confirmed to open there (#1698).
 
 
+- Page Down on the last page opens Insert Page with one page after it, and Page Up on the first page opens it with one page before it. The keys did nothing there. Between the first and the last page they still go to the next and the previous page (#1752).
+
 - Shaping a clip frame (Weld, Trim, Intersect, Simplify, Front Minus Back, Back Minus Front) keeps it a clip frame: its frame takes the new shape with its own fill and outline, and what it held stays inside; before, the result was a curve with no fill and the contents were gone (#1745 to #1750).
 
 - Opening .cdr: paragraph text saved with the older text layout comes in. A version 21 file opened with every paragraph text missing (84 frames of a two-page manual), and the report gave the warning "implausible style record count". Its paragraphs hold one style each, where TraceDraw expected two, so the rest of each text record was misread. Both forms are now read (#1833).

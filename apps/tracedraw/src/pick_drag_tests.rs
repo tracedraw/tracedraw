@@ -19612,3 +19612,51 @@ fn empty_text_frames_dragged_one_after_the_other_all_stay() {
     click_at(&ctx, &mut app, at, Modifiers::NONE);
     assert_eq!(frames(&app).len(), 3, "after a click");
 }
+
+/// Page Down on the last page and Page Up on the first offer a new page
+/// (#1752): the Insert Page dialog, one page after the last page or
+/// before the first, as the second Page Down past the end. Between them
+/// the keys go to the next and the previous page as before.
+#[test]
+fn page_down_on_the_last_page_offers_to_insert_one() {
+    use crate::ui::dialogs::Dialog;
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.insert_page(true);
+    app.goto_page(0);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let press = |ctx: &egui::Context, app: &mut App, k: egui::Key| {
+        frame(ctx, app, vec![key(k, Modifiers::NONE)], Modifiers::NONE);
+    };
+    // Page 1 of 2: down to page 2, no dialog.
+    press(&ctx, &mut app, egui::Key::PageDown);
+    assert_eq!(app.page_index(), 1);
+    assert_eq!(app.dialog, Dialog::None);
+    // The last page: Insert Page, after it.
+    press(&ctx, &mut app, egui::Key::PageDown);
+    assert_eq!(app.page_index(), 1);
+    assert_eq!(
+        app.dialog,
+        Dialog::InsertPage {
+            count: 1,
+            after: true
+        }
+    );
+    // Esc closes it; up to page 1.
+    press(&ctx, &mut app, egui::Key::Escape);
+    assert_eq!(app.dialog, Dialog::None);
+    press(&ctx, &mut app, egui::Key::PageUp);
+    assert_eq!(app.page_index(), 0);
+    assert_eq!(app.dialog, Dialog::None);
+    // The first page: Insert Page, before it.
+    press(&ctx, &mut app, egui::Key::PageUp);
+    assert_eq!(app.page_index(), 0);
+    assert_eq!(
+        app.dialog,
+        Dialog::InsertPage {
+            count: 1,
+            after: false
+        }
+    );
+    assert_eq!(app.doc().pages.len(), 2, "nothing inserted until OK");
+}

@@ -58,7 +58,7 @@ original, #471). Checks:
 | Alt+Shift+R | Rulers on and off |
 | Alt+Q, Alt+Shift+A, Alt+Shift+D | Snapping off, alignment guides, dynamic guides |
 | Alt+Z, Ctrl+Y | Snap to objects, snap to the document grid, on and off |
-| PgUp, PgDn | Previous and next page |
+| PgUp, PgDn | Previous and next page; on the first page PgUp, on the last PgDn opens Insert Page (one page, before the first or after the last; #1752, `pick_drag_tests::page_down_on_the_last_page_offers_to_insert_one`) |
 
 ## Objects
 
