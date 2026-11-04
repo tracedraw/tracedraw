@@ -892,7 +892,7 @@ impl App {
     /// The pointer moved to `p` during a drag.
     #[cfg(test)]
     pub fn drag_distort(&mut self, p: Point) {
-        self.drag_distort_to(p, false);
+        self.drag_distort_to(p, false, false);
     }
 
     /// The selected distortion whose handle line passes within the pick
@@ -913,10 +913,21 @@ impl App {
     }
 
     /// The pointer moved to `p` during a drag; a drag of the handle line
-    /// keeps its move horizontal or vertical with `ctrl`.
-    pub fn drag_distort_to(&mut self, p: Point, ctrl: bool) {
+    /// keeps its move horizontal or vertical with `ctrl`. With `ctrl` or
+    /// `shift` the end handle, and the line a drag on the object sets,
+    /// keep to steps of the constrain angle about the centre, as the
+    /// Shape tool's handles do (#1563).
+    pub fn drag_distort_to(&mut self, p: Point, ctrl: bool, shift: bool) {
         let Some(mut dd) = self.distort_drag.clone() else {
             return;
+        };
+        // The pointer the handle follows: on a step of the constrain angle
+        // from the centre (horizontal and vertical among them), as far
+        // out as the pointer reaches along it.
+        let p = if (ctrl || shift) && matches!(dd.grab, Grab::End | Grab::Object) {
+            crate::interaction::constrain_from(dd.start, p, self.settings.constrain_angle)
+        } else {
+            p
         };
         let Some(s) = self.doc().shape_on_page(dd.id) else {
             self.distort_drag = None;
@@ -1066,10 +1077,10 @@ impl App {
             self.begin_distort(origin);
         }
         if response.dragged_by(PointerButton::Primary) && self.distort_drag.is_some() {
-            let ctrl = response
+            let (ctrl, shift) = response
                 .ctx
-                .input(|i| i.modifiers.ctrl || i.modifiers.command);
-            self.drag_distort_to(p, ctrl);
+                .input(|i| (i.modifiers.ctrl || i.modifiers.command, i.modifiers.shift));
+            self.drag_distort_to(p, ctrl, shift);
         }
         if response.drag_stopped() {
             self.distort_drag = None;
