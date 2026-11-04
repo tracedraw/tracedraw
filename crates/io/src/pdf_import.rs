@@ -131,7 +131,6 @@ pub const FULL_PICTURE_PIXELS: u64 = 375_000_000;
 pub const REDUCED_PICTURE_PIXELS: u64 = 80_000_000;
 
 /// Parse a PDF (or an AI file with embedded PDF) into pages of shapes.
-
 pub fn parse(bytes: &[u8], ids: &mut IdSource) -> Result<ImportedPdf, String> {
     parse_with_password(bytes, ids, "").map_err(|e| e.to_string())
 }
