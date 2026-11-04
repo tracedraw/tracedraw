@@ -851,7 +851,7 @@ mod tests {
     }
 
     /// A larger job for timing by hand:
-    /// `cargo test --release -p tracedraw-signcut timing -- --ignored --nocapture`.
+    /// `cargo test --release -p tracedraw-tracecut timing -- --ignored --nocapture`.
     #[test]
     #[ignore]
     fn timing_of_a_larger_job() {

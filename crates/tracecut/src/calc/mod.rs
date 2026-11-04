@@ -1,26 +1,20 @@
-//! Calculations: cutting time, cost and material volume and weight.
+//! Calculations: cutting time and cost.
 //!
-//! Pure geometry over page-space outlines in millimetres, y up. The
-//! application turns the results into commands
-//! (`apps/tracedraw/src/signcut_calc.rs`). Nothing here changes a
-//! drawing: the calculations only read outlines.
+//! Pure geometry over page-space outlines in millimetres, y up, read by
+//! TraceCut's Measure tools. Nothing here changes a drawing: the
+//! calculations only read outlines.
 //!
 //! - [`job`] measures the objects once ([`Job`]): length and areas from
 //!   [`crate::measure`], one block (bounding box) per object and the
 //!   travel of the cutting head between outlines.
 //! - [`time`]: cutting time from a [`time::TimeProfile`].
 //! - [`cost`]: material and services from editable price lists.
-//! - [`weight`]: volume, weight and edge area from a density list.
 //! - [`csv`]: the CSV text the price lists are imported from and
 //!   exported to.
-//! - [`arrange`]: the ways Set Size sizes objects and how Replace picks
-//!   one of several masters.
 
-pub mod arrange;
 pub mod cost;
 pub mod csv;
 pub mod time;
-pub mod weight;
 
 use crate::measure::{self, Measurement};
 use time::{Travel, TravelOrder};

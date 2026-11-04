@@ -36,8 +36,8 @@ The product name is **TraceDraw** in prose; machine names are `tracedraw`
    `CLEANROOM.md` and the details in `docs/cdr-format.md`. Bundle only
    original or openly licensed assets and list them in `ATTRIBUTION.md`.
 4. **Layering is enforced by review.** `core` and `cdr-format` have no
-   workspace deps; `cdr` depends on `cdr-format` and `core`; `text` and
-   `render` depend on `core` only; `io` depends on `core` and `render`
+   workspace deps; `cdr` depends on `cdr-format` and `core`; `text`,
+   `render` and `tracecut` depend on `core` only; `io` depends on `core` and `render`
    (rasterised fills in exports); egui stays in `apps/`.
 5. **Tests are the gate.** Every change comes with tests. Format code
    gets round-trip and malformed-input tests.
@@ -65,6 +65,8 @@ crates/cdr    parse.rs (chunks to Document), write.rs, text.rs, cmx.rs
 crates/text   font database, shaping, outlines
 crates/render CPU rasteriser
 crates/io     svg.rs, pdf.rs, lib.rs (native format)
+crates/tracecut  TraceCut geometry: cut/ (HPGL, weeding, bridges, cut
+              order, marks), nest/, calc/ (time, cost), measure.rs
 apps/tracedraw    main.rs, app.rs, interaction.rs, canvas.rs, ops.rs,
                   tools.rs, tools2.rs, ui/ (menus, toolbar, toolbox,
                   dockers, palette, status, dialogs, icons)

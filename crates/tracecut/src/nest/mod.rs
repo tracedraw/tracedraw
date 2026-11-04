@@ -2,7 +2,7 @@
 //!
 //! Pure geometry over page-space outlines in millimetres, y up. The
 //! application turns the results into commands
-//! (`apps/tracedraw/src/signcut_nest.rs`).
+//! (TraceCut's Nesting tools).
 //!
 //! - [`rects`]: rectangle nesting by bounding boxes (MaxRects).
 //! - [`shapes`]: nesting by true outlines, holes allowed, with an
@@ -11,7 +11,7 @@
 //!
 //! Every layout is worked out in a *normalised frame*: `u` across the
 //! sheet (or roll) from the origin corner, `v` along it, the usable area
-//! starting at (0, 0). [`Frame`] maps it back to the page. Sheets are
+//! starting at (0, 0). `Frame` maps it back to the page. Sheets are
 //! laid side by side to the right of the page's origin, [`SHEET_GAP`]
 //! apart; a roll starts at the page's origin.
 

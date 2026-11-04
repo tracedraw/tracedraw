@@ -1,4 +1,4 @@
-//! CSV text for the price and density lists: reading what spreadsheets
+//! CSV text for the price lists: reading what spreadsheets
 //! write (comma, semicolon or tab between fields, quoted fields, decimal
 //! comma) and writing plain comma-separated text with a decimal point.
 

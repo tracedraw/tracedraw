@@ -1,4 +1,5 @@
-//! tracedraw-signcut: tools for sign making and cutting.
+//! tracedraw-tracecut: the geometry of TraceCut, the tools for cutting
+//! plotters.
 //!
 //! Pure geometry over page-space outlines, independent of the user
 //! interface. The application turns the results into commands.
@@ -6,26 +7,18 @@
 //! - [`measure`]: outline length, net, outer and hole area.
 //! - [`cleanup`]: duplicate objects and edges that would be cut twice.
 //! - [`crossings`]: places where outlines cross themselves or each other.
-//! - [`sizing`]: Set Size, Reference Scale and Replace placement.
 //! - [`cut`]: plotter output, weeding, bridges, cut order, registration and crop marks.
 //! - [`nest`]: placing objects on sheets and rolls with the least waste.
-//! - [`calc`]: cutting time, cost and material volume and weight.
-//! - [`sign`]: LED modules, neon tubes, sign boxes, letter returns, tiling and carriers.
-//! - [`cnc`]: G-code, hot wire paths, finger joints, door panels and centre lines.
-//! - [`fx`]: hatching lines, grids, puzzles, circle fills, cast shadows and random copies.
+//! - [`calc`]: cutting time and cost.
 //!
 //! Units are millimetres, Y up, like the rest of the model.
 
 pub mod calc;
 pub mod cleanup;
-pub mod cnc;
 pub mod crossings;
 pub mod cut;
-pub mod fx;
 pub mod measure;
 pub mod nest;
-pub mod sign;
-pub mod sizing;
 
 use tracedraw_core::geometry::{Affine, BezPath, PathEl, Point};
 use tracedraw_core::{Shape, ShapeKind};

@@ -2,7 +2,7 @@
 //!
 //! Pure geometry over page-space outlines in millimetres, y up. The
 //! application turns the results into commands
-//! (`apps/tracedraw/src/signcut_cut.rs`).
+//! (TraceCut's Cut tools).
 //!
 //! - [`weed`]: weeding lines, weeding boxes and the weeding frame.
 //! - [`bridges`]: uncut bridges (tabs) on closed outlines.
