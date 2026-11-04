@@ -701,7 +701,7 @@ pub(crate) fn parse_document_kept(
 
     let mut master_flags: Vec<bool> = Vec::new();
     let mut master_background: Option<Fill> = None;
-    for (i, pc) in pages.iter().enumerate() {
+    for pc in pages.iter() {
         let page_id = doc.ids_mut().page();
         let is_master = ctx.page_is_master(pc);
         master_flags.push(is_master);
@@ -710,9 +710,11 @@ pub(crate) fn parse_document_kept(
         }
         // A page may carry its own size in its `loda` (argument 19130).
         let size = ctx.page_own_size(pc).unwrap_or(page_size);
+        // A page the user named keeps the name in its `loda` (argument
+        // 1000); the others get "Page N" once the master page is dropped.
         let mut page = Page {
             id: page_id,
-            name: format!("Page {}", i + 1),
+            name: ctx.page_name(pc).unwrap_or_default(),
             size,
             layers: Vec::new(),
             guides: Vec::new(),
@@ -777,13 +779,17 @@ pub(crate) fn parse_document_kept(
     {
         // The master page's guidelines show on every page.
         let master = doc.pages.remove(0);
-        for (i, p) in doc.pages.iter_mut().enumerate() {
-            p.name = format!("Page {}", i + 1);
+        for p in doc.pages.iter_mut() {
             for g in &master.guides {
                 if !p.guides.contains(g) {
                     p.guides.push(*g);
                 }
             }
+        }
+    }
+    for (i, p) in doc.pages.iter_mut().enumerate() {
+        if p.name.is_empty() {
+            p.name = format!("Page {}", i + 1);
         }
     }
     if doc.pages.is_empty() {
@@ -898,6 +904,15 @@ impl<'a> Ctx<'a> {
         } else {
             Some(name)
         }
+    }
+
+    /// A page's own name: argument 1000 of its `loda` (in its `lgob` in
+    /// the files seen, versions 15 and 27), UTF-16LE ending in a line feed
+    /// and a NUL. Only pages the user named carry it.
+    fn page_name(&mut self, pc: &Chunk) -> Option<String> {
+        let name = self.layer_name(pc)?;
+        let name = name.trim_end_matches(['\n', '\r', '\0']);
+        (!name.trim().is_empty()).then(|| name.to_string())
     }
 
     /// A group's name from its own `lgob` (not a child object's).
@@ -8014,6 +8029,74 @@ pub(crate) mod tests {
         assert_eq!(doc.pages.len(), 1, "{:?}", rep.warnings);
         assert_eq!(doc.pages[0].layers[0].name, "Ink");
         assert_eq!(doc.pages[0].layers[0].shapes.len(), 1);
+    }
+
+    /// A page the user named carries the name in its own `lgob` `loda`
+    /// (argument 1000 after a zero 12000), UTF-16LE ending in a line feed
+    /// and a NUL, as files of versions 15 and 27 hold it; the page bytes
+    /// of #1807 (version 21). Pages without it are "Page N", counted
+    /// after the master page is dropped (#1807).
+    #[test]
+    fn page_names_come_from_the_page_loda() {
+        let utf16 =
+            |t: &str| -> Vec<u8> { t.encode_utf16().flat_map(|u| u.to_le_bytes()).collect() };
+        let named = |text: &[u8]| {
+            list(
+                b"lgob",
+                &chunk(
+                    b"loda",
+                    &loda(0, &[(12000, vec![0; 4]), (ARG_NAME, text.to_vec())]),
+                ),
+            )
+        };
+        let layer = |x: i32| {
+            let rect_obj = list(
+                b"obj ",
+                &chunk(
+                    b"loda",
+                    &loda(OBJ_RECT, &[(ARG_COORDS, i32s(&[254000 + x, 254000, 0]))]),
+                ),
+            );
+            list(
+                b"layr",
+                &[chunk(b"flgs", &[0, 0, 0, 0x98]), rect_obj].concat(),
+            )
+        };
+        let master = list(b"page", &chunk(b"flgs", &[0x40, 0, 1, 0x90]));
+        let page = |name: Option<Vec<u8>>, x: i32| {
+            let mut body = [
+                chunk(b"flgs", &[0x40, 0, 0, 0x90]),
+                list(b"gobj", &layer(x)),
+            ]
+            .concat();
+            if let Some(n) = name {
+                body.extend_from_slice(&named(&n));
+            }
+            list(b"page", &body)
+        };
+        let kitchen = vec![
+            0xa8, 0x53, 0x3f, 0x62, 0xd0, 0x62, 0xd2, 0x89, 0x0a, 0x00, 0x00, 0x00,
+        ];
+        let mut screen = utf16("ScreenLogo\n");
+        screen.extend_from_slice(&[0, 0]);
+        let body = [
+            chunk(b"mcfg", &mcfg(21, 2_540_000, 2_540_000)),
+            master,
+            page(None, 0),
+            page(Some(kitchen), 1000),
+            page(Some(screen), 2000),
+            // Only a line feed: no name of its own.
+            page(Some(vec![0x0a, 0, 0, 0]), 3000),
+        ]
+        .concat();
+        let (doc, rep) = parse(&riff(b"CDRL", &body), 21);
+        let names: Vec<&str> = doc.pages.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["Page 1", "厨房拐角", "ScreenLogo", "Page 4"],
+            "{:?}",
+            rep.warnings
+        );
     }
 
     #[test]

@@ -3835,8 +3835,8 @@ impl<'a> Writer<'a> {
         self.layer_slots = layer_slots(doc);
         let mut pages = Vec::new();
         let mut content: Option<Rect> = None;
-        for page in &doc.pages {
-            let (node, b) = self.page(page);
+        for (index, page) in doc.pages.iter().enumerate() {
+            let (node, b) = self.page(page, index);
             if content.is_none() {
                 content = b;
             }
@@ -4203,7 +4203,12 @@ impl<'a> Writer<'a> {
     /// version 14), its layers and its entry for the master's grid layer.
     /// Before 14 the layers come in the master page's order, one entry per
     /// slot of [`layer_slots`], empty where the page has no such layer.
-    fn page(&mut self, page: &tracedraw_core::document::Page) -> (Node, Option<Rect>) {
+    /// `index` is the page's place, from 0.
+    fn page(
+        &mut self,
+        page: &tracedraw_core::document::Page,
+        index: usize,
+    ) -> (Node, Option<Rect>) {
         let v = self.v;
         // A page of another size than the document's keeps its own in its
         // `lgob` (argument 19130), as version 16+ files hold it; files of
@@ -4272,14 +4277,26 @@ impl<'a> Writer<'a> {
         children.push(chunk(b"bbox", box_bytes(page_box)));
         children.push(chunk(b"obbx", obbx_bytes(page_box, 0.0)));
         children.push(list(b"gobj", layers));
-        if own_size {
-            let mut size = Buf::default();
-            size.i32(units(page.size.width))
-                .i32(units(page.size.height));
-            children.push(list(
-                b"lgob",
-                vec![chunk(b"loda", loda(0, vec![(ARG_PAGE_SIZE, size.done())]))],
-            ));
+        // A name of the user's own (not the "Page N" a reader gives the
+        // page at its place) goes into the page's `lgob` as argument 1000
+        // after a zero 12000, ending in a line feed, as files of versions
+        // 15 and 27 hold it. From version 14 only: no file of an earlier
+        // version seen names a page.
+        let name = page.name.trim_end_matches(['\n', '\r', '\0']);
+        let named = v.zip() && !name.trim().is_empty() && name != format!("Page {}", index + 1);
+        if own_size || named {
+            let mut args = Vec::new();
+            if own_size {
+                let mut size = Buf::default();
+                size.i32(units(page.size.width))
+                    .i32(units(page.size.height));
+                args.push((ARG_PAGE_SIZE, size.done()));
+            }
+            if named {
+                args.push((ARG_PROPS, vec![0; 4]));
+                args.push((ARG_NAME, name_bytes(v, &format!("{name}\n"))));
+            }
+            children.push(list(b"lgob", vec![chunk(b"loda", loda(0, args))]));
         }
         (list(b"page", children), content)
     }
