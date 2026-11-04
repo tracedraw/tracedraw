@@ -1498,9 +1498,11 @@ pub struct App {
     pub updates: crate::updates::Checker,
     /// Help > Updates, Install: an AppImage replaced in place.
     pub installer: crate::updates::Installer,
-    /// The running check was started at start, not asked for: only a
-    /// newer release, not skipped, is shown.
-    pub update_quiet: bool,
+    /// The update notice was closed with its cross, for this session.
+    pub update_card_hidden: bool,
+    /// The version whose finished download the card already came back
+    /// for, after it was dismissed while the file was downloading.
+    pub update_card_done: String,
     /// Page size changes apply to every page (the page bar's All pages).
     pub page_size_all: bool,
     /// The property bar's object origin: (column, row) of the 3 x 3
@@ -2776,7 +2778,8 @@ impl App {
             highlight_whats_new: false,
             updates: Default::default(),
             installer: Default::default(),
-            update_quiet: false,
+            update_card_hidden: false,
+            update_card_done: String::new(),
             recent_thumbs: Default::default(),
             shelf: Default::default(),
             export_assets: crate::export_assets::ExportAssets::new(),
@@ -7664,14 +7667,17 @@ impl App {
             self.open_url(crate::updates::STORE_PAGE);
             return;
         }
-        self.update_quiet = false;
+        // The box says what the card would: no card over it afterwards.
+        self.update_card_hidden = true;
         self.updates.start(ctx);
         self.dialog = crate::ui::dialogs::Dialog::Updates;
     }
 
     /// Called every frame with the time in seconds: once a day (Options >
-    /// Global > General), start a quiet check; when it finds a release
-    /// newer than this one that the user did not skip, show it. A copy
+    /// Global > General), and at every start while an update found
+    /// earlier is not installed or skipped, start a quiet check; a
+    /// release newer than this one that the user did not skip is shown
+    /// by the update card (`ui/update_card.rs`). A copy
     /// installed from the Microsoft Store never checks: the Store updates it.
     pub fn update_tick(&mut self, now: u64, ctx: Option<egui::Context>) {
         if crate::files::WEB || cfg!(test) || crate::updates::store_install() {
@@ -7691,27 +7697,30 @@ impl App {
             }
             return;
         }
+        // Remember what the last check found, so that every start asks
+        // again while the update is not installed (the card shows then).
+        match self.updates.get() {
+            crate::updates::UpdateState::Available(r)
+                if self.settings.pending_update != r.version =>
+            {
+                self.settings.pending_update = r.version;
+                self.settings.save();
+            }
+            crate::updates::UpdateState::Latest if !self.settings.pending_update.is_empty() => {
+                self.settings.pending_update.clear();
+                self.settings.save();
+            }
+            _ => {}
+        }
+        let pending = self.settings.pending_update != self.settings.skipped_update
+            && crate::updates::is_newer(&self.settings.pending_update, env!("CARGO_PKG_VERSION"));
+        let due = now.saturating_sub(self.settings.last_update_check) >= crate::updates::DAILY;
         if self.settings.check_updates
-            && now.saturating_sub(self.settings.last_update_check) >= crate::updates::DAILY
+            && (due || pending)
             && self.updates.get() == crate::updates::UpdateState::Idle
         {
             self.settings.last_update_check = now;
-            self.update_quiet = true;
             self.updates.start(ctx);
-        }
-        if self.update_quiet {
-            match self.updates.get() {
-                crate::updates::UpdateState::Checking => {}
-                crate::updates::UpdateState::Available(r)
-                    if r.version != self.settings.skipped_update
-                        && matches!(self.dialog, crate::ui::dialogs::Dialog::None) =>
-                {
-                    self.update_quiet = false;
-                    self.dialog = crate::ui::dialogs::Dialog::Updates;
-                }
-                crate::updates::UpdateState::Available(_) => {}
-                _ => self.update_quiet = false,
-            }
         }
     }
 
@@ -11073,6 +11082,32 @@ mod tests {
         assert_eq!(app.updates.get(), crate::updates::UpdateState::Idle);
         app.set_update_policy(true);
         assert!(app.settings.check_updates);
+    }
+
+    /// What a check finds is remembered, so that every start asks again
+    /// (and the update card shows) until it is installed or skipped; a
+    /// check that finds this version the latest forgets it.
+    #[test]
+    fn a_found_update_is_remembered_until_it_is_gone() {
+        use crate::updates::{Release, UpdateState};
+        let mut app = App::headless();
+        app.settings.update_check_asked = true;
+        app.settings.check_updates = false;
+        assert!(app.settings.pending_update.is_empty());
+        *app.updates.state.lock().expect("lock") = UpdateState::Available(Release {
+            version: "9.0.0".into(),
+            page: String::new(),
+            download: None,
+            installer: None,
+        });
+        app.update_tick_desktop(10 * crate::updates::DAILY, None);
+        assert_eq!(app.settings.pending_update, "9.0.0");
+        *app.updates.state.lock().expect("lock") = UpdateState::Latest;
+        app.update_tick_desktop(10 * crate::updates::DAILY, None);
+        assert!(app.settings.pending_update.is_empty());
+        // Older settings have none.
+        let s: crate::settings::Settings = serde_json::from_str("{}").expect("defaults");
+        assert!(s.pending_update.is_empty());
     }
 
     /// Settings saved by older versions have no answer yet, so the

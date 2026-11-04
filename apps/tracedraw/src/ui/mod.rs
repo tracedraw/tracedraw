@@ -110,6 +110,7 @@ pub mod trace_dialog;
 pub mod tracecut;
 pub mod tracecut_cut;
 pub mod tracecut_nest;
+pub mod update_card;
 // The audit reads widget names, which egui keeps only in debug builds.
 #[cfg(all(test, debug_assertions))]
 mod tip_audit;
@@ -736,6 +737,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         effect_picker::show(app, &ctx);
         crate::perspective_draw::show_bar(app, &ctx);
     }
+    update_card::show(app, &ctx);
     dialogs::show(app, &ctx);
     // A change this frame made to a master shows on its clones at once.
     let before = app.engine.revision();

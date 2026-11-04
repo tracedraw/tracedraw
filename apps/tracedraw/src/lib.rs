@@ -279,6 +279,7 @@ pub fn run() -> eframe::Result<()> {
     // The log in a file too and panics reported: the Windows build has no
     // console to show them (#570).
     startup_log::init();
+    updates::clean_leftovers();
     tracedraw_text::install();
     tracedraw_io::emf::install();
     // `tracedraw --mcp`: no window, a Model Context Protocol server on
@@ -1045,6 +1046,10 @@ impl eframe::App for Shell {
         if let Some(app) = self.app.as_mut() {
             app.save_settings();
             app.leave_session();
+            // Restart after an update: the new version starts last, when
+            // the settings and the session are written.
+            #[cfg(not(target_arch = "wasm32"))]
+            app.installer.run_pending();
         }
     }
 }

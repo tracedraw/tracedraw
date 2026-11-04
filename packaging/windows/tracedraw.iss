@@ -152,6 +152,9 @@ Root: HKA; Subkey: "{code:PathRegKey}"; ValueType: expandsz; ValueName: "Path"; 
 
 [Run]
 Filename: "{app}\tracedraw.exe"; Description: "{cm:LaunchProgram,TraceDraw}"; Flags: nowait postinstall skipifsilent shellexec runasoriginaluser
+; Help > Updates > Install runs this setup quietly with /relaunch=1 once TraceDraw has
+; exited; the new version then starts by itself (the entry above is for the wizard).
+Filename: "{app}\tracedraw.exe"; Flags: nowait shellexec runasoriginaluser; Check: RelaunchRequested
 
 [Code]
 var
@@ -261,6 +264,13 @@ begin
   if (LanguageCombo <> nil) and (LanguageCombo.ItemIndex >= 0) and
      (LanguageCombo.ItemIndex < LanguageCodes.Count) then
     Result := LanguageCodes[LanguageCombo.ItemIndex];
+end;
+
+// Help > Updates > Install runs this setup with /relaunch=1: the new
+// version then starts by itself (the [Run] entry that checks this).
+function RelaunchRequested: Boolean;
+begin
+  Result := ExpandConstant('{param:relaunch|0}') = '1';
 end;
 
 function PathRegKey(Param: string): string;
