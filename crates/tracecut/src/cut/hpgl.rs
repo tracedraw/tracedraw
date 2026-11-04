@@ -409,10 +409,134 @@ pub fn plot_layout(job: &Layout, profile: &Profile) -> Plot {
     plot
 }
 
+/// A built-in machine: the command set of a family of cutters, by what
+/// it sends (none is named after a maker). Choosing one sets the
+/// commands, the unit and the line breaks of a profile and keeps its knife
+/// settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum Machine {
+    /// `IN;` at the start, `PU`/`PD` with absolute coordinates in
+    /// 0.025 mm units, back to 0,0 at the end.
+    #[default]
+    Hpgl,
+    /// The same with absolute plotting and pen 1 selected at the start
+    /// (`IN;PA;SP1;`) and the pen put away at the end (`PU0,0;SP0;`).
+    HpglPenSelect,
+    /// The generic commands, one command per line, for cutters and
+    /// spoolers that read a line at a time.
+    HpglLines,
+}
+
+impl Machine {
+    pub const ALL: [Machine; 3] = [Machine::Hpgl, Machine::HpglPenSelect, Machine::HpglLines];
+
+    /// `profile` with this machine's commands, unit and line breaks.
+    pub fn apply(self, profile: &Profile) -> Profile {
+        let base = Profile {
+            units_per_mm: 40.0,
+            pen_up: "PU".into(),
+            pen_down: "PD".into(),
+            init: "IN;".into(),
+            end: "PU0,0;".into(),
+            line_breaks: false,
+            ..profile.clone()
+        };
+        match self {
+            Machine::Hpgl => base,
+            Machine::HpglPenSelect => Profile {
+                init: "IN;PA;SP1;".into(),
+                end: "PU0,0;SP0;".into(),
+                ..base
+            },
+            Machine::HpglLines => Profile {
+                line_breaks: true,
+                ..base
+            },
+        }
+    }
+
+    /// The built-in machine whose commands `profile` has, if any.
+    pub fn of(profile: &Profile) -> Option<Machine> {
+        Machine::ALL
+            .into_iter()
+            .find(|m| m.apply(profile) == *profile)
+    }
+}
+
+/// The test cut: a square of side `size` (mm) with a triangle inside,
+/// the triangle first so the square does not move while it is cut. The
+/// square's bottom-left corner is at 0,0; the triangle's base runs a
+/// quarter of the side in from the square's, its apex a quarter below
+/// the top. A size that is not a positive number gives 20 mm.
+pub fn test_cut(size: f64) -> Vec<BezPath> {
+    let s = if size.is_finite() && size > 0.0 {
+        size.min(1000.0)
+    } else {
+        20.0
+    };
+    let mut triangle = BezPath::new();
+    triangle.move_to((0.25 * s, 0.25 * s));
+    triangle.line_to((0.75 * s, 0.25 * s));
+    triangle.line_to((0.5 * s, 0.75 * s));
+    triangle.close_path();
+    vec![triangle, super::rect_path(Rect::new(0.0, 0.0, s, s))]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cut::rect_path;
+    use tracedraw_core::geometry::Shape as _;
+
+    #[test]
+    fn machines_set_the_commands_and_keep_the_knife() {
+        let mine = Profile {
+            knife_offset: 0.45,
+            passes: 2,
+            ..Default::default()
+        };
+        assert_eq!(Machine::of(&mine), Some(Machine::Hpgl));
+        let pen = Machine::HpglPenSelect.apply(&mine);
+        assert_eq!(pen.init, "IN;PA;SP1;");
+        assert_eq!(pen.end, "PU0,0;SP0;");
+        assert_eq!(pen.knife_offset, 0.45);
+        assert_eq!(pen.passes, 2);
+        assert_eq!(Machine::of(&pen), Some(Machine::HpglPenSelect));
+        let lines = Machine::HpglLines.apply(&pen);
+        assert!(lines.line_breaks);
+        assert_eq!(lines.init, "IN;");
+        let text = plot(
+            &test_cut(10.0),
+            &Profile {
+                knife_offset: 0.0,
+                overcut: 0.0,
+                ..lines
+            },
+        )
+        .text;
+        assert!(text.lines().count() > 3, "{text}");
+        let odd = Profile {
+            init: "XX;".into(),
+            ..Default::default()
+        };
+        assert_eq!(Machine::of(&odd), None);
+    }
+
+    #[test]
+    fn the_test_cut_is_a_square_with_a_triangle_cut_first() {
+        let cuts = test_cut(20.0);
+        assert_eq!(cuts.len(), 2);
+        let b0 = cuts[0].bounding_box();
+        let b1 = cuts[1].bounding_box();
+        assert_eq!(b1, Rect::new(0.0, 0.0, 20.0, 20.0));
+        assert!(b0.x0 > b1.x0 && b0.x1 < b1.x1 && b0.y0 > b1.y0 && b0.y1 < b1.y1);
+        let p = plot(&cuts, &Profile::default());
+        assert_eq!(p.outlines, 2);
+        assert!((p.width - 20.0).abs() < 1e-9 && (p.height - 20.0).abs() < 1e-9);
+        // Nonsense sizes give the default square.
+        assert_eq!(test_cut(f64::NAN)[1].bounding_box().width(), 20.0);
+        assert_eq!(test_cut(-3.0)[1].bounding_box().width(), 20.0);
+    }
 
     fn bare() -> Profile {
         Profile {
