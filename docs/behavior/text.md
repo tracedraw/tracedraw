@@ -629,6 +629,18 @@ on its own line, which is why the lines are joined first.
     `pick_drag_tests::the_tab_ruler_is_for_paragraph_text_being_edited`).
   - The text is laid out again when the stop is let go, not while it
     is dragged, so the drag costs no more than any other.
+- `.cdr` (#1852, see `docs/cdr-format.md`): opening reads each
+  paragraph's stops, from the style table's tab entries (versions 7 to
+  15) or the `tabs` member of the paragraph style string (16 on); the
+  menu of the issue, saved in every version 7 to 21, opens with its
+  right stop at 168.18 mm and the prices ending there as in its preview.
+  Only the codes of left (0) and right (1) stops are known: others read
+  as left stops. Saving writes paragraph text as one artistic text a
+  line, and now cuts a line at its tabs, each part placed where the
+  stops put it, so the other program shows the columns where TraceDraw
+  does whatever its own stops (`tests/paragraph_tabs.rs`). Paragraph
+  frames (`TRACEDRAW_CDR_PARAGRAPH_FRAMES=1`, versions 16 on) carry the
+  stops in their style strings, centre and decimal stops as left ones.
 - `.tdraw` files write each stop as `{"pos", "kind", "leader"}`; files
   from before tab kinds hold a bare number per stop, read as a left
   stop (`paragraphs::tests::tab_stops_save_their_kind_and_read_old_numbers`).

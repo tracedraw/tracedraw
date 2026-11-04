@@ -7151,6 +7151,49 @@ fn paragraph_text_has_the_text_record_of_the_files() {
     assert_eq!(sizes[&27], sizes[&22], "{sizes:?}");
 }
 
+/// A paragraph style of paragraph text holds one `tabs` member, as every
+/// paragraph style of the files does (#1852, #1226): the paragraph's own
+/// stops in place of the default ones of [`FRAME_TEXT_PARAGRAPH`], with
+/// the other members of #1698 kept (#1852).
+#[test]
+fn paragraph_text_holds_one_tabs_member_with_its_own_stops() {
+    use tracedraw_core::{TabKind, TabStop};
+    let mut ids = tracedraw_core::id::IdSource::default();
+    let para = paragraph_shape(
+        &mut ids,
+        ParagraphStyle {
+            tabs: vec![TabStop::new(60.0, TabKind::Right), TabStop::left(70.0)],
+            ..ParagraphStyle::default()
+        },
+    );
+    let plain = paragraph_shape(&mut ids, ParagraphStyle::default());
+    let default_tabs = FRAME_TEXT_PARAGRAPH
+        .iter()
+        .find(|(k, _)| *k == "tabs")
+        .map(|(_, v)| format!(r#""tabs":{v}"#))
+        .expect("tabs member");
+    for v in 16..=NEWEST_VERSION {
+        for (shape, want) in [
+            (&para, r#""tabs":"0,1,600000|0,0,700000""#.to_string()),
+            (&plain, default_tabs.clone()),
+        ] {
+            let bytes = with_paragraph_frames(&doc_with(vec![shape.clone()]), v);
+            let findings = crate::check::check_bytes(&bytes).expect("checks");
+            assert!(findings.is_empty(), "{v}: {findings:?}");
+            let (_, txsm) = first_text_records(&bytes);
+            let parsed =
+                crate::text::read_txsm(&txsm, v, 0, &mut |w| panic!("{v}: {w}")).expect("reads");
+            assert!(!parsed.frame_text_styles.is_empty(), "{v}");
+            for s in &parsed.frame_text_styles {
+                assert_eq!(s.matches(r#""tabs":"#).count(), 1, "{v}: {s}");
+                assert_eq!(s.matches(r#""tabLeaderChar":"#).count(), 1, "{v}: {s}");
+                assert_eq!(s.matches(r#""tabLeaderSpacing":"#).count(), 1, "{v}: {s}");
+                assert!(s.contains(&want), "{v}: {want} in {s}");
+            }
+        }
+    }
+}
+
 /// Artistic text has the text record every artistic text of the files
 /// that program's recent releases save holds (versions 19, 22, 24, 26
 /// and 27: #624, #67, #1683, #1131, #1733, #1484, #1455, #1226, #1297,

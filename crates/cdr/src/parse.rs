@@ -6268,6 +6268,9 @@ fn paragraph_spacing(style: &text::RunStyle, base: &ParagraphStyle) -> Paragraph
         p.first_line_indent = first * PT_MM;
         p.right_indent = right * PT_MM;
     }
+    if let Some(tabs) = &style.tabs {
+        p.tabs = tracedraw_core::normalized_tabs(tabs);
+    }
     p
 }
 

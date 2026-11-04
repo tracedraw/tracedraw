@@ -3374,23 +3374,39 @@ pub(crate) const FRAME_TEXT_PARAGRAPH: &[(&str, &str)] = &[
 /// later write it: the first run's font, size, weight and colour, the
 /// alignment, and every other member with the values files hold when it
 /// is not set; paragraph text (`frame_text`) with the members of
-/// [`FRAME_TEXT_PARAGRAPH`] too.
+/// [`FRAME_TEXT_PARAGRAPH`] too, its `tabs` member holding `tabs` when
+/// the paragraph has stops of its own.
+#[allow(clippy::too_many_arguments)]
 fn full_text_style(
     v: Ver,
     sp: Option<&TextSpan>,
     fill: Option<&Fill>,
     align: TextAlign,
     leading: f64,
+    tabs: &[tracedraw_core::TabStop],
     tech: &fonts::FaceTech,
     frame_text: bool,
 ) -> String {
+    // Paragraph text holds one `tabs` member, among the members of
+    // [`FRAME_TEXT_PARAGRAPH`]: the paragraph's own stops when it has
+    // them, else the files' default; artistic text holds its stops only
+    // when it has some.
+    let own_tabs = tab_list(tabs);
     let frame_members: String = if frame_text {
         FRAME_TEXT_PARAGRAPH
             .iter()
-            .map(|(k, v)| format!(r#""{k}":{v},"#))
+            .map(|(k, v)| match (*k, &own_tabs) {
+                ("tabs", Some(list)) => format!(r#""tabs":"{list}","#),
+                _ => format!(r#""{k}":{v},"#),
+            })
             .collect()
     } else {
         String::new()
+    };
+    let tabs = if frame_text {
+        String::new()
+    } else {
+        tabs_members(tabs)
     };
     let colour = fill
         .and_then(fill_colour)
@@ -3401,8 +3417,9 @@ fn full_text_style(
             r#"{{"character":{{{fill},"#,
             r#""angle":"0","outline":{outline},"#,
             r#""RTL":{rtl},"latin":{latin},"h_shift":"0","v_shift":"0","farEast":{far}}},"frame":{{}},"#,
-            r#""paragraph":{{{frame_members}"interCharSpacing":"0","thickOverlineAbsolute":"0","thickAbsolute":"0","dblStrikeout2Thickness":"45455","dblStrikeout2Distance":"287878","dblOverline1Absolute":"0","maxInterCharSpacing":"2000000","dblUnderline1Distance":"-90909","dblOverline2Absolute":"0","dblStrikeout1Distance":"378788","dblStrikeout1Absolute":"0","thickThickness":"90909","dblUnderline2Distance":"-181819","dblUnderline2Thickness":"45455","interLineSpacing":"{leading}","dblOverline1Thickness":"45455","afterParaSpacing":"0","thickOverlineThickness":"90909","spacingMethod":"0","dblStrikeout2Absolute":"0","thickStrikeoutAbsolute":"0","thinThickness":"45455","interLangSpacing":"0","interWordSpacing":"1000000","maxInterWordSpacing":"3000000","thinAbsolute":"0","dblUnderline1Absolute":"0","dblUnderline2Absolute":"0","dblUnderline1Thickness":"45455","thinOverlineAbsolute":"0","thinOverlineThickness":"45455","thinDistance":"-90909","beforeParaSpacing":"1000000","dblOverline2Distance":"890910","thinOverlineDistance":"845455","dblOverline2Thickness":"45455","thinStrikeoutAbsolute":"0","dblOverline1Distance":"800000","thinStrikeoutDistance":"333333","minInterWordSpacing":"600000","thinStrikeoutThickness":"45455","thickDistance":"-90909","thickOverlineDistance":"868182","thickStrikeoutDistance":"356060","thickStrikeoutThickness":"90909","dblStrikeout1Thickness":"45455","justify":"{justify}"}}}}"#
+            r#""paragraph":{{{frame_members}"interCharSpacing":"0","thickOverlineAbsolute":"0","thickAbsolute":"0","dblStrikeout2Thickness":"45455","dblStrikeout2Distance":"287878","dblOverline1Absolute":"0","maxInterCharSpacing":"2000000","dblUnderline1Distance":"-90909","dblOverline2Absolute":"0","dblStrikeout1Distance":"378788","dblStrikeout1Absolute":"0","thickThickness":"90909","dblUnderline2Distance":"-181819","dblUnderline2Thickness":"45455","interLineSpacing":"{leading}","dblOverline1Thickness":"45455","afterParaSpacing":"0","thickOverlineThickness":"90909","spacingMethod":"0","dblStrikeout2Absolute":"0","thickStrikeoutAbsolute":"0","thinThickness":"45455","interLangSpacing":"0","interWordSpacing":"1000000","maxInterWordSpacing":"3000000","thinAbsolute":"0","dblUnderline1Absolute":"0","dblUnderline2Absolute":"0","dblUnderline1Thickness":"45455","thinOverlineAbsolute":"0","thinOverlineThickness":"45455","thinDistance":"-90909","beforeParaSpacing":"1000000","dblOverline2Distance":"890910","thinOverlineDistance":"845455","dblOverline2Thickness":"45455","thinStrikeoutAbsolute":"0","dblOverline1Distance":"800000","thinStrikeoutDistance":"333333","minInterWordSpacing":"600000","thinStrikeoutThickness":"45455","thickDistance":"-90909","thickOverlineDistance":"868182","thickStrikeoutDistance":"356060","thickStrikeoutThickness":"90909","dblStrikeout1Thickness":"45455",{tabs}"justify":"{justify}"}}}}"#
         ),
+        tabs = tabs,
         fill = fill_json(&colour),
         outline = character_outline_json(v),
         rtl = font_json(v, sp, 178, tech),
@@ -3412,6 +3429,36 @@ fn full_text_style(
         leading = (leading * 1_000_000.0).round() as i64,
         frame_members = frame_members,
     )
+}
+
+/// A paragraph's tab stops as members of a version 16+ style string's
+/// paragraph, as the samples of #1852 hold them: `tabs` (each stop 0,
+/// its kind code and its position in coordinate units, `|` between), the
+/// leader spacing 1 and the leader character "." (`2e000000`, its code
+/// as four little-endian bytes); nothing for a paragraph without stops
+/// of its own.
+fn tabs_members(tabs: &[tracedraw_core::TabStop]) -> String {
+    match tab_list(tabs) {
+        Some(list) => {
+            format!(r#""tabs":"{list}","tabLeaderSpacing":"1","tabLeaderChar":"2e000000","#)
+        }
+        None => String::new(),
+    }
+}
+
+/// The value of a `tabs` member for a paragraph's own stops (each stop
+/// 0, its kind code and its position in coordinate units, `|` between),
+/// or `None` for a paragraph without stops of its own.
+fn tab_list(tabs: &[tracedraw_core::TabStop]) -> Option<String> {
+    if tabs.is_empty() {
+        return None;
+    }
+    let list: Vec<String> = tracedraw_core::normalized_tabs(tabs)
+        .iter()
+        .take(crate::text::TAB_ENTRY_STOPS)
+        .map(|t| format!("0,{},{}", crate::text::tab_code(t.kind), units(t.pos)))
+        .collect();
+    Some(list.join("|"))
 }
 
 /// The alignment of each paragraph of a text (its own, or `align`).
@@ -6031,12 +6078,14 @@ impl<'a> Writer<'a> {
             // The colour is the first run's own when it has one: a
             // paragraph of one run keeps its colour only here (#1057).
             let first_fill = first.and_then(|sp| sp.fill.as_ref()).unwrap_or(fill);
+            let tabs = format.map_or(&[][..], |f| f.tabs.as_slice());
             let default = full_text_style(
                 v,
                 first,
                 Some(first_fill),
                 align,
                 leading,
+                tabs,
                 &self.tech,
                 frame.is_some(),
             );

@@ -351,8 +351,11 @@ pub fn text_backgrounds(kind: &ShapeKind) -> Vec<(Rect, Fill)> {
 
 /// Paragraph text as one artistic text a laid-out line, each placed where
 /// its frame put it (alignment and justification spacing aside), the lines
-/// that overflow the frame left out. `None` for other shapes or without a
-/// text engine. Formats that hold no frames use it to keep the look.
+/// that overflow the frame left out. A line with tabs is cut at them, each
+/// part an artistic text of its own placed where the tab stops put it,
+/// so a reader with other tab stops (or none) shows the same (#1852).
+/// `None` for other shapes or without a text engine. Formats that hold no
+/// frames use it to keep the look.
 pub fn paragraph_lines(kind: &ShapeKind) -> Option<Vec<ShapeKind>> {
     let ShapeKind::Text {
         spans,
@@ -386,6 +389,8 @@ pub fn paragraph_lines(kind: &ShapeKind) -> Option<Vec<ShapeKind>> {
         frame.height
     };
     let mut out = Vec::new();
+    // Each line's parts between tabs, with where each starts (#1852).
+    let mut pieces = Vec::new();
     for line in &lines {
         // Below the frame: overflow, shown in the next linked frame or not
         // at all.
@@ -400,12 +405,36 @@ pub fn paragraph_lines(kind: &ShapeKind) -> Option<Vec<ShapeKind>> {
             sp.paragraph = None;
         }
         piece.retain(|sp| !sp.text.is_empty());
+        // The parts between tabs, with where each starts.
+        let line_chars: Vec<char> = piece.iter().flat_map(|sp| sp.text.chars()).collect();
+        let mut parts = Vec::new();
+        let mut from = 0usize;
+        for (i, c) in line_chars.iter().enumerate() {
+            if *c == '\t' {
+                parts.push((from, i));
+                from = i + 1;
+            }
+        }
+        parts.push((from, line_chars.len()));
+        for (a, b) in parts {
+            let (_, tail) = split_spans_at(&piece, a);
+            let (mut part, _) = split_spans_at(&tail, b - a);
+            part.retain(|sp| !sp.text.is_empty());
+            let x = if a == 0 {
+                line.x
+            } else {
+                line.edges.get(a).copied().unwrap_or(line.x)
+            };
+            pieces.push((part, x, line.baseline));
+        }
+    }
+    for (piece, x, baseline) in pieces {
         if piece.iter().all(|sp| sp.text.trim().is_empty()) {
             continue;
         }
         out.push(ShapeKind::Text {
             spans: piece,
-            origin: to_local * Point::new(line.x, line.baseline),
+            origin: to_local * Point::new(x, baseline),
             frame: None,
             align: TextAlign::Left,
             para: ParagraphStyle {
