@@ -5672,11 +5672,38 @@ impl App {
         }
     }
 
+    /// What Object > Group puts in the group: the selection, and the
+    /// start and end objects of its blends. A click selects a blend's
+    /// start or end object alone, and the blend is grouped with both
+    /// (#1842).
+    fn group_members(&self) -> Vec<ShapeId> {
+        let mut out = self.selection.clone();
+        for (start, e) in self.selected_blends() {
+            let end = match e {
+                tracedraw_core::live::Effect::Blend { end_id, .. } => end_id,
+                _ => None,
+            };
+            for id in std::iter::once(start).chain(end) {
+                if !out.contains(&id) && self.doc().shape(id).is_ok() {
+                    out.push(id);
+                }
+            }
+        }
+        out
+    }
+
+    /// Object > Group can run: two objects or more are selected, or a
+    /// blend (its start and end objects).
+    pub fn can_group(&self) -> bool {
+        self.selection.len() > 1 || self.group_members().len() > 1
+    }
+
     pub fn group_selection(&mut self) {
-        if self.selection.len() < 2 {
+        let shapes = self.group_members();
+        if shapes.len() < 2 {
             return;
         }
-        let shapes = std::mem::take(&mut self.selection);
+        self.selection.clear();
         self.run(Command::Group { shapes });
         let group = self
             .page_layers()

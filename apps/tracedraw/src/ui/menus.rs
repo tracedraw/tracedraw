@@ -3040,7 +3040,7 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         }
     });
     sub(ui, "menu.object.group", |ui| {
-        if item(ui, "menu.object.group_group", "Ctrl+G", many) {
+        if item(ui, "menu.object.group_group", "Ctrl+G", app.can_group()) {
             app.group_selection();
         }
         if item(ui, "menu.object.group_ungroup", "Ctrl+U", has) {

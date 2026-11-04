@@ -18170,6 +18170,121 @@ fn a_blend_s_start_object_shows_its_own_box_and_handles() {
     assert!(close(g.y0, 100.0) && close(g.y1, 150.0), "{g:?}");
 }
 
+/// A blend can be grouped however it is selected (#1842): just made
+/// (the start object selected), a click on a step or on its start or end
+/// object, a selection box around it, or Ctrl+A; Ctrl+G and Object >
+/// Group (enabled) make one group of the start and end objects, and the
+/// blend stays live inside it. Selected by a click, the blend was one
+/// object, so Group stayed off and Ctrl+G did nothing.
+#[test]
+fn a_blend_groups_however_it_is_selected() {
+    let ctx = crate::theme::ui_context();
+    for way in ["made", "step", "start", "end", "box", "all", "menu"] {
+        let mut app = App::headless();
+        app.show_welcome = false;
+        let a = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: Rect::new(20.0, 100.0, 70.0, 150.0),
+                arc: None,
+            })
+            .expect("circle");
+        let b = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: Rect::new(150.0, 112.0, 176.0, 138.0),
+                arc: None,
+            })
+            .expect("circle");
+        app.select(vec![a, b]);
+        app.blend_selection(20, 0.0, 0.0, 0.0);
+        app.set_tool(Tool::Pick);
+        for _ in 0..3 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        app.zoom_to_page();
+        for _ in 0..2 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        let click = |app: &mut App, at: Point| {
+            let p = app.view.to_screen(at);
+            frame(&ctx, app, vec![Event::PointerMoved(p)], Modifiers::NONE);
+            let n = Modifiers::NONE;
+            frame(
+                &ctx,
+                app,
+                vec![button(p, true, PointerButton::Primary, n)],
+                n,
+            );
+            frame(
+                &ctx,
+                app,
+                vec![button(p, false, PointerButton::Primary, n)],
+                n,
+            );
+            frame(&ctx, app, Vec::new(), n);
+        };
+        match way {
+            "made" | "menu" => {}
+            "step" => click(&mut app, Point::new(110.0, 125.0)),
+            "start" => click(&mut app, Point::new(35.0, 125.0)),
+            "end" => click(&mut app, Point::new(170.0, 125.0)),
+            "box" => {
+                app.select(Vec::new());
+                let from = app.view.to_screen(Point::new(10.0, 160.0));
+                let to = app.view.to_screen(Point::new(190.0, 90.0));
+                drag_between(&ctx, &mut app, from, to);
+            }
+            _ => {
+                app.select(Vec::new());
+                frame(
+                    &ctx,
+                    &mut app,
+                    vec![key(egui::Key::A, Modifiers::COMMAND)],
+                    Modifiers::COMMAND,
+                );
+            }
+        }
+        assert!(!app.selection.is_empty(), "{way}: something is selected");
+        assert!(app.can_group(), "{way}: Object > Group is on");
+        if way == "menu" {
+            app.group_selection();
+        } else {
+            let cmd = Modifiers::COMMAND;
+            frame(&ctx, &mut app, vec![key(egui::Key::G, cmd)], cmd);
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        let groups: Vec<tracedraw_core::Shape> = app
+            .page_layers()
+            .iter()
+            .flat_map(|l| l.shapes.iter())
+            .filter(|s| matches!(s.kind, ShapeKind::Group { .. }))
+            .cloned()
+            .collect();
+        assert_eq!(groups.len(), 1, "{way}: one group");
+        let ShapeKind::Group { children } = &groups[0].kind else {
+            unreachable!()
+        };
+        let ids: Vec<ShapeId> = children.iter().map(|c| c.id).collect();
+        assert!(ids.contains(&a) && ids.contains(&b), "{way}: {ids:?}");
+        assert_eq!(app.selection, vec![groups[0].id], "{way}");
+        // The blend stays live, still naming its end object.
+        let start = app.doc().find_shape(a).expect("start");
+        assert!(
+            start.effects.iter().any(|e| matches!(
+                e,
+                tracedraw_core::live::Effect::Blend { end_id: Some(e), .. } if *e == b
+            )),
+            "{way}"
+        );
+        // One undo takes the group back.
+        app.undo();
+        assert!(app
+            .page_layers()
+            .iter()
+            .flat_map(|l| l.shapes.iter())
+            .all(|s| !matches!(s.kind, ShapeKind::Group { .. })));
+    }
+}
+
 /// Drags with the left button from `from` to `to` over a few frames.
 fn drag_between(ctx: &egui::Context, app: &mut App, from: Pos2, to: Pos2) {
     frame(ctx, app, vec![Event::PointerMoved(from)], Modifiers::NONE);

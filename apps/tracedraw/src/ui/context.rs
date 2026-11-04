@@ -379,7 +379,7 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
             app.reverse_order();
         }
     });
-    if many && ci(ui, close, "menu.object.group_group", "Ctrl+G", true) {
+    if app.can_group() && ci(ui, close, "menu.object.group_group", "Ctrl+G", true) {
         app.group_selection();
     }
     if is_group {
