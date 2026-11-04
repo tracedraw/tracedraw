@@ -5980,6 +5980,50 @@ fn removed_and_alt_shortcuts_act_on_the_keyboard() {
     }
 }
 
+/// #1409: in the macOS desktop app Command+Q is the system's Quit and
+/// Command+Space Spotlight, so Convert to Curves runs on Alt+Shift+C and
+/// the Pick tool from any tool on Ctrl+Shift+Space there; the Command
+/// keys macOS keeps do nothing in the window should they arrive. The
+/// other desktops keep Ctrl+Q and Ctrl+Space.
+#[test]
+fn macos_keeps_its_command_keys_and_the_commands_take_others() {
+    let (ctx, mut app, _) = setup();
+    let ctrl = Modifiers::COMMAND | Modifiers::CTRL;
+    let alt_shift = Modifiers::ALT | Modifiers::SHIFT;
+    let press = |ctx: &egui::Context, app: &mut App, k: egui::Key, mods: Modifiers| {
+        frame(ctx, app, vec![key(k, mods)], mods);
+        frame(ctx, app, vec![key_up(k, mods)], mods);
+    };
+    let curve = |app: &App| {
+        app.selected_rc()
+            .iter()
+            .any(|s| matches!(s.kind, ShapeKind::Path { .. }))
+    };
+    crate::shortcuts::set_mac_keys_for_test(true);
+    press(&ctx, &mut app, egui::Key::Q, Modifiers::COMMAND);
+    assert!(!curve(&app), "Command+Q is the system's Quit");
+    press(&ctx, &mut app, egui::Key::C, alt_shift);
+    assert!(curve(&app), "Alt+Shift+C converts to curves");
+    app.set_tool(Tool::Ellipse);
+    press(&ctx, &mut app, egui::Key::Space, Modifiers::COMMAND);
+    assert_eq!(app.tool, Tool::Ellipse, "Command+Space is Spotlight");
+    press(
+        &ctx,
+        &mut app,
+        egui::Key::Space,
+        Modifiers::COMMAND | Modifiers::SHIFT,
+    );
+    assert_eq!(app.tool, Tool::Pick);
+    crate::shortcuts::set_mac_keys_for_test(false);
+    // Elsewhere Ctrl+Space and Ctrl+Q keep their commands.
+    app.set_tool(Tool::Ellipse);
+    press(&ctx, &mut app, egui::Key::Space, ctrl);
+    assert_eq!(app.tool, Tool::Pick);
+    let (ctx, mut app, _) = setup();
+    press(&ctx, &mut app, egui::Key::Q, ctrl);
+    assert!(curve(&app));
+}
+
 #[test]
 fn ctrl_keeps_a_dimension_leg_to_the_constrain_angle() {
     let (ctx, mut app, _) = setup();

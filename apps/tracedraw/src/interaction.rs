@@ -3515,6 +3515,10 @@ impl App {
         // once a press, such as picking a tool (#1502).
         // In the browser version a key that stands in for one the browser
         // keeps (Alt+PgUp for Ctrl+PgUp, #1409) also counts as that key.
+        // In the macOS desktop app so does the key that stands in for a
+        // Command key macOS keeps (Alt+Shift+C for Convert to Curves'
+        // Command+Q, the system's Quit), and such a Command key does
+        // nothing here should it arrive.
         let web_keys = crate::shortcuts::web_keys();
         let presses: Vec<(Key, Modifiers)> = input
             .events
@@ -3527,9 +3531,13 @@ impl App {
                     modifiers,
                     ..
                 } => {
+                    if crate::shortcuts::mac_kept_press(*key, *modifiers) {
+                        return [None, None];
+                    }
                     let kept = web_keys
                         .then(|| crate::shortcuts::browser_key_for(*key, *physical_key, *modifiers))
                         .flatten()
+                        .or_else(|| crate::shortcuts::mac_key_for(*key, *modifiers))
                         .map(|(m, k)| (k, m));
                     [Some((*key, *modifiers)), kept]
                 }

@@ -1018,9 +1018,11 @@ pub(crate) mod invoke {
         MODE.with(|m| match m.borrow_mut().as_mut() {
             Some(Mode::Collect { path, out }) => {
                 if key.starts_with("menu.") && !out.iter().any(|e| e.key == key) {
+                    // The macOS desktop app's own key where macOS keeps
+                    // the built-in one (#1409).
                     out.push(Entry {
                         key: key.to_string(),
-                        shortcut: shortcut.to_string(),
+                        shortcut: crate::shortcuts::mac_shown(shortcut.to_string()),
                         path: path.clone(),
                     });
                 }

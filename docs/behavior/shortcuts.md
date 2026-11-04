@@ -12,7 +12,7 @@ Customization > Commands lists them and takes shortcuts of your own
 | Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S | New, Open, Save, Save As |
 | Ctrl+I, Ctrl+E, Ctrl+P | Import, Export, Print |
 | Ctrl+F4, Alt+F4 | Close window, Exit |
-| Command+Q (macOS) | Quit TraceDraw from the application menu: asks about unsaved drawings as Exit does |
+| Command+Q (macOS) | Quit TraceDraw from the application menu: asks about unsaved drawings as Exit does; File > Exit shows it there (see "On macOS" below) |
 | Ctrl+Z, Ctrl+Shift+Z, Ctrl+R | Undo, Redo, Repeat |
 | Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+Shift+V | Cut, Copy, Paste, Paste in view |
 | Ctrl+D, Ctrl+Shift+D | Duplicate, Repeat Copies panel |
@@ -223,6 +223,41 @@ keeps (Ctrl+N) have their buttons on the property bar. Checks:
 `shortcuts::tests::browser_kept_keys_map_to_alternatives`,
 `ui::menus::tests::browser_kept_shortcuts_have_alternatives_in_the_menus`,
 `web_page::tests::the_editors_tab_keys_and_their_alternatives_are_kept_from_the_browser`.
+
+## On macOS
+
+macOS keeps some Command keys for itself in every program, before the
+window sees them: Quit and Log Out (Command+Q, Command+Shift+Q), Hide and
+Hide Others (Command+H, Command+Option+H), Minimize (Command+M), the
+application switcher (Command+Tab, Command+Shift+Tab), Spotlight and the
+Finder's search (Command+Space, Command+Option+Space), Force Quit
+(Command+Option+Esc), the screenshots (Command+Shift+3, 4 and 5) and
+hiding the Dock (Command+Option+D) (`shortcuts::MAC_SYSTEM_KEYS`). The
+commands whose key on the other systems is one of these have another key
+in the macOS desktop app, which the menus, context menus, tips, hints and
+Options > Customization > Commands show there (#1409; they write
+Command as Ctrl and Option as Alt, so Option+Shift+C shows as
+Alt+Shift+C):
+
+| Command | Other systems | macOS desktop app |
+|---|---|---|
+| Convert to Curves | Ctrl+Q | Option+Shift+C |
+| Convert Outline to Object | Ctrl+Shift+Q | Option+Shift+Q |
+| Merge Cells (table) | Ctrl+M | Command+Shift+M |
+| The Pick tool from any tool | Ctrl+Space | Command+Shift+Space |
+| Force justify, while typing text | Ctrl+H | Command+Shift+H |
+| File > Exit | Alt+F4 | Command+Q (the application menu's Quit; Option+F4 still works) |
+
+The keys macOS keeps do nothing in the window should one arrive (a
+Command+Q never converts to curves), and Options > Customization >
+Commands does not take one as a shortcut there. The browser version on a
+Mac follows "In the browser" above. Checks:
+`ui::options::tests::no_default_shortcut_is_a_macos_system_key` (no
+built-in key of a menu command, tool, panel, the canvas or the text
+being typed is one of them in the macOS app, File > Exit's Command+Q
+aside; each alternative is bound to nothing else; no two commands share
+a key there),
+`pick_drag_tests::macos_keeps_its_command_keys_and_the_commands_take_others`.
 
 ## Checks
 

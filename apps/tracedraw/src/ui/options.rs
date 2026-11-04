@@ -5018,8 +5018,18 @@ mod tests {
     #[test]
     fn no_two_default_commands_share_a_shortcut() {
         let app = app_with_commands();
+        let shared = shared_default_shortcuts(&app);
+        assert!(
+            shared.is_empty(),
+            "shared shortcuts:\n{}",
+            shared.join("\n")
+        );
+    }
+
+    /// The built-in keys two commands share, past the documented split.
+    fn shared_default_shortcuts(app: &App) -> Vec<String> {
         let mut holders: std::collections::BTreeMap<String, Vec<String>> = Default::default();
-        for c in command_items(&app, None, "") {
+        for c in command_items(app, None, "") {
             if c.built_in.is_empty() {
                 continue;
             }
@@ -5064,16 +5074,145 @@ mod tests {
         let documented_split = |keys: &str, ids: &[String]| {
             keys == "E" && ids == ["menu.object.align_centers_h", "roughen"]
         };
-        let shared: Vec<String> = holders
+        holders
             .iter()
             .filter(|(keys, ids)| ids.len() > 1 && !documented_split(keys, ids))
             .map(|(keys, ids)| format!("{keys}: {}", ids.join(", ")))
+            .collect()
+    }
+
+    /// The built-in keys of every menu command, tool and panel, and the
+    /// Ctrl keys the canvas (`pressed(Key::X, cmd)` in `interaction.rs`)
+    /// and the text being typed (`Key::X if ctrl` in `text_editing.rs`)
+    /// check themselves, each as the build shows it
+    /// (`shortcuts::mac_shown`): (holder, keys).
+    fn default_keys_shown(app: &App) -> Vec<(String, String)> {
+        use crate::shortcuts::mac_shown;
+        let mut out: Vec<(String, String)> = command_items(app, None, "")
+            .into_iter()
+            .filter(|c| !c.built_in.is_empty())
+            .map(|c| (c.id, c.built_in))
             .collect();
-        assert!(
-            shared.is_empty(),
-            "shared shortcuts:\n{}",
-            shared.join("\n")
+        for tab in crate::app::DockerTab::ALL {
+            if !tab.shortcut().is_empty() {
+                out.push((format!("panel {tab:?}"), mac_shown(tab.shortcut().into())));
+            }
+        }
+        let ident = |k: &str| {
+            let k: String = k
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .collect();
+            k.strip_prefix("Num").map(str::to_string).unwrap_or(k)
+        };
+        for part in include_str!("../interaction.rs")
+            .split("pressed(Key::")
+            .skip(1)
+        {
+            let Some((k, rest)) = part.split_once(',') else {
+                continue;
+            };
+            let Some((m, _)) = rest.split_once(')') else {
+                continue;
+            };
+            if !(m.contains("cmd") || m.contains("COMMAND")) {
+                continue;
+            }
+            let mut text = "Ctrl+".to_string();
+            if m.contains("ALT") {
+                text.push_str("Alt+");
+            }
+            if m.contains("SHIFT") {
+                text.push_str("Shift+");
+            }
+            text.push_str(&ident(k.trim()));
+            out.push(("canvas".into(), mac_shown(text)));
+        }
+        for part in include_str!("../text_editing.rs").split("Key::").skip(1) {
+            let Some((head, _)) = part.split_once("=>") else {
+                continue;
+            };
+            let Some((k, cond)) = head.split_once(" if ") else {
+                continue;
+            };
+            if !cond.trim_start().starts_with("ctrl") || k.contains(char::is_whitespace) {
+                continue;
+            }
+            let text = if cond.contains("!shift") || !cond.contains("shift") {
+                format!("Ctrl+{}", ident(k))
+            } else {
+                format!("Ctrl+Shift+{}", ident(k))
+            };
+            out.push(("typing".into(), mac_shown(text)));
+        }
+        out
+    }
+
+    /// #1409: in the macOS desktop app no built-in key is a Command key
+    /// macOS keeps for itself (Quit, Log Out, Hide, Minimize, the
+    /// application switcher, Spotlight, Force Quit, the screenshots): the
+    /// commands that have one built in (Convert to Curves' Command+Q)
+    /// take the key of `shortcuts::MAC_KEYS` there, and the menus and
+    /// the Commands page show it. File > Exit alone shows Command+Q, the
+    /// system's own Quit. Each alternative is bound to nothing else, and
+    /// still no two commands share a key there.
+    #[test]
+    fn no_default_shortcut_is_a_macos_system_key() {
+        use crate::shortcuts::{mac_system_key, same, MAC_KEYS, MAC_QUIT};
+        crate::shortcuts::set_mac_keys_for_test(false);
+        let other = default_keys_shown(&app_with_commands());
+        assert!(other
+            .iter()
+            .any(|(id, k)| id == "menu.object.convert_to_curves" && k == "Ctrl+Q"));
+        crate::shortcuts::set_mac_keys_for_test(true);
+        let app = app_with_commands();
+        let mac = default_keys_shown(&app);
+        let taken: Vec<String> = mac
+            .iter()
+            .filter(|(id, k)| mac_system_key(k) && !(id == "menu.file.exit" && k == MAC_QUIT))
+            .map(|(id, k)| format!("{k}: {id}"))
+            .collect();
+        assert!(taken.is_empty(), "keys macOS keeps:\n{}", taken.join("\n"));
+        for (id, k) in [
+            ("menu.object.convert_to_curves", "Alt+Shift+C"),
+            ("menu.object.convert_outline_to_object", "Alt+Shift+Q"),
+            ("menu.table.merge_cells", "Ctrl+Shift+M"),
+            ("menu.file.exit", "Ctrl+Q"),
+            ("canvas", "Ctrl+Shift+Space"),
+            ("typing", "Ctrl+Shift+H"),
+        ] {
+            assert!(mac.iter().any(|(i, s)| i == id && s == k), "{id}: {k}");
+        }
+        // The menus and context menus show the same keys there.
+        crate::ui::menus::invoke::set_bindings(&[]);
+        assert_eq!(
+            crate::ui::menus::invoke::shown_shortcut("menu.object.convert_to_curves", "Ctrl+Q"),
+            "Alt+Shift+C"
         );
+        assert_eq!(
+            crate::ui::menus::invoke::shown_shortcut("menu.file.exit", "Alt+F4"),
+            "Ctrl+Q"
+        );
+        // An alternative is no key of the other systems' either.
+        for (k, alt) in MAC_KEYS {
+            assert!(!mac_system_key(alt), "{alt}");
+            assert!(
+                !other.iter().any(|(_, o)| same(o, alt)),
+                "{alt} (for {k}) is used"
+            );
+        }
+        // No two commands share a key in the macOS app.
+        assert_eq!(shared_default_shortcuts(&app), Vec::<String>::new());
+        // A Command key macOS keeps cannot be given as a shortcut there.
+        assert!(!crate::shortcuts::allowed(
+            egui::Modifiers::COMMAND,
+            egui::Key::H
+        ));
+        crate::shortcuts::set_mac_keys_for_test(false);
+        assert!(crate::shortcuts::allowed(
+            egui::Modifiers::COMMAND,
+            egui::Key::H
+        ));
     }
 
     /// A shortcut given to a command is taken from the command or tool
