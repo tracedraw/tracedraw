@@ -223,6 +223,9 @@ pub(crate) mod quit_request;
 // TraceDraw: files dragged over a window on Wayland (vendor/README.md).
 #[cfg(wayland_platform)]
 pub(crate) mod file_drop;
+// TraceDraw: a graphics tablet's pen on Wayland (vendor/README.md).
+#[cfg(wayland_platform)]
+pub(crate) mod tablet_tool;
 mod platform_impl;
 mod utils;
 pub mod window;

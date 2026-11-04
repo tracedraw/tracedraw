@@ -17088,6 +17088,105 @@ fn a_pen_that_only_sends_moving_touches_sets_the_width() {
     assert!(!ctx.input(|i| i.any_touches()));
 }
 
+/// A pen on a native Wayland window (#1841): the tablet protocol's events
+/// of a stroke from `from` to `to` (proximity, down, motion and pressure,
+/// up, proximity out, each group closed by its frame) go through the
+/// patched winit's translation (`winit_tablet_tool`), and what it sends is
+/// turned into egui events as egui-winit does: the pointer's place, the
+/// buttons, and the pressure's moving touch.
+fn wayland_pen_drag(
+    ctx: &egui::Context,
+    app: &mut App,
+    from: Pos2,
+    to: Pos2,
+    pressure: &dyn Fn(f32) -> u32,
+) {
+    use crate::winit_tablet_tool::{PenButton, PenOut, ToolEvent as E, ToolState};
+    let mods = Modifiers::NONE;
+    let mut tool = ToolState::<u32>::default();
+    let mut last = from;
+    let mut send = |ctx: &egui::Context, app: &mut App, events: Vec<E<u32>>| {
+        let mut out = Vec::new();
+        for e in events {
+            tool.handle(e, &mut out);
+        }
+        let mut egui_events = Vec::new();
+        for o in out {
+            match o {
+                PenOut::Entered(_) => {}
+                PenOut::Moved(_, (x, y)) => {
+                    last = Pos2::new(x as f32, y as f32);
+                    egui_events.push(Event::PointerMoved(last));
+                }
+                PenOut::Pressure(_, (x, y), force) => egui_events.push(Event::Touch {
+                    device_id: egui::TouchDeviceId(0),
+                    id: egui::TouchId((1 << 40) | 3),
+                    phase: egui::TouchPhase::Move,
+                    pos: Pos2::new(x as f32, y as f32),
+                    force: force.map(|f| f as f32),
+                }),
+                PenOut::Button(_, b, pressed) => {
+                    assert_eq!(b, PenButton::Primary);
+                    egui_events.push(button(last, pressed, PointerButton::Primary, mods));
+                }
+                PenOut::Left(_) => egui_events.push(Event::PointerGone),
+            }
+        }
+        frame(ctx, app, egui_events, mods);
+    };
+    let at = |p: Pos2| E::Motion(f64::from(p.x), f64::from(p.y));
+    send(ctx, app, vec![E::ProximityIn(1), at(from), E::Frame]);
+    send(
+        ctx,
+        app,
+        vec![E::Down, E::Pressure(pressure(0.0)), E::Frame],
+    );
+    let steps = 20;
+    for i in 1..=steps {
+        let t = i as f32 / steps as f32;
+        let p = from + (to - from) * t;
+        send(ctx, app, vec![at(p), E::Pressure(pressure(t)), E::Frame]);
+    }
+    send(ctx, app, vec![E::Up, E::Pressure(0), E::Frame]);
+    send(ctx, app, vec![E::ProximityOut, E::Frame]);
+    frame(ctx, app, Vec::new(), mods);
+}
+
+/// A pen on a native Wayland window (#1841): the tablet protocol's
+/// pressure sets the width of a Freehand line as on X11, and egui never
+/// takes the pen for a touch screen. A pen whose pressure stays at 0
+/// draws an even outline.
+#[test]
+fn a_pen_on_wayland_sets_the_width() {
+    let (ctx, mut app, _) = setup();
+    app.set_tool(Tool::Freehand);
+    app.select(Vec::new());
+    let from = app.view.to_screen(Point::new(80.0, 100.0));
+    let to = app.view.to_screen(Point::new(180.0, 100.0));
+    let before = shape_count(&app);
+    wayland_pen_drag(&ctx, &mut app, from, to, &|t| {
+        if t < 0.5 {
+            58982
+        } else {
+            13107
+        }
+    });
+    assert_eq!(shape_count(&app), before + 1);
+    let st = last_stroke(&app);
+    assert!(!st.widths.is_empty(), "the outline follows the pressure");
+    let (start, end) = end_widths(&st.widths);
+    assert!(start > end * 2.0, "{start} vs {end}");
+    assert!(app.pen_pressure.is_none(), "the pen was lifted");
+    assert!(!ctx.input(|i| i.has_touch_screen()));
+    assert!(!ctx.input(|i| i.any_touches()));
+
+    let from = app.view.to_screen(Point::new(80.0, 130.0));
+    let to = app.view.to_screen(Point::new(180.0, 130.0));
+    wayland_pen_drag(&ctx, &mut app, from, to, &|_| 0);
+    assert_eq!(shape_count(&app), before + 2);
+    assert!(last_stroke(&app).widths.is_empty());
+}
+
 /// A primary drag from `from` to `to` in the browser, as the patched web
 /// layer turns it into egui events (#1410): each pointer event of kind
 /// `pointer_type` gives a pointer move (the browser's mouse event) and,

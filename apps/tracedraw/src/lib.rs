@@ -238,6 +238,11 @@ mod winit_quit_request;
 #[allow(dead_code)]
 #[path = "../../../vendor/winit/src/file_drop.rs"]
 mod winit_file_drop;
+// A graphics tablet's pen on Wayland, of the same copy (#1841).
+#[cfg(all(test, unix, not(target_arch = "wasm32")))]
+#[allow(dead_code)]
+#[path = "../../../vendor/winit/src/tablet_tool.rs"]
+mod winit_tablet_tool;
 mod workspace_file;
 
 /// The desktop program: the window, with the command line's files and
