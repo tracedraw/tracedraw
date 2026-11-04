@@ -2317,13 +2317,14 @@ impl<'a> Ctx<'a> {
                 Some(0x08) => {}
                 Some(0x10) if v >= 16 => {
                     match distortion_entry(d, tr.pos) {
-                        Some(_) if !chain.warps.is_empty() || chain.distortion.is_some() => {
-                            self.report.warn(
-                                "a distortion after an envelope or another distortion is not applied",
-                            );
+                        Some(_) if !chain.warps.is_empty() => {
+                            self.report
+                                .warn("a distortion after an envelope is not applied");
                         }
+                        // A distortion applied again over the ones before
+                        // (#1824): they all stay, in order.
                         Some(entry) => {
-                            chain.distortion = Some(Distortion {
+                            chain.distortions.push(Distortion {
                                 entry,
                                 after: Affine::IDENTITY,
                             });
@@ -2335,7 +2336,7 @@ impl<'a> Ctx<'a> {
                     continue;
                 }
                 Some(0x01) if v >= 16 => {
-                    if chain.distortion.is_some() {
+                    if !chain.distortions.is_empty() {
                         self.report
                             .warn("an envelope after a distortion is not applied");
                         continue;
@@ -3552,11 +3553,32 @@ impl<'a> Ctx<'a> {
         // object keeps its kind when they only turn, move and scale it
         // evenly (the distortion is applied in its own space, the centre
         // taken back there), else it becomes its outline through them.
+        // Distortions applied one over another (#1824) are baked into the
+        // outline in order, each about its own centre in the space the
+        // matrices before it make, and the last stays live on the result.
         let mut distortion = None;
-        if let Some(dist) = chain.distortion {
+        if let Some((dist, earlier)) = chain.distortions.split_last() {
             use tracedraw_core::geometry::Shape as _;
             let local = Shape::new(id, kind.clone()).local_path();
             match bendable(&kind) {
+                Some(closed) if !earlier.is_empty() => {
+                    let mut path = chain.before * local;
+                    for e in earlier {
+                        match live_distortion(&e.entry, e.entry.center, path.bounding_box()) {
+                            Some(d) => path = tracedraw_core::distort::distort(&path, d),
+                            None => self.report.warn(format!(
+                                "a distortion of kind {} is not read; the object opens without it",
+                                e.entry.kind
+                            )),
+                        }
+                        path = e.after * path;
+                    }
+                    distortion =
+                        live_distortion(&dist.entry, dist.entry.center, path.bounding_box());
+                    kind = ShapeKind::Path { path, closed };
+                    fill_axes = Some(transform);
+                    transform = self.outer_transform * dist.after;
+                }
                 Some(_) if even_scale(chain.before).is_some() => {
                     let center = chain.before.inverse() * dist.entry.center;
                     distortion = live_distortion(&dist.entry, center, local.bounding_box());
@@ -5539,9 +5561,11 @@ fn linear_frame(d: &[u8]) -> Option<tracedraw_core::style::FountainHandles> {
 struct TransformChain {
     before: Affine,
     warps: Vec<Warp>,
-    /// A distortion (version 16+, #1715) after `before`, with the
-    /// matrices after it; never with envelopes.
-    distortion: Option<Distortion>,
+    /// The distortions (version 16+, #1715) after `before`, each with
+    /// the matrices after it, in order: more than one when an object was
+    /// distorted again over its distortion (#1824); never with
+    /// envelopes.
+    distortions: Vec<Distortion>,
 }
 
 /// The distortion entry of a version 16+ `trfd` (type 0x10) and the
@@ -5581,7 +5605,7 @@ struct Warp {
 impl TransformChain {
     /// `m` after everything so far.
     fn then(&mut self, m: Affine) {
-        if let Some(d) = &mut self.distortion {
+        if let Some(d) = self.distortions.last_mut() {
             d.after = m * d.after;
             return;
         }
@@ -5592,10 +5616,10 @@ impl TransformChain {
     }
 
     /// All the matrices one after the other, the envelopes and the
-    /// distortion left out.
+    /// distortions left out.
     fn matrices(&self) -> Affine {
         let m = self.warps.iter().fold(self.before, |m, w| w.after * m);
-        self.distortion.map_or(m, |d| d.after * m)
+        self.distortions.iter().fold(m, |m, d| d.after * m)
     }
 
     /// The matrices after the first envelope, one after the other.
@@ -12491,6 +12515,75 @@ pub(crate) mod tests {
             first_shape(&back).effects.first(),
             Some(Effect::Distort(Distort::PushPull { amount, .. })) if *amount == -118.0
         ));
+    }
+
+    /// Stacked distortions (#1824): "Push and Pull 23" to "27" and "31"
+    /// to "36" distort an object again over its distortion, two to five
+    /// entries one after the other in its `trfd` (in "25" to "27" with a
+    /// matrix between them). The earlier ones are baked into the outline
+    /// in order, each about its own centre, and the last stays live, so
+    /// the object draws all of them; it opened with the first alone.
+    #[test]
+    fn version_16_stacked_distortions_draw_them_all() {
+        use tracedraw_core::distort::distort;
+        use tracedraw_core::{effects::Distort, live::Effect};
+        let pp = |amount: f64, x: f64, y: f64| Distort::PushPull {
+            amount,
+            center: Some(Point::new(x, y)),
+        };
+        let mut square = BezPath::new();
+        square.move_to((0.0, 0.0));
+        square.line_to((0.0, 10.0));
+        square.line_to((10.0, 10.0));
+        square.line_to((10.0, 0.0));
+        square.close_path();
+        for between in [false, true] {
+            let mut entries = vec![
+                trfd_matrix([1.0, 0.0, 20_000.0, 0.0, 1.0, -10_000.0]),
+                trfd_distortion(1, (70_000, 0), 0, (-200, 0)),
+            ];
+            if between {
+                entries.push(trfd_matrix([1.0, 0.0, 0.0, 0.0, 1.0, 0.0]));
+            }
+            entries.push(trfd_distortion(1, (40_000, -30_000), 0, (94, 0)));
+            entries.push(trfd_distortion(3, (60_000, -10_000), 0, (-90, 0)));
+            let (doc, rep) = envelope_file(trfd_v16(&entries), &[], false);
+            assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+            let s = first_shape(&doc);
+            // The last one live, about its centre in file space.
+            assert_eq!(s.effects.len(), 1, "{:?}", s.effects);
+            match s.effects.first() {
+                Some(Effect::Distort(Distort::Twister {
+                    angle_deg,
+                    center: Some(c),
+                })) => {
+                    assert_eq!(*angle_deg, -90.0);
+                    assert!((*c - Point::new(6.0, -1.0)).hypot() < 1e-9, "{c:?}");
+                }
+                e => panic!("no live Twister: {e:?}"),
+            }
+            // The outline: the square moved by the matrix, pulled, pushed,
+            // then twisted.
+            let moved = Affine::translate((2.0, -1.0)) * square.clone();
+            let want = distort(
+                &distort(&distort(&moved, pp(-200.0, 7.0, 0.0)), pp(94.0, 4.0, -3.0)),
+                Distort::Twister {
+                    angle_deg: -90.0,
+                    center: Some(Point::new(6.0, -1.0)),
+                },
+            );
+            let size = doc.pages[0].size;
+            let want = Affine::translate((size.width / 2.0, size.height / 2.0)) * want;
+            let (got, want) = (drawn_page_path(s).bounding_box(), want.bounding_box());
+            for (g, w) in [
+                (got.x0, want.x0),
+                (got.y0, want.y0),
+                (got.x1, want.x1),
+                (got.y1, want.y1),
+            ] {
+                assert!((g - w).abs() < 1e-6, "{got:?} {want:?}");
+            }
+        }
     }
 
     /// A group's envelope (#1668): the group's own `lgob` holds the

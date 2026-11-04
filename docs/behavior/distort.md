@@ -26,6 +26,13 @@ curve stays open.
   file opens with the file's amount and centre as they are: the boxes
   drawn so match the boxes the files give their objects to 0.01 mm
   (#1824).
+
+An object of a `.cdr` file distorted again over its distortion (two or
+more distortions one after the other) opens with the earlier ones baked
+into its outline, in order, each about its own centre, and the last one
+live on the result, so it can still be edited; the object becomes a
+curve. The boxes drawn so match the files' boxes to 0.01 mm in all 11
+such files of #1824.
 - Zipper, `amplitude` (mm, 0 to 100), `frequency` (0 to 100) and
   `tilt` (degrees, -180 to 180): each segment is cut into
   `frequency + 1` equal steps of its parameter, so it carries
@@ -227,6 +234,7 @@ curve stays open.
 - `parse::tests::version_16_zipper_distortions_open_live` (tracedraw-cdr)
 - `parse::tests::version_16_twister_distortions_open_live` (tracedraw-cdr)
 - `parse::tests::version_16_push_and_pull_distortions_open_live` (tracedraw-cdr)
+- `parse::tests::version_16_stacked_distortions_draw_them_all` (tracedraw-cdr)
 - `distort::tests::a_twisted_line_is_a_smooth_spiral_to_its_ends`
 - `distort::tests::older_files_and_odd_values_read`
 - `distort_tool::tests::a_drag_distorts_about_where_it_started`
