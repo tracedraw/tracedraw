@@ -4421,6 +4421,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracedraw-tracecut"
+version = "0.39.0"
+dependencies = [
+ "serde",
+ "tracedraw-core",
+]
+
+[[package]]
 name = "tracedraw-vba"
 version = "0.39.0"
 dependencies = [

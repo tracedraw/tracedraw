@@ -1,9 +1,9 @@
 [package]
-name = "tracedraw-signcut"
+name = "tracedraw-tracecut"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Sign making and cutting tools for TraceDraw: measuring, cut-file clean-up and sizing"
+description = "TraceCut for TraceDraw: geometry for cutting plotters, nesting and measuring"
 
 [dependencies]
 tracedraw-core.workspace = true
