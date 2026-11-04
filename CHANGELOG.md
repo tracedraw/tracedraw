@@ -14,6 +14,8 @@ full, row-by-row status.
 
 - Export dialog: deleting a preset asks first. The "−" beside the preset list deleted the chosen preset with one click, for good. It now asks 'Delete the preset "name"?' in a row under the list, with Yes and No (#1816).
 
+- Text tool: paragraph text frames dragged one after the other all stay. Dragging a second frame (or clicking to start an artistic text) deleted the first one while it was still empty, so only the last empty frame was left on the page. An empty frame now stays as a frame to type or flow text into later; an artistic text left with no characters still leaves nothing (#1822).
+
 - Opening a PDF: a very large picture (more than 20000 pixels on a side or more than 80 megapixels) comes in shrunk to fit those limits instead of being left out. A PDF holding an 11160 x 14794 pixel picture opened with only the outline around it; the picture now comes in at 5580 x 7397 pixels, in its place, with its soft mask (#1804).
 
 - Several monitors: TraceDraw opens on the primary monitor, centred on it. The splash screen and the main window were centred by the monitor's size from the top-left corner of the whole desktop, so with the primary monitor below or right of others (X11, four monitors) the window opened on the top-left monitor (#1800).

@@ -18905,3 +18905,46 @@ fn property_bar_values_commit_and_stay_after_a_click_outside() {
         b.height()
     );
 }
+
+/// Paragraph text frames dragged one after the other with the Text tool
+/// all stay, empty or not: each new frame (or a click that starts an
+/// artistic text) used to delete the empty frame before it (#1822).
+#[test]
+fn empty_text_frames_dragged_one_after_the_other_all_stay() {
+    let (ctx, mut app, rect) = setup();
+    app.select(vec![rect]);
+    app.delete_selection();
+    app.set_tool(Tool::Text);
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let frames = |app: &App| -> Vec<ShapeId> {
+        app.page_layers()
+            .iter()
+            .flat_map(|l| &l.shapes)
+            .filter(|s| matches!(s.kind, ShapeKind::Text { frame: Some(_), .. }))
+            .map(|s| s.id)
+            .collect()
+    };
+    for (k, (a, b)) in [
+        ((20.0, 20.0), (60.0, 120.0)),
+        ((80.0, 20.0), (140.0, 90.0)),
+        ((20.0, 150.0), (100.0, 200.0)),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let from = app.view.to_screen(Point::new(a.0, a.1));
+        let to = app.view.to_screen(Point::new(b.0, b.1));
+        drag(&ctx, &mut app, from, to, Modifiers::NONE, vec![]);
+        for _ in 0..2 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        assert_eq!(frames(&app).len(), k + 1, "after frame {}", k + 1);
+    }
+    // A click on empty space starts an artistic text; the empty frame
+    // being edited stays.
+    let at = app.view.to_screen(Point::new(150.0, 250.0));
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert_eq!(frames(&app).len(), 3, "after a click");
+}
