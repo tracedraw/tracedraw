@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- SVG import: text comes in as editable text. Every `<text>` element was left out, so a file with a rectangle and a caption imported as the rectangle alone. Text now keeps its font, size, weight, style, colour, outline, anchor and position, with styles from attributes, `style` and `<style>` sheets, `tspan` runs in their own style, lines written as one `tspan` each as one text with its line spacing, and transforms, `use` and clips as for shapes (#1820).
+
 - Opening a PDF: a very large picture (more than 20000 pixels on a side or more than 80 megapixels) comes in shrunk to fit those limits instead of being left out. A PDF holding an 11160 x 14794 pixel picture opened with only the outline around it; the picture now comes in at 5580 x 7397 pixels, in its place, with its soft mask (#1804).
 
 - Several monitors: TraceDraw opens on the primary monitor, centred on it. The splash screen and the main window were centred by the monitor's size from the top-left corner of the whole desktop, so with the primary monitor below or right of others (X11, four monitors) the window opened on the top-left monitor (#1800).

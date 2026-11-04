@@ -41,6 +41,7 @@ it, live in `docs/cdr-format.md` and in the pages of `docs/behavior/`.
 
 | Date | Finding | Source |
 |---|---|---|
+| 2026-11-04 | SVG text (#1820): text chunks, `x`/`y`/`dx`/`dy`, `text-anchor`, `dominant-baseline`, `baseline-shift`, `xml:space` white space handling, the font properties and the `font` shorthand, the CSS cascade of style attributes, style sheets and presentation attributes | the W3C SVG 1.1 specification (sections 6 and 10) and the CSS 2.1 font and cascade sections; the reporter's sample file attached to issue #1820 (a rectangle and one `<text>`, not committed); test files written by hand; no other implementation read or ported |
 | 2026-10-08 | `.cdr` RIFF container, chunk walker, compressed lists (two zlib parts and a size table), coordinates in 1/254000 inch | public format notes |
 | 2026-10-08 | Object, fill and outline records of the RIFF layout (rectangles, ellipses, curves, solid and gradient fills, outlines) | public format notes |
 | 2026-10-09 | ZIP containers: `content/riffData.cdr` (versions 14 and 15), `content/root.dat` with `dataFileList.dat` and 16-byte redirect records (version 16 and later) | public format notes, cross-checked against the public format description |
