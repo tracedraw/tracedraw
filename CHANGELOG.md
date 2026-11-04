@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+## 0.39.0 (2026-11-04)
+
 - Convert to Bitmap: the Grayscale and CMYK colour modes give a bitmap in that mode. Every choice gave an RGB bitmap: Grayscale made the pixels gray but kept an RGB picture, and CMYK did not even change the pixels. Grayscale now stores a grayscale picture, and the status line says "Bitmap (Grayscale)"; CMYK marks the bitmap as a CMYK picture and shows its pixels as the inks print them, as Image > Mode > CMYK Color does (#1777).
 
 - Shortcuts: Ctrl+F12 and Ctrl+F8 each run one command. Text > Proofing > Spell Check showed Ctrl+F12 and Text > Convert showed Ctrl+F8, but those keys open the Fonts and Blend panels, as the shortcut tables say, so neither menu command had a working key. The two menu rows no longer show a key (Options > Customization > Commands can give them one), the Spelling options page no longer names Ctrl+F12, and a test checks that no two menu commands, tools or panels share a built-in key (#1779).
