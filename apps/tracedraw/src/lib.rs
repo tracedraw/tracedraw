@@ -281,9 +281,10 @@ pub fn run() -> eframe::Result<()> {
         return Ok(());
     }
     // `tracedraw --x11`: the window opens through X11 (XWayland on a
-    // Wayland desktop), where a graphics tablet's pen moves the pointer;
-    // Wayland compositors send pens only over a protocol the windowing
-    // layer does not speak yet (#850, see docs/behavior/pen-pressure.md).
+    // Wayland desktop), where a graphics tablet's pen moves the pointer
+    // (#850). The patched windowing layer reads a pen on Wayland too
+    // since #1841, so this is for compositors without the tablet
+    // protocol (see docs/behavior/pen-pressure.md).
     // Without an X server there is no window to open: say so and stop,
     // rather than let every renderer fail in turn.
     #[cfg(target_os = "linux")]
