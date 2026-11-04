@@ -13045,6 +13045,70 @@ fn a_click_on_a_drop_shadow_picks_its_object() {
     assert!(close(bounds(&app, id).x0, 10.0), "the object stays");
 }
 
+/// Dragging a segment of an envelope's frame bends it, in the real window
+/// with the Envelope tool and with the Shape tool and in every mode: the
+/// point grabbed follows the pointer, the nodes stay, the object follows
+/// the frame and one undo puts it back. The pointer shows the segment
+/// mark over it. Only nodes and handles could be dragged (#1339).
+#[test]
+fn dragging_an_envelope_segment_bends_it() {
+    use tracedraw_core::envelope::Mode;
+    use tracedraw_core::geometry::ParamCurve as _;
+    for (tool, mode) in [
+        (Tool::Envelope, Mode::Unconstrained),
+        (Tool::Envelope, Mode::SingleArc),
+        (Tool::Shape, Mode::Unconstrained),
+        (Tool::Shape, Mode::StraightLine),
+    ] {
+        let (ctx, mut app, id) = setup();
+        app.add_new_envelope();
+        app.envelope_mode = mode;
+        app.set_tool(tool);
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        let (_, before) = app.envelope_of(id).expect("envelope");
+        let undo_before = app.engine.undo_label().map(str::to_string);
+        // The bottom side runs from (10, 10) to the node at (35, 10);
+        // grab it a quarter of the way along that segment.
+        let grab = Point::new(16.25, 10.0);
+        let (sid, seg, t) = app.envelope_segment_at(grab).expect("a segment");
+        assert_eq!((sid, seg), (id, 0), "{tool:?} {mode:?}");
+        let from = app.view.to_screen(grab);
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(from)],
+            Modifiers::NONE,
+        );
+        assert_eq!(
+            for_tool(&app, false, false, false, Some(from)),
+            ToolCursor::ShapeArrow(ShapeMark::Segment),
+            "{tool:?} {mode:?}"
+        );
+        let target = Point::new(16.25, 4.0);
+        let to = app.view.to_screen(target);
+        drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+        let (_, bent) = app.envelope_of(id).expect("envelope");
+        let s = app.doc().find_shape(id).expect("shape").clone();
+        let p = s.transform * bent.segment(0).eval(t);
+        // Within a screen pixel of the pointer.
+        let px = 1.5 / app.view.zoom as f64;
+        assert!((p - target).hypot() < px, "{tool:?} {mode:?}: {p:?}");
+        assert_eq!(bent.nodes, before.nodes, "{tool:?} {mode:?}");
+        // The object follows: its bottom bulges below the side.
+        let page = app.doc().shape_on_page(id).expect("shape");
+        let drawn = tracedraw_core::live::evaluate(&page).main.bounds();
+        assert!(drawn.y0 < 9.0, "{tool:?} {mode:?}: {drawn:?}");
+        assert_eq!(app.engine.undo_label(), Some("Edit Envelope"));
+        app.undo();
+        let (_, back) = app.envelope_of(id).expect("envelope");
+        assert_eq!(back, before, "{tool:?} {mode:?}");
+        assert_eq!(app.engine.undo_label().map(str::to_string), undo_before);
+        // Still the same object selected, nothing else made.
+        assert_eq!(app.selection, vec![id]);
+        assert_eq!(shape_count(&app), 1);
+    }
+}
+
 /// Dragging an envelope's node (#881): the frame and the enveloped
 /// object follow every move; a line of outlined letters and a plain
 /// rectangle, zoomed in so the frame is large on screen.
