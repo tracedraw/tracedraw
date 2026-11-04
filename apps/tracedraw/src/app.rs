@@ -3021,6 +3021,7 @@ impl App {
     /// after loading the preferences and when an options dialog closes.
     pub fn apply_runtime_settings(&mut self) {
         crate::ui::writing_tools::install_custom_hyphens(self);
+        tracedraw_core::set_default_tab_step(self.settings.default_tab_mm);
         crate::spell::configure(self.settings.spelling.config());
         let sp = &self.settings.spelling;
         let had = sp.hyphenation_patterns.clone();

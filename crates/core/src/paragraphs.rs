@@ -492,4 +492,20 @@ mod tests {
         assert_eq!(f.tabs, vec![crate::document::TabStop::left(10.0)]);
         assert_eq!(paragraph_styles(spans, *align, para)[0].1.tabs.len(), 1);
     }
+
+    /// The default tab spacing is half an inch until set; a setting is
+    /// kept within 1 to 100 mm (#1852).
+    #[test]
+    fn the_default_tab_spacing_follows_the_setting() {
+        use crate::document::{default_tab_step, set_default_tab_step, DEFAULT_TAB_STEP};
+        assert_eq!(DEFAULT_TAB_STEP, 12.7);
+        set_default_tab_step(5.0);
+        assert_eq!(default_tab_step(), 5.0);
+        set_default_tab_step(0.0);
+        assert_eq!(default_tab_step(), 1.0);
+        set_default_tab_step(1e9);
+        assert_eq!(default_tab_step(), 100.0);
+        set_default_tab_step(f64::NAN);
+        assert_eq!(default_tab_step(), DEFAULT_TAB_STEP);
+    }
 }
