@@ -2175,14 +2175,35 @@ impl<'a> Importer<'a> {
         }
     }
 
-    /// Decode an image XObject to PNG (RGBA).
+    /// Decode an image XObject to PNG (RGBA). A picture larger than
+    /// [`MAX_IMAGE_SIDE`] or [`MAX_IMAGE_PIXELS`] is shrunk by a whole
+    /// factor, each pixel the mean of a block of the picture's own
+    /// (#1804); only one past [`MAX_SOURCE_SIDE`] or
+    /// [`MAX_SOURCE_PIXELS`] is skipped.
     fn decode_image(&mut self, stream: &Stream) -> Option<(Vec<u8>, u32, u32)> {
+        let (rgba, w, h) = self.decode_pixels(stream)?;
+        Some((tracedraw_render_png(w, h, &rgba), w, h))
+    }
+
+    /// An image XObject's RGBA pixels and size, as [`Self::decode_image`]
+    /// gives them before they are put into a PNG.
+    fn decode_pixels(&mut self, stream: &Stream) -> Option<(Vec<u8>, u32, u32)> {
         let d = &stream.dict;
         let w = self.get(d, b"Width").and_then(Self::num)? as u32;
         let h = self.get(d, b"Height").and_then(Self::num)? as u32;
-        if w == 0 || h == 0 || w > 20_000 || h > 20_000 || (w as u64) * (h as u64) > 80_000_000 {
-            self.warn("image too large; skipped");
+        if w == 0
+            || h == 0
+            || w > MAX_SOURCE_SIDE
+            || h > MAX_SOURCE_SIDE
+            || (w as u64) * (h as u64) > MAX_SOURCE_PIXELS
+        {
+            self.warn(format!("image of {w} x {h} pixels too large; skipped"));
             return None;
+        }
+        let f = shrink_factor(w, h);
+        let (ow, oh) = (w.div_ceil(f), h.div_ceil(f));
+        if f > 1 {
+            self.warn(format!("image of {w} x {h} pixels shrunk to {ow} x {oh}"));
         }
         let bpc = self
             .get(d, b"BitsPerComponent")
@@ -2235,7 +2256,7 @@ impl<'a> Importer<'a> {
                 };
                 if last == b"JPXDecode" {
                     self.warn("JPEG 2000 image replaced by a grey box");
-                    rgba = vec![160; (w * h * 4) as usize];
+                    rgba = vec![160; (ow as usize) * (oh as usize) * 4];
                     for px in rgba.chunks_exact_mut(4) {
                         px[3] = 255;
                     }
@@ -2279,30 +2300,60 @@ impl<'a> Importer<'a> {
                     }
                     // Decoded JPEG size wins over the dictionary.
                     let (jw, jh) = (img.width(), img.height());
-                    if jw != w || jh != h {
-                        return Some((tracedraw_render_png(jw, jh, &rgba), jw, jh));
+                    let jf = shrink_factor(jw, jh);
+                    let (jw, jh, rgba_j) = if jf > 1 {
+                        let mut shrink = Shrink::new(jw, jh, jf);
+                        for row in rgba.chunks_exact(jw as usize * 4) {
+                            shrink.push_row(row);
+                        }
+                        (jw.div_ceil(jf), jh.div_ceil(jf), shrink.finish())
+                    } else {
+                        (jw, jh, rgba)
+                    };
+                    rgba = rgba_j;
+                    if jw != ow || jh != oh {
+                        return Some((rgba, jw, jh));
                     }
                 }
             }
             _ => {
-                let data = if filters.is_empty() {
-                    stream.content.clone()
-                } else {
-                    match stream.decompressed_content() {
-                        Ok(d) => d,
-                        Err(e) => {
-                            self.warn(format!("image data not decoded: {e}"));
-                            return None;
-                        }
-                    }
-                };
                 let ncomp = if is_mask { 1 } else { cs.components().max(1) };
                 let row_bytes = ((w as usize) * ncomp * (bpc as usize)).div_ceil(8);
-                if data.len() < row_bytes * (h as usize) {
-                    self.warn("image data shorter than its size; skipped");
-                    return None;
-                }
-                rgba = Vec::with_capacity((w * h * 4) as usize);
+                // A picture shrunk on reading, compressed with Flate alone
+                // and without a predictor, is inflated a row at a time:
+                // the whole of it (500 MB for the picture of #1804) never
+                // sits in memory.
+                let streamed = f > 1
+                    && filters.len() == 1
+                    && last == b"FlateDecode"
+                    && self.get(d, b"DecodeParms").is_none();
+                let mut source: Box<dyn std::io::Read + '_> = if streamed {
+                    Box::new(flate2::read::ZlibDecoder::new(stream.content.as_slice()))
+                } else {
+                    let data = if filters.is_empty() {
+                        stream.content.clone()
+                    } else {
+                        if (row_bytes as u64) * (h as u64) > MAX_BUFFERED_BYTES {
+                            self.warn(format!("image of {w} x {h} pixels too large; skipped"));
+                            return None;
+                        }
+                        match stream.decompressed_content() {
+                            Ok(d) => d,
+                            Err(e) => {
+                                self.warn(format!("image data not decoded: {e}"));
+                                return None;
+                            }
+                        }
+                    };
+                    if data.len() < row_bytes * (h as usize) {
+                        self.warn("image data shorter than its size; skipped");
+                        return None;
+                    }
+                    Box::new(std::io::Cursor::new(data))
+                };
+                let mut shrink = Shrink::new(w, h, f);
+                let mut row = vec![0u8; row_bytes];
+                let mut px_row: Vec<u8> = Vec::with_capacity(w as usize * 4);
                 let max = ((1u32 << bpc) - 1) as f32;
                 // A Separation picture: the colour of each tint, 1 being
                 // full ink.
@@ -2316,9 +2367,34 @@ impl<'a> Importer<'a> {
                         .collect(),
                     _ => Vec::new(),
                 };
-                for y in 0..h as usize {
-                    let row = &data[y * row_bytes..(y + 1) * row_bytes];
-                    let mut bits = BitReader::new(row);
+                for _ in 0..h {
+                    if source.read_exact(&mut row).is_err() {
+                        self.warn("image data shorter than its size; skipped");
+                        return None;
+                    }
+                    px_row.clear();
+                    // Plain 8-bit RGB or grey samples, the most common
+                    // and the largest pictures: no conversion per sample.
+                    if bpc == 8 && !is_mask && !inverted && palette.is_none() && tints.is_empty() {
+                        match cs {
+                            ColorSpace::Rgb => {
+                                for p in row.chunks_exact(3) {
+                                    px_row.extend_from_slice(&[p[0], p[1], p[2], 255]);
+                                }
+                                shrink.push_row(&px_row);
+                                continue;
+                            }
+                            ColorSpace::Gray => {
+                                for &g in &row {
+                                    px_row.extend_from_slice(&[g, g, g, 255]);
+                                }
+                                shrink.push_row(&px_row);
+                                continue;
+                            }
+                            _ => {}
+                        }
+                    }
+                    let mut bits = BitReader::new(&row);
                     for _ in 0..w {
                         let mut comps = [0f32; 4];
                         let mut raw0 = 0u32;
@@ -2336,7 +2412,7 @@ impl<'a> Importer<'a> {
                             // 1 = masked out (transparent) unless Decode [1 0].
                             let on = (raw0 == 0) != inverted;
                             let c = gs_fill_rgb(None);
-                            rgba.extend_from_slice(&[c[0], c[1], c[2], if on { 255 } else { 0 }]);
+                            px_row.extend_from_slice(&[c[0], c[1], c[2], if on { 255 } else { 0 }]);
                             continue;
                         }
                         let (r, g, b) = if let Some([r, g, b]) = tints.get(raw0 as usize) {
@@ -2386,39 +2462,37 @@ impl<'a> Importer<'a> {
                                 }
                             }
                         };
-                        rgba.extend_from_slice(&[r, g, b, 255]);
+                        px_row.extend_from_slice(&[r, g, b, 255]);
                     }
+                    shrink.push_row(&px_row);
                 }
+                rgba = shrink.finish();
             }
         }
-        if rgba.len() != (w * h * 4) as usize {
+        if rgba.len() != (ow as usize) * (oh as usize) * 4 {
             return None;
         }
-        // Soft mask: alpha from a gray image of the same size.
+        // Soft mask: alpha from a gray image, resampled to the picture's
+        // size (a large one shrunk as the picture is).
         if let Some(Object::Stream(sm)) = self.get(d, b"SMask").cloned() {
-            if let Some(alpha) = self.decode_gray(&sm, w, h) {
+            if let Some(alpha) = self.decode_gray(&sm, ow, oh) {
                 for (px, a) in rgba.chunks_exact_mut(4).zip(alpha) {
                     px[3] = a;
                 }
             }
         }
-        Some((tracedraw_render_png(w, h, &rgba), w, h))
+        Some((rgba, ow, oh))
     }
 
     /// An SMask as 8-bit alpha, resampled to `w` x `h` (nearest).
     fn decode_gray(&mut self, sm: &Stream, w: u32, h: u32) -> Option<Vec<u8>> {
-        let (png, sw, sh) = self.decode_image(sm)?;
-        let pm = tiny_skia::Pixmap::decode_png(&png).ok()?;
-        let px = pm.pixels();
+        let (px, sw, sh) = self.decode_pixels(sm)?;
         let mut out = Vec::with_capacity((w * h) as usize);
         for y in 0..h {
             let sy = (y as u64 * sh as u64 / h as u64) as usize;
             for x in 0..w {
                 let sx = (x as u64 * sw as u64 / w as u64) as usize;
-                let p = px
-                    .get(sy * sw as usize + sx)
-                    .map(|p| p.demultiply().red())
-                    .unwrap_or(255);
+                let p = px.get((sy * sw as usize + sx) * 4).copied().unwrap_or(255);
                 out.push(p);
             }
         }
@@ -4392,6 +4466,99 @@ fn glyph_name_to_char(name: &[u8]) -> Option<char> {
     table.iter().find(|(k, _)| *k == n).map(|(_, c)| *c)
 }
 
+/// Most pixels on a side of a picture as it comes into the drawing.
+const MAX_IMAGE_SIDE: u32 = 20_000;
+/// Most pixels of a picture as it comes into the drawing (320 MB of
+/// RGBA); a larger one is shrunk (#1804).
+const MAX_IMAGE_PIXELS: u64 = 80_000_000;
+/// Most pixels on a side of a picture read at all.
+const MAX_SOURCE_SIDE: u32 = 400_000;
+/// Most pixels of a picture read at all: a 1.6 gigapixel picture
+/// shrinks by 5, past it a damaged size more likely than a picture.
+const MAX_SOURCE_PIXELS: u64 = 1_600_000_000;
+/// Most bytes of picture data inflated at once when it cannot be read a
+/// row at a time (filters other than Flate alone).
+const MAX_BUFFERED_BYTES: u64 = 1 << 30;
+
+/// The smallest whole factor that brings a `w` x `h` picture within
+/// [`MAX_IMAGE_SIDE`] and [`MAX_IMAGE_PIXELS`]: 1 for a picture that is
+/// already.
+fn shrink_factor(w: u32, h: u32) -> u32 {
+    let fits = |f: u32| {
+        let (ow, oh) = (w.div_ceil(f), h.div_ceil(f));
+        ow <= MAX_IMAGE_SIDE
+            && oh <= MAX_IMAGE_SIDE
+            && (ow as u64) * (oh as u64) <= MAX_IMAGE_PIXELS
+    };
+    (1..=w.max(h).max(1))
+        .find(|&f| fits(f))
+        .unwrap_or(w.max(h).max(1))
+}
+
+/// Shrinks RGBA rows by a whole factor `f`: each pixel of the result is
+/// the mean of an `f` x `f` block (smaller at the right and bottom
+/// edges). With `f` 1 the rows pass as they are.
+struct Shrink {
+    f: usize,
+    w: usize,
+    sums: Vec<u32>,
+    rows: usize,
+    out: Vec<u8>,
+}
+
+impl Shrink {
+    fn new(w: u32, h: u32, f: u32) -> Self {
+        let f = f.max(1) as usize;
+        let (ow, oh) = ((w as usize).div_ceil(f), (h as usize).div_ceil(f));
+        Shrink {
+            f,
+            w: w as usize,
+            sums: if f > 1 { vec![0; ow * 4] } else { Vec::new() },
+            rows: 0,
+            out: Vec::with_capacity(ow * oh * 4),
+        }
+    }
+
+    /// One row of `w` RGBA pixels.
+    fn push_row(&mut self, row: &[u8]) {
+        if self.f == 1 {
+            self.out.extend_from_slice(row);
+            return;
+        }
+        for (x, px) in row.chunks_exact(4).take(self.w).enumerate() {
+            let o = x / self.f * 4;
+            for (s, c) in self.sums[o..o + 4].iter_mut().zip(px) {
+                *s += u32::from(*c);
+            }
+        }
+        self.rows += 1;
+        if self.rows == self.f {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        if self.rows == 0 {
+            return;
+        }
+        for (ox, px) in self.sums.chunks_exact(4).enumerate() {
+            let bw = self.f.min(self.w - ox * self.f);
+            let n = (bw * self.rows) as u32;
+            for s in px {
+                self.out.push(((s + n / 2) / n) as u8);
+            }
+        }
+        self.sums.fill(0);
+        self.rows = 0;
+    }
+
+    /// The shrunk picture's RGBA pixels.
+    fn finish(mut self) -> Vec<u8> {
+        self.flush();
+        self.out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5299,6 +5466,132 @@ mod tests {
         }
         .to_rgb8();
         assert_eq!([px[1].red(), px[1].green(), px[1].blue()], gold);
+    }
+
+    /// A one-page PDF whose objects may hold binary streams: each object
+    /// is its bytes between `n 0 obj` and `endobj`.
+    fn pdf_bin(objects: &[Vec<u8>]) -> Vec<u8> {
+        let mut out = b"%PDF-1.4\n".to_vec();
+        let mut offsets = Vec::new();
+        for (i, o) in objects.iter().enumerate() {
+            offsets.push(out.len());
+            out.extend_from_slice(format!("{} 0 obj\n", i + 1).as_bytes());
+            out.extend_from_slice(o);
+            out.extend_from_slice(b"\nendobj\n");
+        }
+        let xref = out.len();
+        out.extend_from_slice(
+            format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+        );
+        for o in offsets {
+            out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+        }
+        out.extend_from_slice(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+                objects.len() + 1
+            )
+            .as_bytes(),
+        );
+        out
+    }
+
+    /// A Flate image stream object of `w` x `h` pixels in `cs`.
+    fn flate_image(dict: &str, raw: &[u8]) -> Vec<u8> {
+        use std::io::Write as _;
+        let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+        z.write_all(raw).expect("deflate");
+        let data = z.finish().expect("deflate");
+        let mut o = format!(
+            "<< /Type /XObject /Subtype /Image {dict} /BitsPerComponent 8 /Filter /FlateDecode /Length {} >>\nstream\n",
+            data.len()
+        )
+        .into_bytes();
+        o.extend_from_slice(&data);
+        o.extend_from_slice(b"\nendstream");
+        o
+    }
+
+    /// A picture past the size a drawing keeps is shrunk, not skipped:
+    /// the 11160 x 14794 pixel picture of #1804 (165 megapixels, over the
+    /// 80 megapixel limit) by 2, a 40000 pixel wide one by 2 as well,
+    /// one of 20000 x 20000 by 3.
+    #[test]
+    fn shrink_factor_brings_pictures_within_the_limits() {
+        assert_eq!(shrink_factor(11_160, 14_794), 2);
+        assert_eq!(shrink_factor(40_000, 2), 2);
+        assert_eq!(shrink_factor(20_000, 20_000), 3);
+        assert_eq!(shrink_factor(8_000, 10_000), 1);
+        assert_eq!(shrink_factor(1, 1), 1);
+        let mut s = Shrink::new(3, 3, 2);
+        for _ in 0..3 {
+            s.push_row(&[10, 20, 30, 255, 30, 40, 50, 0, 100, 100, 100, 255]);
+        }
+        // Blocks of 2 x 2, 1 x 2, 2 x 1 and 1 x 1 pixels.
+        assert_eq!(
+            s.finish(),
+            [20, 30, 40, 128, 100, 100, 100, 255, 20, 30, 40, 128, 100, 100, 100, 255]
+        );
+    }
+
+    /// An RGB picture with a soft mask, too wide for a drawing (40000
+    /// pixels, over the 20000 pixel side), comes in shrunk by 2: each
+    /// pixel the mean of a red and a blue one, its alpha the mean of the
+    /// mask's opaque and clear ones. It used to be skipped, leaving only
+    /// what was drawn around it (#1804, a 11160 x 14794 picture).
+    #[test]
+    fn oversized_picture_is_shrunk_with_its_soft_mask() {
+        let (w, h) = (40_000usize, 2usize);
+        let rgb: Vec<u8> = (0..w * h)
+            .flat_map(|i| if i % 2 == 0 { [255, 0, 0] } else { [0, 0, 255] })
+            .collect();
+        let alpha: Vec<u8> = (0..w * h)
+            .map(|i| if i % 2 == 0 { 255 } else { 0 })
+            .collect();
+        let content = "q 200 0 0 10 0 0 cm /Im1 Do Q";
+        let bytes = pdf_bin(&[
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 4 0 R /Resources << /XObject << /Im1 5 0 R >> >> >>".to_vec(),
+            stream("", content).into_bytes(),
+            flate_image(
+                &format!("/Width {w} /Height {h} /ColorSpace /DeviceRGB /SMask 6 0 R"),
+                &rgb,
+            ),
+            flate_image(&format!("/Width {w} /Height {h} /ColorSpace /DeviceGray"), &alpha),
+        ]);
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let shapes = &imp.pages[0].shapes;
+        assert_eq!(shapes.len(), 1, "{:?}", imp.warnings);
+        let ShapeKind::Bitmap {
+            width_px,
+            height_px,
+            png,
+            ..
+        } = &shapes[0].kind
+        else {
+            panic!("{:?}", shapes[0].kind);
+        };
+        assert_eq!((*width_px, *height_px), (20_000, 1));
+        let pm = tiny_skia::Pixmap::decode_png(png).expect("png");
+        assert_eq!((pm.width(), pm.height()), (20_000, 1));
+        for p in [pm.pixels()[0], pm.pixels()[19_999]] {
+            let c = p.demultiply();
+            assert_eq!(c.alpha(), 128);
+            assert!(c.red().abs_diff(128) <= 2 && c.green() == 0, "{c:?}");
+            assert!(c.blue().abs_diff(128) <= 2, "{c:?}");
+        }
+        // It still fills the unit square the content placed it in.
+        let b = shapes[0].bounds();
+        assert!((b.width() - 200.0 * PT_MM).abs() < 1e-6, "{b:?}");
+        assert!(
+            imp.warnings
+                .iter()
+                .any(|w| w.contains("shrunk to 20000 x 1")),
+            "{:?}",
+            imp.warnings
+        );
     }
 
     #[test]
