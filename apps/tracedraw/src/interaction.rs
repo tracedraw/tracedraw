@@ -3956,7 +3956,11 @@ impl App {
             self.zoom_step(false);
         }
         if pressed(Key::Delete, Modifiers::NONE) || pressed(Key::Backspace, Modifiers::NONE) {
-            if matches!(self.tool, Tool::MeshFill | Tool::Shape)
+            if self.curve.is_some() {
+                // While a curve is drawn the keys take its last node back,
+                // never the selection (#1527).
+                self.curve_remove_last_node();
+            } else if matches!(self.tool, Tool::MeshFill | Tool::Shape)
                 && self.selected_mesh_node().is_some()
             {
                 self.delete_mesh_lines();

@@ -5826,6 +5826,61 @@ fn ctrl_z_takes_back_pen_nodes_one_by_one() {
     assert_eq!(app.engine.undo_label(), undo_before);
 }
 
+/// Backspace or Delete while a curve is drawn takes its last node back,
+/// one a press, never the selection; Ctrl+Z puts the node back. With no
+/// curve being drawn the keys delete the selection as before (#1527).
+#[test]
+fn backspace_while_drawing_removes_the_last_node_not_the_selection() {
+    for tool in [Tool::BSpline, Tool::Pen, Tool::Polyline, Tool::Bezier] {
+        let (ctx, mut app, id) = setup();
+        app.set_tool(tool);
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        let undo_before = app.engine.undo_label();
+        let points = [
+            Point::new(80.0, 60.0),
+            Point::new(120.0, 60.0),
+            Point::new(100.0, 90.0),
+        ];
+        for q in points {
+            let at = app.view.to_screen(q);
+            click_at(&ctx, &mut app, at, Modifiers::NONE);
+        }
+        // The rectangle is selected while the curve is drawn.
+        app.select(vec![id]);
+        let nodes = |app: &App| app.curve.as_ref().map(|c| c.nodes.clone());
+        assert_eq!(nodes(&app).map(|n| n.len()), Some(3), "{tool:?}");
+        let press = |ctx: &egui::Context, app: &mut App, k: egui::Key| {
+            frame(ctx, app, vec![key(k, Modifiers::NONE)], Modifiers::NONE);
+        };
+        press(&ctx, &mut app, egui::Key::Backspace);
+        let left = nodes(&app).expect("still drawing");
+        assert_eq!(left.len(), 2, "{tool:?}");
+        assert!(
+            left.iter()
+                .zip(&points)
+                .all(|(n, q)| n.0.distance(*q) < 0.5),
+            "{tool:?}: the last node went, the others stay: {left:?}"
+        );
+        assert!(app.doc().find_shape(id).is_some(), "{tool:?}");
+        // Ctrl+Z puts it back, Delete takes it again.
+        let ctrl = Modifiers::COMMAND | Modifiers::CTRL;
+        frame(&ctx, &mut app, vec![key(egui::Key::Z, ctrl)], ctrl);
+        assert_eq!(nodes(&app).map(|n| n.len()), Some(3), "{tool:?}");
+        press(&ctx, &mut app, egui::Key::Delete);
+        assert_eq!(nodes(&app).map(|n| n.len()), Some(2), "{tool:?}");
+        press(&ctx, &mut app, egui::Key::Backspace);
+        assert_eq!(nodes(&app).map(|n| n.len()), Some(1), "{tool:?}");
+        press(&ctx, &mut app, egui::Key::Backspace);
+        assert!(app.curve.is_none(), "{tool:?}");
+        assert!(app.doc().find_shape(id).is_some(), "{tool:?}");
+        assert_eq!(app.engine.undo_label(), undo_before, "{tool:?}");
+        // No curve being drawn: Backspace deletes the selection.
+        app.select(vec![id]);
+        press(&ctx, &mut app, egui::Key::Backspace);
+        assert!(app.doc().find_shape(id).is_none(), "{tool:?}");
+    }
+}
+
 #[test]
 fn a_right_click_on_a_locked_object_offers_to_unlock_it() {
     let (ctx, mut app, id) = setup();

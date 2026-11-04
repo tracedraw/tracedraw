@@ -4,6 +4,16 @@ Freehand, 2-point line, Bezier, Pen, B-spline, Polyline, 3-point curve,
 Shape recognition and Sketch. All produce open (or closed, when the end
 meets the start) `Path` objects with the toolbox defaults.
 
+Backspace or Delete while a curve is being drawn (Bezier, Pen, B-spline,
+Polyline, and a first click of Freehand or 2-point line) takes back the
+last node placed with its handles, one node a press; the last one gone,
+no curve is being drawn. The keys never delete the selection while a
+curve is drawn (a curve that goes on from the selected curve keeps it);
+while a handle is pulled they do nothing. Ctrl+Z puts the node back
+(one step of the curve's own history). With no curve being drawn they
+delete the selection as everywhere (#1527,
+`pick_drag_tests::backspace_while_drawing_removes_the_last_node_not_the_selection`).
+
 ## Freehand (F5)
 
 - The pointer is sampled every 0.2 mm of movement; on release the points
