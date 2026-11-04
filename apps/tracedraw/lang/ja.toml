@@ -7363,3 +7363,6 @@ tracecut.no_crossings = "交差は見つかりませんでした。" # mt
 tracecut.crossings_found = "{objects} 個のオブジェクトに {n} 個の交差が見つかりました。" # mt
 options.show_tracecut = "起動とツールメニューに TraceCut を表示" # mt
 options.show_tracecut_desc = "TraceCut にはカッティングプロッター用のツールがあります。カットしない場合はオフにして隠せます。" # mt
+tracecut.apply_desc = "結果を計算してプレビューに表示します。図面は変わりません。" # mt
+tracecut.ok_desc = "結果を1回の取り消し単位で図面に反映し、ウィンドウを閉じます。" # mt
+tracecut.cancel_desc = "図面を変えずにウィンドウを閉じます。" # mt

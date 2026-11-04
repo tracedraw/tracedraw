@@ -7363,3 +7363,6 @@ tracecut.no_crossings = "Keine Kreuzungen gefunden." # mt
 tracecut.crossings_found = "{n} Kreuzungen in {objects} Objekten gefunden." # mt
 options.show_tracecut = "TraceCut in Starten und im Menü Extras anzeigen" # mt
 options.show_tracecut_desc = "TraceCut enthält die Werkzeuge für Schneideplotter. Schalten Sie dies aus, um es auszublenden, wenn Sie nicht schneiden." # mt
+tracecut.apply_desc = "Berechnet das Ergebnis und zeigt es in der Vorschau. Die Zeichnung ändert sich nicht." # mt
+tracecut.ok_desc = "Übernimmt das Ergebnis in einem Rückgängig-Schritt in die Zeichnung und schließt das Fenster." # mt
+tracecut.cancel_desc = "Schließt das Fenster, ohne die Zeichnung zu ändern." # mt

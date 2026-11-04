@@ -7363,3 +7363,6 @@ tracecut.no_crossings = "No se encontraron cruces." # mt
 tracecut.crossings_found = "{n} cruces encontrados en {objects} objetos." # mt
 options.show_tracecut = "Mostrar TraceCut en Iniciar y en el menú Herramientas" # mt
 options.show_tracecut_desc = "TraceCut reúne las herramientas para plóters de corte. Desactívelo para ocultarlo si no corta." # mt
+tracecut.apply_desc = "Calcula el resultado y lo muestra en la vista previa. El dibujo no cambia." # mt
+tracecut.ok_desc = "Aplica el resultado al dibujo en un solo paso de deshacer y cierra la ventana." # mt
+tracecut.cancel_desc = "Cierra la ventana sin cambiar el dibujo." # mt

@@ -7363,3 +7363,6 @@ tracecut.no_crossings = "Tidak ada persilangan." # mt
 tracecut.crossings_found = "{n} persilangan ditemukan pada {objects} objek." # mt
 options.show_tracecut = "Tampilkan TraceCut di Luncurkan dan menu Alat" # mt
 options.show_tracecut_desc = "TraceCut berisi alat untuk plotter potong. Matikan untuk menyembunyikannya jika Anda tidak memotong." # mt
+tracecut.apply_desc = "Menghitung hasil dan menampilkannya di pratinjau. Gambar tidak berubah." # mt
+tracecut.ok_desc = "Menerapkan hasil ke gambar dalam satu langkah urungkan dan menutup jendela." # mt
+tracecut.cancel_desc = "Menutup jendela tanpa mengubah gambar." # mt

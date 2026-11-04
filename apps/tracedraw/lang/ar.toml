@@ -7363,3 +7363,6 @@ tracecut.no_crossings = "لم يُعثر على تقاطعات." # mt
 tracecut.crossings_found = "عُثر على {n} من التقاطعات في {objects} من الكائنات." # mt
 options.show_tracecut = "إظهار TraceCut في التشغيل وقائمة الأدوات" # mt
 options.show_tracecut_desc = "يضم TraceCut أدوات راسمات القص. أوقف هذا لإخفائه إن كنت لا تقص." # mt
+tracecut.apply_desc = "يحسب النتيجة ويعرضها في المعاينة. لا يتغير الرسم." # mt
+tracecut.ok_desc = "يطبق النتيجة على الرسم في خطوة تراجع واحدة ويغلق النافذة." # mt
+tracecut.cancel_desc = "يغلق النافذة دون تغيير الرسم." # mt

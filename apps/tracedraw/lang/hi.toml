@@ -7363,3 +7363,6 @@ tracecut.no_crossings = "कोई क्रॉसिंग नहीं मि�
 tracecut.crossings_found = "{objects} वस्तुओं में {n} क्रॉसिंग मिलीं।" # mt
 options.show_tracecut = "Launch और Tools मेनू में TraceCut दिखाएँ" # mt
 options.show_tracecut_desc = "TraceCut में कटिंग प्लॉटर के उपकरण हैं। यदि आप कटिंग नहीं करते तो इसे बंद कर छिपाएँ।" # mt
+tracecut.apply_desc = "परिणाम निकालकर पूर्वावलोकन में दिखाएँ। ड्रॉइंग नहीं बदलती।" # mt
+tracecut.ok_desc = "परिणाम को एक पूर्ववत चरण में ड्रॉइंग पर लागू कर विंडो बंद करें।" # mt
+tracecut.cancel_desc = "ड्रॉइंग बदले बिना विंडो बंद करें।" # mt

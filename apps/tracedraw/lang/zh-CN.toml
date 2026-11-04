@@ -7363,3 +7363,6 @@ tracecut.no_crossings = "未找到交叉。" # mt
 tracecut.crossings_found = "在 {objects} 个对象中找到 {n} 处交叉。" # mt
 options.show_tracecut = "在“启动”和“工具”菜单中显示 TraceCut" # mt
 options.show_tracecut_desc = "TraceCut 包含刻字机工具。如果不做切割，可关闭此项以隐藏它。" # mt
+tracecut.apply_desc = "计算结果并在预览中显示。绘图不会改变。" # mt
+tracecut.ok_desc = "以一个撤销步骤将结果应用到绘图并关闭窗口。" # mt
+tracecut.cancel_desc = "关闭窗口，不更改绘图。" # mt

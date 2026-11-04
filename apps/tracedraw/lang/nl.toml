@@ -7363,3 +7363,6 @@ tracecut.no_crossings = "Geen kruisingen gevonden." # mt
 tracecut.crossings_found = "{n} kruisingen gevonden in {objects} objecten." # mt
 options.show_tracecut = "TraceCut tonen in Starten en het menu Extra" # mt
 options.show_tracecut_desc = "TraceCut bevat de gereedschappen voor snijplotters. Zet dit uit om het te verbergen als u niet snijdt." # mt
+tracecut.apply_desc = "Berekent het resultaat en toont het in het voorbeeld. De tekening verandert niet." # mt
+tracecut.ok_desc = "Past het resultaat in één ongedaan-maakstap toe op de tekening en sluit het venster." # mt
+tracecut.cancel_desc = "Sluit het venster zonder de tekening te wijzigen." # mt

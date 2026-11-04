@@ -388,8 +388,14 @@ fn buttons(ui: &mut Ui, enabled: bool) -> Option<Button> {
         ui.add_space(room.max(0.0));
         for (i, l) in labels.iter().enumerate() {
             let on = enabled || i == 2;
+            let tip = match i {
+                0 => crate::ui::tips::keyed("tracecut.apply"),
+                1 => crate::ui::tips::pair("dialog.ok", "tracecut.ok_desc"),
+                _ => crate::ui::tips::pair("dialog.cancel", "tracecut.cancel_desc"),
+            };
             if ui
                 .add_enabled(on, egui::Button::new(l).min_size(Vec2::new(w, 27.0)))
+                .rich_tip(tip)
                 .clicked()
             {
                 pressed = Some(match i {

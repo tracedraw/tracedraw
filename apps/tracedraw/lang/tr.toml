@@ -7363,3 +7363,6 @@ tracecut.no_crossings = "Kesişim bulunamadı." # mt
 tracecut.crossings_found = "{objects} nesnede {n} kesişim bulundu." # mt
 options.show_tracecut = "TraceCut'ı Başlat'ta ve Araçlar menüsünde göster" # mt
 options.show_tracecut_desc = "TraceCut kesim plotterları için araçları içerir. Kesim yapmıyorsanız gizlemek için kapatın." # mt
+tracecut.apply_desc = "Sonucu hesaplar ve önizlemede gösterir. Çizim değişmez." # mt
+tracecut.ok_desc = "Sonucu tek geri alma adımında çizime uygular ve pencereyi kapatır." # mt
+tracecut.cancel_desc = "Çizimi değiştirmeden pencereyi kapatır." # mt

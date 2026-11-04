@@ -7363,3 +7363,6 @@ tracecut.no_crossings = "Nebyla nalezena žádná křížení." # mt
 tracecut.crossings_found = "Nalezeno křížení: {n} v objektech: {objects}." # mt
 options.show_tracecut = "Zobrazit TraceCut ve Spustit a v nabídce Nástroje" # mt
 options.show_tracecut_desc = "TraceCut obsahuje nástroje pro řezací plotry. Pokud neřežete, vypnutím jej skryjete." # mt
+tracecut.apply_desc = "Vypočítá výsledek a zobrazí jej v náhledu. Kresba se nezmění." # mt
+tracecut.ok_desc = "Použije výsledek na kresbu v jednom kroku zpět a zavře okno." # mt
+tracecut.cancel_desc = "Zavře okno bez změny kresby." # mt

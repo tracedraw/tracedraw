@@ -7363,3 +7363,6 @@ tracecut.no_crossings = "কোনো ক্রসিং পাওয়া য�
 tracecut.crossings_found = "{objects}টি বস্তুতে {n}টি ক্রসিং পাওয়া গেছে।" # mt
 options.show_tracecut = "লঞ্চ ও টুলস মেনুতে TraceCut দেখান" # mt
 options.show_tracecut_desc = "TraceCut-এ কাটিং প্লটারের সরঞ্জাম আছে। আপনি না কাটলে লুকাতে এটি বন্ধ করুন।" # mt
+tracecut.apply_desc = "ফল হিসাব করে প্রিভিউতে দেখায়। ড্রয়িং বদলায় না।" # mt
+tracecut.ok_desc = "ফল একটি পূর্বাবস্থার ধাপে ড্রয়িংয়ে প্রয়োগ করে উইন্ডো বন্ধ করে।" # mt
+tracecut.cancel_desc = "ড্রয়িং না বদলে উইন্ডো বন্ধ করে।" # mt

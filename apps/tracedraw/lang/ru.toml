@@ -7363,3 +7363,6 @@ tracecut.no_crossings = "Пересечения не найдены." # mt
 tracecut.crossings_found = "Найдено пересечений: {n}, объектов: {objects}." # mt
 options.show_tracecut = "Показывать TraceCut в «Запуск» и меню «Инструменты»" # mt
 options.show_tracecut_desc = "TraceCut содержит инструменты для режущих плоттеров. Отключите, чтобы скрыть его, если вы не режете." # mt
+tracecut.apply_desc = "Вычисляет результат и показывает его в просмотре. Рисунок не меняется." # mt
+tracecut.ok_desc = "Применяет результат к рисунку за один шаг отмены и закрывает окно." # mt
+tracecut.cancel_desc = "Закрывает окно, не меняя рисунок." # mt
