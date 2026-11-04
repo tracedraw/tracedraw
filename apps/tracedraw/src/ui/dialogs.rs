@@ -6166,7 +6166,7 @@ fn paragraph_dialog(app: &mut App, ctx: &Context, which: &Dialog, close: &mut bo
                                 "step",
                                 &format!(
                                     "{} {}",
-                                    trim_number(u.from_mm(tracedraw_core::DEFAULT_TAB_STEP)),
+                                    trim_number(u.from_mm(tracedraw_core::default_tab_step())),
                                     u.short()
                                 ),
                             )],

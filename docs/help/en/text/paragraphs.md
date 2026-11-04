@@ -7,7 +7,8 @@ Each acts on the selected paragraph text. Their settings are also in the
 ## Tabs {#tabs}
 
 [[menu.text > menu.text.tabs]] sets where the <kbd>Tab</kbd> character jumps
-to. A paragraph without stops of its own has a left stop every 5 mm.
+to. A paragraph without stops of its own has a left stop every 12.7 mm (half
+an inch); [[options.default_tab_spacing]] in the Options changes that.
 
 1. Select the paragraph text, or click in the paragraphs to change.
 2. Choose [[menu.text > menu.text.tabs]].

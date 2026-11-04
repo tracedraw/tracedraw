@@ -366,6 +366,10 @@ pub struct Settings {
     /// many points.
     #[serde(default = "default_text_increment")]
     pub text_increment_pt: f64,
+    /// Options > Text > Paragraph Text: the distance between the default
+    /// tab stops of a paragraph with no stops of its own, mm (#1852).
+    #[serde(default = "default_tab_spacing")]
+    pub default_tab_mm: f64,
     /// Options > Tools > Pick: unfilled objects can be picked inside (on
     /// by default).
     #[serde(default = "default_true")]
@@ -778,6 +782,10 @@ fn default_precision() -> u32 {
 
 fn default_text_increment() -> f64 {
     1.0
+}
+
+fn default_tab_spacing() -> f64 {
+    tracedraw_core::DEFAULT_TAB_STEP
 }
 
 /// The view a drawing opens in (Options > Display, #1134).
@@ -1738,6 +1746,7 @@ impl Default for Settings {
             clip_frame: ClipFramePrefs::default(),
             backup: BackupPrefs::default(),
             text_increment_pt: default_text_increment(),
+            default_tab_mm: default_tab_spacing(),
             treat_all_filled: true,
             focus_visibility: default_focus_visibility(),
             focus_double_click: true,

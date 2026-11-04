@@ -1352,7 +1352,7 @@ pub struct ParagraphStyle {
     /// Drop cap height in lines; 0 = none.
     pub drop_cap_lines: u32,
     /// Tab stops, in order from the frame's left edge; empty = a left
-    /// stop every [`DEFAULT_TAB_STEP`] mm.
+    /// stop every [`default_tab_step`] mm (12.7 unless set otherwise).
     pub tabs: Vec<TabStop>,
     pub hyphenate: bool,
     /// Fit text to frame: scale the font so the text fills the frame height.
@@ -1383,8 +1383,37 @@ pub struct ParagraphStyle {
 }
 
 /// The distance between the default tab stops of a paragraph with no
-/// stops of its own, mm.
-pub const DEFAULT_TAB_STEP: f64 = 5.0;
+/// stops of its own, mm, unless Options > Text > Paragraph Text sets
+/// another ([`set_default_tab_step`]): half an inch, as the other
+/// program and `.cdr` files without stops have it.
+pub const DEFAULT_TAB_STEP: f64 = 12.7;
+
+/// The default tab spacing in use, as `f64` bits; 0 = [`DEFAULT_TAB_STEP`].
+static TAB_STEP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The distance between the default tab stops in use, mm (the setting
+/// "Default tab spacing", [`DEFAULT_TAB_STEP`] until it is set).
+pub fn default_tab_step() -> f64 {
+    let bits = TAB_STEP.load(std::sync::atomic::Ordering::Relaxed);
+    if bits == 0 {
+        DEFAULT_TAB_STEP
+    } else {
+        f64::from_bits(bits)
+    }
+}
+
+/// Use `mm` between the default tab stops from now on, kept within 1 to
+/// 100 mm; a value that is not a number restores [`DEFAULT_TAB_STEP`].
+/// Text laid out before keeps its layout until it is laid out again
+/// (the text engine's caches count the step in their keys).
+pub fn set_default_tab_step(mm: f64) {
+    let v = if mm.is_finite() {
+        mm.clamp(1.0, 100.0)
+    } else {
+        DEFAULT_TAB_STEP
+    };
+    TAB_STEP.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
 
 /// How the text after a tab sits against its stop (Text > Tabs and the
 /// tab ruler).

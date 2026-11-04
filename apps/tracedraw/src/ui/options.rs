@@ -382,6 +382,8 @@ impl OptionsSnapshot {
         }
         crate::i18n::set_language(&self.language);
         app.settings = self.settings;
+        // The default tab spacing acts at once while the dialog is open.
+        tracedraw_core::set_default_tab_step(app.settings.default_tab_mm);
         // The workspace first: choosing one sets the bars, which the
         // snapshot then puts back as they were.
         if app.workspace != self.workspace {
@@ -1999,6 +2001,31 @@ fn paragraph_text_tab(app: &mut App, ui: &mut Ui) {
             "menu.text.use_hyphenation",
             "menu.text.use_hyphenation_tip",
         ));
+    // Where a tab goes in a paragraph with no stops of its own (#1852).
+    grid("default_tab_spacing").show(ui, |ui| {
+        row_label(ui, &tr("options.default_tab_spacing"));
+        let u = app.units;
+        let mut shown = u.from_mm(app.settings.default_tab_mm);
+        if ui
+            .add(
+                crate::ui::field::NumField::new(&mut shown)
+                    .range(u.from_mm(1.0)..=u.from_mm(100.0))
+                    .max_decimals(3)
+                    .unit_mm(u.mm())
+                    .suffix(format!(" {}", u.short())),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "options.default_tab_spacing",
+                "options.default_tab_spacing_tip",
+            ))
+            .changed()
+        {
+            app.settings.default_tab_mm = u.to_mm(shown).clamp(1.0, 100.0);
+            tracedraw_core::set_default_tab_step(app.settings.default_tab_mm);
+            app.raster.borrow_mut().invalidate();
+        }
+        ui.end_row();
+    });
     // The pattern files, read when the tab shows a new folder.
     type Found = (
         Option<std::path::PathBuf>,
@@ -5360,6 +5387,61 @@ mod tests {
             "drawing changed a setting"
         );
         assert_eq!(app.settings.recent_font_count, 5);
+    }
+
+    /// Options > Text > Paragraph Text shows Default tab spacing, 12.7 mm
+    /// unless set; it is saved with the other settings (older settings
+    /// files without it give 12.7 mm) and given to the text engine when
+    /// the settings are applied (#1852).
+    #[test]
+    fn the_default_tab_spacing_is_a_saved_setting() {
+        let app = App::headless();
+        assert_eq!(app.settings.default_tab_mm, 12.7);
+        let mut s = app.settings.clone();
+        s.default_tab_mm = 8.0;
+        let json = serde_json::to_string(&s).expect("saved");
+        let back: crate::settings::Settings = serde_json::from_str(&json).expect("read");
+        assert_eq!(back.default_tab_mm, 8.0);
+        let mut v: serde_json::Value = serde_json::from_str(&json).expect("json");
+        v.as_object_mut().expect("object").remove("default_tab_mm");
+        let old: crate::settings::Settings = serde_json::from_value(v).expect("old file");
+        assert_eq!(old.default_tab_mm, 12.7);
+        // Its row on the Paragraph Text tab.
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.options_page = OptionsPage::Text;
+        app.options_text_tab = 1;
+        let label = tr("options.default_tab_spacing");
+        let mut seen = false;
+        for _ in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1600.0, 1000.0),
+                )),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                let mut close = false;
+                options_dialog(&mut app, ui.ctx(), &mut close);
+            });
+            out.textures_delta.clear();
+            seen = out.shapes.iter().any(|c| {
+                fn has(s: &egui::Shape, t: &str) -> bool {
+                    match s {
+                        egui::Shape::Text(x) => x.galley.text() == t,
+                        egui::Shape::Vec(v) => v.iter().any(|s| has(s, t)),
+                        _ => false,
+                    }
+                }
+                has(&c.shape, &label)
+            });
+        }
+        assert!(seen, "the setting's row is drawn");
+        // Applied with the settings (at its default, so that tests laying
+        // out text at the same time see the spacing they expect).
+        app.apply_runtime_settings();
+        assert_eq!(tracedraw_core::default_tab_step(), 12.7);
     }
 
     /// Text > Proofing > Autocorrect opens the Autocorrect tab.
