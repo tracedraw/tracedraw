@@ -18463,3 +18463,98 @@ fn frame_times_of_a_transparency_drag() {
         frame(&ctx, app, Vec::new(), Modifiers::NONE);
     });
 }
+
+/// Object > Convert to Curves clicked in the real menu bar converts the
+/// selected shape, as Ctrl+Q does (#1324): a rectangle and an ellipse,
+/// with the Pick tool or a drawing tool active, with clicks a frame
+/// apart or with each press and release arriving in one frame (as a
+/// slow browser can send them).
+#[test]
+fn the_menu_converts_to_curves_like_ctrl_q() {
+    let ellipse = |app: &mut App| {
+        app.new_shape(ShapeKind::Ellipse {
+            rect: Rect::new(20.0, 50.0, 60.0, 80.0),
+            arc: None,
+        })
+        .expect("ellipse")
+    };
+    for (case, (shape_kind, tool, one_frame)) in [
+        ("rect", Tool::Pick, false),
+        ("ellipse", Tool::Pick, false),
+        ("rect", Tool::Rectangle, false),
+        ("ellipse", Tool::Ellipse, true),
+        ("rect", Tool::Pick, true),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (ctx, mut app, rect) = setup();
+        let id = if shape_kind == "rect" {
+            rect
+        } else {
+            ellipse(&mut app)
+        };
+        app.set_tool(tool);
+        app.select(vec![id]);
+        for _ in 0..3 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        assert!(app.can_convert_to_curves(), "case {case}");
+        let click = |app: &mut App, at: Pos2| {
+            if one_frame {
+                frame(&ctx, app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+                frame(
+                    &ctx,
+                    app,
+                    vec![
+                        button(at, true, PointerButton::Primary, Modifiers::NONE),
+                        button(at, false, PointerButton::Primary, Modifiers::NONE),
+                    ],
+                    Modifiers::NONE,
+                );
+                for _ in 0..20 {
+                    frame(&ctx, app, Vec::new(), Modifiers::NONE);
+                }
+            } else {
+                click_at(&ctx, app, at, Modifiers::NONE);
+            }
+        };
+        let (_, texts) = painted(&ctx, &mut app);
+        assert!(
+            !texts.iter().any(|(t, _)| t.trim() == "Convert to Curves"),
+            "case {case}: no menu open yet"
+        );
+        let object = texts
+            .iter()
+            .find(|(t, _)| t.trim() == "Object")
+            .map(|(_, p)| *p)
+            .expect("the Object menu in the menu bar");
+        click(&mut app, object);
+        let (_, texts) = painted(&ctx, &mut app);
+        let item = texts
+            .iter()
+            .find(|(t, _)| t.trim() == "Convert to Curves")
+            .map(|(_, p)| *p)
+            .unwrap_or_else(|| panic!("case {case}: Convert to Curves in the open menu"));
+        assert!(
+            !matches!(
+                app.doc().find_shape(id).map(|s| &s.kind),
+                Some(ShapeKind::Path { .. })
+            ),
+            "case {case}: not converted before the click"
+        );
+        click(&mut app, item);
+        let s = app.doc().find_shape(id).expect("the converted object");
+        assert!(
+            matches!(s.kind, ShapeKind::Path { .. }),
+            "case {case}: {:?}",
+            s.kind
+        );
+        assert_eq!(
+            app.engine.undo_label(),
+            Some("Convert To Curves"),
+            "case {case}"
+        );
+        assert_eq!(app.selection, vec![id], "case {case}: still selected");
+    }
+}
