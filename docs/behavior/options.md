@@ -40,7 +40,7 @@ was changed on every tab (#633).
 | Page | Settings (defaults) |
 |---|---|
 | General | On start-up: Welcome Screen, Start a new document, Open last edited document; Show New Document dialog box (on); Show the splash screen at start-up (on); Undo levels, Regular (150) |
-| Display | Proof colors; Show tooltips (on); Hide bounding box for curve tools (off); Enable node tracking (off, see `pick-tool.md`); Full-screen preview: Show page border (on); Default action for mouse wheel: Zoom or Scroll; View when a drawing opens (below); Ruler calibration (below) |
+| Display | Proof colors; Show tooltips (on); Hide bounding box for curve tools (off); Enable node tracking (off, see `pick-tool.md`); Full-screen preview: Show page border (on); Default action for mouse wheel: Zoom or Scroll; View when a drawing opens (below); Ruler calibration (below); Screen margins (Android only, see `android.md`, #1917) |
 | Edit | Constrain angle (15 degrees: Ctrl while rotating); Drawing precision (3 decimal places: at most that many in the property bars' length fields, at least one, trailing zeros dropped; that many in the status bar) |
 | Nodes and Handles | Node size Small, Medium, Large (7, 9, 11 px); Handle size Small, Medium, Large (6, 8, 10 px, Large by default; the Pick tool's selection handles, #1285, see `pick-tool.md`); node shape per type (cusp square, smooth circle, symmetrical diamond); Show curve direction (an arrow after the first node, secondary colour); main colour (selected nodes and handles, blue) and secondary colour (red); Show unselected nodes with fill (on, Ctrl+Shift+G) |
 | clip frame | Auto-center new content: when it lies completely outside the frame (default), always, never; Show lines in empty clip frame frames (on, on screen) |

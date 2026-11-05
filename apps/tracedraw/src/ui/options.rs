@@ -984,6 +984,10 @@ fn display_page(app: &mut App, ui: &mut Ui) {
         }
     });
     calibration_rulers(ui, crate::settings::screen_points_per_inch(&app.settings));
+    // The phone's notch and rounded corners (#1917).
+    if crate::ui::screen_margins::OFFERED {
+        crate::ui::screen_margins::options_section(ui, &mut app.settings.screen_margins);
+    }
 }
 
 /// Two rulers drawn at the calibrated resolution, 100 mm and 4 inches

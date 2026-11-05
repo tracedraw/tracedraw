@@ -92,6 +92,7 @@ pub mod propbar;
 pub mod publish_pdf;
 pub mod rulers;
 pub mod save_as;
+pub mod screen_margins;
 pub mod shaping_docker;
 pub mod shelf_docker;
 pub mod slider;
@@ -262,7 +263,16 @@ pub fn root(app: &mut App, ui: &mut Ui) {
     let steps = app.step_merge_start();
     // Tab and Shift+Tab stay in the window that has the focus (#1258).
     tab_focus::begin(ui.ctx());
-    root_frame(app, ui);
+    // The interface keeps inside the screen's safe area: clear of the
+    // camera cutout and the rounded corners (#1917, screen_margins.rs).
+    let content = ui.ctx().content_rect();
+    if content != ui.ctx().viewport_rect() {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(content), |ui| {
+            root_frame(app, ui)
+        });
+    } else {
+        root_frame(app, ui);
+    }
     keynav::end_frame(ui.ctx());
     tab_focus::end(ui.ctx());
     // The steps a number field made one after another are one undo step.

@@ -33,7 +33,10 @@ import android.print.PrintManager;
 import android.os.Parcelable;
 import android.provider.OpenableColumns;
 import android.util.Log;
+import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
+import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
 
 import java.io.ByteArrayOutputStream;
@@ -108,6 +111,16 @@ public class TraceDrawActivity extends NativeActivity {
         super.onCreate(savedInstanceState);
         textInput = new TextInputView(this);
         addContentView(textInput, new ViewGroup.LayoutParams(1, 1));
+        // The screen's safe area, read again at every layout (a rotation,
+        // a resize) for the editor (#1917).
+        final View decor = getWindow().getDecorView();
+        decor.getViewTreeObserver().addOnGlobalLayoutListener(
+            new ViewTreeObserver.OnGlobalLayoutListener() {
+                @Override
+                public void onGlobalLayout() {
+                    readScreenInsets(decor);
+                }
+            });
         // The intent that started the app; not again when the system
         // recreates the activity (its documents are open already) or when
         // the app is brought back from the recent apps, which hands the
@@ -811,6 +824,69 @@ public class TraceDrawActivity extends NativeActivity {
             }
         }, Boolean.FALSE);
         return done != null && done.booleanValue();
+    }
+
+    // ----- the screen's safe area (#1917) -------------------------------------
+
+    /**
+     * The room the system bars and the camera cutout take on each side of
+     * the window and the radii of the screen's rounded corners, in pixels,
+     * as "top bottom left right top-left top-right bottom-right
+     * bottom-left"; empty before the first layout. Written on the UI
+     * thread at each layout, read by the editor's thread.
+     */
+    private volatile String screenInsets = "";
+
+    private void readScreenInsets(View decor) {
+        WindowInsets insets = decor.getRootWindowInsets();
+        if (insets == null) {
+            return;
+        }
+        int top, bottom, left, right;
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            // Bars that are hidden (the status bar of a full screen
+            // window) take no room.
+            android.graphics.Insets safe = insets.getInsets(
+                WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            top = safe.top;
+            bottom = safe.bottom;
+            left = safe.left;
+            right = safe.right;
+        } else {
+            top = insets.getSystemWindowInsetTop();
+            bottom = insets.getSystemWindowInsetBottom();
+            left = insets.getSystemWindowInsetLeft();
+            right = insets.getSystemWindowInsetRight();
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                android.view.DisplayCutout cutout = insets.getDisplayCutout();
+                if (cutout != null) {
+                    top = Math.max(top, cutout.getSafeInsetTop());
+                    bottom = Math.max(bottom, cutout.getSafeInsetBottom());
+                    left = Math.max(left, cutout.getSafeInsetLeft());
+                    right = Math.max(right, cutout.getSafeInsetRight());
+                }
+            }
+        }
+        int[] radii = new int[4];
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            int[] positions = {
+                android.view.RoundedCorner.POSITION_TOP_LEFT,
+                android.view.RoundedCorner.POSITION_TOP_RIGHT,
+                android.view.RoundedCorner.POSITION_BOTTOM_RIGHT,
+                android.view.RoundedCorner.POSITION_BOTTOM_LEFT,
+            };
+            for (int i = 0; i < 4; i++) {
+                android.view.RoundedCorner corner = insets.getRoundedCorner(positions[i]);
+                radii[i] = corner == null ? 0 : corner.getRadius();
+            }
+        }
+        screenInsets = top + " " + bottom + " " + left + " " + right + " "
+            + radii[0] + " " + radii[1] + " " + radii[2] + " " + radii[3];
+    }
+
+    /** The screen's safe area as last read (see screenInsets). */
+    public String getScreenInsets() {
+        return screenInsets;
     }
 
     // ----- accessibility settings (#1412) -------------------------------------

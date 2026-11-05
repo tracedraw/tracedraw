@@ -823,6 +823,10 @@ impl eframe::App for Shell {
         soft_keyboard::take_into(raw_input);
         pen::filter_raw_input(ctx, raw_input);
         interaction::release_chorded_left(ctx, raw_input);
+        // The screen's safe area on Android (#1917).
+        if let Some(app) = self.app.as_ref() {
+            ui::screen_margins::apply(ctx, &app.settings, raw_input);
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -953,6 +957,8 @@ impl eframe::App for Shell {
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
         ui::root(app, ui);
+        // The frame around the safe area (#1917).
+        ui::screen_margins::paint(ui.ctx(), &app.settings);
         // The emulator check's typing test (Android, soft_keyboard.rs).
         #[cfg(target_os = "android")]
         soft_keyboard::check::frame(app);

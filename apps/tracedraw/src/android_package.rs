@@ -396,6 +396,32 @@ mod tests {
         assert!(prefs.contains("parse_android(&a)"));
     }
 
+    /// The screen's safe area (#1917): the activity reads the bars, the
+    /// cutout and the rounded corners at each layout and answers them at
+    /// once in the order the settings reader parses; the editor asks for
+    /// them through the bridge.
+    #[test]
+    fn the_screen_safe_area_reaches_the_editor() {
+        assert!(ACTIVITY.contains("public String getScreenInsets()"));
+        assert!(ACTIVITY.contains("private volatile String screenInsets"));
+        assert!(BRIDGE.contains("jni_str!(\"getScreenInsets\")"));
+        for needed in [
+            "addOnGlobalLayoutListener",
+            "getRootWindowInsets()",
+            "WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout()",
+            "getDisplayCutout()",
+            "getSafeInsetTop()",
+            "getRoundedCorner(positions[i])",
+            "RoundedCorner.POSITION_TOP_LEFT",
+            "RoundedCorner.POSITION_BOTTOM_LEFT",
+        ] {
+            assert!(ACTIVITY.contains(needed), "the activity lacks {needed:?}");
+        }
+        let margins = include_str!("ui/screen_margins.rs");
+        assert!(margins.contains("crate::android::screen_insets::read()"));
+        assert!(margins.contains("pub const OFFERED: bool = crate::files::ANDROID;"));
+    }
+
     /// The on-screen keyboard (#1309): the bridge shows it with the
     /// activity's method, registers the native methods the activity
     /// declares with their signatures, and the view the keyboard types

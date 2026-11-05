@@ -603,6 +603,10 @@ pub struct Settings {
     /// The step of tick snapping, mm.
     #[serde(default = "default_path_tick")]
     pub path_tick_mm: f64,
+    /// Options > Display, Screen margins (Android, #1917): the interface
+    /// keeps clear of the camera cutout and the screen's rounded corners.
+    #[serde(default)]
+    pub screen_margins: crate::ui::screen_margins::ScreenMargins,
 }
 
 fn default_path_tick() -> f64 {
@@ -1842,6 +1846,7 @@ impl Default for Settings {
             show_text_frames: true,
             path_tick_snap: false,
             path_tick_mm: default_path_tick(),
+            screen_margins: crate::ui::screen_margins::ScreenMargins::default(),
         }
     }
 }

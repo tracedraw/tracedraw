@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Android: the camera cutout and the rounded corners of a phone's screen no longer hide the menu bar, the toolbox, the palette or the status bar. The interface keeps clear of the cutout, the system bars and the corners the system reports, and Options > Display > Screen margins adds margins of your own on each side, in dp, for phones that do not report their corners (with Same on all sides and Reset). The margins are filled with the theme's frame colour, Corner radius rounds the interface's corners to follow the glass, every change shows at once and the values stay when the screen turns (#1917).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).
