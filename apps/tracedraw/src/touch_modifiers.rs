@@ -27,6 +27,7 @@ pub enum ModKey {
 }
 
 impl ModKey {
+    #[cfg(test)]
     pub const ALL: [ModKey; 3] = [ModKey::Shift, ModKey::Ctrl, ModKey::Alt];
 
     /// The key of a Standard toolbar button's id.
@@ -40,6 +41,7 @@ impl ModKey {
     }
 
     /// The button's id on the Standard toolbar.
+    #[cfg(test)]
     pub fn item(self) -> &'static str {
         match self {
             ModKey::Shift => "shift",
@@ -88,6 +90,7 @@ impl TouchModifiers {
     }
 
     /// Whether any key is held.
+    #[cfg(test)]
     pub fn any(self) -> bool {
         self.shift || self.ctrl || self.alt
     }
@@ -127,7 +130,7 @@ impl TouchModifiers {
                 }
                 egui::Event::PointerButton { modifiers, .. }
                 | egui::Event::Key { modifiers, .. }
-                | egui::Event::MouseWheel { modifiers, .. } => *modifiers = *modifiers | held,
+                | egui::Event::MouseWheel { modifiers, .. } => *modifiers |= held,
                 _ => {}
             }
         }
