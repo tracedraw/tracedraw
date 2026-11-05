@@ -192,10 +192,20 @@ change marked `TraceDraw:` in a comment.
   `Force::Normalized` that the X11 and macOS changes send, no force once
   the tip lifts; a frame's events go out when the frame ends, and
   leaving proximity releases whatever is still held. A tool that comes
-  into proximity is given the default cursor shape
-  (`wp_cursor_shape_manager_v1`, when offered). Tilt, distance,
-  rotation, slider and wheel, and the pad's buttons, rings and strips,
-  are not read; over the window's frame the pen does nothing.
+  into proximity of a window shows the window's own cursor, as its
+  pointers do, and follows it when it changes (`WindowState::
+  tablet_tool_entered`, `apply_on_tablets`, called from `set_cursor`,
+  `set_custom_cursor` and `set_cursor_visible`): a named cursor through
+  `wp_cursor_shape_manager_v1` (`tablet_tool::cursor_shape_value`), a
+  custom image on a surface of the tool's own (`zwp_tablet_tool_v2.
+  set_cursor`), none while the window hides its cursor (TraceDraw draws
+  its tool cursors itself, so the pen showed the compositor's arrow on
+  top of them before); over the window's frame the default arrow. The
+  tilt is read and goes out with the pressure as the pen's altitude in
+  `Force::Calibrated { force, max_possible_force: 1, altitude_angle }`,
+  whose share egui-winit reads unchanged (`force / max_possible_force`).
+  Distance, rotation, slider and wheel, and the pad's buttons, rings and
+  strips, are not read; over the window's frame the pen does nothing.
   `src/tablet_tool.rs` depends on nothing in the crate, and TraceDraw's
   tests include and run it (`winit_tablet_tool::tests`).
 - Change: macOS hands the files opened from Finder (double click, Open

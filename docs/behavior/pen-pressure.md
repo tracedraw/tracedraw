@@ -50,8 +50,18 @@ each tool's events into what the other platforms send
 
 - The pen coming near the tablet over the window enters it, and moving
   away leaves it, as the mouse pointer does; its motion moves the
-  pointer. The compositor is asked for the default arrow as the pen's
-  cursor over the window (`wp_cursor_shape_manager_v1`, when offered).
+  pointer. Over the window the pen shows the window's own cursor and
+  follows its changes, as the mouse does: none where TraceDraw draws
+  the tool's cursor itself (the cross hair with the tool's badge, the
+  Shape tool's arrow, the hand), the system's resize, move or text
+  cursor through the cursor shape protocol (`wp_cursor_shape_manager_v1`,
+  when offered), a custom image on the pen's own cursor surface. Before
+  (#1841 follow-up) the compositor always showed its arrow for the pen.
+  Over the window's frame the pen shows the default arrow.
+- The pen's tilt is read and carried with its pressure as an altitude
+  (`Force::Calibrated`, whose share egui reads unchanged, so the
+  pressure is exactly as before); egui's touch events have no place for
+  it and no tool uses it yet.
 - The tip touching the tablet presses the primary button, lifting it
   releases it. The barrel buttons press the middle (`BTN_STYLUS`) and
   the secondary (`BTN_STYLUS2`) button, a third one (`BTN_STYLUS3`)
@@ -64,9 +74,9 @@ each tool's events into what the other platforms send
   releases any button the pen still held.
 - The protocol groups a tool's events into frames; a frame's place,
   pressure, presses and releases are sent together when it ends.
-- The pen's tilt, distance, rotation, slider and wheel, and the
-  tablet's own buttons, rings and strips (the pad) are not read: the
-  windowing layer's events have no place for them and no tool uses them.
+- The pen's distance, rotation, slider and wheel, and the tablet's own
+  buttons, rings and strips (the pad) are not read: the windowing
+  layer's events have no place for them and no tool uses them.
 - Over the window's frame (drawn by the windowing layer on GNOME) the
   pen does nothing; move or resize the window with the mouse.
 - A compositor without the tablet protocol (rare: GNOME, KDE and the

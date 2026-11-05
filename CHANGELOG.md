@@ -12,6 +12,8 @@ full, row-by-row status.
 
 - Browser on an iPad: the Apple Pencil draws, picks and taps the menus. Safari sends the Pencil no mouse events, only pen pointer events, which moved nothing, so the Pencil did nothing while a finger worked; a pen's pointer events now move the pointer and press and release it, with its pressure as before, and the page no longer scrolls or selects text under it (#1655).
 
+- Linux, Wayland: a graphics tablet's pen shows the tool's cursor over the drawing (the cross hair with the tool's badge, the Shape tool's arrow, the hand) instead of the system arrow on top of it, and follows the cursor as it changes, as the mouse does. The pen's tilt is now read too and goes with its pressure, which stays the same (#1841).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).
