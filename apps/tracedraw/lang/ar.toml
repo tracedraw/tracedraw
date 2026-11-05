@@ -7685,3 +7685,4 @@ toolbar.strikethrough_desc = "رسم خط يتوسط النص المحدد." # m
 menu.view.page_shadow = "ظل الصفحة" # mt
 options.show_page_shadow = "إظهار ظل الصفحة" # mt
 options.show_page_shadow_tip = "رسم الظل تحت الصفحة، بمعزل عن حدودها." # mt
+print.unprintable_warning = "يمتد العمل الفني إلى الحافة التي لا تستطيع هذه الطابعة طباعتها (المظللة): سيُقطع." # mt

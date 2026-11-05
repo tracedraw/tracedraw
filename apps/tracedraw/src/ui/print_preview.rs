@@ -87,6 +87,40 @@ fn sheets<'a>(app: &App, pv: &'a mut PrintPreview) -> &'a Document {
         .1
 }
 
+/// Whether the artwork of the pages on `sheet` (each page's clip frame
+/// on it, the part of its contents it shows) reaches into the edge `m`
+/// the printer cannot print on; marks outside the pages do not count
+/// (#1924).
+pub fn art_in_unprintable_edge(
+    sheet: &tracedraw_core::document::Page,
+    m: crate::printers::HardMargins,
+) -> bool {
+    use tracedraw_core::geometry::Rect;
+    let (w, h) = (sheet.size.width, sheet.size.height);
+    let printable = Rect::new(m.left, m.bottom, w - m.right, h - m.top);
+    let eps = 1e-6;
+    sheet.layers.iter().flat_map(|l| l.shapes.iter()).any(|s| {
+        let tracedraw_core::ShapeKind::ClipFrame { frame, contents } = &s.kind else {
+            return false;
+        };
+        let cell = s.transform.transform_rect_bbox(frame.bounds());
+        let Some(art) = contents
+            .iter()
+            .map(|c| s.transform.transform_rect_bbox(c.bounds()))
+            .reduce(|a, b| a.union(b))
+        else {
+            return false;
+        };
+        let shown = art.intersect(cell);
+        shown.width() > eps
+            && shown.height() > eps
+            && (shown.x0 < printable.x0 - eps
+                || shown.y0 < printable.y0 - eps
+                || shown.x1 > printable.x1 + eps
+                || shown.y1 > printable.y1 + eps)
+    })
+}
+
 /// The page shown: the sheet, or one plate of it.
 pub fn shown_page(
     doc: &Document,
@@ -571,6 +605,13 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 return;
             };
             let plate: String = inks.iter().map(|on| if *on { '1' } else { '0' }).collect();
+            // The edge the chosen printer cannot print on, as the system
+            // reports it (#1924); none for a file.
+            let hard = (pv.st.destination == 0)
+                .then(|| app.printer_margins.get(pv.st.printer.as_deref()))
+                .flatten()
+                .map(|m| m.for_sheet(page.size.width, page.size.height));
+            let cut = hard.is_some_and(|m| art_in_unprintable_edge(&page, m));
             let margin = 24.0;
             let fit = ((area.width() - 2.0 * margin) as f64 / page.size.width.max(1e-6))
                 .min((area.height() - 2.0 * margin) as f64 / page.size.height.max(1e-6))
@@ -799,6 +840,48 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                         4.0,
                     ));
                 }
+                // The printer's unprintable edge shaded, and a warning
+                // when artwork reaches into it (#1924).
+                if let Some(m) = hard {
+                    let k = zoom as f32;
+                    let inner = egui::Rect::from_min_max(
+                        egui::pos2(
+                            sheet_rect.left() + m.left as f32 * k,
+                            sheet_rect.top() + m.top as f32 * k,
+                        ),
+                        egui::pos2(
+                            sheet_rect.right() - m.right as f32 * k,
+                            sheet_rect.bottom() - m.bottom as f32 * k,
+                        ),
+                    );
+                    let shade = egui::Color32::from_rgba_unmultiplied(110, 110, 110, 110);
+                    let s = sheet_rect;
+                    for band in [
+                        egui::Rect::from_min_max(s.min, egui::pos2(s.max.x, inner.min.y)),
+                        egui::Rect::from_min_max(egui::pos2(s.min.x, inner.max.y), s.max),
+                        egui::Rect::from_min_max(
+                            egui::pos2(s.min.x, inner.min.y),
+                            egui::pos2(inner.min.x, inner.max.y),
+                        ),
+                        egui::Rect::from_min_max(
+                            egui::pos2(inner.max.x, inner.min.y),
+                            egui::pos2(s.max.x, inner.max.y),
+                        ),
+                    ] {
+                        if band.width() > 0.0 && band.height() > 0.0 {
+                            p.rect_filled(band, 0.0, shade);
+                        }
+                    }
+                    if cut {
+                        p.text(
+                            egui::pos2(s.left(), s.top() - 4.0),
+                            egui::Align2::LEFT_BOTTOM,
+                            tr("print.unprintable_warning"),
+                            egui::FontId::proportional(12.0),
+                            egui::Color32::from_rgb(255, 210, 120),
+                        );
+                    }
+                }
             });
             if let Some(d) = moved {
                 // Screen points over the sheet are `zoom` per millimetre;
@@ -896,6 +979,63 @@ fn render_sheet(
 mod tests {
     use super::*;
     use tracedraw_core::{Color, Fill, Shape, ShapeKind};
+
+    /// #1924: the canvas's Printable Area and Print Preview use the
+    /// printer's hard margins as the system reports them, 5 mm only
+    /// until then or when it does not say; the preview warns when the
+    /// artwork reaches into the edge the printer cannot print.
+    #[test]
+    fn the_printable_area_is_the_printers_own() {
+        use crate::printers::HardMargins;
+        use tracedraw_core::geometry::Rect;
+        let mut app = App::headless();
+        let page = Rect::new(0.0, 0.0, 210.0, 297.0);
+        app.settings.printing.printer = Some("Office Laser".into());
+        let laser = HardMargins {
+            left: 4.0,
+            right: 6.0,
+            top: 3.0,
+            bottom: 12.0,
+        };
+        // Not read yet: the 5 mm guess.
+        app.printer_margins.set(Some("Office Laser"), None);
+        assert_eq!(
+            crate::canvas::printable_rect(&app, page),
+            Rect::new(5.0, 5.0, 205.0, 292.0)
+        );
+        app.printer_margins.set(Some("Office Laser"), Some(laser));
+        assert_eq!(app.printable_margins(210.0, 297.0), (laser, true));
+        assert_eq!(
+            crate::canvas::printable_rect(&app, page),
+            Rect::new(4.0, 12.0, 204.0, 294.0)
+        );
+        // A page on its side: the margins turned with it.
+        let side = Rect::new(0.0, 0.0, 297.0, 210.0);
+        assert_eq!(
+            crate::canvas::printable_rect(&app, side),
+            Rect::new(12.0, 6.0, 294.0, 206.0)
+        );
+
+        // Print Preview: a frame 2 mm inside the page reaches into the
+        // 4 mm left edge; one 15 mm inside does not.
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(2.0, 20.0, 100.0, 100.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        let st = PrintState::default();
+        let sheets = print_sheets(&app, &st);
+        let sheet = &sheets.pages[0];
+        assert!(art_in_unprintable_edge(sheet, laser));
+        app.run(tracedraw_core::Command::TransformShapes {
+            shapes: vec![id],
+            transform: tracedraw_core::geometry::Affine::translate((13.0, 0.0)),
+        });
+        let sheets = print_sheets(&app, &st);
+        assert!(!art_in_unprintable_edge(&sheets.pages[0], laser));
+    }
 
     #[test]
     fn plates_split_the_sheet_by_ink() {

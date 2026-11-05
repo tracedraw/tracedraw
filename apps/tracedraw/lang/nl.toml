@@ -7685,3 +7685,4 @@ toolbar.strikethrough_desc = "Haal de geselecteerde tekst door." # mt
 menu.view.page_shadow = "Paginaschaduw" # mt
 options.show_page_shadow = "Paginaschaduw tonen" # mt
 options.show_page_shadow_tip = "Tekent de schaduw onder de pagina, los van de paginarand." # mt
+print.unprintable_warning = "Het ontwerp reikt tot in de rand die deze printer niet kan afdrukken (gearceerd): het wordt afgesneden." # mt

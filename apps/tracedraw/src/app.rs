@@ -1446,6 +1446,9 @@ pub struct App {
     pub rasterize_complex_effects: bool,
     pub show_bleed: bool,
     pub show_printable_area: bool,
+    /// The printers' hard margins, read off the interface's thread: the
+    /// printable area on the canvas and in Print Preview (#1924).
+    pub printer_margins: crate::printers::MarginsCache,
     /// View > Mask Outside Page: an opaque colour is drawn over what
     /// lies outside the page, with the page border over the objects, so
     /// the page shows as it will print while every object stays editable
@@ -2748,6 +2751,7 @@ impl App {
             rasterize_complex_effects: true,
             show_bleed: false,
             show_printable_area: false,
+            printer_margins: Default::default(),
             mask_outside_page: false,
             show_pixel_grid: true,
             show_baseline_grid: false,
@@ -8910,6 +8914,23 @@ impl App {
             self.page = p.id;
             self.selection.clear();
             self.fit_pending = true;
+        }
+    }
+
+    /// View > Printable Area's margins on a page `width` x `height` mm:
+    /// the hard margins of the printer printed to last (Options >
+    /// Printing keeps it), else of the system's default printer, as the
+    /// system reports them; 5 mm a side while they are read or when it
+    /// does not say (#1924). Whether they are the printer's own.
+    pub fn printable_margins(
+        &self,
+        width: f64,
+        height: f64,
+    ) -> (crate::printers::HardMargins, bool) {
+        let printer = self.settings.printing.printer.as_deref();
+        match self.printer_margins.get(printer) {
+            Some(m) => (m.for_sheet(width, height), true),
+            None => (crate::printers::HardMargins::FALLBACK, false),
         }
     }
 

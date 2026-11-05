@@ -7685,3 +7685,4 @@ toolbar.strikethrough_desc = "Barra il testo selezionato." # mt
 menu.view.page_shadow = "Ombra della pagina" # mt
 options.show_page_shadow = "Mostra l'ombra della pagina" # mt
 options.show_page_shadow_tip = "Disegna l'ombra sotto la pagina, a parte il suo bordo." # mt
+print.unprintable_warning = "Il disegno arriva al bordo che questa stampante non può stampare (ombreggiato): verrà tagliato." # mt

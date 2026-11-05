@@ -187,6 +187,24 @@ over its settings), fills the window with the sheets exactly as Print
 sends them: the imposition, the marks, Mirror and Invert, built by the
 same function (`export::print_sheets`).
 
+- The printer's unprintable edge (#1924): with a printer chosen (not a
+  file), the strip along each side of the sheet that the printer cannot
+  print on, its hard margins as the system reports them, is shaded
+  grey; when the artwork of a page (what its frame on the sheet shows,
+  marks aside) reaches into it, a warning over the sheet says it will
+  be cut off (`print_preview::art_in_unprintable_edge`). The margins
+  are read once a printer, off the interface's thread (`printers.rs`,
+  `MarginsCache`): on Windows the printer's default paper and its
+  printable area (`PageSettings.PrintableArea`, hundredths of an inch,
+  the paper upright; `parse_windows_margins`), through CUPS (Linux,
+  macOS) the PPD's `*ImageableArea` inside its `*PaperDimension` for the
+  paper `lpoptions` says the printer is set to, else the PPD's default
+  (`parse_ppd_margins`); a queue with no PPD (driverless) or a printer
+  that does not say gets no shading. A sheet wider than tall takes the
+  margins turned a quarter counterclockwise: its top is the paper's
+  left edge (`HardMargins::for_sheet`). The browser and Android have
+  none.
+
 - Top bar: Print (prints these settings and closes), the sheet shown with previous and next (Page Up, Page Down), Zoom from 25 to 400 % of the fitted size
   with Fit, the printer, and Close (Esc) at the right end (#534). The
   bar wraps onto a second row when the window is too narrow for it.

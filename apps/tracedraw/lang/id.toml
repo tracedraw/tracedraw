@@ -7685,3 +7685,4 @@ toolbar.strikethrough_desc = "Mencoret teks yang dipilih." # mt
 menu.view.page_shadow = "Bayangan halaman" # mt
 options.show_page_shadow = "Tampilkan bayangan halaman" # mt
 options.show_page_shadow_tip = "Menggambar bayangan di bawah halaman, terpisah dari batasnya." # mt
+print.unprintable_warning = "Gambar mencapai tepi yang tidak dapat dicetak printer ini (diarsir): bagian itu akan terpotong." # mt

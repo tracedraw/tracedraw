@@ -7685,3 +7685,4 @@ toolbar.strikethrough_desc = "選択したテキストに取り消し線を引�
 menu.view.page_shadow = "ページの影" # mt
 options.show_page_shadow = "ページの影を表示" # mt
 options.show_page_shadow_tip = "ページの下に影を描きます（境界とは別）。" # mt
+print.unprintable_warning = "図柄がこのプリンターで印刷できない縁（網掛け部分）にかかっています。その部分は切れます。" # mt

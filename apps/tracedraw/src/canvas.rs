@@ -445,6 +445,21 @@ pub(crate) fn ime_at_caret(app: &App, painter: &Painter, top: Pos2, bottom: Pos2
     );
 }
 
+/// The printable part of the page `shown` (page space, y up): inside
+/// the printer's hard margins (see [`App::printable_margins`]).
+pub fn printable_rect(
+    app: &App,
+    shown: tracedraw_core::geometry::Rect,
+) -> tracedraw_core::geometry::Rect {
+    let (m, _) = app.printable_margins(shown.width(), shown.height());
+    tracedraw_core::geometry::Rect::new(
+        shown.x0 + m.left,
+        shown.y0 + m.bottom,
+        (shown.x1 - m.right).max(shown.x0 + m.left),
+        (shown.y1 - m.top).max(shown.y0 + m.bottom),
+    )
+}
+
 /// The window's background, the page with its shadow and border, bleed
 /// and printable area, the grids, and the objects rendered (`preview`
 /// moves the selection while it is dragged).
@@ -570,8 +585,9 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         }
     }
     if app.show_printable_area {
-        // Printable area: the page minus the printer's typical 5 mm hardware margin.
-        let r = view.rect_to_screen(shown.inflate(-5.0, -5.0));
+        // Printable area: the page minus the printer's hard margins, as
+        // the system reports them, else a typical 5 mm (#1924).
+        let r = view.rect_to_screen(printable_rect(app, shown));
         let dash = 4.0;
         for (a, b) in [
             (r.left_top(), r.right_top()),

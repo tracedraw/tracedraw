@@ -13,6 +13,14 @@
   desktop keeps its edge without the shadow (#1906; also in Options >
   Page Size and kept with the view's preferences and in workspaces;
   `canvas::tests::the_page_border_and_its_shadow_are_separate_options`).
+  View > Page > Page Border hides the border and the shadow.
+- View > Page > Printable Area dashes the part of the page the printer
+  can print: inside the hard margins of the printer printed to last
+  (else the system's default printer), as the system reports them (see
+  printing.md, Print Preview), turned with a page wider than tall; a
+  typical 5 mm a side only while they are read or when the system does
+  not say (#1924,
+  `print_preview::tests::the_printable_area_is_the_printers_own`).
 - View > Mask Outside Page, right after the view modes (Pixels; off by
   default, kept with the other view settings): an opaque colour covers
   everything outside the page

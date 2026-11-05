@@ -7685,3 +7685,4 @@ toolbar.strikethrough_desc = "Den ausgewählten Text durchstreichen." # mt
 menu.view.page_shadow = "Seitenschatten" # mt
 options.show_page_shadow = "Seitenschatten anzeigen" # mt
 options.show_page_shadow_tip = "Zeichnet den Schatten unter der Seite, unabhängig vom Seitenrand." # mt
+print.unprintable_warning = "Die Grafik reicht in den Rand, den dieser Drucker nicht drucken kann (schattiert): sie wird abgeschnitten." # mt

@@ -7685,3 +7685,4 @@ toolbar.strikethrough_desc = "Přeškrtne vybraný text." # mt
 menu.view.page_shadow = "Stín stránky" # mt
 options.show_page_shadow = "Zobrazit stín stránky" # mt
 options.show_page_shadow_tip = "Kreslí stín pod stránkou, nezávisle na jejím okraji." # mt
+print.unprintable_warning = "Kresba zasahuje do okraje, který tato tiskárna nevytiskne (stínovaný): bude oříznuta." # mt

@@ -7685,3 +7685,4 @@ toolbar.strikethrough_desc = "Risca o texto selecionado." # mt
 menu.view.page_shadow = "Sombra da página" # mt
 options.show_page_shadow = "Mostrar a sombra da página" # mt
 options.show_page_shadow_tip = "Desenha a sombra sob a página, à parte da borda." # mt
+print.unprintable_warning = "O desenho chega à borda que esta impressora não imprime (sombreada): ele será cortado." # mt

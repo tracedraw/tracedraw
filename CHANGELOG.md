@@ -80,6 +80,8 @@ full, row-by-row status.
 
 - View > Page > Page Shadow: the page's shadow is an option of its own beside Page Border, so the shadow can go while the border stays (a white page on a white desktop keeps its edge) or the other way round. Page Border hid both (#1906).
 
+- View > Page > Printable Area uses the printer's own hard margins (Windows: the printer's printable area; Linux and macOS: the CUPS PPD's imageable area for the paper set), side by side as the printer reports them, instead of a fixed 5 mm, which stays only when the system does not say. Print Preview shades the edge the chosen printer cannot print and warns when the artwork reaches into it (#1924).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).
