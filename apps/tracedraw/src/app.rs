@@ -598,7 +598,14 @@ pub enum Drag {
         index: usize,
         pivot: Point,
         guide: tracedraw_core::document::Guide,
+        /// The guideline as the press found it, and the angle (degrees)
+        /// of the pressed handle seen from the pivot.
+        start: tracedraw_core::document::Guide,
+        grab: f64,
     },
+    /// Dragging the rotation centre of the guideline in rotate mode
+    /// (#1850); the guideline stays where it is.
+    GuidePivot,
     /// Dragging the ruler origin out of the corner between the rulers.
     RulerOrigin {
         pos: Point,

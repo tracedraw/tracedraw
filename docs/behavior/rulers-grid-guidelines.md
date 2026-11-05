@@ -162,7 +162,14 @@ stand for a distance in the world (`drawing_scale.rs`):
 - A click on the only selected guideline shows its rotation handles: a
   pivot where it was clicked and two curved arrows 70 px along it.
   Dragging an arrow turns the guideline about the pivot in whole degrees;
-  0 and 180 make it horizontal, 90 and 270 vertical.
+  0 and 180 make it horizontal, 90 and 270 vertical. The pivot (the
+  pointer shows the move arrows over it) can be dragged anywhere: it
+  snaps as a drawing tool's point does (to objects' nodes and other
+  snap points when snapping to objects is on, the page, the grid and
+  guidelines, the guideline itself included), the guideline staying
+  where it is; a guideline turned about a pivot off it keeps its
+  distance from the pivot. A click on the pivot keeps the handles
+  (#1850, `guides::tests::a_guides_rotation_centre_drags_and_snaps_to_a_node`).
 - Locked guidelines can be selected but not moved, rotated, nudged,
   deleted or edited: a click or double click on a locked guideline never
   shows its rotation handles, and locking one that shows them hides them;

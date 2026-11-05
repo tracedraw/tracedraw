@@ -2036,7 +2036,10 @@ impl App {
             self.symmetry_drag_to(p, mods.ctrl || mods.command);
             return;
         }
-        if matches!(self.drag, Drag::MoveGuide { .. } | Drag::RotateGuide { .. }) {
+        if matches!(
+            self.drag,
+            Drag::MoveGuide { .. } | Drag::RotateGuide { .. } | Drag::GuidePivot
+        ) {
             self.drag_guide_to(p);
             return;
         }
@@ -3198,7 +3201,7 @@ impl App {
             | Drag::TextChars { .. }
             | Drag::TextSpacing { .. } => {}
             Drag::NewGuide { .. } => self.finish_guide_drag(),
-            d @ (Drag::MoveGuide { .. } | Drag::RotateGuide { .. }) => {
+            d @ (Drag::MoveGuide { .. } | Drag::RotateGuide { .. } | Drag::GuidePivot) => {
                 // Released outside the window (no pointer): dropped off.
                 let at = self
                     .pointer_page

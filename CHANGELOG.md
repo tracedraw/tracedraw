@@ -12,6 +12,8 @@ full, row-by-row status.
 
 - Android: palm rejection. While a pen touches the screen or hovers over it, the hand resting on the screen no longer draws, picks or pans; a hand that landed before the pen is let go of as the pen comes down. With no pen near, fingers draw, pan and pinch as before. Options > Tools > Freehand/Bezier, "Ignore the hand while drawing with a pen", on by default, turns it off (#1832).
 
+- Guidelines: the rotation centre of a guideline in rotate mode can be dragged, and it snaps to objects' nodes and the other snap points, the page, the grid and guidelines, so an angled guideline can be turned about a chosen point of the drawing. It stayed where the guideline was clicked. A guideline turned about a centre off it keeps its distance from the centre (#1850).
+
 - Pen and Bezier tools: Redo of a close ends the curve. After a closed curve was reopened with Undo and closed again by a click on its first node, undoing that close and redoing it closed the curve but left the Pen drawing on from the first node, so the next click turned the closed curve into another shape. The redone close now ends the line as a close by hand does: the curve stays closed and selected, and the next click starts a new curve (#1846).
 
 - QR codes: every kind of content can be picked in Properties. Only URL and Contact (vCard) could be chosen: Email, Phone number, SMS, Text and Location share no field with a URL, so picking one made empty content, which cannot be encoded, and the kind went back. The kind picked now stays with its fields ready to fill in, while the object keeps its code until they make content (#1845).
