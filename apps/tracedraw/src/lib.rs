@@ -131,6 +131,7 @@ mod ops2;
 mod package;
 mod painterly_tool;
 mod palette;
+mod palm;
 mod pen;
 mod pen_look;
 mod perspective_draw;

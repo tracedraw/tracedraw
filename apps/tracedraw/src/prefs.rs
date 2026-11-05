@@ -649,6 +649,10 @@ pub struct CurvePrefs {
     /// whose platform gives no pressure, draw an even width either way.
     #[serde(default = "yes")]
     pub pen_pressure: bool,
+    /// Android: while a pen touches the screen or hovers over it, the
+    /// hand's touches are ignored (palm rejection, #1832, `palm.rs`).
+    #[serde(default = "yes")]
+    pub pen_ignores_hand: bool,
 }
 
 /// The modifier key that constrains the angle while drawing curves.
@@ -691,6 +695,7 @@ impl Default for CurvePrefs {
             pen_auto_add_delete: true,
             constrain_key: ConstrainKey::Ctrl,
             pen_pressure: true,
+            pen_ignores_hand: true,
         }
     }
 }

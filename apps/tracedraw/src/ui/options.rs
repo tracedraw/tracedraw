@@ -4329,6 +4329,16 @@ fn curves_page(app: &mut App, ui: &mut Ui) {
                 "options.pen_pressure_tip",
             ));
         ui.end_row();
+        // Palm rejection: Android tells a pen from a finger (#1832).
+        if crate::files::ANDROID {
+            ui.label("");
+            ui.checkbox(&mut c.pen_ignores_hand, tr("options.pen_ignores_hand"))
+                .rich_tip(crate::ui::tips::pair(
+                    "options.pen_ignores_hand",
+                    "options.pen_ignores_hand_tip",
+                ));
+            ui.end_row();
+        }
         row_label(ui, &tr("options.constrain_key"));
         crate::ui::tips::tip_over(
             ui,

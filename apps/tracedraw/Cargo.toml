@@ -96,6 +96,9 @@ eframe = { workspace = true, features = ["wgpu", "android-native-activity"] }
 android-activity = { version = "=0.6.1", features = ["native-activity"] }
 android_logger = "=0.15.1"
 jni = "=0.22.4"
+# The tool of each pointer (finger, pen) for palm rejection (#1832,
+# palm.rs): the patched winit eframe uses asks the app about each one.
+winit = { version = "0.30", default-features = false }
 
 # Where the pointer is while files are dragged over the window: the
 # system drag sends no pointer moves (#1142).

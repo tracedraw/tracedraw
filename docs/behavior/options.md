@@ -89,8 +89,9 @@ the Pan tool, zoom out or context menu (at first,
 `settings.pan_right_click_out`)), Freehand/Bézier (Freehand
 smoothing, 0 to 100, 50 by default; Join and close within, 1 to 50
 screen pixels, 5 by default; Graphics tablet: pen pressure sets the
-width of Freehand and Brush Strokes drags, on; see `curve-tools.md` and
-`pen-pressure.md`), Shape Recognition (recognition and smoothing levels,
+width of Freehand and Brush Strokes drags, on; on Android, Ignore the
+hand while drawing with a pen, on (palm rejection, `android.md`); see
+`curve-tools.md` and `pen-pressure.md`), Shape Recognition (recognition and smoothing levels,
 off to highest, as on the tool's property bar), Rectangle (Rectangle
 corners: style, the four sizes, Edit corners together; Scale corners:
 Relative corner scaling, off by default so that new rectangles keep

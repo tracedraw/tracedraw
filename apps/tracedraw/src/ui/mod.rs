@@ -326,6 +326,8 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     crate::app::set_drawing_scale(app.doc().metadata.rulers.world_per_page());
     // A phone's screen gets the phone layout (#1301).
     phone::update(&ctx);
+    // Options > Tools > Curves: palm rejection on Android (#1832).
+    crate::palm::set_enabled(app.settings.curves.pen_ignores_hand);
     apply_ui_scale(&ctx, crate::settings::effective_ui_size(&app.settings));
     crate::theme::set_button_sizes(app.settings.button_size, app.settings.toolbox_button_size);
     apply_theme(&ctx, &crate::settings::effective_theme(&app.settings));
