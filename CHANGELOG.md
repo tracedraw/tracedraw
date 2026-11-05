@@ -26,6 +26,8 @@ full, row-by-row status.
 
 - Opening `.cdr`: centre and decimal tab stops come in as centre and decimal stops (they opened as left stops), and saving writes them back as such (versions 16 and later). Paragraph text frames of two or more columns in files of versions 7 to 15 open with their text and their columns; they were dropped with "2 objects could not be read" (#1852).
 
+- Saving to `.cdr`: objects on a master layer shown behind every page are written once, on the master page, as the program that reads these files keeps them; the file reopens with them on the master layer. They were copied onto every page, so the reopened file had a copy on each page that had to be edited page by page. Master layers in front of the pages or on odd or even pages only are still written as copies on each page (#1775).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).

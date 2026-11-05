@@ -6883,9 +6883,12 @@ fn a_hidden_object_casts_no_shadow_picture() {
     }
 }
 
-/// Objects on master layers are on every page they show on, behind or in
-/// front of the page's own objects as drawn (#1132): no file seen has
-/// objects on the master page, so each page gets a layer of copies.
+/// Objects on master layers show on every page they show on, behind or in
+/// front of the page's own objects as drawn (#1132). A master layer
+/// behind every page goes once onto the master page's desktop layer, as
+/// the files of #1775 hold such objects, and reopens as a master layer
+/// (#1775); one in front of the pages (no file seen) still goes to each
+/// page as a layer of copies.
 #[test]
 fn master_layer_objects_are_written_on_every_page_in_their_order() {
     let square = |ids: &mut tracedraw_core::id::IdSource, x: f64| {
@@ -6933,13 +6936,39 @@ fn master_layer_objects_are_written_on_every_page_in_their_order() {
                 .filter(|l| !l.shapes.is_empty())
                 .map(|l| l.name.as_str())
                 .collect();
-            assert_eq!(names, ["Under", "Ink", "Over"], "{v}: page {}", i + 1);
+            assert_eq!(names, ["Ink", "Over"], "{v}: page {}", i + 1);
             for l in &p.layers {
                 all.extend(l.shapes.iter().map(|s| s.bounds().x0.round() as i64));
             }
         }
+        // The master layer behind the pages: once, on the master page.
+        assert_eq!(
+            back.master.len(),
+            1,
+            "{v}: {:?}",
+            back.master
+                .iter()
+                .map(|l| (l.name.clone(), l.shapes.len()))
+                .collect::<Vec<_>>()
+        );
+        let under = &back.master[0];
+        assert_eq!(under.name, "Under", "{v}");
+        assert_eq!(under.scope, tracedraw_core::MasterScope::All, "{v}");
+        assert!(!under.in_front, "{v}");
+        all.extend(under.shapes.iter().map(|s| s.bounds().x0.round() as i64));
         all.sort();
-        assert_eq!(all, [0, 20, 40, 40, 60, 60], "{v}");
+        assert_eq!(all, [0, 20, 40, 60, 60], "{v}");
+        // Every page draws it behind its own objects.
+        for p in &back.pages {
+            let drawn: Vec<&str> = back
+                .layers_for_page(p.id)
+                .expect("page")
+                .iter()
+                .filter(|l| !l.shapes.is_empty())
+                .map(|l| l.name.as_str())
+                .collect();
+            assert_eq!(drawn, ["Under", "Ink", "Over"], "{v}");
+        }
     }
     // The drawing itself is left alone.
     assert_eq!(doc.master.len(), 2);

@@ -776,7 +776,9 @@ pub(crate) fn parse_document_kept(
         page.layers.reverse();
         if is_master && has_pages {
             master_guides.append(&mut ctx.guides);
-            for mut layer in page.layers {
+            // The master page's entries for the pages' own layers (before
+            // version 14) hold nothing: no master layer of their own.
+            for mut layer in page.layers.into_iter().filter(|l| !l.shapes.is_empty()) {
                 layer.scope = tracedraw_core::document::MasterScope::All;
                 layer.in_front = false;
                 doc.master.push(layer);
