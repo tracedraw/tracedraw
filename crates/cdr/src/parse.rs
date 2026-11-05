@@ -2169,9 +2169,14 @@ impl<'a> Ctx<'a> {
                 );
             }
         }
-        // A frame of several columns (its record's settings, version 16+).
+        // A frame of several columns (its record's settings, version 16+,
+        // or its frame block before).
         if kind_code == OBJ_PARAGRAPH_TEXT {
-            let columns = parsed.frame_style.as_deref().and_then(text::frame_columns);
+            let columns = parsed
+                .frame_style
+                .as_deref()
+                .and_then(text::frame_columns)
+                .or(parsed.columns);
             if let (Some((n, gap)), ShapeKind::Text { para, .. }) = (columns, &mut kind) {
                 para.columns = n;
                 para.gutter = gap * 25.4 / 254000.0;
@@ -8904,6 +8909,48 @@ pub(crate) mod tests {
         }
         t.push(0); // no path
         t
+    }
+
+    /// A paragraph text frame of two columns (#1852: the fourth and
+    /// fifth frames of the combination files, versions 7 to 15): the
+    /// frame's block holds the column count (at byte 4, at byte 8 from
+    /// version 15) and a width and gutter for each column, so it is 8
+    /// bytes longer a column. Read as one column, the paragraph count came
+    /// from the wrong place and the frames were dropped as empty.
+    #[test]
+    fn a_two_column_frame_of_versions_9_to_15_keeps_its_text() {
+        let style = || Style7 {
+            chars: 3,
+            font: None,
+            flags: None,
+            size_units: None,
+            fill: None,
+        };
+        for v in 9u16..=15 {
+            let mut t = txsm7(v, false, &[style()], "abc");
+            let start = if v >= 15 { 105 } else { 96 };
+            let base = if v >= 15 {
+                40
+            } else if v >= 14 {
+                36
+            } else {
+                34
+            };
+            let at = start + if v >= 15 { 8 } else { 4 };
+            t[at..at + 4].copy_from_slice(&2u32.to_le_bytes());
+            // The second column's width and gutter.
+            let cols = start + base;
+            t.splice(cols..cols, i32s(&[780_380, 288_736]));
+            let txsm = text::read_txsm(&t, v, 0, &mut |w| panic!("{v}: {w}")).expect("txsm");
+            let text: String = txsm
+                .paragraphs
+                .iter()
+                .flat_map(|p| p.runs.iter().map(|r| r.text.clone()))
+                .collect();
+            assert_eq!(text, "abc", "{v}");
+            // Two columns, the gutter after the first (zero here).
+            assert_eq!(txsm.columns.map(|c| c.0), Some(2), "{v}");
+        }
     }
 
     fn text_doc(

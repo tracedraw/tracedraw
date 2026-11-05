@@ -24,6 +24,8 @@ full, row-by-row status.
 
 - Opening `.cdr` version 7: the guidelines every page shows come in; that version keeps them in a chunk of their own, which was not read, so the file opened without guidelines (#1775).
 
+- Opening `.cdr`: centre and decimal tab stops come in as centre and decimal stops (they opened as left stops), and saving writes them back as such (versions 16 and later). Paragraph text frames of two or more columns in files of versions 7 to 15 open with their text and their columns; they were dropped with "2 objects could not be read" (#1852).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).
