@@ -5025,7 +5025,7 @@ mod tests {
         }
         for key in ["options.show_splash", "options.hardware_acceleration"] {
             let label = tr(key);
-            assert!(texts.iter().any(|t| *t == label), "{label:?} in {texts:?}");
+            assert!(texts.contains(&label), "{label:?} in {texts:?}");
         }
     }
 
