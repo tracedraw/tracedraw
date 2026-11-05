@@ -33,7 +33,7 @@ fn length(ui: &mut Ui, app: &App, mm: f64, min_mm: f64) -> Option<f64> {
     let r = ui.add(
         crate::ui::field::NumField::new(&mut v)
             .range(units.from_mm(min_mm)..=units.from_mm(5000.0))
-            .fixed_decimals(app.settings.precision.min(10) as usize)
+            .length_decimals(app.settings.precision.min(10) as usize)
             .suffix(format!(" {}", units.short()))
             .width(64.0),
     );

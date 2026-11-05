@@ -19575,7 +19575,7 @@ fn property_bar_values_commit_and_stay_after_a_click_outside() {
         Leave::ClickCanvas,
     ] {
         let (ctx, mut app, id) = setup();
-        type_in_bar(&ctx, &mut app, "50.000 mm", "80", leave);
+        type_in_bar(&ctx, &mut app, "50.0 mm", "80", leave);
         let b = app.doc().find_shape(id).expect("rect").bounds();
         assert!(near(b.width(), 80.0), "{leave:?}: width {}", b.width());
         assert!(near(b.height(), 30.0), "{leave:?}: height {}", b.height());

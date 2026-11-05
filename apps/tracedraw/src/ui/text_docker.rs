@@ -332,8 +332,7 @@ pub(crate) fn length(ui: &mut Ui, app: &App, mm: &mut f64) -> bool {
     let r = ui.add_sized(
         [90.0, 22.0],
         NumField::new(&mut v)
-            .fixed_decimals(d.min(3))
-            .max_decimals(d)
+            .length_decimals(d)
             .suffix(format!(" {}", u.short()))
             .unit_mm(u.mm()),
     );

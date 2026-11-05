@@ -16,6 +16,8 @@ full, row-by-row status.
 
 - Shape tool: the node marquee, rectangular or freehand, is drawn as the Pick tool's marquee, blue dashes on a white line, so it shows on blue artwork. It was a plain thin blue line that was lost on blue (#1849).
 
+- Property bars: length fields (position, size, corners and the other lengths of the property bars, also the Contour, Extrude, Table, Variable outline and Transform bars and the paragraph lengths) show only the decimals a value needs, at least one and up to the drawing precision (Options > Edit, 3 by default), with no trailing zeros: 80.0 mm, 140.5 mm, 140.625 mm instead of 80.000 mm and 140.500 mm. They always showed every decimal of the precision, which crowded the bar. A value with more decimals shows rounded and is kept as it is; a value typed is applied as typed (#1761).
+
 - Pen and Bezier tools: Redo of a close ends the curve. After a closed curve was reopened with Undo and closed again by a click on its first node, undoing that close and redoing it closed the curve but left the Pen drawing on from the first node, so the next click turned the closed curve into another shape. The redone close now ends the line as a close by hand does: the curve stays closed and selected, and the next click starts a new curve (#1846).
 
 - QR codes: every kind of content can be picked in Properties. Only URL and Contact (vCard) could be chosen: Email, Phone number, SMS, Text and Location share no field with a URL, so picking one made empty content, which cannot be encoded, and the kind went back. The kind picked now stays with its fields ready to fill in, while the object keeps its code until they make content (#1845).

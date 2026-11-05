@@ -1428,8 +1428,7 @@ fn distance_in_mixed(
     let r = ui.add_sized(
         [width, ROW],
         crate::ui::field::NumField::new(&mut v)
-            .fixed_decimals(d.min(3))
-            .max_decimals(d)
+            .length_decimals(d)
             .suffix(format!(" {}", u.short()))
             .unit_mm(u.mm())
             .step(step.unwrap_or(1.0))
@@ -3365,6 +3364,95 @@ pub fn order_part(app: &mut App, ui: &mut Ui) {
 mod tests {
     use super::*;
     use tracedraw_core::geometry::Rect as R;
+
+    /// The size and position fields show the decimals a value needs, at
+    /// least one and up to the drawing precision, with no trailing zeros:
+    /// 20.0 mm, 20.5 mm, 20.125 mm; a value typed with more decimals is
+    /// kept as typed (#1761).
+    #[test]
+    fn distance_fields_show_only_the_decimals_needed() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.units = Units::Millimeters;
+        app.settings.precision = 3;
+        let run = |app: &App, mm: f64, events: Vec<egui::Event>| {
+            let mut got = None;
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    events,
+                    ..Default::default()
+                },
+                |ui| got = distance(ui, app, mm, 90.0, Some(1.0)),
+            );
+            out.textures_delta.clear();
+            let texts: Vec<(String, egui::Rect)> = out
+                .shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    epaint::Shape::Text(t) => Some((
+                        t.galley.text().to_string(),
+                        t.galley.rect.translate(t.pos.to_vec2()),
+                    )),
+                    _ => None,
+                })
+                .collect();
+            (got, texts)
+        };
+        for (mm, shown) in [
+            (20.0, "20.0 mm"),
+            (20.5, "20.5 mm"),
+            (20.125, "20.125 mm"),
+            (0.0, "0.0 mm"),
+            (-0.0001, "0.0 mm"),
+            (-3.25, "-3.25 mm"),
+            (20.12345, "20.123 mm"),
+            (19.9999, "20.0 mm"),
+        ] {
+            let (_, texts) = run(&app, mm, Vec::new());
+            assert!(texts.iter().any(|(t, _)| t == shown), "{mm}: {texts:?}");
+        }
+        // More precision in Options shows more decimals, still trimmed.
+        app.settings.precision = 5;
+        let (_, texts) = run(&app, 20.12345, Vec::new());
+        assert!(texts.iter().any(|(t, _)| t == "20.12345 mm"), "{texts:?}");
+        let (_, texts) = run(&app, 20.5, Vec::new());
+        assert!(texts.iter().any(|(t, _)| t == "20.5 mm"), "{texts:?}");
+        // No decimals asked for: none shown.
+        app.settings.precision = 0;
+        let (_, texts) = run(&app, 20.0, Vec::new());
+        assert!(texts.iter().any(|(t, _)| t == "20 mm"), "{texts:?}");
+        // Typed with more decimals than shown: kept as typed.
+        app.settings.precision = 3;
+        let (_, texts) = run(&app, 20.0, Vec::new());
+        let at = texts
+            .iter()
+            .find(|(t, _)| t == "20.0 mm")
+            .map(|(_, r)| r.center())
+            .expect("the field");
+        run(&app, 20.0, vec![egui::Event::PointerMoved(at)]);
+        for pressed in [true, false] {
+            run(
+                &app,
+                20.0,
+                vec![egui::Event::PointerButton {
+                    pos: at,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+        }
+        run(&app, 20.0, vec![egui::Event::Text("20.12345".into())]);
+        let key = |k: egui::Key| egui::Event::Key {
+            key: k,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let (got, _) = run(&app, 20.0, vec![key(egui::Key::Enter)]);
+        assert_eq!(got, Some(20.12345));
+    }
 
     /// The rotation field's arrows turn the selection a degree at each
     /// click, also when the box was clicked into first (its value

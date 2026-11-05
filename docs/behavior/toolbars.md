@@ -172,6 +172,16 @@ and sharing their middle border, 8 px from the top; fields and lists are
 white with a grey border and 13 px text, small pictures before fields
 name them (hover for a tooltip), and some fields have spin arrows.
 
+Length fields (position, size, corners and the other lengths of the
+property bars, the Contour, Extrude, Table, Variable outline and
+Transform bars and the paragraph lengths) show the decimals a value
+needs, at least one and up to the drawing precision (Options > Edit, 3
+by default), with no trailing zeros: 20.0 mm, 20.5 mm, 20.125 mm (none
+with a precision of 0); a value with more decimals shows rounded
+(20.12345 mm as 20.123 mm) and is kept as it is, and a value typed is
+applied as typed (#1761,
+`ui::propbar::tests::distance_fields_show_only_the_decimals_needed`).
+
 Number fields show their value at the left and are typed into: a click
 selects the value, Enter or leaving the field applies it, Esc puts it
 back. Tab applies it and goes to the next field's box in one press: the

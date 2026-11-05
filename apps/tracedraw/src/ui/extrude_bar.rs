@@ -32,7 +32,7 @@ fn length(ui: &mut Ui, app: &App, mm: &mut f64, tip: &str) -> bool {
     let r = ui
         .add(
             NumField::new(&mut v)
-                .fixed_decimals(app.settings.precision.min(10) as usize)
+                .length_decimals(app.settings.precision.min(10) as usize)
                 .unit_mm(app.units.world_to_mm(1.0))
                 .suffix(format!(" {}", app.units.short()))
                 .width(76.0),

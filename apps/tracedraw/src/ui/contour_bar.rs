@@ -67,7 +67,7 @@ pub fn contour_controls(app: &mut App, ui: &mut Ui) {
             ui.add(
                 NumField::new(&mut o)
                     .range(0.0..=app.units.world_from_mm(1000.0))
-                    .fixed_decimals(app.settings.precision.min(10) as usize)
+                    .length_decimals(app.settings.precision.min(10) as usize)
                     .unit_mm(app.units.world_to_mm(1.0))
                     .suffix(format!(" {}", app.units.short()))
                     .width(76.0),
