@@ -24,6 +24,16 @@ versies.
 
 ## Hoogtepunten van recente versies {#highlights}
 
+- **TraceCut.** [[menu.tools > menu.tools.tracecut]] opent de gereedschappen
+  voor snijplotters: plotteruitvoer, snijlijnen, nesten en meten. Zie
+  [TraceCut](../objects/tracecut.md).
+- **Toetsenbord, telefoons en pennen.** Menu's en lijsten werken met het
+  toetsenbord. Op Android-telefoons past de interface op het scherm en tekent
+  een rustende hand niet meer terwijl een pen wordt gebruikt; een tabletpen
+  werkt op Linux met Wayland.
+- **Bestanden.** .cdr-bestanden openen met hun tabstops, hoofdpagina's,
+  kleurverlopen en vervormingen; afbeeldingen uit PDF's komen op volledige
+  resolutie binnen; JPEG en TIFF worden in CMYK geëxporteerd.
 - **Miniaturen van objecten.** Het paneel [[docker.objects]] toont elk
   object klein getekend naast de naam; Ctrl+wiel boven de lijst of de
   schuifregelaar onderaan stelt de grootte in. Zie

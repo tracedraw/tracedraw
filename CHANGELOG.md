@@ -6,6 +6,10 @@ full, row-by-row status.
 
 ## Unreleased
 
+## 0.40.0 (2026-11-05)
+
+- Release note: the CMYK and Grayscale JPEG and TIFF export (#1763) was announced before 0.39.0 but did not reach that release; it is in 0.40.0 ("Export: JPEG and TIFF can be written in CMYK" below). The sharp zooming announced for 0.39.0 is also really in 0.40.0 ("Zooming" below).
+
 - Opening `.cdr`: paragraph tab stops come in. A menu whose prices sit at a right tab stop opened with every price just after its name, at the default stops; the stops of each paragraph are now read (versions 7 to 21), so the prices end at the stop as in the other program. Saving: paragraph text goes out as one artistic text per line as before, now cut at its tabs with each part where the stops put it, so the columns keep their place in the other program (#1852).
 
 - Properties docker: an Object opacity slider under the colour in the Fill and in the Outline section. It sets how solid the whole object is (fill and outline together, as an object has one transparency) without going to the Transparency section; it is off while the object has a fountain, pattern or texture transparency, which the Transparency section changes (#1818).
@@ -65,8 +69,6 @@ full, row-by-row status.
 - TraceCut: the tools for cutting plotters, in a window of their own (Tools > TraceCut, and Launch on the standard toolbar). The tools are listed by group (Cut, Nesting, Measure); the right side holds the chosen tool's presets and settings, a preview of the selection with what the tool finds, and Apply (shows the result, changes nothing), OK (applies it in one undo step) and Cancel. Each tool keeps named presets in `tracecut_presets.json`. The first tools are Find Duplicates (objects lying on top of another, deleted or selected) and Find Crossings (outlines crossing themselves or each other, shown and selected); the cutting, nesting and measuring tools follow. Options > General, Show TraceCut, hides it. Based on the work of LaMka21 (#170).
 
 - Opening .cdr: a file whose master page holds objects opens with its own number of pages. The objects left beside the pages on the master page's desktop layer made the master page open as an extra first page (four pages for a three-page drawing, in every version from 7 to 21), and the guidelines every page shares showed on that extra page only. The master page's objects now open on a master layer, shown from every page, and its guidelines on every page next to the page's own. Guidelines and a desktop shared by the whole document as TraceDraw features of their own are not part of this change (#1775).
-
-- Text > Tabs: tab stops have a kind (left, centre, right or decimal) and an optional leader, and Add tab works. Clicking Add tab on a paragraph frame just drawn did nothing: the stop was stored on the empty text where nothing read it back. The dialog now lists each stop with its position, kind and leader and a button to remove it; right stops end the text after the tab at the stop and decimal stops line up decimal points, as in a menu's prices. A paragraph without stops of its own now has a left stop every 5 mm (was 12.7 mm), and a stop past the frame's edge sends the text after the tab to the next line (#1852, refs #1838).
 
 - Text > Tabs: tab stops have a kind (left, centre, right or decimal) and an optional leader, and Add tab works. Clicking Add tab on a paragraph frame just drawn did nothing: the stop was stored on the empty text where nothing read it back. The dialog now lists each stop with its position, kind and leader and a button to remove it; right stops end the text after the tab at the stop and decimal stops line up decimal points, as in a menu's prices. A paragraph without stops of its own keeps a left stop every 12.7 mm (half an inch), now set in Options > Text > Paragraph Text > Default tab spacing; a stop past the frame's edge sends the text after the tab to the next line (#1852, refs #1838).
 

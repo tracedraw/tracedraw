@@ -22,6 +22,16 @@ cara mengetahui apa yang berubah dan mencantumkan sorotan versi-versi terbaru.
 
 ## Sorotan versi terbaru {#highlights}
 
+- **TraceCut.** [[menu.tools > menu.tools.tracecut]] membuka alat untuk
+  plotter pemotong: keluaran plotter, garis potong, penyusunan, dan
+  pengukuran. Lihat [TraceCut](../objects/tracecut.md).
+- **Keyboard, ponsel, dan pena.** Menu dan daftar dapat digunakan dengan
+  keyboard. Di ponsel Android antarmuka muat di layar dan tangan yang bertumpu
+  tidak lagi menggambar saat pena dipakai; pena tablet berfungsi di Linux
+  dengan Wayland.
+- **File.** File .cdr terbuka dengan tab stop, halaman master, gradien, dan
+  distorsinya; gambar PDF masuk dengan resolusi penuh; JPEG dan TIFF diekspor
+  dalam CMYK.
 - **Gambar mini objek.** Panel [[docker.objects]] menampilkan setiap objek
   digambar kecil di samping namanya; Ctrl+roda di atas daftar atau penggeser
   di bawah mengatur ukurannya. Lihat [Mengatur objek dan lapisan](../objects/objects-and-layers.md#objects-docker).

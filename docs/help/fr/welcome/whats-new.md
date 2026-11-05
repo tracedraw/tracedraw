@@ -25,6 +25,16 @@ dernières versions.
 
 ## Points forts des dernières versions {#highlights}
 
+- **TraceCut.** [[menu.tools > menu.tools.tracecut]] ouvre les outils pour
+  traceurs de découpe : sortie traceur, lignes de coupe, imbrication et
+  mesure. Voir [TraceCut](../objects/tracecut.md).
+- **Clavier, téléphones et stylets.** Les menus et les listes fonctionnent au
+  clavier. Sur les téléphones Android, l'interface tient sur l'écran et une
+  main posée dessus ne dessine plus pendant l'utilisation d'un stylet ; un
+  stylet de tablette fonctionne sous Linux avec Wayland.
+- **Fichiers.** Les fichiers .cdr s'ouvrent avec leurs taquets de tabulation,
+  pages maîtres, dégradés et déformations ; les images des PDF arrivent en
+  pleine résolution ; JPEG et TIFF s'exportent en CMJN.
 - **Vignettes des objets.** Le panneau [[docker.objects]] montre chaque
   objet dessiné en petit à côté de son nom ; Ctrl+molette sur la liste ou le
   curseur en bas règle la taille. Voir

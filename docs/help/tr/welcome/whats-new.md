@@ -24,6 +24,15 @@ listeler.
 
 ## Son sürümlerin öne çıkanları {#highlights}
 
+- **TraceCut.** [[menu.tools > menu.tools.tracecut]] kesim plotterları için
+  araçları açar: plotter çıktısı, kesim çizgileri, yerleştirme ve ölçme. Bkz.
+  [TraceCut](../objects/tracecut.md).
+- **Klavye, telefonlar ve kalemler.** Menüler ve listeler klavyeyle çalışır.
+  Android telefonlarda arayüz ekrana sığar ve kalem kullanılırken ekrana
+  dayanan el artık çizmez; tablet kalemi Wayland kullanan Linux'ta çalışır.
+- **Dosyalar.** .cdr dosyaları sekme durakları, ana sayfalar, degradeler ve
+  bozulmalarla açılır; PDF resimleri tam çözünürlükte gelir; JPEG ve TIFF CMYK
+  olarak dışa aktarılır.
 - **Nesne küçük resimleri.** [[docker.objects]] paneli her nesneyi adının
   yanında küçük olarak çizer; listenin üzerinde Ctrl+tekerlek veya alttaki
   kaydırıcı boyutu ayarlar. Bkz. [Nesneleri ve katmanları düzenleme](../objects/objects-and-layers.md#objects-docker).

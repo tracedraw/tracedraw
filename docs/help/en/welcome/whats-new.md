@@ -21,6 +21,15 @@ find out what changed and lists the highlights of the latest versions.
 
 ## Highlights of recent versions {#highlights}
 
+- **TraceCut.** [[menu.tools > menu.tools.tracecut]] opens the tools for
+  cutting plotters: plotter output, cut lines, nesting and measuring. See
+  [TraceCut](../objects/tracecut.md).
+- **Keyboard, phones and pens.** Menus and lists work from the keyboard. On
+  Android phones the interface fits the screen and a hand resting on it no
+  longer draws while a pen is used; a tablet pen works on Linux with Wayland.
+- **Files.** .cdr files open with their tab stops, master pages, gradients and
+  distortions; PDF pictures come in at full resolution; JPEG and TIFF export
+  in CMYK.
 - **Object thumbnails.** The [[docker.objects]] panel shows each object
   drawn small beside its name; Ctrl+wheel over the list or the slider at its
   bottom sets the size. See [Organizing objects and layers](../objects/objects-and-layers.md#objects-docker).

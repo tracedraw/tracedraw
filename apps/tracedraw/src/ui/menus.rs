@@ -343,20 +343,9 @@ pub(crate) fn open_whats_new(app: &mut App) {
 /// submenus that lead to them, by their keys. Each version replaces the
 /// list with its own.
 pub const NEW_IN_THIS_VERSION: &[&str] = &[
-    // Window > New Window.
-    "menu.window",
-    "menu.window.new_window",
-    // Window > Dockers > Effects (the effect stack).
-    "menu.window.dockers",
-    "docker.effects",
-    // Object > Clip to Frame > Opacity Mask, Invert Mask.
-    "menu.object",
-    "menu.object.clip_frame",
-    "menu.object.clip_frame_opacity_mask",
-    "menu.object.clip_frame_invert_mask",
-    // Help > Updates checks for a newer release.
-    "menu.help",
-    "menu.help.updates",
+    // Tools > TraceCut, the window of tools for cutting plotters.
+    "menu.tools",
+    "menu.tools.tracecut",
 ];
 
 thread_local! {
@@ -1510,9 +1499,9 @@ mod tests {
                 "{key} is not in the menus"
             );
         }
-        assert!(!marked_new("menu.help.updates"));
+        assert!(!marked_new("menu.tools.tracecut"));
         set_highlight_new(true);
-        assert!(marked_new("menu.help.updates"));
+        assert!(marked_new("menu.tools.tracecut"));
         assert!(!marked_new("menu.file.export"));
         set_highlight_new(false);
         assert!(

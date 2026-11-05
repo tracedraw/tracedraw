@@ -21,6 +21,15 @@ zjistit, co se změnilo, a uvádí hlavní novinky posledních verzí.
 
 ## Hlavní novinky posledních verzí {#highlights}
 
+- **TraceCut.** [[menu.tools > menu.tools.tracecut]] otevře nástroje pro
+  řezací plotry: výstup do plotru, řezné čáry, rozmístění a měření. Viz
+  [TraceCut](../objects/tracecut.md).
+- **Klávesnice, telefony a pera.** Nabídky a seznamy fungují z klávesnice. Na
+  telefonech s Androidem se rozhraní vejde na obrazovku a opřená ruka už
+  nekreslí, když se používá pero; pero tabletu funguje v Linuxu s Waylandem.
+- **Soubory.** Soubory .cdr se otevírají se zarážkami tabulátoru, hlavními
+  stránkami, přechody a deformacemi; obrázky z PDF se načtou v plném
+  rozlišení; JPEG a TIFF se exportují v CMYK.
 - **Náhledy objektů.** Panel [[docker.objects]] ukazuje každý objekt
   zmenšený vedle jeho názvu; Ctrl+kolečko nad seznamem nebo posuvník dole
   nastaví velikost. Viz [Uspořádání objektů a vrstev](../objects/objects-and-layers.md#objects-docker).

@@ -18,6 +18,9 @@ TraceDraw 的每个版本都会增加功能和修复。本页介绍如何了解�
 
 ## 最近版本的亮点 {#highlights}
 
+- **TraceCut。** [[menu.tools > menu.tools.tracecut]] 打开用于切割绘图仪的工具：绘图仪输出、切割线、排料和测量。参见 [TraceCut](../objects/tracecut.md)。
+- **键盘、手机和触控笔。** 菜单和列表可以用键盘操作。在 Android 手机上界面完整显示在屏幕上，使用触控笔时放在屏幕上的手不再误画；数位板的笔可在使用 Wayland 的 Linux 上工作。
+- **文件。** .cdr 文件打开时保留制表位、主页面、渐变和变形；PDF 中的图片以完整分辨率导入；JPEG 和 TIFF 可导出为 CMYK。
 - **对象缩略图。** [[docker.objects]] 面板在每个对象的名称旁显示其缩小的
   图形；在列表上按 Ctrl 滚动滚轮或拖动底部的滑块可调整大小。参见
   [组织对象和图层](../objects/objects-and-layers.md#objects-docker)。

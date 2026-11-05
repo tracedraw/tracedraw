@@ -25,6 +25,16 @@ der letzten Versionen.
 
 ## Highlights der letzten Versionen {#highlights}
 
+- **TraceCut.** [[menu.tools > menu.tools.tracecut]] öffnet die Werkzeuge für
+  Schneideplotter: Plotterausgabe, Schnittlinien, Verschachtelung und Messen.
+  Siehe [TraceCut](../objects/tracecut.md).
+- **Tastatur, Telefone und Stifte.** Menüs und Listen lassen sich mit der
+  Tastatur bedienen. Auf Android-Telefonen passt die Oberfläche auf den
+  Bildschirm, und eine aufliegende Hand zeichnet nicht mehr, während ein Stift
+  benutzt wird; ein Tablettstift funktioniert unter Linux mit Wayland.
+- **Dateien.** .cdr-Dateien öffnen sich mit Tabstopps, Masterseiten, Verläufen
+  und Verzerrungen; Bilder aus PDF-Dateien kommen in voller Auflösung; JPEG
+  und TIFF werden in CMYK exportiert.
 - **Objektminiaturen.** Das Andockfenster [[docker.objects]] zeigt jedes
   Objekt verkleinert neben seinem Namen; Strg+Mausrad über der Liste oder der
   Schieberegler unten stellt die Größe ein. Siehe

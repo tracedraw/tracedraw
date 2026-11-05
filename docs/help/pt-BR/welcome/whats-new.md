@@ -24,6 +24,16 @@ saber o que mudou e lista os destaques das versões mais recentes.
 
 ## Destaques das versões recentes {#highlights}
 
+- **TraceCut.** [[menu.tools > menu.tools.tracecut]] abre as ferramentas para
+  plotters de recorte: saída para o plotter, linhas de corte, encaixe e
+  medição. Veja [TraceCut](../objects/tracecut.md).
+- **Teclado, celulares e canetas.** Menus e listas funcionam pelo teclado. Em
+  celulares Android a interface cabe na tela e uma mão apoiada não desenha
+  mais enquanto se usa uma caneta; a caneta de uma mesa digitalizadora
+  funciona no Linux com Wayland.
+- **Arquivos.** Arquivos .cdr abrem com suas paradas de tabulação, páginas
+  mestras, degradês e distorções; imagens de PDF entram em resolução total;
+  JPEG e TIFF são exportados em CMYK.
 - **Miniaturas dos objetos.** O painel [[docker.objects]] mostra cada objeto
   desenhado em tamanho pequeno ao lado do nome; Ctrl+roda sobre a lista ou o
   controle deslizante na parte de baixo define o tamanho. Veja
