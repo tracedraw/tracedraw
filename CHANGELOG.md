@@ -34,6 +34,8 @@ full, row-by-row status.
 
 - Shape tools: panning with the middle button while a rectangle, ellipse or other shape is being dragged works. The preview froze, no shape was made, and the frozen preview stayed on the page after a tool change; now the shape follows the pointer over the moving page and is made when the left button goes up (#1923).
 
+- File > Import places the file with the import cursor. After the file is chosen the pointer becomes a corner bracket: a click puts the file's top left corner there at its own size, a drag draws the box it is fitted in (proportions kept), Space or Enter centres it on the page, Esc or a right click calls it off. It came in at once where the file had it. Options > Global > File Formats, "Place imported files with the import cursor", turns it off. The drawing's right-click menu has Import... too (#1936, #1931).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).

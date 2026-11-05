@@ -223,6 +223,11 @@ pub fn file_formats_page(app: &mut App, ui: &mut Ui) {
         ));
     hint(ui, "options.export_presets_hint");
     chrome::section(ui, &tr("options.import_section"));
+    ui.checkbox(&mut f.import_with_cursor, tr("options.import_with_cursor"))
+        .rich_tip(crate::ui::tips::pair(
+            "options.import_with_cursor",
+            "options.import_with_cursor_tip",
+        ));
     ui.label(tr("options.import_place"));
     ui.radio_value(
         &mut f.import_place,

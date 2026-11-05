@@ -7664,3 +7664,6 @@ toolbar.mod_ctrl_desc = "Untuk jari: Ctrl tetap ditahan sampai Anda mengetuk tom
 toolbar.mod_alt = "Tahan Alt" # mt
 toolbar.mod_alt_desc = "Untuk jari: Alt tetap ditahan sampai Anda mengetuk tombol ini lagi. Ketukan lalu memilih objek di belakang objek teratas, dan kotak seleksi memilih setiap objek yang disentuhnya." # mt
 folder.tree_android = "Pilih folder dengan pemilih sistem; gambar di dalamnya yang dipakai." # mt
+status.import_place = "Mengimpor {name}: klik untuk menempatkan, seret untuk mengatur ukuran, Spasi untuk menengahkan di halaman, Esc untuk membatalkan." # mt
+options.import_with_cursor = "Tempatkan berkas impor dengan kursor impor" # mt
+options.import_with_cursor_tip = "Setelah Berkas > Impor penunjuk menjadi sudut: klik untuk menaruh sudut kiri atas berkas di sana dengan ukuran aslinya, seret kotak untuk menyesuaikannya, atau tekan Spasi untuk menengahkannya di halaman. Jika mati, berkas langsung masuk." # mt

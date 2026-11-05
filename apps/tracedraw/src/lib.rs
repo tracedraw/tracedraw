@@ -97,6 +97,7 @@ mod help_shots;
 mod hunspell;
 mod i18n;
 mod image_dpi;
+mod import_place;
 mod imposition;
 #[cfg(test)]
 mod input_method_tests;

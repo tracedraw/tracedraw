@@ -1510,6 +1510,10 @@ pub struct App {
     /// Print Merge's Place Inside Frame waiting for a click on the shape
     /// that holds the picture (#577).
     pub pending_merge_frame: bool,
+    /// File > Import's file waiting for its place on the drawing (#1936).
+    pub import_placing: Option<crate::import_place::ImportPlacing>,
+    /// A placement waiting for an import that asked a question first.
+    pub import_place_waiting: Option<crate::import_place::WaitingPlacement>,
     /// Weld, Trim or Intersect waiting for a click on the target, with
     /// what it leaves of the source and the target (#562).
     pub pending_shaping: Option<(crate::ops::Shaping, bool, bool)>,
@@ -2752,6 +2756,8 @@ impl App {
             copy_properties_choice: Default::default(),
             pending_shaping: None,
             pending_merge_frame: false,
+            import_placing: None,
+            import_place_waiting: None,
             autofit_preview: None,
             last_export: None,
             last_bg_remove: None,
@@ -7968,7 +7974,7 @@ impl App {
                 crate::i18n::tr("file.images"),
                 &["png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff"],
             )
-            .pick_file(self, |app, path| app.import_path(&path));
+            .pick_file(self, |app, path| app.import_picked(&path));
     }
 
     /// Import a file into the active layer, by extension.
@@ -8023,7 +8029,7 @@ impl App {
         }
     }
 
-    fn import_path_as_in_file(&mut self, path: &std::path::Path) {
+    pub(crate) fn import_path_as_in_file(&mut self, path: &std::path::Path) {
         let path = path.to_path_buf();
         // An installed script filter goes before the built-in readers.
         let raw_ext = path

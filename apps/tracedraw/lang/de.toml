@@ -7664,3 +7664,6 @@ toolbar.mod_ctrl_desc = "Für einen Finger: Strg bleibt gedrückt, bis Sie diese
 toolbar.mod_alt = "Alt halten" # mt
 toolbar.mod_alt_desc = "Für einen Finger: Alt bleibt gedrückt, bis Sie diese Schaltfläche erneut antippen. Ein Tippen wählt dann das Objekt hinter dem obersten, und ein Auswahlrahmen wählt jedes Objekt, das er berührt." # mt
 folder.tree_android = "Den Ordner mit der Auswahl des Systems wählen; die Bilder darin werden verwendet." # mt
+status.import_place = "{name} wird importiert: Klicken zum Platzieren, Ziehen für die Größe, Leertaste zum Zentrieren auf der Seite, Esc zum Abbrechen." # mt
+options.import_with_cursor = "Importierte Dateien mit dem Importcursor platzieren" # mt
+options.import_with_cursor_tip = "Nach Datei > Importieren wird der Zeiger zu einer Ecke: Klicken setzt die linke obere Ecke der Datei in Originalgröße dorthin, ein aufgezogener Rahmen passt sie ein, die Leertaste zentriert sie auf der Seite. Aus, kommt die Datei sofort." # mt

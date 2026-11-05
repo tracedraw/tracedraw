@@ -150,9 +150,26 @@ for the next session (#617). Export for Web and Export for Office keep
 their own presets and never change these
 (`pick_drag_tests::the_export_dialog_starts_with_the_last_exports_choices`).
 
-Imported objects go (File > Import, Ctrl+I): where the file has them
-(the default), or centred in the middle of the view; the move is part of
-the import's undo step.
+Place imported files with the import cursor (`import_with_cursor`, on):
+after File > Import (Ctrl+I, the toolbar button or Import on the
+drawing's right-click menu) and the file chosen, nothing comes in yet;
+the pointer becomes a corner bracket. A click puts the top left corner
+of what the file holds there, at its own size; a drag draws the box it
+is fitted in, its proportions kept, from the box's top left corner;
+Space or Enter centres it on the page; Esc or a right click calls the
+import off. The move or the size is part of the import's undo step. An
+import that first asks a question (how to read a PDF's text, a
+password) is placed once the question is answered
+(`import_place.rs`, `pick_drag_tests::an_import_waits_for_a_click_and_its_corner_goes_there`,
+`pick_drag_tests::an_import_is_sized_by_a_drag_centred_by_space_or_called_off`, #1936).
+
+Imported objects go (File > Import with the import cursor off, Ctrl+I):
+where the file has them (the default), or centred in the middle of the
+view; the move is part of the import's undo step. Files dropped or
+pasted come in at once as before.
+
+The drawing's right-click menu (on the page with nothing selected) has
+Import... under Paste and Select All (#1931).
 
 Saving .cdr files: the Version Save As starts at and new drawings are
 saved in (`cdr_version`, 27 by default, 7 to 27; a value out of range

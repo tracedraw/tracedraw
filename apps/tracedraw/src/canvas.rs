@@ -155,6 +155,10 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
         }
     }
 
+    // The box a drag sizes File > Import's file to (#1936).
+    if let Some(r) = app.import_placement_box() {
+        haloed_rect(painter, view.rect_to_screen(r), Tokens::SELECTION);
+    }
     // Rubber bands and in-progress tools.
     match &app.drag {
         Drag::Box {

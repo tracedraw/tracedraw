@@ -20711,3 +20711,178 @@ fn fill_winding_in_the_fill_section_sets_the_fill_rule() {
     app.undo();
     assert_eq!(rule(&app), FillRule::NonZero);
 }
+
+/// An SVG file of one 20 x 20 mm square, for File > Import (#1936).
+fn import_square_svg(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("td-import-{tag}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    let path = dir.join("square.svg");
+    std::fs::write(
+        &path,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="200mm" viewBox="0 0 200 200"><rect x="150" y="150" width="20" height="20" fill="red"/></svg>"#,
+    )
+    .expect("svg");
+    path
+}
+
+/// File > Import waits for its place: nothing comes in until a click,
+/// which puts the top left corner of the file there at its own size, as
+/// one undo step (#1936).
+#[test]
+fn an_import_waits_for_a_click_and_its_corner_goes_there() {
+    let (ctx, mut app, _id) = setup();
+    let svg = import_square_svg("click");
+    let n = shape_count(&app);
+    app.import_picked(&svg);
+    assert_eq!(shape_count(&app), n, "nothing comes in yet");
+    assert!(app.import_placing.is_some());
+    let at = app.view.to_screen(Point::new(120.0, 200.0));
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(at)],
+        Modifiers::NONE,
+    );
+    assert_eq!(
+        for_tool(&app, false, false, false, Some(at)),
+        ToolCursor::PlaceCorner
+    );
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert!(app.import_placing.is_none());
+    assert_eq!(shape_count(&app), n + 1, "the square came in");
+    let b = app.selection_bounds().expect("selected");
+    let corner = app.view.to_page(at);
+    assert!((b.x0 - corner.x).abs() < 0.2, "{b:?} {corner:?}");
+    assert!((b.y1 - corner.y).abs() < 0.2, "{b:?} {corner:?}");
+    assert!((b.width() - 20.0).abs() < 0.2, "its own size: {b:?}");
+    app.undo();
+    assert_eq!(shape_count(&app), n, "one undo step");
+}
+
+/// A drag gives the box the import is fitted in, its proportions kept;
+/// Space centres it on the page; Esc and a right click call it off.
+#[test]
+fn an_import_is_sized_by_a_drag_centred_by_space_or_called_off() {
+    let (ctx, mut app, _id) = setup();
+    let svg = import_square_svg("drag");
+    let n = shape_count(&app);
+    app.import_picked(&svg);
+    let from = app.view.to_screen(Point::new(40.0, 250.0));
+    let to = app.view.to_screen(Point::new(140.0, 100.0));
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    assert_eq!(shape_count(&app), n + 1);
+    let b = app.selection_bounds().expect("selected");
+    let (a, z) = (app.view.to_page(from), app.view.to_page(to));
+    let side = (z.x - a.x).min(a.y - z.y);
+    assert!((b.width() - side).abs() < 0.5, "{b:?} {side}");
+    assert!((b.height() - side).abs() < 0.5, "proportions kept: {b:?}");
+    assert!(
+        (b.x0 - a.x).abs() < 0.5 && (b.y1 - a.y).abs() < 0.5,
+        "{b:?}"
+    );
+
+    // Space: in the middle of the page.
+    app.import_picked(&svg);
+    let space = Event::Key {
+        key: egui::Key::Space,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    frame(&ctx, &mut app, vec![space], Modifiers::NONE);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(app.import_placing.is_none());
+    assert_eq!(shape_count(&app), n + 2);
+    let b = app.selection_bounds().expect("selected");
+    let c = app.page_rect().center();
+    assert!((b.center() - c).hypot() < 0.2, "{b:?} {c:?}");
+
+    // Esc: nothing comes in.
+    app.import_picked(&svg);
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Escape, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert!(app.import_placing.is_none());
+    assert_eq!(shape_count(&app), n + 2);
+
+    // A right click: nothing comes in and no menu opens.
+    app.import_picked(&svg);
+    let at = app.view.to_screen(Point::new(100.0, 150.0));
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(at)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(at, true, PointerButton::Secondary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(at, false, PointerButton::Secondary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert!(app.import_placing.is_none());
+    assert!(app.context_menu.is_none());
+    assert_eq!(shape_count(&app), n + 2);
+}
+
+/// The drawing's right-click menu has Import (#1931).
+#[test]
+fn the_page_right_click_menu_has_import() {
+    let (ctx, mut app, _id) = setup();
+    app.select(Vec::new());
+    let at = app.view.to_screen(Point::new(150.0, 150.0));
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(at)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(at, true, PointerButton::Secondary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(at, false, PointerButton::Secondary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert!(app.context_menu.is_some());
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            Pos2::ZERO,
+            egui::vec2(1600.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut out = ctx.run_ui(input, |ui| crate::ui::root(&mut app, ui));
+    out.textures_delta.clear();
+    let mut all: Vec<String> = Vec::new();
+    fn walk(s: &egui::Shape, all: &mut Vec<String>) {
+        match s {
+            egui::Shape::Text(t) => all.push(t.galley.text().to_string()),
+            egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, all)),
+            _ => {}
+        }
+    }
+    out.shapes.iter().for_each(|c| walk(&c.shape, &mut all));
+    let import = crate::i18n::tr("menu.file.import");
+    let paste = crate::i18n::tr("menu.edit.paste");
+    assert!(
+        all.iter().any(|t| t.trim() == paste.trim()),
+        "the page menu is open: {all:?}"
+    );
+    assert!(all.iter().any(|t| t.trim() == import.trim()), "{all:?}");
+}

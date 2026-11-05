@@ -214,6 +214,9 @@ pub struct FormatPrefs {
     /// Exporting keeps the dialog's choices here for the next time.
     pub remember_last: bool,
     pub import_place: ImportPlace,
+    /// File > Import waits for a click, a drag or Space to place what
+    /// came (#1936); off, it comes in at once where `import_place` says.
+    pub import_with_cursor: bool,
     /// The `.cdr` version Save As starts at (#613).
     pub cdr_version: u16,
     /// Save As starts at `.cdr` rather than TraceDraw for a drawing
@@ -252,6 +255,7 @@ impl Default for FormatPrefs {
             export_by_format: Vec::new(),
             remember_last: true,
             import_place: ImportPlace::AsInFile,
+            import_with_cursor: true,
             cdr_version: tracedraw_cdr::write::NEWEST_VERSION,
             save_new_as_cdr: false,
             skip_export_dialog: false,

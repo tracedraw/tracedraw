@@ -7664,3 +7664,6 @@ toolbar.mod_ctrl_desc = "指で使うため: このボタンをもう一度タ�
 toolbar.mod_alt = "Alt を押したままにする" # mt
 toolbar.mod_alt_desc = "指で使うため: このボタンをもう一度タップするまで Alt が押されたままになります。その間、タップで一番上のオブジェクトの後ろにあるものを選び、範囲選択は触れたすべてのオブジェクトを選びます。" # mt
 folder.tree_android = "システムのピッカーでフォルダーを選びます。その中の画像が使われます。" # mt
+status.import_place = "{name} を読み込み中: クリックで配置、ドラッグでサイズ指定、Space でページ中央に配置、Esc で取り消し。" # mt
+options.import_with_cursor = "読み込んだファイルを読み込みカーソルで配置" # mt
+options.import_with_cursor_tip = "ファイル > 読み込みの後、ポインターが角の形になります。クリックでファイルの左上の角をそこに元のサイズで配置、ドラッグした枠に合わせて配置、Space でページ中央に配置します。オフのときはすぐに読み込まれます。" # mt

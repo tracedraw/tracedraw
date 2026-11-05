@@ -625,6 +625,10 @@ fn page_menu(app: &mut App, ui: &mut Ui, p: tracedraw_core::Point, close: &mut b
     if ci(ui, close, "menu.edit.select_all_objects", "Ctrl+A", true) {
         app.select_all();
     }
+    // A file into the drawing, placed with the import cursor (#1931).
+    if ci(ui, close, "menu.file.import", "Ctrl+I", true) {
+        app.import();
+    }
     sep(ui);
     if ci(ui, close, "menu.layout.insert_page", "", true) {
         app.dialog = Dialog::InsertPage {

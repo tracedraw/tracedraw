@@ -7664,3 +7664,6 @@ toolbar.mod_ctrl_desc = "供手指使用：Ctrl 保持按下，直到再次點�
 toolbar.mod_alt = "按住 Alt" # mt
 toolbar.mod_alt_desc = "供手指使用：Alt 保持按下，直到再次點按此按鈕。此時點按會選取最上層物件後面的物件，框選會選取它碰到的每個物件。" # mt
 folder.tree_android = "用系統選擇器選擇資料夾；將使用其中的圖片。" # mt
+status.import_place = "正在匯入 {name}：按一下放置，拖曳設定大小，按空白鍵置中於頁面，按 Esc 取消。" # mt
+options.import_with_cursor = "用匯入游標放置匯入的檔案" # mt
+options.import_with_cursor_tip = "檔案 > 匯入後指標變為一個角：按一下把檔案左上角以原大小放在該處，拖曳出一個框使其符合該框，或按空白鍵使其置中於頁面。關閉時檔案立即匯入。" # mt

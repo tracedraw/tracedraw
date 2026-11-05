@@ -7664,3 +7664,6 @@ toolbar.mod_ctrl_desc = "供手指使用：Ctrl 保持按下，直到再次点�
 toolbar.mod_alt = "按住 Alt" # mt
 toolbar.mod_alt_desc = "供手指使用：Alt 保持按下，直到再次点按此按钮。此时点按会选中最上层对象后面的对象，框选会选中它碰到的每个对象。" # mt
 folder.tree_android = "用系统选择器选择文件夹；将使用其中的图片。" # mt
+status.import_place = "正在导入 {name}：单击放置，拖动设定大小，按空格键居中于页面，按 Esc 取消。" # mt
+options.import_with_cursor = "用导入光标放置导入的文件" # mt
+options.import_with_cursor_tip = "文件 > 导入后指针变为一个角：单击把文件左上角按原大小放在该处，拖出一个框使其适合该框，或按空格键使其居中于页面。关闭时文件立即导入。" # mt

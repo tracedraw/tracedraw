@@ -1335,6 +1335,11 @@ impl App {
             }
             return;
         }
+        // File > Import's file waiting for a click, a drag or Space to
+        // place it (#1936).
+        if self.import_placement_input(response, p) {
+            return;
+        }
         // A right click during a move, scale, rotation or skew: the change
         // goes to copies on release, the originals stay (again: not).
         if self.transforming() {
@@ -3536,6 +3541,11 @@ impl App {
                     s.restore(self);
                 }
             }
+            return;
+        }
+        // An import waiting for its place: Space or Enter centres it on
+        // the page, Esc calls it off (#1936).
+        if self.import_placement_keys(ctx) {
             return;
         }
         // Esc during a move, scale, rotation or skew cancels it: nothing
