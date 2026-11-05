@@ -3430,6 +3430,13 @@ impl App {
             self.stop_macro();
             return;
         }
+        // An open menu or list, or the menu bar with the keyboard, takes
+        // the keys: its rows' access keys, arrows, Enter, Esc. The arrows
+        // move its highlight, never the selection, a node or the caret
+        // of the text being edited (#1839).
+        if crate::ui::keynav::takes_keys(ctx) {
+            return;
+        }
         let dialog_open = !matches!(self.dialog, crate::ui::dialogs::Dialog::None);
         // Table cell typing has priority while a cell is active (not
         // behind a dialog, which owns the keyboard).
@@ -3451,10 +3458,6 @@ impl App {
         if self.text_edit.is_some() && !dialog_open {
             self.text_view_keys(ctx);
             self.text_keyboard(ctx);
-            return;
-        }
-        // An open menu takes the keys: its rows' access keys, arrows, Esc.
-        if egui::Popup::is_any_open(ctx) {
             return;
         }
         // A modal dialog owns the keyboard: Esc closes it, the rest is

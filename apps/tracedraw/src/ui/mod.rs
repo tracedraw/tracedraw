@@ -62,6 +62,7 @@ pub mod hint_pics;
 pub mod hints;
 pub mod icon_paint;
 pub mod icons;
+pub mod keynav;
 pub mod lab_dialog;
 pub mod layout_options;
 pub mod line_style;
@@ -258,6 +259,7 @@ fn set_window_title(ctx: &egui::Context, title: String) {
 pub fn root(app: &mut App, ui: &mut Ui) {
     let steps = app.step_merge_start();
     root_frame(app, ui);
+    keynav::end_frame(ui.ctx());
     // The steps a number field made one after another are one undo step.
     let time = ui.ctx().input(|i| i.time);
     app.step_merge_end(steps, time);
@@ -339,6 +341,9 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     // Clones take up what the last frame changed on their masters.
     app.sync_object_clones();
     keep_tab_on_the_drawing(app, &ctx);
+    // The menu bar and an open menu or list take their keys first, so
+    // that the arrows never nudge the drawing then (#1839).
+    keynav::frame(&ctx, app.shortcut_editor.capture.is_some());
     app.keyboard(&ctx);
     // A menu command run by a shortcut of the user's.
     if let Some(cmd) = app.pending_command.take() {

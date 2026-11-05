@@ -106,6 +106,8 @@ fn body_rows<R>(ui: &mut Ui, width_id: egui::Id, add: impl FnOnce(&mut Ui) -> R)
         let _keys = access::Scope::new();
         add(ui)
     };
+    // The row the keys moved to stays in view (#1839).
+    crate::ui::keynav::scroll_into_view(ui);
     let rows = ui.min_rect();
     ui.ctx().data_mut(|d| d.insert_temp(width_id, rows.width()));
     let gutter = egui::Rect::from_min_max(
@@ -184,12 +186,19 @@ fn menu_row_at(
                 .insert(egui::response::Flags::FAKE_PRIMARY_CLICKED);
         }
     }
+    // The keyboard's row (#1839) is lit like the row under the pointer;
+    // while the keys move the highlight, the pointer's row is not lit.
+    if enabled {
+        crate::ui::keynav::note_menu_row(ui.ctx(), resp.id, mark == Mark::Submenu);
+    }
+    let lit = enabled
+        && (resp.has_focus() || resp.hovered() && !crate::ui::keynav::keyboard_mode(ui.ctx()));
     let painter = ui.painter();
     let slot = painter.add(egui::Shape::Noop);
-    if enabled && resp.hovered() {
+    if lit {
         painter.set(slot, highlight(rect));
     }
-    let color = if enabled && resp.hovered() {
+    let color = if lit {
         crate::theme::on_highlight()
     } else if enabled {
         crate::theme::Tokens::text()
@@ -2089,14 +2098,25 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
         .style(menu_bar_style)
         .config(egui::containers::menu::MenuConfig::new().style(menu_popup_style))
         .ui(ui, |ui| {
+            // The title the keyboard is on (Alt pressed alone, #1839).
+            let bar_focus = crate::ui::keynav::bar_focus(ui.ctx());
+            // A menu opened from the keyboard lights its title as a click
+            // does.
+            let open_title = crate::ui::keynav::open_title(ui.ctx());
             // Each title's access key, for Alt and the letter.
             let mut keys: Vec<char> = Vec::new();
             let mut menu = |ui: &mut Ui, key: &str, f: &mut dyn FnMut(&mut Ui)| -> egui::Response {
                 let label = tr(key);
                 let access = access::choose(&label, &keys);
+                let lit = bar_focus == Some(keys.len()) || open_title == Some(keys.len());
                 keys.push(access.map(|a| a.1).unwrap_or(' '));
                 let title_bottom_id = ui.id().with(key).with("title_bottom");
                 let title_bottom = ui.ctx().data(|d| d.get_temp::<f32>(title_bottom_id));
+                // Lit like a title under the pointer.
+                let inactive = ui.style().visuals.widgets.inactive;
+                if lit {
+                    ui.style_mut().visuals.widgets.inactive = ui.style().visuals.widgets.hovered;
+                }
                 let r = ui
                     .menu_button(
                         access::title(
@@ -2112,6 +2132,7 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
                         },
                     )
                     .response;
+                ui.style_mut().visuals.widgets.inactive = inactive;
                 ui.ctx()
                     .data_mut(|d| d.insert_temp(title_bottom_id, r.rect.bottom()));
                 if marked_new(key) {
@@ -2136,6 +2157,18 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
             }
             switch_on_hover(ui.ctx(), &titles);
             open_with_alt(ui.ctx(), &titles, &keys, &blocked);
+            // The titles for the keys of the next frame: Left and Right
+            // go from menu to menu (#1839).
+            crate::ui::keynav::note_titles(
+                ui.ctx(),
+                crate::ui::keynav::Titles {
+                    popups: titles
+                        .iter()
+                        .map(egui::Popup::default_response_id)
+                        .collect(),
+                    keys: keys.clone(),
+                },
+            );
         });
 }
 
@@ -2169,6 +2202,8 @@ fn open_with_alt(
             egui::Popup::close_id(ctx, popup_id(t));
         }
         egui::Popup::open_id(ctx, popup_id(r));
+        // Its first row lit, for the arrows and Enter (#1839).
+        crate::ui::keynav::opened_by_keys(ctx, popup_id(r));
     }
 }
 
