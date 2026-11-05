@@ -2539,11 +2539,17 @@ pub fn draw_guides(app: &App, painter: &Painter, rect: ERect) {
     if !app.show_guides {
         return;
     }
-    let Ok(page) = app.doc().page(app.page) else {
+    if app.doc().page(app.page).is_err() {
         return;
-    };
+    }
+    // The guidelines not being edited (the master page's, which every
+    // page shows, or the page's own, #1928), as they are.
+    for g in app.other_guides_on_page() {
+        let color = to_color32(app.guide_color(&g));
+        draw_guide_line(app, painter, rect, g.line, color, g.style.pattern());
+    }
     let moving = app.guide_drag_moves();
-    for (i, g) in page.guides.iter().enumerate() {
+    for (i, g) in app.page_guides().iter().enumerate() {
         let moved = moving.iter().find(|(k, _)| *k == i).map(|(_, g)| g);
         let g = match &app.drag {
             Drag::RotateGuide { index, guide, .. } if *index == i => guide,

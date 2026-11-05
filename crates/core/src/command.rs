@@ -405,6 +405,11 @@ pub enum Command {
         page: PageId,
         guides: Vec<Guide>,
     },
+    /// Replace the master page's guidelines, those every page shows
+    /// (#1928): one added, moved, deleted, locked or restyled.
+    SetMasterGuides {
+        guides: Vec<Guide>,
+    },
 }
 
 /// One object's change in [`Command::SetEffectsAndOpacity`].
@@ -535,6 +540,7 @@ impl Command {
             Command::MoveGuide { .. } => "Move Guideline",
             Command::DeleteGuide { .. } => "Delete Guideline",
             Command::SetGuides { .. } => "Guidelines",
+            Command::SetMasterGuides { .. } => "Guidelines",
         }
     }
 
@@ -1395,6 +1401,7 @@ impl Command {
                 }
             }
             Command::SetGuides { page, guides } => doc.page_mut(*page)?.guides = guides.clone(),
+            Command::SetMasterGuides { guides } => doc.master_guides = guides.clone(),
             Command::Ungroup { group } => {
                 let (layer_id, idx) = doc.locate(*group)?;
                 let g = doc.layer_mut(layer_id)?.shapes.remove(idx);

@@ -1380,6 +1380,10 @@ pub struct App {
     pub show_guides: bool,
     /// Selected guidelines of the active page (indices).
     pub selected_guides: Vec<usize>,
+    /// The guidelines being edited are the master page's, which every
+    /// page shows (#1928), not the active page's own: chosen in the
+    /// Objects docker. New guidelines go there too.
+    pub edit_master_guides: bool,
     /// The guideline showing rotation handles (second click on it).
     pub guide_rotate: Option<usize>,
     /// Rotation centre of that guideline, where it was clicked.
@@ -2682,6 +2686,7 @@ impl App {
             symmetry_doc: Default::default(),
             show_guides: true,
             selected_guides: Vec::new(),
+            edit_master_guides: false,
             guide_rotate: None,
             guide_pivot: Point::ZERO,
             guide_form: Default::default(),
@@ -10544,7 +10549,8 @@ mod tests {
     }
 
     /// Guidelines saved to `.cdr` come back (#1161): those of every page
-    /// from the master page's guides layer, the others from their page.
+    /// from the master page's guides layer (as the drawing's master
+    /// guidelines, #1928), the others from their page.
     #[test]
     fn guidelines_come_back_from_cdr_files() {
         use tracedraw_core::document::{Guide, GuideLine};
@@ -10559,7 +10565,15 @@ mod tests {
         assert!(path.is_file(), "{}", app.status);
         let mut back = App::headless();
         back.open_path(path);
-        let lines: Vec<GuideLine> = back.page_guides().iter().map(|g| g.line).collect();
+        // Those every page has come back as the master page's (#1928):
+        // the page shows them.
+        let lines: Vec<GuideLine> = back
+            .doc()
+            .guides_on_page(back.page)
+            .unwrap_or_default()
+            .iter()
+            .map(|g| g.line)
+            .collect();
         // The file keeps positions in its own units: within a micrometre.
         assert!(
             matches!(

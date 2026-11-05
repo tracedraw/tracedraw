@@ -4502,6 +4502,10 @@ pub struct Document {
     /// Master layers, drawn beneath every page's own layers.
     #[serde(default)]
     pub master: Vec<Layer>,
+    /// The master page's guidelines (#1928): shown on every page, set
+    /// once for all of them, beside each page's own guidelines.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub master_guides: Vec<Guide>,
     #[serde(default)]
     pub object_styles: Vec<ObjectStyle>,
     /// The fill and outline new objects get.
@@ -4804,6 +4808,7 @@ impl Document {
             pages: vec![page],
             ids,
             master: Vec::new(),
+            master_guides: Vec::new(),
             object_styles: Vec::new(),
             defaults: ObjectDefaults::default(),
             color_styles: Vec::new(),
@@ -4958,6 +4963,18 @@ impl Document {
     /// behind the page, the page's own layers as they are stored, then
     /// applicable master layers in front of the page (#1132); what clicks
     /// and selections take objects from.
+    /// The guidelines shown on `page`: the master page's (every page
+    /// has them, #1928), then the page's own.
+    pub fn guides_on_page(&self, page: PageId) -> Result<Vec<Guide>> {
+        let p = self.page(page)?;
+        Ok(self
+            .master_guides
+            .iter()
+            .chain(p.guides.iter())
+            .copied()
+            .collect())
+    }
+
     pub fn layers_for_page(&self, page: PageId) -> Result<Vec<&Layer>> {
         let idx = self.page_index(page)?;
         let masters = |front: bool| {

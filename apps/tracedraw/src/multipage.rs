@@ -188,7 +188,8 @@ impl App {
             let Some(page) = doc.pages.iter().find(|p| p.id == id) else {
                 continue;
             };
-            for g in &page.guides {
+            // The page's own guidelines and the master page's (#1928).
+            for g in doc.master_guides.iter().chain(page.guides.iter()) {
                 let mut g = *g;
                 g.line = shifted(g.line, r.x0, r.y0);
                 out.push((g, r));

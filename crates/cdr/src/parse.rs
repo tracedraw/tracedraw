@@ -805,22 +805,20 @@ pub(crate) fn parse_document_kept(
         && (first_is_master || doc.pages[0].layers.iter().all(|l| l.shapes.is_empty()))
         && doc.pages[0].layers.iter().all(|l| l.shapes.is_empty())
     {
-        // The master page's guidelines show on every page.
+        // The master page's guidelines show on every page (#1928).
         let master = doc.pages.remove(0);
-        for p in doc.pages.iter_mut() {
-            for g in &master.guides {
-                if !p.guides.contains(g) {
-                    p.guides.push(*g);
-                }
-            }
+        master_guides.extend(master.guides);
+    }
+    // The master page's guidelines are the drawing's master guidelines,
+    // shown on every page and set once for all (#1928); a page's own
+    // copy of one is left to the master.
+    for g in master_guides {
+        if !doc.master_guides.contains(&g) {
+            doc.master_guides.push(g);
         }
     }
     for p in doc.pages.iter_mut() {
-        for g in &master_guides {
-            if !p.guides.contains(g) {
-                p.guides.push(*g);
-            }
-        }
+        p.guides.retain(|g| !doc.master_guides.contains(g));
     }
     for (i, p) in doc.pages.iter_mut().enumerate() {
         if p.name.is_empty() {
@@ -8308,9 +8306,10 @@ pub(crate) mod tests {
             tracedraw_core::document::MasterScope::All
         );
         use tracedraw_core::document::GuideLine;
-        let xs = |i: usize| -> Vec<f64> {
-            doc.pages[i]
-                .guides
+        // The master page's guideline is the drawing's master guideline,
+        // shown on every page before the page's own (#1928).
+        let xs = |guides: Vec<tracedraw_core::document::Guide>| -> Vec<f64> {
+            guides
                 .iter()
                 .filter_map(|g| match g.line {
                     GuideLine::Vertical { x } => Some((x * 1000.0).round() / 1000.0),
@@ -8318,9 +8317,12 @@ pub(crate) mod tests {
                 })
                 .collect()
         };
-        assert_eq!(xs(0), [0.0]);
-        assert_eq!(xs(1), [105.0, 0.0]);
-        assert_eq!(xs(2), [0.0]);
+        assert_eq!(xs(doc.master_guides.clone()), [0.0]);
+        let shown = |i: usize| xs(doc.guides_on_page(doc.pages[i].id).unwrap_or_default());
+        assert_eq!(shown(0), [0.0]);
+        assert_eq!(shown(1), [0.0, 105.0]);
+        assert_eq!(shown(2), [0.0]);
+        assert_eq!(xs(doc.pages[1].guides.clone()), [105.0]);
         // Every page draws the master's desktop objects.
         let shown = doc.layers_for_page(doc.pages[1].id).unwrap_or_default();
         assert_eq!(shown.iter().map(|l| l.shapes.len()).sum::<usize>(), 1);

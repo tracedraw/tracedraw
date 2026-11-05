@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Master guidelines: guidelines can be set once for all pages. The Objects docker shows "Guides (all pages)" under the Master Page and each page's own "Guides"; a click on a row chooses which guidelines new ones go to and which are picked and moved, and its padlock locks all of them. Opening a `.cdr` file puts the master page's guidelines there instead of a copy on every page, and saving writes them back to the master page (#1928).
+
 - Android: the camera cutout and the rounded corners of a phone's screen no longer hide the menu bar, the toolbox, the palette or the status bar. The interface keeps clear of the cutout, the system bars and the corners the system reports, and Options > Display > Screen margins adds margins of your own on each side, in dp, for phones that do not report their corners (with Same on all sides and Reset). The margins are filled with the theme's frame colour, Corner radius rounds the interface's corners to follow the glass, every change shows at once and the values stay when the screen turns (#1917).
 
 - Touch screens: Shift, Ctrl and Alt buttons on the Standard toolbar, beside Delete. A tap holds the key down until the next tap on it (the button stays pressed meanwhile), so a finger can add objects or nodes to the selection or take them out, keep a drag's angle or proportions, pick inside a group or the object behind, as with the keys held on a keyboard. They show on Android and wherever a finger has touched the window (#1499).

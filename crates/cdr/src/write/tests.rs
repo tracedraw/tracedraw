@@ -7495,18 +7495,16 @@ fn guidelines_round_trip_on_their_pages() {
         assert_eq!(back.pages.len(), 2, "{v}: {:?}", rep.warnings);
         assert_eq!(rep.skipped_objects, 0, "{v}: {:?}", rep.warnings);
         for (page, want) in back.pages.iter().zip(&doc.pages) {
-            assert_eq!(
-                page.guides.len(),
-                want.guides.len(),
-                "{v}: {:?}",
-                page.guides
-            );
+            // Those every page has come back as the master page's (#1928):
+            // each page shows them with its own.
+            let shown = back.guides_on_page(page.id).expect("page");
+            assert_eq!(shown.len(), want.guides.len(), "{v}: {shown:?}");
             for g in &want.guides {
                 assert!(
-                    page.guides.iter().any(|h| near(&h.line, &g.line)),
+                    shown.iter().any(|h| near(&h.line, &g.line)),
                     "{v}: {:?} not in {:?}",
                     g.line,
-                    page.guides
+                    shown
                 );
             }
             // Guidelines are no objects of the drawing.
@@ -8404,4 +8402,39 @@ fn text_is_written_as_the_face_that_draws_it() {
         "{:?}",
         p.records
     );
+}
+
+/// The master page's guidelines (#1928) go to the master page's guides
+/// layer and come back as the drawing's master guidelines, once, not as
+/// a copy on each page; a page's own stay its own.
+#[test]
+fn master_guidelines_round_trip_as_master_guidelines() {
+    use tracedraw_core::document::{Guide, GuideLine};
+    let mut doc = guides_doc();
+    for p in &mut doc.pages {
+        p.guides.clear();
+    }
+    doc.master_guides = vec![
+        Guide::from(GuideLine::Vertical { x: 15.0 }),
+        Guide::from(GuideLine::Horizontal { y: 25.0 }),
+    ];
+    doc.pages[1]
+        .guides
+        .push(Guide::from(GuideLine::Vertical { x: 90.0 }));
+    for v in versions() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, rep) = crate::open_bytes(&bytes, "back").expect("reads back");
+        assert_eq!(back.master_guides.len(), 2, "{v}: {:?}", rep.warnings);
+        assert!(
+            back.pages[0].guides.is_empty(),
+            "{v}: {:?}",
+            back.pages[0].guides
+        );
+        assert_eq!(back.pages[1].guides.len(), 1, "{v}");
+        assert_eq!(
+            back.guides_on_page(back.pages[1].id).expect("page").len(),
+            3,
+            "{v}"
+        );
+    }
 }

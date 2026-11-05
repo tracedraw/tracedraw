@@ -133,6 +133,11 @@ pub struct ShadowPicture {
 /// (version 16 and later).
 pub fn document_to_cdr_version_with(doc: &Document, version: u16, previews: &Previews) -> Vec<u8> {
     let v = Ver(version.clamp(OLDEST_VERSION, NEWEST_VERSION));
+    // The guidelines every page shows (#1928) count as each page's; those
+    // all pages share go to the master page's guides layer
+    // ([`master_guides`]), as files hold them.
+    let guided = master_guides_on_pages(doc);
+    let doc = guided.as_ref().unwrap_or(doc);
     let on_pages = master_objects_on_pages(doc);
     let doc = on_pages.as_ref().unwrap_or(doc);
     let mut w = Writer::new(v, &doc.symbols, &doc.title);
@@ -3561,6 +3566,26 @@ fn frame_json(f: Size, para: &tracedraw_core::ParagraphStyle) -> String {
 /// size (a master guideline lies as far from each page's centre): they go
 /// on the master page's guides layer once, as the files of versions 11,
 /// 15 and 25 to 27 keep their guidelines (#1161).
+/// The drawing with the master page's guidelines (#1928) added to every
+/// page's own, or `None` when it has none.
+fn master_guides_on_pages(doc: &Document) -> Option<Document> {
+    if doc.master_guides.is_empty() {
+        return None;
+    }
+    let mut out = doc.clone();
+    for p in &mut out.pages {
+        let own = std::mem::take(&mut p.guides);
+        p.guides = doc.master_guides.clone();
+        for g in own {
+            if !p.guides.iter().any(|h| h.line == g.line) {
+                p.guides.push(g);
+            }
+        }
+    }
+    out.master_guides.clear();
+    Some(out)
+}
+
 fn master_guides(doc: &Document) -> Vec<tracedraw_core::document::GuideLine> {
     let Some(first) = doc.pages.first() else {
         return Vec::new();

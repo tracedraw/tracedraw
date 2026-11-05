@@ -20520,3 +20520,46 @@ fn the_fill_and_outline_sections_set_the_objects_opacity() {
     );
     assert_eq!(app.selection, vec![id]);
 }
+
+/// #1928: the Objects docker lists the master page's guidelines as
+/// "Guides (all pages)" and the page's own as "Guides"; a click on a row
+/// makes its guidelines the ones edited, so a new guideline goes there.
+#[test]
+fn the_objects_docker_chooses_master_or_page_guidelines() {
+    use tracedraw_core::document::Guide;
+    let (ctx, mut app, _) = setup();
+    app.show_dockers = true;
+    app.docker_tab = crate::app::DockerTab::Objects;
+    let click = |ctx: &egui::Context, app: &mut App, label: &str| {
+        for _ in 0..2 {
+            frame(ctx, app, Vec::new(), Modifiers::NONE);
+        }
+        let texts = texts_drawn(ctx, app, Vec::new());
+        let at = text_at(&texts, label).unwrap_or_else(|| panic!("{label} is drawn"));
+        frame(ctx, app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+        frame(
+            ctx,
+            app,
+            vec![button(at, true, PointerButton::Primary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(
+            ctx,
+            app,
+            vec![button(at, false, PointerButton::Primary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    assert!(!app.edit_master_guides);
+    click(&ctx, &mut app, &crate::i18n::tr("docker.guides_all_pages"));
+    assert!(app.edit_master_guides);
+    app.add_guide(Guide::vertical(30.0));
+    assert_eq!(app.doc().master_guides.len(), 1);
+    assert!(app.doc().pages[0].guides.is_empty());
+    click(&ctx, &mut app, &crate::i18n::tr("docker.guides"));
+    assert!(!app.edit_master_guides);
+    app.add_guide(Guide::vertical(40.0));
+    assert_eq!(app.doc().pages[0].guides.len(), 1);
+    assert_eq!(app.doc().master_guides.len(), 1);
+}
