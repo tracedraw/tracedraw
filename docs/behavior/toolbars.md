@@ -140,7 +140,12 @@ split by thin lines:
 2. Cut, Copy, Paste, Delete (a waste bin: what the Delete key does to
    the selection: the selected characters of the text being edited, the
    chosen nodes with the Shape tool, the selected guidelines, else the
-   selected objects; for a screen with no keyboard, #1611).
+   selected objects; for a screen with no keyboard, #1611). Then, only
+   with a touch screen (Android, or once a finger has touched the
+   window), Shift, Ctrl and Alt, buttons that read the key's name: a tap
+   holds the key down until the next tap on it, the button drawn pressed
+   meanwhile, and every tool reads the held keys as the keyboard's
+   (`touch_modifiers.rs`, #1499).
 3. Undo and Redo, each with its list of steps behind the arrow (choosing
    a step undoes or redoes up to it).
 4. Import, Export, Export as PDF.

@@ -201,6 +201,7 @@ mod thumbnails;
 mod time_tracker;
 mod tools;
 mod tools2;
+mod touch_modifiers;
 mod trace;
 mod trace_preview;
 mod tracecut;
@@ -826,6 +827,10 @@ impl eframe::App for Shell {
         // The screen's safe area on Android (#1917).
         if let Some(app) = self.app.as_ref() {
             ui::screen_margins::apply(ctx, &app.settings, raw_input);
+        }
+        // Shift, Ctrl and Alt held from the toolbar by a finger (#1499).
+        if let Some(app) = self.app.as_ref() {
+            app.touch_mods.apply(ctx, raw_input);
         }
     }
 

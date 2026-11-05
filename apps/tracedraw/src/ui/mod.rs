@@ -1553,6 +1553,167 @@ mod tests {
         assert_eq!(shape_count(&app), before);
     }
 
+    /// Shift, Ctrl and Alt for a finger (#1499): the Standard toolbar
+    /// shows them once a finger touched the window; a tap on Shift holds
+    /// it, so a finger's tap on a second object adds it to the selection
+    /// and another tap takes it out again; a second tap on Shift lets it
+    /// go, and a tap then selects one object only. Alt held from the
+    /// toolbar does not put the bars in their customize mode.
+    #[test]
+    fn a_finger_holds_shift_from_the_toolbar_to_add_to_the_selection() {
+        use crate::ui::bar_items::{items, ItemBar};
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.settings.autocorrect.enabled = false;
+        app.show_welcome = false;
+        let a = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 60.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape");
+        let b = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(100.0, 10.0, 150.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape");
+        app.select(Vec::new());
+        app.set_workspace(crate::app::Workspace::Touch);
+        let clock = std::cell::Cell::new(0.0);
+        // A frame as the app's raw input hook gives it: with the keys
+        // held from the toolbar.
+        let timed = |app: &mut App, events: Vec<egui::Event>| {
+            clock.set(clock.get() + 0.05);
+            let mut input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1600.0, 1000.0),
+                )),
+                events,
+                time: Some(clock.get()),
+                ..Default::default()
+            };
+            app.touch_mods.apply(&ctx, &mut input);
+            let mut out = ctx.run_ui(input, |ui| root(app, ui));
+            out.textures_delta.clear();
+        };
+        let tap = |app: &mut App, at: egui::Pos2| {
+            let touch = |phase| egui::Event::Touch {
+                device_id: egui::TouchDeviceId(1),
+                id: egui::TouchId(3),
+                phase,
+                pos: at,
+                force: None,
+            };
+            timed(
+                app,
+                vec![
+                    touch(egui::TouchPhase::Start),
+                    egui::Event::PointerMoved(at),
+                    button(at, true, egui::PointerButton::Primary),
+                ],
+            );
+            timed(
+                app,
+                vec![
+                    touch(egui::TouchPhase::End),
+                    button(at, false, egui::PointerButton::Primary),
+                    egui::Event::PointerGone,
+                ],
+            );
+            timed(app, Vec::new());
+        };
+        for _ in 0..5 {
+            timed(&mut app, Vec::new());
+        }
+        app.zoom_to_page();
+        timed(&mut app, Vec::new());
+        let on_a = app.view.to_screen(Point::new(35.0, 25.0));
+        let on_b = app.view.to_screen(Point::new(125.0, 25.0));
+        // The first tap makes the touch screen known: the keys show.
+        tap(&mut app, on_a);
+        assert_eq!(app.selection, vec![a]);
+        timed(&mut app, Vec::new());
+        let key_at = |app: &App, id: &str| {
+            let i = items(app, ItemBar::Standard)
+                .iter()
+                .position(|b| b == id)
+                .expect("on the bar");
+            let slot = app
+                .shown_bar_slots
+                .iter()
+                .find(|s| s.bar == ItemBar::Standard)
+                .expect("the Standard toolbar is drawn");
+            let r = slot.items[i];
+            assert!(r.width() > 0.0, "{id} is drawn with a touch screen");
+            r.center()
+        };
+        // Shift held: a tap adds, a second tap on the same object takes
+        // it out.
+        let key = key_at(&app, "shift");
+        tap(&mut app, key);
+        assert!(app.touch_mods.shift);
+        tap(&mut app, on_b);
+        assert_eq!(
+            app.selection.len(),
+            2,
+            "Shift held adds: {:?}",
+            app.selection
+        );
+        assert!(app.selection.contains(&a) && app.selection.contains(&b));
+        tap(&mut app, on_a);
+        assert_eq!(app.selection, vec![b], "Shift held takes out");
+        // Let go: a tap selects one object again.
+        let key = key_at(&app, "shift");
+        tap(&mut app, key);
+        assert!(!app.touch_mods.any());
+        tap(&mut app, on_a);
+        assert_eq!(app.selection, vec![a]);
+        // Alt held from the toolbar: the bars stay out of their
+        // customize mode, so the Alt button lets go on the next tap.
+        let key = key_at(&app, "alt");
+        tap(&mut app, key);
+        assert!(app.touch_mods.alt);
+        assert!(ctx.input(|i| i.modifiers.alt));
+        assert!(!crate::ui::bar_items::customizing(&app, &ctx));
+        let key = key_at(&app, "alt");
+        tap(&mut app, key);
+        assert!(!app.touch_mods.alt);
+        // Ctrl is offered as well.
+        let key = key_at(&app, "ctrl");
+        tap(&mut app, key);
+        assert!(app.touch_mods.ctrl);
+    }
+
+    /// Without a touch screen the Shift, Ctrl and Alt buttons are not
+    /// drawn: the desktop's bar keeps its look.
+    #[test]
+    fn the_modifier_buttons_need_a_touch_screen() {
+        use crate::ui::bar_items::{items, ItemBar};
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        for _ in 0..3 {
+            frame(&ctx, &mut app);
+        }
+        let slot = app
+            .shown_bar_slots
+            .iter()
+            .find(|s| s.bar == ItemBar::Standard)
+            .expect("the Standard toolbar is drawn")
+            .clone();
+        for id in ["shift", "ctrl", "alt"] {
+            let i = items(&app, ItemBar::Standard)
+                .iter()
+                .position(|b| b == id)
+                .expect("on the bar");
+            assert_eq!(slot.items[i].width(), 0.0, "{id} without a touch screen");
+        }
+    }
+
     /// One frame on a screen of `dp` system points (a phone or a tablet,
     /// at one pixel a point), the monitor being that screen.
     fn screen_frame(ctx: &egui::Context, app: &mut App, dp: egui::Vec2) {

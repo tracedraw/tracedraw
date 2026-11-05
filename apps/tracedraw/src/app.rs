@@ -1064,6 +1064,9 @@ pub struct App {
     pub show_grid: bool,
     pub show_status_bar: bool,
     pub show_dockers: bool,
+    /// Shift, Ctrl and Alt held from the Standard toolbar, for a finger
+    /// (#1499, touch_modifiers.rs).
+    pub touch_mods: crate::touch_modifiers::TouchModifiers,
     pub docker_tab: DockerTab,
     pub flyout_open: Option<usize>,
     /// The tool each toolbox group shows: the one last used from its flyout.
@@ -2529,6 +2532,7 @@ impl App {
             show_grid: false,
             show_status_bar: true,
             show_dockers: true,
+            touch_mods: Default::default(),
             docker_tab: DockerTab::Hints,
             flyout_open: None,
             toolbox_last: crate::tools::GROUPS.iter().map(|g| g.tools[0]).collect(),
