@@ -98,6 +98,7 @@ pub mod slider;
 pub mod status;
 pub mod straighten_dialog;
 pub mod symmetry_bar;
+pub mod tab_focus;
 pub mod table_bar;
 pub mod tabs;
 pub mod template_dialog;
@@ -259,8 +260,11 @@ fn set_window_title(ctx: &egui::Context, title: String) {
 
 pub fn root(app: &mut App, ui: &mut Ui) {
     let steps = app.step_merge_start();
+    // Tab and Shift+Tab stay in the window that has the focus (#1258).
+    tab_focus::begin(ui.ctx());
     root_frame(app, ui);
     keynav::end_frame(ui.ctx());
+    tab_focus::end(ui.ctx());
     // The steps a number field made one after another are one undo step.
     let time = ui.ctx().input(|i| i.time);
     app.step_merge_end(steps, time);
@@ -445,7 +449,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         return;
     }
 
-    Panel::top("menu_bar")
+    let menu_bar = Panel::top("menu_bar")
         .frame(
             Frame::new()
                 .fill(Tokens::menu_bar())
@@ -454,7 +458,10 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         .exact_size(24.0)
         .resizable(false)
         .show_separator_line(false)
-        .show(ui, |ui| menus::menu_bar(app, ui));
+        .show(ui, |ui| menus::menu_bar(app, ui))
+        .response
+        .rect;
+    tab_focus::set_menu_bar(&ctx, menu_bar);
     // The bars, where the layout puts them (see bars.rs). Outer panels
     // come first: the status bar (at the very bottom, or right under the
     // menu bar), then the toolbars, then the palettes and the toolbox.

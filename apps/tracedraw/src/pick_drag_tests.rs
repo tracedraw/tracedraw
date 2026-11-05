@@ -17694,6 +17694,220 @@ fn tab_in_a_dialog_focuses_its_first_input_box() {
     assert!(is_box(&ctx, last) && last != first, "the last box");
 }
 
+/// #1258: Tab and Shift+Tab in the window `window` (its egui id), open
+/// in `app`: the first Tab focuses one of its input boxes (`boxes`: it has
+/// some), Tab after Tab stays in it and comes round to that box, Shift+
+/// Tab from there stays in it too. The menu bar never takes the focus.
+fn tab_stays_in(ctx: &egui::Context, app: &mut App, window: egui::Id, boxes: bool) {
+    for _ in 0..3 {
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    }
+    let tab = |ctx: &egui::Context, app: &mut App, mods: Modifiers| {
+        frame(ctx, app, vec![key(egui::Key::Tab, mods)], mods);
+        frame(ctx, app, vec![key_up(egui::Key::Tab, mods)], mods);
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    let focus = |ctx: &egui::Context| {
+        let f = ctx.memory(|m| m.focused())?;
+        let layer = ctx.viewport(|v| v.prev_pass.widgets.get(f).map(|w| w.layer_id))?;
+        Some((f, layer))
+    };
+    let is_box = |ctx: &egui::Context, id: egui::Id| egui::TextEdit::load_state(ctx, id).is_some();
+    tab(ctx, app, Modifiers::NONE);
+    let (first, layer) = focus(ctx).unwrap_or_else(|| panic!("{window:?}: nothing focused"));
+    assert_eq!(layer.id, window, "the first Tab stays in the window");
+    assert_eq!(is_box(ctx, first), boxes, "{window:?}: its first input box");
+    let mut round = false;
+    let mut seen = 1;
+    for _ in 0..200 {
+        tab(ctx, app, Modifiers::NONE);
+        let (f, layer) = focus(ctx).unwrap_or_else(|| panic!("{window:?}: nothing focused"));
+        assert_eq!(layer.id, window, "Tab stays in the window");
+        if f == first {
+            round = true;
+            break;
+        }
+        seen += 1;
+    }
+    assert!(round, "{window:?}: Tab comes round after {seen} controls");
+    for _ in 0..3 {
+        tab(ctx, app, Modifiers::SHIFT);
+        let (_, layer) = focus(ctx).unwrap_or_else(|| panic!("{window:?}: nothing focused"));
+        assert_eq!(layer.id, window, "Shift+Tab stays in the window");
+    }
+}
+
+#[test]
+fn tab_stays_in_a_floating_panel() {
+    use crate::app::{DockerPlace, DockerTab};
+    let (ctx, mut app, _) = setup();
+    app.move_docker(DockerTab::Transformations, DockerPlace::Floating, None);
+    tab_stays_in(
+        &ctx,
+        &mut app,
+        egui::Id::new(("floating_docker", DockerTab::Transformations.key())),
+        true,
+    );
+}
+
+#[test]
+fn tab_stays_in_the_font_manager() {
+    let (ctx, mut app, _) = setup();
+    app.dialog = crate::ui::dialogs::Dialog::FontManager(Default::default());
+    tab_stays_in(&ctx, &mut app, egui::Id::new("font_manager_window"), true);
+}
+
+#[test]
+fn tab_stays_in_the_palette_windows() {
+    let (ctx, mut app, _) = setup();
+    crate::ui::palette_bars::start_new_palette(&mut app);
+    tab_stays_in(&ctx, &mut app, egui::Id::new("palette_new"), true);
+    let (ctx, mut app, _) = setup();
+    crate::ui::palette_bars::start_rename(&mut app, crate::ui::palette::Row::Main);
+    assert!(app.palette_rename.is_some());
+    tab_stays_in(&ctx, &mut app, egui::Id::new("palette_rename"), true);
+}
+
+#[test]
+fn tab_stays_in_the_effect_picker() {
+    let (ctx, mut app, _) = setup();
+    app.effect_picker.open = true;
+    tab_stays_in(&ctx, &mut app, egui::Id::new("effect_picker"), true);
+}
+
+#[test]
+fn tab_stays_in_the_drop_question() {
+    let (ctx, mut app, _) = setup();
+    app.drop_question = vec![std::path::PathBuf::from("dropped.xyz")];
+    tab_stays_in(&ctx, &mut app, egui::Id::new("drop_question"), false);
+}
+
+#[test]
+fn tab_stays_in_a_macro_form() {
+    use tracedraw_vba_project as vp;
+    let (ctx, mut app, _) = setup();
+    let mut form = vp::Form {
+        name: "Ask".into(),
+        caption: "Ask".into(),
+        width: 240.0,
+        height: 160.0,
+        enabled: true,
+        ..Default::default()
+    };
+    for (i, (kind, name)) in [
+        (vp::ControlKind::TextBox, "First"),
+        (vp::ControlKind::TextBox, "Second"),
+        (vp::ControlKind::CommandButton, "Done"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut c = vp::Control::new(kind, name);
+        c.left = 10.0;
+        c.top = 10.0 + 30.0 * i as f32;
+        c.width = 100.0;
+        c.height = 20.0;
+        form.controls.push(c);
+    }
+    let module = |name: &str, kind, source: &str| vp::Module {
+        name: name.into(),
+        kind,
+        source: source.into(),
+        has_source: true,
+        read_only: false,
+        private: false,
+    };
+    let project = vp::Project {
+        name: "Forms".into(),
+        modules: vec![
+            module(
+                "Main",
+                vp::ModuleKind::Standard,
+                "Sub Main()\r\nAsk.Show\r\nEnd Sub\r\n",
+            ),
+            module("Ask", vp::ModuleKind::Form, ""),
+        ],
+        forms: vec![form],
+        code_page: 1252,
+        ..Default::default()
+    };
+    app.macros.projects.push(crate::macros::MacroProject::new(
+        std::path::PathBuf::new(),
+        project,
+    ));
+    let index = app.macros.projects.len() - 1;
+    app.run_macro(index, "Main", "Main");
+    assert!(app.macros.run.is_some(), "{}", app.status);
+    let shown = |app: &App| {
+        app.macros.run.as_ref().and_then(|r| {
+            r.forms
+                .lock()
+                .ok()
+                .and_then(|f| f.list.iter().find(|f| f.visible).map(|f| f.id))
+        })
+    };
+    let mut id = None;
+    for _ in 0..200 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        id = shown(&app);
+        if id.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let id = id.expect("the form shows");
+    tab_stays_in(&ctx, &mut app, egui::Id::new(("macro_form", id)), true);
+    app.stop_macro();
+}
+
+/// #1258: in the main window Tab never goes to the menu bar: with
+/// nothing focused it stays with the drawing (Tab steps through the
+/// objects), and from a panel's field it goes on to the next control
+/// of the window, not the File menu.
+#[test]
+fn tab_in_the_main_window_never_reaches_the_menu_bar() {
+    let (ctx, mut app, _) = setup();
+    let tab = |ctx: &egui::Context, app: &mut App| {
+        frame(
+            ctx,
+            app,
+            vec![key(egui::Key::Tab, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(
+            ctx,
+            app,
+            vec![key_up(egui::Key::Tab, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    let focus_rect = |ctx: &egui::Context| {
+        let f = ctx.memory(|m| m.focused())?;
+        ctx.viewport(|v| v.prev_pass.widgets.get(f).map(|w| w.rect))
+    };
+    tab(&ctx, &mut app);
+    assert_eq!(ctx.memory(|m| m.focused()), None, "the drawing keeps Tab");
+    // From a field of the property bar on, Tab after Tab stays below the
+    // menu bar.
+    let field = ctx.viewport(|v| {
+        v.prev_pass
+            .widgets
+            .get_layer(egui::LayerId::background())
+            .filter(|w| w.enabled && w.sense.is_focusable() && w.rect.top() > 30.0)
+            .map(|w| w.id)
+            .next()
+    });
+    let field = field.expect("a control below the menu bar");
+    ctx.memory_mut(|m| m.request_focus(field));
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    for _ in 0..40 {
+        tab(&ctx, &mut app);
+        let r = focus_rect(&ctx).expect("a focused control");
+        assert!(r.top() > 24.0, "the focus went to the menu bar: {r:?}");
+    }
+}
+
 /// The Smart Fill bar's Fill and Outline lists offer Specify first, then
 /// Use default, then None, read from the open list in the window; a
 /// choice still sets what it names.

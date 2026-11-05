@@ -128,6 +128,24 @@ Media; the Bezier, Pen, Crop and Knife tools have no key.
   `chrome::keep_tab_in`, run for every dialog window, active only in
   the three frames after a Tab;
   `pick_drag_tests::tab_in_a_dialog_focuses_its_first_input_box`).
+- The same holds for every other window and area: the floating
+  panels, the Font Manager, the palette New and Rename windows, the
+  effect picker, macro forms, the dropped-file question and the rest.
+  Tab goes to the next control of the window that has the focus,
+  Shift+Tab to the previous one; past its last control Tab goes round
+  to its first input box (its first control when it has none), and
+  Shift+Tab before its first control to its last input box. With
+  nothing focused, Tab goes to the first input box of the window on
+  top. The main window counts as one window without its menu bar: Tab
+  never lands on the menu bar, and with nothing focused and no window
+  open Tab stays with the drawing (it steps through the objects). A
+  control that keeps Tab for itself keeps the focus, and with a menu
+  or a list open Tab is left to it (#1258, `ui::tab_focus`, run around
+  each frame; `pick_drag_tests::tab_stays_in_a_floating_panel`,
+  `tab_stays_in_the_font_manager`, `tab_stays_in_the_palette_windows`,
+  `tab_stays_in_the_effect_picker`, `tab_stays_in_the_drop_question`,
+  `tab_stays_in_a_macro_form`,
+  `tab_in_the_main_window_never_reaches_the_menu_bar`).
 - Esc with a menu or a drop-down list open closes it and changes
   nothing else (the selection stays).
 
