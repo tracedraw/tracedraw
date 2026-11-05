@@ -265,6 +265,44 @@ fn repeat_after_a_right_click_copy_makes_another_copy() {
     assert_eq!(shape_count(&app), 1, "three Undos for three copies");
 }
 
+/// Repeat after a mirror copy made with a side handle mirrors the next
+/// copy over the same side of the copy that is selected, so the copies
+/// line up side by side, instead of mirroring it back onto the original
+/// (#1909).
+#[test]
+fn repeat_after_a_mirror_copy_continues_from_the_selected_copy() {
+    use tracedraw_core::Affine;
+    let (_ctx, mut app, id) = setup();
+    app.select(vec![id]);
+    let b = bounds(&app, id);
+    let w = b.width();
+    let left = b.x0;
+    // Ctrl and the left side handle dragged across: a mirror over the
+    // left side, with a right click for a copy.
+    let mirror = Affine::translate((left, 0.0))
+        * Affine::scale_non_uniform(-1.0, 1.0)
+        * Affine::translate((-left, 0.0));
+    app.copy_selection_by(mirror);
+    assert_eq!(shape_count(&app), 2);
+    let first = app.selection[0];
+    let fb = bounds(&app, first);
+    assert!(close(fb.x1, left) && close(fb.x0, left - w), "{fb:?}");
+    app.repeat_last();
+    assert_eq!(shape_count(&app), 3);
+    let second = app.selection[0];
+    assert!(second != first && second != id);
+    let sb = bounds(&app, second);
+    assert!(
+        close(sb.x1, left - w) && close(sb.x0, left - 2.0 * w),
+        "next to the first copy, not on the original: {sb:?} {b:?}"
+    );
+    assert!(close(bounds(&app, id).x0, left), "the original stays");
+    assert!(
+        close(bounds(&app, first).x0, left - w),
+        "the first copy stays"
+    );
+}
+
 /// Repeat after an undo repeats the last action still in effect, not the
 /// one just undone; after a redo the redone action is the last again
 /// (#366).

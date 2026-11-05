@@ -6,6 +6,10 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
+
+- Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).
+
 ## 0.40.0 (2026-11-05)
 
 - Release note: the CMYK and Grayscale JPEG and TIFF export (#1763) was announced before 0.39.0 but did not reach that release; it is in 0.40.0 ("Export: JPEG and TIFF can be written in CMYK" below). The sharp zooming announced for 0.39.0 is also really in 0.40.0 ("Zooming" below).

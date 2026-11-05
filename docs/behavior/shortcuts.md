@@ -36,7 +36,13 @@ box of the selection of the time: a rotation about the old box's centre
 (or a centre of rotation moved inside it) turns about the new box's
 centre, a resize from a side or corner handle resizes from the same
 side or corner, and a move moves as far; the object it is repeated on
-no longer moves away (#1289, `app::repeated_transform`). Each action is kept with the undo step it made
+no longer moves away (#1289, `app::repeated_transform`). A copy made
+with a right click during a drag is repeated the same way: a mirror
+copy made by dragging a side handle across mirrors the next copy over
+the same side of the selected copy, so the copies line up side by side;
+it was mirrored over the original's side again and landed on the
+original (#1909,
+`pick_drag_tests::repeat_after_a_mirror_copy_continues_from_the_selected_copy`). Each action is kept with the undo step it made
 (`Engine::last_step_id`, `App::repeatables`): an action undone is never
 repeated, the one before it is (#366); redone, it is the last again; and
 an undone step replaced by another change is gone for good. A copy made

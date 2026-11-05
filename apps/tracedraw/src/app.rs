@@ -2233,8 +2233,11 @@ pub enum Repeatable {
     /// A command, run again on the selection of the time.
     Command(Box<Command>),
     /// Copies of the selection transformed by the affine (a drag ended
-    /// with a right click), made again from the selection of the time.
-    Copy(Affine),
+    /// with a right click), made again from the selection of the time,
+    /// about the same place of its box as `Transform` (a mirror copy made
+    /// with a side handle mirrors the next copy over the same side of the
+    /// copy it is repeated on, #1909).
+    Copy { transform: Affine, before: Rect },
     /// A move, turn, resize or slant of objects whose box was `before`:
     /// repeated about the same place of the box of the selection of the
     /// time (its centre, a side, a corner), so a turn or a resize does not
@@ -4360,12 +4363,18 @@ impl App {
         if self.selection.is_empty() {
             return;
         }
+        let Some(before) = self.selection_bounds() else {
+            return;
+        };
         // One step: the copies and their move (#471).
         let mark = self.engine.begin_group();
         self.duplicate_in_place();
         self.transform_selection(t);
         self.engine.end_group(mark, "Duplicate");
-        self.note_repeatable(Repeatable::Copy(t));
+        self.note_repeatable(Repeatable::Copy {
+            transform: t,
+            before,
+        });
     }
 
     /// Edit > Repeat: the last action still in effect again, on the
@@ -4374,8 +4383,11 @@ impl App {
     pub fn repeat_last(&mut self) {
         let cmd = match self.last_repeatable().cloned() {
             Some(Repeatable::Command(cmd)) => *cmd,
-            Some(Repeatable::Copy(t)) => {
-                self.copy_selection_by(t);
+            Some(Repeatable::Copy { transform, before }) => {
+                let Some(now) = self.selection_bounds() else {
+                    return;
+                };
+                self.copy_selection_by(repeated_transform(transform, before, now));
                 return;
             }
             Some(Repeatable::Transform { transform, before }) => {
