@@ -2191,6 +2191,29 @@ pub(crate) fn object_miter_limit(style: &str) -> Option<f64> {
         })
 }
 
+/// Whether an object's version 16+ style string fills it with the
+/// nonzero rule: `fill.winding` "1" (#1919: a version 27 file whose traced
+/// lettering is made of overlapping parts, drawn filled where they overlap
+/// in the program that wrote it and in the page preview it carries) or
+/// "0" (even-odd). `None` without it.
+pub(crate) fn object_fill_winding(style: &str) -> Option<bool> {
+    let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
+    let Json::Obj(items) = parse_json(t)? else {
+        return None;
+    };
+    let Json::Obj(fill) = &items.iter().find(|(k, _)| k == "fill")?.1 else {
+        return None;
+    };
+    let w = fill.iter().find(|(k, _)| k == "winding")?.1.num()?;
+    if w == 1.0 {
+        Some(true)
+    } else if w == 0.0 {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 /// The opacity an object's version 16+ style string gives it: its
 /// `transparency` section's `uniformTransparency` is the share of the
 /// object that lets the background through (0.3 draws it at 70 %: the

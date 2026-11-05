@@ -20563,3 +20563,63 @@ fn the_objects_docker_chooses_master_or_page_guidelines() {
     assert_eq!(app.doc().pages[0].guides.len(), 1);
     assert_eq!(app.doc().master_guides.len(), 1);
 }
+
+/// #1211, #1919: the Properties docker's Fill section has Fill winding: a
+/// click on it makes the selected object fill with the nonzero rule (one
+/// undo step), a second click with the even-odd rule again.
+#[test]
+fn fill_winding_in_the_fill_section_sets_the_fill_rule() {
+    use tracedraw_core::shaping::FillRule;
+    let (ctx, mut app, _) = setup();
+    // A curve of two overlapping squares (rectangles show no box).
+    let mut path = tracedraw_core::BezPath::new();
+    for (x0, x1) in [(10.0, 40.0), (30.0, 60.0)] {
+        path.move_to((x0, 10.0));
+        path.line_to((x1, 10.0));
+        path.line_to((x1, 40.0));
+        path.line_to((x0, 40.0));
+        path.close_path();
+    }
+    let id = app
+        .new_shape(ShapeKind::Path { path, closed: true })
+        .expect("curve");
+    app.select(vec![id]);
+    app.show_dockers = true;
+    app.docker_tab = crate::app::DockerTab::Properties;
+    app.settings.properties_closed = ["summary", "outline", "transparency", "corners", "effects"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let label = crate::i18n::tr("docker.fill_winding");
+    let rule = |app: &App| app.doc().find_shape(id).expect("the rectangle").fill_rule;
+    let click = |ctx: &egui::Context, app: &mut App| {
+        for _ in 0..2 {
+            frame(ctx, app, Vec::new(), Modifiers::NONE);
+        }
+        let texts = texts_drawn(ctx, app, Vec::new());
+        let at = text_at(&texts, &label).expect("Fill winding is drawn");
+        frame(ctx, app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+        frame(
+            ctx,
+            app,
+            vec![button(at, true, PointerButton::Primary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(
+            ctx,
+            app,
+            vec![button(at, false, PointerButton::Primary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    assert_eq!(rule(&app), FillRule::EvenOdd);
+    let steps = undo_steps(&app);
+    click(&ctx, &mut app);
+    assert_eq!(rule(&app), FillRule::NonZero);
+    assert_eq!(undo_steps(&app), steps + 1);
+    click(&ctx, &mut app);
+    assert_eq!(rule(&app), FillRule::EvenOdd);
+    app.undo();
+    assert_eq!(rule(&app), FillRule::NonZero);
+}

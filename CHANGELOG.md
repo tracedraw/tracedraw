@@ -30,6 +30,8 @@ full, row-by-row status.
 
 - Saving to `.cdr`: objects on a master layer shown behind every page are written once, on the master page, as the program that reads these files keeps them; the file reopens with them on the master layer. They were copied onto every page, so the reopened file had a copy on each page that had to be edited page by page. Master layers in front of the pages or on odd or even pages only are still written as copies on each page (#1775).
 
+- Fill winding: every object now has a fill rule. Opened `.cdr` files (versions 16 and later) keep each curve's own rule, so traced lettering made of overlapping parts no longer shows white gaps where the parts meet, on screen, in print, PDF and SVG; saving to `.cdr` writes it back (before version 16, as the outline of the filled area). The Properties docker's Fill section has a Fill winding box to set it: on, overlaps stay filled; off (the default), they are holes (#1919, #1211).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).

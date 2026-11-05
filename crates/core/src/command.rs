@@ -294,6 +294,11 @@ pub enum Command {
         shapes: Vec<ShapeId>,
         wrap: bool,
     },
+    /// How the fills of `shapes` cover overlapping contours (#1211).
+    SetFillRule {
+        shapes: Vec<ShapeId>,
+        rule: crate::shaping::FillRule,
+    },
     /// Turn wrapping on for `shapes` with this wrap style and offset.
     SetWrapStyle {
         shapes: Vec<ShapeId>,
@@ -516,6 +521,7 @@ impl Command {
             Command::SetOverprint { .. } => "Overprint",
             Command::SetLink { .. } => "Hyperlink",
             Command::SetWrapText { .. } => "Wrap Paragraph Text",
+            Command::SetFillRule { .. } => "Fill Winding",
             Command::SetWrapStyle { .. } => "Wrap Style",
             Command::SetObjectData { .. } => "Object Data",
             Command::SetPictureInks { .. } => "Edit Object",
@@ -1060,6 +1066,14 @@ impl Command {
                 }
                 for id in shapes {
                     any_mut(doc, *id)?.wrap_text = *wrap;
+                }
+            }
+            Command::SetFillRule { shapes, rule } => {
+                for id in shapes {
+                    any(doc, *id)?;
+                }
+                for id in shapes {
+                    any_mut(doc, *id)?.fill_rule = *rule;
                 }
             }
             Command::SetWrapStyle { shapes, style } => {
@@ -1782,6 +1796,48 @@ fn for_group_deep(shape: &mut Shape, f: &mut dyn FnMut(&mut Shape)) {
 
 #[cfg(test)]
 mod tests {
+    /// Fill winding (#1211): the command sets the objects' fill rule in
+    /// one undo step, an unknown object changes nothing, and the rule
+    /// survives a `.tdraw`-style round trip through serde.
+    #[test]
+    fn set_fill_rule_sets_the_rule_and_undoes() {
+        use crate::document::ShapeKind;
+        use crate::shaping::FillRule;
+        let mut e = crate::Engine::default();
+        let layer = e.document().pages[0].layers[0].id;
+        let id = e.new_shape_id();
+        let shape = Shape::new(
+            id,
+            ShapeKind::Rect {
+                rect: crate::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        e.run(&Command::AddShape { layer, shape }).unwrap();
+        let rule = |e: &crate::Engine| e.document().find_shape(id).unwrap().fill_rule;
+        assert_eq!(rule(&e), FillRule::EvenOdd);
+        e.run(&Command::SetFillRule {
+            shapes: vec![id],
+            rule: FillRule::NonZero,
+        })
+        .unwrap();
+        assert_eq!(rule(&e), FillRule::NonZero);
+        let json = serde_json::to_string(e.document().find_shape(id).unwrap()).unwrap();
+        let back: Shape = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.fill_rule, FillRule::NonZero);
+        e.undo().unwrap();
+        assert_eq!(rule(&e), FillRule::EvenOdd);
+        let json = serde_json::to_string(e.document().find_shape(id).unwrap()).unwrap();
+        assert!(!json.contains("fill_rule"), "even-odd is left out");
+        assert!(e
+            .run(&Command::SetFillRule {
+                shapes: vec![crate::ShapeId(4242)],
+                rule: FillRule::NonZero,
+            })
+            .is_err());
+    }
+
     /// Swap Colors: fill and outline colours change places on each
     /// object, inside groups each on its own; an object selected with its
     /// group swaps once; others stay; one undo step; an unknown object

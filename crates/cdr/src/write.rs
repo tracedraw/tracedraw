@@ -3145,12 +3145,19 @@ fn object_style_json(
     stroke: Option<&Stroke>,
     opacity: f64,
     graded: Option<(&tracedraw_core::Fountain, u8)>,
+    nonzero: bool,
 ) -> String {
+    // A nonzero fill rule is `winding` "1" in the fill (#1919); even-odd,
+    // the default, is left out as most files do.
+    let winding = if nonzero { r#","winding":"1""# } else { "" };
     let fill_part = match fill_colour(fill) {
         Some(c) if !matches!(fill, Fill::None) => {
-            format!(r#"{{"type":"1","primaryColor":"{}"}}"#, colour_spec(c))
+            format!(
+                r#"{{"type":"1","primaryColor":"{}"{winding}}}"#,
+                colour_spec(c)
+            )
         }
-        _ => r#"{"type":"0"}"#.to_string(),
+        _ => format!(r#"{{"type":"0"{winding}}}"#),
     };
     let outline_part = match stroke {
         // The mitre limit in degrees, where the reader takes it (#384).
@@ -5078,7 +5085,8 @@ impl<'a> Writer<'a> {
         }
         if v.style_strings() {
             let graded = self.graded.get(&s.id).map(|(f, t)| (f, *t));
-            let mut json = object_style_json(fill, s.stroke.as_ref(), s.opacity, graded);
+            let nonzero = s.fill_rule == tracedraw_core::shaping::FillRule::NonZero;
+            let mut json = object_style_json(fill, s.stroke.as_ref(), s.opacity, graded, nonzero);
             if let Some((_, character, _)) = &text {
                 // Text objects keep their character settings there too.
                 json.pop();
@@ -5676,6 +5684,17 @@ impl<'a> Writer<'a> {
             }
             _ => {
                 let coords = match &s.kind {
+                    // Before version 16 no file seen holds a fill rule: a
+                    // curve that fills nonzero (#1919) goes out as the
+                    // outline of the area it covers, which fills the same
+                    // under the even-odd rule those versions draw with.
+                    ShapeKind::Path { path, .. }
+                        if v.0 < 16
+                            && s.fill_rule == tracedraw_core::shaping::FillRule::NonZero
+                            && !matches!(s.fill, Fill::None) =>
+                    {
+                        curve_coords(&tracedraw_core::shaping::nonzero_as_even_odd(path))
+                    }
                     ShapeKind::Path { path, .. } => curve_coords_typed(path, &s.node_types),
                     _ => curve_coords(&s.local_path()),
                 };

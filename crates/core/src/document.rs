@@ -2170,6 +2170,13 @@ pub struct Shape {
     /// again from it whenever it changes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub qr: Option<Box<QrCode>>,
+    /// How the fill covers the places where the outline's contours
+    /// overlap (#1211, #1919): even-odd (the default: an overlap of two
+    /// contours is a hole, as in a combined ring) or nonzero (an overlap
+    /// of contours turning the same way stays filled, as in traced
+    /// lettering made of overlapping parts). Text always fills nonzero.
+    #[serde(default, skip_serializing_if = "crate::shaping::FillRule::is_even_odd")]
+    pub fill_rule: crate::shaping::FillRule,
 }
 
 /// What a QR code holds: the kind of content, which decides the fields
@@ -2468,6 +2475,7 @@ impl Shape {
             extra_strokes: Vec::new(),
             raster_fx: None,
             qr: None,
+            fill_rule: crate::shaping::FillRule::EvenOdd,
         }
     }
 

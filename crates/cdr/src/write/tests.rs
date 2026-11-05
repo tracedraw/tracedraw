@@ -8438,3 +8438,57 @@ fn master_guidelines_round_trip_as_master_guidelines() {
         );
     }
 }
+
+/// A curve whose fill rule is nonzero (#1919: traced lettering made of
+/// overlapping parts) keeps it through a save: from version 16 as the
+/// style string's `fill.winding` "1"; before 16, where no file holds a
+/// fill rule, as the outline of the area it covers, so the overlap is
+/// filled under the even-odd rule those versions use.
+#[test]
+fn a_nonzero_curve_keeps_its_overlaps_filled_through_a_save() {
+    use tracedraw_core::shaping::FillRule;
+    let mut p = BezPath::new();
+    for (x0, x1) in [(10.0, 60.0), (40.0, 90.0)] {
+        p.move_to((x0, 10.0));
+        p.line_to((x1, 10.0));
+        p.line_to((x1, 90.0));
+        p.line_to((x0, 90.0));
+        p.close_path();
+    }
+    let mut c = Shape::new(
+        tracedraw_core::ShapeId(1),
+        ShapeKind::Path {
+            path: p,
+            closed: true,
+        },
+    );
+    c.fill = Fill::Solid(Color::BLACK);
+    c.fill_rule = FillRule::NonZero;
+    let doc = doc_with(vec![c]);
+    let overlap = Point::new(50.0, 50.0);
+    for v in versions() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, rep) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let s = &back.pages[0].layers[0].shapes[0];
+        let path = s.transform * s.local_path();
+        let inside = match s.fill_rule {
+            FillRule::NonZero => path.winding(overlap) != 0,
+            FillRule::EvenOdd => path.winding(overlap) % 2 != 0,
+        };
+        assert!(inside, "{v}: {:?} {:?}", s.fill_rule, rep.warnings);
+        if v >= 16 {
+            assert_eq!(s.fill_rule, FillRule::NonZero, "{v}");
+        }
+    }
+    // An even-odd curve stays so, its overlap a hole.
+    let mut even = doc.clone();
+    even.pages[0].layers[0].shapes[0].fill_rule = FillRule::EvenOdd;
+    for v in versions() {
+        let bytes = document_to_cdr_version(&even, v);
+        let (back, _) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let s = &back.pages[0].layers[0].shapes[0];
+        assert_eq!(s.fill_rule, FillRule::EvenOdd, "{v}");
+        let path = s.transform * s.local_path();
+        assert_eq!(path.winding(overlap) % 2, 0, "{v}");
+    }
+}

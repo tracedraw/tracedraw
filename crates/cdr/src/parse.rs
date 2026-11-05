@@ -3759,6 +3759,10 @@ impl<'a> Ctx<'a> {
         shape.keep_corner_size();
         shape.name = name;
         shape.opacity = opacity;
+        // Version 16+: the fill's winding (#1919): "1" fills nonzero.
+        if style_string.as_deref().and_then(text::object_fill_winding) == Some(true) {
+            shape.fill_rule = tracedraw_core::shaping::FillRule::NonZero;
+        }
         if let Some(d) = distortion {
             shape.effects.push(tracedraw_core::live::Effect::Distort(d));
         }
@@ -11538,6 +11542,58 @@ pub(crate) mod tests {
         b.extend_from_slice(&u32s(&[4]));
         b.resize(117, 0);
         b
+    }
+
+    /// The fill rule of a version 16+ curve (#1919): its style string's
+    /// `fill.winding`, "1" in the reporter's version 27 file for traced
+    /// letters made of overlapping parts (filled where they overlap),
+    /// "0" or left out for the even-odd rule.
+    #[test]
+    fn version_16_plus_fill_winding_is_the_curve_fill_rule() {
+        use tracedraw_core::shaping::FillRule;
+        let v = 24u16;
+        let read = |json: &str| {
+            let style = [u32s(&[1, json.len() as u32]), json.as_bytes().to_vec()].concat();
+            let mut coords = u32s(&[5]);
+            coords.extend_from_slice(&i32s(&[0, 0, 254000, 0, 254000, 254000, 0, 254000, 0, 0]));
+            coords.extend_from_slice(&[0x08, 0x40, 0x40, 0x40, 0x48]);
+            let obj = list(
+                b"obj ",
+                &chunk(
+                    b"loda",
+                    &loda(
+                        OBJ_CURVE,
+                        &[(ARG_STYLE_STRING, style), (ARG_COORDS, coords)],
+                    ),
+                ),
+            );
+            let body = [
+                chunk(b"mcfg", &mcfg(v, 2_540_000, 2_540_000)),
+                list(b"page", &list(b"layr", &obj)),
+            ]
+            .concat();
+            let (doc, rep) = parse(&riff(b"CDRO", &body), v);
+            assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+            first_shape(&doc).fill_rule
+        };
+        let colour =
+            r#""primaryColor":"CMYK,USER,0,0,0,100,100,00000000-0000-0000-0000-000000000000""#;
+        assert_eq!(
+            read(&format!(
+                r#"{{"fill":{{"overprint":"0",{colour},"type":"1","winding":"1"}}}}"#
+            )),
+            FillRule::NonZero
+        );
+        assert_eq!(
+            read(&format!(
+                r#"{{"fill":{{{colour},"type":"1","winding":"0"}}}}"#
+            )),
+            FillRule::EvenOdd
+        );
+        assert_eq!(
+            read(&format!(r#"{{"fill":{{{colour},"type":"1"}}}}"#)),
+            FillRule::EvenOdd
+        );
     }
 
     #[test]

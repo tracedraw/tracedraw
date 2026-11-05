@@ -170,6 +170,7 @@ Counts: works 190, partial 7 (`.cdr` content coverage; CMX import; print preview
 | Colour styles and harmonies: New from Selection (fills), from the mixer colour, Fill and Outline per style, harmony sets | partial: no live link (changing a style recolours only top-level objects whose fill is exactly the old colour), no gradient shades, harmonies are a one-off set |
 | Object styles (fill, outline and transparency parts; objects stay linked and follow the style; break link) and default properties of new graphics, artistic text and paragraph text, saved with the drawing | works (see `behavior/object-styles.md`) |
 | Overprint fill, outline and bitmap; Show Overprints preview | works |
+| Fill winding per object (Properties docker, Fill section): nonzero keeps the overlaps of a curve's parts filled, even-odd (the default) makes them holes; drawn so on screen, in print, PDF and SVG, kept in `.tdraw`, read from and written to `.cdr` (see `behavior/fill-rule.md`) | works |
 | Proof colours (soft proofing: the page drawn through CMYK and back, with the CMYK profile in use or the built-in model; see `behavior/colour-management.md`) | works |
 | CMYK shown through a built-in press model of coated stock when no profile is loaded (default palette within 2.5 Delta E); RGB to CMYK with black-only greys and pure black | works |
 | ICC colour management (v2/v4 profiles, matrix/TRC and LUT, four intents, black point compensation, gamut check); PDF/X output intent embedding | works |
