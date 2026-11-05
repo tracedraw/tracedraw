@@ -158,17 +158,27 @@ such files of #1824.
   dragging it along the line sets the frequency. A handle drag edits the
   object's distortion in place (its centre kept) as one undo step; a
   value changed on the bar moves the handle along the same line.
-- Shift or Ctrl (Cmd on macOS) held while dragging the end handle, or
-  while a drag on the object sets a new distortion's line, keeps the
-  handle in steps of the constrain angle about the centre (Options,
-  15 degrees at first, so horizontal and vertical among them), as the
-  Shape tool's handles: the pointer turned onto the nearest step, as
-  far out as it reaches along it (`interaction::constrain_from`). Push
-  and Pull, Zipper (its tilt then follows the step) and Twister alike;
-  the slider and the centre are not constrained, and Ctrl on the line
-  still keeps its move horizontal or vertical. The handles took the
-  raw pointer, Shift and Ctrl doing nothing (#1563, #1793,
-  `effect_line_tests::shift_and_ctrl_keep_a_distortion_handle_to_the_constrain_angle`).
+- The keys steer the end handle while it is dragged, and the line a
+  drag on the object sets for a new distortion (#1563, #1793, a
+  maintainer decision; `distort_tool::constrain_end`):
+  - Shift: the handle moves only sideways, keeping the height it had
+    when the drag began (a new line stays level with the press);
+  - Ctrl (Cmd on macOS): the handle keeps its length and turns freely
+    toward the pointer, all the way round, with no steps (a new line,
+    which has no length yet, follows the pointer);
+  - Ctrl+Shift: steps of the constrain angle about the centre (Options,
+    15 degrees at first, so horizontal and vertical among them), as the
+    Shape tool's handles: the pointer turned onto the nearest step, as
+    far out as it reaches along it (`interaction::constrain_from`).
+
+  Push and Pull, Zipper (its tilt follows the handle) and Twister alike.
+  Push and Pull turned with Ctrl keeps its amount, so only its line
+  turns. The slider and the centre are not constrained, and Ctrl on the
+  line still keeps its move horizontal or vertical. This replaces the
+  first version of these keys, in which Shift and Ctrl alike kept the
+  handle to the constrain angle steps
+  (`effect_line_tests::shift_and_ctrl_steer_a_distortion_handle`,
+  `effect_line_tests::ctrl_turns_a_distortion_handle_all_the_way_round_at_its_length`).
 - The handles look like the Shape tool's nodes (#1574): white inside a
   2 pixel ring in the main colour of Options > Nodes and Handles, with a
   1 pixel dark edge (`Tokens::HANDLE`) outside, so they show on a white
@@ -245,7 +255,8 @@ such files of #1824.
 - `distort_tool::tests::the_handles_set_the_values_by_dragging`
 - `distort_tool::tests::the_twister_handle_is_as_long_as_it_is_dragged`
 - `distort_tool::tests::the_handles_follow_the_pointer_in_any_direction`
-- `effect_line_tests::shift_and_ctrl_keep_a_distortion_handle_to_the_constrain_angle`
+- `effect_line_tests::shift_and_ctrl_steer_a_distortion_handle`
+- `effect_line_tests::ctrl_turns_a_distortion_handle_all_the_way_round_at_its_length`
 - `distort_tool::tests::a_zipper_drag_leans_the_teeth`
 - `ui::distort_bar::tests::the_bar_draws_for_every_kind_and_shows_the_selection`
 - `ui::distort_bar::tests::the_handles_stand_upright_on_the_pixel_grid`
