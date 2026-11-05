@@ -20113,3 +20113,209 @@ fn the_tab_ruler_is_for_paragraph_text_being_edited() {
     app.begin_text_edit(art);
     assert!(app.tab_ruler().is_none());
 }
+
+/// [`frame`] at the time `t` (seconds), for what waits a while.
+fn frame_at(ctx: &egui::Context, app: &mut App, events: Vec<Event>, modifiers: Modifiers, t: f64) {
+    let mut all = vec![Event::ModifiersChanged(modifiers)];
+    all.extend(events);
+    let mut input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            Pos2::ZERO,
+            egui::vec2(1600.0, 1000.0),
+        )),
+        events: all,
+        time: Some(t),
+        ..Default::default()
+    };
+    crate::pen::filter_raw_input(ctx, &mut input);
+    crate::interaction::release_chorded_left(ctx, &mut input);
+    let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+    out.textures_delta.clear();
+}
+
+/// The index of the page holding `id`.
+fn page_of(app: &App, id: ShapeId) -> Option<usize> {
+    app.doc()
+        .pages
+        .iter()
+        .position(|p| p.layers.iter().any(|l| l.shapes.iter().any(|s| s.id == id)))
+}
+
+/// A drawing of two pages, the rectangle selected on the first, and the
+/// second page's tab on screen.
+fn two_pages() -> (egui::Context, App, ShapeId, Pos2) {
+    let (ctx, mut app, id) = setup();
+    app.add_page();
+    app.goto_page(0);
+    app.select(vec![id]);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    app.zoom_to_page();
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let tab = app
+        .page_tab_rects
+        .iter()
+        .find(|(i, _)| *i == 1)
+        .map(|(_, r)| r.center())
+        .expect("the second page's tab is drawn");
+    (ctx, app, id, tab)
+}
+
+fn undo_steps(app: &App) -> usize {
+    app.engine.history_labels().0.len()
+}
+
+/// #1346: a selection dragged onto another page's tab and let go there
+/// goes to that page at the same place on the page, which becomes the
+/// current page, as one undo step; Undo brings it back.
+#[test]
+fn a_selection_dropped_on_a_page_tab_moves_to_that_page() {
+    let (ctx, mut app, id, tab) = two_pages();
+    let before = bounds(&app, id);
+    let steps = undo_steps(&app);
+    let from = app.view.to_screen(before.center());
+    drag(&ctx, &mut app, from, tab, Modifiers::NONE, Vec::new());
+    assert_eq!(page_of(&app, id), Some(1), "on the second page");
+    assert_eq!(app.page_index(), 1, "which is shown");
+    assert_eq!(app.selection, vec![id], "still selected");
+    let after = bounds(&app, id);
+    assert!(
+        (after.x0 - before.x0).abs() < 1e-6 && (after.y0 - before.y0).abs() < 1e-6,
+        "at its place on the page: {before:?} {after:?}"
+    );
+    assert_eq!(undo_steps(&app), steps + 1, "one undo step");
+    app.undo();
+    assert_eq!(page_of(&app, id), Some(0), "Undo brings it back");
+}
+
+/// #1346: with Ctrl held while it is let go on the tab, a copy goes to
+/// that page and the original stays.
+#[test]
+fn ctrl_on_a_page_tab_sends_a_copy() {
+    let (ctx, mut app, id, tab) = two_pages();
+    let before = bounds(&app, id);
+    let from = app.view.to_screen(before.center());
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(from)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(from, true, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    for i in 1..=4 {
+        let p = from + (tab - from) * (i as f32 / 4.0);
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(p)],
+            Modifiers::CTRL,
+        );
+    }
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(tab, false, PointerButton::Primary, Modifiers::CTRL)],
+        Modifiers::CTRL,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert_eq!(page_of(&app, id), Some(0), "the original stays");
+    assert_eq!(app.page_index(), 1);
+    assert_eq!(app.selection.len(), 1);
+    let copy = app.selection[0];
+    assert_ne!(copy, id, "a copy is selected");
+    assert_eq!(page_of(&app, copy), Some(1), "on the second page");
+    let b = bounds(&app, copy);
+    assert!((b.x0 - before.x0).abs() < 1e-6 && (b.y0 - before.y0).abs() < 1e-6);
+}
+
+/// #1346: resting on another page's tab while the selection is moved
+/// opens that page with the selection on it, and the move goes on there;
+/// let go on the drawing it lands where it is dropped, the whole drag
+/// one undo step.
+#[test]
+fn resting_on_a_page_tab_opens_the_page_and_the_move_goes_on() {
+    let (ctx, mut app, id, tab) = two_pages();
+    let before = bounds(&app, id);
+    let steps = undo_steps(&app);
+    let from = app.view.to_screen(before.center());
+    let mut t = 10.0;
+    frame_at(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(from)],
+        Modifiers::NONE,
+        t,
+    );
+    t += 0.02;
+    frame_at(
+        &ctx,
+        &mut app,
+        vec![button(from, true, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+        t,
+    );
+    for i in 1..=4 {
+        t += 0.02;
+        let p = from + (tab - from) * (i as f32 / 4.0);
+        frame_at(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(p)],
+            Modifiers::NONE,
+            t,
+        );
+    }
+    assert_eq!(page_of(&app, id), Some(0), "not before a rest");
+    for _ in 0..10 {
+        t += 0.1;
+        frame_at(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(tab)],
+            Modifiers::NONE,
+            t,
+        );
+    }
+    assert_eq!(page_of(&app, id), Some(1), "the rest sent it there");
+    assert_eq!(app.page_index(), 1, "and opened the page");
+    assert!(matches!(app.drag, Drag::Move { .. }), "the move goes on");
+    // Back onto the drawing and let go there.
+    for _ in 0..4 {
+        frame_at(&ctx, &mut app, Vec::new(), Modifiers::NONE, t);
+    }
+    let to = app.view.to_screen(before.center());
+    for i in 1..=4 {
+        t += 0.02;
+        let p = tab + (to - tab) * (i as f32 / 4.0);
+        frame_at(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(p)],
+            Modifiers::NONE,
+            t,
+        );
+    }
+    frame_at(
+        &ctx,
+        &mut app,
+        vec![button(to, false, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+        t + 0.02,
+    );
+    frame_at(&ctx, &mut app, Vec::new(), Modifiers::NONE, t + 0.04);
+    assert_eq!(page_of(&app, id), Some(1));
+    assert!(matches!(app.drag, Drag::None));
+    assert_eq!(undo_steps(&app), steps + 1, "one undo step for the drag");
+    app.undo();
+    assert_eq!(page_of(&app, id), Some(0), "Undo takes it all back");
+    let b = bounds(&app, id);
+    assert!((b.x0 - before.x0).abs() < 1e-6 && (b.y0 - before.y0).abs() < 1e-6);
+}

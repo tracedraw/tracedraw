@@ -1065,7 +1065,7 @@ impl App {
         true
     }
 
-    fn start_move(&mut self, p: Point) {
+    pub(crate) fn start_move(&mut self, p: Point) {
         // A text fitted to a path slides along it instead.
         if self.fitted_text().is_some() {
             self.drag = Drag::AlongPath {
@@ -3061,11 +3061,19 @@ impl App {
                     );
                 }
             }
+            // Dropped on a page tab: the selection goes to that page, at
+            // its place there (#1346).
+            Drag::Move { .. } if self.page_tab_under_pointer().is_some() => {
+                if let Some(i) = self.page_tab_under_pointer() {
+                    self.drop_on_page_tab(i);
+                }
+            }
             // Dropped on the document palette: the selection's colours
             // join it and the objects stay where they were.
             Drag::Move { .. } if self.over_document_palette() => {
                 self.drag_copy = false;
                 self.palette_from_selection();
+                self.end_page_drag_group();
             }
             Drag::Move { total, .. } => {
                 if total.hypot() > 1e-6 {
@@ -3084,6 +3092,8 @@ impl App {
                         self.select(vec![frame]);
                     }
                 }
+                // A move that went to another page on the way: one step.
+                self.end_page_drag_group();
             }
             Drag::AlongPath { start, current } => self.finish_along_path(start, current),
             Drag::Pivot => {}

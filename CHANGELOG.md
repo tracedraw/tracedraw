@@ -24,6 +24,8 @@ full, row-by-row status.
 
 - Save Drawing dialog: the column of shortcuts lists the mounted drives, memory cards and network shares (on Linux those in /media, /run/media and /mnt and the desktop's shares; on macOS /Volumes), the folders bookmarked in the desktop's file manager and here (right click on a folder: Add to bookmarks), and the folders used lately. Before, it had only the home folders and /, so saving to a USB stick or a share meant typing its path (#1391).
 
+- Pages: objects can be moved to another page by dragging them onto its page tab. Resting on the tab for a moment opens that page with the objects on it and the move goes on there; letting go on the tab drops them at their place on that page. Ctrl (Cmd on macOS) sends copies and leaves the originals. The whole drag is one undo step. Before, only cut and paste moved objects between pages (#1346).
+
 - Pen and Bezier tools: Redo of a close ends the curve. After a closed curve was reopened with Undo and closed again by a click on its first node, undoing that close and redoing it closed the curve but left the Pen drawing on from the first node, so the next click turned the closed curve into another shape. The redone close now ends the line as a close by hand does: the curve stays closed and selected, and the next click starts a new curve (#1846).
 
 - QR codes: every kind of content can be picked in Properties. Only URL and Contact (vCard) could be chosen: Email, Phone number, SMS, Text and Location share no field with a URL, so picking one made empty content, which cannot be encoded, and the kind went back. The kind picked now stays with its fields ready to fill in, while the object keeps its code until they make content (#1845).

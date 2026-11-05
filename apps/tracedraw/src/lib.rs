@@ -129,6 +129,7 @@ mod object_thumbs;
 mod ops;
 mod ops2;
 mod package;
+mod page_drop;
 mod painterly_tool;
 mod palette;
 mod palm;

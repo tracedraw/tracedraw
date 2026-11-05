@@ -1869,6 +1869,16 @@ pub struct App {
     /// mouse wheel over them slides them (#794).
     pub page_tabs_first: usize,
     pub page_tabs_followed: Option<tracedraw_core::PageId>,
+    /// Where each page tab was last drawn, by page index: a selection
+    /// moved there goes to that page (#1346, `page_drop`).
+    pub page_tab_rects: Vec<(usize, egui::Rect)>,
+    /// The page tab a moved selection rests on, and since when (seconds).
+    pub page_tab_hover: Option<(usize, f64)>,
+    /// The undo group a move that went to another page opened, so the
+    /// whole drag is one undo step.
+    pub page_drag_group: Option<Option<u64>>,
+    /// Ctrl (Cmd) held during that move: copies go to the page.
+    pub page_drag_ctrl: bool,
     /// The Hints docker's page and history.
     pub hints: crate::ui::hints::HintsState,
 }
@@ -2912,6 +2922,10 @@ impl App {
             page_tabs_fraction: 0.45,
             page_tabs_first: 0,
             page_tabs_followed: None,
+            page_tab_rects: Vec::new(),
+            page_tab_hover: None,
+            page_drag_group: None,
+            page_drag_ctrl: false,
             hints: Default::default(),
         };
         app.load_settings();
