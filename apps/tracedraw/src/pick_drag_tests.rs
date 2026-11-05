@@ -10589,6 +10589,73 @@ fn text_frame_tabs_link_frames_by_drag_and_by_click() {
     assert!(app.pending_text_link.is_none() && !app.text_link_incoming);
 }
 
+/// The flow tabs work with the Text tool too: a drag from the bottom
+/// tab of the frame being edited onto another frame flows its text on,
+/// and a click on a frame's top tab and then on another frame makes that
+/// one flow into it (#1914).
+#[test]
+fn text_frame_tabs_link_frames_with_the_text_tool() {
+    tracedraw_text::install();
+    let (ctx, mut app, _) = setup();
+    let long = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty";
+    let frame_at = |app: &mut App, text: &str, x: f64, y: f64, w: f64, h: f64| {
+        app.new_shape(ShapeKind::Text {
+            spans: vec![tracedraw_core::TextSpan::new(text, "DejaVu Sans", 12.0)],
+            origin: Point::new(x, y),
+            frame: Some(tracedraw_core::Size::new(w, h)),
+            align: tracedraw_core::TextAlign::Left,
+            para: Default::default(),
+            on_path: None,
+        })
+        .expect("frame")
+    };
+    let a = frame_at(&mut app, long, 20.0, 250.0, 30.0, 8.0);
+    let b = frame_at(&mut app, "", 20.0, 150.0, 60.0, 40.0);
+    let c = frame_at(&mut app, "c", 110.0, 150.0, 60.0, 40.0);
+    let d = frame_at(&mut app, long, 110.0, 250.0, 30.0, 8.0);
+    let corners = |app: &App, id: ShapeId| {
+        app.doc()
+            .find_shape(id)
+            .and_then(|s| s.text_frame_corners())
+            .expect("a frame")
+            .map(|p| app.view.to_screen(p))
+    };
+    let middle = |app: &App, id: ShapeId| app.view.to_screen(bounds(app, id).center());
+    app.set_tool(Tool::Text);
+    // Editing the overflowing frame: a drag from its tab onto the empty
+    // frame.
+    app.select(vec![a]);
+    app.begin_text_edit(a);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let k = corners(&app, a);
+    let tab = crate::canvas::flow_tab_rect(k[0], k[1], app.handle_size());
+    let to = middle(&app, b);
+    drag(
+        &ctx,
+        &mut app,
+        tab.center(),
+        to,
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    assert_eq!(app.next_frame(a), Some(b), "{}", app.status);
+    assert!(app.pending_text_link.is_none());
+    assert_eq!(app.tool, Tool::Text);
+    // Editing frame c: a click on its top tab, then on frame d.
+    app.select(vec![c]);
+    app.begin_text_edit(c);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let k = corners(&app, c);
+    let top = crate::canvas::flow_in_tab_rect(k[3], k[2], app.handle_size());
+    click_at(&ctx, &mut app, top.center(), Modifiers::NONE);
+    assert_eq!(app.pending_text_link, Some(c), "{}", app.status);
+    assert!(app.text_link_incoming);
+    let at = middle(&app, d);
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert_eq!(app.next_frame(d), Some(c), "{}", app.status);
+    assert_eq!(app.prev_frame(c), Some(d));
+}
+
 /// The Welcome Screen tab closes to its house while a drawing is open;
 /// the house shows the Welcome Screen again with its whole tab (#677).
 #[test]

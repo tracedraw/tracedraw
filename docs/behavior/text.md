@@ -497,6 +497,10 @@ on its own line, which is why the lines are joined first.
   (`the_flow_tab_links_to_a_new_frame_on_another_page`). A drag that
   starts on the tab does the same where it is let go (a release over a
   frame links to it, over empty space makes the new frame there).
+  The tabs work the same with the Text tool, on the frame being edited
+  or selected: a click or a drag on a tab ends the editing and links
+  as with the Pick tool; the Text tool stays (#1914,
+  `pick_drag_tests::text_frame_tabs_link_frames_with_the_text_tool`).
 - The top tab: a picked paragraph frame also has a tab over its top
   edge's middle, above the selection's top handle (two links when
   another frame flows into it, empty otherwise). A click (or a drag) on

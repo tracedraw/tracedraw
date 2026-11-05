@@ -2221,6 +2221,29 @@ impl App {
     }
 
     fn text_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
+        // A frame's flow tabs link frames with the Text tool as with the
+        // Pick tool: a click on one, then a click where the text flows,
+        // or a drag from it there (#1914).
+        if response.clicked_by(PointerButton::Primary)
+            || response.drag_started_by(PointerButton::Primary)
+        {
+            let screen = self.view.to_screen(p);
+            let from_tab = response.drag_started_by(PointerButton::Primary);
+            let tab = self
+                .flow_tab_at(screen)
+                .map(|id| (id, false))
+                .or_else(|| self.flow_in_tab_at(screen).map(|id| (id, true)));
+            if let Some((id, incoming)) = tab {
+                self.finish_text();
+                if incoming {
+                    self.start_text_link_in(id);
+                } else {
+                    self.start_text_link(id);
+                }
+                self.text_link_from_tab = from_tab;
+                return;
+            }
+        }
         // Inside the text being edited, the pointer places the caret and
         // drags a selection; elsewhere it starts a new text or edits
         // another one.
