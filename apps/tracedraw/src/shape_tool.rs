@@ -343,8 +343,9 @@ impl App {
     /// of the two handles a chosen segment shows (its start node's
     /// outgoing handle and its end node's incoming one).
     pub(crate) fn ctrl_handle_at(&self, p: Point) -> Option<(ShapeId, usize, Which)> {
-        // The nearest handle within the pick distance, on the page.
-        let tol = self.settings.nodes.pick_px() / self.view.zoom as f64;
+        // The nearest handle within the pick distance, on the page; a
+        // press anywhere on its arrow head takes it (#1643).
+        let tol = self.settings.nodes.handle_pick_px() / self.view.zoom as f64;
         let mut best: Option<((ShapeId, usize, Which), f64)> = None;
         let mut take = |key: (ShapeId, usize, Which), c: Option<Point>| {
             let Some(c) = c else { return };

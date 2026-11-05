@@ -7669,3 +7669,5 @@ options.import_with_cursor = "Importierte Dateien mit dem Importcursor platziere
 options.import_with_cursor_tip = "Nach Datei > Importieren wird der Zeiger zu einer Ecke: Klicken setzt die linke obere Ecke der Datei in Originalgröße dorthin, ein aufgezogener Rahmen passt sie ein, die Leertaste zentriert sie auf der Seite. Aus, kommt die Datei sofort." # mt
 context.spline_fixed = "Fester Kontrollpunkt" # mt
 context.spline_floating = "Freier Kontrollpunkt" # mt
+options.object_pick_distance = "Klickabstand für Objekte:" # mt
+options.object_pick_distance_tip = "Wie weit neben dem Umriss eines Objekts ein Klick es noch auswählt, in Bildschirmpixeln; 0 für keinen Abstand." # mt

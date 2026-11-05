@@ -886,6 +886,13 @@ impl NodeSize {
         }
     }
 
+    /// Length of a control handle's arrow head, screen pixels: as long
+    /// as a node is wide, so a larger node size gives larger heads too
+    /// (#1643), and as wide.
+    pub fn handle_head(self) -> f32 {
+        self.px()
+    }
+
     pub fn key(self) -> &'static str {
         match self {
             NodeSize::Small => "options.node_small",
@@ -959,6 +966,11 @@ pub struct NodePrefs {
     /// control handle to take it (Shape tool, and the curve tools'
     /// nodes).
     pub pick_distance: f32,
+    /// How far, in screen pixels, a click may land from an object's
+    /// outline and still pick it (Pick tool and the other tools that
+    /// pick objects by clicking them); 0 for none beyond the outline
+    /// itself (#1679).
+    pub object_pick_distance: f32,
     /// The Shape tool shows a corner widget inside the corners of a curve
     /// (or of the chosen nodes), dragged to round them (#635). On by
     /// default; it can be turned off in Options > Nodes and Handles so it
@@ -985,6 +997,7 @@ impl Default for NodePrefs {
             unselected_filled: true,
             show_direction: false,
             pick_distance: 6.0,
+            object_pick_distance: 3.0,
             corner_widgets: true,
             corner_one_at_a_time: true,
         }
@@ -1001,6 +1014,23 @@ impl NodePrefs {
             6.0
         };
         f64::from(set.max(self.size.px() / 2.0 + 1.0))
+    }
+
+    /// How near a press must land on a control handle's end to take it:
+    /// the pick distance, and never less than its arrow head is long, so
+    /// the whole head takes a press (#1643).
+    pub fn handle_pick_px(&self) -> f64 {
+        self.pick_px().max(f64::from(self.size.handle_head()))
+    }
+
+    /// The object click distance in screen pixels, kept sensible
+    /// (#1679).
+    pub fn object_pick_px(&self) -> f64 {
+        if self.object_pick_distance.is_finite() {
+            f64::from(self.object_pick_distance.clamp(0.0, 20.0))
+        } else {
+            3.0
+        }
     }
 }
 

@@ -7669,3 +7669,5 @@ options.import_with_cursor = "وضع الملفات المستوردة بمؤش�
 options.import_with_cursor_tip = "بعد ملف > استيراد يصبح المؤشر زاوية: انقر لوضع الزاوية العلوية اليسرى للملف هناك بحجمه، أو اسحب مربعًا لملاءمته فيه، أو اضغط المسافة لتوسيطه في الصفحة. عند الإيقاف يدخل الملف فورًا." # mt
 context.spline_fixed = "نقطة تحكم ثابتة" # mt
 context.spline_floating = "نقطة تحكم عائمة" # mt
+options.object_pick_distance = "مسافة النقر على الكائن:" # mt
+options.object_pick_distance_tip = "مدى بُعد النقرة عن حد الكائن مع بقاء تحديده، بوحدات بكسل الشاشة؛ 0 لعدم وجود مسافة." # mt

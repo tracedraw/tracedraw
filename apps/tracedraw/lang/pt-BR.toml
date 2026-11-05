@@ -7669,3 +7669,5 @@ options.import_with_cursor = "Posicionar arquivos importados com o cursor de imp
 options.import_with_cursor_tip = "Depois de Arquivo > Importar o ponteiro vira um canto: clique para pôr ali o canto superior esquerdo do arquivo no tamanho original, arraste uma caixa para encaixá-lo nela ou pressione Espaço para centralizá-lo na página. Desligado, o arquivo entra na hora." # mt
 context.spline_fixed = "Ponto de controle fixo" # mt
 context.spline_floating = "Ponto de controle flutuante" # mt
+options.object_pick_distance = "Distância de clique em objetos:" # mt
+options.object_pick_distance_tip = "A que distância do contorno de um objeto um clique ainda o seleciona, em pixels da tela; 0 para nenhuma." # mt

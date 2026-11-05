@@ -7669,3 +7669,5 @@ options.import_with_cursor = "用匯入游標放置匯入的檔案" # mt
 options.import_with_cursor_tip = "檔案 > 匯入後指標變為一個角：按一下把檔案左上角以原大小放在該處，拖曳出一個框使其符合該框，或按空白鍵使其置中於頁面。關閉時檔案立即匯入。" # mt
 context.spline_fixed = "固定控制點" # mt
 context.spline_floating = "浮動控制點" # mt
+options.object_pick_distance = "物件按一下距離：" # mt
+options.object_pick_distance_tip = "按一下離物件輪廓多遠仍能選取它，以螢幕像素計；0 表示無。" # mt

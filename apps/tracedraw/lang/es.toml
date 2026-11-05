@@ -7669,3 +7669,5 @@ options.import_with_cursor = "Colocar los archivos importados con el cursor de i
 options.import_with_cursor_tip = "Tras Archivo > Importar el puntero se convierte en una esquina: haga clic para poner ahí la esquina superior izquierda del archivo a su tamaño, arrastre un cuadro para ajustarlo a él o pulse Espacio para centrarlo en la página. Desactivado, el archivo entra al instante." # mt
 context.spline_fixed = "Punto de control fijo" # mt
 context.spline_floating = "Punto de control flotante" # mt
+options.object_pick_distance = "Distancia de clic en objetos:" # mt
+options.object_pick_distance_tip = "A qué distancia del contorno de un objeto un clic aún lo selecciona, en píxeles de pantalla; 0 para ninguna." # mt

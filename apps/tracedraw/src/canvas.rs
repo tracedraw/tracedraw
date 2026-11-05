@@ -299,6 +299,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
                 view.to_screen(*node),
                 view.to_screen(*h),
                 look.preview_color,
+                app.settings.nodes.size.handle_head(),
             );
         }
         for (p, mark) in &look.nodes {
@@ -352,8 +353,9 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
             if let Some(o) = out {
                 let so = view.to_screen(*o);
                 let mirrored = sp - (so - sp);
-                draw_control_handle(painter, sp, so, Tokens::SELECTION);
-                draw_control_handle(painter, sp, mirrored, Tokens::SELECTION);
+                let head = app.settings.nodes.size.handle_head();
+                draw_control_handle(painter, sp, so, Tokens::SELECTION, head);
+                draw_control_handle(painter, sp, mirrored, Tokens::SELECTION, head);
             }
             // A white edge round the hollow square, so it shows on a
             // black fill too (#672).
@@ -2021,7 +2023,8 @@ fn draw_pixel_grid(app: &App, painter: &Painter, rect: ERect) {
 /// A node's control handle: a dashed line from the node `node` to the
 /// control point `ctrl`, which is a solid arrow head pointing away from
 /// the node.
-fn draw_control_handle(painter: &Painter, node: Pos2, ctrl: Pos2, color: Color32) {
+/// The head is `head` long (the node size's, #1643) and as wide.
+fn draw_control_handle(painter: &Painter, node: Pos2, ctrl: Pos2, color: Color32, head: f32) {
     let d = ctrl - node;
     let len = d.length();
     if len < 0.5 {
@@ -2029,7 +2032,8 @@ fn draw_control_handle(painter: &Painter, node: Pos2, ctrl: Pos2, color: Color32
     }
     let u = d / len;
     let n = egui::vec2(-u.y, u.x);
-    let head = 7.0_f32.min(len);
+    let half = head / 2.0;
+    let head = head.min(len);
     let base = ctrl - u * head;
     if len > head {
         // Dashes in the colour and white in turn, as wide as the Pen
@@ -2045,7 +2049,7 @@ fn draw_control_handle(painter: &Painter, node: Pos2, ctrl: Pos2, color: Color32
         );
     }
     painter.add(epaint::PathShape::convex_polygon(
-        vec![ctrl, base + n * 3.5, base - n * 3.5],
+        vec![ctrl, base + n * half, base - n * half],
         color,
         EStroke::new(1.0, Color32::WHITE),
     ));
@@ -2166,8 +2170,9 @@ fn draw_nodes(app: &App, painter: &Painter) {
                     );
                     if let (Some(a), Some(b)) = ends {
                         let sp = |q| view.to_screen(s.transform * q);
-                        draw_control_handle(painter, sp(a), sp(c1), main);
-                        draw_control_handle(painter, sp(b), sp(c2), main);
+                        let head = prefs.size.handle_head();
+                        draw_control_handle(painter, sp(a), sp(c1), main, head);
+                        draw_control_handle(painter, sp(b), sp(c2), main, head);
                     }
                 }
             }
@@ -2340,7 +2345,7 @@ fn draw_nodes(app: &App, painter: &Painter) {
             if selected {
                 for c in [n.ctrl_in, n.ctrl_out].into_iter().flatten() {
                     let cp = view.to_screen(s.transform * c);
-                    draw_control_handle(painter, p, cp, main);
+                    draw_control_handle(painter, p, cp, main, prefs.size.handle_head());
                 }
             }
             let shape = match nodes::node_type_of_with(&n, &s.node_types) {

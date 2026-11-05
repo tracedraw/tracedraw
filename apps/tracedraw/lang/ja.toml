@@ -7669,3 +7669,5 @@ options.import_with_cursor = "読み込んだファイルを読み込みカー�
 options.import_with_cursor_tip = "ファイル > 読み込みの後、ポインターが角の形になります。クリックでファイルの左上の角をそこに元のサイズで配置、ドラッグした枠に合わせて配置、Space でページ中央に配置します。オフのときはすぐに読み込まれます。" # mt
 context.spline_fixed = "固定コントロールポイント" # mt
 context.spline_floating = "フローティングコントロールポイント" # mt
+options.object_pick_distance = "オブジェクトのクリック距離:" # mt
+options.object_pick_distance_tip = "オブジェクトの輪郭からどれだけ離れたクリックでも選択されるか(画面ピクセル)。0 で無効。" # mt

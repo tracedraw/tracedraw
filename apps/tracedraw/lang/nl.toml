@@ -7669,3 +7669,5 @@ options.import_with_cursor = "Geïmporteerde bestanden plaatsen met de importcur
 options.import_with_cursor_tip = "Na Bestand > Importeren wordt de aanwijzer een hoek: klik om de linkerbovenhoek van het bestand daar op ware grootte te zetten, sleep een kader om het erin te passen of druk op Spatie om het op de pagina te centreren. Uit komt het bestand meteen binnen." # mt
 context.spline_fixed = "Vast controlepunt" # mt
 context.spline_floating = "Zwevend controlepunt" # mt
+options.object_pick_distance = "Klikafstand voor objecten:" # mt
+options.object_pick_distance_tip = "Hoe ver van de omtrek van een object een klik het nog selecteert, in schermpixels; 0 voor geen." # mt

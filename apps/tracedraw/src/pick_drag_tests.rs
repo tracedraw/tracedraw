@@ -21023,3 +21023,66 @@ fn a_bspline_control_point_is_made_fixed_and_floating() {
     assert!(s.spline_fixed.is_empty(), "{:?}", s.spline_fixed);
     assert!(s.spline.is_some());
 }
+
+/// Options > Nodes and Handles, Node size: a control handle's arrow head
+/// is as long as a node is wide, and a press anywhere on the head takes
+/// the handle (#1643).
+#[test]
+fn control_handle_heads_follow_the_node_size() {
+    use crate::settings::NodeSize;
+    use tracedraw_core::nodes::Which;
+    assert_eq!(NodeSize::Small.handle_head(), 7.0, "as before");
+    assert!(NodeSize::Large.handle_head() > NodeSize::Medium.handle_head());
+    assert!(NodeSize::Medium.handle_head() > NodeSize::Small.handle_head());
+    let (ctx, mut app, _) = setup();
+    let mut path = tracedraw_core::BezPath::new();
+    path.move_to((100.0, 100.0));
+    path.curve_to((110.0, 130.0), (140.0, 130.0), (150.0, 100.0));
+    let id = app
+        .new_shape(ShapeKind::Path {
+            path,
+            closed: false,
+        })
+        .expect("curve");
+    app.select(vec![id]);
+    app.set_tool(Tool::Shape);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    app.node_selection = vec![(id, 0)];
+    // 9 screen pixels from the handle's end, back along it towards the
+    // node: on a large node size's head, past a small one's.
+    let ctrl = Point::new(110.0, 130.0);
+    let node = Point::new(100.0, 100.0);
+    let u = (node - ctrl) / (node - ctrl).hypot();
+    let on_head = ctrl + u * (9.0 / app.view.zoom as f64);
+    app.settings.nodes.size = NodeSize::Small;
+    assert_eq!(app.ctrl_handle_at(on_head), None);
+    app.settings.nodes.size = NodeSize::Large;
+    assert_eq!(app.ctrl_handle_at(on_head), Some((id, 0, Which::Out)));
+}
+
+/// Options > Nodes and Handles, Object click distance: how far from a
+/// thin line a click still picks it (#1679).
+#[test]
+fn the_object_click_distance_is_a_setting() {
+    let (ctx, mut app, _) = setup();
+    let mut path = tracedraw_core::BezPath::new();
+    path.move_to((100.0, 150.0));
+    path.line_to((160.0, 150.0));
+    let id = app
+        .new_shape(ShapeKind::Path {
+            path,
+            closed: false,
+        })
+        .expect("line");
+    app.select(Vec::new());
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let px = |app: &App, d: f64| Point::new(130.0, 150.0 + d / app.view.zoom as f64);
+    // 3 pixels by default, as before.
+    assert_eq!(app.settings.nodes.object_pick_distance, 3.0);
+    assert_eq!(app.hit_test(px(&app, 2.5)), Some(id));
+    assert_eq!(app.hit_test(px(&app, 7.0)), None);
+    app.settings.nodes.object_pick_distance = 8.0;
+    assert_eq!(app.hit_test(px(&app, 7.0)), Some(id));
+    app.settings.nodes.object_pick_distance = 0.0;
+    assert_eq!(app.hit_test(px(&app, 2.5)), None);
+}

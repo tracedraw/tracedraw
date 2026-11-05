@@ -7669,3 +7669,5 @@ options.import_with_cursor = "Umísťovat importované soubory kurzorem importu"
 options.import_with_cursor_tip = "Po Soubor > Importovat se ukazatel změní v roh: kliknutím tam umístíte levý horní roh souboru v jeho velikosti, tažením rámečku jej do něj vložíte, mezerníkem jej vystředíte na stránce. Vypnuto: soubor přijde hned." # mt
 context.spline_fixed = "Pevný řídicí bod" # mt
 context.spline_floating = "Plovoucí řídicí bod" # mt
+options.object_pick_distance = "Vzdálenost kliknutí na objekt:" # mt
+options.object_pick_distance_tip = "Jak daleko od obrysu objektu jej kliknutí ještě vybere, v pixelech obrazovky; 0 pro žádnou." # mt

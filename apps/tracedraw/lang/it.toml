@@ -7669,3 +7669,5 @@ options.import_with_cursor = "Posiziona i file importati con il cursore di impor
 options.import_with_cursor_tip = "Dopo File > Importa il puntatore diventa un angolo: fare clic per mettervi l'angolo superiore sinistro del file alle sue dimensioni, trascinare un riquadro per adattarvelo o premere Spazio per centrarlo nella pagina. Disattivato, il file entra subito." # mt
 context.spline_fixed = "Punto di controllo fisso" # mt
 context.spline_floating = "Punto di controllo mobile" # mt
+options.object_pick_distance = "Distanza di clic sugli oggetti:" # mt
+options.object_pick_distance_tip = "A quale distanza dal contorno di un oggetto un clic lo seleziona ancora, in pixel dello schermo; 0 per nessuna." # mt

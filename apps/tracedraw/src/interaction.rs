@@ -297,7 +297,7 @@ impl App {
         if self.focus_shape_on_page().is_some() {
             return None;
         }
-        let tol = 3.0 / self.view.zoom as f64;
+        let tol = self.object_pick_tol();
         self.page_layers()
             .into_iter()
             .rev()
@@ -316,7 +316,7 @@ impl App {
         if self.focus_shape_on_page().is_some() {
             return self.hit_test(p);
         }
-        let tol = 3.0 / self.view.zoom as f64;
+        let tol = self.object_pick_tol();
         self.page_layers()
             .into_iter()
             .rev()
@@ -333,7 +333,7 @@ impl App {
     pub fn leaf_to_read(&self, p: Point) -> Option<tracedraw_core::Shape> {
         let id = self.hit_test_to_read(p)?;
         let (_, s) = self.doc().shape(id).ok()?;
-        let tol = 3.0 / self.view.zoom as f64;
+        let tol = self.object_pick_tol();
         Some(self.leaf_at(s, p, tol).unwrap_or_else(|| s.clone()))
     }
 
@@ -364,9 +364,15 @@ impl App {
         }
     }
 
+    /// How far from an object's outline a click still picks it, page
+    /// units: Options > Nodes and Handles, Object click distance (#1679).
+    pub fn object_pick_tol(&self) -> f64 {
+        self.settings.nodes.object_pick_px() / self.view.zoom.max(1e-6) as f64
+    }
+
     /// The topmost object at `p` that `skip` does not rule out.
     pub fn hit_test_where(&self, p: Point, skip: impl Fn(ShapeId) -> bool) -> Option<ShapeId> {
-        let tol = 3.0 / self.view.zoom as f64;
+        let tol = self.object_pick_tol();
         // Focus mode: only the parts of the object in focus (or itself).
         if let Some(f) = self.focus_shape_on_page() {
             return match &f.kind {
@@ -702,7 +708,7 @@ impl App {
         let Some(top) = self.pick_at(p) else {
             return Vec::new();
         };
-        let tol = 3.0 / self.view.zoom as f64;
+        let tol = self.object_pick_tol();
         let mut chain = vec![top];
         let Ok((_, s)) = self.doc().shape(top) else {
             return chain;
@@ -761,7 +767,7 @@ impl App {
     /// `deep` the innermost objects inside groups (Alt+click digs through
     /// these, Ctrl+Alt+click through the deep ones).
     pub fn hits_at(&self, p: Point, deep: bool) -> Vec<ShapeId> {
-        let tol = 3.0 / self.view.zoom as f64;
+        let tol = self.object_pick_tol();
         let mut out = Vec::new();
         fn leaves(
             app: &App,

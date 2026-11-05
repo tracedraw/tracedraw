@@ -7669,3 +7669,5 @@ options.import_with_cursor = "İçe aktarılan dosyaları içe aktarma imleciyle
 options.import_with_cursor_tip = "Dosya > İçe Aktar sonrasında işaretçi bir köşeye dönüşür: dosyanın sol üst köşesini kendi boyutunda oraya koymak için tıklayın, sığdırmak için bir kutu sürükleyin veya sayfada ortalamak için Boşluk'a basın. Kapalıyken dosya hemen gelir." # mt
 context.spline_fixed = "Sabit kontrol noktası" # mt
 context.spline_floating = "Serbest kontrol noktası" # mt
+options.object_pick_distance = "Nesne tıklama uzaklığı:" # mt
+options.object_pick_distance_tip = "Bir tıklamanın bir nesnenin dış hattından ne kadar uzağa düşüp yine de onu seçebileceği, ekran pikseli olarak; hiç için 0." # mt

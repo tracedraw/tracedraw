@@ -1297,6 +1297,17 @@ fn nodes_page(app: &mut App, ui: &mut Ui) {
                 .suffix(" px"),
         )
         .rich_tip(tr("options.node_pick_distance_tip"));
+        // On the same row, so the page keeps its height (#1679).
+        ui.add_space(12.0);
+        ui.label(tr("options.object_pick_distance"));
+        ui.add(
+            crate::ui::field::NumField::new(&mut n.object_pick_distance)
+                .range(0.0..=20.0)
+                .speed(0.2)
+                .max_decimals(0)
+                .suffix(" px"),
+        )
+        .rich_tip(tr("options.object_pick_distance_tip"));
     });
     chrome::section(ui, &tr("options.colors"));
     grid("node_colors").show(ui, |ui| {

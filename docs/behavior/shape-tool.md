@@ -18,7 +18,9 @@ subpath as a slightly larger triangle. A selected node's control
 handles are dashed lines from the node on a white line twice as wide,
 each ending in a solid arrow head with a white edge at its control point
 (so they show on any colour, #670) (the curve tools show the handles of the curve
-being drawn the same way). The arrow showing the curve's
+being drawn the same way). The arrow head is as long and as wide as a
+node marker: 7, 9 or 11 pixels with Node size Small, Medium or Large
+(`NodeSize::handle_head`, #1643). The arrow showing the curve's
 direction is off by default (Options > Nodes and Handles).
 
 With several objects selected, the one picked last shows its outline in
@@ -33,7 +35,10 @@ two objects are not joined (#1007,
 A press takes the nearest node, or the nearest control handle of a
 chosen node, within the pick distance of it: Options > Nodes and
 Handles > Pick distance, 6 screen pixels by default (never less than
-the node marker reaches). A segment of a selected curve is taken a
+the node marker reaches). A control handle is also taken anywhere on
+its arrow head, however long the node size makes it
+(`NodePrefs::handle_pick_px`,
+`pick_drag_tests::control_handle_heads_follow_the_node_size`). A segment of a selected curve is taken a
 pixel further out. Distances are measured on the page, so a curve with
 a scale of its own (text converted to curves, for one) is picked like
 any other
