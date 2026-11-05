@@ -1404,6 +1404,15 @@ pub struct App {
     /// meanwhile (#810). The status it ends with.
     pub print_job: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
     pub printers_seen: Vec<crate::printers::Printer>,
+    /// The printer list was read once for the printable area.
+    pub printers_listed: bool,
+    /// Each printer's blank paper edge as the system said (`None`: it
+    /// did not), and the printer being asked about (#1924).
+    pub printer_margins: std::collections::HashMap<String, Option<crate::printers::PrinterMargins>>,
+    pub margins_fetch: Option<(
+        String,
+        std::sync::mpsc::Receiver<Option<crate::printers::PrinterMargins>>,
+    )>,
     pub preview_selected_only: bool,
     pub page_sorter: bool,
     /// View > Multipage View: every page laid out beside the current one.
@@ -2688,6 +2697,9 @@ impl App {
             printer_fetch: None,
             print_job: None,
             printers_seen: Vec::new(),
+            printers_listed: false,
+            printer_margins: std::collections::HashMap::new(),
+            margins_fetch: None,
             preview_selected_only: false,
             page_sorter: false,
             multipage: false,
@@ -7878,6 +7890,7 @@ impl App {
                     st.printer = crate::printers::starting_printer(st.printer.as_deref(), &list);
                 }
                 self.printers_seen = list.clone();
+                self.printers_listed = true;
                 st.printers = list;
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => return true,
@@ -7886,6 +7899,122 @@ impl App {
         self.printer_fetch = None;
         st.looking_for_printers = false;
         false
+    }
+
+    /// The blank paper edge of `printer` as the system said. The first
+    /// time it is asked off the interface's thread and `None` comes back
+    /// until the answer is in (a later frame); `None` also when the
+    /// system does not say (#1924).
+    pub fn margins_of(&mut self, printer: &str) -> Option<crate::printers::PrinterMargins> {
+        self.poll_margins();
+        if let Some(m) = self.printer_margins.get(printer) {
+            return *m;
+        }
+        if self.margins_fetch.is_none() {
+            self.fetch_margins(printer, crate::printers::printer_margins);
+        }
+        None
+    }
+
+    /// Ask `ask` for `printer`'s margins off the interface's thread (at
+    /// once in the browser, which has no threads and no printers).
+    pub fn fetch_margins(
+        &mut self,
+        printer: &str,
+        ask: fn(&str) -> Option<crate::printers::PrinterMargins>,
+    ) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let name = printer.to_string();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let asked = name.clone();
+            let spawned = std::thread::Builder::new()
+                .name("printer margins".into())
+                .spawn(move || {
+                    let _ = tx.send(ask(&asked));
+                });
+            if let Err(e) = spawned {
+                log::warn!("no printer margins: {e}");
+                self.printer_margins.insert(name, None);
+                return;
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = tx.send(ask(&name));
+        self.margins_fetch = Some((name, rx));
+    }
+
+    /// The margins asked for, once they are in. Returns whether an
+    /// answer is still awaited.
+    pub fn poll_margins(&mut self) -> bool {
+        let Some((name, rx)) = &self.margins_fetch else {
+            return false;
+        };
+        let got = match rx.try_recv() {
+            Ok(m) => m,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return true,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+        };
+        self.printer_margins.insert(name.clone(), got);
+        self.margins_fetch = None;
+        false
+    }
+
+    /// The printer the drawing window's printable area is for: the one
+    /// printed to last, else the system's default.
+    pub fn canvas_printer(&self) -> Option<String> {
+        self.settings.printing.printer.clone().or_else(|| {
+            self.printers_seen
+                .iter()
+                .find(|p| p.default)
+                .map(|p| p.name.clone())
+        })
+    }
+
+    /// The printable area's margins on a page `w` x `h` mm: the blank
+    /// edge of [`App::canvas_printer`] when the system said it, else a
+    /// typical 5 mm (#1924).
+    pub fn printable_margins(&self, w: f64, h: f64) -> crate::printers::Margins {
+        self.canvas_printer()
+            .and_then(|p| self.printer_margins.get(&p).copied().flatten())
+            .map(|m| m.for_sheet(w, h))
+            .unwrap_or(crate::printers::Margins::TYPICAL)
+    }
+
+    /// While the printable area is shown: ask for what it needs, the
+    /// printer list once and the printer's margins. Returns whether an
+    /// answer is awaited.
+    pub fn printable_area_tick(&mut self) -> bool {
+        if !self.show_printable_area || crate::files::WEB {
+            return false;
+        }
+        if let Some(p) = self.canvas_printer() {
+            if !self.printer_margins.contains_key(&p) {
+                self.margins_of(&p);
+            }
+            return self.poll_margins();
+        }
+        // The list, when the Print dialog and the preview are not reading
+        // it themselves.
+        let printing = matches!(self.dialog, crate::ui::dialogs::Dialog::Print(_))
+            || self.print_preview.is_some();
+        if printing || self.printers_listed {
+            return false;
+        }
+        if self.printer_fetch.is_none() {
+            self.fetch_printers(crate::printers::system_printers);
+        }
+        let Some(rx) = &self.printer_fetch else {
+            return false;
+        };
+        match rx.try_recv() {
+            Ok(list) => self.printers_seen = crate::printers::by_name(list),
+            Err(std::sync::mpsc::TryRecvError::Empty) => return true,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {}
+        }
+        self.printer_fetch = None;
+        self.printers_listed = true;
+        true
     }
 
     /// File > Print Preview: the sheets for the given print settings, or
@@ -9204,6 +9333,61 @@ pub(crate) fn repeated_transform(t: Affine, before: Rect, now: Rect) -> Affine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// View > Page > Printable Area follows the blank edge of the
+    /// printer printed to last once the system said it, upright or
+    /// turned for a wide page, and stays at a typical 5 mm for a printer
+    /// that does not say (#1924).
+    #[test]
+    fn the_printable_area_takes_the_printers_blank_edge() {
+        use crate::printers::{Margins, PrinterMargins};
+        fn hp(name: &str) -> Option<PrinterMargins> {
+            (name == "HP").then_some(PrinterMargins {
+                portrait: Margins {
+                    left: 4.0,
+                    right: 4.5,
+                    top: 3.0,
+                    bottom: 6.0,
+                },
+                landscape: None,
+            })
+        }
+        fn silent(_: &str) -> Option<PrinterMargins> {
+            None
+        }
+        let settle = |app: &mut App| {
+            for _ in 0..1000 {
+                if !app.printable_area_tick() {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            panic!("no answer");
+        };
+        let mut app = App::headless();
+        app.printers_seen.clear();
+        app.settings.printing.printer = None;
+        assert_eq!(app.printable_margins(210.0, 297.0), Margins::TYPICAL);
+        app.settings.printing.printer = Some("HP".into());
+        app.show_printable_area = true;
+        app.fetch_margins("HP", hp);
+        settle(&mut app);
+        let up = app.printable_margins(210.0, 297.0);
+        assert_eq!((up.left, up.right, up.top, up.bottom), (4.0, 4.5, 3.0, 6.0));
+        let wide = app.printable_margins(297.0, 210.0);
+        assert_eq!(
+            (wide.left, wide.right, wide.top, wide.bottom),
+            (6.0, 6.0, 4.5, 4.5)
+        );
+        // Asked once: the answer is kept.
+        assert!(app.margins_fetch.is_none());
+        assert!(!app.printable_area_tick());
+        app.settings.printing.printer = Some("Other".into());
+        app.fetch_margins("Other", silent);
+        settle(&mut app);
+        assert_eq!(app.printer_margins.get("Other"), Some(&None));
+        assert_eq!(app.printable_margins(210.0, 297.0), Margins::TYPICAL);
+    }
 
     /// A PDF's spot inks come with it: opened, the drawing has them;
     /// imported, an ink of a name the drawing has is that ink and the

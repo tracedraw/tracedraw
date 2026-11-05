@@ -3156,6 +3156,7 @@ print.move_info = "Arrastrar mueve la información de página" # mt
 print.art_position = "Posición del diseño" # mt
 print.art_reset = "Restablecer" # mt
 print.art_drag_tip = "Arrastre para mover el diseño en el papel, lejos de los márgenes que la impresora no imprime." # mt
+print.edge_warning = "Parte de la ilustración está en el borde que {printer} deja en blanco (sombreado: izquierda {left}, derecha {right}, arriba {top}, abajo {bottom} mm) y no se imprimirá." # mt
 print.keep_size = "Mantener tamaño de página" # mt
 print.keep_size_tip = "Las páginas mantienen su tamaño en la hoja en vez de encogerse para dejar sitio a las marcas" # mt
 print.keep_size_overflow = "A su tamaño no caben todas las páginas en la hoja: lo que sobresale no se imprime." # mt

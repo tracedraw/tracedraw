@@ -130,6 +130,11 @@ imposition and the marks.
 - Drag the dashed blue lines on the sheet to set the paper margins, and drag
   the sheet to move the artwork on its page (**Artwork position** shows the
   move, with **Reset**). **Transform** draws handles to stretch the artwork.
+- The edge of the paper the chosen printer cannot print on is shaded, with
+  a dashed red line on its inner side. When part of the artwork lies in it,
+  a note at the top says so: that part will not print. Make the artwork
+  smaller or move it inwards. [[menu.view > menu.view.page > menu.view.printable_area]]
+  shows the same edge on the page while you draw.
 
 ## Other ways to print {#other}
 

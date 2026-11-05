@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Printing: the edge of the paper the printer cannot print on is shown. View > Page > Printable Area was always 5 mm inside the page, whatever the printer, and Print Preview did not mark the edge at all, so artwork near the edge looked fine and came out cut. Now the margins of the chosen printer are read from the system (Windows, and CUPS on Linux and macOS), the printable area follows the printer printed to last (5 mm until the system says), and Print Preview shades the blank edge and says when part of the artwork lies in it (#1924).
+
 - TraceCut: the preview can be panned and zoomed. It always showed the whole selection fitted, so small details of a large design could not be checked. Now a drag pans it, the mouse wheel (or a pinch) zooms about the pointer, the buttons at its top right zoom to fit, out and in, and a double click fits again.
 
 ## 0.40.0 (2026-11-05)

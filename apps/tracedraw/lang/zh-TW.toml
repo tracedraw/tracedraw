@@ -3156,6 +3156,7 @@ print.move_info = "拖曳移動頁面資訊" # mt
 print.art_position = "圖稿位置" # mt
 print.art_reset = "重設" # mt
 print.art_drag_tip = "拖曳以在紙上移動圖稿，遠離印表機無法列印的邊界。" # mt
+print.edge_warning = "部分作品位於 {printer} 留白的邊緣（陰影：左 {left}、右 {right}、上 {top}、下 {bottom} 公釐），將不會列印。" # mt
 print.keep_size = "保持頁面大小" # mt
 print.keep_size_tip = "頁面在紙張上保持大小，而不是縮小以給標記留出空間" # mt
 print.keep_size_overflow = "按原尺寸，頁面無法全部放入紙張：超出部分不會列印。" # mt

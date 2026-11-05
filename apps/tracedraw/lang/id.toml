@@ -3156,6 +3156,7 @@ print.move_info = "Seret memindahkan informasi halaman" # mt
 print.art_position = "Posisi karya" # mt
 print.art_reset = "Atur ulang" # mt
 print.art_drag_tip = "Seret untuk memindahkan karya di kertas, menjauh dari margin yang tidak dicetak printer." # mt
+print.edge_warning = "Sebagian karya ada di tepi yang dibiarkan kosong oleh {printer} (diarsir: kiri {left}, kanan {right}, atas {top}, bawah {bottom} mm) dan tidak akan dicetak." # mt
 print.keep_size = "Pertahankan ukuran halaman" # mt
 print.keep_size_tip = "Halaman mempertahankan ukurannya di lembar alih-alih mengecil untuk memberi ruang tanda" # mt
 print.keep_size_overflow = "Dengan ukurannya, tidak semua halaman muat di lembar: bagian yang keluar tidak dicetak." # mt

@@ -3156,6 +3156,7 @@ print.move_info = "ドラッグでページ情報を移動" # mt
 print.art_position = "アートワークの位置" # mt
 print.art_reset = "リセット" # mt
 print.art_drag_tip = "ドラッグして用紙上のアートワークを、プリンターが印刷できない余白から離します。" # mt
+print.edge_warning = "アートワークの一部が {printer} の印刷できない余白（網掛け：左 {left}、右 {right}、上 {top}、下 {bottom} mm）にあり、印刷されません。" # mt
 print.keep_size = "ページサイズを保持" # mt
 print.keep_size_tip = "マーク用の余白のためにページを縮小せず、用紙上の大きさを保ちます" # mt
 print.keep_size_overflow = "この大きさではすべてのページが用紙に収まりません。はみ出た部分は印刷されません。" # mt

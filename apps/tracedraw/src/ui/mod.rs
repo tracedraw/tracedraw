@@ -427,6 +427,10 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     if app.poll_print_job() {
         ctx.request_repaint_after(std::time::Duration::from_millis(250));
     }
+    // View > Page > Printable Area: the printer's blank edge (#1924).
+    if app.printable_area_tick() {
+        ctx.request_repaint_after(std::time::Duration::from_millis(250));
+    }
     // Help > Updates, once a day.
     app.update_tick(crate::recovery::now_secs(), Some(ctx.clone()));
     // Options > Save > Auto-backup.

@@ -3156,6 +3156,7 @@ print.move_info = "Arrastar move as informações da página" # mt
 print.art_position = "Posição da arte" # mt
 print.art_reset = "Redefinir" # mt
 print.art_drag_tip = "Arraste para mover a arte no papel, longe das margens que a impressora não imprime." # mt
+print.edge_warning = "Parte da arte está na borda que a {printer} deixa em branco (sombreada: esquerda {left}, direita {right}, topo {top}, base {bottom} mm) e não será impressa." # mt
 print.keep_size = "Manter tamanho da página" # mt
 print.keep_size_tip = "As páginas mantêm o tamanho na folha em vez de encolher para dar lugar às marcas" # mt
 print.keep_size_overflow = "No tamanho delas, nem todas as páginas cabem na folha: o que passar dela não é impresso." # mt

@@ -564,8 +564,16 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         }
     }
     if app.show_printable_area {
-        // Printable area: the page minus the printer's typical 5 mm hardware margin.
-        let r = view.rect_to_screen(shown.inflate(-5.0, -5.0));
+        // Printable area: the page minus the blank edge of the printer
+        // printed to last (a typical 5 mm until the system says, #1924).
+        let m = app.printable_margins(shown.width(), shown.height());
+        let inner = tracedraw_core::geometry::Rect::new(
+            shown.x0 + m.left,
+            shown.y0 + m.bottom,
+            shown.x1 - m.right,
+            shown.y1 - m.top,
+        );
+        let r = view.rect_to_screen(inner);
         let dash = 4.0;
         for (a, b) in [
             (r.left_top(), r.right_top()),

@@ -3156,6 +3156,7 @@ print.move_info = "Faire glisser déplace les informations de page" # mt
 print.art_position = "Position de l'illustration" # mt
 print.art_reset = "Réinitialiser" # mt
 print.art_drag_tip = "Faites glisser pour déplacer l'illustration sur le papier, loin des marges que l'imprimante n'imprime pas." # mt
+print.edge_warning = "Une partie de l’illustration se trouve dans la marge que {printer} laisse vierge (en grisé : gauche {left}, droite {right}, haut {top}, bas {bottom} mm) et ne sera pas imprimée." # mt
 print.keep_size = "Garder la taille de la page" # mt
 print.keep_size_tip = "Les pages gardent leur taille sur la feuille au lieu de rétrécir pour laisser de la place aux repères" # mt
 print.keep_size_overflow = "À leur taille, les pages ne tiennent pas toutes sur la feuille : ce qui dépasse n'est pas imprimé." # mt

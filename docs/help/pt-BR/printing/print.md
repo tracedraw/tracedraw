@@ -135,6 +135,12 @@ imposição e as marcas.
   papel, e arraste a folha para mover a arte na página (**Posição da arte**
   mostra o deslocamento, com **Redefinir**). **Transformar** mostra alças para
   esticar a arte.
+- A borda do papel que a impressora escolhida não consegue imprimir aparece
+  sombreada, com uma linha vermelha tracejada no lado de dentro. Quando parte
+  da arte fica nela, um aviso no alto diz isso: essa parte não sai impressa.
+  Reduza a arte ou leve-a mais para dentro.
+  [[menu.view > menu.view.page > menu.view.printable_area]] mostra a mesma
+  borda na página enquanto você desenha.
 
 ## Outras formas de imprimir {#other}
 

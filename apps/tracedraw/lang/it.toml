@@ -3156,6 +3156,7 @@ print.move_info = "Il trascinamento sposta le informazioni di pagina" # mt
 print.art_position = "Posizione della grafica" # mt
 print.art_reset = "Ripristina" # mt
 print.art_drag_tip = "Trascina per spostare la grafica sulla carta, lontano dai margini che la stampante non stampa." # mt
+print.edge_warning = "Parte dell’illustrazione si trova nel bordo che {printer} lascia bianco (ombreggiato: sinistra {left}, destra {right}, alto {top}, basso {bottom} mm) e non verrà stampata." # mt
 print.keep_size = "Mantieni dimensione pagina" # mt
 print.keep_size_tip = "Le pagine mantengono la dimensione sul foglio invece di rimpicciolirsi per fare posto ai segni" # mt
 print.keep_size_overflow = "Alla loro dimensione le pagine non stanno tutte sul foglio: ciò che esce non viene stampato." # mt

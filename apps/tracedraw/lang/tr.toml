@@ -3156,6 +3156,7 @@ print.move_info = "Sürükleme sayfa bilgisini taşır" # mt
 print.art_position = "Çizim konumu" # mt
 print.art_reset = "Sıfırla" # mt
 print.art_drag_tip = "Çizimi kağıtta yazıcının basamadığı kenarlardan uzaklaştırmak için sürükleyin." # mt
+print.edge_warning = "Çizimin bir kısmı {printer} yazıcısının boş bıraktığı kenarda (gölgeli: sol {left}, sağ {right}, üst {top}, alt {bottom} mm) ve yazdırılmayacak." # mt
 print.keep_size = "Sayfa boyutunu koru" # mt
 print.keep_size_tip = "Sayfalar işaretlere yer açmak için küçülmek yerine sayfadaki boyutlarını korur" # mt
 print.keep_size_overflow = "Bu boyutta tüm sayfalar yaprağa sığmıyor: dışına taşan kısım yazdırılmaz." # mt

@@ -3156,6 +3156,7 @@ print.move_info = "Ziehen verschiebt die Seiteninformationen" # mt
 print.art_position = "Position der Grafik" # mt
 print.art_reset = "Zurücksetzen" # mt
 print.art_drag_tip = "Ziehen, um die Grafik auf dem Papier zu verschieben, weg von den Rändern, die der Drucker nicht druckt." # mt
+print.edge_warning = "Ein Teil der Grafik liegt im Rand, den {printer} frei lässt (schattiert: links {left}, rechts {right}, oben {top}, unten {bottom} mm), und wird nicht gedruckt." # mt
 print.keep_size = "Seitengröße beibehalten" # mt
 print.keep_size_tip = "Die Seiten behalten ihre Größe auf dem Bogen, statt für die Marken zu schrumpfen" # mt
 print.keep_size_overflow = "In ihrer Größe passen nicht alle Seiten auf den Bogen: Was darüber hinausragt, wird nicht gedruckt." # mt

@@ -36,6 +36,8 @@ pub struct PrintPreview {
     options_need: f32,
     built: Option<(String, Document)>,
     texture: Option<(String, egui::TextureHandle)>,
+    /// The sheet shown has ink in the edge the printer leaves blank.
+    edge_ink: bool,
 }
 
 impl PrintPreview {
@@ -52,6 +54,7 @@ impl PrintPreview {
             options_need: 0.0,
             built: None,
             texture: None,
+            edge_ink: false,
         }
     }
 }
@@ -560,6 +563,16 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 return;
             };
             let plate: String = inks.iter().map(|on| if *on { '1' } else { '0' }).collect();
+            // The edge the chosen printer leaves blank, once the system
+            // said it (#1924).
+            let printer = pv.st.printer.clone().filter(|_| pv.st.destination == 0);
+            let blank_edge = printer
+                .as_deref()
+                .and_then(|p| app.margins_of(p))
+                .map(|m| m.for_sheet(page.size.width, page.size.height));
+            if app.margins_fetch.is_some() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            }
             let margin = 24.0;
             let fit = ((area.width() - 2.0 * margin) as f64 / page.size.width.max(1e-6))
                 .min((area.height() - 2.0 * margin) as f64 / page.size.height.max(1e-6))
@@ -570,11 +583,12 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             let w = (page.size.width * zoom).ceil().max(1.0) as u32;
             let h = (page.size.height * zoom).ceil().max(1.0) as u32;
             let key = format!(
-                "{}|{sheet}|{plate}|{w}x{h}",
+                "{}|{sheet}|{plate}|{w}x{h}|{blank_edge:?}",
                 pv.built.as_ref().map(|(k, _)| k.as_str()).unwrap_or("")
             );
             if pv.texture.as_ref().map(|(k, _)| k != &key).unwrap_or(true) {
                 if let Some(img) = render_sheet(&page, w, h, zoom) {
+                    pv.edge_ink = blank_edge.is_some_and(|m| ink_in_edge(&img, m, zoom));
                     let tex = ctx.load_texture("print_preview", img, egui::TextureOptions::LINEAR);
                     pv.texture = Some((key, tex));
                 }
@@ -757,6 +771,47 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                         );
                     }
                 }
+                // The printer's blank edge shaded, its inner side dashed
+                // in red (#1924).
+                if let Some(blank) = blank_edge {
+                    let (l, r) = (blank.left as f32 * k, blank.right as f32 * k);
+                    let (t, b) = (blank.top as f32 * k, blank.bottom as f32 * k);
+                    let s = sheet_rect;
+                    let inner = egui::Rect::from_min_max(
+                        egui::pos2(s.left() + l, s.top() + t),
+                        egui::pos2(s.right() - r, s.bottom() - b),
+                    );
+                    let shade = egui::Color32::from_black_alpha(70);
+                    for strip in [
+                        egui::Rect::from_min_max(s.min, egui::pos2(s.right(), inner.top())),
+                        egui::Rect::from_min_max(egui::pos2(s.left(), inner.bottom()), s.max),
+                        egui::Rect::from_min_max(
+                            egui::pos2(s.left(), inner.top()),
+                            egui::pos2(inner.left(), inner.bottom()),
+                        ),
+                        egui::Rect::from_min_max(
+                            egui::pos2(inner.right(), inner.top()),
+                            egui::pos2(s.right(), inner.bottom()),
+                        ),
+                    ] {
+                        if strip.width() > 0.0 && strip.height() > 0.0 {
+                            p.rect_filled(strip, 0.0, shade);
+                        }
+                    }
+                    let c = [
+                        inner.left_top(),
+                        inner.right_top(),
+                        inner.right_bottom(),
+                        inner.left_bottom(),
+                        inner.left_top(),
+                    ];
+                    p.extend(egui::Shape::dashed_line(
+                        &c,
+                        egui::Stroke::new(1.5, EDGE),
+                        4.0,
+                        3.0,
+                    ));
+                }
                 // The margins dashed in blue, the one under the pointer or
                 // dragged bolder.
                 for (i, (a, b)) in [
@@ -789,6 +844,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     ));
                 }
             });
+            if let (true, Some(m), Some(name)) = (pv.edge_ink, blank_edge, printer.as_deref()) {
+                edge_warning(ui, area, name, m);
+            }
             if let Some(d) = moved {
                 // Screen points over the sheet are `zoom` per millimetre;
                 // the sheet's y runs up.
@@ -841,6 +899,75 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     if !close {
         app.print_preview = Some(pv);
     }
+}
+
+/// The printer's blank edge in the preview.
+const EDGE: egui::Color32 = egui::Color32::from_rgb(0xD0, 0x20, 0x20);
+
+/// Whether `img` (a sheet drawn on white at `zoom` pixels per mm) has
+/// anything but paper in the edge `m` leaves blank.
+fn ink_in_edge(img: &egui::ColorImage, m: crate::printers::Margins, zoom: f64) -> bool {
+    let [w, h] = img.size;
+    let px = |mm: f64| ((mm * zoom).floor().max(0.0) as usize).min(w.max(h));
+    let (l, r, t, b) = (px(m.left), px(m.right), px(m.top), px(m.bottom));
+    let ink = |x: usize, y: usize| {
+        img.pixels
+            .get(y * w + x)
+            .is_some_and(|c| c.r() < 245 || c.g() < 245 || c.b() < 245)
+    };
+    // Only the strips are looked at: whole rows at the top and bottom,
+    // the two ends of the rows between.
+    for y in 0..h {
+        let strip = y < t || y + b >= h;
+        let (left, right) = if strip {
+            (0..w, 0..0)
+        } else {
+            (0..l.min(w), w.saturating_sub(r)..w)
+        };
+        if left.chain(right).any(|x| ink(x, y)) {
+            return true;
+        }
+    }
+    false
+}
+
+/// A note over the top of the preview: part of the artwork lies in the
+/// edge `printer` leaves blank and will not print.
+fn edge_warning(ui: &egui::Ui, area: egui::Rect, printer: &str, m: crate::printers::Margins) {
+    let [l, r, t, b] = [m.left, m.right, m.top, m.bottom].map(|v| format!("{v:.1}"));
+    let text = crate::i18n::trf(
+        "print.edge_warning",
+        &[
+            ("printer", printer),
+            ("left", &l),
+            ("right", &r),
+            ("top", &t),
+            ("bottom", &b),
+        ],
+    );
+    let p = ui.painter();
+    let galley = p.layout(
+        text,
+        egui::FontId::proportional(13.0),
+        egui::Color32::from_gray(30),
+        (area.width() - 32.0).max(100.0),
+    );
+    let r = egui::Rect::from_min_size(
+        area.left_top() + egui::vec2(8.0, 8.0),
+        galley.size() + egui::vec2(16.0, 10.0),
+    );
+    p.rect_filled(r, 3.0, egui::Color32::from_rgb(0xFF, 0xF4, 0xB0));
+    p.rect_stroke(
+        r,
+        3.0,
+        egui::Stroke::new(1.0, EDGE),
+        egui::StrokeKind::Inside,
+    );
+    p.galley(
+        r.min + egui::vec2(8.0, 5.0),
+        galley,
+        egui::Color32::from_gray(30),
+    );
 }
 
 /// The sheet as a bitmap on white paper.
@@ -1010,6 +1137,92 @@ mod tests {
             &all.layers[0].shapes[0].kind,
             ShapeKind::Bitmap { png: p, .. } if tracedraw_core::SharedBytes::ptr_eq(p, &png)
         ));
+    }
+
+    /// The printer's blank edge in the preview (#1924): with a picture
+    /// reaching the page's edge the sheet has ink there and a note says
+    /// it will not print; kept clear of it, no note.
+    #[test]
+    fn the_printers_blank_edge_is_shaded_and_ink_in_it_is_told() {
+        use crate::printers::{Margins, PrinterMargins};
+        let ctx = crate::theme::ui_context();
+        let edge = Margins {
+            left: 4.2,
+            right: 4.2,
+            top: 4.2,
+            bottom: 6.0,
+        };
+        let run = |inset: f64| -> (bool, bool) {
+            let mut app = App::headless();
+            let page = app.page_rect();
+            let id = app
+                .new_shape(ShapeKind::Rect {
+                    rect: page.inflate(-inset, -inset),
+                    radius: 0.0,
+                    corners: None,
+                })
+                .expect("rect");
+            app.select(vec![id]);
+            app.printer_margins.insert(
+                "HP".into(),
+                Some(PrinterMargins {
+                    portrait: edge,
+                    landscape: None,
+                }),
+            );
+            let st = PrintState {
+                printer: Some("HP".into()),
+                ..PrintState::default()
+            };
+            app.print_preview = Some(PrintPreview::new(st));
+            let mut told = false;
+            for _ in 0..3 {
+                let mut out = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(1400.0, 900.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| show(&mut app, ui),
+                );
+                out.textures_delta.clear();
+                told = out.shapes.iter().any(|c| {
+                    matches!(&c.shape, egui::epaint::Shape::Text(t)
+                        if t.galley.text().contains("HP") && t.galley.text().contains("6.0"))
+                });
+            }
+            let ink = app.print_preview.as_ref().is_some_and(|p| p.edge_ink);
+            (ink, told)
+        };
+        assert_eq!(run(1.0), (true, true), "a frame 1 mm from the edge");
+        assert_eq!(run(10.0), (false, false), "a frame 10 mm from the edge");
+    }
+
+    #[test]
+    fn ink_in_the_edge_is_found_in_the_strips_only() {
+        let (w, h) = (100usize, 150usize);
+        let mut img = egui::ColorImage::new([w, h], vec![egui::Color32::WHITE; w * h]);
+        let m = crate::printers::Margins {
+            left: 2.0,
+            right: 2.0,
+            top: 2.0,
+            bottom: 3.0,
+        };
+        // 2 pixels per mm: the strips are 4, 4, 4 and 6 pixels wide.
+        assert!(!ink_in_edge(&img, m, 2.0));
+        img.pixels[50 * w + 50] = egui::Color32::BLACK;
+        img.pixels[4 * w + 4] = egui::Color32::BLACK;
+        assert!(!ink_in_edge(&img, m, 2.0), "inside the printable part");
+        for (x, y) in [(3, 50), (96, 50), (50, 3), (50, 144)] {
+            let mut one = img.clone();
+            one.pixels[y * w + x] = egui::Color32::from_gray(200);
+            assert!(ink_in_edge(&one, m, 2.0), "({x}, {y})");
+        }
+        // Near-white is paper.
+        img.pixels[0] = egui::Color32::from_gray(250);
+        assert!(!ink_in_edge(&img, m, 2.0));
     }
 
     /// With Print separations on, a box for each ink stands under that

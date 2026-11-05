@@ -3156,6 +3156,7 @@ print.move_info = "拖动移动页面信息" # mt
 print.art_position = "图稿位置" # mt
 print.art_reset = "重置" # mt
 print.art_drag_tip = "拖动以在纸上移动图稿，远离打印机无法打印的边距。" # mt
+print.edge_warning = "部分作品位于 {printer} 留白的边缘（阴影：左 {left}、右 {right}、上 {top}、下 {bottom} 毫米），将不会打印。" # mt
 print.keep_size = "保持页面大小" # mt
 print.keep_size_tip = "页面在纸张上保持大小，而不是缩小以给标记留出空间" # mt
 print.keep_size_overflow = "按原尺寸，页面无法全部放入纸张：超出部分不会打印。" # mt

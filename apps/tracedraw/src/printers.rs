@@ -268,16 +268,23 @@ pub fn properties_command(printer: &str) -> (String, Vec<String>) {
             vec!["x-apple.systempreferences:com.apple.Print-Scan-Settings.extension".into()],
         )
     } else {
-        let mut url = String::from("http://localhost:631/printers/");
-        for b in printer.bytes() {
-            if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
-                url.push(b as char);
-            } else {
-                url.push_str(&format!("%{b:02X}"));
-            }
-        }
+        let url = format!("http://localhost:631/printers/{}", url_escape(printer));
         ("xdg-open".into(), vec![url])
     }
+}
+
+/// `s` with every byte but letters, digits and `-_.~` percent-encoded,
+/// for a printer's name in a URL path.
+fn url_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }
 
 /// Open `printer`'s settings ([`properties_command`]); Err says why not.
@@ -683,9 +690,525 @@ fn run_print_script(
     }
 }
 
+/// The edge of the paper a printer leaves blank, mm from each side of
+/// the paper as it lies in the printer (#1924).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Margins {
+    pub left: f64,
+    pub right: f64,
+    pub top: f64,
+    pub bottom: f64,
+}
+
+impl Margins {
+    /// What the printable area shows when the printer does not say: a
+    /// typical 5 mm all round.
+    pub const TYPICAL: Margins = Margins {
+        left: 5.0,
+        right: 5.0,
+        top: 5.0,
+        bottom: 5.0,
+    };
+
+    /// The margins of the paper turned a quarter turn, which way unknown:
+    /// each side takes the larger of the two it may come from.
+    pub fn turned(self) -> Margins {
+        let side = self.top.max(self.bottom);
+        let end = self.left.max(self.right);
+        Margins {
+            left: side,
+            right: side,
+            top: end,
+            bottom: end,
+        }
+    }
+
+    /// Each side kept between 0 and `limit` mm (NaN as 0).
+    fn clamped(self, limit: f64) -> Margins {
+        let c = |v: f64| {
+            if v.is_finite() {
+                v.clamp(0.0, limit)
+            } else {
+                0.0
+            }
+        };
+        Margins {
+            left: c(self.left),
+            right: c(self.right),
+            top: c(self.top),
+            bottom: c(self.bottom),
+        }
+    }
+}
+
+/// A printer's blank edge on upright paper and, when the system says,
+/// on paper printed wide.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PrinterMargins {
+    pub portrait: Margins,
+    pub landscape: Option<Margins>,
+}
+
+impl PrinterMargins {
+    /// The blank edge of a sheet `w` x `h` mm: a wide sheet is printed
+    /// on paper turned a quarter turn.
+    pub fn for_sheet(&self, w: f64, h: f64) -> Margins {
+        if w > h {
+            self.landscape.unwrap_or_else(|| self.portrait.turned())
+        } else {
+            self.portrait
+        }
+    }
+}
+
+/// The largest margin believed, mm: anything larger is a misreading.
+const MARGIN_LIMIT: f64 = 50.0;
+
+/// The PowerShell lines that say the blank edge of the Windows printer
+/// `printer` on its default paper, upright then wide: "P" or "L", the
+/// paper's width and height, then the printable area's x, y, width and
+/// height, in hundredths of an inch.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn windows_margins_script(printer: &str) -> String {
+    format!(
+        r#"Add-Type -AssemblyName System.Drawing
+$s = New-Object System.Drawing.Printing.PrinterSettings
+$s.PrinterName = {printer}
+if (-not $s.IsValid) {{ exit 2 }}
+$c = [Globalization.CultureInfo]::InvariantCulture
+foreach ($wide in @($false, $true)) {{
+    $p = $s.DefaultPageSettings.Clone()
+    $p.Landscape = $wide
+    $b = $p.Bounds; $a = $p.PrintableArea
+    $v = @($b.Width, $b.Height, $a.X, $a.Y, $a.Width, $a.Height) | ForEach-Object {{ ([double]$_).ToString($c) }}
+    [Console]::Out.WriteLine($(if ($wide) {{ 'L' }} else {{ 'P' }}) + ' ' + ($v -join ' '))
+}}
+"#,
+        printer = ps_quote(printer)
+    )
+}
+
+/// The margins from [`windows_margins_script`]'s output; `None` when it
+/// says nothing usable about upright paper.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub fn parse_windows_margins(output: &str) -> Option<PrinterMargins> {
+    let mut portrait = None;
+    let mut landscape = None;
+    for line in output.lines() {
+        let mut it = line.split_whitespace();
+        let kind = it.next();
+        let v: Vec<f64> = it.filter_map(|w| w.parse::<f64>().ok()).collect();
+        let [bw, bh, x, y, w, h] = v[..] else {
+            continue;
+        };
+        if !(bw > 0.0 && bh > 0.0 && w > 0.0 && h > 0.0) {
+            continue;
+        }
+        let mm = 0.254;
+        let m = Margins {
+            left: x * mm,
+            top: y * mm,
+            right: (bw - x - w) * mm,
+            bottom: (bh - y - h) * mm,
+        }
+        .clamped(MARGIN_LIMIT);
+        match kind {
+            Some("P") => portrait = Some(m),
+            Some("L") if bw > bh => landscape = Some(m),
+            _ => {}
+        }
+    }
+    Some(PrinterMargins {
+        portrait: portrait?,
+        landscape,
+    })
+}
+
+/// The IPP Get-Printer-Attributes request (RFC 8010, 8011) for the
+/// margins CUPS knows of `printer`: the default media's margins
+/// (PWG 5100.7 `media-col-default`) and the margins supported.
+#[cfg_attr(any(target_os = "windows", target_arch = "wasm32"), allow(dead_code))]
+pub fn ipp_margins_request(printer: &str) -> Vec<u8> {
+    fn attr(out: &mut Vec<u8>, tag: u8, name: &str, value: &[u8]) {
+        out.push(tag);
+        out.extend_from_slice(&(name.len().min(0xFFFF) as u16).to_be_bytes());
+        out.extend_from_slice(name.as_bytes());
+        out.extend_from_slice(&(value.len().min(0xFFFF) as u16).to_be_bytes());
+        out.extend_from_slice(value);
+    }
+    // Version 2.0, Get-Printer-Attributes, request 1.
+    let mut out = vec![2, 0, 0, 0x0B, 0, 0, 0, 1, 0x01];
+    attr(&mut out, 0x47, "attributes-charset", b"utf-8");
+    attr(&mut out, 0x48, "attributes-natural-language", b"en");
+    let uri = format!("ipp://localhost/printers/{}", url_escape(printer));
+    attr(&mut out, 0x45, "printer-uri", uri.as_bytes());
+    for (i, a) in [
+        "media-col-default",
+        "media-left-margin-supported",
+        "media-right-margin-supported",
+        "media-top-margin-supported",
+        "media-bottom-margin-supported",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let name = if i == 0 { "requested-attributes" } else { "" };
+        attr(&mut out, 0x44, name, a.as_bytes());
+    }
+    out.push(0x03);
+    out
+}
+
+/// The side (0 left, 1 right, 2 top, 3 bottom) an attribute's name is
+/// about.
+fn side_of(name: &str) -> Option<usize> {
+    ["left", "right", "top", "bottom"]
+        .iter()
+        .position(|s| name.contains(&format!("-{s}-")) || name.ends_with(&format!("-{s}")))
+}
+
+/// The margins in an IPP response to [`ipp_margins_request`]: the default
+/// media's, else for each side the smallest supported above zero (zero
+/// alone is borderless printing, asked for on purpose). `None` when the
+/// request failed or a side is missing. Values are hundredths of a mm.
+#[cfg_attr(any(target_os = "windows", target_arch = "wasm32"), allow(dead_code))]
+pub fn parse_ipp_margins(b: &[u8]) -> Option<Margins> {
+    let status = u16::from_be_bytes([*b.get(2)?, *b.get(3)?]);
+    if status >= 0x0100 {
+        return None;
+    }
+    let mut i = 8usize;
+    let mut attr = String::new();
+    let mut member = String::new();
+    let mut depth = 0usize;
+    let mut default: [Option<i32>; 4] = [None; 4];
+    let mut supported: [Vec<i32>; 4] = Default::default();
+    let u16_at = |i: usize| -> Option<usize> {
+        Some(u16::from_be_bytes([*b.get(i)?, *b.get(i + 1)?]) as usize)
+    };
+    loop {
+        let tag = *b.get(i)?;
+        i += 1;
+        if tag == 0x03 {
+            break;
+        }
+        if tag <= 0x0F {
+            continue;
+        }
+        let nl = u16_at(i)?;
+        let name = b.get(i + 2..i + 2 + nl)?;
+        i += 2 + nl;
+        let vl = u16_at(i)?;
+        let value = b.get(i + 2..i + 2 + vl)?;
+        i += 2 + vl;
+        if depth == 0 && nl > 0 {
+            attr = String::from_utf8_lossy(name).into_owned();
+        }
+        match tag {
+            0x34 => depth += 1,
+            0x37 => depth = depth.saturating_sub(1),
+            0x4A => member = String::from_utf8_lossy(value).into_owned(),
+            0x21 => {
+                let Ok(v4) = <[u8; 4]>::try_from(value) else {
+                    continue;
+                };
+                let v = i32::from_be_bytes(v4);
+                if depth == 0 && attr.ends_with("-margin-supported") {
+                    if let Some(s) = side_of(&attr) {
+                        supported[s].push(v);
+                    }
+                } else if depth > 0 && attr == "media-col-default" && member.ends_with("-margin") {
+                    if let Some(s) = side_of(&member) {
+                        default[s] = Some(v);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut side = [0.0f64; 4];
+    for s in 0..4 {
+        let v = default[s]
+            .or_else(|| supported[s].iter().copied().filter(|v| *v > 0).min())
+            .or_else(|| supported[s].iter().copied().find(|v| *v == 0))?;
+        side[s] = f64::from(v) / 100.0;
+    }
+    Some(
+        Margins {
+            left: side[0],
+            right: side[1],
+            top: side[2],
+            bottom: side[3],
+        }
+        .clamped(MARGIN_LIMIT),
+    )
+}
+
+/// The body of an HTTP response when it is a success (a chunked body put
+/// back together); `None` otherwise.
+#[cfg_attr(any(target_os = "windows", target_arch = "wasm32"), allow(dead_code))]
+pub fn http_body(resp: &[u8]) -> Option<Vec<u8>> {
+    let end = resp.windows(4).position(|w| w == b"\r\n\r\n")?;
+    let head = String::from_utf8_lossy(resp.get(..end)?).to_ascii_lowercase();
+    let code = head.split_whitespace().nth(1)?;
+    if code != "200" {
+        return None;
+    }
+    let body = resp.get(end + 4..)?;
+    if !head.contains("transfer-encoding: chunked") {
+        return Some(body.to_vec());
+    }
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    loop {
+        let rest = body.get(i..)?;
+        let eol = rest.windows(2).position(|w| w == b"\r\n")?;
+        let size_text = String::from_utf8_lossy(rest.get(..eol)?).into_owned();
+        let size = usize::from_str_radix(size_text.split(';').next()?.trim(), 16).ok()?;
+        if size == 0 {
+            return Some(out);
+        }
+        let start = i + eol + 2;
+        out.extend_from_slice(body.get(start..start + size)?);
+        i = start + size + 2;
+    }
+}
+
+/// Ask CUPS for `printer`'s margins over IPP: the server `CUPS_SERVER`
+/// names, else the local scheduler's socket, else localhost:631.
+#[cfg(all(unix, not(target_os = "android")))]
+fn cups_margins(printer: &str) -> Option<Margins> {
+    use std::io::{Read, Write};
+    use std::time::Duration;
+    const WAIT: Duration = Duration::from_secs(3);
+    let body = ipp_margins_request(printer);
+    let mut req = format!(
+        "POST /printers/{} HTTP/1.0\r\nHost: localhost\r\nContent-Type: application/ipp\r\nContent-Length: {}\r\n\r\n",
+        url_escape(printer),
+        body.len()
+    )
+    .into_bytes();
+    req.extend_from_slice(&body);
+    fn talk(mut s: impl Read + Write, req: &[u8]) -> Option<Vec<u8>> {
+        s.write_all(req).ok()?;
+        let mut resp = Vec::new();
+        s.take(1 << 20).read_to_end(&mut resp).ok()?;
+        Some(resp)
+    }
+    let unix = |path: &str| -> Option<Vec<u8>> {
+        let s = std::os::unix::net::UnixStream::connect(path).ok()?;
+        s.set_read_timeout(Some(WAIT)).ok()?;
+        s.set_write_timeout(Some(WAIT)).ok()?;
+        talk(s, &req)
+    };
+    let tcp = |host: &str| -> Option<Vec<u8>> {
+        use std::net::ToSocketAddrs as _;
+        let host = if host.contains(':') && !host.starts_with('[') {
+            host.to_string()
+        } else {
+            format!("{host}:631")
+        };
+        let addr = host.to_socket_addrs().ok()?.next()?;
+        let s = std::net::TcpStream::connect_timeout(&addr, WAIT).ok()?;
+        s.set_read_timeout(Some(WAIT)).ok()?;
+        s.set_write_timeout(Some(WAIT)).ok()?;
+        talk(s, &req)
+    };
+    let server = std::env::var("CUPS_SERVER")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let resp = match server.as_deref() {
+        Some(p) if p.starts_with('/') => unix(p),
+        Some(h) => tcp(h),
+        None => unix("/run/cups/cups.sock")
+            .or_else(|| unix("/var/run/cups/cups.sock"))
+            .or_else(|| unix("/private/var/run/cupsd"))
+            .or_else(|| tcp("127.0.0.1")),
+    }?;
+    parse_ipp_margins(&http_body(&resp)?)
+}
+
+/// The blank edge of `printer`, `None` when the system does not say.
+/// It can take seconds: callers ask off the interface's thread.
+#[cfg(all(unix, not(target_os = "android")))]
+pub fn printer_margins(printer: &str) -> Option<PrinterMargins> {
+    let found = cups_margins(printer).map(|portrait| PrinterMargins {
+        portrait,
+        landscape: None,
+    });
+    log::info!("printer {printer}: margins {found:?}");
+    found
+}
+
+#[cfg(target_os = "windows")]
+pub fn printer_margins(printer: &str) -> Option<PrinterMargins> {
+    let out = powershell()
+        .arg("-Command")
+        .arg(windows_margins_script(printer))
+        .output()
+        .ok()?;
+    let found = out
+        .status
+        .success()
+        .then(|| parse_windows_margins(&String::from_utf8_lossy(&out.stdout)))
+        .flatten();
+    log::info!("printer {printer}: margins {found:?}");
+    found
+}
+
+/// None in a browser and on Android, whose print service handles the
+/// paper itself.
+#[cfg(any(target_arch = "wasm32", target_os = "android"))]
+pub fn printer_margins(_printer: &str) -> Option<PrinterMargins> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An IPP attribute: tag, name and value.
+    fn ipp(out: &mut Vec<u8>, tag: u8, name: &str, value: &[u8]) {
+        out.push(tag);
+        out.extend_from_slice(&(name.len() as u16).to_be_bytes());
+        out.extend_from_slice(name.as_bytes());
+        out.extend_from_slice(&(value.len() as u16).to_be_bytes());
+        out.extend_from_slice(value);
+    }
+
+    fn int(v: i32) -> [u8; 4] {
+        v.to_be_bytes()
+    }
+
+    /// A response with `supported` margins per side and, when given, a
+    /// default media collection with its own margins and a nested size.
+    fn ipp_response(status: u16, supported: [&[i32]; 4], default: Option<[i32; 4]>) -> Vec<u8> {
+        let mut b = vec![2, 0];
+        b.extend_from_slice(&status.to_be_bytes());
+        b.extend_from_slice(&[0, 0, 0, 1, 0x01]);
+        ipp(&mut b, 0x47, "attributes-charset", b"utf-8");
+        b.push(0x04);
+        let sides = ["left", "right", "top", "bottom"];
+        for (s, vals) in sides.iter().zip(supported) {
+            for (k, v) in vals.iter().enumerate() {
+                let name = format!("media-{s}-margin-supported");
+                ipp(&mut b, 0x21, if k == 0 { &name } else { "" }, &int(*v));
+            }
+        }
+        if let Some(d) = default {
+            ipp(&mut b, 0x34, "media-col-default", b"");
+            ipp(&mut b, 0x4A, "", b"media-size");
+            ipp(&mut b, 0x34, "", b"");
+            ipp(&mut b, 0x4A, "", b"x-dimension");
+            ipp(&mut b, 0x21, "", &int(21000));
+            ipp(&mut b, 0x37, "", b"");
+            for (s, v) in sides.iter().zip(d) {
+                ipp(&mut b, 0x4A, "", format!("media-{s}-margin").as_bytes());
+                ipp(&mut b, 0x21, "", &int(v));
+            }
+            ipp(&mut b, 0x37, "", b"");
+        }
+        b.push(0x03);
+        b
+    }
+
+    #[test]
+    fn the_ipp_request_asks_the_printer_for_its_margins() {
+        let r = ipp_margins_request("Office HP");
+        assert_eq!(&r[..4], &[2, 0, 0, 0x0B]);
+        let text = String::from_utf8_lossy(&r);
+        assert!(text.contains("ipp://localhost/printers/Office%20HP"));
+        for a in [
+            "media-col-default",
+            "media-left-margin-supported",
+            "media-bottom-margin-supported",
+        ] {
+            assert!(text.contains(a), "{a}");
+        }
+        assert_eq!(r.last(), Some(&0x03));
+    }
+
+    #[test]
+    fn ipp_margins_come_from_the_default_media_else_the_smallest_supported() {
+        let m = |l: f64, r: f64, t: f64, b: f64| Margins {
+            left: l,
+            right: r,
+            top: t,
+            bottom: b,
+        };
+        // A laser printer: one value each side.
+        let laser = ipp_response(0, [&[423], &[423], &[423], &[423]], None);
+        assert_eq!(parse_ipp_margins(&laser), Some(m(4.23, 4.23, 4.23, 4.23)));
+        // Borderless offered too: zero is not taken unless alone.
+        let inkjet = ipp_response(0, [&[0, 300], &[0, 300], &[0, 300], &[0, 1200]], None);
+        assert_eq!(parse_ipp_margins(&inkjet), Some(m(3.0, 3.0, 3.0, 12.0)));
+        // The default media's margins win, its nested size ignored.
+        let dflt = ipp_response(0, [&[0, 300]; 4], Some([310, 320, 330, 340]));
+        assert_eq!(parse_ipp_margins(&dflt), Some(m(3.1, 3.2, 3.3, 3.4)));
+        // Borderless only.
+        let zero = ipp_response(0, [&[0]; 4], None);
+        assert_eq!(parse_ipp_margins(&zero), Some(m(0.0, 0.0, 0.0, 0.0)));
+        // An error status, a missing side, cut or junk input: nothing.
+        assert_eq!(
+            parse_ipp_margins(&ipp_response(0x0406, [&[423]; 4], None)),
+            None
+        );
+        assert_eq!(
+            parse_ipp_margins(&ipp_response(0, [&[423], &[423], &[423], &[]], None)),
+            None
+        );
+        for n in 0..laser.len() - 1 {
+            assert_eq!(parse_ipp_margins(&laser[..n]), None, "cut at {n}");
+        }
+        assert_eq!(parse_ipp_margins(&[0xFF; 64]), None);
+        // A silly value is kept within reason.
+        let huge = ipp_response(0, [&[900_000]; 4], None);
+        assert_eq!(parse_ipp_margins(&huge).map(|m| m.left), Some(50.0));
+    }
+
+    #[test]
+    fn http_bodies_plain_and_chunked() {
+        assert_eq!(
+            http_body(b"HTTP/1.0 200 OK\r\nContent-Type: application/ipp\r\n\r\nabc"),
+            Some(b"abc".to_vec())
+        );
+        assert_eq!(
+            http_body(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n2\r\nde\r\n0\r\n\r\n"),
+            Some(b"abcde".to_vec())
+        );
+        assert_eq!(http_body(b"HTTP/1.0 404 Not Found\r\n\r\n"), None);
+        assert_eq!(
+            http_body(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n"),
+            None
+        );
+        assert_eq!(http_body(b"junk"), None);
+    }
+
+    #[test]
+    fn windows_margins_upright_and_wide() {
+        // A4 (827 x 1169 hundredths of an inch) with a 4.2 mm edge.
+        let out = "P 827 1169 16.5 16.5 794 1136\r\nL 1169 827 16.5 16.5 1136 794\r\n";
+        let m = parse_windows_margins(out).expect("margins");
+        assert!((m.portrait.left - 4.191).abs() < 1e-3);
+        assert!((m.portrait.right - 4.191).abs() < 1e-3);
+        assert!((m.portrait.bottom - 4.191).abs() < 1e-3);
+        assert!(m.landscape.is_some());
+        assert_eq!(m.for_sheet(297.0, 210.0), m.landscape.expect("wide"));
+        assert_eq!(m.for_sheet(210.0, 297.0), m.portrait);
+        // Nothing usable.
+        assert_eq!(parse_windows_margins(""), None);
+        assert_eq!(parse_windows_margins("P 0 0 0 0 0 0"), None);
+        assert_eq!(parse_windows_margins("L 1169 827 16 16 1136 794"), None);
+        // A wide report that is not wide is ignored; the sheet turns the
+        // upright margins instead, taking the larger of each pair.
+        let odd =
+            parse_windows_margins("P 827 1169 10 20 800 1100\nL 827 1169 0 0 1 1").expect("m");
+        assert_eq!(odd.landscape, None);
+        let w = odd.for_sheet(297.0, 210.0);
+        assert_eq!(w.left, w.right);
+        assert!((w.left - odd.portrait.top.max(odd.portrait.bottom)).abs() < 1e-9);
+        assert!(windows_margins_script("It's").contains("'It''s'"));
+    }
 
     /// The Printer list comes from `lpstat`: every printer in name order,
     /// the default marked where it stands, with its state, description

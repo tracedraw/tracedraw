@@ -3156,6 +3156,7 @@ print.move_info = "Slepen verplaatst de pagina-informatie" # mt
 print.art_position = "Positie van ontwerp" # mt
 print.art_reset = "Herstellen" # mt
 print.art_drag_tip = "Sleep om het ontwerp op het papier te verplaatsen, weg van de marges die de printer niet afdrukt." # mt
+print.edge_warning = "Een deel van het ontwerp ligt in de rand die {printer} leeg laat (gearceerd: links {left}, rechts {right}, boven {top}, onder {bottom} mm) en wordt niet afgedrukt." # mt
 print.keep_size = "Paginaformaat behouden" # mt
 print.keep_size_tip = "De pagina's houden hun formaat op het vel in plaats van te krimpen voor de markeringen" # mt
 print.keep_size_overflow = "Op hun formaat passen niet alle pagina's op het vel: wat erbuiten valt, wordt niet afgedrukt." # mt

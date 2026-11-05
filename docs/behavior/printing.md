@@ -249,6 +249,37 @@ same function (`export::print_sheets`).
   `imposition::tests::pages_stretch_to_fill_and_follow_the_preview_transform`).
   With the page information on, "Drag moves the page information" makes
   a drag move that instead (#388).
+- The chosen printer's blank edge (#1924): the strip of paper the printer
+  cannot print on is shaded on each sheet (black at 70 of 255), its inner
+  side dashed in red. When any part of the sheet that is not white lies in
+  that strip, a note over the top of the preview says the artwork there
+  will not print, with the printer's name and the four margins in mm
+  (`ink_in_edge` looks at the drawn sheet: whole rows in the top and bottom
+  strips, the ends of the rows between; a pixel counts when a channel is
+  under 245). Nothing is shaded while the margins are not known yet or the
+  system does not say them, and for the PDF viewer or a file.
+  The margins are read once per printer off the interface's thread
+  (`printers::printer_margins`, kept in `App::printer_margins`):
+  - Windows: PowerShell's printing classes give the default paper's bounds
+    and printable area, upright and turned (`windows_margins_script`,
+    `parse_windows_margins`); a print draws the sheet from the paper's
+    corner with these taken off, so the sheet's edges are the paper's.
+  - Linux and macOS: an IPP Get-Printer-Attributes request to CUPS (the
+    server `CUPS_SERVER` names, else the scheduler's local socket, else
+    localhost:631, 3 s at most) for `media-col-default` and the
+    `media-*-margin-supported` values (`ipp_margins_request`,
+    `parse_ipp_margins`). The default media's margins win; else each side
+    takes the smallest supported margin above zero (zero alone means
+    borderless). For a queue with a PPD, CUPS reports its ImageableArea.
+  - A wide sheet uses the turned margins Windows gives; else each side
+    takes the larger of the two upright margins it may come from (the
+    paper turns one way or the other).
+  - Margins over 50 mm are taken as 50.
+- View > Page > Printable Area draws the same edge on the page while
+  drawing: the margins of the printer printed to last, else of the
+  system's default printer (the list read once for it), turned for a wide
+  page; 5 mm all round until the system says them, or when it does not
+  (`App::printable_margins`, `App::printable_area_tick`).
 
 ## Imposition
 

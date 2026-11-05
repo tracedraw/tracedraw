@@ -3156,6 +3156,7 @@ print.move_info = "Tažení posouvá informace o stránce" # mt
 print.art_position = "Poloha grafiky" # mt
 print.art_reset = "Obnovit" # mt
 print.art_drag_tip = "Tažením posunete grafiku na papíře dál od okrajů, které tiskárna netiskne." # mt
+print.edge_warning = "Část kresby leží v okraji, který {printer} nechává prázdný (stínovaný: vlevo {left}, vpravo {right}, nahoře {top}, dole {bottom} mm), a nevytiskne se." # mt
 print.keep_size = "Zachovat velikost stránky" # mt
 print.keep_size_tip = "Stránky si na archu zachovají velikost místo zmenšení kvůli značkám" # mt
 print.keep_size_overflow = "Ve své velikosti se všechny stránky na arch nevejdou: co přesahuje, se nevytiskne." # mt
