@@ -7659,3 +7659,4 @@ toolbar.mod_ctrl = "Tahan Ctrl" # mt
 toolbar.mod_ctrl_desc = "Untuk jari: Ctrl tetap ditahan sampai Anda mengetuk tombol ini lagi. Ketukan lalu memilih objek di dalam grup, dan seretan dibatasi pada satu arah atau langkah sudut." # mt
 toolbar.mod_alt = "Tahan Alt" # mt
 toolbar.mod_alt_desc = "Untuk jari: Alt tetap ditahan sampai Anda mengetuk tombol ini lagi. Ketukan lalu memilih objek di belakang objek teratas, dan kotak seleksi memilih setiap objek yang disentuhnya." # mt
+folder.tree_android = "Pilih folder dengan pemilih sistem; gambar di dalamnya yang dipakai." # mt

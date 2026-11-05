@@ -7659,3 +7659,4 @@ toolbar.mod_ctrl = "Maintenir Ctrl" # mt
 toolbar.mod_ctrl_desc = "Pour un doigt : Ctrl reste enfoncée jusqu'à ce que vous touchiez de nouveau ce bouton. Un toc choisit alors un objet dans un groupe, et un glissement reste dans une direction ou suit des pas d'angle." # mt
 toolbar.mod_alt = "Maintenir Alt" # mt
 toolbar.mod_alt_desc = "Pour un doigt : Alt reste enfoncée jusqu'à ce que vous touchiez de nouveau ce bouton. Un toc choisit alors l'objet derrière celui du dessus, et un cadre choisit tous les objets qu'il touche." # mt
+folder.tree_android = "Choisissez le dossier avec le sélecteur du système ; les images qu'il contient sont utilisées." # mt

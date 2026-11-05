@@ -7659,3 +7659,4 @@ toolbar.mod_ctrl = "Ctrl'yi basılı tut" # mt
 toolbar.mod_ctrl_desc = "Parmak için: Bu düğmeye yeniden dokunana kadar Ctrl basılı kalır. Bu sırada dokunma bir grubun içindeki nesneyi seçer, sürükleme tek yönde veya açı adımlarında kalır." # mt
 toolbar.mod_alt = "Alt'ı basılı tut" # mt
 toolbar.mod_alt_desc = "Parmak için: Bu düğmeye yeniden dokunana kadar Alt basılı kalır. Bu sırada dokunma en üstteki nesnenin arkasındakini seçer, seçim çerçevesi dokunduğu her nesneyi seçer." # mt
+folder.tree_android = "Klasörü sistemin seçicisiyle seçin; içindeki resimler kullanılır." # mt

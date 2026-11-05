@@ -7659,3 +7659,4 @@ toolbar.mod_ctrl = "按住 Ctrl" # mt
 toolbar.mod_ctrl_desc = "供手指使用：Ctrl 保持按下，直到再次点按此按钮。此时点按会选中群组内的对象，拖动会限制在一个方向或按角度步进。" # mt
 toolbar.mod_alt = "按住 Alt" # mt
 toolbar.mod_alt_desc = "供手指使用：Alt 保持按下，直到再次点按此按钮。此时点按会选中最上层对象后面的对象，框选会选中它碰到的每个对象。" # mt
+folder.tree_android = "用系统选择器选择文件夹；将使用其中的图片。" # mt

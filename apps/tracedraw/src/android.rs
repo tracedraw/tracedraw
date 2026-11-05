@@ -385,6 +385,22 @@ pub mod documents {
         .is_some()
     }
 
+    /// Show the system's folder picker (`ACTION_OPEN_DOCUMENT_TREE`); the
+    /// documents in the folder chosen arrive through [`take_answers`]
+    /// with `request`, as picked documents (#1926).
+    pub fn open_tree(request: i32) -> bool {
+        with_activity("open document tree", |env, activity| {
+            env.call_method(
+                activity,
+                jni_str!("openDocumentTree"),
+                jni_sig!("(I)V"),
+                &[JValue::Int(request)],
+            )?
+            .v()
+        })
+        .is_some()
+    }
+
     /// Show the picker for a place to save a new document called `name`
     /// of type `mime`; the answer arrives through [`take_answers`].
     pub fn create(request: i32, mime: &str, name: &str) -> bool {

@@ -363,6 +363,86 @@ public class TraceDrawActivity extends NativeActivity {
         });
     }
 
+    /** The requests waiting for a folder from the folder picker (#1926). */
+    private final java.util.HashSet<Integer> treeRequests = new java.util.HashSet<Integer>();
+
+    /**
+     * Show the system's folder picker (ACTION_OPEN_DOCUMENT_TREE). The
+     * documents in the folder chosen (not its subfolders) come through
+     * nativeDocumentResult as picked documents (#1926).
+     */
+    public void openDocumentTree(final int request) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    treeRequests.add(request);
+                    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                    startActivityForResult(intent, request);
+                } catch (Exception e) {
+                    Log.w(TAG, "the folder picker could not open", e);
+                    treeRequests.remove(request);
+                    nativeDocumentResult(request, null, null, null);
+                }
+            }
+        });
+    }
+
+    /**
+     * Hand the documents in the folder `tree` (a tree URI the folder
+     * picker gave) to the editor under `requestCode`; subfolders are left
+     * out. The right to read the folder is kept across restarts.
+     */
+    private void sendTree(int requestCode, Uri tree) {
+        try {
+            getContentResolver().takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (Exception e) {
+            Log.i(TAG, "no persistable permission for " + tree);
+        }
+        StringBuilder u = new StringBuilder();
+        StringBuilder n = new StringBuilder();
+        StringBuilder m = new StringBuilder();
+        Cursor cursor = null;
+        try {
+            Uri children = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(
+                tree, android.provider.DocumentsContract.getTreeDocumentId(tree));
+            cursor = getContentResolver().query(children, new String[] {
+                android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE,
+            }, null, null, null);
+            while (cursor != null && cursor.moveToNext()) {
+                String id = cursor.getString(0);
+                String name = cursor.getString(1);
+                String mime = cursor.getString(2);
+                if (id == null
+                    || android.provider.DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    continue;
+                }
+                Uri doc = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, id);
+                if (u.length() > 0) {
+                    u.append('\n');
+                    n.append('\n');
+                    m.append('\n');
+                }
+                u.append(doc.toString());
+                n.append(name == null ? "document" : name.replace('\n', ' '));
+                m.append(mime == null ? "" : mime.replace('\n', ' '));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "the folder could not be listed", e);
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+        if (u.length() == 0) {
+            nativeDocumentResult(requestCode, null, null, null);
+        } else {
+            nativeDocumentResult(requestCode, u.toString(), n.toString(), m.toString());
+        }
+    }
+
     /**
      * Show the system's picker for a place to save a new document named
      * `name` of type `mime`. The result comes through nativeDocumentResult.
@@ -388,8 +468,18 @@ public class TraceDrawActivity extends NativeActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        boolean tree = treeRequests.remove(requestCode);
         if (resultCode != RESULT_OK || data == null) {
             nativeDocumentResult(requestCode, null, null, null);
+            return;
+        }
+        // A folder from the folder picker: its documents (#1926).
+        if (tree) {
+            if (data.getData() == null) {
+                nativeDocumentResult(requestCode, null, null, null);
+            } else {
+                sendTree(requestCode, data.getData());
+            }
             return;
         }
         ArrayList<Uri> uris = new ArrayList<Uri>();

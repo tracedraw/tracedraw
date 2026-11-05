@@ -7659,3 +7659,4 @@ toolbar.mod_ctrl = "Manter Ctrl" # mt
 toolbar.mod_ctrl_desc = "Para o dedo: Ctrl fica pressionado até você tocar este botão de novo. Um toque então escolhe um objeto dentro de um grupo, e um arrasto se limita a uma direção ou a passos de ângulo." # mt
 toolbar.mod_alt = "Manter Alt" # mt
 toolbar.mod_alt_desc = "Para o dedo: Alt fica pressionado até você tocar este botão de novo. Um toque então escolhe o objeto atrás do que está por cima, e um retângulo de seleção escolhe todo objeto que toca." # mt
+folder.tree_android = "Escolha a pasta com o seletor do sistema; as imagens nela são usadas." # mt

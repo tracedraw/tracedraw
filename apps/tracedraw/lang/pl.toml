@@ -7659,3 +7659,4 @@ toolbar.mod_ctrl = "Przytrzymaj Ctrl" # mt
 toolbar.mod_ctrl_desc = "Dla palca: Ctrl pozostaje wciśnięty, dopóki ponownie nie stukniesz tego przycisku. Stuknięcie wybiera wtedy obiekt wewnątrz grupy, a przeciąganie trzyma się jednego kierunku lub kroków kąta." # mt
 toolbar.mod_alt = "Przytrzymaj Alt" # mt
 toolbar.mod_alt_desc = "Dla palca: Alt pozostaje wciśnięty, dopóki ponownie nie stukniesz tego przycisku. Stuknięcie wybiera wtedy obiekt za tym na wierzchu, a ramka zaznaczenia wybiera każdy obiekt, którego dotknie." # mt
+folder.tree_android = "Wybierz folder systemowym selektorem; używane są obrazy w nim." # mt

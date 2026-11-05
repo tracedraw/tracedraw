@@ -422,6 +422,28 @@ mod tests {
         assert!(margins.contains("pub const OFFERED: bool = crate::files::ANDROID;"));
     }
 
+    /// The folder picker (#1926): the bridge asks the activity for it,
+    /// and the activity lists the folder's documents (not its folders)
+    /// and answers them as picked documents, keeping the right to read.
+    #[test]
+    fn the_folder_picker_answers_the_folders_documents() {
+        assert!(ACTIVITY.contains("public void openDocumentTree(final int request)"));
+        assert!(BRIDGE.contains("jni_str!(\"openDocumentTree\")"));
+        assert!(BRIDGE.contains("jni_sig!(\"(I)V\")"));
+        for needed in [
+            "Intent.ACTION_OPEN_DOCUMENT_TREE",
+            "treeRequests.remove(requestCode)",
+            "buildChildDocumentsUriUsingTree",
+            "getTreeDocumentId(tree)",
+            "buildDocumentUriUsingTree(tree, id)",
+            "Document.MIME_TYPE_DIR.equals(mime)",
+            "takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION)",
+            "sendTree(requestCode, data.getData())",
+        ] {
+            assert!(ACTIVITY.contains(needed), "the activity lacks {needed:?}");
+        }
+    }
+
     /// The on-screen keyboard (#1309): the bridge shows it with the
     /// activity's method, registers the native methods the activity
     /// declares with their signatures, and the view the keyboard types

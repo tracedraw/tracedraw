@@ -7659,3 +7659,4 @@ toolbar.mod_ctrl = "Ctrl vasthouden" # mt
 toolbar.mod_ctrl_desc = "Voor een vinger: Ctrl blijft ingedrukt tot u nogmaals op deze knop tikt. Een tik kiest dan een object binnen een groep, en slepen blijft in één richting of in hoekstappen." # mt
 toolbar.mod_alt = "Alt vasthouden" # mt
 toolbar.mod_alt_desc = "Voor een vinger: Alt blijft ingedrukt tot u nogmaals op deze knop tikt. Een tik kiest dan het object achter het bovenste, en een selectiekader kiest elk object dat het raakt." # mt
+folder.tree_android = "Kies de map met de kiezer van het systeem; de afbeeldingen erin worden gebruikt." # mt
