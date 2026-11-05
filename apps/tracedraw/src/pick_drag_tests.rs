@@ -15487,6 +15487,37 @@ fn the_trace_preview_follows_a_slider_without_a_button() {
     assert!(trace_state(&app).can_undo());
 }
 
+/// The wheel over a Trace dialog slider steps it by one on hover, as over
+/// the other sliders, with no click first (#1335).
+#[test]
+fn the_wheel_over_a_trace_slider_steps_it() {
+    let (ctx, mut app, _) = trace_setup(black_white_image(120, |x, _| x > 60));
+    let detail = trace_rect(&ctx, "detail");
+    let before = trace_state(&app).settings.detail;
+    let at = detail.center();
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(at)],
+        Modifiers::NONE,
+    );
+    let notch = |up: bool| Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: egui::vec2(0.0, if up { 1.0 } else { -1.0 }),
+        modifiers: Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+    };
+    frame(&ctx, &mut app, vec![notch(false)], Modifiers::NONE);
+    assert_eq!(
+        trace_state(&app).settings.detail,
+        before - 1.0,
+        "a notch down"
+    );
+    frame(&ctx, &mut app, vec![notch(true)], Modifiers::NONE);
+    frame(&ctx, &mut app, vec![notch(true)], Modifiers::NONE);
+    assert_eq!(trace_state(&app).settings.detail, before + 1.0, "two up");
+}
+
 /// The Trace type list swaps the Image type list: Centerline offers the
 /// centreline presets, with the first chosen.
 #[test]
