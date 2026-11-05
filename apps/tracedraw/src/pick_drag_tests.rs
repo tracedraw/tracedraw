@@ -1888,6 +1888,81 @@ fn alt_drag_with_the_shape_tool_is_a_freehand_node_marquee() {
     assert_eq!(app.node_selection.len(), 3, "{:?}", app.node_selection);
 }
 
+/// The Shape tool's node marquee and freehand marquee are drawn as the
+/// Pick tool's: a white line with the selection blue dashed on top, so
+/// they show on blue artwork too, where a plain blue line was lost
+/// (#1849).
+#[test]
+fn the_node_marquee_is_dashed_blue_on_white() {
+    let (ctx, mut app, _id) = setup();
+    app.convert_to_curves();
+    app.set_tool(Tool::Shape);
+    for lasso in [false, true] {
+        app.node_lasso = lasso;
+        for _ in 0..3 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        let a = app.view.to_screen(Point::new(80.0, 80.0));
+        let b = app.view.to_screen(Point::new(120.0, 110.0));
+        let m = Modifiers::NONE;
+        frame(&ctx, &mut app, vec![Event::PointerMoved(a)], m);
+        frame(
+            &ctx,
+            &mut app,
+            vec![button(a, true, PointerButton::Primary, m)],
+            m,
+        );
+        for t in [0.3, 0.6, 1.0] {
+            let q = a + (b - a) * t;
+            frame(&ctx, &mut app, vec![Event::PointerMoved(q)], m);
+        }
+        assert!(
+            matches!(app.drag, Drag::NodeMarquee { .. } | Drag::NodeLasso { .. }),
+            "a node marquee: {:?}",
+            app.drag
+        );
+        // The page's y goes up, the screen's down.
+        let area = egui::Rect::from_two_pos(a, b).expand(1.5);
+        let inside = |p: &Pos2| area.contains(*p);
+        let shapes = frame_shapes(&ctx, &mut app, vec![Event::PointerMoved(b)]);
+        let white = shapes.iter().any(|s| match s {
+            egui::Shape::Path(p) => {
+                p.stroke.color
+                    == egui::epaint::ColorMode::Solid(egui::Color32::from_white_alpha(200))
+                    && p.points.len() >= 3
+                    && p.points.iter().all(inside)
+            }
+            _ => false,
+        });
+        let dashes = shapes
+            .iter()
+            .filter(|s| match s {
+                egui::Shape::LineSegment { points, stroke } => {
+                    stroke.color == crate::theme::Tokens::SELECTION && points.iter().all(inside)
+                }
+                _ => false,
+            })
+            .count();
+        let solid = shapes.iter().any(|s| match s {
+            egui::Shape::Rect(r) => {
+                r.stroke.color == crate::theme::Tokens::SELECTION
+                    && (inside(&r.rect.min) || inside(&r.rect.max))
+            }
+            _ => false,
+        });
+        assert!(white, "lasso {lasso}: a white line under the dashes");
+        assert!(dashes >= 8, "lasso {lasso}: blue dashes ({dashes})");
+        assert!(!solid, "lasso {lasso}: no plain blue frame");
+        frame(
+            &ctx,
+            &mut app,
+            vec![button(b, false, PointerButton::Primary, m)],
+            m,
+        );
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+}
+
 #[test]
 fn alt_marquees_take_what_they_touch() {
     let (ctx, mut app, [_a, _b, c], group) = grouped();

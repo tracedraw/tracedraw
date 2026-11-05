@@ -2403,24 +2403,24 @@ fn draw_nodes(app: &App, painter: &Painter) {
             painter.circle_filled(c, 1.2, Tokens::HANDLE);
         }
     }
+    // The node marquees look like the Pick tool's: blue dashes on a
+    // white line, so they show on blue artwork too (#1849).
     if let Drag::NodeLasso { points } = &app.drag {
         let pts: Vec<Pos2> = points.iter().map(|p| view.to_screen(*p)).collect();
-        dashed_polyline(
-            painter,
-            &pts,
-            EStroke::new(1.0, Tokens::SELECTION),
-            4.0,
-            3.0,
-        );
+        if pts.len() > 1 {
+            dashed_selection_line(painter, &pts);
+        }
     }
     if let Drag::NodeMarquee { start, current } = &app.drag {
         let r = view.rect_to_screen(Rect::from_points(*start, *current));
-        painter.rect_stroke(
-            r,
-            0.0,
-            EStroke::new(1.0, Tokens::SELECTION),
-            epaint::StrokeKind::Outside,
-        );
+        let pts = [
+            r.left_top(),
+            r.right_top(),
+            r.right_bottom(),
+            r.left_bottom(),
+            r.left_top(),
+        ];
+        dashed_selection_line(painter, &pts);
     }
     crate::corner_widgets::draw(app, painter, main);
 }
