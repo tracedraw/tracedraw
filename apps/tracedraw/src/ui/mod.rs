@@ -1223,11 +1223,11 @@ mod tests {
                 .get(&egui::ViewportId::ROOT)
                 .into_iter()
                 .flat_map(|v| v.commands.iter())
-                .filter_map(|c| match c {
+                .rev()
+                .find_map(|c| match c {
                     egui::ViewportCommand::SetTheme(t) => Some(*t),
                     _ => None,
                 })
-                .last()
         };
         assert_eq!(theme_asked("dark"), Some(egui::SystemTheme::Dark));
         assert_eq!(theme_asked("medium_dark"), Some(egui::SystemTheme::Dark));
