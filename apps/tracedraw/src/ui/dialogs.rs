@@ -474,6 +474,11 @@ pub struct PrintState {
     pub parity: usize,
     /// Copies of a file come out as whole sets (on) or page by page.
     pub collate: bool,
+    /// Composite output in grays: every colour and picture as its grey
+    /// (#1657).
+    pub grayscale: bool,
+    /// The sheets in reverse order, the last first (#1394, #1571).
+    pub reverse_order: bool,
     /// Every sheet printed as one picture of `bitmap_dpi`.
     pub as_bitmap: bool,
     pub bitmap_dpi: f64,
@@ -747,6 +752,8 @@ impl Default for PrintState {
             pages: String::new(),
             parity: 0,
             collate: true,
+            grayscale: false,
+            reverse_order: false,
             as_bitmap: false,
             bitmap_dpi: 300.0,
             spot_to_cmyk: false,
@@ -5263,6 +5270,8 @@ fn print_tab_general(app: &App, ui: &mut Ui, st: &mut PrintState) -> Option<Stri
                 )
                 .rich_tip(crate::ui::tips::keyed("print.collate"))
                 .rich_disabled_tip(crate::ui::tips::keyed("print.collate"));
+                ui.checkbox(&mut st.reverse_order, tr("print.reverse_order"))
+                    .rich_tip(tr("print.reverse_order_tip"));
             });
             ui.add_space(6.0);
             ui.horizontal(|ui| {
@@ -5298,6 +5307,14 @@ fn print_tab_color(ui: &mut Ui, st: &mut PrintState) {
             ui.label(tr("print.color"));
             ui.vertical(|ui| {
                 ui.radio_value(&mut st.separations, false, tr("print.composite_output"));
+                ui.indent("print_gray", |ui| {
+                    ui.add_enabled(
+                        !st.separations,
+                        egui::Checkbox::new(&mut st.grayscale, tr("print.grayscale")),
+                    )
+                    .rich_tip(tr("print.grayscale_tip"))
+                    .rich_disabled_tip(tr("print.grayscale_tip"));
+                });
                 ui.radio_value(&mut st.separations, true, tr("print.separations_output"));
             });
             ui.end_row();

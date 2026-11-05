@@ -7672,3 +7672,7 @@ context.spline_fixed = "स्थिर नियंत्रण बिंदु
 context.spline_floating = "मुक्त नियंत्रण बिंदु" # mt
 options.object_pick_distance = "वस्तु क्लिक दूरी:" # mt
 options.object_pick_distance_tip = "किसी वस्तु की रूपरेखा से कितनी दूर क्लिक करने पर भी वह चुनी जाए, स्क्रीन पिक्सेल में; कोई नहीं के लिए 0." # mt
+print.grayscale = "ग्रेस्केल" # mt
+print.grayscale_tip = "हर रंग और चित्र को उसके धूसर रूप में छापें (कम्पोज़िट आउटपुट); फ़ाइल और स्क्रीन के रंग वैसे ही रहते हैं।" # mt
+print.reverse_order = "उलटा क्रम" # mt
+print.reverse_order_tip = "आख़िरी शीट पहले छापें, ऊपर की ओर मुँह करके निकलने वाले ढेर के लिए या छपी शीटों के पीछे छापने के लिए।" # mt

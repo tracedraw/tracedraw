@@ -7672,3 +7672,7 @@ context.spline_fixed = "固定コントロールポイント" # mt
 context.spline_floating = "フローティングコントロールポイント" # mt
 options.object_pick_distance = "オブジェクトのクリック距離:" # mt
 options.object_pick_distance_tip = "オブジェクトの輪郭からどれだけ離れたクリックでも選択されるか(画面ピクセル)。0 で無効。" # mt
+print.grayscale = "グレースケール" # mt
+print.grayscale_tip = "すべての色と画像をグレーで印刷します（コンポジット出力）。ファイルと画面の色はそのままです。" # mt
+print.reverse_order = "逆順" # mt
+print.reverse_order_tip = "最後の用紙から印刷します。表向きに排紙される場合や、印刷済み用紙の裏に印刷する場合に使います。" # mt

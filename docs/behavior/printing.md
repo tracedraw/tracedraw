@@ -112,11 +112,24 @@ has one.
     `export::tests::keep_size_keeps_the_selection_at_its_size`); and Odd and even pages,
     Odd pages or Even pages of the document or the list (#951).
   - Copies: a file gets its copies inside, as whole sets (Collate) or
-    each sheet repeated.
+    each sheet repeated. Reverse order (under Collate) prints the
+    sheets last first, for a stack that comes out face up or for the
+    backs of printed sheets; it reverses the sheets as imposed, so a
+    booklet or n-up layout keeps its sheets whole (#1394, #1571).
   - Print as bitmap: each sheet becomes one picture at the resolution
     given (36 to 1200 dpi).
-- Color: Composite or Separations (one grey page per ink and sheet: C, M,
-  Y, K, then the spot inks; black = full ink); Convert spot colors to
+- Color: Composite, with Grayscale under it, or Separations (one grey
+  page per ink and sheet: C, M, Y, K, then the spot inks; black = full
+  ink). Grayscale (#1657) prints every colour of the sheets as its grey,
+  its luminance `0.299 R + 0.587 G + 0.114 B` as Bitmaps > Mode >
+  Grayscale gives it: fills, outlines, text, gradients, meshes, patterns,
+  live effects, shadows, lens colours and the marks (registration colour
+  stays), and every picture as its grey pixels (a CMYK picture's own
+  inks are left out of the print); the drawing keeps its colours. It is
+  greyed with Separations, which print from the colours. A lens that
+  makes colours of its own from what lies under it (heat map) still
+  does (`export::tests::grayscale_and_reverse_order_change_the_printed_sheets`).
+  Convert spot colors to
   CMYK prints spot inks as their CMYK mix at their tint. The printed
   sheets keep the drawing's list of spot inks, so each spot ink gets its
   plate and its box in the print preview; before, the sheets lost the
@@ -199,7 +212,8 @@ same function (`export::print_sheets`).
   #1653, `print_preview::tests::the_bleed_limit_is_set_beside_bleed`)
   beside Crop marks, Registration
   marks beside Color bars, Densitometer scale beside Page information,
-  Mirror beside Invert, Transform and Artwork position; then the layout
+  Mirror beside Invert, Grayscale beside Reverse order (#1657, #1394),
+  Transform and Artwork position; then the layout
   with its sketch. Every change rebuilds the sheets at once.
   The panel is 360 points wide at first and its edge drags from 300 to
   720. It is never narrower than its widest row as last laid out (a

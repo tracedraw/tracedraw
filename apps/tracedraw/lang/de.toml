@@ -7672,3 +7672,7 @@ context.spline_fixed = "Fester Kontrollpunkt" # mt
 context.spline_floating = "Freier Kontrollpunkt" # mt
 options.object_pick_distance = "Klickabstand für Objekte:" # mt
 options.object_pick_distance_tip = "Wie weit neben dem Umriss eines Objekts ein Klick es noch auswählt, in Bildschirmpixeln; 0 für keinen Abstand." # mt
+print.grayscale = "Graustufen" # mt
+print.grayscale_tip = "Jede Farbe und jedes Bild als Grauwert drucken (Composite-Ausgabe); Datei und Bildschirm behalten ihre Farben." # mt
+print.reverse_order = "Umgekehrte Reihenfolge" # mt
+print.reverse_order_tip = "Das letzte Blatt zuerst drucken, für einen Stapel, der mit der Vorderseite nach oben ausgegeben wird, oder zum Bedrucken der Rückseiten bedruckter Blätter." # mt

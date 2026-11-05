@@ -7672,3 +7672,7 @@ context.spline_fixed = "Stały punkt kontrolny" # mt
 context.spline_floating = "Swobodny punkt kontrolny" # mt
 options.object_pick_distance = "Odległość kliknięcia obiektu:" # mt
 options.object_pick_distance_tip = "Jak daleko od konturu obiektu kliknięcie nadal go zaznacza, w pikselach ekranu; 0 – wcale." # mt
+print.grayscale = "Skala szarości" # mt
+print.grayscale_tip = "Drukuj każdy kolor i obraz w odpowiadającym mu odcieniu szarości (wydruk kompozytowy); plik i ekran zachowują kolory." # mt
+print.reverse_order = "Odwrotna kolejność" # mt
+print.reverse_order_tip = "Drukuj najpierw ostatni arkusz, dla stosu wychodzącego zadrukiem do góry lub do druku na odwrocie zadrukowanych arkuszy." # mt

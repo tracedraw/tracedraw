@@ -7672,3 +7672,7 @@ context.spline_fixed = "স্থির নিয়ন্ত্রণ বিন
 context.spline_floating = "ভাসমান নিয়ন্ত্রণ বিন্দু" # mt
 options.object_pick_distance = "বস্তু ক্লিকের দূরত্ব:" # mt
 options.object_pick_distance_tip = "বস্তুর রূপরেখা থেকে কত দূরে ক্লিক করলেও তা নির্বাচিত হয়, স্ক্রিন পিক্সেলে; কিছু না হলে 0।" # mt
+print.grayscale = "গ্রেস্কেল" # mt
+print.grayscale_tip = "প্রতিটি রং ও ছবি তার ধূসর রূপে ছাপুন (কম্পোজিট আউটপুট); ফাইল ও স্ক্রিনে রং যেমন আছে থাকে।" # mt
+print.reverse_order = "উল্টো ক্রমে" # mt
+print.reverse_order_tip = "শেষ পাতাটি আগে ছাপুন, যাতে উপুড় না হয়ে বের হওয়া স্তূপ ঠিক ক্রমে থাকে বা ছাপা পাতার পিছনে ছাপা যায়।" # mt

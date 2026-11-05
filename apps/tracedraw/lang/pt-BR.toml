@@ -7672,3 +7672,7 @@ context.spline_fixed = "Ponto de controle fixo" # mt
 context.spline_floating = "Ponto de controle flutuante" # mt
 options.object_pick_distance = "Distância de clique em objetos:" # mt
 options.object_pick_distance_tip = "A que distância do contorno de um objeto um clique ainda o seleciona, em pixels da tela; 0 para nenhuma." # mt
+print.grayscale = "Tons de cinza" # mt
+print.grayscale_tip = "Imprime cada cor e imagem no seu cinza (saída composta); o arquivo e a tela mantêm as cores." # mt
+print.reverse_order = "Ordem inversa" # mt
+print.reverse_order_tip = "Imprime a última folha primeiro, para uma pilha que sai com a face para cima ou para imprimir no verso de folhas impressas." # mt

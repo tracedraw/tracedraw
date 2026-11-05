@@ -7672,3 +7672,7 @@ context.spline_fixed = "Titik kontrol tetap" # mt
 context.spline_floating = "Titik kontrol mengambang" # mt
 options.object_pick_distance = "Jarak klik objek:" # mt
 options.object_pick_distance_tip = "Seberapa jauh dari garis tepi objek sebuah klik masih memilihnya, dalam piksel layar; 0 untuk tidak ada." # mt
+print.grayscale = "Skala abu-abu" # mt
+print.grayscale_tip = "Cetak setiap warna dan gambar sebagai abu-abunya (keluaran komposit); berkas dan layar tetap berwarna." # mt
+print.reverse_order = "Urutan terbalik" # mt
+print.reverse_order_tip = "Cetak lembar terakhir lebih dulu, untuk tumpukan yang keluar menghadap ke atas atau untuk mencetak di balik lembar yang sudah dicetak." # mt

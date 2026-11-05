@@ -7672,3 +7672,7 @@ context.spline_fixed = "نقطة تحكم ثابتة" # mt
 context.spline_floating = "نقطة تحكم عائمة" # mt
 options.object_pick_distance = "مسافة النقر على الكائن:" # mt
 options.object_pick_distance_tip = "مدى بُعد النقرة عن حد الكائن مع بقاء تحديده، بوحدات بكسل الشاشة؛ 0 لعدم وجود مسافة." # mt
+print.grayscale = "تدرج رمادي" # mt
+print.grayscale_tip = "طباعة كل لون وصورة بدرجة الرمادي المقابلة (إخراج مركب)؛ يحتفظ الملف والشاشة بألوانهما." # mt
+print.reverse_order = "ترتيب معكوس" # mt
+print.reverse_order_tip = "طباعة الورقة الأخيرة أولاً، لرزمة تخرج ووجهها للأعلى أو للطباعة على ظهر أوراق مطبوعة." # mt

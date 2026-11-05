@@ -451,6 +451,17 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                         ui.checkbox(&mut st.mirror, tr("dialog.mirror"));
                         ui.checkbox(&mut st.invert, tr("dialog.invert"));
                         ui.end_row();
+                        // Grayscale output and the sheets' order (#1657,
+                        // #1394, #1571).
+                        ui.add_enabled(
+                            !st.separations,
+                            egui::Checkbox::new(&mut st.grayscale, tr("print.grayscale")),
+                        )
+                        .rich_tip(tr("print.grayscale_tip"))
+                        .rich_disabled_tip(tr("print.grayscale_tip"));
+                        ui.checkbox(&mut st.reverse_order, tr("print.reverse_order"))
+                            .rich_tip(tr("print.reverse_order_tip"));
+                        ui.end_row();
                     });
                 if st.page_info {
                     ui.checkbox(&mut pv.move_info, tr("print.move_info"));
@@ -1627,6 +1638,7 @@ mod tests {
             ("dialog.registration_marks", "print.color_bars"),
             ("print.densitometer", "print.page_info_mark"),
             ("dialog.mirror", "dialog.invert"),
+            ("print.grayscale", "print.reverse_order"),
         ] {
             let (l, r) = (at(left), at(right));
             assert!((l.y - r.y).abs() < 4.0, "{left} {l:?} beside {right} {r:?}");
@@ -1639,6 +1651,7 @@ mod tests {
         assert!(at("print.range_pages").y > at("dialog.all_pages").y);
         assert!(at("dialog.print_bleed").y > at("dialog.fit_to_page").y);
         assert!(at("dialog.mirror").y > at("print.densitometer").y);
+        assert!(at("print.grayscale").y > at("dialog.mirror").y);
     }
 
     /// The bleed limit is set beside Bleed, before Crop marks, and is the

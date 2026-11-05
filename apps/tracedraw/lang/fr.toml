@@ -7672,3 +7672,7 @@ context.spline_fixed = "Point de contrôle fixe" # mt
 context.spline_floating = "Point de contrôle flottant" # mt
 options.object_pick_distance = "Distance de clic sur les objets :" # mt
 options.object_pick_distance_tip = "À quelle distance du contour d'un objet un clic le sélectionne encore, en pixels d'écran ; 0 pour aucune." # mt
+print.grayscale = "Niveaux de gris" # mt
+print.grayscale_tip = "Imprime chaque couleur et chaque image dans son gris (sortie composite) ; le fichier et l'écran gardent leurs couleurs." # mt
+print.reverse_order = "Ordre inversé" # mt
+print.reverse_order_tip = "Imprime la dernière feuille en premier, pour une pile qui sort face imprimée vers le haut ou pour imprimer au dos de feuilles déjà imprimées." # mt

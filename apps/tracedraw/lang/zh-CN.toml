@@ -7672,3 +7672,7 @@ context.spline_fixed = "固定控制点" # mt
 context.spline_floating = "浮动控制点" # mt
 options.object_pick_distance = "对象单击距离：" # mt
 options.object_pick_distance_tip = "单击离对象轮廓多远仍能选中它，以屏幕像素计；0 表示无。" # mt
+print.grayscale = "灰度" # mt
+print.grayscale_tip = "将每种颜色和图片按其灰度打印（复合输出）；文件和屏幕保留原有颜色。" # mt
+print.reverse_order = "逆序" # mt
+print.reverse_order_tip = "先打印最后一张，适用于正面朝上出纸，或在已打印纸张背面打印。" # mt
