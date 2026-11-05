@@ -1255,9 +1255,12 @@ impl App {
         // transform goes on with the latest pointer position.
         // A Pen or Bezier handle pulled out of the drawing window goes on
         // following the pointer, and its release ends it there (#1014).
+        // A shape being drawn after a middle-button pan: egui counts no
+        // drag of the held left button any more and hovers nothing (#1923).
         let hover = response.hover_pos().or_else(|| {
             let held = response.ctx.input(|i| i.pointer.primary_down());
-            if (self.transforming() && held) || self.curve_drag_running(response) {
+            let boxing = matches!(self.drag, Drag::Box { .. });
+            if ((self.transforming() || boxing) && held) || self.curve_drag_running(response) {
                 self.pointer_screen
             } else {
                 None
@@ -1295,7 +1298,8 @@ impl App {
         }
         let Some(p) = pointer else {
             let up = !response.ctx.input(|i| i.pointer.primary_down());
-            let released = self.transforming() && up;
+            let boxing = matches!(self.drag, Drag::Box { .. });
+            let released = (self.transforming() || boxing) && up;
             if response.drag_stopped() || released {
                 self.end_drag();
             }
@@ -1317,9 +1321,18 @@ impl App {
             }
         }
 
-        // Middle button always pans.
+        // Middle button always pans. A shape being drawn with the left
+        // button held follows the pointer over the moving page (#1923).
         if response.dragged_by(PointerButton::Middle) {
             self.view.pan(response.drag_delta());
+            if matches!(self.drag, Drag::Box { .. })
+                && response.ctx.input(|i| i.pointer.primary_down())
+            {
+                if let Some(s) = response.hover_pos() {
+                    let now = self.snap_point(self.view.to_page(s));
+                    self.box_follow(now, mods);
+                }
+            }
             return;
         }
         // A right click during a move, scale, rotation or skew: the change
@@ -2322,7 +2335,10 @@ impl App {
 
     fn box_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
         let p = self.snap_point(p);
-        if response.drag_started_by(PointerButton::Primary) {
+        let mut boxing = matches!(self.drag, Drag::Box { .. });
+        // A middle press while the left button is held starts a new egui
+        // drag too; that is a pan, not a new shape (#1923).
+        if response.drag_started_by(PointerButton::Primary) && !boxing {
             // A new shape begins: what was selected lets go at once.
             self.select(Vec::new());
             self.drag = Drag::Box {
@@ -2330,8 +2346,16 @@ impl App {
                 current: p,
                 from_center: mods.shift,
             };
+            boxing = true;
         }
-        if response.dragged_by(PointerButton::Primary) {
+        if !boxing {
+            return;
+        }
+        // The shape follows the pointer while the left button is down and
+        // is made when it goes up, read from the button itself: after a
+        // middle-button pan egui no longer counts the left button's drag,
+        // and would never report its end (#1923).
+        if response.ctx.input(|i| i.pointer.primary_down()) {
             // The pointer now: on the frame the drag starts `p` is where
             // the button went down, the pointer already a few pixels away,
             // and the corner sat behind it (#655).
@@ -2339,26 +2363,34 @@ impl App {
                 .hover_pos()
                 .map(|s| self.snap_point(self.view.to_page(s)))
                 .unwrap_or(p);
-            if let Drag::Box {
-                start,
-                current,
-                from_center,
-            } = &mut self.drag
-            {
-                let mut q = now;
-                if mods.ctrl {
-                    // Constrain to a square/circle.
-                    let d = q - *start;
-                    let m = d.x.abs().max(d.y.abs());
-                    q = *start + Vec2::new(m * d.x.signum(), m * d.y.signum());
-                }
-                // Shift draws from the centre (checked while dragging).
-                *from_center = mods.shift;
-                *current = q;
-            }
+            self.box_follow(now, mods);
+        } else if !response.drag_stopped_by(PointerButton::Primary) {
+            // (A drag egui still counts ends below, as every tool's does.)
+            self.end_drag();
         }
         // A page frame comes from double-clicking the tool's toolbox
         // button, not from a double click on the drawing.
+    }
+
+    /// The far corner of the shape being drawn moves to `now`.
+    fn box_follow(&mut self, now: Point, mods: Modifiers) {
+        if let Drag::Box {
+            start,
+            current,
+            from_center,
+        } = &mut self.drag
+        {
+            let mut q = now;
+            if mods.ctrl {
+                // Constrain to a square/circle.
+                let d = q - *start;
+                let m = d.x.abs().max(d.y.abs());
+                q = *start + Vec2::new(m * d.x.signum(), m * d.y.signum());
+            }
+            // Shift draws from the centre (checked while dragging).
+            *from_center = mods.shift;
+            *current = q;
+        }
     }
 
     /// 3-point rectangle, ellipse and curve: drag the base segment, then

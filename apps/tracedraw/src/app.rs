@@ -4889,6 +4889,10 @@ impl App {
             self.finish_text();
             self.table_edit = None;
             self.three_point_base = None;
+            // A shape being drawn never outlives its tool (#1923).
+            if matches!(self.drag, Drag::Box { .. }) {
+                self.drag = Drag::None;
+            }
             self.crop_area = None;
             self.crop_drag = None;
             self.dimension_points.clear();

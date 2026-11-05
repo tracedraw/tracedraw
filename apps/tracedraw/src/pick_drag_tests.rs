@@ -3543,6 +3543,94 @@ fn drawing_a_new_shape_lets_the_selection_go_at_once() {
     assert_ne!(app.selection[0], id);
 }
 
+/// The middle button pans while a new rectangle is dragged: the shape
+/// follows the pointer on, and letting the left button go makes it
+/// (#1923).
+#[test]
+fn panning_with_the_middle_button_while_drawing_a_shape_goes_on() {
+    let (ctx, mut app, id) = setup();
+    app.set_tool(Tool::Rectangle);
+    let count = shape_count(&app);
+    let none = Modifiers::NONE;
+    let from = app.view.to_screen(Point::new(100.0, 150.0));
+    let mid = app.view.to_screen(Point::new(120.0, 130.0));
+    frame(&ctx, &mut app, vec![Event::PointerMoved(from)], none);
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(from, true, PointerButton::Primary, none)],
+        none,
+    );
+    for i in 1..=3 {
+        let p = from + (mid - from) * (i as f32 / 3.0);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(p)], none);
+    }
+    assert!(matches!(app.drag, Drag::Box { .. }));
+    // The middle button goes down and drags: the view pans.
+    let pan_before = app.view.to_screen(Point::new(0.0, 0.0));
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(mid, true, PointerButton::Middle, none)],
+        none,
+    );
+    let panned = mid + egui::vec2(-60.0, -40.0);
+    for i in 1..=3 {
+        let p = mid + (panned - mid) * (i as f32 / 3.0);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(p)], none);
+    }
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(panned, false, PointerButton::Middle, none)],
+        none,
+    );
+    let pan_after = app.view.to_screen(Point::new(0.0, 0.0));
+    assert!(
+        (pan_after - pan_before).length() > 30.0,
+        "the middle drag pans: {pan_before:?} {pan_after:?}"
+    );
+    // The left button is still down: the shape follows the pointer on.
+    let end = panned + egui::vec2(80.0, 50.0);
+    for i in 1..=3 {
+        let p = panned + (end - panned) * (i as f32 / 3.0);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(p)], none);
+    }
+    let want = app.view.to_page(end);
+    match &app.drag {
+        Drag::Box { current, .. } => {
+            assert!((*current - want).hypot() < 0.5, "{current:?} {want:?}")
+        }
+        other => panic!("the shape drag goes on: {other:?}"),
+    }
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(end, false, PointerButton::Primary, none)],
+        none,
+    );
+    frame(&ctx, &mut app, Vec::new(), none);
+    assert!(matches!(app.drag, Drag::None), "{:?}", app.drag);
+    assert_eq!(shape_count(&app), count + 1, "the rectangle is made");
+    assert_eq!(app.selection.len(), 1);
+    assert_ne!(app.selection[0], id);
+}
+
+/// A shape drag that is somehow still open when the tool changes does
+/// not stay on the page as a preview (#1923).
+#[test]
+fn changing_the_tool_drops_an_unfinished_shape_drag() {
+    let (_ctx, mut app, _id) = setup();
+    app.set_tool(Tool::Rectangle);
+    app.drag = Drag::Box {
+        start: Point::new(10.0, 10.0),
+        current: Point::new(20.0, 20.0),
+        from_center: false,
+    };
+    app.set_tool(Tool::Ellipse);
+    assert!(matches!(app.drag, Drag::None), "{:?}", app.drag);
+}
+
 #[test]
 fn ctrl_click_goes_one_group_level_in_at_a_time() {
     let (ctx, mut app, [a, _b, c], inner) = grouped();
