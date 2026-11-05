@@ -16,7 +16,8 @@ const NEWS: &[(&str, &str)] = &[
 
 pub fn welcome_screen(app: &mut App, ui: &mut Ui) {
     ui.add_space(8.0);
-    ui.horizontal(|ui| {
+    // The tabs go on to a second line on a narrow screen (#1691).
+    ui.horizontal_wrapped(|ui| {
         ui.add_space(24.0);
         ui.heading(egui::RichText::new("TraceDraw").size(26.0));
         ui.add_space(30.0);
@@ -109,97 +110,135 @@ fn big_button(ui: &mut Ui, icon: icons::Action, title: String, subtitle: String)
 }
 
 fn get_started(app: &mut App, ui: &mut Ui) {
+    // On a phone the recent documents go under the buttons and the page
+    // scrolls: side by side they need some 700 points (#1301, #1691).
+    if crate::ui::phone::phone() {
+        egui::ScrollArea::vertical()
+            .id_salt("welcome_get_started")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.horizontal_top(|ui| {
+                    ui.add_space(12.0);
+                    ui.vertical(|ui| {
+                        ui.set_max_width(ui.available_width() - 12.0);
+                        start_buttons(app, ui);
+                        // A browser keeps no recent documents.
+                        if !crate::files::WEB {
+                            ui.add_space(20.0);
+                            recent_documents(app, ui, true);
+                        }
+                    });
+                });
+            });
+        return;
+    }
     ui.horizontal_top(|ui| {
         ui.add_space(24.0);
         ui.vertical(|ui| {
             ui.set_width(260.0);
-            if big_button(
-                ui,
-                icons::Action::New,
-                tr("welcome.new_document"),
-                crate::shortcuts::shown("Ctrl+N".into()),
-            ) {
-                app.request_new_document();
-            }
-            ui.add_space(8.0);
-            if big_button(
-                ui,
-                icons::Action::Welcome,
-                tr("welcome.new_from_template"),
-                String::new(),
-            ) {
-                app.open_template_dialog();
-            }
-            ui.add_space(8.0);
-            if big_button(
-                ui,
-                icons::Action::Open,
-                tr("welcome.open_document"),
-                "Ctrl+O".into(),
-            ) {
-                app.open_dialog();
-                if app.file.is_some() || app.doc().all_layers().any(|l| !l.shapes.is_empty()) {
-                    app.show_welcome = false;
-                }
-            }
-            ui.add_space(20.0);
-            ui.label(
-                egui::RichText::new(tr("welcome.shortcuts_hint"))
-                    .color(Tokens::text_dim())
-                    .size(11.0),
-            );
+            start_buttons(app, ui);
         });
         // A browser keeps no recent documents.
         if crate::files::WEB {
             return;
         }
         ui.add_space(40.0);
-        ui.vertical(|ui| {
-            ui.strong(tr("welcome.recent_documents"));
-            let recent = app.settings.recent_files.clone();
-            if recent.is_empty() {
-                ui.label(egui::RichText::new(tr("welcome.no_recent")).color(Tokens::text_dim()));
-            }
-            ui.add_space(4.0);
-            // The list has a scroll area of its own, as tall as the window
-            // leaves under the heading, less the Clear button and a margin
-            // (#1383); the heading, the button and the left column stay put.
-            let clear = if recent.is_empty() {
-                0.0
-            } else {
-                ui.spacing().interact_size.y + ui.spacing().item_spacing.y
-            };
-            let height = (ui.available_height() - clear - 12.0).max(RECENT_ROW.y);
-            let mut actions = Vec::new();
-            egui::ScrollArea::vertical()
-                .id_salt("welcome_recent_list")
-                .max_height(height)
-                .auto_shrink([true, true])
-                .show(ui, |ui| {
-                    for p in &recent {
-                        actions.push((recent_row(app, ui, p), p));
-                    }
-                });
-            for (action, p) in actions {
-                match action {
-                    RecentAction::None => {}
-                    RecentAction::Open => {
-                        app.open_path(p.clone());
-                        app.show_welcome = false;
-                    }
-                    RecentAction::Remove => app.remove_recent(p),
-                }
-            }
-            if !app.settings.recent_files.is_empty()
-                && ui.small_button(tr("menu.file.clear_recent")).clicked()
-            {
-                app.settings.recent_files.clear();
-                app.settings.save();
-                crate::thumbnails::clear();
-                app.recent_thumbs.clear();
-            }
-        });
+        ui.vertical(|ui| recent_documents(app, ui, false));
     });
+}
+
+/// New Document, New From Template, Open and the shortcuts hint.
+fn start_buttons(app: &mut App, ui: &mut Ui) {
+    if big_button(
+        ui,
+        icons::Action::New,
+        tr("welcome.new_document"),
+        crate::shortcuts::shown("Ctrl+N".into()),
+    ) {
+        app.request_new_document();
+    }
+    ui.add_space(8.0);
+    if big_button(
+        ui,
+        icons::Action::Welcome,
+        tr("welcome.new_from_template"),
+        String::new(),
+    ) {
+        app.open_template_dialog();
+    }
+    ui.add_space(8.0);
+    if big_button(
+        ui,
+        icons::Action::Open,
+        tr("welcome.open_document"),
+        "Ctrl+O".into(),
+    ) {
+        app.open_dialog();
+        if app.file.is_some() || app.doc().all_layers().any(|l| !l.shapes.is_empty()) {
+            app.show_welcome = false;
+        }
+    }
+    ui.add_space(20.0);
+    ui.label(
+        egui::RichText::new(tr("welcome.shortcuts_hint"))
+            .color(Tokens::text_dim())
+            .size(11.0),
+    );
+}
+
+/// The recent documents heading, list and Clear button; the list scrolls
+/// on its own except on a `phone`, whose whole page scrolls.
+fn recent_documents(app: &mut App, ui: &mut Ui, phone: bool) {
+    ui.strong(tr("welcome.recent_documents"));
+    let recent = app.settings.recent_files.clone();
+    if recent.is_empty() {
+        ui.label(egui::RichText::new(tr("welcome.no_recent")).color(Tokens::text_dim()));
+    }
+    ui.add_space(4.0);
+    // The list has a scroll area of its own, as tall as the window
+    // leaves under the heading, less the Clear button and a margin
+    // (#1383); the heading, the button and the left column stay put. On
+    // a phone the whole page scrolls instead.
+    let clear = if recent.is_empty() {
+        0.0
+    } else {
+        ui.spacing().interact_size.y + ui.spacing().item_spacing.y
+    };
+    let mut actions = Vec::new();
+    if phone {
+        for p in &recent {
+            actions.push((recent_row(app, ui, p), p));
+        }
+    } else {
+        let height = (ui.available_height() - clear - 12.0).max(RECENT_ROW.y);
+        egui::ScrollArea::vertical()
+            .id_salt("welcome_recent_list")
+            .max_height(height)
+            .auto_shrink([true, true])
+            .show(ui, |ui| {
+                for p in &recent {
+                    actions.push((recent_row(app, ui, p), p));
+                }
+            });
+    }
+    for (action, p) in actions {
+        match action {
+            RecentAction::None => {}
+            RecentAction::Open => {
+                app.open_path(p.clone());
+                app.show_welcome = false;
+            }
+            RecentAction::Remove => app.remove_recent(p),
+        }
+    }
+    if !app.settings.recent_files.is_empty()
+        && ui.small_button(tr("menu.file.clear_recent")).clicked()
+    {
+        app.settings.recent_files.clear();
+        app.settings.save();
+        crate::thumbnails::clear();
+        app.recent_thumbs.clear();
+    }
 }
 
 /// What a click on a recent document's row asks for.
@@ -241,7 +280,9 @@ fn recent_row(app: &mut App, ui: &mut Ui, path: &std::path::Path) -> RecentActio
     } else {
         None
     };
-    let (rect, _) = ui.allocate_exact_size(ROW, egui::Sense::hover());
+    // No wider than the room (a phone's page).
+    let row = egui::vec2(ROW.x.min(ui.available_width().max(THUMB.x + 40.0)), ROW.y);
+    let (rect, _) = ui.allocate_exact_size(row, egui::Sense::hover());
     let resp = ui.interact(rect, recent_row_id(path), egui::Sense::click());
     let on_row = ui.rect_contains_pointer(rect);
     let painter = ui.painter();

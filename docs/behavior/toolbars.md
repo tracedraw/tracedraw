@@ -20,6 +20,12 @@ while its submenu is open; a hovered row is the same blue box as the
 titles. The canvas, palette and New Document menus are drawn the same
 way.
 
+When the bar is too short for every title (a phone, a tablet upright
+in the Touch workspace, a narrow window), the titles that do not fit go
+under a last title, », whose menu lists them in order, each opening
+its menu as a submenu (#1301, #1691). Check:
+`ui::tests::phones_fit_and_tablets_keep_their_layout`.
+
 The View menu has Zoom In, Zoom Out and Zoom
 To Fit (with their pictures) and no other zoom commands.
 

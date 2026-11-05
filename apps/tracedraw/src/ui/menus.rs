@@ -2057,6 +2057,28 @@ mod tests {
 /// first one 11 px from the edge).
 const BAR_FONT: f32 = 13.0;
 
+/// Where the menu bar's titles were drawn, and how many menus are under
+/// its More title (`(Vec<Rect>, usize)` in the context's data).
+pub(crate) const MENU_BAR_LAYOUT: &str = "menu_bar_layout";
+
+/// Room kept at the end of a menu bar too short for every title, for the
+/// "More" title (»).
+const MORE_W: f32 = 28.0;
+
+/// A menu title's width on the bar before it was drawn once.
+fn title_width(ui: &Ui, label: &str) -> f32 {
+    let text = ui.fonts_mut(|f| {
+        f.layout_no_wrap(
+            label.to_string(),
+            egui::FontId::proportional(BAR_FONT),
+            Tokens::text(),
+        )
+        .size()
+        .x
+    });
+    text + 2.0 * ui.spacing().button_padding.x
+}
+
 fn menu_bar_style(style: &mut egui::Style) {
     egui::containers::menu::menu_style(style);
     style.override_font_id = Some(egui::FontId::proportional(BAR_FONT));
@@ -2149,12 +2171,65 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
             // Tools, Window and Help remain.
             let has_document = app.has_document();
             let mut titles = Vec::new();
-            for (key, body) in all_menus() {
-                if !has_document && !MENUS_WITHOUT_DRAWING.contains(&key) {
+            // The titles that do not fit the bar (a phone, a tablet in
+            // the Touch workspace, a narrow window) go under the "More"
+            // title at its end (#1301, #1691).
+            let menus: Vec<(&str, fn(&mut App, &mut Ui))> = all_menus()
+                .into_iter()
+                .filter(|(key, _)| has_document || MENUS_WITHOUT_DRAWING.contains(key))
+                .collect();
+            let gap = ui.spacing().item_spacing.x;
+            let width_id = |ui: &Ui, key: &str| ui.id().with(key).with("title_width");
+            let widths: Vec<f32> = menus
+                .iter()
+                .map(|(key, _)| {
+                    let id = width_id(ui, key);
+                    ui.ctx()
+                        .data(|d| d.get_temp::<f32>(id))
+                        .unwrap_or_else(|| title_width(ui, &tr(key)))
+                })
+                .collect();
+            let all = widths.iter().map(|w| w + gap).sum::<f32>();
+            let room = if all > ui.available_width() {
+                ui.available_width() - MORE_W
+            } else {
+                f32::INFINITY
+            };
+            let mut used = 0.0;
+            let mut more: Vec<(&str, fn(&mut App, &mut Ui))> = Vec::new();
+            for ((key, body), width) in menus.into_iter().zip(widths) {
+                if !more.is_empty() || used + width > room {
+                    more.push((key, body));
                     continue;
                 }
-                titles.push(menu(ui, key, &mut |ui| body(app, ui)));
+                let r = menu(ui, key, &mut |ui| body(app, ui));
+                let id = width_id(ui, key);
+                ui.ctx().data_mut(|d| d.insert_temp(id, r.rect.width()));
+                used += r.rect.width() + gap;
+                titles.push(r);
             }
+            if !more.is_empty() {
+                let r = ui
+                    .menu_button(egui::RichText::new("\u{bb}").size(BAR_FONT), |ui| {
+                        ui.set_min_width(MENU_WIDTH);
+                        body(ui, |ui| {
+                            for (key, f) in &more {
+                                ui.menu_button(tr(key), |ui| {
+                                    ui.set_min_width(MENU_WIDTH);
+                                    body(ui, |ui| f(app, ui))
+                                });
+                            }
+                        })
+                    })
+                    .response;
+                keys.push(' ');
+                titles.push(r);
+            }
+            // Where the titles went and how many are under More, for the
+            // layout checks.
+            let shown: Vec<egui::Rect> = titles.iter().map(|r| r.rect).collect();
+            ui.ctx()
+                .data_mut(|d| d.insert_temp(egui::Id::new(MENU_BAR_LAYOUT), (shown, more.len())));
             switch_on_hover(ui.ctx(), &titles);
             open_with_alt(ui.ctx(), &titles, &keys, &blocked);
             // The titles for the keys of the next frame: Left and Right

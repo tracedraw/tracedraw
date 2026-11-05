@@ -761,7 +761,9 @@ pub fn effective_ui_size_with(s: &Settings, sys: crate::system_prefs::SystemPref
         1.0
     };
     let base = (crate::ui::interface_size(s.ui_size) * text).min(4.0);
-    if s.workspace == "touch" {
+    // Not on a phone: 1.4 times a 360 dp screen leaves too little room
+    // for any bar (#1301, #1691).
+    if s.workspace == "touch" && !crate::ui::phone::phone() {
         (base * TOUCH_SCALE).min(4.0)
     } else {
         base
