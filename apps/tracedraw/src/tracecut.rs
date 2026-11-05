@@ -487,6 +487,8 @@ pub struct TraceCutState {
     /// The preset row's name field and whether it is shown.
     pub preset_name: String,
     pub preset_edit: bool,
+    /// The preview's zoom and place.
+    pub view: PreviewView,
 }
 
 impl TraceCutState {
@@ -496,6 +498,126 @@ impl TraceCutState {
             tool,
             ..Default::default()
         }
+    }
+}
+
+/// The smallest and largest zoom of the preview, as factors of the fit.
+pub const PREVIEW_ZOOM_MIN: f64 = 0.25;
+pub const PREVIEW_ZOOM_MAX: f64 = 200.0;
+/// A zoom button's step; a wheel notch zooms by the same.
+pub const PREVIEW_ZOOM_STEP: f64 = 1.25;
+
+/// The preview's zoom and place. The default shows the whole scene in
+/// the middle; a drag pans, the wheel zooms about the pointer.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct PreviewView {
+    /// The zoom as a factor of the fit; `None` fits the scene.
+    pub zoom: Option<f64>,
+    /// The page point in the middle of the preview; `None` the middle
+    /// of the scene.
+    pub centre: Option<Point>,
+}
+
+/// Where the preview puts the page: points per millimetre and the page
+/// point drawn in the middle of the area, y up.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PreviewFrame {
+    pub scale: f64,
+    pub centre: Point,
+}
+
+impl PreviewFrame {
+    /// The offset from the middle of the area, in points (y down), of
+    /// page point `q`.
+    pub fn to_area(&self, q: Point) -> (f64, f64) {
+        (
+            (q.x - self.centre.x) * self.scale,
+            -(q.y - self.centre.y) * self.scale,
+        )
+    }
+
+    /// The page point at offset `(dx, dy)` points from the middle.
+    pub fn to_page(&self, dx: f64, dy: f64) -> Point {
+        Point::new(
+            self.centre.x + dx / self.scale,
+            self.centre.y - dy / self.scale,
+        )
+    }
+}
+
+impl PreviewView {
+    /// Back to the whole scene in the middle.
+    pub fn fit(&mut self) {
+        *self = PreviewView::default();
+    }
+
+    pub fn is_fit(&self) -> bool {
+        self.zoom.is_none() && self.centre.is_none()
+    }
+
+    /// The points per millimetre that fit `extent` in a `w` x `h` area.
+    fn fit_scale(w: f64, h: f64, extent: Rect) -> Option<f64> {
+        let (ew, eh) = (extent.width().max(1e-6), extent.height().max(1e-6));
+        let s = (w / ew).min(h / eh);
+        (s.is_finite() && s > 0.0).then_some(s)
+    }
+
+    /// Where the page goes in a `w` x `h` area showing `extent`.
+    pub fn frame(&self, w: f64, h: f64, extent: Rect) -> Option<PreviewFrame> {
+        let fit = Self::fit_scale(w, h, extent)?;
+        let k = self
+            .zoom
+            .unwrap_or(1.0)
+            .clamp(PREVIEW_ZOOM_MIN, PREVIEW_ZOOM_MAX);
+        let mid = Point::new((extent.x0 + extent.x1) / 2.0, (extent.y0 + extent.y1) / 2.0);
+        Some(PreviewFrame {
+            scale: fit * k,
+            centre: self.centre.unwrap_or(mid),
+        })
+    }
+
+    /// Keep the middle of the view on the scene, so it cannot be lost.
+    fn clamp_centre(&mut self, extent: Rect) {
+        if let Some(c) = self.centre {
+            self.centre = Some(Point::new(
+                c.x.clamp(extent.x0.min(extent.x1), extent.x0.max(extent.x1)),
+                c.y.clamp(extent.y0.min(extent.y1), extent.y0.max(extent.y1)),
+            ));
+        }
+    }
+
+    /// Zoom by `factor` keeping the page point at offset `(dx, dy)`
+    /// points from the middle where it is (the pointer).
+    pub fn zoom_about(&mut self, factor: f64, dx: f64, dy: f64, w: f64, h: f64, extent: Rect) {
+        let Some(f) = self.frame(w, h, extent) else {
+            return;
+        };
+        if !(factor.is_finite() && factor > 0.0) {
+            return;
+        }
+        let k = self
+            .zoom
+            .unwrap_or(1.0)
+            .clamp(PREVIEW_ZOOM_MIN, PREVIEW_ZOOM_MAX);
+        let nk = (k * factor).clamp(PREVIEW_ZOOM_MIN, PREVIEW_ZOOM_MAX);
+        let a = f.to_page(dx, dy);
+        let r = k / nk;
+        self.zoom = Some(nk);
+        self.centre = Some(Point::new(
+            a.x + (f.centre.x - a.x) * r,
+            a.y + (f.centre.y - a.y) * r,
+        ));
+        self.clamp_centre(extent);
+    }
+
+    /// Move the page by `(dx, dy)` points (y down), as a drag does.
+    pub fn pan(&mut self, dx: f64, dy: f64, w: f64, h: f64, extent: Rect) {
+        let Some(f) = self.frame(w, h, extent) else {
+            return;
+        };
+        self.centre = Some(f.to_page(-dx, -dy));
+        self.zoom.get_or_insert(1.0);
+        self.clamp_centre(extent);
     }
 }
 
@@ -771,6 +893,60 @@ mod tests {
             corners: None,
         })
         .expect("rect")
+    }
+
+    #[test]
+    fn the_preview_fits_then_zooms_about_the_pointer_and_pans() {
+        let e = Rect::new(0.0, 0.0, 100.0, 50.0);
+        let (w, h) = (400.0, 400.0);
+        let mut v = PreviewView::default();
+        let f = v.frame(w, h, e).expect("frame");
+        assert!((f.scale - 4.0).abs() < 1e-9);
+        assert_eq!(f.centre, Point::new(50.0, 25.0));
+        // The page point under the pointer stays under it.
+        let (dx, dy) = (120.0, -40.0);
+        let under = f.to_page(dx, dy);
+        v.zoom_about(2.0, dx, dy, w, h, e);
+        let g = v.frame(w, h, e).expect("frame");
+        assert!((g.scale - 8.0).abs() < 1e-9);
+        let (ax, ay) = g.to_area(under);
+        assert!(
+            (ax - dx).abs() < 1e-9 && (ay - dy).abs() < 1e-9,
+            "{ax} {ay}"
+        );
+        // A drag right and down moves the page with it.
+        let before = g.to_area(Point::new(60.0, 30.0));
+        v.pan(10.0, 6.0, w, h, e);
+        let after = v
+            .frame(w, h, e)
+            .expect("frame")
+            .to_area(Point::new(60.0, 30.0));
+        assert!((after.0 - before.0 - 10.0).abs() < 1e-9);
+        assert!((after.1 - before.1 - 6.0).abs() < 1e-9);
+        assert!(!v.is_fit());
+        v.fit();
+        assert_eq!(v.frame(w, h, e), Some(f));
+    }
+
+    #[test]
+    fn the_preview_zoom_is_bounded_and_the_scene_cannot_be_lost() {
+        let e = Rect::new(0.0, 0.0, 10.0, 10.0);
+        let mut v = PreviewView::default();
+        for _ in 0..100 {
+            v.zoom_about(10.0, 0.0, 0.0, 100.0, 100.0, e);
+        }
+        assert_eq!(v.zoom, Some(PREVIEW_ZOOM_MAX));
+        for _ in 0..100 {
+            v.zoom_about(0.1, 0.0, 0.0, 100.0, 100.0, e);
+        }
+        assert_eq!(v.zoom, Some(PREVIEW_ZOOM_MIN));
+        v.pan(1e9, -1e9, 100.0, 100.0, e);
+        assert_eq!(v.centre, Some(Point::new(0.0, 0.0)));
+        // Bad input changes nothing.
+        let kept = v;
+        v.zoom_about(f64::NAN, 0.0, 0.0, 100.0, 100.0, e);
+        v.zoom_about(1.0, 0.0, 0.0, 0.0, 0.0, e);
+        assert_eq!(v, kept);
     }
 
     #[test]

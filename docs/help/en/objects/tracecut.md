@@ -13,6 +13,10 @@ the buttons:
   one step;
 - **Cancel** closes the window without a change.
 
+Drag the preview to move around it and turn the mouse wheel over it to
+zoom in or out where the pointer is. The buttons at its top right zoom
+to fit, out and in; a double click shows the whole selection again.
+
 To hide TraceCut, clear [[options.show_tracecut]] in Options, General.
 
 ## Presets {#presets}

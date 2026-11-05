@@ -11,7 +11,9 @@
 use crate::app::{App, Units};
 use crate::i18n::tr;
 use crate::theme::Tokens;
-use crate::tracecut::{Group, Scene, ToolId, TraceCutState, TOLERANCE_RANGE};
+use crate::tracecut::{
+    Group, PreviewView, Scene, ToolId, TraceCutState, PREVIEW_ZOOM_STEP, TOLERANCE_RANGE,
+};
 use crate::ui::tips::RichTip;
 use egui::{
     Align2, Color32, Context, CornerRadius, FontId, Pos2, Sense, Stroke, StrokeKind, Ui, Vec2,
@@ -178,7 +180,7 @@ fn tool_pane(app: &mut App, ui: &mut Ui, st: &mut TraceCutState, width: f32) -> 
             });
     }
     let h = (ui.available_height() - BELOW_PREVIEW).max(120.0);
-    preview(ui, Vec2::new(width - 4.0, h), &scene);
+    preview(ui, Vec2::new(width - 4.0, h), &scene, &mut st.view);
     let has_targets = !scene.objects.is_empty() || !app.selection.is_empty();
     let line = match (current, &st.worked) {
         _ if !has_targets => tr("tracecut.select_first"),
@@ -346,9 +348,47 @@ fn settings(ui: &mut Ui, units: Units, st: &mut TraceCutState) {
     }
 }
 
-/// The preview: the scene fitted in a white box, y up.
-fn preview(ui: &mut Ui, size: Vec2, scene: &Scene) {
-    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+/// The preview: the scene in a white box, y up, fitted at first. A drag
+/// pans, the wheel zooms about the pointer, a double click fits again;
+/// the buttons at the top right fit, zoom out and zoom in.
+fn preview(ui: &mut Ui, size: Vec2, scene: &Scene, view: &mut PreviewView) {
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click_and_drag());
+    crate::ui::before_after::mark(ui, "tracecut_preview", rect);
+    let area = rect.shrink(16.0);
+    let (w, h) = (f64::from(area.width()), f64::from(area.height()));
+    if let Some(e) = scene.extent {
+        if resp.double_clicked() {
+            view.fit();
+        } else if resp.dragged() {
+            let d = resp.drag_delta();
+            if d != Vec2::ZERO {
+                view.pan(f64::from(d.x), f64::from(d.y), w, h, e);
+            }
+        }
+        if resp.hovered() {
+            let (scroll, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
+            let f = if pinch != 1.0 {
+                f64::from(pinch)
+            } else if scroll != 0.0 {
+                PREVIEW_ZOOM_STEP.powf(f64::from(scroll) / 50.0)
+            } else {
+                1.0
+            };
+            if f != 1.0 {
+                if let Some(pos) = resp.hover_pos() {
+                    let d = pos - area.center();
+                    view.zoom_about(f, f64::from(d.x), f64::from(d.y), w, h, e);
+                }
+                // The wheel was the preview's: nothing around it scrolls.
+                ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
+            }
+            ui.ctx().set_cursor_icon(if resp.dragged() {
+                egui::CursorIcon::Grabbing
+            } else {
+                egui::CursorIcon::Grab
+            });
+        }
+    }
     let p = ui.painter_at(rect);
     p.rect(
         rect,
@@ -357,18 +397,25 @@ fn preview(ui: &mut Ui, size: Vec2, scene: &Scene) {
         Stroke::new(1.0, Tokens::border()),
         StrokeKind::Inside,
     );
-    let area = rect.shrink(16.0);
-    let Some(e) = scene.extent else {
-        return;
-    };
-    let (ew, eh) = (e.width().max(1e-6), e.height().max(1e-6));
-    let s = (f64::from(area.width()) / ew).min(f64::from(area.height()) / eh);
-    if !(s.is_finite() && s > 0.0) {
-        return;
+    if let Some(f) = scene.extent.and_then(|e| view.frame(w, h, e)) {
+        draw_scene(&p, area, f, scene);
     }
-    let ox = f64::from(area.center().x) - (e.x0 + ew / 2.0) * s;
-    let oy = f64::from(area.center().y) + (e.y0 + eh / 2.0) * s;
-    let to = |q: Point| Pos2::new((ox + q.x * s) as f32, (oy - q.y * s) as f32);
+    view_buttons(ui, rect, view, area, scene);
+}
+
+/// The scene's outlines, rings and moves placed by `f` in `area`.
+fn draw_scene(
+    p: &egui::Painter,
+    area: egui::Rect,
+    f: crate::tracecut::PreviewFrame,
+    scene: &Scene,
+) {
+    let s = f.scale;
+    let (mx, my) = (f64::from(area.center().x), f64::from(area.center().y));
+    let to = |q: Point| {
+        let (dx, dy) = f.to_area(q);
+        Pos2::new((mx + dx) as f32, (my + dy) as f32)
+    };
     let tol = (0.5 / s).max(1e-4);
     let draw = |path: &tracedraw_core::geometry::BezPath, stroke: Stroke| {
         let mut pts: Vec<Pos2> = Vec::new();
@@ -408,6 +455,63 @@ fn preview(ui: &mut Ui, size: Vec2, scene: &Scene) {
     }
     for (a, b) in &scene.moves {
         p.line_segment([to(*a), to(*b)], Stroke::new(1.0, MOVE));
+    }
+}
+
+/// Zoom to fit, zoom out and zoom in, over the top right of the
+/// preview at `rect` (whose drawing fills `area`).
+fn view_buttons(
+    ui: &mut Ui,
+    rect: egui::Rect,
+    view: &mut PreviewView,
+    area: egui::Rect,
+    scene: &Scene,
+) {
+    use crate::ui::before_after::{draw_fit, draw_zoom, icon_button};
+    let bar = egui::Rect::from_min_max(
+        rect.right_top() + Vec2::new(-3.0 * 28.0 - 4.0, 4.0),
+        rect.right_top() + Vec2::new(-4.0, 30.0),
+    );
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(bar)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    child.spacing_mut().item_spacing.x = 2.0;
+    let fit = icon_button(
+        &mut child,
+        &crate::ui::tips::keyed("dialog.lab_zoom_fit"),
+        view.is_fit(),
+        true,
+        draw_fit,
+    );
+    if fit.clicked() {
+        view.fit();
+    }
+    for zoom_in in [false, true] {
+        let key = if zoom_in {
+            "dialog.lab_zoom_in"
+        } else {
+            "dialog.lab_zoom_out"
+        };
+        let r = icon_button(
+            &mut child,
+            &crate::ui::tips::keyed(key),
+            false,
+            true,
+            |p, r, c| draw_zoom(p, r, c, zoom_in),
+        );
+        if r.clicked() {
+            if let Some(e) = scene.extent {
+                let f = if zoom_in {
+                    PREVIEW_ZOOM_STEP
+                } else {
+                    1.0 / PREVIEW_ZOOM_STEP
+                };
+                let (w, h) = (f64::from(area.width()), f64::from(area.height()));
+                view.zoom_about(f, 0.0, 0.0, w, h, e);
+            }
+        }
     }
 }
 
@@ -577,6 +681,85 @@ mod tests {
         let last = sizes[sizes.len() - 1];
         let before = sizes[sizes.len() - 2];
         assert!((last - before).length() < 0.5, "{sizes:?}");
+    }
+
+    fn frame_with(ctx: &Context, app: &mut App, events: Vec<egui::Event>) {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                Pos2::ZERO,
+                Vec2::new(1400.0, 900.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| crate::ui::dialogs::show(app, &ui.ctx().clone()));
+        out.textures_delta.clear();
+    }
+
+    fn view(app: &App) -> PreviewView {
+        match &app.dialog {
+            Dialog::TraceCut(s) => s.view,
+            _ => panic!("the window is open"),
+        }
+    }
+
+    #[test]
+    fn the_preview_zooms_with_the_wheel_pans_with_a_drag_and_fits_again() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        two_squares(&mut app);
+        app.open_tracecut();
+        frame(&ctx, &mut app, false);
+        frame(&ctx, &mut app, false);
+        let r = crate::ui::before_after::rects(&ctx).0["tracecut_preview"];
+        let at = r.center() + Vec2::new(30.0, 10.0);
+        // The wheel over the preview zooms in.
+        frame_with(
+            &ctx,
+            &mut app,
+            vec![
+                egui::Event::PointerMoved(at),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Line,
+                    delta: Vec2::new(0.0, 2.0),
+                    phase: egui::TouchPhase::Move,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        for _ in 0..20 {
+            frame_with(&ctx, &mut app, vec![egui::Event::PointerMoved(at)]);
+        }
+        let zoomed = view(&app);
+        assert!(zoomed.zoom.is_some_and(|k| k > 1.0), "{zoomed:?}");
+        // A drag pans.
+        let button = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame_with(&ctx, &mut app, vec![button(at, true)]);
+        for i in 1..=5 {
+            let p = at + Vec2::new(-8.0 * i as f32, 0.0);
+            frame_with(&ctx, &mut app, vec![egui::Event::PointerMoved(p)]);
+        }
+        let end = at + Vec2::new(-40.0, 0.0);
+        frame_with(&ctx, &mut app, vec![button(end, false)]);
+        let panned = view(&app);
+        assert_eq!(panned.zoom, zoomed.zoom);
+        let (a, b) = (
+            panned.centre.expect("centre"),
+            zoomed.centre.expect("centre"),
+        );
+        assert!(a.x > b.x, "dragging left shows what is right: {a:?} {b:?}");
+        // The fit button shows the whole scene again.
+        let fit = egui::Pos2::new(r.right() - 4.0 - 2.0 * 28.0 - 13.0, r.top() + 17.0);
+        frame_with(&ctx, &mut app, vec![egui::Event::PointerMoved(fit)]);
+        frame_with(&ctx, &mut app, vec![button(fit, true)]);
+        frame_with(&ctx, &mut app, vec![button(fit, false)]);
+        frame_with(&ctx, &mut app, vec![]);
+        assert!(view(&app).is_fit(), "{:?}", view(&app));
     }
 
     /// Run `f` inside a frame, where the menus can be walked.

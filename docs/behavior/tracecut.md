@@ -24,7 +24,14 @@ commands. Contributed by LaMka21 (#170).
   **Apply**, **OK** and **Cancel**.
 - **Preview**: the outlines of the selected objects fitted in a white
   box, y up, in dark grey; what the tool found in red (outlines drawn
-  thicker, places as rings 6 px wide).
+  thicker, places as rings 6 px wide). It opens fitted to the
+  selection. A drag (any button) pans; the wheel or a pinch zooms about
+  the pointer, 1.25 times a notch, from a quarter of the fit to 200
+  times it; a double click fits again. Three buttons at its top right
+  zoom to fit, zoom out and zoom in (1.25 times, about the middle). The
+  middle of the view stays on the selection's box, so the drawing
+  cannot be lost. The zoom and place last while the window is open,
+  from tool to tool.
 - **Status line** (pale yellow): what was found, or "Select the objects
   to work on." with nothing selected, or "Apply shows the result here
   without changing the drawing; OK applies it." before Apply, or that

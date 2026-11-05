@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- TraceCut: the preview can be panned and zoomed. It always showed the whole selection fitted, so small details of a large design could not be checked. Now a drag pans it, the mouse wheel (or a pinch) zooms about the pointer, the buttons at its top right zoom to fit, out and in, and a double click fits again.
+
 ## 0.40.0 (2026-11-05)
 
 - Release note: the CMYK and Grayscale JPEG and TIFF export (#1763) was announced before 0.39.0 but did not reach that release; it is in 0.40.0 ("Export: JPEG and TIFF can be written in CMYK" below). The sharp zooming announced for 0.39.0 is also really in 0.40.0 ("Zooming" below).
