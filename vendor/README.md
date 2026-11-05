@@ -71,8 +71,18 @@ change marked `TraceDraw:` in a comment.
   X11 and macOS: an `egui::Event::Touch` of phase `Move` only, of a
   device of its own (`PEN_DEVICE`), with the reading as `force`, which
   TraceDraw's raw input hook reads and takes out (`pen.rs`,
-  `docs/behavior/pen-pressure.md`). The pen's position and buttons
-  still come from the mouse events, as before. Only `pointerType` `pen`
+  `docs/behavior/pen-pressure.md`). The pen's position comes from its
+  own `pointerdown` and `pointermove` too (`pen_moved`, #1655): Safari
+  on iPad sends an Apple Pencil no mouse events at all, so the Pencil
+  did nothing; its press and release come from `pointerdown` and
+  `pointerup` as for every pointer, a pen's `pointerdown` on the canvas
+  is not left to the browser (`preventDefault`: no text selection or
+  handwriting), a `pointercancel` lets the tip go (`pen_cancelled`), and
+  the touches Safari also sends for the Pencil (`touchType` `stylus`)
+  are left out of the touch events (`input::is_stylus`), or the press
+  would come twice and egui would take the Pencil for a finger; a move
+  of the Pencil's touches alone only keeps the page from scrolling.
+  Only `pointerType` `pen`
   gives pressure: the mouse (whose 0.5 while pressed means no pressure)
   and touches (whose force still comes from the touch events) send
   nothing; a hovering or lifted pen, or a reading of 0, sends no force;

@@ -10,6 +10,8 @@ full, row-by-row status.
 
 - Touch screens: Shift, Ctrl and Alt buttons on the Standard toolbar, beside Delete. A tap holds the key down until the next tap on it (the button stays pressed meanwhile), so a finger can add objects or nodes to the selection or take them out, keep a drag's angle or proportions, pick inside a group or the object behind, as with the keys held on a keyboard. They show on Android and wherever a finger has touched the window (#1499).
 
+- Browser on an iPad: the Apple Pencil draws, picks and taps the menus. Safari sends the Pencil no mouse events, only pen pointer events, which moved nothing, so the Pencil did nothing while a finger worked; a pen's pointer events now move the pointer and press and release it, with its pressure as before, and the page no longer scrolls or selects text under it (#1655).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).

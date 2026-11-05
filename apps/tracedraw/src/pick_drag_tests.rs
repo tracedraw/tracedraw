@@ -17529,6 +17529,90 @@ fn a_pen_in_the_browser_sets_the_width() {
     assert!(last_stroke(&app).widths.is_empty());
 }
 
+/// An Apple Pencil in Safari on an iPad (#1655), as the patched web
+/// layer now turns it into egui events: Safari sends the Pencil no mouse
+/// events, only pen pointer events (and touches of `touchType` "stylus",
+/// which the layer leaves out), so `pointerdown` and `pointermove` give
+/// the pointer's place (`pen_moved`) besides the pressure, and
+/// `pointerup` the release. Before, a pen's position came from the
+/// mouse events alone: the Pencil pressed where the pointer last was,
+/// never moved it, and drew nothing.
+#[test]
+fn an_apple_pencil_in_safari_draws_with_its_pressure() {
+    use crate::eframe_web_pen_pressure::{
+        is_stylus_touch, pen_cancelled, pen_moved, pen_touch, PenPressure,
+    };
+    let (ctx, mut app, _) = setup();
+    app.set_tool(Tool::Freehand);
+    app.select(Vec::new());
+    let from = app.view.to_screen(Point::new(80.0, 100.0));
+    let to = app.view.to_screen(Point::new(180.0, 100.0));
+    // The Pencil's own touches are not the pointer.
+    assert!(is_stylus_touch(Some("stylus")));
+    let mut pen = PenPressure::default();
+    // One pen pointer event: its pressure and its place, nothing from
+    // mouse events.
+    let mut pointer = |pos: Pos2, pressure: f32, buttons: u16| -> Vec<Event> {
+        let mut events = Vec::new();
+        if let Some(force) = pen.reading("pen", pressure, buttons) {
+            events.push(pen_touch(7, pos, force));
+        }
+        events.extend(pen_moved("pen", pos));
+        events
+    };
+    let mods = Modifiers::NONE;
+    let before = shape_count(&app);
+    let mut down = pointer(from, 0.8, 1);
+    down.push(button(from, true, PointerButton::Primary, mods));
+    frame(&ctx, &mut app, down, mods);
+    let steps = 20;
+    for i in 1..=steps {
+        let t = i as f32 / steps as f32;
+        let pressure = if t < 0.5 { 0.8 } else { 0.15 };
+        frame(
+            &ctx,
+            &mut app,
+            pointer(from + (to - from) * t, pressure, 1),
+            mods,
+        );
+    }
+    let mut up = pointer(to, 0.0, 0);
+    up.push(button(to, false, PointerButton::Primary, mods));
+    frame(&ctx, &mut app, up, mods);
+    frame(&ctx, &mut app, Vec::new(), mods);
+    assert_eq!(shape_count(&app), before + 1, "the Pencil drew a line");
+    let st = last_stroke(&app);
+    assert!(!st.widths.is_empty(), "the outline follows the pressure");
+    let (start, end) = end_widths(&st.widths);
+    assert!(start > end * 2.0, "{start} vs {end}");
+    assert!(app.pen_pressure.is_none(), "the Pencil was lifted");
+    assert!(
+        !ctx.input(|i| i.has_touch_screen()),
+        "not taken for a finger"
+    );
+
+    // Safari cancels the Pencil mid-stroke: the line ends, nothing stays
+    // pressed and the next stroke draws again.
+    let before = shape_count(&app);
+    let a = app.view.to_screen(Point::new(80.0, 130.0));
+    let b = app.view.to_screen(Point::new(180.0, 130.0));
+    let mut down = pointer(a, 0.6, 1);
+    down.push(button(a, true, PointerButton::Primary, mods));
+    frame(&ctx, &mut app, down, mods);
+    for i in 1..=10 {
+        let t = i as f32 / 10.0;
+        frame(&ctx, &mut app, pointer(a + (b - a) * t, 0.6, 1), mods);
+    }
+    frame(&ctx, &mut app, pen_cancelled(7, b, mods).to_vec(), mods);
+    frame(&ctx, &mut app, Vec::new(), mods);
+    assert!(
+        !ctx.input(|i| i.pointer.any_down()),
+        "nothing stays pressed"
+    );
+    assert!(app.pen_pressure.is_none());
+    assert_eq!(shape_count(&app), before + 1);
+}
+
 /// A Repeat Copies copy made at the docker: the horizontal field
 /// typed into (its whole value selected on focus), then Apply clicked.
 /// Returns the bounds of the copy selected after Apply.
