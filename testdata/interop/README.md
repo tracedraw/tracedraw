@@ -14,6 +14,17 @@ reported in the issues the bundles are posted to and recorded in
 - `interop-empty.tdraw`, `interop-shapes.tdraw`, `interop-text.tdraw`:
   parts of that drawing written by the same example (the page alone,
   the shapes without the texts, the texts alone).
+- `interop-0006/`: written on 2026-11-05 from `main` at f2ef3341
+  (0.40.0) for issue #98, where the interop-0003 files of versions 8 to
+  13 opened briefly and then crashed release 25.2 of the program that
+  reads these files and version 7
+  crashed it at once (versions 14, 15, 18, 20, 22 and 25 opened); those
+  files predate the version 7 to 13 rewrite of #1287 and the version 8
+  style table of #1437. `interop-0006.zip` holds all 42 files:
+  - `vNN_drawing.cdr` (7 to 27): the drawing in every version.
+  - `vNN_empty.cdr`, `vNN_shapes.cdr`, `vNN_text.cdr` (7 to 13): the
+    three parts, so a crash tells the page, the shapes and the texts
+    apart.
 - `interop-0005/`: written on 2026-10-30 (issue #1139, where the
   version 8 file of interop-0004 crashed a 2010 release on opening while
   7 and 9 to 15 opened), and `interop-0005.zip` holding all 17 files:
