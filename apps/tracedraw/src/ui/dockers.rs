@@ -852,6 +852,48 @@ fn set_extra_paint(app: &mut App, fills: Vec<Fill>, strokes: Vec<tracedraw_core:
 /// its editor and a cross; Add Fill puts a copy of the fill on top. It
 /// shows only while the object has a fill (`has_fill`): the first fill
 /// comes from the kinds above it, not from this button (#487).
+/// The object's opacity beside its fill and its outline colour (#1818):
+/// one slider, 100 % solid, for the whole object, fill and outline
+/// together (an object has one transparency, so the two cannot differ).
+/// It is the Transparency section's uniform transparency the other way
+/// round, and a change makes it uniform for the whole object. With
+/// another kind of transparency (a fountain, a pattern, a texture), or
+/// kinds that differ across the selection, it is shown off: the
+/// Transparency section changes those. `salt` keeps the two apart.
+fn object_opacity_row(app: &mut App, ui: &mut Ui, salt: &str) {
+    use crate::mixed::TransparencyField as F;
+    let (mut set, current, mixed, has_selection) = crate::ui::toolbar::transparency_state(app);
+    let plain = matches!(current, Some(0) | Some(1));
+    let mut opacity = if current == Some(1) {
+        100.0 - set.amount
+    } else {
+        100.0
+    };
+    let amount_mixed = current == Some(1) && mixed.contains(&F::Amount);
+    ui.add_space(4.0);
+    // One tip over the slider, its box and the box's arrows.
+    let tip = crate::ui::tips::keyed("docker.object_opacity");
+    let resp = ui
+        .push_id(("object_opacity", salt), |ui| {
+            crate::ui::tips::tip_over(ui, tip, |ui| {
+                ui.add_enabled(
+                    has_selection && plain,
+                    crate::ui::Slider::new(&mut opacity, 0.0..=100.0)
+                        .text(tr("docker.object_opacity"))
+                        .suffix(" %")
+                        .mixed(amount_mixed),
+                )
+            })
+        })
+        .inner;
+    if resp.changed() {
+        set.amount = (100.0 - opacity).clamp(0.0, 100.0);
+        // The whole object: fill and outline.
+        set.target = 2;
+        app.patch_transparency(&set, &[F::Amount, F::Target]);
+    }
+}
+
 fn extra_fills(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_fill: bool) {
     let mut fills = first.extra_fills.clone();
     let mut changed = false;
@@ -1132,6 +1174,7 @@ fn properties(app: &mut App, ui: &mut Ui) {
                     }
                 }
                 let has = stroke.is_some() || mix.presence;
+                object_opacity_row(app, ui, "outline");
                 extra_strokes(app, ui, first, has);
             }
             "fill" if app.text_selection_active() => {
@@ -1161,6 +1204,7 @@ fn properties(app: &mut App, ui: &mut Ui) {
                         app.patch_selection_fill(&old, &fill, &touched);
                     }
                 }
+                object_opacity_row(app, ui, "fill");
                 extra_fills(app, ui, first, has);
             }
             "transparency" => {

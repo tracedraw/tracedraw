@@ -20319,3 +20319,82 @@ fn resting_on_a_page_tab_opens_the_page_and_the_move_goes_on() {
     let b = bounds(&app, id);
     assert!((b.x0 - before.x0).abs() < 1e-6 && (b.y0 - before.y0).abs() < 1e-6);
 }
+
+/// #1818: the Properties docker's Fill and Outline sections have the
+/// object's opacity beside the colour: a press on its groove makes the
+/// whole object (fill and outline) that opaque, as a uniform
+/// transparency of the rest; with a fountain transparency it is off and
+/// changes nothing.
+#[test]
+fn the_fill_and_outline_sections_set_the_objects_opacity() {
+    let (ctx, mut app, id) = setup();
+    app.show_dockers = true;
+    app.docker_tab = crate::app::DockerTab::Properties;
+    let label = crate::i18n::tr("docker.object_opacity");
+    let press_at = |ctx: &egui::Context, app: &mut App, open: &str, pct: f32| {
+        app.settings.properties_closed = [
+            "summary",
+            "fill",
+            "outline",
+            "transparency",
+            "corners",
+            "effects",
+        ]
+        .iter()
+        .filter(|s| **s != open)
+        .map(|s| s.to_string())
+        .collect();
+        for _ in 0..3 {
+            frame(ctx, app, Vec::new(), Modifiers::NONE);
+        }
+        let rail = crate::ui::slider::rail_rect(ctx, &label).expect("the opacity slider is drawn");
+        let at = egui::pos2(
+            rail.left() + 3.0 + (rail.width() - 6.0) * pct / 100.0,
+            rail.center().y,
+        );
+        frame(ctx, app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+        frame(
+            ctx,
+            app,
+            vec![button(at, true, PointerButton::Primary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(
+            ctx,
+            app,
+            vec![button(at, false, PointerButton::Primary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    let transparency = |app: &App| {
+        app.selection_transparency()
+            .into_iter()
+            .next()
+            .expect("selected")
+    };
+    press_at(&ctx, &mut app, "fill", 25.0);
+    let t = transparency(&app);
+    assert_eq!(t.kind, 1, "uniform");
+    assert!((t.amount - 75.0).abs() < 1.5, "25 % opaque: {}", t.amount);
+    assert_eq!(t.target, 2, "the whole object");
+    press_at(&ctx, &mut app, "outline", 60.0);
+    let t = transparency(&app);
+    assert!(
+        (t.amount - 40.0).abs() < 1.5,
+        "from the Outline section too: {}",
+        t.amount
+    );
+    // A fountain transparency: the slider is off.
+    let mut set = app.transparency_default.clone();
+    set.set_kind(1);
+    app.patch_transparency(&set, &[crate::mixed::TransparencyField::Kind]);
+    assert_eq!(transparency(&app).kind, 2);
+    press_at(&ctx, &mut app, "fill", 90.0);
+    assert_eq!(
+        transparency(&app).kind,
+        2,
+        "left to the Transparency section"
+    );
+    assert_eq!(app.selection, vec![id]);
+}
