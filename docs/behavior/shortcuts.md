@@ -130,6 +130,61 @@ Media; the Bezier, Pen, Crop and Knife tools have no key.
   `pick_drag_tests::tab_in_a_dialog_focuses_its_first_input_box`).
 - Esc with a menu or a drop-down list open closes it and changes
   nothing else (the selection stays).
+
+## Menus and lists from the keyboard
+
+One navigation serves the menu bar, every menu and submenu, the
+right-click menus (drawing, palette, rulers, dockers) and every
+drop-down list (`ui/keynav.rs`, #1839). The highlighted row is drawn
+like the row under the pointer; while the keys move it, the pointer's
+row is not lit until the pointer moves.
+
+- Alt pressed and released alone lights the menu bar's first title.
+  Left and Right move along the titles (round from the last to the
+  first), Home and End go to the first and the last, Down, Up, Enter or
+  Space open the lit menu, a title's underlined letter opens its menu,
+  Esc or Alt again lets the bar go, and a click anywhere or another key
+  (a shortcut, which then runs) leaves it. Alt with a title's letter
+  opens that menu at once, as before. F10 stays the Shape tool's key.
+- A menu opened from the keyboard lights its first row. Down and Up
+  move the highlight, skipping separators and greyed rows and going
+  round from the last row to the first; Home and End go to the first
+  and last rows, Page Down and Page Up by a menu's height. Enter or
+  Space runs the row (a check row turns on or off), and the menu
+  closes. Right on a row with a submenu opens the submenu with its first
+  row lit, as do Enter and Space; Left or Esc closes it again and lights
+  its row. Right on another row opens the next menu of the bar, Left in
+  a menu of the bar the menu before. Esc closes one level: a submenu,
+  then the menu (its title stays lit, a second Esc lets the bar go).
+  The underlined letters keep picking their rows. A long menu scrolls
+  to the row lit.
+- A drop-down list (every list of the property bars, dockers and
+  dialogs, the font size, outline width and zoom level lists): open, Down and Up
+  move the highlight from the chosen row, Home and End go to the first
+  and last rows, Page Down and Page Up by the rows in view; the list
+  scrolls to the row lit at once, not animated. Letters typed jump to the first name starting
+  with them (letters typed within a second add up, `Bo` finds Bookman;
+  the same letter again goes on to the next name with it). Enter picks
+  the row and closes the list, Esc closes it as it was. The list's
+  button (a combo box's) keeps the keyboard afterwards.
+- A list's button with the keyboard (reached with Tab from a field of
+  the bar or dialog): Down, Up, Alt+Down, F4, Enter or Space open the
+  list with its chosen row lit.
+- The font list: its field takes the keyboard when the list opens, also
+  when it is opened with its arrow, its name selected so that typing
+  replaces it and filters the families. Down, Up, Page Down, Page Up,
+  Home and End (while nothing is typed) move the highlight, Enter picks,
+  Esc closes it as it was. Closed, Down and Up in its field still step
+  to the family after or before (#1754).
+- While a menu or list is open, or the bar is lit, the drawing takes no
+  key: the arrows never nudge the selection, a node or the caret of the
+  text being edited.
+- Tests: `ui::keynav::tests` (the File menu with Alt and the arrows, a
+  submenu, greyed rows skipped, the canvas's right-click menu, a list
+  with the arrows, letters, Enter and Esc, a long list scrolled to the
+  row lit, the zoom levels, Tab to the property bar's lists, no nudge
+  while a menu is open) and
+  `ui::font_list::live_tests::the_list_opened_from_its_arrow_takes_the_keys`.
 - Tools keep their own keys (see `pick-tool.md`, `shape-tool.md` and
   the tool pages); the Commands page of the options can rebind them.
 
