@@ -159,6 +159,21 @@ pub(crate) fn apply_theme(ctx: &egui::Context, id: &str) {
         ctx.set_theme(egui::ThemePreference::Light);
         ctx.set_visuals_of(egui::Theme::Dark, crate::theme::visuals());
         ctx.set_visuals(crate::theme::visuals());
+        // The window's own title bar follows: dark with a dark theme, light
+        // with a light one, whatever the system's setting (#1920). egui's
+        // own sync would follow the pinned preference above and ask for a
+        // light frame at the end of the pass, so it is off.
+        ctx.options_mut(|o| o.sync_window_theme = false);
+        ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(window_theme(wanted)));
+    }
+}
+
+/// The theme the window's title bar and frame take for `theme`.
+pub(crate) fn window_theme(theme: crate::theme::Theme) -> egui::SystemTheme {
+    if theme.is_dark() {
+        egui::SystemTheme::Dark
+    } else {
+        egui::SystemTheme::Light
     }
 }
 
@@ -1193,6 +1208,33 @@ pub(crate) fn view_navigator(app: &mut App, ui: &mut Ui, corner: egui::Rect, can
 
 #[cfg(test)]
 mod tests {
+    /// The window's title bar follows the theme chosen in TraceDraw, not
+    /// the system's: switching to Dark asks the window for a dark frame,
+    /// back to Light for a light one, at once (#1920).
+    #[test]
+    fn the_window_frame_follows_the_theme() {
+        let ctx = crate::theme::ui_context();
+        let theme_asked = |id: &str| {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                super::apply_theme(ui.ctx(), id);
+            });
+            out.textures_delta.clear();
+            out.viewport_output
+                .get(&egui::ViewportId::ROOT)
+                .into_iter()
+                .flat_map(|v| v.commands.iter())
+                .filter_map(|c| match c {
+                    egui::ViewportCommand::SetTheme(t) => Some(*t),
+                    _ => None,
+                })
+                .last()
+        };
+        assert_eq!(theme_asked("dark"), Some(egui::SystemTheme::Dark));
+        assert_eq!(theme_asked("medium_dark"), Some(egui::SystemTheme::Dark));
+        assert_eq!(theme_asked("light"), Some(egui::SystemTheme::Light));
+        crate::theme::set_theme(crate::theme::Theme::Light);
+    }
+
     /// One browser wheel notch (100 pixels, or three lines at egui's
     /// web line speed of 8 points) zooms 15 %, as a desktop notch
     /// does; it zoomed about 5.7 times or 52 % at once (#1016).

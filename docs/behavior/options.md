@@ -330,6 +330,17 @@ build) does not change the theme: egui's own theme preference is pinned
 and both of its style slots hold the chosen theme's visuals
 (`App::setup_context`, `ui::apply_theme` each frame;
 `ui::tests::the_system_dark_mode_does_not_change_the_theme`).
+The window's own title bar and frame follow the theme too, not the
+system's setting: a dark theme (Medium Dark, Dark, a dark High Contrast)
+asks the window for a dark frame, a light one for a light frame, at once
+when the theme changes (`ui::apply_theme` sends the window's theme and
+turns off egui's own sync, which follows the pinned Light preference and
+asked for a light frame;
+`ui::tests::the_window_frame_follows_the_theme`, #1920). On Windows 10
+(October 2018 update and later) and Windows 11 this sets the title bar's
+immersive dark mode attribute and redraws the frame (`vendor/README.md`);
+macOS and Linux desktops take it as the window's appearance or theme
+variant where they offer one.
 
 ## Coloured tool icons
 

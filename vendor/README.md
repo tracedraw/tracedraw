@@ -285,6 +285,19 @@ change marked `TraceDraw:` in a comment.
   depends on nothing in the crate, and TraceDraw's tests include and run
   it (`palm::winit_pointer_filter::tests`); TraceDraw's filter is
   `apps/tracedraw/src/palm.rs`.
+- Change: on Windows a window's theme set by the program reaches its
+  title bar (#1920). `Window::set_theme` called only the undocumented
+  composition attribute (`WCA_USEDARKMODECOLORS`) and `SetWindowTheme`,
+  which left the caption light on Windows 11 and later Windows 10, and
+  it neither kept the theme asked for nor redrew the frame.
+  `platform_impl/windows/dark_mode.rs` (`try_theme`) now also sets the
+  documented `DWMWA_USE_IMMERSIVE_DARK_MODE` (20, or 19 before Windows 10
+  build 18985) with `DwmSetWindowAttribute` and, for a window on show,
+  redraws the frame (`SetWindowPos` with `SWP_FRAMECHANGED`) so the title
+  bar changes at once; `platform_impl/windows/window.rs` (`set_theme`)
+  keeps the theme asked for as the preferred one, so a change of the
+  system's theme (`WM_SETTINGCHANGE`) no longer puts the system's back,
+  and records the theme the window now has.
 - The published crate's `examples/` and `tests/` stay as downloaded (the
   manifest lists them); they build in no gate.
 - Drop the copy and the `[patch.crates-io]` entry when a winit release
