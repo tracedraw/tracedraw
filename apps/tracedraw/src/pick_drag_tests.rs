@@ -11580,6 +11580,36 @@ fn arrow_keys_nudge_the_selected_guidelines() {
     assert!(close(y(&app), 150.0 + step - sup), "{}", y(&app));
 }
 
+/// Ctrl+A with a guideline selected selects every guideline of the page,
+/// not the objects; with no guideline selected it selects the objects as
+/// before (#1753).
+#[test]
+fn ctrl_a_with_a_guideline_selected_selects_all_guidelines() {
+    use tracedraw_core::document::Guide;
+    let (ctx, mut app, id) = setup();
+    app.add_guide(Guide::horizontal(150.0));
+    app.add_guide(Guide::vertical(120.0));
+    app.add_guide(Guide::vertical(140.0));
+    let ctrl_a = |app: &mut App| {
+        let mods = Modifiers::COMMAND | Modifiers::CTRL;
+        frame(&ctx, app, vec![key(egui::Key::A, mods)], mods);
+        frame(&ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    // A click on the horizontal guideline, away from the rectangle.
+    let on_h = app.view.to_screen(Point::new(100.0, 150.0));
+    click_at(&ctx, &mut app, on_h, Modifiers::NONE);
+    assert_eq!(app.selected_guides, vec![0]);
+    ctrl_a(&mut app);
+    assert!(app.selection.is_empty(), "{:?}", app.selection);
+    assert_eq!(app.selected_guides, vec![0, 1, 2]);
+    // Nothing selected: the objects, as before.
+    app.deselect_guides();
+    app.select(Vec::new());
+    ctrl_a(&mut app);
+    assert_eq!(app.selection, vec![id]);
+    assert!(app.selected_guides.is_empty());
+}
+
 /// A drawing of 30 pages (a merged document): the page tabs that fit are
 /// shown, a click on one goes to its page, Page Down and Page Up go to the
 /// next and previous page, and the tabs slide so the current page's tab

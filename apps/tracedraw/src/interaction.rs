@@ -3762,7 +3762,11 @@ impl App {
             self.convert_to_curves();
         }
         if pressed(Key::A, cmd) {
-            if self.tool == Tool::Shape && !self.selection.is_empty() {
+            // With a guideline selected: every guideline of the page, as
+            // Edit > Select All > Guidelines (#1753).
+            if !self.selected_guides.is_empty() && self.selection.is_empty() {
+                self.select_all_guides();
+            } else if self.tool == Tool::Shape && !self.selection.is_empty() {
                 self.select_all_nodes();
             } else {
                 self.select_all();

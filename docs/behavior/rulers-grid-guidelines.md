@@ -187,7 +187,10 @@ stand for a distance in the world (`drawing_scale.rs`):
   moves it at once (`propbar::guide_bar`, `App::set_selected_guide_line`).
   With several selected it says how many. A locked guideline shows
   "locked" and does not move.
-- Edit > Select All > Guidelines selects every guideline of the page.
+- Edit > Select All > Guidelines selects every guideline of the page;
+  so does Ctrl+A while a guideline is selected (it selects the objects
+  otherwise, #1753,
+  `pick_drag_tests::ctrl_a_with_a_guideline_selected_selects_all_guidelines`).
 
 ### Guidelines panel
 
