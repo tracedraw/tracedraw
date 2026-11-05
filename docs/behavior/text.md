@@ -26,7 +26,10 @@ baseline point; paragraph text: a frame with wrapping. Shortcut F8.
 Text tool, and the Pick tool with only text selected (after the object
 fields): the font list (below), the size in points (a field and an arrow
 dropping 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48,
-60, 72, 96, 144 and 288), Bold, Italic, Underline, the alignment (a
+60, 72, 96, 144 and 288), Bold, Italic, Underline, Strikethrough (an
+S struck through; also beside Underline in the Text docker's Character
+section and on a table's cell bar, #1022,
+`pick_drag_tests::the_text_bar_has_a_strikethrough_button`), the alignment (a
 button with the alignment's picture dropping Left, Center, Right and
 Full justify), Bullets and Drop Cap (for paragraph text; they open their
 dialogs), Text Properties (the Text docker, Ctrl+T) and Edit Text

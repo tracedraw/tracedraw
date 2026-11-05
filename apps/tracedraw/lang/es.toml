@@ -7680,3 +7680,5 @@ print.reverse_order_tip = "Imprime primero la última hoja, para una pila que sa
 crop.picture_pixels = "Recortar los píxeles de la imagen" # mt
 crop.picture_pixels_tip = "Recorta los píxeles de las imágenes rectas fuera del área, de modo que cada una sigue siendo una imagen libre; desactivado, las imágenes van a un marco de recorte del área y conservan todos sus píxeles." # mt
 menu.bitmaps.crop_to_frame = "Recortar al marco" # mt
+toolbar.strikethrough = "Tachado" # mt
+toolbar.strikethrough_desc = "Traza una línea a través del texto seleccionado." # mt

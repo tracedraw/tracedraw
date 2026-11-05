@@ -7680,3 +7680,5 @@ print.reverse_order_tip = "Son sayfayı önce yazdırır; yüzü yukarı çıkan
 crop.picture_pixels = "Resim piksellerini kırp" # mt
 crop.picture_pixels_tip = "Alanın dışındaki düz resimlerin piksellerini keser, her resim serbest kalır; kapalıyken resimler alanın kırpma çerçevesine girer ve tüm piksellerini korur." # mt
 menu.bitmaps.crop_to_frame = "Çerçeveye kırp" # mt
+toolbar.strikethrough = "Üstü çizili" # mt
+toolbar.strikethrough_desc = "Seçili metnin üstünü çizer." # mt

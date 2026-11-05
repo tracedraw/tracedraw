@@ -7680,3 +7680,5 @@ print.reverse_order_tip = "Cetak lembar terakhir lebih dulu, untuk tumpukan yang
 crop.picture_pixels = "Pangkas piksel gambar" # mt
 crop.picture_pixels_tip = "Buang piksel gambar tegak di luar area, sehingga tiap gambar tetap bebas; jika mati, gambar masuk ke bingkai klip area dan menyimpan semua pikselnya." # mt
 menu.bitmaps.crop_to_frame = "Pangkas ke bingkai" # mt
+toolbar.strikethrough = "Coret" # mt
+toolbar.strikethrough_desc = "Mencoret teks yang dipilih." # mt

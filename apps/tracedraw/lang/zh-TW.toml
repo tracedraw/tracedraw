@@ -7680,3 +7680,5 @@ print.reverse_order_tip = "先列印最後一張，適用於正面朝上出紙�
 crop.picture_pixels = "裁剪圖片像素" # mt
 crop.picture_pixels_tip = "裁掉區域外未旋轉圖片的像素，使每張圖片仍為獨立圖片；關閉時，圖片放入區域的裁剪框並保留全部像素。" # mt
 menu.bitmaps.crop_to_frame = "裁剪到框" # mt
+toolbar.strikethrough = "刪除線" # mt
+toolbar.strikethrough_desc = "在所選文字中間畫一條線。" # mt

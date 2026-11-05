@@ -7680,3 +7680,5 @@ print.reverse_order_tip = "Vytisknout poslední list jako první, pro stoh, kter
 crop.picture_pixels = "Oříznout pixely obrázku" # mt
 crop.picture_pixels_tip = "Odřízne pixely nepootočených obrázků mimo oblast, takže každý zůstane volným obrázkem; vypnuto: obrázky jdou do ořezového rámu oblasti a ponechají si všechny pixely." # mt
 menu.bitmaps.crop_to_frame = "Oříznout podle rámu" # mt
+toolbar.strikethrough = "Přeškrtnuté" # mt
+toolbar.strikethrough_desc = "Přeškrtne vybraný text." # mt

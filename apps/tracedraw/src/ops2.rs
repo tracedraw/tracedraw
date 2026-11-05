@@ -3089,12 +3089,14 @@ impl App {
                 self.text_italic,
                 self.text_underline,
             );
+            let strike = self.text_strikethrough;
             let differs = |f: &dyn Fn(&TextSpan) -> bool| shown.as_ref().is_none_or(f);
             let set_font = differs(&|s| s.font_family != font);
             let set_size = differs(&|s| ((s.size_pt - size) * scale).abs() > 0.005);
             let set_bold = differs(&|s| s.bold != bold);
             let set_italic = differs(&|s| s.italic != italic);
             let set_underline = differs(&|s| s.underline != underline);
+            let set_strike = differs(&|s| s.strikethrough != strike);
             self.text_apply_style(move |sp| {
                 if set_font {
                     sp.font_family = font.clone();
@@ -3110,6 +3112,9 @@ impl App {
                 }
                 if set_underline {
                     sp.underline = underline;
+                }
+                if set_strike {
+                    sp.strikethrough = strike;
                 }
             });
             return;
@@ -3134,6 +3139,7 @@ impl App {
         let set_bold = changed(&|t| t.bold != Some(self.text_bold));
         let set_italic = changed(&|t| t.italic != Some(self.text_italic));
         let set_underline = changed(&|t| t.underline != Some(self.text_underline));
+        let set_strike = changed(&|t| t.strikethrough != Some(self.text_strikethrough));
         let cmds: Vec<Command> = selected
             .iter()
             .filter_map(|s| match &s.kind {
@@ -3167,6 +3173,9 @@ impl App {
                         }
                         if set_underline {
                             sp.underline = self.text_underline;
+                        }
+                        if set_strike {
+                            sp.strikethrough = self.text_strikethrough;
                         }
                     });
                     Some(Command::SetShapeKind {

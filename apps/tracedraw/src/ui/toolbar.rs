@@ -2108,6 +2108,12 @@ fn text_properties(app: &mut App, ui: &mut Ui) {
             egui::RichText::new("U").underline(),
             "toolbar.underline",
         ),
+        // Beside Underline (#1022).
+        (
+            app.text_strikethrough,
+            egui::RichText::new("S").strikethrough(),
+            "toolbar.strikethrough",
+        ),
     ] {
         if ui
             .add_sized([22.0, 22.0], egui::Button::selectable(on, label.size(14.0)))
@@ -2117,6 +2123,7 @@ fn text_properties(app: &mut App, ui: &mut Ui) {
             match key {
                 "toolbar.bold" => app.text_bold = !app.text_bold,
                 "toolbar.italic" => app.text_italic = !app.text_italic,
+                "toolbar.strikethrough" => app.text_strikethrough = !app.text_strikethrough,
                 _ => app.text_underline = !app.text_underline,
             }
             changed = true;

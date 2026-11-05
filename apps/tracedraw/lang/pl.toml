@@ -7680,3 +7680,5 @@ print.reverse_order_tip = "Drukuj najpierw ostatni arkusz, dla stosu wychodzące
 crop.picture_pixels = "Przytnij piksele obrazu" # mt
 crop.picture_pixels_tip = "Wycina piksele prostych obrazów poza obszarem, więc każdy pozostaje wolnym obrazem; wyłączone: obrazy trafiają do ramki przycinania obszaru i zachowują wszystkie piksele." # mt
 menu.bitmaps.crop_to_frame = "Przytnij do ramki" # mt
+toolbar.strikethrough = "Przekreślenie" # mt
+toolbar.strikethrough_desc = "Przekreśla zaznaczony tekst." # mt

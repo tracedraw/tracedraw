@@ -7680,3 +7680,5 @@ print.reverse_order_tip = "শেষ পাতাটি আগে ছাপু�
 crop.picture_pixels = "ছবির পিক্সেল কাটুন" # mt
 crop.picture_pixels_tip = "এলাকার বাইরের সোজা ছবির পিক্সেল কেটে ফেলুন, যাতে প্রতিটি ছবি মুক্ত থাকে; বন্ধ থাকলে ছবি এলাকার একটি ক্লিপ ফ্রেমে যায় এবং সব পিক্সেল রাখে।" # mt
 menu.bitmaps.crop_to_frame = "ফ্রেম অনুযায়ী কাটুন" # mt
+toolbar.strikethrough = "স্ট্রাইকথ্রু" # mt
+toolbar.strikethrough_desc = "নির্বাচিত লেখার মাঝ দিয়ে একটি রেখা টানুন।" # mt

@@ -7680,3 +7680,5 @@ print.reverse_order_tip = "आख़िरी शीट पहले छाप�
 crop.picture_pixels = "चित्र के पिक्सेल काटें" # mt
 crop.picture_pixels_tip = "क्षेत्र के बाहर सीधे चित्रों के पिक्सेल काट दें, ताकि हर चित्र स्वतंत्र रहे; बंद होने पर चित्र क्षेत्र के क्लिप फ़्रेम में जाते हैं और सारे पिक्सेल रखते हैं।" # mt
 menu.bitmaps.crop_to_frame = "फ़्रेम तक काटें" # mt
+toolbar.strikethrough = "स्ट्राइकथ्रू" # mt
+toolbar.strikethrough_desc = "चुने गए पाठ के बीच से एक रेखा खींचें।" # mt

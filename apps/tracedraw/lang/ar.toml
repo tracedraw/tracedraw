@@ -7680,3 +7680,5 @@ print.reverse_order_tip = "طباعة الورقة الأخيرة أولاً، �
 crop.picture_pixels = "قص بكسلات الصورة" # mt
 crop.picture_pixels_tip = "قص بكسلات الصور المستقيمة خارج المنطقة، فتبقى كل صورة حرة؛ عند الإيقاف توضع الصور في إطار قص للمنطقة وتحتفظ بكل بكسلاتها." # mt
 menu.bitmaps.crop_to_frame = "قص حسب الإطار" # mt
+toolbar.strikethrough = "يتوسطه خط" # mt
+toolbar.strikethrough_desc = "رسم خط يتوسط النص المحدد." # mt

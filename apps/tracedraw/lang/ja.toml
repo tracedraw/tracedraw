@@ -7680,3 +7680,5 @@ print.reverse_order_tip = "最後の用紙から印刷します。表向きに�
 crop.picture_pixels = "画像のピクセルを切り抜く" # mt
 crop.picture_pixels_tip = "範囲外にある傾いていない画像のピクセルを切り取り、画像は単独のまま残ります。オフにすると、画像は範囲のクリップフレームに入り、すべてのピクセルを保ちます。" # mt
 menu.bitmaps.crop_to_frame = "フレームで切り抜く" # mt
+toolbar.strikethrough = "取り消し線" # mt
+toolbar.strikethrough_desc = "選択したテキストに取り消し線を引きます。" # mt

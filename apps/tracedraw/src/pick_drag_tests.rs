@@ -21344,3 +21344,61 @@ fn the_wheel_zooms_the_drawing_under_edit_fill_and_outline_pen() {
         ));
     }
 }
+
+/// #1022: the text bar has Strikethrough beside Bold, Italic and
+/// Underline: a click strikes the selected text through, shows the
+/// button on, and a second click takes the line off; the bar reads the
+/// text's own setting back.
+#[test]
+fn the_text_bar_has_a_strikethrough_button() {
+    let ctx = crate::theme::ui_context();
+    let mut app = App::headless();
+    app.show_welcome = false;
+    tracedraw_text::install();
+    let id = app
+        .new_shape(ShapeKind::Text {
+            spans: vec![tracedraw_core::TextSpan::new("struck", "DejaVu Sans", 24.0)],
+            origin: Point::new(20.0, 150.0),
+            frame: None,
+            align: tracedraw_core::TextAlign::Left,
+            para: Default::default(),
+            on_path: None,
+        })
+        .expect("text");
+    app.set_tool(Tool::Pick);
+    app.select(vec![id]);
+    app.sync_text_defaults_from(id);
+    let struck = |app: &App| match &app.doc().find_shape(id).expect("text").kind {
+        ShapeKind::Text { spans, .. } => spans.iter().all(|sp| sp.strikethrough),
+        _ => panic!("text"),
+    };
+    let button = |ctx: &egui::Context, app: &mut App| {
+        let mut texts = Vec::new();
+        for _ in 0..3 {
+            texts = texts_drawn(ctx, app, Vec::new());
+        }
+        let u = text_at(&texts, "U").expect("Underline on the bar");
+        texts
+            .iter()
+            .filter(|(t, r)| t == "S" && (r.center().y - u.y).abs() < 4.0 && r.center().x > u.x)
+            .map(|(_, r)| r.center())
+            .min_by(|a, b| a.x.total_cmp(&b.x))
+            .expect("Strikethrough beside Underline")
+    };
+    let at = button(&ctx, &mut app);
+    assert!(!struck(&app));
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert!(struck(&app), "struck through");
+    assert!(app.text_strikethrough, "the button shows it on");
+    // One undo step; the bar reads the text again.
+    app.undo();
+    assert!(!struck(&app));
+    app.redo();
+    assert!(struck(&app));
+    app.text_strikethrough = false;
+    app.sync_text_defaults_from(id);
+    assert!(app.text_strikethrough, "read from the text");
+    let at = button(&ctx, &mut app);
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert!(!struck(&app), "taken off");
+}

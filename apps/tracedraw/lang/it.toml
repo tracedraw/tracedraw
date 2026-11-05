@@ -7680,3 +7680,5 @@ print.reverse_order_tip = "Stampa prima l'ultimo foglio, per una pila che esce a
 crop.picture_pixels = "Ritaglia i pixel dell'immagine" # mt
 crop.picture_pixels_tip = "Taglia i pixel delle immagini diritte fuori dall'area, così ognuna resta un'immagine libera; disattivato, le immagini vanno in una cornice di ritaglio dell'area e mantengono tutti i pixel." # mt
 menu.bitmaps.crop_to_frame = "Ritaglia alla cornice" # mt
+toolbar.strikethrough = "Barrato" # mt
+toolbar.strikethrough_desc = "Barra il testo selezionato." # mt

@@ -76,6 +76,8 @@ full, row-by-row status.
 
 - View > Scrollbars: the drawing window's scrollbars can be hidden, on every platform, to give the drawing their room; the page tabs and the Navigator button stay. The choice is kept with the preferences (#1344).
 
+- Text bar: a Strikethrough button beside Bold, Italic and Underline (also beside Underline in the Text docker's Character section and on a table's cell bar), so a line through the text no longer needs the docker's extra options (#1022).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).

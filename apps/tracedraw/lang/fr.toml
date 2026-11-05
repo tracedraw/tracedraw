@@ -7680,3 +7680,5 @@ print.reverse_order_tip = "Imprime la dernière feuille en premier, pour une pil
 crop.picture_pixels = "Rogner les pixels de l'image" # mt
 crop.picture_pixels_tip = "Coupe les pixels des images droites hors de la zone, chacune restant une image libre ; désactivé, les images vont dans un cadre de découpe de la zone et gardent tous leurs pixels." # mt
 menu.bitmaps.crop_to_frame = "Rogner au cadre" # mt
+toolbar.strikethrough = "Barré" # mt
+toolbar.strikethrough_desc = "Barre le texte sélectionné d'un trait." # mt

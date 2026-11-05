@@ -932,6 +932,7 @@ pub struct TextShown {
     pub bold: Option<bool>,
     pub italic: Option<bool>,
     pub underline: Option<bool>,
+    pub strikethrough: Option<bool>,
 }
 
 pub struct App {
@@ -1176,6 +1177,8 @@ pub struct App {
     pub text_bold: bool,
     pub text_italic: bool,
     pub text_underline: bool,
+    /// The text bar's Strikethrough (#1022).
+    pub text_strikethrough: bool,
     /// What the text fields above showed when they were last read from a
     /// text object: with several text objects selected, only the fields
     /// changed since then go to all of them (#1304).
@@ -2622,6 +2625,7 @@ impl App {
             text_bold: false,
             text_italic: false,
             text_underline: false,
+            text_strikethrough: false,
             text_shown: None,
             text_align: tracedraw_core::TextAlign::Left,
             eyedropper_color: None,
@@ -5566,6 +5570,7 @@ impl App {
                 self.text_bold = sp.bold;
                 self.text_italic = sp.italic;
                 self.text_underline = sp.underline;
+                self.text_strikethrough = sp.strikethrough;
                 self.text_shown = Some(TextShown {
                     shape: id,
                     font: Some(self.text_font.clone()),
@@ -5573,6 +5578,7 @@ impl App {
                     bold: Some(sp.bold),
                     italic: Some(sp.italic),
                     underline: Some(sp.underline),
+                    strikethrough: Some(sp.strikethrough),
                 });
             }
             // The alignment of the paragraph at the caret.

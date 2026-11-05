@@ -7680,3 +7680,5 @@ print.reverse_order_tip = "Das letzte Blatt zuerst drucken, für einen Stapel, d
 crop.picture_pixels = "Bildpixel zuschneiden" # mt
 crop.picture_pixels_tip = "Die Pixel aufrechter Bilder außerhalb des Bereichs abschneiden, sodass jedes ein freies Bild bleibt; aus: Bilder kommen in einen Clip-Rahmen des Bereichs und behalten alle Pixel." # mt
 menu.bitmaps.crop_to_frame = "Auf Rahmen zuschneiden" # mt
+toolbar.strikethrough = "Durchgestrichen" # mt
+toolbar.strikethrough_desc = "Den ausgewählten Text durchstreichen." # mt
