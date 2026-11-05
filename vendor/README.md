@@ -250,6 +250,21 @@ change marked `TraceDraw:` in a comment.
   `false` or no handler lets it go ahead (`NSTerminateNow`, as before).
   `src/quit_request.rs` depends on nothing in the crate, and TraceDraw's
   tests include and run it (`winit_quit_request::tests`).
+- Change: Android reports each pointer with its tool to the program,
+  for palm rejection (#1832). winit 0.30 turns every pointer of a
+  `MotionEvent` into a `Touch` with no word of its tool (finger, stylus,
+  eraser, mouse, palm) and drops the hover events of a pen near the
+  screen, so a hand resting on a tablet drew like a finger. The Android
+  backend (`platform_impl/android/mod.rs`) now asks
+  `src/pointer_filter.rs` about each pointer of a motion event, with its
+  device, id, tool (`pointer_tool`) and action, and about each pointer of
+  a hover event; the filter the program set with
+  `platform::android::set_pointer_filter` answers whether to deliver the
+  touch and which touches of the event to end first with `Cancelled`.
+  With no filter set every touch is delivered, as before. The file
+  depends on nothing in the crate, and TraceDraw's tests include and run
+  it (`palm::winit_pointer_filter::tests`); TraceDraw's filter is
+  `apps/tracedraw/src/palm.rs`.
 - The published crate's `examples/` and `tests/` stay as downloaded (the
   manifest lists them); they build in no gate.
 - Drop the copy and the `[patch.crates-io]` entry when a winit release
