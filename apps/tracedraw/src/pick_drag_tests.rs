@@ -10589,10 +10589,10 @@ fn text_frame_tabs_link_frames_by_drag_and_by_click() {
     assert!(app.pending_text_link.is_none() && !app.text_link_incoming);
 }
 
-/// The flow tabs work with the Text tool too: a drag from the bottom
+/// The flow tab works with the Text tool too: a drag from the bottom
 /// tab of the frame being edited onto another frame flows its text on,
-/// and a click on a frame's top tab and then on another frame makes that
-/// one flow into it (#1914).
+/// and so does a click on the tab and then a click on the other frame
+/// (#1914).
 #[test]
 fn text_frame_tabs_link_frames_with_the_text_tool() {
     tracedraw_text::install();
@@ -10641,19 +10641,22 @@ fn text_frame_tabs_link_frames_with_the_text_tool() {
     assert_eq!(app.next_frame(a), Some(b), "{}", app.status);
     assert!(app.pending_text_link.is_none());
     assert_eq!(app.tool, Tool::Text);
-    // Editing frame c: a click on its top tab, then on frame d.
-    app.select(vec![c]);
-    app.begin_text_edit(c);
+    // Editing frame d: a click on its bottom tab, then a click on frame
+    // c.
+    app.select(vec![d]);
+    app.begin_text_edit(d);
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
-    let k = corners(&app, c);
-    let top = crate::canvas::flow_in_tab_rect(k[3], k[2], app.handle_size());
-    click_at(&ctx, &mut app, top.center(), Modifiers::NONE);
-    assert_eq!(app.pending_text_link, Some(c), "{}", app.status);
-    assert!(app.text_link_incoming);
-    let at = middle(&app, d);
+    let k = corners(&app, d);
+    let tab = crate::canvas::flow_tab_rect(k[0], k[1], app.handle_size());
+    click_at(&ctx, &mut app, tab.center(), Modifiers::NONE);
+    assert_eq!(app.pending_text_link, Some(d), "{}", app.status);
+    assert!(!app.text_link_incoming);
+    assert!(app.text_edit.is_none(), "the editing ended");
+    let at = middle(&app, c);
     click_at(&ctx, &mut app, at, Modifiers::NONE);
     assert_eq!(app.next_frame(d), Some(c), "{}", app.status);
     assert_eq!(app.prev_frame(c), Some(d));
+    assert_eq!(app.tool, Tool::Text);
 }
 
 /// The Welcome Screen tab closes to its house while a drawing is open;
