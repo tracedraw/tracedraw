@@ -7686,3 +7686,4 @@ menu.view.page_shadow = "Sayfa gölgesi" # mt
 options.show_page_shadow = "Sayfa gölgesini göster" # mt
 options.show_page_shadow_tip = "Sayfanın altındaki gölgeyi, kenarlığından ayrı olarak çizer." # mt
 print.unprintable_warning = "Çizim bu yazıcının basamadığı kenara (gölgeli) taşıyor: kesilecek." # mt
+status.duplicate_reselected = "Kopyalar yeniden seçildi; Çoğalt onlara yapılanı yineler." # mt

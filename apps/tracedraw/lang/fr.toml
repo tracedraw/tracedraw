@@ -7686,3 +7686,4 @@ menu.view.page_shadow = "Ombre de la page" # mt
 options.show_page_shadow = "Afficher l'ombre de la page" # mt
 options.show_page_shadow_tip = "Dessine l'ombre sous la page, indépendamment de sa bordure." # mt
 print.unprintable_warning = "Le dessin déborde dans la marge que cette imprimante ne peut pas imprimer (ombrée) : il sera coupé." # mt
+status.duplicate_reselected = "Les copies sont de nouveau sélectionnées ; Dupliquer répète ce qui leur a été fait." # mt

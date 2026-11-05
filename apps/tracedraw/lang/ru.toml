@@ -7686,3 +7686,4 @@ menu.view.page_shadow = "Тень страницы" # mt
 options.show_page_shadow = "Показывать тень страницы" # mt
 options.show_page_shadow_tip = "Рисовать тень под страницей отдельно от её границы." # mt
 print.unprintable_warning = "Рисунок заходит на край, который этот принтер не печатает (затенён): он будет обрезан." # mt
+status.duplicate_reselected = "Копии снова выделены; Дублировать повторяет то, что с ними сделано." # mt

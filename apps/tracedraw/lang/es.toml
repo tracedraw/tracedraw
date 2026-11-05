@@ -7686,3 +7686,4 @@ menu.view.page_shadow = "Sombra de la página" # mt
 options.show_page_shadow = "Mostrar la sombra de la página" # mt
 options.show_page_shadow_tip = "Dibuja la sombra bajo la página, aparte de su borde." # mt
 print.unprintable_warning = "El dibujo llega al borde que esta impresora no puede imprimir (sombreado): se cortará." # mt
+status.duplicate_reselected = "Las copias vuelven a estar seleccionadas; Duplicar repite lo que se les hizo." # mt

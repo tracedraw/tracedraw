@@ -7686,3 +7686,4 @@ menu.view.page_shadow = "Cień strony" # mt
 options.show_page_shadow = "Pokaż cień strony" # mt
 options.show_page_shadow_tip = "Rysuje cień pod stroną, niezależnie od jej krawędzi." # mt
 print.unprintable_warning = "Grafika sięga w margines, którego ta drukarka nie drukuje (zacieniowany): zostanie obcięta." # mt
+status.duplicate_reselected = "Kopie są znów zaznaczone; Powiel powtarza to, co z nimi zrobiono." # mt

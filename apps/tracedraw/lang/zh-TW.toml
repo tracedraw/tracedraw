@@ -7686,3 +7686,4 @@ menu.view.page_shadow = "頁面陰影" # mt
 options.show_page_shadow = "顯示頁面陰影" # mt
 options.show_page_shadow_tip = "繪製頁面下方的陰影，與頁面邊框分開。" # mt
 print.unprintable_warning = "圖稿伸入了此印表機無法列印的邊緣（陰影部分）：該部分會被裁掉。" # mt
+status.duplicate_reselected = "副本已重新選取；再製將重複對其所做的操作。" # mt

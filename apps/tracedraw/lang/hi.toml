@@ -7686,3 +7686,4 @@ menu.view.page_shadow = "पृष्ठ की छाया" # mt
 options.show_page_shadow = "पृष्ठ की छाया दिखाएँ" # mt
 options.show_page_shadow_tip = "पृष्ठ के नीचे छाया बनाएँ, उसकी सीमा से अलग।" # mt
 print.unprintable_warning = "कलाकृति उस किनारे तक पहुँचती है जिसे यह प्रिंटर नहीं छाप सकता (छायांकित): वह कट जाएगी।" # mt
+status.duplicate_reselected = "प्रतियाँ फिर से चुनी गईं; डुप्लिकेट उनके साथ किया गया दोहराता है।" # mt

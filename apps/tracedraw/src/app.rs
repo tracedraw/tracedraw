@@ -1086,6 +1086,11 @@ pub struct App {
     /// them since (moved, scaled, turned), as the reference program's
     /// smart duplicate does (#559). Deselecting them ends it (#1494).
     pub last_duplicate: Vec<(ShapeId, ShapeId)>,
+    /// [`last_duplicate`](Self::last_duplicate) as it was when its copies
+    /// were deselected, with the drawing's revision and the selection
+    /// then: Undo with nothing changed since selects the copies again and
+    /// brings the repeat back, for a deselect made by accident (#1494).
+    pub forgotten_duplicate: Option<(Vec<(ShapeId, ShapeId)>, u64, Vec<ShapeId>)>,
     /// The last Duplicate of guidelines, which the next one repeats in
     /// the same way while the copies are the selection (#1494).
     pub last_guide_duplicate: Option<crate::guides::GuideDuplicate>,
@@ -2578,6 +2583,7 @@ impl App {
             // scaled or turned; the next one repeats that (#1494).
             duplicate_offset: Vec2::ZERO,
             last_duplicate: Vec::new(),
+            forgotten_duplicate: None,
             last_guide_duplicate: None,
             polygon_points: 5,
             star_sharpness: 0.5,
@@ -5827,8 +5833,10 @@ impl App {
                 .last_duplicate
                 .iter()
                 .all(|(_, c)| self.selection.contains(c));
-        if !copies_selected {
-            self.last_duplicate.clear();
+        if !copies_selected && !self.last_duplicate.is_empty() {
+            let pairs = std::mem::take(&mut self.last_duplicate);
+            self.forgotten_duplicate =
+                Some((pairs, self.engine.revision(), self.selection.clone()));
         }
         let guides_selected = self.last_guide_duplicate.as_ref().is_some_and(|d| {
             self.selection.is_empty()
@@ -5841,6 +5849,32 @@ impl App {
         if !guides_selected {
             self.last_guide_duplicate = None;
         }
+    }
+
+    /// Undo right after the copies of the last Duplicate were deselected,
+    /// with nothing changed since: they are selected again and the next
+    /// Duplicate repeats what was done to them, as before the deselect;
+    /// no step of the drawing is undone (#1494).
+    fn undo_duplicate_deselect(&mut self) -> bool {
+        let Some((pairs, revision, then)) = self.forgotten_duplicate.take() else {
+            return false;
+        };
+        let copies: Vec<ShapeId> = pairs.iter().map(|(_, c)| *c).collect();
+        let doc = self.engine.document();
+        let all_there = pairs
+            .iter()
+            .all(|(o, c)| doc.find_shape(*o).is_some() && doc.find_shape(*c).is_some());
+        if revision != self.engine.revision()
+            || self.selection != then
+            || !all_there
+            || copies.is_empty()
+        {
+            return false;
+        }
+        self.select(copies);
+        self.last_duplicate = pairs;
+        self.status = crate::i18n::tr("status.duplicate_reselected");
+        true
     }
 
     pub fn duplicate(&mut self) {
@@ -5898,6 +5932,7 @@ impl App {
         }
         self.select(ids.clone());
         self.last_duplicate = pairs;
+        self.forgotten_duplicate = None;
         if self.symmetry_edit.is_some() {
             self.join_symmetry(&ids);
         }
@@ -6533,6 +6568,9 @@ impl App {
         }
         self.curve_steps.clear();
         self.finish_text();
+        if self.undo_duplicate_deselect() {
+            return;
+        }
         let step = self.engine.last_step_id();
         let undone = match self.engine.undo() {
             Ok(l) => {
@@ -9569,6 +9607,58 @@ mod tests {
         app.duplicate();
         let g = app.selection[0];
         assert!(near(t(&app, g), t(&app, f)));
+    }
+
+    /// A deselect by accident: Undo right after it selects the copies of
+    /// the last Duplicate again and the next Duplicate repeats the step
+    /// again; no change of the drawing is undone. With a change made
+    /// since, Undo undoes that as usual (#1494).
+    #[test]
+    fn undo_after_a_deselect_brings_the_duplicate_repeat_back() {
+        let mut app = App::headless();
+        let a = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![a]);
+        let t = |app: &App, id: ShapeId| app.doc().find_shape(id).expect("shape").transform;
+        let near = |x: Affine, y: Affine| {
+            x.as_coeffs()
+                .iter()
+                .zip(y.as_coeffs())
+                .all(|(p, q)| (p - q).abs() < 1e-9)
+        };
+        app.duplicate();
+        let step = Affine::translate((12.0, 0.0));
+        app.transform_selection(step);
+        app.forget_duplicate_unless_selected();
+        app.duplicate();
+        let c = app.selection[0];
+        assert!(near(t(&app, c), step * step));
+        // Deselected by accident, then Undo: the copy again, nothing undone.
+        let steps = app.engine.history_labels().0.len();
+        app.select(Vec::new());
+        app.forget_duplicate_unless_selected();
+        app.undo();
+        app.forget_duplicate_unless_selected();
+        assert_eq!(app.selection, vec![c]);
+        assert_eq!(app.engine.history_labels().0.len(), steps, "no step undone");
+        app.duplicate();
+        let d = app.selection[0];
+        assert!(near(t(&app, d), step * step * step), "{:?}", t(&app, d));
+        // Deselected and then something changed: Undo undoes that change.
+        app.select(Vec::new());
+        app.forget_duplicate_unless_selected();
+        app.select(vec![a]);
+        app.forget_duplicate_unless_selected();
+        app.transform_selection(Affine::translate((0.0, 5.0)));
+        let moved = t(&app, a);
+        app.select(Vec::new());
+        app.undo();
+        assert!(!near(t(&app, a), moved), "the move is undone");
     }
 
     #[test]
