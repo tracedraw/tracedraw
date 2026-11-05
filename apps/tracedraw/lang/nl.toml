@@ -7363,6 +7363,7 @@ palette.bar_place_tip = "Waar de balk van dit palet staat: aan een rand van het 
 palette.rows_of_selected_bar = "Rijen van geselecteerde balk" # mt
 palette.user_empty_hint = "Zet hier kleuren neer om ze aan dit palet toe te voegen" # mt
 palette.add_selection_to_palette = "Kleuren uit selectie toevoegen" # mt
+palette.add_from_bitmap = "Kleuren uit bitmap toevoegen" # mt
 menu.tools.tracecut = "TraceCut..." # mt
 tracecut.title = "TraceCut" # mt
 tracecut.group_cut = "Snijden" # mt

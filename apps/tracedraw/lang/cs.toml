@@ -7363,6 +7363,7 @@ palette.bar_place_tip = "Kde je pruh této palety: u okraje okna, nebo plovoucí
 palette.rows_of_selected_bar = "Řádky vybraného pruhu" # mt
 palette.user_empty_hint = "Sem přetáhněte barvy a přidejte je do této palety" # mt
 palette.add_selection_to_palette = "Přidat barvy z výběru" # mt
+palette.add_from_bitmap = "Přidat barvy z bitmapy" # mt
 menu.tools.tracecut = "TraceCut..." # mt
 tracecut.title = "TraceCut" # mt
 tracecut.group_cut = "Řezání" # mt

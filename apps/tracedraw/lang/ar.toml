@@ -7363,6 +7363,7 @@ palette.bar_place_tip = "مكان شريط لوحة الألوان هذه: حا�
 palette.rows_of_selected_bar = "صفوف الشريط المحدد" # mt
 palette.user_empty_hint = "أفلت الألوان هنا لإضافتها إلى لوحة الألوان هذه" # mt
 palette.add_selection_to_palette = "إضافة الألوان من التحديد" # mt
+palette.add_from_bitmap = "إضافة الألوان من الصورة النقطية" # mt
 menu.tools.tracecut = "TraceCut..." # mt
 tracecut.title = "TraceCut" # mt
 tracecut.group_cut = "القص" # mt

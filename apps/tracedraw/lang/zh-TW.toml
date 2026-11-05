@@ -7363,6 +7363,7 @@ palette.bar_place_tip = "此調色盤的列所在位置：視窗邊緣或浮動"
 palette.rows_of_selected_bar = "所選列的列數" # mt
 palette.user_empty_hint = "將顏色拖放到此處以加入此調色盤" # mt
 palette.add_selection_to_palette = "從選取範圍加入顏色" # mt
+palette.add_from_bitmap = "從點陣圖加入顏色" # mt
 menu.tools.tracecut = "TraceCut..." # mt
 tracecut.title = "TraceCut" # mt
 tracecut.group_cut = "切割" # mt

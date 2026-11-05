@@ -7363,6 +7363,7 @@ palette.bar_place_tip = "Где находится панель этой пал�
 palette.rows_of_selected_bar = "Строки выбранной панели" # mt
 palette.user_empty_hint = "Перетащите сюда цвета, чтобы добавить их в эту палитру" # mt
 palette.add_selection_to_palette = "Добавить цвета из выделения" # mt
+palette.add_from_bitmap = "Добавить цвета из растра" # mt
 menu.tools.tracecut = "TraceCut..." # mt
 tracecut.title = "TraceCut" # mt
 tracecut.group_cut = "Резка" # mt

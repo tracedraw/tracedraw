@@ -7363,6 +7363,7 @@ palette.bar_place_tip = "Bu paletin çubuğunun yeri: pencerenin bir kenarı ya 
 palette.rows_of_selected_bar = "Seçili çubuğun satırları" # mt
 palette.user_empty_hint = "Bu palete eklemek için renkleri buraya bırakın" # mt
 palette.add_selection_to_palette = "Seçimden Renk Ekle" # mt
+palette.add_from_bitmap = "Bitmap'ten Renk Ekle" # mt
 menu.tools.tracecut = "TraceCut..." # mt
 tracecut.title = "TraceCut" # mt
 tracecut.group_cut = "Kesim" # mt

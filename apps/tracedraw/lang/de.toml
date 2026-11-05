@@ -7363,6 +7363,7 @@ palette.bar_place_tip = "Wo die Leiste dieser Palette ist: an einem Fensterrand 
 palette.rows_of_selected_bar = "Zeilen der gewählten Leiste" # mt
 palette.user_empty_hint = "Farben hier ablegen, um sie dieser Palette hinzuzufügen" # mt
 palette.add_selection_to_palette = "Farben aus Auswahl hinzufügen" # mt
+palette.add_from_bitmap = "Farben aus Bitmap hinzufügen" # mt
 menu.tools.tracecut = "TraceCut..." # mt
 tracecut.title = "TraceCut" # mt
 tracecut.group_cut = "Schneiden" # mt

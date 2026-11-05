@@ -7363,6 +7363,7 @@ palette.bar_place_tip = "इस पैलेट की पट्टी कहा
 palette.rows_of_selected_bar = "चुनी गई पट्टी की पंक्तियाँ" # mt
 palette.user_empty_hint = "इस पैलेट में जोड़ने के लिए रंग यहाँ छोड़ें" # mt
 palette.add_selection_to_palette = "चयन से रंग जोड़ें" # mt
+palette.add_from_bitmap = "बिटमैप से रंग जोड़ें" # mt
 menu.tools.tracecut = "TraceCut..." # mt
 tracecut.title = "TraceCut" # mt
 tracecut.group_cut = "कट" # mt

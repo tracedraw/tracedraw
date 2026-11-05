@@ -7363,6 +7363,7 @@ palette.bar_place_tip = "このパレットのバーの位置: ウィンドウ�
 palette.rows_of_selected_bar = "選択したバーの行数" # mt
 palette.user_empty_hint = "ここに色をドロップしてこのパレットに追加" # mt
 palette.add_selection_to_palette = "選択範囲から色を追加" # mt
+palette.add_from_bitmap = "ビットマップから色を追加" # mt
 menu.tools.tracecut = "TraceCut..." # mt
 tracecut.title = "TraceCut" # mt
 tracecut.group_cut = "カット" # mt

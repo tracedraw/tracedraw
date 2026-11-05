@@ -3890,6 +3890,58 @@ impl App {
         }
     }
 
+    /// The colours that best stand for the selected picture: at most
+    /// `n`, chosen by the median cut the paletted conversion uses
+    /// ([`crate::bitmap_modes::build_palette`]), ordered dark to light.
+    /// None without a picture selected or when it cannot be read.
+    pub fn selected_bitmap_colors(&self, n: u32) -> Option<Vec<Color>> {
+        let id = self.selected_bitmap()?;
+        let ShapeKind::Bitmap { png, .. } = &self.doc().find_shape(id)?.kind else {
+            return None;
+        };
+        let img = crate::bitmap_fx::decode(png)?;
+        let settings = crate::bitmap_modes::PalettedSettings {
+            palette: crate::bitmap_modes::PaletteType::Optimized,
+            colors: n.clamp(2, 256),
+            ..Default::default()
+        };
+        let mut rgb = crate::bitmap_modes::build_palette(&img, &settings);
+        rgb.sort_by_key(|c| 299 * u32::from(c[0]) + 587 * u32::from(c[1]) + 114 * u32::from(c[2]));
+        rgb.dedup();
+        Some(
+            rgb.into_iter()
+                .map(|c| Color::rgb8(c[0], c[1], c[2]))
+                .collect(),
+        )
+    }
+
+    /// Add Colors from Bitmap (#1840): up to `n` colours of the selected
+    /// picture join the user's palette `palette`, or the document palette
+    /// when None (one undo step there), after the colours it has. Says
+    /// whether any was added.
+    pub fn add_bitmap_colors_to_palette(&mut self, palette: Option<usize>, n: u32) -> bool {
+        let Some(found) = self.selected_bitmap_colors(n) else {
+            return false;
+        };
+        match palette {
+            Some(i) => self.add_colors_to_palette(i, &found),
+            None => {
+                let mut colors = self.doc().palette.clone();
+                let before = colors.len();
+                for c in found {
+                    if !colors.contains(&c) {
+                        colors.push(c);
+                    }
+                }
+                if colors.len() == before {
+                    return false;
+                }
+                self.run(Command::SetDocumentPalette { colors });
+                true
+            }
+        }
+    }
+
     pub fn palette_from_selection(&mut self) {
         let mut colors = self.doc().palette.clone();
         Self::colors_of(&self.selected_shapes(), &mut colors);

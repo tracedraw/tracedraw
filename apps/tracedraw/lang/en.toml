@@ -7363,6 +7363,7 @@ palette.bar_place_tip = "Where this palette's bar is: an edge of the window, or 
 palette.rows_of_selected_bar = "Rows of selected bar"
 palette.user_empty_hint = "Drop colors here to add them to this palette"
 palette.add_selection_to_palette = "Add Colors from Selection"
+palette.add_from_bitmap = "Add Colors from Bitmap"
 menu.tools.tracecut = "TraceCut..."
 tracecut.title = "TraceCut"
 tracecut.group_cut = "Cut"

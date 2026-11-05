@@ -56,6 +56,8 @@ full, row-by-row status.
 
 - The mouse wheel over the Color docker's colour sliders (RGB, CMYK, HSB and the others) and its Tint slider, and over the Trace dialog's sliders, now steps them on hover, one a notch, as over every other slider. These sliders kept ignoring the wheel after #1335 (#1335).
 
+- Palettes: Add Colors from Bitmap. The document palette's menu and the bar menu of a palette of your own have a new submenu that adds 8, 16, 32 or 64 colours that stand for the selected picture (chosen as the Optimized palette of the bitmap colour conversion picks them), after the colours already there; in the document palette it is one undo step (#1840).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).

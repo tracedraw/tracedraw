@@ -7363,6 +7363,7 @@ palette.bar_place_tip = "Gdzie jest pasek tej palety: przy krawędzi okna lub p�
 palette.rows_of_selected_bar = "Wiersze zaznaczonego paska" # mt
 palette.user_empty_hint = "Upuść tu kolory, aby dodać je do tej palety" # mt
 palette.add_selection_to_palette = "Dodaj kolory z zaznaczenia" # mt
+palette.add_from_bitmap = "Dodaj kolory z mapy bitowej" # mt
 menu.tools.tracecut = "TraceCut..." # mt
 tracecut.title = "TraceCut" # mt
 tracecut.group_cut = "Cięcie" # mt

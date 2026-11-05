@@ -7363,6 +7363,7 @@ palette.bar_place_tip = "Dove si trova la barra di questa tavolozza: un bordo de
 palette.rows_of_selected_bar = "Righe della barra selezionata" # mt
 palette.user_empty_hint = "Rilascia qui i colori per aggiungerli a questa tavolozza" # mt
 palette.add_selection_to_palette = "Aggiungi colori dalla selezione" # mt
+palette.add_from_bitmap = "Aggiungi colori dalla bitmap" # mt
 menu.tools.tracecut = "TraceCut..." # mt
 tracecut.title = "TraceCut" # mt
 tracecut.group_cut = "Taglio" # mt
