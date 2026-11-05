@@ -266,12 +266,13 @@ mod tests {
         assert!(BRIDGE
             .contains("jni_str!(\"(ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V\")"));
         // Every call to the activity's methods, cancel included, ends in
-        // a result (the Rust side would otherwise wait for ever).
+        // a result (the Rust side would otherwise wait for ever): the open
+        // picker, the save picker and the folder picker (#1926).
         assert_eq!(
             ACTIVITY
                 .matches("nativeDocumentResult(request, null, null, null)")
                 .count(),
-            2
+            3
         );
         assert!(ACTIVITY.contains("nativeDocumentResult(requestCode, null, null, null)"));
         assert!(ACTIVITY.contains("takePersistableUriPermission"));
