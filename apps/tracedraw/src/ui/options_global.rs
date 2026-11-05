@@ -228,25 +228,29 @@ pub fn file_formats_page(app: &mut App, ui: &mut Ui) {
             "options.import_with_cursor",
             "options.import_with_cursor_tip",
         ));
-    ui.label(tr("options.import_place"));
-    ui.radio_value(
-        &mut f.import_place,
-        ImportPlace::AsInFile,
-        tr("options.import_as_in_file"),
-    )
-    .rich_tip(crate::ui::tips::pair(
-        "options.import_as_in_file",
-        "options.import_as_in_file_tip",
-    ));
-    ui.radio_value(
-        &mut f.import_place,
-        ImportPlace::ViewCenter,
-        tr("options.import_view_center"),
-    )
-    .rich_tip(crate::ui::tips::pair(
-        "options.import_view_center",
-        "options.import_view_center_tip",
-    ));
+    // On one row, so the section keeps its height with the check box
+    // above it.
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr("options.import_place"));
+        ui.radio_value(
+            &mut f.import_place,
+            ImportPlace::AsInFile,
+            tr("options.import_as_in_file"),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "options.import_as_in_file",
+            "options.import_as_in_file_tip",
+        ));
+        ui.radio_value(
+            &mut f.import_place,
+            ImportPlace::ViewCenter,
+            tr("options.import_view_center"),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "options.import_view_center",
+            "options.import_view_center_tip",
+        ));
+    });
     ui.horizontal(|ui| {
         ui.label(tr("pdf_import.text_as"));
         ui.radio_value(&mut f.pdf_text_as_curves, false, tr("pdf_import.text"))
