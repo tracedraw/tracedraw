@@ -761,6 +761,38 @@ fn rgb_button(ui: &mut Ui, rgb: &mut [u8; 3]) -> bool {
 
 // ----- TraceDraw options -------------------------------------------------
 
+/// Options that do something on the desktop only, and are not shown
+/// elsewhere (#1415): the splash screen (the browser shows its own page
+/// while loading; the Android app starts without one), hardware
+/// acceleration and the graphics card (the browser draws with WebGL;
+/// Android always draws with OpenGL ES, `gpu::ANDROID_BACKENDS`, and
+/// never reads the setting) and the link for AI agents on this computer
+/// (no agent on a phone or in a browser tab to serve).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DesktopOnly {
+    Splash,
+    HardwareAcceleration,
+    Agents,
+}
+
+impl DesktopOnly {
+    pub const ALL: [DesktopOnly; 3] = [
+        DesktopOnly::Splash,
+        DesktopOnly::HardwareAcceleration,
+        DesktopOnly::Agents,
+    ];
+
+    /// Whether the option is shown on `platform`.
+    pub fn shown_on(self, platform: crate::files::Platform) -> bool {
+        platform == crate::files::Platform::Desktop
+    }
+
+    /// Whether the option is shown in this build.
+    pub fn shown(self) -> bool {
+        self.shown_on(crate::files::Platform::current())
+    }
+}
+
 fn general_page(app: &mut App, ui: &mut Ui) {
     chrome::section(ui, &tr("options.getting_started"));
     ui.indent("gs", |ui| {
@@ -782,14 +814,16 @@ fn general_page(app: &mut App, ui: &mut Ui) {
             tr("options.show_new_document_dialog"),
         )
         .rich_tip(crate::ui::tips::keyed("options.show_new_document_dialog"));
-        if !crate::files::WEB {
+        if DesktopOnly::Splash.shown() {
             ui.checkbox(&mut app.settings.show_splash, tr("options.show_splash"))
                 .rich_tip(crate::ui::tips::keyed("options.show_splash"));
         }
         ui.checkbox(&mut app.settings.tracecut.show, tr("options.show_tracecut"))
             .rich_tip(crate::ui::tips::keyed("options.show_tracecut"));
         #[cfg(not(target_arch = "wasm32"))]
-        hardware_acceleration(app, ui);
+        if DesktopOnly::HardwareAcceleration.shown() {
+            hardware_acceleration(app, ui);
+        }
     });
     chrome::section(ui, &tr("options.undo_levels"));
     ui.indent("undo", |ui| {
@@ -4458,7 +4492,7 @@ fn global_general_page(app: &mut App, ui: &mut Ui) {
     }
     // AI agents on this computer and the open drawing (desktop only).
     #[cfg(not(target_arch = "wasm32"))]
-    {
+    if DesktopOnly::Agents.shown() {
         chrome::section(ui, &tr("options.agents"));
         ui.checkbox(&mut app.settings.mcp_window, tr("options.mcp_window"))
             .rich_tip(crate::ui::tips::pair(
@@ -4950,6 +4984,50 @@ fn bleed_page(app: &mut App, ui: &mut Ui) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #1415: the splash, hardware acceleration and AI agent options are
+    /// shown on the desktop and hidden on Android and in the browser,
+    /// where they do nothing; the pages and the agent link ask first.
+    #[test]
+    fn desktop_only_options_are_hidden_on_android_and_the_web() {
+        use crate::files::Platform;
+        for o in DesktopOnly::ALL {
+            assert!(o.shown_on(Platform::Desktop), "{o:?}");
+            assert!(!o.shown_on(Platform::Android), "{o:?}");
+            assert!(!o.shown_on(Platform::Web), "{o:?}");
+            assert_eq!(o.shown(), Platform::current() == Platform::Desktop);
+        }
+        let page = include_str!("options.rs");
+        for gate in [
+            "if DesktopOnly::Splash.shown() {",
+            "if DesktopOnly::HardwareAcceleration.shown() {",
+            "if DesktopOnly::Agents.shown() {",
+        ] {
+            assert!(page.contains(gate), "{gate}");
+        }
+        assert!(include_str!("../mcp_link.rs")
+            .contains("&& crate::ui::options::DesktopOnly::Agents.shown();"));
+    }
+
+    /// On the desktop the General page still shows the splash and the
+    /// hardware acceleration options.
+    #[test]
+    fn the_desktop_keeps_the_splash_and_hardware_options() {
+        let mut app = App::headless();
+        let ctx = crate::theme::ui_context();
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| general_page(&mut app, ui));
+        out.textures_delta.clear();
+        let mut texts = Vec::new();
+        for c in &out.shapes {
+            if let egui::Shape::Text(t) = &c.shape {
+                texts.push(t.galley.text().to_string());
+            }
+        }
+        for key in ["options.show_splash", "options.hardware_acceleration"] {
+            let label = tr(key);
+            assert!(texts.iter().any(|t| *t == label), "{label:?} in {texts:?}");
+        }
+    }
 
     /// #1148: every command can take a shortcut. A bar button that runs
     /// a menu command shows that command's keys; rows the menus show only
