@@ -64,6 +64,8 @@ full, row-by-row status.
 
 - Windows: the title bar follows the theme. With a dark theme the window's title bar and its buttons are now dark, with a light theme light, whatever Windows itself is set to, and they change at once when the theme is switched. The title bar stayed white with the dark theme (#1920).
 
+- Save Bitmap As TIFF and Edit Bitmap keep the transparency of a CMYK picture (one converted to CMYK with transparency, or a `.cdr` CMYK image with see-through parts): the TIFF carries an alpha channel beside the inks. The file was written flat, and Edit Bitmap then read the flat file back, so the transparency was lost from the drawing (#1925).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).
