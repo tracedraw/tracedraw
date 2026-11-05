@@ -211,7 +211,7 @@ fn preset_row(ui: &mut Ui, st: &mut TraceCutState) {
         let shown = current
             .clone()
             .unwrap_or_else(|| tr("tracecut.preset_none"));
-        egui::ComboBox::from_id_salt(("tracecut_presets", tool.id()))
+        crate::ui::keynav::ComboBox::from_id_salt(("tracecut_presets", tool.id()))
             .selected_text(shown)
             .width(200.0)
             .show_ui(ui, |ui| {

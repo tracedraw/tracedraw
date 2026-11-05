@@ -731,7 +731,7 @@ pub(crate) fn combo<T: Copy + PartialEq>(
     width: f32,
 ) -> bool {
     let mut changed = false;
-    egui::ComboBox::from_id_salt(id)
+    crate::ui::keynav::ComboBox::from_id_salt(id)
         .selected_text(label(*value))
         .width(width)
         .show_ui(ui, |ui| {
@@ -829,7 +829,7 @@ fn hardware_acceleration(app: &mut App, ui: &mut Ui) {
             chosen.clone()
         };
         ui.add_enabled_ui(on, |ui| {
-            egui::ComboBox::from_id_salt("gpu_adapter")
+            crate::ui::keynav::ComboBox::from_id_salt("gpu_adapter")
                 .width(260.0)
                 .selected_text(shown)
                 .show_ui(ui, |ui| {
@@ -1929,7 +1929,7 @@ fn text_display_tab(app: &mut App, ui: &mut Ui) {
         let u = app.text_units();
         let tip = crate::ui::tips::pair("options.text_units", "options.text_units_tip");
         crate::ui::tips::tip_over(ui, tip, |ui| {
-            egui::ComboBox::from_id_salt("options_text_units")
+            crate::ui::keynav::ComboBox::from_id_salt("options_text_units")
                 .selected_text(u.label())
                 .width(160.0)
                 .show_ui(ui, |ui| {
@@ -2028,7 +2028,7 @@ fn paragraph_text_tab(app: &mut App, ui: &mut Ui) {
     };
     grid("hyphenation_patterns").show(ui, |ui| {
         row_label(ui, &tr("options.hyphenation_patterns"));
-        egui::ComboBox::from_id_salt("hyphenation_patterns_combo")
+        crate::ui::keynav::ComboBox::from_id_salt("hyphenation_patterns_combo")
             .width(220.0)
             .selected_text(shown(&sp.hyphenation_patterns))
             .show_ui(ui, |ui| {
@@ -2105,7 +2105,7 @@ fn dictionary_download_row(app: &mut App, ui: &mut Ui) {
         let shown = dl::entry(&code)
             .map(|e| e.name.to_string())
             .unwrap_or_else(|| code.clone());
-        egui::ComboBox::from_id_salt("dictionary_download")
+        crate::ui::keynav::ComboBox::from_id_salt("dictionary_download")
             .selected_text(shown)
             .width(200.0)
             .show_ui(ui, |ui| {
@@ -2395,7 +2395,7 @@ fn spelling_tab(app: &mut App, ui: &mut Ui) {
 /// A quotation mark list (one of [`crate::autocorrect::QUOTE_CHOICES`]).
 fn quote_combo(ui: &mut Ui, id: &str, tip: String, value: &mut char) -> bool {
     let mut changed = false;
-    egui::ComboBox::from_id_salt(id)
+    crate::ui::keynav::ComboBox::from_id_salt(id)
         .width(48.0)
         .selected_text(value.to_string())
         .show_ui(ui, |ui| {
@@ -2443,7 +2443,7 @@ fn autocorrect_tab(app: &mut App, ui: &mut Ui) {
             .map(|(_, name)| name.to_string())
             .unwrap_or_else(|| tr("autocorrect.interface_language"));
         let before = p.quote_language.clone();
-        egui::ComboBox::from_id_salt("autocorrect_quote_language")
+        crate::ui::keynav::ComboBox::from_id_salt("autocorrect_quote_language")
             .width(220.0)
             .selected_text(shown)
             .show_ui(ui, |ui| {
@@ -2773,7 +2773,7 @@ fn appearance_page(app: &mut App, ui: &mut Ui) {
         let current = crate::theme::Theme::from_id(&app.settings.theme);
         let tip = crate::ui::tips::pair("options.theme", "options.theme_tip");
         crate::ui::tips::tip_over(ui, tip, |ui| {
-            egui::ComboBox::from_id_salt("ui_theme")
+            crate::ui::keynav::ComboBox::from_id_salt("ui_theme")
                 .selected_text(tr(current.key()))
                 .width(170.0)
                 .show_ui(ui, |ui| {
@@ -3197,7 +3197,7 @@ fn commands_page(app: &mut App, ui: &mut Ui) {
     };
     ui.horizontal(|ui| {
         let current = app.shortcut_editor.category.clone();
-        egui::ComboBox::from_id_salt("command_category")
+        crate::ui::keynav::ComboBox::from_id_salt("command_category")
             .selected_text(category_name(current.as_deref()))
             .width(LIST_W - 8.0)
             .show_ui(ui, |ui| {
@@ -4088,7 +4088,7 @@ fn dimension_page(app: &mut App, ui: &mut Ui) {
     grid("dimension").show(ui, |ui| {
         row_label(ui, &tr("dimension.precision"));
         let mut precision = style.precision.min(6);
-        egui::ComboBox::from_id_salt("options_dimension_precision")
+        crate::ui::keynav::ComboBox::from_id_salt("options_dimension_precision")
             .selected_text(crate::ui::dimension_bar::precision_sample(precision))
             .width(120.0)
             .show_ui(ui, |ui| {
@@ -4111,7 +4111,7 @@ fn dimension_page(app: &mut App, ui: &mut Ui) {
             .find(|(id, _)| *id == style.units)
             .map(|(_, l)| l.clone())
             .unwrap_or_default();
-        egui::ComboBox::from_id_salt("options_dimension_units")
+        crate::ui::keynav::ComboBox::from_id_salt("options_dimension_units")
             .selected_text(shown)
             .width(120.0)
             .show_ui(ui, |ui| {
@@ -4375,7 +4375,7 @@ fn global_general_page(app: &mut App, ui: &mut Ui) {
         } else {
             name.to_string()
         };
-        egui::ComboBox::from_id_salt("opt_lang")
+        crate::ui::keynav::ComboBox::from_id_salt("opt_lang")
             .selected_text(shown)
             .width(200.0)
             .show_ui(ui, |ui| {

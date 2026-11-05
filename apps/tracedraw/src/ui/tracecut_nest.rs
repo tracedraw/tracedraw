@@ -46,7 +46,7 @@ fn choice<T: PartialEq + Copy>(ui: &mut Ui, id: &str, v: &mut T, options: &[(T, 
         .find(|(o, _)| o == v)
         .map(|(_, k)| tr(k))
         .unwrap_or_default();
-    egui::ComboBox::from_id_salt(("tracecut", id))
+    crate::ui::keynav::ComboBox::from_id_salt(("tracecut", id))
         .selected_text(shown)
         .width(200.0)
         .show_ui(ui, |ui| {

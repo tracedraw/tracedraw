@@ -153,7 +153,7 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut MissingFontsState, close: &
                             } else {
                                 row.chosen.clone()
                             };
-                            egui::ComboBox::from_id_salt(("missing_font", i))
+                            crate::ui::keynav::ComboBox::from_id_salt(("missing_font", i))
                                 .selected_text(shown)
                                 .width(260.0)
                                 .height(300.0)

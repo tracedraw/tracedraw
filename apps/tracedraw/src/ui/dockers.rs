@@ -1250,7 +1250,7 @@ fn qr_section(
         None => (qr.kind, qr.fields.clone()),
     };
     let mut content: Option<(QrKind, Vec<String>)> = None;
-    egui::ComboBox::from_id_salt(("qr_kind", id.raw()))
+    crate::ui::keynav::ComboBox::from_id_salt(("qr_kind", id.raw()))
         .width(ui.available_width() - 8.0)
         .selected_text(tr(qr_kind_key(kind)))
         .show_ui(ui, |ui| {
@@ -2138,7 +2138,7 @@ pub(crate) fn pattern_editor(ui: &mut Ui, p: &mut Pattern) -> bool {
             back,
             size_mm,
         } => {
-            egui::ComboBox::from_label(tr("docker.tile"))
+            crate::ui::keynav::ComboBox::from_label(tr("docker.tile"))
                 .selected_text(tile.name())
                 .show_ui(ui, |ui| {
                     for t in PatternTile::ALL {
@@ -2268,7 +2268,7 @@ pub(crate) fn arrow_combo(
     } else {
         "toolbar.start_arrow"
     };
-    egui::ComboBox::from_id_salt(id)
+    crate::ui::keynav::ComboBox::from_id_salt(id)
         .selected_text(shown)
         .show_ui(ui, |ui| {
             for k in Arrowhead::ALL {

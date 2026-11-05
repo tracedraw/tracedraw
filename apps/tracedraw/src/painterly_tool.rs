@@ -154,7 +154,7 @@ pub fn painterly_bar(app: &mut App, ui: &mut egui::Ui) {
     app.sync_painterly_from_selection();
     let before = app.painterly;
     let current = app.painterly.brush.brush;
-    egui::ComboBox::from_id_salt("painterly_brush")
+    crate::ui::keynav::ComboBox::from_id_salt("painterly_brush")
         .selected_text(brush_name(current))
         .width(150.0)
         .height(420.0)

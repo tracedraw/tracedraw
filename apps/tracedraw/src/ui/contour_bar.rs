@@ -78,7 +78,7 @@ pub fn contour_controls(app: &mut App, ui: &mut Ui) {
             s.offset = app.units.world_to_mm(o);
             changed = true;
         }
-        egui::ComboBox::from_id_salt("contour_corners")
+        crate::ui::keynav::ComboBox::from_id_salt("contour_corners")
             .selected_text(tr(join_key(s.corners)))
             .width(80.0)
             .show_ui(ui, |ui| {
@@ -97,7 +97,7 @@ pub fn contour_controls(app: &mut App, ui: &mut Ui) {
             .rich_tip(tr("contour.corners"));
     });
     ui.horizontal(|ui| {
-        egui::ComboBox::from_id_salt("contour_blend")
+        crate::ui::keynav::ComboBox::from_id_salt("contour_blend")
             .selected_text(tr(blend_key(s.color_blend)))
             .width(110.0)
             .show_ui(ui, |ui| {

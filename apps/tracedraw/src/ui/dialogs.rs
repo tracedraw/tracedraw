@@ -1231,7 +1231,7 @@ fn convert_fields(app: &App, ui: &mut Ui, o: &mut crate::bitmap_modes::ConvertOp
             ui.label(tr("dialog.resolution"));
             ui.horizontal(|ui| {
                 let tip = crate::ui::tips::pair("dialog.resolution", "dialog.convert_dpi_desc");
-                egui::ComboBox::from_id_salt("convert_dpi")
+                crate::ui::keynav::ComboBox::from_id_salt("convert_dpi")
                     .selected_text(format!("{:.0}", o.dpi))
                     .width(70.0)
                     .show_ui(ui, |ui| {
@@ -1250,7 +1250,7 @@ fn convert_fields(app: &App, ui: &mut Ui, o: &mut crate::bitmap_modes::ConvertOp
             });
             ui.end_row();
             ui.label(tr("dialog.color_mode"));
-            egui::ComboBox::from_id_salt("convert_mode")
+            crate::ui::keynav::ComboBox::from_id_salt("convert_mode")
                 .selected_text(tr(o.mode.key()))
                 .width(190.0)
                 .show_ui(ui, |ui| {
@@ -1837,7 +1837,7 @@ pub fn show(app: &mut App, ctx: &Context) {
                         ui,
                         crate::ui::tips::pair("dialog.page_size", "toolbar.page_size_desc"),
                         |ui| {
-                            egui::ComboBox::from_id_salt("page_size_dialog_preset")
+                            crate::ui::keynav::ComboBox::from_id_salt("page_size_dialog_preset")
                                 .selected_text(current.clone())
                                 .width(200.0)
                                 .height(400.0)
@@ -2645,7 +2645,7 @@ pub fn show(app: &mut App, ctx: &Context) {
                     ));
                 ui.horizontal(|ui| {
                     ui.label(tr("resample.method"));
-                    egui::ComboBox::from_id_salt("resample_method")
+                    crate::ui::keynav::ComboBox::from_id_salt("resample_method")
                         .selected_text(tr(st.method.key()))
                         .width(200.0)
                         .show_ui(ui, |ui| {
@@ -2818,7 +2818,7 @@ pub fn show(app: &mut App, ctx: &Context) {
                             tr("dialog.style_alpha_upper"),
                             tr("dialog.style_alpha_lower"),
                         ];
-                        egui::ComboBox::from_id_salt("pn_style")
+                        crate::ui::keynav::ComboBox::from_id_salt("pn_style")
                             .selected_text(styles[(pn.style as usize).min(4)].clone())
                             .show_ui(ui, |ui| {
                                 for (i, s) in styles.iter().enumerate() {
@@ -2838,7 +2838,7 @@ pub fn show(app: &mut App, ctx: &Context) {
                             tr("dialog.pos_top_center"),
                             tr("dialog.pos_top_outer"),
                         ];
-                        egui::ComboBox::from_id_salt("pn_pos")
+                        crate::ui::keynav::ComboBox::from_id_salt("pn_pos")
                             .selected_text(positions[(pn.position as usize).min(3)].clone())
                             .show_ui(ui, |ui| {
                                 for (i, s) in positions.iter().enumerate() {
@@ -3309,7 +3309,7 @@ pub(crate) fn page_size_page(app: &mut App, ui: &mut Ui) {
                 .size(11.0),
         );
         ui.add_space(4.0);
-        egui::ComboBox::from_id_salt("label_preset")
+        crate::ui::keynav::ComboBox::from_id_salt("label_preset")
             .selected_text(LABEL_PRESETS[app.options_label_index.min(3)].0)
             .width(260.0)
             .show_ui(ui, |ui| {
@@ -3365,7 +3365,7 @@ pub(crate) fn page_size_page(app: &mut App, ui: &mut Ui) {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(tr("options.size"));
             });
-            egui::ComboBox::from_id_salt("page_size_preset")
+            crate::ui::keynav::ComboBox::from_id_salt("page_size_preset")
                 .selected_text(current.clone())
                 .width(230.0)
                 .height(400.0)
@@ -3430,7 +3430,7 @@ pub(crate) fn page_size_page(app: &mut App, ui: &mut Ui) {
                 w = app.units.to_mm(wv);
                 changed = true;
             }
-            egui::ComboBox::from_id_salt("page_units")
+            crate::ui::keynav::ComboBox::from_id_salt("page_units")
                 .selected_text(app.units.label())
                 .width(120.0)
                 .show_ui(ui, |ui| {
@@ -3619,7 +3619,7 @@ pub(crate) fn page_size_page(app: &mut App, ui: &mut Ui) {
         ui.label(tr("options.rendering_resolution"));
         let mut md = app.doc().metadata.clone();
         let mut dpi = md.resolution_dpi;
-        egui::ComboBox::from_id_salt("render_dpi")
+        crate::ui::keynav::ComboBox::from_id_salt("render_dpi")
             .selected_text(format!("{}", dpi.round() as i64))
             .width(70.0)
             .show_ui(ui, |ui| {
@@ -3861,7 +3861,7 @@ fn export_presets_row(app: &mut App, ui: &mut Ui, st: &mut ExportState) {
             .find(|p| p.name == st.preset && preset_fits(p, st))
             .map(label)
             .unwrap_or_else(|| tr("dialog.export_preset_none"));
-        egui::ComboBox::from_id_salt("export_preset")
+        crate::ui::keynav::ComboBox::from_id_salt("export_preset")
             .selected_text(shown)
             .width(170.0)
             .show_ui(ui, |ui| {
@@ -4066,7 +4066,7 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                         Some(n) => n.clone(),
                         None => export_format_label(st.format),
                     };
-                    egui::ComboBox::from_id_salt("exp_fmt")
+                    crate::ui::keynav::ComboBox::from_id_salt("exp_fmt")
                         .selected_text(shown)
                         .width(300.0)
                         .height(520.0)
@@ -4152,7 +4152,7 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                         // RGB, CMYK inks for print or grey (#1763).
                         ui.horizontal(|ui| {
                             ui.label(tr("dialog.color_mode"));
-                            egui::ComboBox::from_id_salt("exp_color_mode")
+                            crate::ui::keynav::ComboBox::from_id_salt("exp_color_mode")
                                 .selected_text(st.color_mode_for(ext).label())
                                 .show_ui(ui, |ui| {
                                     for (i, m) in EXPORT_COLOR_MODES.iter().enumerate() {
@@ -4211,7 +4211,7 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                         } else if hc {
                             set_export_size(st, b.height(), h);
                         }
-                        egui::ComboBox::from_id_salt("exp_size_unit")
+                        crate::ui::keynav::ComboBox::from_id_salt("exp_size_unit")
                             .selected_text(EXPORT_SIZE_UNITS[unit].0)
                             .width(50.0)
                             .show_ui(ui, |ui| {
@@ -4261,7 +4261,7 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                         ));
                     ui.horizontal(|ui| {
                         ui.label(tr("dialog.pdf_standard"));
-                        egui::ComboBox::from_id_salt("pdf_standard")
+                        crate::ui::keynav::ComboBox::from_id_salt("pdf_standard")
                             .selected_text(PDF_STANDARDS[st.pdf_standard.min(3)])
                             .show_ui(ui, |ui| {
                                 for (i, n) in PDF_STANDARDS.iter().enumerate() {
@@ -4299,7 +4299,7 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                     ui.horizontal(|ui| {
                         ui.label(tr("dialog.pdf_standard"));
                         let v = st.ai_version.min(AI_VERSIONS.len() - 1);
-                        egui::ComboBox::from_id_salt("ai_version")
+                        crate::ui::keynav::ComboBox::from_id_salt("ai_version")
                             .selected_text(tr(AI_VERSIONS[v]))
                             .show_ui(ui, |ui| {
                                 for (i, k) in AI_VERSIONS.iter().enumerate() {
@@ -4507,7 +4507,7 @@ pub(crate) fn print_layout_fields(app: &App, ui: &mut Ui, st: &mut PrintState) {
                         "print.layout_booklet",
                         "print.layout_repeat",
                     ];
-                    egui::ComboBox::from_id_salt("print_layout_kind")
+                    crate::ui::keynav::ComboBox::from_id_salt("print_layout_kind")
                         .selected_text(tr(kinds[st.layout_kind.min(3)]))
                         .width(170.0)
                         .show_ui(ui, |ui| {
@@ -4528,7 +4528,7 @@ pub(crate) fn print_layout_fields(app: &App, ui: &mut Ui, st: &mut PrintState) {
                     ui.label(tr("print.sheet"));
                     ui.horizontal(|ui| {
                         let name = sheet_name;
-                        egui::ComboBox::from_id_salt("print_sheet")
+                        crate::ui::keynav::ComboBox::from_id_salt("print_sheet")
                             .selected_text(name(st.sheet))
                             .width(120.0)
                             .show_ui(ui, |ui| {
@@ -5026,7 +5026,7 @@ pub fn destination_row(ui: &mut Ui, st: &mut PrintState, width: f32) -> Option<S
         _ => tr(dests[st.destination.min(2)]),
     };
     ui.horizontal(|ui| {
-        egui::ComboBox::from_id_salt("print_destination")
+        crate::ui::keynav::ComboBox::from_id_salt("print_destination")
             .selected_text(selected)
             .width(width)
             .show_ui(ui, |ui| {
@@ -5099,7 +5099,7 @@ pub fn parity_combo(ui: &mut Ui, st: &mut PrintState, id: &str) {
         })
         .fold(0.0_f32, f32::max);
     ui.add_enabled_ui(matches!(st.range, 0 | 2), |ui| {
-        egui::ComboBox::from_id_salt(id)
+        crate::ui::keynav::ComboBox::from_id_salt(id)
             .selected_text(names[st.parity.min(2)].clone())
             .width(widest + 2.0 * ui.spacing().button_padding.x + ui.spacing().icon_width)
             .show_ui(ui, |ui| {
@@ -5132,7 +5132,7 @@ fn print_tab_general(app: &App, ui: &mut Ui, st: &mut PrintState) -> Option<Stri
                     "print.orient_portrait",
                     "print.orient_landscape",
                 ];
-                egui::ComboBox::from_id_salt("print_orientation")
+                crate::ui::keynav::ComboBox::from_id_salt("print_orientation")
                     .selected_text(tr(ors[st.orientation.min(2)]))
                     .width(300.0)
                     .show_ui(ui, |ui| {
@@ -5371,7 +5371,7 @@ fn print_tab_postscript(ui: &mut Ui, st: &mut PrintState) {
     }
     ui.add_enabled_ui(st.destination == 2, |ui| {
         print_group(ui, &tr("print.compatibility"), |ui| {
-            egui::ComboBox::from_id_salt("print_ps_level")
+            crate::ui::keynav::ComboBox::from_id_salt("print_ps_level")
                 .selected_text(trf("print.ps_level", &[("n", &st.ps_level.to_string())]))
                 .show_ui(ui, |ui| {
                     for l in [2u8, 3] {
@@ -5457,7 +5457,7 @@ fn merge_number_format(
     let mut pick = cur;
     ui.horizontal(|ui| {
         ui.label(tr("merge.format"));
-        egui::ComboBox::from_id_salt(("merge_format", salt))
+        crate::ui::keynav::ComboBox::from_id_salt(("merge_format", salt))
             .selected_text(tr(NumberFormat::KEYS[cur]))
             .width(110.0)
             .show_ui(ui, |ui| {
@@ -5706,7 +5706,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
                                         FieldKind::Qr => 3,
                                     };
                                     let mut pick = cur;
-                                    egui::ComboBox::from_id_salt(("merge_kind", i))
+                                    crate::ui::keynav::ComboBox::from_id_salt(("merge_kind", i))
                                         .selected_text(names[cur].clone())
                                         .width(110.0)
                                         .show_ui(ui, |ui| {
@@ -6255,7 +6255,7 @@ fn encode_dialog(app: &mut App, ctx: &Context, st: &mut EncodeState, close: &mut
         let combo = |ui: &mut Ui, id: &str, id_key: &str, v: &mut Encoding| {
             ui.horizontal(|ui| {
                 ui.label(tr(id_key));
-                egui::ComboBox::from_id_salt(id)
+                crate::ui::keynav::ComboBox::from_id_salt(id)
                     .selected_text(v.name())
                     .show_ui(ui, |ui| {
                         for e in Encoding::ALL {
@@ -6368,7 +6368,7 @@ fn border_grommet_dialog(
                     ui.add_enabled_ui(st.add_border, |ui| {
                         egui::Grid::new("bg_border").num_columns(2).show(ui, |ui| {
                             ui.label(tr("border_grommet.type"));
-                            egui::ComboBox::from_id_salt("bg_kind")
+                            crate::ui::keynav::ComboBox::from_id_salt("bg_kind")
                                 .selected_text(tr(st.border.key()))
                                 .show_ui(ui, |ui| {
                                     for k in BorderKind::ALL {
@@ -6706,7 +6706,7 @@ fn palette_editor_dialog(
         ui.horizontal(|ui| {
             ui.label(tr("dialog.palette"));
             let names: Vec<String> = app.palettes.iter().map(|p| p.display_name()).collect();
-            egui::ComboBox::from_id_salt("pal_sel")
+            crate::ui::keynav::ComboBox::from_id_salt("pal_sel")
                 .selected_text(names.get(st.palette).cloned().unwrap_or_default())
                 .show_ui(ui, |ui| {
                     for (i, n) in names.iter().enumerate() {
