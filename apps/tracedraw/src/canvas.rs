@@ -2259,6 +2259,11 @@ fn draw_nodes(app: &App, painter: &Painter) {
                     prefs.unselected_filled.then_some(Color32::WHITE)
                 };
                 node_marker(painter, p, size, prefs.cusp, fill, main);
+                // A fixed point, which the curve passes through, has a
+                // second frame around it (#1758).
+                if s.spline_fixed.get(index).copied().unwrap_or(false) {
+                    node_marker(painter, p, size + 6.0, prefs.cusp, None, main);
+                }
             }
             continue;
         }

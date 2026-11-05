@@ -7667,3 +7667,5 @@ folder.tree_android = "用系統選擇器選擇資料夾；將使用其中的圖
 status.import_place = "正在匯入 {name}：按一下放置，拖曳設定大小，按空白鍵置中於頁面，按 Esc 取消。" # mt
 options.import_with_cursor = "用匯入游標放置匯入的檔案" # mt
 options.import_with_cursor_tip = "檔案 > 匯入後指標變為一個角：按一下把檔案左上角以原大小放在該處，拖曳出一個框使其符合該框，或按空白鍵使其置中於頁面。關閉時檔案立即匯入。" # mt
+context.spline_fixed = "固定控制點" # mt
+context.spline_floating = "浮動控制點" # mt

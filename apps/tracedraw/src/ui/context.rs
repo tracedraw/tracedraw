@@ -553,6 +553,19 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
 
 fn node_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     use tracedraw_core::nodes::NodeType;
+    // A B-spline's chosen control points: fixed (the curve passes
+    // through them) or floating (#1758).
+    if let Some(all_fixed) = app.chosen_spline_points() {
+        if check(ui, "context.spline_fixed", "C", all_fixed) {
+            app.set_selected_spline_fixed(true);
+            *close = true;
+        }
+        if check(ui, "context.spline_floating", "S", !all_fixed) {
+            app.set_selected_spline_fixed(false);
+            *close = true;
+        }
+        sep(ui);
+    }
     let has_nodes = !app.node_selection.is_empty();
     if ci(ui, close, "context.node_add", "", has_nodes) {
         app.add_node_midpoints();

@@ -7667,3 +7667,5 @@ folder.tree_android = "Vyberte složku systémovým výběrem; použijí se obr�
 status.import_place = "Import {name}: kliknutím umístěte, tažením určete velikost, mezerníkem vystředíte na stránce, Esc zruší." # mt
 options.import_with_cursor = "Umísťovat importované soubory kurzorem importu" # mt
 options.import_with_cursor_tip = "Po Soubor > Importovat se ukazatel změní v roh: kliknutím tam umístíte levý horní roh souboru v jeho velikosti, tažením rámečku jej do něj vložíte, mezerníkem jej vystředíte na stránce. Vypnuto: soubor přijde hned." # mt
+context.spline_fixed = "Pevný řídicí bod" # mt
+context.spline_floating = "Plovoucí řídicí bod" # mt

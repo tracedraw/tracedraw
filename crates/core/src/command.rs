@@ -222,6 +222,11 @@ pub enum Command {
     SetSpline {
         shape: ShapeId,
         points: Vec<crate::geometry::Point>,
+        /// Which points are fixed (see [`Shape::spline_fixed`]); `None`
+        /// keeps the curve's own flags when the number of points stays,
+        /// else every point floats (#1758).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fixed: Option<Vec<bool>>,
     },
     /// A QR code object's settings (its children are set with
     /// [`Command::SetShapeKind`] in the same step).
@@ -888,6 +893,7 @@ impl Command {
                 }
                 // A B-spline given any other outline is an ordinary curve.
                 s.spline = None;
+                s.spline_fixed.clear();
                 s.kind = kind.clone();
                 if let Some(before) = before {
                     let after = crate::geometry::Shape::bounding_box(&(parent * s.page_path()));
@@ -895,7 +901,11 @@ impl Command {
                 }
                 keep_clip_frame_paint(doc, holder);
             }
-            Command::SetSpline { shape, points } => {
+            Command::SetSpline {
+                shape,
+                points,
+                fixed,
+            } => {
                 if points.len() < 2 || points.iter().any(|p| !p.is_finite()) {
                     return Err(Error::BadSpline);
                 }
@@ -904,10 +914,22 @@ impl Command {
                 let s = any_mut(doc, *shape)?;
                 let closed = matches!(s.kind, ShapeKind::Path { closed: true, .. });
                 let before = crate::geometry::Shape::bounding_box(&(parent * s.page_path()));
+                let mut flags = match fixed {
+                    Some(f) => f.clone(),
+                    None if s.spline.as_ref().map(Vec::len) == Some(points.len()) => {
+                        s.spline_fixed.clone()
+                    }
+                    None => Vec::new(),
+                };
+                flags.resize(points.len(), false);
+                if !flags.contains(&true) {
+                    flags.clear();
+                }
                 s.kind = ShapeKind::Path {
-                    path: crate::geometry::bspline_path(points, closed),
+                    path: crate::geometry::bspline_path_fixed(points, &flags, closed),
                     closed,
                 };
+                s.spline_fixed = flags;
                 // Its gradients stay in place, as for any new outline.
                 let after = crate::geometry::Shape::bounding_box(&(parent * s.page_path()));
                 s.keep_paint_in_place(before, after);
@@ -1264,6 +1286,7 @@ impl Command {
                                 };
                                 f.node_types.clear();
                                 f.spline = None;
+                                f.spline_fixed.clear();
                                 f
                             })
                             .collect();
@@ -2150,6 +2173,7 @@ mod tests {
         eng.run(&Command::SetSpline {
             shape: id,
             points: pts.clone(),
+            fixed: None,
         })
         .expect("spline");
         let s = eng.document().find_shape(id).expect("shape");
@@ -2165,17 +2189,71 @@ mod tests {
         let json = serde_json::to_string(eng.document()).expect("json");
         let back: Document = serde_json::from_str(&json).expect("parsed");
         assert_eq!(back.find_shape(id).expect("shape").spline, s.spline);
+        // A point made fixed: the curve goes through it; a move of the
+        // points keeps it fixed, a new number of points with no flags
+        // given floats them all; the native format keeps the flags (#1758).
+        eng.run(&Command::SetSpline {
+            shape: id,
+            points: pts.clone(),
+            fixed: Some(vec![false, true]),
+        })
+        .expect("fixed");
+        let s = eng.document().find_shape(id).expect("shape");
+        assert_eq!(s.spline_fixed, vec![false, true, false, false]);
+        assert_eq!(
+            s.kind,
+            ShapeKind::Path {
+                path: crate::geometry::bspline_path_fixed(&pts, &[false, true], false),
+                closed: false,
+            }
+        );
+        let json = serde_json::to_string(eng.document()).expect("json");
+        let back: Document = serde_json::from_str(&json).expect("parsed");
+        assert_eq!(
+            back.find_shape(id).expect("shape").spline_fixed,
+            s.spline_fixed
+        );
+        let mut moved = pts.clone();
+        moved[2].x += 5.0;
+        eng.run(&Command::SetSpline {
+            shape: id,
+            points: moved.clone(),
+            fixed: None,
+        })
+        .expect("moved");
+        let s = eng.document().find_shape(id).expect("shape");
+        assert_eq!(s.spline_fixed, vec![false, true, false, false]);
+        eng.run(&Command::SetSpline {
+            shape: id,
+            points: moved[..3].to_vec(),
+            fixed: None,
+        })
+        .expect("fewer");
+        assert!(eng
+            .document()
+            .find_shape(id)
+            .expect("shape")
+            .spline_fixed
+            .is_empty());
+        eng.run(&Command::SetSpline {
+            shape: id,
+            points: pts.clone(),
+            fixed: Some(Vec::new()),
+        })
+        .expect("back");
         // Fewer than two points, or a point that is not finite: refused.
         assert!(eng
             .run(&Command::SetSpline {
                 shape: id,
                 points: vec![Point::new(0.0, 0.0)],
+                fixed: None,
             })
             .is_err());
         assert!(eng
             .run(&Command::SetSpline {
                 shape: id,
                 points: vec![Point::new(0.0, 0.0), Point::new(f64::NAN, 0.0)],
+                fixed: None,
             })
             .is_err());
         // Any other outline makes it an ordinary curve.

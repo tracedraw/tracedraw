@@ -20941,3 +20941,85 @@ fn the_page_right_click_menu_has_import() {
     );
     assert!(all.iter().any(|t| t.trim() == import.trim()), "{all:?}");
 }
+
+/// A B-spline's control point made fixed with C in the Shape tool: the
+/// curve passes through it and stays a B-spline; moving and deleting
+/// points keeps the flag; C again (or S) makes it float (#1758).
+#[test]
+fn a_bspline_control_point_is_made_fixed_and_floating() {
+    use tracedraw_core::geometry::{bspline_path, bspline_path_fixed, ParamCurve};
+    let (ctx, mut app, _) = setup();
+    let pts = vec![
+        Point::new(100.0, 100.0),
+        Point::new(120.0, 140.0),
+        Point::new(150.0, 140.0),
+        Point::new(170.0, 100.0),
+        Point::new(190.0, 120.0),
+    ];
+    let id = app
+        .new_shape(ShapeKind::Path {
+            path: bspline_path(&pts, false),
+            closed: false,
+        })
+        .expect("curve");
+    app.run(tracedraw_core::Command::SetSpline {
+        shape: id,
+        points: pts.clone(),
+        fixed: None,
+    });
+    app.select(vec![id]);
+    app.set_tool(Tool::Shape);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    app.node_selection = vec![(id, 2)];
+    let shape = |app: &App| app.doc().find_shape(id).expect("spline").clone();
+    let on_curve = |s: &tracedraw_core::Shape, q: Point| {
+        s.page_path()
+            .segments()
+            .flat_map(|g| (0..=200).map(move |k| g.eval(k as f64 / 200.0)))
+            .any(|p| (p - q).hypot() < 1e-6)
+    };
+    assert!(!on_curve(&shape(&app), pts[2]));
+    let c = key(egui::Key::C, Modifiers::NONE);
+    frame(&ctx, &mut app, vec![c.clone()], Modifiers::NONE);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let s = shape(&app);
+    assert_eq!(
+        s.spline.as_deref(),
+        Some(pts.as_slice()),
+        "still a B-spline"
+    );
+    assert_eq!(s.spline_fixed, vec![false, false, true, false, false]);
+    assert!(on_curve(&s, pts[2]), "the curve passes through it");
+    assert_eq!(
+        app.current_node_type(),
+        Some(tracedraw_core::nodes::NodeType::Cusp)
+    );
+    // A drag of another point keeps it fixed.
+    let moved = Point::new(118.0, 150.0);
+    let (from, to) = (app.view.to_screen(pts[1]), app.view.to_screen(moved));
+    app.node_selection.clear();
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    let s = shape(&app);
+    assert_eq!(s.spline_fixed, vec![false, false, true, false, false]);
+    let now = s.spline.clone().expect("points");
+    assert!(on_curve(&s, now[2]));
+    // Deleting the second point: the fixed one is now the second.
+    app.node_selection = vec![(id, 1)];
+    app.delete_selected_nodes();
+    let s = shape(&app);
+    assert_eq!(s.spline_fixed, vec![false, true, false, false]);
+    assert_eq!(
+        s.kind,
+        ShapeKind::Path {
+            path: bspline_path_fixed(s.spline.as_deref().expect("points"), &s.spline_fixed, false),
+            closed: false,
+        }
+    );
+    // C again: floating.
+    app.node_selection = vec![(id, 1)];
+    frame(&ctx, &mut app, vec![c], Modifiers::NONE);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let s = shape(&app);
+    assert!(s.spline_fixed.is_empty(), "{:?}", s.spline_fixed);
+    assert!(s.spline.is_some());
+}

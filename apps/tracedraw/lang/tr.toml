@@ -7667,3 +7667,5 @@ folder.tree_android = "Klasörü sistemin seçicisiyle seçin; içindeki resimle
 status.import_place = "{name} içe aktarılıyor: yerleştirmek için tıklayın, boyutlandırmak için sürükleyin, sayfada ortalamak için Boşluk, iptal için Esc." # mt
 options.import_with_cursor = "İçe aktarılan dosyaları içe aktarma imleciyle yerleştir" # mt
 options.import_with_cursor_tip = "Dosya > İçe Aktar sonrasında işaretçi bir köşeye dönüşür: dosyanın sol üst köşesini kendi boyutunda oraya koymak için tıklayın, sığdırmak için bir kutu sürükleyin veya sayfada ortalamak için Boşluk'a basın. Kapalıyken dosya hemen gelir." # mt
+context.spline_fixed = "Sabit kontrol noktası" # mt
+context.spline_floating = "Serbest kontrol noktası" # mt

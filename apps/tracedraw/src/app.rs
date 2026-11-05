@@ -5472,7 +5472,11 @@ impl App {
             Some(ShapeKind::Path { path, .. }) if path == line
         );
         if fresh {
-            let _ = self.engine.amend(&Command::SetSpline { shape: id, points });
+            let _ = self.engine.amend(&Command::SetSpline {
+                shape: id,
+                points,
+                fixed: None,
+            });
         }
     }
 

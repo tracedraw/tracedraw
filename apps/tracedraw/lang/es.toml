@@ -7667,3 +7667,5 @@ folder.tree_android = "Elige la carpeta con el selector del sistema; se usan las
 status.import_place = "Importando {name}: haga clic para colocarlo, arrastre para darle tamaño, Espacio para centrarlo en la página, Esc para cancelar." # mt
 options.import_with_cursor = "Colocar los archivos importados con el cursor de importación" # mt
 options.import_with_cursor_tip = "Tras Archivo > Importar el puntero se convierte en una esquina: haga clic para poner ahí la esquina superior izquierda del archivo a su tamaño, arrastre un cuadro para ajustarlo a él o pulse Espacio para centrarlo en la página. Desactivado, el archivo entra al instante." # mt
+context.spline_fixed = "Punto de control fijo" # mt
+context.spline_floating = "Punto de control flotante" # mt

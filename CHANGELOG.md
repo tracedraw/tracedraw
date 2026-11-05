@@ -38,6 +38,8 @@ full, row-by-row status.
 
 - Edit > Repeat (Ctrl+R) replays the last group of actions done to the same objects, not only the newest one: after moving an object and changing its fill, Repeat moves and fills the selection, as one undo step. A change of selection between two actions starts a new group (#1566, #1547).
 
+- B-splines: a control point can be fixed or floating. With the Shape tool, C (Cusp) or Fixed Control Point on the right-click menu makes the chosen control points fixed, so the curve passes through them; C again, S or Floating Control Point lets them float again, so the curve only comes near them. A fixed point is drawn with a second frame, and the choice is kept in `.tdraw` files. There was no way to do this before (#1758).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).

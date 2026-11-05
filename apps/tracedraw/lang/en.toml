@@ -7667,3 +7667,5 @@ folder.tree_android = "Choose the folder with the system's picker; the pictures 
 status.import_place = "Importing {name}: click to place it, drag to size it, Space to centre it on the page, Esc to cancel."
 options.import_with_cursor = "Place imported files with the import cursor"
 options.import_with_cursor_tip = "After File > Import the pointer becomes a corner: click to place the file's top left corner there at its own size, drag a box to fit it in, or press Space to centre it on the page. Off, the file comes in at once."
+context.spline_fixed = "Fixed Control Point"
+context.spline_floating = "Floating Control Point"

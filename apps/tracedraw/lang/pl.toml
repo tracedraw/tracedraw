@@ -7667,3 +7667,5 @@ folder.tree_android = "Wybierz folder systemowym selektorem; używane są obrazy
 status.import_place = "Importowanie {name}: kliknij, aby umieścić, przeciągnij, aby nadać rozmiar, Spacja, aby wyśrodkować na stronie, Esc, aby anulować." # mt
 options.import_with_cursor = "Umieszczaj importowane pliki kursorem importu" # mt
 options.import_with_cursor_tip = "Po Plik > Importuj wskaźnik staje się narożnikiem: kliknij, aby umieścić tam lewy górny róg pliku w jego rozmiarze, przeciągnij ramkę, aby go w niej zmieścić, lub naciśnij Spację, aby wyśrodkować go na stronie. Wyłączone: plik wchodzi od razu." # mt
+context.spline_fixed = "Stały punkt kontrolny" # mt
+context.spline_floating = "Swobodny punkt kontrolny" # mt
