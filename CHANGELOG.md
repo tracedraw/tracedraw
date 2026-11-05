@@ -68,6 +68,8 @@ full, row-by-row status.
 
 - Printing: Grayscale (Print > Color, under Composite, and in Print Preview) prints every colour and picture as its grey, and Reverse order (Print > General, under Collate, and in Print Preview) prints the last sheet first, for a stack that comes out face up or for printing on the backs of printed sheets. Both are kept with the other print choices (#1657, #1394, #1571).
 
+- Cropping pictures for real: the Crop tool's bar has Crop picture pixels, which cuts an upright picture's pixels to the area so it stays a free picture (its transparency and CMYK inks cut alike) instead of going into a clip frame, and Bitmaps > Crop to Frame cuts a picture already in a clip frame to the frame and, for a rectangular frame, sets the picture free (#1913).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).

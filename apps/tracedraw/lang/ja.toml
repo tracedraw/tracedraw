@@ -7676,3 +7676,6 @@ print.grayscale = "グレースケール" # mt
 print.grayscale_tip = "すべての色と画像をグレーで印刷します（コンポジット出力）。ファイルと画面の色はそのままです。" # mt
 print.reverse_order = "逆順" # mt
 print.reverse_order_tip = "最後の用紙から印刷します。表向きに排紙される場合や、印刷済み用紙の裏に印刷する場合に使います。" # mt
+crop.picture_pixels = "画像のピクセルを切り抜く" # mt
+crop.picture_pixels_tip = "範囲外にある傾いていない画像のピクセルを切り取り、画像は単独のまま残ります。オフにすると、画像は範囲のクリップフレームに入り、すべてのピクセルを保ちます。" # mt
+menu.bitmaps.crop_to_frame = "フレームで切り抜く" # mt

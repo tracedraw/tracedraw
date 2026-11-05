@@ -7676,3 +7676,6 @@ print.grayscale = "灰階" # mt
 print.grayscale_tip = "將每種顏色和圖片以其灰階列印（複合輸出）；檔案與螢幕保留原有顏色。" # mt
 print.reverse_order = "反向順序" # mt
 print.reverse_order_tip = "先列印最後一張，適用於正面朝上出紙，或在已列印紙張背面列印。" # mt
+crop.picture_pixels = "裁剪圖片像素" # mt
+crop.picture_pixels_tip = "裁掉區域外未旋轉圖片的像素，使每張圖片仍為獨立圖片；關閉時，圖片放入區域的裁剪框並保留全部像素。" # mt
+menu.bitmaps.crop_to_frame = "裁剪到框" # mt

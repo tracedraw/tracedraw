@@ -152,6 +152,9 @@ pub struct Settings {
     /// The Welcome Screen tab was closed: it shows as its house alone
     /// until the Welcome Screen is shown again (#677).
     pub welcome_tab_closed: bool,
+    /// The Crop tool cuts an upright picture's pixels instead of putting
+    /// it in a clip frame (#1913).
+    pub crop_picture_pixels: bool,
     /// Options > Tools > Table: what Tab does in a cell.
     #[serde(default)]
     pub table: crate::table_tool::TablePrefs,
@@ -1743,6 +1746,7 @@ impl Default for Settings {
             workspace: "default".into(),
             show_welcome_on_start: true,
             welcome_tab_closed: false,
+            crop_picture_pixels: false,
             table: Default::default(),
             units: "mm".into(),
             nudge_mm: 2.54,

@@ -7676,3 +7676,6 @@ print.grayscale = "Grijswaarden" # mt
 print.grayscale_tip = "Elke kleur en afbeelding in grijs afdrukken (composiet); het bestand en het scherm houden hun kleuren." # mt
 print.reverse_order = "Omgekeerde volgorde" # mt
 print.reverse_order_tip = "Het laatste vel eerst afdrukken, voor een stapel die met de bedrukte kant boven uitkomt of om op de achterkant van bedrukte vellen af te drukken." # mt
+crop.picture_pixels = "Afbeeldingspixels bijsnijden" # mt
+crop.picture_pixels_tip = "Snijd de pixels van rechte afbeeldingen buiten het gebied weg, zodat elke afbeelding vrij blijft; uit: afbeeldingen gaan in een uitsnedekader van het gebied en houden al hun pixels." # mt
+menu.bitmaps.crop_to_frame = "Bijsnijden tot kader" # mt

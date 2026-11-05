@@ -7676,3 +7676,6 @@ print.grayscale = "Odstíny šedi" # mt
 print.grayscale_tip = "Vytisknout každou barvu a obrázek v odpovídajícím odstínu šedi (kompozitní výstup); soubor a obrazovka si barvy ponechají." # mt
 print.reverse_order = "Obrácené pořadí" # mt
 print.reverse_order_tip = "Vytisknout poslední list jako první, pro stoh, který vychází lícem nahoru, nebo pro tisk na rub potištěných listů." # mt
+crop.picture_pixels = "Oříznout pixely obrázku" # mt
+crop.picture_pixels_tip = "Odřízne pixely nepootočených obrázků mimo oblast, takže každý zůstane volným obrázkem; vypnuto: obrázky jdou do ořezového rámu oblasti a ponechají si všechny pixely." # mt
+menu.bitmaps.crop_to_frame = "Oříznout podle rámu" # mt

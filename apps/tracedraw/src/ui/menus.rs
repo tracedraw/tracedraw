@@ -624,6 +624,7 @@ fn menu_pic(key: &str) -> Option<crate::ui::propbar::Pic> {
         "menu.bitmaps.straighten_image" => Pic::StraightenImage,
         "menu.bitmaps.edit_bitmap" => Pic::EditBitmap,
         "menu.bitmaps.crop_bitmap" => Pic::CropBitmap,
+        "menu.bitmaps.crop_to_frame" => Pic::CropBitmap,
         "menu.bitmaps.resample" => Pic::Resample,
         "menu.bitmaps.break_link" => Pic::BreakLink,
         "menu.bitmaps.update_from_link" => Pic::UpdateLink,
@@ -3482,6 +3483,10 @@ fn bitmaps_menu(app: &mut App, ui: &mut Ui) {
     }
     if item(ui, "menu.bitmaps.crop_bitmap", "", has_bitmap) {
         app.set_tool(crate::tools::Tool::Crop);
+    }
+    let framed = !app.framed_pictures().is_empty();
+    if item(ui, "menu.bitmaps.crop_to_frame", "", framed) {
+        app.crop_pictures_to_frames();
     }
     if item(ui, "menu.bitmaps.resample", "", has_bitmap) {
         app.open_resample();
