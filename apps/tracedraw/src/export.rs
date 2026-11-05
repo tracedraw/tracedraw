@@ -617,9 +617,48 @@ fn webp_lossy(img: &image::RgbaImage, quality: u8) -> Option<Vec<u8>> {
     Some(enc.encode(f32::from(quality.clamp(1, 100))).to_vec())
 }
 
+/// The browser's lossy WebP (#592): libwebp is C and not built for
+/// wasm32, so a pure-Rust VP8 encoder writes the file, at `quality` as
+/// libwebp takes it, alpha kept. `None` (lossless with rounding, as
+/// before) for a size WebP cannot hold or when the encoder fails.
 #[cfg(target_arch = "wasm32")]
-fn webp_lossy(_img: &image::RgbaImage, _quality: u8) -> Option<Vec<u8>> {
-    None
+fn webp_lossy(img: &image::RgbaImage, quality: u8) -> Option<Vec<u8>> {
+    webp_lossy_pure(img, quality)
+}
+
+/// See the browser's `webp_lossy`; the tests run it natively.
+#[cfg(any(target_arch = "wasm32", test))]
+fn webp_lossy_pure(img: &image::RgbaImage, quality: u8) -> Option<Vec<u8>> {
+    use vaam_webp::{ColorType, EncoderParams, WebPEncoder};
+    let (w, h) = img.dimensions();
+    // WebP's largest side.
+    if w == 0 || h == 0 || w > 16383 || h > 16383 {
+        return None;
+    }
+    let opaque = img.pixels().all(|p| p.0[3] == 255);
+    let mut out = Vec::new();
+    let mut enc = WebPEncoder::new(&mut out);
+    let mut params = EncoderParams::default();
+    params.use_lossy = true;
+    params.lossy_quality = quality.clamp(1, 100);
+    enc.set_params(params);
+    let done = if opaque {
+        // No alpha chunk for a picture with no transparency.
+        let rgb: Vec<u8> = img
+            .pixels()
+            .flat_map(|p| [p.0[0], p.0[1], p.0[2]])
+            .collect();
+        enc.encode(&rgb, w, h, ColorType::Rgb8)
+    } else {
+        enc.encode(img.as_raw(), w, h, ColorType::Rgba8)
+    };
+    match done {
+        Ok(()) => Some(out),
+        Err(e) => {
+            log::warn!("lossy WebP: {e}; writing it lossless");
+            None
+        }
+    }
 }
 
 /// Encode a rendered page in the bitmap format `ext`; WebP lossless
@@ -3719,6 +3758,66 @@ mod tests {
 
     /// WebP takes the quality: lower values make smaller files (colours
     /// rounded, near-lossless), 100 keeps the image exact (#544).
+    /// The browser's lossy WebP (#592): the pure-Rust encoder writes a
+    /// lossy (VP8) file that follows Quality, far smaller than the
+    /// lossless file the browser wrote before with Lossless off, which
+    /// decodes to the picture with its transparency; an empty picture
+    /// falls back to lossless.
+    #[test]
+    fn the_browsers_lossy_webp_follows_the_quality() {
+        // A photograph-like picture: smooth shades with grain.
+        let (w, h) = (256u32, 128u32);
+        let mut img = image::RgbaImage::new(w, h);
+        let mut seed = 12345u32;
+        for (x, y, p) in img.enumerate_pixels_mut() {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            let grain = ((seed >> 16) % 24) as i32 - 12;
+            let c = |v: i32| (v + grain).clamp(0, 255) as u8;
+            *p = image::Rgba([c(x as i32), c(2 * y as i32), c(((x + y) / 2) as i32), 255]);
+        }
+        let low = webp_lossy_pure(&img, 10).expect("lossy");
+        let high = webp_lossy_pure(&img, 90).expect("lossy");
+        assert!(low.len() < high.len(), "{} vs {}", low.len(), high.len());
+        // A lossy bitstream ("VP8 "), not a lossless one ("VP8L").
+        assert_eq!(&low[0..4], b"RIFF");
+        assert_eq!(&low[8..12], b"WEBP");
+        assert!(low.windows(4).any(|c| c == b"VP8 "));
+        assert!(!low.windows(4).any(|c| c == b"VP8L"));
+        let back = image::load_from_memory(&high).expect("decodes").to_rgba8();
+        assert_eq!(back.dimensions(), (w, h));
+        let (a, b) = (back.get_pixel(100, 60).0, img.get_pixel(100, 60).0);
+        for k in 0..3 {
+            assert!((a[k] as i32 - b[k] as i32).abs() < 40, "{a:?} vs {b:?}");
+        }
+        // What the browser wrote before with Lossless off: near-lossless.
+        let mut rounded = img.clone();
+        near_lossless(&mut rounded, 10);
+        let mut before = std::io::Cursor::new(Vec::new());
+        rounded
+            .write_to(&mut before, image::ImageFormat::WebP)
+            .expect("lossless");
+        let before = before.into_inner();
+        assert!(
+            low.len() * 3 < before.len(),
+            "{} vs {}",
+            low.len(),
+            before.len()
+        );
+        // Transparency is kept.
+        let mut clear = img.clone();
+        for (x, _, p) in clear.enumerate_pixels_mut() {
+            if x < 64 {
+                p.0[3] = 0;
+            }
+        }
+        let t = webp_lossy_pure(&clear, 75).expect("lossy with alpha");
+        let back = image::load_from_memory(&t).expect("decodes").to_rgba8();
+        assert_eq!(back.get_pixel(10, 10).0[3], 0);
+        assert_eq!(back.get_pixel(200, 10).0[3], 255);
+        // Nothing to encode: no lossy file.
+        assert!(webp_lossy_pure(&image::RgbaImage::new(0, 0), 50).is_none());
+    }
+
     #[test]
     fn webp_quality_shrinks_the_file() {
         let mut pm = tiny_skia::Pixmap::new(256, 128).expect("pixmap");

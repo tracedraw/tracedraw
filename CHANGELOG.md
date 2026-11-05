@@ -14,6 +14,8 @@ full, row-by-row status.
 
 - Linux, Wayland: a graphics tablet's pen shows the tool's cursor over the drawing (the cross hair with the tool's badge, the Shape tool's arrow, the hand) instead of the system arrow on top of it, and follows the cursor as it changes, as the mouse does. The pen's tilt is now read too and goes with its pressure, which stays the same (#1841).
 
+- Browser: WebP export with Lossless off writes real lossy WebP, so a low Quality gives a far smaller file, as on the desktop. The browser had no lossy encoder and always wrote the near-lossless file whatever the checkbox said; it now uses a pure-Rust encoder (#592).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).

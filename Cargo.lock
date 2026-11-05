@@ -4299,6 +4299,7 @@ dependencies = [
  "tracedraw-vba-project",
  "ttf-parser",
  "ureq",
+ "vaam-image-webp",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -4655,6 +4656,16 @@ checksum = "97277d36b9c3ace13e58fa6e753f8b0bbbf302a18dd193240d70f9e29681059a"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "vaam-image-webp"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f8674acd014f07b7d26cf5cdca65396df4048aa049cef5eb515847216ca7bf4"
+dependencies = [
+ "byteorder-lite",
+ "quick-error",
 ]
 
 [[package]]
