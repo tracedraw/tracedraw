@@ -20,6 +20,8 @@ full, row-by-row status.
 
 - Android: Print Merge's pictures folder can be chosen. The button opened the picker for single files, so a folder could not be picked; it now opens the system's folder picker, and the pictures in the folder chosen are used for the merge (#1926).
 
+- Opening `.cdr` version 13: graded transparency fades as drawn. Shapes whose colour fades to see-through (pages 1 and 2 of the reporter's file) opened as one flat colour; version 13 holds the same transparency record as version 15, fixed in 0.40.0, and is now read the same way (#1257).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).

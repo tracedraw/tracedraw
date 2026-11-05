@@ -4217,13 +4217,16 @@ impl<'a> Ctx<'a> {
     /// files' previews draw the band between the points). Returns the
     /// mask and, for a linear fountain, its start and end, when the
     /// record names such a fill; other records (not seen in version 15)
-    /// keep the reading of the opacity argument.
+    /// keep the reading of the opacity argument. Version 13 files hold the
+    /// same record (#1257, pages 1 and 2 of the reporter's version 13
+    /// file, a fountain of greys in colour model 9).
     fn read_graded_transparency_v15(
         &mut self,
         d: &'a [u8],
         arg: Arg,
     ) -> Option<(Mask, Option<(Point, Point)>)> {
-        if self.v != 15 || arg.end.checked_sub(arg.off)? < 8 + 117 {
+        // Seen in versions 13 and 15 alike; no version 14 file seen.
+        if !matches!(self.v, 13 | 15) || arg.end.checked_sub(arg.off)? < 8 + 117 {
             return None;
         }
         let data = d.get(..arg.end)?;
@@ -11314,6 +11317,81 @@ pub(crate) mod tests {
             let (doc, _) = doc_of(15, op);
             assert!(first_shape(&doc).effects.is_empty());
             assert_eq!(first_shape(&doc).opacity, 1.0);
+        }
+    }
+
+    /// The shapes of pages 1 and 2 of the reporter's version 13 file
+    /// (#1257): argument 8000 holds the same 117-byte record as version
+    /// 15, here naming a fountain of greys (colour model 9, 255 to 0). The
+    /// objects opened flat, without the fade to see-through.
+    #[test]
+    fn version_13_graded_transparency_record() {
+        use tracedraw_core::live::Effect;
+        let mut b = vec![5u8];
+        b.extend_from_slice(&u32s(&[1, 0, 1]));
+        b.extend_from_slice(&i32s(&[-2_458_949, 2_369_502, 961_709, -876_740]));
+        b.extend_from_slice(&u32s(&[1, 264, 1]));
+        b.extend_from_slice(&i32s(&[-294_272, -155_932, -693_859, 109_615]));
+        b.extend_from_slice(&u32s(&[0]));
+        b.extend_from_slice(&f64s(&[0.0, 100.0]));
+        b.extend_from_slice(&u32s(&[0, 2, 0, 0, 0, 0, 0, 7, 0, 0]));
+        assert_eq!(b.len(), 117);
+        let mut op = u32s(&[0x514, 117]);
+        op.extend_from_slice(&b);
+        // The fountain of greys as the file holds it (id changed to 7).
+        let ramp_hex = concat!(
+            "0700000014050000740000000200140500006200000001000000000000000000",
+            "40a5ae023c00000027007aa893080000000000000000ff00000001003b000200",
+            "010c0000000900050000000000ff00006400000000000000010c000000090005",
+            "0000000000000000000000000000640000000000000000000000000000000000",
+        );
+        let ramp_hex: String = ramp_hex.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+        let ramp: Vec<u8> = (0..ramp_hex.len() / 2)
+            .map(|i| u8::from_str_radix(&ramp_hex[2 * i..2 * i + 2], 16).unwrap())
+            .collect();
+        assert_eq!(ramp.len(), 128);
+        let mut coords = u32s(&[5]);
+        coords.extend_from_slice(&i32s(&[0, 0, 254000, 0, 254000, 254000, 0, 254000, 0, 0]));
+        coords.extend_from_slice(&[0x08, 0x40, 0x40, 0x40, 0x48]);
+        let obj = list(
+            b"obj ",
+            &chunk(
+                b"loda",
+                &loda(
+                    OBJ_CURVE,
+                    &[
+                        (ARG_COORDS, coords),
+                        (ARG_FILL, u32s(&[3])),
+                        (ARG_OPACITY, op),
+                    ],
+                ),
+            ),
+        );
+        let body = [
+            chunk(b"mcfg", &mcfg(13, 2_540_000, 2_540_000)),
+            chunk(b"fild", &solid_fild_v13(3, (176, 216, 176))),
+            chunk(b"fild", &ramp),
+            list(b"page", &list(b"layr", &obj)),
+        ]
+        .concat();
+        let (doc, rep) = parse(&riff(b"CDRD", &body), 13);
+        assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+        let s = first_shape(&doc);
+        assert_eq!(s.opacity, 1.0);
+        match s.effects.as_slice() {
+            [Effect::Transparency {
+                mask: Fill::Fountain(f),
+                target: 2,
+                ..
+            }] => {
+                assert_eq!(f.kind, FountainKind::Linear);
+                assert_eq!(f.stops.len(), 2);
+                assert_eq!(f.stops[0].color, Color::Gray { v: 1.0 });
+                assert_eq!(f.stops[1].color, Color::Gray { v: 0.0 });
+                assert_eq!(f.edge_pad, 0.0);
+                assert!(f.handles.is_some());
+            }
+            other => panic!("{other:?}"),
         }
     }
 
