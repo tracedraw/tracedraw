@@ -23,8 +23,11 @@ way.
 When the bar is too short for every title (a phone, a tablet upright
 in the Touch workspace, a narrow window), the titles that do not fit go
 under a last title, », whose menu lists them in order, each opening
-its menu as a submenu (#1301, #1691). Check:
-`ui::tests::phones_fit_and_tablets_keep_their_layout`.
+its menu as a submenu (#1301, #1691). Those menus keep the access keys
+they have on a wide bar (underlined in the » menu): Alt and the letter
+opens » with that menu open in it and its first row lit. Check:
+`ui::tests::phones_fit_and_tablets_keep_their_layout`,
+`ui::keynav::tests::alt_and_a_letter_open_a_menu_under_more`.
 
 The View menu has Zoom In, Zoom Out and Zoom
 To Fit (with their pictures) and no other zoom commands.

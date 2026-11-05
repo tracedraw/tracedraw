@@ -50,6 +50,8 @@ full, row-by-row status.
 
 - Edit Fill and Outline Pen: the mouse wheel over the drawing zooms it (or scrolls it, as Options say) while the dialog is open. Clicks on the drawing still do nothing until the dialog closes (#1035).
 
+- Menu bar on a narrow window, a phone or the Touch workspace: Alt and a letter now open a menu whose title moved under the » title at the end of the bar. It opens » with that menu open in it and its first row lit, so the arrows and Enter go on from there; the menus under » keep the letters they have on a wide bar, underlined in the » menu. Alt and those letters did nothing, so these menus needed the mouse or a finger (#1301, #1839).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).
