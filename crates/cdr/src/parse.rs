@@ -84,7 +84,7 @@ const ARRX_COUNT_AT: usize = 268;
 pub(crate) const KNOWN_CHUNKS: &[[u8; 4]] = &[
     *b"loda", *b"lobj", *b"trfd", *b"txsm", *b"flgs", *b"bbox", *b"spnd", *b"usdn", *b"ppdt",
     *b"vrsn", *b"mcfg", *b"fild", *b"fill", *b"outl", *b"stlt", *b"bmp ", *b"bmpf", *b"arrw",
-    *b"arrx", *b"font", *b"ftbl", *b"ole2", *b"olel", *b"vpat", *b"imhd", *b"envd",
+    *b"arrx", *b"font", *b"ftbl", *b"ole2", *b"olel", *b"vpat", *b"imhd", *b"envd", *b"guid",
 ];
 
 /// The `loda` argument types this reader interprets, in any version.
@@ -706,6 +706,15 @@ pub(crate) fn parse_document_kept(
     // desktop layer) go to master layers, drawn on every page (#1775).
     let has_pages = pages.iter().any(|pc| !ctx.page_is_master(pc));
     let mut master_guides: Vec<tracedraw_core::document::Guide> = Vec::new();
+    // Version 7 keeps the guidelines every page shows in a `guid` chunk
+    // of the document, not on the master page's guides layer (#1775).
+    if ctx.v == 7 {
+        tree.root.walk(&mut |c, _| {
+            if c.is(b"guid") {
+                master_guides.extend(ctx.read_guid_chunk(c, page_size));
+            }
+        });
+    }
     for pc in pages.iter() {
         let page_id = doc.ids_mut().page();
         let is_master = ctx.page_is_master(pc);
@@ -2681,6 +2690,36 @@ impl<'a> Ctx<'a> {
             return None;
         };
         Some(Guide::from(line))
+    }
+
+    /// The `guid` chunk of a version 7 file (#1775: one drawing a user
+    /// saved in each version from 7 to 21, whose four guidelines around
+    /// the page sit on the master page's guides layer from version 8):
+    /// the number of guidelines (u32), a second u32 (the same number in
+    /// the file seen), then a 40-byte record for each, laid out as
+    /// argument 16000 ([`Self::read_guide`]): 12 bytes not used, the
+    /// angle and three points from the page centre.
+    fn read_guid_chunk(&self, c: &Chunk, page_size: Size) -> Vec<tracedraw_core::document::Guide> {
+        const RECORD: usize = 40;
+        let d = self.data(c);
+        let Some(n) = d
+            .get(..4)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        else {
+            return Vec::new();
+        };
+        let n = (n as usize).min(d.len().saturating_sub(8) / RECORD);
+        (0..n)
+            .filter_map(|i| {
+                let off = 8 + i * RECORD;
+                let arg = Arg {
+                    ty: ARG_GUIDE_LINE,
+                    off,
+                    end: off + RECORD,
+                };
+                self.read_guide(d, arg, page_size)
+            })
+            .collect()
     }
 
     fn object_bbox(&self, oc: &Chunk) -> Option<Rect> {
@@ -12174,6 +12213,62 @@ pub(crate) mod tests {
                 GuideLine::Horizontal { y: cy - 20.0 }
             ]
         );
+    }
+
+    /// Version 7 keeps the guidelines every page shows in the document's
+    /// `guid` chunk (#1775: the four guidelines around the page of the
+    /// reporter's version 7 file): a count, the count again, then a
+    /// 40-byte record each as argument 16000. They were not read.
+    #[test]
+    fn version_7_guidelines_come_from_the_guid_chunk() {
+        let far = 228_600_000;
+        let record = |angle: i32, pts: &[i32]| {
+            let mut a = vec![0u8; 12];
+            a.extend_from_slice(&i32s(&[angle]));
+            a.extend_from_slice(&i32s(pts));
+            a
+        };
+        let mut guid = u32s(&[2, 2]);
+        guid.extend(record(
+            90_000_000,
+            &[100_000, -far, 100_000, far, 100_000, far],
+        ));
+        guid.extend(record(0, &[-far, -200_000, far, -200_000, far, -200_000]));
+        let body = |v: u16| {
+            [
+                chunk(b"mcfg", &mcfg(v, 2_540_000, 2_540_000)),
+                chunk(b"guid", &guid),
+                list(b"page", &list(b"layr", &[])),
+                list(b"page", &list(b"layr", &[])),
+            ]
+            .concat()
+        };
+        let (doc, rep) = parse(&riff(b"CDR7", &body(7)), 7);
+        use tracedraw_core::document::GuideLine;
+        for page in &doc.pages {
+            let (cx, cy) = (page.size.width / 2.0, page.size.height / 2.0);
+            let lines: Vec<GuideLine> = page.guides.iter().map(|g| g.line).collect();
+            assert_eq!(
+                lines,
+                vec![
+                    GuideLine::Vertical { x: cx + 10.0 },
+                    GuideLine::Horizontal { y: cy - 20.0 }
+                ],
+                "{:?}",
+                rep.warnings
+            );
+        }
+        // A short chunk gives what it holds and no more.
+        let mut short = guid.clone();
+        short.truncate(8 + 40 + 10);
+        let body = [
+            chunk(b"mcfg", &mcfg(7, 2_540_000, 2_540_000)),
+            chunk(b"guid", &short),
+            list(b"page", &list(b"layr", &[])),
+        ]
+        .concat();
+        let (doc, _) = parse(&riff(b"CDR7", &body), 7);
+        assert_eq!(doc.pages[0].guides.len(), 1);
     }
 
     #[test]
