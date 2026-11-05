@@ -862,7 +862,16 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
     // pointer, Ctrl+wheel scrolls vertically and Alt+wheel
     // horizontally; with the scroll setting the wheel scrolls,
     // Shift+wheel horizontally and Ctrl+wheel zooms. Pinch zooms.
-    if response.hovered() {
+    // Edit Fill and Outline Pen leave the wheel to the drawing outside
+    // them, so it can be zoomed to see the change; nothing else of the
+    // drawing takes the pointer meanwhile (#1035).
+    let wheel_through_dialog = matches!(
+        app.dialog,
+        crate::ui::dialogs::Dialog::EditFill(_) | crate::ui::dialogs::Dialog::OutlinePen(_)
+    ) && ui.ctx().pointer_hover_pos().is_some_and(|p| {
+        canvas_rect.contains(p) && crate::ui::chrome::over_modal_blocker(ui.ctx(), p)
+    });
+    if response.hovered() || wheel_through_dialog {
         let (scroll, notches, zoom_delta, mods, unit) = ui.input(|i| {
             // Wheel notches this frame (the smoothed delta is spread
             // over several frames, so the zoom steps come from the
@@ -899,7 +908,12 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                 .data(|d| d.get_temp(unit_id))
                 .unwrap_or(egui::MouseWheelUnit::Line),
         };
-        if let Some(h) = response.hover_pos() {
+        let hover = response.hover_pos().or_else(|| {
+            wheel_through_dialog
+                .then(|| ui.ctx().pointer_hover_pos())
+                .flatten()
+        });
+        if let Some(h) = hover {
             let zoom_factor = 1.15f32.powf(notches);
             // Options > Tools > Zoom/Pan > Center mouse when zooming with
             // the mouse wheel: a notch brings the point under the pointer

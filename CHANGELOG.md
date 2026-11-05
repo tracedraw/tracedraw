@@ -44,6 +44,8 @@ full, row-by-row status.
 
 - Options > Nodes and Handles: Object click distance, how far from an object's outline a click still selects it (3 pixels by default as before, 0 to 20). Thin lines are easier to hit with a larger value (#1679).
 
+- Edit Fill and Outline Pen: the mouse wheel over the drawing zooms it (or scrolls it, as Options say) while the dialog is open. Clicks on the drawing still do nothing until the dialog closes (#1035).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).

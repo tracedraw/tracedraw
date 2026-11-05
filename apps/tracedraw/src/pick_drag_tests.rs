@@ -21086,3 +21086,92 @@ fn the_object_click_distance_is_a_setting() {
     app.settings.nodes.object_pick_distance = 0.0;
     assert_eq!(app.hit_test(px(&app, 2.5)), None);
 }
+
+/// With Edit Fill or Outline Pen open, the wheel over the drawing
+/// (outside the dialog) still zooms it; a click there does nothing and
+/// the dialog stays (#1035).
+#[test]
+fn the_wheel_zooms_the_drawing_under_edit_fill_and_outline_pen() {
+    use crate::ui::dialogs::Dialog;
+    for outline in [false, true] {
+        let (ctx, mut app, id) = setup();
+        if outline {
+            app.open_outline_pen();
+        } else {
+            app.open_edit_fill();
+        }
+        assert!(matches!(
+            app.dialog,
+            Dialog::EditFill(_) | Dialog::OutlinePen(_)
+        ));
+        let mut t = 10.0;
+        let mut step = |app: &mut App, events: Vec<Event>| {
+            t += 1.0 / 60.0;
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    Pos2::ZERO,
+                    egui::vec2(1600.0, 1000.0),
+                )),
+                events,
+                time: Some(t),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+            out.textures_delta.clear();
+        };
+        for _ in 0..5 {
+            step(&mut app, Vec::new());
+        }
+        // A point of the drawing the dialog does not cover, and one on
+        // the dialog.
+        let c = app.canvas_rect;
+        let candidates = [
+            c.left_top() + egui::vec2(30.0, 30.0),
+            c.left_bottom() + egui::vec2(30.0, -30.0),
+            c.right_top() + egui::vec2(-30.0, 30.0),
+            c.right_bottom() + egui::vec2(-30.0, -30.0),
+        ];
+        let at = candidates
+            .into_iter()
+            .find(|p| crate::ui::chrome::over_modal_blocker(&ctx, *p))
+            .expect("some of the drawing shows beside the dialog");
+        let on_dialog = c.center();
+        let wheel = Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, 1.0),
+            phase: egui::TouchPhase::Move,
+            modifiers: Modifiers::NONE,
+        };
+        let z0 = app.view.zoom;
+        if !crate::ui::chrome::over_modal_blocker(&ctx, on_dialog) {
+            step(&mut app, vec![Event::PointerMoved(on_dialog)]);
+            step(&mut app, vec![wheel.clone()]);
+            for _ in 0..30 {
+                step(&mut app, Vec::new());
+            }
+            assert_eq!(app.view.zoom, z0, "the wheel over the dialog is its own");
+        }
+        step(&mut app, vec![Event::PointerMoved(at)]);
+        step(&mut app, vec![Event::PointerMoved(at)]);
+        step(&mut app, vec![wheel]);
+        for _ in 0..60 {
+            step(&mut app, Vec::new());
+        }
+        let z = app.view.zoom / z0;
+        assert!((z - 1.15).abs() < 0.01, "outline {outline}: {z}");
+        // A click on the drawing: nothing happens, the dialog stays.
+        step(
+            &mut app,
+            vec![button(at, true, PointerButton::Primary, Modifiers::NONE)],
+        );
+        step(
+            &mut app,
+            vec![button(at, false, PointerButton::Primary, Modifiers::NONE)],
+        );
+        assert_eq!(app.selection, vec![id]);
+        assert!(matches!(
+            app.dialog,
+            Dialog::EditFill(_) | Dialog::OutlinePen(_)
+        ));
+    }
+}
