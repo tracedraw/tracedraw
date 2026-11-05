@@ -370,7 +370,11 @@ bar move (`ui/bars.rs`).
   narrow window) is cut with an ellipsis and shows whole as a tooltip
   of the title; a window is never narrower than 68 px, room for the
   close button and a few letters (`ui::bars::title_room`,
-  `ui::bars::tests::floating_titles_fit_their_windows`). Dragging the
+  `ui::bars::tests::floating_titles_fit_their_windows`). The title runs
+  the window's whole width, the close button at its right end, also
+  when the bar's controls make the window wider (the property bar of
+  another tool, #1921;
+  `ui::bars::tests::a_floating_bars_close_button_follows_its_width`). Dragging the
   title moves it (near an edge it docks), a double click puts the bar
   back at its first place, and the close button hides it (Window >
   Toolbars shows it again). The floating toolbox is a grid two buttons

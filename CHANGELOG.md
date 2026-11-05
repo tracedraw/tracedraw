@@ -60,6 +60,8 @@ full, row-by-row status.
 
 - TraceCut > CutContour: the CutContour spot colour's swatch now joins the document palette, in the same undo step, so it can be picked again from there. The outlines got the spot colour, but the document palette stayed without it (#1927).
 
+- Floating bars: the close button stays at the right end of the title when the bar grows, for example the floating property bar of the Rectangle tool. It stayed where the bar's usual width put it, in the middle of the title, and the title strip ended there too (#1921).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).
