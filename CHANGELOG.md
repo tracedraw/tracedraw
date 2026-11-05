@@ -70,6 +70,8 @@ full, row-by-row status.
 
 - Cropping pictures for real: the Crop tool's bar has Crop picture pixels, which cuts an upright picture's pixels to the area so it stays a free picture (its transparency and CMYK inks cut alike) instead of going into a clip frame, and Bitmaps > Crop to Frame cuts a picture already in a clip frame to the frame and, for a rectangular frame, sets the picture free (#1913).
 
+- Tab ruler: the paragraph text flows to a tab stop while it is dragged, so the columns move with the marker; before, the text changed only when the button was let go. The text is laid out again at most 30 times a second, so long texts keep the drag smooth, and the drag stays one undo step (#1852, #1912).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).

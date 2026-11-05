@@ -20453,6 +20453,74 @@ fn the_tab_ruler_shows_the_default_grid_and_a_drag_keeps_it() {
     assert!(tab_stops_of(&app, id).is_empty());
 }
 
+/// While a stop is dragged the text flows to it as it moves, not only
+/// when the button is let go (#1852, #1912); the reflows come at most
+/// `LIVE_EVERY` apart, the stop dragged off the strip shows the text
+/// without it, and the whole drag is still one undo step.
+#[test]
+fn the_text_follows_a_tab_stop_while_it_is_dragged() {
+    use tracedraw_core::TabStop;
+    let (ctx, mut app, id) = editing_with_ruler(vec![TabStop::left(20.0)]);
+    let r = app.tab_ruler().expect("ruler");
+    let none = Modifiers::NONE;
+    let from = r.on_strip(20.0);
+    frame(&ctx, &mut app, vec![Event::PointerMoved(from)], none);
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(from, true, PointerButton::Primary, none)],
+        none,
+    );
+    let mut seen = Vec::new();
+    for x in [24.0, 28.0, 32.0, 36.0, 40.0, 40.0, 40.0, 40.0] {
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(r.on_strip(x))],
+            none,
+        );
+        assert!(app.tab_drag.is_some(), "still dragging");
+        seen.push(tab_stops_of(&app, id)[0].pos);
+    }
+    assert!(
+        seen.iter()
+            .any(|p| (p - 20.0).abs() > 1.0 && (p - 40.0).abs() > 1.0),
+        "the text follows on the way: {seen:?}"
+    );
+    let last = *seen.last().expect("seen");
+    assert!(
+        (last - 40.0).abs() < 0.6,
+        "and where the pointer rests: {seen:?}"
+    );
+    // Off the strip: the text shows without the stop while it is held.
+    let off = r.on_strip(40.0) - r.up * 60.0;
+    for _ in 0..4 {
+        frame(&ctx, &mut app, vec![Event::PointerMoved(off)], none);
+    }
+    assert!(tab_stops_of(&app, id).is_empty(), "the stop would go");
+    // Back on and let go at 30 mm.
+    let to = r.on_strip(30.0);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, vec![Event::PointerMoved(to)], none);
+    }
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(to, false, PointerButton::Primary, none)],
+        none,
+    );
+    frame(&ctx, &mut app, Vec::new(), none);
+    assert!(app.tab_drag.is_none());
+    let stops = tab_stops_of(&app, id);
+    assert_eq!(stops.len(), 1);
+    assert!((stops[0].pos - 30.0).abs() < 0.6, "{stops:?}");
+    // One undo step for the whole drag.
+    app.undo();
+    let back = tab_stops_of(&app, id);
+    assert_eq!(back.len(), 1);
+    assert!((back[0].pos - 20.0).abs() < 1e-9, "{back:?}");
+}
+
 /// The ruler shows only while a paragraph frame is edited with the Text
 /// tool: not for the Pick tool, nor for artistic text.
 #[test]

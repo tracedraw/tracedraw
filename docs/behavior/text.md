@@ -619,7 +619,12 @@ on its own line, which is why the lines are joined first.
     line down the frame where it would go; a drag starting away from a
     marker adds a stop and moves it. Released more than 18 points away
     from the strip, the stop is removed (its marker fades while it is
-    that far).
+    that far). The text flows to the stop while it moves, not only at
+    the release, laid out again at most every 1/30 s so a long text
+    keeps the drag smooth (and once more where the pointer rests); held
+    that far off the strip, the text shows without the stop. The drag
+    is one undo step (#1852, #1912,
+    `pick_drag_tests::the_text_follows_a_tab_stop_while_it_is_dragged`).
   - A right click on the strip opens a menu of the four kinds (Left,
     Center, Right, Decimal tab), the stop's own kind checked: a pick
     changes the stop under the pointer, or with none there adds a stop
