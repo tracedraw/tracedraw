@@ -1575,8 +1575,9 @@ pub struct App {
     pub pending_order: Option<bool>,
     /// What Edit > Repeat can repeat, newest last, each with the id of
     /// the undo step it made: Repeat takes the newest whose step is still
-    /// in effect (an undone action is never repeated, #366).
-    pub repeatables: Vec<(u64, Repeatable)>,
+    /// in effect (an undone action is never repeated, #366), with the
+    /// actions done right before it to the same selection (#1566).
+    pub repeatables: Vec<(u64, RepeatEntry)>,
     pub show_non_printing: bool,
     pub text_hyphenation: bool,
     /// Macro recording in progress: the commands run since Record started.
@@ -2254,7 +2255,23 @@ pub enum Repeatable {
     /// time (its centre, a side, a corner), so a turn or a resize does not
     /// also move what it is repeated on (#1289).
     Transform { transform: Affine, before: Rect },
+    /// Several of these, one after another, as one step: a Repeat of a
+    /// group (#1566).
+    Group(Vec<Repeatable>),
 }
+
+/// A repeatable action with the selection before and after it, which
+/// tells the actions done one after another to the same objects (a group
+/// Repeat replays together) from those done to other objects.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RepeatEntry {
+    pub action: Repeatable,
+    pub before: Vec<ShapeId>,
+    pub after: Vec<ShapeId>,
+}
+
+/// Most actions one Repeat replays.
+const REPEAT_GROUP_MAX: usize = 16;
 
 /// Where a docker lies: the default column (the right side of the
 /// window; the left in a right-to-left language), the column at the
@@ -4352,16 +4369,60 @@ impl App {
             .iter()
             .rev()
             .find(|(id, _)| self.engine.step_in_effect(*id))
-            .map(|(_, r)| r)
+            .map(|(_, r)| &r.action)
+    }
+
+    /// What Edit > Repeat replays, oldest first: the newest action whose
+    /// undo step is in effect, with the actions of the steps right under
+    /// it that were done to the same selection, with no other step and
+    /// no change of selection in between (a move and a fill change of
+    /// the same objects, #1566).
+    pub fn repeat_group(&self) -> Vec<Repeatable> {
+        let find = |id: u64| self.repeatables.iter().rev().find(|(i, _)| *i == id);
+        let Some((mut id, mut entry)) = self
+            .repeatables
+            .iter()
+            .rev()
+            .find(|(id, _)| self.engine.step_in_effect(*id))
+            .map(|(id, e)| (*id, e))
+        else {
+            return Vec::new();
+        };
+        let mut group = vec![entry.action.clone()];
+        // A Repeat of a group holds the actions before it already.
+        while group.len() < REPEAT_GROUP_MAX && !matches!(entry.action, Repeatable::Group(_)) {
+            let Some((below, prev)) = self.engine.step_below(id).and_then(find) else {
+                break;
+            };
+            if !same_objects(&prev.after, &entry.before) {
+                break;
+            }
+            group.push(prev.action.clone());
+            (id, entry) = (*below, prev);
+        }
+        group.reverse();
+        group
     }
 
     /// Remember `r` as the action of the undo step just recorded.
     pub(crate) fn note_repeatable(&mut self, r: Repeatable) {
+        let sel = self.selection.clone();
+        self.note_repeatable_from(r, sel);
+    }
+
+    /// [`note_repeatable`](Self::note_repeatable) of an action done to
+    /// `before`, which left the selection as it is now.
+    pub(crate) fn note_repeatable_from(&mut self, r: Repeatable, before: Vec<ShapeId>) {
         let Some(id) = self.engine.last_step_id() else {
             return;
         };
+        let entry = RepeatEntry {
+            action: r,
+            before,
+            after: self.selection.clone(),
+        };
         self.repeatables.retain(|(i, _)| *i != id);
-        self.repeatables.push((id, r));
+        self.repeatables.push((id, entry));
         // Only the newest few matter; the ones undone and replaced by
         // other steps never come back.
         if self.repeatables.len() > 64 {
@@ -4381,31 +4442,64 @@ impl App {
         let Some(before) = self.selection_bounds() else {
             return;
         };
+        let originals = self.selection.clone();
         // One step: the copies and their move (#471).
         let mark = self.engine.begin_group();
         self.duplicate_in_place();
         self.transform_selection(t);
         self.engine.end_group(mark, "Duplicate");
-        self.note_repeatable(Repeatable::Copy {
-            transform: t,
-            before,
-        });
+        self.note_repeatable_from(
+            Repeatable::Copy {
+                transform: t,
+                before,
+            },
+            originals,
+        );
     }
 
     /// Edit > Repeat: the last action still in effect again, on the
     /// current selection (a copy with a right click during a drag makes
-    /// another copy, moved as far again, #363).
+    /// another copy, moved as far again, #363), together with the actions
+    /// done right before it to the same objects, as one undo step
+    /// (#1566).
     pub fn repeat_last(&mut self) {
-        let cmd = match self.last_repeatable().cloned() {
-            Some(Repeatable::Command(cmd)) => *cmd,
-            Some(Repeatable::Copy { transform, before }) => {
+        let mut group = Vec::new();
+        for action in self.repeat_group() {
+            match action {
+                Repeatable::Group(actions) => group.extend(actions),
+                a => group.push(a),
+            }
+        }
+        match group.len() {
+            0 => {}
+            1 => self.repeat_action(group[0].clone()),
+            _ => {
+                let before = self.selection.clone();
+                let mark = self.engine.begin_group();
+                for action in &group {
+                    self.repeat_action(action.clone());
+                }
+                self.engine.end_group(mark, "Repeat");
+                // The joined step repeats as the whole group again.
+                if self.engine.last_step_id() != mark {
+                    self.note_repeatable_from(Repeatable::Group(group), before);
+                }
+            }
+        }
+    }
+
+    /// One repeatable action again, on the current selection.
+    fn repeat_action(&mut self, action: Repeatable) {
+        let cmd = match action {
+            Repeatable::Command(cmd) => *cmd,
+            Repeatable::Copy { transform, before } => {
                 let Some(now) = self.selection_bounds() else {
                     return;
                 };
                 self.copy_selection_by(repeated_transform(transform, before, now));
                 return;
             }
-            Some(Repeatable::Transform { transform, before }) => {
+            Repeatable::Transform { transform, before } => {
                 let Some(now) = self.selection_bounds() else {
                     return;
                 };
@@ -4416,7 +4510,12 @@ impl App {
                 });
                 return;
             }
-            None => return,
+            Repeatable::Group(actions) => {
+                for a in actions {
+                    self.repeat_action(a);
+                }
+                return;
+            }
         };
         let shapes = self.selection.clone();
         let cmd = match cmd {
@@ -9167,6 +9266,11 @@ fn three_point_arc(a: Point, b: Point, c: Point) -> Option<tracedraw_core::BezPa
         path.curve_to(p0 + tangent(t0) * k, p1 - tangent(t1) * k, p1);
     }
     Some(path)
+}
+
+/// `a` and `b` name the same objects, in any order (and some).
+fn same_objects(a: &[ShapeId], b: &[ShapeId]) -> bool {
+    !a.is_empty() && a.len() == b.len() && a.iter().all(|id| b.contains(id))
 }
 
 /// `t`, done to objects whose box was `before`, redone about the same

@@ -506,6 +506,16 @@ impl Engine {
         self.undo.iter().any(|e| e.id == id)
     }
 
+    /// The id of the step just under step `id` on the undo stack (the
+    /// one made right before it and still in effect); `None` when `id`
+    /// is the oldest or not in effect.
+    pub fn step_below(&self, id: u64) -> Option<u64> {
+        let i = self.undo.iter().position(|e| e.id == id)?;
+        i.checked_sub(1)
+            .and_then(|j| self.undo.get(j))
+            .map(|e| e.id)
+    }
+
     /// Labels of the undo stack (oldest first) and the redo stack.
     pub fn history_labels(&self) -> (Vec<&'static str>, Vec<&'static str>) {
         (
@@ -725,6 +735,9 @@ mod tests {
         let (shape, a) = add(&mut eng);
         let (_, b) = add(&mut eng);
         assert_ne!(a, b);
+        // The steps in the order they were made.
+        assert_eq!(eng.step_below(b), Some(a));
+        assert_eq!(eng.step_below(a), None);
         assert!(eng.step_in_effect(a) && eng.step_in_effect(b));
         eng.amend(&Command::SetOpacity {
             shapes: vec![shape],

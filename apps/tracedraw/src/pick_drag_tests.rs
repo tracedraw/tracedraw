@@ -217,6 +217,61 @@ fn a_right_click_while_dragging_leaves_the_original() {
     assert!(app.dialog_is_none_or_menu_closed());
 }
 
+/// Repeat replays the last group of actions done to one selection, a
+/// move and a fill change together, not only the newest of them; a
+/// change of selection between two actions starts a new group (#1566,
+/// #1547).
+#[test]
+fn repeat_replays_the_last_group_of_actions_on_one_selection() {
+    let (_ctx, mut app, a) = setup();
+    let new_rect = |app: &mut App, x: f64| {
+        app.new_shape(ShapeKind::Rect {
+            rect: Rect::new(x, 100.0, x + 20.0, 120.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect")
+    };
+    let b = new_rect(&mut app, 100.0);
+    let c = new_rect(&mut app, 150.0);
+    let blue = tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(0, 0, 255));
+    let green = tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(0, 200, 0));
+    let fill_of = |app: &App, id: ShapeId| app.doc().find_shape(id).map(|s| s.fill.clone());
+    // A is moved 10 mm to the right, then filled blue.
+    app.select(vec![a]);
+    app.run(tracedraw_core::Command::TransformShapes {
+        shapes: vec![a],
+        transform: Affine::translate(Vec2::new(10.0, 0.0)),
+    });
+    app.apply_fill(blue.clone());
+    // Repeat on B: moved and filled, as one undo step.
+    app.select(vec![b]);
+    let b_x = bounds(&app, b).x0;
+    let steps = app.engine.history_labels().0.len();
+    app.repeat_last();
+    assert!(close(bounds(&app, b).x0, b_x + 10.0), "B moved too");
+    assert_eq!(fill_of(&app, b), Some(blue.clone()));
+    assert_eq!(app.engine.history_labels().0.len(), steps + 1, "one step");
+    // Again on C: the same group again.
+    app.select(vec![c]);
+    let c_x = bounds(&app, c).x0;
+    app.repeat_last();
+    assert!(close(bounds(&app, c).x0, c_x + 10.0));
+    assert_eq!(fill_of(&app, c), Some(blue.clone()));
+    // A move of C, then green on B: only the green is repeated on A.
+    app.run(tracedraw_core::Command::TransformShapes {
+        shapes: vec![c],
+        transform: Affine::translate(Vec2::new(0.0, 5.0)),
+    });
+    app.select(vec![b]);
+    app.apply_fill(green.clone());
+    app.select(vec![a]);
+    let a_box = bounds(&app, a);
+    app.repeat_last();
+    assert_eq!(fill_of(&app, a), Some(green));
+    assert!(close(bounds(&app, a).y0, a_box.y0), "A not moved");
+}
+
 /// Repeat after a copy made with a right click during a drag makes
 /// another copy, as far again from the last one (#363).
 #[test]
