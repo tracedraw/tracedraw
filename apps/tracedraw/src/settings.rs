@@ -172,6 +172,8 @@ pub struct Settings {
     #[serde(default)]
     pub bitmap_editor: String,
     pub last_dir: Option<PathBuf>,
+    /// Folders bookmarked in the Save Drawing dialog (#1391).
+    pub folder_bookmarks: Vec<PathBuf>,
     pub color: ColorPrefs,
     /// Show the Outline flyout in the toolbox (hidden by default).
     pub show_outline_flyout: bool,
@@ -1720,6 +1722,7 @@ impl Default for Settings {
             shortcuts: Vec::new(),
             bitmap_editor: String::new(),
             last_dir: None,
+            folder_bookmarks: Vec::new(),
             color: ColorPrefs::default(),
             show_outline_flyout: false,
             wheel_zooms: true,
@@ -1887,12 +1890,13 @@ const WEB_KEY: &str = "tracedraw.settings";
 
 impl Settings {
     /// The preferences as TraceDraw comes, keeping what is history rather
-    /// than choice: the recent drawings, the last folder and the window's
-    /// size.
+    /// than choice: the recent drawings, the last folder, the bookmarked
+    /// folders and the window's size.
     pub fn reset_keeping_history(&self) -> Settings {
         Settings {
             recent_files: self.recent_files.clone(),
             last_dir: self.last_dir.clone(),
+            folder_bookmarks: self.folder_bookmarks.clone(),
             window_maximized: self.window_maximized,
             window_size: self.window_size,
             ..Settings::default()
