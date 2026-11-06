@@ -558,7 +558,7 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     }
 }
 
-fn node_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
+pub(crate) fn node_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     use tracedraw_core::nodes::NodeType;
     // A B-spline's chosen control points: fixed (the curve passes
     // through them) or floating (#1758).
@@ -577,8 +577,16 @@ fn node_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     if ci(ui, close, "context.node_add", "", has_nodes) {
         app.add_node_midpoints();
     }
-    if ci(ui, close, "context.node_delete", "Delete", has_nodes) {
-        app.delete_selected_nodes();
+    // The chosen nodes go, the curve stays; with no node chosen the
+    // selected object goes, as with the Delete key (#1982).
+    if ci(
+        ui,
+        close,
+        "context.node_delete",
+        "Delete",
+        has_nodes || !app.selection.is_empty(),
+    ) {
+        app.delete_nodes_or_selection();
     }
     sep(ui);
     if ci(

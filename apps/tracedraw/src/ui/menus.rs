@@ -2628,8 +2628,10 @@ fn edit_menu(app: &mut App, ui: &mut Ui) {
         ) {
             app.text_delete_forward();
         }
-    } else if item(ui, "menu.edit.delete", "Delete", has) {
-        app.delete_selection();
+    } else if item(ui, "menu.edit.delete", "Delete", has || app.nodes_chosen()) {
+        // With the Shape tool and nodes chosen: the nodes, not the
+        // object they belong to (#1982).
+        app.delete_nodes_or_selection();
     }
     sep(ui);
     // Guidelines selected (no objects) duplicate too.

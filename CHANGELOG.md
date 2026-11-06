@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Shape tool: Edit > Delete removes the chosen nodes, as the Delete key and the right-click menu do, and the curve stays; it deleted the whole object while nodes were chosen. With no node chosen, Edit > Delete and the right-click menu's Delete remove the selected object as the Delete key does (the menu row was greyed then). One undo step brings the nodes back (#1982).
+
 - Linked text content: Text > Link Text Content (also on the right-click menu) links the characters of two texts or more, so whatever is typed in any of them appears in the others at once, both ways, while each keeps its own font, size, colours and effects. Change the word of a 3D blend, an extrusion or a shadow text once. The Blend panel can link the two texts of a blend; a linked text shows the others of its link with dashed outlines and a chain mark, Undo takes a change back in all of them in one step, copies stay linked, and Unlink Text Content lets a text go its own way. This is not the frame flow of Paragraph Text Frame > Link; `.tdraw` files keep the link, `.cdr` files get plain texts (#1568, #1364, #1194).
 
 ## 0.41.0 (2026-11-06)
