@@ -3589,6 +3589,7 @@ status.settings_reset = "所有設定都已還原為預設值"
 status.settings_saved = "已將設定儲存為預設值"
 status.software_renderer = "視窗由軟體介面卡繪製（{name}）：每一格都在 CPU 上繪製，因此 TraceDraw 限制為每秒 30 格且不繪製陰影。安裝顯示卡本身的驅動程式會更快。" # mt
 status.software_renderer_off = "正在用 CPU 繪製（{name}）：硬體加速已關閉。按一下在 選項 > 一般 中開啟。" # mt
+status.renderer_fell_back = "上次啟動未能顯示視窗，因此 TraceDraw 現在使用 {name} 繪製。按一下可在「選項 > 一般」中選擇顯示卡或硬體加速。" # mt
 status.shaping_empty = "組合形狀產生了空白結果" # mt
 status.shaping_open_cutter = "開放曲線不參與此操作：修剪會沿開放曲線切開封閉物件"
 status.shaping_open_no_cut = "開放曲線沒有從一邊到另一邊穿過物件：未切割任何內容"
