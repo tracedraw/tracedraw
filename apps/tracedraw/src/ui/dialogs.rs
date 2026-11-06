@@ -408,13 +408,14 @@ pub fn export_format_for_extension(ext: &str) -> Option<usize> {
 /// format, so the export stayed at the last format, SVG at first.
 pub fn export_file_filters(format: usize) -> Vec<(String, Vec<&'static str>)> {
     let format = format.min(EXPORT_FORMATS.len() - 1);
+    // The Export list's order names the common formats twice; each
+    // format is offered once, where it comes first.
     let mut order = vec![format];
-    order.extend(
-        export_format_order()
-            .into_iter()
-            .flatten()
-            .filter(|i| *i != format),
-    );
+    for i in export_format_order().into_iter().flatten() {
+        if !order.contains(&i) {
+            order.push(i);
+        }
+    }
     order
         .into_iter()
         .map(|i| {
