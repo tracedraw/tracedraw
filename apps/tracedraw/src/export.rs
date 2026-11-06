@@ -742,15 +742,26 @@ pub fn print(app: &mut App, st: &PrintState) -> Result<String, String> {
             } else {
                 ("pdf", "PDF")
             };
-            let bytes = if ps {
-                postscript_level(tracedraw_io::eps::document_to_ps(&doc), st.ps_level).into_bytes()
+            let (other_ext, other_filter) = if ps {
+                ("pdf", "PDF")
             } else {
-                tracedraw_io::pdf::document_to_pdf(&doc)
+                ("ps", "PostScript")
             };
+            let level = st.ps_level;
+            // The save dialog offers both file types, the destination's
+            // first; the type chosen there (the name's extension) decides
+            // which file is written.
             crate::files::Dialog::new()
                 .add_filter(filter, &[ext])
+                .add_filter(other_filter, &[other_ext])
                 .set_file_name(format!("{stem}.{ext}"))
                 .save_file(app, move |app, path| {
+                    let bytes = if print_file_is_postscript(&path, ps) {
+                        postscript_level(tracedraw_io::eps::document_to_ps(&doc), level)
+                            .into_bytes()
+                    } else {
+                        tracedraw_io::pdf::document_to_pdf(&doc)
+                    };
                     app.status = match crate::files::write(&path, bytes) {
                         Ok(()) => trf("status.exported", &[("path", &path.display().to_string())]),
                         Err(e) => format!("{}: {e}", tr("dialog.print_failed")),
@@ -1039,6 +1050,21 @@ fn repeat_copies(doc: &mut Document, copies: usize, collate: bool) {
 }
 
 /// The PostScript file's language level in its header comments.
+/// Whether a print to a file writes PostScript: a name ending in `.ps`
+/// does, `.pdf` writes PDF, and any other name follows the destination
+/// chosen in the Print dialog (`ps`).
+fn print_file_is_postscript(path: &Path, ps: bool) -> bool {
+    match path
+        .extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("ps") => true,
+        Some("pdf") => false,
+        _ => ps,
+    }
+}
+
 fn postscript_level(ps: String, level: u8) -> String {
     let level = level.clamp(2, 3);
     match ps.find('\n') {
@@ -4521,6 +4547,24 @@ mod tests {
         // from the start's centre (30, 110) to the end's (220, 140).
         let want = tracedraw_core::geometry::Point::new(172.5 - bounds.x0, 132.5 - bounds.y0);
         assert!((last - want).hypot() < 1e-6, "{last:?}, not {want:?}");
+    }
+}
+
+#[cfg(test)]
+mod print_file_tests {
+    use super::print_file_is_postscript;
+    use std::path::Path;
+
+    /// The save dialog of a print to a file offers PDF and PostScript;
+    /// the name's extension decides which is written, in any case, and a
+    /// name with neither follows the destination chosen.
+    #[test]
+    fn the_print_file_s_type_decides_between_pdf_and_postscript() {
+        assert!(print_file_is_postscript(Path::new("out/a.ps"), false));
+        assert!(print_file_is_postscript(Path::new("out/a.PS"), false));
+        assert!(!print_file_is_postscript(Path::new("out/a.pdf"), true));
+        assert!(print_file_is_postscript(Path::new("out/a"), true));
+        assert!(!print_file_is_postscript(Path::new("out/a.txt"), false));
     }
 }
 
