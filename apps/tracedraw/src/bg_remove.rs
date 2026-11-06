@@ -21,6 +21,10 @@
 //! 5. Clean edge colours takes the background's colour out of the
 //!    half-transparent edge pixels, so no halo of the old backdrop shows
 //!    on a new one.
+//! 6. Brush strokes painted on the preview erase more or restore what
+//!    went, in the order painted (`BgStroke`).
+//! 7. The removed background is left transparent or filled with a
+//!    colour or a gradient (`BgFill`).
 //!
 //! See docs/behavior/remove-background.md.
 
@@ -44,6 +48,69 @@ pub struct BgSettings {
     pub clean_edges: bool,
     /// The colours to remove; empty is one Automatic entry.
     pub colors: Vec<BgPick>,
+    /// Brush strokes painted on the preview, in order: each erases more
+    /// or restores the picture under it.
+    pub strokes: Vec<BgStroke>,
+    /// What the removed background becomes.
+    pub fill: BgFill,
+}
+
+/// One stroke of the Erase or Restore brush.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BgStroke {
+    /// Erase (true) or Restore (false).
+    pub erase: bool,
+    /// The brush's diameter, in pixels of the bitmap.
+    pub size: f32,
+    /// How much of the brush is fully opaque before its edge fades,
+    /// 0 to 100 percent.
+    pub hardness: f32,
+    /// The points the brush passed, as fractions of the picture's width
+    /// and height; one point is a dab.
+    pub points: Vec<[f32; 2]>,
+}
+
+/// What the removed background becomes.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum BgFill {
+    /// Transparent.
+    #[default]
+    None,
+    /// One colour.
+    Color([u8; 3]),
+    /// A linear gradient from `from` to `to` across the picture, along
+    /// `angle` degrees (0 left to right, 90 top to bottom).
+    Gradient {
+        from: [u8; 3],
+        to: [u8; 3],
+        angle: f32,
+    },
+}
+
+impl BgFill {
+    /// The fill's colour at pixel (`x`, `y`) of a `w` x `h` picture; the
+    /// gradient spans the picture along its angle whatever its size, so
+    /// a preview and the bitmap agree.
+    pub fn at(&self, x: u32, y: u32, w: u32, h: u32) -> Option<[f32; 3]> {
+        match *self {
+            BgFill::None => None,
+            BgFill::Color(c) => Some(c.map(|v| v as f32)),
+            BgFill::Gradient { from, to, angle } => {
+                let a = if angle.is_finite() { angle } else { 0.0 }.to_radians();
+                let (cos, sin) = (a.cos(), a.sin());
+                let (wf, hf) = (w.max(1) as f32, h.max(1) as f32);
+                let px = x as f32 + 0.5 - wf / 2.0;
+                let py = y as f32 + 0.5 - hf / 2.0;
+                let ext = (wf * cos.abs() + hf * sin.abs()) / 2.0;
+                let t = if ext > 0.0 {
+                    ((px * cos + py * sin) / ext * 0.5 + 0.5).clamp(0.0, 1.0)
+                } else {
+                    0.5
+                };
+                Some([0, 1, 2].map(|k| from[k] as f32 + (to[k] as f32 - from[k] as f32) * t))
+            }
+        }
+    }
 }
 
 /// One colour to remove: Automatic (learnt from the border) or picked,
@@ -159,6 +226,8 @@ impl Default for BgSettings {
             despeckle: true,
             clean_edges: true,
             colors: vec![BgPick::AUTO],
+            strokes: Vec::new(),
+            fill: BgFill::None,
         }
     }
 }
@@ -305,13 +374,45 @@ fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// The picture with its background transparent. `scale` is the size of
-/// `img` against the bitmap (previews are smaller), so the softness keeps
-/// its look.
+/// The picture with its background removed: transparent, or the fill
+/// the settings ask for, after the brush strokes. `scale` is the size of
+/// `img` against the bitmap (previews are smaller), so the softness and
+/// the brush keep their look.
 pub fn remove_background(img: &RgbaImage, s: &BgSettings, scale: f32) -> RgbaImage {
+    finish(img, &matte(img, s, scale), s, scale)
+}
+
+/// What the automatic removal found: each pixel's opacity (1 where the
+/// subject stays) and the backdrop colour it was nearest to, for
+/// cleaning edge colours. It depends on the colours, tolerance,
+/// softness and boxes, not on the brush strokes or the fill, so the
+/// preview keeps it while strokes are painted.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Matte {
+    pub width: u32,
+    pub height: u32,
+    pub keep: Vec<f32>,
+    /// Each pixel's backdrop colour; empty when nothing was removed.
+    pub backdrop: Vec<[f32; 3]>,
+}
+
+impl Matte {
+    /// Nothing removed: every pixel stays.
+    fn whole(w: u32, h: u32) -> Self {
+        Matte {
+            width: w,
+            height: h,
+            keep: vec![1.0; w as usize * h as usize],
+            backdrop: Vec::new(),
+        }
+    }
+}
+
+/// The automatic removal's matte of `img` (see [`Matte`]).
+pub fn matte(img: &RgbaImage, s: &BgSettings, scale: f32) -> Matte {
     let (w, h) = img.dimensions();
     if w == 0 || h == 0 {
-        return img.clone();
+        return Matte::whole(w, h);
     }
     // Every background colour with its tolerance: an Automatic entry
     // brings the colours learnt from the border, a picked one its own.
@@ -335,7 +436,7 @@ pub fn remove_background(img: &RgbaImage, s: &BgSettings, scale: f32) -> RgbaIma
         }
     }
     if bg.is_empty() {
-        return img.clone();
+        return Matte::whole(w, h);
     }
     let (wu, hu) = (w as usize, h as usize);
     let n = wu * hu;
@@ -486,23 +587,172 @@ pub fn remove_background(img: &RgbaImage, s: &BgSettings, scale: f32) -> RgbaIma
         box_blur(&mut keep, wu, hu, r);
         box_blur(&mut keep, wu, hu, r);
     }
-    let mut out = img.clone();
-    for (i, p) in out.pixels_mut().enumerate() {
-        let a = keep[i];
-        let orig = p.0[3] as f32;
-        if a >= 0.999 {
+    let backdrop = which
+        .iter()
+        .map(|&k| bg.get(k as usize).map_or([0.0; 3], |b| b.rgb))
+        .collect();
+    Matte {
+        width: w,
+        height: h,
+        keep,
+        backdrop,
+    }
+}
+
+/// The opacity the brush strokes leave, starting from the matte's: each
+/// stroke in turn erases (opacity times one less its cover) or restores
+/// (towards fully kept by its cover). A stroke covers each pixel by its
+/// nearest point on the stroke's path, so overlapping parts of one
+/// stroke do not add up.
+pub fn paint_strokes(keep: &mut [f32], w: u32, h: u32, strokes: &[BgStroke], scale: f32) {
+    let (wu, hu) = (w as usize, h as usize);
+    if wu == 0 || hu == 0 || keep.len() != wu * hu {
+        return;
+    }
+    let mut cover: Vec<f32> = Vec::new();
+    for st in strokes {
+        let pts: Vec<[f32; 2]> = st
+            .points
+            .iter()
+            .filter(|p| p[0].is_finite() && p[1].is_finite())
+            .map(|p| [p[0] * w as f32, p[1] * h as f32])
+            .collect();
+        if pts.is_empty() {
             continue;
         }
-        if s.clean_edges && a > 0.05 {
-            // The pixel was a * subject + (1 - a) * backdrop: solve for
-            // the subject's colour.
-            let b = bg[which[i] as usize].rgb;
-            for (ch, back) in p.0.iter_mut().zip(b) {
-                let c = *ch as f32;
-                *ch = ((c - (1.0 - a) * back) / a).round().clamp(0.0, 255.0) as u8;
+        let size = if st.size.is_finite() { st.size } else { 1.0 };
+        let r = (size.max(1.0) * scale.max(0.0) / 2.0).max(0.5);
+        let hard = if st.hardness.is_finite() {
+            (st.hardness / 100.0).clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        // Fully covered out to `inner`, fading to nothing at `r`, over
+        // at least one pixel so a hard edge is anti-aliased.
+        let inner = (r * hard).min(r - 0.5).max(0.0);
+        let fade = (r - inner).max(1.0);
+        let profile = |d: f32| {
+            if d <= inner {
+                1.0
+            } else {
+                let t = (1.0 - (d - inner) / fade).clamp(0.0, 1.0);
+                t * t * (3.0 - 2.0 * t)
+            }
+        };
+        // The stroke's bounds, in pixels.
+        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for p in &pts {
+            x0 = x0.min(p[0]);
+            y0 = y0.min(p[1]);
+            x1 = x1.max(p[0]);
+            y1 = y1.max(p[1]);
+        }
+        let bx0 = (x0 - r - 1.0).floor().max(0.0) as usize;
+        let by0 = (y0 - r - 1.0).floor().max(0.0) as usize;
+        let bx1 = ((x1 + r + 1.0).ceil().max(0.0) as usize).min(wu);
+        let by1 = ((y1 + r + 1.0).ceil().max(0.0) as usize).min(hu);
+        if bx0 >= bx1 || by0 >= by1 {
+            continue;
+        }
+        let bw = bx1 - bx0;
+        cover.clear();
+        cover.resize(bw * (by1 - by0), 0.0);
+        // Each segment (or the lone dab) covers the pixels near it.
+        let segs: Vec<([f32; 2], [f32; 2])> = if pts.len() == 1 {
+            vec![(pts[0], pts[0])]
+        } else {
+            pts.windows(2).map(|s| (s[0], s[1])).collect()
+        };
+        for (a, b) in segs {
+            let sx0 = ((a[0].min(b[0]) - r - 1.0).floor().max(bx0 as f32)) as usize;
+            let sy0 = ((a[1].min(b[1]) - r - 1.0).floor().max(by0 as f32)) as usize;
+            let sx1 = ((a[0].max(b[0]) + r + 1.0).ceil().max(0.0) as usize).min(bx1);
+            let sy1 = ((a[1].max(b[1]) + r + 1.0).ceil().max(0.0) as usize).min(by1);
+            let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+            let len2 = dx * dx + dy * dy;
+            for y in sy0..sy1 {
+                let py = y as f32 + 0.5;
+                for x in sx0..sx1 {
+                    let px = x as f32 + 0.5;
+                    let t = if len2 > 0.0 {
+                        (((px - a[0]) * dx + (py - a[1]) * dy) / len2).clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    };
+                    let (qx, qy) = (a[0] + dx * t - px, a[1] + dy * t - py);
+                    let d = (qx * qx + qy * qy).sqrt();
+                    if d >= r + 0.5 {
+                        continue;
+                    }
+                    let c = profile(d);
+                    let slot = &mut cover[(y - by0) * bw + (x - bx0)];
+                    if c > *slot {
+                        *slot = c;
+                    }
+                }
             }
         }
-        p.0[3] = (orig * a).round().clamp(0.0, 255.0) as u8;
+        for y in by0..by1 {
+            for x in bx0..bx1 {
+                let c = cover[(y - by0) * bw + (x - bx0)];
+                if c <= 0.0 {
+                    continue;
+                }
+                let k = &mut keep[y * wu + x];
+                *k = if st.erase {
+                    *k * (1.0 - c)
+                } else {
+                    *k + (1.0 - *k) * c
+                };
+            }
+        }
+    }
+}
+
+/// The picture through the matte, the settings' brush strokes and fill.
+/// A pixel the automatic removal made partly transparent loses the
+/// backdrop's colour (Clean edge colours); one the brush alone thinned
+/// keeps its colour. With a fill, the result is opaque: the picture over
+/// the fill.
+pub fn finish(img: &RgbaImage, m: &Matte, s: &BgSettings, scale: f32) -> RgbaImage {
+    let (w, h) = img.dimensions();
+    let n = w as usize * h as usize;
+    if m.width != w || m.height != h || m.keep.len() != n {
+        return img.clone();
+    }
+    let mut keep = m.keep.clone();
+    paint_strokes(&mut keep, w, h, &s.strokes, scale);
+    let mut out = img.clone();
+    let clean = s.clean_edges && m.backdrop.len() == n;
+    for (i, p) in out.pixels_mut().enumerate() {
+        let a = keep[i];
+        if a < 0.999 {
+            let auto = m.keep[i];
+            if clean && auto < 0.999 {
+                // The pixel was u * subject + (1 - u) * backdrop: solve
+                // for the subject's colour, with u what the automatic
+                // removal found or more where the brush restored.
+                let u = auto.max(a);
+                if u > 0.05 {
+                    for (ch, back) in p.0.iter_mut().zip(m.backdrop[i]) {
+                        let c = *ch as f32;
+                        *ch = ((c - (1.0 - u) * back) / u).round().clamp(0.0, 255.0) as u8;
+                    }
+                }
+            }
+            p.0[3] = (p.0[3] as f32 * a).round().clamp(0.0, 255.0) as u8;
+        }
+        if s.fill != BgFill::None && p.0[3] < 255 {
+            let x = (i % w as usize) as u32;
+            let y = (i / w as usize) as u32;
+            if let Some(f) = s.fill.at(x, y, w, h) {
+                let al = p.0[3] as f32 / 255.0;
+                for (ch, fc) in p.0.iter_mut().zip(f) {
+                    *ch = (*ch as f32 * al + fc * (1.0 - al)).round().clamp(0.0, 255.0) as u8;
+                }
+                p.0[3] = 255;
+            }
+        }
     }
     out
 }
@@ -975,5 +1225,150 @@ mod tests {
             ..BgSettings::default()
         };
         assert_eq!(t.remove_nearest([255, 255, 255], &learnt), Some(1));
+    }
+
+    fn stroke(erase: bool, size: f32, hardness: f32, points: &[[f32; 2]]) -> BgStroke {
+        BgStroke {
+            erase,
+            size,
+            hardness,
+            points: points.to_vec(),
+        }
+    }
+
+    /// The Erase brush takes away the subject under it; the Restore
+    /// brush brings back the removed backdrop with its own colours; the
+    /// strokes count in the order painted, and what neither touches is
+    /// as the automatic removal left it.
+    #[test]
+    fn the_brushes_erase_and_restore() {
+        let img = picture();
+        let plain = remove_background(&img, &BgSettings::default(), 1.0);
+        assert_eq!(plain.get_pixel(40, 22).0[3], 255);
+        assert_eq!(plain.get_pixel(70, 30).0[3], 0);
+        // Erase across the disc's middle row, hard: the subject goes
+        // there; the backdrop at (70, 30) is restored by the next stroke.
+        let s = BgSettings {
+            strokes: vec![
+                stroke(true, 6.0, 100.0, &[[0.4, 0.5], [0.6, 0.5]]),
+                stroke(false, 10.0, 100.0, &[[70.0 / 80.0, 0.5]]),
+            ],
+            ..BgSettings::default()
+        };
+        let out = remove_background(&img, &s, 1.0);
+        assert_eq!(out.get_pixel(40, 30).0[3], 0, "erased");
+        assert_eq!(out.get_pixel(44, 30).0[3], 0, "erased along the path");
+        assert_eq!(out.get_pixel(40, 22).0[3], 255, "off the path, kept");
+        assert_eq!(out.get_pixel(70, 30).0, img.get_pixel(70, 30).0, "restored");
+        assert_eq!(out.get_pixel(70, 40).0[3], 0, "off the dab, removed");
+        // The same strokes the other way round: restoring first, then
+        // erasing over it, leaves it erased.
+        let s = BgSettings {
+            strokes: vec![
+                stroke(false, 10.0, 100.0, &[[0.5, 0.5]]),
+                stroke(true, 10.0, 100.0, &[[0.5, 0.5]]),
+            ],
+            ..BgSettings::default()
+        };
+        assert_eq!(remove_background(&img, &s, 1.0).get_pixel(40, 30).0[3], 0);
+    }
+
+    /// Hardness: a hard brush covers fully out to near its edge, a soft
+    /// one fades from its centre, so half way out it erases only part.
+    #[test]
+    fn hardness_fades_the_brush_edge() {
+        let img = RgbaImage::from_pixel(100, 100, Rgba([200, 30, 30, 255]));
+        let s = |hardness: f32| BgSettings {
+            colors: vec![BgPick::color([0, 0, 255])],
+            strokes: vec![stroke(true, 40.0, hardness, &[[0.5, 0.5]])],
+            ..BgSettings::default()
+        };
+        let hard = remove_background(&img, &s(100.0), 1.0);
+        let soft = remove_background(&img, &s(0.0), 1.0);
+        assert_eq!(hard.get_pixel(50, 50).0[3], 0);
+        assert_eq!(hard.get_pixel(50 + 15, 50).0[3], 0);
+        assert_eq!(hard.get_pixel(50 + 25, 50).0[3], 255, "outside the brush");
+        assert!(soft.get_pixel(50, 50).0[3] < 5, "the centre is covered");
+        let mid = soft.get_pixel(50 + 10, 50).0[3];
+        assert!(mid > 20 && mid < 235, "half way out: {mid}");
+        // The brush alone thinned it: its colour stays.
+        assert_eq!(&soft.get_pixel(60, 50).0[..3], &[200, 30, 30]);
+    }
+
+    /// The brush's size is in pixels of the bitmap: on a copy at half
+    /// the size it covers the same part of the picture.
+    #[test]
+    fn the_brush_keeps_its_size_on_a_smaller_copy() {
+        let big = RgbaImage::from_pixel(200, 200, Rgba([200, 30, 30, 255]));
+        let small = RgbaImage::from_pixel(100, 100, Rgba([200, 30, 30, 255]));
+        let s = BgSettings {
+            colors: vec![BgPick::color([0, 0, 255])],
+            strokes: vec![stroke(true, 60.0, 100.0, &[[0.5, 0.5]])],
+            ..BgSettings::default()
+        };
+        let gone = |img: &RgbaImage| img.pixels().filter(|p| p.0[3] == 0).count() as f32;
+        let a = gone(&remove_background(&big, &s, 1.0)) / 40000.0;
+        let b = gone(&remove_background(&small, &s, 0.5)) / 10000.0;
+        assert!(a > 0.05, "{a}");
+        assert!((a - b).abs() < 0.01, "{a} vs {b}");
+    }
+
+    /// A fill puts a colour or a gradient where the background went: the
+    /// result is opaque, the subject keeps its colour, the rim is the
+    /// subject over the new colour.
+    #[test]
+    fn the_background_is_filled_with_a_colour_or_a_gradient() {
+        let img = picture();
+        let s = BgSettings {
+            fill: BgFill::Color([0, 0, 255]),
+            ..BgSettings::default()
+        };
+        let out = remove_background(&img, &s, 1.0);
+        assert!(out.pixels().all(|p| p.0[3] == 255), "opaque");
+        assert_eq!(out.get_pixel(70, 30).0, [0, 0, 255, 255]);
+        assert_eq!(out.get_pixel(40, 22).0, [200, 30, 30, 255]);
+        // The gradient: left to right at 0 degrees, top to bottom at 90.
+        let g = |angle: f32| BgSettings {
+            fill: BgFill::Gradient {
+                from: [0, 0, 0],
+                to: [255, 255, 255],
+                angle,
+            },
+            ..BgSettings::default()
+        };
+        let lr = remove_background(&img, &g(0.0), 1.0);
+        assert!(lr.get_pixel(1, 30).0[0] < 10);
+        assert!(lr.get_pixel(78, 30).0[0] > 245);
+        assert_eq!(lr.get_pixel(40, 22).0, [200, 30, 30, 255]);
+        let tb = remove_background(&img, &g(90.0), 1.0);
+        assert!(tb.get_pixel(40, 0).0[0] < 10);
+        assert!(tb.get_pixel(40, 59).0[0] > 245);
+        // Nothing removed (a transparent picture left alone), the fill
+        // still goes under its transparent parts.
+        let clear = RgbaImage::from_pixel(10, 10, Rgba([0, 0, 0, 0]));
+        let out = remove_background(&clear, &s, 1.0);
+        assert_eq!(out.get_pixel(5, 5).0, [0, 0, 255, 255]);
+        // The same gradient on a copy of half the size agrees.
+        let f = g(30.0).fill;
+        let a = f.at(40, 10, 80, 60).expect("colour");
+        let b = f.at(20, 5, 40, 30).expect("colour");
+        assert!((a[0] - b[0]).abs() < 4.0, "{a:?} {b:?}");
+    }
+
+    /// Strokes with no points, or points that are not numbers, change
+    /// nothing; strokes off the picture are cut at its edge.
+    #[test]
+    fn odd_strokes_change_nothing() {
+        let img = picture();
+        let plain = remove_background(&img, &BgSettings::default(), 1.0);
+        let s = BgSettings {
+            strokes: vec![
+                stroke(true, 10.0, 50.0, &[]),
+                stroke(true, f32::NAN, f32::NAN, &[[f32::NAN, 0.5]]),
+                stroke(true, 10.0, 50.0, &[[-3.0, -3.0], [-2.0, 5.0]]),
+            ],
+            ..BgSettings::default()
+        };
+        assert_eq!(remove_background(&img, &s, 1.0), plain);
     }
 }
