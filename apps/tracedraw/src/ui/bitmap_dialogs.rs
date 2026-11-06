@@ -487,23 +487,153 @@ fn paletted_settings(ui: &mut Ui, s: &mut PalettedSettings, thumb: Option<&RgbaI
 
 /// The Remove Background dialog's state: the settings, whether a click
 /// on the preview picks a colour, and what a plain click picks: the
-/// colour of list entry `row`, or a new entry while `adding`.
+/// colour of list entry `row`, or a new entry while `adding`; the brush
+/// that is on (a drag on the preview paints with it), its size and
+/// hardness, and whether a stroke is being painted.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BgRemoveState {
     pub settings: crate::bg_remove::BgSettings,
     pub picking: bool,
     pub adding: bool,
     pub row: usize,
+    pub tool: Option<BgTool>,
+    pub brush: BgBrush,
+    pub stroking: bool,
+}
+
+/// The two brushes of Remove Background.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BgTool {
+    /// Takes away more of the picture.
+    Erase,
+    /// Brings back the picture as it was.
+    Restore,
+}
+
+/// The brushes' size (pixels of the bitmap, across) and hardness
+/// (percent of the brush fully opaque before its edge fades).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BgBrush {
+    pub size: f32,
+    pub hardness: f32,
+}
+
+impl BgBrush {
+    pub const SIZE_MIN: f32 = 1.0;
+    pub const SIZE_MAX: f32 = 500.0;
+
+    /// The size a step of the `[` and `]` keys gives: a tenth more or
+    /// less (at least one pixel), within the range.
+    pub fn stepped(size: f32, up: bool) -> f32 {
+        let d = (size * 0.1).max(1.0);
+        let s = if up { size + d } else { size - d };
+        s.round().clamp(Self::SIZE_MIN, Self::SIZE_MAX)
+    }
+}
+
+impl Default for BgBrush {
+    fn default() -> Self {
+        BgBrush {
+            size: 30.0,
+            hardness: 80.0,
+        }
+    }
 }
 
 /// Open Remove Background with this session's last settings (the list
-/// of colours too), or the defaults the first time.
+/// of colours too) and brush, or the defaults the first time.
 pub fn open_remove_background(app: &mut App) {
     let settings = app.last_bg_remove.clone().unwrap_or_default();
     app.dialog = crate::ui::dialogs::Dialog::RemoveBackground(BgRemoveState {
         settings,
+        brush: app.last_bg_brush.unwrap_or_default(),
         ..Default::default()
     });
+}
+
+/// The brush's strokes from the preview into the settings: a start adds
+/// a stroke with the brush in use, a move adds a point (once it is a
+/// pixel of the copy, `copy`, from the last), a cancel drops the stroke
+/// begun.
+pub fn bg_paint(st: &mut BgRemoveState, paint: &[before_after::Paint], copy: (u32, u32)) {
+    use crate::bg_remove::BgStroke;
+    use before_after::Paint;
+    let Some(tool) = st.tool else {
+        return;
+    };
+    let (w, h) = (copy.0.max(1) as f32, copy.1.max(1) as f32);
+    for ev in paint {
+        match *ev {
+            Paint::Start(v) => {
+                st.settings.strokes.push(BgStroke {
+                    erase: tool == BgTool::Erase,
+                    size: st.brush.size,
+                    hardness: st.brush.hardness,
+                    points: vec![[v.x, v.y]],
+                });
+                st.stroking = true;
+            }
+            Paint::To(v) => {
+                if !st.stroking {
+                    continue;
+                }
+                if let Some(last) = st.settings.strokes.last_mut() {
+                    let far = last
+                        .points
+                        .last()
+                        .is_none_or(|p| ((p[0] - v.x) * w).hypot((p[1] - v.y) * h) >= 1.0);
+                    if far {
+                        last.points.push([v.x, v.y]);
+                    }
+                }
+            }
+            Paint::Cancel => {
+                if st.stroking {
+                    st.settings.strokes.pop();
+                    st.stroking = false;
+                }
+            }
+        }
+    }
+}
+
+/// The preview's result: the automatic removal's matte is kept while
+/// only the strokes or the fill change (painting redraws the strokes
+/// over it, nothing else is worked out again).
+fn bg_preview(
+    ctx: &Context,
+    img: &RgbaImage,
+    s: &crate::bg_remove::BgSettings,
+    scale: f32,
+) -> RgbaImage {
+    use crate::bg_remove::{finish, matte, BgFill, BgSettings, Matte};
+    use std::hash::{Hash, Hasher};
+    let base = BgSettings {
+        strokes: Vec::new(),
+        fill: BgFill::None,
+        ..s.clone()
+    };
+    // The copy: its size, its buffer and a sample of its pixels.
+    let mut hs = std::collections::hash_map::DefaultHasher::new();
+    img.dimensions().hash(&mut hs);
+    (img.as_raw().as_ptr() as usize).hash(&mut hs);
+    img.as_raw()
+        .iter()
+        .step_by(97)
+        .for_each(|b| b.hash(&mut hs));
+    scale.to_bits().hash(&mut hs);
+    let key = settings_key(&base) ^ hs.finish().rotate_left(23);
+    let id = egui::Id::new("bg_remove_matte");
+    let kept = ctx
+        .data(|d| d.get_temp::<(u64, std::sync::Arc<Matte>)>(id))
+        .filter(|(k, _)| *k == key)
+        .map(|(_, m)| m);
+    let m = kept.unwrap_or_else(|| {
+        let m = std::sync::Arc::new(matte(img, &base, scale));
+        ctx.data_mut(|d| d.insert_temp(id, (key, m.clone())));
+        m
+    });
+    finish(img, &m, s, scale)
 }
 
 /// What a click on the preview does with the eyedropper on: Shift adds
@@ -565,16 +695,44 @@ pub fn remove_background_dialog(
 ) {
     use crate::bg_remove::remove_background;
     before_after::window(ctx, tr("dialog.remove_background_title")).show(ctx, |ui| {
+        // `[` and `]` change the brush's size while one is on (not while
+        // a field has the keys).
+        if st.tool.is_some() && ctx.memory(|m| m.focused().is_none()) {
+            for (k, up) in [
+                (egui::Key::OpenBracket, false),
+                (egui::Key::CloseBracket, true),
+            ] {
+                if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, k)) {
+                    st.brush.size = BgBrush::stepped(st.brush.size, up);
+                }
+            }
+        }
         let settings = st.settings.clone();
         before_after::columns(ui, RIGHT_W, BOTTOM_H, |left, right| {
+            // The brush on the preview: on while a tool is, and put down
+            // by the pan button or the eyedropper.
+            let view_id = egui::Id::new("bg_remove_preview");
+            let mut view = before_after::state(ctx, view_id);
+            view.brush = st.tool.filter(|_| !st.picking).map(|_| st.brush.size);
+            before_after::keep(ctx, view_id, view);
+            let pctx = ctx.clone();
             let p = preview(
                 left,
                 app,
                 "bg_remove_preview",
                 settings_key(&settings),
                 &mut st.picking,
-                |img, scale| remove_background(img, &settings, scale),
+                |img, scale| bg_preview(&pctx, img, &settings, scale),
             );
+            if before_after::state(ctx, view_id).brush.is_none() && !st.picking {
+                st.tool = None;
+            }
+            if let Some(p) = &p {
+                bg_paint(st, &p.paint, p.img.dimensions());
+            }
+            if !ctx.input(|i| i.pointer.any_down()) {
+                st.stroking = false;
+            }
             // A click on a picture takes the colour under it from the
             // picture as it was, so a removed pixel can be picked too.
             if let (true, Some(p)) = (st.picking, &p) {
@@ -615,19 +773,30 @@ pub fn remove_background_dialog(
                 st.picking = false;
                 st.adding = false;
                 st.row = 0;
+                st.tool = None;
+            }
+            // The eyedropper puts the brush down.
+            if st.picking {
+                st.tool = None;
             }
         });
         if super::dialogs::ok_cancel(ui, close) {
             let settings = st.settings.clone();
-            // Remembered for the session; the points picked belong to
-            // this bitmap, so they are not.
+            // Remembered for the session; the points picked and the
+            // strokes belong to this bitmap, so they are not.
             let mut kept = settings.clone();
             for p in &mut kept.colors {
                 p.seed = None;
             }
-            app.last_bg_remove = Some(kept);
-            app.apply_to_bitmaps("Remove Background", move |img, _| {
-                remove_background(img, &settings, 1.0)
+            kept.strokes.clear();
+            app.last_bg_remove = Some(kept.clone());
+            app.last_bg_brush = Some(st.brush);
+            // The strokes were painted on the bitmap shown; the other
+            // selected bitmaps get the rest of the settings.
+            let shown = crate::ui::bitmap_preview::selected_bitmap(app).map(|b| b.0);
+            app.apply_to_each_bitmap("Remove Background", move |id, img, _| {
+                let s = if Some(id) == shown { &settings } else { &kept };
+                remove_background(img, s, 1.0)
             });
         }
     });
@@ -866,5 +1035,147 @@ fn bg_remove_settings(ui: &mut Ui, st: &mut BgRemoveState) {
                 "dialog.bg_clean_edges",
                 "dialog.bg_clean_edges_tip",
             ));
+        before_after::rule(ui);
+        bg_brush_settings(ui, st);
+        before_after::rule(ui);
+        bg_fill_settings(ui, st);
+    }
+}
+
+/// The brushes: Erase and Restore (each pressed while on, a click again
+/// puts it down), their Size and Hardness, and how to paint.
+fn bg_brush_settings(ui: &mut Ui, st: &mut BgRemoveState) {
+    ui.label(tr("dialog.bg_brush"));
+    ui.horizontal(|ui| {
+        for (tool, name, key, icon) in [
+            (
+                BgTool::Erase,
+                "bg_erase",
+                "dialog.bg_erase",
+                crate::tools::Tool::Eraser,
+            ),
+            (
+                BgTool::Restore,
+                "bg_restore",
+                "dialog.bg_restore",
+                crate::tools::Tool::PainterlyBrush,
+            ),
+        ] {
+            let on = st.tool == Some(tool) && !st.picking;
+            let b = bg_icon_button(ui, on, true, |p, r, c| {
+                crate::ui::icons::draw(p, r, icon, c)
+            });
+            before_after::mark(ui, name, b.rect);
+            let tip = crate::ui::tips::pair(key, &format!("{key}_tip"));
+            let label = ui.selectable_label(on, tr(key)).rich_tip(tip.clone());
+            if b.rich_tip(tip).clicked() || label.clicked() {
+                st.tool = if on { None } else { Some(tool) };
+                st.picking = false;
+                st.adding = false;
+            }
+            ui.add_space(6.0);
+        }
+    });
+    panel_slider(
+        ui,
+        "bg_brush_size",
+        "dialog.bg_brush_size",
+        crate::ui::Slider::new(&mut st.brush.size, BgBrush::SIZE_MIN..=BgBrush::SIZE_MAX)
+            .integer()
+            .suffix(" px"),
+    );
+    panel_slider(
+        ui,
+        "bg_brush_hardness",
+        "dialog.bg_brush_hardness",
+        crate::ui::Slider::new(&mut st.brush.hardness, 0.0..=100.0)
+            .integer()
+            .suffix(" %"),
+    );
+    ui.label(
+        egui::RichText::new(tr("dialog.bg_brush_hint"))
+            .weak()
+            .small(),
+    );
+}
+
+/// What the removed background becomes: Transparent, a Color or a
+/// Gradient (two colours and an angle).
+fn bg_fill_settings(ui: &mut Ui, st: &mut BgRemoveState) {
+    use crate::bg_remove::BgFill;
+    #[derive(Clone, Copy, PartialEq)]
+    enum Kind {
+        None,
+        Color,
+        Gradient,
+    }
+    let key = |k: Kind| match k {
+        Kind::None => "dialog.bg_fill_none",
+        Kind::Color => "dialog.bg_fill_color",
+        Kind::Gradient => "dialog.bg_fill_gradient",
+    };
+    let fill = &mut st.settings.fill;
+    let mut kind = match fill {
+        BgFill::None => Kind::None,
+        BgFill::Color(_) => Kind::Color,
+        BgFill::Gradient { .. } => Kind::Gradient,
+    };
+    ui.horizontal(|ui| {
+        ui.label(tr("dialog.bg_fill"));
+        let r = ui.scope(|ui| {
+            combo(
+                ui,
+                "bg_fill_kind",
+                &mut kind,
+                &[Kind::None, Kind::Color, Kind::Gradient],
+                key,
+                "dialog.bg_fill",
+            )
+        });
+        before_after::mark(ui, "bg_fill_kind", r.response.rect);
+        if r.inner {
+            // The colours carry over from one kind to the other.
+            let (a, b) = match *fill {
+                BgFill::Color(c) => (c, [255, 255, 255]),
+                BgFill::Gradient { from, to, .. } => (from, to),
+                BgFill::None => ([255, 255, 255], [190, 210, 235]),
+            };
+            *fill = match kind {
+                Kind::None => BgFill::None,
+                Kind::Color => BgFill::Color(a),
+                Kind::Gradient => BgFill::Gradient {
+                    from: a,
+                    to: b,
+                    angle: 90.0,
+                },
+            };
+        }
+    });
+    let swatch = |ui: &mut Ui, name: &'static str, label: &str, c: &mut [u8; 3]| {
+        ui.horizontal(|ui| {
+            ui.label(tr(label));
+            let mut col = tracedraw_core::Color::rgb8(c[0], c[1], c[2]);
+            let r = ui.scope(|ui| crate::ui::color_picker::color_button(ui, &mut col));
+            before_after::mark(ui, name, r.response.rect);
+            if r.inner {
+                *c = col.to_rgb8();
+            }
+        });
+    };
+    match fill {
+        BgFill::None => {}
+        BgFill::Color(c) => swatch(ui, "bg_fill_color", "dialog.bg_fill_color", c),
+        BgFill::Gradient { from, to, angle } => {
+            swatch(ui, "bg_fill_from", "dialog.bg_fill_from", from);
+            swatch(ui, "bg_fill_to", "dialog.bg_fill_to", to);
+            panel_slider(
+                ui,
+                "bg_fill_angle",
+                "dialog.bg_fill_angle",
+                crate::ui::Slider::new(angle, 0.0..=360.0)
+                    .integer()
+                    .suffix("°"),
+            );
+        }
     }
 }

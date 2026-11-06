@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Remove Background: Erase and Restore brushes. With one on, a drag on the preview (the mouse, a pen or a finger) erases more of the picture or brings back what the automatic removal took, as it was; a click paints a dot. Size (1 to 500 pixels of the bitmap, `[` and `]` change it) and Hardness set the brush, and the outline shows where it paints. The wheel or a pinch zooms the preview and the middle or right button or two fingers pan it while a brush is on, each stroke is a step of the dialog's undo and redo, and OK applies everything to the bitmap in one undo step. A new list, New background, fills the removed background with a colour or a gradient (two colours and an angle) instead of leaving it transparent, so the picture is ready to export (#1723, #1915).
+
 ## 0.41.0 (2026-11-06)
 
 - Text in older fonts made for the symbol encoding (Tamil fonts among them): a letter the font keeps at codes 0x80 to 0x9F now draws when it is typed on Windows, which delivers it as the character code page 1252 has there ("„" for 0x84), and when pasted text holds it at U+F080 to U+F09F. Such letters went to another font and showed as a box or not at all (#1937).

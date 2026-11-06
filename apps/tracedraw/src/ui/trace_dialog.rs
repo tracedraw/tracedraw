@@ -387,6 +387,7 @@ fn preview_column(app: &mut App, ui: &mut Ui, st: &mut TraceState, dragging: boo
         after: shown.as_ref().map(|s| s.after.id()),
         overlay: shown.as_ref().map(|s| s.wire.id()),
         size: Vec2::new(copy.img.width() as f32, copy.img.height() as f32),
+        scale: copy.scale,
     };
     let out = before_after::view(ui, id, &mut st.view, area, &pics, st.picking);
     if let Some(at) = out.picked {

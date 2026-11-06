@@ -20,16 +20,24 @@ checkerboard where transparent), and at the right:
 | Contiguous | on/off | on | only background connected to the border goes (through a backdrop that drifts in colour too, see Algorithm) |
 | Remove specks | on/off | on | loose kept spots under 1/2000 of the picture (at least 12 px) go |
 | Clean edge colors | on/off | on | half-transparent edge pixels lose the backdrop's colour |
+| Brush: Erase, Restore | off | off | a drag on the preview erases more of the picture or restores it (see Brushes) |
+| Size | 1 to 500 px, whole numbers | 30 | the brush's diameter, in pixels of the bitmap; `[` and `]` change it by a tenth (at least 1 px) while a brush is on and no field has the keys |
+| Hardness | 0 to 100 %, whole numbers | 80 | the part of the brush's radius painted fully; past it the cover fades (smoothstep) to nothing at the edge |
+| New background | Transparent, Color, Gradient | Transparent | what the removed background becomes (see New background) |
 
 The settings sit in the shared settings panel with the Reset, undo and
 redo row under it (`before-after-preview.md`): Reset puts every setting
 back, the arrows step through the settings states (a slider's drag is
 one step on release, a colour picked, added or removed, a row's
-tolerance, a box, Reset). OK changes every selected bitmap in one undo
-step (`apply_to_bitmaps`) and keeps the settings, the colour list too, for
-the rest of the session (`App::last_bg_remove`): the dialog opens with them
-next time (`bitmap_dialogs::open_remove_background`). The points where
-colours were picked belong to one bitmap and are not kept. The "?" opens
+tolerance, a box, a brush stroke, the new background, Reset). OK changes
+every selected bitmap in one undo step (`apply_to_each_bitmap`) and keeps
+the settings, the colour list and the new background too, for the rest
+of the session (`App::last_bg_remove`, the brush's size and hardness in
+`App::last_bg_brush`): the dialog opens with them next time
+(`bitmap_dialogs::open_remove_background`). The points where colours
+were picked and the brush strokes belong to one bitmap and are not kept;
+the strokes go to the bitmap the preview shows, the other selected
+bitmaps get the rest of the settings. The "?" opens
 `bitmaps/remove-background`.
 
 ### Colour list
@@ -74,6 +82,36 @@ result is cached under a hash of the settings and the copy, made again only
 when they change; while a slider is dragged it is worked on a small copy,
 and the shown size follows when the pointer is released.
 
+### Brushes
+
+Erase and Restore (#1723, #1915) sit under the boxes, each a button and
+its name: a click turns that brush on (pressed), a click again puts it
+down; the pan button, an eyedropper or Reset put it down too. With a
+brush on, a drag on a preview pane paints a stroke and a click a dab
+(`before-after-preview.md`: the middle or right button and two fingers
+pan, the wheel and a pinch zoom, so the preview can be zoomed in for
+detail). Each stroke (`BgStroke`: Erase or Restore, the size and hardness
+it was painted with, its points as fractions of the picture, a point
+added once it is a pixel of the preview's copy from the last) is a step
+of the dialog's undo and redo when the pointer goes up. A second finger
+coming down drops the stroke begun.
+
+The preview keeps the automatic removal's matte (`bg_remove::matte`,
+cached under the settings without the strokes and the fill, and the
+copy) while strokes are painted: a frame paints the strokes over it and
+composes the picture (`bg_remove::finish`), nothing else is worked out
+again.
+
+### New background
+
+The list New background (#1915): Transparent (as before), Color (one
+colour swatch, the colour picker), Gradient (From and To swatches and
+Angle, 0 to 360 degrees, 0 left to right, 90 top to bottom, 90 at first).
+Changing the kind keeps the colours (Color's colour is the gradient's
+From). The result is opaque: each pixel is the picture over the fill
+(`BgFill::at`), so the rim keeps its anti-aliasing against the new
+backdrop.
+
 ## Algorithm
 
 1. Background colours: the opaque pixels of a two pixel border, sampled
@@ -116,7 +154,24 @@ and the shown size follows when the pointer is released.
 7. Clean edge colors: for 0.05 < opacity < 1, the colour is solved from
    C = a F + (1 - a) B with B the pixel's background colour (step 2),
    clamped.
-8. The new opacity multiplies the pixel's own alpha.
+8. Brush strokes, in the order painted: a stroke covers each pixel by
+   its distance d to the stroke's path (its segments, or the lone dab):
+   1 out to r x hardness (r the radius, size x scale / 2, at least half a
+   pixel; the full cover at most r - 0.5), then a smoothstep down to 0
+   over max(1, r - inner) pixels; the cover is the most any part of the
+   path gives, so a stroke crossing itself does not add up. Erase
+   multiplies the opacity by 1 - cover; Restore moves it towards 1 by
+   the cover.
+9. Clean edge colors (step 7) solves with u = max(automatic opacity,
+   painted opacity), and only where the automatic removal made the
+   pixel partly transparent: a pixel the brush alone thinned keeps its
+   colour, one restored fully is the picture's own.
+10. The new opacity multiplies the pixel's own alpha.
+11. New background: with a fill, the pixel becomes C a + F (1 - a) with
+    a its opacity and F the fill there (the gradient's position t is the
+    pixel's centre projected on the angle's direction, from the middle,
+    over half the picture's extent along it, so a preview and the
+    bitmap agree), fully opaque.
 
 ## Checks
 
@@ -149,6 +204,24 @@ and the shown size follows when the pointer is released.
 - `pick_drag_tests::remove_background_picks_a_colour_on_the_drawing`: a
   click on the drawing adds a row after "+", Shift keeps the eyedropper,
   and no picker request outlives it.
+- `bg_remove::tests::the_brushes_erase_and_restore`: Erase takes the
+  subject under the path, Restore brings back the backdrop with its own
+  colours, the order counts.
+- `bg_remove::tests::hardness_fades_the_brush_edge`
+- `bg_remove::tests::the_brush_keeps_its_size_on_a_smaller_copy`
+- `bg_remove::tests::the_background_is_filled_with_a_colour_or_a_gradient`
+- `bg_remove::tests::odd_strokes_change_nothing`
+- `pick_drag_tests::remove_background_brushes_erase_and_restore`: Erase
+  and a drag paint a stroke (no pan), undo and redo step over it,
+  Restore and a click make a dab, `]` makes the brush larger, OK is one
+  undo step with the pixels erased and restored, the brush is kept and
+  the strokes are not.
+- `pick_drag_tests::remove_background_brush_leaves_zoom_and_pan`: the
+  wheel zooms and a middle drag pans with a brush on; the pan button and
+  the eyedropper put the brush down.
+- `pick_drag_tests::remove_background_two_fingers_pan_instead_of_painting`
+- `pick_drag_tests::remove_background_fills_the_backdrop`: Color and
+  Gradient on OK, kept for the next time.
 - `pick_drag_tests::frame_times_of_the_remove_background_dialog`
   (ignored, `--release`): idle frames and a Tolerance drag with three
   colours listed on a 2000 x 2000 bitmap.

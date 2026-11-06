@@ -1105,6 +1105,16 @@ impl crate::app::App {
         label: &'static str,
         f: impl Fn(&RgbaImage, f32) -> RgbaImage,
     ) {
+        self.apply_to_each_bitmap(label, |_, img, dpi| f(img, dpi));
+    }
+
+    /// Run `f` (the bitmap's id, its image and its pixels per inch) on
+    /// every selected bitmap, in one undo step.
+    pub fn apply_to_each_bitmap(
+        &mut self,
+        label: &'static str,
+        f: impl Fn(tracedraw_core::id::ShapeId, &RgbaImage, f32) -> RgbaImage,
+    ) {
         use tracedraw_core::{document::ShapeKind, Command};
         let mut cmds = Vec::new();
         for s in self.selected_shapes() {
@@ -1121,7 +1131,7 @@ impl crate::app::App {
                 continue;
             };
             let dpi = (*width_px as f64 / (rect.width().abs().max(1e-6) / 25.4)) as f32;
-            let out = f(&img, dpi);
+            let out = f(s.id, &img, dpi);
             let Some(png) = crate::bitmap_fx::encode(&out) else {
                 continue;
             };

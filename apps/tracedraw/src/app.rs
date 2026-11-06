@@ -1520,6 +1520,9 @@ pub struct App {
     /// The settings of this session's last Remove Background (its list
     /// of colours too), which the next one starts with.
     pub last_bg_remove: Option<crate::bg_remove::BgSettings>,
+    /// The brush size and hardness of this session's last Remove
+    /// Background.
+    pub last_bg_brush: Option<crate::ui::bitmap_dialogs::BgBrush>,
     /// The choices of this session's last export of each format (#617).
     pub export_by_format: Vec<crate::prefs::ExportPreset>,
     /// Print Merge's Place Inside Frame waiting for a click on the shape
@@ -2797,6 +2800,7 @@ impl App {
             autofit_preview: None,
             last_export: None,
             last_bg_remove: None,
+            last_bg_brush: None,
             export_by_format: Vec::new(),
             pending_copy_effect: None,
             pending_copy_envelope: false,

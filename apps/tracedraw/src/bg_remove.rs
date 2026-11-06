@@ -748,7 +748,9 @@ pub fn finish(img: &RgbaImage, m: &Matte, s: &BgSettings, scale: f32) -> RgbaIma
             if let Some(f) = s.fill.at(x, y, w, h) {
                 let al = p.0[3] as f32 / 255.0;
                 for (ch, fc) in p.0.iter_mut().zip(f) {
-                    *ch = (*ch as f32 * al + fc * (1.0 - al)).round().clamp(0.0, 255.0) as u8;
+                    *ch = (*ch as f32 * al + fc * (1.0 - al))
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
                 }
                 p.0[3] = 255;
             }

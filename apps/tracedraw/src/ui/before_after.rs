@@ -6,6 +6,8 @@
 //! fit, zoom out, zoom in and a pan button, the panes with one zoom and
 //! place (a drag pans, the wheel zooms about the pointer), a
 //! checkerboard under transparent parts, and room for a status line.
+//! A dialog may turn a brush on ([`ViewState::brush`]): a drag then
+//! paints strokes on the picture instead ([`Paint`]).
 //! The panes fill the dialog and grow with it. A frame draws textures
 //! made once per change: nothing is worked out again while the settings
 //! stand (see [`live`]).
@@ -74,6 +76,10 @@ pub struct ViewState {
     pub split: f32,
     /// How strongly the picture shows under the wireframe, 0 to 100.
     pub overlay: f32,
+    /// A brush is on, this many pixels of the bitmap across: a drag (a
+    /// finger, the pen) paints on the picture; the middle or right
+    /// button, or two fingers, pan; the wheel and a pinch zoom.
+    pub brush: Option<f32>,
 }
 
 impl Default for ViewState {
@@ -85,6 +91,7 @@ impl Default for ViewState {
             turns: 0,
             split: 0.5,
             overlay: OVERLAY_DEFAULT,
+            brush: None,
         }
     }
 }
@@ -341,6 +348,22 @@ pub struct Pictures {
     pub overlay: Option<TextureId>,
     /// The copy's size, pixels.
     pub size: Vec2,
+    /// The copy's size against the bitmap (1 at full size), for the
+    /// brush's outline.
+    pub scale: f32,
+}
+
+/// What a brush did on the panes this frame. Points are fractions of
+/// the picture's own size (turns undone), and may lie outside it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Paint {
+    /// A new stroke starts here (a click alone is a dab).
+    Start(Vec2),
+    /// The stroke goes on to here.
+    To(Vec2),
+    /// The stroke started is dropped (a second finger came down to pan
+    /// or pinch).
+    Cancel,
 }
 
 /// What a frame of the panes did.
@@ -351,6 +374,8 @@ pub struct ViewOut {
     pub picked: Option<Vec2>,
     /// Points per pixel that fit the picture in a pane.
     pub fit: f32,
+    /// The brush's strokes this frame, in order.
+    pub paint: Vec<Paint>,
 }
 
 /// The size of the picture after `turns` quarter turns.
@@ -550,6 +575,9 @@ pub fn view(
             mark(ui, "view_image", r);
         }
     }
+    let painting = st.brush.is_some() && !picking;
+    let pan_button = resp.dragged_by(egui::PointerButton::Middle)
+        || resp.dragged_by(egui::PointerButton::Secondary);
     // Dragging the split view's divider wins over panning.
     let divider_id = id.with("divider");
     let (split_view, split, first) = (st.view == View::Split, st.split, panes[0]);
@@ -569,8 +597,9 @@ pub fn view(
         if let Some(p) = resp.interact_pointer_pos() {
             st.split = ((p.x - panes[0].left()) / panes[0].width()).clamp(0.0, 1.0);
         }
-    } else if resp.dragged() && !picking {
-        // Pan by dragging.
+    } else if resp.dragged() && !picking && (!painting || pan_button) {
+        // Pan by dragging (with a brush on, with the middle or right
+        // button).
         let d = resp.drag_delta();
         if d != Vec2::ZERO {
             st.centre = Some((centre - d / (size * k)).clamp(Vec2::ZERO, Vec2::splat(1.0)));
@@ -606,6 +635,11 @@ pub fn view(
             st.zoom = Some(nk);
         }
     }
+    if painting {
+        brush(
+            ui, id, st, area, &panes, size, k, centre, pics.scale, &resp, &mut out,
+        );
+    }
     if picking && resp.hovered() {
         crate::ui::cursors::show(
             ui.ctx(),
@@ -621,6 +655,89 @@ pub fn view(
         }
     }
     out
+}
+
+/// The brush on the panes: a primary drag (the mouse, a finger, the pen)
+/// paints a stroke, a click a dab; two fingers drop the stroke begun and
+/// pan the picture (their pinch zooms, see [`view`]); the brush's outline
+/// follows the pointer. The points are taken against the pane the stroke
+/// began in, so a stroke may run off the picture or the pane.
+#[allow(clippy::too_many_arguments)]
+fn brush(
+    ui: &Ui,
+    id: egui::Id,
+    st: &mut ViewState,
+    area: Rect,
+    panes: &[Rect],
+    size: Vec2,
+    k: f32,
+    centre: Vec2,
+    scale: f32,
+    resp: &egui::Response,
+    out: &mut ViewOut,
+) {
+    let turns = st.turns;
+    let img_rect = |pane: Rect| Rect::from_min_size(pane.center() - centre * size * k, size * k);
+    let at = |pane: Rect, pos: Pos2| {
+        let r = img_rect(pane);
+        unturn((pos - r.min) / r.size().max(Vec2::splat(1e-6)), turns)
+    };
+    // The pane the stroke in progress began in.
+    let active_id = id.with("brush_pane");
+    let mut active = ui
+        .data(|d| d.get_temp::<Option<usize>>(active_id))
+        .flatten();
+    if let Some(mt) = ui.input(|i| i.multi_touch()) {
+        if active.take().is_some() {
+            out.paint.push(Paint::Cancel);
+        }
+        let over = ui
+            .input(|i| i.pointer.hover_pos())
+            .is_some_and(|p| area.contains(p));
+        if over && mt.translation_delta != Vec2::ZERO {
+            let c = centre - mt.translation_delta / (size * k);
+            st.centre = Some(c.clamp(Vec2::ZERO, Vec2::splat(1.0)));
+            st.zoom = Some(k);
+        }
+    } else if resp.drag_started_by(egui::PointerButton::Primary) {
+        let origin = ui
+            .input(|i| i.pointer.press_origin())
+            .or_else(|| resp.interact_pointer_pos());
+        if let Some(o) = origin {
+            if let Some(i) = panes.iter().position(|p| p.contains(o)) {
+                out.paint.push(Paint::Start(at(panes[i], o)));
+                if let Some(p) = resp.interact_pointer_pos() {
+                    out.paint.push(Paint::To(at(panes[i], p)));
+                }
+                active = Some(i);
+            }
+        }
+    } else if resp.dragged_by(egui::PointerButton::Primary) {
+        if let (Some(i), Some(p)) = (active, resp.interact_pointer_pos()) {
+            if resp.drag_delta() != Vec2::ZERO {
+                out.paint.push(Paint::To(at(panes[i], p)));
+            }
+        }
+    } else if resp.clicked_by(egui::PointerButton::Primary) {
+        if let Some(p) = resp.interact_pointer_pos() {
+            if let Some(pane) = panes.iter().find(|r| r.contains(p)) {
+                out.paint.push(Paint::Start(at(*pane, p)));
+            }
+        }
+    }
+    if !resp.dragged() {
+        active = None;
+    }
+    ui.data_mut(|d| d.insert_temp(active_id, active));
+    // The outline: the brush's size at this zoom, dark and light rings
+    // so it shows on any picture.
+    if let Some(p) = resp.hover_pos() {
+        let r = (st.brush.unwrap_or(1.0) * scale * k / 2.0).max(1.0);
+        let painter = ui.painter_at(area);
+        painter.circle_stroke(p, r, Stroke::new(1.0, Color32::BLACK));
+        painter.circle_stroke(p, r + 1.0, Stroke::new(1.0, Color32::WHITE));
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+    }
 }
 
 /// The checkerboard's cell, points.
@@ -735,6 +852,8 @@ pub struct Live {
     pub img: Arc<RgbaImage>,
     pub after: Arc<RgbaImage>,
     pub picked: Option<(u32, u32)>,
+    /// The brush's strokes this frame (see [`Paint`]).
+    pub paint: Vec<Paint>,
 }
 
 /// The before and after preview of `src` through `f` (given the copy and
@@ -792,11 +911,15 @@ pub fn live(
         let (tex, img) = cached(&ctx, name, full_key, || f(&copy.img, copy.scale));
         Some((copy, tex, img))
     });
-    let bar = toolbar(ui, id, st, views, false, *picking, |ui, st| {
+    // With a brush on the pan button is up too; a click on it puts the
+    // brush down.
+    let busy_tool = *picking || st.brush.is_some();
+    let bar = toolbar(ui, id, st, views, false, busy_tool, |ui, st| {
         extra(ui, st, shown.as_ref().map(|(t, _, _)| t))
     });
     if bar.pan {
         *picking = false;
+        st.brush = None;
     }
     let (area, _) = ui.allocate_exact_size(area.size(), Sense::hover());
     let Some((copy, after_tex, after)) = shown else {
@@ -808,6 +931,7 @@ pub fn live(
         after: Some(after_tex.id()),
         overlay: None,
         size: Vec2::new(copy.img.width() as f32, copy.img.height() as f32),
+        scale: copy.scale,
     };
     let out = view(ui, id, st, area, &pics, *picking);
     let (w, h) = copy.img.dimensions();
@@ -821,6 +945,7 @@ pub fn live(
         img: copy.img,
         after,
         picked,
+        paint: out.paint,
     })
 }
 

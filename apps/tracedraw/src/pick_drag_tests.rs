@@ -16912,6 +16912,342 @@ fn remove_background_picks_a_colour_on_the_drawing() {
     assert!(crate::ui::color_picker::picking(&ctx));
 }
 
+/// A red square on a white backdrop with Remove Background open.
+fn bg_square_setup() -> (egui::Context, App) {
+    let img = image::RgbaImage::from_fn(200, 100, |x, y| {
+        if (60..140).contains(&x) && (20..80).contains(&y) {
+            image::Rgba([200, 30, 30, 255])
+        } else {
+            image::Rgba([250, 250, 250, 255])
+        }
+    });
+    let (ctx, mut app, _) = trace_setup(img);
+    crate::ui::bitmap_dialogs::open_remove_background(&mut app);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    (ctx, app)
+}
+
+fn selected_pixels(app: &App) -> image::RgbaImage {
+    let png = app
+        .selected_bitmap()
+        .and_then(|id| app.doc().find_shape(id))
+        .and_then(|s| match &s.kind {
+            tracedraw_core::document::ShapeKind::Bitmap { png, .. } => Some(png.clone()),
+            _ => None,
+        })
+        .expect("bitmap");
+    crate::bitmap_fx::decode(&png).expect("decodes")
+}
+
+/// Remove Background's brushes (#1723, #1915): Erase, then a drag on the
+/// preview erases the subject under it; the stroke is one step of the
+/// dialog's undo and redo; Restore and a click bring back a spot of the
+/// removed backdrop; the brush's size and hardness come from the panel
+/// and `]` makes it larger; OK is one undo step of the drawing, and the
+/// brush (not its strokes) is kept for the next time.
+#[test]
+fn remove_background_brushes_erase_and_restore() {
+    use crate::ui::bitmap_dialogs::BgTool;
+    let (ctx, mut app) = bg_square_setup();
+    for name in [
+        "bg_erase",
+        "bg_restore",
+        "bg_brush_size",
+        "bg_brush_hardness",
+    ] {
+        assert!(
+            crate::ui::before_after::rects(&ctx).0.contains_key(name),
+            "no {name}"
+        );
+    }
+    click_at(
+        &ctx,
+        &mut app,
+        preview_rect(&ctx, "bg_erase").center(),
+        Modifiers::NONE,
+    );
+    assert_eq!(bg_state(&app).tool, Some(BgTool::Erase));
+    // `]` makes the brush larger.
+    let size = bg_state(&app).brush.size;
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::CloseBracket, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert!(bg_state(&app).brush.size > size);
+    if let crate::ui::dialogs::Dialog::RemoveBackground(st) = &mut app.dialog {
+        st.brush.size = 20.0;
+        st.brush.hardness = 100.0;
+    }
+    let image = preview_rect(&ctx, "view_image");
+    let at = |fx: f32, fy: f32| {
+        egui::pos2(
+            image.left() + image.width() * fx,
+            image.top() + image.height() * fy,
+        )
+    };
+    let view_before = crate::ui::before_after::state(&ctx, egui::Id::new("bg_remove_preview"));
+    // A drag across the square's middle row paints, it does not pan.
+    drag(
+        &ctx,
+        &mut app,
+        at(0.35, 0.5),
+        at(0.65, 0.5),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    let st = bg_state(&app);
+    assert_eq!(st.settings.strokes.len(), 1);
+    let stroke = &st.settings.strokes[0];
+    assert!(stroke.erase);
+    assert_eq!(stroke.size, 20.0);
+    assert!(stroke.points.len() >= 3, "{:?}", stroke.points);
+    assert!(
+        (stroke.points[0][0] - 0.35).abs() < 0.03,
+        "{:?}",
+        stroke.points
+    );
+    assert!((stroke.points.last().unwrap()[0] - 0.65).abs() < 0.03);
+    assert!((stroke.points[0][1] - 0.5).abs() < 0.03);
+    let view_after = crate::ui::before_after::state(&ctx, egui::Id::new("bg_remove_preview"));
+    assert_eq!(view_before.centre, view_after.centre, "no pan");
+    // The stroke is one step: undone, redone.
+    let press = |ctx: &egui::Context, app: &mut App, name: &str| {
+        click_at(ctx, app, preview_rect(ctx, name).center(), Modifiers::NONE);
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    press(&ctx, &mut app, "undo");
+    assert!(bg_state(&app).settings.strokes.is_empty(), "undone");
+    press(&ctx, &mut app, "redo");
+    assert_eq!(bg_state(&app).settings.strokes.len(), 1, "redone");
+    // Restore, and a click on the backdrop: a dab.
+    press(&ctx, &mut app, "bg_restore");
+    assert_eq!(bg_state(&app).tool, Some(BgTool::Restore));
+    click_at(&ctx, &mut app, at(0.1, 0.5), Modifiers::NONE);
+    let st = bg_state(&app);
+    assert_eq!(st.settings.strokes.len(), 2);
+    assert!(!st.settings.strokes[1].erase);
+    assert_eq!(st.settings.strokes[1].points.len(), 1);
+    // The preview shows it: the backdrop restored there.
+    let before = app.engine.undo_label();
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Enter, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::None));
+    assert_eq!(app.engine.undo_label(), Some("Remove Background"));
+    let out = selected_pixels(&app);
+    assert_eq!(out.get_pixel(100, 50).0[3], 0, "erased in the square");
+    assert_eq!(out.get_pixel(80, 50).0[3], 0, "erased along the drag");
+    assert_eq!(out.get_pixel(100, 25).0[3], 255, "the square off the drag");
+    assert_eq!(out.get_pixel(20, 50).0, [250, 250, 250, 255], "restored");
+    assert_eq!(out.get_pixel(20, 10).0[3], 0, "the backdrop off the dab");
+    app.engine.undo().expect("undo");
+    assert_eq!(app.engine.undo_label(), before);
+    // The brush is kept, its strokes are not.
+    crate::ui::bitmap_dialogs::open_remove_background(&mut app);
+    let st = bg_state(&app);
+    assert!(st.settings.strokes.is_empty());
+    assert_eq!(st.brush.size, 20.0);
+    assert_eq!(st.tool, None);
+}
+
+/// With a brush on, the preview still zooms with the wheel and pans with
+/// the middle button (no stroke), and the pan button or the eyedropper
+/// put the brush down.
+#[test]
+fn remove_background_brush_leaves_zoom_and_pan() {
+    use crate::ui::bitmap_dialogs::BgTool;
+    let (ctx, mut app) = bg_square_setup();
+    let id = egui::Id::new("bg_remove_preview");
+    click_at(
+        &ctx,
+        &mut app,
+        preview_rect(&ctx, "bg_restore").center(),
+        Modifiers::NONE,
+    );
+    assert_eq!(bg_state(&app).tool, Some(BgTool::Restore));
+    let image = preview_rect(&ctx, "view_image");
+    let c = image.center();
+    frame(
+        &ctx,
+        &mut app,
+        vec![
+            Event::PointerMoved(c),
+            Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Line,
+                delta: egui::vec2(0.0, 2.0),
+                phase: egui::TouchPhase::Move,
+                modifiers: Modifiers::NONE,
+            },
+        ],
+        Modifiers::NONE,
+    );
+    for _ in 0..10 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let zoomed = crate::ui::before_after::state(&ctx, id);
+    assert!(zoomed.zoom.is_some(), "the wheel zooms");
+    // A middle drag pans.
+    let to = c + egui::vec2(-60.0, 0.0);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(c)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(c, true, PointerButton::Middle, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    for i in 1..=4 {
+        let p = c + (to - c) * (i as f32 / 4.0);
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(p)],
+            Modifiers::NONE,
+        );
+    }
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(to, false, PointerButton::Middle, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let panned = crate::ui::before_after::state(&ctx, id);
+    assert_ne!(panned.centre, zoomed.centre, "the middle drag pans");
+    assert!(bg_state(&app).settings.strokes.is_empty(), "no stroke");
+    // The pan button puts the brush down; a drag then pans.
+    click_at(
+        &ctx,
+        &mut app,
+        preview_rect(&ctx, "pan").center(),
+        Modifiers::NONE,
+    );
+    assert_eq!(bg_state(&app).tool, None);
+    // The eyedropper puts it down too.
+    click_at(
+        &ctx,
+        &mut app,
+        preview_rect(&ctx, "bg_erase").center(),
+        Modifiers::NONE,
+    );
+    assert_eq!(bg_state(&app).tool, Some(BgTool::Erase));
+    click_at(
+        &ctx,
+        &mut app,
+        preview_rect(&ctx, "bg_pick_0").center(),
+        Modifiers::NONE,
+    );
+    let st = bg_state(&app);
+    assert!(st.picking);
+    assert_eq!(st.tool, None);
+}
+
+/// Two fingers on the preview with a brush on drop the stroke the first
+/// finger began and pan instead.
+#[test]
+fn remove_background_two_fingers_pan_instead_of_painting() {
+    use crate::ui::before_after::Paint;
+    use crate::ui::bitmap_dialogs::{bg_paint, BgRemoveState, BgTool};
+    let mut st = BgRemoveState {
+        tool: Some(BgTool::Erase),
+        ..Default::default()
+    };
+    bg_paint(
+        &mut st,
+        &[
+            Paint::Start(egui::vec2(0.1, 0.1)),
+            Paint::To(egui::vec2(0.1, 0.1001)),
+            Paint::To(egui::vec2(0.2, 0.1)),
+        ],
+        (100, 100),
+    );
+    assert_eq!(st.settings.strokes.len(), 1);
+    assert_eq!(
+        st.settings.strokes[0].points.len(),
+        2,
+        "a point under a pixel away is skipped"
+    );
+    bg_paint(&mut st, &[Paint::Cancel], (100, 100));
+    assert!(st.settings.strokes.is_empty());
+    // With no brush on, nothing is painted.
+    st.tool = None;
+    bg_paint(&mut st, &[Paint::Start(egui::vec2(0.5, 0.5))], (100, 100));
+    assert!(st.settings.strokes.is_empty());
+}
+
+/// New background (#1915): Color fills the removed backdrop with the
+/// colour, Gradient with a gradient; the result is opaque and the
+/// choice is kept for the next time.
+#[test]
+fn remove_background_fills_the_backdrop() {
+    use crate::bg_remove::BgFill;
+    let (ctx, mut app) = bg_square_setup();
+    assert!(crate::ui::before_after::rects(&ctx)
+        .0
+        .contains_key("bg_fill_kind"));
+    if let crate::ui::dialogs::Dialog::RemoveBackground(st) = &mut app.dialog {
+        st.settings.fill = BgFill::Color([0, 0, 255]);
+    }
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    assert!(crate::ui::before_after::rects(&ctx)
+        .0
+        .contains_key("bg_fill_color"));
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Enter, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let out = selected_pixels(&app);
+    assert_eq!(out.get_pixel(10, 10).0, [0, 0, 255, 255]);
+    assert_eq!(out.get_pixel(100, 50).0, [200, 30, 30, 255]);
+    app.engine.undo().expect("undo");
+    crate::ui::bitmap_dialogs::open_remove_background(&mut app);
+    assert_eq!(bg_state(&app).settings.fill, BgFill::Color([0, 0, 255]));
+    if let crate::ui::dialogs::Dialog::RemoveBackground(st) = &mut app.dialog {
+        st.settings.fill = BgFill::Gradient {
+            from: [0, 0, 0],
+            to: [255, 255, 255],
+            angle: 0.0,
+        };
+    }
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    for name in ["bg_fill_from", "bg_fill_to", "bg_fill_angle"] {
+        assert!(
+            crate::ui::before_after::rects(&ctx).0.contains_key(name),
+            "no {name}"
+        );
+    }
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Enter, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let out = selected_pixels(&app);
+    assert!(out.get_pixel(1, 10).0[0] < 10);
+    assert!(out.get_pixel(198, 10).0[0] > 245);
+    assert_eq!(out.get_pixel(1, 10).0[3], 255);
+}
+
 /// Frame times with Remove Background open and three colours listed:
 /// idle frames, and the Tolerance slider dragged. Run with
 /// `cargo test --release -p tracedraw -- --ignored frame_times_of_the_remove_background_dialog --nocapture`.

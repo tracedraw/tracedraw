@@ -17,7 +17,7 @@ dialog's own settings sit in a column 340 points wide at the right
 | Preview list | Before and After (Image Adjustments: After) | Before and After (the picture above, the result below), Before and After side by side, Before, After; Trace Bitmap has Large Preview in place of After (the trace alone, the whole area) and adds Wireframe Overlay (the trace's curves over the picture, which shows through at the Overlay slider's strength: a slider in the bar, 0 to 100, 80 at first, shown in that view only), Image Adjustments adds Before and After split (one picture, the original left of a dashed divider that drags, the result right) |
 | Zoom to fit | pressed | the whole picture in a pane |
 | Zoom out, Zoom in | | the zoom divided or multiplied by 1.25, between a tenth of the fit and 64 points per preview pixel |
-| Pan | pressed | a drag on a pane pans; while a dialog's eyedropper picks on the preview the button is released, and clicking it ends the picking |
+| Pan | pressed | a drag on a pane pans; while a dialog's eyedropper picks on the preview, or one of its brushes is on, the button is released, and clicking it ends the picking or puts the brush down |
 | Busy spinner | | after the pan button while the dialog is working something out off the interface thread (the trace) |
 | Image Adjustments | | Rotate left, Rotate right (the view, a quarter turn) and 100 % (one bitmap pixel per screen point) after the shared buttons |
 
@@ -27,6 +27,17 @@ stays where it is), and the labels Before and After sit in the panes'
 corners. Transparent parts show a checkerboard (one 2 x 2 texture
 repeated, a single rectangle a frame). Under the panes a dialog may
 have a status line (Trace Bitmap's curves, nodes and colours).
+
+A dialog may turn a brush on (`ViewState::brush`, its size in pixels of
+the bitmap; Remove Background's Erase and Restore). Then a primary drag
+on a pane (the mouse, a finger, the pen) paints a stroke, a click or tap
+a dab (`before_after::Paint`: the points as fractions of the picture,
+turns undone, taken against the pane the stroke began in, so a stroke
+may run off the picture). The middle or right button drags pan, the
+wheel and a pinch zoom, and a second finger drops the stroke the first
+began and pans by the two fingers' move. The brush's outline (a dark
+and a light ring, its size at the zoom shown) follows the pointer, with
+a cross hair.
 
 ## Settings panel
 
