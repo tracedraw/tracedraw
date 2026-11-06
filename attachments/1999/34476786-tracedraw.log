@@ -1,0 +1,38 @@
+[2026-11-06T11:02:23Z INFO  tracedraw::startup_log] TraceDraw 0.41.0 on windows x86_64
+[2026-11-06T11:02:23Z INFO  tracedraw::startup_log] Intel64 Family 6 Model 60 Stepping 3, GenuineIntel, 8 threads, Windows 10.0 build 19045
+[2026-11-06T11:02:23Z INFO  tracedraw::i18n] interface language it (saved "", installer None, system ["it-IT", "en-US"])
+[2026-11-06T11:02:23Z INFO  tracedraw] opening the window with Hardware (Options asks for Hardware)
+[2026-11-06T11:02:23Z INFO  eframe] Both the glow and wgpu renderers are available. Using wgpu.
+[2026-11-06T11:02:23Z INFO  tracedraw_text::installed] 1 font faces left out: not installed
+[2026-11-06T11:02:23Z INFO  tracedraw_text] loaded 195 font faces, 118 families
+[2026-11-06T11:02:23Z INFO  tracedraw_text] system fonts read in 59 ms
+[2026-11-06T11:02:24Z DEBUG wgpu_core::instance] Instance::new: created Vulkan backend
+[2026-11-06T11:02:24Z DEBUG wgpu_core::instance] Instance::new: created Dx12 backend
+[2026-11-06T11:02:24Z DEBUG wgpu_core::instance] Instance::new: created Gl backend
+[2026-11-06T11:02:24Z DEBUG wgpu_core::instance] Adapter AdapterInfo { name: "GeForce GT 750M", vendor: 4318, device: 4068, device_type: DiscreteGpu, device_pci_bus_id: "", driver: "NVIDIA", driver_info: "425.31", backend: Vulkan, subgroup_min_size: 4, subgroup_max_size: 128, transient_saves_memory: Some(false), limit_bucket: None }
+[2026-11-06T11:02:24Z DEBUG wgpu_core::instance] Adapter AdapterInfo { name: "NVIDIA GeForce GT 750M", vendor: 4318, device: 4068, device_type: DiscreteGpu, device_pci_bus_id: "0000:01:00.0", driver: "25.21.14.2531", driver_info: "", backend: Dx12, subgroup_min_size: 32, subgroup_max_size: 32, transient_saves_memory: Some(false), limit_bucket: None }
+[2026-11-06T11:02:24Z DEBUG wgpu_core::instance] Adapter AdapterInfo { name: "Microsoft Basic Render Driver", vendor: 5140, device: 140, device_type: Cpu, device_pci_bus_id: "", driver: "10.0.19041.7802", driver_info: "", backend: Dx12, subgroup_min_size: 4, subgroup_max_size: 4, transient_saves_memory: Some(false), limit_bucket: None }
+[2026-11-06T11:02:24Z DEBUG wgpu_core::instance] Adapter AdapterInfo { name: "GeForce GT 750M/PCIe/SSE2", vendor: 4318, device: 0, device_type: Other, device_pci_bus_id: "", driver: "", driver_info: "4.6.0 NVIDIA 425.31", backend: Gl, subgroup_min_size: 4, subgroup_max_size: 128, transient_saves_memory: None, limit_bucket: None }
+[2026-11-06T11:02:24Z INFO  tracedraw::gpu] 4 graphics adapter(s) for Hardware:
+[2026-11-06T11:02:24Z INFO  tracedraw::gpu]   GeForce GT 750M (Vulkan, DiscreteGpu, 10de:0fe4, driver NVIDIA 425.31): picked: the fastest usable
+[2026-11-06T11:02:24Z INFO  tracedraw::gpu]   NVIDIA GeForce GT 750M (Dx12, DiscreteGpu, 10de:0fe4, driver 25.21.14.2531 ): usable, not picked
+[2026-11-06T11:02:24Z INFO  tracedraw::gpu]   Microsoft Basic Render Driver (Dx12, Cpu, 1414:008c, driver 10.0.19041.7802 ): rejected: software adapter (hardware acceleration wants a graphics card)
+[2026-11-06T11:02:24Z INFO  tracedraw::gpu]   GeForce GT 750M/PCIe/SSE2 (Gl, Other, 10de:0000, driver  4.6.0 NVIDIA 425.31): usable, not picked
+[2026-11-06T11:02:24Z INFO  tracedraw::gpu] the window opened with Hardware: GeForce GT 750M (Vulkan)
+[2026-11-06T11:02:24Z INFO  tracedraw::theme] UI fallback fonts: fallback-Segoe UI, fallback-Nirmala UI, fallback-Microsoft YaHei, fallback-Microsoft JhengHei, fallback-Yu Gothic UI
+[2026-11-06T11:05:19Z INFO  tracedraw::startup_log] TraceDraw 0.41.0 on windows x86_64
+[2026-11-06T11:05:19Z INFO  tracedraw::startup_log] Intel64 Family 6 Model 60 Stepping 3, GenuineIntel, 8 threads, Windows 10.0 build 19045
+[2026-11-06T11:05:19Z INFO  tracedraw::i18n] interface language it (saved "", installer None, system ["it-IT", "en-US"])
+[2026-11-06T11:05:19Z INFO  tracedraw] opening the window with Gl (Options asks for Hardware)
+[2026-11-06T11:05:19Z INFO  tracedraw_text::installed] 1 font faces left out: not installed
+[2026-11-06T11:05:19Z INFO  eframe] Both the glow and wgpu renderers are available. Using glow.
+[2026-11-06T11:05:19Z INFO  tracedraw_text] loaded 195 font faces, 118 families
+[2026-11-06T11:05:19Z INFO  tracedraw_text] system fonts read in 53 ms
+[2026-11-06T11:05:19Z INFO  tracedraw::gpu] OpenGL: Intel, Intel(R) HD Graphics 4600, version 3.3.0 - Build 20.19.15.5171, GLSL 3.30 - Build 20.19.15.5171
+[2026-11-06T11:05:19Z INFO  tracedraw::gpu] the window opened with Gl: OpenGL
+[2026-11-06T11:05:19Z INFO  tracedraw::theme] UI fallback fonts: fallback-Segoe UI, fallback-Nirmala UI, fallback-Microsoft YaHei, fallback-Microsoft JhengHei, fallback-Yu Gothic UI
+[2026-11-06T11:05:19Z INFO  tracedraw::i18n] interface language it (saved "", installer None, system ["it-IT", "en-US"])
+[2026-11-06T11:05:19Z INFO  tracedraw] the editor was built in 13 ms
+[2026-11-06T11:05:19Z INFO  tracedraw::splash] main window: Maximized(true) (maximized Some(false), inner Some([1600.0 950.0]), monitor Some([1920.0 1080.0]))
+[2026-11-06T11:05:19Z INFO  tracedraw::frame_stats] first frame 0.31 s after the start: window 1920 x 1017 px, 1 px per point, monitor 1920 x 1080 points
+[2026-11-06T11:05:20Z INFO  tracedraw] the window (1920 x 1017 px) read back drawn
