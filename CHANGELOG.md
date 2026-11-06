@@ -13,6 +13,7 @@ full, row-by-row status.
 - Repeat Copies: Fill page tiles the selection over the page, or an area of it, as many copies as fit: margins (one for all sides or each side apart), a gap across and down, every second row shifted if asked, the copies as they stand, turned 90 degrees or whichever fits more, with the count of each way shown ("4 x 6 = 24 copies") and trim marks at every cut line. The places are outlined while the panel is worked in, and Apply is one undo step (#1255).
 
 - Print and Print Preview: the gap between pages is set across and down apart, for several pages per sheet and repeat on the sheet (#1795).
+- Linked paragraph text frames: deleting a frame of a chain (Delete, Cut, a group holding it) removes only the frame. Its text stays with the chain and flows on into the frames left, the frame after it showing what it showed and the last frame taking the rest with the overflow mark when it does not fit; a chain of two left with one frame becomes an ordinary paragraph frame holding all the text. One Undo brings the frame and the flow back. The text was deleted with the frame and the chain broke in two (#1986, item 2).
 
 - Print and Print Preview: several pages per sheet can run down the columns, either on each sheet (1 2 3 down the first column, 4 5 6 down the second) or through all sheets, so the columns cut from the stack run in one series, for serial numbers on ID cards (#1658).
 
