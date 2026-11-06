@@ -343,9 +343,15 @@ pub(crate) fn open_whats_new(app: &mut App) {
 /// submenus that lead to them, by their keys. Each version replaces the
 /// list with its own.
 pub const NEW_IN_THIS_VERSION: &[&str] = &[
-    // Tools > TraceCut, the window of tools for cutting plotters.
-    "menu.tools",
-    "menu.tools.tracecut",
+    // View > Scrollbars hides the drawing window's scrollbars.
+    "menu.view",
+    "menu.view.scrollbars",
+    // View > Page > Page Shadow, apart from Page Border.
+    "menu.view.page",
+    "menu.view.page_shadow",
+    // Bitmaps > Crop to Frame cuts a framed picture to its frame.
+    "menu.bitmaps",
+    "menu.bitmaps.crop_to_frame",
 ];
 
 thread_local! {
@@ -1516,9 +1522,9 @@ mod tests {
                 "{key} is not in the menus"
             );
         }
-        assert!(!marked_new("menu.tools.tracecut"));
+        assert!(!marked_new("menu.view.scrollbars"));
         set_highlight_new(true);
-        assert!(marked_new("menu.tools.tracecut"));
+        assert!(marked_new("menu.view.scrollbars"));
         assert!(!marked_new("menu.file.export"));
         set_highlight_new(false);
         assert!(
