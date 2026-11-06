@@ -5685,6 +5685,25 @@ impl App {
         self.run(Command::DeleteShapes { shapes });
     }
 
+    /// Whether the Shape tool has nodes chosen: Delete then takes the
+    /// nodes, never the object they belong to.
+    pub fn nodes_chosen(&self) -> bool {
+        self.tool == Tool::Shape && !self.node_selection.is_empty()
+    }
+
+    /// Edit > Delete and the Delete row of the right-click menu (#1982):
+    /// with the Shape tool and nodes chosen, the chosen nodes go and the
+    /// curve stays, as the Delete key does; otherwise the selected
+    /// objects go. Before, the menus deleted the whole object while nodes
+    /// were chosen.
+    pub fn delete_nodes_or_selection(&mut self) {
+        if self.nodes_chosen() {
+            self.delete_selected_nodes();
+        } else {
+            self.delete_selection();
+        }
+    }
+
     /// Whether the toolbar's Delete button has something to delete: the
     /// selected characters of the text being edited, the chosen nodes
     /// with the Shape tool, the selected guidelines or objects.
@@ -5692,9 +5711,7 @@ impl App {
         if self.editing_text() {
             return self.text_selection_active();
         }
-        (self.tool == Tool::Shape && !self.node_selection.is_empty())
-            || !self.selected_guides.is_empty()
-            || !self.selection.is_empty()
+        self.nodes_chosen() || !self.selected_guides.is_empty() || !self.selection.is_empty()
     }
 
     /// The toolbar's Delete button (#1611): what the Delete key does to
@@ -5704,7 +5721,7 @@ impl App {
             if self.text_selection_active() {
                 self.text_delete_forward();
             }
-        } else if self.tool == Tool::Shape && !self.node_selection.is_empty() {
+        } else if self.nodes_chosen() {
             self.delete_selected_nodes();
         } else if !self.selected_guides.is_empty() && self.selection.is_empty() {
             if !self.delete_selected_guides() {
