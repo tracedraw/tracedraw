@@ -358,7 +358,14 @@ font maps (U+201A or U+0082, `tracedraw_text::tests::code_page_1252_places_go_by
 A letter the shaper's character map lacks while another map of the font
 has it (a symbol map beside a Unicode one) draws the font's glyph,
 never the empty notdef
-(`tracedraw_text::tests::letters_one_character_map_lacks_draw_from_the_other`),
+(`tracedraw_text::tests::letters_one_character_map_lacks_draw_from_the_other`).
+In a font with a symbol map only, a letter at 0x80 to 0x9F draws
+whether the text holds the code itself (U+0084), the character code
+page 1252 has there, as Windows delivers a code typed for such a font
+("„", U+201E), or the place the symbol map keeps it at, as text pasted
+from other programs holds it (U+F084); these went to another font and
+showed as a box (Tamil letters such as ஷ, #1937,
+`tracedraw_text::tests::a_symbol_font_draws_its_letters_at_the_places_of_code_page_1252`),
 and Autocorrect leaves the letters typed in such fonts as typed (see
 `writing-tools.md`).
 

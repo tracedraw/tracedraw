@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Text in older fonts made for the symbol encoding (Tamil fonts among them): a letter the font keeps at codes 0x80 to 0x9F now draws when it is typed on Windows, which delivers it as the character code page 1252 has there ("„" for 0x84), and when pasted text holds it at U+F080 to U+F09F. Such letters went to another font and showed as a box or not at all (#1937).
+
 - Master guidelines: guidelines can be set once for all pages. The Objects docker shows "Guides (all pages)" under the Master Page and each page's own "Guides"; a click on a row chooses which guidelines new ones go to and which are picked and moved, and its padlock locks all of them. Opening a `.cdr` file puts the master page's guidelines there instead of a copy on every page, and saving writes them back to the master page (#1928).
 
 - Text tool: the flow tabs of a paragraph frame link frames as with the Pick tool. A click on the bottom or top tab of the frame being edited, then a click on another frame (or a drag from the tab onto it), flows the text on. Before, only the Pick tool could do this (#1914).
