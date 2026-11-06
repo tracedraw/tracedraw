@@ -18,6 +18,7 @@ full, row-by-row status.
 - Standard toolbar: the Launch list no longer holds Color Management. Launch is for the tools that come with TraceDraw (Font Manager, TraceCut, the Welcome Screen); Color Management is a settings dialog and stays in the Tools menu.
 
 - Print and Print Preview: the gap between pages is set across and down apart, for several pages per sheet and repeat on the sheet (#1795).
+- Linked paragraph text frames: deleting a frame of a chain (Delete, Cut, a group holding it) removes only the frame. Its text stays with the chain and flows on into the frames left, the frame after it showing what it showed and the last frame taking the rest with the overflow mark when it does not fit; a chain of two left with one frame becomes an ordinary paragraph frame holding all the text. One Undo brings the frame and the flow back. The text was deleted with the frame and the chain broke in two (#1986, item 2).
 
 - Print and Print Preview: several pages per sheet can run down the columns, either on each sheet (1 2 3 down the first column, 4 5 6 down the second) or through all sheets, so the columns cut from the stack run in one series, for serial numbers on ID cards (#1658).
 
