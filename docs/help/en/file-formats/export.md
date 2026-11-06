@@ -22,7 +22,9 @@ preview on the left and the settings on the right.
 The dialog box estimates the size of the file and, for bitmap formats, says
 what comes out, such as "1240 x 1754 pixels, 150 dpi, sRGB". With **Do not show filter
 dialog** ticked, the next export goes straight to the file with the same
-choices.
+choices. The save dialog lists every format under its file type, so the
+format can be changed there as well: the type chosen (or the extension
+typed in the name) decides the format of the file.
 
 ## Format options {#options}
 

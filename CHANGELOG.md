@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Export: the save dialog lists every export format under its file type, with the chosen format first, and the type chosen there (or the extension typed) decides the format of the file. It offered only the one format chosen in the Export dialog, so with "Do not show filter dialog" ticked, which skips that dialog, every export stayed at the last format used, SVG at first, with no way to choose another short of switching the option back on. A format chosen in the save dialog is exported with the choices it was last exported with and the next export starts from it, as when it is chosen in the Export dialog.
+
 - Linked text content: Text > Link Text Content (also on the right-click menu) links the characters of two texts or more, so whatever is typed in any of them appears in the others at once, both ways, while each keeps its own font, size, colours and effects. Change the word of a 3D blend, an extrusion or a shadow text once. The Blend panel can link the two texts of a blend; a linked text shows the others of its link with dashed outlines and a chain mark, Undo takes a change back in all of them in one step, copies stay linked, and Unlink Text Content lets a text go its own way. This is not the frame flow of Paragraph Text Frame > Link; `.tdraw` files keep the link, `.cdr` files get plain texts (#1568, #1364, #1194).
 
 ## 0.41.0 (2026-11-06)

@@ -216,6 +216,18 @@ dialog's choices, and Export for Web and Office keep their own (#617,
   show filter dialog": when on, File > Export (Ctrl+E) goes straight to
   the file with the last choices (Options > Global > File Formats keeps
   them); Export for Web and for Office still show their dialog.
+- The save dialog that asks for the file lists every export format under
+  its file type, the format chosen first (the dialog's default), then the
+  common formats and the rest by extension as the Format list has them,
+  each with its extensions ("jpg" and "jpeg" for JPEG). The type chosen
+  there, or the extension typed in the name, decides the format: a name
+  with another format's extension exports that format with the choices
+  it was last exported with, and the next export starts from it; a name
+  without an extension gets the format's own. With "Do not show filter
+  dialog" on, this is the only place the format is chosen; it offered
+  only the one format, so every export stayed at the last format used.
+- Checks: `ui::dialogs::tests::the_export_save_dialog_lists_every_format_with_the_chosen_one_first`,
+  `ui::dialogs::tests::the_export_save_dialog_s_type_decides_the_format`.
 - PDF and AI files: Title (the drawing's title when empty) and Tags,
   written as the file's title and keywords (a classic AI file keeps the
   title in its `%%Title` comment and has no place for tags).

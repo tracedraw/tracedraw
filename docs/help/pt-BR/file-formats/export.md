@@ -24,7 +24,9 @@ esquerda e as configurações à direita.
 A caixa de diálogo estima o tamanho do arquivo e, para formatos de bitmap, diz
 o que sai, como "1240 x 1754 pixels, 150 dpi, sRGB". Com **Não mostrar a caixa de
 filtro** marcado, a próxima exportação vai direto para o arquivo com as mesmas
-escolhas.
+escolhas. A caixa de salvar lista todos os formatos em seu tipo de arquivo, então
+o formato também pode ser trocado ali: o tipo escolhido (ou a extensão digitada
+no nome) decide o formato do arquivo.
 
 ## Opções dos formatos {#options}
 

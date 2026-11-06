@@ -9,6 +9,7 @@ use crate::i18n::{tr, trf};
 use crate::theme::Tokens;
 use crate::ui::tips::RichTip;
 use egui::{Context, Ui};
+use std::path::{Path, PathBuf};
 use tracedraw_core::{
     document::ShapeKind,
     geometry::{Rect, Size},
@@ -377,6 +378,60 @@ pub fn export_format_order() -> Vec<Option<usize>> {
     out.push(None);
     out.extend(all.into_iter().map(Some));
     out
+}
+
+/// The extensions the files of the format with extension `ext` go by,
+/// from [`export_patterns`]: "jpg" and "jpeg" for JPEG.
+pub fn export_extensions(ext: &str) -> Vec<&'static str> {
+    export_patterns(ext)
+        .split(';')
+        .filter_map(|p| p.strip_prefix("*."))
+        .filter(|e| *e != "*")
+        .collect()
+}
+
+/// The format, by index into [`EXPORT_FORMATS`], whose files have the
+/// extension `ext` ("jpeg" is JPEG, "htm" HTML, in any case); `None` for
+/// an extension no format writes.
+pub fn export_format_for_extension(ext: &str) -> Option<usize> {
+    let ext = ext.to_ascii_lowercase();
+    (0..EXPORT_FORMATS.len())
+        .find(|i| export_extensions(EXPORT_FORMATS[*i].1).contains(&ext.as_str()))
+}
+
+/// The file types the save dialog of an export offers, each with its
+/// name and extensions: the format chosen first, which makes it the
+/// dialog's default, then the common formats and the rest by extension
+/// as the Export list has them. The type can then be changed in the
+/// save dialog too, which is the only place to when the Export dialog
+/// is skipped ("Do not show filter dialog"): it offered only the one
+/// format, so the export stayed at the last format, SVG at first.
+pub fn export_file_filters(format: usize) -> Vec<(String, Vec<&'static str>)> {
+    let format = format.min(EXPORT_FORMATS.len() - 1);
+    let mut order = vec![format];
+    order.extend(
+        export_format_order()
+            .into_iter()
+            .flatten()
+            .filter(|i| *i != format),
+    );
+    order
+        .into_iter()
+        .map(|i| {
+            let (name, ext) = EXPORT_FORMATS[i];
+            (
+                format!("{name} - {}", tr(&format!("export.fmt_{ext}"))),
+                export_extensions(ext),
+            )
+        })
+        .collect()
+}
+
+/// The format a save dialog's answer `path` asks for: the one whose
+/// extension it has, or `None` with no extension or one no format writes.
+pub fn export_format_of_path(path: &Path) -> Option<usize> {
+    path.extension()
+        .and_then(|e| export_format_for_extension(&e.to_string_lossy()))
 }
 
 /// Formats whose files keep a title and keywords (tags).
@@ -3873,24 +3928,55 @@ fn export_preview_box(app: &App, ui: &mut Ui, st: &ExportState, size: egui::Vec2
     preview.bytes
 }
 
-/// Ask for the file and export to it with `st`'s choices.
+/// Ask for the file and export to it with `st`'s choices, which the next
+/// export starts from (`App::keep_export_choices`) whether or not a file
+/// is chosen. The save dialog lists every format, the chosen one first;
+/// a name given there with another format's extension exports that
+/// format instead ([`export_target`]).
 pub fn export_with_file_dialog(app: &mut App, st: &ExportState) {
-    let (name, ext) = EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)];
+    let format = st.format.min(EXPORT_FORMATS.len() - 1);
+    let (_, ext) = EXPORT_FORMATS[format];
     let stem = app
         .file
         .as_ref()
         .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
         .unwrap_or_else(|| "Graphic1".into());
+    app.keep_export_choices(st);
     let st = st.clone();
-    crate::files::Dialog::new()
-        .add_filter(name, &[ext])
+    let mut dialog = crate::files::Dialog::new();
+    for (name, exts) in export_file_filters(format) {
+        dialog = dialog.add_filter(name, &exts);
+    }
+    dialog
         .set_file_name(format!("{stem}.{ext}"))
         .save_file(app, move |app, path| {
+            let (path, st) = export_target(app, path, st);
             match crate::export::export(app, &path, &st) {
                 Ok(msg) => app.status = msg,
                 Err(e) => app.status = format!("{}: {e}", tr("dialog.export_failed")),
             }
         });
+}
+
+/// The file and the choices an export goes with once the save dialog
+/// answered `path` for the choices `st`. A name with the extension of
+/// another format (the type was changed in the dialog) exports that
+/// format, with the choices it was last exported with
+/// (`App::recall_export_format`), and the next export starts from it; a
+/// name without an extension gets the format's own; any other name is
+/// written as given.
+pub fn export_target(app: &mut App, path: PathBuf, mut st: ExportState) -> (PathBuf, ExportState) {
+    let format = st.format.min(EXPORT_FORMATS.len() - 1);
+    match export_format_of_path(&path) {
+        Some(i) if i != format => {
+            app.recall_export_format(&mut st, i);
+            app.keep_export_choices(&st);
+            (path, st)
+        }
+        Some(_) => (path, st),
+        None if path.extension().is_none() => (path.with_extension(EXPORT_FORMATS[format].1), st),
+        None => (path, st),
+    }
 }
 
 /// The Export dialog's presets (#547): a list of every saved one, each
@@ -4445,7 +4531,6 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                 return;
             }
             export_with_file_dialog(app, st);
-            app.keep_export_choices(st);
         }
     });
 }
@@ -7566,6 +7651,79 @@ pub(crate) mod tests {
             "{jpg}"
         );
         assert!(export_keeps_properties("pdf") && !export_keeps_properties("png"));
+    }
+
+    /// The save dialog of an export offers every format, the chosen one
+    /// first as its default, so the type can be changed there when the
+    /// Export dialog is skipped; the extensions of a type are the ones
+    /// of the Export list's patterns, and a file name's extension names
+    /// its format whatever its case.
+    #[test]
+    fn the_export_save_dialog_lists_every_format_with_the_chosen_one_first() {
+        let png = export_file_filters(2);
+        assert_eq!(png.len(), EXPORT_FORMATS.len());
+        assert_eq!(png[0].1, vec!["png"]);
+        assert!(png[0].0.starts_with("PNG - "), "{}", png[0].0);
+        let rest: Vec<&str> = png[1..].iter().map(|(_, e)| e[0]).collect();
+        assert_eq!(&rest[..3], &["jpg", "pdf", "ai"]);
+        let mut all: Vec<&str> = png.iter().map(|(_, e)| e[0]).collect();
+        all.sort();
+        all.dedup();
+        assert_eq!(all.len(), EXPORT_FORMATS.len());
+        let jpg = &export_file_filters(3)[0];
+        assert_eq!(jpg.1, vec!["jpg", "jpeg"]);
+        assert_eq!(export_file_filters(usize::MAX)[0].1, vec!["prn"]);
+
+        assert_eq!(export_format_for_extension("PNG"), Some(2));
+        assert_eq!(export_format_for_extension("jpeg"), Some(3));
+        assert_eq!(export_format_for_extension("htm"), Some(11));
+        assert_eq!(export_format_for_extension("cdr"), None);
+        assert_eq!(export_format_of_path(Path::new("a/b.Tiff")), Some(5));
+        assert_eq!(export_format_of_path(Path::new("a/b")), None);
+        assert_eq!(export_format_of_path(Path::new("a/b.txt")), None);
+    }
+
+    /// A file named in the save dialog with another format's extension
+    /// exports that format, with the choices that format was last
+    /// exported with, and the next export starts from it; the format's
+    /// own extension and an unknown one change nothing, and a name
+    /// without an extension gets the format's own.
+    #[test]
+    fn the_export_save_dialog_s_type_decides_the_format() {
+        let mut app = App::headless();
+        let png = ExportState {
+            format: 2,
+            dpi: 300.0,
+            remember: true,
+            ..Default::default()
+        };
+        app.keep_export_choices(&png);
+        let svg = ExportState {
+            format: 0,
+            dpi: 96.0,
+            remember: true,
+            ..Default::default()
+        };
+        app.keep_export_choices(&svg);
+        assert_eq!(app.last_export.as_ref().map(|s| s.format), Some(0));
+
+        let (path, st) = export_target(&mut app, PathBuf::from("out/a.png"), svg.clone());
+        assert_eq!(path, PathBuf::from("out/a.png"));
+        assert_eq!((st.format, st.dpi), (2, 300.0));
+        assert_eq!(app.last_export.as_ref().map(|s| s.format), Some(2));
+
+        let (path, st) = export_target(&mut app, PathBuf::from("out/a.svg"), svg.clone());
+        assert_eq!(path, PathBuf::from("out/a.svg"));
+        assert_eq!((st.format, st.dpi), (0, 96.0));
+        assert_eq!(app.last_export.as_ref().map(|s| s.format), Some(2));
+
+        let (path, st) = export_target(&mut app, PathBuf::from("out/a"), svg.clone());
+        assert_eq!(path, PathBuf::from("out/a.svg"));
+        assert_eq!(st.format, 0);
+
+        let (path, st) = export_target(&mut app, PathBuf::from("out/a.txt"), svg);
+        assert_eq!(path, PathBuf::from("out/a.txt"));
+        assert_eq!(st.format, 0);
     }
 
     /// Every dialog can be drawn with a rectangle, text and a bitmap in the
