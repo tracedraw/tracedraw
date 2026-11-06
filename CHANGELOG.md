@@ -10,6 +10,13 @@ full, row-by-row status.
 
 - Tools > TraceCut... has a picture of its own in the menus: a dashed cut line with the knife on it.
 - TraceCut: the preview zooms and pans as the drawing does. The wheel zooms at the pointer (Ctrl+wheel too, and a pinch on touch screens and touchpads), a drag with the left or middle button pans, a double click fits again, and buttons in its corner zoom in and out, fit the whole result, zoom to the selected objects and show real size (1:1); + and - zoom and 0 fits with the pointer over it. The outlines are drawn again at each zoom, so they stay sharp, and what is outside the box is skipped. Each tool keeps its zoom while the window is open. With nothing selected the preview says "Select the objects to cut, nest or measure" instead of showing an empty box, and Apply and OK, greyed out, say why. The Measure tools show perimeter, area, cutting time and cost beside the preview at once and as the selection or settings change, without Apply.
+- Repeat Copies: Fill page tiles the selection over the page, or an area of it, as many copies as fit: margins (one for all sides or each side apart), a gap across and down, every second row shifted if asked, the copies as they stand, turned 90 degrees or whichever fits more, with the count of each way shown ("4 x 6 = 24 copies") and trim marks at every cut line. The places are outlined while the panel is worked in, and Apply is one undo step (#1255).
+
+- Print and Print Preview: the gap between pages is set across and down apart, for several pages per sheet and repeat on the sheet (#1795).
+
+- Print and Print Preview: several pages per sheet can run down the columns, either on each sheet (1 2 3 down the first column, 4 5 6 down the second) or through all sheets, so the columns cut from the stack run in one series, for serial numbers on ID cards (#1658).
+
+- Print and Print Preview: the layout (imposition, sheet, gaps, margins, booklet settings, bleed and marks) can be kept as a named preset and chosen again, and saved to a `.tdlayout` file and loaded from one (#1796).
 
 ## 0.41.0 (2026-11-06)
 
