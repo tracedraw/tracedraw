@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Windows with two graphics cards: a start whose window never shows now goes on with OpenGL by itself. The start counted as working once the window was made, before the graphics card had drawn anything, so a driver that hung on the first frame (Vulkan on a GeForce GT 750M beside an Intel HD 4600) left the window hidden for good and the next start tried the same card again. A start now works only once its first frame is on the screen: after 20 seconds without one TraceDraw starts again with OpenGL, a start after one closed by hand goes on with OpenGL too, and the status bar says so once, with a click to Options > General to choose the graphics card again (#1999).
+
 - Linked text content: Text > Link Text Content (also on the right-click menu) links the characters of two texts or more, so whatever is typed in any of them appears in the others at once, both ways, while each keeps its own font, size, colours and effects. Change the word of a 3D blend, an extrusion or a shadow text once. The Blend panel can link the two texts of a blend; a linked text shows the others of its link with dashed outlines and a chain mark, Undo takes a change back in all of them in one step, copies stay linked, and Unlink Text Content lets a text go its own way. This is not the frame flow of Paragraph Text Frame > Link; `.tdraw` files keep the link, `.cdr` files get plain texts (#1568, #1364, #1194).
 
 ## 0.41.0 (2026-11-06)

@@ -300,17 +300,37 @@ and `--reset-settings` starts open windows of their own.
   graphics driver that crashes the process, or hangs it until it is
   closed, inside wgpu's set-up. So before the window is opened the start
   writes the renderer it tries to `renderer-attempt` in the settings
-  folder, and removes the file as soon as the window is open. A start
-  that finds the file logs "the last start did not open the window with
-  ..." and begins with the renderer after that one (after the last one,
-  the first choice again); `--renderer=` from a hand-over still wins.
+  folder, and removes the file only once a frame of the window reached
+  the screen (`gpu::note_frame`: the root window's second frame begins,
+  so eframe drew and presented the first). The window being made is not
+  enough: eframe keeps it hidden until its first frame is drawn, and a
+  driver that hangs drawing or presenting that frame (Vulkan on a
+  GeForce GT 750M beside an Intel HD 4600, #1999) left it hidden for
+  good while the start already counted as working. A start that finds
+  the file logs "the last start did not show the window with ..." and
+  begins with the renderer after that one (after the last one, the
+  first choice again); `--renderer=` from a hand-over still wins.
   The renderer that then opens the window is remembered as above, so a
   computer whose card crashes in wgpu opens with OpenGL from the second
   start on, without `--renderer=gl` typed (#570,
-  `gpu::tests::a_start_that_never_opened_its_window_is_followed_by_the_next_renderer`).
-- A start whose window has not opened 20 seconds after it began
-  (`gpu::WINDOW_WAIT`: the driver hung it inside wgpu's set-up, so it
-  never comes back to hand over) starts TraceDraw again with the next
+  `gpu::tests::a_start_that_never_opened_its_window_is_followed_by_the_next_renderer`,
+  `gpu::tests::a_window_whose_first_frame_never_shows_goes_on_with_opengl`).
+  The renderer that works is remembered (`working_renderer`) only then
+  too, once its first frame is on the screen
+  (`gpu::tests::a_frame_counts_as_shown_once_the_next_one_begins`).
+- A start that stands in for a renderer that showed nothing (the last
+  start left `renderer-attempt` behind and this one draws with another
+  renderer than Options asks for, `gpu::fell_back`) says so once in the
+  status bar as soon as its first frame is shown: "The last start could
+  not show the window, so TraceDraw now draws with ...", and a click on
+  it opens Options > General to choose the graphics card or hardware
+  acceleration again; a new choice there is tried afresh at the next
+  start (`gpu::tests::the_fallback_is_said_only_after_a_failed_start`).
+  `--renderer=gl` typed with nothing failed says nothing.
+- A start that has shown no frame 20 seconds after it began
+  (`gpu::WINDOW_WAIT`: the driver hung it inside wgpu's set-up or while
+  it drew the first frame, so it never comes back to hand over; logged
+  as "no frame on the screen after 20s with ...") starts TraceDraw again with the next
   renderer itself, the other arguments kept, and ends. Before that it
   answers no to later starts, so a file opened meanwhile goes to a window
   of its own instead of to the window that never shows. With the last
@@ -325,7 +345,9 @@ and `--reset-settings` starts open windows of their own.
   (`gpu::tests::a_start_that_handed_over_is_not_started_again`).
 - The log names every graphics adapter wgpu offers (backend, type,
   vendor and device ids, driver) with why it was taken or left, the
-  renderer each start tries and the one that opened the window; an
+  renderer each start tries, the one the window was made with ("the window
+  was made with ...; waiting for its first frame") and "the first frame
+  reached the screen with ..." once it is shown; an
   OpenGL start adds the driver's vendor, renderer and versions.
 - The log goes to `tracedraw.log` in the settings folder as well as to
   the console (written afresh each start; a start handed over to the
