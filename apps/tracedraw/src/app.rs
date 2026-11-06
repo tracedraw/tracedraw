@@ -8143,7 +8143,7 @@ impl App {
     /// Imported text with a word that has custom optional hyphens gets
     /// hyphenation (Text > Custom Optional Hyphens, "When pasting and
     /// importing text").
-    fn hyphenate_imported(&mut self, ids: &[ShapeId]) {
+    pub(crate) fn hyphenate_imported(&mut self, ids: &[ShapeId]) {
         if self.settings.hyphens_when_pasting && !self.settings.custom_hyphens.is_empty() {
             crate::ui::writing_tools::apply_custom_hyphens(self, ids);
         }
@@ -8171,6 +8171,12 @@ impl App {
         if self.selection == before || self.selection.is_empty() {
             return;
         }
+        self.move_import_to(at);
+    }
+
+    /// Put the middle of the selection, just imported, at `at`, in the
+    /// import's own undo step.
+    pub fn move_import_to(&mut self, at: Point) {
         let Some(b) = self.selection_bounds() else {
             return;
         };
@@ -8355,7 +8361,8 @@ impl App {
         }
     }
 
-    /// Import the first page of a PDF or AI file into the active layer.
+    /// Import a PDF or AI file: one page goes into the active layer; for
+    /// several, a dialog asks which pages and where.
     pub fn import_pdf(&mut self, path: &std::path::Path) {
         self.import_pdf_with_password(path, "");
     }
@@ -8363,9 +8370,6 @@ impl App {
     /// [`App::import_pdf`] with the password of a protected file.
     pub fn import_pdf_with_password(&mut self, path: &std::path::Path, password: &str) {
         use tracedraw_io::pdf_import::ImportError;
-        let Some(layer) = self.active_layer() else {
-            return;
-        };
         if self.ask_pdf_text(path, true) {
             return;
         }
@@ -8385,61 +8389,22 @@ impl App {
             self.ask_pdf_password(path.to_path_buf(), true, !password.is_empty());
             return;
         }
-        let parsed = parsed.map_err(|e| e.to_string());
         match parsed {
             Ok(mut imported) => {
                 if options.text_as_curves {
                     crate::ui::pdf_import_dialog::remaining_text_to_curves(&mut imported.pages);
                 }
-                let mut cmds = Vec::new();
-                let mut ids = Vec::new();
-                let Some(first) = imported.pages.into_iter().next() else {
-                    return;
-                };
-                // The file's spot inks join the drawing's: one of the same
-                // name is the same ink, the others are added.
-                let (inks, map) = merge_inks(&self.doc().inks, &imported.inks);
-                if inks != self.doc().inks {
-                    cmds.push(Command::SetInks { inks });
-                }
-                for mut s in first.shapes {
-                    if !map.is_empty() {
-                        crate::color_policy::recolor_shape(&mut s, &|c| renumber_ink(c, &map));
-                    }
-                    let id = self.engine.new_shape_id();
-                    let shape = reid(s, id, &mut self.engine);
-                    ids.push(id);
-                    cmds.push(Command::AddShape { layer, shape });
-                }
-                if let Err(e) = self.engine.run_batch("Import", &cmds) {
-                    self.status = e.to_string();
-                }
-                if !imported.warnings.is_empty() {
-                    log::warn!("pdf import: {}", imported.warnings.join("; "));
-                }
-                self.hyphenate_imported(&ids);
-                self.select(ids);
-                // The first page's pictures that came in smaller (#1835).
-                let shrunk: Vec<_> = imported
-                    .shrunk_pictures
-                    .iter()
-                    .filter(|p| p.page == 0)
-                    .copied()
-                    .collect();
-                if !shrunk.is_empty() && matches!(self.dialog, crate::ui::dialogs::Dialog::None) {
-                    let name = path
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    self.dialog =
-                        crate::ui::dialogs::Dialog::OpenNotes(crate::ui::dialogs::OpenNotes {
-                            name,
-                            shrunk: crate::ui::dialogs::shrunk_sizes(&shrunk),
-                            ..Default::default()
-                        });
+                if imported.pages.len() > 1 {
+                    // Which pages, and where (a page of their own each, or
+                    // the current page).
+                    self.ask_pdf_pages(path, imported);
+                } else {
+                    self.import_pdf_pages(path, &imported, &[0], false);
                 }
             }
-            Err(e) => self.status = crate::i18n::trf("status.import_failed", &[("e", &e)]),
+            Err(e) => {
+                self.status = crate::i18n::trf("status.import_failed", &[("e", &e.to_string())])
+            }
         }
     }
 
@@ -9016,7 +8981,7 @@ fn reid(mut s: Shape, id: ShapeId, engine: &mut Engine) -> Shape {
 /// an ink of a name the drawing has is that ink, the others are added
 /// with numbers of their own. Gives the inks and, for each imported ink
 /// whose number changes, its old and new number.
-fn merge_inks(
+pub(crate) fn merge_inks(
     have: &[tracedraw_core::document::Ink],
     come: &[tracedraw_core::document::Ink],
 ) -> (Vec<tracedraw_core::document::Ink>, Vec<(u32, u32)>) {
@@ -9043,7 +9008,7 @@ fn merge_inks(
 }
 
 /// A spot colour of an imported ink on the number `map` gives it.
-fn renumber_ink(c: Color, map: &[(u32, u32)]) -> Color {
+pub(crate) fn renumber_ink(c: Color, map: &[(u32, u32)]) -> Color {
     let mut c = c;
     if let Color::Spot { ink, .. } = &mut c {
         if let Some((_, to)) = map.iter().find(|(from, _)| from == ink) {

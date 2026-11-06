@@ -7,6 +7,7 @@ full, row-by-row status.
 ## Unreleased
 
 - Linked text content: Text > Link Text Content (also on the right-click menu) links the characters of two texts or more, so whatever is typed in any of them appears in the others at once, both ways, while each keeps its own font, size, colours and effects. Change the word of a 3D blend, an extrusion or a shadow text once. The Blend panel can link the two texts of a blend; a linked text shows the others of its link with dashed outlines and a chain mark, Undo takes a change back in all of them in one step, copies stay linked, and Unlink Text Content lets a text go its own way. This is not the frame flow of Paragraph Text Frame > Link; `.tdraw` files keep the link, `.cdr` files get plain texts (#1568, #1364, #1194).
+- File > Import of a PDF (or PDF-compatible `.ai`) file of several pages asks which pages to bring in and where, in a new Import PDF Pages dialog: All or a list such as "1-3, 5", with each page's size and orientation shown and ticked. As new pages after the current page (the default), each chosen page becomes a page of the drawing with its own size and orientation, in order, its spot inks joining the drawing's; On the current page puts each page's objects on the active layer as a group. The whole import is one undo step, and it follows the text question and the password of a protected file as before, on the desktop, in the browser and on Android. This merges PDFs into one drawing; before, Import took only the first page. A file of one page comes in as before, without asking.
 
 ## 0.41.0 (2026-11-06)
 
