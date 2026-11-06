@@ -2183,6 +2183,12 @@ pub struct Shape {
     /// lettering made of overlapping parts). Text always fills nonzero.
     #[serde(default, skip_serializing_if = "crate::shaping::FillRule::is_even_odd")]
     pub fill_rule: crate::shaping::FillRule,
+    /// Linked text content (#1568): the texts carrying the same key keep
+    /// the same characters, each in its own font, colours and effects
+    /// (see [`crate::linked_text`]). Not the flow of linked paragraph
+    /// frames, which is another feature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_link: Option<u64>,
 }
 
 /// What a QR code holds: the kind of content, which decides the fields
@@ -2483,6 +2489,7 @@ impl Shape {
             raster_fx: None,
             qr: None,
             fill_rule: crate::shaping::FillRule::EvenOdd,
+            content_link: None,
         }
     }
 

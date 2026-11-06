@@ -191,6 +191,7 @@ impl Engine {
             self.doc = before;
             return Err(e);
         }
+        self.doc.sync_linked_text(&before);
         self.doc.assign_uids(&mut self.uid_state);
         self.doc.refresh_text_flow();
         let id = self.next_step;
@@ -222,6 +223,7 @@ impl Engine {
                 return Err(e);
             }
         }
+        self.doc.sync_linked_text(&before);
         self.doc.assign_uids(&mut self.uid_state);
         self.doc.refresh_text_flow();
         let id = self.next_step;
@@ -254,6 +256,7 @@ impl Engine {
         // The step keeps the drawing from before it; the change joins it.
         let mut doc = self.doc.clone();
         cmd.apply(&mut doc)?;
+        doc.sync_linked_text(&self.doc);
         doc.assign_uids(&mut self.uid_state);
         doc.refresh_text_flow();
         self.doc = doc;
@@ -300,6 +303,7 @@ impl Engine {
         for c in cmds {
             c.apply(&mut doc)?;
         }
+        doc.sync_linked_text(&self.doc);
         doc.assign_uids(&mut self.uid_state);
         self.doc = doc;
         self.clear_redo();

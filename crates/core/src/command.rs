@@ -299,6 +299,18 @@ pub enum Command {
         shapes: Vec<ShapeId>,
         wrap: bool,
     },
+    /// Link the text content of `shapes` (two texts or more, #1568): from
+    /// now on they hold the same characters, each with its own looks (see
+    /// [`crate::linked_text`]). The others take the characters of the
+    /// first; a text already linked brings its whole link along.
+    LinkTextContent {
+        shapes: Vec<ShapeId>,
+    },
+    /// Take `shapes` out of their content links; each keeps the text it
+    /// shows. A text left alone in its link leaves it too.
+    UnlinkTextContent {
+        shapes: Vec<ShapeId>,
+    },
     /// How the fills of `shapes` cover overlapping contours (#1211).
     SetFillRule {
         shapes: Vec<ShapeId>,
@@ -526,6 +538,8 @@ impl Command {
             Command::SetOverprint { .. } => "Overprint",
             Command::SetLink { .. } => "Hyperlink",
             Command::SetWrapText { .. } => "Wrap Paragraph Text",
+            Command::LinkTextContent { .. } => "Link Text Content",
+            Command::UnlinkTextContent { .. } => "Unlink Text Content",
             Command::SetFillRule { .. } => "Fill Winding",
             Command::SetWrapStyle { .. } => "Wrap Style",
             Command::SetObjectData { .. } => "Object Data",
@@ -1090,6 +1104,25 @@ impl Command {
                     any_mut(doc, *id)?.wrap_text = *wrap;
                 }
             }
+            Command::LinkTextContent { shapes } => link_text_content(doc, shapes)?,
+            Command::UnlinkTextContent { shapes } => {
+                for id in shapes {
+                    any(doc, *id)?;
+                }
+                let mut links = std::collections::BTreeSet::new();
+                for id in shapes {
+                    let s = any_mut(doc, *id)?;
+                    if let Some(l) = s.content_link.take() {
+                        links.insert(l);
+                    }
+                }
+                // A text left alone in a link is linked to nothing.
+                for l in links {
+                    if let [last] = doc.content_link_members(l).as_slice() {
+                        any_mut(doc, *last)?.content_link = None;
+                    }
+                }
+            }
             Command::SetFillRule { shapes, rule } => {
                 for id in shapes {
                     any(doc, *id)?;
@@ -1580,6 +1613,59 @@ fn keep_clip_frame_paint(doc: &mut Document, holder: Option<(ShapeId, crate::geo
             s.keep_paint_in_place(before, after);
         }
     }
+}
+
+/// [`Command::LinkTextContent`]: every text of `shapes`, and every text
+/// linked with one of them already, under one key; the characters of the
+/// first given to the others.
+fn link_text_content(doc: &mut Document, shapes: &[ShapeId]) -> Result<()> {
+    let mut ids: Vec<ShapeId> = Vec::new();
+    for id in shapes {
+        if !matches!(any(doc, *id)?.kind, ShapeKind::Text { .. }) {
+            return Err(Error::NotText(*id));
+        }
+        if !ids.contains(id) {
+            ids.push(*id);
+        }
+    }
+    let Some(&first) = ids.first() else {
+        return Ok(());
+    };
+    // The links the texts are in already join the new one.
+    let old: std::collections::BTreeSet<u64> = ids
+        .iter()
+        .filter_map(|id| doc.find_shape(*id).and_then(|s| s.content_link))
+        .collect();
+    for l in &old {
+        for m in doc.content_link_members(*l) {
+            if !ids.contains(&m) {
+                ids.push(m);
+            }
+        }
+    }
+    if ids.len() < 2 {
+        return Ok(());
+    }
+    let first_shape = any(doc, first)?;
+    let key = match old.iter().next() {
+        Some(l) => *l,
+        None => {
+            let seed = first_shape
+                .uid
+                .map(|u| (u.0 as u64) ^ ((u.0 >> 64) as u64))
+                .unwrap_or(first.raw());
+            doc.fresh_content_link(seed)
+        }
+    };
+    let text = crate::linked_text::text_of(first_shape).unwrap_or_default();
+    for id in ids {
+        let s = any_mut(doc, id)?;
+        s.content_link = Some(key);
+        if let ShapeKind::Text { spans, .. } = &mut s.kind {
+            crate::linked_text::retext_spans(spans, &text);
+        }
+    }
+    Ok(())
 }
 
 fn any_mut(doc: &mut Document, id: ShapeId) -> Result<&mut Shape> {
