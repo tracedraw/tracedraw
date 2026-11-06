@@ -29,6 +29,20 @@ pub enum Command {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         layer: Option<String>,
     },
+    /// A page of `size` put at index `at` (past the end: at the end) with
+    /// one layer holding `shapes`, which get fresh ids: the pages of
+    /// another file brought in by File > Import, several in one undo
+    /// step.
+    InsertPage {
+        at: usize,
+        name: Option<String>,
+        size: Size,
+        /// The name of the page's layer ("Layer 1" when none).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        layer: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        shapes: Vec<Shape>,
+    },
     DeletePage {
         page: PageId,
     },
@@ -480,7 +494,7 @@ impl Command {
     pub fn label(&self) -> &'static str {
         match self {
             Command::SetTitle { .. } => "Rename Document",
-            Command::AddPage { .. } => "Insert Page",
+            Command::AddPage { .. } | Command::InsertPage { .. } => "Insert Page",
             Command::DeletePage { .. } => "Delete Page",
             Command::ResizePage { .. } => "Resize Page",
             Command::AddLayer { .. } => "New Layer",
@@ -590,6 +604,34 @@ impl Command {
                     guides: Vec::new(),
                     background: None,
                 });
+            }
+            Command::InsertPage {
+                at,
+                name,
+                size,
+                layer,
+                shapes,
+            } => {
+                let n = doc.pages.len() + 1;
+                let page_id = doc.ids_mut().page();
+                let layer_id = doc.ids_mut().layer();
+                let mut l = Layer::new(
+                    layer_id,
+                    layer.clone().unwrap_or_else(|| "Layer 1".to_string()),
+                );
+                l.shapes = shapes.iter().map(|s| reid_shape(s, doc)).collect();
+                let at = (*at).min(doc.pages.len());
+                doc.pages.insert(
+                    at,
+                    Page {
+                        id: page_id,
+                        name: name.clone().unwrap_or_else(|| format!("Page {n}")),
+                        size: *size,
+                        layers: vec![l],
+                        guides: Vec::new(),
+                        background: None,
+                    },
+                );
             }
             Command::DeletePage { page } => {
                 if doc.pages.len() <= 1 {
@@ -3243,6 +3285,79 @@ mod tests {
         assert!(Command::duplicate_page(PageId(9999))
             .apply(&mut Document::default())
             .is_err());
+    }
+
+    /// Pages of another file go in after the current one with their own
+    /// sizes, their objects under fresh ids, all in one undo step.
+    #[test]
+    fn inserted_pages_keep_their_sizes_and_undo_as_one_step() {
+        let mut doc = Document::default();
+        let first = doc.pages[0].id;
+        let layer = doc.pages[0].layers[0].id;
+        let a = rect(&mut doc, 0.0);
+        let a_id = a.id;
+        Command::AddShape {
+            layer,
+            shape: a.clone(),
+        }
+        .apply(&mut doc)
+        .unwrap();
+        Command::AddPage {
+            name: Some("Last".into()),
+            size: Size::new(100.0, 100.0),
+            layer: None,
+        }
+        .apply(&mut doc)
+        .unwrap();
+        let mut eng = crate::Engine::new(doc);
+        let landscape = Size::new(297.0, 210.0);
+        let small = Size::new(70.56, 35.28);
+        let cmds = vec![
+            Command::InsertPage {
+                at: 1,
+                name: Some("A".into()),
+                size: landscape,
+                layer: Some("Layer".into()),
+                shapes: vec![a.clone(), a.clone()],
+            },
+            Command::InsertPage {
+                at: 2,
+                name: Some("B".into()),
+                size: small,
+                layer: None,
+                shapes: Vec::new(),
+            },
+        ];
+        eng.run_batch("Import", &cmds).unwrap();
+        let d = eng.document();
+        let names: Vec<&str> = d.pages.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names[1..], ["A", "B", "Last"]);
+        assert_eq!(d.pages[0].id, first);
+        assert_eq!(d.pages[1].size, landscape);
+        assert_eq!(d.pages[2].size, small);
+        assert_eq!(d.pages[1].layers[0].name, "Layer");
+        assert_eq!(d.pages[2].layers[0].name, "Layer 1");
+        // The objects came with ids of their own.
+        let ids: Vec<ShapeId> = d.pages[1].layers[0].shapes.iter().map(|s| s.id).collect();
+        assert_eq!(ids.len(), 2);
+        assert!(ids[0] != ids[1] && !ids.contains(&a_id));
+        assert_ne!(d.pages[1].layers[0].id, d.pages[2].layers[0].id);
+        // One undo takes every page back.
+        eng.undo().unwrap();
+        assert_eq!(eng.document().pages.len(), 2);
+        // An index past the end puts the page at the end.
+        let mut d = eng.document().clone();
+        Command::InsertPage {
+            at: 99,
+            name: None,
+            size: small,
+            layer: None,
+            shapes: Vec::new(),
+        }
+        .apply(&mut d)
+        .unwrap();
+        assert_eq!(d.pages.last().map(|p| p.size), Some(small));
+        assert_eq!(d.pages.last().map(|p| p.name.as_str()), Some("Page 3"));
     }
 
     #[test]

@@ -1106,6 +1106,9 @@ pub enum Dialog {
     },
     /// How a PDF's text is read in (#386).
     PdfText(crate::ui::pdf_import_dialog::PdfTextState),
+    /// Which pages of a PDF of several pages File > Import brings in,
+    /// and where.
+    PdfPages(crate::ui::pdf_pages::PdfPagesState),
     /// The Edit Fill dialog (F11, #361).
     EditFill(Box<crate::ui::edit_fill::EditFillState>),
     /// The Outline Pen dialog (F12, #357).
@@ -2005,6 +2008,7 @@ pub fn show(app: &mut App, ctx: &Context) {
         Dialog::OutlinePen(st) => crate::ui::outline_pen::dialog(app, ctx, st, &mut close),
         Dialog::EditFill(st) => crate::ui::edit_fill::dialog(app, ctx, st, &mut close),
         Dialog::PdfText(st) => crate::ui::pdf_import_dialog::dialog(app, ctx, st, &mut close),
+        Dialog::PdfPages(st) => crate::ui::pdf_pages::dialog(app, ctx, st, &mut close),
         Dialog::OldCdrVersion { version } => {
             let mut choose = false;
             window(ctx, tr("dialog.old_cdr_title")).show(ctx, |ui| {
