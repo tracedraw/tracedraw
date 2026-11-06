@@ -1460,4 +1460,92 @@ mod tests {
         p.custom_sheet = Size::new(0.0, 450.0);
         assert_eq!(p.state().custom_sheet, PrintState::default().custom_sheet);
     }
+
+    /// #1796: a layout saved as a preset or a file and loaded again puts
+    /// back the imposition, the sheet, the gaps, the margins and the
+    /// marks; another file is refused; values out of range are kept in
+    /// range on loading.
+    #[test]
+    fn layout_presets_round_trip_through_a_file() {
+        use crate::ui::dialogs::CUSTOM_SHEET;
+        let st = PrintState {
+            layout_kind: 1,
+            cols: 2,
+            rows: 3,
+            page_order: 2,
+            sheet: 2,
+            landscape: true,
+            gutter: 4.0,
+            gutter_y: 9.0,
+            margins: [1.0, 2.0, 3.0, 4.0],
+            crop_marks: true,
+            bleed: true,
+            bleed_limit: 3.0,
+            ..PrintState::default()
+        };
+        let p = LayoutPreset::from_state("ID cards", &st);
+        assert_eq!(p.sheet, "A4");
+        let text = p.to_file();
+        assert!(text.contains(LAYOUT_FILE_FORMAT));
+        let back = LayoutPreset::from_file(&text).expect("read back");
+        assert_eq!(back, p);
+        let mut fresh = PrintState::default();
+        back.apply(&mut fresh);
+        assert_eq!(LayoutPreset::from_state("ID cards", &fresh), p);
+        assert_eq!(fresh.layout_preset, "ID cards");
+        assert_eq!((fresh.gutter, fresh.gutter_y), (4.0, 9.0));
+        assert_eq!(fresh.page_order, 2);
+        assert_eq!(fresh.sheet, 2);
+        // Not a layout file.
+        assert!(
+            LayoutPreset::from_file("{\"format\":\"other\",\"version\":1,\"layout\":{}}").is_none()
+        );
+        assert!(LayoutPreset::from_file("not json").is_none());
+        // Out of range, and a Custom size.
+        let wild = r#"{"format":"tracedraw-print-layout","version":1,"layout":{
+            "name":"x","layout_kind":9,"cols":0,"rows":500,"page_order":7,
+            "sheet":"custom","sheet_size":{"width":300.0,"height":400.0},
+            "gutter":-3.0,"gutter_y":1e9,"margins":[-1.0,999.0,5.0,5.0],
+            "signature_sheets":0,"creep":50.0}}"#;
+        let w = LayoutPreset::from_file(wild).expect("a layout");
+        let mut st = PrintState::default();
+        w.apply(&mut st);
+        assert_eq!(
+            (st.layout_kind, st.cols, st.rows, st.page_order),
+            (3, 1, 99, 2)
+        );
+        assert_eq!(st.sheet, CUSTOM_SHEET);
+        assert_eq!(
+            st.custom_sheet,
+            tracedraw_core::geometry::Size::new(300.0, 400.0)
+        );
+        assert_eq!((st.gutter, st.gutter_y), (0.0, 100.0));
+        assert_eq!(st.margins, [0.0, 200.0, 5.0, 5.0]);
+        assert_eq!((st.signature_sheets, st.creep), (1, 20.0));
+        // Presets last in the preferences.
+        let mut prefs = PrintPrefs::default();
+        prefs.layout_presets.push(p.clone());
+        let json = serde_json::to_string(&prefs).expect("written");
+        let read: PrintPrefs = serde_json::from_str(&json).expect("read");
+        assert_eq!(read.layout_presets, vec![p]);
+    }
+
+    /// #1795: the row gap is remembered apart from the column gap;
+    /// preferences saved before it existed take the column gap for both.
+    #[test]
+    fn the_row_gap_is_remembered_and_old_preferences_take_the_column_gap() {
+        let mut p = PrintPrefs::default();
+        let st = PrintState {
+            gutter: 3.0,
+            gutter_y: 8.0,
+            ..PrintState::default()
+        };
+        p.remember(&st);
+        let back = p.state();
+        assert_eq!((back.gutter, back.gutter_y), (3.0, 8.0));
+        let old: PrintPrefs = serde_json::from_str(r#"{"gutter": 6.0}"#).expect("read");
+        assert_eq!(old.gutter_y, None);
+        let st = old.state();
+        assert_eq!((st.gutter, st.gutter_y), (6.0, 6.0));
+    }
 }
