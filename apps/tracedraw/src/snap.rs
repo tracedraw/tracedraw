@@ -1658,6 +1658,7 @@ mod tests {
             current: Point::new(b.x1, b.center().y),
             grab: Vec2::ZERO,
             mods: Default::default(),
+            snapped: (false, false),
         };
         let q = app.snap_point_excluding(Point::new(49.0, 21.0), &[id]);
         assert_eq!(q, Point::new(50.0, 21.0));

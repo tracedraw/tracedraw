@@ -368,6 +368,12 @@ pub enum Drag {
         /// pointer without a jump.
         grab: tracedraw_core::geometry::Vec2,
         mods: HandleMods,
+        /// Along which axes (x, y) snapping moved `current` off the
+        /// pointer: a corner keeping the proportions takes its scale
+        /// from a snapped axis, so the handle stays on the guideline or
+        /// edge it caught while the pointer goes on along the other
+        /// (#2004).
+        snapped: (bool, bool),
     },
     /// Skewing the selection with a side handle in rotate mode: the
     /// opposite side stays (the centre line with Shift).
