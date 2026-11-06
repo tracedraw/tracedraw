@@ -1493,6 +1493,42 @@ mod tests {
         }
     }
 
+    /// Page > Facing Pages and its Start On submenu (#1972): run by key,
+    /// each one undo step; choosing a side turns facing pages on.
+    #[test]
+    fn the_page_menu_turns_facing_pages_on_and_picks_the_side() {
+        use tracedraw_core::spreads::PageSide;
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let mut entries = Vec::new();
+        run_frame(&ctx, |ui| entries = commands(&mut app, ui.ctx()));
+        let pos = |key: &str| entries.iter().position(|e| e.key == key);
+        let left = pos("menu.layout.facing_start_left").expect("Left Side");
+        assert_eq!(
+            entries[left].path,
+            ["menu.layout", "menu.layout.facing_start"]
+        );
+        let mut ran = false;
+        run_frame(&ctx, |ui| {
+            ran = run_command(&mut app, ui.ctx(), "menu.layout.facing_pages")
+        });
+        assert!(ran);
+        assert!(app.doc().metadata.facing_pages);
+        assert_eq!(app.doc().metadata.facing_start, PageSide::Right);
+        run_frame(&ctx, |ui| {
+            run_command(&mut app, ui.ctx(), "menu.layout.facing_pages");
+        });
+        assert!(!app.doc().metadata.facing_pages);
+        run_frame(&ctx, |ui| {
+            run_command(&mut app, ui.ctx(), "menu.layout.facing_start_left");
+        });
+        assert!(app.doc().metadata.facing_pages);
+        assert_eq!(app.doc().metadata.facing_start, PageSide::Left);
+        app.undo();
+        assert!(!app.doc().metadata.facing_pages);
+        assert_eq!(app.doc().metadata.facing_start, PageSide::Right);
+    }
+
     #[test]
     fn menu_commands_are_listed_and_run_by_key() {
         let ctx = crate::theme::ui_context();
@@ -2922,6 +2958,28 @@ pub(crate) fn layout_menu(app: &mut App, ui: &mut Ui) {
             };
         }
     });
+    // Facing pages: the pages in spreads, the first page on the right
+    // or on the left (#1972, #1660).
+    {
+        use tracedraw_core::spreads::PageSide;
+        let (on, start) = {
+            let m = &app.doc().metadata;
+            (m.facing_pages, m.facing_start)
+        };
+        if check(ui, "menu.layout.facing_pages", "", on) {
+            app.set_facing_pages(!on, start);
+        }
+        sub(ui, "menu.layout.facing_start", |ui| {
+            for (side, key) in [
+                (PageSide::Right, "menu.layout.facing_start_right"),
+                (PageSide::Left, "menu.layout.facing_start_left"),
+            ] {
+                if radio(ui, key, "", on && start == side) {
+                    app.set_facing_pages(true, side);
+                }
+            }
+        });
+    }
     if item(
         ui,
         "menu.layout.fit_page_selection",

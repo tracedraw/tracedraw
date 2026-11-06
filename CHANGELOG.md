@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Facing pages: Page > Facing Pages (and Document Options > Layout) shows the pages side by side in spreads while drawing, page 1 alone on the right and then 2-3, 4-5..., or 1-2, 3-4... with Page > Facing Pages Start On > Left Side. Objects can be drawn across the spine and show on both pages; a press, the page tabs or the navigator make the facing page current without moving the view; guidelines, snapping, the bleed (around the whole spread) and the Multipage View (spreads two a row) follow. Adding or removing pages reflows the spreads. Export has a Spreads option that writes each spread as one page; pages exported or printed alone carry what reaches over the spine from the facing page. The setting is saved in `.tdraw` files; `.cdr` files do not carry it (#1972, #1660).
+
 ## 0.41.0 (2026-11-06)
 
 - Text in older fonts made for the symbol encoding (Tamil fonts among them): a letter the font keeps at codes 0x80 to 0x9F now draws when it is typed on Windows, which delivers it as the character code page 1252 has there ("„" for 0x84), and when pasted text holds it at U+F080 to U+F09F. Such letters went to another font and showed as a box or not at all (#1937).

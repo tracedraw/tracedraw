@@ -933,9 +933,9 @@ impl App {
         // The current page at its place, and in the Multipage View the
         // other pages in view, each moved to where it is displayed.
         let mut pages = vec![(self.page, self.page_rect())];
-        if self.multipage {
+        if self.shows_other_pages() {
             pages.extend(
-                self.multipage_layout()
+                self.shown_pages()
                     .into_iter()
                     .filter(|(id, r)| *id != self.page && !outside(*r)),
             );
