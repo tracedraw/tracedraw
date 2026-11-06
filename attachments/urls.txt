@@ -667,3 +667,7 @@
 1980 https://github.com/user-attachments/assets/0f674fe3-ecf0-49b1-a32a-ad083f426130
 1985 https://github.com/user-attachments/assets/d2f19086-9070-4e1a-b9a6-a13738405f17
 1982 https://github.com/user-attachments/assets/099fc14e-356e-4d9f-a1d1-0226bf9efd44
+1255 https://github.com/user-attachments/files/34256203/CorelDraw.Macro.zip
+1255 https://github.com/user-attachments/assets/fc9f4ec7-713c-4edc-af8d-75ecc66f55ac
+1255 https://github.com/user-attachments/assets/0c52a84c-2353-489d-a609-f0b4804c33cb
+1658 https://github.com/user-attachments/assets/e7262081-9559-4b72-98df-015b159c7fed
