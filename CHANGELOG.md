@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Shape tool: holding Delete down on chosen nodes takes those nodes only. The key's repeats ran on and deleted the whole curve once the nodes were gone; whole objects now go only on a press of their own, never on the repeats of a held Delete or Backspace (#1982).
 - Windows: a file dragged over the window and taken away again without a drop no longer leaves the blue "Drop to import" frame over the window until TraceDraw is closed. The frame shows only while a mouse button holds the drag (#2350).
 - Scripts panel: a script reaches more of what the menus do. Pages can be renamed, copied and deleted, layers locked and deleted, groups ungrouped (`Page.Name`, `Page.Delete`, `Page.Duplicate`, `Layer.Locked`, `Layer.Delete`, `Ungroup`); a text object's font, size, weight and slant are read and set (`Font`, `FontSize`, `Bold`, `Italic`, `SetTextStyle`); `Distribute` and its eight shorthands space a range; `ReplaceText` replaces text across a page or a range; `Combine` and `BreakApart`, which hands the pieces back; `Shape.Bounds` reads the box with its edges named; `FindByProperties`, `SelectByProperties` and `ReplaceByProperties` find and change objects by type, fill, outline or font. `ActivePage` and `ActiveLayer` follow a page the script activates. `docs/behavior/scripting.md` describes the object model (#2242).
 - MCP server: `export` takes `selection: true` to write only the selected objects, and its description names PS and PRN, which it always wrote.

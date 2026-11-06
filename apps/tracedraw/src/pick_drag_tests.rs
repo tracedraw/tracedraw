@@ -6999,8 +6999,11 @@ fn backspace_while_drawing_removes_the_last_node_not_the_selection() {
         app.select(vec![id]);
         let nodes = |app: &App| app.curve.as_ref().map(|c| c.nodes.clone());
         assert_eq!(nodes(&app).map(|n| n.len()), Some(3), "{tool:?}");
+        // Each a press of its own: down, then let go (a key held repeats,
+        // and repeats never delete objects, #1982).
         let press = |ctx: &egui::Context, app: &mut App, k: egui::Key| {
             frame(ctx, app, vec![key(k, Modifiers::NONE)], Modifiers::NONE);
+            frame(ctx, app, vec![key_up(k, Modifiers::NONE)], Modifiers::NONE);
         };
         press(&ctx, &mut app, egui::Key::Backspace);
         let left = nodes(&app).expect("still drawing");
@@ -25252,4 +25255,68 @@ fn a_shadow_drag_on_a_selection_shadows_every_selected_object() {
     );
     assert!(block(&app, third).is_some());
     assert_eq!(app.selection, vec![third]);
+}
+
+/// A Delete key held down with the Shape tool: its first press takes
+/// the chosen node, its repeats never run on into the whole curve
+/// (#1982). A press of its own still deletes the object.
+#[test]
+fn holding_delete_on_a_chosen_node_keeps_the_curve() {
+    let (ctx, mut app, id) = setup();
+    app.convert_to_curves();
+    app.set_tool(Tool::Shape);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let at = app.view.to_screen(Point::new(60.0, 10.0));
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert_eq!(app.node_selection.len(), 1);
+    let nodes_of = |app: &App| match app.doc().find_shape(id).map(|s| s.kind.clone()) {
+        Some(ShapeKind::Path { path, .. }) => Some(tracedraw_core::nodes::nodes(&path).len()),
+        _ => None,
+    };
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Delete, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert_eq!(nodes_of(&app), Some(3));
+    let repeat = Event::Key {
+        key: egui::Key::Delete,
+        physical_key: None,
+        pressed: true,
+        repeat: true,
+        modifiers: Modifiers::NONE,
+    };
+    for _ in 0..5 {
+        frame(&ctx, &mut app, vec![repeat.clone()], Modifiers::NONE);
+    }
+    assert_eq!(nodes_of(&app), Some(3), "the curve stays");
+    assert_eq!(app.selection, vec![id]);
+    // Let go, then a press of its own: the object goes.
+    frame(
+        &ctx,
+        &mut app,
+        vec![key_up(egui::Key::Delete, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Delete, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert_eq!(nodes_of(&app), None);
+}
+
+/// Delete held with the Pick tool still deletes the selection once.
+#[test]
+fn holding_delete_with_the_pick_tool_deletes_the_selection() {
+    let (ctx, mut app, id) = setup();
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Delete, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert!(app.doc().find_shape(id).is_none());
 }

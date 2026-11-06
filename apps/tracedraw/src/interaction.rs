@@ -4453,7 +4453,13 @@ impl App {
                 if !self.delete_selected_guides() {
                     self.status = crate::i18n::tr("status.guideline_locked");
                 }
-            } else {
+            } else if first_pressed(Key::Delete, Modifiers::NONE)
+                || first_pressed(Key::Backspace, Modifiers::NONE)
+            {
+                // Whole objects go only on a press of their own, never on
+                // the repeats of a key held down: the press that took the
+                // chosen nodes (or the last node of a curve being drawn)
+                // must not run on into the drawing itself (#1982).
                 self.delete_selection();
             }
         }
