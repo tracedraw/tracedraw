@@ -3602,6 +3602,7 @@ status.settings_reset = "Todas as configurações voltaram ao padrão"
 status.settings_saved = "Configurações salvas como padrão"
 status.software_renderer = "Um adaptador de software desenha a janela ({name}): cada quadro é desenhado na CPU, então o TraceDraw se limita a 30 quadros por segundo e sem sombras. Instalar o driver próprio da placa de vídeo deixa tudo mais rápido." # mt
 status.software_renderer_off = "Desenho na CPU ({name}): a aceleração por hardware está desligada. Clique para ligá-la em Opções > Geral." # mt
+status.renderer_fell_back = "A última inicialização não conseguiu mostrar a janela, então o TraceDraw agora desenha com {name}. Clique para escolher a placa de vídeo ou a aceleração por hardware em Opções > Geral." # mt
 status.shaping_empty = "Combinar formas produziu um resultado vazio" # mt
 status.shaping_open_cutter = "Curvas abertas não participam aqui: Aparar corta um objeto fechado ao longo de uma curva aberta"
 status.shaping_open_no_cut = "A curva aberta não atravessa o objeto de borda a borda: nada foi cortado"

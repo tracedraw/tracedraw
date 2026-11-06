@@ -369,6 +369,14 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     if let Some(name) = crate::gpu::take_software_note() {
         note_software_renderer(app, &name);
     }
+    // Said once: the last start showed no window, so this one draws with
+    // the next renderer; a click opens Options to choose again (#1999).
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(name) = crate::gpu::take_fallback_note() {
+        app.status = crate::i18n::trf("status.renderer_fell_back", &[("name", name)]);
+        app.status_opens_options =
+            Some((app.status.clone(), crate::ui::dialogs::OptionsPage::General));
+    }
     crate::ui::icons::set_colored(app.settings.colored_icons);
     menus::invoke::set_bindings(&app.settings.shortcuts);
     // F1: the Help page of the open dialog, the docker or the tool.

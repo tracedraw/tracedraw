@@ -3602,6 +3602,7 @@ status.settings_reset = "Alle instellingen staan weer op hun standaardwaarde"
 status.settings_saved = "Instellingen opgeslagen als standaard"
 status.software_renderer = "Een software-adapter tekent het venster ({name}): elk beeld wordt op de CPU getekend, dus TraceDraw houdt het bij 30 beelden per seconde zonder schaduwen. Het eigen stuurprogramma van de videokaart installeren maakt het sneller." # mt
 status.software_renderer_off = "Tekenen op de CPU ({name}): hardwareversnelling staat uit. Klik om die aan te zetten in Opties > Algemeen." # mt
+status.renderer_fell_back = "De vorige start kon het venster niet tonen, daarom tekent TraceDraw nu met {name}. Klik om de grafische kaart of hardwareversnelling te kiezen in Opties > Algemeen." # mt
 status.shaping_empty = "Vormen combineren leverde een leeg resultaat op" # mt
 status.shaping_open_cutter = "Open curven doen hier niet mee: Wegsnijden snijdt een gesloten object langs een open curve"
 status.shaping_open_no_cut = "De open curve kruist het object niet van rand tot rand: er is niets gesneden"
