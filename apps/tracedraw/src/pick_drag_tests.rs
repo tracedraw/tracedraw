@@ -2916,6 +2916,178 @@ fn deleting_two_neighbouring_line_nodes_leaves_a_curve() {
     assert_eq!(tracedraw_core::nodes::nodes(&p).len(), 4);
 }
 
+/// The ways Delete is asked for with the Shape tool: the keys, Edit >
+/// Delete and the Delete row of the node menu (the right-click menu).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeleteRoute {
+    DeleteKey,
+    BackspaceKey,
+    EditMenu,
+    NodeMenu,
+}
+
+const DELETE_ROUTES: [DeleteRoute; 4] = [
+    DeleteRoute::DeleteKey,
+    DeleteRoute::BackspaceKey,
+    DeleteRoute::EditMenu,
+    DeleteRoute::NodeMenu,
+];
+
+/// The rectangle converted to curves, the Shape tool on, and its top
+/// right node chosen by a click when `chosen` (#1982).
+fn a_curve_with_the_shape_tool(chosen: bool) -> (egui::Context, App, ShapeId) {
+    let (ctx, mut app, id) = setup();
+    app.convert_to_curves();
+    app.set_tool(Tool::Shape);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(app.node_selection.is_empty());
+    if chosen {
+        let corner = Point::new(60.0, 10.0);
+        let at = app.view.to_screen(corner);
+        click_at(&ctx, &mut app, at, Modifiers::NONE);
+        let hit = app.node_at(corner).expect("node");
+        assert_eq!(app.node_selection, vec![(hit.shape, hit.index)]);
+        assert!(app.chosen_segment().is_none(), "a node, not a segment");
+    }
+    assert_eq!(app.selection, vec![id]);
+    (ctx, app, id)
+}
+
+/// How many nodes the curve `id` has, None when it is gone.
+fn curve_nodes(app: &App, id: ShapeId) -> Option<usize> {
+    match app.doc().find_shape(id).map(|s| s.kind.clone()) {
+        Some(ShapeKind::Path { path, .. }) => Some(tracedraw_core::nodes::nodes(&path).len()),
+        Some(other) => panic!("not a curve: {other:?}"),
+        None => None,
+    }
+}
+
+/// The node menu's rows "clicked" one by one until the row `key` runs,
+/// each try on a fresh drawing so the rows before it change nothing.
+/// Returns the drawing after the click and whether the row was enabled.
+fn click_node_menu_row(
+    key: &str,
+    fresh: impl Fn() -> (egui::Context, App, ShapeId),
+) -> (egui::Context, App, ShapeId, bool) {
+    for t in 0..40 {
+        let (ctx, mut app, id) = fresh();
+        crate::ui::menus::replay::start(t);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                Pos2::ZERO,
+                egui::vec2(1600.0, 1000.0),
+            )),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| {
+            let mut close = false;
+            crate::ui::context::node_menu(&mut app, ui, &mut close);
+        });
+        out.textures_delta.clear();
+        let (hit, rows) = crate::ui::menus::replay::finish();
+        if hit.as_deref() == Some(key) {
+            return (ctx, app, id, true);
+        }
+        if t + 1 >= rows {
+            // Every row seen and the one asked for never ran: it is
+            // greyed, or not there.
+            return (ctx, app, id, false);
+        }
+    }
+    panic!("the node menu never ran {key}");
+}
+
+/// Delete asked for by `route` on the drawing `fresh` builds; the
+/// drawing afterwards.
+fn delete_by(
+    route: DeleteRoute,
+    fresh: impl Fn() -> (egui::Context, App, ShapeId),
+) -> (egui::Context, App, ShapeId) {
+    match route {
+        DeleteRoute::DeleteKey | DeleteRoute::BackspaceKey => {
+            let (ctx, mut app, id) = fresh();
+            let k = if route == DeleteRoute::DeleteKey {
+                egui::Key::Delete
+            } else {
+                egui::Key::Backspace
+            };
+            frame(
+                &ctx,
+                &mut app,
+                vec![key(k, Modifiers::NONE)],
+                Modifiers::NONE,
+            );
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+            (ctx, app, id)
+        }
+        DeleteRoute::EditMenu => {
+            let (ctx, mut app, id) = fresh();
+            assert!(
+                crate::ui::menus::run_command(&mut app, &ctx, "menu.edit.delete"),
+                "Edit > Delete is enabled"
+            );
+            (ctx, app, id)
+        }
+        DeleteRoute::NodeMenu => {
+            let (ctx, app, id, ran) = click_node_menu_row("context.node_delete", fresh);
+            assert!(ran, "the node menu's Delete is enabled");
+            (ctx, app, id)
+        }
+    }
+}
+
+/// With the Shape tool and a node chosen, Delete by `route` takes that
+/// node alone: the curve stays, selected, with one node fewer, and one
+/// undo step brings the node back (#1982).
+fn delete_takes_the_chosen_node(route: DeleteRoute) {
+    let (_, mut app, id) = delete_by(route, || a_curve_with_the_shape_tool(true));
+    assert_eq!(
+        curve_nodes(&app, id),
+        Some(3),
+        "{route:?}: the object stays"
+    );
+    assert_eq!(app.selection, vec![id], "{route:?}");
+    assert_eq!(app.tool, Tool::Shape, "{route:?}");
+    app.undo();
+    assert_eq!(curve_nodes(&app, id), Some(4), "{route:?}: one undo step");
+}
+
+/// The Delete and Backspace keys with a node chosen by a click: the
+/// node goes, the object stays (#1982).
+#[test]
+fn the_delete_key_with_a_chosen_node_takes_the_node_not_the_object() {
+    delete_takes_the_chosen_node(DeleteRoute::DeleteKey);
+    delete_takes_the_chosen_node(DeleteRoute::BackspaceKey);
+}
+
+/// Edit > Delete with a node chosen: the node goes, the object stays.
+/// It deleted the whole object (#1982).
+#[test]
+fn edit_delete_with_a_chosen_node_takes_the_node_not_the_object() {
+    delete_takes_the_chosen_node(DeleteRoute::EditMenu);
+}
+
+/// The right-click menu's Delete with a node chosen: the node goes, the
+/// object stays (#1982).
+#[test]
+fn the_node_menus_delete_with_a_chosen_node_takes_the_node_not_the_object() {
+    delete_takes_the_chosen_node(DeleteRoute::NodeMenu);
+}
+
+/// With the Shape tool and no node chosen, Delete by every route takes
+/// the selected object as before, and one undo step brings it back
+/// (#1982).
+#[test]
+fn delete_with_the_shape_tool_and_no_node_chosen_removes_the_object() {
+    for route in DELETE_ROUTES {
+        let (_, mut app, id) = delete_by(route, || a_curve_with_the_shape_tool(false));
+        assert_eq!(curve_nodes(&app, id), None, "{route:?}: the object went");
+        assert!(app.selection.is_empty(), "{route:?}");
+        app.undo();
+        assert_eq!(curve_nodes(&app, id), Some(4), "{route:?}: one undo step");
+    }
+}
+
 #[test]
 fn delete_removes_a_clicked_segment_and_keeps_its_nodes() {
     let (ctx, mut app, id) = setup();
