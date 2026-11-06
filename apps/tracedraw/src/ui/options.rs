@@ -4803,6 +4803,7 @@ fn layout_page(app: &mut App, ui: &mut Ui) {
         app.fit_pending = true;
     }
     page_spacing_row(app, ui);
+    facing_pages_row(app, ui);
     ui.separator();
     ui.strong(tr("options.master_layers"));
     type MasterRow = (
@@ -4868,6 +4869,49 @@ fn layout_page(app: &mut App, ui: &mut Ui) {
     // Which kinds of master layer are drawn in front of the page's
     // layers, now and when made (#1132, #1477).
     crate::ui::objects_docker::master_front_choices(app, ui);
+}
+
+/// Document Setup > Layout: Facing pages and the side the first page
+/// starts on (#1972, #1660), one undo step each.
+fn facing_pages_row(app: &mut App, ui: &mut Ui) {
+    use tracedraw_core::spreads::PageSide;
+    let (mut on, mut start) = {
+        let m = &app.doc().metadata;
+        (m.facing_pages, m.facing_start)
+    };
+    let r = ui
+        .checkbox(&mut on, tr("options.facing_pages"))
+        .rich_tip(crate::ui::tips::pair(
+            "options.facing_pages",
+            "options.facing_pages_tip",
+        ));
+    let mut changed = r.changed();
+    ui.add_enabled_ui(on, |ui| {
+        grid("doc_facing_start").show(ui, |ui| {
+            row_label(ui, &tr("options.facing_start"));
+            ui.horizontal(|ui| {
+                for (side, key) in [
+                    (PageSide::Right, "options.facing_start_right"),
+                    (PageSide::Left, "options.facing_start_left"),
+                ] {
+                    if ui
+                        .radio_value(&mut start, side, tr(key))
+                        .rich_tip(crate::ui::tips::pair(
+                            "options.facing_start",
+                            "options.facing_start_tip",
+                        ))
+                        .changed()
+                    {
+                        changed = true;
+                    }
+                }
+            });
+            ui.end_row();
+        });
+    });
+    if changed {
+        app.set_facing_pages(on, start);
+    }
 }
 
 /// Document Setup > Layout: the space between the pages of the
