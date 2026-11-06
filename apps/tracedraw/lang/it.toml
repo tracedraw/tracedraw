@@ -3589,6 +3589,7 @@ status.settings_reset = "Tutte le impostazioni sono tornate ai valori predefinit
 status.settings_saved = "Impostazioni salvate come predefinite"
 status.software_renderer = "Un adattatore software disegna la finestra ({name}): ogni fotogramma è disegnato dalla CPU, quindi TraceDraw si limita a 30 fotogrammi al secondo senza ombre. Installare il driver proprio della scheda grafica lo rende più veloce." # mt
 status.software_renderer_off = "Disegno sulla CPU ({name}): l'accelerazione hardware è disattivata. Fai clic per attivarla in Opzioni > Generale." # mt
+status.renderer_fell_back = "L'ultimo avvio non è riuscito a mostrare la finestra, quindi ora TraceDraw disegna con {name}. Fai clic per scegliere la scheda grafica o l'accelerazione hardware in Opzioni > Generale." # mt
 status.shaping_empty = "Combina forme ha prodotto un risultato vuoto" # mt
 status.shaping_open_cutter = "Le curve aperte non partecipano qui: Rifila taglia un oggetto chiuso lungo una curva aperta"
 status.shaping_open_no_cut = "La curva aperta non attraversa l'oggetto da bordo a bordo: non è stato tagliato nulla"

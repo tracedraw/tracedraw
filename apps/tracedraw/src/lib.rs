@@ -377,19 +377,23 @@ pub fn run() -> eframe::Result<()> {
     // The graphics card, or its software adapter with hardware
     // acceleration off; `--renderer=` when a start before could not open
     // the window (#445, #439).
-    // A start before that never got its window (the driver crashed or
-    // hung it) goes on with the next renderer (#570).
+    // A start before that never showed a frame (the driver crashed or
+    // hung it, before the window was made or while it drew the first
+    // frame) goes on with the next renderer (#570, #1999).
+    let last_failed = gpu::failed_attempt();
+    if let Some(f) = last_failed {
+        log::warn!("the last start did not show the window with {f:?}");
+    }
     let failed = gpu::Mode::from_args(&args)
         .is_none()
-        .then(gpu::failed_attempt)
+        .then_some(last_failed)
         .flatten();
-    if let Some(f) = failed {
-        log::warn!("the last start did not open the window with {f:?}");
-    }
     let mode = gpu::Mode::for_start(&args, &settings, failed);
     let first = gpu::Mode::first(&settings);
     let next = mode.next(first);
     gpu::note_next(next);
+    // Said in the status bar once a frame is shown (#1999).
+    gpu::note_fallback(gpu::fell_back(mode, first, last_failed));
     log::info!("opening the window with {mode:?} (Options asks for {first:?})");
     gpu::begin_attempt(mode);
     // A renderer that hangs never returns here to hand over (#570).
@@ -843,6 +847,12 @@ impl eframe::App for Shell {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // The start works once a frame reached the screen, not when the
+        // window was made (#1999).
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(mode) = gpu::mode_in_use() {
+            gpu::note_frame(ui.ctx(), mode);
+        }
         #[cfg(not(target_arch = "wasm32"))]
         self.pacer.pace();
         #[cfg(not(target_arch = "wasm32"))]
