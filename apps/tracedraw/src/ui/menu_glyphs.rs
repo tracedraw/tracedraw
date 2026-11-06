@@ -1139,16 +1139,14 @@ mod tests {
     fn tracecut_has_its_own_picture() {
         assert_eq!(for_key("menu.tools.tracecut"), Some(Glyph::TraceCut));
         let ctx = crate::theme::ui_context();
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                let r = Rect::from_min_size(Pos2::ZERO, Vec2::splat(16.0));
-                assert!(crate::ui::menus::draw_menu_picture(
-                    ui.painter(),
-                    r,
-                    "menu.tools.tracecut",
-                    Color32::GRAY
-                ));
-            });
+        let _ = ctx.run_ui(Default::default(), |ui| {
+            let r = Rect::from_min_size(Pos2::ZERO, Vec2::splat(16.0));
+            assert!(crate::ui::menus::draw_menu_picture(
+                ui.painter(),
+                r,
+                "menu.tools.tracecut",
+                Color32::GRAY
+            ));
         });
     }
 }
