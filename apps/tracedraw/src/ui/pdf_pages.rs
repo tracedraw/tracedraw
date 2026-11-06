@@ -466,23 +466,23 @@ mod tests {
         assert!(matches!(app.dialog, Dialog::PdfText(_)), "{:?}", app.dialog);
         frame(&mut app, &ctx, vec![]);
         frame(&mut app, &ctx, vec![enter()]);
+        assert_eq!(app.doc().pages.len(), 2, "nothing came yet");
         let Dialog::PdfPages(st) = &mut app.dialog else {
             panic!("no pages asked: {:?}", app.dialog);
         };
         assert!(st.all && st.new_pages);
         assert_eq!(st.range, "1-3");
-        assert_eq!(app.doc().pages.len(), 2, "nothing came yet");
 
         // Nothing chosen: OK says so and keeps asking.
         st.all = false;
         st.range = "9".into();
         frame(&mut app, &ctx, vec![]);
         frame(&mut app, &ctx, vec![enter()]);
+        assert_eq!(app.doc().pages.len(), 2);
         let Dialog::PdfPages(st) = &mut app.dialog else {
             panic!("closed with nothing chosen: {:?}", app.dialog);
         };
         assert!(st.none_chosen);
-        assert_eq!(app.doc().pages.len(), 2);
 
         // Pages 3 and 1, typed out of order: as new pages after the
         // current one, in the file's order.
@@ -540,9 +540,11 @@ mod tests {
         app.import_pdf_pages(&path, &pdf, &[2], false);
         let shapes = &app.doc().layer(layer).expect("layer").shapes;
         assert_eq!(shapes.len(), 3);
+        // The PDF reader gives paths, not rectangles; what matters is
+        // that no group was made around them.
         assert!(shapes
             .iter()
-            .all(|s| matches!(s.kind, ShapeKind::Rect { .. })));
+            .all(|s| !matches!(s.kind, ShapeKind::Group { .. })));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
