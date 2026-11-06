@@ -783,21 +783,23 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
     if speck_area(s.detail) > 1 {
         smooth_labels(&mut labels, w, h, cancel)?;
     }
-    // 2. Background: the most common colour touching the border.
+    // 2. Background: the most common colour touching the border, unless
+    // the picture's own transparency is commoner there.
     let mut border_counts = vec![0usize; palette.len()];
+    let mut border_clear = 0usize;
     for x in 0..w {
         for y in [0, h - 1] {
-            let l = labels[y * w + x];
-            if l != usize::MAX {
-                border_counts[l] += 1;
+            match labels[y * w + x] {
+                usize::MAX => border_clear += 1,
+                l => border_counts[l] += 1,
             }
         }
     }
     for y in 0..h {
         for x in [0, w - 1] {
-            let l = labels[y * w + x];
-            if l != usize::MAX {
-                border_counts[l] += 1;
+            match labels[y * w + x] {
+                usize::MAX => border_clear += 1,
+                l => border_counts[l] += 1,
             }
         }
     }
@@ -822,10 +824,14 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
             // transparent background has its background removed already):
             // the commonest of none was the last colour of the palette,
             // and Remove entire color took it out of the art (#1250).
+            // None either when the edge is mostly transparent: art on a
+            // transparent background that reaches the edge here and there
+            // lost every shape touching it, the commonest colour of the
+            // few opaque edge pixels being the art's own (#1930).
             None => border_counts
                 .iter()
                 .enumerate()
-                .filter(|(_, c)| **c > 0)
+                .filter(|(_, c)| **c > 0 && **c > border_clear)
                 .max_by_key(|(_, c)| **c)
                 .map(|(i, _)| i),
         },
@@ -4575,6 +4581,65 @@ mod tests {
         }
     }
 
+    /// #1930: a black flourish on a transparent background whose stem
+    /// reaches the top and bottom edges, beside dots that do not, traced
+    /// as Line Art with every slider at 100 as in the report. Black was
+    /// the commonest (the only) colour of the few opaque edge pixels, so
+    /// it was taken for the background and the stem and every shape
+    /// joined to it vanished, the dots alone left. The transparency is
+    /// commoner on the edge: nothing is removed and the stem is drawn.
+    #[test]
+    fn art_reaching_the_edge_of_a_transparent_picture_stays() {
+        let img: RgbaImage = ImageBuffer::from_fn(120, 200, |x, y| {
+            let (fx, fy) = (x as f32, y as f32);
+            // A stem bending across the picture, 9 px wide, edge to edge.
+            let stem_x = 60.0 + 30.0 * (fy / 200.0 * std::f32::consts::PI * 1.5).sin();
+            let leaf = ((fx - 85.0) / 18.0).powi(2) + ((fy - 120.0) / 8.0).powi(2) < 1.0;
+            let dot = (fx - 20.0).powi(2) + (fy - 40.0).powi(2) < 36.0;
+            if (fx - stem_x).abs() < 4.5 || leaf || dot {
+                Rgba([0, 0, 0, 255])
+            } else {
+                Rgba([0, 0, 0, 0])
+            }
+        });
+        let ink = img.pixels().filter(|p| p[3] > 128).count();
+        for (preset, slider) in [(Preset::LineArt, 100.0), (Preset::LineArt, 40.0), (Preset::Clipart, 60.0)] {
+            let mut s = preset.settings();
+            s.detail = slider;
+            s.smoothing = slider.max(25.0);
+            s.corner_smoothness = slider;
+            let t = trace(&img, &s);
+            let out = render_traced(&t, 120, 200, 0.0);
+            let drawn = img
+                .enumerate_pixels()
+                .filter(|(x, y, p)| p[3] > 128 && out.get_pixel(*x, *y)[3] > 128)
+                .count();
+            assert!(
+                drawn * 100 > ink * 97,
+                "{preset:?} at {slider}: {drawn} of {ink} ink pixels drawn"
+            );
+            // The stem itself, at the top edge and in the middle.
+            for (x, y) in [(60u32, 1u32), (60, 199)] {
+                let sx = 60.0 + 30.0 * (y as f32 / 200.0 * std::f32::consts::PI * 1.5).sin();
+                assert!(
+                    out.get_pixel(sx.round() as u32, y)[3] > 128,
+                    "{preset:?} at {slider}: stem at ({x}, {y})"
+                );
+            }
+        }
+        // A picture on an opaque background reaching every edge still has
+        // it removed.
+        let mut opaque = img.clone();
+        for p in opaque.pixels_mut() {
+            if p[3] == 0 {
+                *p = Rgba([255, 255, 255, 255]);
+            }
+        }
+        let t = trace(&opaque, &Preset::LineArt.settings());
+        let colours: Vec<[u8; 3]> = t.iter().map(|t| t.color.to_rgb8()).collect();
+        assert_eq!(colours, vec![[0, 0, 0]], "the white background is removed");
+    }
+
     /// #1250: flat art from a video frame or a scaled screenshot, where
     /// the edge of black and yellow is a soft band four pixels wide of
     /// in-between colours, with noise. The band goes to the two colours:
@@ -5376,5 +5441,201 @@ mod tests {
         noisy.put_pixel(20, 20, Rgba([240, 190, 60, 255]));
         let t = trace(&noisy, &s);
         assert_eq!(t.len(), colours.len(), "{:?}", color_counts(&t));
+    }
+
+    /// What a trace looks like, in numbers (#1250): its curves, nodes and
+    /// subpaths; the nodes where the curve bends visibly without being a
+    /// corner (the tangents either side 8 to 45 degrees apart: a kink) and
+    /// the corners (more than 45); how often the curves change which way
+    /// they bend, per 100 px of curve (a wavy, bumpy edge does every few
+    /// pixels, a smooth one only where the art does); and the subpaths
+    /// smaller than 9 square pixels (specks).
+    #[derive(Debug, Clone, Copy, Default)]
+    struct Quality {
+        curves: usize,
+        nodes: usize,
+        subpaths: usize,
+        kinks: usize,
+        corners: usize,
+        wiggles_per_100px: f64,
+        specks: usize,
+        length: f64,
+    }
+
+    fn quality(t: &[Traced]) -> Quality {
+        use tracedraw_core::geometry::{PathEl, Vec2};
+        let mut q = Quality {
+            curves: t.len(),
+            nodes: stats(t).nodes,
+            ..Quality::default()
+        };
+        let angle = |u: Vec2, v: Vec2| u.cross(v).atan2(u.dot(v));
+        let mut wiggles = 0usize;
+        for c in t {
+            // Kinks and corners: the direction each segment arrives in
+            // against the one the next leaves in, round every subpath.
+            let mut sub: Vec<(Vec2, Vec2)> = Vec::new();
+            let mut subs: Vec<Vec<(Vec2, Vec2)>> = Vec::new();
+            let mut at = Point::ZERO;
+            let mut start = Point::ZERO;
+            for el in c.path.elements() {
+                match *el {
+                    PathEl::MoveTo(p) => {
+                        if !sub.is_empty() {
+                            subs.push(std::mem::take(&mut sub));
+                        }
+                        at = p;
+                        start = p;
+                    }
+                    PathEl::LineTo(p) => {
+                        if (p - at).hypot2() > 1e-12 {
+                            sub.push((p - at, p - at));
+                        }
+                        at = p;
+                    }
+                    PathEl::QuadTo(c1, p) => {
+                        sub.push((c1 - at, p - c1));
+                        at = p;
+                    }
+                    PathEl::CurveTo(c1, c2, p) => {
+                        let out = if (c1 - at).hypot2() > 1e-12 { c1 - at } else { c2 - at };
+                        let inn = if (p - c2).hypot2() > 1e-12 { p - c2 } else { p - c1 };
+                        sub.push((out, inn));
+                        at = p;
+                    }
+                    PathEl::ClosePath => {
+                        if (start - at).hypot2() > 1e-12 {
+                            sub.push((start - at, start - at));
+                        }
+                        at = start;
+                        subs.push(std::mem::take(&mut sub));
+                    }
+                }
+            }
+            if !sub.is_empty() {
+                subs.push(sub);
+            }
+            for s in &subs {
+                for i in 0..s.len() {
+                    let a = angle(s[i].1, s[(i + 1) % s.len()].0).abs().to_degrees();
+                    if a > 45.0 {
+                        q.corners += 1;
+                    } else if a > 8.0 {
+                        q.kinks += 1;
+                    }
+                }
+            }
+            // Subpaths and their areas, and the bends along them: the
+            // curve walked a pixel at a time, the turn at each step.
+            let mut polys: Vec<Vec<Point>> = Vec::new();
+            let mut poly: Vec<Point> = Vec::new();
+            tracedraw_core::geometry::flatten(&c.path, 0.01, &mut |el| match el {
+                PathEl::MoveTo(p) => {
+                    if poly.len() > 2 {
+                        polys.push(std::mem::take(&mut poly));
+                    }
+                    poly.clear();
+                    poly.push(p);
+                }
+                PathEl::LineTo(p) => poly.push(p),
+                PathEl::ClosePath => {
+                    if poly.len() > 2 {
+                        polys.push(std::mem::take(&mut poly));
+                    }
+                    poly.clear();
+                }
+                _ => {}
+            });
+            if poly.len() > 2 {
+                polys.push(poly);
+            }
+            for p in &polys {
+                q.subpaths += 1;
+                let mut area = 0.0;
+                for i in 0..p.len() {
+                    let (a, b) = (p[i], p[(i + 1) % p.len()]);
+                    area += a.x * b.y - b.x * a.y;
+                }
+                if area.abs() / 2.0 < 9.0 {
+                    q.specks += 1;
+                }
+                // Resampled every pixel along the ring.
+                let mut samples: Vec<Point> = vec![p[0]];
+                let mut carry = 0.0;
+                for i in 0..p.len() {
+                    let (a, b) = (p[i], p[(i + 1) % p.len()]);
+                    let l = (b - a).hypot();
+                    q.length += l;
+                    let mut d = 1.0 - carry;
+                    while d <= l {
+                        samples.push(a.lerp(b, d / l));
+                        d += 1.0;
+                    }
+                    carry = l - (d - 1.0);
+                }
+                let m = samples.len();
+                if m < 8 {
+                    continue;
+                }
+                let mut last_sign = 0i32;
+                for i in 0..m {
+                    let (a, b, c) = (samples[(i + m - 1) % m], samples[i], samples[(i + 1) % m]);
+                    let turn = angle(b - a, c - b);
+                    if turn.abs() > 0.6 {
+                        // A corner starts afresh.
+                        last_sign = 0;
+                        continue;
+                    }
+                    if turn.abs() < 0.02 {
+                        continue;
+                    }
+                    let sign = if turn > 0.0 { 1 } else { -1 };
+                    if last_sign != 0 && sign != last_sign {
+                        wiggles += 1;
+                    }
+                    last_sign = sign;
+                }
+            }
+        }
+        q.wiggles_per_100px = wiggles as f64 * 100.0 / q.length.max(1.0);
+        q
+    }
+
+    /// Trace the picture named by `TRACE_SAMPLE` (a PNG) with the Quick
+    /// trace preset and the outline presets and print the numbers of
+    /// [`quality`], the doubled borders and the share drawn wrong; with
+    /// `TRACE_OUT` set, the trace and its wireframe are saved there too.
+    /// `TRACE_SAMPLE=bee.png cargo test -p tracedraw --lib -- --ignored
+    /// trace_sample_quality --nocapture`
+    #[test]
+    #[ignore]
+    fn trace_sample_quality() {
+        let Ok(path) = std::env::var("TRACE_SAMPLE") else {
+            return;
+        };
+        let Ok(img) = image::open(&path) else {
+            panic!("cannot read {path}");
+        };
+        let img = img.to_rgba8();
+        let out = std::env::var("TRACE_OUT").ok();
+        for preset in [Preset::Optimized, Preset::Clipart, Preset::Logo, Preset::DetailedLogo] {
+            let s = preset.settings();
+            let started = std::time::Instant::now();
+            let t = trace(&img, &s);
+            let took = started.elapsed();
+            let q = quality(&t);
+            let (together, apart) = border_distances(&t);
+            let drawn = render_traced(&t, img.width(), img.height(), 1.0);
+            let wrong = wrong_share(&drawn, &img, None).unwrap_or(f64::NAN);
+            println!(
+                "{preset:?}: {} curves, {} nodes, {} subpaths, {} kinks, {} corners, {:.2} wiggles/100px, {} specks, borders {together} shared {apart} beside, {:.3} % wrong, {:.0} ms",
+                q.curves, q.nodes, q.subpaths, q.kinks, q.corners, q.wiggles_per_100px, q.specks, wrong, took.as_secs_f64() * 1000.0
+            );
+            if let Some(dir) = &out {
+                let _ = drawn.save(format!("{dir}/{preset:?}_fill.png"));
+                let _ = render_wireframe(&t, img.width(), img.height(), 2.0)
+                    .save(format!("{dir}/{preset:?}_wire.png"));
+            }
+        }
     }
 }
