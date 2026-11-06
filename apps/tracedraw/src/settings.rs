@@ -227,6 +227,11 @@ pub struct Settings {
     /// New (off: new drawings use the last settings at once).
     #[serde(default = "default_true")]
     pub show_new_document_dialog: bool,
+    /// View > Scrollbars: the drawing window's scrollbars shown (off:
+    /// the drawing takes their room; the page tabs and the Navigator
+    /// button stay, #1344).
+    #[serde(default = "default_true")]
+    pub show_scrollbars: bool,
     /// The Create a New Document dialog's last used settings.
     #[serde(default)]
     pub new_document: crate::new_document::NewDocSettings,
@@ -1816,6 +1821,7 @@ impl Default for Settings {
             spelling: SpellingPrefs::default(),
             thesaurus_file: None,
             show_new_document_dialog: true,
+            show_scrollbars: true,
             new_document: crate::new_document::NewDocSettings::default(),
             desktop_rgb: default_desktop(),
             desktop_custom: false,

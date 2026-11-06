@@ -2528,6 +2528,7 @@ menu.view.printable_area = "Druckbarer Bereich"
 menu.view.proof_colors = "Farbprüfung"
 menu.view.rasterize_complex_effects = "Effekte als Bitmap anzeigen" # mt
 menu.view.rulers = "Lineale"
+menu.view.scrollbars = "Bildlaufleisten" # mt
 menu.view.simulate_overprints = "Überdrucken anzeigen" # mt
 menu.view.snap_baseline_grid = "Basisliniengitter"
 menu.view.snap_document_grid = "Dokumentgitter"

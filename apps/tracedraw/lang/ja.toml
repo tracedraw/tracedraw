@@ -2528,6 +2528,7 @@ menu.view.printable_area = "印刷可能領域"
 menu.view.proof_colors = "カラープルーフ"
 menu.view.rasterize_complex_effects = "効果をビットマップでプレビュー" # mt
 menu.view.rulers = "ルーラー"
+menu.view.scrollbars = "スクロールバー" # mt
 menu.view.simulate_overprints = "オーバープリントを表示" # mt
 menu.view.snap_baseline_grid = "ベースライングリッド"
 menu.view.snap_document_grid = "ドキュメントグリッド"

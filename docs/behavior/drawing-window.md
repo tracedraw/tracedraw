@@ -38,6 +38,13 @@
   whatever is visible. Dragging the thumb pans; a click on the track pages
   by 90 % of the window towards the click; an arrow moves 40 px, then
   repeats every 50 ms after 0.4 s while held.
+- View > Scrollbars (on by default, kept in the preferences as
+  `show_scrollbars`) hides both (#1344): the drawing takes the vertical
+  bar's 17 px on the right, the bottom row keeps the document navigator,
+  the page tabs (now up to the corner, no splitter) and the Navigator
+  button in its corner. Panning stays with Space, the middle button, the
+  Pan tool and the wheel. Check:
+  `ui::window_bars::tests::view_scrollbars_hides_and_shows_them`.
 
 ## Bottom row
 

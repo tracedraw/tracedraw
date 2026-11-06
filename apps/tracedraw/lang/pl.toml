@@ -2528,6 +2528,7 @@ menu.view.printable_area = "Obszar drukowania"
 menu.view.proof_colors = "Próba kolorów"
 menu.view.rasterize_complex_effects = "Podgląd efektów jako bitmapy" # mt
 menu.view.rulers = "Linijki"
+menu.view.scrollbars = "Paski przewijania" # mt
 menu.view.simulate_overprints = "Pokaż nadruki" # mt
 menu.view.snap_baseline_grid = "Siatka linii bazowych"
 menu.view.snap_document_grid = "Siatka dokumentu"

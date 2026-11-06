@@ -2528,6 +2528,7 @@ menu.view.printable_area = "Área imprimível"
 menu.view.proof_colors = "Provar cores"
 menu.view.rasterize_complex_effects = "Visualizar efeitos como bitmap" # mt
 menu.view.rulers = "Réguas"
+menu.view.scrollbars = "Barras de rolagem" # mt
 menu.view.simulate_overprints = "Mostrar sobreimpressões" # mt
 menu.view.snap_baseline_grid = "Grade de linha de base"
 menu.view.snap_document_grid = "Grade do documento"

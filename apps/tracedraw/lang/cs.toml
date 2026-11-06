@@ -2528,6 +2528,7 @@ menu.view.printable_area = "Tisknutelná oblast"
 menu.view.proof_colors = "Nátisk barev"
 menu.view.rasterize_complex_effects = "Náhled efektů jako bitmapy" # mt
 menu.view.rulers = "Pravítka"
+menu.view.scrollbars = "Posuvníky" # mt
 menu.view.simulate_overprints = "Zobrazit přetisky" # mt
 menu.view.snap_baseline_grid = "Mřížka účaří"
 menu.view.snap_document_grid = "Mřížka dokumentu"

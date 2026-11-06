@@ -2528,6 +2528,7 @@ menu.view.printable_area = "मुद्रण योग्य क्षेत�
 menu.view.proof_colors = "प्रूफ़ रंग"
 menu.view.rasterize_complex_effects = "प्रभाव बिटमैप के रूप में पूर्वावलोकन करें" # mt
 menu.view.rulers = "रूलर"
+menu.view.scrollbars = "स्क्रॉलबार" # mt
 menu.view.simulate_overprints = "ओवरप्रिंट दिखाएँ" # mt
 menu.view.snap_baseline_grid = "बेसलाइन ग्रिड"
 menu.view.snap_document_grid = "दस्तावेज़ ग्रिड"

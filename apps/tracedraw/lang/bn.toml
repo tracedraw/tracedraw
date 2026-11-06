@@ -2528,6 +2528,7 @@ menu.view.printable_area = "প্রিন্টযোগ্য এলাকা
 menu.view.proof_colors = "প্রুফ রং"
 menu.view.rasterize_complex_effects = "ইফেক্ট বিটম্যাপ হিসেবে প্রিভিউ করুন" # mt
 menu.view.rulers = "রুলার"
+menu.view.scrollbars = "স্ক্রলবার" # mt
 menu.view.simulate_overprints = "ওভারপ্রিন্ট দেখান" # mt
 menu.view.snap_baseline_grid = "বেসলাইন গ্রিড"
 menu.view.snap_document_grid = "ডকুমেন্ট গ্রিড"

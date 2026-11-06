@@ -855,9 +855,16 @@ fn smooth_wheel_notch(unit: egui::MouseWheelUnit, line_speed: f32, height: f32, 
 pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
     let ruler = if app.show_rulers { Tokens::RULER } else { 0.0 };
     let sb = window_bars::BAR;
+    // Without scrollbars (View > Scrollbars off, #1344) the drawing takes
+    // the vertical bar's room; the bottom row keeps the page tabs.
+    let vbar = if app.settings.show_scrollbars {
+        sb
+    } else {
+        0.0
+    };
     let canvas_rect = egui::Rect::from_min_max(
         full.min + egui::vec2(ruler, ruler),
-        full.max - egui::vec2(sb, sb),
+        full.max - egui::vec2(vbar, sb),
     );
     app.canvas_rect = canvas_rect;
     app.anchor_view(canvas_rect.min);

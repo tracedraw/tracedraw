@@ -2528,6 +2528,7 @@ menu.view.printable_area = "可打印区域"
 menu.view.proof_colors = "校样颜色"
 menu.view.rasterize_complex_effects = "以位图预览效果" # mt
 menu.view.rulers = "标尺"
+menu.view.scrollbars = "滚动条" # mt
 menu.view.simulate_overprints = "显示叠印" # mt
 menu.view.snap_baseline_grid = "基线网格"
 menu.view.snap_document_grid = "文档网格"

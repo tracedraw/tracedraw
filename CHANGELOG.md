@@ -72,6 +72,8 @@ full, row-by-row status.
 
 - Tab ruler: the paragraph text flows to a tab stop while it is dragged, so the columns move with the marker; before, the text changed only when the button was let go. The text is laid out again at most 30 times a second, so long texts keep the drag smooth, and the drag stays one undo step (#1852, #1912).
 
+- View > Scrollbars: the drawing window's scrollbars can be hidden, on every platform, to give the drawing their room; the page tabs and the Navigator button stay. The choice is kept with the preferences (#1344).
+
 - Edit > Repeat (Ctrl+R) after a mirror copy: with the copy selected, Repeat now mirrors a new copy over the same side of that copy, so the copies line up side by side. It mirrored over the original's side again and put the new copy on top of the original (#1909).
 
 - Coordinates panel: selecting a curve drawn with the Freehand or Bezier tool reads its nodes into the multipoint curve, with their real X and Y, and keeps its bends; choosing a node with the Shape tool chooses its row, the list scrolls to show it, and an edit of the curve on the drawing shows at once. Curves with bends were not read, so the panel kept showing the values of a rectangle and the multipoint curve's own two default points (#1889).

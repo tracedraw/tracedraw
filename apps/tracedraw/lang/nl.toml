@@ -2528,6 +2528,7 @@ menu.view.printable_area = "Afdrukbaar gebied"
 menu.view.proof_colors = "Proefkleuren"
 menu.view.rasterize_complex_effects = "Effecten als bitmap tonen" # mt
 menu.view.rulers = "Linialen"
+menu.view.scrollbars = "Schuifbalken" # mt
 menu.view.simulate_overprints = "Overdrukken tonen" # mt
 menu.view.snap_baseline_grid = "Basislijnraster"
 menu.view.snap_document_grid = "Documentraster"

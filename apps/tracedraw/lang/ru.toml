@@ -2528,6 +2528,7 @@ menu.view.printable_area = "Область печати"
 menu.view.proof_colors = "Цветопроба"
 menu.view.rasterize_complex_effects = "Показывать эффекты растром" # mt
 menu.view.rulers = "Линейки"
+menu.view.scrollbars = "Полосы прокрутки" # mt
 menu.view.simulate_overprints = "Показывать наложение" # mt
 menu.view.snap_baseline_grid = "Сетка базовых линий"
 menu.view.snap_document_grid = "Сетка документа"

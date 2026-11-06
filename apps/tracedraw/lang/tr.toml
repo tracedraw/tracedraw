@@ -2528,6 +2528,7 @@ menu.view.printable_area = "Yazdırılabilir Alan"
 menu.view.proof_colors = "Prova Renkleri"
 menu.view.rasterize_complex_effects = "Efektleri Bitmap Olarak Önizle" # mt
 menu.view.rulers = "Cetveller"
+menu.view.scrollbars = "Kaydırma Çubukları" # mt
 menu.view.simulate_overprints = "Üzerine Baskıları Göster" # mt
 menu.view.snap_baseline_grid = "Taban Çizgisi Izgarası"
 menu.view.snap_document_grid = "Belge Izgarası"

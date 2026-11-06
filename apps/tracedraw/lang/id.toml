@@ -2528,6 +2528,7 @@ menu.view.printable_area = "Area Cetak"
 menu.view.proof_colors = "Warna Pruf"
 menu.view.rasterize_complex_effects = "Pratinjau Efek sebagai Bitmap" # mt
 menu.view.rulers = "Penggaris"
+menu.view.scrollbars = "Bilah Gulir" # mt
 menu.view.simulate_overprints = "Tampilkan Cetak Tindih" # mt
 menu.view.snap_baseline_grid = "Kisi Garis Dasar"
 menu.view.snap_document_grid = "Kisi Dokumen"

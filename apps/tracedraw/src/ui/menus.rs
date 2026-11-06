@@ -2763,6 +2763,10 @@ fn view_menu(app: &mut App, ui: &mut Ui) {
     if check(ui, "menu.view.rulers", "Alt+Shift+R", app.show_rulers) {
         app.show_rulers = !app.show_rulers;
     }
+    if check(ui, "menu.view.scrollbars", "", app.settings.show_scrollbars) {
+        app.settings.show_scrollbars = !app.settings.show_scrollbars;
+        app.settings.save();
+    }
     if check(ui, "menu.view.guidelines", "", app.show_guides) {
         app.show_guides = !app.show_guides;
     }

@@ -2528,6 +2528,7 @@ menu.view.printable_area = "المنطقة القابلة للطباعة"
 menu.view.proof_colors = "ألوان التجربة"
 menu.view.rasterize_complex_effects = "معاينة التأثيرات كصورة نقطية" # mt
 menu.view.rulers = "المساطر"
+menu.view.scrollbars = "أشرطة التمرير" # mt
 menu.view.simulate_overprints = "إظهار الطباعة الفوقية" # mt
 menu.view.snap_baseline_grid = "شبكة الخط الأساسي"
 menu.view.snap_document_grid = "شبكة المستند"

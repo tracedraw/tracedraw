@@ -2528,6 +2528,7 @@ menu.view.printable_area = "Area stampabile"
 menu.view.proof_colors = "Prova colori"
 menu.view.rasterize_complex_effects = "Anteprima effetti come bitmap" # mt
 menu.view.rulers = "Righelli"
+menu.view.scrollbars = "Barre di scorrimento" # mt
 menu.view.simulate_overprints = "Mostra sovrastampe" # mt
 menu.view.snap_baseline_grid = "Griglia della linea di base"
 menu.view.snap_document_grid = "Griglia del documento"
