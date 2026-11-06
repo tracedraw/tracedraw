@@ -1012,7 +1012,7 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
 
     // A guideline or the ruler origin dragged out of the rulers
     // follows the pointer until release.
-    if app.multipage && two_fingers.is_none() {
+    if app.shows_other_pages() && two_fingers.is_none() {
         let press = ui.input(|i| {
             i.pointer
                 .primary_pressed()
