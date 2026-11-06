@@ -12354,7 +12354,13 @@ pub(crate) mod tests {
         use tracedraw_core::document::GuideLine;
         for page in &doc.pages {
             let (cx, cy) = (page.size.width / 2.0, page.size.height / 2.0);
-            let lines: Vec<GuideLine> = page.guides.iter().map(|g| g.line).collect();
+            // The guidelines every page shows (#1928: the master page's).
+            let lines: Vec<GuideLine> = doc
+                .guides_on_page(page.id)
+                .expect("a page of the drawing")
+                .iter()
+                .map(|g| g.line)
+                .collect();
             assert_eq!(
                 lines,
                 vec![
@@ -12375,7 +12381,12 @@ pub(crate) mod tests {
         ]
         .concat();
         let (doc, _) = parse(&riff(b"CDR7", &body), 7);
-        assert_eq!(doc.pages[0].guides.len(), 1);
+        assert_eq!(
+            doc.guides_on_page(doc.pages[0].id)
+                .expect("the drawing's page")
+                .len(),
+            1
+        );
     }
 
     #[test]
