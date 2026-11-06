@@ -244,6 +244,11 @@ mod winit_quit_request;
 #[allow(dead_code)]
 #[path = "../../../vendor/winit/src/file_drop.rs"]
 mod winit_file_drop;
+// The pointer kept on a shortcut with Alt on Windows, of the same copy
+// (#1922).
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "../../../vendor/winit/src/alt_shortcuts.rs"]
+mod winit_alt_shortcuts;
 // A graphics tablet's pen on Wayland, of the same copy (#1841).
 #[cfg(all(test, unix, not(target_arch = "wasm32")))]
 #[allow(dead_code)]

@@ -298,6 +298,24 @@ change marked `TraceDraw:` in a comment.
   keeps the theme asked for as the preferred one, so a change of the
   system's theme (`WM_SETTINGCHANGE`) no longer puts the system's back,
   and records the theme the window now has.
+- Change: on Windows a shortcut with Alt keeps the pointer up to date
+  over a still mouse (#1922). For a moment the system showed its arrow,
+  then the window got a `WM_MOUSELEAVE` with the pointer still over it:
+  winit sent `CursorLeft`, and egui-winit applies no pointer until the
+  next `CursorMoved`, so the pointer stayed the arrow, or the blank image
+  of a drawn pointer (invisible), until the mouse moved. Both are the
+  marks of the keyboard menu mode, which takes the mouse while it runs.
+  `platform_impl/windows/event_loop.rs` now (1) answers a
+  `WM_SYSCOMMAND` with `SC_KEYMENU` and a character other than Space
+  itself in a window without a native menu bar, so no menu mode starts
+  (Alt+Space, the window menu, and every other command still reach
+  `DefWindowProcW`), and (2) on `WM_MOUSELEAVE` reads where the pointer
+  is (`GetCursorPos`, `WindowFromPoint`): still in the client area with
+  this window under it, no `CursorLeft` is sent; the inside flag is
+  cleared all the same, so the next move enters again and asks for the
+  leave tracking anew. Both decisions are in `src/alt_shortcuts.rs`,
+  which depends on nothing in the crate; TraceDraw's tests include and
+  run it (`winit_alt_shortcuts::tests`).
 - The published crate's `examples/` and `tests/` stay as downloaded (the
   manifest lists them); they build in no gate.
 - Drop the copy and the `[patch.crates-io]` entry when a winit release

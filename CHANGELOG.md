@@ -12,6 +12,8 @@ full, row-by-row status.
 
 - Text tool: the flow tabs of a paragraph frame link frames as with the Pick tool. A click on the bottom tab of the frame being edited, then a click on another frame (or a drag from the tab onto it), flows the text on. Before, only the Pick tool could do this (#1914).
 
+- Windows: a tool shortcut with Alt (Alt+R set for the Rectangle tool) changes the pointer at once with the mouse standing still, as the F-key shortcuts do. The pointer stayed the system arrow, or vanished after a tool with its own pointer, until the mouse moved: Alt with a letter started the system's keyboard menu mode, which took the mouse, and the window then took the pointer for gone (#1922).
+
 - Android: the camera cutout and the rounded corners of a phone's screen no longer hide the menu bar, the toolbox, the palette or the status bar. The interface keeps clear of the cutout, the system bars and the corners the system reports, and Options > Display > Screen margins adds margins of your own on each side, in dp, for phones that do not report their corners (with Same on all sides and Reset). The margins are filled with the theme's frame colour, Corner radius rounds the interface's corners to follow the glass, every change shows at once and the values stay when the screen turns (#1917).
 
 - Touch screens: Shift, Ctrl and Alt buttons on the Standard toolbar, beside Delete. A tap holds the key down until the next tap on it (the button stays pressed meanwhile), so a finger can add objects or nodes to the selection or take them out, keep a drag's angle or proportions, pick inside a group or the object behind, as with the keys held on a keyboard. They show on Android and wherever a finger has touched the window (#1499).
