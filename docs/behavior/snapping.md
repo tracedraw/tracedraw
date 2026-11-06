@@ -80,7 +80,12 @@ most 16 segments each with its bounds, as for a node drag below (#1765,
 `snap::tests::a_move_snaps_to_where_the_selection_started`,
 `pick_drag_tests::a_move_snaps_to_where_the_selection_started`). A scale
 handle being dragged snaps like the pointer of a drawing tool, leaving
-out the selection's own points. The pointer turning the selection (a
+out the selection's own points. A corner handle keeping the proportions
+that snapped along one axis (onto a guideline, an edge) scales by that
+axis alone, so it stays on the guideline while the pointer goes on along
+the other; the blend of the two sides used to pull it off at every move
+(#2004, `pick_drag_tests::a_snapped_corner_keeps_the_proportions_from_the_snapped_axis`,
+`a_corner_handle_snapped_to_a_guideline_stays_on_it`). The pointer turning the selection (a
 rotate handle without Ctrl) snaps to the points of other objects and of
 the page only (nodes, midpoints, centres), so the turn aims at one;
 edges, guidelines and grid lines are left out, since the handle stands
@@ -110,7 +115,11 @@ with the objects' points by the modes on (nodes, segment midpoints, an
 ellipse's quadrants, centres), which win over the objects' box edges, the
 page and the grids; before, only the boxes' edges and centres caught it,
 so a guideline could not be put on a curve's node (#1645,
-`snap::tests::a_dragged_guideline_snaps_to_a_node`). The other way round,
+`snap::tests::a_dragged_guideline_snaps_to_a_node`). The objects' points
+are targets only while Snap to Objects is on (Alt+Z), which a first
+start leaves off; the page and the grids catch a guideline either way
+(#2004, `pick_drag_tests::a_guideline_dragged_out_of_a_ruler_snaps_to_an_objects_node`).
+The other way round,
 an object moved by its snap point under the pointer (a node, a midpoint,
 a centre) puts that point on a guideline, a baseline or a grid line it
 comes near, on each axis, ahead of its box's edges and centre, when no

@@ -766,6 +766,7 @@ fn handle_modifiers_shape_the_scale() {
             current,
             grab: tracedraw_core::geometry::Vec2::ZERO,
             mods,
+            snapped: (false, false),
         })
         .expect("transform")
     };
@@ -1047,6 +1048,7 @@ fn the_status_bar_tells_how_far_how_much_and_what_angle() {
         current: Point::new(85.0, 25.0),
         grab: tracedraw_core::geometry::Vec2::ZERO,
         mods: HandleMods::default(),
+        snapped: (false, false),
     };
     let text = info(&app);
     assert!(text.contains("150.0") && text.contains("100.0"), "{text}");
@@ -2397,6 +2399,189 @@ fn scale_handles_snap_to_other_objects_not_to_the_selection() {
     let b = bounds(&app, id);
     assert!((b.x1 - 80.0).abs() > 0.1, "{b:?}");
     assert!(app.doc().find_shape(other).is_some());
+}
+
+/// A corner handle snapped along one axis scales by that axis alone, so
+/// the corner stays on what it caught; unsnapped, or snapped along both
+/// (a node), the two sides blend as before (#2004).
+#[test]
+fn a_snapped_corner_keeps_the_proportions_from_the_snapped_axis() {
+    let app = App::headless();
+    let b = Rect::new(0.0, 0.0, 40.0, 20.0);
+    let scale = |current: Point, snapped: (bool, bool)| {
+        app.preview_transform_of(&Drag::Scale {
+            handle: Handle::NE,
+            anchor: Point::ZERO,
+            start_bounds: b,
+            current,
+            grab: Vec2::ZERO,
+            mods: HandleMods::default(),
+            snapped,
+        })
+        .expect("transform")
+    };
+    let corner = |t: Affine| t * Point::new(40.0, 20.0);
+    // The pointer at (80, 30): x twice the width, y one and a half times
+    // the height. Snapped along x, the corner's x stays at 80.
+    let c = corner(scale(Point::new(80.0, 30.0), (true, false)));
+    assert!(close(c.x, 80.0) && close(c.y, 40.0), "{c:?}");
+    // Along y: its y stays at 30.
+    let c = corner(scale(Point::new(80.0, 30.0), (false, true)));
+    assert!(close(c.x, 60.0) && close(c.y, 30.0), "{c:?}");
+    // Not snapped, or along both axes: the blend of #383, (2 * 40² +
+    // 1.5 * 20²) / (40² + 20²) = 1.9.
+    for snapped in [(false, false), (true, true)] {
+        let c = corner(scale(Point::new(80.0, 30.0), snapped));
+        assert!(close(c.x, 76.0) && close(c.y, 38.0), "{snapped:?}: {c:?}");
+    }
+    // A mirrored side keeps its sign.
+    let c = corner(scale(Point::new(-80.0, 30.0), (true, false)));
+    assert!(close(c.x, -80.0) && close(c.y, 40.0), "{c:?}");
+}
+
+/// A corner handle dragged near a vertical guideline lands on it and
+/// stays there while the pointer goes on up and down: the height follows
+/// the width the guideline fixed. Before, the blended proportional scale
+/// let every move along the free axis pull the corner off the guideline
+/// (#2004).
+#[test]
+fn a_corner_handle_snapped_to_a_guideline_stays_on_it() {
+    let (ctx, mut app, id) = setup();
+    app.add_guide(tracedraw_core::document::Guide::vertical(80.0));
+    app.select(vec![id]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    // The box's top right corner (60, 40) dragged to 2 px short of the
+    // guideline, 15 mm higher than the width's ratio asks for.
+    let ne = handle(&app, Handle::NE);
+    let corner = app.view.to_screen(Point::new(60.0, 40.0));
+    let want = app.view.to_screen(Point::new(80.0, 55.0)) + egui::vec2(-2.0, 0.0);
+    let to = ne + (want - corner);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(ne)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(ne, true, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    for i in 1..=4 {
+        let p = ne + (to - ne) * (i as f32 / 4.0);
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(p)],
+            Modifiers::NONE,
+        );
+    }
+    // On the guideline, the height in proportion: 30 * 70 / 50 = 42.
+    let preview = |app: &App| {
+        let t = app.preview_transform_of(&app.drag).expect("a scale");
+        (t * Point::new(60.0, 40.0), t * Point::new(10.0, 10.0))
+    };
+    let (c, o) = preview(&app);
+    assert!((c.x - 80.0).abs() < 1e-6 && close(c.y, 52.0), "{c:?}");
+    assert!(close(o.x, 10.0) && close(o.y, 10.0), "{o:?}");
+    // The pointer going on up and down leaves the corner on the guideline.
+    for dy in [-6.0, -12.0, -6.0, 3.0, 9.0] {
+        let p = to + egui::vec2(0.0, dy);
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(p)],
+            Modifiers::NONE,
+        );
+        let (c, _) = preview(&app);
+        assert!((c.x - 80.0).abs() < 1e-6, "pointer {dy} px off: {c:?}");
+        assert!(close(c.y, 52.0), "the height follows the width: {c:?}");
+    }
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(to, false, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let b = bounds(&app, id);
+    assert!((b.x1 - 80.0).abs() < 1e-6 && close(b.y1, 52.0), "{b:?}");
+    // Alt scales freely: the corner on the guideline, the height the
+    // pointer's.
+    app.undo();
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let ne = handle(&app, Handle::NE);
+    let to = ne + (want - corner);
+    drag(&ctx, &mut app, ne, to, Modifiers::ALT, Vec::new());
+    let b = bounds(&app, id);
+    assert!((b.x1 - 80.0).abs() < 1e-6 && close(b.y1, 55.0), "{b:?}");
+}
+
+/// A guideline dragged out of a ruler lands on an object's node when
+/// Snap to Objects is on (Alt+Z), and where the pointer put it when it
+/// is off, as a first start leaves it (#2004, #1814).
+#[test]
+fn a_guideline_dragged_out_of_a_ruler_snaps_to_an_objects_node() {
+    use tracedraw_core::document::GuideLine;
+    use tracedraw_core::geometry::BezPath;
+    let (ctx, mut app, _) = setup();
+    // A triangle whose apex x (120) is on neither its box's sides (100,
+    // 160) nor its centre (130).
+    let mut path = BezPath::new();
+    path.move_to((100.0, 100.0));
+    path.line_to((160.0, 100.0));
+    path.line_to((120.0, 150.0));
+    path.close_path();
+    app.new_shape(ShapeKind::Path { path, closed: true })
+        .expect("a triangle");
+    app.select(Vec::new());
+    assert!(app.show_rulers && !app.snap.objects);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    // The left ruler stands just left of the canvas.
+    let ruler = Pos2::new(
+        app.canvas_rect.min.x - crate::theme::Tokens::RULER / 2.0,
+        app.canvas_rect.center().y,
+    );
+    let near_apex = app.view.to_screen(Point::new(120.0, 125.0)) + egui::vec2(2.0, 0.0);
+    let vertical_x = |app: &App| match app.page_guides().last().map(|g| g.line) {
+        Some(GuideLine::Vertical { x }) => x,
+        other => panic!("no vertical guideline: {other:?}"),
+    };
+    // Objects off: the guideline goes where the pointer is.
+    drag(
+        &ctx,
+        &mut app,
+        ruler,
+        near_apex,
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    assert_eq!(app.page_guides().len(), 1);
+    let x = vertical_x(&app);
+    assert!((x - 120.0).abs() > 0.3, "{x}");
+    // Alt+Z turns objects on: the next one lands on the apex.
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Z, Modifiers::ALT)],
+        Modifiers::ALT,
+    );
+    assert!(app.snap.objects);
+    drag(
+        &ctx,
+        &mut app,
+        ruler,
+        near_apex,
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    assert_eq!(app.page_guides().len(), 2);
+    assert!(
+        (vertical_x(&app) - 120.0).abs() < 1e-9,
+        "{}",
+        vertical_x(&app)
+    );
 }
 
 #[test]

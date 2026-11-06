@@ -23,7 +23,9 @@
   it is released inside the drawing window (snapped like objects),
   showing dashed lines across the window while dragging.
 - Dragging out of a ruler adds a guideline (horizontal from the top ruler,
-  vertical from the left one) where it is released inside the window.
+  vertical from the left one) where it is released inside the window,
+  snapped to the page, the grids and, with Snap to Objects on (Alt+Z),
+  the objects' nodes, midpoints and centres (`snapping.md`, #2004).
 - Double-clicking a ruler or the corner opens Document Setup at Rulers.
 - Right-clicking a ruler or the corner opens the rulers' menu where it
   was clicked (#1831): Ruler Setup..., Grid Setup... and Guidelines

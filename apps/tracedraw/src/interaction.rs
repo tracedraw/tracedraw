@@ -1820,6 +1820,7 @@ impl App {
                         current: p - grab,
                         grab,
                         mods: crate::app::HandleMods::of(mods),
+                        snapped: (false, false),
                     };
                 }
                 // The drag starts once the pointer has gone a few pixels
@@ -2180,10 +2181,21 @@ impl App {
                 *touching = mods.alt != self.settings.marquee_touching;
             }
             Drag::Scale {
-                current, mods: m, ..
+                current,
+                grab,
+                snapped,
+                mods: m,
+                ..
             } => {
                 // The handle snaps to other objects, guidelines, the grid
-                // and the page, never to the selection's own points.
+                // and the page, never to the selection's own points. The
+                // axes it snapped along are kept: a proportional corner
+                // scales by a snapped axis (#2004).
+                let raw = p - *grab;
+                *snapped = (
+                    (snapped_handle.x - raw.x).abs() > 1e-9,
+                    (snapped_handle.y - raw.y).abs() > 1e-9,
+                );
                 *current = snapped_handle;
                 *m = crate::app::HandleMods::of(mods);
             }
@@ -3312,6 +3324,7 @@ impl App {
                 start_bounds,
                 current,
                 mods,
+                snapped,
                 ..
             } => {
                 let b = *start_bounds;
@@ -3353,9 +3366,17 @@ impl App {
                     // the pointer falls along the box's diagonal, so the
                     // corner follows the pointer and a wide, low box (a
                     // line of text) does not grow with the short side's
-                    // pace (#383).
+                    // pace (#383). When the handle snapped along one axis
+                    // (onto a guideline, an edge), that axis sets the
+                    // scale alone, so the corner stays on the guideline
+                    // while the pointer goes on along the other axis;
+                    // blending the two pulled it off again (#2004).
                     let (w2, h2) = (w * w, h * h);
-                    let s = (sx.abs() * w2 + sy.abs() * h2) / (w2 + h2);
+                    let s = match *snapped {
+                        (true, false) => sx.abs(),
+                        (false, true) => sy.abs(),
+                        _ => (sx.abs() * w2 + sy.abs() * h2) / (w2 + h2),
+                    };
                     sx = s * sx.signum();
                     sy = s * sy.signum();
                 }

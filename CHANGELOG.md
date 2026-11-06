@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Pick tool: a corner handle dragged near a guideline (or another object's edge) lands on it and stays there while the mouse goes on, the other side following in proportion. The proportional scale blended the two sides, so each move along the free axis pulled the snapped corner off the guideline again and an object could not be sized exactly to one; Alt still scales freely. A guideline dragged out of a ruler snaps to the objects' nodes, midpoints and centres when Snap to Objects is on (Alt+Z, the Snap To list), which a first start leaves off (#2004).
+
 - Linked text content: Text > Link Text Content (also on the right-click menu) links the characters of two texts or more, so whatever is typed in any of them appears in the others at once, both ways, while each keeps its own font, size, colours and effects. Change the word of a 3D blend, an extrusion or a shadow text once. The Blend panel can link the two texts of a blend; a linked text shows the others of its link with dashed outlines and a chain mark, Undo takes a change back in all of them in one step, copies stay linked, and Unlink Text Content lets a text go its own way. This is not the frame flow of Paragraph Text Frame > Link; `.tdraw` files keep the link, `.cdr` files get plain texts (#1568, #1364, #1194).
 
 - Tools > TraceCut... has a picture of its own in the menus: a dashed cut line with the knife on it.
