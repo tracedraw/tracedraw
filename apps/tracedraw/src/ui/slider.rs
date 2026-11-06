@@ -564,8 +564,12 @@ impl<N: Numeric> Slider<'_, N> {
         if enabled {
             // The pointer: a press or a drag puts the thumb there. It
             // does not take the keyboard focus (and gives up one Tab
-            // gave), so the canvas keeps its shortcuts.
-            if let Some(p) = resp.interact_pointer_pos() {
+            // gave), so the canvas keeps its shortcuts. A finger sliding
+            // the bar the slider is on leaves the thumb alone (#1997).
+            if let Some(p) = resp
+                .interact_pointer_pos()
+                .filter(|_| !crate::ui::overflow::finger_sliding(ui.ctx()))
+            {
                 let along = if self.vertical { p.y } else { p.x };
                 if len.abs() > 0.0 {
                     v = self.snapped(self.value_at((along - a) as f64 / len));
