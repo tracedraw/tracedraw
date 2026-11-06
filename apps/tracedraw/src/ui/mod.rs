@@ -81,6 +81,7 @@ pub mod palette;
 pub mod palette_bars;
 pub mod palette_manager;
 pub mod pdf_import_dialog;
+pub mod pdf_pages;
 pub mod pdf_password;
 pub mod phone;
 pub mod picture_mosaic_docker;

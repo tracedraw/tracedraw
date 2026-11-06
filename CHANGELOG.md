@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- File > Import of a PDF (or PDF-compatible `.ai`) file of several pages asks which pages to bring in and where, in a new Import PDF Pages dialog: All or a list such as "1-3, 5", with each page's size and orientation shown and ticked. As new pages after the current page (the default), each chosen page becomes a page of the drawing with its own size and orientation, in order, its spot inks joining the drawing's; On the current page puts each page's objects on the active layer as a group. The whole import is one undo step, and it follows the text question and the password of a protected file as before, on the desktop, in the browser and on Android. This merges PDFs into one drawing; before, Import took only the first page. A file of one page comes in as before, without asking.
+
 ## 0.41.0 (2026-11-06)
 
 - Text in older fonts made for the symbol encoding (Tamil fonts among them): a letter the font keeps at codes 0x80 to 0x9F now draws when it is typed on Windows, which delivers it as the character code page 1252 has there ("„" for 0x84), and when pasted text holds it at U+F080 to U+F09F. Such letters went to another font and showed as a box or not at all (#1937).
