@@ -565,8 +565,8 @@ every text holds the whole text.
   texts of its link on the page are outlined with blue dashes, and each
   linked text carries a small chain mark at its top right corner. The
   status bar says "Artistic Text: ... (text content linked with 2 more)
-  on Layer 1", and while typing "Editing text; 2 linked texts change
-  with it".
+  on Layer 1", and while typing "Editing a linked text: what you type
+  changes 2 more".
 - Text > Unlink Text Content (and the object menu) takes the selected
   texts out of their link; each keeps the text it shows. A text left
   alone in a link leaves it too.

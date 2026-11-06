@@ -228,9 +228,13 @@ mod tests {
         assert_eq!(font(&app, b), "Sans");
         assert!(!app.can_link_text_content());
         assert!(app.selection_has_content_link());
+        // The status bar names the link of a selected linked text.
+        app.select(vec![a]);
+        assert!(crate::ui::status::object_info(&app).contains("text content linked with 1 more"));
         // Typing in the second text, in place, as the Text tool does.
         app.select(vec![b]);
         app.begin_text_edit(b);
+        assert!(crate::ui::status::object_info(&app).contains("changes 1 more"));
         app.text_insert("!");
         assert_eq!(chars(&app, a), "SALE!");
         app.text_insert("!");
