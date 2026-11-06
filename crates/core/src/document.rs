@@ -4031,6 +4031,15 @@ pub struct Metadata {
     /// older drawings read and write as before.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_spacing: Option<f64>,
+    /// Facing pages (Layout > Facing Pages, Document Options > Layout,
+    /// #1972, #1660): the pages show side by side in spreads, see
+    /// [`crate::spreads`]. Left out of the file while off.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub facing_pages: bool,
+    /// The side the first page of facing pages sits on: alone on the
+    /// right (the default) or starting a spread on the left.
+    #[serde(skip_serializing_if = "crate::spreads::PageSide::is_right")]
+    pub facing_start: crate::spreads::PageSide,
 }
 
 /// The space between pages in the Multipage View when a drawing sets
