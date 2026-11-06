@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Standard toolbar: the Launch list no longer holds Color Management. Launch is for the tools that come with TraceDraw (Font Manager, TraceCut, the Welcome Screen); Color Management is a settings dialog and stays in the Tools menu.
+
 ## 0.41.0 (2026-11-06)
 
 - Text in older fonts made for the symbol encoding (Tamil fonts among them): a letter the font keeps at codes 0x80 to 0x9F now draws when it is typed on Windows, which delivers it as the character code page 1252 has there ("„" for 0x84), and when pasted text holds it at U+F080 to U+F09F. Such letters went to another font and showed as a box or not at all (#1937).
