@@ -543,4 +543,124 @@ mod tests {
         big.copies = 2;
         assert!(big.as_boxes());
     }
+
+    fn shape_count(app: &App) -> usize {
+        app.doc().pages[0]
+            .layers
+            .iter()
+            .map(|l| l.shapes.len())
+            .sum()
+    }
+
+    /// #1255: Fill page tiles the selection over the page: the original
+    /// takes the first place and copies the others, as many as the count
+    /// shown, at the places previewed, with the trim marks; one undo
+    /// takes it all back.
+    #[test]
+    fn fill_page_makes_the_copies_counted_and_previewed() {
+        let (mut app, id) = app_with_rect();
+        app.step_repeat.fill = true;
+        app.step_repeat.margins = [10.0; 4];
+        app.step_repeat.gap = (5.0, 5.0);
+        app.step_repeat.marks = true;
+        let b = app.selection_bounds().expect("bounds");
+        let (as_is, _, g) = app.fill_page_layout().expect("a layout");
+        assert_eq!(g, as_is, "as it stands by default");
+        let n = crate::fill_page::count(&g);
+        // A4 inside 10 mm margins, 5 mm gaps.
+        let fits = |room: f64, size: f64| ((room + 5.0) / (size + 5.0)).floor() as usize;
+        assert_eq!(g.cols, fits(190.0, b.width()));
+        assert_eq!(g.rows, fits(277.0, b.height()));
+        assert_eq!(n, g.cols * g.rows);
+        let text = App::fill_count_text(&g);
+        assert!(
+            text.contains(&format!("{} x {}", g.cols, g.rows)) && text.contains(&n.to_string()),
+            "{text}"
+        );
+        let pv = app.step_and_repeat_preview().expect("a preview").clone();
+        assert_eq!(pv.copies as usize, n);
+        assert!(!pv.marks.is_empty());
+        let previewed: Vec<Rect> = (1..=pv.copies).map(|k| pv.copy_bounds(k)).collect();
+        let before = shape_count(&app);
+        app.step_and_repeat_apply();
+        // The copies and one object of trim marks.
+        assert_eq!(shape_count(&app), before + n - 1 + 1);
+        assert_eq!(app.selection.len(), n + 1);
+        assert_eq!(app.selection[0], id, "the original stays, moved");
+        let boxes = app.selected_bounds();
+        for (p, m) in previewed.iter().zip(boxes.iter()) {
+            assert!(
+                (p.x0 - m.x0).abs() < 1e-6 && (p.y1 - m.y1).abs() < 1e-6,
+                "{p:?} {m:?}"
+            );
+        }
+        let marks = app.selected_shapes().last().cloned().expect("the marks");
+        assert!(matches!(marks.kind, ShapeKind::Path { closed: false, .. }));
+        assert!(marks.stroke.is_some());
+        app.undo();
+        assert_eq!(shape_count(&app), before, "one undo takes it all back");
+        let back = app.doc().pages[0]
+            .layers
+            .iter()
+            .flat_map(|l| l.shapes.iter())
+            .find(|s| s.id == id)
+            .map(|s| tracedraw_core::geometry::Shape::bounding_box(&s.page_path()))
+            .expect("the original");
+        assert!((back.x0 - 10.0).abs() < 1e-6 && (back.y0 - 10.0).abs() < 1e-6);
+    }
+
+    /// Turned copies stand a quarter turn round, and "whichever fits
+    /// more" turns them when that fits more; nothing fits, nothing is
+    /// made.
+    #[test]
+    fn fill_page_turns_the_copies_to_fit_more() {
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 120.0, 80.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("a rectangle");
+        app.select(vec![id]);
+        app.step_repeat.fill = true;
+        app.step_repeat.turn = 2;
+        let (a, t, g) = app.fill_page_layout().expect("a layout");
+        // 120 x 80 (and its outline) on A4: 1 x 3 as it stands, 2 x 2
+        // turned.
+        assert_eq!(crate::fill_page::count(&a), 3);
+        assert_eq!(crate::fill_page::count(&t), 4);
+        assert!(g.turned);
+        let before = shape_count(&app);
+        app.step_and_repeat_apply();
+        assert_eq!(shape_count(&app), before + 3);
+        for b in app.selected_bounds().iter() {
+            assert!(b.height() > b.width(), "turned: {b:?}");
+        }
+        app.undo();
+        // Too big for the page: nothing made, and the panel says so.
+        app.select(vec![id]);
+        app.step_repeat.margins = [100.0; 4];
+        let (_, _, g) = app.fill_page_layout().expect("a layout");
+        assert_eq!(crate::fill_page::count(&g), 0);
+        let rev = app.engine.revision();
+        app.step_and_repeat_apply();
+        assert_eq!(app.engine.revision(), rev);
+        assert_eq!(app.status, tr("status.fill_page_none"));
+    }
+
+    /// An area of the page can be filled instead of the whole page.
+    #[test]
+    fn fill_page_fills_a_chosen_area() {
+        let (mut app, _) = app_with_rect();
+        app.step_repeat.fill = true;
+        app.step_repeat.area_custom = true;
+        app.step_repeat.area = Rect::new(50.0, 100.0, 150.0, 200.0);
+        let (_, _, g) = app.fill_page_layout().expect("a layout");
+        assert!(crate::fill_page::count(&g) > 0);
+        for c in &g.cells {
+            assert!(c.x0 >= 50.0 - 1e-9 && c.x1 <= 150.0 + 1e-9, "{c:?}");
+            assert!(c.y0 >= 100.0 - 1e-9 && c.y1 <= 200.0 + 1e-9, "{c:?}");
+        }
+    }
 }

@@ -8240,3 +8240,151 @@ mod desktop_message_tests {
         assert_eq!(picked, Some(0));
     }
 }
+
+#[cfg(test)]
+mod layout_preset_tests {
+    use super::*;
+
+    fn run(
+        ctx: &egui::Context,
+        app: &App,
+        st: &mut PrintState,
+        events: Vec<egui::Event>,
+    ) -> Vec<(String, egui::Rect)> {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(480.0, 1000.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| print_layout_fields(app, ui, st));
+        out.textures_delta.clear();
+        out.shapes
+            .iter()
+            .filter_map(|s| match &s.shape {
+                egui::Shape::Text(t) => {
+                    Some((t.galley.text().to_string(), t.visual_bounding_rect()))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn click(ctx: &egui::Context, app: &App, st: &mut PrintState, at: egui::Pos2) {
+        let button = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        run(ctx, app, st, vec![egui::Event::PointerMoved(at)]);
+        run(ctx, app, st, vec![button(true)]);
+        run(ctx, app, st, vec![button(false)]);
+    }
+
+    fn at(texts: &[(String, egui::Rect)], label: &str) -> egui::Pos2 {
+        texts
+            .iter()
+            .find(|(t, _)| t == label)
+            .map(|(_, r)| r.center())
+            .unwrap_or_else(|| panic!("{label} shown"))
+    }
+
+    /// #1796, #1795, #1658: the layout fields of several pages per sheet
+    /// show the page order and the two gaps; "+" names a preset and OK
+    /// keeps it in the preferences, chosen; changing a setting leaves it
+    /// unchosen, choosing it again puts its settings back; "-" asks
+    /// before deleting it.
+    #[test]
+    fn a_layout_is_kept_as_a_preset_and_chosen_again() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let mut st = PrintState {
+            layout_kind: 1,
+            gutter: 4.0,
+            gutter_y: 7.0,
+            page_order: 1,
+            ..Default::default()
+        };
+        run(&ctx, &app, &mut st, Vec::new());
+        let texts = run(&ctx, &app, &mut st, Vec::new());
+        for key in [
+            "print.page_order",
+            "print.order_down",
+            "print.gap_across",
+            "print.gap_down",
+            "print.layout_preset",
+            "print.layout_save_file",
+            "print.layout_open_file",
+        ] {
+            at(&texts, &tr(key));
+        }
+        let o = crate::export::print_layout(&app, &st, app.doc());
+        assert_eq!(o.gutter, 4.0);
+        assert_eq!(o.gutter_y, Some(7.0));
+        assert_eq!(o.order, crate::imposition::PageOrder::Down);
+        // "+" opens the name field; OK keeps the preset.
+        click(&ctx, &app, &mut st, at(&texts, "+"));
+        assert!(st.layout_preset_typed.is_some());
+        st.layout_preset_typed = Some("Cards".into());
+        let texts = run(&ctx, &app, &mut st, Vec::new());
+        click(&ctx, &app, &mut st, at(&texts, &tr("dialog.ok")));
+        assert_eq!(
+            st.layout_preset_request,
+            Some(LayoutPresetRequest::Save("Cards".into()))
+        );
+        take_saved_sheet(&mut app, &mut st);
+        assert_eq!(app.settings.printing.layout_presets.len(), 1);
+        assert_eq!(st.layout_preset, "Cards");
+        let texts = run(&ctx, &app, &mut st, Vec::new());
+        at(&texts, "Cards");
+        // Changed, the preset is no longer the chosen one; chosen again
+        // it puts its settings back.
+        st.gutter_y = 12.0;
+        run(&ctx, &app, &mut st, Vec::new());
+        assert!(st.layout_preset.is_empty());
+        app.settings.printing.layout_presets[0]
+            .clone()
+            .apply(&mut st);
+        assert_eq!((st.gutter, st.gutter_y, st.page_order), (4.0, 7.0, 1));
+        assert_eq!(st.layout_preset, "Cards");
+        // "-" asks first; Yes deletes.
+        let texts = run(&ctx, &app, &mut st, Vec::new());
+        click(&ctx, &app, &mut st, at(&texts, "\u{2212}"));
+        assert_eq!(st.layout_preset_delete.as_deref(), Some("Cards"));
+        assert!(st.layout_preset_request.is_none(), "not before the answer");
+        let texts = run(&ctx, &app, &mut st, Vec::new());
+        click(&ctx, &app, &mut st, at(&texts, &tr("dialog.yes")));
+        take_saved_sheet(&mut app, &mut st);
+        assert!(app.settings.printing.layout_presets.is_empty());
+        assert!(st.layout_preset.is_empty());
+    }
+
+    /// A layout file read in goes into the open Print Preview and is kept
+    /// as a preset.
+    #[test]
+    fn a_layout_file_loads_into_print_preview() {
+        let mut app = App::headless();
+        app.print_preview(None);
+        let st = PrintState {
+            layout_kind: 3,
+            cols: 4,
+            rows: 6,
+            gutter: 2.0,
+            gutter_y: 3.0,
+            ..Default::default()
+        };
+        let text = crate::prefs::LayoutPreset::from_state("Labels", &st).to_file();
+        let p = crate::prefs::LayoutPreset::from_file(&text).expect("a layout");
+        load_layout(&mut app, &p);
+        let pv = app.print_preview.as_ref().expect("the preview");
+        assert_eq!(
+            (pv.st.layout_kind, pv.st.cols, pv.st.rows, pv.st.gutter_y),
+            (3, 4, 6, 3.0)
+        );
+        assert_eq!(pv.st.layout_preset, "Labels");
+        assert_eq!(app.settings.printing.layout_presets.len(), 1);
+    }
+}

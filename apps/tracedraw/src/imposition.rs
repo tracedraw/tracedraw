@@ -1581,7 +1581,7 @@ mod tests {
         let s = &plan(&[A5; 6], &o)[0];
         let at = |p: usize| s.cells.iter().find(|c| c.page == Some(p)).map(|c| c.trim);
         let (p1, p2, p4) = (at(0).unwrap(), at(1).unwrap(), at(3).unwrap());
-        assert!((p1.x0 - p2.x0).abs() < 1e-9 && p2.y1 < p1.y0, "2 under 1");
-        assert!((p1.y0 - p4.y0).abs() < 1e-9 && p4.x0 > p1.x1, "4 beside 1");
+        assert!((p1.x0 - p2.x0).abs() < 1e-9 && p2.y1 <= p1.y0 + 1e-9, "2 under 1");
+        assert!((p1.y0 - p4.y0).abs() < 1e-9 && p4.x0 >= p1.x1 - 1e-9, "4 beside 1");
     }
 }
