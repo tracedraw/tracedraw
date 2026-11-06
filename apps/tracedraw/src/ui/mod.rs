@@ -1965,6 +1965,114 @@ mod tests {
         }
     }
 
+    /// On a phone the standard toolbar is longer than the screen: a
+    /// finger dragged along it slides it with the finger, and the buttons
+    /// stay where the finger left them (#1997).
+    #[test]
+    fn a_finger_slides_the_standard_toolbar_on_a_phone() {
+        let dp = egui::vec2(360.0, 640.0);
+        let ctx = crate::theme::ui_context();
+        let mut app = mixed_app();
+        app.set_workspace(crate::app::Workspace::Touch);
+        app.show_welcome = false;
+        let clock = std::cell::Cell::new(0.0);
+        let frame = |app: &mut App, events: Vec<egui::Event>| {
+            clock.set(clock.get() + 0.02);
+            let zoom = ctx.zoom_factor();
+            let mut input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, dp / zoom)),
+                events,
+                time: Some(clock.get()),
+                ..Default::default()
+            };
+            let vp = input.viewports.entry(egui::ViewportId::ROOT).or_default();
+            vp.native_pixels_per_point = Some(1.0);
+            vp.monitor_size = Some(dp / zoom);
+            let mut out = ctx.run_ui(input, |ui| root(app, ui));
+            out.textures_delta.clear();
+        };
+
+        let touch = |phase, pos| egui::Event::Touch {
+            device_id: egui::TouchDeviceId(1),
+            id: egui::TouchId(2),
+            phase,
+            pos,
+            force: None,
+        };
+        let press = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        // A finger (or, without `finger`, the mouse) down at `from`, moved
+        // to `to` in `steps`; `lift` lets go there, else it stays down.
+        let drag = |app: &mut App,
+                    from: egui::Pos2,
+                    to: egui::Pos2,
+                    steps: usize,
+                    finger: bool,
+                    lift: bool| {
+            let mut events = vec![egui::Event::PointerMoved(from), press(from, true)];
+            if finger {
+                events.insert(0, touch(egui::TouchPhase::Start, from));
+            }
+            frame(app, events);
+            for k in 1..=steps {
+                let p = from + (to - from) * (k as f32 / steps as f32);
+                let mut events = vec![egui::Event::PointerMoved(p)];
+                if finger {
+                    events.insert(0, touch(egui::TouchPhase::Move, p));
+                }
+                frame(app, events);
+            }
+            if lift {
+                let mut events = vec![press(to, false), egui::Event::PointerGone];
+                if finger {
+                    events.insert(0, touch(egui::TouchPhase::End, to));
+                }
+                frame(app, events);
+                frame(app, Vec::new());
+            }
+        };
+
+        for _ in 0..6 {
+            frame(&mut app, Vec::new());
+        }
+        assert!(phone::phone());
+        let slot = |app: &App| {
+            app.shown_bar_slots
+                .iter()
+                .find(|s| s.bar == crate::ui::bar_items::ItemBar::Standard)
+                .cloned()
+                .expect("the Standard toolbar is drawn")
+        };
+        let before = slot(&app);
+        let screen_w = ctx.content_rect().width();
+        assert!(
+            before.rect.right() > screen_w,
+            "the bar is longer than the screen: {:?}",
+            before.rect
+        );
+        // A button shown whole near the bar's start.
+        let (i, item) = before
+            .items
+            .iter()
+            .enumerate()
+            .find(|(_, r)| r.width() > 10.0 && r.left() > 30.0 && r.right() < screen_w - 60.0)
+            .map(|(i, r)| (i, *r))
+            .expect("a button in view");
+        let from = item.center();
+        drag(&mut app, from, from - egui::vec2(80.0, 0.0), 8, true, true);
+        let after = slot(&app).items[i];
+        assert!(
+            (after.min.x - (item.min.x - 70.0)).abs() < 0.5,
+            "{after:?} from {item:?}"
+        );
+        assert_eq!(after.min.y, item.min.y);
+        phone::set_phone(false);
+    }
+
     fn key(ctx: &egui::Context, app: &mut App, key: egui::Key, modifiers: egui::Modifiers) {
         // Press and release inside one frame, with the modifiers released
         // too: what a fast typist or a test driver produces.
