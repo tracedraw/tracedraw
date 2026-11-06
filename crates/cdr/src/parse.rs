@@ -246,6 +246,15 @@ const OBJ_EMBEDDED: u32 = 0x0a;
 /// A mesh fill object (seen in a version 11 file, #896): a curve (its
 /// coordinates argument) filled with the colour grid of [`ARG_MESH`].
 const OBJ_MESH: u32 = 0x20;
+/// An object that draws nothing: it carries a piece of XML of the drawing
+/// the file was imported from (an attribute such as `data-name="Layer 2"`
+/// or a namespace declaration, in [`ARG_XML_DATA`]), with no coordinates
+/// and an empty box (seen in a version 26 file, #2022). Read as nothing,
+/// not as an object the drawing lost.
+const OBJ_XML_DATA: u32 = 0x1f;
+/// The text of an [`OBJ_XML_DATA`] object: its length in bytes (u32),
+/// then UTF-16 text after a 12-byte head; not needed to draw.
+const ARG_XML_DATA: u32 = 40004;
 /// The mesh of an [`OBJ_MESH`] object: its grid lines and node colours
 /// (see [`Ctx::read_mesh`]).
 const ARG_MESH: u32 = 19150;
@@ -462,7 +471,8 @@ struct Ctx<'a> {
     blend_steps_left: u32,
     /// Guidelines of the page being read (objects of type 0x16).
     guides: Vec<tracedraw_core::document::Guide>,
-    /// The last object read was a guideline, not a skipped object.
+    /// The last object read was a guideline or an XML data object, read
+    /// as nothing on purpose, not a skipped object.
     last_was_guide: bool,
     /// The transform of the linked groups (`LIST lnkg`) being read, which
     /// their objects are drawn through.
@@ -3399,6 +3409,17 @@ impl<'a> Ctx<'a> {
         let d = self.data(loda);
         let l = self.read_loda(d)?;
         let kind_code = l.kind;
+        if kind_code == OBJ_XML_DATA {
+            // Nothing to draw: the object holds XML of the imported
+            // drawing (#2022). It counts as read, not as lost.
+            self.last_was_guide = true;
+            let text = l.args.iter().find(|a| a.ty == ARG_XML_DATA);
+            log::debug!(
+                "XML data object of {} bytes",
+                text.map_or(0, |a| a.end.saturating_sub(a.off))
+            );
+            return None;
+        }
         if kind_code == OBJ_GUIDE {
             self.last_was_guide = true;
             let line = l.args.iter().find(|a| a.ty == ARG_GUIDE_LINE);
@@ -12280,6 +12301,47 @@ pub(crate) mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    /// An object of kind 0x1f holds XML of the drawing the file was
+    /// imported from and no geometry (#2022): it is read as nothing, with
+    /// no warning and without counting as an object the drawing lost.
+    #[test]
+    fn xml_data_objects_are_read_as_nothing_not_skipped() {
+        let text: Vec<u8> = "data-name=\"Layer 2\""
+            .encode_utf16()
+            .chain([0u16])
+            .flat_map(|u| u.to_le_bytes())
+            .collect();
+        let mut a = i32s(&[64, 0x541, 0]);
+        a.extend_from_slice(&i32s(&[text.len() as i32]));
+        a.extend_from_slice(&text);
+        a.extend_from_slice(&i32s(&[0x541, 7, 0]));
+        let data = list(
+            b"obj ",
+            &chunk(b"loda", &loda(OBJ_XML_DATA, &[(ARG_XML_DATA, a)])),
+        );
+        let rect = list(
+            b"obj ",
+            &chunk(
+                b"loda",
+                &loda(OBJ_RECT, &[(ARG_COORDS, i32s(&[100_000, 50_000, 0, 0]))]),
+            ),
+        );
+        let body = [
+            chunk(b"mcfg", &mcfg(9, 2_540_000, 2_540_000)),
+            list(b"page", &list(b"layr", &[data, rect].concat())),
+        ]
+        .concat();
+        let (doc, rep) = parse(&riff(b"CDR9", &body), 9);
+        assert_eq!(rep.skipped_objects, 0, "{:?}", rep.warnings);
+        assert!(
+            !rep.warnings.iter().any(|w| w.contains("not modelled")),
+            "{:?}",
+            rep.warnings
+        );
+        assert_eq!(doc.pages[0].layers[0].shapes.len(), 1);
     }
 
     #[test]
