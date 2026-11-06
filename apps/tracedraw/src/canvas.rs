@@ -118,6 +118,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     crate::comments::draw_comments(app, painter);
     crate::perspective_draw::draw_grid(app, painter, rect);
     draw_frame_links(app, painter);
+    draw_content_links(app, painter);
     crate::tab_ruler::draw(app, painter);
     if app.pending_text_link.is_some() {
         let pointer = painter.ctx().pointer_hover_pos();
@@ -1348,6 +1349,57 @@ fn draw_frame_links(app: &App, painter: &Painter) {
                 EStroke::NONE,
             ));
         }
+    }
+}
+
+/// Linked text content (#1568): with a linked text selected or being
+/// edited, each text of the page linked with it is outlined with dashes
+/// and carries a small chain mark, as the selected ones do.
+fn draw_content_links(app: &App, painter: &Painter) {
+    if !app.selection_has_content_link() {
+        return;
+    }
+    // Only a linked text is selected from here on: the drawing is
+    // searched for its link, never for every selected object.
+    let doc = app.doc();
+    let layers = app.page_layers();
+    let on_page = |id| {
+        doc.top_level_of(id)
+            .is_some_and(|top| layers.iter().any(|l| l.shapes.iter().any(|s| s.id == top)))
+    };
+    let view = &app.view;
+    let stroke = EStroke::new(1.0, Tokens::SELECTION);
+    let chain_at = |r: ERect| {
+        // Two links of a chain at the box's top right corner.
+        let c = r.right_top() + egui::vec2(8.0, -8.0);
+        for dx in [-3.0, 3.0] {
+            painter.rect_stroke(
+                ERect::from_center_size(c + egui::vec2(dx, 0.0), egui::vec2(8.0, 5.0)),
+                2.5,
+                EStroke::new(1.5, Tokens::SELECTION),
+                epaint::StrokeKind::Middle,
+            );
+        }
+    };
+    for id in app.linked_selection_ids() {
+        if let Some(s) = doc.shape_on_page(id).filter(|_| on_page(id)) {
+            chain_at(view.rect_to_screen(s.bounds()));
+        }
+    }
+    for id in app.content_linked_others() {
+        let Some(s) = doc.shape_on_page(id).filter(|_| on_page(id)) else {
+            continue;
+        };
+        let r = view.rect_to_screen(s.bounds()).expand(3.0);
+        let pts = [
+            r.left_top(),
+            r.right_top(),
+            r.right_bottom(),
+            r.left_bottom(),
+            r.left_top(),
+        ];
+        painter.extend(egui::Shape::dashed_line(&pts, stroke, 4.0, 3.0));
+        chain_at(r);
     }
 }
 

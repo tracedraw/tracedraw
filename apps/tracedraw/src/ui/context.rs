@@ -225,6 +225,13 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
         {
             app.join_text_lines();
         }
+        // Linked text content (#1568), offered when it can be used.
+        if app.can_link_text_content() && ci(ui, close, "menu.text.link_content", "", true) {
+            app.link_text_content();
+        }
+        if app.selection_has_content_link() && ci(ui, close, "menu.text.unlink_content", "", true) {
+            app.unlink_text_content();
+        }
         sep(ui);
     }
     if is_bitmap {

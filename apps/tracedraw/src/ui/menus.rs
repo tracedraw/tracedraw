@@ -3725,6 +3725,24 @@ fn text_menu(app: &mut App, ui: &mut Ui) {
             app.unlink_text_frames();
         }
     });
+    // Linked text content (#1568): texts that hold the same characters,
+    // each in its own look; not the frame flow above.
+    if item(
+        ui,
+        "menu.text.link_content",
+        "",
+        app.can_link_text_content(),
+    ) {
+        app.link_text_content();
+    }
+    if item(
+        ui,
+        "menu.text.unlink_content",
+        "",
+        app.selection_has_content_link(),
+    ) {
+        app.unlink_text_content();
+    }
     // Tables: a submenu of Text (its keys keep the `menu.table` prefix).
     sub(ui, "menu.table", |ui| table_menu(app, ui));
     sep(ui);

@@ -74,41 +74,50 @@ pub fn retext_spans(spans: &mut Vec<TextSpan>, new: &str) {
     debug_assert_eq!(spans_char_count(spans), new.len());
 }
 
-/// Every text object with a content link, nested ones too, in drawing
-/// order (master layers first, then the pages).
-fn linked_texts(doc: &Document) -> Vec<(u64, ShapeId, String)> {
-    fn walk(s: &Shape, out: &mut Vec<(u64, ShapeId, String)>) {
+/// Call `f` with every text object that has a content link, nested ones
+/// too, in drawing order (master layers first, then the pages).
+fn each_linked_text<'a>(doc: &'a Document, f: &mut dyn FnMut(u64, &'a Shape)) {
+    fn walk<'a>(s: &'a Shape, f: &mut dyn FnMut(u64, &'a Shape)) {
         match &s.kind {
-            ShapeKind::Text { spans, .. } => {
+            ShapeKind::Text { .. } => {
                 if let Some(link) = s.content_link {
-                    out.push((link, s.id, spans_text(spans)));
+                    f(link, s);
                 }
             }
-            ShapeKind::Group { children } => children.iter().for_each(|c| walk(c, out)),
+            ShapeKind::Group { children } => children.iter().for_each(|c| walk(c, f)),
             ShapeKind::ClipFrame { frame, contents } => {
-                walk(frame, out);
-                contents.iter().for_each(|c| walk(c, out));
+                walk(frame, f);
+                contents.iter().for_each(|c| walk(c, f));
             }
             _ => {}
         }
     }
-    let mut out = Vec::new();
     for l in doc.all_layers() {
         for s in &l.shapes {
-            walk(s, &mut out);
+            walk(s, f);
         }
     }
+}
+
+/// Every text object with a content link and its characters.
+fn linked_texts(doc: &Document) -> Vec<(u64, ShapeId, String)> {
+    let mut out = Vec::new();
+    each_linked_text(doc, &mut |link, s| {
+        out.push((link, s.id, text_of(s).unwrap_or_default()));
+    });
     out
 }
 
 impl Document {
     /// The text objects linked to `link`, in drawing order.
     pub fn content_link_members(&self, link: u64) -> Vec<ShapeId> {
-        linked_texts(self)
-            .into_iter()
-            .filter(|(l, _, _)| *l == link)
-            .map(|(_, id, _)| id)
-            .collect()
+        let mut out = Vec::new();
+        each_linked_text(self, &mut |l, s| {
+            if l == link {
+                out.push(s.id);
+            }
+        });
+        out
     }
 
     /// The other text objects whose content is linked with `id` (empty
@@ -177,8 +186,10 @@ impl Document {
     /// object's identity, so that texts pasted from another drawing do not
     /// join a link of this one by chance).
     pub fn fresh_content_link(&self, seed: u64) -> u64 {
-        let used: std::collections::BTreeSet<u64> =
-            linked_texts(self).into_iter().map(|(l, _, _)| l).collect();
+        let mut used = std::collections::BTreeSet::new();
+        each_linked_text(self, &mut |l, _| {
+            used.insert(l);
+        });
         let mut key = seed.max(1);
         while used.contains(&key) {
             key = key.wrapping_add(1).max(1);

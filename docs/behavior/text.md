@@ -531,6 +531,62 @@ on its own line, which is why the lines are joined first.
   (duplicated, pasted or imported as a set) are a chain of the copies
   (`textflow::relink_copies`).
 
+## Linked text content
+
+Two texts or more can share their characters while each keeps its own
+look (#1568, #1364, #1194): the same word set as a 3D blend, an
+extrusion, an outline copy or a shadow text is changed once. This is not
+the frame flow above: there one text runs on from frame to frame; here
+every text holds the whole text.
+
+- Text > Link Text Content (also on the object menu of a right click
+  when it can be used): with two texts or more selected (artistic or
+  paragraph, in groups too), their characters are linked. The texts
+  take the characters of the text selected first; a text already linked
+  brings its whole link along, so the links join. Greyed with fewer
+  than two texts, or when they are all in one link already.
+- From then on, whatever is typed, deleted, pasted or replaced in any of
+  them (typing in place, Edit Text, Find and Replace, a change of case,
+  a script) appears in the others at once, both ways. Only the
+  characters are shared: fonts, sizes, character colours and the rest
+  of each text's formatting, its fill, outline, frame, place and
+  effects (blend, extrude, envelope, contour, shadow, perspective) stay
+  its own. Characters both the old and the new text have at the start
+  and at the end keep their own style in each text; new characters take
+  the style of the character before them in that text.
+- The change and what it does to the linked texts are one step: one
+  Undo takes both back (`Engine` passes the change on in the step that
+  made it, `Document::sync_linked_text`).
+- A blend between two texts follows: its steps are made again from both
+  ends. The Blend panel has "Link text content of the ends" when the
+  selected blend goes from one text to another; it links or unlinks the
+  two.
+- The indicator: with a linked text selected or being edited, the other
+  texts of its link on the page are outlined with blue dashes, and each
+  linked text carries a small chain mark at its top right corner. The
+  status bar says "Artistic Text: ... (text content linked with 2 more)
+  on Layer 1", and while typing "Editing text; 2 linked texts change
+  with it".
+- Text > Unlink Text Content (and the object menu) takes the selected
+  texts out of their link; each keeps the text it shows. A text left
+  alone in a link leaves it too.
+- Frames of a frame flow chain (Paragraph Text Frame > Link) cannot
+  have their content linked, and a text whose content is linked cannot
+  flow into another frame: the status bar says which to unlink first.
+  Both features work in the same drawing on other texts.
+- Copies stay linked: Duplicate, Copy and Paste (in the same drawing or
+  another one), a copy made by a right click during a move, Clone and
+  Duplicate Page all make texts in the same link as their originals, so
+  a design copied for another colour still changes its word once. Use
+  Unlink Text Content on a copy that should go its own way. A pasted
+  copy whose characters differ from its link's (the original was
+  changed since it was copied) takes the link's characters.
+- Saved in `.tdraw` files as the text's `content_link` key (texts with
+  the same key are linked); a TraceDraw that does not know it opens the
+  texts unlinked. `.cdr`, PDF, SVG and the other formats get each text
+  as plain text with its own characters and looks; the link is not
+  written (`linked_text_content_goes_out_as_plain_texts`).
+
 ## Paragraph formatting
 
 - Alignment, line spacing, character and word spacing, space before and

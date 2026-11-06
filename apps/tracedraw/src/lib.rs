@@ -44,6 +44,7 @@ mod color_policy;
 mod comments;
 mod common_shapes;
 mod connectors;
+mod content_link;
 mod contour_tool;
 mod coords;
 mod copy_effect;
