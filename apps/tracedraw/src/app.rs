@@ -5682,7 +5682,21 @@ impl App {
             return;
         }
         let shapes = std::mem::take(&mut self.selection);
+        // A frame of a linked chain goes without its text: the frames
+        // left take it, in the same step (#1986, see `textflow.rs`).
+        let flow = self.flow_around_deleted(&shapes);
+        let before = self.engine.revision();
         self.run(Command::DeleteShapes { shapes });
+        if flow.is_empty() || self.engine.revision() == before {
+            return;
+        }
+        if let Err(e) = self.engine.amend_batch("Delete", &flow) {
+            self.status = e.to_string();
+            return;
+        }
+        if let Some(rec) = &mut self.recording {
+            rec.extend(flow);
+        }
     }
 
     /// Whether the toolbar's Delete button has something to delete: the
