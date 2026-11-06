@@ -52,6 +52,9 @@ pub struct ExportState {
     /// "1-3, 5" (#1382).
     pub page_list: bool,
     pub pages: String,
+    /// With facing pages: each spread of the chosen pages as one page as
+    /// wide as both (#1972); else every page on its own.
+    pub spreads: bool,
     pub selection_only: bool,
     pub transparent: bool,
     pub quality: u8,
@@ -100,6 +103,7 @@ impl Default for ExportState {
             all_pages: false,
             page_list: false,
             pages: String::new(),
+            spreads: false,
             selection_only: false,
             transparent: true,
             quality: 90,
@@ -3757,6 +3761,7 @@ fn export_preview_key(app: &App, st: &ExportState) -> u64 {
     st.all_pages.hash(&mut h);
     st.page_list.hash(&mut h);
     st.pages.hash(&mut h);
+    st.spreads.hash(&mut h);
     st.text_as_curves.hash(&mut h);
     st.ai_version.hash(&mut h);
     st.quality.hash(&mut h);
@@ -4483,6 +4488,11 @@ fn export_range_fields(app: &App, ui: &mut Ui, st: &mut ExportState) {
     });
     st.all_pages = range != 0;
     st.page_list = range == 2;
+    // Facing pages: the spreads as pages of their own (#1972).
+    if app.doc().facing().is_some() && !st.selection_only {
+        ui.checkbox(&mut st.spreads, tr("dialog.export_spreads"))
+            .rich_tip(pair("dialog.export_spreads", "dialog.export_spreads_desc"));
+    }
     let current = app
         .doc()
         .pages

@@ -504,7 +504,7 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     // drawing is copied once a change, not once a render (a zoom renders
     // at once, every few frames).
     #[cfg(not(target_arch = "wasm32"))]
-    let shares = app.multipage && revision == app.engine.revision();
+    let shares = app.shows_other_pages() && revision == app.engine.revision();
     #[cfg(not(target_arch = "wasm32"))]
     if shares {
         if let Some((r, d)) = app.page_snapshot.borrow().as_ref() {
@@ -542,9 +542,11 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
             }
         }
     }
-    if app.multipage {
-        crate::multipage::draw_other_pages(app, painter, rect, started, main_rendered);
-    }
+    // The pages beside the current one (the Multipage View, a spread of
+    // facing pages): their shadows and paper now, their objects over
+    // the current page's paper below, so what they hold across the
+    // spine shows on it (#1972).
+    let others = app.shows_other_pages();
 
     // Page: a flat grey shadow offset right and down, the white page, a
     // one-pixel grey border (pixel-aligned so it stays crisp). While
@@ -564,6 +566,9 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
             Tokens::page_shadow(),
         );
     }
+    if others {
+        crate::multipage::draw_other_papers(app, painter, rect);
+    }
     painter.rect_filled(paper, 0.0, Tokens::PAGE);
     if app.show_page_border {
         painter.rect_stroke(
@@ -576,7 +581,16 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     if app.show_bleed {
         let b = app.doc().metadata.bleed.max(0.0);
         if b > 0.0 {
-            let r = view.rect_to_screen(shown.inflate(b, b));
+            // Around the whole spread with facing pages, not at the
+            // spine (#1660).
+            let around = if app.doc().facing().is_some() {
+                app.shown_spread_rect(app.page)
+                    .map(|r| r.union(shown))
+                    .unwrap_or(shown)
+            } else {
+                shown
+            };
+            let r = view.rect_to_screen(around.inflate(b, b));
             painter.rect_stroke(
                 r,
                 0.0,
@@ -614,6 +628,9 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     }
     if app.show_baseline_grid {
         draw_baseline_grid(app, painter, rect, paper);
+    }
+    if others {
+        crate::multipage::draw_other_pages(app, painter, rect, started, main_rendered);
     }
 
     if let Some((tex, at)) = main {
@@ -656,9 +673,9 @@ pub(crate) fn outside_page_mask_color(app: &App) -> Color32 {
 /// rectangles a frame and the outlines flattened once per change.
 fn mask_outside_pages(app: &App, painter: &Painter, rect: ERect, paper: ERect) {
     let mut pages = vec![paper];
-    if app.multipage {
+    if app.shows_other_pages() {
         pages.extend(
-            app.multipage_layout()
+            app.shown_pages()
                 .iter()
                 .filter(|(id, _)| *id != app.page)
                 .map(|(_, r)| {

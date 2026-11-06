@@ -7,6 +7,7 @@ full, row-by-row status.
 ## Unreleased
 
 - Linked text content: Text > Link Text Content (also on the right-click menu) links the characters of two texts or more, so whatever is typed in any of them appears in the others at once, both ways, while each keeps its own font, size, colours and effects. Change the word of a 3D blend, an extrusion or a shadow text once. The Blend panel can link the two texts of a blend; a linked text shows the others of its link with dashed outlines and a chain mark, Undo takes a change back in all of them in one step, copies stay linked, and Unlink Text Content lets a text go its own way. This is not the frame flow of Paragraph Text Frame > Link; `.tdraw` files keep the link, `.cdr` files get plain texts (#1568, #1364, #1194).
+- Facing pages: Page > Facing Pages (and Document Options > Layout) shows the pages side by side in spreads while drawing, page 1 alone on the right and then 2-3, 4-5..., or 1-2, 3-4... with Page > Facing Pages Start On > Left Side. Objects can be drawn across the spine and show on both pages; a press, the page tabs or the navigator make the facing page current without moving the view; guidelines, snapping, the bleed (around the whole spread) and the Multipage View (spreads two a row) follow. Adding or removing pages reflows the spreads. Export has a Spreads option that writes each spread as one page; pages exported or printed alone carry what reaches over the spine from the facing page. The setting is saved in `.tdraw` files; `.cdr` files do not carry it (#1972, #1660).
 
 ## 0.41.0 (2026-11-06)
 
