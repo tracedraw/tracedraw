@@ -3589,6 +3589,7 @@ status.settings_reset = "Tüm ayarlar varsayılan değerlerine döndü"
 status.settings_saved = "Ayarlar varsayılan olarak kaydedildi"
 status.software_renderer = "Pencereyi bir yazılım bağdaştırıcısı çiziyor ({name}): her kare işlemcide çizildiği için TraceDraw gölgesiz, saniyede 30 kareyle sınırlı kalır. Ekran kartının kendi sürücüsünü kurmak hızlandırır." # mt
 status.software_renderer_off = "İşlemcide çiziliyor ({name}): donanım hızlandırma kapalı. Seçenekler > Genel bölümünden açmak için tıklayın." # mt
+status.renderer_fell_back = "Son başlatma pencereyi gösteremedi, bu yüzden TraceDraw artık {name} ile çiziyor. Seçenekler > Genel'de ekran kartını veya donanım hızlandırmayı seçmek için tıklayın." # mt
 status.shaping_empty = "Şekilleri Birleştir boş bir sonuç üretti" # mt
 status.shaping_open_cutter = "Açık eğriler burada yer almaz: Kes, kapalı bir nesneyi açık bir eğri boyunca keser"
 status.shaping_open_no_cut = "Açık eğri nesneyi kenardan kenara geçmiyor: hiçbir şey kesilmedi"
