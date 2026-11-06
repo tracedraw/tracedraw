@@ -8942,8 +8942,15 @@ impl App {
     }
 
     pub fn goto_page(&mut self, idx: usize) {
-        if self.multipage {
-            if let Some(id) = self.doc().pages.get(idx).map(|p| p.id) {
+        // A page on the desktop already (the Multipage View, the other
+        // page of a spread of facing pages) becomes current where it is.
+        let id = self.doc().pages.get(idx).map(|p| p.id);
+        if self.multipage
+            || id.is_some_and(|id| {
+                id != self.page && self.shown_pages().iter().any(|(p, _)| *p == id)
+            })
+        {
+            if let Some(id) = id {
                 self.multipage_activate(id);
             }
             return;

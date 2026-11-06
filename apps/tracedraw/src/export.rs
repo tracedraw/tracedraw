@@ -36,8 +36,17 @@ pub(crate) fn export_document(app: &App, st: &ExportState) -> (Document, Rect) {
         }
         (tmp, bounds)
     } else {
+        // Facing pages (#1972): each spread as one page, or each page
+        // with what its facing page holds across the spine (and in the
+        // bleed beside it).
+        if exports_spreads(app, st) {
+            return (
+                doc.spreads_document(&export_page_indexes(app, st)),
+                app.page_rect(),
+            );
+        }
         // The pages chosen, in the order chosen (#1382).
-        let mut tmp = doc.clone();
+        let mut tmp = doc.with_spread_overhangs(st.bleed_mm.max(doc.metadata.bleed));
         let mut all: Vec<_> = std::mem::take(&mut tmp.pages)
             .into_iter()
             .map(Some)
@@ -48,6 +57,11 @@ pub(crate) fn export_document(app: &App, st: &ExportState) -> (Document, Rect) {
             .collect();
         (tmp, app.page_rect())
     }
+}
+
+/// `st` exports the spreads of facing pages as pages (#1972).
+pub(crate) fn exports_spreads(app: &App, st: &ExportState) -> bool {
+    st.spreads && !st.selection_only && app.engine.document().facing().is_some()
 }
 
 /// The indexes of the pages `st` exports from the drawing (#1382).
@@ -91,10 +105,14 @@ pub fn export(app: &mut App, path: &Path, st: &ExportState) -> Result<String, St
     }
     // The other formats hold one page: one file per page, numbered by
     // the page it shows when there are several (#1382).
-    let numbers: Vec<usize> = export_page_indexes(app, st)
-        .into_iter()
-        .map(|i| i + 1)
-        .collect();
+    let numbers: Vec<usize> = if exports_spreads(app, st) {
+        (1..=doc.pages.len()).collect()
+    } else {
+        export_page_indexes(app, st)
+            .into_iter()
+            .map(|i| i + 1)
+            .collect()
+    };
     let many = doc.pages.len() > 1;
     let mut written = Vec::with_capacity(doc.pages.len());
     // A CMYK bitmap carries the profile its inks are in (#1763).
@@ -1237,7 +1255,15 @@ pub fn printed_pages(app: &App, st: &PrintState) -> Vec<usize> {
 }
 
 pub fn print_sheets(app: &App, st: &PrintState) -> Document {
-    let mut doc = app.engine.document().clone();
+    let src = app.engine.document();
+    // Facing pages: each page printed with what its facing page holds
+    // across the spine and in the bleed beside it (#1972); not for the
+    // selection alone, nor when Fit to page shrinks what runs off.
+    let mut doc = if (st.range == 3 && !app.selection.is_empty()) || st.fit_to_page {
+        src.clone()
+    } else {
+        src.with_spread_overhangs(src.metadata.bleed)
+    };
     let keep = printed_pages(app, st);
     let mut i = 0;
     doc.pages.retain(|_| {
@@ -3044,6 +3070,71 @@ mod tests {
         export(&mut app, &pdf.join("c.pdf"), &st).expect("pdf");
         let text = String::from_utf8_lossy(&std::fs::read(pdf.join("c.pdf")).unwrap()).to_string();
         assert!(text.contains("/Count 3"), "every page");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Facing pages (#1972): Export > Spreads makes each spread one page
+    /// as wide as both, page 1 alone; every page on its own carries
+    /// what its facing page holds across the spine, in exports and in
+    /// print; a PDF of the spreads has a page per spread.
+    #[test]
+    fn facing_pages_export_spreads_or_pages_with_the_spine_crossing() {
+        let mut app = App::headless();
+        for _ in 0..2 {
+            app.add_page();
+        }
+        app.page = app.doc().pages[1].id;
+        let size = app.doc().pages[1].size;
+        app.new_shape(ShapeKind::Rect {
+            rect: Rect::new(size.width - 20.0, 10.0, size.width + 30.0, 40.0),
+            radius: 0.0,
+            corners: None,
+        });
+        let st = ExportState {
+            format: 1,
+            all_pages: true,
+            ..ExportState::default()
+        };
+        let objects = |d: &Document, k: usize| -> usize {
+            d.pages[k].layers.iter().map(|l| l.shapes.len()).sum()
+        };
+        // Facing pages off: as before.
+        let (plain, _) = export_document(&app, &st);
+        assert_eq!(plain.pages.len(), 3);
+        assert_eq!(objects(&plain, 2), 0);
+        app.set_facing_pages(true, tracedraw_core::spreads::PageSide::Right);
+        // Every page alone: page 3 carries the rectangle's part on it.
+        let (pages, _) = export_document(&app, &st);
+        assert_eq!(pages.pages.len(), 3);
+        assert_eq!(objects(&pages, 2), 1);
+        assert_eq!(objects(&pages, 0), 0);
+        let printed = print_sheets(&app, &PrintState::default());
+        assert_eq!(printed.pages.len(), 3);
+        // Spreads: page 1, then pages 2-3 as one page twice as wide.
+        let spreads = ExportState {
+            spreads: true,
+            ..st.clone()
+        };
+        let (doc, _) = export_document(&app, &spreads);
+        assert_eq!(doc.pages.len(), 2);
+        assert_eq!(doc.pages[0].size, size);
+        assert!((doc.pages[1].size.width - 2.0 * size.width).abs() < 1e-9);
+        assert_eq!(objects(&doc, 1), 1);
+        let dir = std::env::temp_dir().join(format!("td-spreads-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("s.pdf");
+        export(&mut app, &path, &spreads).expect("pdf");
+        let text = String::from_utf8_lossy(&std::fs::read(&path).unwrap()).to_string();
+        assert!(text.contains("/Count 2"), "a page per spread");
+        // One file per spread for a format of one page.
+        let png = ExportState {
+            format: 2,
+            dpi: 20.0,
+            ..spreads.clone()
+        };
+        export(&mut app, &dir.join("s.png"), &png).expect("png");
+        assert!(dir.join("s-1.png").exists() && dir.join("s-2.png").exists());
+        assert!(!dir.join("s-3.png").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
