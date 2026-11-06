@@ -21,6 +21,7 @@ full, row-by-row status.
 - Linked paragraph text frames: deleting a frame of a chain (Delete, Cut, a group holding it) removes only the frame. Its text stays with the chain and flows on into the frames left, the frame after it showing what it showed and the last frame taking the rest with the overflow mark when it does not fit; a chain of two left with one frame becomes an ordinary paragraph frame holding all the text. One Undo brings the frame and the flow back. The text was deleted with the frame and the chain broke in two (#1986, item 2).
 
 - Print and Print Preview: several pages per sheet can run down the columns, either on each sheet (1 2 3 down the first column, 4 5 6 down the second) or through all sheets, so the columns cut from the stack run in one series, for serial numbers on ID cards (#1658).
+- Shape tool: Edit > Delete removes the chosen nodes, as the Delete key and the right-click menu do, and the curve stays; it deleted the whole object while nodes were chosen. With no node chosen, Edit > Delete and the right-click menu's Delete remove the selected object as the Delete key does (the menu row was greyed then). One undo step brings the nodes back (#1982).
 
 - Print and Print Preview: the layout (imposition, sheet, gaps, margins, booklet settings, bleed and marks) can be kept as a named preset and chosen again, and saved to a `.tdlayout` file and loaded from one (#1796).
 
