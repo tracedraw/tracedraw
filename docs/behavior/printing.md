@@ -94,7 +94,9 @@ has one.
   - Destination: Printer is one of the system's printers (above), the
     system PDF viewer (which owns the printer and the copy count; in the
     browser the PDF is downloaded), a PDF file or a PostScript file (saved
-    where chosen). Orientation: Match orientation (the Layout tab's
+    where chosen; the save dialog offers both types, the destination's
+    first, and the type chosen there, the name's extension, decides which
+    file is written). Orientation: Match orientation (the Layout tab's
     Landscape box), Portrait or Landscape, for fixed sheets.
   - Sheet: the page's own size, the standard sizes, Smart Board 16:9
     (1354.582 x 762 mm) and Custom (width and height typed; the last one

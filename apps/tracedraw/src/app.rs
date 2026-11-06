@@ -7841,7 +7841,6 @@ impl App {
         // "Do not show filter dialog": straight to the file.
         if self.settings.formats.skip_export_dialog {
             crate::ui::dialogs::export_with_file_dialog(self, &st);
-            self.keep_export_choices(&st);
             return;
         }
         self.dialog = crate::ui::dialogs::Dialog::Export(st);
