@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "Taglia i pixel delle immagini diritte fuori dall'area
 menu.bitmaps.crop_to_frame = "Ritaglia alla cornice" # mt
 toolbar.strikethrough = "Barrato" # mt
 toolbar.strikethrough_desc = "Barra il testo selezionato." # mt
+menu.view.page_shadow = "Ombra della pagina" # mt
+options.show_page_shadow = "Mostra l'ombra della pagina" # mt
+options.show_page_shadow_tip = "Disegna l'ombra sotto la pagina, a parte il suo bordo." # mt

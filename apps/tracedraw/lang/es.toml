@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "Recorta los píxeles de las imágenes rectas fuera de
 menu.bitmaps.crop_to_frame = "Recortar al marco" # mt
 toolbar.strikethrough = "Tachado" # mt
 toolbar.strikethrough_desc = "Traza una línea a través del texto seleccionado." # mt
+menu.view.page_shadow = "Sombra de la página" # mt
+options.show_page_shadow = "Mostrar la sombra de la página" # mt
+options.show_page_shadow_tip = "Dibuja la sombra bajo la página, aparte de su borde." # mt

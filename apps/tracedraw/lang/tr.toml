@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "Alanın dışındaki düz resimlerin piksellerini kes
 menu.bitmaps.crop_to_frame = "Çerçeveye kırp" # mt
 toolbar.strikethrough = "Üstü çizili" # mt
 toolbar.strikethrough_desc = "Seçili metnin üstünü çizer." # mt
+menu.view.page_shadow = "Sayfa gölgesi" # mt
+options.show_page_shadow = "Sayfa gölgesini göster" # mt
+options.show_page_shadow_tip = "Sayfanın altındaki gölgeyi, kenarlığından ayrı olarak çizer." # mt

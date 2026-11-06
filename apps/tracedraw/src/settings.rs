@@ -1535,6 +1535,8 @@ pub struct ViewPrefs {
     pub grid: bool,
     pub guides: bool,
     pub page_border: bool,
+    /// The page's shadow, apart from its border (#1906).
+    pub page_shadow: bool,
     pub bleed: bool,
     pub printable_area: bool,
     /// View > Mask Outside Page (#615).
@@ -1557,6 +1559,7 @@ impl Default for ViewPrefs {
             grid: false,
             guides: true,
             page_border: true,
+            page_shadow: true,
             bleed: false,
             printable_area: false,
             mask_outside_page: false,

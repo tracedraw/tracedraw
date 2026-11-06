@@ -541,7 +541,7 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         let r = view.rect_to_screen(shown);
         ERect::from_min_max(r.min.round(), r.max.round())
     };
-    if app.show_page_border {
+    if app.show_page_shadow {
         painter.rect_filled(
             paper.expand(1.0).translate(Tokens::PAGE_SHADOW_OFFSET),
             0.0,
@@ -3077,6 +3077,78 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #1906: View > Page > Page Border and Page Shadow are two options:
+    /// each draws its part of the page's edge alone, and both are kept
+    /// with the view's preferences.
+    #[test]
+    fn the_page_border_and_its_shadow_are_separate_options() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        let drawn = |app: &mut App| -> (bool, bool) {
+            let mut seen = (false, false);
+            for _ in 0..2 {
+                let input = egui::RawInput {
+                    screen_rect: Some(ERect::from_min_size(Pos2::ZERO, egui::vec2(1600.0, 1000.0))),
+                    ..Default::default()
+                };
+                let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+                out.textures_delta.clear();
+                // The page on the screen: other widgets share the border's
+                // grey, so only rectangles on the page's own edge count.
+                let r = app.view.rect_to_screen(app.page_rect());
+                let paper = ERect::from_min_max(r.min.round(), r.max.round());
+                fn walk(s: &egui::Shape, paper: ERect, seen: &mut (bool, bool)) {
+                    match s {
+                        egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, paper, seen)),
+                        egui::Shape::Rect(r) => {
+                            let shadow = paper.expand(1.0).translate(Tokens::PAGE_SHADOW_OFFSET);
+                            seen.0 |= r.fill == Tokens::page_shadow() && r.rect == shadow;
+                            seen.1 |= r.stroke.width > 0.0
+                                && r.stroke.color == Tokens::page_border()
+                                && r.rect == paper;
+                        }
+                        _ => {}
+                    }
+                }
+                seen = (false, false);
+                out.shapes
+                    .iter()
+                    .for_each(|c| walk(&c.shape, paper, &mut seen));
+            }
+            seen
+        };
+        assert_eq!(drawn(&mut app), (true, true), "both by default");
+        app.show_page_shadow = false;
+        assert_eq!(
+            drawn(&mut app),
+            (false, true),
+            "the border without the shadow"
+        );
+        app.show_page_shadow = true;
+        app.show_page_border = false;
+        assert_eq!(
+            drawn(&mut app),
+            (true, false),
+            "the shadow without the border"
+        );
+        app.show_page_shadow = false;
+        assert_eq!(drawn(&mut app), (false, false));
+        // Kept with the view's preferences, apart.
+        app.show_page_border = true;
+        let v = app.view_prefs();
+        assert!(v.page_border && !v.page_shadow);
+        let json = serde_json::to_string(&v).expect("json");
+        let back: crate::settings::ViewPrefs = serde_json::from_str(&json).expect("back");
+        let mut next = App::headless();
+        next.apply_view_prefs(&back);
+        assert!(next.show_page_border && !next.show_page_shadow);
+        // Older preferences, with no word on the shadow, keep it.
+        let old: crate::settings::ViewPrefs =
+            serde_json::from_str(r#"{"page_border": false}"#).expect("old");
+        assert!(!old.page_border && old.page_shadow);
+    }
 
     /// The parts of the window outside the pages: bands around one page,
     /// and around two side by side, with nothing left over or covered.

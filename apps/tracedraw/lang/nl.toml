@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "Snijd de pixels van rechte afbeeldingen buiten het ge
 menu.bitmaps.crop_to_frame = "Bijsnijden tot kader" # mt
 toolbar.strikethrough = "Doorhalen" # mt
 toolbar.strikethrough_desc = "Haal de geselecteerde tekst door." # mt
+menu.view.page_shadow = "Paginaschaduw" # mt
+options.show_page_shadow = "Paginaschaduw tonen" # mt
+options.show_page_shadow_tip = "Tekent de schaduw onder de pagina, los van de paginarand." # mt

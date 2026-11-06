@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "Die Pixel aufrechter Bilder außerhalb des Bereichs a
 menu.bitmaps.crop_to_frame = "Auf Rahmen zuschneiden" # mt
 toolbar.strikethrough = "Durchgestrichen" # mt
 toolbar.strikethrough_desc = "Den ausgewählten Text durchstreichen." # mt
+menu.view.page_shadow = "Seitenschatten" # mt
+options.show_page_shadow = "Seitenschatten anzeigen" # mt
+options.show_page_shadow_tip = "Zeichnet den Schatten unter der Seite, unabhängig vom Seitenrand." # mt

@@ -276,6 +276,7 @@ pub struct OptionsSnapshot {
     show_baseline_grid: bool,
     show_pixel_grid: bool,
     show_page_border: bool,
+    show_page_shadow: bool,
     show_status_bar: bool,
     show_standard_toolbar: bool,
     show_property_bar: bool,
@@ -330,6 +331,7 @@ impl OptionsSnapshot {
             show_baseline_grid: app.show_baseline_grid,
             show_pixel_grid: app.show_pixel_grid,
             show_page_border: app.show_page_border,
+            show_page_shadow: app.show_page_shadow,
             show_status_bar: app.show_status_bar,
             show_standard_toolbar: app.show_standard_toolbar,
             show_property_bar: app.show_property_bar,
@@ -398,6 +400,7 @@ impl OptionsSnapshot {
         app.show_baseline_grid = self.show_baseline_grid;
         app.show_pixel_grid = self.show_pixel_grid;
         app.show_page_border = self.show_page_border;
+        app.show_page_shadow = self.show_page_shadow;
         app.show_status_bar = self.show_status_bar;
         app.show_standard_toolbar = self.show_standard_toolbar;
         app.show_property_bar = self.show_property_bar;

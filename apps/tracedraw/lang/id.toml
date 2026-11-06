@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "Buang piksel gambar tegak di luar area, sehingga tiap
 menu.bitmaps.crop_to_frame = "Pangkas ke bingkai" # mt
 toolbar.strikethrough = "Coret" # mt
 toolbar.strikethrough_desc = "Mencoret teks yang dipilih." # mt
+menu.view.page_shadow = "Bayangan halaman" # mt
+options.show_page_shadow = "Tampilkan bayangan halaman" # mt
+options.show_page_shadow_tip = "Menggambar bayangan di bawah halaman, terpisah dari batasnya." # mt

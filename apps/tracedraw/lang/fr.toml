@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "Coupe les pixels des images droites hors de la zone, 
 menu.bitmaps.crop_to_frame = "Rogner au cadre" # mt
 toolbar.strikethrough = "Barré" # mt
 toolbar.strikethrough_desc = "Barre le texte sélectionné d'un trait." # mt
+menu.view.page_shadow = "Ombre de la page" # mt
+options.show_page_shadow = "Afficher l'ombre de la page" # mt
+options.show_page_shadow_tip = "Dessine l'ombre sous la page, indépendamment de sa bordure." # mt

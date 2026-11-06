@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "裁掉區域外未旋轉圖片的像素，使每張�
 menu.bitmaps.crop_to_frame = "裁剪到框" # mt
 toolbar.strikethrough = "刪除線" # mt
 toolbar.strikethrough_desc = "在所選文字中間畫一條線。" # mt
+menu.view.page_shadow = "頁面陰影" # mt
+options.show_page_shadow = "顯示頁面陰影" # mt
+options.show_page_shadow_tip = "繪製頁面下方的陰影，與頁面邊框分開。" # mt

@@ -3628,6 +3628,11 @@ pub(crate) fn page_size_page(app: &mut App, ui: &mut Ui) {
                 "options.show_page_border",
                 "options.show_page_border_tip",
             ));
+        ui.checkbox(&mut app.show_page_shadow, tr("options.show_page_shadow"))
+            .rich_tip(crate::ui::tips::pair(
+                "options.show_page_shadow",
+                "options.show_page_shadow_tip",
+            ));
         ui.add_space(6.0);
         if ui
             .add_sized(

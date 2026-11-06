@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "Отрезать пиксели неповёрнут�
 menu.bitmaps.crop_to_frame = "Обрезать по рамке" # mt
 toolbar.strikethrough = "Зачёркнутый" # mt
 toolbar.strikethrough_desc = "Зачеркнуть выделенный текст." # mt
+menu.view.page_shadow = "Тень страницы" # mt
+options.show_page_shadow = "Показывать тень страницы" # mt
+options.show_page_shadow_tip = "Рисовать тень под страницей отдельно от её границы." # mt

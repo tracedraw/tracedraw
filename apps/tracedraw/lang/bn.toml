@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "এলাকার বাইরের সোজা �
 menu.bitmaps.crop_to_frame = "ফ্রেম অনুযায়ী কাটুন" # mt
 toolbar.strikethrough = "স্ট্রাইকথ্রু" # mt
 toolbar.strikethrough_desc = "নির্বাচিত লেখার মাঝ দিয়ে একটি রেখা টানুন।" # mt
+menu.view.page_shadow = "পৃষ্ঠার ছায়া" # mt
+options.show_page_shadow = "পৃষ্ঠার ছায়া দেখান" # mt
+options.show_page_shadow_tip = "পৃষ্ঠার নিচে ছায়া আঁকুন, তার সীমানা থেকে আলাদাভাবে।" # mt

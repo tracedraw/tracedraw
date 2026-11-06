@@ -8,7 +8,11 @@
   `#BFBFBF`: the bordered page rectangle moved 6 px right and 4 px down,
   drawn behind the page, so a 6 px band shows on the right and a 4 px
   band at the bottom. The page rectangle is snapped to whole pixels.
-  View > Page > Page Border hides the border and the shadow.
+  View > Page > Page Border hides the border and View > Page > Page
+  Shadow the shadow, each on its own, so a white page on a white
+  desktop keeps its edge without the shadow (#1906; also in Options >
+  Page Size and kept with the view's preferences and in workspaces;
+  `canvas::tests::the_page_border_and_its_shadow_are_separate_options`).
 - View > Mask Outside Page, right after the view modes (Pixels; off by
   default, kept with the other view settings): an opaque colour covers
   everything outside the page

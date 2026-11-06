@@ -1438,6 +1438,10 @@ pub struct App {
     pub view_mode: ViewMode,
     pub proof_colors: bool,
     pub show_page_border: bool,
+    /// View > Page > Page Shadow: the shadow under the page, apart from
+    /// its border, so a white page on a white desktop can keep its edge
+    /// without the shadow, or the other way round (#1906).
+    pub show_page_shadow: bool,
     pub simulate_overprints: bool,
     pub rasterize_complex_effects: bool,
     pub show_bleed: bool,
@@ -2739,6 +2743,7 @@ impl App {
             view_mode: ViewMode::Enhanced,
             proof_colors: false,
             show_page_border: true,
+            show_page_shadow: true,
             simulate_overprints: false,
             rasterize_complex_effects: true,
             show_bleed: false,
@@ -3424,6 +3429,7 @@ impl App {
         self.toolbox_last = crate::tools::GROUPS.iter().map(|g| g.tools[0]).collect();
         self.apply_settings(fresh);
         self.show_page_border = true;
+        self.show_page_shadow = true;
         self.shortcut_editor = Default::default();
         self.recent_thumbs.clear();
         self.apply_runtime_settings();
@@ -3605,6 +3611,7 @@ impl App {
             grid: self.show_grid,
             guides: self.show_guides,
             page_border: self.show_page_border,
+            page_shadow: self.show_page_shadow,
             bleed: self.show_bleed,
             printable_area: self.show_printable_area,
             mask_outside_page: self.mask_outside_page,
@@ -3623,6 +3630,7 @@ impl App {
         self.show_grid = v.grid;
         self.show_guides = v.guides;
         self.show_page_border = v.page_border;
+        self.show_page_shadow = v.page_shadow;
         self.show_bleed = v.bleed;
         self.show_printable_area = v.printable_area;
         self.mask_outside_page = v.mask_outside_page;

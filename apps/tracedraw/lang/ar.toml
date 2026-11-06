@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "قص بكسلات الصور المستقيمة خا�
 menu.bitmaps.crop_to_frame = "قص حسب الإطار" # mt
 toolbar.strikethrough = "يتوسطه خط" # mt
 toolbar.strikethrough_desc = "رسم خط يتوسط النص المحدد." # mt
+menu.view.page_shadow = "ظل الصفحة" # mt
+options.show_page_shadow = "إظهار ظل الصفحة" # mt
+options.show_page_shadow_tip = "رسم الظل تحت الصفحة، بمعزل عن حدودها." # mt

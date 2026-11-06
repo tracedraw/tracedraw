@@ -265,7 +265,7 @@ pub fn draw_other_pages(
         let paper = app.view.rect_to_screen(*r);
         let paper = ERect::from_min_max(paper.min.round(), paper.max.round());
         if *id != app.page && paper.expand(30.0).intersects(rect) {
-            if app.show_page_border {
+            if app.show_page_shadow {
                 painter.rect_filled(
                     paper
                         .expand(1.0)

@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "範囲外にある傾いていない画像のピク�
 menu.bitmaps.crop_to_frame = "フレームで切り抜く" # mt
 toolbar.strikethrough = "取り消し線" # mt
 toolbar.strikethrough_desc = "選択したテキストに取り消し線を引きます。" # mt
+menu.view.page_shadow = "ページの影" # mt
+options.show_page_shadow = "ページの影を表示" # mt
+options.show_page_shadow_tip = "ページの下に影を描きます（境界とは別）。" # mt

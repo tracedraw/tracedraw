@@ -2742,6 +2742,9 @@ fn view_menu(app: &mut App, ui: &mut Ui) {
         if check(ui, "menu.view.page_border", "", app.show_page_border) {
             app.show_page_border = !app.show_page_border;
         }
+        if check(ui, "menu.view.page_shadow", "", app.show_page_shadow) {
+            app.show_page_shadow = !app.show_page_shadow;
+        }
         if check(ui, "menu.view.bleed", "", app.show_bleed) {
             app.show_bleed = !app.show_bleed;
         }

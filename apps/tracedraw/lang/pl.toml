@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "Wycina piksele prostych obrazów poza obszarem, więc
 menu.bitmaps.crop_to_frame = "Przytnij do ramki" # mt
 toolbar.strikethrough = "Przekreślenie" # mt
 toolbar.strikethrough_desc = "Przekreśla zaznaczony tekst." # mt
+menu.view.page_shadow = "Cień strony" # mt
+options.show_page_shadow = "Pokaż cień strony" # mt
+options.show_page_shadow_tip = "Rysuje cień pod stroną, niezależnie od jej krawędzi." # mt

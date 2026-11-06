@@ -7682,3 +7682,6 @@ crop.picture_pixels_tip = "Odřízne pixely nepootočených obrázků mimo oblas
 menu.bitmaps.crop_to_frame = "Oříznout podle rámu" # mt
 toolbar.strikethrough = "Přeškrtnuté" # mt
 toolbar.strikethrough_desc = "Přeškrtne vybraný text." # mt
+menu.view.page_shadow = "Stín stránky" # mt
+options.show_page_shadow = "Zobrazit stín stránky" # mt
+options.show_page_shadow_tip = "Kreslí stín pod stránkou, nezávisle na jejím okraji." # mt
