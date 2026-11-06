@@ -357,8 +357,9 @@ impl App {
     /// The guidelines of the other pages in the Multipage View, each moved
     /// to where its page sits in the grid (the current page's
     /// coordinates) and given the page's box there, so they can be drawn
-    /// within their page (#1448). None outside the Multipage View; the
-    /// current page's guidelines are drawn as always.
+    /// within their page (#1448); the facing page's in a spread of facing
+    /// pages too (#1972). None when no other page is shown; the current
+    /// page's guidelines are drawn as always.
     pub fn other_page_guides(&self) -> Vec<(Guide, Rect)> {
         if !self.shows_other_pages() {
             return Vec::new();
