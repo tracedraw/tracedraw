@@ -482,6 +482,20 @@ on its own line, which is why the lines are joined first.
   typing, linking and resizing (`textflow.rs`, links kept in the object
   data as `text.next` and `text.prev`). Unlink leaves each frame with the
   text it shows.
+- Deleting a frame of a chain (Delete, Cut, or a group or clip frame
+  holding it) removes only the frame: the frames left are linked to one
+  another in their order and the chain's whole text flows anew over them,
+  so the frame after the deleted one shows what it showed and the last
+  frame takes the rest (with the overflow mark when it does not fit). A
+  chain of two left with one frame is an ordinary paragraph frame holding
+  all the text. The relinking and the flow join the Delete step, so one
+  Undo brings the frame and the flow back (#1986,
+  `textflow::tests::deleting_the_middle_frame_of_a_chain_keeps_its_text`,
+  `deleting_the_first_frame_of_a_chain_keeps_its_text`,
+  `deleting_the_last_frame_of_a_chain_keeps_its_text`,
+  `deleting_a_frame_of_a_chain_of_two_leaves_one_frame_with_all_the_text`,
+  `cutting_a_frame_of_a_chain_keeps_its_text`,
+  `deleting_a_group_holding_a_frame_of_a_chain_keeps_its_text`).
 - Text > Convert keeps the letters in place both ways: the new frame
   (paragraph text) is the text's own box plus 2 mm, and the new text is
   moved so that its first letter sits where the old one's did, in the
