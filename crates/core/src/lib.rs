@@ -37,6 +37,7 @@ pub mod picture_inks;
 mod press;
 pub mod shadow;
 pub mod shaping;
+pub mod spreads;
 pub mod style;
 pub mod table;
 pub mod text_flow;
