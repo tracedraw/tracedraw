@@ -32,6 +32,7 @@
     <Resource Language="hi-in" />
     <Resource Language="bn-bd" />
     <Resource Language="id-id" />
+    <Resource Language="lo" />
   </Resources>
 
   <Applications>

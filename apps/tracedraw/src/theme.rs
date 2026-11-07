@@ -891,7 +891,7 @@ pub fn bundled_font_definitions() -> egui::FontDefinitions {
 /// script (the bundled one covers Latin, Greek and Cyrillic).
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub fn needs_system_font(code: &str) -> bool {
-    matches!(code, "zh-CN" | "zh-TW" | "ja" | "ar" | "hi" | "bn")
+    matches!(code, "zh-CN" | "zh-TW" | "ja" | "ar" | "hi" | "bn" | "lo")
 }
 
 /// The family of the font folder (browser build) that covers the script
@@ -902,6 +902,7 @@ pub fn ui_script_family(code: &str) -> Option<&'static str> {
         "zh-CN" => Some("Noto Sans SC"),
         "zh-TW" => Some("Noto Sans TC"),
         "ja" => Some("Noto Sans JP"),
+        "lo" => Some("Noto Sans Lao"),
         _ => None,
     }
 }
@@ -970,6 +971,13 @@ fn fallback_fonts(defs: &mut egui::FontDefinitions) -> Vec<String> {
             "Yu Gothic UI",
             "Hiragino Sans",
             "Source Han Sans",
+        ],
+        // Lao
+        &[
+            "Noto Sans Lao",
+            "Lao Sangam MN",
+            "Leelawadee UI",
+            "Saysettha OT",
         ],
         // Cyrillic is in the bundled font; Latin extended too.
     ];
@@ -1074,7 +1082,7 @@ mod theme_tests {
     /// bundled font covers (#561).
     #[test]
     fn cjk_interface_languages_have_a_font_to_fetch() {
-        for code in ["zh-CN", "zh-TW", "ja"] {
+        for code in ["zh-CN", "zh-TW", "ja", "lo"]] {
             assert!(needs_system_font(code));
             assert!(ui_script_family(code).is_some(), "{code}");
         }

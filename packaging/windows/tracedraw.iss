@@ -238,6 +238,7 @@ begin
   AddAppLanguage('pl', 'Polski');
   AddAppLanguage('tr', 'Türkçe');
   AddAppLanguage('cs', 'Čeština');
+  AddAppLanguage('lo', 'ພາສາລາວ');
   SystemCode := AppLanguageForLangId(GetUILanguage);
   if SystemCode = '' then
     SystemCode := 'en';
