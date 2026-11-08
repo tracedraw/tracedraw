@@ -386,6 +386,16 @@ impl App {
 
     pub fn shape_tool_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
         if response.double_clicked_by(PointerButton::Primary) {
+            // A character's node: a second click there within the double
+            // click time and distance chooses it as a click does.
+            // Neighbouring characters' nodes lie a few pixels apart, so a
+            // quick Shift+click on the next one is a double click; it went
+            // on to select the text again below, which let go of the
+            // chosen characters (#1933).
+            if let Some(key) = self.text_node_at(p) {
+                self.click_node(key, mods);
+                return;
+            }
             // A B-spline: a double-click on a control point removes it,
             // one on the control polygon adds one there.
             if let Some((s, crate::kind_nodes::KindNode::Spline { index })) = self.kind_node_at(p) {

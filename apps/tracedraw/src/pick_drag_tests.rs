@@ -21803,3 +21803,91 @@ fn a_palette_bar_docks_between_the_toolbars_at_the_top() {
     let b = band(&ctx);
     assert!(b.top() >= last - 1.0 && b.width() >= 1599.0, "{b:?}");
 }
+
+/// With the Shape tool on a text, a click on one character's node
+/// chooses it and a Shift+click on another's adds that one: both are
+/// chosen (#1933). Neighbouring characters' nodes lie a few pixels
+/// apart, so a quick Shift+click on the next one is a double click; it
+/// adds the character as a click does, where it selected the text again
+/// and let go of the chosen characters.
+#[test]
+fn shift_click_on_a_character_node_adds_it() {
+    let ctx = crate::theme::ui_context();
+    let mut app = App::headless();
+    app.show_welcome = false;
+    tracedraw_text::install();
+    let id = app
+        .new_shape(ShapeKind::Text {
+            spans: vec![tracedraw_core::TextSpan::new("abcd", "DejaVu Sans", 48.0)],
+            origin: Point::new(40.0, 100.0),
+            frame: None,
+            align: tracedraw_core::TextAlign::Left,
+            para: Default::default(),
+            on_path: None,
+        })
+        .expect("text");
+    app.select(vec![id]);
+    app.set_tool(Tool::Shape);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    app.zoom_to_page();
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let s = app.doc().find_shape(id).cloned().expect("text");
+    let nodes = crate::text_nodes::char_nodes(&s);
+    let at = |app: &App, c: usize| {
+        let p = nodes.iter().find(|n| n.0 == c).expect("node").1;
+        app.view.to_screen(p)
+    };
+    let (first, third) = (at(&app, 0), at(&app, 2));
+    assert!(first.distance(third) > 12.0, "{first:?} {third:?}");
+    click_at(&ctx, &mut app, first, Modifiers::NONE);
+    assert_eq!(app.node_selection, vec![(id, 0)]);
+    click_at(&ctx, &mut app, third, Modifiers::SHIFT);
+    assert_eq!(app.selection, vec![id]);
+    assert_eq!(app.node_selection, vec![(id, 0), (id, 2)]);
+
+    // Zoomed out so that neighbouring nodes lie 4 px apart, quick clicks:
+    // the first character, then Shift+clicks on the next two. The second
+    // click is a double click to the windowing layer (within 0.3 s and
+    // 6 px of the first).
+    let d = at(&app, 0).distance(at(&app, 1));
+    app.view.zoom_at(at(&app, 0), 4.0 / d);
+    app.node_selection.clear();
+    for _ in 0..40 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let quick = |ctx: &egui::Context, app: &mut App, to: Pos2, mods: Modifiers| {
+        frame(ctx, app, vec![Event::PointerMoved(to)], mods);
+        frame(
+            ctx,
+            app,
+            vec![button(to, true, PointerButton::Primary, mods)],
+            mods,
+        );
+        frame(
+            ctx,
+            app,
+            vec![button(to, false, PointerButton::Primary, mods)],
+            mods,
+        );
+    };
+    let (a, b, c) = (at(&app, 0), at(&app, 1), at(&app, 2));
+    assert!(
+        a.distance(b) < 6.0 && b.distance(c) < 6.0,
+        "{a:?} {b:?} {c:?}"
+    );
+    quick(&ctx, &mut app, a, Modifiers::NONE);
+    assert_eq!(app.node_selection, vec![(id, 0)]);
+    quick(&ctx, &mut app, b, Modifiers::SHIFT);
+    assert!(
+        ctx.input(|i| i.pointer.button_double_clicked(PointerButton::Primary)),
+        "a double click"
+    );
+    assert_eq!(app.selection, vec![id]);
+    assert_eq!(app.node_selection, vec![(id, 0), (id, 1)]);
+    quick(&ctx, &mut app, c, Modifiers::SHIFT);
+    assert_eq!(app.node_selection, vec![(id, 0), (id, 1), (id, 2)]);
+}

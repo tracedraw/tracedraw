@@ -878,7 +878,12 @@ Window > Panels > Glyphs. From the top:
   `text_nodes::tests::right_to_left_characters_have_their_nodes_under_their_glyphs`), on its (shifted)
   baseline; newlines have none. Click chooses one, Ctrl+click adds or
   removes, Shift+click adds, a marquee (rectangular or freehand) chooses
-  the nodes inside. Chosen nodes are filled.
+  the nodes inside. Chosen nodes are filled. A second click on a node
+  within the double-click time and distance counts as a click: a quick
+  Shift+click on the next character's node, a few pixels away, adds it
+  too; it used to select the text again and let go of the chosen
+  characters (#1933,
+  `pick_drag_tests::shift_click_on_a_character_node_adds_it`).
 - Dragging a node moves the chosen characters (the one dragged when it
   was not chosen); Ctrl keeps the move horizontal or vertical. The move
   becomes their offsets (layout space, so rotated text moves along its
