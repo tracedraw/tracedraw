@@ -7842,3 +7842,7 @@ print.layout_loaded = "Layout di stampa «{name}» caricato." # mt
 status.brush_size = "Dimensione del pennello: {size}" # mt
 status_hint.brush_size = "Maiusc+trascina o Maiusc+rotellina cambia la dimensione del pennello" # mt
 status_hint.brush_size_alt = "Maiusc+trascina o Alt+rotellina cambia la dimensione del pennello" # mt
+menu.help.search_commands = "Cerca comandi..." # mt
+command_search.hint = "Digita parte del nome di un comando" # mt
+command_search.none = "Nessun comando di menu corrisponde" # mt
+command_search.keys = "Su e Giù scelgono un comando · Invio lo esegue · Esc chiude" # mt

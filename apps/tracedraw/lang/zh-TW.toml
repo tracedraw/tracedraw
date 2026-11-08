@@ -7842,3 +7842,7 @@ print.layout_loaded = "已載入列印版面「{name}」。" # mt
 status.brush_size = "筆刷大小：{size}" # mt
 status_hint.brush_size = "Shift+拖曳或 Shift+滾輪可調整筆刷大小" # mt
 status_hint.brush_size_alt = "Shift+拖曳或 Alt+滾輪可調整筆刷大小" # mt
+menu.help.search_commands = "搜尋命令..." # mt
+command_search.hint = "輸入命令名稱的一部分" # mt
+command_search.none = "沒有符合的選單命令" # mt
+command_search.keys = "上下鍵選擇命令 · Enter 執行 · Esc 關閉" # mt

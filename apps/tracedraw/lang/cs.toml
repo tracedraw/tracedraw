@@ -7842,3 +7842,7 @@ print.layout_loaded = "Tiskové rozvržení „{name}“ načteno." # mt
 status.brush_size = "Velikost štětce: {size}" # mt
 status_hint.brush_size = "Shift+tažení nebo Shift+kolečko mění velikost štětce" # mt
 status_hint.brush_size_alt = "Shift+tažení nebo Alt+kolečko mění velikost štětce" # mt
+menu.help.search_commands = "Hledat příkazy..." # mt
+command_search.hint = "Napište část názvu příkazu" # mt
+command_search.none = "Žádný příkaz nabídky neodpovídá" # mt
+command_search.keys = "Šipky nahoru a dolů vybírají příkaz · Enter ho spustí · Esc zavře" # mt

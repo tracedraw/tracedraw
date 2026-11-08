@@ -7842,3 +7842,7 @@ print.layout_loaded = "Drucklayout „{name}“ geladen." # mt
 status.brush_size = "Pinselgröße: {size}" # mt
 status_hint.brush_size = "Umschalt+Ziehen oder Umschalt+Mausrad ändert die Pinselgröße" # mt
 status_hint.brush_size_alt = "Umschalt+Ziehen oder Alt+Mausrad ändert die Pinselgröße" # mt
+menu.help.search_commands = "Befehle suchen..." # mt
+command_search.hint = "Einen Teil des Befehlsnamens eingeben" # mt
+command_search.none = "Kein Menübefehl passt" # mt
+command_search.keys = "Pfeil nach oben und unten wählen einen Befehl · Eingabe führt ihn aus · Esc schließt" # mt

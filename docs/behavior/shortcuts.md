@@ -22,6 +22,7 @@ Customization > Commands lists them and takes shortcuts of your own
 | Ctrl+0 to Ctrl+9, 0 to 9, Alt+0 to Alt+9 | store, select (twice: zoom to) and add to selection groups |
 | Ctrl+A, Delete or Backspace | Select all (with a guideline selected: every guideline of the page, #1753), Delete |
 | Ctrl+F, Ctrl+J, Ctrl+W | Find and Replace panel, Options, Refresh window |
+| Ctrl+Shift+P | Help > Search Commands: find a menu command by typing part of its name and run it (see `command-search.md`) |
 
 
 ### Repeat

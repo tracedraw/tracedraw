@@ -7842,3 +7842,7 @@ print.layout_loaded = "प्रिंट लेआउट \"{name}\" लोड �
 status.brush_size = "ब्रश का आकार: {size}" # mt
 status_hint.brush_size = "Shift+खींचें या Shift+व्हील से ब्रश का आकार बदलें" # mt
 status_hint.brush_size_alt = "Shift+खींचें या Alt+व्हील से ब्रश का आकार बदलें" # mt
+menu.help.search_commands = "कमांड खोजें..." # mt
+command_search.hint = "कमांड के नाम का कुछ भाग लिखें" # mt
+command_search.none = "कोई मेनू कमांड मेल नहीं खाता" # mt
+command_search.keys = "ऊपर और नीचे तीर कमांड चुनते हैं · Enter उसे चलाता है · Esc बंद करता है" # mt

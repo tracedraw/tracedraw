@@ -7842,3 +7842,7 @@ print.layout_loaded = "Tata letak cetak \"{name}\" dimuat." # mt
 status.brush_size = "Ukuran kuas: {size}" # mt
 status_hint.brush_size = "Shift+seret atau Shift+roda mengubah ukuran kuas" # mt
 status_hint.brush_size_alt = "Shift+seret atau Alt+roda mengubah ukuran kuas" # mt
+menu.help.search_commands = "Cari Perintah..." # mt
+command_search.hint = "Ketik sebagian nama perintah" # mt
+command_search.none = "Tidak ada perintah menu yang cocok" # mt
+command_search.keys = "Atas dan Bawah memilih perintah · Enter menjalankannya · Esc menutup" # mt

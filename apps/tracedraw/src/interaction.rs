@@ -3750,6 +3750,11 @@ impl App {
             self.open_macro_editor();
             return;
         }
+        // Help > Search Commands, with or without a drawing open.
+        if first_pressed(Key::P, cmd | Modifiers::SHIFT) {
+            self.command_search.open();
+            return;
+        }
         // The Welcome Screen alone (no drawing open): only the commands
         // that need no drawing.
         if !self.has_document() {

@@ -7842,3 +7842,7 @@ print.layout_loaded = "Layout de impressão \"{name}\" carregado." # mt
 status.brush_size = "Tamanho do pincel: {size}" # mt
 status_hint.brush_size = "Shift+arrastar ou Shift+roda muda o tamanho do pincel" # mt
 status_hint.brush_size_alt = "Shift+arrastar ou Alt+roda muda o tamanho do pincel" # mt
+menu.help.search_commands = "Pesquisar comandos..." # mt
+command_search.hint = "Digite parte do nome de um comando" # mt
+command_search.none = "Nenhum comando de menu corresponde" # mt
+command_search.keys = "Cima e Baixo escolhem um comando · Enter o executa · Esc fecha" # mt

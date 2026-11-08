@@ -7842,3 +7842,7 @@ print.layout_loaded = "Wczytano układ wydruku „{name}”." # mt
 status.brush_size = "Rozmiar pędzla: {size}" # mt
 status_hint.brush_size = "Shift+przeciągnięcie lub Shift+kółko zmienia rozmiar pędzla" # mt
 status_hint.brush_size_alt = "Shift+przeciągnięcie lub Alt+kółko zmienia rozmiar pędzla" # mt
+menu.help.search_commands = "Szukaj poleceń..." # mt
+command_search.hint = "Wpisz część nazwy polecenia" # mt
+command_search.none = "Żadne polecenie menu nie pasuje" # mt
+command_search.keys = "Strzałki w górę i w dół wybierają polecenie · Enter je uruchamia · Esc zamyka" # mt

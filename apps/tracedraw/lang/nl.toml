@@ -7842,3 +7842,7 @@ print.layout_loaded = "Afdrukindeling '{name}' geladen." # mt
 status.brush_size = "Penseelgrootte: {size}" # mt
 status_hint.brush_size = "Shift+slepen of Shift+wiel wijzigt de penseelgrootte" # mt
 status_hint.brush_size_alt = "Shift+slepen of Alt+wiel wijzigt de penseelgrootte" # mt
+menu.help.search_commands = "Opdrachten zoeken..." # mt
+command_search.hint = "Typ een deel van de naam van een opdracht" # mt
+command_search.none = "Geen menuopdracht komt overeen" # mt
+command_search.keys = "Omhoog en Omlaag kiezen een opdracht · Enter voert hem uit · Esc sluit" # mt

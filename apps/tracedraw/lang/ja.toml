@@ -7842,3 +7842,7 @@ print.layout_loaded = "印刷レイアウト「{name}」を読み込みました
 status.brush_size = "ブラシのサイズ: {size}" # mt
 status_hint.brush_size = "Shift+ドラッグまたは Shift+ホイールでブラシのサイズを変更" # mt
 status_hint.brush_size_alt = "Shift+ドラッグまたは Alt+ホイールでブラシのサイズを変更" # mt
+menu.help.search_commands = "コマンドを検索..." # mt
+command_search.hint = "コマンド名の一部を入力" # mt
+command_search.none = "一致するメニューコマンドはありません" # mt
+command_search.keys = "上下キーでコマンドを選択 · Enter で実行 · Esc で閉じる" # mt

@@ -1482,6 +1482,8 @@ pub struct App {
     /// A menu command to run this frame (its key), from a shortcut of the
     /// user's.
     pub pending_command: Option<String>,
+    /// Help > Search Commands: its box (see `ui::command_search`).
+    pub command_search: crate::ui::command_search::CommandSearch,
     /// When the last auto-backup ran (set on the first frame).
     pub last_auto_backup: Option<web_time::Instant>,
     /// The auto-backup being written on a thread of its own.
@@ -2784,6 +2786,7 @@ impl App {
             options_snapshot: None,
             shortcut_editor: Default::default(),
             pending_command: None,
+            command_search: Default::default(),
             last_auto_backup: None,
             auto_backup_job: None,
             backed_up: Default::default(),

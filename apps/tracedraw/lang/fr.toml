@@ -7842,3 +7842,7 @@ print.layout_loaded = "Mise en page d'impression « {name} » chargée." # mt
 status.brush_size = "Taille du pinceau : {size}" # mt
 status_hint.brush_size = "Maj+glisser ou Maj+molette change la taille du pinceau" # mt
 status_hint.brush_size_alt = "Maj+glisser ou Alt+molette change la taille du pinceau" # mt
+menu.help.search_commands = "Rechercher une commande..." # mt
+command_search.hint = "Tapez une partie du nom d'une commande" # mt
+command_search.none = "Aucune commande de menu ne correspond" # mt
+command_search.keys = "Haut et Bas choisissent une commande · Entrée l'exécute · Échap ferme" # mt

@@ -7842,3 +7842,7 @@ print.layout_loaded = "تم تحميل تخطيط الطباعة \"{name}\"." # 
 status.brush_size = "حجم الفرشاة: {size}" # mt
 status_hint.brush_size = "Shift+سحب أو Shift+عجلة الفأرة لتغيير حجم الفرشاة" # mt
 status_hint.brush_size_alt = "Shift+سحب أو Alt+عجلة الفأرة لتغيير حجم الفرشاة" # mt
+menu.help.search_commands = "البحث في الأوامر..." # mt
+command_search.hint = "اكتب جزءًا من اسم الأمر" # mt
+command_search.none = "لا يوجد أمر قائمة مطابق" # mt
+command_search.keys = "الأسهم لأعلى ولأسفل تختار أمرًا · Enter يشغّله · Esc يغلق" # mt

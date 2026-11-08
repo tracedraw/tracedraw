@@ -7842,3 +7842,7 @@ print.layout_loaded = "মুদ্রণ বিন্যাস \"{name}\" ল�
 status.brush_size = "ব্রাশের আকার: {size}" # mt
 status_hint.brush_size = "Shift+টানা বা Shift+হুইল ব্রাশের আকার বদলায়" # mt
 status_hint.brush_size_alt = "Shift+টানা বা Alt+হুইল ব্রাশের আকার বদলায়" # mt
+menu.help.search_commands = "কমান্ড খুঁজুন..." # mt
+command_search.hint = "কমান্ডের নামের অংশ লিখুন" # mt
+command_search.none = "কোনো মেনু কমান্ড মেলেনি" # mt
+command_search.keys = "উপর ও নিচ তীর কমান্ড বাছে · Enter চালায় · Esc বন্ধ করে" # mt

@@ -352,6 +352,9 @@ pub const NEW_IN_THIS_VERSION: &[&str] = &[
     // Bitmaps > Crop to Frame cuts a framed picture to its frame.
     "menu.bitmaps",
     "menu.bitmaps.crop_to_frame",
+    // Help > Search Commands finds a menu command by its name.
+    "menu.help",
+    "menu.help.search_commands",
 ];
 
 thread_local! {
@@ -4349,6 +4352,11 @@ fn help_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.help.product_help", "F1", true) {
         let topic = crate::help::context_topic(app);
         app.open_help(topic);
+    }
+    // Find a menu command by its name and run it (see
+    // `ui::command_search`).
+    if item(ui, crate::ui::command_search::MENU_KEY, "Ctrl+Shift+P", true) {
+        app.command_search.open();
     }
     sep(ui);
     if item(ui, "menu.help.welcome_screen", "", true) {

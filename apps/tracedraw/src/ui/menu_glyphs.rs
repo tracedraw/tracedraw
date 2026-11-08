@@ -136,6 +136,7 @@ pub fn for_key(key: &str) -> Option<Glyph> {
     use Glyph::*;
     Some(match key {
         "menu.help.product_help" | "menu.help.help_topics" => Help,
+        "menu.help.search_commands" => Find,
         "menu.help.video_tutorials" => Video,
         "menu.help.quick_start_guide" => QuickStart,
         "menu.help.user_guide" => UserGuide,

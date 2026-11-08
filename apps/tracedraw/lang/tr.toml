@@ -7842,3 +7842,7 @@ print.layout_loaded = "\"{name}\" yazdırma düzeni yüklendi." # mt
 status.brush_size = "Fırça boyutu: {size}" # mt
 status_hint.brush_size = "Shift+sürükle veya Shift+tekerlek fırça boyutunu değiştirir" # mt
 status_hint.brush_size_alt = "Shift+sürükle veya Alt+tekerlek fırça boyutunu değiştirir" # mt
+menu.help.search_commands = "Komut Ara..." # mt
+command_search.hint = "Bir komut adının bir kısmını yazın" # mt
+command_search.none = "Eşleşen menü komutu yok" # mt
+command_search.keys = "Yukarı ve Aşağı bir komut seçer · Enter çalıştırır · Esc kapatır" # mt

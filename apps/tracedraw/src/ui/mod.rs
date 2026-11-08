@@ -23,6 +23,7 @@ pub mod clip_bar;
 pub mod color_docker;
 pub mod color_management;
 pub mod color_picker;
+pub mod command_search;
 pub mod comments_docker;
 pub mod connector_bar;
 pub mod context;
@@ -709,6 +710,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         egui::CentralPanel::default()
             .frame(Frame::new().fill(Tokens::panel()))
             .show(ui, |ui| welcome::welcome_screen(app, ui));
+        command_search::show(app, &ctx);
         dialogs::show(app, &ctx);
         return;
     }
@@ -717,6 +719,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         egui::CentralPanel::default()
             .frame(Frame::new().fill(Tokens::panel()))
             .show(ui, |_| {});
+        command_search::show(app, &ctx);
         dialogs::show(app, &ctx);
         return;
     }
@@ -724,6 +727,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         egui::CentralPanel::default()
             .frame(Frame::new().fill(Tokens::panel()))
             .show(ui, |ui| preview::page_sorter(app, ui));
+        command_search::show(app, &ctx);
         dialogs::show(app, &ctx);
         return;
     }
@@ -747,6 +751,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         crate::perspective_draw::show_bar(app, &ctx);
     }
     update_card::show(app, &ctx);
+    command_search::show(app, &ctx);
     dialogs::show(app, &ctx);
     // A change this frame made to a master shows on its clones at once.
     let before = app.engine.revision();
