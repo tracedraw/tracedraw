@@ -527,6 +527,15 @@ on its own line, which is why the lines are joined first.
   where it shows, though over a frame being edited the tab ruler takes
   presses there (#1914,
   `pick_drag_tests::text_frame_tabs_link_frames_with_the_text_tool`).
+  Every other tool takes a press on a tab too (the Shape tool, the
+  drawing tools, ...): the frames and their tabs show whatever the tool,
+  so a click or a drag on a tab links as with the Pick tool and the tool
+  stays. Over a tab the pointer is the text flow pointer, an arrow with
+  a small frame of text lines and the tab's down arrow beside it (the
+  system's link pointer on a software adapter); over a Pick tool handle
+  the handle's pointer comes first. The tabs are looked up only while a
+  frame can show (Show Text Frames on, or something selected or edited)
+  (#1986, `pick_drag_tests::the_overflow_tab_works_with_any_tool`).
 - The top tab: a picked paragraph frame also has a tab over its top
   edge's middle, above the selection's top handle (two links when
   another frame flows into it, empty otherwise). A click (or a drag) on

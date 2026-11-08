@@ -257,6 +257,67 @@ impl App {
             .map(|f| f.id)
     }
 
+    /// The flow tab under the screen point `at` whatever the tool, with
+    /// whether it is a frame's top tab (`true`: text flows into it) or
+    /// its bottom one. Nothing is looked up while no frame can show (no
+    /// Show Text Frames, nothing selected or edited): the pointer asks
+    /// at every frame.
+    pub fn any_flow_tab_at(&self, at: egui::Pos2) -> Option<(ShapeId, bool)> {
+        if !self.settings.show_text_frames && self.selection.is_empty() && self.text_edit.is_none()
+        {
+            return None;
+        }
+        // The frames are looked up once for both kinds of tab: as
+        // `flow_tab_at`, then as `flow_in_tab_at`.
+        let frames = self.shown_text_frames(None);
+        let hs = self.handle_size();
+        let screen = |p| self.view.to_screen(p);
+        frames
+            .iter()
+            .find(|f| {
+                (f.overflow || f.chosen)
+                    && !f.linked
+                    && crate::canvas::flow_tab_rect(screen(f.corners[0]), screen(f.corners[1]), hs)
+                        .expand(2.0)
+                        .contains(at)
+            })
+            .map(|f| (f.id, false))
+            .or_else(|| {
+                frames
+                    .iter()
+                    .find(|f| {
+                        f.chosen
+                            && !f.receives
+                            && crate::canvas::flow_in_tab_rect(
+                                screen(f.corners[3]),
+                                screen(f.corners[2]),
+                                hs,
+                            )
+                            .expand(2.0)
+                            .contains(at)
+                    })
+                    .map(|f| (f.id, true))
+            })
+    }
+
+    /// A press on a flow tab at the screen point `at` with any tool
+    /// (#1914, #1986): the text being edited is finished and the link
+    /// starts, the next click (or the end of the drag, `drag`) saying
+    /// where the text flows. `false` off the tabs.
+    pub fn press_flow_tab(&mut self, at: egui::Pos2, drag: bool) -> bool {
+        let Some((id, incoming)) = self.any_flow_tab_at(at) else {
+            return false;
+        };
+        self.finish_text();
+        if incoming {
+            self.start_text_link_in(id);
+        } else {
+            self.start_text_link(id);
+        }
+        self.text_link_from_tab = drag;
+        true
+    }
+
     /// A click on a frame's flow tab: the next click says where its text
     /// flows on (#371).
     pub fn start_text_link(&mut self, from: ShapeId) {

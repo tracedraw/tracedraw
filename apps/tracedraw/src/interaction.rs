@@ -1470,6 +1470,17 @@ impl App {
             }
             return;
         }
+        // A frame's flow tab takes a press with any tool, as with the Pick
+        // and Text tools (which look for it themselves, after their
+        // handles): its text flows where the next click says (#1986).
+        if !matches!(self.tool, Tool::Pick | Tool::FreeformPick | Tool::Text)
+            && matches!(self.drag, Drag::None)
+            && (response.clicked_by(PointerButton::Primary)
+                || response.drag_started_by(PointerButton::Primary))
+            && self.press_flow_tab(screen, response.drag_started_by(PointerButton::Primary))
+        {
+            return;
+        }
         // A click with a tool whose click has no job of its own selects;
         // a drag goes on to the tool below.
         if self.tool.click_selects() && response.clicked_by(PointerButton::Primary) {
@@ -2240,18 +2251,7 @@ impl App {
         {
             let screen = self.view.to_screen(p);
             let from_tab = response.drag_started_by(PointerButton::Primary);
-            let tab = self
-                .flow_tab_at(screen)
-                .map(|id| (id, false))
-                .or_else(|| self.flow_in_tab_at(screen).map(|id| (id, true)));
-            if let Some((id, incoming)) = tab {
-                self.finish_text();
-                if incoming {
-                    self.start_text_link_in(id);
-                } else {
-                    self.start_text_link(id);
-                }
-                self.text_link_from_tab = from_tab;
+            if self.press_flow_tab(screen, from_tab) {
                 return;
             }
         }

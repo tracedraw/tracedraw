@@ -10831,6 +10831,81 @@ fn text_frame_tabs_link_frames_with_the_text_tool() {
     assert_eq!(app.tool, Tool::Text);
 }
 
+/// The overflow tab answers whatever tool is active (#1986): over it the
+/// pointer is the text flow pointer, and a click on it with the Shape
+/// tool or a drawing tool starts the flow, the next click on another
+/// frame flowing the text there, the tool staying.
+#[test]
+fn the_overflow_tab_works_with_any_tool() {
+    use crate::ui::cursors::{for_tool, ToolCursor};
+    tracedraw_text::install();
+    let (ctx, mut app, _) = setup();
+    let long = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty";
+    let frame_at = |app: &mut App, text: &str, x: f64, y: f64, w: f64, h: f64| {
+        app.new_shape(ShapeKind::Text {
+            spans: vec![tracedraw_core::TextSpan::new(text, "DejaVu Sans", 12.0)],
+            origin: Point::new(x, y),
+            frame: Some(tracedraw_core::Size::new(w, h)),
+            align: tracedraw_core::TextAlign::Left,
+            para: Default::default(),
+            on_path: None,
+        })
+        .expect("frame")
+    };
+    let a = frame_at(&mut app, long, 20.0, 250.0, 30.0, 8.0);
+    let b = frame_at(&mut app, "", 20.0, 150.0, 60.0, 40.0);
+    let c = frame_at(&mut app, long, 110.0, 250.0, 30.0, 8.0);
+    let d = frame_at(&mut app, "", 110.0, 150.0, 60.0, 40.0);
+    let tab_of = |app: &App, id: ShapeId| {
+        let k = app
+            .doc()
+            .find_shape(id)
+            .and_then(|s| s.text_frame_corners())
+            .expect("a frame")
+            .map(|p| app.view.to_screen(p));
+        crate::canvas::flow_tab_rect(k[0], k[1], app.handle_size()).center()
+    };
+    let middle = |app: &App, id: ShapeId| app.view.to_screen(bounds(app, id).center());
+    // The pointer over the tab, with the Pick, Text, Shape and Rectangle
+    // tools; off it, the tool's own.
+    app.select(vec![a]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let tab = tab_of(&app, a);
+    for tool in [Tool::Pick, Tool::Text, Tool::Shape, Tool::Rectangle] {
+        app.set_tool(tool);
+        app.select(vec![a]);
+        assert_eq!(
+            for_tool(&app, false, false, false, Some(tab)),
+            ToolCursor::FlowText,
+            "{tool:?}"
+        );
+        assert_ne!(
+            for_tool(&app, false, false, false, Some(middle(&app, b))),
+            ToolCursor::FlowText,
+            "{tool:?}"
+        );
+    }
+    // The Shape tool: a click on the tab, then on the empty frame.
+    for (tool, from, to) in [(Tool::Shape, a, b), (Tool::Rectangle, c, d)] {
+        app.set_tool(tool);
+        app.select(vec![from]);
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        let tab = tab_of(&app, from);
+        click_at(&ctx, &mut app, tab, Modifiers::NONE);
+        assert_eq!(
+            app.pending_text_link,
+            Some(from),
+            "{tool:?}: {}",
+            app.status
+        );
+        let at = middle(&app, to);
+        click_at(&ctx, &mut app, at, Modifiers::NONE);
+        assert_eq!(app.next_frame(from), Some(to), "{tool:?}: {}", app.status);
+        assert!(app.pending_text_link.is_none());
+        assert_eq!(app.tool, tool);
+    }
+}
+
 /// The Welcome Screen tab closes to its house while a drawing is open;
 /// the house shows the Welcome Screen again with its whole tab (#677).
 #[test]
