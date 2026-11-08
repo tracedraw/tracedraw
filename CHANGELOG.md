@@ -6,6 +6,64 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Export opens the file dialog in the folder exported to last, kept between sessions, instead of the drawing's folder or the default one (#1817).
+
+- Objects docker: a layer's menu has Cut, Copy and Paste for the layer's objects, as the Edit menu has for the selection (#1992).
+
+- Insert Page Number on all, odd or even pages with no master layer active makes a master layer showing on those pages ("Page Numbers", in front) holding one page number field, so pages added or moved later show their own number; one undo step takes both away (#1709).
+
+- Rotate mode: the turning and slanting arrows and the centre mark get a white edge, so they show on dark objects (#1664).
+
+- The Pan tool's icon is an open hand (#1727).
+
+- Print: "Print the page background" on the Composite tab; off, print and Print Preview leave the page colour out while the screen and exports keep it (#1651).
+
+- Align and Distribute: Distribute to has Set spacing, a distance in the ruler unit kept between the objects, their edges or their centres, the first object staying where it is (#2005).
+
+- Shape Nesting keeps the spacing between objects and keeps them on the sheet: rounded outlines were read by their chords and overlapped or ran past the edge. An open line inside an outline is a piece of its own.
+
+- Find Crossings has On OK: Select them (as before) or Fix them, which rebuilds outlines that cross themselves and, with Also between objects, welds objects that cross each other, one undo step.
+
+- Blends inside a group follow the group when it is moved, resized or turned, on screen and in exports (#2023).
+
+- Android: Shift, Ctrl and Alt of a Bluetooth or USB keyboard reach the app, so shortcuts and modified drags work (#2052).
+
+- Smooth, Smear, Twirl, Attract and Repel, Smudge and Roughen: a drag that starts with Shift held sizes the nib on the drawing, and Shift+wheel (Alt+wheel while the wheel scrolls) steps it by 10 %.
+
+- Help > Search Commands (Ctrl+Shift+P) finds a menu command by its name, menus or shortcut and runs it.
+
+- A palette in a bar of its own can dock among the toolbars along the top, between two rows of them or under them all (Position > Dock at Top, Among the Toolbars).
+
+- Clip frames with a drop shadow no longer show a thin line along the frame's edge, and a filled frame's shadow has no dark rim.
+
+- The Crop tool cuts an upright picture's pixels by default; SVG, PDF, EPS, EMF and WMF exports trim a picture inside a clip frame to what the frame shows instead of writing the hidden part.
+
+- AI Drawing, AI Generate, recolouring and Remove Background say why a request failed (a used up quota, a refused key, a service that took too long or is busy, an unknown model), and the model lists keep every model set up by hand and list every model the service has.
+
+- Shape tool: a quick Shift+click on the next character's node adds it, where it was taken as a double click and emptied the chosen nodes (#1933).
+
+- Shape tool: with the corner rings on, the property bar has Corner rounding, the radius of the chosen corners or of every corner of the selected curves, and Clear Rounding; a plain click on a ring chooses its corner (#2057).
+
+- Shape tool: the node commands have keys of their own while nodes are chosen (Shift+L To Line, Shift+U To Curve, Shift+C Cusp, Shift+M Smooth, Shift+Y Symmetrical, Shift+B Break Curve, Shift+J Join Nodes) and are in Object > Nodes, so Options > Customization > Commands lists them and can give them other keys (#2001).
+
+- Variable Outline tapers on closed objects: a lone width node eases to half the outline width half way round the loop, and a wide reach on the inside of a curve fills it to its centre with smooth edges instead of a staircase and loose slivers.
+
+- Break Apart (Ctrl+K) on a brush stroke gives its band as a group of filled curves and its path as a plain line above it, one undo step.
+
+- Edit Symbol (the Symbols docker's Edit button, an instance's right-click menu, Object > Symbol, or a double-click on an instance) puts the symbol's objects on the page to be changed in place; Finish updates every instance in one undo step (#1980).
+
+- The overflow tab of a paragraph frame takes a click with any tool, and the pointer over it shows that the text can flow on (#1986).
+
+- Vertical text can set its columns left to right as well as right to left, from the property bar or Text > Vertical Columns Left to Right (#1986).
+
+- Snapping: a dragged guideline stops on the points and lines of objects and marks the snap; a side being resized stops on the points and lines it meets along its length; a corner keeping its proportions stays on the guideline it snapped to; interactive fill and transparency nodes snap; groups, texts and open curves offer their centre (#2004).
+
+- A thick outline is picked where it shows, by the Pick tool, the Shape tool's segments and colour drops, also outlines lying outside or inside a closed object and variable widths; nodes and control handles are taken on their whole marker (#1935).
+
+- Mesh fill: the nodes, those on the mesh's edge too, are dragged with their colour and snap, and the selected node shows a handle on each grid line leaving it to bend the line. Saving as .cdr keeps a mesh as its mean colour and the status bar says how many went out that way (discussion #2073).
+
+- A move with the left button let go over another object with Alt held copies the fill onto it, with Alt+Shift the outline; the selection stays where it was (discussion #2066).
+
 - Saving .cdr (version 16 and later) with Embed fonts: a drawing whose text uses only the bold face of a font (bold "Khand" text, or regular Khand text drawn by the only Khand file installed, the bold one) no longer lists a regular face of that font too. The file carried a plain record of the regular face and named it in its style table, two references to a face it neither used nor embedded, so the program that reads `.cdr` files could ask for "Khand (Normal)" on a computer where Khand is not installed, although the bold face is in the file. Files that program saves hold a record per face used and name the first of them in the style table, and TraceDraw now writes the same; regular text keeps its record, and files before version 16 are unchanged (#1733, #1009, #1055).
 
 - File > Export with "Do not show filter dialog" on offers every format in the file dialog, the one set in Options > File Formats first, and exports in the format of the extension chosen; it offered that one format only.
