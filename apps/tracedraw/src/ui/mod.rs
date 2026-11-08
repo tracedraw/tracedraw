@@ -1138,9 +1138,16 @@ pub(crate) fn view_navigator(app: &mut App, ui: &mut Ui, corner: egui::Rect, can
     if !app.navigator_open {
         return;
     }
-    // Thumbnail of the page, rendered once per opening.
-    let page = app.page_rect();
-    // Fit the page in a 220 px square without changing its aspect.
+    // Thumbnail of the whole drawing, the page and whatever lies around
+    // it on the desktop (#2053), rendered once per opening.
+    let page_rect = app.page_rect();
+    let page = app
+        .doc()
+        .content_bounds(app.page)
+        .ok()
+        .flatten()
+        .map_or(page_rect, |b| b.union(page_rect));
+    // Fit it in a 220 px square without changing its aspect.
     let max_side = 220.0_f32;
     let ratio = (page.height() / page.width().max(1e-6)) as f32;
     let (thumb_w, thumb_h) = if ratio > 1.0 {
@@ -1150,7 +1157,7 @@ pub(crate) fn view_navigator(app: &mut App, ui: &mut Ui, corner: egui::Rect, can
     };
     if app.navigator_tex.is_none() {
         let dpi = thumb_w as f64 / page.width() * 25.4;
-        if let Some(pm) = tracedraw_render::render_page_image(app.doc(), app.page, dpi) {
+        if let Some(pm) = tracedraw_render::render_area_image(app.doc(), app.page, page, dpi) {
             let (w, h) = (pm.width() as usize, pm.height() as usize);
             let mut rgba = Vec::with_capacity(w * h * 4);
             for px in pm.pixels() {
@@ -1187,8 +1194,6 @@ pub(crate) fn view_navigator(app: &mut App, ui: &mut Ui, corner: egui::Rect, can
                         egui::Color32::WHITE,
                     );
                 }
-                // Visible area as a rectangle on the thumbnail.
-                let vis = app.view.visible_page_rect(canvas);
                 let sx = rect.width() / page.width() as f32;
                 let sy = rect.height() / page.height() as f32;
                 let to_thumb = |x: f64, y: f64| {
@@ -1197,6 +1202,19 @@ pub(crate) fn view_navigator(app: &mut App, ui: &mut Ui, corner: egui::Rect, can
                         rect.max.y - (y - page.y0) as f32 * sy,
                     )
                 };
+                // The page's edge, so the desktop around it can be told.
+                let pr = egui::Rect::from_two_pos(
+                    to_thumb(page_rect.x0, page_rect.y1),
+                    to_thumb(page_rect.x1, page_rect.y0),
+                );
+                pt.rect_stroke(
+                    pr,
+                    0.0,
+                    egui::Stroke::new(1.0, Tokens::text_dim()),
+                    egui::StrokeKind::Inside,
+                );
+                // Visible area as a rectangle on the thumbnail.
+                let vis = app.view.visible_page_rect(canvas);
                 let vr =
                     egui::Rect::from_two_pos(to_thumb(vis.x0, vis.y1), to_thumb(vis.x1, vis.y0))
                         .intersect(rect);

@@ -983,10 +983,32 @@ impl Renderer<'_> {
             return;
         }
 
-        // Drop shadow: blurred silhouette behind the object.
+        // Drop shadow: blurred silhouette behind the object. A picture's
+        // silhouette is what its pixels cover, not its box, so a picture
+        // with a transparent background casts the shadow of what it
+        // shows (#2027).
         if let Some(sh) = &shape.shadow {
             if !self.flags.wireframe && sh.opacity > 0.0 {
-                self.draw_drop_shadow(sh, &page_path);
+                let drawn = match &shape.kind {
+                    ShapeKind::Bitmap {
+                        rect,
+                        width_px,
+                        height_px,
+                        png,
+                        ..
+                    } => self.draw_bitmap_shadow(
+                        sh,
+                        &page_path,
+                        transform,
+                        *rect,
+                        (*width_px, *height_px),
+                        png,
+                    ),
+                    _ => false,
+                };
+                if !drawn {
+                    self.draw_drop_shadow(sh, &page_path);
+                }
             }
         }
 
@@ -1274,6 +1296,60 @@ impl Renderer<'_> {
             return;
         }
         self.merge_shadow(sh, &layer, layer_at);
+    }
+
+    /// The drop shadow of a picture: its silhouette is the picture's own
+    /// alpha, placed as the picture is and moved as the shadow asks, so a
+    /// transparent background casts no shadow (#2027). False when the
+    /// picture cannot be decoded; the caller then shadows its box.
+    fn draw_bitmap_shadow(
+        &mut self,
+        sh: &tracedraw_core::Shadow,
+        page_path: &BezPath,
+        transform: Affine,
+        rect: Rect,
+        (width_px, height_px): (u32, u32),
+        png: &[u8],
+    ) -> bool {
+        let Some(img) = image_cache::decode_level(png, 0) else {
+            return false;
+        };
+        let b = page_path.bounding_box();
+        let Some((layer_at, mut layer, screen)) = self.shadow_target(sh, b) else {
+            return true;
+        };
+        let (w0, h0) = (width_px.max(1) as f64, height_px.max(1) as f64);
+        let img_to_page = transform
+            * Affine::new([
+                rect.width() / w0,
+                0.0,
+                0.0,
+                -rect.height() / h0,
+                rect.x0,
+                rect.y1,
+            ]);
+        let m = (screen * sh.silhouette_transform(b) * img_to_page).as_coeffs();
+        let t = Transform::from_row(
+            m[0] as f32,
+            m[1] as f32,
+            m[2] as f32,
+            m[3] as f32,
+            m[4] as f32,
+            m[5] as f32,
+        );
+        let pp = tiny_skia::PixmapPaint {
+            quality: tiny_skia::FilterQuality::Bilinear,
+            ..Default::default()
+        };
+        layer.draw_pixmap(0, 0, Pixmap::as_ref(&img), &pp, t, None);
+        // The silhouette in white, the picture's alpha as its coverage.
+        for px in layer.pixels_mut().iter_mut() {
+            let a = px.alpha();
+            *px = tiny_skia::ColorU8::from_rgba(255, 255, 255, a).premultiply();
+        }
+        shade_shadow(&mut layer, sh, b, screen, self.zoom);
+        self.merge_shadow(sh, &layer, layer_at);
+        true
     }
 
     /// The layer a drop shadow measured on box `b` is painted on: only
@@ -3321,6 +3397,45 @@ pub fn render_fill_image_in(fill: &Fill, path: &BezPath, dpi: f64) -> Option<Pix
 /// Render a whole page to an RGBA image at `dpi`, white background (exports, thumbnails, tests).
 pub fn render_page_image(doc: &Document, page: PageId, dpi: f64) -> Option<Pixmap> {
     render_page_image_with(doc, page, dpi, &RenderOptions::default())
+}
+
+/// `area` (page coordinates, mm) of `page` as an image at `dpi`, white
+/// where nothing is drawn: the page with whatever lies around it on the
+/// desktop, for the Navigator (#2053).
+pub fn render_area_image(doc: &Document, page: PageId, area: Rect, dpi: f64) -> Option<Pixmap> {
+    doc.page(page).ok()?;
+    let zoom = dpi / 25.4;
+    if !(area.width() > 0.0 && area.height() > 0.0) || !zoom.is_finite() || zoom <= 0.0 {
+        return None;
+    }
+    let w = (area.width() * zoom).ceil().clamp(1.0, 8192.0) as u32;
+    let h = (area.height() * zoom).ceil().clamp(1.0, 8192.0) as u32;
+    let view = ViewTransform {
+        zoom,
+        origin_x: -area.x0 * zoom,
+        origin_y: h as f64 + area.y0 * zoom,
+    };
+    let objects = render_page(
+        doc,
+        page,
+        &RenderOptions {
+            width: w,
+            height: h,
+            view,
+            ..RenderOptions::default()
+        },
+    )?;
+    let mut out = Pixmap::new(w, h)?;
+    out.fill(SkColor::WHITE);
+    out.draw_pixmap(
+        0,
+        0,
+        objects.as_ref(),
+        &tiny_skia::PixmapPaint::default(),
+        Transform::identity(),
+        None,
+    );
+    Some(out)
 }
 
 /// `render_page_image` with the behaviour flags of `opts` (`wireframe`,
