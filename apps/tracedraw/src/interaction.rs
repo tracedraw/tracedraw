@@ -1669,10 +1669,12 @@ impl App {
                     // The selection takes the mask; an unselected object
                     // pressed outside it is picked and takes it (#1661).
                     if let Some(shape) = self.transparency_drag_target(p) {
+                        // The mask's start snaps (#2004).
+                        let start = self.snap_point(p);
                         self.drag = Drag::FillGradient {
                             shape,
-                            start: p,
-                            current: p,
+                            start,
+                            current: start,
                         };
                     }
                 }
@@ -1831,6 +1833,7 @@ impl App {
                         current: p - grab,
                         grab,
                         mods: crate::app::HandleMods::of(mods),
+                        snapped: (false, false),
                     };
                 }
                 // The drag starts once the pointer has gone a few pixels
@@ -2143,8 +2146,16 @@ impl App {
         // a scale or skew handle stands for. The pointer turning the
         // selection (unless Ctrl turns it in steps) snaps to points only
         // (#933, see `snap_turn_point`).
+        // A scale handle's moving side also stops on the points and lines
+        // of other objects it meets, and a corner keeping the proportions
+        // follows the axis that snapped (#2004).
+        let mut scale_snapped = (false, false);
         let snapped_handle = match &self.drag {
-            Drag::Scale { grab, .. } => self.snap_point_excluding(p - *grab, &self.selection),
+            Drag::Scale { grab, .. } => {
+                let (q, axes) = self.snap_scale_handle(p - *grab);
+                scale_snapped = axes;
+                q
+            }
             Drag::Skew {
                 handle,
                 start_bounds,
@@ -2202,11 +2213,15 @@ impl App {
                 *touching = mods.alt != self.settings.marquee_touching;
             }
             Drag::Scale {
-                current, mods: m, ..
+                current,
+                mods: m,
+                snapped,
+                ..
             } => {
                 // The handle snaps to other objects, guidelines, the grid
                 // and the page, never to the selection's own points.
                 *current = snapped_handle;
+                *snapped = scale_snapped;
                 *m = crate::app::HandleMods::of(mods);
             }
             Drag::Skew {
@@ -2971,10 +2986,12 @@ impl App {
             }
             if let Some(id) = self.hit_test_inside(p) {
                 self.select(vec![id]);
+                // The fill's start snaps (#2004).
+                let start = self.snap_point(p);
                 self.drag = Drag::FillGradient {
                     shape: id,
-                    start: p,
-                    current: p,
+                    start,
+                    current: start,
                 };
             }
         }
@@ -3024,11 +3041,19 @@ impl App {
     /// the constrain angle about where the drag began (#1661).
     fn fill_gradient_drag_to(&mut self, p: Point, mods: Modifiers) {
         let step = self.settings.constrain_angle;
+        // The end of the new fill's line snaps as the pointer does
+        // (#2004); kept to the constrain angle with Ctrl, it does not.
+        let constrained = mods.ctrl || mods.command;
+        let q = if constrained || !matches!(self.drag, Drag::FillGradient { .. }) {
+            p
+        } else {
+            self.snap_point(p)
+        };
         if let Drag::FillGradient { start, current, .. } = &mut self.drag {
-            *current = if mods.ctrl || mods.command {
+            *current = if constrained {
                 constrain_from(*start, p, step)
             } else {
-                p
+                q
             };
         }
     }
@@ -3334,6 +3359,7 @@ impl App {
                 start_bounds,
                 current,
                 mods,
+                snapped,
                 ..
             } => {
                 let b = *start_bounds;
@@ -3375,9 +3401,16 @@ impl App {
                     // the pointer falls along the box's diagonal, so the
                     // corner follows the pointer and a wide, low box (a
                     // line of text) does not grow with the short side's
-                    // pace (#383).
+                    // pace (#383). A corner snapped on one axis only (onto
+                    // a guideline, a line, another object's side) scales
+                    // by that axis, so it stays on what it snapped to
+                    // whichever way the pointer drifts along it (#2004).
                     let (w2, h2) = (w * w, h * h);
-                    let s = (sx.abs() * w2 + sy.abs() * h2) / (w2 + h2);
+                    let s = match snapped {
+                        (true, false) => sx.abs(),
+                        (false, true) => sy.abs(),
+                        _ => (sx.abs() * w2 + sy.abs() * h2) / (w2 + h2),
+                    };
                     sx = s * sx.signum();
                     sy = s * sy.signum();
                 }

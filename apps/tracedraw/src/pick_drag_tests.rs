@@ -766,6 +766,7 @@ fn handle_modifiers_shape_the_scale() {
             current,
             grab: tracedraw_core::geometry::Vec2::ZERO,
             mods,
+            snapped: (false, false),
         })
         .expect("transform")
     };
@@ -1047,6 +1048,7 @@ fn the_status_bar_tells_how_far_how_much_and_what_angle() {
         current: Point::new(85.0, 25.0),
         grab: tracedraw_core::geometry::Vec2::ZERO,
         mods: HandleMods::default(),
+        snapped: (false, false),
     };
     let text = info(&app);
     assert!(text.contains("150.0") && text.contains("100.0"), "{text}");
