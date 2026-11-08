@@ -1432,6 +1432,7 @@ pub fn picker_filters_by_type(user_agent: &str, platform: &str, touch_points: u3
 pub struct Dialog {
     filters: Vec<(String, Vec<String>)>,
     file_name: Option<String>,
+    directory: Option<PathBuf>,
 }
 
 impl Dialog {
@@ -1449,6 +1450,13 @@ impl Dialog {
 
     pub fn set_file_name(mut self, name: impl Into<String>) -> Self {
         self.file_name = Some(name.into());
+        self
+    }
+
+    /// The folder the desktop dialog opens in (ignored in a browser and
+    /// on Android, whose pickers choose their own).
+    pub fn set_directory(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.directory = Some(dir.into());
         self
     }
 
@@ -1630,6 +1638,9 @@ impl Dialog {
             }
             if let Some(n) = &self.file_name {
                 d = d.set_file_name(n);
+            }
+            if let Some(dir) = self.directory.as_ref().filter(|d| d.is_dir()) {
+                d = d.set_directory(dir);
             }
             return d.save_file();
         }

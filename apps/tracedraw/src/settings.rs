@@ -175,6 +175,9 @@ pub struct Settings {
     #[serde(default)]
     pub bitmap_editor: String,
     pub last_dir: Option<PathBuf>,
+    /// The folder exported to last: File > Export's dialog opens there
+    /// (#1817).
+    pub last_export_dir: Option<PathBuf>,
     /// Folders bookmarked in the Save Drawing dialog (#1391).
     pub folder_bookmarks: Vec<PathBuf>,
     pub color: ColorPrefs,
@@ -1804,6 +1807,7 @@ impl Default for Settings {
             shortcuts: Vec::new(),
             bitmap_editor: String::new(),
             last_dir: None,
+            last_export_dir: None,
             folder_bookmarks: Vec::new(),
             color: ColorPrefs::default(),
             show_outline_flyout: false,
@@ -1981,6 +1985,7 @@ impl Settings {
         Settings {
             recent_files: self.recent_files.clone(),
             last_dir: self.last_dir.clone(),
+            last_export_dir: self.last_export_dir.clone(),
             folder_bookmarks: self.folder_bookmarks.clone(),
             window_maximized: self.window_maximized,
             window_size: self.window_size,
@@ -2782,6 +2787,7 @@ mod tests {
         let mut s = Settings::default();
         s.recent_files = vec!["/a.tdraw".into()];
         s.last_dir = Some("/drawings".into());
+        s.last_export_dir = Some("/exports".into());
         s.window_maximized = false;
         s.window_size = [1200.0, 800.0];
         s.shortcuts = vec![("menu.file.export".into(), "Ctrl+Shift+X".into())];
@@ -2794,6 +2800,7 @@ mod tests {
         let r = s.reset_keeping_history();
         assert_eq!(r.recent_files, s.recent_files);
         assert_eq!(r.last_dir, s.last_dir);
+        assert_eq!(r.last_export_dir, s.last_export_dir);
         assert_eq!(
             (r.window_maximized, r.window_size),
             (false, [1200.0, 800.0])
