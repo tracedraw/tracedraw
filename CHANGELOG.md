@@ -10,8 +10,6 @@ full, row-by-row status.
 
 - Guidelines: a click on a guideline of the master page (every page shows them; opening a `.cdr` file puts its guidelines there) picks it, moves it or deletes it, and a right click opens its menu, also while the page's own guidelines were the ones being edited: the click switches to the set the guideline is in. Such a guideline could be seen but not touched (#2029).
 
-- Color Eyedropper: after the sampled colour is applied to an object, the tool samples again, so the next click picks a colour instead of painting the old one; the Select Color button on the property bar did that by hand (#1985).
-
 - Ctrl+Tab brings the next document tab to the front and Ctrl+Shift+Tab the previous one, round the end, so open drawings can be switched from the keyboard (#2068, #2058).
 
 - Symbols: Create New Symbol keeps the selection handles around the new symbol. They jumped to its lower left corner as a 10 x 10 mm box, and a symbol inserted from the Symbols docker was picked the same way (#1939, #1980).
