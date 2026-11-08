@@ -417,7 +417,7 @@ impl LayoutPreset {
         st.layout_kind = self.layout_kind.min(3);
         st.cols = self.cols.clamp(1, 99);
         st.rows = self.rows.clamp(1, 99);
-        st.page_order = self.page_order.min(2);
+        st.page_order = self.page_order.min(3);
         let size_ok = |s: tracedraw_core::geometry::Size| {
             s.width.is_finite()
                 && s.height.is_finite()
@@ -1518,7 +1518,7 @@ mod tests {
         w.apply(&mut st);
         assert_eq!(
             (st.layout_kind, st.cols, st.rows, st.page_order),
-            (3, 1, 99, 2)
+            (3, 1, 99, 3)
         );
         assert_eq!(st.sheet, CUSTOM_SHEET);
         assert_eq!(

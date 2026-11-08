@@ -312,6 +312,14 @@ same function (`export::print_sheets`).
     stacked and cut into columns, each column is one series. 2 x 3 on
     two sheets: 1 2 3 and 7 8 9 on the first sheet, 4 5 6 and 10 11 12
     on the second. Cells past the last page stay empty.
+  - Cut and stack: each cell runs down the stack of sheets. With T
+    pages and N cells a sheet there are S = ceil(T / N) sheets, and cell
+    p (0 based, left to right, top to bottom) of sheet s holds page
+    p * S + s, so each pile cut from the stacked sheets is one series and
+    the piles go on top of each other in order. 100 pages 4 up: 1, 26,
+    51 and 76 on the first sheet, 25, 50, 75 and 100 on the last; 10
+    pages 4 up: 1 4 7 10, 2 5 8 and 3 6 9 over three sheets, the last
+    cell of the last two empty.
 - Layout presets (#1796): the Preset row at the top of the layout fields
   (Print dialog's Layout tab and Print Preview) lists the layouts saved
   under a name; choosing one sets the imposition, columns and rows, page

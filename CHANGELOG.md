@@ -38,6 +38,8 @@ full, row-by-row status.
 
 - Print Merge: Print Merged Document asked for again while the merged drawing it made is still open and unchanged (after closing Print Preview, from the merged drawing or from the drawing merged, with the same records) prints that drawing instead of making another merged drawing behind it.
 
+- Print, Layout: several pages per sheet can go in the order Cut and stack, numbering down the stack for merged tickets and cards: each place on the sheet takes the next page on the next sheet, so the piles cut from the stacked sheets each run in order (100 records 4 up: 1, 26, 51 and 76 on the first sheet). The other orders are unchanged.
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

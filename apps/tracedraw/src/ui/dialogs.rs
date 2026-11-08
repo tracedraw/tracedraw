@@ -457,7 +457,7 @@ pub struct PrintState {
     pub gutter_y: f64,
     /// The order of several pages per sheet: 0 across, 1 down the
     /// columns of each sheet, 2 down each column through every sheet
-    /// (#1658, [`crate::imposition::PageOrder`]).
+    /// (#1658), 3 cut and stack ([`crate::imposition::PageOrder`]).
     pub page_order: usize,
     /// The layout preset chosen (#1796), empty for none.
     pub layout_preset: String,
@@ -4911,11 +4911,12 @@ pub(crate) fn print_layout_fields(app: &App, ui: &mut Ui, st: &mut PrintState) {
                             "print.order_across",
                             "print.order_down",
                             "print.order_down_sheets",
+                            "print.order_cut_stack",
                         ];
                         ui.label(tr("print.page_order"))
                             .rich_tip(crate::ui::tips::keyed("print.page_order"));
                         crate::ui::keynav::ComboBox::from_id_salt("print_page_order")
-                            .selected_text(tr(orders[st.page_order.min(2)]))
+                            .selected_text(tr(orders[st.page_order.min(orders.len() - 1)]))
                             .width(170.0)
                             .show_ui(ui, |ui| {
                                 for (i, k) in orders.iter().enumerate() {
@@ -4925,8 +4926,8 @@ pub(crate) fn print_layout_fields(app: &App, ui: &mut Ui, st: &mut PrintState) {
                             })
                             .response
                             .rich_tip(crate::ui::tips::pair(
-                                orders[st.page_order.min(2)],
-                                &format!("{}_desc", orders[st.page_order.min(2)]),
+                                orders[st.page_order.min(orders.len() - 1)],
+                                &format!("{}_desc", orders[st.page_order.min(orders.len() - 1)]),
                             ));
                         ui.end_row();
                     }

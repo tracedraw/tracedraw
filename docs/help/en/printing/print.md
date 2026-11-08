@@ -70,6 +70,14 @@ and **Apply** keeps them for the next time.
   sheet, and a warning says so). Without it, the pages shrink to fit the
   columns and rows you ask for. In Print
   Preview, drag on the sheet to move the page information.
+- [[print.page_order]], with several pages on a sheet:
+  [[print.order_across]], [[print.order_down]], [[print.order_down_sheets]]
+  or [[print.order_cut_stack]]. Cut and stack numbers down the stack, for
+  merged tickets and cards: each place on the sheet takes the next record
+  on the next sheet, so after cutting the stacked sheets each pile is one
+  run and the piles go on top of each other in order. 100 records 4 up
+  print on 25 sheets, the first holding 1, 26, 51 and 76, the second 2, 27,
+  52 and 77.
 
 ## Booklets {#booklet}
 
