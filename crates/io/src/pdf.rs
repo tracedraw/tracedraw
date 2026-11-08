@@ -970,7 +970,10 @@ impl PageWriter<'_> {
         // Overprint: the object's fill (`/op`) and outline (`/OP`) leave
         // the inks under them, nonzero overprint mode (`/OPM 1`) keeping
         // the process inks a colour does not use (ISO 32000-1, 8.6.7).
-        if shape.overprint_fill || shape.overprint_outline {
+        // Text whose characters have their own overprint (#1209) is split
+        // into its parts first, below; each part comes back here with the
+        // overprint its characters say.
+        if (shape.overprint_fill || shape.overprint_outline) && shape.text_parts().is_none() {
             let (op, big) = (shape.overprint_fill, shape.overprint_outline);
             let name = format!("OP{}{}", u8::from(op), u8::from(big));
             if !self.gstates.iter().any(|(n, _)| *n == name) {
@@ -1156,18 +1159,6 @@ impl PageWriter<'_> {
                 "<< /Type /ExtGState /CA {} /ca {} >>",
                 f(shape.opacity),
                 f(shape.opacity)
-            ));
-            self.gstates.push((name.clone(), id));
-            let _ = writeln!(self.content, "/{name} gs");
-        }
-        // Overprint: the outline (`OP`) and the fill (`op`) print over
-        // the inks beneath where the object says so; characters with
-        // their own overprint come here as parts of their text (#1209).
-        if shape.overprint_fill || shape.overprint_outline {
-            let name = format!("GS{}", self.gstates.len());
-            let id = self.pdf.add_str(format!(
-                "<< /Type /ExtGState /OP {} /op {} /OPM 1 >>",
-                shape.overprint_outline, shape.overprint_fill
             ));
             self.gstates.push((name.clone(), id));
             let _ = writeln!(self.content, "/{name} gs");
@@ -4555,7 +4546,7 @@ mod text_tests {
         over.overprint_fill = Some(true);
         let doc = doc_with(vec![plain.clone(), over.clone()], black(), None);
         let text = inflated(&document_to_pdf(&doc));
-        assert!(text.contains("/OP false /op true /OPM 1"), "{text}");
+        assert!(text.contains("/op true /OP false /OPM 1"), "{text}");
         assert!(!text.contains("/OP true"), "{text}");
         // Shown twice: the plain part has no overprint state.
         assert_eq!(text.matches("/OPM 1").count(), 1, "{text}");
@@ -4573,8 +4564,8 @@ mod text_tests {
             spans[0].overprint_outline = Some(false);
         }
         let text = inflated(&document_to_pdf(&doc));
-        assert!(text.contains("/OP true /op true /OPM 1"), "{text}");
-        assert!(!text.contains("/OP true /op false"), "{text}");
+        assert!(text.contains("/op true /OP true /OPM 1"), "{text}");
+        assert!(!text.contains("/op false /OP true"), "{text}");
         assert_eq!(text.matches("/OPM 1").count(), 1, "{text}");
 
         // A plain object marked to overprint its fill.
@@ -4592,7 +4583,7 @@ mod text_tests {
         s.overprint_fill = true;
         doc.layer_mut(layer).unwrap().shapes.push(s);
         let text = inflated(&document_to_pdf(&doc));
-        assert!(text.contains("/OP false /op true /OPM 1"), "{text}");
+        assert!(text.contains("/op true /OP false /OPM 1"), "{text}");
     }
 
     /// The file as text with every zlib stream inflated after it.

@@ -211,6 +211,7 @@ mod tests {
             bilinear: false,
             invert: false,
             handles: None,
+            ..Fountain::default()
         }
     }
 
