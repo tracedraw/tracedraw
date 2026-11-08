@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::{OnceLock, RwLock};
 
 /// Languages shipped with the app, in display order.
-pub const LANGUAGES: [(&str, &str); 18] = [
+pub const LANGUAGES: [(&str, &str); 19] = [
     ("en", "English"),
     ("zh-CN", "中文（简体）"),
     ("hi", "हिन्दी"),
@@ -27,9 +27,10 @@ pub const LANGUAGES: [(&str, &str); 18] = [
     ("pl", "Polski"),
     ("tr", "Türkçe"),
     ("cs", "Čeština"),
+    ("lo", "ພາສາລາວ"),
 ];
 
-const FILES: [(&str, &str); 18] = [
+const FILES: [(&str, &str); 19] = [
     ("en", include_str!("../lang/en.toml")),
     ("zh-CN", include_str!("../lang/zh-CN.toml")),
     ("hi", include_str!("../lang/hi.toml")),
@@ -48,6 +49,7 @@ const FILES: [(&str, &str); 18] = [
     ("pl", include_str!("../lang/pl.toml")),
     ("tr", include_str!("../lang/tr.toml")),
     ("cs", include_str!("../lang/cs.toml")),
+    ("lo", include_str!("../lang/lo.toml")),
 ];
 
 struct State {
@@ -281,6 +283,7 @@ pub fn language_for_langid(id: u16) -> Option<&'static str> {
         0x15 => "pl",
         0x1f => "tr",
         0x05 => "cs",
+        0x54 => "lo",
         _ => return None,
     })
 }
@@ -361,6 +364,7 @@ mod tests {
         assert_eq!(language_for_locale("pt_BR.UTF-8"), "pt-BR");
         assert_eq!(language_for_locale("sv_SE"), "en");
         assert_eq!(language_for_locale(""), "en");
+        assert_eq!(language_for_locale("lo_LA.UTF-8"), "lo");
     }
 
     #[test]
@@ -379,6 +383,8 @@ mod tests {
         assert_eq!(match_locale("zh-Hans"), Some("zh-CN"));
         assert_eq!(match_locale("zh-MO"), Some("zh-TW"));
         assert_eq!(match_locale("zh"), Some("zh-CN"));
+        assert_eq!(match_locale("lo"), Some("lo"));
+        assert_eq!(match_locale("lo-LA"), Some("lo"));
         // Codes compared whole, not by their first letters.
         assert_eq!(match_locale("arn-CL"), None);
         assert_eq!(match_locale("ido"), None);
@@ -409,7 +415,8 @@ mod tests {
         assert_eq!(language_for_langid(0x0c0a), Some("es"));
         assert_eq!(language_for_langid(0x0405), Some("cs"));
         assert_eq!(language_for_langid(0x041d), None); // Swedish
-                                                       // Every shipped language has an id.
+        assert_eq!(language_for_langid(0x0454), Some("lo"));
+        // Every shipped language has an id.
         for (code, _) in LANGUAGES {
             assert!(
                 (0..0x8000u16).any(|id| language_for_langid(id) == Some(code)),
@@ -477,6 +484,7 @@ mod tests {
         // A language picked in Options always wins.
         assert_eq!(startup_language("de", Some("ja"), &system), "de");
         assert_eq!(startup_language("zh-TW", Some("system"), &system), "zh-TW");
+        assert_eq!(startup_language("lo", Some("en"), &system), "lo");
         // An English that was picked (or saved by an older version) stays.
         assert_eq!(startup_language("en", Some("ja"), &system), "en");
         // System language picked in Options: the system, not the installer.

@@ -4,6 +4,10 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
