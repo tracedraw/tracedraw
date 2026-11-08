@@ -940,6 +940,11 @@ fn display_page(app: &mut App, ui: &mut Ui) {
                 "options.node_tracking",
                 "options.node_tracking_tip",
             ));
+        ui.checkbox(&mut app.settings.touch_keys, tr("options.touch_keys"))
+            .rich_tip(crate::ui::tips::pair(
+                "options.touch_keys",
+                "options.touch_keys_tip",
+            ));
     });
     chrome::section(ui, &tr("options.full_screen_preview"));
     ui.indent("fsp", |ui| {

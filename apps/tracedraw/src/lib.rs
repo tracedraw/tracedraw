@@ -208,6 +208,7 @@ mod title_bar;
 mod tools;
 mod tools2;
 mod touch_modifiers;
+mod touch_taps;
 mod trace;
 mod trace_preview;
 mod tracecut;

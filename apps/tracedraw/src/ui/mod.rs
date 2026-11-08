@@ -1032,6 +1032,10 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
     // what the first finger began is dropped, so the gesture does
     // not also drag a marquee or an object.
     let two_fingers = ui.input(|i| i.multi_touch());
+    // A tap of two fingers undoes, of three redoes (not behind a dialog).
+    if matches!(app.dialog, crate::ui::dialogs::Dialog::None) {
+        app.touch_taps(ui.ctx(), canvas_rect);
+    }
     if let Some(t) = two_fingers {
         if response.rect.contains(t.center_pos) {
             app.view.pan(t.translation_delta);
@@ -1088,6 +1092,7 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
     canvas::draw_snap_mark(app, &painter);
     crate::brushes::draw_resize(app, &painter);
     app.draw_right_drag(&painter);
+    crate::touch_modifiers::keys_on_drawing(app, ui, canvas_rect);
     context::context_menu(app, ui, &response);
     crate::drop_menu::drop_menu_ui(app, ui);
     crate::fill_tool::node_bar(app, ui);
@@ -1684,15 +1689,16 @@ mod tests {
         assert_eq!(shape_count(&app), before);
     }
 
-    /// Shift, Ctrl and Alt for a finger (#1499): the Standard toolbar
-    /// shows them once a finger touched the window; a tap on Shift holds
+    /// Shift, Ctrl and Alt for a finger (#1499): the keys on the drawing
+    /// show once a finger touched the window (#1996); a tap on Shift holds
     /// it, so a finger's tap on a second object adds it to the selection
     /// and another tap takes it out again; a second tap on Shift lets it
-    /// go, and a tap then selects one object only. Alt held from the
-    /// toolbar does not put the bars in their customize mode.
+    /// go, and a tap then selects one object only. Alt held from them
+    /// does not put the bars in their customize mode. Delete there
+    /// deletes; a tap of two fingers undoes, of three redoes, and a pinch
+    /// does neither; Options > Display hides the keys.
     #[test]
-    fn a_finger_holds_shift_from_the_toolbar_to_add_to_the_selection() {
-        use crate::ui::bar_items::{items, ItemBar};
+    fn a_finger_holds_shift_from_the_keys_on_the_drawing_to_add_to_the_selection() {
         let ctx = crate::theme::ui_context();
         let mut app = App::headless();
         app.settings.autocorrect.enabled = false;
@@ -1769,17 +1775,13 @@ mod tests {
         assert_eq!(app.selection, vec![a]);
         timed(&mut app, Vec::new());
         let key_at = |app: &App, id: &str| {
-            let i = items(app, ItemBar::Standard)
+            let r = app
+                .touch_keys_shown
                 .iter()
-                .position(|b| b == id)
-                .expect("on the bar");
-            let slot = app
-                .shown_bar_slots
-                .iter()
-                .find(|s| s.bar == ItemBar::Standard)
-                .expect("the Standard toolbar is drawn");
-            let r = slot.items[i];
-            assert!(r.width() > 0.0, "{id} is drawn with a touch screen");
+                .find(|(k, _)| *k == id)
+                .map(|(_, r)| *r)
+                .unwrap_or_else(|| panic!("{id} is drawn on the drawing with a touch screen"));
+            assert!(r.width() > 0.0, "{id} has a size");
             r.center()
         };
         // Shift held: a tap adds, a second tap on the same object takes
@@ -1817,32 +1819,105 @@ mod tests {
         let key = key_at(&app, "ctrl");
         tap(&mut app, key);
         assert!(app.touch_mods.ctrl);
+        let key = key_at(&app, "ctrl");
+        tap(&mut app, key);
+        assert!(!app.touch_mods.any());
+        // The keys sit over the drawing's bottom left corner, off the
+        // Standard toolbar.
+        let canvas = app.canvas_rect;
+        for (id, r) in &app.touch_keys_shown {
+            assert!(
+                canvas.contains_rect(*r),
+                "{id} {r:?} on the drawing {canvas:?}"
+            );
+            assert!(r.center().x < canvas.center().x && r.center().y > canvas.center().y);
+        }
+        assert!(
+            !crate::ui::bar_items::items(&app, crate::ui::bar_items::ItemBar::Standard)
+                .iter()
+                .any(|i| ["shift", "ctrl", "alt"].contains(&i.as_str()))
+        );
+        // Delete deletes the selection.
+        tap(&mut app, on_a);
+        assert_eq!(app.selection, vec![a]);
+        let key = key_at(&app, "delete");
+        tap(&mut app, key);
+        assert!(app.doc().find_shape(a).is_none(), "deleted");
+        // Two fingers tapped together undo; three redo.
+        let fingers = |app: &mut App, at: &[egui::Pos2], moved: egui::Vec2| {
+            let touch = |id: u64, phase, pos| egui::Event::Touch {
+                device_id: egui::TouchDeviceId(1),
+                id: egui::TouchId(id),
+                phase,
+                pos,
+                force: None,
+            };
+            timed(
+                app,
+                at.iter()
+                    .enumerate()
+                    .map(|(i, p)| touch(10 + i as u64, egui::TouchPhase::Start, *p))
+                    .collect(),
+            );
+            timed(
+                app,
+                at.iter()
+                    .enumerate()
+                    .map(|(i, p)| touch(10 + i as u64, egui::TouchPhase::Move, *p + moved))
+                    .collect(),
+            );
+            timed(
+                app,
+                at.iter()
+                    .enumerate()
+                    .map(|(i, p)| touch(10 + i as u64, egui::TouchPhase::End, *p + moved))
+                    .collect(),
+            );
+            timed(app, Vec::new());
+        };
+        let page = app.view.to_screen(Point::new(100.0, 150.0));
+        let two = [page, page + egui::vec2(60.0, 0.0)];
+        fingers(&mut app, &two, egui::Vec2::ZERO);
+        assert!(app.doc().find_shape(a).is_some(), "two fingers undo");
+        let three = [
+            page,
+            page + egui::vec2(60.0, 0.0),
+            page + egui::vec2(120.0, 0.0),
+        ];
+        fingers(&mut app, &three, egui::Vec2::ZERO);
+        assert!(app.doc().find_shape(a).is_none(), "three fingers redo");
+        // Two fingers that move (a pan or a pinch) undo nothing.
+        fingers(&mut app, &two, egui::vec2(0.0, 80.0));
+        assert!(app.doc().find_shape(a).is_none(), "a pan is no tap");
+        // Off in Options > Display: no keys on the drawing.
+        app.settings.touch_keys = false;
+        timed(&mut app, Vec::new());
+        assert!(app.touch_keys_shown.is_empty());
     }
 
-    /// Without a touch screen the Shift, Ctrl and Alt buttons are not
-    /// drawn: the desktop's bar keeps its look.
+    /// Without a touch screen the keys on the drawing are not drawn: the
+    /// desktop keeps its look; a Standard toolbar kept from 0.42 with
+    /// Shift, Ctrl and Alt on it draws nothing in their place.
     #[test]
-    fn the_modifier_buttons_need_a_touch_screen() {
-        use crate::ui::bar_items::{items, ItemBar};
+    fn the_keys_on_the_drawing_need_a_touch_screen() {
+        use crate::ui::bar_items::{items, set_items, ItemBar};
         let ctx = crate::theme::ui_context();
         let mut app = App::headless();
         app.show_welcome = false;
+        let mut kept = items(&app, ItemBar::Standard);
+        kept.insert(4, "shift".into());
+        set_items(&mut app, ItemBar::Standard, kept);
         for _ in 0..3 {
             frame(&ctx, &mut app);
         }
+        assert!(app.touch_keys_shown.is_empty());
         let slot = app
             .shown_bar_slots
             .iter()
             .find(|s| s.bar == ItemBar::Standard)
             .expect("the Standard toolbar is drawn")
             .clone();
-        for id in ["shift", "ctrl", "alt"] {
-            let i = items(&app, ItemBar::Standard)
-                .iter()
-                .position(|b| b == id)
-                .expect("on the bar");
-            assert_eq!(slot.items[i].width(), 0.0, "{id} without a touch screen");
-        }
+        assert_eq!(slot.items[4].width(), 0.0, "shift draws nothing");
     }
 
     /// One frame on a screen of `dp` system points (a phone or a tablet,

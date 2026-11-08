@@ -29,7 +29,7 @@ fn std_frame(ui: &Ui, rect: egui::Rect, hovered: bool, pressed: bool) {
 }
 
 /// A standard toolbar button; `pressed` draws it pushed in (toggles).
-fn std_button(
+pub(crate) fn std_button(
     ui: &mut Ui,
     action: icons::Action,
     tip: &str,
@@ -92,7 +92,7 @@ pub(crate) fn rich_tip(ui: &mut Ui, tip: &str) {
 
 /// The tip of the standard bar's button `key`: its title and the
 /// description kept under `key_desc`.
-fn tip(key: &str) -> String {
+pub(crate) fn tip(key: &str) -> String {
     // In the browser version a shortcut the browser keeps shows the key
     // that replaces it (#1409).
     let title = crate::shortcuts::shown_in(tr(key));
@@ -101,7 +101,7 @@ fn tip(key: &str) -> String {
 
 /// A Standard toolbar button that reads `label` (a key's name), drawn
 /// pressed while `held` (#1499).
-fn mod_button(ui: &mut Ui, label: &str, tip: &str, held: bool) -> egui::Response {
+pub(crate) fn mod_button(ui: &mut Ui, label: &str, tip: &str, held: bool) -> egui::Response {
     let font = egui::FontId::proportional((std_icon() * 0.55).max(10.0));
     let galley = ui
         .painter()
@@ -522,19 +522,10 @@ pub(crate) fn draw_item(app: &mut App, ui: &mut Ui, bar: &str, id: &str) {
                 app.delete_command();
             }
         }
-        // Shift, Ctrl and Alt for a finger: a tap holds the key until the
-        // next tap (#1499). Only where there is a touch screen.
-        "shift" | "ctrl" | "alt" => {
-            if let (Some(key), true) = (
-                crate::touch_modifiers::ModKey::of_item(id),
-                crate::touch_modifiers::offered(ui.ctx()),
-            ) {
-                let held = app.touch_mods.held(key);
-                if mod_button(ui, key.label(), &tip(key.name_key()), held).clicked() {
-                    app.touch_mods.toggle(key);
-                }
-            }
-        }
+        // Shift, Ctrl and Alt for a finger sat here up to 0.42; they are
+        // keys on the drawing now (#1996, touch_modifiers.rs), and a bar
+        // kept with them draws nothing in their place.
+        "shift" | "ctrl" | "alt" => {}
         // The dockers, which the Touch workspace starts without (#1611).
         "dockers" => {
             if std_button(

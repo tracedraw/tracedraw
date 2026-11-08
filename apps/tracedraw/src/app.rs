@@ -1077,9 +1077,15 @@ pub struct App {
     pub show_grid: bool,
     pub show_status_bar: bool,
     pub show_dockers: bool,
-    /// Shift, Ctrl and Alt held from the Standard toolbar, for a finger
-    /// (#1499, touch_modifiers.rs).
+    /// Shift, Ctrl and Alt held from the keys on the drawing, for a
+    /// finger (#1499, #1996, touch_modifiers.rs).
     pub touch_mods: crate::touch_modifiers::TouchModifiers,
+    /// The keys on the drawing as drawn this frame: each one's id and
+    /// place (empty when they are not shown).
+    pub touch_keys_shown: Vec<(&'static str, egui::Rect)>,
+    /// The fingers on the drawing, for the taps of two and three fingers
+    /// that undo and redo (touch_taps.rs).
+    pub touch_tap: crate::touch_taps::TapGesture,
     pub docker_tab: DockerTab,
     pub flyout_open: Option<usize>,
     /// The tool each toolbox group shows: the one last used from its flyout.
@@ -2616,6 +2622,8 @@ impl App {
             show_status_bar: true,
             show_dockers: true,
             touch_mods: Default::default(),
+            touch_keys_shown: Vec::new(),
+            touch_tap: Default::default(),
             docker_tab: DockerTab::Hints,
             flyout_open: None,
             toolbox_last: crate::tools::GROUPS.iter().map(|g| g.tools[0]).collect(),
