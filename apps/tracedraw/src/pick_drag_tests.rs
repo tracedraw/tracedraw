@@ -24018,3 +24018,205 @@ fn ctrl_k_breaks_a_brush_stroke_into_its_band_and_path() {
         .find_shape(stroke)
         .is_some_and(|s| s.is_brush_stroke()));
 }
+
+/// The page outline of `id`, flattened: its corners, each subpath
+/// closed back to its start.
+fn brushed_points(app: &App, id: ShapeId) -> Vec<Vec<Point>> {
+    let s = app.doc().shape_on_page(id).expect("shape");
+    let mut rings: Vec<Vec<Point>> = Vec::new();
+    tracedraw_core::geometry::flatten(&s.page_path(), 0.01, &mut |el| match el {
+        tracedraw_core::geometry::PathEl::MoveTo(q) => rings.push(vec![q]),
+        tracedraw_core::geometry::PathEl::LineTo(q) => {
+            if let Some(r) = rings.last_mut() {
+                r.push(q);
+            }
+        }
+        tracedraw_core::geometry::PathEl::ClosePath => {
+            if let Some(r) = rings.last_mut() {
+                if let Some(first) = r.first().copied() {
+                    r.push(first);
+                }
+            }
+        }
+        _ => {}
+    });
+    rings
+}
+
+/// How far the outline of `id` lies from where it was (`before`): the
+/// farthest a corner of either lies from the other outline.
+fn brushed_shift(app: &App, id: ShapeId, before: &[Vec<Point>]) -> f64 {
+    fn to_outline(p: Point, rings: &[Vec<Point>]) -> f64 {
+        let mut best = f64::INFINITY;
+        for r in rings {
+            for w in r.windows(2) {
+                let ab = w[1] - w[0];
+                let len2 = ab.hypot2();
+                let t = if len2 > 0.0 {
+                    ((p - w[0]).dot(ab) / len2).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                best = best.min((p - (w[0] + ab * t)).hypot());
+            }
+            if let [one] = r.as_slice() {
+                best = best.min((p - *one).hypot());
+            }
+        }
+        best
+    }
+    let now = brushed_points(app, id);
+    let far = |a: &[Vec<Point>], b: &[Vec<Point>]| {
+        a.iter()
+            .flatten()
+            .map(|p| to_outline(*p, b))
+            .fold(0.0, f64::max)
+    };
+    far(&now, before).max(far(before, &now))
+}
+
+/// A press at `at` (page) held without a move for `frames` frames of
+/// 1/60 s from the time `t`, sending `each(app, frame)` after every
+/// frame; the button stays down. Returns the time reached.
+fn hold_still(
+    ctx: &egui::Context,
+    app: &mut App,
+    at: Point,
+    t: f64,
+    frames: usize,
+    mut each: impl FnMut(&App, usize),
+) -> f64 {
+    let at = app.view.to_screen(at);
+    let mut t = t;
+    frame_at(ctx, app, vec![Event::PointerMoved(at)], Modifiers::NONE, t);
+    t += 1.0 / 60.0;
+    frame_at(
+        ctx,
+        app,
+        vec![button(at, true, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+        t,
+    );
+    each(app, 0);
+    for k in 1..=frames {
+        t += 1.0 / 60.0;
+        frame_at(ctx, app, Vec::new(), Modifiers::NONE, t);
+        each(app, k);
+    }
+    t
+}
+
+/// The live test of 0.41, the shaping brushes in the window: Shift+drag
+/// and Shift+wheel size the nib of every one of them alike, with the
+/// drawing left as it was.
+#[test]
+fn every_shaping_brush_is_sized_by_shift_drag_and_the_wheel() {
+    for tool in [
+        Tool::Smooth,
+        Tool::Smear,
+        Tool::Twirl,
+        Tool::AttractRepel,
+        Tool::Smudge,
+        Tool::Roughen,
+    ] {
+        let (ctx, mut app, _) = setup();
+        app.set_tool(tool);
+        app.brush_radius = 10.0;
+        let rev = app.engine.revision();
+        // Over the rectangle's edge, where a stroke would change it.
+        let from = app.view.to_screen(Point::new(60.0, 25.0));
+        let zoom = app.view.zoom;
+        drag(
+            &ctx,
+            &mut app,
+            from,
+            from + egui::vec2(30.0, 0.0),
+            Modifiers::SHIFT,
+            Vec::new(),
+        );
+        let want = 10.0 + 30.0 / f64::from(zoom);
+        assert!(
+            (app.brush_radius - want).abs() < 1e-3,
+            "{tool:?}: {} {want}",
+            app.brush_radius
+        );
+        assert_eq!(app.engine.revision(), rev, "{tool:?}: nothing brushed");
+        app.brush_radius = 10.0;
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Line,
+                delta: egui::vec2(0.0, 1.0),
+                phase: egui::TouchPhase::Move,
+                modifiers: Modifiers::SHIFT,
+            }],
+            Modifiers::SHIFT,
+        );
+        for _ in 0..20 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::SHIFT);
+        }
+        assert!(
+            (app.brush_radius - 11.0).abs() < 1e-9,
+            "{tool:?}: {}",
+            app.brush_radius
+        );
+        assert_eq!(app.engine.revision(), rev, "{tool:?}: nothing brushed");
+    }
+}
+
+/// The live test of 0.41: Twirl did nothing while the button was held
+/// still. Pressed by the rectangle's corner and held without a move, it
+/// turns the outline from the first frames on and keeps turning at a
+/// steady rate until the button is let go; then nothing more moves. The
+/// whole hold is one undo step.
+#[test]
+fn twirl_turns_at_a_steady_rate_while_the_button_is_held_still() {
+    let (ctx, mut app, id) = setup();
+    app.set_tool(Tool::Twirl);
+    app.brush_radius = 12.0;
+    let start = brushed_points(&app, id);
+    let mut turned = Vec::new();
+    let t = hold_still(
+        &ctx,
+        &mut app,
+        Point::new(56.0, 36.0),
+        10.0,
+        60,
+        |app, _| {
+            turned.push(brushed_shift(app, id, &start));
+        },
+    );
+    assert!(turned[5] > 0.0, "turning within the first frames");
+    assert!(
+        turned[30] > turned[10] && turned[60] > turned[30],
+        "keeps turning while held: {:?}",
+        [turned[10], turned[30], turned[60]]
+    );
+    let at = app.view.to_screen(Point::new(56.0, 36.0));
+    frame_at(
+        &ctx,
+        &mut app,
+        vec![button(at, false, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+        t + 1.0 / 60.0,
+    );
+    let after = brushed_points(&app, id);
+    for k in 2..12 {
+        frame_at(
+            &ctx,
+            &mut app,
+            Vec::new(),
+            Modifiers::NONE,
+            t + k as f64 / 60.0,
+        );
+    }
+    assert_eq!(brushed_points(&app, id), after, "still once let go");
+    let undo = app.engine.history_labels().0;
+    assert_eq!(undo.last().copied(), Some("Twirl"));
+    assert_eq!(
+        undo.iter().filter(|l| **l == "Twirl").count(),
+        1,
+        "{undo:?}"
+    );
+}
