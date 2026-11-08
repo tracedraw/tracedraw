@@ -1153,6 +1153,22 @@ pub fn offset(path: &BezPath, d: f64) -> BezPath {
 /// Offset a closed path outward (positive) or inward (negative) by `d` mm,
 /// the corners turned as `join` says.
 pub fn offset_with(path: &BezPath, d: f64, join: Join) -> BezPath {
+    if !d.is_finite() {
+        return BezPath::new();
+    }
+    fit_polygon_curves(&offset_polygon_with(path, d, join), FIT_TOL)
+}
+
+/// Offset a closed path like [`offset`], round corners, but keep the
+/// straight pieces the overlay library gives instead of fitting curves
+/// to them: every point of the result is the offset's own, so the region
+/// it bounds can be read as a polygon without losing the outside of its
+/// curves (shape nesting needs a region that covers the grown outline).
+pub fn offset_polygon(path: &BezPath, d: f64) -> BezPath {
+    offset_polygon_with(path, d, Join::Round)
+}
+
+fn offset_polygon_with(path: &BezPath, d: f64, join: Join) -> BezPath {
     use i_overlay::float::simplify::SimplifyShape;
     use i_overlay::mesh::float::outline::offset::OutlineOffset;
     use i_overlay::mesh::float::style::{LineJoin, OutlineStyle};
@@ -1167,8 +1183,7 @@ pub fn offset_with(path: &BezPath, d: f64, join: Join) -> BezPath {
         Join::Round => LineJoin::Round(0.05),
         Join::Bevel => LineJoin::Bevel,
     });
-    let out = clean.outline(&style);
-    fit_polygon_curves(&from_shapes(out), FIT_TOL)
+    from_shapes(clean.outline(&style))
 }
 
 /// How far the curves an offset is fitted with may stray from it, mm:
@@ -2451,6 +2466,30 @@ mod tests {
                 assert!(near < 0.1, "{d}: {near} off at {a}");
             }
         }
+    }
+
+    /// The polygon offset keeps its straight pieces: every corner lies on
+    /// the grown circle, so the polygon read point by point is the offset.
+    #[test]
+    fn a_polygon_offset_has_only_straight_pieces_on_the_outline() {
+        use super::offset_polygon;
+        use crate::geometry::{PathEl, Point, Shape as _};
+        let circle = kurbo::Circle::new(Point::new(50.0, 50.0), 20.0).to_path(0.001);
+        let q = offset_polygon(&circle, 5.0);
+        let mut corners = 0;
+        for el in q.elements() {
+            match *el {
+                PathEl::MoveTo(p) | PathEl::LineTo(p) => {
+                    let r = (p - Point::new(50.0, 50.0)).hypot();
+                    assert!((r - 25.0).abs() < 0.01, "{r}");
+                    corners += 1;
+                }
+                PathEl::ClosePath => {}
+                _ => panic!("a curve in {q:?}"),
+            }
+        }
+        assert!(corners > 32, "{corners}");
+        assert!(offset_polygon(&circle, f64::NAN).elements().is_empty());
     }
 
     /// Sharp corners stay sharp: a mitred square's contour is four

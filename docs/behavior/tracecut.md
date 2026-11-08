@@ -244,8 +244,12 @@ layout starts from the **start corner** (bottom left).
 
 Objects by their true outlines: each becomes a region (its closed
 outlines flattened, open curves by their boxes; holes filled unless
-**use holes** is on, 0.5 mm **accuracy** at first), grown by half the
-spacing and drawn on a grid. Objects go largest first, each to the
+**use holes** is on, 0.5 mm **accuracy** at first; an open line inside
+an outline cuts no hole there), grown by half the spacing and drawn on
+a grid. The grown outline is kept as the polygon it is worked out as,
+so its round corners and curves stay outside the object and no object
+comes closer to another, or to the sheet's edge, than the spacing and
+margin allow. Objects go largest first, each to the
 lowest, then leftmost, place where it fits on the first sheet that has
 one, slid down and left in exact geometry until it touches, in each
 allowed **turn** (none, 0 and 180 degrees, every 90 at first, every 45);
