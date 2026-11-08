@@ -26,6 +26,8 @@ full, row-by-row status.
 
 - Paragraph text: linking a frame of text to an empty frame flows the text that does not fit into the empty one, whichever of the two was picked first. Picked empty frame first, the whole text went into it and the frame it came from was left empty, so the text seemed to vanish when going back to that frame.
 
+- Text > Insert Placeholder Text is also in the right-click menu of a paragraph frame and in the right-click menu shown while typing in one. A frame being edited, an empty one just drawn too, is filled and stays edited with the caret after the sample text; editing used to end.
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).

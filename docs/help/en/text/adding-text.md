@@ -15,7 +15,10 @@ sans-serif font found. Change the defaults by formatting with nothing selected.
 To make an existing object a text frame, right-click it and choose to create
 an empty text frame; see [Empty frames](../objects/clip-frames.md#empty-frames).
 [[menu.text > menu.text.insert_placeholder_text]] fills the selected frames
-with sample text, as much as fits.
+with sample text, as much as fits. It works on an empty frame you have just
+drawn too, and you can keep typing after the sample text. Right-click a
+paragraph frame, or right-click while you type in one, to find the same
+command.
 
 ## Editing text {#edit}
 

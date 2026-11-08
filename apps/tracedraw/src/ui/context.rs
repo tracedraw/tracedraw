@@ -152,7 +152,7 @@ fn guide_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
 
 /// Right-click while a text is being edited: the editing commands act on
 /// its characters (#1377), and the Properties docker.
-fn text_edit_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
+pub(crate) fn text_edit_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     let picked = app.text_selection_active();
     if ci(
         ui,
@@ -179,6 +179,12 @@ fn text_edit_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     sep(ui);
     if ci(ui, close, "menu.edit.select_all", "Ctrl+A", true) {
         app.text_select_all();
+    }
+    // A paragraph frame being edited: filler text in place of its own.
+    if app.placeholder_text_offered()
+        && ci(ui, close, "menu.text.insert_placeholder_text", "", true)
+    {
+        app.insert_placeholder_text();
     }
     sep(ui);
     if ci(ui, close, "menu.object.properties", "Alt+Enter", true) {
@@ -220,6 +226,12 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
         }
         if ci(ui, close, "menu.text.convert", "", true) {
             app.toggle_text_kind();
+        }
+        // Filler text for a paragraph frame, an empty one most of all.
+        if app.placeholder_text_offered()
+            && ci(ui, close, "menu.text.insert_placeholder_text", "", true)
+        {
+            app.insert_placeholder_text();
         }
         if many
             && !app.joinable_text_lines().is_empty()
