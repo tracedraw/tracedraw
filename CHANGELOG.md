@@ -12,6 +12,8 @@ full, row-by-row status.
 
 - Weld, Combine and the other shaping operations keep a mesh fill: the result takes the mesh in its place on the page when the mesh covers it, else the mesh's mean colour; Combine left the mesh in the wrong place and a result reaching past the mesh showed no colour there.
 
+- Windows: the Microsoft Store package carries the thumbnail provider of `.tdraw` files and declares it, so Store installs show a picture of the first page in the Explorer as the setup's do; the setup also registers it under `SystemFileAssociations\.tdraw`, which stays when another program opens `.tdraw` files. A test checks the setup's keys and that the release build makes, signs and packs the DLL (#1740; 0.41 had no thumbnail provider, it came in 0.42.0).
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).
