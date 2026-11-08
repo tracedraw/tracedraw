@@ -7888,20 +7888,19 @@ impl App {
             None => self.drawing_title(self.active_doc),
             Some(i) => self.drawing_title(i),
         };
-        let stem: String = title
-            .trim_end_matches('*')
-            .trim()
-            .trim_end_matches(".tdraw")
-            .trim_end_matches(".cdr")
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || c == '-' || c == '_' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect();
+        // The name in its own script, accents and vowel marks included
+        // (the tab of a recovered drawing shows it again); only what no
+        // file name can hold changes, the same on every system.
+        let stem: String = crate::files::clean_file_name_for(
+            title
+                .trim_end_matches('*')
+                .trim()
+                .trim_end_matches(".tdraw")
+                .trim_end_matches(".cdr"),
+            true,
+        )
+        .trim_start_matches('.')
+        .to_string();
         format!("AutoBackup_of_{stem}.tdraw")
     }
 
@@ -10924,6 +10923,34 @@ mod tests {
             ),
             "{lines:?}"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Auto-backups keep the drawing's name in its own script, vowel
+    /// marks and accents included, and a recovered drawing shows it.
+    #[test]
+    fn auto_backups_keep_names_in_every_script() {
+        let mut app = App::headless();
+        for (file, backup) in [
+            ("שָׁלוֹם.tdraw", "AutoBackup_of_שָׁלוֹם.tdraw"),
+            ("cafe\u{301}.tdraw", "AutoBackup_of_cafe\u{301}.tdraw"),
+            ("文件 1.cdr", "AutoBackup_of_文件 1.tdraw"),
+            ("\u{200F}שלום: א?.tdraw", "AutoBackup_of_שלום_ א_.tdraw"),
+        ] {
+            app.file = Some(std::path::PathBuf::from("/x").join(file));
+            assert_eq!(app.backup_name(None), backup);
+        }
+        let dir =
+            std::env::temp_dir().join(format!("tracedraw-backup-names-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("AutoBackup_of_שָׁלוֹם.tdraw");
+        std::fs::write(&path, App::headless().doc().to_json().unwrap()).unwrap();
+        let mut back = App::headless();
+        back.recover(&[crate::recovery::Found {
+            marker: dir.join("marker"),
+            backups: vec![path],
+        }]);
+        assert_eq!(back.doc().title, "שָׁלוֹם");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

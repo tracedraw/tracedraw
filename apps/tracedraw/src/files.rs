@@ -145,6 +145,7 @@ pub fn name_with_extension(name: &str, mime: &str) -> String {
 pub fn safe_file_name(name: &str) -> String {
     let clean: String = name
         .chars()
+        .filter(|&c| !is_direction_mark(c))
         .map(|c| {
             if matches!(c, '/' | '\\') || c.is_control() {
                 '_'
@@ -156,6 +157,51 @@ pub fn safe_file_name(name: &str) -> String {
     let clean = clean.trim().trim_start_matches('.').trim();
     if clean.is_empty() {
         "file".into()
+    } else {
+        clean.to_string()
+    }
+}
+
+/// True for the invisible marks that steer the direction of text
+/// (left-to-right and right-to-left marks, embeddings, overrides and
+/// isolates). Right-to-left keyboards and text copied from right-to-left
+/// writing bring them along; in a file name they only hide the extension
+/// and make two names that look the same differ.
+pub fn is_direction_mark(c: char) -> bool {
+    matches!(
+        c,
+        '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'
+    )
+}
+
+/// A file name typed or made from a drawing's name, ready to be written
+/// in any language: direction marks and control characters go, folder
+/// separators become `_`, and so do the characters Windows refuses in a
+/// name (`: * ? " < > |`) on Windows, where it also drops the dots and
+/// spaces at the end that it would drop itself. Letters of every script
+/// and their accents and vowel marks stay as they are. Empty when
+/// nothing is left.
+pub fn clean_file_name(name: &str) -> String {
+    clean_file_name_for(name, cfg!(windows))
+}
+
+/// [`clean_file_name`] for Windows (`windows`) or another system.
+pub fn clean_file_name_for(name: &str, windows: bool) -> String {
+    let clean: String = name
+        .chars()
+        .filter(|&c| !is_direction_mark(c) && !c.is_control())
+        .map(|c| {
+            let reserved = windows && matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|');
+            if matches!(c, '/' | '\\') || reserved {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let clean = clean.trim();
+    if windows {
+        clean.trim_end_matches(['.', ' ']).to_string()
     } else {
         clean.to_string()
     }
@@ -1776,6 +1822,39 @@ fn download(_name: &str, _bytes: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Names in every script stay as typed; only direction marks, control
+    /// characters and what the system refuses change.
+    #[test]
+    fn file_names_in_every_script_are_kept() {
+        for windows in [false, true] {
+            for name in [
+                "שלום.tdraw",
+                "café.tdraw",
+                "cafe\u{301}.tdraw",
+                "文件.tdraw",
+                "שָׁלוֹם עולם.cdr",
+            ] {
+                assert_eq!(clean_file_name_for(name, windows), name);
+            }
+            assert_eq!(
+                clean_file_name_for("\u{200F}\u{202B}שלום\u{202C}.tdraw\u{200E}", windows),
+                "שלום.tdraw"
+            );
+            assert_eq!(
+                clean_file_name_for("\u{2067}مرحبا\u{2069}", windows),
+                "مرحبا"
+            );
+            assert_eq!(clean_file_name_for("a/b\\c\n", windows), "a_b_c");
+            assert_eq!(clean_file_name_for(" \u{200F} ", windows), "");
+        }
+        assert_eq!(clean_file_name_for("a: b?", false), "a: b?");
+        assert_eq!(clean_file_name_for("a: b?", true), "a_ b_");
+        assert_eq!(clean_file_name_for("שלום. .", true), "שלום");
+        assert_eq!(safe_file_name("\u{200F}שלום.ttf"), "שלום.ttf");
+        assert!(is_direction_mark('\u{061C}'));
+        assert!(!is_direction_mark('\u{200D}'), "the joiner shapes letters");
+    }
 
     /// #2000: a print-size picture decodes past the image library's own
     /// 512 MiB guard, which turned away files of about a metre and more

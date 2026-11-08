@@ -34,6 +34,8 @@ full, row-by-row status.
 
 - TraceCut: Box Maker, in the Make group, draws the flat panels of a box with finger joints for laser or CNC cutting from its width, depth and height (outside or inside sizes), the material thickness and the finger width, with or without a top; the panels are laid out side by side as one group, every finger matching a slot of the panel it joins.
 
+- Drawings are saved, listed and named in any script: the direction marks a right-to-left keyboard or pasted text leaves in a Hebrew or Arabic name no longer hide the extension (a name came out as "שלום.tdraw.tdraw"), auto-backups, Send To and printing keep a name's letters, accents and vowel marks instead of turning them into underscores, and the interface uses a system font for Hebrew, so a Hebrew name typed in the Save Drawing dialog, the tabs and the recent files no longer shows as boxes.
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

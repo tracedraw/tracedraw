@@ -975,71 +975,85 @@ pub fn ui_context() -> egui::Context {
     ctx
 }
 
+/// Per script, the system font families the interface tries in order
+/// (the first installed one wins): the scripts of the interface
+/// languages and those people write their file and drawing names in,
+/// which the bundled font (Latin, Greek, Cyrillic) does not cover.
+const UI_SCRIPT_FONTS: &[&[&str]] = &[
+    // Arabic (also covered by many Latin system fonts).
+    &[
+        "Noto Sans Arabic",
+        "Noto Naskh Arabic",
+        "Segoe UI",
+        "Arial",
+        "DejaVu Sans",
+        "Geeza Pro",
+    ],
+    // Hebrew: file names, layer and page names typed in it.
+    &[
+        "Noto Sans Hebrew",
+        "Arial Hebrew",
+        "Segoe UI",
+        "Arial",
+        "DejaVu Sans",
+        "Liberation Sans",
+        "FreeSans",
+    ],
+    // Devanagari (Hindi).
+    &[
+        "Noto Sans Devanagari",
+        "Nirmala UI",
+        "Mangal",
+        "Kohinoor Devanagari",
+        "Lohit Devanagari",
+    ],
+    // Bengali.
+    &[
+        "Noto Sans Bengali",
+        "Nirmala UI",
+        "Vrinda",
+        "Kohinoor Bangla",
+        "Lohit Bengali",
+    ],
+    // Simplified Chinese and Japanese.
+    &[
+        "Noto Sans CJK SC",
+        "Noto Sans SC",
+        "Microsoft YaHei",
+        "PingFang SC",
+        "Source Han Sans SC",
+        "WenQuanYi Micro Hei",
+        "Noto Sans CJK JP",
+    ],
+    // Traditional Chinese.
+    &[
+        "Noto Sans CJK TC",
+        "Noto Sans TC",
+        "Microsoft JhengHei",
+        "PingFang TC",
+        "Source Han Sans TC",
+    ],
+    &[
+        "Noto Sans CJK JP",
+        "Noto Sans JP",
+        "Meiryo",
+        "Yu Gothic UI",
+        "Hiragino Sans",
+        "Source Han Sans",
+    ],
+    // Lao.
+    &[
+        "Noto Sans Lao",
+        "Lao Sangam MN",
+        "Leelawadee UI",
+        "Saysettha OT",
+    ],
+];
+
 /// Add the system fonts covering the non-Latin UI languages to `defs`;
 /// returns their keys.
 fn fallback_fonts(defs: &mut egui::FontDefinitions) -> Vec<String> {
-    // Per script, the families to try in order; the first installed one wins.
-    let groups: &[&[&str]] = &[
-        // Arabic (also covered by many Latin system fonts).
-        &[
-            "Noto Sans Arabic",
-            "Noto Naskh Arabic",
-            "Segoe UI",
-            "Arial",
-            "DejaVu Sans",
-            "Geeza Pro",
-        ],
-        // Devanagari (Hindi).
-        &[
-            "Noto Sans Devanagari",
-            "Nirmala UI",
-            "Mangal",
-            "Kohinoor Devanagari",
-            "Lohit Devanagari",
-        ],
-        // Bengali.
-        &[
-            "Noto Sans Bengali",
-            "Nirmala UI",
-            "Vrinda",
-            "Kohinoor Bangla",
-            "Lohit Bengali",
-        ],
-        // Simplified Chinese and Japanese.
-        &[
-            "Noto Sans CJK SC",
-            "Noto Sans SC",
-            "Microsoft YaHei",
-            "PingFang SC",
-            "Source Han Sans SC",
-            "WenQuanYi Micro Hei",
-            "Noto Sans CJK JP",
-        ],
-        // Traditional Chinese.
-        &[
-            "Noto Sans CJK TC",
-            "Noto Sans TC",
-            "Microsoft JhengHei",
-            "PingFang TC",
-            "Source Han Sans TC",
-        ],
-        &[
-            "Noto Sans CJK JP",
-            "Noto Sans JP",
-            "Meiryo",
-            "Yu Gothic UI",
-            "Hiragino Sans",
-            "Source Han Sans",
-        ],
-        // Lao.
-        &[
-            "Noto Sans Lao",
-            "Lao Sangam MN",
-            "Leelawadee UI",
-            "Saysettha OT",
-        ],
-        // Cyrillic is in the bundled font; Latin extended too.
-    ];
+    let groups = UI_SCRIPT_FONTS;
     let fs = tracedraw_text::fonts();
     let mut added = Vec::new();
     for group in groups {
@@ -1069,6 +1083,26 @@ fn fallback_fonts(defs: &mut egui::FontDefinitions) -> Vec<String> {
 #[cfg(test)]
 mod theme_tests {
     use super::*;
+
+    /// Names typed in Hebrew show in the interface (the file name field,
+    /// the recent files, the tabs) when the system has a font for it.
+    #[test]
+    fn hebrew_names_have_an_interface_font() {
+        let hebrew = UI_SCRIPT_FONTS
+            .iter()
+            .find(|g| g.first() == Some(&"Noto Sans Hebrew"))
+            .expect("a group of Hebrew fonts");
+        let has_one = tracedraw_text::fonts().first_face_data(hebrew).is_some();
+        if has_one {
+            let ctx = ui_context();
+            let mut out = ctx.run_ui(Default::default(), |_| {});
+            out.textures_delta.clear();
+            let font = egui::FontId::proportional(14.0);
+            for c in "שלום".chars() {
+                assert!(ctx.fonts_mut(|f| f.has_glyph(&font, c)), "{c}");
+            }
+        }
+    }
 
     /// WCAG contrast ratio of two opaque colours.
     fn contrast(a: Color32, b: Color32) -> f32 {
