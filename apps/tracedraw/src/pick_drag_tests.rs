@@ -21225,6 +21225,63 @@ fn the_tab_ruler_shows_the_default_grid_and_a_drag_keeps_it() {
     assert!(tab_stops_of(&app, id).is_empty());
 }
 
+/// The tab ruler's indent markers (#1993): dragging the left one sets
+/// the paragraph's left indent, the right one its right indent, each drag
+/// one undo step; a click on a marker adds no stop.
+#[test]
+fn the_tab_ruler_drags_the_left_and_right_indents() {
+    use crate::tab_ruler::IndentSide;
+    let (ctx, mut app, id) = editing_with_ruler(Vec::new());
+    let none = Modifiers::NONE;
+    let para = |app: &App| {
+        let s = app.doc().find_shape(id).expect("text").clone();
+        app.paragraph_style_of(&s).expect("text").1
+    };
+    let r = app.tab_ruler().expect("ruler");
+    assert_eq!((r.left_indent, r.right_indent), (0.0, 0.0));
+    let width = r.width_mm;
+    // A click on the left marker adds no stop.
+    click_at(&ctx, &mut app, r.on_indents(0.0), none);
+    assert!(tab_stops_of(&app, id).is_empty());
+    assert!(app.indent_drag.is_none());
+    let undo = app.engine.history_labels().0.len();
+    // The left marker dragged to 15 mm.
+    let r = app.tab_ruler().expect("ruler");
+    assert_eq!(r.indent_at(r.on_indents(0.0)), Some(IndentSide::Left));
+    drag(
+        &ctx,
+        &mut app,
+        r.on_indents(0.0),
+        r.on_indents(15.0),
+        none,
+        Vec::new(),
+    );
+    assert!(app.indent_drag.is_none());
+    let p = para(&app);
+    assert!((p.left_indent - 15.0).abs() < 0.6, "{}", p.left_indent);
+    assert!(tab_stops_of(&app, id).is_empty(), "no stop added");
+    assert_eq!(app.engine.history_labels().0.len(), undo + 1, "one step");
+    let r = app.tab_ruler().expect("ruler");
+    assert!((r.left_indent - p.left_indent).abs() < 1e-9);
+    // The right marker dragged 10 mm in from the right edge.
+    assert_eq!(r.indent_at(r.on_indents(width)), Some(IndentSide::Right));
+    drag(
+        &ctx,
+        &mut app,
+        r.on_indents(width),
+        r.on_indents(width - 10.0),
+        none,
+        Vec::new(),
+    );
+    let p = para(&app);
+    assert!((p.right_indent - 10.0).abs() < 0.6, "{}", p.right_indent);
+    assert!((p.left_indent - 15.0).abs() < 0.6, "{}", p.left_indent);
+    assert_eq!(app.engine.history_labels().0.len(), undo + 2, "one step");
+    app.undo();
+    assert_eq!(para(&app).right_indent, 0.0);
+    assert!((para(&app).left_indent - 15.0).abs() < 0.6);
+}
+
 /// While a stop is dragged the text flows to it as it moves, not only
 /// when the button is let go (#1852, #1912); the reflows come at most
 /// `LIVE_EVERY` apart, the stop dragged off the strip shows the text

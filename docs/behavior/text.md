@@ -788,6 +788,18 @@ every text holds the whole text.
     `pick_drag_tests::the_tab_ruler_is_for_paragraph_text_being_edited`).
   - The text is laid out again when the stop is let go, not while it
     is dragged, so the drag costs no more than any other.
+  - Indents (#1993): the left and right indents of the paragraphs at
+    the caret show as small filled triangles hanging from the strip's
+    outer edge, pointing at the frame, at the left indent from the
+    frame's left end and at the right indent from its right end. A press
+    in the outer half of the strip within 6 points of one takes it (the
+    stops' markers stand in the inner half); a drag moves it by 0.1 mm,
+    with a line down the frame, the two indents keeping at least 1 mm of
+    line between them. The text flows to it as it moves, as for a stop,
+    and the drag is one undo step (`App::set_indent`, the same paragraph
+    style change as the Text docker's indent fields). A click on a
+    marker adds no stop
+    (`pick_drag_tests::the_tab_ruler_drags_the_left_and_right_indents`).
 - `.cdr` (#1852, see `docs/cdr-format.md`): opening reads each
   paragraph's stops, from the style table's tab entries (versions 7 to
   15) or the `tabs` member of the paragraph style string (16 on); the

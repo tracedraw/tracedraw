@@ -86,6 +86,8 @@ full, row-by-row status.
 
 - Missing Fonts dialog: Add Font File... installs fonts from files, remembered for the next start as Font Manager's Add Font does (a copy kept on Android), and the families they bring leave the list (#1989).
 
+- Tab ruler: the paragraph's left and right indents show as markers along the ruler; dragging one sets the indent, the text following as it moves, one undo step (#1993).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

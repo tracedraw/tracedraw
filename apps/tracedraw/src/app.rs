@@ -1388,6 +1388,8 @@ pub struct App {
     /// A tab stop dragged on the tab ruler of the frame being edited
     /// (#1852).
     pub tab_drag: Option<crate::tab_ruler::TabDrag>,
+    /// An indent marker of the tab ruler being dragged (#1993).
+    pub indent_drag: Option<crate::tab_ruler::IndentDrag>,
     /// The right click that opened the context menu was on the tab ruler:
     /// the menu picks that stop's kind.
     pub tab_ruler_menu: Option<crate::tab_ruler::RulerHit>,
@@ -2771,6 +2773,7 @@ impl App {
             text_link_incoming: false,
             text_link_from_tab: false,
             tab_drag: None,
+            indent_drag: None,
             tab_ruler_menu: None,
             clip_frame_edit: None,
             clip_edit_marks: Vec::new(),
