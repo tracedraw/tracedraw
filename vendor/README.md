@@ -316,6 +316,14 @@ change marked `TraceDraw:` in a comment.
   leave tracking anew. Both decisions are in `src/alt_shortcuts.rs`,
   which depends on nothing in the crate; TraceDraw's tests include and
   run it (`winit_alt_shortcuts::tests`).
+- Change: Android passes on the modifier keys of a hardware keyboard
+  (#2052). winit's Android backend sent no `ModifiersChanged`, so with a
+  Bluetooth or USB keyboard Shift, Ctrl and Alt never reached the app
+  (shortcuts and Shift or Ctrl drags did nothing). In
+  `platform_impl/android/mod.rs` each key event's meta state
+  (`android_activity::input::MetaState`) gives the held modifiers
+  (`modifiers_of`); when they differ from the last ones told, a
+  `ModifiersChanged` is sent before the key's `KeyboardInput`.
 - The published crate's `examples/` and `tests/` stay as downloaded (the
   manifest lists them); they build in no gate.
 - Drop the copy and the `[patch.crates-io]` entry when a winit release
