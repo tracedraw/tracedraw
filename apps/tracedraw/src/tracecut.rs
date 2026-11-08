@@ -223,6 +223,10 @@ pub struct CrossingsSettings {
     pub between: bool,
     /// OK fixes the crossings (else it selects the objects that have them).
     pub fix: bool,
+    /// OK moves objects that cross each other apart (before `fix`).
+    pub separate: bool,
+    /// How far apart Move them apart leaves the objects (mm).
+    pub spacing: f64,
 }
 
 impl Default for CrossingsSettings {
@@ -231,6 +235,8 @@ impl Default for CrossingsSettings {
             tolerance: 0.05,
             between: false,
             fix: false,
+            separate: false,
+            spacing: 2.0,
         }
     }
 }
@@ -726,9 +732,10 @@ impl App {
                 )
             }
             ToolId::FindCrossings => {
+                // Moving apart is for objects crossing each other.
                 let found = crossings::find_crossings(
                     &outlines,
-                    settings.crossings.between,
+                    settings.crossings.between || settings.crossings.separate,
                     clamp(settings.crossings.tolerance),
                 );
                 let mut objects: Vec<ShapeId> = Vec::new();
@@ -859,6 +866,58 @@ impl App {
         true
     }
 
+    /// Move objects that cross each other apart in one undo step
+    /// ("Separate Crossings"): in each set of objects crossing one
+    /// another the lowest stays (or the locked ones), and the others each
+    /// move the shortest way that leaves the spacing to every object
+    /// staying or moved before (`crossings::separate_crossing`). Any kind
+    /// of object moves; locked ones stay. Returns whether anything moved;
+    /// the status line says what.
+    pub fn tracecut_separate_crossings(&mut self, s: &CrossingsSettings) -> bool {
+        let targets = self.tracecut_targets();
+        let outlines = self.tracecut_outlines(&targets);
+        let tol = if s.tolerance.is_finite() {
+            s.tolerance.clamp(TOLERANCE_RANGE.0, TOLERANCE_RANGE.1)
+        } else {
+            CrossingsSettings::default().tolerance
+        };
+        let spacing = if s.spacing.is_finite() {
+            s.spacing.clamp(0.0, 1000.0)
+        } else {
+            CrossingsSettings::default().spacing
+        };
+        let found = crossings::find_crossings(&outlines, true, tol);
+        let doc = self.doc();
+        let movable: Vec<bool> = targets
+            .iter()
+            .map(|id| doc.find_shape(*id).is_some_and(|sh| !sh.locked))
+            .collect();
+        let moves = crossings::separate_crossing(&outlines, &movable, &found, spacing, tol);
+        let mut cmds = Vec::new();
+        let mut moved = Vec::new();
+        for (id, d) in targets.iter().zip(&moves) {
+            if d.hypot() > 1e-9 && d.x.is_finite() && d.y.is_finite() {
+                cmds.push(Command::TransformShapes {
+                    shapes: vec![*id],
+                    transform: tracedraw_core::geometry::Affine::translate(*d),
+                });
+                moved.push(*id);
+            }
+        }
+        if cmds.is_empty() {
+            self.status = tr("tracecut.crossings_not_separated");
+            return false;
+        }
+        if let Err(e) = self.engine.run_batch("Separate Crossings", &cmds) {
+            self.status = e.to_string();
+            return false;
+        }
+        let n = moved.len();
+        self.select(moved);
+        self.status = trf("tracecut.crossings_separated", &[("n", &n.to_string())]);
+        true
+    }
+
     /// Whether `w` still matches the drawing, the selection and the
     /// window's tool and settings.
     pub fn tracecut_current(&self, w: &Worked, tool: ToolId, settings: &ToolSettings) -> bool {
@@ -921,7 +980,7 @@ impl App {
 
     /// Apply `w` to the drawing (OK): Find Duplicates deletes the repeats
     /// in one undo step (or selects them), Find Crossings selects the
-    /// objects that have crossings. Returns whether anything was done;
+    /// objects that have crossings, fixes them or moves them apart. Returns whether anything was done;
     /// the status line says what.
     pub fn tracecut_commit(
         &mut self,
@@ -985,6 +1044,9 @@ impl App {
                 if points.is_empty() {
                     self.status = tr("tracecut.no_crossings");
                     return false;
+                }
+                if settings.crossings.separate {
+                    return self.tracecut_separate_crossings(&settings.crossings);
                 }
                 if settings.crossings.fix {
                     return self.tracecut_fix_crossings(&settings.crossings);
@@ -1107,6 +1169,85 @@ mod tests {
         app.select(vec![e, a, b]);
         let back = app.tracecut_work_out(ToolId::FindCrossings, &settings);
         assert_eq!(back.outcome, w.outcome);
+    }
+
+    /// The live test of 0.41: Find Crossings found crossings but offered
+    /// no way to resolve them by moving the objects. With Move them
+    /// apart, OK moves each object crossing a lower one the shortest way
+    /// that leaves the spacing (here 6 mm right: 4 of overlap and 2 of
+    /// spacing), the lowest stays, an ellipse crossing the moved square
+    /// moves too, and all is one undo step; afterwards nothing crosses.
+    /// It finds crossings between objects without Also between objects;
+    /// a locked object stays and the other moves instead.
+    #[test]
+    fn ok_moves_crossing_objects_apart_in_one_undo_step() {
+        let mut app = App::headless();
+        let a = rect(&mut app, 0.0, 0.0, 20.0, 20.0);
+        let b = rect(&mut app, 16.0, 3.0, 20.0, 20.0);
+        let c = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: Rect::new(30.0, 5.0, 50.0, 15.0),
+                arc: None,
+            })
+            .expect("ellipse");
+        let far = rect(&mut app, 0.0, 60.0, 10.0, 10.0);
+        app.select(vec![a, b, c, far]);
+        let mut settings = ToolSettings::default();
+        settings.crossings.separate = true;
+        assert!(!settings.crossings.between);
+        let w = app.tracecut_work_out(ToolId::FindCrossings, &settings);
+        assert!(matches!(&w.outcome, Outcome::Crossings { points, .. } if points.len() == 4));
+        let page_box = |app: &App, id: ShapeId| {
+            app.doc()
+                .shape_on_page(id)
+                .expect("shape")
+                .page_path()
+                .bounding_box()
+        };
+        let before: Vec<Rect> = [a, b, c, far]
+            .iter()
+            .map(|id| page_box(&app, *id))
+            .collect();
+        let undo_before = app.engine.history_labels().0.len();
+        assert!(app.tracecut_commit(&w, &settings, None));
+        let (undo, _) = app.engine.history_labels();
+        assert_eq!(undo.len(), undo_before + 1);
+        assert_eq!(undo.last().copied(), Some("Separate Crossings"));
+        assert_eq!(page_box(&app, a), before[0], "the lowest stays");
+        assert_eq!(page_box(&app, far), before[3], "crossed nothing: stays");
+        let moved_b = page_box(&app, b).x0 - before[1].x0;
+        assert!((moved_b - 6.0).abs() < 0.01, "moved {moved_b}");
+        assert_ne!(page_box(&app, c), before[2]);
+        assert_eq!(app.selection, vec![b, c]);
+        settings.crossings.separate = false;
+        settings.crossings.between = true;
+        let again = app.tracecut_work_out(ToolId::FindCrossings, &settings);
+        assert!(
+            matches!(&again.outcome, Outcome::Crossings { points, .. } if points.is_empty()),
+            "{:?}",
+            again.outcome
+        );
+        app.undo();
+        assert_eq!(page_box(&app, b), before[1]);
+        // The lower one locked: the upper one stays, the lower moves.
+        app.select(vec![b]);
+        app.set_locked(true);
+        app.select(vec![a, b]);
+        settings.crossings.separate = true;
+        let w = app.tracecut_work_out(ToolId::FindCrossings, &settings);
+        assert!(app.tracecut_commit(&w, &settings, None));
+        assert_eq!(page_box(&app, b), before[1]);
+        assert!((page_box(&app, a).x0 + 6.0).abs() < 0.01);
+        // Both locked: nothing to move, and the status line says so.
+        app.undo();
+        app.select(vec![a]);
+        app.set_locked(true);
+        app.select(vec![a, b]);
+        let w = app.tracecut_work_out(ToolId::FindCrossings, &settings);
+        let rev = app.engine.revision();
+        assert!(!app.tracecut_commit(&w, &settings, None));
+        assert_eq!(app.engine.revision(), rev);
+        assert_eq!(app.status, tr("tracecut.crossings_not_separated"));
     }
 
     #[test]

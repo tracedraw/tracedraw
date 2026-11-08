@@ -123,9 +123,19 @@ of each set stays.
 ## Find Crossings {#find-crossings}
 
 Outlines that cross themselves cut badly, and objects that cross each other
-usually need a weld first. TraceCut finds the crossings, shows them as red
-rings in the preview, and OK selects the objects that have them. Tick
-**Also between objects** to find crossings between different objects too.
+usually need a weld first. TraceCut finds the crossings and shows them as red
+rings in the preview. Tick **Also between objects** to find crossings between
+different objects too. Under **On OK**, choose what OK does:
+
+- **Select them** selects the objects that have crossings.
+- **Fix them** rebuilds each outline that crosses itself as the outline of
+  the area it fills and, with Also between objects, welds objects that cross
+  each other into one.
+- **Move them apart** moves objects that cross each other apart, each the
+  shortest way that leaves the **Spacing** to the others. The lowest of each
+  set of crossing objects stays where it is, and so do locked objects.
+
+Each is one step of Undo.
 
 ## Eyelets {#eyelets}
 

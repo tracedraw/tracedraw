@@ -295,6 +295,26 @@ lines are kept as they are; curves, rectangles, ellipses and polygons
 become curves, and groups, text, pictures and locked objects are left
 alone.
 
+**Move them apart** moves objects that cross each other apart in one
+undo step ("Separate Crossings"); it looks for crossings between
+objects whether or not Also between objects is ticked. In each set of
+objects that cross one another (linked through any crossing) the locked
+ones stay, or the lowest when none is locked; the others, from the
+bottom up, each move the shortest way, of 32 directions evenly spread,
+that leaves the **spacing** (2 mm at first, shown with this choice)
+between its outlines and those of every object staying or moved before
+it: in each direction the move goes out in steps of a sixteenth of the
+object's size (at least half the spacing) to the first place that is
+clear and is then narrowed down by halving 16 times. Outlines are
+flattened within a quarter of the tolerance, and an object lying inside
+another's area counts as touching it. Objects of any kind move; the
+selected objects that crossed nothing stay and are kept clear of too,
+as are outlines crossing only themselves. The moved objects are
+selected; when nothing can move (no objects cross each other, or they
+are locked) the status line says so and nothing changes
+(`crossings::separate_crossing`,
+`tracecut::tests::ok_moves_crossing_objects_apart_in_one_undo_step`).
+
 ## Nesting tools
 
 Both place the selected objects (locked ones left alone) on the

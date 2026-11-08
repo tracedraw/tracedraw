@@ -382,11 +382,28 @@ fn settings(ui: &mut Ui, units: Units, st: &mut TraceCutState) {
                     .rich_tip(crate::ui::tips::keyed("tracecut.crossings_between"));
             });
             row(ui, &tr("tracecut.on_ok"), |ui| {
-                ui.radio_value(&mut s.fix, false, tr("tracecut.select_crossings"))
+                // Select, fix, or move apart.
+                let mut choice = if s.separate {
+                    2
+                } else if s.fix {
+                    1
+                } else {
+                    0
+                };
+                ui.radio_value(&mut choice, 0, tr("tracecut.select_crossings"))
                     .rich_tip(crate::ui::tips::keyed("tracecut.select_crossings"));
-                ui.radio_value(&mut s.fix, true, tr("tracecut.fix_crossings"))
+                ui.radio_value(&mut choice, 1, tr("tracecut.fix_crossings"))
                     .rich_tip(crate::ui::tips::keyed("tracecut.fix_crossings"));
+                ui.radio_value(&mut choice, 2, tr("tracecut.separate_crossings"))
+                    .rich_tip(crate::ui::tips::keyed("tracecut.separate_crossings"));
+                s.fix = choice == 1;
+                s.separate = choice == 2;
             });
+            if s.separate {
+                row(ui, &tr("tracecut.spacing"), |ui| {
+                    length(ui, units, &mut s.spacing, (0.0, 1000.0), "tracecut.spacing")
+                });
+            }
         }
         // The other Cut tools: ui/tracecut_cut.rs.
         _ => {}
@@ -1018,6 +1035,47 @@ mod tests {
         assert!(app.doc().find_shape(a).is_some());
         assert!(app.doc().find_shape(b).is_none());
         assert_eq!(app.engine.history_labels().0.len(), before + 1);
+    }
+
+    /// Find Crossings with Move them apart chosen in the window: the
+    /// spacing row shows, and OK (Enter) moves the upper of two crossing
+    /// squares clear of the lower in one undo step.
+    #[test]
+    fn find_crossings_moves_crossing_objects_apart_from_the_window() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let square = |x: f64, y: f64| ShapeKind::Rect {
+            rect: tracedraw_core::geometry::Rect::new(x, y, x + 30.0, y + 30.0),
+            radius: 0.0,
+            corners: None,
+        };
+        let a = app.new_shape(square(10.0, 10.0)).expect("a");
+        let b = app.new_shape(square(30.0, 15.0)).expect("b");
+        app.select(vec![a, b]);
+        app.settings.tracecut.tool = ToolId::FindCrossings;
+        app.open_tracecut();
+        let Dialog::TraceCut(st) = &mut app.dialog else {
+            panic!("open");
+        };
+        st.settings.crossings.separate = true;
+        st.settings.crossings.spacing = 3.0;
+        frame(&ctx, &mut app, false);
+        let before = app.engine.history_labels().0.len();
+        frame(&ctx, &mut app, true);
+        frame(&ctx, &mut app, false);
+        assert!(matches!(app.dialog, Dialog::None));
+        assert_eq!(app.engine.history_labels().0.len(), before + 1);
+        let x0 = |app: &App, id| {
+            app.doc()
+                .shape_on_page(id)
+                .expect("shape")
+                .page_path()
+                .bounding_box()
+                .x0
+        };
+        assert_eq!(x0(&app, a), 10.0);
+        // 10 mm of overlap and 3 of spacing.
+        assert!((x0(&app, b) - 43.0).abs() < 0.01, "{}", x0(&app, b));
     }
 
     #[test]
