@@ -3621,6 +3621,7 @@ status.save_failed = "Gagal menyimpan: {e}"
 status.fit_page_nothing = "Tidak ada yang bisa disesuaikan" # mt
 status.join_lines_unlike = "The lines must be turned and sized alike, in the same group" # mt
 status.saved = "Disimpan {p}"
+status.saved_mesh_as_colour = "{n} isian jaring masuk ke berkas .cdr sebagai satu warna masing-masing: berkas .cdr yang disimpan TraceDraw belum memuat isian jaring." # mt
 status.saved_template = "Templat disimpan {p}"
 status.script_done = "Skrip selesai"
 status.script_error = "Kesalahan skrip: {e}"

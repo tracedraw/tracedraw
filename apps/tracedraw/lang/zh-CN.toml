@@ -3621,6 +3621,7 @@ status.save_failed = "保存失败：{e}"
 status.fit_page_nothing = "没有可适应的对象" # mt
 status.join_lines_unlike = "The lines must be turned and sized alike, in the same group" # mt
 status.saved = "已保存 {p}"
+status.saved_mesh_as_colour = "{n} 个网格填充已各以单一颜色存入 .cdr 文件：TraceDraw 保存的 .cdr 文件尚不支持网格填充。" # mt
 status.saved_template = "已保存模板 {p}"
 status.script_done = "脚本已完成"
 status.script_error = "脚本错误：{e}"

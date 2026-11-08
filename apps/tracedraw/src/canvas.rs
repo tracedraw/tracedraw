@@ -3164,6 +3164,25 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
                 }
             }
         }
+        // The selected mesh node's handles: one on each grid line leaving
+        // it, dragged to bend the line (discussion #2073).
+        if let Some((_, i)) = app.selected_mesh_node().filter(|(id, _)| *id == s.id) {
+            let base = crate::mesh_tool::MESH_NODE_BASE + i;
+            if let Some(node) = crate::interaction2::effect_point(s, base) {
+                let from = app.view.to_screen(node);
+                for (k, q) in crate::interaction2::mesh_handle_points(s, i) {
+                    let to = app.view.to_screen(q);
+                    painter.line_segment([from, to], egui::Stroke::new(1.0, blue));
+                    let held = app.effect_node_drag == Some((s.id, k));
+                    painter.circle(
+                        to,
+                        3.5,
+                        if held { blue } else { egui::Color32::WHITE },
+                        egui::Stroke::new(1.0, blue),
+                    );
+                }
+            }
+        }
         for (i, p) in nodes {
             let sp = app.view.to_screen(p);
             let r = egui::Rect::from_center_size(sp, egui::vec2(7.0, 7.0));

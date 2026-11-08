@@ -3621,6 +3621,7 @@ status.save_failed = "Opslaan mislukt: {e}"
 status.fit_page_nothing = "Niets om de pagina aan aan te passen" # mt
 status.join_lines_unlike = "The lines must be turned and sized alike, in the same group" # mt
 status.saved = "{p} opgeslagen"
+status.saved_mesh_as_colour = "{n} meshvulling(en) zijn elk als één kleur in het .cdr-bestand gezet: .cdr-bestanden die TraceDraw opslaat bevatten nog geen meshvullingen." # mt
 status.saved_template = "Sjabloon {p} opgeslagen"
 status.script_done = "Script voltooid"
 status.script_error = "Scriptfout: {e}"

@@ -3621,6 +3621,7 @@ status.save_failed = "Speichern fehlgeschlagen: {e}"
 status.fit_page_nothing = "Nichts, woran die Seite angepasst werden kann" # mt
 status.join_lines_unlike = "Die Zeilen müssen gleich gedreht und skaliert sein, in derselben Gruppe" # mt
 status.saved = "Gespeichert: {p}"
+status.saved_mesh_as_colour = "{n} Gitterfüllung(en) kamen als je eine Farbe in die .cdr-Datei: Von TraceDraw gespeicherte .cdr-Dateien enthalten noch keine Gitterfüllungen." # mt
 status.saved_template = "Vorlage gespeichert: {p}"
 status.script_done = "Skript beendet"
 status.script_error = "Skriptfehler: {e}"

@@ -97,7 +97,9 @@ nodes, the skew handle), the start node of one moved by its line (not
 with Ctrl), the ends of a new fill's or transparency's line (not with
 Ctrl) snap like the pointer too, onto the object's own points as well
 (#2004,
-`snap::tests::fill_nodes_snap_while_dragged`). The pointer turning the selection (a
+`snap::tests::fill_nodes_snap_while_dragged`); so do the nodes of a mesh
+fill and their handles, and the corners of a perspective, keeping their
+offset from the pointer (discussion #2073). The pointer turning the selection (a
 rotate handle without Ctrl) snaps to the points of other objects and of
 the page only (nodes, midpoints, centres), so the turn aims at one;
 edges, guidelines and grid lines are left out, since the handle stands

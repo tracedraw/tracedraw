@@ -3621,6 +3621,7 @@ status.save_failed = "保存に失敗しました: {e}"
 status.fit_page_nothing = "ページを合わせる対象がありません" # mt
 status.join_lines_unlike = "The lines must be turned and sized alike, in the same group" # mt
 status.saved = "保存しました: {p}"
+status.saved_mesh_as_colour = "{n} 個のメッシュ塗りつぶしは .cdr ファイルにそれぞれ単色で保存されました。TraceDraw が保存する .cdr ファイルはまだメッシュ塗りつぶしを保持しません。" # mt
 status.saved_template = "テンプレートを保存しました: {p}"
 status.script_done = "スクリプトが終了しました"
 status.script_error = "スクリプトエラー: {e}"

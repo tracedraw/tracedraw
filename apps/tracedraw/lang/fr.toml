@@ -3621,6 +3621,7 @@ status.save_failed = "Échec de l'enregistrement : {e}"
 status.fit_page_nothing = "Rien à quoi ajuster la page" # mt
 status.join_lines_unlike = "Les lignes doivent avoir la même rotation et la même échelle, dans le même groupe" # mt
 status.saved = "Enregistré : {p}"
+status.saved_mesh_as_colour = "{n} remplissage(s) de maillage enregistré(s) dans le fichier .cdr avec une seule couleur chacun : les fichiers .cdr enregistrés par TraceDraw ne contiennent pas encore de remplissages de maillage." # mt
 status.saved_template = "Modèle enregistré : {p}"
 status.script_done = "Script terminé"
 status.script_error = "Erreur de script : {e}"

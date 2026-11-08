@@ -2935,6 +2935,67 @@ fn fills_not_written_yet_go_out_as_their_mean_colour() {
     }
 }
 
+/// A mesh fill, which these files do not get as a mesh, goes out as the
+/// mean colour of its nodes (weighed by their opacity) rather than its
+/// first node's, and is counted so the app can say so (discussion
+/// #2073).
+#[test]
+fn a_mesh_fill_goes_out_as_its_mean_colour_and_is_counted() {
+    let mut ids = tracedraw_core::id::IdSource::default();
+    let mut mesh = tracedraw_core::Mesh::new(
+        Rect::new(10.0, 10.0, 30.0, 30.0),
+        1,
+        1,
+        Color::rgb8(200, 0, 0),
+    );
+    mesh.nodes[2].color = Color::rgb8(0, 0, 100);
+    mesh.nodes[3].color = Color::rgb8(0, 0, 100);
+    let mut r = Shape::new(
+        ids.shape(),
+        ShapeKind::Rect {
+            rect: Rect::new(10.0, 10.0, 30.0, 30.0),
+            radius: 0.0,
+            corners: None,
+        },
+    );
+    r.fill = Fill::Mesh(mesh);
+    let mut plain = Shape::new(
+        ids.shape(),
+        ShapeKind::Rect {
+            rect: Rect::new(40.0, 10.0, 60.0, 30.0),
+            radius: 0.0,
+            corners: None,
+        },
+    );
+    plain.fill = Fill::Solid(Color::rgb8(0, 255, 0));
+    let mut inner = r.clone();
+    inner.id = ids.shape();
+    let group = Shape::new(
+        ids.shape(),
+        ShapeKind::Group {
+            children: vec![inner],
+        },
+    );
+    let doc = doc_with(vec![r, plain, group]);
+    // The one at the top and the one in the group.
+    assert_eq!(mesh_fills_kept_as_one_colour(&doc), 2);
+    assert_eq!(mesh_fills_kept_as_one_colour(&doc_with(Vec::new())), 0);
+    for v in versions() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, _) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let got = back.pages[0].layers[0].shapes[0]
+            .fill
+            .preview_color()
+            .expect("fill")
+            .to_rgb8();
+        let near = got
+            .iter()
+            .zip([100, 0, 50])
+            .all(|(a, b)| (*a as i32 - b).abs() <= 3);
+        assert!(near, "{v}: {got:?}");
+    }
+}
+
 #[test]
 fn a_page_background_colour_round_trips_from_version_21() {
     let mut doc = doc_with(Vec::new());

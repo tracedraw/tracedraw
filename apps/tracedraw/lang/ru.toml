@@ -3621,6 +3621,7 @@ status.save_failed = "Не удалось сохранить: {e}"
 status.fit_page_nothing = "Не к чему подгонять страницу" # mt
 status.join_lines_unlike = "The lines must be turned and sized alike, in the same group" # mt
 status.saved = "Сохранено: {p}"
+status.saved_mesh_as_colour = "{n} сетчатых заливок записано в файл .cdr одним цветом каждая: файлы .cdr, сохранённые TraceDraw, пока не содержат сетчатых заливок." # mt
 status.saved_template = "Шаблон сохранён: {p}"
 status.script_done = "Сценарий выполнен"
 status.script_error = "Ошибка скрипта: {e}"

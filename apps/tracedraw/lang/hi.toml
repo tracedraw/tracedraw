@@ -3621,6 +3621,7 @@ status.save_failed = "सहेजना विफल: {e}"
 status.fit_page_nothing = "पृष्ठ के लिए कुछ नहीं है" # mt
 status.join_lines_unlike = "पंक्तियाँ एक ही घुमाव और आकार की, एक ही समूह में होनी चाहिए" # mt
 status.saved = "सहेजा गया {p}"
+status.saved_mesh_as_colour = "{n} मेश फ़िल .cdr फ़ाइल में एक-एक रंग के रूप में गए: TraceDraw द्वारा सहेजी गई .cdr फ़ाइलों में अभी मेश फ़िल नहीं होते।" # mt
 status.saved_template = "टेम्पलेट सहेजा गया {p}"
 status.script_done = "स्क्रिप्ट पूर्ण"
 status.script_error = "स्क्रिप्ट त्रुटि: {e}"

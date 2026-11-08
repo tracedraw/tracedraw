@@ -3621,6 +3621,7 @@ status.save_failed = "Kaydetme başarısız oldu: {e}"
 status.fit_page_nothing = "Sayfanın sığdırılacağı bir şey yok" # mt
 status.join_lines_unlike = "The lines must be turned and sized alike, in the same group" # mt
 status.saved = "Kaydedildi: {p}"
+status.saved_mesh_as_colour = "{n} ağ dolgusu .cdr dosyasına her biri tek renk olarak gitti: TraceDraw'un kaydettiği .cdr dosyaları henüz ağ dolgusu içermiyor." # mt
 status.saved_template = "Şablon kaydedildi: {p}"
 status.script_done = "Betik tamamlandı"
 status.script_error = "Betik hatası: {e}"

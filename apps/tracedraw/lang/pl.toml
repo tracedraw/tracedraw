@@ -3621,6 +3621,7 @@ status.save_failed = "Zapisywanie nie powiodło się: {e}"
 status.fit_page_nothing = "Nie ma do czego dopasować strony" # mt
 status.join_lines_unlike = "The lines must be turned and sized alike, in the same group" # mt
 status.saved = "Zapisano {p}"
+status.saved_mesh_as_colour = "{n} wypełnień siatką trafiło do pliku .cdr jako jeden kolor każde: pliki .cdr zapisywane przez TraceDraw nie zawierają jeszcze wypełnień siatką." # mt
 status.saved_template = "Zapisano szablon {p}"
 status.script_done = "Skrypt zakończony"
 status.script_error = "Błąd skryptu: {e}"

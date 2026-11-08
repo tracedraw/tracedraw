@@ -1760,6 +1760,10 @@ pub struct App {
     pub effect_node_drag: Option<(ShapeId, usize)>,
     /// A step of the effect node drag under way is on the undo list.
     pub effect_node_stepped: bool,
+    /// How far the dragged effect node (or mesh handle) lay from the
+    /// press, on the page: it keeps that offset from the pointer and
+    /// snaps where it lands (discussion #2073).
+    pub effect_node_grab: tracedraw_core::geometry::Vec2,
     /// The dockers of the default column (at the right; `docker_tab` is
     /// the one in front, `show_dockers` whether the column is open).
     pub open_dockers: Vec<DockerTab>,
@@ -2937,6 +2941,7 @@ impl App {
             font_filter: String::new(),
             effect_node_drag: None,
             effect_node_stepped: false,
+            effect_node_grab: tracedraw_core::geometry::Vec2::ZERO,
             open_dockers: DockerTab::default_strip(),
             left_dockers: Vec::new(),
             left_tab: DockerTab::Hints,
@@ -7312,7 +7317,15 @@ impl App {
     pub(crate) fn save_to(&mut self, path: PathBuf) {
         // Time counted for the active task goes into the file too.
         self.flush_tracked_time();
-        let bytes = if is_cdr_path(&path) {
+        // Mesh fills a `.cdr` file gets as one colour each: the status
+        // says so once it is saved (discussion #2073).
+        let cdr = is_cdr_path(&path);
+        let meshes = if cdr {
+            tracedraw_cdr::write::mesh_fills_kept_as_one_colour(self.engine.document())
+        } else {
+            0
+        };
+        let bytes = if cdr {
             let doc = self.engine.document();
             let changed;
             let doc = if !self.cdr_embed_profile && doc.cmyk_profile.is_some() {
@@ -7369,7 +7382,15 @@ impl App {
         };
         self.backup_before_save(&path);
         let result = bytes.and_then(|b| crate::files::write(&path, b).map_err(|e| e.to_string()));
+        let saved = result.is_ok();
         self.saved_to(path, result);
+        if saved && meshes > 0 {
+            self.status = format!(
+                "{} {}",
+                self.status,
+                crate::i18n::trf("status.saved_mesh_as_colour", &[("n", &meshes.to_string())])
+            );
+        }
     }
 
     /// After writing the drawing to `path`: its state, the status line and

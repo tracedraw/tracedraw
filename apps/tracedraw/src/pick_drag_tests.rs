@@ -22280,3 +22280,63 @@ fn node_commands_have_keys_of_their_own() {
         assert_eq!(e.path, ["menu.object", "menu.object.nodes"]);
     }
 }
+
+/// Mesh Fill tool: a node, on the mesh's edge too, is dragged by a press
+/// on it (the drag is noticed a few pixels on, where it used to find no
+/// node) and its colour goes with it, as one undo step; the selected
+/// node's handles bend the grid lines leaving it (discussion #2073).
+#[test]
+fn mesh_nodes_and_their_handles_are_dragged() {
+    use tracedraw_core::{Color, Fill};
+    let (ctx, mut app, id) = setup();
+    app.set_tool(Tool::MeshFill);
+    app.mesh_rows = 2;
+    app.mesh_cols = 2;
+    app.apply_mesh_fill(id);
+    let mesh = |app: &App| match &app.doc().find_shape(id).expect("rect").fill {
+        Fill::Mesh(m) => m.clone(),
+        other => panic!("{other:?}"),
+    };
+    // Paint the corner node (10, 10) red so its colour can be followed.
+    app.selected_effect_node = Some((id, crate::mesh_tool::MESH_NODE_BASE));
+    app.color_mesh_node(Color::rgb8(255, 0, 0));
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let to_page = app.doc().find_shape(id).expect("rect").transform;
+    let corner = to_page * mesh(&app).nodes[0].pos;
+    assert!((corner - Point::new(10.0, 10.0)).hypot() < 1e-6, "{corner:?}");
+    let target = Point::new(18.0, 16.0);
+    let (from, to) = (app.view.to_screen(corner), app.view.to_screen(target));
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    let m = mesh(&app);
+    let at = to_page * m.nodes[0].pos;
+    assert!((at - target).hypot() < 0.5, "{at:?}");
+    assert_eq!(m.nodes[0].color, Color::rgb8(255, 0, 0));
+    // One undo step puts it back.
+    let _ = app.undo();
+    let at = to_page * mesh(&app).nodes[0].pos;
+    assert!((at - corner).hypot() < 1e-6, "{at:?}");
+    // The middle node of the top edge: three grid lines leave it, each
+    // with a handle.
+    let s = app.doc().find_shape(id).cloned().expect("rect");
+    assert_eq!(crate::interaction2::mesh_handle_points(&s, 1).len(), 3);
+    // The corner node's handle along the edge to the right, a third of
+    // the way to the next node, bends that line when dragged.
+    let at = app.view.to_screen(corner);
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert_eq!(
+        app.selected_mesh_node(),
+        Some((id, 0)),
+        "{:?}",
+        app.selected_effect_node
+    );
+    let handle = corner + Vec2::new(25.0 / 3.0, 0.0);
+    let bent = handle + Vec2::new(0.0, 8.0);
+    let (from, to) = (app.view.to_screen(handle), app.view.to_screen(bent));
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    let m = mesh(&app);
+    let top = m.edge(0, 0, true).expect("the top line");
+    assert!((to_page * top.p1 - bent).hypot() < 0.5, "{top:?}");
+    // The node stayed and stays selected.
+    assert!((to_page * m.nodes[0].pos - corner).hypot() < 1e-6);
+    assert_eq!(app.selected_mesh_node(), Some((id, 0)));
+}

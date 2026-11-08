@@ -3621,6 +3621,7 @@ status.save_failed = "Salvataggio non riuscito: {e}"
 status.fit_page_nothing = "Niente a cui adattare la pagina" # mt
 status.join_lines_unlike = "The lines must be turned and sized alike, in the same group" # mt
 status.saved = "Salvato {p}"
+status.saved_mesh_as_colour = "{n} riempimenti a maglia sono finiti nel file .cdr come un solo colore ciascuno: i file .cdr salvati da TraceDraw non contengono ancora riempimenti a maglia." # mt
 status.saved_template = "Modello salvato {p}"
 status.script_done = "Script terminato"
 status.script_error = "Errore dello script: {e}"

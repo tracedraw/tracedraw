@@ -1104,6 +1104,81 @@ impl Mesh {
         (i / cols, i % cols)
     }
 
+    /// The node next to node `i` along the grid line its handle `h`
+    /// leaves on; None at the mesh's edge where no line leaves that way.
+    pub fn neighbour(&self, i: usize, h: MeshHandle) -> Option<usize> {
+        if i >= self.nodes.len() {
+            return None;
+        }
+        let (r, c) = self.row_col(i);
+        let (rows, cols) = (self.rows as usize, self.cols as usize);
+        let (r, c) = match h {
+            MeshHandle::Right if c < cols => (r, c + 1),
+            MeshHandle::Left if c > 0 => (r, c - 1),
+            MeshHandle::Down if r < rows => (r + 1, c),
+            MeshHandle::Up if r > 0 => (r - 1, c),
+            _ => return None,
+        };
+        let j = r * (cols + 1) + c;
+        (j < self.nodes.len()).then_some(j)
+    }
+
+    /// Where handle `h` of node `i` is (local space): its own place, or a
+    /// third of the way to the neighbour for a straight line; None where
+    /// no grid line leaves the node that way.
+    pub fn handle_point(&self, i: usize, h: MeshHandle) -> Option<Point> {
+        let j = self.neighbour(i, h)?;
+        Some(self.nodes.get(i)?.handle(h, self.nodes.get(j)?.pos))
+    }
+
+    /// Move handle `h` of node `i` by `d`, bending the grid line it
+    /// shapes; false where there is no such handle.
+    pub fn move_handle(&mut self, i: usize, h: MeshHandle, d: Vec2) -> bool {
+        let Some(at) = self.handle_point(i, h) else {
+            return false;
+        };
+        let to = at + d;
+        if !(to.x.is_finite() && to.y.is_finite()) {
+            return false;
+        }
+        match self.nodes.get_mut(i) {
+            Some(n) => {
+                n.set_handle(h, to);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The colour the mesh shows on the whole: the mean of its nodes'
+    /// colours weighted by their opacity (the one colour when they all
+    /// have it), what a format without mesh fills keeps of it. None for
+    /// a mesh without nodes.
+    pub fn mean_color(&self) -> Option<Color> {
+        let first = self.nodes.first()?.color;
+        if self.nodes.iter().all(|n| n.color == first) {
+            return Some(first);
+        }
+        let (mut sum, mut weight) = ([0.0f64; 3], 0.0f64);
+        for n in &self.nodes {
+            let a = if n.alpha.is_finite() {
+                f64::from(n.alpha.clamp(0.0, 1.0))
+            } else {
+                1.0
+            };
+            let [r, g, b] = n.color.to_rgb8();
+            sum[0] += f64::from(r) * a;
+            sum[1] += f64::from(g) * a;
+            sum[2] += f64::from(b) * a;
+            weight += a;
+        }
+        if weight <= 0.0 {
+            return Some(first);
+        }
+        let c = |v: f64| (v / weight).round().clamp(0.0, 255.0) as u8;
+        Some(Color::rgb8(c(sum[0]), c(sum[1]), c(sum[2])))
+    }
+
     /// The mesh as the grid sees it at row `v` and column `u` (fractions
     /// of the rows and columns, 0 to 1): position, colour and opacity
     /// mixed from the four nodes around it.
@@ -1995,6 +2070,53 @@ mod tests {
             width_around(2.0, &two, 0.5, false),
             width_at(2.0, &two, 0.5)
         );
+    }
+
+    /// A mesh node's handles lie along the grid lines that leave it (a
+    /// third of the way to the neighbour while straight); an edge node has
+    /// none towards the outside; moving one bends its line (discussion
+    /// #2073). The mean colour weighs the nodes by their opacity.
+    #[test]
+    fn mesh_handles_lie_on_the_grid_lines_and_bend_them() {
+        let b = crate::geometry::Rect::new(0.0, 0.0, 30.0, 30.0);
+        let mut m = Mesh::new(b, 1, 1, Color::WHITE);
+        // Node 0 at (0, 0): right to node 1 (30, 0), down to node 2 (0, 30).
+        assert_eq!(m.neighbour(0, MeshHandle::Right), Some(1));
+        assert_eq!(m.neighbour(0, MeshHandle::Down), Some(2));
+        assert_eq!(m.neighbour(0, MeshHandle::Left), None);
+        assert_eq!(m.neighbour(0, MeshHandle::Up), None);
+        assert_eq!(m.neighbour(9, MeshHandle::Up), None);
+        assert_eq!(
+            m.handle_point(0, MeshHandle::Right),
+            Some(Point::new(10.0, 0.0))
+        );
+        assert_eq!(m.handle_point(0, MeshHandle::Up), None);
+        assert!(!m.move_handle(0, MeshHandle::Up, Vec2::new(1.0, 1.0)));
+        assert!(m.move_handle(0, MeshHandle::Right, Vec2::new(0.0, -6.0)));
+        assert_eq!(
+            m.handle_point(0, MeshHandle::Right),
+            Some(Point::new(10.0, -6.0))
+        );
+        // The top line bends; the left one stays straight.
+        assert!(m.is_curved());
+        let top = m.edge(0, 0, true).expect("top line");
+        assert_eq!(top.p1, Point::new(10.0, -6.0));
+        let left = m.edge(0, 0, false).expect("left line");
+        assert_eq!(left.p1, Point::new(0.0, 10.0));
+        // Moving the node carries its handles along.
+        m.nodes[0].translate(Vec2::new(2.0, 0.0));
+        assert_eq!(
+            m.handle_point(0, MeshHandle::Right),
+            Some(Point::new(12.0, -6.0))
+        );
+        // One colour: that colour; else the mean, a transparent node
+        // counting for nothing.
+        assert_eq!(m.mean_color(), Some(Color::WHITE));
+        m.nodes[0].color = Color::rgb8(0, 0, 0);
+        m.nodes[1].color = Color::rgb8(0, 0, 0);
+        assert_eq!(m.mean_color(), Some(Color::rgb8(128, 128, 128)));
+        m.nodes[1].alpha = 0.0;
+        assert_eq!(m.mean_color(), Some(Color::rgb8(170, 170, 170)));
     }
 
     /// #804: a double-click inside a mesh puts a node exactly where it

@@ -3621,6 +3621,7 @@ status.save_failed = "Error al guardar: {e}"
 status.fit_page_nothing = "Nada a lo que ajustar la página" # mt
 status.join_lines_unlike = "Las líneas deben tener el mismo giro y escala, en el mismo grupo" # mt
 status.saved = "Guardado en {p}"
+status.saved_mesh_as_colour = "{n} relleno(s) de malla pasaron al archivo .cdr como un solo color cada uno: los archivos .cdr que guarda TraceDraw aún no contienen rellenos de malla." # mt
 status.saved_template = "Plantilla guardada en {p}"
 status.script_done = "Script finalizado"
 status.script_error = "Error de script: {e}"

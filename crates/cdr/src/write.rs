@@ -133,6 +133,12 @@ pub struct ShadowPicture {
 /// (version 16 and later).
 pub fn document_to_cdr_version_with(doc: &Document, version: u16, previews: &Previews) -> Vec<u8> {
     let v = Ver(version.clamp(OLDEST_VERSION, NEWEST_VERSION));
+    let meshes = mesh_fills_kept_as_one_colour(doc);
+    if meshes > 0 {
+        log::warn!(
+            "{meshes} mesh fill(s) written to .cdr as one colour each (mesh fill records are not written)"
+        );
+    }
     // The guidelines every page shows (#1928) count as each page's; those
     // all pages share go to the master page's guides layer
     // ([`master_guides`]), as files hold them.
@@ -1593,12 +1599,48 @@ fn fill_colour(fill: &Fill) -> Option<Color> {
     }
 }
 
+/// How many objects of `doc` (inside groups and clip frames and in
+/// symbols too) have a mesh fill, which these files get as one colour,
+/// the mesh's mean colour: the records of mesh fill objects are only
+/// known as far as reading them needs (`docs/cdr-format.md`, object type
+/// 0x20), not well enough to write one (discussion #2073). The app tells
+/// the user after saving.
+pub fn mesh_fills_kept_as_one_colour(doc: &Document) -> usize {
+    fn count(shapes: &[Shape]) -> usize {
+        shapes
+            .iter()
+            .map(|s| {
+                let own = usize::from(matches!(s.fill, Fill::Mesh(_)));
+                own + match &s.kind {
+                    ShapeKind::Group { children } => count(children),
+                    ShapeKind::ClipFrame { frame, contents } => {
+                        count(std::slice::from_ref(&**frame)) + count(contents)
+                    }
+                    _ => 0,
+                }
+            })
+            .sum()
+    }
+    doc.pages
+        .iter()
+        .flat_map(|p| &p.layers)
+        .map(|l| count(&l.shapes))
+        .sum::<usize>()
+        + doc
+            .symbols
+            .iter()
+            .map(|s| count(std::slice::from_ref(&s.shape)))
+            .sum::<usize>()
+}
+
 /// The one colour written for a fill these files cannot hold yet: the
 /// mean colour of a bitmap pattern's tile, the middle of a texture's or a
-/// two-colour pattern's colours, else its preview colour.
+/// two-colour pattern's colours, the mean of a mesh's node colours
+/// (weighed by their opacity), else its preview colour.
 fn stand_in_colour(fill: &Fill) -> Option<Color> {
     use tracedraw_core::style::{lerp_color, Pattern};
     match fill {
+        Fill::Mesh(m) => m.mean_color().or_else(|| fill.preview_color()),
         Fill::Pattern(Pattern::Bitmap { png, .. }) => {
             let pm = tiny_skia::Pixmap::decode_png(png).ok()?;
             let (mut sum, mut weight) = ([0.0f64; 3], 0.0f64);

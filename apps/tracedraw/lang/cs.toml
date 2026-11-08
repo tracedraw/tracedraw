@@ -3621,6 +3621,7 @@ status.save_failed = "Uložení se nezdařilo: {e}"
 status.fit_page_nothing = "Není čemu stránku přizpůsobit" # mt
 status.join_lines_unlike = "The lines must be turned and sized alike, in the same group" # mt
 status.saved = "Uloženo: {p}"
+status.saved_mesh_as_colour = "{n} výplní sítí šlo do souboru .cdr jako jedna barva: soubory .cdr uložené v TraceDraw zatím výplně sítí neobsahují." # mt
 status.saved_template = "Šablona uložena: {p}"
 status.script_done = "Skript dokončen"
 status.script_error = "Chyba skriptu: {e}"

@@ -3621,6 +3621,7 @@ status.save_failed = "সংরক্ষণ ব্যর্থ: {e}"
 status.fit_page_nothing = "পৃষ্ঠা মেলানোর কিছু নেই" # mt
 status.join_lines_unlike = "The lines must be turned and sized alike, in the same group" # mt
 status.saved = "সংরক্ষিত {p}"
+status.saved_mesh_as_colour = "{n}টি মেশ ফিল .cdr ফাইলে প্রতিটি একটি রঙ হিসেবে গেছে: TraceDraw-এর সংরক্ষিত .cdr ফাইলে এখনও মেশ ফিল থাকে না।" # mt
 status.saved_template = "টেমপ্লেট সংরক্ষিত {p}"
 status.script_done = "স্ক্রিপ্ট সম্পন্ন"
 status.script_error = "স্ক্রিপ্ট ত্রুটি: {e}"

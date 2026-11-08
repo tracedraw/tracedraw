@@ -3621,6 +3621,7 @@ status.save_failed = "儲存失敗：{e}"
 status.fit_page_nothing = "沒有可符合的物件" # mt
 status.join_lines_unlike = "The lines must be turned and sized alike, in the same group" # mt
 status.saved = "已儲存 {p}"
+status.saved_mesh_as_colour = "{n} 個網格填色已各以單一顏色存入 .cdr 檔案：TraceDraw 儲存的 .cdr 檔案尚不支援網格填色。" # mt
 status.saved_template = "已儲存範本 {p}"
 status.script_done = "指令碼已完成"
 status.script_error = "指令碼錯誤：{e}"

@@ -3621,6 +3621,7 @@ status.save_failed = "فشل الحفظ: {e}"
 status.fit_page_nothing = "لا شيء لملاءمة الصفحة معه" # mt
 status.join_lines_unlike = "The lines must be turned and sized alike, in the same group" # mt
 status.saved = "تم الحفظ {p}"
+status.saved_mesh_as_colour = "حُفظت {n} من تعبئات الشبكة في ملف .cdr بلون واحد لكل منها: ملفات .cdr التي يحفظها TraceDraw لا تحمل تعبئات الشبكة بعد." # mt
 status.saved_template = "تم حفظ القالب {p}"
 status.script_done = "انتهى البرنامج النصي"
 status.script_error = "خطأ في النص البرمجي: {e}"
