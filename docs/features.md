@@ -6,7 +6,7 @@ checked screenshot behind it.
 "partial" names what is missing. "baked" means the result is applied once
 instead of staying live and editable. The goal is every row at "works".
 
-Counts: works 190, partial 7 (`.cdr` content coverage; CMX import; print preview; data merge; colour styles; Find and Replace; the Android app), missing 1 (system windows), not applicable 4.
+Counts: works 191, partial 7 (`.cdr` content coverage; CMX import; print preview; data merge; colour styles; Find and Replace; the Android app), missing 1 (system windows), not applicable 4.
 
 ## 1. Selection and navigation
 
@@ -134,6 +134,7 @@ Counts: works 190, partial 7 (`.cdr` content coverage; CMX import; print preview
 | Area Fill (enclosed region, its sides the outlines' own curves; fill and outline: Specify, Use default or None, in that order) (see `behavior/area-fill.md`) | works |
 | Interactive Fill tool: property bar with fill type and gradient fields, start, end and skew nodes placed freely on the canvas (the fill keeps them through moves and scales; SVG and PDF export them); colour nodes added on the line with a double click, moved and removed; midpoint sliders; a node bar with the node's colour and transparency; node colour, transparency and position on the property bar; palette colours to the picked node | works |
 | Outline: width (shown in points, mm, cm, inches or pixels), colour, caps, joins, mitre limit (angle), position (outside, centred, inside), dashes with Align dashes and custom line styles (Edit Line Style), nib, behind fill, scale with object, arrowheads (presets and custom from the selection) (see `behavior/outline-pen.md`) | works |
+| Arrowhead editor: per end the head, its size (percentage of the preset size), offset along the line, mirror horizontally and vertically, rotation, with a preview; Share attributes copies the start to the end and keeps them the same; rendered and exported alike (see `behavior/outline-pen.md`) | works |
 | Outline paint: every fill kind (none, uniform, gradient, pattern, texture, mesh) with the fill editors, on screen, in SVG (gradient and pattern strokes) and PDF (the outline's area shaded or rasterised) | works (see `behavior/outline-pen.md`, Outline paint; other exports use the outline colour) |
 | Outline Pen and Outline Color (hidden flyout, Options toggle); the Outline Pen dialog's changes show live on the selection until OK or Cancel; calligraphic nib rendered and exported | works |
 | Eyedroppers: colour (bitmap sampling, fill or outline) and attributes (properties with transparency, transformations, effects groups, #1338); a live readout beside the pointer while the colour eyedropper or a colour picker's eyedropper hovers: swatch, palette or ink name, values in the drawing's CMYK or RGB mode and hex (#990) | works (see `behavior/eyedroppers.md`) |
