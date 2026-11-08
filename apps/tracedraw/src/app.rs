@@ -5650,16 +5650,16 @@ impl App {
                 self.text_size_pt = (seen * 100.0).round() / 100.0;
                 self.text_bold = sp.bold;
                 self.text_italic = sp.italic;
-                self.text_underline = sp.underline;
-                self.text_strikethrough = sp.strikethrough;
+                self.text_underline = sp.underline.is_on();
+                self.text_strikethrough = sp.strikethrough.is_on();
                 self.text_shown = Some(TextShown {
                     shape: id,
                     font: Some(self.text_font.clone()),
                     size_pt: Some(self.text_size_pt),
                     bold: Some(sp.bold),
                     italic: Some(sp.italic),
-                    underline: Some(sp.underline),
-                    strikethrough: Some(sp.strikethrough),
+                    underline: Some(sp.underline.is_on()),
+                    strikethrough: Some(sp.strikethrough.is_on()),
                 });
             }
             // The alignment of the paragraph at the caret.

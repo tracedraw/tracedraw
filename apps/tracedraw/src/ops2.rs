@@ -3226,8 +3226,8 @@ impl App {
             let set_size = differs(&|s| ((s.size_pt - size) * scale).abs() > 0.005);
             let set_bold = differs(&|s| s.bold != bold);
             let set_italic = differs(&|s| s.italic != italic);
-            let set_underline = differs(&|s| s.underline != underline);
-            let set_strike = differs(&|s| s.strikethrough != strike);
+            let set_underline = differs(&|s| s.underline.is_on() != underline);
+            let set_strike = differs(&|s| s.strikethrough.is_on() != strike);
             self.text_apply_style(move |sp| {
                 if set_font {
                     sp.font_family = font.clone();
@@ -3242,10 +3242,10 @@ impl App {
                     sp.italic = italic;
                 }
                 if set_underline {
-                    sp.underline = underline;
+                    sp.underline = underline.into();
                 }
                 if set_strike {
-                    sp.strikethrough = strike;
+                    sp.strikethrough = strike.into();
                 }
             });
             return;
@@ -3302,11 +3302,13 @@ impl App {
                         if set_italic {
                             sp.italic = self.text_italic;
                         }
-                        if set_underline {
-                            sp.underline = self.text_underline;
+                        // A styled line stays while the button shows it
+                        // on (#1209).
+                        if set_underline && sp.underline.is_on() != self.text_underline {
+                            sp.underline = self.text_underline.into();
                         }
-                        if set_strike {
-                            sp.strikethrough = self.text_strikethrough;
+                        if set_strike && sp.strikethrough.is_on() != self.text_strikethrough {
+                            sp.strikethrough = self.text_strikethrough.into();
                         }
                     });
                     Some(Command::SetShapeKind {

@@ -22068,7 +22068,7 @@ fn the_text_bar_has_a_strikethrough_button() {
     app.select(vec![id]);
     app.sync_text_defaults_from(id);
     let struck = |app: &App| match &app.doc().find_shape(id).expect("text").kind {
-        ShapeKind::Text { spans, .. } => spans.iter().all(|sp| sp.strikethrough),
+        ShapeKind::Text { spans, .. } => spans.iter().all(|sp| sp.strikethrough.is_on()),
         _ => panic!("text"),
     };
     let button = |ctx: &egui::Context, app: &mut App| {
