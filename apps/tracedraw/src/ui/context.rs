@@ -385,6 +385,10 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     if ci(ui, close, "menu.object.combine", "Ctrl+L", many) {
         app.combine();
     }
+    // A drop shadow: the Drop Shadow tool on it.
+    if app.can_edit_shadow() && ci(ui, close, "context.edit_shadow", "", true) {
+        app.edit_shadow();
+    }
     sep(ui);
     if ci(ui, close, "menu.edit.cut", "Ctrl+X", true) {
         app.cut();
@@ -769,4 +773,39 @@ fn page_menu(app: &mut App, ui: &mut Ui, p: tracedraw_core::Point, close: &mut b
     if ci(ui, close, "menu.tools.options_app", "Ctrl+J", true) {
         app.dialog = Dialog::Options;
     }
+}
+
+/// The menu `menu` drawn for a fresh app from `fresh`, walked row by row
+/// (each row on an app of its own) until the row `key` is hit: that app,
+/// with the row run; `None` when the menu has no such row or it is
+/// greyed.
+#[cfg(test)]
+pub(crate) fn run_menu_row(
+    fresh: &dyn Fn() -> App,
+    menu: fn(&mut App, &mut Ui, &mut bool),
+    key: &str,
+) -> Option<App> {
+    let ctx = egui::Context::default();
+    let run = |app: &mut App, target: usize| {
+        crate::ui::menus::replay::start(target);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, 900.0),
+            )),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| {
+            let mut close = false;
+            menu(app, ui, &mut close);
+        });
+        out.textures_delta.clear();
+        crate::ui::menus::replay::finish()
+    };
+    let (_, rows) = run(&mut fresh(), usize::MAX);
+    (0..rows).find_map(|t| {
+        let mut app = fresh();
+        let (hit, _) = run(&mut app, t);
+        (hit.as_deref() == Some(key)).then_some(app)
+    })
 }

@@ -8335,3 +8335,6 @@ palette.reset_desc = "Keep only the colors the drawing uses in the document pale
 menu.view.navigator = "Navigator"
 docker.distribute_gap_tip = "The distance the Distribute buttons keep between the objects, or between their edges or centres. Once a Distribute button has spread the selection, a new value spreads it again at once; the wheel over the box steps it."
 docker.distribute_gap_slider_tip = "Drag to change the spacing: the selection is spread again as you go. Let go to keep it (one undo step); Esc puts it back."
+context.edit_shadow = "Edit Shadow"
+docker.shadow_summary = "{kind}, opacity {opacity} %"
+docker.edit_shadow_tip = "The Drop Shadow tool on this object: drag the shadow's handles, or change its settings on the property bar."

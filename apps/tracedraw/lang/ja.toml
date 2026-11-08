@@ -8335,3 +8335,6 @@ palette.reset_desc = "ドキュメントパレットに図面で使われてい�
 menu.view.navigator = "ナビゲーター" # mt
 docker.distribute_gap_tip = "分布ボタンがオブジェクトの間、またはその端や中心の間に保つ距離。分布ボタンで選択範囲を分布したあとは、新しい値ですぐに分布し直します。ボックス上のホイールで段階的に変わります。" # mt
 docker.distribute_gap_slider_tip = "ドラッグして間隔を変更すると、選択範囲がその場で分布し直されます。離すと確定します(取り消しは 1 回)。Esc で元に戻します。" # mt
+context.edit_shadow = "影を編集" # mt
+docker.shadow_summary = "{kind}、不透明度 {opacity} %" # mt
+docker.edit_shadow_tip = "このオブジェクトにドロップシャドウツールを使います。影のハンドルをドラッグするか、プロパティバーで設定を変更します。" # mt

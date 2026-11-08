@@ -8335,3 +8335,6 @@ palette.reset_desc = "Belge paletinde yalnızca çizimin kullandığı renkleri 
 menu.view.navigator = "Gezgin" # mt
 docker.distribute_gap_tip = "Dağıt düğmelerinin nesneler arasında ya da kenarları veya merkezleri arasında koruduğu uzaklık. Bir Dağıt düğmesi seçimi dağıttıktan sonra yeni bir değer onu hemen yeniden dağıtır; kutunun üzerindeki tekerlek adım adım değiştirir." # mt
 docker.distribute_gap_slider_tip = "Aralığı değiştirmek için sürükleyin: seçim siz sürükledikçe yeniden dağıtılır. Korumak için bırakın (tek geri alma adımı); Esc her şeyi geri getirir." # mt
+context.edit_shadow = "Gölgeyi düzenle" # mt
+docker.shadow_summary = "{kind}, opaklık %{opacity}" # mt
+docker.edit_shadow_tip = "Bu nesnede Gölge aracı: gölgenin tutamaçlarını sürükleyin veya ayarlarını özellik çubuğunda değiştirin." # mt

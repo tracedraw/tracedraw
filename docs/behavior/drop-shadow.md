@@ -134,6 +134,31 @@ shows the shadow's handles; a drag that starts on the shadow (not on a
 handle or on the object) moves the whole shadow: its end goes as far as
 the pointer does.
 
+An object that casts a drop shadow of its own is never lost to another
+object's shadow lying over it: a click on it picks it (Shift adds it),
+with the Pick tool and with the Drop Shadow tool, so picking one
+shadowed object after another never jumps to the neighbour whose shadow
+falls there. A shadow still wins over an object of no shadow beneath it
+(a background), as above
+(`pick_drag_tests::a_click_on_an_object_with_a_shadow_never_picks_another_ones_shadow`).
+
+## Editing a shadow
+
+- A double click on a shadow with the Pick tool (away from its object,
+  or where it lies over an object it is picked above) chooses the Drop
+  Shadow tool with that object alone selected: its handles show and the
+  property bar shows its settings. With the Drop Shadow tool chosen, a
+  click or double click on an object with a shadow picks it.
+- The handles and the property bar follow the first selected object that
+  has a shadow, also with an object of no shadow picked before it; the
+  bar shows the settings new shadows get only when no selected object has
+  one.
+- Edit Shadow, in the right-click menu of a selection with a shadowed
+  object and as a button in the Drop Shadow section of the Properties
+  docker (shown for such an object, with a line telling Flat or the edge
+  and the opacity), does the same as the double click
+  (`pick_drag_tests::a_double_click_on_a_shadow_edits_it_with_the_shadow_tool`).
+
 ## Drawing speed
 
 A shadow is drawn on a layer of only the pixels it can reach (its moved

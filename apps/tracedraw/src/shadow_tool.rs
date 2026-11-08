@@ -86,11 +86,40 @@ pub fn shadow_covers(s: &Shape, p: Point) -> bool {
 }
 
 impl App {
-    /// The first selected object's shadow, with its id and box.
+    /// The shadow the Drop Shadow tool edits: the first selected object
+    /// that has one, with its id and box. Its handles show and the
+    /// property bar shows its settings, also with objects of no shadow
+    /// picked before it.
     pub fn selected_shadow(&self) -> Option<(ShapeId, Shadow, Rect)> {
-        let s = self.selected_shapes().into_iter().next()?;
-        let sh = s.shadow?;
-        Some((s.id, sh, shadow_box(&s)))
+        self.selected_rc()
+            .iter()
+            .find_map(|s| Some((s.id, s.shadow?, shadow_box(s))))
+    }
+
+    /// The settings the Drop Shadow property bar shows: the selected
+    /// shadow's (see [`Self::selected_shadow`]), else those new shadows
+    /// get.
+    pub fn shadow_bar_shadow(&self) -> Shadow {
+        self.selected_shadow()
+            .map_or(self.shadow_default, |(_, sh, _)| sh)
+    }
+
+    /// Edit Shadow can act: a selected object has a drop shadow.
+    pub fn can_edit_shadow(&self) -> bool {
+        self.selected_shadow().is_some()
+    }
+
+    /// Edit Shadow (the object's right-click menu, the Properties
+    /// docker, a double click on a shadow): the Drop Shadow tool on the
+    /// first selected object with a shadow, that object alone selected,
+    /// with its handles on the canvas and its settings on the property
+    /// bar.
+    pub fn edit_shadow(&mut self) {
+        let Some((id, _, _)) = self.selected_shadow() else {
+            return;
+        };
+        self.set_tool(crate::tools::Tool::DropShadow);
+        self.select(vec![id]);
     }
 
     /// The shadow handle under page point `p`, with the Drop Shadow tool.

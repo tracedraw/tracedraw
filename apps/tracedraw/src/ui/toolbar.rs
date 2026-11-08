@@ -3561,8 +3561,9 @@ fn shadow_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::Shape]) {
                 .size(11.0),
         );
     };
-    let first = shapes.first().and_then(|s| s.shadow);
-    let mut sh = first.unwrap_or(app.shadow_default);
+    // The shadow the handles are on: the first selected object with one.
+    let first = app.selected_shadow().map(|(_, sh, _)| sh);
+    let mut sh = app.shadow_bar_shadow();
     let mut changed = false;
     dim(ui, "toolbar.drop_shadow");
     if ui

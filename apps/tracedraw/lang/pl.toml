@@ -8335,3 +8335,6 @@ palette.reset_desc = "Zachowaj w palecie dokumentu tylko kolory używane w rysun
 menu.view.navigator = "Nawigator" # mt
 docker.distribute_gap_tip = "Odległość, jaką przyciski Rozmieść zachowują między obiektami albo między ich krawędziami lub środkami. Gdy przycisk Rozmieść rozmieścił już zaznaczenie, nowa wartość od razu rozmieszcza je ponownie; kółko nad polem zmienia ją krokami." # mt
 docker.distribute_gap_slider_tip = "Przeciągnij, aby zmienić odstęp: zaznaczenie jest rozmieszczane na bieżąco. Puść, aby go zachować (jeden krok cofania); Esc przywraca wszystko." # mt
+context.edit_shadow = "Edytuj cień" # mt
+docker.shadow_summary = "{kind}, krycie {opacity} %" # mt
+docker.edit_shadow_tip = "Narzędzie Cień na tym obiekcie: przeciągnij uchwyty cienia lub zmień jego ustawienia na pasku właściwości." # mt

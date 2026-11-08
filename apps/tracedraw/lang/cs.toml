@@ -8335,3 +8335,6 @@ palette.reset_desc = "Ponechat v paletě dokumentu jen barvy, které kresba pou�
 menu.view.navigator = "Navigátor" # mt
 docker.distribute_gap_tip = "Vzdálenost, kterou tlačítka Rozmístit udržují mezi objekty nebo mezi jejich okraji či středy. Jakmile tlačítko Rozmístit výběr rozmístí, nová hodnota jej hned rozmístí znovu; kolečko nad polem ji krokuje." # mt
 docker.distribute_gap_slider_tip = "Tažením měníte rozestup: výběr se při tom znovu rozmisťuje. Uvolněním jej ponecháte (jeden krok zpět); Esc vše vrátí." # mt
+context.edit_shadow = "Upravit stín" # mt
+docker.shadow_summary = "{kind}, krytí {opacity} %" # mt
+docker.edit_shadow_tip = "Nástroj Vržený stín na tomto objektu: táhněte úchyty stínu nebo změňte jeho nastavení na panelu vlastností." # mt

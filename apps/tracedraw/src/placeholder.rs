@@ -248,44 +248,12 @@ mod tests {
         assert!(app.doc().find_shape(id).is_some(), "the frame stays");
     }
 
-    /// The menu `menu` drawn for `app`, walked row by row on a fresh
-    /// app each time until the row `key` is hit: that app, with the row
-    /// run; `None` when the menu has no such row (or it is greyed).
-    fn run_row(
-        fresh: &dyn Fn() -> App,
-        menu: fn(&mut App, &mut egui::Ui, &mut bool),
-        key: &str,
-    ) -> Option<App> {
-        let ctx = egui::Context::default();
-        let run = |app: &mut App, target: usize| {
-            crate::ui::menus::replay::start(target);
-            let input = egui::RawInput {
-                screen_rect: Some(egui::Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    egui::vec2(1400.0, 900.0),
-                )),
-                ..Default::default()
-            };
-            let mut out = ctx.run_ui(input, |ui| {
-                let mut close = false;
-                menu(app, ui, &mut close);
-            });
-            out.textures_delta.clear();
-            crate::ui::menus::replay::finish()
-        };
-        let (_, rows) = run(&mut fresh(), usize::MAX);
-        (0..rows).find_map(|t| {
-            let mut app = fresh();
-            let (hit, _) = run(&mut app, t);
-            (hit.as_deref() == Some(key)).then_some(app)
-        })
-    }
-
     /// Insert Placeholder Text is in the right-click menu of a paragraph
     /// frame, and in the one shown while a frame is edited, and fills an
     /// empty frame from there; an artistic text's menu has no such row.
     #[test]
     fn the_right_click_menus_offer_placeholder_text_for_frames() {
+        use crate::ui::context::{object_menu, run_menu_row, text_edit_menu};
         tracedraw_text::install();
         const KEY: &str = "menu.text.insert_placeholder_text";
         let picked = || {
@@ -294,7 +262,7 @@ mod tests {
             app.select(vec![id]);
             app
         };
-        let app = run_row(&picked, crate::ui::context::object_menu, KEY).expect("the row");
+        let app = run_menu_row(&picked, object_menu, KEY).expect("the row");
         let id = app.selection[0];
         assert!(text_of(&app, id).starts_with("Lorem ipsum"));
         let edited = || {
@@ -303,7 +271,7 @@ mod tests {
             app.start_text(Point::new(20.0, 100.0), Some(Size::new(60.0, 30.0)));
             app
         };
-        let app = run_row(&edited, crate::ui::context::text_edit_menu, KEY).expect("the row");
+        let app = run_menu_row(&edited, text_edit_menu, KEY).expect("the row");
         let id = app.text_edit.as_ref().expect("still editing").shape;
         assert!(text_of(&app, id).starts_with("Lorem ipsum"));
         let artistic = || {
@@ -315,6 +283,6 @@ mod tests {
             app.select(vec![id]);
             app
         };
-        assert!(run_row(&artistic, crate::ui::context::object_menu, KEY).is_none());
+        assert!(run_menu_row(&artistic, object_menu, KEY).is_none());
     }
 }

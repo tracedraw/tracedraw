@@ -8335,3 +8335,6 @@ palette.reset_desc = "Tenere nella tavolozza del documento solo i colori usati d
 menu.view.navigator = "Navigatore" # mt
 docker.distribute_gap_tip = "La distanza che i pulsanti Distribuisci mantengono tra gli oggetti, o tra i loro bordi o centri. Dopo che un pulsante Distribuisci ha distribuito la selezione, un nuovo valore la distribuisce di nuovo subito; la rotella sulla casella lo cambia a passi." # mt
 docker.distribute_gap_slider_tip = "Trascina per cambiare la spaziatura: la selezione viene ridistribuita mentre trascini. Rilascia per tenerla (un solo passo di annullamento); Esc ripristina tutto." # mt
+context.edit_shadow = "Modifica ombra" # mt
+docker.shadow_summary = "{kind}, opacità {opacity} %" # mt
+docker.edit_shadow_tip = "Lo strumento Ombra esterna su questo oggetto: trascinate le maniglie dell’ombra o cambiatene le impostazioni nella barra delle proprietà." # mt

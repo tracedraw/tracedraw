@@ -28,6 +28,8 @@ full, row-by-row status.
 
 - Text > Insert Placeholder Text is also in the right-click menu of a paragraph frame and in the right-click menu shown while typing in one. A frame being edited, an empty one just drawn too, is filled and stays edited with the caret after the sample text; editing used to end.
 
+- Drop shadows: a click on an object that has a shadow of its own picks it, also where another object's shadow falls over it; picking one shadowed object after another used to jump to the neighbour whose shadow lay there. A double click on a shadow with the Pick tool chooses the Drop Shadow tool for its object, and Edit Shadow in the object's right-click menu and in the new Drop Shadow section of the Properties docker does the same. The Drop Shadow tool's handles and property bar follow the first selected object that has a shadow.
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).

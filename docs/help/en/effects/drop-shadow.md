@@ -16,6 +16,14 @@ object; with the [[tool.drop_shadow]] tool it shows the shadow's handles, and
 a drag on the shadow moves it. Shadows show in exported and printed PDF
 files, with their color, opacity and feathering.
 
+A double-click on a shadow with the [[tool.pick]] tool chooses the
+[[tool.drop_shadow]] tool for its object, with the shadow's handles on the page
+and its settings on the property bar. Right-click an object with a shadow and
+choose [[context.edit_shadow]], or use the same button in the shadow's section
+of the Properties panel, to do the same. An object that has a shadow of its own
+is always picked by a click on it, also where another object's shadow falls
+over it.
+
 ## Settings {#settings}
 
 On the property bar:

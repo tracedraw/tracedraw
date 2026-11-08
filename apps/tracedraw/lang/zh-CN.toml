@@ -8335,3 +8335,6 @@ palette.reset_desc = "文档调色板中只保留绘图使用的颜色。" # mt
 menu.view.navigator = "导航器" # mt
 docker.distribute_gap_tip = "分布按钮在对象之间(或其边缘、中心之间)保持的距离。分布按钮分布过所选对象后,新值会立即重新分布;在框上滚动滚轮可逐步调整。" # mt
 docker.distribute_gap_slider_tip = "拖动以改变间距:拖动时所选对象随之重新分布。松开即保留(一步撤销);Esc 恢复原状。" # mt
+context.edit_shadow = "编辑阴影" # mt
+docker.shadow_summary = "{kind}，不透明度 {opacity} %" # mt
+docker.edit_shadow_tip = "对此对象使用阴影工具：拖动阴影的控制柄，或在属性栏中更改其设置。" # mt

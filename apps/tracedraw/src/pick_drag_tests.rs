@@ -15050,6 +15050,142 @@ fn a_click_on_a_drop_shadow_picks_its_object() {
     assert!(close(bounds(&app, id).x0, 10.0), "the object stays");
 }
 
+/// Two objects with drop shadows, the front one's shadow falling over
+/// the one behind: a click on the one behind picks it, never the front
+/// one whose shadow lies there, with the Pick tool (Shift adds it) and
+/// with the Drop Shadow tool; a click on a shadow away from any object
+/// picks the shadow's own object. (A shadow over an object of no shadow
+/// of its own, a background, still picks the shadow's object, #935.)
+#[test]
+fn a_click_on_an_object_with_a_shadow_never_picks_another_ones_shadow() {
+    let (ctx, mut app, back) = setup();
+    // The rectangle behind spans 10 to 60 by 10 to 40.
+    app.set_shadow(Some(tracedraw_core::Shadow::default()), false);
+    let front = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(30.0, 50.0, 80.0, 80.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![front]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        0, 0, 200,
+    )));
+    // The front shadow falls 20 mm down: 30 to 80 by 30 to 60, over the
+    // top right of the rectangle behind.
+    app.set_shadow(
+        Some(tracedraw_core::Shadow {
+            offset: Vec2::new(0.0, -20.0),
+            ..Default::default()
+        }),
+        false,
+    );
+    app.select(Vec::new());
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let on_back_under_shadow = Point::new(50.0, 35.0);
+    assert_eq!(app.hit_test(on_back_under_shadow), Some(back));
+    let shadow_alone = Point::new(70.0, 40.0);
+    for tool in [Tool::Pick, Tool::DropShadow] {
+        app.set_tool(tool);
+        app.select(Vec::new());
+        click_page(&ctx, &mut app, on_back_under_shadow);
+        assert_eq!(app.selection, vec![back], "{tool:?}");
+        click_page(&ctx, &mut app, Point::new(55.0, 70.0));
+        assert_eq!(app.selection, vec![front], "{tool:?}");
+        click_page(&ctx, &mut app, on_back_under_shadow);
+        assert_eq!(app.selection, vec![back], "{tool:?}: no jump to the front");
+        click_page(&ctx, &mut app, shadow_alone);
+        assert_eq!(app.selection, vec![front], "{tool:?}: the shadow's object");
+    }
+    // Shift adds the object behind to the front one.
+    app.set_tool(Tool::Pick);
+    click_page(&ctx, &mut app, Point::new(55.0, 70.0));
+    let at = app.view.to_screen(on_back_under_shadow);
+    click_at(&ctx, &mut app, at, Modifiers::SHIFT);
+    assert_eq!(app.selection, vec![front, back]);
+}
+
+/// A double click on a drop shadow with the Pick tool takes up the Drop
+/// Shadow tool on its object, with its handles and its settings on the
+/// property bar; a double click on an object with a shadow while the
+/// Drop Shadow tool is chosen picks it for its shadow. Edit Shadow in
+/// the object's right-click menu does the same.
+#[test]
+fn a_double_click_on_a_shadow_edits_it_with_the_shadow_tool() {
+    let (ctx, mut app, id) = setup();
+    let sh = tracedraw_core::Shadow {
+        offset: Vec2::new(70.0, 0.0),
+        opacity: 0.4,
+        ..Default::default()
+    };
+    app.set_shadow(Some(sh), false);
+    let other = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(10.0, 100.0, 40.0, 130.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![other]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        0, 0, 200,
+    )));
+    app.select(Vec::new());
+    // The rectangle spans 10 to 60 by 10 to 40; its shadow 80 to 130.
+    let on_shadow = app.view.to_screen(Point::new(105.0, 25.0));
+    double_click_at(&ctx, &mut app, on_shadow);
+    assert_eq!(app.tool, Tool::DropShadow);
+    assert_eq!(app.selection, vec![id]);
+    let (target, shown, _) = app.selected_shadow().expect("its shadow");
+    assert_eq!((target, shown), (id, sh));
+    assert_eq!(app.shadow_bar_shadow(), sh, "the property bar shows it");
+    // The Drop Shadow tool: a double click on the object picks it, and
+    // with another object of no shadow picked first the handles and the
+    // bar still show this one's shadow.
+    app.select(vec![other]);
+    let on_object = app.view.to_screen(Point::new(35.0, 25.0));
+    double_click_at(&ctx, &mut app, on_object);
+    assert_eq!(app.tool, Tool::DropShadow);
+    assert_eq!(app.selection, vec![id]);
+    app.select(vec![other, id]);
+    assert_eq!(app.selected_shadow().map(|(s, _, _)| s), Some(id));
+    assert_eq!(app.shadow_bar_shadow(), sh);
+    // Edit Shadow from the right-click menu, the Pick tool chosen.
+    let fresh = || {
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 60.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        let other = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(10.0, 100.0, 40.0, 130.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        app.set_shadow(Some(sh), false);
+        app.select(vec![other, id]);
+        app
+    };
+    let menu = crate::ui::context::object_menu;
+    let app = crate::ui::context::run_menu_row(&fresh, menu, "context.edit_shadow")
+        .expect("Edit Shadow is in the menu");
+    assert_eq!(app.tool, Tool::DropShadow);
+    assert_eq!(app.selection.len(), 1);
+    assert!(app.selected_shadow().is_some());
+    let mut app = fresh();
+    // An object of no shadow has no Edit Shadow row.
+    app.set_tool(Tool::Pick);
+    app.select(vec![other]);
+    assert!(!app.can_edit_shadow());
+}
+
 /// Dragging a segment of an envelope's frame bends it, in the real window
 /// with the Envelope tool and with the Shape tool and in every mode: the
 /// point grabbed follows the pointer, the nodes stay, the object follows

@@ -8335,3 +8335,6 @@ palette.reset_desc = "Nur die Farben, die die Zeichnung verwendet, in der Dokume
 menu.view.navigator = "Navigator" # mt
 docker.distribute_gap_tip = "Der Abstand, den die Verteilen-Schaltflächen zwischen den Objekten oder zwischen ihren Kanten oder Mitten einhalten. Hat eine Verteilen-Schaltfläche die Auswahl verteilt, verteilt ein neuer Wert sie sofort erneut; das Mausrad über dem Feld ändert ihn schrittweise." # mt
 docker.distribute_gap_slider_tip = "Ziehen ändert den Abstand: Die Auswahl wird dabei laufend neu verteilt. Loslassen behält ihn (ein Rückgängig-Schritt); Esc stellt alles wieder her." # mt
+context.edit_shadow = "Schatten bearbeiten" # mt
+docker.shadow_summary = "{kind}, Deckkraft {opacity} %" # mt
+docker.edit_shadow_tip = "Das Schlagschatten-Werkzeug für dieses Objekt: Ziehen Sie die Griffe des Schattens oder ändern Sie seine Einstellungen in der Eigenschaftsleiste." # mt

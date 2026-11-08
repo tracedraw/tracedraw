@@ -1086,6 +1086,24 @@ fn current_colors_id() -> egui::Id {
     egui::Id::new("fill_editor_current_colors")
 }
 
+/// A drop shadow in a line of the Properties docker: flat or the edge
+/// it stands on, and its opacity.
+pub(crate) fn shadow_summary(sh: &tracedraw_core::Shadow) -> String {
+    use tracedraw_core::shadow::ShadowEdge;
+    let kind = match sh.perspective.map(|p| p.edge) {
+        None => "shadow.flat",
+        Some(ShadowEdge::Bottom) => "shadow.edge_bottom",
+        Some(ShadowEdge::Top) => "shadow.edge_top",
+        Some(ShadowEdge::Left) => "shadow.edge_left",
+        Some(ShadowEdge::Right) => "shadow.edge_right",
+    };
+    let opacity = format!("{:.0}", sh.opacity.clamp(0.0, 1.0) * 100.0);
+    trf(
+        "docker.shadow_summary",
+        &[("kind", &tr(kind)), ("opacity", &opacity)],
+    )
+}
+
 fn properties(app: &mut App, ui: &mut Ui) {
     let cc = app.current_colors;
     ui.data_mut(|d| d.insert_temp(current_colors_id(), cc));
@@ -1187,6 +1205,15 @@ fn properties(app: &mut App, ui: &mut Ui) {
     }
     // Bitmap effects: a bitmap's, or a vector object's.
     sections.push(("effects", "docker.fx", SectionIcon::Effects));
+    // A drop shadow: what it is, and Edit Shadow to the Drop Shadow tool.
+    let shadow = app.selected_shadow().map(|(_, sh, _)| sh);
+    if shadow.is_some() {
+        sections.push((
+            "shadow",
+            "tool.drop_shadow",
+            SectionIcon::Tool(crate::tools::Tool::DropShadow),
+        ));
+    }
     if matches!(first.kind, ShapeKind::Text { .. }) {
         sections.push((
             "character",
@@ -1355,6 +1382,18 @@ fn properties(app: &mut App, ui: &mut Ui) {
             "effects" => {
                 let id = first.id;
                 crate::ui::effect_dialog::fx_section(app, ui, id);
+            }
+            "shadow" => {
+                if let Some(sh) = shadow {
+                    ui.label(shadow_summary(&sh));
+                    if ui
+                        .button(tr("context.edit_shadow"))
+                        .rich_tip(tr("docker.edit_shadow_tip"))
+                        .clicked()
+                    {
+                        app.edit_shadow();
+                    }
+                }
             }
             "character" => {
                 if let ShapeKind::Text { spans, .. } = &first.kind {

@@ -8335,3 +8335,6 @@ palette.reset_desc = "Simpan hanya warna yang dipakai gambar di palet dokumen." 
 menu.view.navigator = "Navigator" # mt
 docker.distribute_gap_tip = "Jarak yang dijaga tombol Distribusikan di antara objek, atau di antara tepi atau pusatnya. Setelah tombol Distribusikan menyebarkan pilihan, nilai baru langsung menyebarkannya lagi; roda di atas kotak mengubahnya selangkah demi selangkah." # mt
 docker.distribute_gap_slider_tip = "Seret untuk mengubah jarak: pilihan disebarkan lagi saat Anda menyeret. Lepaskan untuk menyimpannya (satu langkah urung); Esc mengembalikannya." # mt
+context.edit_shadow = "Edit bayangan" # mt
+docker.shadow_summary = "{kind}, opasitas {opacity} %" # mt
+docker.edit_shadow_tip = "Alat Bayangan Jatuh pada objek ini: seret pegangan bayangan, atau ubah pengaturannya di bilah properti." # mt

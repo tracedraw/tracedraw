@@ -514,11 +514,23 @@ impl App {
     /// What a click at `p` picks: the topmost object there, or an object
     /// whose drop shadow lies at `p` over whatever is beneath it (a
     /// shadow draws above the objects under its own), so a shadow is
-    /// picked for editing with its object (#935). In focus mode and
-    /// while a symmetry is edited, as [`Self::hit_test`].
+    /// picked for editing with its object (#935). An object that casts a
+    /// drop shadow of its own is never lost to another one's shadow over
+    /// it: a click on it picks it, so picking one shadowed object after
+    /// another never jumps to a neighbour. In focus mode and while a
+    /// symmetry is edited, as [`Self::hit_test`].
     pub fn pick_at(&self, p: Point) -> Option<ShapeId> {
         let hit = self.hit_test(p);
         if self.focus_shape_on_page().is_some() || self.symmetry_edit.is_some() {
+            return hit;
+        }
+        let shadowed = |id: ShapeId| {
+            let top = self.doc().top_level_of(id).unwrap_or(id);
+            self.doc()
+                .find_shape(top)
+                .is_some_and(|s| s.shadow.is_some_and(|sh| sh.opacity > 0.0))
+        };
+        if hit.is_some_and(shadowed) {
             return hit;
         }
         self.page_layers()
@@ -2135,6 +2147,13 @@ impl App {
             // The centre of rotation goes back to the middle.
             if self.pivot_at(screen) {
                 self.reset_pivot();
+                return;
+            }
+            // A drop shadow (away from its object, or over one it draws
+            // above): the Drop Shadow tool on its object.
+            if let Some(id) = self.pick_at(p).filter(|id| Some(*id) != self.hit_test(p)) {
+                self.select(vec![id]);
+                self.edit_shadow();
                 return;
             }
             // The page border or its shadow: the page size options.
