@@ -103,6 +103,18 @@ Os campos funcionam também em grupos e molduras, então um cartão pode estar
 agrupado.
 - **Código QR**: um texto que contém apenas `<Field>` vira um código QR do
   texto da célula.
+- **Código de barras**: escolha [[merge.kind_barcode]] no painel e clique em
+  [[merge.insert_field]]. O assistente de código de barras abre com o campo
+  como dados; escolha o padrão, os tamanhos e o texto como em qualquer
+  [código de barras](../objects/barcodes.md#barcode-data) e clique em
+  Concluir. A página de cada registro recebe seu próprio código de barras
+  feito do seu valor, no lugar e no tamanho do que você colocou. Com
+  [[merge.all_pages]] marcado, o código vai para todas as páginas. Os dados
+  podem misturar texto fixo e campos: com um campo Número `Serial` de seis
+  dígitos começando em 15, os dados `590123<Serial>` dão os códigos EAN-13
+  590123000015, 590123000016 e assim por diante, mudando só os últimos
+  dígitos. Um registro cujo valor o padrão não comporta fica sem código de
+  barras.
 
 Uma célula vazia, ou uma imagem que não carrega, remove esse objeto da página
 do registro.

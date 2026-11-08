@@ -96,6 +96,17 @@ number.
 Fields work in groups and frames too, so a card can be grouped.
 - **QR code**: a text holding only `<Field>` becomes a QR code of the cell's
   text.
+- **Barcode**: choose [[merge.kind_barcode]] in the panel and click
+  [[merge.insert_field]]. The Barcode Wizard opens with the field as its
+  data; choose the standard, sizes and text as for any
+  [barcode](../objects/barcodes.md#barcode-data) and click Finish. Each
+  record's page gets its own barcode made from its value, in the place and
+  size of the one you placed. With [[merge.all_pages]] ticked the barcode
+  goes on every page. The data can mix fixed text and fields: with a Number
+  field `Serial` of six digits starting at 15, the data `590123<Serial>`
+  gives the EAN-13 barcodes 590123000015, 590123000016 and so on, only the
+  last digits changing. A record whose value the standard cannot hold gets
+  no barcode.
 
 An empty cell, or a picture that does not load, removes that object from the
 record's page.

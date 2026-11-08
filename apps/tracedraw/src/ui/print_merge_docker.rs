@@ -19,7 +19,8 @@ use tracedraw_core::{Command, Fill, Shape, ShapeId, ShapeKind};
 /// The docker's choices.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MergeDocker {
-    /// The kind of field Insert Field makes: 0 text, 1 image, 2 QR code.
+    /// The kind of field Insert Field makes: 0 text, 1 image, 2 QR code,
+    /// 3 barcode (the Barcode Wizard, its data from the column, #1084).
     pub kind: usize,
     /// The data source column chosen.
     pub column: usize,
@@ -127,6 +128,16 @@ impl App {
             return;
         };
         let field = format!("<{name}>");
+        if self.merge_docker.kind == 3 {
+            // A barcode: the wizard, its data the field; Finish places it
+            // (on every page too with On every page).
+            self.dialog =
+                Dialog::Barcode(crate::ui::barcode_wizard::BarcodeState::for_merge_field(
+                    &name,
+                    self.merge_docker.all_pages,
+                ));
+            return;
+        }
         // The middle of the view, else (no window yet) of the page.
         let at = Some(self.view_center())
             .filter(|p| p.x.is_finite() && p.y.is_finite())
@@ -219,6 +230,12 @@ impl App {
             }
             Err(e) => self.status = e.to_string(),
         }
+    }
+
+    /// [`Self::copy_to_other_pages`] for a field made elsewhere (a
+    /// barcode the wizard placed, #1084).
+    pub fn copy_merge_field_to_other_pages(&mut self, id: ShapeId) {
+        self.copy_to_other_pages(id);
     }
 
     /// A copy of the object `id` (on the current page) in the same place
@@ -800,9 +817,14 @@ pub fn print_merge(app: &mut App, ui: &mut Ui) {
     ui.add_enabled_ui(!headers.is_empty(), |ui| {
         let d = &mut app.merge_docker;
         ui.horizontal(|ui| {
-            for (i, key) in ["merge.kind_text", "merge.kind_image", "merge.kind_qr"]
-                .iter()
-                .enumerate()
+            for (i, key) in [
+                "merge.kind_text",
+                "merge.kind_image",
+                "merge.kind_qr",
+                "merge.kind_barcode",
+            ]
+            .iter()
+            .enumerate()
             {
                 ui.radio_value(&mut d.kind, i, tr(key));
             }

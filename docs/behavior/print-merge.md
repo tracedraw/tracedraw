@@ -107,7 +107,11 @@ Panels > Data Merge); it no longer merges at once (#437). From top to bottom:
 
 - Create (greyed while records are loaded) opens the dialog on new
   records, Edit on the ones kept.
-- Text, Image or QR code: the kind of field Insert Field makes.
+- Text, Image, QR code or Barcode: the kind of field Insert Field makes.
+  Barcode (#1084) opens the Barcode Wizard (`ui::barcode_wizard`) on Code
+  128 with the column's `<Field>` as its data; Finish places the barcode
+  at the page centre and, with On every page, copies it to the same place
+  on every other page in the same undo step.
 - Data source columns: the field to insert.
 - For Image: Pictures folder (#460): the folder picture cells that are
   relative paths are looked for in first, before the data file's folder
@@ -225,6 +229,31 @@ pages (On every page) keeps the frame's current contents then (#618,
 picture is placed inside the object; inside a group the object becomes,
 in place, a clip frame of its own outline holding the picture (#460). An object named `<Field>` of a QR field becomes the code, as
 large as its box allows.
+
+### Barcodes (#1084)
+
+- A barcode object (Object > Insert > Barcode) keeps its wizard settings
+  as JSON in its object data under `barcode` (`BarcodeSpec`, every
+  setting with its default when missing). When its data names one of the
+  fields (`<Field>`, any kind, mixed with fixed text), the wizard checks
+  and shows the data with the symbology's sample in its place unless the
+  symbology can hold it as typed (Code 128 shows `<Field>`), and Next and
+  Finish accept it. In step 1 an Insert field list (with records loaded)
+  appends a field's `<Name>` to the data; changing the standard keeps
+  data that names fields.
+- Merging fills every field in the data with the record's values (a
+  Number field as formatted, so fixed digits before a counter stay and
+  only the counter's digits change: `590123<Serial>` with six digits from
+  15 gives 590123000015, 590123000016, ...) and makes the symbol again
+  with the same settings: the group's objects are replaced by the new
+  bars, text and quiet zone, centred where the old ones were in the
+  group's own space, so a barcode moved, scaled or turned keeps that;
+  the settings kept are updated to the merged data. Barcodes in groups
+  merge too. A record whose data the symbology cannot hold (letters in
+  an EAN-13, an empty result) loses the barcode on its page, like an
+  empty QR field.
+- Checks: `print_merge::tests::barcodes_take_their_data_from_merge_fields`,
+  `print_merge::tests::the_panel_inserts_a_barcode_field_through_the_wizard`.
 
 ## Checks
 

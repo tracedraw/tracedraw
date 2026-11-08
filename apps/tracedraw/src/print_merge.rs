@@ -989,6 +989,12 @@ fn fill_shape(
     cmds: &mut Vec<Command>,
 ) {
     let value_of = |i: usize| row.get(i).map(String::as_str).unwrap_or("");
+    // A barcode whose data names fields: made again with the record's
+    // values (#1084).
+    if let Some(cmds_here) = merged_barcode(st, s, row, new_id) {
+        cmds.extend(cmds_here);
+        return;
+    }
     // An object named `<Field>` of a picture or QR field: a placeholder
     // the Print Merge docker made, or a shape of the user's made the
     // field's frame (#378, #437), on the page or inside a group (#460).
@@ -1095,6 +1101,98 @@ fn fill_shape(
             },
         });
     }
+}
+
+/// `text` with every field's `<Name>` replaced by the record's value.
+fn with_values(st: &PrintMergeState, text: &str, row: &[String]) -> String {
+    let mut t = text.to_string();
+    for (i, h) in st.headers.iter().enumerate() {
+        let ph = format!("<{h}>");
+        if t.contains(&ph) {
+            t = t.replace(&ph, row.get(i).map(String::as_str).unwrap_or(""));
+        }
+    }
+    t
+}
+
+/// The barcode object `s` takes its data from merge fields: its
+/// settings (Object > Insert > Barcode keeps them, see
+/// [`crate::barcode::DATA_KEY`]) name one of the fields.
+fn merge_barcode_spec(st: &PrintMergeState, s: &Shape) -> Option<crate::barcode::BarcodeSpec> {
+    let spec = crate::barcode::BarcodeSpec::of_shape(s)?;
+    st.headers
+        .iter()
+        .any(|h| spec.data.contains(&format!("<{h}>")))
+        .then_some(spec)
+}
+
+/// The commands that make the barcode object `s` again with the record's
+/// values in its data, in its place (the new symbol centred where the old
+/// one was, in the object's own space, so a moved, scaled or turned
+/// barcode keeps that), its settings updated to the data it now holds;
+/// a record whose data the symbology cannot hold (an empty cell, letters
+/// in an EAN-13) gets no barcode. `None` when `s` is no barcode taking
+/// merge fields.
+fn merged_barcode(
+    st: &PrintMergeState,
+    s: &Shape,
+    row: &[String],
+    new_id: &mut dyn FnMut() -> tracedraw_core::ShapeId,
+) -> Option<Vec<Command>> {
+    let spec = merge_barcode_spec(st, s)?;
+    let merged = crate::barcode::BarcodeSpec {
+        data: with_values(st, &spec.data, row),
+        ..spec
+    };
+    // Where the symbol is now, in the object's own space.
+    let old = match &s.kind {
+        ShapeKind::Group { children } => children
+            .iter()
+            .map(Shape::bounds)
+            .reduce(|a, b| a.union(b))?,
+        ShapeKind::Path { path, .. } => path.bounding_box(),
+        _ => return None,
+    };
+    let delete = || Some(vec![Command::DeleteShapes { shapes: vec![s.id] }]);
+    if merged.data.trim().is_empty() {
+        return delete();
+    }
+    let Ok(mut shapes) = crate::ui::barcode_wizard::barcode_shapes(
+        &merged,
+        tracedraw_core::geometry::Point::ZERO,
+        new_id,
+    ) else {
+        return delete();
+    };
+    let made = shapes.iter().map(Shape::bounds).reduce(|a, b| a.union(b))?;
+    let d = old.center() - made.center();
+    for c in &mut shapes {
+        c.transform_by(tracedraw_core::geometry::Affine::translate(d));
+    }
+    let kind = match &s.kind {
+        ShapeKind::Group { .. } => ShapeKind::Group { children: shapes },
+        // The bars alone (no text, no quiet zone): one curve.
+        _ => {
+            let bars = shapes
+                .into_iter()
+                .find(|c| matches!(c.kind, ShapeKind::Path { .. }))?;
+            ShapeKind::Path {
+                path: bars.page_path(),
+                closed: true,
+            }
+        }
+    };
+    let mut data: Vec<(String, String)> = s
+        .data
+        .iter()
+        .filter(|(k, _)| k != crate::barcode::DATA_KEY)
+        .cloned()
+        .collect();
+    data.push((crate::barcode::DATA_KEY.to_string(), merged.to_data()));
+    Some(vec![
+        Command::SetShapeKind { shape: s.id, kind },
+        Command::SetObjectData { shape: s.id, data },
+    ])
 }
 
 /// A placeholder object named `<Field>` filled with the record's value:
@@ -1311,6 +1409,9 @@ pub struct InPlaceMerge {
 /// Whether `s`, or an object in it, is a merge field: a text holding a
 /// field's `<Name>`, or an object named after a picture or QR field.
 fn holds_field(st: &PrintMergeState, s: &Shape) -> bool {
+    if merge_barcode_spec(st, s).is_some() {
+        return true;
+    }
     if s.name
         .as_deref()
         .is_some_and(|n| whole_field(st, n).is_some())
@@ -1696,6 +1797,163 @@ mod tests {
         let second = &doc.pages[2];
         let n: usize = second.layers.iter().map(|l| l.shapes.len()).sum();
         assert_eq!(n, 1);
+    }
+
+    /// The barcode objects of a page, with the settings they keep.
+    fn barcodes(
+        page: &tracedraw_core::document::Page,
+    ) -> Vec<(Shape, crate::barcode::BarcodeSpec)> {
+        page.layers
+            .iter()
+            .flat_map(|l| &l.shapes)
+            .filter_map(|s| Some((s.clone(), crate::barcode::BarcodeSpec::of_shape(s)?)))
+            .collect()
+    }
+
+    /// The bars of a barcode object, in page space: the curve inside it.
+    fn bars_of(s: &Shape) -> tracedraw_core::geometry::BezPath {
+        match &s.kind {
+            ShapeKind::Group { children } => children
+                .iter()
+                .find(|c| matches!(c.kind, ShapeKind::Path { .. }))
+                .map(|c| s.transform * c.page_path())
+                .expect("bars"),
+            _ => s.page_path(),
+        }
+    }
+
+    /// Barcodes in Print Merge (#1084): a barcode whose data names a field
+    /// is made again for every record, with fixed digits before a counter
+    /// kept and only the counter's digits changing; it stays where it was
+    /// placed, and a record the symbology cannot hold gets none.
+    #[test]
+    fn barcodes_take_their_data_from_merge_fields() {
+        use crate::barcode::{BarcodeSpec, Symbology};
+        let mut app = App::headless();
+        let st = PrintMergeState {
+            headers: vec!["Serial".into(), "Code".into()],
+            rows: vec![
+                vec![String::new(), "AB-1".into()],
+                vec![String::new(), "CD-2".into()],
+                vec![String::new(), String::new()],
+            ],
+            kinds: vec![
+                FieldKind::Number {
+                    start: 15,
+                    step: 1,
+                    digits: 6,
+                    format: NumberFormat::Digits,
+                },
+                FieldKind::Text,
+            ],
+            ..Default::default()
+        };
+        // An EAN-13 of six fixed digits and the six of the counter, and a
+        // Code 128 of the Code column with text around it.
+        let ean = BarcodeSpec {
+            symbology: Symbology::Ean13,
+            data: "590123<Serial>".into(),
+            ..Default::default()
+        };
+        crate::ui::barcode_wizard::insert(&mut app, &ean).expect("inserted");
+        let ean_id = app.selection[0];
+        // Moved after it was placed: the copies stay where it went.
+        app.run(Command::TransformShapes {
+            shapes: vec![ean_id],
+            transform: tracedraw_core::geometry::Affine::translate((-30.0, 40.0)),
+        });
+        let code = BarcodeSpec {
+            symbology: Symbology::Code128,
+            data: "ID <Code>".into(),
+            human_readable: false,
+            ..Default::default()
+        };
+        crate::ui::barcode_wizard::insert(&mut app, &code).expect("inserted");
+        // The template shows the sample where EAN-13 cannot hold `<Serial>`,
+        // and keeps the settings with the field.
+        let template = barcodes(&app.doc().pages[0]);
+        assert_eq!(template.len(), 2);
+        assert_eq!(template[0].1.data, "590123<Serial>");
+        assert_eq!(template[1].1.data, "ID <Code>");
+        let ean_box = template[0].0.bounds();
+        let doc = merged_document(&app, &st).expect("merged");
+        assert_eq!(doc.pages.len(), 3);
+        let mut bars = Vec::new();
+        for (k, page) in doc.pages.iter().enumerate() {
+            let codes = barcodes(page);
+            let data: Vec<&str> = codes.iter().map(|(_, s)| s.data.as_str()).collect();
+            match k {
+                0 => assert_eq!(data, ["590123000015", "ID AB-1"]),
+                1 => assert_eq!(data, ["590123000016", "ID CD-2"]),
+                // The empty cell: Code 128 still holds "ID ", the EAN its
+                // counter.
+                _ => assert_eq!(data, ["590123000017", "ID "]),
+            }
+            // The EAN-13 text shows the record's digits with the check digit.
+            let (ean_shape, _) = &codes[0];
+            let ShapeKind::Group { children } = &ean_shape.kind else {
+                panic!("a group");
+            };
+            let text: String = children.iter().filter_map(text_of).collect();
+            let digits = format!("590123{:06}", 15 + k);
+            let check =
+                crate::barcode::ean_check(&digits.bytes().map(|b| b - b'0').collect::<Vec<u8>>());
+            assert_eq!(
+                text.chars()
+                    .filter(|c| !c.is_whitespace())
+                    .collect::<String>(),
+                format!("{digits}{check}"),
+                "page {k}"
+            );
+            // In the same place as the template, moved with it.
+            let b = ean_shape.bounds();
+            assert!(
+                (b.center() - ean_box.center()).hypot() < 0.5,
+                "{b:?} {ean_box:?}"
+            );
+            bars.push(bars_of(ean_shape));
+        }
+        assert_ne!(bars[0], bars[1], "each record its own bars");
+        // A record whose data EAN-13 cannot hold gets no barcode.
+        let mut bad = st.clone();
+        bad.kinds[0] = FieldKind::Text;
+        bad.rows = vec![vec!["12AB34".into(), "x".into()]];
+        let doc = merged_document(&app, &bad).expect("merged");
+        let codes = barcodes(&doc.pages[0]);
+        assert_eq!(codes.len(), 1);
+        assert_eq!(codes[0].1.data, "ID x");
+    }
+
+    /// The Print Merge panel's Barcode field opens the Barcode Wizard with
+    /// the column as the data; its Finish places the barcode.
+    #[test]
+    fn the_panel_inserts_a_barcode_field_through_the_wizard() {
+        let mut app = App::headless();
+        app.merge_state = Some(PrintMergeState {
+            headers: vec!["Name".into(), "SKU".into()],
+            rows: vec![vec!["a".into(), "X1".into()]],
+            kinds: vec![FieldKind::Text, FieldKind::Text],
+            ..Default::default()
+        });
+        app.merge_docker.kind = 3;
+        app.merge_docker.column = 1;
+        app.insert_merge_field();
+        let crate::ui::dialogs::Dialog::Barcode(st) = &app.dialog else {
+            panic!("the wizard: {:?}", app.dialog);
+        };
+        assert_eq!(st.spec.data, "<SKU>");
+        assert_eq!(st.spec.symbology, crate::barcode::Symbology::Code128);
+        let spec = st.spec.clone();
+        crate::ui::barcode_wizard::insert(&mut app, &spec).expect("inserted");
+        let s = app
+            .doc()
+            .find_shape(app.selection[0])
+            .expect("barcode")
+            .clone();
+        assert!(holds_field(app.merge_state.as_ref().expect("data"), &s));
+        let doc = merged_document(&app, app.merge_state.as_ref().expect("data")).expect("merged");
+        let codes = barcodes(&doc.pages[0]);
+        assert_eq!(codes[0].1.data, "X1");
     }
 
     /// Bulk cards (#377, #378): fields inside a group are filled, a
