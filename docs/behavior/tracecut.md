@@ -79,9 +79,9 @@ damaged file gives no presets and is logged.
 
 ## Cut tools
 
-The Cut group lists, in this order: Plotter Output, Weeding, Bridges,
-Cut Order, CutContour, Registration Marks, Find Duplicates and Find
-Crossings. A new window opens on Plotter Output.
+The Cut group lists, in this order: Plotter Output, CNC Toolpath,
+Weeding, Bridges, Cut Order, CutContour, Registration Marks, Find
+Duplicates and Find Crossings. A new window opens on Plotter Output.
 
 ### Plotter Output
 
@@ -129,6 +129,58 @@ job's box (bottom left at first) into the job.
 Apply shows the outlines and the moves with the knife up (blue), and
 the status line gives the outlines, the length cut and travelled and the
 job's size. OK saves or sends; the drawing does not change.
+
+### CNC Toolpath
+
+G-code for CNC routers and mills, from the outlines of the selection
+(groups opened, a clip frame by its frame), flattened within the
+**curve accuracy** (0.02 mm at first). The geometry is
+`tracedraw_tracecut::cnc`.
+
+- **Tool diameter** (3.175 mm): the tool's centre follows each closed
+  outline offset by the radius (the offset Contour uses, round corners
+  outside, sharp ones inside). A hole smaller than the tool gives no
+  toolpath; the status line counts those left out.
+- **Cut side**: **Automatic** (at first) cuts a closed outline lying
+  inside an odd number of other closed outlines (a hole, of the same
+  object or another) on its inside and every other closed outline on
+  its outside; **Outside**, **Inside** and **On the line** cut every
+  closed outline that way. Open curves are always cut on the line.
+- **Direction**, the spindle turning clockwise (M3): **Conventional**
+  (at first) keeps the part on the left of the tool (outside cuts run
+  counter-clockwise, holes clockwise), **Climb** on its right.
+- **Total depth** (6 mm) in passes no deeper than the **depth per
+  pass** (2 mm): `n = ceil(depth / pass)` equal passes, pass `k` at
+  `-depth k / n`. Each toolpath is cut to the full depth before the
+  next one; a closed one goes down again where it ended, an open one
+  goes back to its start at the safe height.
+- **Safe height** (5 mm) above the material for the moves between
+  cuts; **feed rate** (1000 mm/min) along the outlines, **plunge
+  rate** (300 mm/min) going down; **spindle speed** (18000 rpm, 0
+  leaves out `M3` and `M5`).
+- **X0 Y0 at**: the bottom-left corner of the selection's box (at
+  first) or the ruler origin; Z0 is the top of the material.
+- **Holding tabs** (off): **tabs per outline** (4) on each closed
+  outside cut, spread evenly by length (the first half a spacing from
+  the start), each leaving **tab width** (5 mm) of material, so the
+  toolpath rises for the width plus the tool diameter, and **tab
+  height** (1.5 mm) at the bottom: passes deeper than `depth - height`
+  rise to it over the tab. A toolpath the tabs would take more than
+  nine tenths of gets fewer; tabs as high as the cut is deep are left
+  out.
+- **Order**: the toolpaths are planned like Cut Order (nearest next
+  from X0 Y0, inner ones first), so holes are cut before the outline
+  that frees the part.
+
+The program: comments, `G21`, `G90`, `G94`, `G0 Z<safe>`, `M3 S<rpm>`;
+for each toolpath `G0 X Y` to its start, `G1 Z F<plunge>` down and
+`G1 X Y F<feed>` along (the feed written when it changes), `G0
+Z<safe>` up; then `M5`, `G0` back over X0 Y0 and `M30`. Coordinates in
+millimetres with three decimals. Apply shows the toolpaths in red and
+the moves at the safe height in blue; the status line gives the
+toolpaths, the passes, the length milled and the time at the feed and
+plunge rates. OK saves a `.nc` file (also `.gcode`, `.ngc`, `.tap`)
+where you say; the drawing does not change.
 
 ### Weeding
 

@@ -10,11 +10,13 @@
 //! - [`cut`]: plotter output, weeding, bridges, cut order, registration and crop marks.
 //! - [`nest`]: placing objects on sheets and rolls with the least waste.
 //! - [`calc`]: cutting time and cost.
+//! - [`cnc`]: toolpaths and G-code for CNC routers and mills.
 //!
 //! Units are millimetres, Y up, like the rest of the model.
 
 pub mod calc;
 pub mod cleanup;
+pub mod cnc;
 pub mod crossings;
 pub mod cut;
 pub mod measure;

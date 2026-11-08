@@ -59,6 +59,27 @@ and where the job goes:
 first. **Test cut** cuts a small square with a triangle inside, to check the
 knife before the real job. Save your cutter's settings as a preset.
 
+## CNC Toolpath {#cnc-toolpath}
+
+Turns the selected curves and shapes into a G-code file for a CNC router
+or mill. Give the **tool diameter**: the tool runs half of it outside each
+outline, so the part comes out at its drawn size, and inside each hole.
+**Cut side** set to **Automatic** cuts holes from the inside and outlines
+from the outside, whether a hole is part of the same curve or a separate
+object; you can also cut everything outside, inside or on the line. Open
+curves are always cut on the line.
+
+The cut goes down to the **total depth** in passes no deeper than the
+**depth per pass**, with the tool lifted to the **safe height** between
+cuts. Set the **feed rate** and **plunge rate** in millimetres per minute
+and the **spindle speed**. X0 Y0 is the bottom-left corner of the
+selection or the ruler origin, Z0 the top of the material. Holes are cut
+before the outline around them.
+
+**Holding tabs** leave short bridges of material at the bottom of the
+outside cuts so the parts do not move when they come free; set how many,
+how wide and how thick. Apply shows the toolpaths, OK saves the .nc file.
+
 ## Weeding {#weeding}
 
 Adds weeding lines from each object to its neighbours, or a box around each

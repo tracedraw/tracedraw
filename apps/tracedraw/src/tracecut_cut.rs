@@ -1,5 +1,6 @@
-//! TraceCut's Cut tools: plotter output (with the test cut), weeding,
-//! bridges, cut order, CutContour and registration marks. The geometry
+//! TraceCut's Cut tools: plotter output (with the test cut), CNC
+//! toolpaths, weeding, bridges, cut order, CutContour and registration
+//! marks. The geometry
 //! is `tracedraw_tracecut::cut`; this module keeps the tools' settings,
 //! works their results out for the preview and turns them into commands.
 //! See docs/behavior/tracecut.md.
@@ -12,6 +13,7 @@ use crate::tracecut_send::Destination;
 use serde::{Deserialize, Serialize};
 use tracedraw_core::geometry::{Affine, BezPath, PathEl, Point, Rect, Shape as _};
 use tracedraw_core::{Color, Command, Fill, LayerId, Shape, ShapeId, ShapeKind, Stroke};
+use tracedraw_tracecut::cnc::{self, CncSpec, Program};
 use tracedraw_tracecut::cut::bridges::{self, BridgeCount, BridgeSpec};
 use tracedraw_tracecut::cut::hpgl::{self, Plot, Profile};
 use tracedraw_tracecut::cut::marks::{self, RegSpec};
@@ -379,6 +381,56 @@ impl App {
                 crate::tracecut_send::start(dest, target, bytes, ctx);
             }
         }
+    }
+
+    /// CNC Toolpath: the G-code program of the selection, X0 Y0 at the
+    /// bottom-left corner of its box or at the ruler origin.
+    pub fn tracecut_cnc(&self, spec: &CncSpec) -> Program {
+        let outlines = self.tracecut_outlines(&self.tracecut_targets());
+        cnc::program(&outlines, spec, self.ruler_origin())
+    }
+
+    /// The program's line for the status strip.
+    pub fn tracecut_cnc_summary(&self, p: &Program) -> String {
+        let u = self.units;
+        if p.toolpaths.is_empty() {
+            return if p.skipped > 0 {
+                trf("tracecut.cnc_skipped", &[("n", &p.skipped.to_string())])
+            } else {
+                tr("tracecut.nothing_to_cut")
+            };
+        }
+        let mut line = trf(
+            "tracecut.cnc_found",
+            &[
+                ("n", &p.toolpaths.len().to_string()),
+                ("passes", &p.passes.to_string()),
+                ("cut", &fmt_len(u, p.cut_length)),
+                ("min", &format!("{:.1}", p.minutes)),
+            ],
+        );
+        if p.skipped > 0 {
+            line.push(' ');
+            line.push_str(&trf(
+                "tracecut.cnc_skipped",
+                &[("n", &p.skipped.to_string())],
+            ));
+        }
+        line
+    }
+
+    /// Save `p` as a G-code file where the user says.
+    pub fn tracecut_save_gcode(&mut self, p: &Program) {
+        let bytes = p.gcode.clone().into_bytes();
+        crate::files::Dialog::new()
+            .add_filter("G-code", &["nc", "gcode", "ngc", "tap"])
+            .set_file_name("toolpath.nc")
+            .save_file(self, move |app, path| {
+                app.status = match crate::files::write(&path, bytes) {
+                    Ok(()) => trf("tracecut.saved", &[("path", &path.display().to_string())]),
+                    Err(e) => e.to_string(),
+                };
+            });
     }
 
     /// The job's line for the status strip.
@@ -840,6 +892,54 @@ mod tests {
         // Nothing selected: nothing to cut.
         app.select(Vec::new());
         assert_eq!(app.tracecut_job(&s).plot.outlines, 0);
+    }
+
+    #[test]
+    fn the_cnc_program_mills_the_selection_holes_first() {
+        let mut app = App::headless();
+        let plate = rect(&mut app, 10.0, 10.0, 100.0, 60.0);
+        let hole = rect(&mut app, 40.0, 30.0, 20.0, 20.0);
+        app.select(vec![plate, hole]);
+        let spec = CncSpec {
+            tool_diameter: 4.0,
+            ..Default::default()
+        };
+        let p = app.tracecut_cnc(&spec);
+        assert_eq!(p.toolpaths.len(), 2);
+        assert_eq!(p.toolpaths[0].side, cnc::Side::Inside);
+        assert_eq!(p.toolpaths[1].side, cnc::Side::Outside);
+        assert!(p.gcode.contains("G21") && p.gcode.trim_end().ends_with("M30"));
+        // X0 Y0 at the bottom-left corner of the selection.
+        assert_eq!(p.zero, Point::new(10.0, 10.0));
+        let summary = app.tracecut_cnc_summary(&p);
+        assert!(summary.contains('2'), "{summary}");
+        // Working it out and showing it change nothing.
+        let rev = app.engine.revision();
+        let mut settings = crate::tracecut::ToolSettings::default();
+        settings.cnc = spec;
+        let w = app.tracecut_work_out(crate::tracecut::ToolId::CncToolpath, &settings);
+        let scene = app.tracecut_scene(Some(&w));
+        assert_eq!(scene.marked.len(), 2);
+        assert!(!scene.moves.is_empty());
+        assert_eq!(app.engine.revision(), rev);
+        // A hole too small for the tool is said to be left out.
+        app.select(Vec::new());
+        assert_eq!(
+            app.tracecut_cnc_summary(&app.tracecut_cnc(&spec)),
+            tr("tracecut.nothing_to_cut")
+        );
+        let tiny = rect(&mut app, 200.0, 200.0, 2.0, 2.0);
+        app.select(vec![tiny]);
+        let inside = CncSpec {
+            side: cnc::Side::Inside,
+            ..spec
+        };
+        let p = app.tracecut_cnc(&inside);
+        assert!(p.toolpaths.is_empty() && p.skipped == 1);
+        assert_eq!(
+            app.tracecut_cnc_summary(&p),
+            trf("tracecut.cnc_skipped", &[("n", "1")])
+        );
     }
 
     #[test]

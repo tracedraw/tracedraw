@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tracedraw_core::geometry::{BezPath, Point, Rect, Shape as _};
 use tracedraw_core::{Command, ShapeId, ShapeKind};
+use tracedraw_tracecut::cnc::{CncSpec, Program};
 use tracedraw_tracecut::cut::weed::WeedSpec;
 use tracedraw_tracecut::{cleanup, crossings};
 
@@ -57,6 +58,7 @@ impl Group {
 pub enum ToolId {
     #[default]
     PlotterOutput,
+    CncToolpath,
     Weeding,
     Bridges,
     CutOrder,
@@ -72,8 +74,9 @@ pub enum ToolId {
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 13] = [
+    pub const ALL: [ToolId; 14] = [
         ToolId::PlotterOutput,
+        ToolId::CncToolpath,
         ToolId::Weeding,
         ToolId::Bridges,
         ToolId::CutOrder,
@@ -100,6 +103,7 @@ impl ToolId {
     pub fn id(self) -> &'static str {
         match self {
             ToolId::PlotterOutput => "plotter_output",
+            ToolId::CncToolpath => "cnc_toolpath",
             ToolId::Weeding => "weeding",
             ToolId::Bridges => "bridges",
             ToolId::CutOrder => "cut_order",
@@ -119,6 +123,7 @@ impl ToolId {
     pub fn key(self) -> &'static str {
         match self {
             ToolId::PlotterOutput => "tracecut.plotter_output",
+            ToolId::CncToolpath => "tracecut.cnc_toolpath",
             ToolId::Weeding => "tracecut.weeding",
             ToolId::Bridges => "tracecut.bridges",
             ToolId::CutOrder => "tracecut.cut_order",
@@ -203,6 +208,7 @@ pub const TOLERANCE_RANGE: (f64, f64) = (0.001, 10.0);
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ToolSettings {
     pub plotter: PlotterSettings,
+    pub cnc: CncSpec,
     pub weeding: WeedSpec,
     pub bridges: BridgeSettings,
     pub order: OrderSettings,
@@ -227,6 +233,10 @@ macro_rules! with_settings {
         match $tool {
             ToolId::PlotterOutput => {
                 let $v = &mut $s.plotter;
+                $body
+            }
+            ToolId::CncToolpath => {
+                let $v = &mut $s.cnc;
                 $body
             }
             ToolId::Weeding => {
@@ -431,6 +441,11 @@ impl PresetStore {
 pub enum Outcome {
     /// A plotter job and its line for the status strip.
     Job { job: Box<Job>, summary: String },
+    /// A CNC program and its line for the status strip.
+    Gcode {
+        program: Box<Program>,
+        summary: String,
+    },
     /// Changes of the drawing a Cut tool worked out.
     Changes(Box<Changes>),
     /// A result to read; OK changes nothing.
@@ -448,7 +463,7 @@ impl Outcome {
     /// The line under the preview that says what was found.
     pub fn summary(&self) -> String {
         match self {
-            Outcome::Job { summary, .. } => summary.clone(),
+            Outcome::Job { summary, .. } | Outcome::Gcode { summary, .. } => summary.clone(),
             Outcome::Changes(c) => c.summary.clone(),
             Outcome::Report(r) => r.lines.first().cloned().unwrap_or_default(),
             Outcome::Duplicates(d) if d.is_empty() => tr("tracecut.no_duplicates"),
@@ -613,6 +628,14 @@ impl App {
                 let summary = self.tracecut_job_summary(&job);
                 Outcome::Job {
                     job: Box::new(job),
+                    summary,
+                }
+            }
+            ToolId::CncToolpath => {
+                let program = self.tracecut_cnc(&settings.cnc);
+                let summary = self.tracecut_cnc_summary(&program);
+                Outcome::Gcode {
+                    program: Box::new(program),
                     summary,
                 }
             }
@@ -813,6 +836,10 @@ impl App {
                 }
                 Outcome::Crossings { points, .. } => scene.points = points.clone(),
                 Outcome::Job { job, .. } => scene.moves = job.moves.clone(),
+                Outcome::Gcode { program, .. } => {
+                    scene.marked = program.toolpaths.iter().map(|t| t.path()).collect();
+                    scene.moves = program.rapids.clone();
+                }
                 Outcome::Report(_) => {}
                 Outcome::Changes(c) => {
                     if c.hide_objects {
@@ -853,6 +880,14 @@ impl App {
                     return false;
                 }
                 self.tracecut_output(&settings.plotter, &job.plot, ctx);
+                true
+            }
+            Outcome::Gcode { program, summary } => {
+                if program.toolpaths.is_empty() {
+                    self.status = summary.clone();
+                    return false;
+                }
+                self.tracecut_save_gcode(program);
                 true
             }
             Outcome::Changes(c) => self.tracecut_apply_changes(c),
