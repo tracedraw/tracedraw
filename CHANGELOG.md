@@ -4,6 +4,12 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
+
+- Windows: the 32-bit setup (`windows-x86-setup.exe`) runs on 64-bit Windows too. It refused it with only Windows's message that the program does not support this version of Windows; it now recommends the x86_64 setup there and installs the 32-bit version when asked to (#1975).
+
 ## 0.42.0 (2026-11-08)
 
 - Export opens the file dialog in the folder exported to last, kept between sessions, instead of the drawing's folder or the default one (#1817).

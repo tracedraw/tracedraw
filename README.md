@@ -447,7 +447,7 @@ For the newest fixes, take the installer below.
 | Platform | Files |
 |---|---|
 | Windows (x64) | [Microsoft Store](https://apps.microsoft.com/detail/9P50L12VHF33) (signed, may lag behind the latest release), `tracedraw-<version>-windows-x86_64-setup.exe` (installer), `tracedraw-<version>-windows-x86_64-portable.zip` (keeps its settings in the `tracedraw-settings` folder beside the program; not signed yet: if SmartScreen warns, More info > Run anyway) |
-| Windows 10 (32-bit) | `tracedraw-<version>-windows-x86-setup.exe` (installs on 32-bit Windows only; 64-bit Windows takes the x64 files), `tracedraw-<version>-windows-x86-portable.zip`. Not in the Microsoft Store. A 32-bit program can use at most 2 GB of memory, so very large drawings are better opened on 64-bit Windows |
+| Windows 10 (32-bit) | `tracedraw-<version>-windows-x86-setup.exe` (for 32-bit Windows; on 64-bit Windows it asks first and the x64 files are better), `tracedraw-<version>-windows-x86-portable.zip`. Not in the Microsoft Store. A 32-bit program can use at most 2 GB of memory, so very large drawings are better opened on 64-bit Windows |
 | macOS (Apple silicon, Intel) | `tracedraw-<version>-macos-arm64.dmg`, `tracedraw-<version>-macos-x86_64.dmg` (unsigned for now: right-click, Open) |
 | Linux (x86_64, arm64) | `.deb` (`_amd64` or `_arm64`), `tracedraw-<version>-linux-amd64.AppImage` or `-linux-arm64.AppImage`, `tracedraw-<version>-linux-x86_64.tar.gz` or `-linux-arm64.tar.gz` |
 | Web | no download: [open it in the browser](https://tracedraw.github.io/tracedraw/), nothing to install |

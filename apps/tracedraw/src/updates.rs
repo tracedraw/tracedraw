@@ -1557,7 +1557,7 @@ mod tests {
     /// #1975: the release builds the 32-bit Windows programs, with the C
     /// runtime inside as the 64-bit ones, and names their setup and zip
     /// as the updater of a 32-bit copy looks for them; the setup installs
-    /// on 32-bit Windows only.
+    /// on any Windows, recommending the x86_64 setup on 64-bit Windows.
     #[test]
     fn the_release_builds_the_32_bit_windows_files() {
         let ci = include_str!("../../../.github/workflows/build.yml");
@@ -1569,7 +1569,8 @@ mod tests {
         assert!(ci.contains("-windows-$arch-portable.zip"));
         assert!(iss.contains("OutputBaseFilename=tracedraw-{#Version}-windows-{#Arch}-setup"));
         assert!(iss.contains("#if Arch == \"x86\"\n"));
-        assert!(iss.contains("ArchitecturesAllowed=x86os\n"));
+        assert!(iss.contains("ArchitecturesAllowed=x86compatible\n"));
+        assert!(iss.contains("if IsWin64 then"));
         assert!(cargo.contains(
             "[target.i686-pc-windows-msvc]\nrustflags = [\"-C\", \"target-feature=+crt-static\"]"
         ));
