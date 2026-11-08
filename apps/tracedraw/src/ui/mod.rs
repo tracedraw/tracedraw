@@ -117,6 +117,7 @@ pub mod tracecut_cut;
 pub mod tracecut_make;
 pub mod tracecut_nest;
 pub mod update_card;
+pub mod update_progress;
 // The audit reads widget names, which egui keeps only in debug builds.
 #[cfg(all(test, debug_assertions))]
 mod tip_audit;

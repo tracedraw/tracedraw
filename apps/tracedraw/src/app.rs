@@ -7788,6 +7788,12 @@ impl App {
         }
         // The box says what the card would: no card over it afterwards.
         self.update_card_hidden = true;
+        // Debug builds: a pretend update for the visual checks.
+        #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+        if crate::updates::demo(&self.updates, &self.installer, ctx.clone()) {
+            self.dialog = crate::ui::dialogs::Dialog::Updates;
+            return;
+        }
         self.updates.start(ctx);
         self.dialog = crate::ui::dialogs::Dialog::Updates;
     }

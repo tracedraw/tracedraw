@@ -56,6 +56,8 @@ full, row-by-row status.
 
 - Procedural fill: a new fill kind in the Properties panel (Fill > Procedural), the Edit Fill dialog and the Interactive Fill tool's bar, with a library of nine patterns drawn from a few numbers (octagons and squares, triangles, bricks, honeycomb, crosshatch, dots, waves, spirals, speckle): tile size, line width, cover, amplitude, turns, specks per tile and a seed, a foreground colour and an optional background colour, with a preview. The pattern is a vector tile repeated from the page origin on screen, a `<pattern>` with the tile's paths in SVG and a tiling pattern in PDF, kept in `.tdraw`; each setting is one undo step and goes into every selected object's own fill. Other exports draw it rasterised or in its foreground colour (#1212).
 
+- Updates: Install opens an Updating TraceDraw window of a fixed size with the TraceDraw icon, the two versions, a progress bar with the percentage and a line with the megabytes, the speed and the time left, and Cancel, which stops the download at once and deletes what was downloaded. Checking the download and Installing follow with a moving bar, then a check mark with Restart Now and Later, or the reason of a failure in plain words with Try Again and Download from the website. The update card shows the same progress. It replaces a message box whose download line was cut off with its button on Windows: message boxes share one window, which was drawn for a frame in the size and place of the box before it; such a frame is now laid out again.
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

@@ -2126,64 +2126,47 @@ pub fn show(app: &mut App, ctx: &Context) {
             let install = app.installer.get();
             match app.updates.get() {
                 UpdateState::Available(r) if install != crate::updates::InstallState::Idle => {
-                    use crate::updates::InstallState;
-                    let (text, buttons): (String, Vec<String>) = match &install {
-                        InstallState::Downloading { done, total } => {
-                            ctx.request_repaint_after(std::time::Duration::from_millis(200));
-                            let mb = |b: u64| format!("{:.1}", b as f64 / 1_048_576.0);
-                            (
-                                trf(
-                                    "updates.downloading",
-                                    &[
-                                        ("new", &r.version),
-                                        ("done", &mb(*done)),
-                                        ("total", &mb(*total)),
-                                    ],
-                                ),
-                                vec![close_label.clone()],
-                            )
-                        }
-                        InstallState::Installed(v) => (
-                            trf("updates.installed", &[("new", v)]),
-                            vec![tr("updates.restart"), tr("updates.later")],
-                        ),
-                        InstallState::Ready(v) => (
-                            trf("updates.ready", &[("new", v)]),
-                            vec![tr("updates.restart_install"), tr("updates.later")],
-                        ),
-                        InstallState::Failed(e) => (
-                            trf("updates.install_failed", &[("error", e)]),
-                            vec![tr("updates.download"), close_label.clone()],
-                        ),
-                        InstallState::Idle => (String::new(), vec![close_label.clone()]),
-                    };
-                    let labels: Vec<&str> = buttons.iter().map(String::as_str).collect();
-                    match crate::ui::chrome::message_box(
-                        ctx,
-                        crate::ui::chrome::MessageIcon::Info,
-                        &text,
-                        &labels,
-                    ) {
-                        Some(0) if matches!(install, InstallState::Failed(_)) => {
-                            let url = r.download.clone().unwrap_or_else(|| r.page.clone());
-                            app.open_url(&url);
-                            close = true;
+                    use crate::ui::update_progress::{self, Action};
+                    let phase = update_progress::phase(&install, app.installer.progress());
+                    let picked = phase
+                        .as_ref()
+                        .and_then(|p| update_progress::dialog(ctx, version, &r.version, p));
+                    match picked {
+                        // Back to Idle: the box offers Install again.
+                        Some(Action::Cancel) => {
+                            app.installer.cancel();
                         }
                         // Restart: exit the usual way (asking about unsaved
                         // drawings); the new version starts when the
                         // program has exited.
-                        Some(0)
-                            if matches!(
-                                install,
-                                InstallState::Installed(_) | InstallState::Ready(_)
-                            ) =>
-                        {
+                        Some(Action::Restart) => {
                             if app.installer.arm() {
                                 app.request_exit();
                             }
                             close = true;
                         }
-                        Some(_) => close = true,
+                        Some(Action::TryAgain) => {
+                            match r.installer.clone().zip(crate::updates::install_target()) {
+                                Some((package, target)) => app.installer.start(
+                                    r.version.clone(),
+                                    package,
+                                    target,
+                                    Some(ctx.clone()),
+                                ),
+                                None => {
+                                    let url = r.download.clone().unwrap_or_else(|| r.page.clone());
+                                    app.open_url(&url);
+                                    close = true;
+                                }
+                            }
+                        }
+                        Some(Action::Website) => {
+                            let url = r.download.clone().unwrap_or_else(|| r.page.clone());
+                            app.open_url(&url);
+                            close = true;
+                        }
+                        // A download goes on behind the card.
+                        Some(Action::Later | Action::Close) => close = true,
                         None => {}
                     }
                 }
@@ -8333,6 +8316,128 @@ pub(crate) mod tests {
                 );
             }
         }
+    }
+
+    /// One frame of `show` with `events`, as the accessibility tree sees
+    /// it: each widget's role, label, whether it is enabled and its id.
+    fn frame_widgets(
+        ctx: &Context,
+        app: &mut App,
+        events: Vec<egui::Event>,
+    ) -> Vec<(egui::accesskit::Role, String, bool, egui::accesskit::NodeId)> {
+        ctx.enable_accesskit();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, 900.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| show(app, &ui.ctx().clone()));
+        out.textures_delta.clear();
+        out.platform_output
+            .accesskit_update
+            .map(|u| {
+                u.nodes
+                    .iter()
+                    .map(|(id, n)| {
+                        (
+                            n.role(),
+                            n.label().unwrap_or_default().to_string(),
+                            !n.is_disabled(),
+                            *id,
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn click(id: egui::accesskit::NodeId) -> egui::Event {
+        egui::Event::AccessKitActionRequest(egui::accesskit::ActionRequest {
+            action: egui::accesskit::Action::Click,
+            target_node: id,
+            target_tree: egui::accesskit::TreeId::ROOT,
+            data: None,
+        })
+    }
+
+    /// The update progress dialog: a progress bar and Cancel while the
+    /// file downloads, Cancel greyed while it is checked, Restart Now and
+    /// Later when the update is ready, Try Again and the website after a
+    /// failure. Cancel stops the download and the box offers Install
+    /// again.
+    #[test]
+    fn the_update_dialog_shows_the_progress_and_the_buttons_of_each_step() {
+        use crate::updates::{InstallState, Package, Release, UpdateState};
+        use egui::accesskit::{NodeId, Role};
+        type Widgets = [(Role, String, bool, NodeId)];
+        let mut app = App::headless();
+        let ctx = crate::theme::ui_context();
+        let release = Release {
+            version: "9.0.0".into(),
+            page: "https://example.org/r".into(),
+            download: None,
+            installer: Some(Package {
+                url: "https://example.org/a.AppImage".into(),
+                sha256: "0".repeat(64),
+                size: 3 << 20,
+            }),
+        };
+        *app.updates.state.lock().expect("lock") = UpdateState::Available(release);
+        app.dialog = Dialog::Updates;
+        let shown = |app: &mut App, install: InstallState| {
+            *app.installer.state.lock().expect("lock") = install;
+            frame_widgets(&ctx, app, Vec::new());
+            frame_widgets(&ctx, app, Vec::new())
+        };
+        let button = |w: &Widgets, label: &str| {
+            w.iter()
+                .find(|(r, l, _, _)| *r == Role::Button && l == label)
+                .map(|(_, _, enabled, id)| (*enabled, *id))
+        };
+        let bar = |w: &Widgets| w.iter().any(|(r, _, _, _)| *r == Role::ProgressIndicator);
+        let downloading = InstallState::Downloading {
+            done: 1 << 20,
+            total: 3 << 20,
+        };
+        let w = shown(&mut app, downloading.clone());
+        assert!(bar(&w), "a progress bar: {w:?}");
+        assert_eq!(button(&w, "Cancel").map(|b| b.0), Some(true), "{w:?}");
+        assert!(button(&w, "Restart Now").is_none());
+        let w = shown(&mut app, InstallState::Checking);
+        assert_eq!(button(&w, "Cancel").map(|b| b.0), Some(false), "greyed");
+        assert!(!bar(&w), "a moving bar, not a share");
+        let w = shown(&mut app, InstallState::Installing);
+        assert_eq!(button(&w, "Cancel").map(|b| b.0), Some(false), "greyed");
+        let w = shown(&mut app, InstallState::Installed("9.0.0".into()));
+        assert!(button(&w, "Restart Now").is_some_and(|b| b.0), "{w:?}");
+        assert!(button(&w, "Later").is_some_and(|b| b.0));
+        assert!(button(&w, "Cancel").is_none() && !bar(&w));
+        let w = shown(&mut app, InstallState::Ready("9.0.0".into()));
+        assert!(button(&w, "Restart Now").is_some() && button(&w, "Later").is_some());
+        let w = shown(
+            &mut app,
+            InstallState::Failed("the download answered 404".into()),
+        );
+        assert!(button(&w, "Try Again").is_some(), "{w:?}");
+        assert!(button(&w, "Download from the website").is_some());
+        // Later closes the box.
+        let w = shown(&mut app, InstallState::Installed("9.0.0".into()));
+        let (_, later) = button(&w, "Later").expect("Later");
+        frame_widgets(&ctx, &mut app, vec![click(later)]);
+        assert!(matches!(app.dialog, Dialog::None), "Later closed it");
+        // Cancel: the download stops, the box stays and offers Install.
+        app.dialog = Dialog::Updates;
+        let w = shown(&mut app, downloading);
+        let (_, cancel) = button(&w, "Cancel").expect("Cancel");
+        frame_widgets(&ctx, &mut app, vec![click(cancel)]);
+        assert_eq!(app.installer.get(), InstallState::Idle);
+        assert!(matches!(app.dialog, Dialog::Updates), "still open");
+        let w = frame_widgets(&ctx, &mut app, Vec::new());
+        assert!(!bar(&w));
+        assert!(button(&w, "Install").is_some() || button(&w, "Download").is_some());
     }
 }
 
