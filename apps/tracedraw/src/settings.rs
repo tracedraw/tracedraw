@@ -705,7 +705,7 @@ fn default_desktop() -> [u8; 3] {
 }
 
 /// How many one-time upgrades `Settings::upgrade` knows.
-const UPGRADES: u32 = 5;
+const UPGRADES: u32 = 6;
 
 fn default_outline_units() -> String {
     "pt".into()
@@ -1783,7 +1783,7 @@ impl Default for Settings {
             workspace: "default".into(),
             show_welcome_on_start: true,
             welcome_tab_closed: false,
-            crop_picture_pixels: false,
+            crop_picture_pixels: true,
             table: Default::default(),
             units: "mm".into(),
             nudge_mm: 2.54,
@@ -1990,7 +1990,8 @@ impl Settings {
     ///    selects it), which older versions saved switched off;
     /// 2. new rectangles keep their corners; 3. the alignment and dynamic
     ///    guides start off; 4. the last export's settings are remembered;
-    /// 5. Duplicate's old default offset (6.35 mm) becomes none.
+    /// 5. Duplicate's old default offset (6.35 mm) becomes none; 6. the
+    /// Crop tool cuts a picture's pixels.
     pub fn upgrade(mut self) -> Settings {
         self.autocorrect.upgrade();
         if self.upgrades < 1 {
@@ -2023,6 +2024,13 @@ impl Settings {
         // Duplicate repeats that (#1494). An offset of one's own stays.
         if self.upgrades < 5 && self.duplicate_offset_mm == [6.35, 6.35] {
             self.duplicate_offset_mm = [0.0, 0.0];
+        }
+        // The Crop tool put a picture in a clip frame of the area by
+        // default, keeping every pixel, which looked like a mask and not
+        // a crop (live test of 0.41): it now cuts an upright picture's
+        // pixels. On once; switched off afterwards it stays off.
+        if self.upgrades < 6 {
+            self.crop_picture_pixels = true;
         }
         self.upgrades = self.upgrades.max(UPGRADES);
         self.migrate_ai();
@@ -2479,6 +2487,24 @@ mod tests {
         let saved = serde_json::to_string(&s).expect("saved");
         let again: Settings = serde_json::from_str(&saved).expect("read back");
         assert_eq!(again.upgrade().duplicate_offset_mm, [6.35, 6.35]);
+    }
+
+    /// The Crop tool cuts a picture's pixels by default, and preferences
+    /// saved with the old off get it on once; off again afterwards, it
+    /// stays off (live test of 0.41).
+    #[test]
+    fn older_preferences_get_picture_pixels_cropped_once() {
+        assert!(Settings::default().crop_picture_pixels);
+        let old: Settings =
+            serde_json::from_str(r#"{"upgrades": 5, "crop_picture_pixels": false}"#)
+                .expect("old preferences");
+        let mut s = old.upgrade();
+        assert!(s.crop_picture_pixels);
+        assert_eq!(s.upgrades, UPGRADES);
+        s.crop_picture_pixels = false;
+        let saved = serde_json::to_string(&s).expect("saved");
+        let again: Settings = serde_json::from_str(&saved).expect("read back");
+        assert!(!again.upgrade().crop_picture_pixels);
     }
 
     /// Preferences saved before the last export's settings were kept
