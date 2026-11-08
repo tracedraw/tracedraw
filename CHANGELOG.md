@@ -6,6 +6,18 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Multipage View: a press on an object that lies off its page, on the desktop, or over the current page while it belongs to another page, makes that object's page current and picks the object in the same click; such objects could not be selected (#2055).
+
+- Guidelines: a click on a guideline of the master page (every page shows them; opening a `.cdr` file puts its guidelines there) picks it, moves it or deletes it, and a right click opens its menu, also while the page's own guidelines were the ones being edited: the click switches to the set the guideline is in. Such a guideline could be seen but not touched (#2029).
+
+- Color Eyedropper: after the sampled colour is applied to an object, the tool samples again, so the next click picks a colour instead of painting the old one; the Select Color button on the property bar did that by hand (#1985).
+
+- Ctrl+Tab brings the next document tab to the front and Ctrl+Shift+Tab the previous one, round the end, so open drawings can be switched from the keyboard (#2068, #2058).
+
+- Symbols: Create New Symbol keeps the selection handles around the new symbol. They jumped to its lower left corner as a 10 x 10 mm box, and a symbol inserted from the Symbols docker was picked the same way (#1939, #1980).
+
+- Text: Shift+F3 opens Text > Change Case while a text is being typed as well; the shortcut did nothing until the text was selected with the Pick tool (#2059).
+
 - Page tabs: the current page's tab is highlighted in the same colour as the active document tab above the rulers, so the page being worked on stands out (#2049).
 
 - Print and Print Preview: the printer printed to last is offered again for the rest of the session, instead of the system's default every time; a new run starts on the default again unless Options > Printing remembers the last choices (#2056).
