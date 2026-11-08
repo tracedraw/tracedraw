@@ -1999,7 +1999,7 @@ impl App {
             }
             // A guideline where no object is: the Guidelines panel on it.
             if self.hit_test(p).is_none() {
-                if let Some(i) = self.guide_at(p) {
+                if let Some(i) = self.pick_guide_at(p) {
                     self.open_guide_properties(i);
                     return;
                 }

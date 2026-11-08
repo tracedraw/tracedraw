@@ -509,7 +509,12 @@ impl App {
             let apply = self.eyedropper_apply && self.eyedropper_color.is_some();
             if apply {
                 if let Some(c) = self.eyedropper_color {
-                    self.apply_color_at(p, c, shift);
+                    // Once the colour is applied the tool samples again, so
+                    // the next click picks a colour instead of painting the
+                    // old one (#1985).
+                    if self.apply_color_at(p, c, shift) {
+                        self.eyedropper_apply = false;
+                    }
                 }
             } else if let Some(c) = self.sample_color_at(p, shift) {
                 self.eyedropper_color = Some(c);

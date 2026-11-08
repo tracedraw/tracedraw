@@ -602,7 +602,7 @@ impl App {
                 if !self.selection.contains(&id) {
                     self.select(vec![id]);
                 }
-            } else if let Some(i) = self.guide_at(p) {
+            } else if let Some(i) = self.pick_guide_at(p) {
                 // A guideline under the pointer gets its own menu.
                 if !self.selected_guides.contains(&i) {
                     self.select(Vec::new());
