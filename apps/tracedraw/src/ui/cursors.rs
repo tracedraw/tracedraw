@@ -429,6 +429,13 @@ pub fn for_tool_with_ctrl(
         {
             ToolCursor::System(egui::CursorIcon::Move)
         }
+        // A contour handle slides along its line.
+        Tool::Contour
+            if app.contour_handle_drag.is_some()
+                || pos.is_some_and(|s| app.contour_handle_at(app.view.to_page(s)).is_some()) =>
+        {
+            ToolCursor::System(egui::CursorIcon::ResizeHorizontal)
+        }
         Tool::Distort
             if app
                 .distort_drag

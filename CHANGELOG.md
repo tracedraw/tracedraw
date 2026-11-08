@@ -102,6 +102,8 @@ full, row-by-row status.
 
 - Common Shapes: a sixth set, My shapes, holds shapes of your own. Add Selection as Common Shape (in that set, in Object > Create and on the right-click menu) keeps the outline of the selected objects as a shape, saved in the settings folder so it is still there after a restart; it is drawn like the built-in shapes by dragging a box, Ctrl keeping its proportions, and Remove takes it out again (#481, #782).
 
+- Contour tool: an object with a contour shows two handles on the drawing, a square at the last step that sets how far the contour reaches and a bar at the first step that sets the number of steps (the last step staying where it is). The contour follows live and each drag is one undo step. Steps on the property bar is a slider (#1265).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
