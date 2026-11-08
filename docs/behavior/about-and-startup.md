@@ -57,7 +57,16 @@ the version on the right).
   of the way in 30 s) so that it never stands still. Nothing holds the
   splash back: it stays up for as long as the start takes (it used to
   stay at least 1.6 s), one frame with the last status after the fonts it
-  waits for are in, and goes with the editor built.
+  waits for are in, and goes with the editor built. The editor is built
+  only once the splash has been drawn on at least three frames over at
+  least 0.1 s (`splash::SHOWN_FRAMES`, `splash::SHOWN_SECONDS`), so that
+  it is on the screen while the editor is built: the windowing layer
+  draws the first frame with the window hidden and shows it after, and
+  on X11 a frame presented before the window manager has mapped the
+  window never shows. With the fonts in at once (a second start) the
+  editor was built on the second frame and the window stayed white
+  until it was, the splash never seen (#1911,
+  `splash::tests::the_splash_is_on_the_screen_before_the_editor_is_built`).
 - Each start logs `the editor was built in N ms` and `first frame N s
   after the start` (the start of the program to the first frame of the
   editor), the numbers to compare when a start seems slower.
@@ -84,8 +93,16 @@ the version on the right).
   that asks for it and every frame until the window has its size (or,
   when it starts maximized, until it is maximized and fills the screen)
   are drawn plain in the interface's background colour, for at most one
-  second (`splash::GROW_SECONDS`); the editor's first frame is drawn at
-  the window's final size. The editor used to draw at once: its first
+  second (`splash::GROW_SECONDS`), and so are two more frames once it
+  has its size (`splash::GROWN_FRAMES`); the editor's first frame is
+  drawn at the window's final size, with a plain frame of that size on
+  the screen while it is. The editor's first frame came in the very
+  frame the window first reported its new size, so nothing had been
+  presented at that size, and the grown window showed torn blocks of
+  leftover pixels for the half second to a second that frame took
+  (#1911,
+  `splash::tests::the_grown_window_is_drawn_plain_before_the_editors_first_frame`).
+  The editor used to draw at once: its first
   frames came at the splash's size while the window grew, so the grown
   window showed the last splash frame in its top left corner, the
   editor squeezed below it and torn, leftover pixels over the rest for
