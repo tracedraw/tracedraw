@@ -14,6 +14,7 @@ members = [
     "crates/tracecut",
     "apps/tracedraw",
     "apps/tracedraw-cli",
+    "apps/tracedraw-thumbnailer",
 ]
 
 [workspace.package]

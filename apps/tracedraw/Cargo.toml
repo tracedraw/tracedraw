@@ -156,6 +156,8 @@ assets = [
     ["target/release/tracedraw", "usr/bin/", "755"],
     ["target/release/tracedraw-cli", "usr/bin/", "755"],
     ["../../packaging/linux/tracedraw.desktop", "usr/share/applications/", "644"],
+    ["../../packaging/linux/tracedraw-mime.xml", "usr/share/mime/packages/tracedraw.xml", "644"],
+    ["../../packaging/linux/tracedraw.thumbnailer", "usr/share/thumbnailers/", "644"],
     ["../../assets/icon/tracedraw-256.png", "usr/share/icons/hicolor/256x256/apps/tracedraw.png", "644"],
     ["../../README.md", "usr/share/doc/tracedraw/README", "644"],
 ]

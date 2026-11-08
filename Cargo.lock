@@ -4424,6 +4424,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracedraw-thumbnailer"
+version = "0.41.0"
+dependencies = [
+ "tracedraw-core",
+ "tracedraw-render",
+ "tracedraw-text",
+ "windows",
+ "windows-core",
+]
+
+[[package]]
 name = "tracedraw-tracecut"
 version = "0.41.0"
 dependencies = [

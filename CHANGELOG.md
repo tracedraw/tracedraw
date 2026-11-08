@@ -6,6 +6,10 @@ full, row-by-row status.
 
 ## Unreleased
 
+- File managers show a .tdraw drawing as a small picture of its first page. On Windows the installer adds a thumbnail provider for the Explorer; on Linux the .deb installs the drawing type and a thumbnailer, and `tracedraw-cli thumbnail <file> <out.png> [size]` makes the picture for any file TraceDraw opens.
+
+- Ellipse arcs stay unfilled while Fill open curves is off; uniform transparency set on the fill alone or on the outline alone fades only that part; the dimension tools snap to the ends, nodes and edges of objects even with Snap To Objects off.
+
 - Page tabs: a tab dragged along the row and let go over another tab moves its page there, so pages can be put in another order without the Page Sorter (#2064).
 
 - Polyline tool: a drag draws a freehand line, as a click places a straight segment, so one curve can mix straight and freehand parts (#2074).
