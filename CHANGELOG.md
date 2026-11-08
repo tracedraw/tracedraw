@@ -46,6 +46,8 @@ full, row-by-row status.
 
 - Touch screens: a tap of two fingers on the drawing undoes, of three redoes; a pinch or a pan, which moves, does neither. Shift, Ctrl and Alt move from the Standard toolbar to keys floating over the drawing's bottom left corner, with a Delete key beside them; Options > Display shows or hides them (#1996).
 
+- Dimensions: Object > Insert > Add Dimensions measures the selection, a width along its bottom and a height along its right, 5 mm away, in the Dimension tool's style and units; Add Dimensions to Each Object gives every selected object its own pair. Both are in the right-click menu too, and one undo takes them away.
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

@@ -129,6 +129,8 @@ próprios atalhos; veja
 | [[menu.object.insert_barcode]] | [Códigos de barras e QR codes](../objects/barcodes.md) |
 | [[menu.object.insert_qr]] | [Códigos de barras e QR codes](../objects/barcodes.md) |
 | [[menu.object.insert_page_number]] | [Trabalhar com páginas](../pages-layout/pages.md#page-numbers) |
+| [[menu.object.add_dimensions]] | [Linhas de cota e balões](../lines-shapes/dimensions.md#add-dimensions) |
+| [[menu.object.add_dimensions_each]] | [Linhas de cota e balões](../lines-shapes/dimensions.md#add-dimensions) |
 | [[menu.object.clip_frame]] | [Colocar objetos dentro de uma moldura](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_place_inside]] | [Colocar objetos dentro de uma moldura](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_extract]] | [Colocar objetos dentro de uma moldura](../objects/clip-frames.md) |

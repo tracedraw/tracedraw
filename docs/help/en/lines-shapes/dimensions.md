@@ -42,6 +42,17 @@ The angle is measured counterclockwise from the first side.
 The [[tool.segment_dimension]] tool measures a segment of an object: click
 the segment to take its two ends, then click where the dimension line goes.
 
+## Add dimensions to objects {#add-dimensions}
+
+Select objects and choose **Object > Insert > [[menu.object.add_dimensions]]**
+(it is also in the right-click menu): a dimension along the bottom measures
+the width of the selection's box, and one along the right its height, each
+5 mm away from it, in the dimension style and units below. With
+[[menu.object.add_dimensions_each]], each selected object gets its own pair.
+Dimensions in the selection are not measured, and an object with no height
+(or width) gets no dimension for it. The new dimensions are selected and one
+undo takes them all away.
+
 ## Dimension style {#dimension-style}
 
 The property bar shows these settings with the dimension tools and when the

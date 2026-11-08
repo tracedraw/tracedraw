@@ -3134,6 +3134,13 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         if item(ui, "menu.object.insert_page_number", "", true) {
             app.insert_page_number(crate::ops2::PageNumberWhere::Active);
         }
+        let has = !app.selection.is_empty();
+        if item(ui, "menu.object.add_dimensions", "", has) {
+            app.add_dimensions(false);
+        }
+        if item(ui, "menu.object.add_dimensions_each", "", has) {
+            app.add_dimensions(true);
+        }
     });
     sep(ui);
     sub(ui, "menu.object.clip_frame", |ui| {

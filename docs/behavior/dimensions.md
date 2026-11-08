@@ -29,6 +29,22 @@ moved, scaled, turned or skewed (`dimensions.rs`).
   (`pick_drag_tests::ctrl_keeps_a_dimension_leg_to_the_constrain_angle`).
 - The new dimension is selected; one undo step.
 
+## Add Dimensions
+
+- Object > Insert > Add Dimensions (also in the canvas context menu
+  with something selected): a horizontal dimension along the bottom of
+  the selection's box and a vertical one along its right side, their
+  lines `ADD_DIMENSIONS_GAP` (5 mm) below and to the right of it, in the
+  Dimension tool's style and units (`App::add_dimensions`,
+  `box_measures`).
+- Add Dimensions to Each Object (in the context menu with more than one
+  object selected): a pair for every selected object's own box.
+- Dimensions in the selection are not measured; a box with no width or
+  no height gets no dimension for it; nothing selected adds nothing.
+  The points are held to the objects they sit on, as when drawn.
+- All the new dimensions are selected; one undo step
+  (`dimensions::tests::add_dimensions_measures_the_selection_and_each_object`).
+
 ## Drawing
 
 - Linear: extension lines from the measured points (or the extension

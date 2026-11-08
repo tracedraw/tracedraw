@@ -128,6 +128,8 @@ eigen sneltoetsen tonen; zie [Aanpassingsopties](../customize/customization.md#c
 | [[menu.object.insert_barcode]] | [Barcodes and QR codes](../objects/barcodes.md) |
 | [[menu.object.insert_qr]] | [Barcodes and QR codes](../objects/barcodes.md) |
 | [[menu.object.insert_page_number]] | [Working with pages](../pages-layout/pages.md#page-numbers) |
+| [[menu.object.add_dimensions]] | [Dimension lines and callouts](../lines-shapes/dimensions.md#add-dimensions) |
+| [[menu.object.add_dimensions_each]] | [Dimension lines and callouts](../lines-shapes/dimensions.md#add-dimensions) |
 | [[menu.object.clip_frame]] | [Placing objects inside a frame](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_place_inside]] | [Placing objects inside a frame](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_extract]] | [Placing objects inside a frame](../objects/clip-frames.md) |

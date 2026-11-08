@@ -128,6 +128,8 @@ only the Welcome Screen is open. The menus can show your own shortcuts; see
 | [[menu.object.insert_barcode]] | [Barcodes and QR codes](../objects/barcodes.md) |
 | [[menu.object.insert_qr]] | [Barcodes and QR codes](../objects/barcodes.md) |
 | [[menu.object.insert_page_number]] | [Page numbers](../pages-layout/pages.md#page-numbers) |
+| [[menu.object.add_dimensions]] | [Dimension lines and callouts](../lines-shapes/dimensions.md#add-dimensions) |
+| [[menu.object.add_dimensions_each]] | [Dimension lines and callouts](../lines-shapes/dimensions.md#add-dimensions) |
 | [[menu.object.clip_frame]] | [Clip frames](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_place_inside]] | [Clip frames](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_extract]] | [Clip frames](../objects/clip-frames.md) |

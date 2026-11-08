@@ -492,6 +492,12 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     if ci(ui, close, "context.create_symbol", "", true) {
         app.create_symbol_from_selection();
     }
+    if ci(ui, close, "menu.object.add_dimensions", "", true) {
+        app.add_dimensions(false);
+    }
+    if shapes.len() > 1 && ci(ui, close, "menu.object.add_dimensions_each", "", true) {
+        app.add_dimensions(true);
+    }
     // A symbol instance: its symbol's objects edited in place (#1980).
     if let Some(id) = app.selected_symbol_instance() {
         if ci(
