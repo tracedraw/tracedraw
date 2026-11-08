@@ -1327,6 +1327,28 @@ mod tests {
         }
     }
 
+    /// The browser notice tells what the browser has of fonts: not the
+    /// computer's own, but the page's catalogue and the fonts added in
+    /// the Font Manager; it said only the bundled fonts were there
+    /// (#1417).
+    #[test]
+    fn the_browser_notice_tells_where_fonts_come_from() {
+        crate::i18n::with_thread_language("en", || {
+            let text = crate::i18n::tr("web.notice_text");
+            let first = text.split("\n\n").next().unwrap_or("");
+            assert!(!first.contains("bundled"), "{first}");
+            assert!(first.contains("installed on your computer"), "{first}");
+            assert!(first.contains("Font Manager"), "{first}");
+        });
+        let en = crate::i18n::with_thread_language("en", || crate::i18n::tr("web.notice_text"));
+        for (code, _) in crate::i18n::LANGUAGES {
+            let text =
+                crate::i18n::with_thread_language(code, || crate::i18n::tr("web.notice_text"));
+            // Each language says it in its own words.
+            assert!(code == "en" || text != en, "{code}");
+        }
+    }
+
     /// The screen less the holes is covered once, and no piece reaches
     /// into a hole (#563).
     #[test]

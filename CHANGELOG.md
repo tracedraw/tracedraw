@@ -92,6 +92,8 @@ full, row-by-row status.
 
 - Pick tool: holding the right mouse button while a selection box is dragged moves the box instead of sizing it; let go, it is sized again, and the left release selects what it encloses where it was moved to. The Shape tool's node selection box moves the same way (#2050).
 
+- The browser version's start notice says where its fonts come from: not the computer's installed fonts, but free fonts fetched from the page's catalogue when a drawing needs them and fonts added in the Font Manager; it said only the bundled fonts were available (#1417).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

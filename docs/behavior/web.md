@@ -114,12 +114,16 @@ its bar turns red and the reason shows under it, with the links.
 Once the editor is up, each time the page opens, a message says that
 this is the same Rust program as the desktop app compiled to
 WebAssembly, that a browser is slower (large drawings, heavy effects,
-big files) and opens and saves files by upload and download, that fonts
-beyond the bundled ones are downloaded the first time text uses them and
-a font added in Font Manager is kept in that browser (#1417,
-`app::tests::the_browser_notice_tells_what_fonts_there_are`), and that
-the desktop app runs natively at full speed. OK closes it (Enter too,
-and its close button); Download the desktop app opens the latest release
+big files), cannot use the fonts installed on the computer (the page
+has no access to them: free fonts are downloaded from its font folder
+and catalog the first time text uses them, and a font added with Font
+Manager > Add Font is kept in that browser, see Fonts above; #1417, the
+notice said only the bundled fonts were there,
+`app::tests::the_browser_notice_tells_what_fonts_there_are`,
+`ui::chrome::tests::the_browser_notice_tells_where_fonts_come_from`)
+and opens and saves files by upload and download, and that the desktop
+app runs natively at full speed. OK closes it (Enter too, and its close
+button); Download the desktop app opens the latest release
 (`app::tests::the_browser_notice_shows_at_every_visit`). When the
 browser runs on Windows (the navigator's platform or user agent,
 `web_page::windows_platform`), a third button, Get it from the Microsoft
