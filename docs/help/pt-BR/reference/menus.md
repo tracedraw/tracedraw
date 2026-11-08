@@ -28,6 +28,7 @@ próprios atalhos; veja
 | [[menu.file.acquire_image]] | [Importar arquivos](../file-formats/import.md) |
 | [[menu.file.import]] | [Importar arquivos](../file-formats/import.md) |
 | [[menu.file.export]] | [Exportar](../file-formats/export.md) |
+| [[menu.file.export_with_options]] | [Exportar](../file-formats/export.md) |
 | [[menu.file.export_for]] | [Exportar para a web](../web-graphics/export-for-web.md) |
 | [[menu.file.export_for_web]] | [Exportar para a web](../web-graphics/export-for-web.md) |
 | [[menu.file.export_for_office]] | [Exportar para a web](../web-graphics/export-for-web.md) |

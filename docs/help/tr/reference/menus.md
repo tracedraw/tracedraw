@@ -27,6 +27,7 @@ soluk görünür. Menüler kendi kısayollarınızı gösterebilir; bkz.
 | [[menu.file.acquire_image]] | [Importing files](../file-formats/import.md) |
 | [[menu.file.import]] | [Importing files](../file-formats/import.md) |
 | [[menu.file.export]] | [Exporting](../file-formats/export.md) |
+| [[menu.file.export_with_options]] | [Exporting](../file-formats/export.md) |
 | [[menu.file.export_for]] | [Exporting for the web](../web-graphics/export-for-web.md) |
 | [[menu.file.export_for_web]] | [Exporting for the web](../web-graphics/export-for-web.md) |
 | [[menu.file.export_for_office]] | [Exporting for the web](../web-graphics/export-for-web.md) |
