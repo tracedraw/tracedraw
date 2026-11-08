@@ -312,6 +312,13 @@ impl App {
         let target = match under {
             Some(id) if id != self.page => Some(id),
             _ if facing => self.spread_object_page_at(&shown, p),
+            // Off every page, or on the current page where it has no
+            // object: an object of another page lying there (one left on
+            // the desktop beside its page) makes its page current, so the
+            // press then picks it instead of doing nothing (#2055).
+            _ if self.multipage && self.hit_test(p).is_none() => {
+                self.shown_object_page_at(&shown, p)
+            }
             _ => None,
         };
         match target {
@@ -321,6 +328,35 @@ impl App {
             }
             None => false,
         }
+    }
+
+    /// Another shown page whose visible object lies at `p` (the current
+    /// page's coordinates), going by the objects' boxes; the pages in
+    /// their drawing order, so the frontmost page's object wins (#2055).
+    fn shown_object_page_at(
+        &self,
+        shown: &[(PageId, Rect)],
+        p: tracedraw_core::geometry::Point,
+    ) -> Option<PageId> {
+        let doc = self.doc();
+        shown
+            .iter()
+            .rev()
+            .filter(|(id, _)| *id != self.page)
+            .filter_map(|(id, r)| doc.page(*id).ok().map(|page| (page, *r)))
+            .find(|(page, r)| {
+                let q = tracedraw_core::geometry::Point::new(p.x - r.x0, p.y - r.y0);
+                page.layers
+                    .iter()
+                    .filter(|l| l.visible && !l.locked)
+                    .flat_map(|l| l.shapes.iter())
+                    .filter(|sh| sh.visible)
+                    .any(|sh| {
+                        let b = sh.visual_bounds();
+                        q.x >= b.x0 && q.x <= b.x1 && q.y >= b.y0 && q.y <= b.y1
+                    })
+            })
+            .map(|(page, _)| page.id)
     }
 
     /// Another page of the current spread whose visible object lies at
