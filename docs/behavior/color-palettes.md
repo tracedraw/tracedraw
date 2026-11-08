@@ -55,6 +55,9 @@ palette's swatch size and one row. A palette shows in one bar at most.
   `pick_drag_tests::a_palette_bar_docks_between_the_toolbars_at_the_top`).
 - Each bar has its own Rows and Swatch Size; the default palette's are
   the ones in Options, which the document palette row under it follows.
+  Options > Customization > Color Palette also has the default palette's
+  Position; its Rows and Position act as the palette menu's (a floating
+  palette's window takes the rows at its length, #1983).
 - Close Palette in its menu (or the close button of its floating window)
   closes the bar.
 - Floating: a small window with the palette's name (cut with an ellipsis
