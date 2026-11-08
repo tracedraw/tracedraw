@@ -1194,6 +1194,13 @@ fn refresh_blend_ends(doc: &mut Document) {
             continue;
         };
         copy.effects.clear();
+        // In the space of the group or frame holding the start object,
+        // where its effects live (#2023).
+        let parent = doc.parent_transform(start).unwrap_or(Affine::IDENTITY);
+        let det = parent.determinant();
+        if det.is_finite() && det.abs() > 1e-12 && parent != Affine::IDENTITY {
+            copy.transform = parent.inverse() * copy.transform;
+        }
         let Some(s) = doc.find_shape_mut(start) else {
             continue;
         };

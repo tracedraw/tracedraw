@@ -354,7 +354,10 @@ mod tests {
         p.close_path();
         for fill in [FillRule::EvenOdd, FillRule::NonZero] {
             let f = resolve_crossings(&p, fill, 0.05);
-            assert!(find_crossings(&[vec![f.clone()]], false, 0.05).is_empty(), "{f:?}");
+            assert!(
+                find_crossings(&[vec![f.clone()]], false, 0.05).is_empty(),
+                "{f:?}"
+            );
             assert_eq!(closed_subpaths(&f), 2, "{f:?}");
             // Two triangles of 25 mm2, less the dot cut where they met.
             let a = area(&f);
@@ -407,15 +410,12 @@ mod tests {
         let c = Rect::new(40.0, 0.0, 50.0, 10.0).to_path(0.01);
         let d = Rect::new(45.0, 5.0, 55.0, 15.0).to_path(0.01);
         let e = Rect::new(100.0, 0.0, 110.0, 10.0).to_path(0.01);
-        let objects = [
-            vec![a.clone()],
-            vec![c],
-            vec![b.clone()],
-            vec![e],
-            vec![d],
-        ];
+        let objects = [vec![a.clone()], vec![c], vec![b.clone()], vec![e], vec![d]];
         let found = find_crossings(&objects, true, 0.05);
-        assert_eq!(crossing_groups(&found, objects.len()), vec![vec![0, 2], vec![1, 4]]);
+        assert_eq!(
+            crossing_groups(&found, objects.len()),
+            vec![vec![0, 2], vec![1, 4]]
+        );
         assert!(crossing_groups(&found, 0).is_empty());
         let w = weld_crossing(&[(a, FillRule::EvenOdd), (b, FillRule::NonZero)], 0.05);
         assert_eq!(closed_subpaths(&w), 1);
