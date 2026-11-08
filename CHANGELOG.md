@@ -36,6 +36,8 @@ full, row-by-row status.
 
 - Drawings are saved, listed and named in any script: the direction marks a right-to-left keyboard or pasted text leaves in a Hebrew or Arabic name no longer hide the extension (a name came out as "שלום.tdraw.tdraw"), auto-backups, Send To and printing keep a name's letters, accents and vowel marks instead of turning them into underscores, and the interface uses a system font for Hebrew, so a Hebrew name typed in the Save Drawing dialog, the tabs and the recent files no longer shows as boxes.
 
+- Print Merge: Print Merged Document asked for again while the merged drawing it made is still open and unchanged (after closing Print Preview, from the merged drawing or from the drawing merged, with the same records) prints that drawing instead of making another merged drawing behind it.
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

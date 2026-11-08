@@ -551,6 +551,19 @@ impl App {
         }
     }
 
+    /// The engine of the drawing tab `i` shows (the active one's is
+    /// [`App::engine`], a parked one's sits in its slot or in the slot of
+    /// the window holding its drawing).
+    pub fn tab_engine(&self, i: usize) -> Option<&Engine> {
+        let drawing = self.docs.get(i)?.drawing;
+        let active = self.docs.get(self.active_doc).map(|d| d.drawing);
+        Some(match self.holder(i) {
+            Some(h) => &self.docs[h].engine,
+            None if active == Some(drawing) => &self.engine,
+            None => &self.docs[i].engine,
+        })
+    }
+
     /// Indices of the open drawings with unsaved changes.
     pub fn dirty_documents(&self) -> Vec<usize> {
         (0..self.docs.len())
