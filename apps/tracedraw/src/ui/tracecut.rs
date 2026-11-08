@@ -1,5 +1,5 @@
 //! The TraceCut window (Launch > TraceCut, Tools > TraceCut): the tools
-//! grouped on the left (Cut, Nesting, Measure); on the right the chosen
+//! grouped on the left (Cut, Nesting, Measure, Make); on the right the chosen
 //! tool's presets and settings, a preview of the selection with what the
 //! tool finds, a status line, and Apply, OK and Cancel. Apply works the
 //! result out into the preview without touching the drawing; OK applies
@@ -141,6 +141,7 @@ fn tool_pane(app: &mut App, ui: &mut Ui, st: &mut TraceCutState, width: f32) -> 
         .show(ui, |ui| {
             let a = crate::ui::tracecut_cut::settings(ui, app.units, st);
             crate::ui::tracecut_nest::settings(ui, app.units, st);
+            crate::ui::tracecut_make::settings(ui, app.units, st);
             settings(ui, app.units, st);
             a
         })

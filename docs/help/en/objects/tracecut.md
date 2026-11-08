@@ -4,7 +4,8 @@
 plotters. It is also on the standard toolbar's Launch button. Select the
 objects to work on before opening it.
 
-The tools are listed on the left by group. On the right are the chosen
+The tools are listed on the left by group: Cut, Nesting, Measure and
+Make. On the right are the chosen
 tool's settings, a preview of the selection and what the tool finds, and
 the buttons:
 
@@ -121,6 +122,16 @@ Outlines that cross themselves cut badly, and objects that cross each other
 usually need a weld first. TraceCut finds the crossings, shows them as red
 rings in the preview, and OK selects the objects that have them. Tick
 **Also between objects** to find crossings between different objects too.
+
+## Eyelets {#eyelets}
+
+In the **Make** group. Places marks for eyelets (grommets) on a banner or
+sign: small circles of the **diameter** you give, one in each corner and
+more along the edges. Choose whether they go along **the selection's box**
+or along **each closed curve** of the selection, how far from the edge
+their centres are, and whether they are **at most this far apart** or **a
+number per side** (corners included). OK adds the circles as a group named
+Eyelets.
 
 ## Nesting {#nesting}
 

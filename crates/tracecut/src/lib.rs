@@ -11,6 +11,7 @@
 //! - [`nest`]: placing objects on sheets and rolls with the least waste.
 //! - [`calc`]: cutting time and cost.
 //! - [`cnc`]: toolpaths and G-code for CNC routers and mills.
+//! - [`eyelets`]: eyelet (grommet) marks along an edge.
 //!
 //! Units are millimetres, Y up, like the rest of the model.
 
@@ -19,6 +20,7 @@ pub mod cleanup;
 pub mod cnc;
 pub mod crossings;
 pub mod cut;
+pub mod eyelets;
 pub mod measure;
 pub mod nest;
 

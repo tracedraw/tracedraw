@@ -112,6 +112,7 @@ pub mod time_tracker;
 pub mod trace_dialog;
 pub mod tracecut;
 pub mod tracecut_cut;
+pub mod tracecut_make;
 pub mod tracecut_nest;
 pub mod update_card;
 // The audit reads widget names, which egui keeps only in debug builds.

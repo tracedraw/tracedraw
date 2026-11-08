@@ -21,6 +21,7 @@ use tracedraw_core::geometry::{BezPath, Point, Rect, Shape as _};
 use tracedraw_core::{Command, ShapeId, ShapeKind};
 use tracedraw_tracecut::cnc::{CncSpec, Program};
 use tracedraw_tracecut::cut::weed::WeedSpec;
+use tracedraw_tracecut::eyelets::EyeletSpec;
 use tracedraw_tracecut::{cleanup, crossings};
 
 /// The groups of the tool list, in the order they are shown.
@@ -29,10 +30,12 @@ pub enum Group {
     Cut,
     Nesting,
     Measure,
+    /// New objects for sign and sheet work: eyelets.
+    Make,
 }
 
 impl Group {
-    pub const ALL: [Group; 3] = [Group::Cut, Group::Nesting, Group::Measure];
+    pub const ALL: [Group; 4] = [Group::Cut, Group::Nesting, Group::Measure, Group::Make];
 
     /// The i18n key of the group's name.
     pub fn key(self) -> &'static str {
@@ -40,6 +43,7 @@ impl Group {
             Group::Cut => "tracecut.group_cut",
             Group::Nesting => "tracecut.group_nesting",
             Group::Measure => "tracecut.group_measure",
+            Group::Make => "tracecut.group_make",
         }
     }
 
@@ -71,10 +75,11 @@ pub enum ToolId {
     Measure,
     CuttingTime,
     Cost,
+    Eyelets,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 14] = [
+    pub const ALL: [ToolId; 15] = [
         ToolId::PlotterOutput,
         ToolId::CncToolpath,
         ToolId::Weeding,
@@ -89,12 +94,14 @@ impl ToolId {
         ToolId::Measure,
         ToolId::CuttingTime,
         ToolId::Cost,
+        ToolId::Eyelets,
     ];
 
     pub fn group(self) -> Group {
         match self {
             ToolId::ShapeNesting | ToolId::RectNesting => Group::Nesting,
             ToolId::Measure | ToolId::CuttingTime | ToolId::Cost => Group::Measure,
+            ToolId::Eyelets => Group::Make,
             _ => Group::Cut,
         }
     }
@@ -116,6 +123,7 @@ impl ToolId {
             ToolId::Measure => "measure",
             ToolId::CuttingTime => "cutting_time",
             ToolId::Cost => "cost",
+            ToolId::Eyelets => "eyelets",
         }
     }
 
@@ -136,6 +144,7 @@ impl ToolId {
             ToolId::Measure => "tracecut.measure",
             ToolId::CuttingTime => "tracecut.cutting_time",
             ToolId::Cost => "tracecut.cost",
+            ToolId::Eyelets => "tracecut.eyelets",
         }
     }
 }
@@ -221,6 +230,7 @@ pub struct ToolSettings {
     pub measure: MeasureSettings,
     pub time: TimeSettings,
     pub cost: CostSettings,
+    pub eyelets: EyeletSpec,
 }
 
 /// Perimeter and Area has nothing to set; its presets are empty.
@@ -285,6 +295,10 @@ macro_rules! with_settings {
             }
             ToolId::Cost => {
                 let $v = &mut $s.cost;
+                $body
+            }
+            ToolId::Eyelets => {
+                let $v = &mut $s.eyelets;
                 $body
             }
         }
@@ -656,6 +670,7 @@ impl App {
             ToolId::RectNesting => {
                 Outcome::Changes(Box::new(self.tracecut_rect_nest(&settings.rect_nest)))
             }
+            ToolId::Eyelets => Outcome::Changes(Box::new(self.tracecut_eyelets(&settings.eyelets))),
             ToolId::Measure => Outcome::Report(Box::new(self.tracecut_measure())),
             ToolId::CuttingTime => Outcome::Report(Box::new(self.tracecut_time(&settings.time).0)),
             ToolId::Cost => {

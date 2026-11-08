@@ -16,7 +16,7 @@ commands. Contributed by LaMka21 (#170).
 
 ## Layout
 
-- **Tool list** (left, 210 wide), grouped: Cut, Nesting, Measure. A
+- **Tool list** (left, 210 wide), grouped: Cut, Nesting, Measure, Make. A
   group with no tools yet is not shown. The tool picked last is picked
   again the next time the window opens (kept in the settings).
 - **Right side**, top to bottom: the tool's name and what it does; the
@@ -372,3 +372,35 @@ laid on it) or **by area** (square metres of the blocks), at the
 and **machine time per hour** (the cutting time from the Cutting Time
 settings). Everything is multiplied by the **copies**. Prices carry no
 currency; the **currency** typed is shown after the amounts.
+
+## Make tools
+
+They add new objects for sign and sheet work, as one group of hairline
+outlines (no fill) on the active layer, in one undo step named after
+the tool; the new group is selected.
+
+### Eyelets
+
+Marks for eyelets (grommets), circles of the **diameter** (10 mm at
+first), added as a group named Eyelets. The geometry is
+`tracedraw_tracecut::eyelets`.
+
+- **Along** **the selection's box** (at first): the box round all the
+  selected objects, shrunk by the **distance from the edge** (15 mm,
+  from the edge to an eyelet's centre); an eyelet in each of its four
+  corners and more along its sides. An inset deeper than half the box
+  puts the eyelets on its middle line.
+- **Along each closed curve**: every closed outline of the selection is
+  offset inward by the distance from the edge (the offset Contour
+  uses); an eyelet goes on every corner of the result (a turn sharper
+  than 30 degrees) and more along the stretches between corners. A
+  curve with no corner, such as a circle, gets its eyelets spread
+  evenly from its start. A curve too small for the inset gets none.
+- **Place**: **at most this far apart** (at first, **spacing** 300 mm):
+  a side or stretch of length `L` gets `ceil(L / spacing) - 1` eyelets
+  between its corners; **a number per side** (**per side** 3, corners
+  included, 2 to 500): `count - 2` between them (on a curve without
+  corners, `count` in all). They are spread evenly by length, and
+  eyelets closer than 0.001 mm are one.
+
+The preview shows the circles; the status line counts them.

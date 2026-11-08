@@ -30,6 +30,8 @@ full, row-by-row status.
 
 - TraceCut: CNC Toolpath turns the selected curves and shapes into a G-code file for a CNC router or mill: the tool's radius outside the outlines and inside the holes (holes found by themselves and cut first), passes down to the total depth, safe height, feed, plunge and spindle speed, climb or conventional milling and optional holding tabs.
 
+- TraceCut: Eyelets, in the new Make group, places eyelet (grommet) marks along the selection's box or along each of its closed curves: circles of a given diameter, a given distance in from the edge, one in each corner and more along the sides, at most a spacing apart or a number per side; OK adds them as one group.
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
