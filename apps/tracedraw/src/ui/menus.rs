@@ -343,21 +343,22 @@ pub(crate) fn open_whats_new(app: &mut App) {
 /// submenus that lead to them, by their keys. Each version replaces the
 /// list with its own.
 pub const NEW_IN_THIS_VERSION: &[&str] = &[
-    // View > Scrollbars hides the drawing window's scrollbars.
-    "menu.view",
-    "menu.view.scrollbars",
-    // View > Page > Page Shadow, apart from Page Border.
-    "menu.view.page",
-    "menu.view.page_shadow",
-    // Bitmaps > Crop to Frame cuts a framed picture to its frame.
-    "menu.bitmaps",
-    "menu.bitmaps.crop_to_frame",
+    // Page > Facing Pages shows the pages side by side in spreads.
+    "menu.layout",
+    "menu.layout.facing_pages",
+    "menu.layout.facing_start",
+    // Text > Link Text Content links the characters of several texts.
+    "menu.text",
+    "menu.text.link_content",
     // Help > Search Commands finds a menu command by its name.
     "menu.help",
     "menu.help.search_commands",
     // Object > Nodes: the Shape tool's node commands, with keys (#2001).
     "menu.object",
     "menu.object.nodes",
+    // Object > Symbol > Edit Symbol changes a symbol in place (#1980).
+    "menu.object.symbol",
+    "menu.object.symbol_edit",
 ];
 
 thread_local! {
@@ -1572,9 +1573,9 @@ mod tests {
                 "{key} is not in the menus"
             );
         }
-        assert!(!marked_new("menu.view.scrollbars"));
+        assert!(!marked_new("menu.layout.facing_pages"));
         set_highlight_new(true);
-        assert!(marked_new("menu.view.scrollbars"));
+        assert!(marked_new("menu.layout.facing_pages"));
         assert!(!marked_new("menu.file.export"));
         set_highlight_new(false);
         assert!(

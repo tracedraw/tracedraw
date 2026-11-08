@@ -4,7 +4,7 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.42.0 (2026-11-08)
 
 - Export opens the file dialog in the folder exported to last, kept between sessions, instead of the drawing's folder or the default one (#1817).
 
