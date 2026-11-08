@@ -32,6 +32,8 @@ full, row-by-row status.
 
 - Drop Shadow tool: every handle is grabbed and dragged, flat or standing on any edge. Where handles lie close together a press takes the nearest one; the end handle used to take every press within its reach, so the start handle under it could not be grabbed. The start handle follows the pointer while it is dragged.
 
+- Object > Convert Outline to Object (Ctrl+Shift+Q) keeps curves as curves: each segment of the path is offset to either side, a curve as the fewest curves within 0.01 mm of its true offset, so a constant-width outline has about as many nodes as its path (a smooth curve of four nodes now gives ten at most, it gave 32; an ellipse's ring eight). Round ends and corners are exact arcs with a node at each end's tip. The Shape tool no longer shows corner widgets on nodes where rounding would change nothing that shows, such as the near-straight kinks the old conversion left.
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).

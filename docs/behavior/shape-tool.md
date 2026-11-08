@@ -187,6 +187,13 @@ round their corners with their own handles either way.
 - Every corner has one (a curve with more than 32 corners shows them
   only on chosen nodes, so a traced outline is not covered in them). A
   chosen corner's widget is filled with the node colour.
+- A widget shows only where it can do something: a sharp corner whose
+  largest rounding on its own (the shorter side times `tan(theta / 2)`)
+  moves the corner's middle less than 2 screen pixels has none, so a node
+  where the curve barely turns, or between very short sides, shows no
+  widget that a drag would leave unchanged; zoomed in far enough, it
+  shows (`tracedraw_core::corner_cut::corner_reach`,
+  `tools2::tests::corner_widgets_show_only_where_they_round_something`).
 - Options > Nodes and Handles > Round one corner at a time (on at first,
   under the rings option): a Ctrl+click (Cmd on macOS) on a widget
   chooses its corner, a second Ctrl+click takes it out, so one corner or
