@@ -2148,10 +2148,16 @@ mod tests {
             });
         }
         app.selection.clear();
-        for _ in 0..6 {
+        // A few thumbnails are drawn per frame: frames until the rows in
+        // sight all have theirs (how many fit depends on the fonts).
+        let mut drawn = u64::MAX;
+        for _ in 0..30 {
             frame(&ctx, &mut app, 400.0, Vec::new());
+            if app.object_thumbs.renders == drawn {
+                break;
+            }
+            drawn = app.object_thumbs.renders;
         }
-        let drawn = app.object_thumbs.renders;
         assert!((5..40).contains(&drawn), "{drawn}");
         frame(&ctx, &mut app, 400.0, Vec::new());
         assert_eq!(app.object_thumbs.renders, drawn);
