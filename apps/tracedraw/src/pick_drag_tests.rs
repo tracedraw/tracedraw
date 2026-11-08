@@ -23146,6 +23146,120 @@ fn a_palette_bar_docks_between_the_toolbars_at_the_top() {
     assert!(b.top() >= last - 1.0 && b.width() >= 1599.0, "{b:?}");
 }
 
+/// Live test of 0.41: a palette bar docked only at the window's edges.
+/// Dragged onto the inner half of the toolbox at the left, it lies just
+/// inside the toolbox, between it and the drawing; a second bar dragged
+/// onto the first one's inner half lies beside it, inside; a line shows
+/// where while the bar is held.
+#[test]
+fn a_palette_bar_docks_beside_the_toolbox_and_beside_another_bar() {
+    use crate::settings::BarSlot;
+    use crate::ui::bars::Dock;
+    use crate::ui::palette::Row;
+    use crate::ui::palette_bars::{side_target, PaletteBarDrag, SideDrop};
+    let (ctx, mut app, _) = setup();
+    for i in [2, 3] {
+        let id = crate::settings::palette_id(&app.palettes[i]);
+        app.open_palette_bar(&id);
+    }
+    for b in &mut app.settings.palette_bars {
+        b.dock = Dock::Left;
+    }
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let panel = |ctx: &egui::Context, id: egui::Id| {
+        egui::PanelState::load(ctx, id)
+            .map(|s| s.outer_rect)
+            .expect("drawn")
+    };
+    let toolbox = |ctx: &egui::Context| panel(ctx, egui::Id::new("toolbox"));
+    let bar =
+        |ctx: &egui::Context, k: usize| panel(ctx, egui::Id::new(("palette_extra", Row::Extra(k))));
+    let tb = toolbox(&ctx);
+    assert!(
+        bar(&ctx, 0).right() <= tb.left() + 1.0,
+        "at the edge at first"
+    );
+    // Bar 0 onto the toolbox's inner half.
+    let p = Pos2::new(tb.right() - 3.0, tb.center().y);
+    assert!(matches!(
+        side_target(&app.side_marks, p, 0),
+        Some((
+            SideDrop::At {
+                dock: Dock::Left,
+                slot: BarSlot::AfterToolbox,
+                first: true
+            },
+            _
+        ))
+    ));
+    let drag = |k: usize| PaletteBarDrag {
+        bar: k,
+        grab: egui::vec2(12.0, 10.0),
+        last: None,
+    };
+    // The bars by palette: their places in the list change as they move.
+    let ids: Vec<String> = app
+        .settings
+        .palette_bars
+        .iter()
+        .map(|b| b.palette.clone())
+        .collect();
+    let index = |app: &App, n: usize| {
+        app.settings
+            .palette_bars
+            .iter()
+            .position(|b| b.palette == ids[n])
+            .expect("open")
+    };
+    app.palette_bar_drag = Some(drag(index(&app, 0)));
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(p)],
+        Modifiers::NONE,
+    );
+    assert!(app.palette_bar_drag.is_none(), "dropped");
+    assert_eq!(
+        app.settings.palette_bars[index(&app, 0)].slot,
+        Some(BarSlot::AfterToolbox)
+    );
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let (tb, first) = (toolbox(&ctx), bar(&ctx, index(&app, 0)));
+    assert!(
+        (first.left() - tb.right()).abs() <= 1.0,
+        "{first:?} just inside {tb:?}"
+    );
+    // The other bar onto that one's inner half: beside it, inside.
+    let p = Pos2::new(first.right() - 2.0, first.center().y);
+    app.palette_bar_drag = Some(drag(index(&app, 1)));
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(p)],
+        Modifiers::NONE,
+    );
+    assert!(app.palette_bar_drag.is_none());
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let tb = toolbox(&ctx);
+    let (first, second) = (bar(&ctx, index(&app, 0)), bar(&ctx, index(&app, 1)));
+    assert!((first.left() - tb.right()).abs() <= 1.0, "{first:?} {tb:?}");
+    assert!(
+        (second.left() - first.right()).abs() <= 1.0,
+        "{second:?} after {first:?}"
+    );
+    assert!(app
+        .settings
+        .palette_bars
+        .iter()
+        .all(|b| b.slot == Some(BarSlot::AfterToolbox)));
+}
+
 /// With the Shape tool on a text, a click on one character's node
 /// chooses it and a Shift+click on another's adds that one: both are
 /// chosen (#1933). Neighbouring characters' nodes lie a few pixels

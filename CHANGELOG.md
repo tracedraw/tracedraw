@@ -22,6 +22,8 @@ full, row-by-row status.
 
 - Align and Distribute, Distribute To > Set spacing: a slider under the spacing box, and the wheel over the box, change the spacing live: once a Distribute button has spread the selection, it spreads again at each new value as you adjust. Letting go of the slider or moving away from the box keeps the result as one undo step; Esc puts the spacing and the objects back. Before, a new spacing took a click on the button again.
 
+- Palette bars dock beside other bars: dragged over the toolbox, the default palette, the document palette row, a column of panels or another palette bar, a palette bar goes just outside it (let go on its half towards the window's edge) or just inside it (the other half), with a blue line showing where. Several palette bars stand side by side in the order they were put, such as a second row next to the default palette or a column next to the toolbox; the place is kept in the preferences and in workspace files. Before, a palette bar docked only at the window's edges (live test of 0.41).
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).

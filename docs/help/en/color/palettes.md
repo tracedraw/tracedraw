@@ -41,6 +41,13 @@ The document palette can have a bar of its own too.
 - Each bar can go to any edge of the window (along the left and right edges
   its swatches stand in columns) or float in a small window: drag it by its
   dotted grip or its title, or pick a place from **Position** in its menu.
+- A bar can also sit beside another bar on the same side: drag it over the
+  toolbox, the default palette, a column of panels or another palette bar,
+  and let go on the half towards the inside to put it just inside that bar,
+  or on the half towards the window's edge to put it just outside. A blue
+  line shows where. Several palette bars can stand side by side this way,
+  in the order you put them, for example a second row next to the default
+  palette or a column next to the toolbox.
 - Drag the right or bottom edge of a floating palette to resize it: the
   swatches flow into rows in a wide window and into columns in a tall one.
 - Each bar has its own **Swatch Size** and **Rows**.

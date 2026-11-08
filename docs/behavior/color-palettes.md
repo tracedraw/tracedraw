@@ -39,6 +39,30 @@ palette's swatch size and one row. A palette shows in one bar at most.
   where). The palette menu's Position > Top, Bottom, Left, Right,
   Floating does the same; a double click on a floating bar's title docks
   it at the bottom. Lock Toolbars keeps the bars where they are.
+- Beside another bar (live test of 0.41: bars docked only at the
+  window's edges): each side has five places for palette bars, from the
+  edge inwards (`settings::BarSlot`). At the left and the right: at the
+  very edge, after the default palette's column there (the usual place),
+  after the toolbox, after the docker columns (and the default palette
+  between them), and beside the drawing. Along the top and the bottom:
+  under the toolbars (over the status bar), after the default palette's
+  row there, after the toolbox, after the document palette row, and
+  beside the drawing (the usual place). Every bar drawn at a side (the
+  toolbox, the default palette, the document palette row, the docker
+  columns, the palette bars) and every place between them is noted as
+  the frame draws them (`App::side_marks`). A bar dragged over one of
+  them and let go on its half towards the edge goes just outside it, on
+  the other half just inside it, with a 4 px blue line on that edge
+  while held; over a palette bar it takes that bar's place in the order,
+  over itself it stays (`palette_bars::side_target`, `place_bar`). The
+  bars of one place lie side by side in their order in the preferences
+  (along the bottom from the bottom up). The place is kept in the
+  preferences and in workspace files (`PaletteBarPrefs::slot`, none
+  meaning the usual place); docking at another side by its edge or the
+  Position menu brings back that side's usual place, the same side keeps
+  it. Checks: `ui::palette_bars::rename_tests::a_bar_let_go_over_a_docked_bar_goes_beside_it`,
+  `ui::palette_bars::rename_tests::a_bar_dropped_beside_another_takes_its_place_in_the_order`,
+  `pick_drag_tests::a_palette_bar_docks_beside_the_toolbox_and_beside_another_bar`.
 - Among the toolbars: along the top a bar can also lie between the rows
   of toolbars, as a row of its own across the whole window. Dropped
   within 7 px of the line between two rows of toolbars (a blue line

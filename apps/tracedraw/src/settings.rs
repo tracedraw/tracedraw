@@ -1237,6 +1237,37 @@ pub struct UserPalette {
 /// [`PaletteBarPrefs::palette`] of a bar showing the document palette.
 pub const DOCUMENT_PALETTE: &str = "document";
 
+/// Where a docked palette bar lies among the other bars of its side of
+/// the window, from the edge inwards (live test of 0.41: a palette bar
+/// docked only at the window's edges). Along the left or the right: at
+/// the very edge, after the default palette's column there, after the
+/// toolbox, after the docker columns, or beside the drawing. Along the
+/// top or the bottom: under the toolbars (over the status bar), after
+/// the default palette's row there, after the toolbox, after the
+/// document palette row, or beside the drawing. Bars of one place lie
+/// side by side in their order (`palette_bars::docked`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BarSlot {
+    Outer,
+    AfterPalette,
+    AfterToolbox,
+    Inner,
+    Drawing,
+}
+
+impl BarSlot {
+    /// Where a bar docked at `dock` lies when no place was chosen (as
+    /// before places could be): outside the toolbox at the left and the
+    /// right, beside the drawing along the top and the bottom.
+    pub fn default_for(dock: crate::ui::bars::Dock) -> BarSlot {
+        if dock.horizontal() {
+            BarSlot::Drawing
+        } else {
+            BarSlot::AfterPalette
+        }
+    }
+}
+
 /// A palette bar besides the default one: which palette it shows, where
 /// it is, and its own rows and swatch size.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1258,6 +1289,10 @@ pub struct PaletteBarPrefs {
     /// one, under every toolbar). None: beside the drawing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub toolbar_row: Option<u32>,
+    /// Docked at a side: its place among that side's bars (None: the
+    /// side's usual place, [`BarSlot::default_for`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slot: Option<BarSlot>,
 }
 
 impl Default for PaletteBarPrefs {
@@ -1270,6 +1305,7 @@ impl Default for PaletteBarPrefs {
             rows: 1,
             swatch_size: SWATCH_DEFAULT,
             toolbar_row: None,
+            slot: None,
         }
     }
 }
@@ -1296,6 +1332,15 @@ impl PaletteBarPrefs {
             self.toolbar_row = None;
         }
         self.toolbar_row = self.toolbar_row.map(|r| r.min(MAX_TOOLBAR_ROW));
+        // A place among the bars of a side only while docked at one.
+        if self.dock == crate::ui::bars::Dock::Floating {
+            self.slot = None;
+        }
+    }
+
+    /// Its place among the bars of its side.
+    pub fn slot_or_default(&self) -> BarSlot {
+        self.slot.unwrap_or_else(|| BarSlot::default_for(self.dock))
     }
 
     /// Whether the bar lies among the toolbars along the top.
