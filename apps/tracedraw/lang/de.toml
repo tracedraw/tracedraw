@@ -3196,6 +3196,7 @@ print.orient_match = "Ausrichtung übernehmen"
 print.orient_portrait = "Hochformat"
 print.orientation = "Ausrichtung:"
 print.overprint_black = "Schwarz immer überdrucken"
+print.page_background = "Seitenhintergrund drucken" # mt
 print.page_info = "{title}   Seiten {pages}   Bogen {sheet} von {sheets}   {when}"
 print.page_info_mark = "Seiteninformationen"
 print.page_numbers = "Seitenzahlen drucken"

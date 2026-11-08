@@ -3196,6 +3196,7 @@ print.orient_match = "符合方向"
 print.orient_portrait = "直向"
 print.orientation = "方向："
 print.overprint_black = "一律疊印黑色"
+print.page_background = "列印頁面背景" # mt
 print.page_info = "{title}   頁面 {pages}   第 {sheet} 張，共 {sheets} 張   {when}"
 print.page_info_mark = "頁面資訊"
 print.page_numbers = "列印頁碼"

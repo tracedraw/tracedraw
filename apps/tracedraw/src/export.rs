@@ -1287,6 +1287,13 @@ pub fn print_sheets(app: &App, st: &PrintState) -> Document {
             selection_as_page(page, &mut doc.master);
         }
     }
+    // The pages' background colour stays on screen when it is not to be
+    // printed (#1651).
+    if !st.page_background {
+        for page in doc.pages.iter_mut() {
+            page.background = None;
+        }
+    }
     // Fit to page: objects running off the page (the selection, when
     // that is printed) shrink to fit inside it, centred, rather than
     // being cut at its edge (#534).
@@ -4405,6 +4412,25 @@ mod tests {
             .cells
             .iter()
             .all(|c| (c.trim.width() - w).abs() < 1e-6));
+    }
+
+    /// Print page background off: the page's colour does not print,
+    /// though the page keeps it on screen (#1651).
+    #[test]
+    fn the_page_background_prints_only_when_asked() {
+        use tracedraw_core::{Color, Fill};
+        let (mut app, _) = selection_drawing();
+        app.selection.clear();
+        let blue = format!("{:?}", Fill::Solid(Color::rgb8(0, 0, 255)));
+        let sheets = print_sheets(&app, &PrintState::default());
+        assert!(format!("{sheets:?}").contains(&blue));
+        let st = PrintState {
+            page_background: false,
+            ..PrintState::default()
+        };
+        let sheets = print_sheets(&app, &st);
+        assert!(!format!("{sheets:?}").contains(&blue));
+        assert!(app.doc().pages[0].background.is_some());
     }
 
     /// Keep size: the selection never prints smaller than it is, even on

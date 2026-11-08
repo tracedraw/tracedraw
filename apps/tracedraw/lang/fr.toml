@@ -3196,6 +3196,7 @@ print.orient_match = "Selon l'orientation"
 print.orient_portrait = "Portrait"
 print.orientation = "Orientation :"
 print.overprint_black = "Toujours surimprimer le noir"
+print.page_background = "Imprimer le fond de page" # mt
 print.page_info = "{title}   pages {pages}   feuille {sheet} sur {sheets}   {when}"
 print.page_info_mark = "Informations de page"
 print.page_numbers = "Imprimer les numéros de page"

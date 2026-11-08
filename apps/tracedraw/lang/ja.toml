@@ -3196,6 +3196,7 @@ print.orient_match = "向きに合わせる"
 print.orient_portrait = "縦"
 print.orientation = "向き:"
 print.overprint_black = "黒を常にオーバープリント"
+print.page_background = "ページの背景を印刷" # mt
 print.page_info = "{title}   ページ {pages}   用紙 {sheet}/{sheets}   {when}"
 print.page_info_mark = "ページ情報"
 print.page_numbers = "ページ番号を印刷"

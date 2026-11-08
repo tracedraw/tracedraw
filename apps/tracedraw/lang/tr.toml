@@ -3196,6 +3196,7 @@ print.orient_match = "Yöne uy"
 print.orient_portrait = "Dikey"
 print.orientation = "Yön:"
 print.overprint_black = "Siyahı her zaman üst baskı yap"
+print.page_background = "Sayfa arka planını yazdır" # mt
 print.page_info = "{title}   sayfalar {pages}   kağıt {sheet} / {sheets}   {when}"
 print.page_info_mark = "Sayfa bilgileri"
 print.page_numbers = "Sayfa numaralarını yazdır"

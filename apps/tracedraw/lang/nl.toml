@@ -3196,6 +3196,7 @@ print.orient_match = "Afdrukstand volgen"
 print.orient_portrait = "Staand"
 print.orientation = "Afdrukstand:"
 print.overprint_black = "Zwart altijd overdrukken"
+print.page_background = "Paginaachtergrond afdrukken" # mt
 print.page_info = "{title}   pagina's {pages}   vel {sheet} van {sheets}   {when}"
 print.page_info_mark = "Pagina-informatie"
 print.page_numbers = "Paginanummers afdrukken"

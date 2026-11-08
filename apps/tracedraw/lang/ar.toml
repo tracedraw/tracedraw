@@ -3196,6 +3196,7 @@ print.orient_match = "مطابقة الاتجاه"
 print.orient_portrait = "عمودي"
 print.orientation = "الاتجاه:"
 print.overprint_black = "طباعة الأسود فوق الألوان دائمًا"
+print.page_background = "طباعة خلفية الصفحة" # mt
 print.page_info = "{title}   الصفحات {pages}   الورقة {sheet} من {sheets}   {when}"
 print.page_info_mark = "معلومات الصفحة"
 print.page_numbers = "طباعة أرقام الصفحات"

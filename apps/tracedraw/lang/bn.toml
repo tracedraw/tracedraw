@@ -3196,6 +3196,7 @@ print.orient_match = "দিক মেলান"
 print.orient_portrait = "পোর্ট্রেট"
 print.orientation = "দিক:"
 print.overprint_black = "কালো সবসময় ওভারপ্রিন্ট"
+print.page_background = "পৃষ্ঠার পটভূমি প্রিন্ট" # mt
 print.page_info = "{title}   পাতা {pages}   শিট {sheet}/{sheets}   {when}"
 print.page_info_mark = "পাতার তথ্য"
 print.page_numbers = "পৃষ্ঠা নম্বর প্রিন্ট"

@@ -3196,6 +3196,7 @@ print.orient_match = "Как у страниц"
 print.orient_portrait = "Книжная"
 print.orientation = "Ориентация:"
 print.overprint_black = "Всегда печатать чёрный наложением"
+print.page_background = "Печатать фон страницы" # mt
 print.page_info = "{title}   страницы {pages}   лист {sheet} из {sheets}   {when}"
 print.page_info_mark = "Информация о странице"
 print.page_numbers = "Печатать номера страниц"

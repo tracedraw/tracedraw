@@ -3196,6 +3196,7 @@ print.orient_match = "अभिविन्यास से मिलाएँ"
 print.orient_portrait = "पोर्ट्रेट"
 print.orientation = "अभिविन्यास:"
 print.overprint_black = "काले को हमेशा ओवरप्रिंट करें"
+print.page_background = "पृष्ठ पृष्ठभूमि प्रिंट करें" # mt
 print.page_info = "{title}   पेज {pages}   शीट {sheet}/{sheets}   {when}"
 print.page_info_mark = "पेज जानकारी"
 print.page_numbers = "पृष्ठ संख्याएँ प्रिंट करें"

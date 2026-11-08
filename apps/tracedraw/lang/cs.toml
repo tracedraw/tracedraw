@@ -3196,6 +3196,7 @@ print.orient_match = "Podle orientace"
 print.orient_portrait = "Na výšku"
 print.orientation = "Orientace:"
 print.overprint_black = "Vždy přetiskovat černou"
+print.page_background = "Tisknout pozadí stránky" # mt
 print.page_info = "{title}   stránky {pages}   arch {sheet} z {sheets}   {when}"
 print.page_info_mark = "Informace o stránce"
 print.page_numbers = "Tisknout čísla stránek"

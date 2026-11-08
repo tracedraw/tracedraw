@@ -518,6 +518,9 @@ pub struct PrintState {
     pub spot_to_cmyk: bool,
     /// Text in black, whatever its colour.
     pub text_black: bool,
+    /// The pages' background colour prints; off, it shows on screen only
+    /// (#1651).
+    pub page_background: bool,
     /// Black fills and outlines overprint what lies below.
     pub overprint_black: bool,
     /// How far beyond the page objects print, mm (with Bleed on).
@@ -796,6 +799,7 @@ impl Default for PrintState {
             bitmap_dpi: 300.0,
             spot_to_cmyk: false,
             text_black: false,
+            page_background: true,
             overprint_black: false,
             bleed_limit: 4.0,
             info_text: String::new(),
@@ -5685,6 +5689,7 @@ fn print_tab_composite(ui: &mut Ui, st: &mut PrintState) {
     print_group(ui, &tr("print.options"), |ui| {
         ui.checkbox(&mut st.text_black, tr("print.text_black"));
         ui.checkbox(&mut st.overprint_black, tr("print.overprint_black"));
+        ui.checkbox(&mut st.page_background, tr("print.page_background"));
     });
 }
 

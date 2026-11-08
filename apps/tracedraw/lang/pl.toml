@@ -3196,6 +3196,7 @@ print.orient_match = "Zgodnie z orientacją"
 print.orient_portrait = "Pionowa"
 print.orientation = "Orientacja:"
 print.overprint_black = "Zawsze nadrukowuj czerń"
+print.page_background = "Drukuj tło strony" # mt
 print.page_info = "{title}   strony {pages}   arkusz {sheet} z {sheets}   {when}"
 print.page_info_mark = "Informacje o stronie"
 print.page_numbers = "Drukuj numery stron"

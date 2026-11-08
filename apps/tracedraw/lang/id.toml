@@ -3196,6 +3196,7 @@ print.orient_match = "Ikuti orientasi"
 print.orient_portrait = "Potret"
 print.orientation = "Orientasi:"
 print.overprint_black = "Selalu cetak tindih hitam"
+print.page_background = "Cetak latar belakang halaman" # mt
 print.page_info = "{title}   halaman {pages}   lembar {sheet} dari {sheets}   {when}"
 print.page_info_mark = "Informasi halaman"
 print.page_numbers = "Cetak nomor halaman"
