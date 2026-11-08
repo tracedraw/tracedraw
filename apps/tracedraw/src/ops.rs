@@ -636,8 +636,9 @@ impl App {
                 return;
             }
         };
-        let img = match image::load_from_memory(&bytes) {
-            Ok(i) => i.to_rgba8(),
+        // Print-size pictures too (#2000).
+        let img = match crate::files::decode_picture(&bytes) {
+            Ok(i) => i.into_rgba8(),
             Err(e) => {
                 self.status = crate::i18n::trf(
                     "status.could_not_read",
@@ -708,8 +709,9 @@ impl App {
                 return;
             }
         };
-        let img = match image::load_from_memory(&bytes) {
-            Ok(i) => i.to_rgba8(),
+        // Print-size pictures too (#2000).
+        let img = match crate::files::decode_picture(&bytes) {
+            Ok(i) => i.into_rgba8(),
             Err(e) => {
                 self.status = crate::i18n::trf(
                     "status.could_not_read",

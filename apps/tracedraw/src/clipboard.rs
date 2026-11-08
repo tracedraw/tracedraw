@@ -223,7 +223,7 @@ fn read_system_image() -> Option<image::RgbaImage> {
 fn read_system_image() -> Option<image::RgbaImage> {
     let (_, uri) = split_documents(crate::android::clipboard::documents());
     let bytes = crate::android::documents::read(&uri?).ok()?;
-    match image::load_from_memory(&bytes) {
+    match crate::files::decode_picture(&bytes) {
         Ok(img) => Some(img.into_rgba8()),
         Err(e) => {
             log::warn!("the copied picture cannot be read: {e}");
@@ -463,7 +463,7 @@ fn lone_picture(files: &[PastedFile]) -> Option<image::RgbaImage> {
     if !file.mime.starts_with("image/") {
         return None;
     }
-    match image::load_from_memory(&file.bytes) {
+    match crate::files::decode_picture(&file.bytes) {
         Ok(img) => Some(img.into_rgba8()),
         Err(e) => {
             log::warn!("the pasted picture cannot be read: {e}");
