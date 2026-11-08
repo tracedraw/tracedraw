@@ -10,6 +10,8 @@ full, row-by-row status.
 
 - Linux: the window's application id is `tracedraw`, the name of its desktop file, so docks and task bars (Plank, and on Wayland GNOME and KDE) show TraceDraw's icon instead of a blank one (#1718).
 
+- Palettes: the palette editor has a Spot color box that makes the chosen colour a named ink of the entry's name, printed on a plate of its own with the colour as its stand-in, and `.tdpal` palettes keep spot colours. PDF exports keep fill and outline overprint, and a selection exported alone keeps its spot inks. Macros reach the palettes by name (Application.Palettes, Document.Palette, a spot colour's Name), and a spot colour a macro applies brings its ink into the drawing; they also gain CreateContour, Outline.ConvertToObject, CopyToLayer, the view with overprints, PDFSettings.PublishRange, Dir, StartsWith, EndsWith and Contains in queries, and named arguments for the object model's methods.
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

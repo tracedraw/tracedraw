@@ -778,6 +778,26 @@ impl PageWriter<'_> {
         if !shape.visible {
             return;
         }
+        // Overprint: the object's fill (`/op`) and outline (`/OP`) leave
+        // the inks under them, nonzero overprint mode (`/OPM 1`) keeping
+        // the process inks a colour does not use (ISO 32000-1, 8.6.7).
+        if shape.overprint_fill || shape.overprint_outline {
+            let (op, big) = (shape.overprint_fill, shape.overprint_outline);
+            let name = format!("OP{}{}", u8::from(op), u8::from(big));
+            if !self.gstates.iter().any(|(n, _)| *n == name) {
+                let id = self
+                    .pdf
+                    .add_str(format!("<< /Type /ExtGState /op {op} /OP {big} /OPM 1 >>"));
+                self.gstates.push((name.clone(), id));
+            }
+            let _ = writeln!(self.content, "q\n/{name} gs");
+            let mut inner = shape.clone();
+            inner.overprint_fill = false;
+            inner.overprint_outline = false;
+            self.shape(&inner, parent);
+            self.content.push_str("Q\n");
+            return;
+        }
         if !shape.effects.is_empty() {
             let ev = tracedraw_core::live::evaluate(shape);
             for b in &ev.below {
@@ -2921,6 +2941,34 @@ mod tests {
         };
         assert_eq!(width(true), f(2.5 * MM_PT));
         assert_eq!(width(false), f(10.0 * MM_PT));
+    }
+
+    #[test]
+    fn overprinting_objects_get_overprint_graphics_states() {
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        for overprint in [true, false] {
+            let id = doc.ids_mut().shape();
+            let mut s = Shape::new(
+                id,
+                ShapeKind::Rect {
+                    rect: Rect::new(10.0, 10.0, 60.0, 40.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            s.fill = Fill::Solid(Color::cmyk_pct(0.0, 0.0, 0.0, 100.0));
+            s.overprint_fill = overprint;
+            doc.layer_mut(layer).unwrap().shapes.push(s);
+        }
+        let text = String::from_utf8_lossy(&document_to_pdf(&doc)).to_string();
+        assert_eq!(
+            text.matches("/Type /ExtGState /op true /OP false /OPM 1")
+                .count(),
+            1
+        );
+        // One state, named in the page's resources.
+        assert!(text.contains("/ExtGState << /OP10 "), "{text}");
     }
 
     #[test]

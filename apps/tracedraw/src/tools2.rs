@@ -334,8 +334,6 @@ impl App {
 
     /// Ctrl+Shift+Q: replace an outline by a filled object of its shape.
     pub fn convert_outline_to_object(&mut self) {
-        use i_overlay::mesh::float::stroke::offset::StrokeOffset;
-        use i_overlay::mesh::float::style::{LineCap as ICap, LineJoin as IJoin, StrokeStyle};
         let shapes = self.selected_shapes();
         let Some(layer) = self.active_layer() else {
             return;
@@ -344,103 +342,9 @@ impl App {
         let mut ids = Vec::new();
         for s in shapes {
             let Some(st) = &s.stroke else { continue };
-            let width = if st.width <= Stroke::HAIRLINE + 1e-9 {
-                0.25
-            } else {
-                st.width
-            };
-            let pp = s.page_path();
-            let mut out = BezPath::new();
-            // A variable-width or calligraphic outline becomes its band;
-            // a variable one from a finer flattening, as it is fitted to
-            // curves below (#627).
-            let band = if st.widths.is_empty() {
-                tracedraw_core::shaping::outline_band(&pp, st, 1.0)
-            } else {
-                Some(tracedraw_core::shaping::variable_band_within(
-                    &pp, st.width, &st.widths, 0.005,
-                ))
-            };
-            if let Some(b) = &band {
-                out = b.clone();
-            }
-            // A dashed outline: each dash becomes a closed shape of its
-            // own, the gaps kept (#490). The pattern is in widths, as the
-            // renderer draws it.
-            let pp = if st.dash.is_empty() || band.is_some() {
-                pp
-            } else {
-                let mut pattern: Vec<f64> = st.dash.iter().map(|d| (d * width).max(0.01)).collect();
-                if pattern.len() % 2 == 1 {
-                    pattern = [pattern.clone(), pattern].concat();
-                }
-                kurbo::dash(pp.elements().iter().copied(), 0.0, &pattern).collect()
-            };
-            let contours = if band.is_none() {
-                polylines(&pp)
-            } else {
-                Vec::new()
-            };
-            for (pts, closed) in &contours {
-                let closed = *closed;
-                let style = StrokeStyle::new(width)
-                    .line_join(match st.join {
-                        tracedraw_core::LineJoin::Round => IJoin::Round(ROUND_STEP),
-                        tracedraw_core::LineJoin::Bevel => IJoin::Bevel,
-                        tracedraw_core::LineJoin::Miter => IJoin::Miter(4.0),
-                    })
-                    .start_cap(match st.cap {
-                        tracedraw_core::LineCap::Round => ICap::Round(ROUND_STEP),
-                        tracedraw_core::LineCap::Square => ICap::Square,
-                        tracedraw_core::LineCap::Butt => ICap::Butt,
-                    })
-                    .end_cap(match st.cap {
-                        tracedraw_core::LineCap::Round => ICap::Round(ROUND_STEP),
-                        tracedraw_core::LineCap::Square => ICap::Square,
-                        tracedraw_core::LineCap::Butt => ICap::Butt,
-                    });
-                let shapes_out = pts.stroke(style, closed);
-                for shape in shapes_out {
-                    for c in shape {
-                        for (i, p) in c.iter().enumerate() {
-                            let pt = Point::new(p[0], p[1]);
-                            if i == 0 {
-                                out.move_to(pt);
-                            } else {
-                                out.line_to(pt);
-                            }
-                        }
-                        out.close_path();
-                    }
-                }
-            }
-            // Each subpath of a combined curve is stroked on its own, and
-            // the outline draws them all in full: where they cross, the
-            // pieces become one shape, or the even-odd fill of the result
-            // would leave a hole there (#997).
-            if contours.len() > 1 {
-                out = tracedraw_core::shaping::simplify(&out);
-            }
-            if out.elements().is_empty() {
+            let Some(out) = outline_object_path(&s) else {
                 continue;
-            }
-            // The stroke comes back as many short lines: fit it to lines
-            // and curves with as few nodes as keep its shape (#622), with
-            // nodes where round ends and corners meet the sides (#623).
-            if band.is_some() {
-                out = tracedraw_core::fit::fit_path(&out, OUTLINE_FIT_TOLERANCE);
-            } else {
-                let round_cap = st.cap == tracedraw_core::LineCap::Round;
-                let round_join = st.join == tracedraw_core::LineJoin::Round;
-                let mut corners = if round_join {
-                    path_corners(&pp)
-                } else {
-                    Vec::new()
-                };
-                corners.sort_by(|a, b| a.x.total_cmp(&b.x));
-                let nodes = round_nodes(&contours, &corners, width / 2.0, round_cap, round_join);
-                out = tracedraw_core::fit::fit_path_with_nodes(&out, OUTLINE_FIT_TOLERANCE, &nodes);
-            }
+            };
             let id = self.engine.new_shape_id();
             let mut o = Shape::new(
                 id,
@@ -1363,4 +1267,112 @@ mod tests {
         // Frame (5 elements) plus 2 vertical and 3 horizontal lines.
         assert_eq!(g.elements().len(), 5 + 2 * 2 + 3 * 2);
     }
+}
+
+/// The filled shape an object's outline draws, in page space: its band
+/// (variable or calligraphic outlines), its dashes, or the stroke of each
+/// subpath with its joins and caps, fitted to lines and curves. `None`
+/// when the object has no outline or it draws nothing.
+pub fn outline_object_path(s: &Shape) -> Option<BezPath> {
+    use i_overlay::mesh::float::stroke::offset::StrokeOffset;
+    use i_overlay::mesh::float::style::{LineCap as ICap, LineJoin as IJoin, StrokeStyle};
+    let st = s.stroke.as_ref()?;
+    let width = if st.width <= Stroke::HAIRLINE + 1e-9 {
+        0.25
+    } else {
+        st.width
+    };
+    let pp = s.page_path();
+    let mut out = BezPath::new();
+    // A variable-width or calligraphic outline becomes its band;
+    // a variable one from a finer flattening, as it is fitted to
+    // curves below (#627).
+    let band = if st.widths.is_empty() {
+        tracedraw_core::shaping::outline_band(&pp, st, 1.0)
+    } else {
+        Some(tracedraw_core::shaping::variable_band_within(
+            &pp, st.width, &st.widths, 0.005,
+        ))
+    };
+    if let Some(b) = &band {
+        out = b.clone();
+    }
+    // A dashed outline: each dash becomes a closed shape of its
+    // own, the gaps kept (#490). The pattern is in widths, as the
+    // renderer draws it.
+    let pp = if st.dash.is_empty() || band.is_some() {
+        pp
+    } else {
+        let mut pattern: Vec<f64> = st.dash.iter().map(|d| (d * width).max(0.01)).collect();
+        if pattern.len() % 2 == 1 {
+            pattern = [pattern.clone(), pattern].concat();
+        }
+        kurbo::dash(pp.elements().iter().copied(), 0.0, &pattern).collect()
+    };
+    let contours = if band.is_none() {
+        polylines(&pp)
+    } else {
+        Vec::new()
+    };
+    for (pts, closed) in &contours {
+        let closed = *closed;
+        let style = StrokeStyle::new(width)
+            .line_join(match st.join {
+                tracedraw_core::LineJoin::Round => IJoin::Round(ROUND_STEP),
+                tracedraw_core::LineJoin::Bevel => IJoin::Bevel,
+                tracedraw_core::LineJoin::Miter => IJoin::Miter(4.0),
+            })
+            .start_cap(match st.cap {
+                tracedraw_core::LineCap::Round => ICap::Round(ROUND_STEP),
+                tracedraw_core::LineCap::Square => ICap::Square,
+                tracedraw_core::LineCap::Butt => ICap::Butt,
+            })
+            .end_cap(match st.cap {
+                tracedraw_core::LineCap::Round => ICap::Round(ROUND_STEP),
+                tracedraw_core::LineCap::Square => ICap::Square,
+                tracedraw_core::LineCap::Butt => ICap::Butt,
+            });
+        let shapes_out = pts.stroke(style, closed);
+        for shape in shapes_out {
+            for c in shape {
+                for (i, p) in c.iter().enumerate() {
+                    let pt = Point::new(p[0], p[1]);
+                    if i == 0 {
+                        out.move_to(pt);
+                    } else {
+                        out.line_to(pt);
+                    }
+                }
+                out.close_path();
+            }
+        }
+    }
+    // Each subpath of a combined curve is stroked on its own, and
+    // the outline draws them all in full: where they cross, the
+    // pieces become one shape, or the even-odd fill of the result
+    // would leave a hole there (#997).
+    if contours.len() > 1 {
+        out = tracedraw_core::shaping::simplify(&out);
+    }
+    if out.elements().is_empty() {
+        return None;
+    }
+    // The stroke comes back as many short lines: fit it to lines
+    // and curves with as few nodes as keep its shape (#622), with
+    // nodes where round ends and corners meet the sides (#623).
+    if band.is_some() {
+        out = tracedraw_core::fit::fit_path(&out, OUTLINE_FIT_TOLERANCE);
+    } else {
+        let round_cap = st.cap == tracedraw_core::LineCap::Round;
+        let round_join = st.join == tracedraw_core::LineJoin::Round;
+        let mut corners = if round_join {
+            path_corners(&pp)
+        } else {
+            Vec::new()
+        };
+        corners.sort_by(|a, b| a.x.total_cmp(&b.x));
+        let nodes = round_nodes(&contours, &corners, width / 2.0, round_cap, round_join);
+        out = tracedraw_core::fit::fit_path_with_nodes(&out, OUTLINE_FIT_TOLERANCE, &nodes);
+    }
+    Some(out)
 }

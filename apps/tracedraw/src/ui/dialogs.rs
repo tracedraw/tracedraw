@@ -7208,6 +7208,32 @@ fn font_manager_dialog(app: &mut App, ctx: &Context, st: &mut FontManagerState, 
     crate::ui::font_manager::dialog(app, ctx, st, close);
 }
 
+/// A palette editor entry's colour: a spot colour when `spot` (its ink
+/// named after the entry, the colour as its process stand-in; a spot
+/// colour keeps its stand-in and tint under the new name), otherwise the
+/// colour itself (a spot colour's process colour at its tint when it was
+/// one).
+fn palette_entry_color(name: &str, c: Color, spot: bool) -> Color {
+    match (spot, c) {
+        (
+            true,
+            Color::Spot {
+                tint, c, m, y, k, ..
+            },
+        ) => Color::Spot {
+            ink: crate::palette::spot_ink_id(name),
+            tint,
+            c,
+            m,
+            y,
+            k,
+        },
+        (true, other) => crate::palette::spot_color(name, other),
+        (false, s @ Color::Spot { .. }) => s.process(),
+        (false, other) => other,
+    }
+}
+
 fn palette_editor_dialog(
     app: &mut App,
     ctx: &Context,
@@ -7309,11 +7335,14 @@ fn palette_editor_dialog(
                     // A built-in or locked palette's names stay as they are.
                     let mut shown = name.clone();
                     let name = if read_only { &mut shown } else { name };
-                    ui.add_enabled(!read_only, egui::TextEdit::singleline(name))
+                    let renamed = ui
+                        .add_enabled(!read_only, egui::TextEdit::singleline(name))
                         .rich_tip(crate::ui::tips::pair(
                             "dialog.color_name",
                             "dialog.color_name_desc",
-                        ));
+                        ))
+                        .changed();
+                    let was_spot = matches!(c, Color::Spot { .. });
                     let mut edited = *c;
                     let changed = crate::ui::tips::tip_over(
                         ui,
@@ -7322,6 +7351,25 @@ fn palette_editor_dialog(
                     );
                     if changed && !read_only {
                         *c = edited;
+                    }
+                    // A spot colour: a named ink with this colour as its
+                    // process stand-in, printed on a plate of its own. A
+                    // spot colour given another colour stays one.
+                    let mut spot = was_spot;
+                    let toggled = ui
+                        .add_enabled(
+                            !read_only,
+                            egui::Checkbox::new(&mut spot, tr("dialog.spot_color")),
+                        )
+                        .rich_tip(crate::ui::tips::pair(
+                            "dialog.spot_color",
+                            "dialog.spot_color_desc",
+                        ))
+                        .changed();
+                    // Only what the user changed: an entry shown as it is
+                    // keeps its ink number and tint.
+                    if !read_only && (renamed || changed || toggled) {
+                        *c = palette_entry_color(name, *c, spot);
                     }
                     ui.label(crate::app::color_description(*c));
                 });
@@ -7479,6 +7527,54 @@ pub(crate) mod tests {
         assert_eq!(dpi_for_pixels(1.0, 1_000_000), Some(2400.0));
     }
     use super::*;
+
+    #[test]
+    fn palette_entries_turn_into_spot_colours_and_back() {
+        let cmyk = Color::cmyk_pct(10.0, 20.0, 30.0, 40.0);
+        let spot = palette_entry_color("Spot_2_L", cmyk, true);
+        assert_eq!(spot, crate::palette::spot_color("Spot_2_L", cmyk));
+        // Renaming the entry renames its ink, the stand-in stays.
+        let renamed = palette_entry_color("Spot_4_F", spot, true);
+        let (Color::Spot { ink: a, c: ca, .. }, Color::Spot { ink: b, c: cb, .. }) =
+            (spot, renamed)
+        else {
+            panic!("not spot colours");
+        };
+        assert_ne!(a, b);
+        assert_eq!(b, crate::palette::spot_ink_id("Spot_4_F"));
+        assert!((ca - cb).abs() < 1e-6);
+        // A tint is kept under the new name.
+        let half = Color::Spot {
+            ink: 3,
+            tint: 0.5,
+            c: 0.0,
+            m: 1.0,
+            y: 0.0,
+            k: 0.0,
+        };
+        let Color::Spot { ink, tint, m, .. } = palette_entry_color("Rose", half, true) else {
+            panic!("not a spot colour");
+        };
+        assert_eq!(ink, crate::palette::spot_ink_id("Rose"));
+        assert_eq!((tint, m), (0.5, 1.0));
+        // Unticked, the entry is its process colour at its tint.
+        assert_eq!(
+            palette_entry_color("Rose", half, false),
+            Color::Cmyk {
+                c: 0.0,
+                m: 0.5,
+                y: 0.0,
+                k: 0.0
+            }
+        );
+        let back = palette_entry_color("Spot_4_F", renamed, false);
+        let Color::Cmyk { c, m, y, k } = back else {
+            panic!("not CMYK: {back:?}");
+        };
+        assert!((c - 0.1).abs() < 1e-3 && (m - 0.2).abs() < 1e-3);
+        assert!((y - 0.3).abs() < 1e-3 && (k - 0.4).abs() < 1e-3);
+        assert_eq!(palette_entry_color("Plain", cmyk, false), cmyk);
+    }
 
     /// Every dialog, as the menus open it.
     pub(crate) fn all_dialogs(app: &App) -> Vec<Dialog> {

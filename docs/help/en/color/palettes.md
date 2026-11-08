@@ -113,7 +113,10 @@ the palette editor.
 2. Type its [[dialog.name]].
 3. Click a color to select it; [[dialog.add_color]] adds the current color and
    [[dialog.remove_color]] removes the selected one.
-4. Click [[dialog.save_palette]] to save it as a file.
-5. Click [[dialog.close]].
+4. Tick [[dialog.spot_color]] to make the selected color a spot color: a
+   named ink, printed on a plate of its own under the color's name, with the
+   color as its stand-in on screen. PDF exports keep it as a separate ink.
+5. Click [[dialog.save_palette]] to save it as a file.
+6. Click [[dialog.close]].
 
 Built-in palettes cannot be edited; make a new palette, or edit a copy.
