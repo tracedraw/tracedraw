@@ -6,6 +6,10 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Objects docker: an object's row dragged up or down the list moves the object in the stacking order, in front of the row it is let go on (its upper half) or behind it (its lower half), with a line showing where it goes; before, only the Order commands and their shortcuts changed the order.
+
+- Holding N opens the Navigator, as holding its button in the corner between the scrollbars does: move the pointer over the picture to go there.
+
 - Twirl and Attract and Repel start at the press and keep working with the button held still; they waited for the pointer to move before doing anything. Roughen adds its teeth once per spacing along the stroke instead of at every frame, so going over a stretch no longer piles nodes into a tangle.
 
 - Area Fill fills the area an open line closes off when its ends lie exactly on another outline, as Virtual Segment Delete leaves them: on a large circle the ends sat a hair outside the outline as it is measured, and the area was taken for open (#2076).

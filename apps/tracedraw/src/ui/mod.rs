@@ -1126,8 +1126,14 @@ pub(crate) fn view_navigator(app: &mut App, ui: &mut Ui, corner: egui::Rect, can
     painter.line_segment([c + egui::vec2(-2.5, 0.0), c + egui::vec2(2.5, 0.0)], s);
     painter.line_segment([c + egui::vec2(0.0, -2.5), c + egui::vec2(0.0, 2.5)], s);
     let resp = resp.rich_tip(crate::i18n::tr("status.navigator"));
-    let down = ui.input(|i| i.pointer.primary_down());
-    if resp.drag_started() || resp.is_pointer_button_down_on() {
+    // N held over the drawing opens the Navigator as the held button does
+    // (live test of 0.41), while no field or text takes the keys.
+    let n_held = app.text_edit.is_none()
+        && !ui.ctx().egui_wants_keyboard_input()
+        && matches!(app.dialog, crate::ui::dialogs::Dialog::None)
+        && ui.input(|i| i.key_down(egui::Key::N) && i.modifiers.is_none());
+    let down = ui.input(|i| i.pointer.primary_down()) || n_held;
+    if resp.drag_started() || resp.is_pointer_button_down_on() || n_held {
         app.navigator_open = true;
     }
     if !down {
