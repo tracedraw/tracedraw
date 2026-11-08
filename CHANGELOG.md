@@ -82,6 +82,8 @@ full, row-by-row status.
 
 - An envelope, perspective or distortion on a group bends the blends inside it: the steps between the two objects follow the warp instead of staying where they were (#2120).
 
+- File > Import of a PDF or AI file can bring each page in as one picture: the Import PDF dialog and Options > File Formats have Picture besides Text and Curves, with its resolution, one undo step (#1916).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

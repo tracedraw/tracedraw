@@ -259,6 +259,10 @@ pub struct FormatPrefs {
     /// own size, unless the memory guard says otherwise (#1835). The
     /// browser and Android always reduce them.
     pub pdf_reduce_pictures: bool,
+    /// File > Import of a PDF or AI file: each page comes in as one
+    /// picture (Import as Picture, #1916), at `pdf_picture_dpi`.
+    pub pdf_as_picture: bool,
+    pub pdf_picture_dpi: f64,
 }
 
 impl Default for FormatPrefs {
@@ -286,6 +290,8 @@ impl Default for FormatPrefs {
             pdf_text_as_curves: false,
             pdf_ask_text: true,
             pdf_reduce_pictures: false,
+            pdf_as_picture: false,
+            pdf_picture_dpi: 300.0,
             export_presets: Vec::new(),
         }
     }

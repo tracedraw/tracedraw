@@ -278,18 +278,13 @@ pub fn file_formats_page(app: &mut App, ui: &mut Ui) {
             "options.import_view_center_tip",
         ));
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("pdf_import.text_as"));
-        ui.radio_value(&mut f.pdf_text_as_curves, false, tr("pdf_import.text"))
-            .rich_tip(crate::ui::tips::pair(
-                "pdf_import.text",
-                "pdf_import.text_tip",
-            ));
-        ui.radio_value(&mut f.pdf_text_as_curves, true, tr("pdf_import.curves"))
-            .rich_tip(crate::ui::tips::pair(
-                "pdf_import.curves",
-                "pdf_import.curves_tip",
-            ));
+        crate::ui::pdf_import_dialog::read_as_choices(
+            ui,
+            &mut f.pdf_text_as_curves,
+            Some((&mut f.pdf_as_picture, &mut f.pdf_picture_dpi)),
+        );
     });
     ui.checkbox(&mut f.pdf_ask_text, tr("pdf_import.ask"))
         .rich_tip(crate::ui::tips::pair(
