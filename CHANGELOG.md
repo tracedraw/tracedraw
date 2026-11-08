@@ -6,6 +6,10 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Page tabs: a tab dragged along the row and let go over another tab moves its page there, so pages can be put in another order without the Page Sorter (#2064).
+
+- Polyline tool: a drag draws a freehand line, as a click places a straight segment, so one curve can mix straight and freehand parts (#2074).
+
 - Multipage View: a press on an object that lies off its page, on the desktop, or over the current page while it belongs to another page, makes that object's page current and picks the object in the same click; such objects could not be selected (#2055).
 
 - Guidelines: a click on a guideline of the master page (every page shows them; opening a `.cdr` file puts its guidelines there) picks it, moves it or deletes it, and a right click opens its menu, also while the page's own guidelines were the ones being edited: the click switches to the set the guideline is in. Such a guideline could be seen but not touched (#2029).

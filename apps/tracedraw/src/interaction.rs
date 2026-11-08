@@ -2696,8 +2696,17 @@ impl App {
             // C held (pressed before or during the pull): a cusp; it stays
             // one after C is let go.
             let c_pressed = response.ctx.input(|i| i.key_down(egui::Key::C));
+            // Polyline: a drag draws freehand, a node every few pixels
+            // along the pointer's way, as a click places a straight
+            // segment (#2074).
+            let polyline = self.tool == Tool::Polyline;
+            let spacing = 2.0 / self.view.zoom.max(1e-6) as f64;
             if let Some(c) = &mut self.curve {
-                if c.closing.is_some() {
+                if polyline && c.dragging_handle && c.closing.is_none() {
+                    if c.nodes.last().is_none_or(|n| (n.0 - p).hypot() >= spacing) {
+                        c.nodes.push((p, None));
+                    }
+                } else if c.closing.is_some() {
                     c.closing = Some(closing_at(c, step));
                 } else if c.dragging_handle && smooth {
                     if c_pressed {
