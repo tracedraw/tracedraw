@@ -6148,6 +6148,7 @@ docker.page_move_up = "पेज ऊपर ले जाएँ"
 docker.page_move_up_desc = "इस पेज को एक स्थान पहले ले जाएँ।"
 docker.page_move_down = "पेज नीचे ले जाएँ"
 docker.page_move_down_desc = "इस पेज को एक स्थान बाद ले जाएँ।"
+docker.page_numbers_layer = "पृष्ठ संख्याएँ" # mt
 docker.font_filter = "फ़िल्टर"
 docker.font_filter_desc = "केवल वे फ़ॉन्ट दिखाएँ जिनके नाम में यह टेक्स्ट है।"
 docker.corners_fillet_desc = "कोनों को चाप में गोल करें।"

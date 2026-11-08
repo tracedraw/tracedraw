@@ -309,7 +309,8 @@ impl App {
     /// Page > Insert Page Number: an artistic text "1", "2"... on the
     /// chosen pages (bottom centre), named "page-number". With a master
     /// layer active it is one field on that layer that shows the number
-    /// of each page it is drawn on (#807).
+    /// of each page it is drawn on (#807); for all, odd or even pages a
+    /// master layer showing on those pages is made to hold it (#1709).
     pub fn insert_page_number(&mut self, where_: PageNumberWhere) {
         let pages: Vec<(usize, tracedraw_core::PageId)> = self
             .doc()
@@ -323,6 +324,51 @@ impl App {
             .active_layer()
             .and_then(|l| self.doc().master.iter().find(|m| m.id == l))
             .map(|m| (m.id, m.scope));
+        // All, odd or even pages with no master layer active: a master
+        // layer of its own showing on those pages, in front, holding one
+        // field that shows each page's number, as one undo step (#1709).
+        if master.is_none() && where_ != PageNumberWhere::Active {
+            let scope = match where_ {
+                PageNumberWhere::Odd => tracedraw_core::MasterScope::Odd,
+                PageNumberWhere::Even => tracedraw_core::MasterScope::Even,
+                _ => tracedraw_core::MasterScope::All,
+            };
+            let i = (0..pages.len()).find(|i| scope.applies(*i)).unwrap_or(0);
+            let Some(size) = pages
+                .get(i)
+                .and_then(|(_, p)| self.doc().page(*p).ok())
+                .map(|p| p.size)
+            else {
+                return;
+            };
+            let name = tr("docker.page_numbers_layer");
+            if let Err(e) = self.engine.run_batch(
+                "Insert Page Number",
+                &[Command::AddMasterLayer { name, scope }],
+            ) {
+                self.status = e.to_string();
+                return;
+            }
+            let Some(layer) = self.doc().master.last().map(|l| l.id) else {
+                return;
+            };
+            let mut s = self.page_number_text(i, size);
+            s.page_number = Some(self.page_numbers.field());
+            for cmd in [
+                Command::SetLayerInFront {
+                    layer,
+                    in_front: true,
+                },
+                Command::AddShape { layer, shape: s },
+            ] {
+                if let Err(e) = self.engine.amend(&cmd) {
+                    self.status = e.to_string();
+                    return;
+                }
+            }
+            self.objects_master_closed = false;
+            return;
+        }
         let mut cmds = Vec::new();
         if let Some((layer, scope)) = master {
             // The field lines up as on the page in view, or on the first
@@ -4842,6 +4888,31 @@ mod tests {
             back.master[0].shapes[0].page_number,
             Some(app.page_numbers.field())
         );
+    }
+
+    /// Insert Page Number on odd pages with no master layer active makes
+    /// a master layer showing on the odd pages, in front, holding one
+    /// field; one undo takes both away (#1709).
+    #[test]
+    fn page_numbers_for_odd_pages_go_on_a_master_layer_of_their_own() {
+        let mut app = App::headless();
+        app.add_page();
+        app.add_page();
+        assert!(app.doc().master.is_empty());
+        app.insert_page_number(PageNumberWhere::Odd);
+        let doc = app.doc().clone();
+        assert_eq!(doc.master.len(), 1);
+        let layer = &doc.master[0];
+        assert_eq!(layer.scope, tracedraw_core::MasterScope::Odd);
+        assert!(layer.in_front);
+        assert_eq!(layer.shapes.len(), 1);
+        assert!(layer.shapes[0].page_number.is_some());
+        assert!(doc
+            .pages
+            .iter()
+            .all(|p| p.layers.iter().all(|l| l.shapes.is_empty())));
+        app.undo();
+        assert!(app.doc().master.is_empty());
     }
 
     /// While Autofit Page's popup is open the page it would make is the

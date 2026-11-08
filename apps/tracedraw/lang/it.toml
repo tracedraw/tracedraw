@@ -6148,6 +6148,7 @@ docker.page_move_up = "Sposta pagina su"
 docker.page_move_up_desc = "Sposta questa pagina di un posto prima."
 docker.page_move_down = "Sposta pagina giù"
 docker.page_move_down_desc = "Sposta questa pagina di un posto dopo."
+docker.page_numbers_layer = "Numeri di pagina" # mt
 docker.font_filter = "Filtro"
 docker.font_filter_desc = "Mostra solo i font il cui nome contiene questo testo."
 docker.corners_fillet_desc = "Arrotonda gli angoli in archi."

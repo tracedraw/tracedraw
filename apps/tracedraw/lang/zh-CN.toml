@@ -6148,6 +6148,7 @@ docker.page_move_up = "上移页面"
 docker.page_move_up_desc = "将此页面向前移一位。"
 docker.page_move_down = "下移页面"
 docker.page_move_down_desc = "将此页面向后移一位。"
+docker.page_numbers_layer = "页码" # mt
 docker.font_filter = "筛选"
 docker.font_filter_desc = "只显示名称包含此文本的字体。"
 docker.corners_fillet_desc = "将转角变为圆弧。"

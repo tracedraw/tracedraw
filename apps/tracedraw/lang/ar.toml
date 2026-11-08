@@ -6148,6 +6148,7 @@ docker.page_move_up = "نقل الصفحة لأعلى"
 docker.page_move_up_desc = "انقل هذه الصفحة مكانًا واحدًا إلى الأمام."
 docker.page_move_down = "نقل الصفحة لأسفل"
 docker.page_move_down_desc = "انقل هذه الصفحة مكانًا واحدًا إلى الخلف."
+docker.page_numbers_layer = "أرقام الصفحات" # mt
 docker.font_filter = "تصفية"
 docker.font_filter_desc = "اعرض فقط الخطوط التي يحتوي اسمها على هذا النص."
 docker.corners_fillet_desc = "دوّر الزوايا إلى أقواس."

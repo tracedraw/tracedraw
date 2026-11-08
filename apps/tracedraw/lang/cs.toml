@@ -6148,6 +6148,7 @@ docker.page_move_up = "Posunout stránku nahoru"
 docker.page_move_up_desc = "Posune tuto stránku o jedno místo dříve."
 docker.page_move_down = "Posunout stránku dolů"
 docker.page_move_down_desc = "Posune tuto stránku o jedno místo později."
+docker.page_numbers_layer = "Čísla stránek" # mt
 docker.font_filter = "Filtr"
 docker.font_filter_desc = "Zobrazí jen písma, jejichž název obsahuje tento text."
 docker.corners_fillet_desc = "Zaoblí rohy oblouky."

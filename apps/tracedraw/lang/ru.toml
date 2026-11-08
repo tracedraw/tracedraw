@@ -6148,6 +6148,7 @@ docker.page_move_up = "Переместить страницу вверх"
 docker.page_move_up_desc = "Переместить эту страницу на одно место раньше."
 docker.page_move_down = "Переместить страницу вниз"
 docker.page_move_down_desc = "Переместить эту страницу на одно место позже."
+docker.page_numbers_layer = "Номера страниц" # mt
 docker.font_filter = "Фильтр"
 docker.font_filter_desc = "Показывать только шрифты, в имени которых есть этот текст."
 docker.corners_fillet_desc = "Скруглить углы дугами."

@@ -6148,6 +6148,7 @@ docker.page_move_up = "ページを上へ"
 docker.page_move_up_desc = "このページを1つ前へ移動します。"
 docker.page_move_down = "ページを下へ"
 docker.page_move_down_desc = "このページを1つ後ろへ移動します。"
+docker.page_numbers_layer = "ページ番号" # mt
 docker.font_filter = "フィルター"
 docker.font_filter_desc = "名前にこのテキストを含むフォントだけを表示します。"
 docker.corners_fillet_desc = "角を円弧で丸めます。"

@@ -6148,6 +6148,7 @@ docker.page_move_up = "Pindahkan halaman ke atas"
 docker.page_move_up_desc = "Pindahkan halaman ini satu tempat lebih awal."
 docker.page_move_down = "Pindahkan halaman ke bawah"
 docker.page_move_down_desc = "Pindahkan halaman ini satu tempat lebih akhir."
+docker.page_numbers_layer = "Nomor halaman" # mt
 docker.font_filter = "Filter"
 docker.font_filter_desc = "Tampilkan hanya font yang namanya memuat teks ini."
 docker.corners_fillet_desc = "Bulatkan sudut menjadi busur."

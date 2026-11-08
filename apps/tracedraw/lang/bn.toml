@@ -6148,6 +6148,7 @@ docker.page_move_up = "পৃষ্ঠা উপরে নিন"
 docker.page_move_up_desc = "এই পৃষ্ঠাটি এক স্থান আগে নিন।"
 docker.page_move_down = "পৃষ্ঠা নিচে নিন"
 docker.page_move_down_desc = "এই পৃষ্ঠাটি এক স্থান পরে নিন।"
+docker.page_numbers_layer = "পৃষ্ঠা নম্বর" # mt
 docker.font_filter = "ফিল্টার"
 docker.font_filter_desc = "শুধু সেই ফন্ট দেখান যাদের নামে এই টেক্সট আছে।"
 docker.corners_fillet_desc = "কোণগুলো বৃত্তচাপে গোল করুন।"
