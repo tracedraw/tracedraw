@@ -72,6 +72,8 @@ struct Actions {
     /// the top of a layer (#1477).
     move_to_layer: Option<(Vec<ShapeId>, LayerId)>,
     select_layer: Option<LayerId>,
+    /// Cut, copy or paste a whole layer's objects from its menu (#1992).
+    layer_clip: Option<(LayerId, LayerClip)>,
     new_layer: bool,
     new_master: Option<MasterScope>,
     delete_object: Option<Vec<ShapeId>>,
@@ -784,6 +786,22 @@ fn layer_rows(
             act.select_layer = Some(layer.id);
             ui.close();
         }
+        // The layer's objects to the clipboard, or the clipboard's onto
+        // the layer (#1992).
+        ui.separator();
+        let has = !layer.shapes.is_empty();
+        let can_paste = app.clipboard.is_some() && !layer.locked;
+        for (what, key, on) in [
+            (LayerClip::Cut, "menu.edit.cut", has && !layer.locked),
+            (LayerClip::Copy, "menu.edit.copy", has),
+            (LayerClip::Paste, "menu.edit.paste", can_paste),
+        ] {
+            if ui.add_enabled(on, egui::Button::new(tr(key))).clicked() {
+                act.goto = elsewhere;
+                act.layer_clip = Some((layer.id, what));
+                ui.close();
+            }
+        }
         ui.separator();
         let mut visible = layer.visible;
         if ui.checkbox(&mut visible, tr("docker.show_hide")).clicked() {
@@ -1454,6 +1472,14 @@ pub fn master_front_choices(app: &mut App, ui: &mut Ui) {
     }
 }
 
+/// What a layer's menu does with the clipboard (#1992).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LayerClip {
+    Cut,
+    Copy,
+    Paste,
+}
+
 /// Select the objects of `layer` that can be (shown and not locked).
 fn select_layer_objects(app: &mut App, layer: LayerId) {
     let ids: Vec<ShapeId> = app
@@ -1806,6 +1832,22 @@ fn apply(app: &mut App, ui: &Ui, act: Actions) {
     }
     if let Some(layer) = act.select_layer {
         select_layer_objects(app, layer);
+    }
+    if let Some((layer, what)) = act.layer_clip {
+        match what {
+            LayerClip::Cut => {
+                select_layer_objects(app, layer);
+                app.cut();
+            }
+            LayerClip::Copy => {
+                select_layer_objects(app, layer);
+                app.copy();
+            }
+            LayerClip::Paste => {
+                app.picked_layer = Some(layer);
+                app.paste();
+            }
+        }
     }
     if let Some((ids, layer)) = act.move_to_layer {
         move_to_layer(app, &ids, layer);
@@ -2420,5 +2462,43 @@ mod tests {
         });
         assert_eq!(app.selection, vec![id]);
         assert_eq!(app.active_layer(), Some(low));
+    }
+
+    /// A layer's menu copies or cuts its objects and pastes the
+    /// clipboard onto it (#1992).
+    #[test]
+    fn a_layers_menu_cuts_copies_and_pastes_its_objects() {
+        let mut app = App::headless();
+        let low = app.doc().pages[0].layers[0].id;
+        app.new_shape(rect_kind()).expect("shape");
+        app.new_shape(rect_kind()).expect("shape");
+        new_layer(&mut app);
+        let high = app.active_layer().expect("new layer");
+        assert_ne!(high, low);
+        let count = |app: &App, id: LayerId| {
+            app.doc()
+                .all_layers()
+                .find(|l| l.id == id)
+                .map_or(0, |l| l.shapes.len())
+        };
+        let run = |app: &mut App, clip: (LayerId, LayerClip)| {
+            with_ui(|ui| {
+                apply(
+                    app,
+                    ui,
+                    Actions {
+                        layer_clip: Some(clip),
+                        ..Default::default()
+                    },
+                );
+            });
+        };
+        run(&mut app, (low, LayerClip::Copy));
+        run(&mut app, (high, LayerClip::Paste));
+        assert_eq!((count(&app, low), count(&app, high)), (2, 2));
+        run(&mut app, (low, LayerClip::Cut));
+        assert_eq!(count(&app, low), 0);
+        run(&mut app, (low, LayerClip::Paste));
+        assert_eq!(count(&app, low), 2);
     }
 }
