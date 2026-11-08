@@ -98,6 +98,8 @@ full, row-by-row status.
 
 - B-Spline tool: a point placed with C or V held is a fixed point, which the curve passes through with a corner; the curve made keeps it for the Shape tool (#2060).
 
+- AI: replies may be longer (Longest reply in Options > AI, 32000 tokens at first instead of 8000), an address typed without its API path (only the server, or ending in /v1) gets it, and the AI strings are in Simplified Chinese (#1011).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
