@@ -8219,3 +8219,7 @@ procedural.spirals = "Spiralen" # mt
 procedural.triangles = "Driehoeken" # mt
 procedural.waves = "Golven" # mt
 status.multipage_pages_desc = "Kies welke pagina's de meerpaginaweergave toont: alle, of een reeks zoals 1-3, 7." # mt
+options.smooth_zoom = "Vloeiend zoomen" # mt
+options.smooth_zoom_tip = "Een klik van het muiswiel zoomt in een korte glijbeweging, korter naarmate het wiel sneller draait. Uit: elke klik zoomt meteen." # mt
+options.wheel_zoom_step = "Zoom per wielklik:" # mt
+options.wheel_zoom_step_tip = "Hoeveel één klik van het muiswiel in- of uitzoomt, in procent (eerst 15 %)." # mt

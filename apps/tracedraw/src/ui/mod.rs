@@ -916,18 +916,42 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
         canvas_rect.contains(p) && crate::ui::chrome::over_modal_blocker(ui.ctx(), p)
     });
     if response.hovered() || wheel_through_dialog {
-        let (scroll, notches, any_notches, zoom_delta, mods, unit) = ui.input(|i| {
+        let line = ui.ctx().options(|o| o.input_options.line_scroll_speed);
+        let height = ui.ctx().content_rect().height();
+        let web = crate::ui::field::web_wheel();
+        // The wheel zoom's notches this frame, from the raw events: those
+        // of a wheel glide (#1648), those of a touchpad (fine steps, as
+        // egui leaves unsmoothed) apply at once.
+        let mut zoom_glide_notches = 0.0f32;
+        let mut zoom_now_notches = 0.0f32;
+        let (scroll, notches, any_notches, zoom_delta, mods) = ui.input(|i| {
             // Wheel notches this frame (the smoothed delta is spread
             // over several frames, so the zoom steps come from the
             // raw events).
-            let mut unit = None;
             let mut any_notches = 0.0;
             let notches: f32 = i
                 .events
                 .iter()
                 .map(|e| match e {
-                    egui::Event::MouseWheel { unit: u, delta, .. } => {
-                        unit = Some(*u);
+                    egui::Event::MouseWheel {
+                        unit: u,
+                        delta,
+                        phase,
+                        ..
+                    } => {
+                        if *phase == egui::TouchPhase::Move {
+                            let points = match u {
+                                egui::MouseWheelUnit::Point => delta.y,
+                                egui::MouseWheelUnit::Line => delta.y * line,
+                                egui::MouseWheelUnit::Page => delta.y * height,
+                            };
+                            let n = points / smooth_wheel_notch(*u, line, height, web);
+                            if *u == egui::MouseWheelUnit::Point && delta.length() < 8.0 {
+                                zoom_now_notches += n;
+                            } else {
+                                zoom_glide_notches += n;
+                            }
+                        }
                         let per = wheel_notch(*u, crate::ui::field::web_wheel());
                         // Either way: a system can send Shift+wheel
                         // sideways.
@@ -943,21 +967,8 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                 any_notches,
                 i.zoom_delta(),
                 i.modifiers,
-                unit,
             )
         });
-        // The unit of the last wheel event, kept while its smoothed
-        // delta is still being spread over the next frames.
-        let unit_id = egui::Id::new("canvas_wheel_unit");
-        let unit = match unit {
-            Some(u) => {
-                ui.data_mut(|d| d.insert_temp(unit_id, u));
-                u
-            }
-            None => ui
-                .data(|d| d.get_temp(unit_id))
-                .unwrap_or(egui::MouseWheelUnit::Line),
-        };
         let hover = response.hover_pos().or_else(|| {
             wheel_through_dialog
                 .then(|| ui.ctx().pointer_hover_pos())
@@ -972,7 +983,9 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
             app.brush_wheel(any_notches);
         }
         if let Some(h) = hover.filter(|_| !brush_wheel) {
-            let zoom_factor = 1.15f32.powf(notches);
+            // Options > Tools > Zoom/Pan: the zoom of a notch (#895).
+            let step = app.settings.wheel_zoom_factor();
+            let zoom_factor = step.powf(notches);
             // Options > Tools > Zoom/Pan > Center mouse when zooming with
             // the mouse wheel: a notch brings the point under the pointer
             // to the middle of the view, and the pointer with it, and the
@@ -1002,21 +1015,24 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                     app.view.pan(egui::vec2(scroll.y, scroll.x));
                 } else if mods.ctrl && scroll != egui::Vec2::ZERO {
                     app.view.pan(scroll);
-                } else if scroll.y != 0.0 {
-                    // The smoothed wheel delta, spread over a few frames
-                    // as a scroll is, so a notch zooms in one glide
-                    // instead of one jump; its frames multiply to the same
-                    // 1.15 a notch (#766), in the browser too (#1016).
-                    let line = ui.ctx().options(|o| o.input_options.line_scroll_speed);
-                    // The browser's scroll is scaled at the start of the
-                    // frame (#1406); a notch's share scales with it.
-                    let per_notch = smooth_wheel_notch(
-                        unit,
-                        line,
-                        ui.ctx().content_rect().height(),
-                        crate::ui::field::web_wheel(),
-                    ) * crate::ui::field::web_scroll_factor(ui.ctx());
-                    app.view.zoom_at(anchor, 1.15f32.powf(scroll.y / per_notch));
+                } else if !mods.shift && (zoom_glide_notches != 0.0 || zoom_now_notches != 0.0) {
+                    // A notch zooms in one glide over a few frames instead
+                    // of one jump; its frames multiply to the step a
+                    // notch (#766), in the browser too (#1016). The glide
+                    // is shorter the faster the wheel turns (#1648); with
+                    // Smooth zoom off a notch zooms at once.
+                    if zoom_now_notches != 0.0 {
+                        app.view.zoom_at(anchor, step.powf(zoom_now_notches));
+                    }
+                    if zoom_glide_notches != 0.0 {
+                        if app.settings.smooth_zoom {
+                            let now = ui.input(|i| i.time);
+                            app.zoom_glide.add(zoom_glide_notches, step, anchor, now);
+                        } else {
+                            app.zoom_glide.stop();
+                            app.view.zoom_at(anchor, step.powf(zoom_glide_notches));
+                        }
+                    }
                 }
             } else if mods.ctrl && notches != 0.0 {
                 app.view.zoom_at(anchor, zoom_factor);
@@ -1028,6 +1044,15 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                 });
             }
         }
+    }
+    // The wheel zoom's glide goes on, the pointer on the canvas or not.
+    if app.zoom_glide.active() {
+        let dt = ui.input(|i| i.stable_dt);
+        let f = app.zoom_glide.advance(dt);
+        if f != 1.0 {
+            app.view.zoom_at(app.zoom_glide.anchor(), f);
+        }
+        ui.ctx().request_repaint();
     }
     let mods = ui.input(|i| i.modifiers);
 

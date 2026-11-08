@@ -8219,3 +8219,7 @@ procedural.spirals = "Sarmallar" # mt
 procedural.triangles = "Üçgenler" # mt
 procedural.waves = "Dalgalar" # mt
 status.multipage_pages_desc = "Çok sayfalı görünümün göstereceği sayfaları seçin: tümü ya da 1-3, 7 gibi bir aralık." # mt
+options.smooth_zoom = "Yumuşak yakınlaştırma" # mt
+options.smooth_zoom_tip = "Tekerleğin her çentiği kısa bir kaymayla yakınlaştırır; tekerlek hızlı döndükçe kayma kısalır. Kapalı: her çentik hemen yakınlaştırır." # mt
+options.wheel_zoom_step = "Tekerlek çentiği başına yakınlaştırma:" # mt
+options.wheel_zoom_step_tip = "Fare tekerleğinin bir çentiğinin ne kadar yakınlaştırıp uzaklaştırdığı, yüzde olarak (başta %15)." # mt

@@ -3935,6 +3935,25 @@ fn zoom_pan_page(app: &mut App, ui: &mut Ui) {
         "options.wheel_center_mouse",
         "options.wheel_center_mouse_tip",
     ));
+    // The wheel's glide and its step (#1648, #895).
+    ui.checkbox(&mut app.settings.smooth_zoom, tr("options.smooth_zoom"))
+        .rich_tip(crate::ui::tips::pair(
+            "options.smooth_zoom",
+            "options.smooth_zoom_tip",
+        ));
+    ui.horizontal(|ui| {
+        ui.label(tr("options.wheel_zoom_step"));
+        ui.add(
+            crate::ui::field::NumField::new(&mut app.settings.wheel_zoom_step)
+                .range(1.0..=100.0)
+                .speed(0.5)
+                .suffix(" %"),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "options.wheel_zoom_step",
+            "options.wheel_zoom_step_tip",
+        ));
+    });
     ui.separator();
     ui.label(tr("options.wheel_action"));
     ui.indent("wa", |ui| {

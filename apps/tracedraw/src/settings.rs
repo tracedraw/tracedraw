@@ -449,6 +449,15 @@ pub struct Settings {
     /// (off by default: the point stays under the pointer).
     #[serde(default)]
     pub wheel_zoom_centers: bool,
+    /// Options > Tools > Zoom/Pan > Smooth zoom: a wheel notch zooms in
+    /// a short glide, shorter for faster wheel turns (on by default);
+    /// off, each notch zooms at once (#1648, #895).
+    #[serde(default = "default_true")]
+    pub smooth_zoom: bool,
+    /// Options > Tools > Zoom/Pan: how much one wheel notch zooms, in
+    /// percent (15 by default); see [`Settings::wheel_zoom_factor`].
+    #[serde(default = "default_wheel_zoom_step")]
+    pub wheel_zoom_step: f32,
     /// Options > Tools > Zoom/Pan: a right click with the Pan tool zooms
     /// out (off, the default: it opens the context menu).
     #[serde(default)]
@@ -734,6 +743,27 @@ fn default_true() -> bool {
 
 fn default_screen_ppi() -> f32 {
     96.0
+}
+
+/// The zoom of one wheel notch, percent: 15 % (a factor of 1.15).
+pub const DEFAULT_WHEEL_ZOOM_STEP: f32 = 15.0;
+
+fn default_wheel_zoom_step() -> f32 {
+    DEFAULT_WHEEL_ZOOM_STEP
+}
+
+impl Settings {
+    /// The factor one wheel notch zooms by: 1 plus the wheel zoom step,
+    /// kept between 1 and 100 percent (the default for a value that is
+    /// not a number).
+    pub fn wheel_zoom_factor(&self) -> f32 {
+        let step = if self.wheel_zoom_step.is_finite() {
+            self.wheel_zoom_step.clamp(1.0, 100.0)
+        } else {
+            DEFAULT_WHEEL_ZOOM_STEP
+        };
+        1.0 + step / 100.0
+    }
 }
 
 /// The calibrated screen resolution, kept within 48 to 400 per inch. It
@@ -1872,6 +1902,8 @@ impl Default for Settings {
             zoom_right_click_out: true,
             zoom_relative_1to1: true,
             wheel_zoom_centers: false,
+            smooth_zoom: true,
+            wheel_zoom_step: default_wheel_zoom_step(),
             pan_right_click_out: false,
             palette: PalettePrefs::default(),
             palette_bars: Vec::new(),
@@ -2807,6 +2839,15 @@ mod tests {
             "old settings files keep the zoom default"
         );
         assert!(partial.zoom_relative_1to1 && !partial.wheel_zoom_centers);
+        // Smooth zoom on, 15 % a notch, for settings from before (#1648).
+        assert!(partial.smooth_zoom);
+        assert_eq!(partial.wheel_zoom_step, 15.0);
+        assert!((partial.wheel_zoom_factor() - 1.15).abs() < 1e-6);
+        let mut odd = Settings::default();
+        odd.wheel_zoom_step = 500.0;
+        assert_eq!(odd.wheel_zoom_factor(), 2.0);
+        odd.wheel_zoom_step = f32::NAN;
+        assert!((odd.wheel_zoom_factor() - 1.15).abs() < 1e-6);
         assert!(!partial.pan_right_click_out);
         assert!(partial.snap.guides);
     }

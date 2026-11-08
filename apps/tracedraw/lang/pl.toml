@@ -8219,3 +8219,7 @@ procedural.spirals = "Spirale" # mt
 procedural.triangles = "Trójkąty" # mt
 procedural.waves = "Fale" # mt
 status.multipage_pages_desc = "Wybierz strony widoczne w widoku wielu stron: wszystkie lub zakres, np. 1-3, 7." # mt
+options.smooth_zoom = "Płynne powiększanie" # mt
+options.smooth_zoom_tip = "Każdy ząbek kółka powiększa w krótkim płynnym ruchu, tym krótszym, im szybciej obraca się kółko. Wyłączone: każdy ząbek powiększa od razu." # mt
+options.wheel_zoom_step = "Powiększenie na ząbek kółka:" # mt
+options.wheel_zoom_step_tip = "Jak bardzo jeden ząbek kółka myszy powiększa lub pomniejsza, w procentach (na początku 15 %)." # mt

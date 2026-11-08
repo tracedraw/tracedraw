@@ -8219,3 +8219,7 @@ procedural.spirals = "Spirales" # mt
 procedural.triangles = "Triangles" # mt
 procedural.waves = "Vagues" # mt
 status.multipage_pages_desc = "Choisir les pages que montre la vue multipage : toutes, ou une plage comme 1-3, 7." # mt
+options.smooth_zoom = "Zoom fluide" # mt
+options.smooth_zoom_tip = "Un cran de molette zoome en un court glissement, d'autant plus court que la molette tourne vite. Désactivé : chaque cran zoome aussitôt." # mt
+options.wheel_zoom_step = "Zoom par cran de molette :" # mt
+options.wheel_zoom_step_tip = "De combien un cran de la molette zoome ou dézoome, en pourcentage (15 % au départ)." # mt

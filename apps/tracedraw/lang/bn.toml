@@ -8219,3 +8219,7 @@ procedural.spirals = "সর্পিল" # mt
 procedural.triangles = "ত্রিভুজ" # mt
 procedural.waves = "তরঙ্গ" # mt
 status.multipage_pages_desc = "বহু-পৃষ্ঠা দৃশ্য কোন পৃষ্ঠাগুলি দেখাবে তা বেছে নিন: সব, বা 1-3, 7 এর মতো পরিসর।" # mt
+options.smooth_zoom = "মসৃণ জুম" # mt
+options.smooth_zoom_tip = "চাকার প্রতিটি খাঁজ ছোট মসৃণ গতিতে জুম করে, চাকা যত দ্রুত ঘোরে তত ছোট। বন্ধ: প্রতিটি খাঁজ সঙ্গে সঙ্গে জুম করে।" # mt
+options.wheel_zoom_step = "চাকার প্রতি খাঁজে জুম:" # mt
+options.wheel_zoom_step_tip = "মাউসের চাকার এক খাঁজ কতটা জুম ইন বা আউট করে, শতাংশে (শুরুতে ১৫ %)।" # mt

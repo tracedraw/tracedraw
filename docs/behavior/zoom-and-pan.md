@@ -27,10 +27,30 @@
 ## Mouse wheel
 
 - Default (Options > Tools > Default action for mouse wheel: Zoom): the
-  wheel zooms by 1.15 per notch about the pointer, in a glide over a few
-  frames as a scroll moves (the smoothed wheel delta, 40 points a notch),
-  not in one jump; Ctrl+wheel scrolls vertically; Alt+wheel scrolls
-  horizontally (#766, `pick_drag_tests::a_wheel_notch_zooms_in_a_glide`).
+  wheel zooms by the zoom step per notch about the pointer, in a glide
+  over a few frames, not in one jump; Ctrl+wheel scrolls vertically;
+  Alt+wheel scrolls horizontally (#766,
+  `pick_drag_tests::a_wheel_notch_zooms_in_a_glide`).
+- Zoom step (Options > Tools > Zoom/Pan > Zoom per wheel notch, #895):
+  1 to 100 %, 15 % at first (a factor of 1.15 a notch). A notch is a line of the
+  wheel on the desktop, three lines or 100 pixels in the browser
+  (`smooth_wheel_notch`); a touchpad's small pixel steps (under 8
+  points) zoom their share of a notch at once, unsmoothed.
+- The glide follows the wheel's speed (#1648, `view_motion.rs`): the
+  zoom still to come is kept as a logarithm and each frame takes
+  `1 - 0.1^(dt / T)` of it, `T` the time to reach 90 %. A notch after a
+  pause (speed up to 8 notches a second) glides with `T = 0.10 s`;
+  faster turns, the notches of an event over the time since the last
+  one (at most 0.25 s), shorten it in proportion,
+  `T = 0.10 * 8 / speed`, down to 0.03 s. What is left under 0.0001 goes
+  at once, so a glide always ends; it goes on about its point when the
+  pointer leaves the canvas, and a repaint is asked only while it moves
+  (`view_motion::tests::faster_wheel_turns_glide_shorter`,
+  `view_motion::tests::a_glide_adds_up_to_the_steps_and_ends`,
+  `pick_drag_tests::a_fast_wheel_turn_glides_shorter`).
+- Smooth zoom (Options > Tools > Zoom/Pan, on at first): off, every notch
+  zooms its whole step at once
+  (`pick_drag_tests::smooth_zoom_off_zooms_the_fixed_step_at_once`).
 - With the Scroll setting: the wheel scrolls vertically; Shift+wheel
   scrolls horizontally; Ctrl+wheel zooms.
 - A trackpad pinch zooms by the gesture's factor with either setting.

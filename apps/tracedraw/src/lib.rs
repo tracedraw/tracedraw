@@ -223,6 +223,7 @@ mod updates;
 mod variable_outline;
 mod vector_mosaic;
 mod view;
+mod view_motion;
 #[cfg(target_arch = "wasm32")]
 mod web;
 #[cfg(any(target_arch = "wasm32", test))]

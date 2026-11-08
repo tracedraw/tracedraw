@@ -8219,3 +8219,7 @@ procedural.spirals = "सर्पिल" # mt
 procedural.triangles = "त्रिभुज" # mt
 procedural.waves = "तरंगें" # mt
 status.multipage_pages_desc = "चुनें कि बहु-पृष्ठ दृश्य कौन से पृष्ठ दिखाए: सभी, या 1-3, 7 जैसी श्रेणी।" # mt
+options.smooth_zoom = "सहज ज़ूम" # mt
+options.smooth_zoom_tip = "व्हील का हर खाँचा छोटी सरकन में ज़ूम करता है, व्हील जितना तेज़ घूमे उतनी छोटी। बंद: हर खाँचा तुरंत ज़ूम करता है।" # mt
+options.wheel_zoom_step = "प्रति व्हील खाँचा ज़ूम:" # mt
+options.wheel_zoom_step_tip = "माउस व्हील का एक खाँचा कितना ज़ूम इन या आउट करता है, प्रतिशत में (शुरू में 15 %)।" # mt

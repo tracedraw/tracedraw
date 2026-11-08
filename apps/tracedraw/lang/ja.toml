@@ -8219,3 +8219,7 @@ procedural.spirals = "らせん" # mt
 procedural.triangles = "三角形" # mt
 procedural.waves = "波" # mt
 status.multipage_pages_desc = "マルチページ表示に表示するページを選びます。すべて、または 1-3, 7 のような範囲。" # mt
+options.smooth_zoom = "スムーズズーム" # mt
+options.smooth_zoom_tip = "ホイールの1ノッチで短く滑らかにズームします。ホイールを速く回すほど短くなります。オフ: 各ノッチですぐにズームします。" # mt
+options.wheel_zoom_step = "ホイール1ノッチのズーム:" # mt
+options.wheel_zoom_step_tip = "マウスホイール1ノッチで拡大・縮小する量（パーセント、初期値 15 %）。" # mt

@@ -1482,6 +1482,8 @@ pub struct App {
     pub page_sorter: bool,
     /// View > Multipage View: every page laid out beside the current one.
     pub multipage: bool,
+    /// The wheel zoom still gliding (#1648).
+    pub zoom_glide: crate::view_motion::ZoomGlide,
     /// The Font Sampler docker.
     pub font_sampler: crate::ui::font_sampler::FontSampler,
     /// View > Draw in Perspective.
@@ -2833,6 +2835,7 @@ impl App {
             preview_selected_only: false,
             page_sorter: false,
             multipage: false,
+            zoom_glide: Default::default(),
             font_sampler: Default::default(),
             perspective: None,
             effect_picker: Default::default(),

@@ -32,6 +32,11 @@ property bar of each tool.
   resolution; off, it is 96 pixels per inch.
 - [[options.wheel_center_mouse]] (off): a wheel zoom brings the spot under the pointer
   to the middle of the view, and the pointer with it.
+- [[options.smooth_zoom]] (on): a wheel notch zooms in a short glide instead of a
+  jump; the faster you turn the wheel, the shorter the glide. Off, each notch
+  zooms at once.
+- [[options.wheel_zoom_step]] how much one notch zooms in or out, from 1 to 100
+  percent (15 % at first).
 - [[options.pan_right_button]] [[options.zoom_out]] or the [[options.context_menu]] (at first).
 
 ## Freehand/Bézier {#curves}

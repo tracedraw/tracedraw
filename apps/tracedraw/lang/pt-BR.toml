@@ -8219,3 +8219,7 @@ procedural.spirals = "Espirais" # mt
 procedural.triangles = "Triângulos" # mt
 procedural.waves = "Ondas" # mt
 status.multipage_pages_desc = "Escolher quais páginas a visualização de várias páginas mostra: todas ou um intervalo como 1-3, 7." # mt
+options.smooth_zoom = "Zoom suave" # mt
+options.smooth_zoom_tip = "Cada clique da roda aplica o zoom num breve deslizamento, mais curto quanto mais rápido a roda gira. Desligado: cada clique aplica o zoom na hora." # mt
+options.wheel_zoom_step = "Zoom por clique da roda:" # mt
+options.wheel_zoom_step_tip = "Quanto um clique da roda do mouse aproxima ou afasta, em porcentagem (15 % no início)." # mt

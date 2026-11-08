@@ -8219,3 +8219,7 @@ procedural.spirals = "螺旋" # mt
 procedural.triangles = "三角形" # mt
 procedural.waves = "波浪" # mt
 status.multipage_pages_desc = "選擇多頁檢視顯示哪些頁面：全部，或如 1-3, 7 的範圍。" # mt
+options.smooth_zoom = "平滑縮放" # mt
+options.smooth_zoom_tip = "滾輪每轉一格以短暫的平滑過渡縮放，滾輪轉得越快過渡越短。關閉：每格立即縮放。" # mt
+options.wheel_zoom_step = "每格滾輪縮放：" # mt
+options.wheel_zoom_step_tip = "滑鼠滾輪每轉一格放大或縮小的幅度，百分比（初始為 15 %）。" # mt

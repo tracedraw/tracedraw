@@ -12884,6 +12884,119 @@ fn a_wheel_notch_zooms_in_a_glide() {
     );
 }
 
+/// One wheel notch event on the canvas at `at`, `t` the frame's time.
+fn wheel_frame(ctx: &egui::Context, app: &mut App, t: f64, events: Vec<Event>) {
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            Pos2::ZERO,
+            egui::vec2(1600.0, 1000.0),
+        )),
+        events,
+        time: Some(t),
+        ..Default::default()
+    };
+    let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+    out.textures_delta.clear();
+}
+
+fn notch() -> Event {
+    Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: egui::vec2(0.0, 1.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::NONE,
+    }
+}
+
+/// The wheel zoom's glide follows the wheel's speed: a notch right after
+/// another (a fast turn) does more of its zoom in its first frame than a
+/// notch after a pause; both still zoom the step a notch in all (#1648).
+#[test]
+fn a_fast_wheel_turn_glides_shorter() {
+    let (ctx, mut app, _) = setup();
+    assert!(app.settings.smooth_zoom);
+    let at = Pos2::new(700.0, 500.0);
+    let mut t = 10.0;
+    let mut step = |app: &mut App, events: Vec<Event>| {
+        t += 1.0 / 60.0;
+        wheel_frame(&ctx, app, t, events);
+    };
+    step(&mut app, vec![Event::PointerMoved(at)]);
+    step(&mut app, vec![Event::PointerMoved(at)]);
+    // A notch after a pause.
+    let z0 = app.view.zoom;
+    step(&mut app, vec![notch()]);
+    let slow = app.view.zoom / z0;
+    for _ in 0..60 {
+        step(&mut app, Vec::new());
+    }
+    assert!(!app.zoom_glide.active());
+    // Two notches in a row, two frames apart: the second is fast.
+    step(&mut app, vec![notch()]);
+    step(&mut app, Vec::new());
+    let z1 = app.view.zoom;
+    step(&mut app, vec![notch()]);
+    let fast = app.view.zoom / z1;
+    assert!(
+        fast > slow * 1.01,
+        "the fast notch's first frame zooms more: {fast} {slow}"
+    );
+    for _ in 0..60 {
+        step(&mut app, Vec::new());
+    }
+    let total = app.view.zoom / z0;
+    assert!((total - 1.15f32.powi(3)).abs() < 0.01, "{total}");
+}
+
+/// Options > Zoom/Pan: Smooth zoom off zooms a notch at once, and the
+/// zoom step sets how much (#1648, #895).
+#[test]
+fn smooth_zoom_off_zooms_the_fixed_step_at_once() {
+    let (ctx, mut app, _) = setup();
+    app.settings.smooth_zoom = false;
+    app.settings.wheel_zoom_step = 25.0;
+    let at = Pos2::new(700.0, 500.0);
+    let page_at = app.view.to_page(at);
+    wheel_frame(&ctx, &mut app, 10.0, vec![Event::PointerMoved(at)]);
+    wheel_frame(&ctx, &mut app, 10.02, vec![Event::PointerMoved(at)]);
+    let z0 = app.view.zoom;
+    wheel_frame(&ctx, &mut app, 10.04, vec![notch()]);
+    assert!(
+        (app.view.zoom / z0 - 1.25).abs() < 1e-3,
+        "{}",
+        app.view.zoom / z0
+    );
+    assert!(!app.zoom_glide.active());
+    let now = app.view.to_page(at);
+    assert!((now.x - page_at.x).abs() < 0.5 && (now.y - page_at.y).abs() < 0.5);
+    // A notch down zooms back out the same step.
+    wheel_frame(
+        &ctx,
+        &mut app,
+        10.06,
+        vec![Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, -1.0),
+            phase: egui::TouchPhase::Move,
+            modifiers: Modifiers::NONE,
+        }],
+    );
+    assert!((app.view.zoom / z0 - 1.0).abs() < 1e-3);
+    // Smooth again: the same step, in a glide.
+    app.settings.smooth_zoom = true;
+    wheel_frame(&ctx, &mut app, 10.5, Vec::new());
+    wheel_frame(&ctx, &mut app, 10.52, Vec::new());
+    wheel_frame(&ctx, &mut app, 10.54, vec![notch()]);
+    let first = app.view.zoom / z0;
+    assert!(first > 1.0 && first < 1.2, "{first}");
+    let mut t = 10.54;
+    for _ in 0..60 {
+        t += 1.0 / 60.0;
+        wheel_frame(&ctx, &mut app, t, Vec::new());
+    }
+    assert!((app.view.zoom / z0 - 1.25).abs() < 0.01);
+}
+
 /// Ctrl+Z through a curve drawn with the Pen goes back to drawing it: the
 /// Pen is chosen again and a line goes on from the last node left,
 /// leaving along the mirror of its handle, with a curved preview; that

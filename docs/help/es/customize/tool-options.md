@@ -35,6 +35,11 @@ valores también están en la barra de propiedades de cada herramienta.
   resolución de pantalla calibrada; desactivado, son 96 píxeles por pulgada.
 - [[options.wheel_center_mouse]] (desactivado): un zoom con la rueda lleva el punto bajo
   el puntero al centro de la vista, y el puntero con él.
+- [[options.smooth_zoom]] (activado): cada muesca de la rueda hace zoom en un
+  breve deslizamiento en lugar de un salto; cuanto más rápido gira la rueda,
+  más corto. Desactivado, cada muesca hace zoom al instante.
+- [[options.wheel_zoom_step]] cuánto acerca o aleja una muesca, de 1 a 100 por
+  ciento (15 % al principio).
 - [[options.pan_right_button]] [[options.zoom_out]] o el [[options.context_menu]] (al principio).
 
 ## Mano alzada/Bézier {#curves}
