@@ -24220,3 +24220,45 @@ fn twirl_turns_at_a_steady_rate_while_the_button_is_held_still() {
         "{undo:?}"
     );
 }
+
+/// The live test of 0.41: Attract reacted late and the objects kept on
+/// moving without the effect ever settling. Pressed inside the
+/// rectangle by its top side and held still, the side is pulled from
+/// the first frames on, by a bounded amount each frame, and the pull
+/// settles while the button is still held.
+#[test]
+fn attract_works_from_the_press_and_settles_while_held() {
+    let (ctx, mut app, id) = setup();
+    app.set_tool(Tool::AttractRepel);
+    app.brush_radius = 8.0;
+    let mut last = brushed_points(&app, id);
+    let mut steps = Vec::new();
+    hold_still(
+        &ctx,
+        &mut app,
+        Point::new(35.0, 36.0),
+        10.0,
+        600,
+        |app, _| {
+            steps.push(brushed_shift(app, id, &last));
+            last = brushed_points(app, id);
+        },
+    );
+    assert!(
+        steps[..5].iter().any(|s| *s > 0.0),
+        "pulling from the first frames: {:?}",
+        &steps[..5]
+    );
+    let most = steps.iter().copied().fold(0.0, f64::max);
+    assert!(most < 1.0, "a bounded pull each frame, not {most} mm");
+    assert!(
+        steps[500..].iter().all(|s| *s < 1e-9),
+        "settled while held: {:?}",
+        &steps[500..510]
+    );
+    // Pulled in, never pushed out past the side.
+    assert!(brushed_points(&app, id)
+        .iter()
+        .flatten()
+        .all(|p| p.y <= 40.0 + 0.1));
+}

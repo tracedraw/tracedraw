@@ -1133,31 +1133,55 @@ fn fit_within(path: &BezPath, accuracy: f64) -> BezPath {
     }
 }
 
-/// Pull (`amount` > 0) or push (< 0) the nodes and control points within
-/// `radius` of `at` towards or away from it (Attract and Repel tools);
-/// nearer ones move more, none past the middle.
-pub fn attract(path: &BezPath, at: Point, radius: f64, amount: f64) -> BezPath {
-    let f = |p: Point| -> Point {
-        let v = at - p;
+/// Attract and Repel tools: the stretch of the curve within the nib's
+/// reach is measured into points (a twelfth of the nib apart), each
+/// moved straight towards (`dose` > 0, Attract) or away from (`dose` <
+/// 0, Repel) the nib's centre, by the same rule in every direction, and
+/// fitted back into curves (within 0.01 mm). `dose` runs from 0 (no change) to 1 (the
+/// whole effect, which a hold in one place reaches and then keeps): with
+/// `f = |dose|`, `w = 1 - d / radius` and the weight easing smoothly to
+/// nothing at the nib's edge, `s = w^2 (3 - 2 w)`, a point `d` from the
+/// centre goes to `d (1 - f s)` for Attract (never past the centre) and
+/// to `d + f s (radius - d) / 2` for Repel (at most half the nib out,
+/// never past the nib's edge). Both keep the order of the points along
+/// every ray from the centre, so the outline never folds over, and the
+/// same dose on the same curve gives the same curve.
+pub fn attract(path: &BezPath, at: Point, radius: f64, dose: f64) -> BezPath {
+    if !(dose.is_finite() && radius.is_finite() && radius > 0.0) || dose == 0.0 {
+        return path.clone();
+    }
+    let f = dose.abs().min(1.0);
+    let pull = dose > 0.0;
+    let moved = |p: Point| -> Point {
+        let v = p - at;
         let d = v.hypot();
-        if d > radius || d < 1e-9 {
+        if d >= radius || d < 1e-9 {
             return p;
         }
-        let k = (1.0 - d / radius) * amount;
-        p + v * (k / d).min(0.9)
+        let w = 1.0 - d / radius;
+        let s = w * w * (3.0 - 2.0 * w);
+        let to = if pull {
+            d * (1.0 - f * s)
+        } else {
+            d + f * s * (radius - d) / 2.0
+        };
+        at + v * (to / d)
     };
-    let mut out = BezPath::new();
-    for el in path.elements() {
-        out.push(match *el {
-            PathEl::MoveTo(p) => PathEl::MoveTo(f(p)),
-            PathEl::LineTo(p) => PathEl::LineTo(f(p)),
-            PathEl::QuadTo(a, p) => PathEl::QuadTo(f(a), f(p)),
-            PathEl::CurveTo(a, b, p) => PathEl::CurveTo(f(a), f(b), f(p)),
-            PathEl::ClosePath => PathEl::ClosePath,
-        });
-    }
-    out
+    // Fitted closer than the other brushes' merge: a hold moves the
+    // curve a few hundredths of a millimetre a step, which a looser fit
+    // would swallow until the dose had grown.
+    brush_runs(path, at, radius, |run, closed| {
+        let pts: Vec<Point> = densify(run, radius / 12.0).into_iter().map(moved).collect();
+        fit_within(
+            &crate::geometry::smooth_path(&pts, closed),
+            ATTRACT_ACCURACY,
+        )
+    })
 }
+
+/// How far Attract and Repel's rebuilt curve may stray from the moved
+/// points, mm.
+const ATTRACT_ACCURACY: f64 = 0.01;
 
 /// A jagged edge within `radius` of `at` (Roughen tool): the curve in
 /// points `spacing` apart, each within the nib pushed off the curve by up
@@ -1266,16 +1290,114 @@ mod tests {
         let c = Point::new(8.0, 8.0);
         // How far out the corner nearest the nib (10, 10) now is.
         let reach = |p: &BezPath| {
-            p.elements()
-                .iter()
-                .filter_map(|e| match e {
-                    PathEl::MoveTo(q) | PathEl::LineTo(q) => Some(q.x + q.y),
-                    _ => None,
-                })
-                .fold(f64::MIN, f64::max)
+            let mut most = f64::MIN;
+            kurbo::flatten(p.elements().iter().copied(), 0.01, &mut |e| match e {
+                PathEl::MoveTo(q) | PathEl::LineTo(q) => most = most.max(q.x + q.y),
+                _ => {}
+            });
+            most
         };
         let (pulled, pushed) = (attract(&sq, c, 5.0, 1.0), attract(&sq, c, 5.0, -1.0));
         assert!(reach(&pulled) < 20.0 && reach(&pushed) > 20.0);
+    }
+
+    /// Points along `p` about `step` apart, curves flattened.
+    fn along(p: &BezPath, step: f64) -> Vec<Point> {
+        densify(p, step)
+    }
+
+    /// The distance from `q` to the nearest of `pts`.
+    fn nearest(q: Point, pts: &[Point]) -> f64 {
+        pts.iter()
+            .map(|p| (*p - q).hypot())
+            .fold(f64::INFINITY, f64::min)
+    }
+
+    /// Attract and Repel move the curve along the rays from the nib's
+    /// centre by the same rule in every direction: a straight line past
+    /// the nib, whatever its nodes (here one off to the side), ends up
+    /// where the rule puts each of its points, the same on both sides,
+    /// and a circle about the centre stays a circle. The live test of
+    /// 0.41 found Repel pushing unevenly: it moved the line's nodes and
+    /// handles only.
+    #[test]
+    fn attract_and_repel_are_the_same_in_every_direction() {
+        let mut line = BezPath::new();
+        line.move_to((-40.0, 0.0));
+        line.line_to((3.0, 0.0));
+        line.line_to((40.0, 0.0));
+        let at = Point::new(0.0, -4.0);
+        let r = 10.0;
+        for dose in [1.0, -1.0, 0.4, -0.4] {
+            let out = along(&attract(&line, at, r, dose), 0.02);
+            for x in [-8.0, -6.0, -4.0, -2.0, 0.0, 2.0, 4.0, 6.0, 8.0] {
+                let p = Point::new(x, 0.0);
+                let v = p - at;
+                let d = v.hypot();
+                if d >= r {
+                    continue;
+                }
+                let (f, w) = (f64::abs(dose), 1.0 - d / r);
+                let s = w * w * (3.0 - 2.0 * w);
+                let to = if dose > 0.0 {
+                    d * (1.0 - f * s)
+                } else {
+                    d + f * s * (r - d) / 2.0
+                };
+                let want = at + v * (to / d);
+                let miss = nearest(want, &out);
+                assert!(miss < 0.12, "dose {dose}, x {x}: {miss} from {want:?}");
+            }
+            // Both sides alike.
+            for x in [2.0, 5.0, 7.0] {
+                let side = |x: f64| {
+                    out.iter()
+                        .filter(|p| (p.x - x).abs() < 0.05)
+                        .map(|p| p.y)
+                        .fold(f64::NAN, f64::max)
+                };
+                assert!(
+                    (side(x) - side(-x)).abs() < 0.12,
+                    "dose {dose}, x {x}: {} {}",
+                    side(x),
+                    side(-x)
+                );
+            }
+        }
+        // A circle about the centre stays round.
+        let ring = kurbo::Circle::new(at, 5.0).to_path(0.001);
+        for dose in [1.0, -1.0] {
+            let out = along(&attract(&ring, at, r, dose), 0.05);
+            let ds: Vec<f64> = out.iter().map(|p| (*p - at).hypot()).collect();
+            let lo = ds.iter().copied().fold(f64::INFINITY, f64::min);
+            let hi = ds.iter().copied().fold(0.0, f64::max);
+            let want = if dose > 0.0 { 2.5 } else { 6.25 };
+            // Within the accuracy the fitted curves keep (0.1 mm).
+            assert!(
+                lo > want - 0.15 && hi < want + 0.15,
+                "dose {dose}: {lo}..{hi}"
+            );
+        }
+    }
+
+    /// Attract never pulls past the nib's centre and Repel never pushes
+    /// past its edge, however large the dose: a dose past the whole
+    /// effect is the whole effect, so a hold comes to rest.
+    #[test]
+    fn attract_and_repel_stay_within_the_nib() {
+        let sq = Rect::new(0.0, 0.0, 10.0, 10.0).to_path(0.01);
+        let at = Point::new(9.0, 9.0);
+        assert_eq!(attract(&sq, at, 5.0, 7.0), attract(&sq, at, 5.0, 1.0));
+        assert_eq!(attract(&sq, at, 5.0, -7.0), attract(&sq, at, 5.0, -1.0));
+        assert_eq!(attract(&sq, at, 5.0, 0.0), sq);
+        assert_eq!(attract(&sq, at, 5.0, f64::NAN), sq);
+        // Out of the square only within the nib (the fitted curves kept
+        // within 0.1 mm).
+        let pushed = along(&attract(&sq, at, 5.0, -1.0), 0.05);
+        assert!(pushed
+            .iter()
+            .all(|p| (*p - at).hypot() < 5.0 + 0.1 || p.x <= 10.1 && p.y <= 10.1));
+        assert!(pushed.iter().any(|p| p.x + p.y > 21.0), "pushed out");
     }
 
     /// The nodes of a path's elements (end points).
@@ -1833,9 +1955,9 @@ mod tests {
         assert!((back.bounding_box().x0 - 5.0).abs() < 1e-6);
     }
 
-    /// #1133: a long Smudge or Twirl stroke circling a square ends, keeps
-    /// a handful of nodes and stays finite. The curve fitter used before
-    /// hung or panicked partway through such a stroke.
+    /// #1133: a long Smudge, Twirl, Attract or Repel stroke circling a
+    /// square ends, keeps a handful of nodes and stays finite. The curve
+    /// fitter used before hung or panicked partway through such a stroke.
     #[test]
     fn long_smudge_and_twirl_strokes_stay_light() {
         let mut square = BezPath::new();
@@ -1844,16 +1966,19 @@ mod tests {
         square.line_to((40.0, 40.0));
         square.line_to((0.0, 40.0));
         square.close_path();
-        for smudge in [true, false] {
+        for brush in ["smudge", "twirl", "attract", "repel"] {
             let mut q = square.clone();
             for k in 0..600 {
                 let a = k as f64 * 0.05;
                 let at = Point::new(20.0 + 22.0 * a.cos(), 20.0 + 22.0 * a.sin());
-                q = if smudge {
-                    let d = Vec2::new(-0.55 * a.sin(), 0.55 * a.cos());
-                    smear(&smooth(&q, at, 10.0, 0.2), at, d, 10.0)
-                } else {
-                    twirl(&q, at, 0.1, 10.0)
+                q = match brush {
+                    "smudge" => {
+                        let d = Vec2::new(-0.55 * a.sin(), 0.55 * a.cos());
+                        smear(&smooth(&q, at, 10.0, 0.2), at, d, 10.0)
+                    }
+                    "twirl" => twirl(&q, at, 0.1, 10.0),
+                    "attract" => attract(&q, at, 10.0, 0.05),
+                    _ => attract(&q, at, 10.0, -0.05),
                 };
                 assert!(q.elements().len() < 200, "step {k}: {}", q.elements().len());
             }

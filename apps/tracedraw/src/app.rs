@@ -1881,6 +1881,10 @@ pub struct App {
     /// The shaping brushes' nib being sized by a Shift+drag (see
     /// `brushes.rs`).
     pub brush_resize: Option<crate::brushes::BrushResize>,
+    /// What the brush stroke under way works from: the outlines Attract
+    /// and Repel's hold started from and the dose held so far (see
+    /// `brushes.rs`).
+    pub brush_stroke: crate::brushes::StrokeBase,
     /// The style new dimensions take (the dimension tools' bar).
     pub dimension_style: crate::dimensions::DimensionStyle,
     /// The document revision dimensions were last checked at for moves
@@ -3054,6 +3058,7 @@ impl App {
             brush: Default::default(),
             brush_stepped: false,
             brush_resize: None,
+            brush_stroke: Default::default(),
             dimension_style: Default::default(),
             dimensions_checked: u64::MAX,
             dimension_labels_seen: Default::default(),

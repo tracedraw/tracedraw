@@ -34,6 +34,8 @@ full, row-by-row status.
 
 - Object > Convert Outline to Object (Ctrl+Shift+Q) keeps curves as curves: each segment of the path is offset to either side, a curve as the fewest curves within 0.01 mm of its true offset, so a constant-width outline has about as many nodes as its path (a smooth curve of four nodes now gives ten at most, it gave 32; an ellipse's ring eight). Round ends and corners are exact arcs with a node at each end's tip. The Shape tool no longer shows corner widgets on nodes where rounding would change nothing that shows, such as the near-straight kinks the old conversion left.
 
+- Attract and Repel move the whole stretch of the outline in the nib, evenly in every direction, from the moment the button goes down; they moved only the nodes and handles in reach, so a side with its nodes outside the nib did not react until one came in, and Repel pushed unevenly. Held still, they pull or push at a steady pace and come to rest once the effect is complete (Attract gathers the outline towards the middle of the nib, Repel pushes it out to at most the nib's edge) instead of moving on for as long as the button was held.
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).
