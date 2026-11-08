@@ -523,6 +523,16 @@ is listed with its author, source and license in
 [ATTRIBUTION.md](ATTRIBUTION.md). Every drawing in the screenshots was made
 for TraceDraw.
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=tracedraw%2Ftracedraw&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=tracedraw/tracedraw&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=tracedraw/tracedraw&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=tracedraw/tracedraw&type=date&legend=top-left" />
+ </picture>
+</a>
+
 <sub>TraceDraw is an independent open-source project, not affiliated
 with, endorsed by or sponsored by Corel Corporation, Alludo or any other
 software vendor. CorelDRAW is a registered trademark of Corel Corporation.
