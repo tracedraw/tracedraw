@@ -1096,6 +1096,10 @@ pub struct App {
     pub last_guide_duplicate: Option<crate::guides::GuideDuplicate>,
     // Defaults for new objects (no fill, black hairline).
     pub polygon_points: u32,
+    /// The box drag of a polygon or star is held to a square with Ctrl:
+    /// the polygon is then regular, inscribed in that square's circle,
+    /// not stretched to fill the square (#1929).
+    pub box_regular: bool,
     pub star_sharpness: f64,
     /// Star tool: draw complex stars (sides crossing), their points and
     /// sharpness.
@@ -2593,6 +2597,7 @@ impl App {
             forgotten_duplicate: None,
             last_guide_duplicate: None,
             polygon_points: 5,
+            box_regular: false,
             star_sharpness: 0.5,
             star_complex: false,
             complex_points: 9,
@@ -5109,6 +5114,18 @@ impl App {
         }
     }
 
+    /// The ellipse rectangle of a polygon or star drawn in `bounds`: the
+    /// one whose polygon fills `bounds`, or, when the drag was held to a
+    /// square with Ctrl, `bounds` itself, so the polygon is regular, its
+    /// vertices on the square's circle (#1929).
+    pub fn polygon_model_rect(&self, bounds: Rect, points: u32, sharpness: f64) -> Rect {
+        if self.box_regular {
+            bounds
+        } else {
+            tracedraw_core::geometry::polygon_rect_for_bounds(bounds, points, sharpness)
+        }
+    }
+
     pub fn create_box_shape(&mut self, a: Point, b: Point) {
         let rect = Rect::from_points(a, b);
         if rect.width() < 0.05 || rect.height() < 0.05 {
@@ -5124,11 +5141,7 @@ impl App {
             },
             // The dragged box is the polygon's own bounding box.
             Tool::Polygon => ShapeKind::Polygon {
-                rect: tracedraw_core::geometry::polygon_rect_for_bounds(
-                    rect,
-                    self.polygon_points,
-                    0.0,
-                ),
+                rect: self.polygon_model_rect(rect, self.polygon_points, 0.0),
                 points: self.polygon_points,
                 sharpness: 0.0,
                 complex: None,
@@ -5136,22 +5149,14 @@ impl App {
             },
             // A complex star's vertices are those of a polygon.
             Tool::Star if self.star_complex => ShapeKind::Polygon {
-                rect: tracedraw_core::geometry::polygon_rect_for_bounds(
-                    rect,
-                    self.complex_points,
-                    0.0,
-                ),
+                rect: self.polygon_model_rect(rect, self.complex_points, 0.0),
                 points: self.complex_points,
                 sharpness: 0.0,
                 complex: Some(self.complex_sharpness),
                 twist: 0.0,
             },
             Tool::Star => ShapeKind::Polygon {
-                rect: tracedraw_core::geometry::polygon_rect_for_bounds(
-                    rect,
-                    self.polygon_points,
-                    self.star_sharpness,
-                ),
+                rect: self.polygon_model_rect(rect, self.polygon_points, self.star_sharpness),
                 points: self.polygon_points,
                 sharpness: self.star_sharpness,
                 complex: None,

@@ -996,6 +996,14 @@ impl App {
             _ => target.clone(),
         };
         let open = |s: &Shape| matches!(s.kind, ShapeKind::Path { closed: false, .. });
+        // Weld of open curves alone: there is no area to unite, so the
+        // curves are joined end to end into one path where their ends
+        // meet (Object > Join Curves, with its gap setting), instead of
+        // nothing happening (#1934).
+        if matches!(op, Shaping::Weld) && shapes.len() >= 2 && shapes.iter().all(open) {
+            self.join_curves();
+            return;
+        }
         let subtracts = matches!(
             op,
             Shaping::Trim | Shaping::FrontMinusBack | Shaping::BackMinusFront

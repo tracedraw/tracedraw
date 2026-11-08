@@ -2380,6 +2380,7 @@ impl App {
                 current: p,
                 from_center: mods.shift,
             };
+            self.box_regular = false;
             boxing = true;
         }
         if !boxing {
@@ -2408,6 +2409,7 @@ impl App {
 
     /// The far corner of the shape being drawn moves to `now`.
     fn box_follow(&mut self, now: Point, mods: Modifiers) {
+        self.box_regular = mods.ctrl;
         if let Drag::Box {
             start,
             current,
