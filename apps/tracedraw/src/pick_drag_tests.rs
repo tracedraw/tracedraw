@@ -21723,3 +21723,83 @@ fn shift_drag_and_the_wheel_size_the_brush_nib() {
     app.set_tool(Tool::Pick);
     assert!(!crate::ui::status::tool_hint(&app).contains("wheel"));
 }
+
+/// A palette bar of its own docks among the toolbars along the top:
+/// dropped on the line between the first two rows of toolbars it lies
+/// between them, across the whole window; Dock at Top puts it back
+/// beside the drawing (narrower: the docker column stands beside it), and
+/// Among the Toolbars puts it under every toolbar, across the window.
+#[test]
+fn a_palette_bar_docks_between_the_toolbars_at_the_top() {
+    use crate::ui::bars::Dock;
+    use crate::ui::palette::Row;
+    use crate::ui::palette_bars::{set_among_toolbars, set_dock, PaletteBarDrag};
+    let (ctx, mut app, _) = setup();
+    let gray = app
+        .palettes
+        .iter()
+        .position(|p| p.key == "palette.grayscale")
+        .expect("grayscale palette");
+    let gray_id = crate::settings::palette_id(&app.palettes[gray]);
+    app.open_palette_bar(&gray_id);
+    app.settings.palette_bars[0].dock = Dock::Bottom;
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let top_rows = |app: &App| -> Vec<egui::Rect> {
+        app.bar_rows
+            .iter()
+            .filter(|s| s.dock == Dock::Top)
+            .map(|s| s.rect)
+            .collect()
+    };
+    let rows = top_rows(&app);
+    assert!(rows.len() >= 2, "{rows:?}");
+    // Its grip dragged onto the line between the first two rows and let
+    // go there.
+    app.palette_bar_drag = Some(PaletteBarDrag {
+        bar: 0,
+        grab: egui::vec2(12.0, 10.0),
+        last: None,
+    });
+    let line = Pos2::new(400.0, rows[0].bottom() - 2.0);
+    frame(&ctx, &mut app, vec![Event::PointerMoved(line)], Modifiers::NONE);
+    assert!(app.palette_bar_drag.is_none(), "dropped");
+    let bar = &app.settings.palette_bars[0];
+    assert_eq!((bar.dock, bar.toolbar_row), (Dock::Top, Some(1)));
+    let band = |ctx: &egui::Context| {
+        egui::PanelState::load(ctx, egui::Id::new(("palette_extra", Row::Extra(0))))
+            .map(|s| s.outer_rect)
+            .expect("the bar shows")
+    };
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let rows = top_rows(&app);
+    let b = band(&ctx);
+    assert!(
+        b.top() >= rows[0].bottom() - 1.0 && b.bottom() <= rows[1].top() + 1.0,
+        "{b:?} between {rows:?}"
+    );
+    assert!(b.width() >= 1599.0, "{b:?} across the window");
+    assert_eq!(app.palette_bands.len(), 1);
+    // Dock at Top: beside the drawing, under the toolbars.
+    set_dock(&mut app, Row::Extra(0), Dock::Top, None);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let rows = top_rows(&app);
+    let last = rows.last().expect("rows").bottom();
+    let b = band(&ctx);
+    assert!(b.top() >= last - 1.0 && b.width() < 1590.0, "{b:?}");
+    assert!(app.palette_bands.is_empty());
+    // Among the Toolbars: under every toolbar, across the window.
+    set_among_toolbars(&mut app, Row::Extra(0), crate::settings::MAX_TOOLBAR_ROW);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let rows = top_rows(&app);
+    let last = rows.last().expect("rows").bottom();
+    let b = band(&ctx);
+    assert!(b.top() >= last - 1.0 && b.width() >= 1599.0, "{b:?}");
+}

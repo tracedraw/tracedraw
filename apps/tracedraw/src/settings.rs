@@ -1190,6 +1190,11 @@ pub struct PaletteBarPrefs {
     pub rows: u8,
     /// As [`PalettePrefs::swatch_size`].
     pub swatch_size: u8,
+    /// Docked at the top among the toolbars: the row of toolbars it lies
+    /// over (an index into `BarLayout::rows_at(Dock::Top)`; past the last
+    /// one, under every toolbar). None: beside the drawing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toolbar_row: Option<u32>,
 }
 
 impl Default for PaletteBarPrefs {
@@ -1201,6 +1206,7 @@ impl Default for PaletteBarPrefs {
             float_size: FLOAT_SIZE,
             rows: 1,
             swatch_size: SWATCH_DEFAULT,
+            toolbar_row: None,
         }
     }
 }
@@ -1221,8 +1227,23 @@ impl PaletteBarPrefs {
         }
         self.rows = self.rows.min(MAX_ROWS);
         self.swatch_size = self.swatch_size.clamp(SWATCH_MIN, SWATCH_MAX);
+        // Among the toolbars only at the top; past every row is under
+        // them all.
+        if self.dock != crate::ui::bars::Dock::Top {
+            self.toolbar_row = None;
+        }
+        self.toolbar_row = self.toolbar_row.map(|r| r.min(MAX_TOOLBAR_ROW));
+    }
+
+    /// Whether the bar lies among the toolbars along the top.
+    pub fn among_toolbars(&self) -> bool {
+        self.dock == crate::ui::bars::Dock::Top && self.toolbar_row.is_some()
     }
 }
+
+/// The furthest row index a palette bar among the toolbars keeps: more
+/// than the toolbars can make, so it means under every one of them.
+pub const MAX_TOOLBAR_ROW: u32 = 64;
 
 pub fn swatch_resized(size: u8, steps: i32) -> u8 {
     let to = i32::from(size.clamp(SWATCH_MIN, SWATCH_MAX))

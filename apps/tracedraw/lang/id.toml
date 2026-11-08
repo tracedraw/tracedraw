@@ -7846,3 +7846,4 @@ menu.help.search_commands = "Cari Perintah..." # mt
 command_search.hint = "Ketik sebagian nama perintah" # mt
 command_search.none = "Tidak ada perintah menu yang cocok" # mt
 command_search.keys = "Atas dan Bawah memilih perintah · Enter menjalankannya · Esc menutup" # mt
+palette.among_toolbars = "Tambatkan di atas, di antara bilah alat" # mt

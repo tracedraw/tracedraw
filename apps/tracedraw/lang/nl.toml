@@ -7846,3 +7846,4 @@ menu.help.search_commands = "Opdrachten zoeken..." # mt
 command_search.hint = "Typ een deel van de naam van een opdracht" # mt
 command_search.none = "Geen menuopdracht komt overeen" # mt
 command_search.keys = "Omhoog en Omlaag kiezen een opdracht · Enter voert hem uit · Esc sluit" # mt
+palette.among_toolbars = "Bovenaan tussen de werkbalken andocken" # mt

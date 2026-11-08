@@ -39,6 +39,20 @@ palette's swatch size and one row. A palette shows in one bar at most.
   where). The palette menu's Position > Top, Bottom, Left, Right,
   Floating does the same; a double click on a floating bar's title docks
   it at the bottom. Lock Toolbars keeps the bars where they are.
+- Among the toolbars: along the top a bar can also lie between the rows
+  of toolbars, as a row of its own across the whole window. Dropped
+  within 7 px of the line between two rows of toolbars (a blue line
+  shows it), it lies between them; near the top line of the first row,
+  over them all; near the bottom line of the last row, under them all;
+  dropped back on a bar among the toolbars, at that bar's place. The
+  palette menu's Position > Dock at Top, Among the Toolbars puts it
+  under every toolbar; Position > Top puts it back beside the drawing.
+  The place is the index of the row of toolbars it lies over
+  (`PaletteBarPrefs::toolbar_row`, kept in the preferences and workspace
+  files; past the last row means under them all). Over the middle of a
+  row of toolbars a drop docks as before. The default palette keeps its
+  own places (`palette_bars::toolbar_target`,
+  `pick_drag_tests::a_palette_bar_docks_between_the_toolbars_at_the_top`).
 - Each bar has its own Rows and Swatch Size; the default palette's are
   the ones in Options, which the document palette row under it follows.
 - Close Palette in its menu (or the close button of its floating window)

@@ -529,6 +529,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     // toolbar, 53 px for the property bar, each closed by a light line),
     // several side by side in a row where they were put (#837, #855).
     app.bar_rows.clear();
+    app.palette_bands.clear();
     bars::docked_rows(app, ui, Dock::Top);
     if app.show_status_bar && status_dock == Dock::Bottom {
         status_panel(app, ui, Panel::bottom("status_bar"));

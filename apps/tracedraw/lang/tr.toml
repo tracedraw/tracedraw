@@ -7846,3 +7846,4 @@ menu.help.search_commands = "Komut Ara..." # mt
 command_search.hint = "Bir komut adının bir kısmını yazın" # mt
 command_search.none = "Eşleşen menü komutu yok" # mt
 command_search.keys = "Yukarı ve Aşağı bir komut seçer · Enter çalıştırır · Esc kapatır" # mt
+palette.among_toolbars = "Üste, araç çubuklarının arasına yerleştir" # mt

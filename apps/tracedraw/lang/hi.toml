@@ -7846,3 +7846,4 @@ menu.help.search_commands = "कमांड खोजें..." # mt
 command_search.hint = "कमांड के नाम का कुछ भाग लिखें" # mt
 command_search.none = "कोई मेनू कमांड मेल नहीं खाता" # mt
 command_search.keys = "ऊपर और नीचे तीर कमांड चुनते हैं · Enter उसे चलाता है · Esc बंद करता है" # mt
+palette.among_toolbars = "ऊपर टूलबार के बीच डॉक करें" # mt

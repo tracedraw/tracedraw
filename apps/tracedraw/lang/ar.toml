@@ -7846,3 +7846,4 @@ menu.help.search_commands = "البحث في الأوامر..." # mt
 command_search.hint = "اكتب جزءًا من اسم الأمر" # mt
 command_search.none = "لا يوجد أمر قائمة مطابق" # mt
 command_search.keys = "الأسهم لأعلى ولأسفل تختار أمرًا · Enter يشغّله · Esc يغلق" # mt
+palette.among_toolbars = "إرساء في الأعلى بين أشرطة الأدوات" # mt

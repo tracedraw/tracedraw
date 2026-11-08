@@ -7846,3 +7846,4 @@ menu.help.search_commands = "コマンドを検索..." # mt
 command_search.hint = "コマンド名の一部を入力" # mt
 command_search.none = "一致するメニューコマンドはありません" # mt
 command_search.keys = "上下キーでコマンドを選択 · Enter で実行 · Esc で閉じる" # mt
+palette.among_toolbars = "上のツールバーの間にドッキング" # mt

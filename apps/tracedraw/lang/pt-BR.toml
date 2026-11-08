@@ -7846,3 +7846,4 @@ menu.help.search_commands = "Pesquisar comandos..." # mt
 command_search.hint = "Digite parte do nome de um comando" # mt
 command_search.none = "Nenhum comando de menu corresponde" # mt
 command_search.keys = "Cima e Baixo escolhem um comando · Enter o executa · Esc fecha" # mt
+palette.among_toolbars = "Encaixar no topo, entre as barras de ferramentas" # mt

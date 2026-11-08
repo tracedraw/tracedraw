@@ -1561,6 +1561,10 @@ pub struct App {
     /// The rows of toolbars drawn this frame, for the drops of a dragged
     /// toolbar (see ui/bars.rs).
     pub bar_rows: Vec<crate::ui::bars::RowSpot>,
+    /// The palette bars drawn among the toolbars along the top this
+    /// frame: the row of toolbars each lies over and its band, for the
+    /// drops of a dragged palette bar (`palette_bars::toolbar_target`).
+    pub palette_bands: Vec<(u32, egui::Rect)>,
     /// A toolbar button being moved, and where the bars that take them
     /// were drawn this frame (see ui/bar_items.rs).
     pub bar_item_drag: Option<crate::ui::bar_items::ItemDrag>,
@@ -2828,6 +2832,7 @@ impl App {
             right_drag: None,
             bar_drag: None,
             bar_rows: Vec::new(),
+            palette_bands: Vec::new(),
             bar_item_drag: None,
             bar_slots: Vec::new(),
             shown_bar_slots: Vec::new(),

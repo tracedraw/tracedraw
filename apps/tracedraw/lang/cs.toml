@@ -7846,3 +7846,4 @@ menu.help.search_commands = "Hledat příkazy..." # mt
 command_search.hint = "Napište část názvu příkazu" # mt
 command_search.none = "Žádný příkaz nabídky neodpovídá" # mt
 command_search.keys = "Šipky nahoru a dolů vybírají příkaz · Enter ho spustí · Esc zavře" # mt
+palette.among_toolbars = "Ukotvit nahoře mezi panely nástrojů" # mt

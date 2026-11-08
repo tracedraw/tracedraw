@@ -7846,3 +7846,4 @@ menu.help.search_commands = "搜索命令..." # mt
 command_search.hint = "输入命令名称的一部分" # mt
 command_search.none = "没有匹配的菜单命令" # mt
 command_search.keys = "上下键选择命令 · Enter 运行 · Esc 关闭" # mt
+palette.among_toolbars = "停靠在顶部工具栏之间" # mt

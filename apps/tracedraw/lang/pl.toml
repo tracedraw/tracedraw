@@ -7846,3 +7846,4 @@ menu.help.search_commands = "Szukaj poleceń..." # mt
 command_search.hint = "Wpisz część nazwy polecenia" # mt
 command_search.none = "Żadne polecenie menu nie pasuje" # mt
 command_search.keys = "Strzałki w górę i w dół wybierają polecenie · Enter je uruchamia · Esc zamyka" # mt
+palette.among_toolbars = "Zadokuj u góry, między paskami narzędzi" # mt
