@@ -24,6 +24,7 @@ refuse to load modules from `file://`).
 | Shelf | `shelf.json` in the configuration folder | the page's IndexedDB database `tracedraw-kept` (see Storage below) |
 | Auto-backup and session recovery | backups and session markers in the auto-backup folder (`recovery.md`) | backups in the page's IndexedDB database and markers in its local storage; leaving the page with unsaved drawings asks first (`recovery.md`, "In the browser") |
 | Recent documents | listed on the Welcome screen | not recorded (uploads have no path to reopen) |
+| Interface languages | all nineteen built into the program | English built in; another language's file (`lang/<code>.toml` next to the page, about 430 to 850 KB) is fetched when the editor starts in it or it is chosen, English shows until it arrives and then the interface switches without a reload; the service worker keeps a fetched file with the deploy's other files, so the language is there without a network until the next deploy; when the fetch fails English stays (logged in the browser console) and choosing the language again or the next start tries again (`i18n::tests::a_fetched_language_shows_english_until_it_arrives`, `i18n::tests::a_missing_language_falls_back_to_english`). The start language is the browser's preferred one TraceDraw has (`navigator.languages`, see `language.md`) |
 | Fonts | installed system fonts | bundled at build time: Liberation Sans, Serif and Mono, DejaVu Sans, Noto Sans Devanagari and Bengali; the published page's font folder adds about a hundred free families (stand-ins of the same widths for common office faces, popular families, Chinese, Japanese, Korean, Arabic, Hebrew, Thai and Lao) and its font catalog every other family of the google/fonts collection (about 2,000), each fetched the first time a drawing's text needs it or a font list's pointer rests on it (see `web/FONTS.md`); Chinese and Japanese UI text needs a font the build machine had. A font added with Font Manager > Add Font is kept in the page's IndexedDB (`tracedraw-fonts`) and installed again at the next visit (#1400) |
 | System clipboard | text, images and copied files (arboard) | Ctrl+V takes text, pictures and files copied in other programs from the browser's paste event; Edit > Paste reads the clipboard with the browser's clipboard API, which asks once for permission, and pastes the copy made here when the browser refuses (see `clipboard.md`) |
 | Help links | system browser | a new tab |
@@ -373,13 +374,17 @@ size=$(wc -c < site/tracedraw_bg.wasm | tr -d ' ')
 sed -e "s/data-wasm-size=\"0\"/data-wasm-size=\"$size\"/" -e "s/@VERSION@/0.4.0/" \
     web/index.html > site/index.html
 cp assets/icon/tracedraw-256.png site/icon-256.png
+mkdir -p site/lang   # every language file but en.toml (built in)
+for f in apps/tracedraw/lang/*.toml; do
+    [ "$(basename "$f")" = en.toml ] || cp "$f" site/lang/
+done
 # The installable app: manifest, icons and the service worker, whose
-# cache is named after the version and a digest of the page, script and
-# module (see "Installing on a tablet").
+# cache is named after the version and a digest of the page, script,
+# module and language files (see "Installing on a tablet").
 cp web/manifest.webmanifest site/
 cp assets/icon/tracedraw-192.png site/icon-192.png
 cp assets/icon/tracedraw-512.png site/icon-512.png
-build=$(cat site/index.html site/tracedraw.js site/tracedraw_bg.wasm site/manifest.webmanifest | sha256sum | cut -c1-16)
+build=$(cat site/index.html site/tracedraw.js site/tracedraw_bg.wasm site/manifest.webmanifest site/lang/*.toml | sha256sum | cut -c1-16)
 sed -e "s/@VERSION@/0.4.0/" -e "s/@BUILD@/$build/" web/sw.js > site/sw.js
 node scripts/web/check_pwa.mjs site   # optional: Node, no packages
 python3 -m http.server -d site 8080   # then open http://localhost:8080
@@ -393,7 +398,10 @@ both builds fill in the module's size and the version
 binaryen's `wasm-opt` has optimised the module for size and dropped its
 name, debug and producer sections (version 133 in CI, from the release
 checked against its SHA-256;
-`web_page::tests::the_builds_shrink_the_module_before_measuring_it`).
+`web_page::tests::the_builds_shrink_the_module_before_measuring_it`);
+both ship the language files the module fetches, counted in the
+worker's digest
+(`web_page::tests::the_builds_ship_the_languages_the_module_fetches`).
 Checked in a browser with a stand-in module: the progress, the start, an
 error with the links kept, on a desktop and a phone-sized window.
 

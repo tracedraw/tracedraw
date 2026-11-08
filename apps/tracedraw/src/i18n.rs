@@ -3,8 +3,11 @@
 //!
 //! Language files are flat `key = "value"` tables in `lang/` (a TOML
 //! subset) embedded at build time, so the binary stays self-contained.
+//! The browser build embeds English only and fetches another language's
+//! file from the page's `lang/` folder when it is chosen (English shows
+//! until it arrives), which keeps the module smaller.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{OnceLock, RwLock};
 
 /// Languages shipped with the app, in display order.
@@ -30,6 +33,9 @@ pub const LANGUAGES: [(&str, &str); 19] = [
     ("lo", "ພາສາລາວ"),
 ];
 
+/// The language files built into the program: all of them on the
+/// desktop.
+#[cfg(not(target_arch = "wasm32"))]
 const FILES: [(&str, &str); 19] = [
     ("en", include_str!("../lang/en.toml")),
     ("zh-CN", include_str!("../lang/zh-CN.toml")),
@@ -52,22 +58,96 @@ const FILES: [(&str, &str); 19] = [
     ("lo", include_str!("../lang/lo.toml")),
 ];
 
+/// The browser build embeds English only; the other languages are
+/// fetched from the page (`lang/<code>.toml`, see [`file_url`]).
+#[cfg(target_arch = "wasm32")]
+const FILES: [(&str, &str); 1] = [("en", include_str!("../lang/en.toml"))];
+
+/// The built-in file of a language.
+fn builtin(code: &str) -> Option<&'static str> {
+    FILES.iter().find(|(c, _)| *c == code).map(|(_, s)| *s)
+}
+
+/// Where the browser build fetches a language's file from, relative to
+/// the page; `None` for English (always built in) and unknown codes.
+pub fn file_url(code: &str) -> Option<String> {
+    LANGUAGES
+        .iter()
+        .any(|(c, _)| *c == code && *c != "en")
+        .then(|| format!("lang/{code}.toml"))
+}
+
 struct State {
+    /// The chosen language.
     code: String,
+    /// The language `table` holds: `code`, or English while the chosen
+    /// language's file is on its way (browser) or the code is unknown.
+    shown: String,
     table: HashMap<String, String>,
     english: HashMap<String, String>,
+    /// Languages fetched by the browser build, kept to switch back.
+    fetched: HashMap<String, HashMap<String, String>>,
+    /// Languages whose file is being fetched.
+    pending: HashSet<String>,
+}
+
+impl State {
+    fn new(english: HashMap<String, String>) -> Self {
+        State {
+            code: "en".into(),
+            shown: "en".into(),
+            table: english.clone(),
+            english,
+            fetched: HashMap::new(),
+            pending: HashSet::new(),
+        }
+    }
+
+    /// Make `code` the language, from its built-in file or one fetched
+    /// before; otherwise English shows and the file to fetch is returned
+    /// (once: not while it is already on its way).
+    fn choose(&mut self, code: &str, builtin: Option<&str>) -> Option<String> {
+        self.code = code.to_string();
+        let table = match builtin {
+            Some(src) => Some(parse(src)),
+            None => self.fetched.get(code).cloned(),
+        };
+        if let Some(table) = table {
+            self.table = table;
+            self.shown = code.to_string();
+            return None;
+        }
+        self.table = self.english.clone();
+        self.shown = "en".into();
+        let url = file_url(code)?;
+        self.pending.insert(code.to_string()).then_some(url)
+    }
+
+    /// A fetched language file arrived (`None`: the fetch failed, and
+    /// choosing the language again tries again). Returns whether the
+    /// interface changed language.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn arrived(&mut self, code: &str, src: Option<&str>) -> Result<bool, String> {
+        self.pending.remove(code);
+        let src = src.ok_or_else(|| format!("could not fetch {code}"))?;
+        let table = parse(src);
+        // A server's error page is not a language file.
+        if !table.contains_key("menu.file") {
+            return Err(format!("{code} is not a language file"));
+        }
+        let shown = self.code == code;
+        if shown {
+            self.table = table.clone();
+            self.shown = code.to_string();
+        }
+        self.fetched.insert(code.to_string(), table);
+        Ok(shown)
+    }
 }
 
 fn state() -> &'static RwLock<State> {
     static STATE: OnceLock<RwLock<State>> = OnceLock::new();
-    STATE.get_or_init(|| {
-        let english = parse(FILES[0].1);
-        RwLock::new(State {
-            code: "en".into(),
-            table: english.clone(),
-            english,
-        })
-    })
+    STATE.get_or_init(|| RwLock::new(State::new(parse(FILES[0].1))))
 }
 
 /// Parse the flat `key = "value"` format. Lines starting with `#` and
@@ -109,17 +189,42 @@ pub fn parse(src: &str) -> HashMap<String, String> {
     map
 }
 
-/// Switch the active language; unknown codes fall back to English.
+/// Switch the active language; unknown codes fall back to English. In
+/// the browser a language not fetched yet shows in English until its
+/// file arrives ([`language_arrived`]).
 pub fn set_language(code: &str) {
-    let src = FILES
-        .iter()
-        .find(|(c, _)| *c == code)
-        .map(|(_, s)| *s)
-        .unwrap_or(FILES[0].1);
-    if let Ok(mut st) = state().write() {
-        st.code = code.to_string();
-        st.table = parse(src);
+    let fetch = match state().write() {
+        Ok(mut st) => st.choose(code, builtin(code)),
+        Err(_) => None,
+    };
+    if let Some(url) = fetch {
+        fetch_file(code, url);
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn fetch_file(code: &str, url: String) {
+    crate::web::fetch_language(code.to_string(), url);
+}
+
+/// The desktop has every language built in.
+#[cfg(not(target_arch = "wasm32"))]
+fn fetch_file(code: &str, url: String) {
+    log::warn!("language {code} is not built in ({url})");
+}
+
+/// A language file the browser build fetched (`None`: the fetch failed;
+/// English stays). Returns whether the interface changed language, so
+/// the caller asks for a frame.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub fn language_arrived(code: &str, src: Option<&str>) -> bool {
+    let Ok(mut st) = state().write() else {
+        return false;
+    };
+    st.arrived(code, src).unwrap_or_else(|e| {
+        log::warn!("interface language: {e}; English stays");
+        false
+    })
 }
 
 /// Every key of the English table.
@@ -134,9 +239,10 @@ pub fn language() -> String {
     state().read().map(|s| s.code.clone()).unwrap_or_default()
 }
 
-/// Right-to-left languages flip the docker side and text alignment.
+/// Right-to-left languages flip the docker side and text alignment
+/// (once the language shows: English while its file is on its way).
 pub fn is_rtl() -> bool {
-    language() == "ar"
+    state().read().map(|s| s.shown == "ar").unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -151,11 +257,7 @@ thread_local! {
 /// Run `f` with `code` as the language of this thread only (tests).
 #[cfg(test)]
 pub fn with_thread_language<R>(code: &str, f: impl FnOnce() -> R) -> R {
-    let src = FILES
-        .iter()
-        .find(|(c, _)| *c == code)
-        .map(|(_, s)| *s)
-        .unwrap_or(FILES[0].1);
+    let src = builtin(code).unwrap_or(FILES[0].1);
     let before = THREAD_TABLE.with(|t| t.replace(Some(parse(src))));
     let out = f();
     THREAD_TABLE.with(|t| *t.borrow_mut() = before);
@@ -521,6 +623,84 @@ mod tests {
             let missing: Vec<_> = en.keys().filter(|k| !t.contains_key(*k)).collect();
             assert!(missing.is_empty(), "{code} is missing {missing:?}");
         }
+    }
+
+    /// The desktop keeps every language built in, in the order of the
+    /// language list.
+    #[test]
+    fn the_desktop_builds_every_language_in() {
+        assert_eq!(FILES.len(), LANGUAGES.len());
+        for ((file, _), (code, _)) in FILES.iter().zip(LANGUAGES.iter()) {
+            assert_eq!(file, code);
+            assert!(builtin(code).is_some(), "{code}");
+        }
+    }
+
+    #[test]
+    fn the_browser_fetches_every_language_but_english() {
+        assert_eq!(file_url("en"), None);
+        assert_eq!(file_url("zz"), None);
+        assert_eq!(file_url("pt-BR").as_deref(), Some("lang/pt-BR.toml"));
+        for (code, _) in LANGUAGES.iter().skip(1) {
+            let url = file_url(code).expect("a file to fetch");
+            let path = format!("{}/{url}", env!("CARGO_MANIFEST_DIR"));
+            assert!(std::path::Path::new(&path).is_file(), "{path}");
+        }
+    }
+
+    /// The browser build: English shows until the chosen language's file
+    /// arrives, then the interface switches; the file is asked for once.
+    #[test]
+    fn a_fetched_language_shows_english_until_it_arrives() {
+        let de = builtin("de").expect("German");
+        let mut st = State::new(parse(FILES[0].1));
+        assert_eq!(st.choose("de", None).as_deref(), Some("lang/de.toml"));
+        assert_eq!(st.code, "de");
+        assert_eq!(st.shown, "en");
+        assert_eq!(st.table.get("menu.file").map(String::as_str), Some("File"));
+        // Chosen again while on its way: not asked for twice.
+        assert_eq!(st.choose("de", None), None);
+        assert_eq!(st.arrived("de", Some(de)), Ok(true));
+        assert_eq!(st.shown, "de");
+        assert_eq!(st.table, parse(de));
+        // Back to English and to German again: no new fetch.
+        assert_eq!(st.choose("en", builtin("en")), None);
+        assert_eq!(st.shown, "en");
+        assert_eq!(st.choose("de", None), None);
+        assert_eq!(st.table, parse(de));
+    }
+
+    /// A file that arrives after another language was chosen is kept for
+    /// later and does not change the interface.
+    #[test]
+    fn a_late_language_file_is_kept_but_not_shown() {
+        let fr = builtin("fr").expect("French");
+        let mut st = State::new(parse(FILES[0].1));
+        assert!(st.choose("fr", None).is_some());
+        assert_eq!(st.choose("it", None).as_deref(), Some("lang/it.toml"));
+        assert_eq!(st.arrived("fr", Some(fr)), Ok(false));
+        assert_eq!(st.shown, "en");
+        assert_eq!(st.choose("fr", None), None);
+        assert_eq!(st.shown, "fr");
+    }
+
+    /// A missing or broken language file leaves the interface in English,
+    /// and choosing the language again asks for the file again.
+    #[test]
+    fn a_missing_language_falls_back_to_english() {
+        let mut st = State::new(parse(FILES[0].1));
+        assert!(st.choose("ja", None).is_some());
+        assert!(st.arrived("ja", None).is_err());
+        assert_eq!((st.code.as_str(), st.shown.as_str()), ("ja", "en"));
+        assert_eq!(st.table.get("menu.file").map(String::as_str), Some("File"));
+        assert!(st.choose("ja", None).is_some());
+        let page = "<!doctype html>\n<meta charset=\"utf-8\">\n<title>404</title>";
+        assert!(st.arrived("ja", Some(page)).is_err());
+        assert_eq!(st.shown, "en");
+        assert!(st.choose("ja", None).is_some());
+        // Unknown codes have nothing to fetch.
+        assert_eq!(st.choose("zz", None), None);
+        assert_eq!(st.shown, "en");
     }
 
     #[test]

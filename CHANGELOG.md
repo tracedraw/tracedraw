@@ -14,6 +14,8 @@ full, row-by-row status.
 
 - Browser: File > Package, the Scripts docker's VBA tab and its Debug button are greyed with a tip that says why (they need the desktop version), as the macro commands already say; Debug was missing altogether (#1416). The start notice no longer says that only the bundled fonts are there: other fonts are downloaded when text uses them, and fonts added in Font Manager are kept (#1417).
 
+- Browser version: the module no longer carries the eighteen interface languages besides English (about 10 MB of text); the page fetches the chosen language's file when the editor starts in it or it is chosen, showing English until it arrives, then switching without a reload, and the installed app keeps a fetched language for use without a network. The desktop program keeps every language built in.
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
