@@ -35,7 +35,7 @@ installed as an app does the same for `.tdraw`, `.cdr`, `.svg` and `.pdf`
 files in browsers that let installed apps open files.
 
 How a drawing is first shown (the whole page, its objects, the page's width,
-real size, or the page, place and zoom it had when it was saved) is set by
+real size, a zoom level of your own, or the page, place and zoom it had when it was saved) is set by
 [[options.open_view]] on the [[options.display]] page of
 [[menu.tools > menu.tools.options > menu.tools.options_app]].
 

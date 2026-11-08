@@ -255,6 +255,7 @@ window first shows it (#1134):
 | Page width | the page's width across the window, the page centred down it |
 | Page height | the page's height down the window |
 | 100% (real size) | real size (see Ruler calibration), the middle of the page in the middle of the window |
+| Zoom level | the zoom typed beside the list (`open_zoom_percent`, 1 to 10000 %, 100 at first; a value that is not a number gives 100), the middle of the page in the middle of the window (#1266) |
 | As saved | the page, the point in the middle of the window and the zoom the drawing had when it was last saved |
 
 Saving a TraceDraw file keeps its view in the file (`saved_view`: the

@@ -8833,6 +8833,20 @@ impl App {
                 let c = self.page_rect().center();
                 self.centre_view_at(c, 100.0, canvas);
             }
+            OpenView::Percent => {
+                let c = self.page_rect().center();
+                let percent = self.settings.open_zoom_percent;
+                // A number read from damaged settings opens at real size.
+                let percent = if percent.is_finite() {
+                    percent.clamp(
+                        *crate::settings::OPEN_ZOOM_RANGE.start(),
+                        *crate::settings::OPEN_ZOOM_RANGE.end(),
+                    )
+                } else {
+                    100.0
+                };
+                self.centre_view_at(c, percent, canvas);
+            }
             OpenView::AsSaved => {
                 let pages = self.doc().pages.len();
                 if let Some(v) = self.doc().saved_view.filter(|v| v.is_valid(pages)) {

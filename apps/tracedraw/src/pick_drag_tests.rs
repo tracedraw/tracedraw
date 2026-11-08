@@ -15717,10 +15717,10 @@ fn a_recent_document_comes_off_the_list_by_itself() {
 }
 
 /// Options > Display > View when a drawing opens: the whole page, the
-/// objects, the page's width or height, real size, or the page, place
-/// and zoom the drawing was saved with; saving keeps that view with no
-/// undo step and no change mark, and a drawing saved without it opens
-/// fitted to the page (#1134).
+/// objects, the page's width or height, real size, a zoom level of one's
+/// own (#1266), or the page, place and zoom the drawing was saved with;
+/// saving keeps that view with no undo step and no change mark, and a
+/// drawing saved without it opens fitted to the page (#1134).
 #[test]
 fn a_drawing_opens_in_the_view_chosen_in_options() {
     use crate::settings::OpenView;
@@ -15786,6 +15786,20 @@ fn a_drawing_opens_in_the_view_chosen_in_options() {
     assert!(page.height() <= canvas.height() + 0.5 && page.height() > canvas.height() * 0.8);
     open(&mut app, OpenView::Actual, &plain);
     assert!((app.zoom_percent() - 100.0).abs() < 0.5);
+    // Zoom level: the zoom set in Options, the page in the middle
+    // (#1266); a number that is not one opens at real size.
+    let page_mid = app.page_rect().center();
+    for (set, shown) in [(37.0, 37.0), (400.0, 400.0), (f32::NAN, 100.0)] {
+        app.settings.open_zoom_percent = set;
+        open(&mut app, OpenView::Percent, &plain);
+        assert!(
+            (app.zoom_percent() - shown).abs() < 0.5,
+            "{set}: {}",
+            app.zoom_percent()
+        );
+        let mid = app.view.to_page(app.canvas_rect.center());
+        assert!((mid - page_mid).hypot() < 0.5, "{mid:?}");
+    }
     // Fit to objects: page 1's 50 x 30 mm rectangle fills the window.
     open(&mut app, OpenView::FitObjects, &plain);
     assert!(app.view.zoom > fit * 2.0, "{} {fit}", app.view.zoom);

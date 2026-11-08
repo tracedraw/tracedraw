@@ -986,15 +986,30 @@ fn display_page(app: &mut App, ui: &mut Ui) {
         row_label(ui, &tr("options.open_view"));
         let mut view = app.settings.open_view;
         let tip = crate::ui::tips::pair("options.open_view", "options.open_view_tip");
-        crate::ui::tips::tip_over(ui, tip, |ui| {
-            combo(
-                ui,
-                "open_view",
-                &mut view,
-                &crate::settings::OpenView::ALL,
-                |v| tr(v.key()),
-                160.0,
-            );
+        ui.horizontal(|ui| {
+            crate::ui::tips::tip_over(ui, tip, |ui| {
+                combo(
+                    ui,
+                    "open_view",
+                    &mut view,
+                    &crate::settings::OpenView::ALL,
+                    |v| tr(v.key()),
+                    160.0,
+                );
+            });
+            // Zoom level: the percent beside the list (#1266).
+            if view == crate::settings::OpenView::Percent {
+                ui.add(
+                    crate::ui::field::NumField::new(&mut app.settings.open_zoom_percent)
+                        .range(crate::settings::OPEN_ZOOM_RANGE)
+                        .speed(1.0)
+                        .suffix(" %"),
+                )
+                .rich_tip(crate::ui::tips::pair(
+                    "options.open_view_percent",
+                    "options.open_zoom_tip",
+                ));
+            }
         });
         app.settings.open_view = view;
         ui.end_row();

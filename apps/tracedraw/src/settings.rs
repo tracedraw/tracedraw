@@ -193,6 +193,10 @@ pub struct Settings {
     /// The view a drawing opens in (#1134).
     #[serde(default)]
     pub open_view: OpenView,
+    /// The zoom, in percent, of the Zoom level choice of `open_view`
+    /// (#1266).
+    #[serde(default = "default_open_zoom_percent")]
+    pub open_zoom_percent: f32,
     /// Arrowheads created with Object > Create > Arrowhead.
     #[serde(default)]
     pub custom_arrowheads: Vec<tracedraw_core::Arrowhead>,
@@ -837,18 +841,22 @@ pub enum OpenView {
     PageHeight,
     /// Real size, the page in the middle.
     Actual,
+    /// The zoom set in `Settings::open_zoom_percent`, the page in the
+    /// middle (#1266).
+    Percent,
     /// The page, place and zoom it was saved with (TraceDraw files), else
     /// the whole page.
     AsSaved,
 }
 
 impl OpenView {
-    pub const ALL: [OpenView; 6] = [
+    pub const ALL: [OpenView; 7] = [
         OpenView::FitPage,
         OpenView::FitObjects,
         OpenView::PageWidth,
         OpenView::PageHeight,
         OpenView::Actual,
+        OpenView::Percent,
         OpenView::AsSaved,
     ];
 
@@ -859,6 +867,7 @@ impl OpenView {
             OpenView::PageWidth => "options.open_view_width",
             OpenView::PageHeight => "options.open_view_height",
             OpenView::Actual => "options.open_view_actual",
+            OpenView::Percent => "options.open_view_percent",
             OpenView::AsSaved => "options.open_view_saved",
         }
     }
@@ -1823,6 +1832,7 @@ impl Default for Settings {
             show_outline_flyout: false,
             wheel_zooms: true,
             open_view: OpenView::default(),
+            open_zoom_percent: default_open_zoom_percent(),
             toolbox: Vec::new(),
             custom_arrowheads: Vec::new(),
             custom_dashes: Vec::new(),
@@ -2280,6 +2290,13 @@ pub fn migrate_ai(
 fn ai_enabled_default() -> bool {
     true
 }
+
+fn default_open_zoom_percent() -> f32 {
+    100.0
+}
+
+/// The zooms Options offers for a drawing to open at, in percent.
+pub const OPEN_ZOOM_RANGE: std::ops::RangeInclusive<f32> = 1.0..=10000.0;
 
 fn default_focus_visibility() -> u8 {
     20

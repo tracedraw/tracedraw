@@ -66,6 +66,8 @@ full, row-by-row status.
 
 - Common Shapes: the shape picker has an All tab that shows every set at once, each under its name (#1650).
 
+- Options > Display > View when a drawing opens has Zoom level: a drawing opens at the zoom typed beside the list, its page in the middle of the window (#1266).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
