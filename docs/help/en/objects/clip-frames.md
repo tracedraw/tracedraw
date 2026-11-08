@@ -32,6 +32,13 @@ before you release.
 - [[menu.object.clip_frame_lock]] (on at first): moving, scaling or rotating
   the frame takes the contents along. Turned off, the frame moves alone and
   the contents stay where they are on the page.
+- [[menu.object.clip_frame_fit_center]], [[menu.object.clip_frame_fit_proportional]],
+  [[menu.object.clip_frame_fill_proportional]] and
+  [[menu.object.clip_frame_stretch]] move the contents of each selected frame
+  to its middle, scale them to fit inside it or to cover it keeping their
+  proportions, or stretch them to its box. They are also on the bar shown
+  over a selected frame (Fit Contents) and can take shortcuts in
+  [Customization](../customize/customization.md).
 
 Double-clicking a frame with the [[tool.pick]] tool, or <kbd>Ctrl</kbd>+click
 on it, also enters it, with the object under the pointer selected; see

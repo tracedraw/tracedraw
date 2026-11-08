@@ -136,6 +136,10 @@ viz [Volby přizpůsobení](../customize/customization.md#commands).
 | [[menu.object.clip_frame_finish]] | [Placing objects inside a frame](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_edit]] | [Placing objects inside a frame](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_lock]] | [Placing objects inside a frame](../objects/clip-frames.md) |
+| [[menu.object.clip_frame_fit_center]] | [Placing objects inside a frame](../objects/clip-frames.md) |
+| [[menu.object.clip_frame_fit_proportional]] | [Placing objects inside a frame](../objects/clip-frames.md) |
+| [[menu.object.clip_frame_fill_proportional]] | [Placing objects inside a frame](../objects/clip-frames.md) |
+| [[menu.object.clip_frame_stretch]] | [Placing objects inside a frame](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_opacity_mask]] | [Placing objects inside a frame](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_invert_mask]] | [Placing objects inside a frame](../objects/clip-frames.md) |
 | [[menu.object.symmetry]] | [Drawing with symmetry](../objects/symmetry.md) |

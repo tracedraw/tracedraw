@@ -136,6 +136,10 @@ only the Welcome Screen is open. The menus can show your own shortcuts; see
 | [[menu.object.clip_frame_finish]] | [Clip frames](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_edit]] | [Clip frames](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_lock]] | [Clip frames](../objects/clip-frames.md) |
+| [[menu.object.clip_frame_fit_center]] | [Clip frames](../objects/clip-frames.md) |
+| [[menu.object.clip_frame_fit_proportional]] | [Clip frames](../objects/clip-frames.md) |
+| [[menu.object.clip_frame_fill_proportional]] | [Clip frames](../objects/clip-frames.md) |
+| [[menu.object.clip_frame_stretch]] | [Clip frames](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_opacity_mask]] | [Clip frames](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_invert_mask]] | [Clip frames](../objects/clip-frames.md) |
 | [[menu.object.symmetry]] | [Symmetry](../objects/symmetry.md) |

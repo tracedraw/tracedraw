@@ -114,7 +114,12 @@ Frame Proportionally (scaled alike to cover it) and Stretch Contents to
 Fill (scaled to the frame's box), each one "Fit Contents" undo step
 (`App::fit_clip_contents`, `ops2::fit_contents_transform`). While the
 contents are edited the bar shows Finish, as the symmetry bar does
-(`ops2::clip_frame_tests::contents_fit_the_frame_four_ways`).
+(`ops2::clip_frame_tests::contents_fit_the_frame_four_ways`). The four
+Fit Contents choices are also rows of Object > Clip to Frame
+(`menus::CLIP_FIT_ROWS`), so Options > Customization > Commands lists
+them and they take shortcuts; from the menu each selected clip frame
+fits its own contents, one "Fit Contents" undo step for them all
+(`App::fit_clips_contents`, #1299).
 
 ## Dropping onto a frame
 

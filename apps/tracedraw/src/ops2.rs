@@ -1348,39 +1348,54 @@ impl App {
     /// The clip frame bar's Fit Contents: the contents moved (and
     /// scaled) to the frame's box as `mode` says; one undo step.
     pub fn fit_clip_contents(&mut self, clip: ShapeId, mode: crate::ui::clip_bar::FitContents) {
-        let (frame_bounds, ids) = match self.doc().find_shape(clip) {
-            Some(s) => match &s.kind {
-                ShapeKind::ClipFrame { contents, .. } => (
-                    self.doc()
-                        .shape_on_page(clip)
-                        .map(|c| c.bounds())
-                        .unwrap_or_default(),
-                    contents.iter().map(|c| c.id).collect::<Vec<_>>(),
-                ),
-                _ => return,
-            },
-            None => return,
-        };
-        let Some(contents_bounds) = ids
+        self.fit_clips_contents(&[clip], mode);
+    }
+
+    /// Fit Contents on each of `clips` (Object > Clip to Frame, #1299):
+    /// every frame's contents fitted to its own box, one undo step for
+    /// them all. Ids that are not clip frames are left alone.
+    pub fn fit_clips_contents(
+        &mut self,
+        clips: &[ShapeId],
+        mode: crate::ui::clip_bar::FitContents,
+    ) {
+        let commands: Vec<Command> = clips
             .iter()
-            .filter_map(|id| self.doc().shape_on_page(*id).map(|s| s.bounds()))
-            .reduce(|a, b| a.union(b))
-        else {
-            return;
-        };
-        let t = fit_contents_transform(contents_bounds, frame_bounds, mode);
-        if t == Affine::IDENTITY {
+            .filter_map(|clip| self.fit_contents_command(*clip, mode))
+            .collect();
+        if commands.is_empty() {
             return;
         }
-        if let Err(e) = self.engine.run_batch(
-            "Fit Contents",
-            &[Command::TransformShapes {
-                shapes: ids,
-                transform: t,
-            }],
-        ) {
+        if let Err(e) = self.engine.run_batch("Fit Contents", &commands) {
             self.status = e.to_string();
         }
+    }
+
+    /// The command that fits `clip`'s contents as `mode` says, `None`
+    /// when it is not a clip frame, is empty or fits already.
+    fn fit_contents_command(
+        &self,
+        clip: ShapeId,
+        mode: crate::ui::clip_bar::FitContents,
+    ) -> Option<Command> {
+        let ShapeKind::ClipFrame { contents, .. } = &self.doc().find_shape(clip)?.kind else {
+            return None;
+        };
+        let frame_bounds = self
+            .doc()
+            .shape_on_page(clip)
+            .map(|c| c.bounds())
+            .unwrap_or_default();
+        let ids: Vec<ShapeId> = contents.iter().map(|c| c.id).collect();
+        let contents_bounds = ids
+            .iter()
+            .filter_map(|id| self.doc().shape_on_page(*id).map(|s| s.bounds()))
+            .reduce(|a, b| a.union(b))?;
+        let t = fit_contents_transform(contents_bounds, frame_bounds, mode);
+        (t != Affine::IDENTITY).then_some(Command::TransformShapes {
+            shapes: ids,
+            transform: t,
+        })
     }
 
     /// What the renderer draws in full while the rest fades: the object
@@ -6254,6 +6269,28 @@ mod clip_frame_tests {
         assert!(
             near(bounds, Rect::new(10.0, 10.0, 110.0, 60.0)),
             "{bounds:?}"
+        );
+        // Object > Clip to Frame fits every selected frame in one undo
+        // step; an object that is no frame is left alone (#1299).
+        let g = rect(&mut app, Rect::new(200.0, 10.0, 220.0, 30.0));
+        let c = rect(&mut app, Rect::new(300.0, 300.0, 310.0, 305.0));
+        app.place_inside(vec![c], g);
+        let clip2 = app.doc().top_level_of(c).expect("clip");
+        let plain = rect(&mut app, Rect::new(400.0, 400.0, 410.0, 410.0));
+        let depth = app.engine.history_labels().0.len();
+        app.fit_clips_contents(&[clip, clip2, plain], FitContents::Center);
+        assert_eq!(app.engine.history_labels().0.len(), depth + 1);
+        let centre = |id| {
+            app.doc()
+                .shape_on_page(id)
+                .expect("on page")
+                .bounds()
+                .center()
+        };
+        assert!((centre(c) - centre(clip2)).hypot() < 1e-6);
+        assert_eq!(
+            app.doc().shape_on_page(plain).expect("plain").bounds(),
+            Rect::new(400.0, 400.0, 410.0, 410.0)
         );
     }
 }

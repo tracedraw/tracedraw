@@ -5220,6 +5220,11 @@ mod tests {
             "menu.object.clip_frame_finish",
             "menu.object.clip_frame_edit",
             "menu.text.vertical_text",
+            // The clip bar's Fit Contents choices (#1299).
+            "menu.object.clip_frame_fit_center",
+            "menu.object.clip_frame_fit_proportional",
+            "menu.object.clip_frame_fill_proportional",
+            "menu.object.clip_frame_stretch",
         ] {
             assert!(
                 app.shortcut_editor.entries.iter().any(|e| e.key == key),

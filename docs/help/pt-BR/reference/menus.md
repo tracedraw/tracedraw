@@ -137,6 +137,10 @@ próprios atalhos; veja
 | [[menu.object.clip_frame_finish]] | [Colocar objetos dentro de uma moldura](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_edit]] | [Colocar objetos dentro de uma moldura](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_lock]] | [Colocar objetos dentro de uma moldura](../objects/clip-frames.md) |
+| [[menu.object.clip_frame_fit_center]] | [Colocar objetos dentro de uma moldura](../objects/clip-frames.md) |
+| [[menu.object.clip_frame_fit_proportional]] | [Colocar objetos dentro de uma moldura](../objects/clip-frames.md) |
+| [[menu.object.clip_frame_fill_proportional]] | [Colocar objetos dentro de uma moldura](../objects/clip-frames.md) |
+| [[menu.object.clip_frame_stretch]] | [Colocar objetos dentro de uma moldura](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_opacity_mask]] | [Colocar objetos dentro de uma moldura](../objects/clip-frames.md) |
 | [[menu.object.clip_frame_invert_mask]] | [Colocar objetos dentro de uma moldura](../objects/clip-frames.md) |
 | [[menu.object.symmetry]] | [Desenhar com simetria](../objects/symmetry.md) |

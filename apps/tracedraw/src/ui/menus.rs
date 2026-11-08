@@ -331,6 +331,27 @@ pub(crate) fn item_label(ui: &mut Ui, label: &str, shortcut: &str, enabled: bool
     item_text(ui, label, shortcut, enabled, None, label)
 }
 
+/// Object > Clip to Frame's Fit Contents rows, the clip bar's choices
+/// (#1299).
+pub(crate) const CLIP_FIT_ROWS: [(&str, crate::ui::clip_bar::FitContents); 4] = [
+    (
+        "menu.object.clip_frame_fit_center",
+        crate::ui::clip_bar::FitContents::Center,
+    ),
+    (
+        "menu.object.clip_frame_fit_proportional",
+        crate::ui::clip_bar::FitContents::FitProportionally,
+    ),
+    (
+        "menu.object.clip_frame_fill_proportional",
+        crate::ui::clip_bar::FitContents::FillProportionally,
+    ),
+    (
+        "menu.object.clip_frame_stretch",
+        crate::ui::clip_bar::FitContents::Stretch,
+    ),
+];
+
 /// Help > What's New: the Welcome Screen's history of the last releases.
 pub(crate) fn open_whats_new(app: &mut App) {
     app.show_welcome = true;
@@ -3188,6 +3209,16 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         if check(ui, "menu.object.clip_frame_lock", "", is_clip && locked) && is_clip {
             app.toggle_clip_frame_lock();
         }
+        // The clip bar's Fit Contents choices, here so they can take
+        // shortcuts (#1299); each selected frame fits its own contents.
+        sep(ui);
+        for (key, mode) in CLIP_FIT_ROWS {
+            if item(ui, key, "", is_clip && !editing) {
+                let clips: Vec<_> = app.selected_shapes().iter().map(|s| s.id).collect();
+                app.fit_clips_contents(&clips, mode);
+            }
+        }
+        sep(ui);
         let masks: Vec<_> = app
             .selected_shapes()
             .iter()

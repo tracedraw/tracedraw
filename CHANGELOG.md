@@ -60,6 +60,8 @@ full, row-by-row status.
 
 - Focus mode and Edit Contents: the rest of the page fades by "Visibility of inactive objects" in both (Edit Contents kept a quarter of its strength whatever the setting), and at 0 % it is not drawn at all, so a crowded page stays quick (#981).
 
+- Object > Clip to Frame has Center Contents, Fit Contents Proportionally, Fill Frame Proportionally and Stretch Contents to Fill, the clip bar's Fit Contents choices, so they can take shortcuts in Options > Customization > Commands; with several clip frames selected each fits its own contents in one undo step (#1299).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
