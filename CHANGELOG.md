@@ -8,6 +8,8 @@ full, row-by-row status.
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).
 
+- Linux: the window's application id is `tracedraw`, the name of its desktop file, so docks and task bars (Plank, and on Wayland GNOME and KDE) show TraceDraw's icon instead of a blank one (#1718).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

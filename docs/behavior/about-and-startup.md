@@ -443,6 +443,14 @@ support). Drawings are never touched.
 
 ## Window state
 
+On Linux the window (splash and main window alike) gives the application
+id `tracedraw` (`splash::APP_ID`): the Wayland `app_id` and the class of
+its X11 `WM_CLASS`, which docks and task bars match to the installed
+`tracedraw.desktop` (its file name and `StartupWMClass=tracedraw`) to show
+TraceDraw's icon. It was the window's name, "TraceDraw", and a dock such as
+Plank showed a blank icon (#1718,
+`splash::tests::the_window_says_which_desktop_file_it_belongs_to`).
+
 The main window's state is kept in the preferences on exit: maximized or
 not, and its inner size while it was neither maximized nor minimized.
 The size is kept in system points (pixels over the system's scaling of
