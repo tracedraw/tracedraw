@@ -139,7 +139,9 @@ fn pick_cursor(app: &App, pos: Option<Pos2>) -> Option<ToolCursor> {
     match &app.drag {
         // Over the document palette letting go adds the colours; after a
         // right click the move leaves the original (a copy moves).
-        Drag::Move { .. } if app.over_document_palette() => {
+        // A picture over any palette strip: letting go offers its
+        // colours (#2137).
+        Drag::Move { .. } if app.over_document_palette() || app.picture_drop_target().is_some() => {
             return Some(ToolCursor::System(egui::CursorIcon::Copy))
         }
         Drag::Move { .. } => {

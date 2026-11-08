@@ -477,6 +477,21 @@ fn shots() -> Vec<(String, Shot, bool)> {
     for (k, bmp) in cmd {
         v.push((k.to_string(), Shot::Command(k), bmp));
     }
+    // A picture dropped on a palette: how many of its colours (#2137).
+    v.push((
+        name("color/palettes#picture-colors"),
+        Shot::Dialog(|app| {
+            let Some(i) = app.new_palette("Brand colors") else {
+                return Dialog::None;
+            };
+            if app.open_picture_colors(crate::ui::picture_colors::PaletteTarget::Palette(i)) {
+                std::mem::replace(&mut app.dialog, Dialog::None)
+            } else {
+                Dialog::None
+            }
+        }),
+        true,
+    ));
     v.push((
         name("objects/objects-and-layers#rename"),
         Shot::Dialog(|app| match app.selection.first().copied() {

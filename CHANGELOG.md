@@ -122,6 +122,8 @@ full, row-by-row status.
 
 - TraceCut: Folded Tray, in the Make group, draws the flat pattern of a tray folded from composite panel, such as a sign face with returns or a light box: the face size (or the selection's), return depths (one or per side), panel thickness and groove allowance, corner reliefs, optional overlap flaps, mounting ears with holes, holes in the returns and a window in the face; OK adds one group with the fold grooves (open lines, first pass) and the cut lines (closed, second pass) in their own colours, the preview follows every setting, and the last settings are kept (discussion #2069).
 
+- Palettes: drag a picture from the drawing onto a palette (any palette bar, docked or floating, or the document palette) and a small window asks how many of its colours to take, 2 to 64 with a slider and a number box, showing the colours as the number changes; OK adds them to that palette, skipping the colours it already has, and Cancel adds nothing. A built-in or locked palette is left as it is and OK makes a new palette with the colours. The colours are those of Add Colors from Bitmap, which keeps working (#2137).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

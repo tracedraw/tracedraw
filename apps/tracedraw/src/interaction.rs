@@ -3338,6 +3338,17 @@ impl App {
                     );
                 }
             }
+            // A picture let go on a palette bar: a window offers its
+            // colours to that palette, and the picture stays where it was
+            // (#2137).
+            Drag::Move { .. } if self.picture_drop_target().is_some() => {
+                self.drag_copy = false;
+                self.drop_frame = None;
+                if let Some(target) = self.picture_drop_target() {
+                    self.open_picture_colors(target);
+                }
+                self.end_page_drag_group();
+            }
             // Dropped on a page tab: the selection goes to that page, at
             // its place there (#1346).
             Drag::Move { .. } if self.page_tab_under_pointer().is_some() => {

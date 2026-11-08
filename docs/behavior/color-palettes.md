@@ -204,12 +204,40 @@ management converts. A CMYK drawing keeps them CMYK (#483, #620,
 | Drag a swatch onto an object (left button) | Inside it (also inside a closed object with no fill): its uniform fill; within 4 points of its outline: the outline's colour (an object with no outline gets the default pen in that colour); No Color takes the fill or the outline away. The object need not be selected and the selection stays; one undo step; the colour joins the document palette as with a click |
 | Drag a swatch onto the document palette | The colour joins it |
 | Drag objects (Pick tool) onto the document palette | Their fill and outline colours join it (as Add from Selection); the objects stay where they were; the pointer shows a copy sign there |
+| Drag one picture (Pick tool) onto any palette strip, docked or floating, the document palette too | Extract Colors from Picture opens and the picture stays where it was (see below, #2137) |
 | While dragging a swatch | A chip of the colour follows the pointer: filled over a fill, a ring over an outline; the pointer shows whether letting go changes anything; Esc drops nothing |
 | Scroll arrows, wheel | One swatch at a time (every row moves by one); holding an arrow keeps scrolling |
 | Ctrl+wheel | Larger (up) or smaller (down) swatches, 2 px a notch, 8 to 48 px, kept in the preferences; nothing scrolls or zooms |
 | The show-all button | Every colour of the row in a grid above it (below it, clear of every row, when the palette is along the top; beside a column, clear of every column; #610, `ui::palette::tests::every_colour_opens_clear_of_all_the_rows`); click to apply, click elsewhere or Esc to close |
 | Tooltip | The colour's name in bold, then its values one per line (`C: 60`, `M: 0`, `Y: 40`, `K: 20`; `R: 255`, `G: 0`, `B: 0`) |
 | No drawing shown (Welcome Screen, or none open) | The swatches keep their colours and their tooltips; clicks and drags do nothing and the eyedropper is off (#1082) |
+
+## Colours from a picture (#2137)
+
+One picture (a bitmap) moved with the Pick tool and let go over a palette
+strip (the default palette, a palette bar docked or floating, the
+document palette's row or bar; the strip drawn last wins where they
+overlap) is not moved: the window **Extract Colors from Picture** opens
+for that palette. Anything else let go there (other objects, several
+objects, a picture with others) does what it did before.
+
+- **Number of colors**: the shared slider with its number box, 2 to 64,
+  8 at first. Under it the colours, 16 swatches to a row, and how many
+  there are (a picture with fewer colours gives fewer).
+- The colours are those of Add Colors from Bitmap
+  (`ops2::picture_colors_from_sample`: the median cut of the paletted
+  conversion, `bitmap_modes::palette_from_sample`, ordered dark to
+  light), so the menu and the drop give the same ones. The picture's
+  pixels (about 16k of them, `bitmap_modes::palette_sample`) are read
+  once, when it is dropped; the colours are worked out again only when
+  the number changes, never on a frame where it did not.
+- **OK** adds the colours the palette has not got yet, after its own
+  (the user's palettes save their file again; the document palette as
+  one undo step), and the status bar says how many. A built-in or
+  locked palette is not changed: the window says so, and OK makes a new
+  palette of the user's ("Palette n") with the colours, in a bar of its
+  own. **Cancel** or Esc adds nothing. The user's palettes are outside
+  the drawing's undo, so the window is the place to back out.
 
 ## Document palette
 
@@ -363,5 +391,9 @@ update the document palette (on).
 - `ui::dockers::tests::a_fill_dragged_in_the_picker_is_one_step_and_one_palette_colour`
 - `color_drop::tests` (fill inside, outline on the edge, No Color, an
   object without a fill, the document palette)
+- `ui::picture_colors::tests` (the same colours as Add Colors from
+  Bitmap, worked out only when the number changes, a picture dropped on
+  a palette bar, on the document palette as one undo step, on a
+  built-in palette, other objects not taken as pictures)
 - `tracedraw_core` `engine::tests::amending_joins_the_last_step_only_right_after_it`
 - `tracedraw_cdr` `container::tests::document_palette_xml_reads_names_and_tints`

@@ -1256,6 +1256,9 @@ pub enum Dialog {
     /// Launch > TraceCut, Tools > TraceCut.
     TraceCut(Box<crate::tracecut::TraceCutState>),
     PaletteEditor(PaletteEditorState),
+    /// A picture dropped on a palette bar: how many of its colours go
+    /// to that palette (#2137).
+    PictureColors(Box<crate::ui::picture_colors::PictureColorsState>),
     NewDocument(crate::new_document::NewDocState),
     About,
     /// File > GitHub.
@@ -2991,6 +2994,7 @@ pub fn show(app: &mut App, ctx: &Context) {
         Dialog::FontManager(st) => font_manager_dialog(app, ctx, st, &mut close),
         Dialog::TraceCut(st) => crate::ui::tracecut::dialog(app, ctx, st, &mut close),
         Dialog::PaletteEditor(st) => palette_editor_dialog(app, ctx, st, &mut close),
+        Dialog::PictureColors(st) => crate::ui::picture_colors::dialog(app, ctx, st, &mut close),
         Dialog::NewDocument(st) => {
             crate::new_document::new_document_dialog(app, ctx, st, &mut close)
         }
@@ -8050,6 +8054,12 @@ pub(crate) mod tests {
             Dialog::FontManager(FontManagerState::default()),
             Dialog::TraceCut(Box::default()),
             Dialog::PaletteEditor(PaletteEditorState::default()),
+            Dialog::PictureColors(Box::new(
+                crate::ui::picture_colors::PictureColorsState::new(
+                    crate::ui::picture_colors::PaletteTarget::Document,
+                    vec![[200, 20, 20], [20, 20, 200], [250, 250, 250]],
+                ),
+            )),
             Dialog::NewDocument(crate::new_document::NewDocState::from_settings(
                 &Default::default(),
                 "n".into(),

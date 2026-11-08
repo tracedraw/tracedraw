@@ -4084,24 +4084,23 @@ impl App {
     /// ([`crate::bitmap_modes::build_palette`]), ordered dark to light.
     /// None without a picture selected or when it cannot be read.
     pub fn selected_bitmap_colors(&self, n: u32) -> Option<Vec<Color>> {
+        Some(picture_colors_from_sample(
+            &self.selected_bitmap_sample()?,
+            n,
+        ))
+    }
+
+    /// The pixels of the selected picture its colours are chosen from
+    /// ([`crate::bitmap_modes::palette_sample`]): read once, they give
+    /// the colours for any count ([`picture_colors_from_sample`]). None
+    /// without a picture selected or when it cannot be read.
+    pub fn selected_bitmap_sample(&self) -> Option<Vec<[u8; 3]>> {
         let id = self.selected_bitmap()?;
         let ShapeKind::Bitmap { png, .. } = &self.doc().find_shape(id)?.kind else {
             return None;
         };
         let img = crate::bitmap_fx::decode(png)?;
-        let settings = crate::bitmap_modes::PalettedSettings {
-            palette: crate::bitmap_modes::PaletteType::Optimized,
-            colors: n.clamp(2, 256),
-            ..Default::default()
-        };
-        let mut rgb = crate::bitmap_modes::build_palette(&img, &settings);
-        rgb.sort_by_key(|c| 299 * u32::from(c[0]) + 587 * u32::from(c[1]) + 114 * u32::from(c[2]));
-        rgb.dedup();
-        Some(
-            rgb.into_iter()
-                .map(|c| Color::rgb8(c[0], c[1], c[2]))
-                .collect(),
-        )
+        Some(crate::bitmap_modes::palette_sample(&img))
     }
 
     /// Add Colors from Bitmap (#1840): up to `n` colours of the selected
@@ -4114,21 +4113,29 @@ impl App {
         };
         match palette {
             Some(i) => self.add_colors_to_palette(i, &found),
-            None => {
-                let mut colors = self.doc().palette.clone();
-                let before = colors.len();
-                for c in found {
-                    if !colors.contains(&c) {
-                        colors.push(c);
-                    }
-                }
-                if colors.len() == before {
-                    return false;
-                }
-                self.run(Command::SetDocumentPalette { colors });
-                true
+            None => self.add_colors_to_document_palette(&found),
+        }
+    }
+
+    /// `found` joins the document palette after the colours it has
+    /// (those it has not got yet), one undo step. Says whether any was
+    /// added.
+    pub fn add_colors_to_document_palette(&mut self, found: &[Color]) -> bool {
+        if !self.has_document() {
+            return false;
+        }
+        let mut colors = self.doc().palette.clone();
+        let before = colors.len();
+        for c in found {
+            if !colors.contains(c) {
+                colors.push(*c);
             }
         }
+        if colors.len() == before {
+            return false;
+        }
+        self.run(Command::SetDocumentPalette { colors });
+        true
     }
 
     pub fn palette_from_selection(&mut self) {
@@ -6626,6 +6633,20 @@ fn char_edits(old: &[char], new: &[char]) -> Vec<CharEdit> {
         push(CharEdit::Keep(tail));
     }
     out
+}
+
+/// The colours that best stand for a picture whose pixels
+/// [`crate::bitmap_modes::palette_sample`] read: at most `n` (2 to 256),
+/// chosen by the median cut the paletted conversion uses, ordered dark
+/// to light. Add Colors from Bitmap and a picture dropped on a palette
+/// (#2137) both take them from here, so both give the same colours.
+pub fn picture_colors_from_sample(sample: &[[u8; 3]], n: u32) -> Vec<Color> {
+    let mut rgb = crate::bitmap_modes::palette_from_sample(sample, n, true);
+    rgb.sort_by_key(|c| 299 * u32::from(c[0]) + 587 * u32::from(c[1]) + 114 * u32::from(c[2]));
+    rgb.dedup();
+    rgb.into_iter()
+        .map(|c| Color::rgb8(c[0], c[1], c[2]))
+        .collect()
 }
 
 #[cfg(test)]

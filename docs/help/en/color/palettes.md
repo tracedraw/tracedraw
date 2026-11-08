@@ -13,6 +13,7 @@ uses. You can open more palettes, make your own and edit them.
 | <kbd>Ctrl</kbd>+click a color | mixes a tenth of it into the selection's fill |
 | Click and hold a color | shows lighter, darker, duller and brighter shades of it to choose from |
 | Drag a color onto an object | fills the object, or colors its outline when dropped on the edge |
+| Drag a picture from the drawing onto a palette | offers the picture's colors to that palette (see below) |
 | Click the crossed-out well | removes the fill (right-click: the outline) |
 
 The arrows at the ends scroll the palette, and the button at the right end
@@ -45,6 +46,25 @@ The document palette can have a bar of its own too.
   it.
 - The palettes you have open, where they are, their sizes and rows are
   remembered, and saved in workspace files.
+
+### Colors from a picture
+
+Drag a picture (a bitmap) from the drawing with the Pick tool and let go on
+any open palette, docked or floating, the document palette too. The picture
+stays where it was, and **Extract Colors from Picture** opens:
+
+![Extract Colors from Picture](../../img/color-palettes-picture-colors.png)
+
+Set the
+**Number of colors** (2 to 64, 8 at first) with the slider or type it in the
+box, and the swatches under it show the colors you will get. **OK** adds them
+to the palette you dropped the picture on, skipping the colors it already
+has; **Cancel** adds nothing. Built-in and locked palettes cannot be changed:
+OK then makes a new palette of yours with the colors, in a bar of its own.
+The colors are the same as those of **Add Colors from Bitmap** in a palette's
+menu, which still works with a picture selected. On the document palette the
+colors are one step of Undo; your own palettes are not part of the drawing,
+so Cancel is the way to back out.
 
 ### Naming palettes
 

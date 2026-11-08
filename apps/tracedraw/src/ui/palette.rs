@@ -508,6 +508,7 @@ fn row(app: &mut App, ui: &mut Ui, which: Row, vertical: bool) {
     if which == Row::Document {
         app.doc_palette_rect = Some(rect);
     }
+    app.palette_strip_rects.push((which, rect));
     // A palette of the user's takes colours dropped on its bar.
     let own = user_palette_of(app, which);
     if let Some(i) = own {

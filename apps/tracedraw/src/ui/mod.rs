@@ -88,6 +88,7 @@ pub mod pdf_import_dialog;
 pub mod pdf_pages;
 pub mod pdf_password;
 pub mod phone;
+pub mod picture_colors;
 pub mod picture_mosaic_docker;
 pub mod preflight_dialog;
 pub mod preview;
@@ -357,6 +358,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     app.docker_preview.clear();
     app.step_preview_shown = false;
     app.doc_palette_rect = None;
+    app.palette_strip_rects.clear();
     app.docker_preview_point = None;
     let ctx = ui.ctx().clone();
     // Pixels are measured at the active drawing's resolution, distances

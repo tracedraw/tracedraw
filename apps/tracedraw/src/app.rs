@@ -1772,6 +1772,10 @@ pub struct App {
     /// is still shown). Kept from frame to frame, since a drop is handled
     /// while the rows are drawn, before later bars say where they are.
     pub palette_drop_rects: Vec<(usize, egui::Rect)>,
+    /// Where each palette strip was drawn this frame, the one drawn last
+    /// (over the others) last: a picture from the drawing let go there
+    /// gives that palette its colours (#2137).
+    pub palette_strip_rects: Vec<(crate::ui::palette::Row, egui::Rect)>,
     /// The New Palette window, open: the name typed.
     pub palette_new: Option<String>,
     /// The pointer on screen, wherever it is (drops outside the drawing).
@@ -2883,6 +2887,7 @@ impl App {
             palette_drag: None,
             doc_palette_rect: None,
             palette_drop_rects: Vec::new(),
+            palette_strip_rects: Vec::new(),
             palette_new: None,
             pointer_screen: None,
             page_size_all: true,
