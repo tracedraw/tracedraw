@@ -1667,7 +1667,11 @@ mod tests {
             .collect();
         assert_eq!(
             create,
-            ["menu.object.create_arrowhead", "menu.object.create_pattern"]
+            [
+                "menu.object.create_arrowhead",
+                "menu.object.create_pattern",
+                "menu.object.add_common_shape"
+            ]
         );
         assert!(find("menu.table.create_new_table").is_some());
         // Table's commands sit in a submenu of Text.
@@ -3140,6 +3144,16 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
             !app.selection.is_empty(),
         ) {
             app.dialog = Dialog::CreatePattern { vector: true };
+        }
+        // The selection's outline as a shape of the Common Shapes tool's
+        // own set (#481, #782).
+        if item(
+            ui,
+            "menu.object.add_common_shape",
+            "",
+            !app.selection.is_empty(),
+        ) {
+            app.add_selection_as_common_shape();
         }
     });
     sub(ui, "menu.object.insert", |ui| {

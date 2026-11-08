@@ -389,6 +389,9 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     if ci(ui, close, "menu.object.add_to_shelf", "", true) && app.shelf_add_selection() {
         app.open_docker(DockerTab::Shelf);
     }
+    if ci(ui, close, "menu.object.add_common_shape", "", true) {
+        app.add_selection_as_common_shape();
+    }
     sep(ui);
     sub(ui, "menu.object.order", |ui| {
         if ci(ui, close, "menu.object.to_front_of_page", "Ctrl+Home", true) {

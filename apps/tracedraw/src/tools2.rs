@@ -186,6 +186,11 @@ impl App {
         }
         if response.dragged_by(PointerButton::Primary) {
             self.box_regular = mods.ctrl;
+            // Ctrl keeps a shape of My shapes in its own proportions.
+            let aspect = match self.tool {
+                Tool::CommonShapes => self.picked_my_shape().map(|m| m.aspect),
+                _ => None,
+            };
             if let Drag::Box {
                 start,
                 current,
@@ -193,7 +198,9 @@ impl App {
             } = &mut self.drag
             {
                 let mut q = p;
-                if mods.ctrl {
+                if let Some(a) = aspect.filter(|_| mods.ctrl) {
+                    q = crate::my_shapes::keep_proportions(a, *start, q);
+                } else if mods.ctrl {
                     let d = q - *start;
                     let m = d.x.abs().max(d.y.abs());
                     q = *start + Vec2::new(m * d.x.signum(), m * d.y.signum());
@@ -214,9 +221,7 @@ impl App {
         current: Point,
         from_center: bool,
     ) -> Option<BezPath> {
-        use tracedraw_core::geometry::{
-            ellipse_arc_path, ellipse_path, polygon_path,
-        };
+        use tracedraw_core::geometry::{ellipse_arc_path, ellipse_path, polygon_path};
         let r = App::box_rect(start, current, from_center);
         let path = match self.tool {
             Tool::Rectangle => self.rect_corners.path(r, (1.0, 1.0)),
@@ -240,7 +245,10 @@ impl App {
                 self.star_sharpness,
             ),
             Tool::Spiral => spiral_path(r, self.spiral_revolutions, self.spiral_logarithmic),
-            Tool::CommonShapes => self.common_shape.path(r),
+            Tool::CommonShapes => match self.picked_my_shape() {
+                Some(mine) => mine.path(r),
+                None => self.common_shape.path(r),
+            },
             Tool::GraphPaper => grid_path(r, self.graph_rows, self.graph_cols),
             Tool::ActionLines => {
                 action_lines_path(r, self.action_lines_count, self.action_lines_radial)
@@ -275,8 +283,13 @@ impl App {
             }
             Tool::CommonShapes => {
                 if rect.width() > 0.1 && rect.height() > 0.1 {
-                    let path = self.common_shape.path(rect);
-                    if let Some(id) = self.new_shape(ShapeKind::Path { path, closed: true }) {
+                    // A shape of My shapes is filled when its outline was
+                    // closed, as the objects it was made from.
+                    let (path, closed) = match self.picked_my_shape() {
+                        Some(mine) => (mine.path(rect), mine.closed),
+                        None => (self.common_shape.path(rect), true),
+                    };
+                    if let Some(id) = self.new_shape(ShapeKind::Path { path, closed }) {
                         self.select(vec![id]);
                     }
                 }

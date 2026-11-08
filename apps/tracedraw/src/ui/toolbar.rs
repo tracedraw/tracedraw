@@ -3246,16 +3246,22 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
 }
 
 /// The Common Shapes tool's bar: the shape picked from a grid of
-/// thumbnails, set by set.
+/// thumbnails, set by set; the last set, My shapes, holds the user's own
+/// shapes, added from the selection and removed there (`my_shapes.rs`).
 fn common_shapes_bar(app: &mut App, ui: &mut Ui) {
     use crate::common_shapes::Category;
+    app.my_shapes.ensure_loaded();
     let popup = egui::Id::new("common_shapes_popup");
     let resp = dim_labelled(ui, "toolbar.shape", |ui| {
         ui.horizontal(|ui| {
-            let thumb = shape_thumbnail(ui, app.common_shape, false, true);
-            let name = ui.add(
-                egui::Button::new(format!("{} \u{23F7}", app.common_shape.name())).frame(false),
-            );
+            let (thumb, name) = match app.picked_my_shape() {
+                Some(mine) => (my_shape_thumbnail(ui, mine, false, true), mine.name.clone()),
+                None => (
+                    shape_thumbnail(ui, app.common_shape, false, true),
+                    app.common_shape.name(),
+                ),
+            };
+            let name = ui.add(egui::Button::new(format!("{name} \u{23F7}")).frame(false));
             thumb.union(name)
         })
         .inner
@@ -3264,25 +3270,46 @@ fn common_shapes_bar(app: &mut App, ui: &mut Ui) {
         .id(popup)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .show(|ui| {
-            // The tab shown: one set, or every set at once (`None`, All,
-            // #1650).
-            let shown: Option<Category> = ui.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(popup, || Some(app.common_shape.category()))
+            // The tab shown: every set at once (All, #1650), one set, or
+            // My shapes.
+            let shown: ShapeTab = ui.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(popup, || match app.my_shape {
+                    Some(_) => ShapeTab::Mine,
+                    None => ShapeTab::Set(app.common_shape.category()),
+                })
             });
             ui.horizontal(|ui| {
                 if ui
-                    .selectable_label(shown.is_none(), tr("shapes.all"))
+                    .selectable_label(shown == ShapeTab::All, tr("shapes.all"))
                     .clicked()
                 {
-                    ui.data_mut(|d| d.insert_temp::<Option<Category>>(popup, None));
+                    ui.data_mut(|d| d.insert_temp(popup, ShapeTab::All));
                 }
                 for c in Category::ALL {
-                    if ui.selectable_label(shown == Some(c), tr(c.key())).clicked() {
-                        ui.data_mut(|d| d.insert_temp(popup, Some(c)));
+                    if ui
+                        .selectable_label(shown == ShapeTab::Set(c), tr(c.key()))
+                        .clicked()
+                    {
+                        ui.data_mut(|d| d.insert_temp(popup, ShapeTab::Set(c)));
                     }
+                }
+                if ui
+                    .selectable_label(shown == ShapeTab::Mine, tr("shapes.mine"))
+                    .rich_tip(crate::ui::tips::pair("shapes.mine", "shapes.mine_desc"))
+                    .clicked()
+                {
+                    ui.data_mut(|d| d.insert_temp(popup, ShapeTab::Mine));
                 }
             });
             ui.separator();
+            let shown = match shown {
+                ShapeTab::Mine => {
+                    my_shapes_grid(app, ui, popup);
+                    return;
+                }
+                ShapeTab::All => None,
+                ShapeTab::Set(c) => Some(c),
+            };
             let sections = common_shape_sections(shown);
             let all = sections.len() > 1;
             let max_height = (ui.ctx().content_rect().height() * 0.7).max(200.0);
@@ -3305,11 +3332,12 @@ fn common_shapes_bar(app: &mut App, ui: &mut Ui) {
                             .spacing([2.0, 2.0])
                             .show(ui, |ui| {
                                 for (i, s) in shapes.into_iter().enumerate() {
+                                    let on = app.my_shape.is_none() && app.common_shape == s;
                                     let picked =
-                                        shape_thumbnail(ui, s, app.common_shape == s, false)
-                                            .rich_tip(s.name());
+                                        shape_thumbnail(ui, s, on, false).rich_tip(s.name());
                                     if picked.clicked() {
                                         app.common_shape = s;
+                                        app.my_shape = None;
                                         egui::Popup::close_id(ui.ctx(), popup);
                                     }
                                     if i % 9 == 8 {
@@ -3344,10 +3372,128 @@ fn common_shape_sections(
         .collect()
 }
 
+/// The tab of the Common Shapes picker: every set at once (All, #1650),
+/// one set, or the user's own shapes (My shapes).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ShapeTab {
+    All,
+    Set(crate::common_shapes::Category),
+    Mine,
+}
+
+/// The My shapes set of the Common Shapes picker: Add Selection as Common
+/// Shape, the shapes (a click picks one) and Remove for the one picked.
+fn my_shapes_grid(app: &mut App, ui: &mut Ui, popup: egui::Id) {
+    ui.horizontal(|ui| {
+        let has = !app.selection.is_empty();
+        if ui
+            .add_enabled(has, egui::Button::new(tr("menu.object.add_common_shape")))
+            .rich_tip(crate::ui::tips::pair(
+                "menu.object.add_common_shape",
+                "shapes.mine_add_desc",
+            ))
+            .rich_disabled_tip(crate::ui::tips::pair(
+                "menu.object.add_common_shape",
+                "shapes.mine_add_desc",
+            ))
+            .clicked()
+        {
+            app.add_selection_as_common_shape();
+        }
+        if ui
+            .add_enabled(
+                app.picked_my_shape().is_some(),
+                egui::Button::new(tr("shapes.mine_remove")),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "shapes.mine_remove",
+                "shapes.mine_remove_desc",
+            ))
+            .rich_disabled_tip(crate::ui::tips::pair(
+                "shapes.mine_remove",
+                "shapes.mine_remove_desc",
+            ))
+            .clicked()
+        {
+            if let Some(uid) = app.my_shape {
+                app.remove_common_shape(uid);
+            }
+        }
+    });
+    if app.my_shapes.shapes.is_empty() {
+        ui.label(
+            egui::RichText::new(tr("shapes.mine_empty"))
+                .color(Tokens::text_dim())
+                .size(11.0),
+        );
+        return;
+    }
+    let mut picked = None;
+    let mut remove = None;
+    egui::ScrollArea::vertical()
+        .max_height(320.0)
+        .show(ui, |ui| {
+            egui::Grid::new("my_shapes_grid")
+                .spacing([2.0, 2.0])
+                .show(ui, |ui| {
+                    for (i, s) in app.my_shapes.shapes.iter().enumerate() {
+                        let on = app.my_shape == Some(s.uid);
+                        let r = my_shape_thumbnail(ui, s, on, false).rich_tip(s.name.clone());
+                        if r.clicked() {
+                            picked = Some(s.uid);
+                        }
+                        r.context_menu(|ui| {
+                            if ui.button(tr("shapes.mine_remove")).clicked() {
+                                remove = Some(s.uid);
+                                ui.close();
+                            }
+                        });
+                        if i % 9 == 8 {
+                            ui.end_row();
+                        }
+                    }
+                });
+        });
+    if let Some(uid) = remove {
+        app.remove_common_shape(uid);
+    } else if let Some(uid) = picked {
+        app.my_shape = Some(uid);
+        egui::Popup::close_id(ui.ctx(), popup);
+    }
+}
+
+/// A shape of My shapes drawn small, in its own proportions.
+fn my_shape_thumbnail(
+    ui: &mut Ui,
+    shape: &crate::my_shapes::MyShape,
+    on: bool,
+    small: bool,
+) -> egui::Response {
+    let a = shape.aspect.clamp(0.05, 20.0);
+    let (w, h) = if a >= 1.0 { (1.0, 1.0 / a) } else { (a, 1.0) };
+    let r = Rect::new(
+        (1.0 - w) / 2.0,
+        (1.0 - h) / 2.0,
+        (1.0 + w) / 2.0,
+        (1.0 + h) / 2.0,
+    );
+    path_thumbnail(ui, &shape.path(r), on, small)
+}
+
 /// A shape's outline drawn small, as a button (`on`: the one picked).
 fn shape_thumbnail(
     ui: &mut Ui,
     shape: crate::common_shapes::CommonShape,
+    on: bool,
+    small: bool,
+) -> egui::Response {
+    path_thumbnail(ui, &shape.path(Rect::new(0.0, 0.0, 1.0, 1.0)), on, small)
+}
+
+/// An outline in the unit square drawn small, as a button.
+fn path_thumbnail(
+    ui: &mut Ui,
+    path: &tracedraw_core::geometry::BezPath,
     on: bool,
     small: bool,
 ) -> egui::Response {
@@ -3365,7 +3511,6 @@ fn shape_thumbnail(
     }
     let inner = rect.shrink(if small { 3.0 } else { 6.0 });
     // Page y runs up: the box's bottom is the thumbnail's bottom.
-    let path = shape.path(Rect::new(0.0, 0.0, 1.0, 1.0));
     let to_screen = |x: f64, y: f64| {
         egui::pos2(
             inner.left() + x as f32 * inner.width(),
@@ -3386,7 +3531,7 @@ fn shape_thumbnail(
         }
         run.clear();
     };
-    tracedraw_core::geometry::flatten(&path, 0.005, &mut |el| match el {
+    tracedraw_core::geometry::flatten(path, 0.005, &mut |el| match el {
         PathEl::MoveTo(p) => {
             flush(&mut run, false);
             run.push(to_screen(p.x, p.y));
@@ -3729,7 +3874,7 @@ mod tests {
         // The tab of the shape picked shows alone: each set's name once.
         assert_eq!(count(&texts, "shapes.all"), 1, "the All tab");
         assert_eq!(count(&texts, "shapes.arrows"), 1);
-        ctx.data_mut(|d| d.insert_temp::<Option<Category>>(popup, None));
+        ctx.data_mut(|d| d.insert_temp(popup, ShapeTab::All));
         for _ in 0..2 {
             texts = frame(&ctx, &mut app, Vec::new());
         }

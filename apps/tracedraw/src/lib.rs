@@ -125,6 +125,7 @@ mod mixed;
 #[cfg(test)]
 mod mockup_tests;
 mod multipage;
+mod my_shapes;
 mod net;
 mod new_document;
 mod node_edit;

@@ -1162,6 +1162,11 @@ pub struct App {
     pub spiral_revolutions: u32,
     pub spiral_logarithmic: bool,
     pub common_shape: crate::tools2::CommonShape,
+    /// The Common Shapes tool's own set, My shapes (`my_shapes.rs`).
+    pub my_shapes: crate::my_shapes::MyShapes,
+    /// The shape of My shapes picked for the Common Shapes tool (`None`:
+    /// `common_shape`).
+    pub my_shape: Option<u64>,
     pub table_rows: u32,
     pub table_cols: u32,
     /// Create New Table's width and height in millimetres.
@@ -2675,6 +2680,8 @@ impl App {
             spiral_revolutions: 4,
             spiral_logarithmic: false,
             common_shape: crate::tools2::CommonShape::RightArrow,
+            my_shapes: Default::default(),
+            my_shape: None,
             table_rows: 3,
             table_cols: 4,
             table_size: (75.0, 100.0),
