@@ -4,6 +4,10 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- An ellipse made an arc (its node dragged outward with the Shape tool, or Arc on the property bar) is an open curve everywhere: with the document's Fill open curves off it shows no fill in SVG, PDF and the other vector exports and is picked on its outline only, as on screen; a pie keeps its fill. With Fill open curves on, a click inside an open curve's fill picks it.
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).

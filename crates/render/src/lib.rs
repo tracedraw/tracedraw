@@ -1166,10 +1166,9 @@ impl Renderer<'_> {
                 // Mesh nodes are local: bring them to page space first.
                 self.fill_mesh(&m.transformed(transform), &sk, rule, blend);
             } else if !self.flags.fill_open_curves
-                && (matches!(shape.kind, ShapeKind::Path { closed: false, .. })
-                    // An ellipse made an arc (not a pie) is an open curve
-                    // too: not filled while Fill open curves is off.
-                    || matches!(&shape.kind, ShapeKind::Ellipse { arc: Some(a), .. } if !a.pie))
+                // An ellipse made an arc (not a pie) is an open curve
+                // too: not filled while Fill open curves is off.
+                && shape.kind.is_open_curve()
                 && !matches!(shape.fill, Fill::None)
             {
                 // Only the closed subpaths of a curve get the fill.

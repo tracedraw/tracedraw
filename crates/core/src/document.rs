@@ -917,6 +917,18 @@ pub struct BitmapFxStack {
 }
 
 impl ShapeKind {
+    /// An open curve: a curve left open, or an ellipse made an arc (not a
+    /// pie). Its fill shows only while the document fills open curves
+    /// (`Metadata::fill_open_curves`), on screen, in exports and
+    /// for picking alike.
+    pub fn is_open_curve(&self) -> bool {
+        match self {
+            ShapeKind::Path { closed, .. } => !closed,
+            ShapeKind::Ellipse { arc: Some(a), .. } => !a.pie,
+            _ => false,
+        }
+    }
+
     /// A rectangle with these corners. Plain ones (one round radius that
     /// scales with the object) keep the short form; otherwise `radius`
     /// holds the largest corner for readers that know only one.

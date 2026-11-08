@@ -588,10 +588,19 @@ impl App {
             return true;
         }
         let path = s.page_path();
-        let open = matches!(s.kind, ShapeKind::Path { closed: false, .. });
+        // A curve left open, or an ellipse made an arc.
+        let open = s.kind.is_open_curve();
         let filled =
             !matches!(s.fill, Fill::None) && (!open || self.doc().metadata.fill_open_curves);
-        if (filled || self.settings.treat_all_filled) && path.contains(p) {
+        // The fill of an open curve shown runs across its open ends, as
+        // drawn.
+        let in_fill = filled
+            && if open {
+                tracedraw_core::command::close_subpaths(&path).contains(p)
+            } else {
+                path.contains(p)
+            };
+        if in_fill || (self.settings.treat_all_filled && path.contains(p)) {
             return true;
         }
         crate::canvas::distance_to_path(&path, p) <= (tol * 1.5).max(half + tol)
@@ -871,9 +880,7 @@ impl App {
         let fill_open = doc.metadata.fill_open_curves;
         let all_filled = self.settings.treat_all_filled;
         let fill_counts = |s: &tracedraw_core::Shape| {
-            all_filled
-                || (!matches!(s.fill, Fill::None)
-                    && (fill_open || !matches!(s.kind, ShapeKind::Path { closed: false, .. })))
+            all_filled || (!matches!(s.fill, Fill::None) && (fill_open || !s.kind.is_open_curve()))
         };
         let before = self.selection.clone();
         let mut ids = before.clone();

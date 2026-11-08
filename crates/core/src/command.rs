@@ -1868,7 +1868,7 @@ fn clip_frame_pieces(
 }
 
 /// `path` with every subpath that has a segment ended by a close.
-fn close_subpaths(path: &BezPath) -> BezPath {
+pub fn close_subpaths(path: &BezPath) -> BezPath {
     let mut out = BezPath::new();
     // Whether the subpath being copied has a segment and no close yet.
     let mut open = false;

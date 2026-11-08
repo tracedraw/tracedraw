@@ -295,7 +295,9 @@ so the interface size never changes real sizes. Reset puts
 
 General (rendering resolution; Fill open curves, off: an open curve's
 fill shows only in its closed subpaths, on screen, in hit testing and in
-vector exports; duplicate distance), Page Size, Layout, Background, Bleed,
+vector exports, and an ellipse made an arc (not a pie) is an open curve
+and shows none; on, the fill runs across the open ends and a click there
+picks the object; duplicate distance), Page Size, Layout, Background, Bleed,
 Rulers, Grid, Guidelines (see `rulers-grid-guidelines.md`). Save as
 Default keeps the grid, ruler and guideline settings and the page spacing
 for new drawings.

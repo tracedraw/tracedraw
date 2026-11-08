@@ -404,21 +404,19 @@ impl App {
 }
 
 /// Whether the fill of `s` draws anything: it has one, and an open curve
-/// fills only its closed subpaths unless the document fills open curves
+/// (or an ellipse made an arc) fills only its closed subpaths unless the
+/// document fills open curves
 /// (`fill_open`), as the renderer does.
 fn fill_draws(s: &Shape, fill_open: bool) -> bool {
     if matches!(s.fill, Fill::None) {
         return false;
     }
-    match &s.kind {
-        ShapeKind::Path {
-            path,
-            closed: false,
-        } if !fill_open => !tracedraw_render::closed_subpaths(path)
+    // A curve left open, or an ellipse made an arc.
+    fill_open
+        || !s.kind.is_open_curve()
+        || !tracedraw_render::closed_subpaths(&s.local_path())
             .elements()
-            .is_empty(),
-        _ => true,
-    }
+            .is_empty()
 }
 
 /// The angle (radians) between the points of the fans that make round
