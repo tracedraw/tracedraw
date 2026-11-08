@@ -669,6 +669,10 @@ pub struct CurveInProgress {
     pub dragging_handle: bool,
     /// B-Spline tool: the nodes are control points the curve runs near.
     pub bspline: bool,
+    /// B-Spline tool: the control points placed with C or V held, which
+    /// the curve passes through with a corner (fixed points, #2060); one
+    /// flag a node, missing ones floating.
+    pub spline_fixed: Vec<bool>,
     /// Nodes made cusps (clicking the last node again, C while pulling a
     /// handle, a click after a dragged node): their incoming handle as it
     /// was frozen (`None`: the segment arrives straight), no longer the
@@ -744,7 +748,7 @@ impl CurveInProgress {
     pub fn path_closed(&self, preview: Option<Point>, closed: bool) -> tracedraw_core::BezPath {
         if closed && self.bspline {
             let pts: Vec<Point> = self.nodes.iter().map(|n| n.0).collect();
-            return tracedraw_core::geometry::bspline_path(&pts, true);
+            return tracedraw_core::geometry::bspline_path_fixed(&pts, &self.spline_fixed, true);
         }
         let mut path = self.open_path(preview);
         if closed {
@@ -777,6 +781,14 @@ impl CurveInProgress {
         pts
     }
 
+    /// The fixed-point flags to keep with the B-spline made: one a
+    /// control point, `None` when none is fixed.
+    pub fn spline_fixed_flags(&self) -> Option<Vec<bool>> {
+        let mut flags = self.spline_fixed.clone();
+        flags.resize(self.nodes.len(), false);
+        flags.contains(&true).then_some(flags)
+    }
+
     /// `p` is where the last control point already is.
     pub fn on_last_control(&self, p: Point) -> bool {
         self.nodes
@@ -792,7 +804,7 @@ impl CurveInProgress {
         }
         if self.bspline {
             let pts = self.bspline_controls(preview);
-            return tracedraw_core::geometry::bspline_path(&pts, false);
+            return tracedraw_core::geometry::bspline_path_fixed(&pts, &self.spline_fixed, false);
         }
         for (i, (p, _)) in nodes.iter().enumerate() {
             if i == 0 {
@@ -5429,7 +5441,8 @@ impl App {
             // A B-spline of its own keeps its control points (one that
             // went on from another curve is a curve like that one).
             if let Some(id) = id {
-                self.keep_spline(id, &line, c.nodes.iter().map(|n| n.0).collect());
+                let points = c.nodes.iter().map(|n| n.0).collect();
+                self.keep_spline(id, &line, points, c.spline_fixed_flags());
             }
         }
     }
@@ -5574,6 +5587,7 @@ impl App {
         id: ShapeId,
         line: &tracedraw_core::BezPath,
         points: Vec<Point>,
+        fixed: Option<Vec<bool>>,
     ) {
         let fresh = matches!(
             self.doc().find_shape(id).map(|s| &s.kind),
@@ -5583,7 +5597,7 @@ impl App {
             let _ = self.engine.amend(&Command::SetSpline {
                 shape: id,
                 points,
-                fixed: None,
+                fixed,
             });
         }
     }

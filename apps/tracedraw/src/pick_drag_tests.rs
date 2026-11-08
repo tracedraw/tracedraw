@@ -4578,6 +4578,64 @@ fn bspline_preview_is_the_curve_that_is_made() {
     assert_eq!(last_path(&app), bspline_path(&controls, false));
 }
 
+/// The B-Spline tool: a point placed with C or V held is fixed, the
+/// curve passing through it with a corner, in the preview and in the
+/// curve made, which keeps the flags for the Shape tool (#2060).
+#[test]
+fn bspline_points_placed_with_c_or_v_held_are_fixed() {
+    use tracedraw_core::geometry::bspline_path_fixed;
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::BSpline);
+    let pts = [
+        Point::new(100.0, 150.0),
+        Point::new(130.0, 190.0),
+        Point::new(160.0, 150.0),
+        Point::new(190.0, 190.0),
+        Point::new(220.0, 150.0),
+    ];
+    let n = Modifiers::NONE;
+    for (i, p) in pts.iter().enumerate() {
+        let held = match i {
+            1 => Some(egui::Key::C),
+            3 => Some(egui::Key::V),
+            _ => None,
+        };
+        if let Some(k) = held {
+            frame(&ctx, &mut app, vec![key(k, n)], n);
+        }
+        let at = app.view.to_screen(*p);
+        click_at(&ctx, &mut app, at, n);
+        if let Some(k) = held {
+            frame(&ctx, &mut app, vec![key_up(k, n)], n);
+        }
+        assert!(app.curve.is_some(), "still drawing after point {i}");
+    }
+    let want = vec![false, true, false, true, false];
+    let c = app.curve.as_ref().expect("a B-spline being drawn");
+    let controls: Vec<Point> = c.nodes.iter().map(|n| n.0).collect();
+    assert_eq!(controls.len(), 5);
+    assert_eq!(c.spline_fixed_flags(), Some(want.clone()));
+    // The curve passes through the fixed points.
+    let made = bspline_path_fixed(&controls, &want, false);
+    let through = |path: &tracedraw_core::BezPath, q: Point| {
+        path.segments()
+            .any(|s| (tracedraw_core::geometry::ParamCurve::end(&s) - q).hypot() < 1e-4)
+    };
+    assert!(through(&made, controls[1]) && through(&made, controls[3]));
+    assert!(
+        !through(&made, controls[2]),
+        "a floating point is not on it"
+    );
+    frame(&ctx, &mut app, vec![key(egui::Key::Enter, n)], n);
+    assert!(app.curve.is_none());
+    assert_eq!(last_path(&app), made);
+    let id = app.selection[0];
+    let s = app.doc().find_shape(id).expect("the curve");
+    assert_eq!(s.spline_fixed, want);
+    assert_eq!(s.spline.as_deref(), Some(&controls[..]));
+}
+
 /// A double-click ends a B-spline with the curve previewed under the
 /// pointer before it: the double-clicked point is its last control point,
 /// once (#1506).

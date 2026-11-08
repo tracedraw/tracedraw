@@ -2847,6 +2847,26 @@ impl App {
             let again = bspline && c.on_last_control(p);
             if (drag || !c.dragging_handle) && !again {
                 c.nodes.push((p, None));
+                // C or V held: a fixed point, which the curve passes
+                // through with a corner (#2060).
+                if bspline {
+                    let fixed = response
+                        .ctx
+                        .input(|i| i.key_down(egui::Key::C) || i.key_down(egui::Key::V));
+                    c.spline_fixed.resize(c.nodes.len() - 1, false);
+                    c.spline_fixed.push(fixed);
+                }
+            } else if again && bspline {
+                // C or V on the last point again makes it fixed.
+                if response
+                    .ctx
+                    .input(|i| i.key_down(egui::Key::C) || i.key_down(egui::Key::V))
+                {
+                    c.spline_fixed.resize(c.nodes.len(), false);
+                    if let Some(f) = c.spline_fixed.last_mut() {
+                        *f = true;
+                    }
+                }
             }
             c.dragging_handle = drag;
             c.alt_from = None;
@@ -2970,7 +2990,8 @@ impl App {
             },
         ) {
             if c.bspline {
-                self.keep_spline(id, &path, c.nodes.iter().map(|n| n.0).collect());
+                let points = c.nodes.iter().map(|n| n.0).collect();
+                self.keep_spline(id, &path, points, c.spline_fixed_flags());
             }
             self.select(vec![id]);
         }
@@ -4552,6 +4573,12 @@ impl App {
                         let drop_key = matches!(self.drag, Drag::Move { .. })
                             && mods.is_none()
                             && matches!(k, Key::W | Key::K);
+                        // C and V while a B-spline is drawn make the next
+                        // point fixed (#2060); they pick no tool then.
+                        let drop_key = drop_key
+                            || (self.curve.as_ref().is_some_and(|c| c.bspline)
+                                && mods.is_none()
+                                && matches!(k, Key::C | Key::V));
                         // A key held picks its tool once: the presses it
                         // repeats would send Space back and forth between
                         // the Pick tool and the tool before it (#1502).

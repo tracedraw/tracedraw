@@ -96,6 +96,8 @@ full, row-by-row status.
 
 - Auto-scroll: a drag that reaches the edge of the drawing window (moving or sizing objects, drawing, a selection box, nodes) scrolls the view that way, faster the nearer the edge, while the button is held (#2051).
 
+- B-Spline tool: a point placed with C or V held is a fixed point, which the curve passes through with a corner; the curve made keeps it for the Shape tool (#2060).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
