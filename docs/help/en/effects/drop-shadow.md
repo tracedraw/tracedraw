@@ -36,7 +36,9 @@ On the property bar:
 A change there applies at once to the selected objects, also to an object
 that has no shadow yet: choose Flat, or an edge, to give it that kind of
 shadow directly. Shadow handles can be grabbed from a little outside the
-squares.
+squares, in every kind of shadow; where they lie close together, a press takes
+the nearest one. Drag the white start handle to an edge of the object to stand
+the shadow on that edge, or into the middle for a flat shadow.
 
 [[menu.object > menu.object.clear_effect]] removes the shadow. To copy the
 shadow of another object, use

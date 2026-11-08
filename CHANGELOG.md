@@ -30,6 +30,8 @@ full, row-by-row status.
 
 - Drop shadows: a click on an object that has a shadow of its own picks it, also where another object's shadow falls over it; picking one shadowed object after another used to jump to the neighbour whose shadow lay there. A double click on a shadow with the Pick tool chooses the Drop Shadow tool for its object, and Edit Shadow in the object's right-click menu and in the new Drop Shadow section of the Properties docker does the same. The Drop Shadow tool's handles and property bar follow the first selected object that has a shadow.
 
+- Drop Shadow tool: every handle is grabbed and dragged, flat or standing on any edge. Where handles lie close together a press takes the nearest one; the end handle used to take every press within its reach, so the start handle under it could not be grabbed. The start handle follows the pointer while it is dragged.
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).

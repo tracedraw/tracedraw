@@ -86,7 +86,9 @@ a bar on the line at the opacity (start = 0 %, end = 100 %).
 - Dragging the end moves the offset, or the angle and stretch.
 - Dragging the bar sets the opacity (whole per cent).
 - Dragging the start to another edge stands the shadow on that edge;
-  to the middle makes it flat. The end stays where it was.
+  to the middle makes it flat. The end stays where it was. The start
+  handle follows the pointer while it is held, flat or standing on any
+  edge, and goes back to where the shadow starts when let go.
 - Dragging the dashed line (within the pick distance of Options > Nodes
   and Handles, away from the squares and the bar) moves the whole
   shadow: its end goes as far as the pointer, as a drag on the shadow
@@ -99,7 +101,13 @@ a bar on the line at the opacity (start = 0 %, end = 100 %).
 - Each drag of a handle or the line is one undo step of its own.
 
 The squares are 12 pixels wide and a press within 11 pixels of one
-takes it, whatever the zoom (#1323).
+takes it, whatever the zoom (#1323). Where handles lie closer than that
+(a short offset, a short perspective shadow, a low opacity), a press
+takes the nearest one, the end first where two lie on one spot: the end
+used to take every press within its reach, so the start under it could
+not be grabbed. Every handle is grabbed and dragged in every mode, flat
+and on each edge
+(`pick_drag_tests::shadow_handles_are_grabbed_and_dragged_in_every_mode`).
 
 ## Property bar applies at once
 

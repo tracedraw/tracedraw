@@ -15186,6 +15186,134 @@ fn a_double_click_on_a_shadow_edits_it_with_the_shadow_tool() {
     assert!(!app.can_edit_shadow());
 }
 
+/// Every handle of a drop shadow is grabbed by a press on it and dragged,
+/// flat or standing on any edge (#1323): where handles lie close
+/// together a press takes the nearest one (the end had every press within
+/// its reach, so the start under it could not be grabbed), and the start
+/// handle follows the pointer while it is dragged, the shadow standing on
+/// the edge it is dragged to or lying flat in the middle.
+#[test]
+fn shadow_handles_are_grabbed_and_dragged_in_every_mode() {
+    use crate::shadow_tool::ShadowHandle;
+    use tracedraw_core::shadow::{Perspective, ShadowEdge};
+    let modes = [
+        None,
+        Some(ShadowEdge::Bottom),
+        Some(ShadowEdge::Top),
+        Some(ShadowEdge::Left),
+        Some(ShadowEdge::Right),
+    ];
+    for edge in modes {
+        for which in [
+            ShadowHandle::Start,
+            ShadowHandle::Opacity,
+            ShadowHandle::End,
+        ] {
+            let (ctx, mut app, id) = setup();
+            // Handles a few pixels apart: a short flat offset, or a short
+            // perspective shadow with little opacity.
+            let mut sh = tracedraw_core::Shadow {
+                offset: Vec2::new(1.5, -1.5),
+                opacity: 0.3,
+                perspective: edge.map(|e| Perspective {
+                    stretch: 0.1,
+                    ..Perspective::new(e)
+                }),
+                ..Default::default()
+            };
+            let b = bounds(&app, id);
+            let end = sh.end_point(b);
+            sh.set_end_point(b, end);
+            app.set_shadow(Some(sh), false);
+            app.set_tool(Tool::DropShadow);
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+            let shown = app.shown_shadow_handles().expect("handles");
+            let at = |h: ShadowHandle| shown.iter().find(|(k, _)| *k == h).expect("handle").1;
+            let p = at(which);
+            let near = |a: ShadowHandle, b: ShadowHandle| {
+                (app.view.to_screen(at(a)) - app.view.to_screen(at(b))).length()
+            };
+            assert!(
+                near(ShadowHandle::Start, ShadowHandle::End) < 2.0 * 11.0,
+                "{edge:?}: the handles' reaches overlap"
+            );
+            assert_eq!(app.shadow_handle_at(p), Some(which), "{edge:?} {which:?}");
+            // Where the drag goes: the start into the middle (or, flat, to
+            // the bottom edge); the others away from the object.
+            let to_page = match which {
+                ShadowHandle::Start if edge.is_none() => Point::new(35.0, 11.0),
+                ShadowHandle::Start => b.center(),
+                // The slider towards the end, past it: full opacity.
+                ShadowHandle::Opacity => {
+                    let (a, e) = (at(ShadowHandle::Start), at(ShadowHandle::End));
+                    e + (e - a) / (e - a).hypot() * 5.0
+                }
+                ShadowHandle::End => p + Vec2::new(25.0, -15.0),
+            };
+            let (from, to) = (app.view.to_screen(p), app.view.to_screen(to_page));
+            let m = Modifiers::NONE;
+            frame(&ctx, &mut app, vec![Event::PointerMoved(from)], m);
+            frame(
+                &ctx,
+                &mut app,
+                vec![button(from, true, PointerButton::Primary, m)],
+                m,
+            );
+            for i in 1..=4 {
+                let q = from + (to - from) * (i as f32 / 4.0);
+                frame(&ctx, &mut app, vec![Event::PointerMoved(q)], m);
+                if which == ShadowHandle::Start && i == 2 {
+                    // Half way: the start handle is drawn under the pointer.
+                    let held = app.shown_shadow_handles().expect("handles");
+                    let s = held.iter().find(|(k, _)| *k == ShadowHandle::Start);
+                    let s = app.view.to_screen(s.expect("start").1);
+                    assert!((s - q).length() < 1.0, "{edge:?}: {s:?} vs {q:?}");
+                }
+            }
+            frame(
+                &ctx,
+                &mut app,
+                vec![button(to, false, PointerButton::Primary, m)],
+                m,
+            );
+            frame(&ctx, &mut app, Vec::new(), m);
+            let after = app
+                .doc()
+                .find_shape(id)
+                .and_then(|s| s.shadow)
+                .expect("shadow");
+            match which {
+                ShadowHandle::Start if edge.is_none() => assert_eq!(
+                    after.perspective.map(|p| p.edge),
+                    Some(ShadowEdge::Bottom),
+                    "flat: dragged to the bottom edge"
+                ),
+                ShadowHandle::Start => {
+                    assert!(after.perspective.is_none(), "{edge:?}: flat in the middle")
+                }
+                ShadowHandle::Opacity => {
+                    assert_eq!(after.opacity, 1.0, "{edge:?}")
+                }
+                ShadowHandle::End => {
+                    let e = after.end_point(b);
+                    assert!(
+                        (e - to_page).hypot() < 0.5,
+                        "{edge:?}: {e:?} vs {to_page:?}"
+                    )
+                }
+            }
+            // Let go, the start handle is back on the object.
+            let back = app.shown_shadow_handles().expect("handles");
+            let s = back
+                .iter()
+                .find(|(k, _)| *k == ShadowHandle::Start)
+                .expect("start")
+                .1;
+            assert!((s - after.anchor(b)).hypot() < 1e-9, "{edge:?} {which:?}");
+        }
+    }
+}
+
 /// Dragging a segment of an envelope's frame bends it, in the real window
 /// with the Envelope tool and with the Shape tool and in every mode: the
 /// point grabbed follows the pointer, the nodes stay, the object follows

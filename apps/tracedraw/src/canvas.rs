@@ -1215,15 +1215,14 @@ fn draw_fountain_handles(app: &App, painter: &Painter) {
 /// handle (the shadow colour) and the dashed line between them with the
 /// opacity slider on it.
 fn draw_shadow_handles(app: &App, painter: &Painter) {
-    use crate::shadow_tool::{shadow_handles, ShadowHandle};
-    if app.tool != Tool::DropShadow {
+    use crate::shadow_tool::ShadowHandle;
+    let Some((_, sh, _)) = app.selected_shadow() else {
         return;
-    }
-    let Some((_, sh, b)) = app.selected_shadow() else {
+    };
+    let Some(hs) = app.shown_shadow_handles() else {
         return;
     };
     let view = &app.view;
-    let hs = shadow_handles(&sh, b);
     let pos = |h: ShadowHandle| {
         hs.iter()
             .find(|(k, _)| *k == h)
