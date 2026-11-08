@@ -82,6 +82,7 @@ pub mod package_dialog;
 pub mod palette;
 pub mod palette_bars;
 pub mod palette_manager;
+pub mod pattern_pick;
 pub mod pdf_import_dialog;
 pub mod pdf_pages;
 pub mod pdf_password;

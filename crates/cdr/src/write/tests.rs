@@ -2893,6 +2893,7 @@ fn fills_not_written_yet_go_out_as_their_mean_colour() {
                 front: Color::rgb8(0, 0, 0),
                 back: Color::rgb8(200, 100, 50),
                 size_mm: 5.0,
+                placement: Default::default(),
             }),
             [100, 50, 25],
         ),
@@ -2902,6 +2903,7 @@ fn fills_not_written_yet_go_out_as_their_mean_colour() {
                 width_px: 2,
                 height_px: 1,
                 size_mm: 5.0,
+                placement: Default::default(),
             }),
             [100, 0, 50],
         ),
@@ -4450,6 +4452,7 @@ fn bitmap_pattern_fills_are_matched_by_content() {
             width_px: 8,
             height_px: 8,
             size_mm: 5.0,
+            placement: Default::default(),
         })
     };
     let doc = doc_with(Vec::new());

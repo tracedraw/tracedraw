@@ -1099,6 +1099,7 @@ fn pattern_texture_and_mesh_fills_go_out_as_one_colour() {
         front: Color::rgb8(255, 0, 0),
         back: Color::rgb8(0, 0, 255),
         size_mm: 5.0,
+        placement: Default::default(),
     });
     let tile = picture(4, 4, false);
     let bitmap_pattern = Fill::Pattern(Pattern::Bitmap {
@@ -1106,6 +1107,7 @@ fn pattern_texture_and_mesh_fills_go_out_as_one_colour() {
         width_px: 4,
         height_px: 4,
         size_mm: 8.0,
+        placement: Default::default(),
     });
     let texture = Fill::Texture(Texture {
         kind: TextureKind::Clouds,

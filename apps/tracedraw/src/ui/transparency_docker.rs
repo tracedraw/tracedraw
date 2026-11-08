@@ -113,6 +113,7 @@ impl TransparencyType {
                         front: Color::WHITE,
                         back: Color::BLACK,
                         size_mm: 10.0,
+                        placement: Default::default(),
                     })
                 })
                 .collect(),
@@ -322,6 +323,7 @@ fn bitmap_presets() -> Vec<Fill> {
                 width_px: N,
                 height_px: N,
                 size_mm: 10.0,
+                placement: Default::default(),
             }))
         })
         .collect()
@@ -348,6 +350,7 @@ fn mask_key(mask: &Fill) -> egui::Id {
             width_px,
             height_px,
             size_mm,
+            placement,
         }) => egui::Id::new((
             "bitmap",
             png.as_slice().as_ptr() as usize,
@@ -355,6 +358,7 @@ fn mask_key(mask: &Fill) -> egui::Id {
             *width_px,
             *height_px,
             size_mm.to_bits(),
+            format!("{placement:?}"),
         )),
         _ => egui::Id::new(format!("{mask:?}")),
     }
