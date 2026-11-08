@@ -10,7 +10,9 @@
 //! Held in one place, Attract and Repel work from the outline as the
 //! hold found it ([`StrokeBase`]) with the dose held so far, so they
 //! pull or push at a steady rate and come to rest once the dose is full;
-//! a move starts afresh from the outline as it is.
+//! a move starts afresh from the outline as it is. Roughen works out the
+//! whole stroke from the outline it started from and the way the nib
+//! went, so going over the same place again adds no nodes.
 //!
 //! The nib is sized on the drawing too: a drag that starts with Shift
 //! held sizes it instead of brushing (right grows it, left shrinks it,
@@ -44,10 +46,12 @@ pub const ATTRACT_DOSE: f64 = 2.0;
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct StrokeBase {
     /// The selected curves on the page as the hold (Attract and Repel)
-    /// found them.
+    /// or the stroke (Roughen) found them.
     pub base: Vec<(ShapeId, BezPath)>,
     /// Attract and Repel's dose (-1 to 1) held so far on `base`.
     pub dose: f64,
+    /// Roughen: where the nib went in this stroke.
+    pub swath: Vec<Point>,
 }
 
 /// The smallest and the largest nib radius (mm), as the property bar
@@ -184,7 +188,9 @@ impl App {
     /// turn. Twirl and Attract and Repel go on while the button is held
     /// still, as if the pointer moved [`HOLD_MM_PER_S`]. Held in one
     /// place, Attract and Repel work from the outline the hold found with
-    /// the dose held so far, so they stop once the dose is full.
+    /// the dose held so far, so they stop once the dose is full. Roughen
+    /// works the whole stroke out from the outline it began with and the
+    /// nib's way.
     pub fn brush_step(&mut self, p: Point, swap: bool, dt: f64) {
         let Drag::Node { last } = self.drag else {
             return;
@@ -214,6 +220,14 @@ impl App {
                 return;
             }
             self.brush_stroke.dose = dose;
+        }
+        if self.tool == Tool::Roughen {
+            if self.brush_stroke.base.is_empty() {
+                self.brush_stroke.base = self.brush_page_paths();
+            }
+            if self.brush_stroke.swath.last() != Some(&p) {
+                self.brush_stroke.swath.push(p);
+            }
         }
         let dose = self.brush_stroke.dose;
         let mut cmds = Vec::new();
@@ -251,9 +265,9 @@ impl App {
                     delta * BrushSettings::pressure(b.smudge_pressure),
                     radius,
                 ),
-                (Tool::Roughen, _) => effects::roughen(
-                    &page_path,
-                    p,
+                (Tool::Roughen, Some(from)) => effects::roughen_stroke(
+                    from,
+                    &self.brush_stroke.swath,
                     radius,
                     self.roughen_amount,
                     b.roughen_spacing(),

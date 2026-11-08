@@ -36,6 +36,8 @@ full, row-by-row status.
 
 - Attract and Repel move the whole stretch of the outline in the nib, evenly in every direction, from the moment the button goes down; they moved only the nodes and handles in reach, so a side with its nodes outside the nib did not react until one came in, and Repel pushed unevenly. Held still, they pull or push at a steady pace and come to rest once the effect is complete (Attract gathers the outline towards the middle of the nib, Repel pushes it out to at most the nib's edge) instead of moving on for as long as the button was held.
 
+- Roughen works out the whole stroke from the outline it began with, so going back over the same place or holding the button adds no more spikes: a long stroke piled up nodes by the million.
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).

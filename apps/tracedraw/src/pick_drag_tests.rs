@@ -24262,3 +24262,47 @@ fn attract_works_from_the_press_and_settles_while_held() {
         .flatten()
         .all(|p| p.y <= 40.0 + 0.1));
 }
+
+/// The live test of 0.41: holding Roughen's button longer, or going
+/// over the same stretch again and again, piled nodes up into a mess.
+/// A stroke adds teeth along the stretch it covers and no more: going
+/// back and forth over the same place for a long time leaves about the
+/// node count one pass left.
+#[test]
+fn roughen_adds_detail_up_to_a_cap_per_stroke() {
+    let (ctx, mut app, id) = setup();
+    app.set_tool(Tool::Roughen);
+    app.brush_radius = 6.0;
+    let on_top = |x: f64| Point::new(x, 40.0);
+    let mut t = hold_still(&ctx, &mut app, on_top(25.0), 10.0, 0, |_, _| {});
+    let mut move_to = |app: &mut App, x: f64| {
+        t += 1.0 / 60.0;
+        let s = app.view.to_screen(on_top(x));
+        frame_at(&ctx, app, vec![Event::PointerMoved(s)], Modifiers::NONE, t);
+    };
+    // One pass along the top side.
+    for k in 1..=40 {
+        move_to(&mut app, 25.0 + 0.5 * k as f64);
+    }
+    let one_pass = node_count(&app, id);
+    assert!(one_pass > 8, "teeth added: {one_pass}");
+    // Back and forth over the same stretch, and held, for a long time.
+    for round in 0..12 {
+        for k in 1..=40 {
+            let x = if round % 2 == 0 {
+                45.0 - 0.5 * k as f64
+            } else {
+                25.0 + 0.5 * k as f64
+            };
+            move_to(&mut app, x);
+        }
+        for _ in 0..20 {
+            move_to(&mut app, if round % 2 == 0 { 25.0 } else { 45.0 });
+        }
+    }
+    let after = node_count(&app, id);
+    assert!(
+        after <= one_pass + one_pass / 4,
+        "{one_pass} nodes after one pass, {after} after many"
+    );
+}

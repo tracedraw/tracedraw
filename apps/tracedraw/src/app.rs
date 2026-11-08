@@ -1882,8 +1882,8 @@ pub struct App {
     /// `brushes.rs`).
     pub brush_resize: Option<crate::brushes::BrushResize>,
     /// What the brush stroke under way works from: the outlines Attract
-    /// and Repel's hold started from and the dose held so far (see
-    /// `brushes.rs`).
+    /// and Repel's hold or Roughen's stroke started from, the dose held
+    /// so far and Roughen's way (see `brushes.rs`).
     pub brush_stroke: crate::brushes::StrokeBase,
     /// The style new dimensions take (the dimension tools' bar).
     pub dimension_style: crate::dimensions::DimensionStyle,

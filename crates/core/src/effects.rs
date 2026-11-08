@@ -1183,42 +1183,186 @@ pub fn attract(path: &BezPath, at: Point, radius: f64, dose: f64) -> BezPath {
 /// points, mm.
 const ATTRACT_ACCURACY: f64 = 0.01;
 
-/// A jagged edge within `radius` of `at` (Roughen tool): the curve in
-/// points `spacing` apart, each within the nib pushed off the curve by up
-/// to `amount` (less towards the nib's edge), joined by straight lines.
-/// The spikes come from the points' places, so a step over the same spot
-/// gives the same spikes.
+/// A jagged edge within `radius` of `at` (Roughen tool, one step): see
+/// [`roughen_stroke`].
 pub fn roughen(path: &BezPath, at: Point, radius: f64, amount: f64, spacing: f64) -> BezPath {
-    brush_each(path, at, radius, spacing.max(0.05), true, |pts, closed| {
-        let n = pts.len();
-        if n < 3 {
-            return pts;
+    roughen_stroke(path, &[at], radius, amount, spacing)
+}
+
+/// Roughen tool, a whole stroke: `base` (the outline as it was when the
+/// stroke began) made jagged where the nib went (a nib of `radius`
+/// around each of `centers`). Points `spacing` apart along each
+/// subpath, counted from its start, are pushed off the curve along its
+/// normal by up to `amount` times the nib's weight there (`1 - d /
+/// radius` from the nearest nib on the way), the push from the point's
+/// place; the nodes stay where they are. Between pushed points the
+/// outline runs in straight lines, so the spikes stay sharp; the rest
+/// keeps its segments exactly, nodes and handles included. The stroke
+/// is worked out from `base` every time, so going over the same place
+/// again, or holding the button, gives the same spikes: a stroke adds
+/// at most one node per `spacing` of the stretch it covered, never more
+/// however long it lasts.
+pub fn roughen_stroke(
+    base: &BezPath,
+    centers: &[Point],
+    radius: f64,
+    amount: f64,
+    spacing: f64,
+) -> BezPath {
+    use crate::geometry::Shape as _;
+    use kurbo::{ParamCurve as _, ParamCurveArclen as _, ParamCurveDeriv as _, PathSeg};
+    let spacing = if spacing.is_finite() {
+        spacing.max(0.05)
+    } else {
+        1.0
+    };
+    let centers: Vec<Point> = centers.iter().copied().filter(|c| c.is_finite()).collect();
+    let usable = radius.is_finite() && radius > 0.0 && amount.is_finite() && amount != 0.0;
+    let Some(reach) = centers
+        .iter()
+        .map(|c| kurbo::Rect::from_points(*c, *c))
+        .reduce(|a, b| a.union(b))
+        .filter(|_| usable)
+        .map(|r| r.inflate(radius, radius))
+    else {
+        return base.clone();
+    };
+    let meets = |b: kurbo::Rect| {
+        b.x0 <= reach.x1 && reach.x0 <= b.x1 && b.y0 <= reach.y1 && reach.y0 <= b.y1
+    };
+    // The places in cells a nib wide, so a point looks only at the
+    // places of its own cell and the eight around it: a long stroke's
+    // steps stay quick.
+    let cell_of = |p: Point| ((p.x / radius).floor() as i64, (p.y / radius).floor() as i64);
+    let mut cells: std::collections::HashMap<(i64, i64), Vec<Point>> =
+        std::collections::HashMap::new();
+    for c in &centers {
+        cells.entry(cell_of(*c)).or_default().push(*c);
+    }
+    let weight = |p: Point| -> f64 {
+        let (cx, cy) = cell_of(p);
+        let mut best: f64 = 0.0;
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                if let Some(list) = cells.get(&(cx + dx, cy + dy)) {
+                    for c in list {
+                        best = best.max(1.0 - (p - *c).hypot() / radius);
+                    }
+                }
+            }
         }
-        (0..n)
-            .map(|i| {
-                let p = pts[i];
-                let d = (p - at).hypot();
-                if d > radius {
-                    return p;
+        best
+    };
+    // Whether a place lies within a nib of the box `b`.
+    let near = |b: kurbo::Rect| -> bool {
+        let (x0, y0) = cell_of(Point::new(b.x0 - radius, b.y0 - radius));
+        let (x1, y1) = cell_of(Point::new(b.x1 + radius, b.y1 + radius));
+        if (x1 - x0 + 1).saturating_mul(y1 - y0 + 1) > cells.len() as i64 {
+            return cells
+                .keys()
+                .any(|(x, y)| (x0..=x1).contains(x) && (y0..=y1).contains(y));
+        }
+        (x0..=x1).any(|x| (y0..=y1).any(|y| cells.contains_key(&(x, y))))
+    };
+    let tangent = |seg: &PathSeg, t: f64| -> Vec2 {
+        let v = match seg {
+            PathSeg::Line(l) => l.p1 - l.p0,
+            PathSeg::Quad(q) => q.deriv().eval(t).to_vec2(),
+            PathSeg::Cubic(c) => c.deriv().eval(t).to_vec2(),
+        };
+        if v.hypot() > 1e-9 {
+            v
+        } else {
+            seg.eval((t + 1e-4).min(1.0)) - seg.eval((t - 1e-4).max(0.0))
+        }
+    };
+    let mut out = BezPath::new();
+    for (sub, closed) in subpaths(base) {
+        if !meets(sub.bounding_box()) {
+            out.extend(sub.elements().iter().copied());
+            continue;
+        }
+        let Some(start) = sub.elements().iter().find_map(|e| match e {
+            PathEl::MoveTo(p) => Some(*p),
+            _ => None,
+        }) else {
+            out.extend(sub.elements().iter().copied());
+            continue;
+        };
+        let mut els: Vec<PathEl> = vec![PathEl::MoveTo(start)];
+        // Arc length from the subpath's start: where the segment starts
+        // and where the next point falls.
+        let mut s0 = 0.0;
+        let mut next = spacing;
+        for seg in sub.segments() {
+            let len = seg.arclen(0.01);
+            let near = meets(seg.bounding_box()) && near(seg.bounding_box());
+            // The points on this segment: (t, place, pushed).
+            let mut pts: Vec<(f64, Point, bool)> = Vec::new();
+            while next < s0 + len - 1e-9 {
+                if near {
+                    let t = seg.inv_arclen(next - s0, 0.01).clamp(0.0, 1.0);
+                    let p = seg.eval(t);
+                    let w = weight(p);
+                    let tan = tangent(&seg, t);
+                    let l = tan.hypot();
+                    if w > 0.0 && l > 1e-12 {
+                        let normal = Vec2::new(-tan.y / l, tan.x / l);
+                        // A number from -1 to 1 that depends on the place only.
+                        let h = ((p.x * 12.9898 + p.y * 78.233).sin() * 43758.5453).fract();
+                        let r = 2.0 * h.abs() - 1.0;
+                        pts.push((t, p + normal * (r * amount * w), true));
+                    } else {
+                        pts.push((t, p, false));
+                    }
                 }
-                let (prev, next) = if closed {
-                    (pts[(i + n - 1) % n], pts[(i + 1) % n])
-                } else {
-                    (pts[i.saturating_sub(1)], pts[(i + 1).min(n - 1)])
-                };
-                let t = next - prev;
-                let len = t.hypot();
-                if len < 1e-12 {
-                    return p;
+                next += spacing;
+            }
+            s0 += len;
+            if !pts.iter().any(|(_, _, pushed)| *pushed) {
+                els.push(seg.as_path_el());
+                continue;
+            }
+            // Unpushed points keep the segment exactly between them;
+            // from and to a pushed point the outline runs straight.
+            let mut exact_from = Some(0.0);
+            let (mut prev_t, mut prev_pushed) = (0.0, false);
+            for (t, p, pushed) in pts
+                .into_iter()
+                .chain(std::iter::once((1.0, seg.end(), false)))
+            {
+                if pushed || prev_pushed {
+                    if let Some(t0) = exact_from.take() {
+                        if prev_t > t0 + 1e-12 {
+                            els.push(seg.subsegment(t0..prev_t).as_path_el());
+                        }
+                    }
+                    els.push(PathEl::LineTo(p));
+                    if !pushed {
+                        exact_from = Some(t);
+                    }
                 }
-                let normal = Vec2::new(-t.y / len, t.x / len);
-                // A number from -1 to 1 that depends on the place only.
-                let h = ((p.x * 12.9898 + p.y * 78.233).sin() * 43758.5453).fract();
-                let r = 2.0 * h.abs() - 1.0;
-                p + normal * (r * amount * (1.0 - d / radius))
-            })
-            .collect()
-    })
+                prev_t = t;
+                prev_pushed = pushed;
+            }
+            if let Some(t0) = exact_from {
+                if t0 < 1.0 - 1e-12 {
+                    els.push(seg.subsegment(t0..1.0).as_path_el());
+                }
+            }
+        }
+        if closed {
+            // The closing line is drawn by the close.
+            if matches!(els.last(), Some(PathEl::LineTo(p)) if (*p - start).hypot() < 1e-9)
+                && els.len() > 2
+            {
+                els.pop();
+            }
+            els.push(PathEl::ClosePath);
+        }
+        out.extend(els);
+    }
+    out
 }
 
 /// Flatten and insert points so no segment is longer than `max_len`.
@@ -1398,6 +1542,52 @@ mod tests {
             .iter()
             .all(|p| (*p - at).hypot() < 5.0 + 0.1 || p.x <= 10.1 && p.y <= 10.1));
         assert!(pushed.iter().any(|p| p.x + p.y > 21.0), "pushed out");
+    }
+
+    /// Roughen works a whole stroke out from the outline it began with:
+    /// the same way twice gives the same spikes, a way going back over
+    /// itself adds nothing, and the nodes it adds are at most one per
+    /// spacing along the stretch it covered (the live test of 0.41 found
+    /// a long hold piling up nodes into a mess).
+    #[test]
+    fn a_roughen_stroke_adds_spikes_once() {
+        let sq = Rect::new(0.0, 0.0, 40.0, 40.0).to_path(0.01);
+        let way: Vec<Point> = (0..=20)
+            .map(|k| Point::new(10.0 + k as f64, 40.0))
+            .collect();
+        let once = roughen_stroke(&sq, &way, 5.0, 1.5, 1.0);
+        assert_ne!(once, sq);
+        let mut back = way.clone();
+        back.extend(way.iter().rev().copied());
+        back.extend(way.iter().copied());
+        assert_eq!(roughen_stroke(&sq, &back, 5.0, 1.5, 1.0), once);
+        // The stretch covered runs from x = 5 to 35 on the top side.
+        let added = node_points(&once).len() - node_points(&sq).len();
+        assert!((20..=34).contains(&added), "{added} nodes");
+        // Spikes within the amount; the other sides exactly as they were.
+        let b = once.bounding_box();
+        assert!(b.y1 > 40.3 && b.y1 <= 41.5 + 1e-9 && b.y0 == 0.0, "{b:?}");
+        assert!(once
+            .elements()
+            .contains(&PathEl::LineTo(Point::new(40.0, 0.0))));
+        // Prefix of the way: the part done so far stays as it was.
+        let half = roughen_stroke(&sq, &way[..10], 5.0, 1.5, 1.0);
+        let left: Vec<Point> = node_points(&half)
+            .into_iter()
+            .filter(|p| p.y > 39.0 && p.x < 12.0)
+            .collect();
+        let left_once: Vec<Point> = node_points(&once)
+            .into_iter()
+            .filter(|p| p.y > 39.0 && p.x < 12.0)
+            .collect();
+        assert_eq!(left, left_once);
+        // Bad input changes nothing.
+        assert_eq!(roughen_stroke(&sq, &[], 5.0, 1.5, 1.0), sq);
+        assert_eq!(roughen_stroke(&sq, &way, f64::NAN, 1.5, 1.0), sq);
+        assert_eq!(
+            roughen_stroke(&sq, &[Point::new(f64::NAN, 0.0)], 5.0, 1.5, 1.0),
+            sq
+        );
     }
 
     /// The nodes of a path's elements (end points).
