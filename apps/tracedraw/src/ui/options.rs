@@ -827,6 +827,14 @@ fn general_page(app: &mut App, ui: &mut Ui) {
         if DesktopOnly::HardwareAcceleration.shown() {
             hardware_acceleration(app, ui);
         }
+        // Linux: the desktop's title bar on a Wayland desktop that leaves
+        // it to the application, from the next start (#2070).
+        #[cfg(target_os = "linux")]
+        ui.checkbox(
+            &mut app.settings.system_title_bar,
+            tr("options.system_title_bar"),
+        )
+        .rich_tip(crate::ui::tips::keyed("options.system_title_bar"));
     });
     chrome::section(ui, &tr("options.undo_levels"));
     ui.indent("undo", |ui| {
@@ -5149,6 +5157,45 @@ mod tests {
             let label = tr(key);
             assert!(texts.contains(&label), "{label:?} in {texts:?}");
         }
+    }
+
+    /// On Linux the General page offers the desktop's title bar, and its
+    /// box turns the setting on (#2070).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_offers_the_desktops_title_bar() {
+        let mut app = App::headless();
+        assert!(!app.settings.system_title_bar);
+        let ctx = crate::theme::ui_context();
+        let label = tr("options.system_title_bar");
+        let mut at = None;
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| general_page(&mut app, ui));
+        out.textures_delta.clear();
+        for c in &out.shapes {
+            if let egui::Shape::Text(t) = &c.shape {
+                if t.galley.text() == label {
+                    at = Some(t.visual_bounding_rect().center());
+                }
+            }
+        }
+        let at = at.unwrap_or_else(|| panic!("{label:?} is not on the General page"));
+        for pressed in [true, false] {
+            let input = egui::RawInput {
+                events: vec![
+                    egui::Event::PointerMoved(at),
+                    egui::Event::PointerButton {
+                        pos: at,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: Default::default(),
+                    },
+                ],
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| general_page(&mut app, ui));
+            out.textures_delta.clear();
+        }
+        assert!(app.settings.system_title_bar);
     }
 
     /// #1148: every command can take a shortcut. A bar button that runs

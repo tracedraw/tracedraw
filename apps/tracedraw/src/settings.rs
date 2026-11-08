@@ -292,6 +292,12 @@ pub struct Settings {
     /// not ("software" or "gl"); cleared when the choice changes.
     #[serde(default)]
     pub working_renderer: String,
+    /// Options > General, Linux: on a Wayland desktop that leaves the
+    /// title bar to the application, open the window through XWayland so
+    /// that the desktop draws its own, from the next start (#2070,
+    /// `title_bar.rs`).
+    #[serde(default)]
+    pub system_title_bar: bool,
     /// Customization > Appearance: dialogs open in the middle of the
     /// window and stay there; off, they move by their title bar and open
     /// where they were left.
@@ -1880,6 +1886,7 @@ impl Default for Settings {
             hardware_acceleration: true,
             gpu_adapter: String::new(),
             working_renderer: String::new(),
+            system_title_bar: false,
             center_dialogs: true,
             ui_shadows: true,
             colored_icons: false,

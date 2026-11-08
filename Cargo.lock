@@ -4302,6 +4302,7 @@ dependencies = [
  "vaam-image-webp",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wayland-client",
  "web-sys",
  "web-time",
  "webp",

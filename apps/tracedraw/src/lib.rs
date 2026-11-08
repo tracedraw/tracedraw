@@ -203,6 +203,8 @@ mod theme;
 mod thesaurus;
 mod thumbnails;
 mod time_tracker;
+#[cfg(any(target_os = "linux", test))]
+mod title_bar;
 mod tools;
 mod tools2;
 mod touch_modifiers;
@@ -257,6 +259,12 @@ mod winit_alt_shortcuts;
 #[allow(dead_code)]
 #[path = "../../../vendor/winit/src/tablet_tool.rs"]
 mod winit_tablet_tool;
+// A finger or a pen on the window's frame on Wayland, of the same copy
+// (#2070).
+#[cfg(all(test, unix, not(target_arch = "wasm32")))]
+#[allow(dead_code)]
+#[path = "../../../vendor/winit/src/frame_input.rs"]
+mod winit_frame_input;
 mod workspace_file;
 
 /// The desktop program: the window, with the command line's files and
@@ -303,9 +311,9 @@ pub fn run() -> eframe::Result<()> {
     // Without an X server there is no window to open: say so and stop,
     // rather than let every renderer fail in turn.
     #[cfg(target_os = "linux")]
-    let x11 = args.iter().any(|a| a == "--x11");
+    let x11_asked = args.iter().any(|a| a == "--x11");
     #[cfg(target_os = "linux")]
-    if x11 && std::env::var_os("DISPLAY").is_none_or(|d| d.is_empty()) {
+    if x11_asked && !title_bar::env_set("DISPLAY") {
         // The log writes to stderr as well as to its file.
         log::error!(
             "tracedraw --x11: DISPLAY is not set, so there is no X server to open the window \
@@ -362,6 +370,20 @@ pub fn run() -> eframe::Result<()> {
     // The language picked in Options, else the installer's, else the
     // system's (docs/behavior/language.md).
     i18n::set_language(i18n::startup_language_here(&settings.language));
+    // Options > General > "Use the desktop's title bar": through XWayland
+    // when the Wayland compositor draws no title bars (#2070).
+    #[cfg(target_os = "linux")]
+    let x11 = x11_asked
+        || title_bar::through_x11(
+            settings.system_title_bar,
+            title_bar::env_set("WAYLAND_DISPLAY"),
+            title_bar::env_set("DISPLAY"),
+            title_bar::compositor_offers_title_bars,
+        );
+    #[cfg(target_os = "linux")]
+    if x11 && !x11_asked {
+        log::info!("opening the window through X11 for the desktop's title bar");
+    }
     let splash = settings.show_splash && !plain;
     let viewport = if splash {
         // The splash has no frame, so it cannot be dragged larger; it is

@@ -111,6 +111,23 @@ the version on the right).
   window's backend. With no
   `DISPLAY` it prints that `--x11` needs XWayland or an X11 session and
   exits with status 2 instead of trying every renderer.
+- The title bar (Linux, #2070): on X11 the window manager draws it, and
+  on a Wayland desktop that offers title bars to programs (the
+  `xdg-decoration` protocol: KDE Plasma, Sway and most others) the
+  windowing layer asks for the desktop's. A compositor without it
+  (GNOME's) leaves the title bar to the program, and the windowing
+  layer draws a plain one; it answers a finger and a pen as it does the
+  mouse (vendor/README.md). Options > General > Use the desktop's title
+  bar (off by default) opens the window through XWayland on such a
+  desktop from the next start, where the desktop draws its own title
+  bar; on a desktop that offers title bars, on X11 or without
+  `DISPLAY` it changes nothing. Before the window is made, one
+  connection to the compositor asks whether it offers title bars
+  (`title_bar::compositor_offers_title_bars`); the log says
+  `opening the window through X11 for the desktop's title bar` when it
+  goes through XWayland (`title_bar::tests`). Through XWayland a monitor
+  scaled by a fraction shows the window slightly blurred, which is why
+  the option is off unless chosen.
 - The browser build has no splash: the page shows its own loader.
 
 ## One window for every start (#646)
