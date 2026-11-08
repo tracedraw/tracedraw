@@ -67,6 +67,12 @@ only the Welcome Screen is open. The menus can show your own shortcuts; see
 | [[menu.edit.select_all_text]] | [Selecting](../objects/selecting.md) |
 | [[menu.edit.select_all_guidelines]] | [Selecting](../objects/selecting.md) |
 | [[menu.edit.select_all_nodes]] | [Selecting](../objects/selecting.md) |
+| [[menu.edit.invert_selection]] | [Selecting](../objects/selecting.md#select-similar) |
+| [[menu.edit.select_similar]] | [Selecting](../objects/selecting.md#select-similar) |
+| [[menu.edit.similar_fill]] | [Selecting](../objects/selecting.md#select-similar) |
+| [[menu.edit.similar_outline]] | [Selecting](../objects/selecting.md#select-similar) |
+| [[menu.edit.similar_text_format]] | [Selecting](../objects/selecting.md#select-similar) |
+| [[menu.edit.similar_kind]] | [Selecting](../objects/selecting.md#select-similar) |
 | [[menu.edit.find_and_replace]] | [Find and replace](../objects/find-replace.md) |
 | [[menu.edit.step_and_repeat]] | [Repeat copies](../objects/step-and-repeat.md) |
 

@@ -100,6 +100,33 @@ that number. Press the number alone to select those objects again, and again
 to zoom to them. <kbd>Alt</kbd> and the number add the selection to the
 group. Groups are saved with the drawing.
 
+### Invert Selection and Select Similar {#select-similar}
+
+[[menu.edit > menu.edit.invert_selection]] selects every object of the
+page that [[menu.edit.select_all]] would take and is not selected now, and
+deselects the selected ones. With nothing selected it selects everything.
+
+[[menu.edit > menu.edit.select_similar]] selects the objects of the page
+that are like the selected ones:
+
+- [[menu.edit.similar_fill]]: the same fill (the same colour, gradient,
+  pattern or no fill).
+- [[menu.edit.similar_outline]]: the same outline (width, colour and
+  style), or no outline when the selected object has none.
+- [[menu.edit.similar_text_format]]: text that uses the same font and
+  size as the selected text (in any of its characters).
+- [[menu.edit.similar_kind]]: the same kind of object (rectangles,
+  ellipses, curves, artistic text, paragraph text, groups, bitmaps...).
+
+With several objects selected, an object like any of them is taken. Only
+the objects of the page itself are compared, not those inside groups;
+objects on locked layers stay out, as with [[menu.edit.select_all]].
+
+Each of these commands is one step of [[menu.edit.undo]]: right after
+it, with nothing changed in the drawing, Undo puts the selection back as
+it was and Redo makes it again. Once the drawing changes, Undo goes back
+to the drawing's own steps.
+
 ## The Freehand Pick tool {#freehand-pick}
 
 The [[tool.freehand_pick]] tool works like the [[tool.pick]] tool, but a drag

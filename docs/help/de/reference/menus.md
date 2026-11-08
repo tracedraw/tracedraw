@@ -68,6 +68,12 @@ Ihre eigenen Tastenkürzel zeigen; siehe
 | [[menu.edit.select_all_text]] | [Selecting objects](../objects/selecting.md) |
 | [[menu.edit.select_all_guidelines]] | [Selecting objects](../objects/selecting.md) |
 | [[menu.edit.select_all_nodes]] | [Selecting objects](../objects/selecting.md) |
+| [[menu.edit.invert_selection]] | [Selecting objects](../objects/selecting.md#select-similar) |
+| [[menu.edit.select_similar]] | [Selecting objects](../objects/selecting.md#select-similar) |
+| [[menu.edit.similar_fill]] | [Selecting objects](../objects/selecting.md#select-similar) |
+| [[menu.edit.similar_outline]] | [Selecting objects](../objects/selecting.md#select-similar) |
+| [[menu.edit.similar_text_format]] | [Selecting objects](../objects/selecting.md#select-similar) |
+| [[menu.edit.similar_kind]] | [Selecting objects](../objects/selecting.md#select-similar) |
 | [[menu.edit.find_and_replace]] | [Finding and replacing](../objects/find-replace.md) |
 | [[menu.edit.step_and_repeat]] | [Making copies with Repeat Copies](../objects/step-and-repeat.md) |
 

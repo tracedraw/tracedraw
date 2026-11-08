@@ -131,6 +131,8 @@ impl App {
         std::mem::swap(self.raster.get_mut(), &mut slot.raster);
         std::mem::swap(self.page_rasters.get_mut(), &mut slot.page_rasters);
         std::mem::swap(&mut self.view_anchor, &mut slot.view_anchor);
+        // Selection steps belong to the window they were made in.
+        self.selection_steps.clear();
         // Measured in another window.
         *self.visual_cache.get_mut() = (u64::MAX, Default::default());
     }

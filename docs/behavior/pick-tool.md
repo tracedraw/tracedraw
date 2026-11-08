@@ -101,6 +101,41 @@ the number add the selection to the group. Groups are saved with the
 drawing; objects deleted since drop out. With text selected, Ctrl+8 and
 Ctrl+2 keep changing the text size.
 
+## Invert Selection and Select Similar
+
+Edit > Invert Selection (#2002) selects the objects Select All takes
+(the top-level objects of the current page's unlocked layers; the
+contents only while a clip frame's contents are edited) that are not
+selected, and deselects the others; nothing selected selects all.
+
+Edit > Select Similar takes the same objects when they are like one of
+the selected objects (those inside a group, chosen with Ctrl+click,
+count as references too):
+
+| Item | Like when |
+|---|---|
+| Fill | the fill is equal (colour, gradient, pattern, texture, or both none) |
+| Outline | the outline is equal (width, colour, dashes, caps, arrows...), or both have none |
+| Text Formatting (Font and Size) | both are text and share a font family (any case) and size (to 0.01 pt) in some of their characters |
+| Object Type | the same shape kind (rectangle, ellipse, polygon, curve, text, group, bitmap, clip frame, table, symbol), artistic and paragraph text apart |
+
+Nothing selected, or no object alike: the selection stays. The status
+bar tells how many objects are selected.
+
+Each command is a selection step on the Undo list, ahead of the
+drawing's steps: Edit > Undo shows its name ("Undo Invert Selection",
+"Undo Select Similar (Fill)") and puts the selection back as it was;
+Redo makes it again. A step only counts while the drawing (its revision),
+the page and the selection are as the step left them: a change to the
+drawing, a selection made by hand or another window forgets the steps,
+and Undo goes on to the drawing's own steps. No drawing step is added,
+so the drawing is not marked changed.
+
+Checks: `select_similar::tests::invert_selection_takes_the_others_and_undo_puts_it_back`,
+`select_similar::tests::select_similar_fill_outline_text_and_kind`,
+`select_similar::tests::selection_steps_undo_in_order_and_end_with_a_drawing_change`,
+`select_similar::tests::the_menu_items_run_by_key`.
+
 ## Node tracking
 
 Options > Display > Enable node tracking (off by default): with the Pick

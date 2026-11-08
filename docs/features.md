@@ -20,6 +20,7 @@ Counts: works 192, partial 7 (`.cdr` content coverage; CMX import; print preview
 | Right-button drag of objects: blue outline preview, then Move Here, Copy Here, Copy Fill Here, Copy Outline Here, Copy All Properties, Place Inside, Cancel; a left-button move let go over another object with Alt copies the fill, with Alt+Shift the outline (see `behavior/pick-tool.md`) | works |
 | Freehand Pick (lasso, Alt for touching, also started over any object, selected or not, Ctrl for a rectangle, the Pick tool's handles; Alt+drag with the Pick tool starts its touching frame over objects too, #1341, #1350) | works |
 | Selection groups 0 to 9: Ctrl+number stores the selection, the number selects it again (twice: and zooms to it), Alt+number adds to it; saved with the drawing (see `behavior/pick-tool.md`) | works |
+| Edit > Invert Selection, Edit > Select Similar (Fill, Outline, Text Formatting: font and size, Object Type), each one step of Undo and Redo while the drawing is unchanged (#2002, see `behavior/pick-tool.md`) | works |
 | Free Transform (rotation, angle reflection, scale, skew modes, Apply to Duplicate; one drag is one undo step, a skew never mirrors) | works |
 | Zoom tool, zoom levels, zoom to page/fit/selected, marquee zoom, Shift+F4; the view scrolls when a drag reaches the window edge (#2051) | works |
 | Pan, mouse wheel, Ctrl and Shift wheel | works |

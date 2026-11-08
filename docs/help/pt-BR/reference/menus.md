@@ -68,6 +68,12 @@ próprios atalhos; veja
 | [[menu.edit.select_all_text]] | [Selecionar objetos](../objects/selecting.md) |
 | [[menu.edit.select_all_guidelines]] | [Selecionar objetos](../objects/selecting.md) |
 | [[menu.edit.select_all_nodes]] | [Selecionar objetos](../objects/selecting.md) |
+| [[menu.edit.invert_selection]] | [Selecionar objetos](../objects/selecting.md#select-similar) |
+| [[menu.edit.select_similar]] | [Selecionar objetos](../objects/selecting.md#select-similar) |
+| [[menu.edit.similar_fill]] | [Selecionar objetos](../objects/selecting.md#select-similar) |
+| [[menu.edit.similar_outline]] | [Selecionar objetos](../objects/selecting.md#select-similar) |
+| [[menu.edit.similar_text_format]] | [Selecionar objetos](../objects/selecting.md#select-similar) |
+| [[menu.edit.similar_kind]] | [Selecionar objetos](../objects/selecting.md#select-similar) |
 | [[menu.edit.find_and_replace]] | [Localizar e substituir](../objects/find-replace.md) |
 | [[menu.edit.step_and_repeat]] | [Fazer cópias com Duplicar e repetir](../objects/step-and-repeat.md) |
 

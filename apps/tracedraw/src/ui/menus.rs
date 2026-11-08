@@ -380,6 +380,10 @@ pub const NEW_IN_THIS_VERSION: &[&str] = &[
     // Object > Symbol > Edit Symbol changes a symbol in place (#1980).
     "menu.object.symbol",
     "menu.object.symbol_edit",
+    // Edit > Invert Selection and Select Similar (#2002).
+    "menu.edit",
+    "menu.edit.invert_selection",
+    "menu.edit.select_similar",
 ];
 
 thread_local! {
@@ -2633,21 +2637,22 @@ pub const CLIP_EDIT_KEY: &str = "Ctrl+Shift+F3";
 
 fn edit_menu(app: &mut App, ui: &mut Ui) {
     let has = !app.selection.is_empty();
-    let undo = app
-        .engine
-        .undo_label()
+    // A selection command (#2002) or the drawing's last step.
+    let undo_label = app.undo_label();
+    let redo_label = app.redo_label();
+    let can_redo = redo_label.is_some();
+    let undo = undo_label
+        .as_ref()
         .map(|l| format!("{} {l}", tr("menu.edit.undo")))
         .unwrap_or_else(|| tr("menu.edit.undo"));
-    let redo = app
-        .engine
-        .redo_label()
+    let redo = redo_label
         .map(|l| format!("{} {l}", tr("menu.edit.redo")))
         .unwrap_or_else(|| tr("menu.edit.redo"));
     if item_text(
         ui,
         &undo,
         "Ctrl+Z",
-        app.engine.undo_label().is_some(),
+        undo_label.is_some(),
         Some(crate::ui::icons::Action::Undo),
         "menu.edit.undo",
     ) {
@@ -2657,7 +2662,7 @@ fn edit_menu(app: &mut App, ui: &mut Ui) {
         ui,
         &redo,
         "Ctrl+Shift+Z",
-        app.engine.redo_label().is_some(),
+        can_redo,
         Some(crate::ui::icons::Action::Redo),
         "menu.edit.redo",
     ) {
@@ -2742,6 +2747,17 @@ fn edit_menu(app: &mut App, ui: &mut Ui) {
         }
         if item(ui, "menu.edit.select_all_nodes", "", has) {
             app.select_all_nodes();
+        }
+    });
+    // Selection commands, each one undo step (#2002).
+    if item(ui, "menu.edit.invert_selection", "", app.has_document()) {
+        app.invert_selection();
+    }
+    sub(ui, "menu.edit.select_similar", |ui| {
+        for how in crate::select_similar::Similar::ALL {
+            if item(ui, how.key(), "", has) {
+                app.select_similar(how);
+            }
         }
     });
     sep(ui);

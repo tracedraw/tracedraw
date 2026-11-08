@@ -160,6 +160,7 @@ mod script_filters;
 mod scripting;
 mod segment_delete;
 mod select_region;
+mod select_similar;
 mod settings;
 mod shadow_tool;
 mod shape_tool;

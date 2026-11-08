@@ -108,6 +108,8 @@ full, row-by-row status.
 
 - Print Merge: barcodes take their data from merge fields. Barcode in the Data Merge panel opens the Barcode Wizard with the field as its data, and the wizard's Insert Print Merge field list adds a field to any barcode's data; each merged record gets its own barcode in the place of the one placed, fixed digits before a counter staying the same (#1084).
 
+- Edit > Invert Selection selects the objects of the page that are not selected and deselects the others; Edit > Select Similar selects the objects with the same fill, the same outline, the same text formatting (font and size) or of the same kind as the selected ones. Each one is a step of Undo and Redo (#2002).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

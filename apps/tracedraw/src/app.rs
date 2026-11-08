@@ -1121,6 +1121,10 @@ pub struct App {
     /// then: Undo with nothing changed since selects the copies again and
     /// brings the repeat back, for a deselect made by accident (#1494).
     pub forgotten_duplicate: Option<(Vec<(ShapeId, ShapeId)>, u64, Vec<ShapeId>)>,
+    /// Invert Selection and Select Similar made with the drawing
+    /// unchanged since: Undo and Redo take them back and make them again
+    /// before the drawing's own steps (#2002).
+    pub selection_steps: crate::select_similar::SelectionSteps,
     /// The last Duplicate of guidelines, which the next one repeats in
     /// the same way while the copies are the selection (#1494).
     pub last_guide_duplicate: Option<crate::guides::GuideDuplicate>,
@@ -2663,6 +2667,7 @@ impl App {
             duplicate_offset: Vec2::ZERO,
             last_duplicate: Vec::new(),
             forgotten_duplicate: None,
+            selection_steps: Default::default(),
             last_guide_duplicate: None,
             polygon_points: 5,
             box_regular: false,
@@ -5858,14 +5863,7 @@ impl App {
     }
 
     pub fn select_all(&mut self) {
-        let ids = self
-            .page_layers()
-            .into_iter()
-            .filter(|l| !l.locked)
-            .flat_map(|l| &l.shapes)
-            .map(|s| s.id)
-            .filter(|id| !self.outside_clip_edit(*id))
-            .collect();
+        let ids = self.selectable_ids();
         self.select(ids);
     }
 
@@ -6713,6 +6711,10 @@ impl App {
         if self.undo_duplicate_deselect() {
             return;
         }
+        // Invert Selection or Select Similar just made (#2002).
+        if self.undo_selection_step() {
+            return;
+        }
         let step = self.engine.last_step_id();
         let undone = match self.engine.undo() {
             Ok(l) => {
@@ -6751,6 +6753,9 @@ impl App {
             return;
         }
         self.curve_steps.clear();
+        if self.redo_selection_step() {
+            return;
+        }
         let redone = match self.engine.redo() {
             Ok(l) => {
                 self.status = crate::i18n::trf("status.redo_n", &[("l", l)]);
