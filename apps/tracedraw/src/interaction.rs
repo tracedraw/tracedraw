@@ -4157,6 +4157,10 @@ impl App {
         {
             self.dialog = crate::ui::dialogs::Dialog::ChangeCase(crate::ops2::CaseMode::Sentence);
         }
+        // Into the selected clip frame's contents, and out again.
+        if pressed(Key::F3, cmd | Modifiers::SHIFT) {
+            self.toggle_clip_frame_edit();
+        }
         if pressed(Key::T, cmd | Modifiers::SHIFT) {
             self.open_edit_text_dialog();
         }

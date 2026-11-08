@@ -5,7 +5,9 @@ use crate::app::{App, DockerTab};
 use crate::i18n::tr;
 use crate::tools::Tool;
 use crate::ui::dialogs::Dialog;
-use crate::ui::menus::{body, check, item, item_label, menu_popup_style, radio, sep, sub};
+use crate::ui::menus::{
+    body, check, item, item_label, menu_popup_style, radio, sep, sub, CLIP_EDIT_KEY,
+};
 use egui::{Response, Ui};
 use tracedraw_core::{document::ShapeKind, Command, ShapeId};
 
@@ -445,6 +447,25 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
         app.pending_clip_frame = true;
         app.status = tr("status.click_frame");
     }
+    // A clip frame: into its contents, or its contents out (#1273).
+    let clip = shapes
+        .iter()
+        .any(|s| matches!(s.kind, ShapeKind::ClipFrame { .. }));
+    if clip && app.clip_frame_edit.is_none() {
+        if ci(
+            ui,
+            close,
+            "menu.object.clip_frame_edit",
+            CLIP_EDIT_KEY,
+            true,
+        ) {
+            app.edit_clip_frame();
+        }
+        if ci(ui, close, "menu.object.clip_frame_extract", "", true) {
+            app.extract_clip_contents();
+        }
+    }
+    finish_clip_edit_row(app, ui, close);
     sub(ui, "context.frame_type", |ui| {
         let empty_frames = !app.empty_clip_frames().is_empty();
         if ci(ui, close, "context.frame_none", "", empty_frames) {
@@ -652,7 +673,27 @@ pub(crate) fn node_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     }
 }
 
+/// Finish Editing while a clip frame's contents are edited (#1273).
+fn finish_clip_edit_row(app: &mut App, ui: &mut Ui, close: &mut bool) {
+    if app.editing_clip_contents()
+        && ci(
+            ui,
+            close,
+            "menu.object.clip_frame_finish",
+            CLIP_EDIT_KEY,
+            true,
+        )
+    {
+        app.finish_clip_frame_edit();
+    }
+}
+
 fn page_menu(app: &mut App, ui: &mut Ui, p: tracedraw_core::Point, close: &mut bool) {
+    // Inside a clip frame, a click on the empty page finishes too.
+    if app.editing_clip_contents() {
+        finish_clip_edit_row(app, ui, close);
+        sep(ui);
+    }
     if ci(
         ui,
         close,

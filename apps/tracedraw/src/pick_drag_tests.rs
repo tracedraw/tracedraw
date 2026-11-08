@@ -5714,6 +5714,127 @@ fn a_ctrl_click_off_the_contents_finishes_editing_a_clip_frame_and_alt_drops_ins
     assert_eq!(app.selection, vec![clip]);
 }
 
+/// The canvas context menu of a clip frame (#1273): Edit Contents enters
+/// it, Finish Editing (on the contents or the empty page) leaves it, and
+/// Extract Contents takes the contents out, the frame staying. One
+/// key goes in and out again.
+#[test]
+fn the_context_menu_and_a_key_edit_and_extract_clip_frame_contents() {
+    let (ctx, mut app, first) = setup();
+    app.select(vec![first]);
+    app.delete_selection();
+    let (rect, text) = text_and_frame(&mut app, true, false);
+    app.place_inside(vec![text], rect);
+    let clip = app.doc().top_level_of(text).expect("clip frame");
+    let none = Modifiers::NONE;
+    let right_click = |app: &mut App, at: Pos2| {
+        frame(&ctx, app, vec![Event::PointerMoved(at)], none);
+        frame(
+            &ctx,
+            app,
+            vec![button(at, true, PointerButton::Secondary, none)],
+            none,
+        );
+        frame(
+            &ctx,
+            app,
+            vec![button(at, false, PointerButton::Secondary, none)],
+            none,
+        );
+        assert!(app.context_menu.is_some(), "the menu opened");
+        frame(&ctx, app, Vec::new(), none);
+        painted(&ctx, app).1
+    };
+    let row = |texts: &[(String, Pos2)], key: &str| {
+        texts
+            .iter()
+            .find(|(t, _)| t.trim() == crate::i18n::tr(key))
+            .map(|(_, p)| *p)
+    };
+    let inside = app.view.to_screen(text_middle(&app, text));
+    click_at(&ctx, &mut app, inside, none);
+    assert_eq!(app.selection, vec![clip]);
+    // On the frame: Edit Contents and Extract Contents, no Finish.
+    let texts = right_click(&mut app, inside);
+    assert!(row(&texts, "menu.object.clip_frame_extract").is_some());
+    assert!(row(&texts, "menu.object.clip_frame_finish").is_none());
+    assert!(
+        texts
+            .iter()
+            .any(|(t, _)| t.trim() == crate::ui::menus::CLIP_EDIT_KEY),
+        "the key shows beside Edit Contents"
+    );
+    let edit = row(&texts, "menu.object.clip_frame_edit").expect("Edit Contents");
+    click_at(&ctx, &mut app, edit, none);
+    assert_eq!(app.clip_frame_edit.as_ref().map(|e| e.0), Some(clip));
+    assert_eq!(app.doc().top_level_of(text), Some(text), "out to be edited");
+    // Inside: Finish Editing on the contents.
+    app.select(vec![text]);
+    let texts = right_click(&mut app, inside);
+    assert!(row(&texts, "menu.object.clip_frame_edit").is_none());
+    let finish = row(&texts, "menu.object.clip_frame_finish").expect("Finish Editing");
+    click_at(&ctx, &mut app, finish, none);
+    assert!(app.clip_frame_edit.is_none());
+    assert_eq!(app.doc().top_level_of(text), Some(clip), "back inside");
+    // And on the empty page.
+    app.select(vec![clip]);
+    app.edit_clip_frame();
+    app.select(Vec::new());
+    let empty = app.view.to_screen(Point::new(180.0, 20.0));
+    let texts = right_click(&mut app, empty);
+    let finish = row(&texts, "menu.object.clip_frame_finish").expect("Finish on the page");
+    click_at(&ctx, &mut app, finish, none);
+    assert!(app.clip_frame_edit.is_none());
+    assert_eq!(app.doc().top_level_of(text), Some(clip));
+    // The key: in, and out again.
+    app.select(vec![clip]);
+    let ctrl_shift = Modifiers::COMMAND | Modifiers::SHIFT;
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::F3, ctrl_shift)],
+        ctrl_shift,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![key_up(egui::Key::F3, ctrl_shift)],
+        none,
+    );
+    assert_eq!(app.clip_frame_edit.as_ref().map(|e| e.0), Some(clip));
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::F3, ctrl_shift)],
+        ctrl_shift,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![key_up(egui::Key::F3, ctrl_shift)],
+        none,
+    );
+    assert!(app.clip_frame_edit.is_none());
+    assert_eq!(app.doc().top_level_of(text), Some(clip));
+    // Extract Contents: the text comes out, the frame stays, empty.
+    app.select(vec![clip]);
+    let texts = right_click(&mut app, inside);
+    let extract = row(&texts, "menu.object.clip_frame_extract").expect("Extract Contents");
+    click_at(&ctx, &mut app, extract, none);
+    assert_eq!(app.doc().top_level_of(text), Some(text), "a page object");
+    // The frame stays, as its own shape, with nothing inside.
+    let frame_shape = app.doc().shape_on_page(clip).expect("the frame stays");
+    assert!(
+        !matches!(frame_shape.kind, ShapeKind::ClipFrame { .. }),
+        "{:?}",
+        frame_shape.kind
+    );
+    assert!(app.clip_frame_edit.is_none());
+    // The undo step brings the contents back in.
+    app.undo();
+    assert_eq!(app.doc().top_level_of(text), Some(clip));
+}
+
 /// Ctrl+click on a clip frame edits its contents (#982): the contents
 /// come out of the frame, the one under the pointer selected, and only
 /// they can be picked; Finish puts them back. Off the contents the click

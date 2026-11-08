@@ -42,6 +42,8 @@ full, row-by-row status.
 
 - Print Merge: a Random number field, for raffle tickets and codes without a data file: From and To, Digits, Text before and No repeats, and Records to make that many records at once. The numbers stay the same in the grid, the merged pages and the print until Draw Again; a range too small for No repeats is said in the dialog and the merge is not made. Numbers counting from a start by a step are the Number field, as before.
 
+- Clip frames: the canvas right-click menu of a clip frame has Edit Contents and Extract Contents, and while its contents are edited, Finish Editing (on the contents or on the empty page). Ctrl+Shift+F3 enters the selected clip frame and leaves it again (#1273).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

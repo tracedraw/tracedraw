@@ -55,6 +55,7 @@ comando ao lado dele, e você pode acrescentar os seus; veja
 | Teclas de seta, com <kbd>Shift</kbd> ou <kbd>Ctrl</kbd> | deslocar, super deslocamento, micro deslocamento |
 | <kbd>Alt+S</kbd>, <kbd>Alt+E</kbd>, <kbd>Alt+Shift+E</kbd>, <kbd>Alt+Shift+S</kbd>, <kbd>Alt+X</kbd> | criar, editar, concluir, remover a simetria, quebrar o vínculo dela |
 | <kbd>Ctrl+M</kbd> | mesclar células da tabela |
+| <kbd>Ctrl+Shift+F3</kbd> | editar o conteúdo da moldura selecionada, concluir a edição |
 
 ## Painéis {#panels}
 

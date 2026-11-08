@@ -25,6 +25,10 @@ before you release.
   bar, or <kbd>Ctrl</kbd>+click off the objects inside leaves it.
 - [[menu.object.clip_frame_extract]] makes the objects inside ordinary
   objects again; the frame stays, empty.
+- Right-click a frame for [[menu.object.clip_frame_edit]] and
+  [[menu.object.clip_frame_extract]]; while you edit, the right-click menu
+  (on the contents or the empty page) has [[menu.object.clip_frame_finish]].
+  <kbd>Ctrl+Shift+F3</kbd> enters the selected frame and leaves it again.
 - [[menu.object.clip_frame_lock]] (on at first): moving, scaling or rotating
   the frame takes the contents along. Turned off, the frame moves alone and
   the contents stay where they are on the page.

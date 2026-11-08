@@ -2602,6 +2602,10 @@ fn file_menu(app: &mut App, ui: &mut Ui) {
     }
 }
 
+/// The key of Edit Contents and of Finish Editing of a clip frame: into
+/// the frame and out again (`App::toggle_clip_frame_edit`).
+pub const CLIP_EDIT_KEY: &str = "Ctrl+Shift+F3";
+
 fn edit_menu(app: &mut App, ui: &mut Ui) {
     let has = !app.selection.is_empty();
     let undo = app
@@ -3142,28 +3146,30 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
             app.status = tr("status.click_frame");
         }
         if item(ui, "menu.object.clip_frame_extract", "", is_clip) {
-            let clips: Vec<_> = app
-                .selected_shapes()
-                .iter()
-                .filter(|s| matches!(s.kind, ShapeKind::ClipFrame { .. }))
-                .map(|s| s.id)
-                .collect();
-            for c in clips {
-                app.run(Command::ExtractContents { clip: c });
-            }
+            app.extract_clip_contents();
         }
         // Walked for the list of commands (Options > Customization >
         // Commands) both rows count, so each can take a shortcut (#1148).
         let editing = app.clip_frame_edit.is_some();
         // A symbol being edited finishes from the Symbol menu.
-        let clip_editing = editing && app.symbol_edit_index().is_none();
+        let clip_editing = app.editing_clip_contents();
         if (clip_editing || invoke::active())
-            && item(ui, "menu.object.clip_frame_finish", "", clip_editing)
+            && item(
+                ui,
+                "menu.object.clip_frame_finish",
+                CLIP_EDIT_KEY,
+                clip_editing,
+            )
         {
             app.finish_clip_frame_edit();
         }
         if (!editing || invoke::active())
-            && item(ui, "menu.object.clip_frame_edit", "", is_clip && !editing)
+            && item(
+                ui,
+                "menu.object.clip_frame_edit",
+                CLIP_EDIT_KEY,
+                is_clip && !editing,
+            )
         {
             app.edit_clip_frame();
         }

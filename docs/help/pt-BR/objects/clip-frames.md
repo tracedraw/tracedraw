@@ -28,6 +28,11 @@ antes de soltar.
   propriedades, ou <kbd>Ctrl</kbd>+clique fora dos objetos de dentro sai dela.
 - [[menu.object.clip_frame_extract]] torna os objetos de dentro objetos comuns
   de novo; a moldura fica, vazia.
+- Clique com o botão direito numa moldura para [[menu.object.clip_frame_edit]]
+  e [[menu.object.clip_frame_extract]]; enquanto você edita, o menu do botão
+  direito (no conteúdo ou na página vazia) tem
+  [[menu.object.clip_frame_finish]]. <kbd>Ctrl+Shift+F3</kbd> entra na
+  moldura selecionada e sai dela de novo.
 - [[menu.object.clip_frame_lock]] (ativado de início): mover, escalonar ou
   girar a moldura leva o conteúdo junto. Desativado, a moldura se move sozinha
   e o conteúdo fica onde está na página.

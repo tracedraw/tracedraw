@@ -5300,9 +5300,11 @@ mod tests {
     /// No two commands share a built-in shortcut in one context: every
     /// menu command's, every tool's and every panel's default keys are
     /// their own (#1779). The
-    /// one documented split is E, Align Centers Horizontally with a
+    /// documented splits are E, Align Centers Horizontally with a
     /// selection and the Roughen tool without one (`shortcuts.md`, Align
-    /// keys and tool keys) (#1595).
+    /// keys and tool keys) (#1595), and the clip frame's Edit Contents
+    /// and Finish Editing, never offered together: one key goes in and
+    /// out (#1273).
     #[test]
     fn no_two_default_commands_share_a_shortcut() {
         let app = app_with_commands();
@@ -5360,7 +5362,13 @@ mod tests {
             ids.push(format!("panel {tab:?}"));
         }
         let documented_split = |keys: &str, ids: &[String]| {
-            keys == "E" && ids == ["menu.object.align_centers_h", "roughen"]
+            (keys == "E" && ids == ["menu.object.align_centers_h", "roughen"])
+                || (keys == crate::ui::menus::CLIP_EDIT_KEY
+                    && ids
+                        == [
+                            "menu.object.clip_frame_finish",
+                            "menu.object.clip_frame_edit",
+                        ])
         };
         holders
             .iter()

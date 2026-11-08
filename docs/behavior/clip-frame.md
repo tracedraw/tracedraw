@@ -41,6 +41,13 @@ frame is edited node by node, and the clip frame stays one
   turned or resized since it was made comes apart where it shows: its
   own transform goes onto the frame and each content (#1562,
   `command::tests::extracting_a_moved_clip_frame_keeps_the_frame_and_contents_in_place`).
+- The canvas context menu of a selection holding a clip frame offers
+  Edit Contents and Extract Contents (the Object menu's commands); while
+  a clip frame's contents are edited, the menu on the contents or on the
+  empty page offers Finish Editing. Ctrl+Shift+F3 runs Edit Contents on
+  the selected clip frame and Finish Editing while inside; both menu
+  rows show it (#1273,
+  `pick_drag_tests::the_context_menu_and_a_key_edit_and_extract_clip_frame_contents`).
 - Edit Contents: takes the contents out of the frame to edit them (where
   they show, as Extract Contents does); the rest of the page fades to a quarter of its strength while the frame
   and the contents are drawn in full (`App::render_focus`, the

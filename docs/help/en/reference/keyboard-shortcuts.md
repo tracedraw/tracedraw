@@ -53,6 +53,7 @@ shortcut beside it, and you can add your own; see
 | Arrow keys, with <kbd>Shift</kbd> or <kbd>Ctrl</kbd> | nudge, super nudge, micro nudge |
 | <kbd>Alt+S</kbd>, <kbd>Alt+E</kbd>, <kbd>Alt+Shift+E</kbd>, <kbd>Alt+Shift+S</kbd>, <kbd>Alt+X</kbd> | create, edit, finish, remove symmetry, break its link |
 | <kbd>Ctrl+M</kbd> | merge table cells |
+| <kbd>Ctrl+Shift+F3</kbd> | edit the contents of the selected clip frame, finish editing them |
 
 ## Panels {#panels}
 

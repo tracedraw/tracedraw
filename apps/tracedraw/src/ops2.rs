@@ -1261,6 +1261,37 @@ impl App {
 
     /// Object > Clip to Frame > Finish Editing Contents: place the (surviving) contents
     /// back inside the frame.
+    /// Object > Clip to Frame > Extract Contents: every selected clip
+    /// frame's contents come out as objects of their own, each frame
+    /// staying, empty.
+    pub fn extract_clip_contents(&mut self) {
+        let clips: Vec<ShapeId> = self
+            .selected_shapes()
+            .iter()
+            .filter(|s| matches!(s.kind, ShapeKind::ClipFrame { .. }))
+            .map(|s| s.id)
+            .collect();
+        for clip in clips {
+            self.run(Command::ExtractContents { clip });
+        }
+    }
+
+    /// A clip frame's contents are being edited (not a symbol's objects,
+    /// which finish from the Symbol menu).
+    pub fn editing_clip_contents(&self) -> bool {
+        self.clip_frame_edit.is_some() && self.symbol_edit_index().is_none()
+    }
+
+    /// The key for Edit Contents and Finish Editing: into the selected
+    /// clip frame, or out of the one being edited.
+    pub fn toggle_clip_frame_edit(&mut self) {
+        if self.editing_clip_contents() {
+            self.finish_clip_frame_edit();
+        } else if self.clip_frame_edit.is_none() {
+            self.edit_clip_frame();
+        }
+    }
+
     pub fn finish_clip_frame_edit(&mut self) {
         let contents = self.clip_edit_contents();
         let Some((frame, outside)) = self.clip_frame_edit.take() else {
