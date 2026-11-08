@@ -125,6 +125,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
         draw_pending_text_link(app, painter, pointer);
     }
     draw_drop_frame(app, painter);
+    draw_drop_colour(app, painter);
     draw_symmetry_lines(app, painter, rect);
     draw_anchors(app, painter);
     draw_fountain_handles(app, painter);
@@ -1011,6 +1012,50 @@ fn draw_drop_frame(app: &App, painter: &Painter) {
         painter.galley(egui::pos2(bg.left() + 6.0, y), g, Tokens::text());
         y += h + 2.0;
     }
+}
+
+/// The object a move let go with Alt (Alt+Shift) would copy the fill
+/// (outline) onto: its outline in the selection colour, and under the
+/// pointer what the drop does (discussion #2066).
+fn draw_drop_colour(app: &App, painter: &Painter) {
+    use crate::drop_menu::DropAction;
+    if !matches!(app.drag, crate::app::Drag::Move { .. }) {
+        return;
+    }
+    let (Some(action), Some(target)) = (app.drop_colour, app.drop_colour_target) else {
+        return;
+    };
+    // Alt alone over a clip frame puts the selection into it instead.
+    if action == DropAction::CopyFill && app.drop_frame.is_some() {
+        return;
+    }
+    let Some(s) = app.doc().find_shape(target) else {
+        return;
+    };
+    let accent = Tokens::ACCENT;
+    for (pts, _) in flatten(&s.page_path(), &app.view) {
+        if pts.len() >= 2 {
+            painter.add(egui::Shape::line(pts, EStroke::new(1.5, accent)));
+        }
+    }
+    let Some(p) = app.pointer_page else {
+        return;
+    };
+    let at = app.view.to_screen(p) + egui::vec2(18.0, 24.0);
+    let g = painter.layout_no_wrap(
+        crate::i18n::tr(action.key()),
+        egui::FontId::proportional(12.0),
+        Tokens::text(),
+    );
+    let bg = ERect::from_min_size(at, g.size() + egui::vec2(12.0, 8.0));
+    painter.rect(
+        bg,
+        2.0,
+        Tokens::panel(),
+        EStroke::new(1.0, Tokens::border()),
+        egui::StrokeKind::Inside,
+    );
+    painter.galley(bg.min + egui::vec2(6.0, 4.0), g, Tokens::text());
 }
 
 fn draw_symmetry_lines(app: &App, painter: &Painter, rect: ERect) {

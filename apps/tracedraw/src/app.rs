@@ -972,6 +972,13 @@ pub struct App {
     pub drop_frame: Option<ShapeId>,
     /// W and K held during that move.
     pub drop_keys: (bool, bool),
+    /// Alt (the fill) or Alt+Shift (the outline) held while the selection
+    /// is moved with the left button: a release over another object
+    /// copies that onto it, as the right-button drop menu does, and the
+    /// selection stays (discussion #2066).
+    pub drop_colour: Option<crate::drop_menu::DropAction>,
+    /// The object under the pointer that would take it.
+    pub drop_colour_target: Option<ShapeId>,
     /// The Pen or Bezier tool is dragging a node of the selected curve
     /// (as the Shape tool does), not drawing.
     pub pen_editing: bool,
@@ -2569,6 +2576,8 @@ impl App {
             drag_copy: false,
             drop_frame: None,
             drop_keys: (false, false),
+            drop_colour: None,
+            drop_colour_target: None,
             pen_editing: false,
             paste_seen: false,
             curve: None,

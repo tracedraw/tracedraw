@@ -22340,3 +22340,75 @@ fn mesh_nodes_and_their_handles_are_dragged() {
     assert!((to_page * m.nodes[0].pos - corner).hypot() < 1e-6);
     assert_eq!(app.selected_mesh_node(), Some((id, 0)));
 }
+
+/// A move with the left button, Alt held once it is under way and let go
+/// over another object, copies the fill onto that object and leaves the
+/// selection where it was; with Alt+Shift the outline; one undo step
+/// each, as Copy Fill Here and Copy Outline Here of the right-button
+/// drag (discussion #2066).
+#[test]
+fn a_move_let_go_with_alt_copies_the_fill_or_the_outline() {
+    use tracedraw_core::{Color, Command, Fill, Stroke};
+    let (ctx, mut app, a) = setup();
+    app.run(Command::SetStroke {
+        shapes: vec![a],
+        stroke: Some(Stroke::new(Color::rgb8(0, 160, 0), 2.0)),
+    });
+    let b = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(100.0, 10.0, 150.0, 40.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("b");
+    app.run(Command::SetFill {
+        shapes: vec![b],
+        fill: Fill::Solid(Color::rgb8(0, 0, 200)),
+    });
+    app.select(vec![a]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let shape = |app: &App, id| app.doc().find_shape(id).cloned().expect("shape");
+    let before_a = bounds(&app, a);
+    // Started without a key (Alt when the drag starts makes a selection
+    // box), Alt held while moving on and at the release.
+    let alt_drop = |ctx: &egui::Context, app: &mut App, held: Modifiers| {
+        let from = app.view.to_screen(Point::new(30.0, 25.0));
+        let to = app.view.to_screen(Point::new(125.0, 25.0));
+        frame(ctx, app, vec![Event::PointerMoved(from)], Modifiers::NONE);
+        frame(
+            ctx,
+            app,
+            vec![button(from, true, PointerButton::Primary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        for i in 1..=4 {
+            let p = from + (to - from) * (i as f32 / 4.0);
+            let mods = if i == 1 { Modifiers::NONE } else { held };
+            frame(ctx, app, vec![Event::PointerMoved(p)], mods);
+        }
+        frame(
+            ctx,
+            app,
+            vec![button(to, false, PointerButton::Primary, held)],
+            held,
+        );
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    alt_drop(&ctx, &mut app, Modifiers::ALT);
+    assert_eq!(shape(&app, b).fill, shape(&app, a).fill);
+    assert_ne!(shape(&app, b).stroke, shape(&app, a).stroke);
+    // The selection stayed where it was, and stays selected.
+    assert_eq!(bounds(&app, a), before_a);
+    assert_eq!(app.selection, vec![a]);
+    // One undo step.
+    app.undo();
+    assert_eq!(shape(&app, b).fill, Fill::Solid(Color::rgb8(0, 0, 200)));
+    // Alt+Shift: the outline only.
+    alt_drop(&ctx, &mut app, Modifiers::ALT | Modifiers::SHIFT);
+    assert_eq!(shape(&app, b).stroke, shape(&app, a).stroke);
+    assert_eq!(shape(&app, b).fill, Fill::Solid(Color::rgb8(0, 0, 200)));
+    assert_eq!(bounds(&app, a), before_a);
+    // Without a key the move moves.
+    alt_drop(&ctx, &mut app, Modifiers::NONE);
+    assert!(bounds(&app, a).x0 > before_a.x0 + 50.0);
+}

@@ -215,6 +215,18 @@ for what is selected, not for the object in front; with no selected
 object under the pointer, the topmost object there is selected first
 (#1684, `pick_drag_tests::a_right_click_on_a_covered_selected_object_keeps_the_selection`).
 
+The same copies without the menu, with the left button: start moving
+the selection without a key (Alt as the drag starts makes a selection
+box, #1341), then hold Alt and let go over another object, and that object
+takes the fill of the first selected object (Copy Fill Here); hold
+Alt+Shift, and it takes its outline (Copy Outline Here). The object that
+would take it is outlined in the selection colour and the pointer's note
+names what the drop does; the selection stays where it was, and each
+copy is one undo step. Over a clip frame, Alt alone keeps its meaning of
+putting the selection into the frame (#1337); Alt+Shift copies the
+outline onto the frame (discussion #2066,
+`pick_drag_tests::a_move_let_go_with_alt_copies_the_fill_or_the_outline`).
+
 ## Property bar
 
 With nothing selected the bar shows the page fields (size, orientation,

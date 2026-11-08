@@ -1093,6 +1093,8 @@ impl App {
             };
             return;
         }
+        self.drop_colour = None;
+        self.drop_colour_target = None;
         self.drag = Drag::Move {
             start: p,
             last: p,
@@ -2090,6 +2092,14 @@ impl App {
             // Alt adds to the frame as W does (#1337).
             self.drop_keys =
                 ctx.input(|i| (i.key_down(Key::W) || i.modifiers.alt, i.key_down(Key::K)));
+            // Alt copies the fill onto the object the selection is let go
+            // over, Alt+Shift its outline (discussion #2066).
+            let m = ctx.input(|i| i.modifiers);
+            self.drop_colour = match (m.alt, m.shift) {
+                (true, true) => Some(crate::drop_menu::DropAction::CopyOutline),
+                (true, false) => Some(crate::drop_menu::DropAction::CopyFill),
+                _ => None,
+            };
         }
     }
 
@@ -2196,6 +2206,14 @@ impl App {
                 // Over a clip frame that is not being moved: a drop
                 // target (W adds to it, K replaces its contents).
                 self.drop_frame = self.frame_under_pointer(p);
+                // With Alt (Alt+Shift) held: the object that would take
+                // the fill (outline), looked for only then.
+                self.drop_colour_target = if self.drop_colour.is_some() {
+                    let moving = self.selection.clone();
+                    self.hit_test_where(p, |id| moving.contains(&id))
+                } else {
+                    None
+                };
             }
             Drag::Marquee {
                 start,
@@ -3199,6 +3217,25 @@ impl App {
             Drag::Move { .. } if self.over_document_palette() => {
                 self.drag_copy = false;
                 self.palette_from_selection();
+                self.end_page_drag_group();
+            }
+            // Let go over another object with Alt (Alt+Shift) held: it
+            // takes the selection's fill (outline), as Copy Fill Here and
+            // Copy Outline Here of the right-button drag do, and the
+            // selection stays where it was. Alt alone over a clip frame
+            // still puts the selection into it (#1337) (discussion #2066).
+            Drag::Move { .. }
+                if self.drop_colour_target.is_some()
+                    && !(self.drop_colour == Some(crate::drop_menu::DropAction::CopyFill)
+                        && self.drop_frame.is_some()) =>
+            {
+                let action = self.drop_colour.take();
+                let target = self.drop_colour_target.take();
+                self.drag_copy = false;
+                self.drop_frame = None;
+                if let (Some(action), Some(target)) = (action, target) {
+                    self.copy_style_onto(target, action);
+                }
                 self.end_page_drag_group();
             }
             Drag::Move { total, .. } => {
