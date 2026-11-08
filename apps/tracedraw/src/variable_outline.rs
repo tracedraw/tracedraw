@@ -304,19 +304,36 @@ impl App {
                     );
                     if d <= (l.max(r) * scale) + grab {
                         let mut nodes = stroke.widths.clone();
+                        let new = nodes.len();
                         nodes.push(WidthNode {
                             at: t,
                             left: l,
                             right: r,
                         });
-                        let last = nodes.len() - 1;
-                        let (nodes, index) = sorted(nodes, last);
+                        // A lone node on a loop tapers to half the base
+                        // width half way round; with a second node that
+                        // point becomes a node of its own, so the far side
+                        // keeps its taper instead of easing between the
+                        // two (a live test of 0.41).
+                        nodes.extend(
+                            tracedraw_core::style::loop_anchor(
+                                stroke.width,
+                                &stroke.widths,
+                                closed,
+                            )
+                            .filter(|a| {
+                                let gap = (a.at - t).rem_euclid(1.0);
+                                gap.min(1.0 - gap) > 1e-3
+                            }),
+                        );
+                        let (nodes, map) = sorted_map(nodes);
+                        let index = map.get(new).copied().unwrap_or(0);
                         self.set_width_nodes(id, nodes, false);
-                        // The nodes after the new one move up one place.
+                        // The nodes after the new ones move up.
                         let shifted: Vec<usize> = self
                             .picked_width_nodes()
                             .into_iter()
-                            .map(|k| if k >= index { k + 1 } else { k })
+                            .filter_map(|k| map.get(k).copied())
                             .collect();
                         self.vo.more = if extend { shifted } else { Vec::new() };
                         self.vo.node = Some(index);

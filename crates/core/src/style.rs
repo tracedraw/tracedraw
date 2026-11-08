@@ -1748,12 +1748,38 @@ pub fn width_at(base: f64, nodes: &[WidthNode], t: f64) -> (f64, f64) {
     width_around(base, nodes, t, false)
 }
 
+/// Where the reach of a lone width node on a `closed` loop falls back to
+/// half the base width: the point half way round the loop from it. `None`
+/// unless the path is a loop with exactly one node. The Variable Outline
+/// tool sets this node down for real when a second node is added, so the
+/// far side of the loop keeps its taper.
+pub fn loop_anchor(base: f64, nodes: &[WidthNode], closed: bool) -> Option<WidthNode> {
+    match nodes {
+        [only] if closed && only.at.is_finite() => Some(WidthNode::symmetric(
+            (only.at + 0.5).rem_euclid(1.0),
+            base.max(0.0),
+        )),
+        _ => None,
+    }
+}
+
 /// [`width_at`] on a path that is `closed` (one loop): the loop has no
 /// ends, so the reach eases across its seam too, from the last node on
 /// to the first as between any two neighbours, and a node can sit
-/// anywhere round the loop (#1322). With `closed` false it is
-/// [`width_at`].
+/// anywhere round the loop (#1322). A lone node on a loop is its own
+/// neighbour both ways round, so it eases to [`loop_anchor`] half way
+/// round the loop and back, a taper as on an open path, instead of giving
+/// the whole loop its reach. With `closed` false it is [`width_at`].
 pub fn width_around(base: f64, nodes: &[WidthNode], t: f64, closed: bool) -> (f64, f64) {
+    if let (true, [only], Some(anchor)) = (closed, nodes, loop_anchor(base, nodes, closed)) {
+        // In path order, as the nodes are kept.
+        let pair = if anchor.at < only.at {
+            [anchor, *only]
+        } else {
+            [*only, anchor]
+        };
+        return width_around(base, &pair, t, true);
+    }
     let half = (base / 2.0).max(0.0);
     let t = t.clamp(0.0, 1.0);
     let mut prev = WidthNode {
@@ -1937,11 +1963,26 @@ mod tests {
         assert!(l > 3.0 && l < 3.2, "{l}");
         // Between the nodes it eases as on an open path.
         assert_eq!(width_around(2.0, &two, 0.5, true), width_at(2.0, &two, 0.5));
-        // One node: its reach all the way round; none: the base width.
+        // One node: its reach at the node, tapering both ways round to
+        // half the base width half way round the loop (a live test of
+        // 0.41: a loop with one node did not taper); none: the base
+        // width.
         let one = [WidthNode::symmetric(0.9, 10.0)];
-        for t in [0.0, 0.3, 0.9, 1.0] {
-            assert_eq!(width_around(2.0, &one, t, true), (5.0, 5.0), "{t}");
-        }
+        assert_eq!(width_around(2.0, &one, 0.9, true), (5.0, 5.0));
+        let (far, _) = width_around(2.0, &one, 0.4, true);
+        assert!((far - 1.0).abs() < 1e-9, "{far}");
+        // Across the seam as on either side of the node, the same both
+        // ways round.
+        let (a, _) = width_around(2.0, &one, 0.0, true);
+        let (b, _) = width_around(2.0, &one, 1.0, true);
+        let (c, _) = width_around(2.0, &one, 0.8, true);
+        assert!((a - b).abs() < 1e-9 && (a - c).abs() < 1e-9, "{a} {b} {c}");
+        assert!(a > 1.0 && a < 5.0, "{a}");
+        let anchor = loop_anchor(2.0, &one, true).unwrap_or(WidthNode::symmetric(0.0, 0.0));
+        assert!((anchor.at - 0.4).abs() < 1e-9, "{anchor:?}");
+        assert_eq!((anchor.left, anchor.right), (1.0, 1.0));
+        assert_eq!(loop_anchor(2.0, &one, false), None);
+        assert_eq!(loop_anchor(2.0, &two, true), None);
         assert_eq!(width_around(2.0, &[], 0.5, true), (1.0, 1.0));
         assert_eq!(
             width_around(2.0, &two, 0.5, false),
