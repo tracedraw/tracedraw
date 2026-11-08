@@ -1895,6 +1895,13 @@ impl Stroke {
         }
     }
 
+    /// Whether the outline is drawn as a brush stroke: a band of its own
+    /// shape along the path (widths along it, or a calligraphic nib)
+    /// rather than a line of one width.
+    pub fn is_brush(&self) -> bool {
+        !self.widths.is_empty() || (self.stretch < 0.999 && self.width > Self::HAIRLINE + 1e-9)
+    }
+
     pub fn new(color: Color, width: f64) -> Self {
         Stroke {
             color,

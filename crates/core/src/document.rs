@@ -2834,9 +2834,14 @@ impl Shape {
     }
 
     /// Whether Break Apart has parts to give: a curve of several
-    /// subpaths, or a clip frame whose frame is one (each part then a
-    /// clip frame holding the contents, #1607).
+    /// subpaths, a brush stroke (its band and its path, see
+    /// [`Self::is_brush_stroke`]), or a clip frame whose frame is a curve
+    /// of several subpaths (each part then a clip frame holding the
+    /// contents, #1607).
     pub fn breaks_into_parts(&self) -> bool {
+        if self.is_brush_stroke() {
+            return true;
+        }
         let path = match &self.kind {
             ShapeKind::Path { path, .. } => path,
             ShapeKind::ClipFrame { frame, .. } => match &frame.kind {
@@ -2850,6 +2855,76 @@ impl Shape {
             .filter(|e| matches!(e, geometry::PathEl::MoveTo(_)))
             .count()
             > 1
+    }
+
+    /// A curve drawn with a brush: its outline is a band of its own
+    /// shape along it (a brush stroke, a variable or calligraphic
+    /// outline). Break Apart sets the band apart from the path.
+    pub fn is_brush_stroke(&self) -> bool {
+        matches!(self.kind, ShapeKind::Path { .. })
+            && self.stroke.as_ref().is_some_and(|s| s.is_brush())
+    }
+
+    /// The band a brush stroke draws (see [`Self::is_brush_stroke`]), in
+    /// page space as its object stands in its layer, fitted to curves:
+    /// one path per separate part, each an outer contour with its holes.
+    /// `None` for any other object, or a band that comes out empty.
+    pub fn brush_band_parts(&self) -> Option<Vec<BezPath>> {
+        if !self.is_brush_stroke() {
+            return None;
+        }
+        let st = self.stroke.as_ref()?;
+        let page = self.page_path();
+        let scale = if st.scale_with_object {
+            let c = self.transform.as_coeffs();
+            ((c[0] * c[3] - c[1] * c[2]).abs()).sqrt().max(1e-6)
+        } else {
+            1.0
+        };
+        // A variable width from a finer flattening, as it is fitted to
+        // curves (as Convert Outline to Object does, #627).
+        let band = if st.widths.is_empty() {
+            crate::shaping::outline_band(&page, st, scale)?
+        } else {
+            let nodes: Vec<crate::style::WidthNode> = st
+                .widths
+                .iter()
+                .map(|n| crate::style::WidthNode {
+                    at: n.at,
+                    left: n.left * scale,
+                    right: n.right * scale,
+                })
+                .collect();
+            crate::shaping::variable_band_within(&page, st.width * scale, &nodes, 0.005)
+        };
+        let band = crate::fit::fit_path(&band, 0.01);
+        // The contours come outer first, then its holes, which wind the
+        // other way.
+        let mut parts: Vec<BezPath> = Vec::new();
+        let mut outer_sign = 0.0;
+        let mut contour = BezPath::new();
+        let mut flush = |contour: &mut BezPath, parts: &mut Vec<BezPath>| {
+            let c = std::mem::take(contour);
+            let area = c.area();
+            if c.elements().is_empty() || !area.is_finite() || area.abs() <= 1e-12 {
+                return;
+            }
+            if outer_sign == 0.0 {
+                outer_sign = area.signum();
+            }
+            match parts.last_mut() {
+                Some(part) if area.signum() != outer_sign => part.extend(c),
+                _ => parts.push(c),
+            }
+        };
+        for el in band.elements() {
+            if matches!(el, geometry::PathEl::MoveTo(_)) {
+                flush(&mut contour, &mut parts);
+            }
+            contour.push(*el);
+        }
+        flush(&mut contour, &mut parts);
+        (!parts.is_empty()).then_some(parts)
     }
 
     /// A copy with ids from `next` for the object and everything inside

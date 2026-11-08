@@ -1298,6 +1298,42 @@ impl Command {
             Command::BreakApart { shape } => {
                 let (layer_id, idx) = doc.locate(*shape)?;
                 let s = doc.shape(*shape)?.1.clone();
+                // A brush stroke: its band becomes a group of plain filled
+                // curves where it was, and its path a plain line right
+                // above it, keeping the object (a live test of 0.41: the
+                // stroke stayed one object).
+                if let (Some(parts), Some(st)) = (s.brush_band_parts(), s.stroke.as_ref()) {
+                    let fill = st.fill.as_deref().cloned().unwrap_or(Fill::Solid(st.color));
+                    let children: Vec<Shape> = parts
+                        .into_iter()
+                        .map(|path| {
+                            let mut c = Shape::new(
+                                doc.ids_mut().shape(),
+                                ShapeKind::Path { path, closed: true },
+                            );
+                            c.fill = fill.clone();
+                            c.stroke = None;
+                            c
+                        })
+                        .collect();
+                    let mut band = Shape::new(doc.ids_mut().shape(), ShapeKind::Group { children });
+                    band.opacity = s.opacity;
+                    band.name = s.name.clone();
+                    let mut line = s.clone();
+                    line.stroke = Some(Stroke {
+                        width: Stroke::HAIRLINE,
+                        widths: Vec::new(),
+                        stretch: 1.0,
+                        fill: None,
+                        ..st.clone()
+                    });
+                    let layer = doc.layer_mut(layer_id)?;
+                    if let Some(slot) = layer.shapes.get_mut(idx) {
+                        *slot = line;
+                    }
+                    layer.shapes.insert(idx.min(layer.shapes.len()), band);
+                    return Ok(());
+                }
                 // A clip frame breaks apart through its frame: each part
                 // of the frame becomes a clip frame holding the contents
                 // (#1607).
@@ -3194,6 +3230,105 @@ mod tests {
             .apply(&mut doc)
             .unwrap();
         assert_eq!(doc.layer(layer).unwrap().shapes.len(), 2);
+    }
+
+    /// A live test of 0.41: Break Apart (Ctrl+K) on a brush stroke gives
+    /// two objects, the stroke's band as a group of plain filled curves
+    /// and its path as a plain line right above it, in one undo step.
+    #[test]
+    fn break_apart_sets_a_brush_stroke_apart_from_its_path() {
+        use crate::geometry::{Point, Shape as _};
+        use crate::style::WidthNode;
+        let mut e = crate::Engine::default();
+        let layer = e.document().pages[0].layers[0].id;
+        let id = e.new_shape_id();
+        let mut path = BezPath::new();
+        path.move_to(Point::new(10.0, 50.0));
+        path.curve_to(
+            Point::new(40.0, 80.0),
+            Point::new(70.0, 20.0),
+            Point::new(100.0, 50.0),
+        );
+        let mut s = Shape::new(
+            id,
+            ShapeKind::Path {
+                path: path.clone(),
+                closed: false,
+            },
+        );
+        s.fill = Fill::None;
+        let red = Color::rgb8(200, 0, 0);
+        let mut st = Stroke::new(red, 8.0);
+        st.widths = vec![
+            WidthNode::symmetric(0.0, 0.0),
+            WidthNode::symmetric(0.5, 8.0),
+            WidthNode::symmetric(1.0, 0.0),
+        ];
+        s.stroke = Some(st);
+        s.name = Some("Brush stroke".into());
+        e.run(&Command::AddShape { layer, shape: s }).unwrap();
+        assert!(e.document().find_shape(id).unwrap().breaks_into_parts());
+        let before = e.document().clone();
+        e.run(&Command::BreakApart { shape: id }).unwrap();
+        let shapes = &e.document().layer(layer).unwrap().shapes;
+        assert_eq!(shapes.len(), 2);
+        // Below: the band, a group of filled curves in the stroke's
+        // colour with no outline, as wide as the brush in the middle.
+        let ShapeKind::Group { children } = &shapes[0].kind else {
+            panic!("a group: {:?}", shapes[0].kind);
+        };
+        assert!(!children.is_empty());
+        for c in children {
+            assert!(matches!(c.kind, ShapeKind::Path { closed: true, .. }));
+            assert_eq!(c.fill, Fill::Solid(red));
+            assert!(c.stroke.is_none());
+        }
+        let band = shapes[0].page_path();
+        // The middle of the curve, where the brush is widest (4 mm each
+        // way across it).
+        let mid = Point::new(55.0, 50.0);
+        assert!(band.contains(mid));
+        assert!(band.contains(Point::new(mid.x, mid.y + 3.0)));
+        assert!(!band.contains(Point::new(mid.x, mid.y + 5.0)));
+        assert!(band.bounding_box().width() > 85.0);
+        // Above: the path itself, the same object, now a plain line.
+        let line = &shapes[1];
+        assert_eq!(line.id, id);
+        let ShapeKind::Path { path: kept, .. } = &line.kind else {
+            panic!("a curve: {:?}", line.kind);
+        };
+        assert_eq!(kept.elements(), path.elements());
+        let st = line.stroke.as_ref().unwrap();
+        assert!(!st.is_brush());
+        assert_eq!(st.color, red);
+        assert!(!line.breaks_into_parts());
+        assert!(!shapes[0].breaks_into_parts());
+        // Breaking the line apart again changes nothing.
+        e.run(&Command::BreakApart { shape: id }).unwrap();
+        assert_eq!(e.document().layer(layer).unwrap().shapes.len(), 2);
+        // One step back gives the brush stroke again.
+        e.undo().unwrap();
+        e.undo().unwrap();
+        assert_eq!(
+            serde_json::to_string(e.document().layer(layer).unwrap()).unwrap(),
+            serde_json::to_string(before.layer(layer).unwrap()).unwrap()
+        );
+        // A calligraphic nib breaks apart the same way.
+        let mut nib = Stroke::new(red, 6.0);
+        nib.stretch = 0.2;
+        let shape = e.document().find_shape(id).unwrap().clone();
+        let mut shape = Shape {
+            stroke: Some(nib),
+            ..shape
+        };
+        shape.id = e.new_shape_id();
+        let nib_id = shape.id;
+        e.run(&Command::AddShape { layer, shape }).unwrap();
+        e.run(&Command::BreakApart { shape: nib_id }).unwrap();
+        let shapes = &e.document().layer(layer).unwrap().shapes;
+        assert_eq!(shapes.len(), 3);
+        assert!(matches!(shapes[1].kind, ShapeKind::Group { .. }));
+        assert_eq!(shapes[2].id, nib_id);
     }
 
     #[test]
