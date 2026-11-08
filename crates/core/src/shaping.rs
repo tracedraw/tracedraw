@@ -863,7 +863,11 @@ pub enum Enclosed {
 /// outline (or its own start) that [`enclosed_area`] closes: the hairline
 /// gaps files carry from rounding (a few ten thousandths of a millimetre,
 /// #899), not a gap anyone drew.
-const GAP: f64 = 0.01;
+// At least the flattening's own error: an end that lies exactly on a
+// curve (Virtual Segment Delete leaves its ends there) may sit up to
+// TOL outside the curve's flattened chords, and must still close the
+// area (#2076).
+const GAP: f64 = 2.0 * TOL;
 
 /// How far a bridge runs on past the outline it meets, and back behind
 /// the end it starts from, as a share of the outlines' extent. The overlay
@@ -2720,6 +2724,30 @@ mod tests {
     /// the frame, as files carry from rounding, gives the half under the
     /// click; a gap anyone could see (0.2 mm) stays open, and so does a
     /// line that merely touches nothing.
+    /// #2076: an open line whose ends lie exactly on a large circle (as
+    /// Virtual Segment Delete leaves them) closes the area between them,
+    /// though the ends sit outside the circle's flattened chords.
+    #[test]
+    fn an_open_line_ending_on_a_curve_closes_the_area() {
+        use crate::geometry::{ellipse_path, Rect};
+        let circle = ellipse_path(Rect::new(
+            -2679.2041015625,
+            -660.82666015625,
+            -1884.3549499511719,
+            134.02249145507812,
+        ));
+        let mut line = BezPath::new();
+        line.move_to((-2043.4652370224053, -581.4763041392267));
+        line.line_to((-1919.4439697265625, -876.7652587890625));
+        line.line_to((-2542.3212890625, -870.6586303710938));
+        line.line_to((-2479.0868160819336, -608.4672507635786));
+        let parts = vec![(circle, false), (line, false)];
+        assert!(matches!(
+            enclosed_visible_area(&parts, Point::new(-2281.0, -760.0)),
+            Enclosed::Area(_)
+        ));
+    }
+
     #[test]
     fn enclosed_area_closes_hairline_gaps() {
         use super::{enclosed_area, Enclosed};

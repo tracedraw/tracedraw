@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Area Fill fills the area an open line closes off when its ends lie exactly on another outline, as Virtual Segment Delete leaves them: on a large circle the ends sat a hair outside the outline as it is measured, and the area was taken for open (#2076).
+
 - Sliders in dockers and dialogs take the whole width of their row, as Object opacity does, also when a box or a unit list shares the row (the outline width, tolerances, the font sample size); before they kept a short fixed length there.
 
 - File managers show a .tdraw drawing as a small picture of its first page. On Windows the installer adds a thumbnail provider for the Explorer; on Linux the .deb installs the drawing type and a thumbnailer, and `tracedraw-cli thumbnail <file> <out.png> [size]` makes the picture for any file TraceDraw opens.
