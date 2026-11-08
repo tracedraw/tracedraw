@@ -3845,6 +3845,72 @@ fn panning_with_the_middle_button_while_drawing_a_shape_goes_on() {
     assert_ne!(app.selection[0], id);
 }
 
+/// #1929: the Polygon tool dragged with Ctrl draws a regular polygon,
+/// every side the same length, not a polygon stretched to fill the
+/// square Ctrl holds the drag to (as wide as high); without Ctrl the
+/// polygon fills the box dragged.
+#[test]
+fn ctrl_draws_a_regular_polygon() {
+    let (ctx, mut app, _id) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::Polygon);
+    app.polygon_points = 5;
+    let sides = |app: &App| -> Vec<f64> {
+        let s = app.selected_shapes()[0].clone();
+        let pts: Vec<Point> = tracedraw_core::nodes::nodes(&s.page_path())
+            .into_iter()
+            .map(|n| n.pos)
+            .collect();
+        assert_eq!(pts.len(), 5, "{pts:?}");
+        (0..5)
+            .map(|i| (pts[(i + 1) % 5] - pts[i]).hypot())
+            .collect()
+    };
+    let from = app.view.to_screen(Point::new(100.0, 150.0));
+    let count = shape_count(&app);
+    drag(
+        &ctx,
+        &mut app,
+        from,
+        from + egui::vec2(160.0, 60.0),
+        Modifiers::CTRL,
+        Vec::new(),
+    );
+    assert_eq!(shape_count(&app), count + 1, "the polygon is made");
+    let got = sides(&app);
+    let (lo, hi) = got
+        .iter()
+        .fold((f64::MAX, f64::MIN), |(lo, hi), d| (lo.min(*d), hi.max(*d)));
+    assert!(
+        lo > 1.0 && hi - lo < 1e-6 * hi,
+        "a regular pentagon: {got:?}"
+    );
+    // It sits in the square the drag was held to.
+    let b = bounds(&app, app.selection[0]);
+    assert!(
+        b.width() < b.height() * 1.06 && b.width() > b.height(),
+        "a regular pentagon's proportions: {b:?}"
+    );
+    // Without Ctrl the polygon fills the box dragged, its sides unequal.
+    app.select(Vec::new());
+    let from = app.view.to_screen(Point::new(30.0, 150.0));
+    drag(
+        &ctx,
+        &mut app,
+        from,
+        from + egui::vec2(160.0, 60.0),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    let got = sides(&app);
+    let (lo, hi) = got
+        .iter()
+        .fold((f64::MAX, f64::MIN), |(lo, hi), d| (lo.min(*d), hi.max(*d)));
+    assert!(hi - lo > 0.01 * hi, "stretched to the box: {got:?}");
+    let b = bounds(&app, app.selection[0]);
+    assert!(b.width() > 2.0 * b.height(), "{b:?}");
+}
+
 /// A shape drag that is somehow still open when the tool changes does
 /// not stay on the page as a preview (#1923).
 #[test]
