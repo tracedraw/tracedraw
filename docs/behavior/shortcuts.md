@@ -130,6 +130,18 @@ Graph Paper, G Interactive Fill, M Mesh Fill, X Eraser, W Smear, V
 Smudge, E Roughen, S Sketch, Shift+S Shape Recognition, I Artistic
 Media; the Bezier, Pen, Crop and Knife tools have no key.
 
+## Node keys
+
+With the Shape tool and nodes chosen, the node commands of its property
+bar have keys of their own (#2001), Shift and a letter so that they
+never take an align or tool key: Shift+L To Line, Shift+U To Curve,
+Shift+C Cusp, Shift+M Smooth, Shift+Y Symmetrical, Shift+B Break Curve,
+Shift+J Join Nodes, and + Add Node (- deletes the chosen nodes). The
+plain C, S and Y still switch the node type as before (see
+`shape-tool.md`). The commands are Object > Nodes, so Options >
+Customization > Commands lists them under Object and gives them other
+keys (`pick_drag_tests::node_commands_have_keys_of_their_own`).
+
 ## Modal dialogs
 
 - Esc closes any dialog without applying; while a dialog is open the

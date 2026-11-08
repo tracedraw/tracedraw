@@ -21990,3 +21990,94 @@ fn shift_click_on_a_character_node_adds_it() {
     quick(&ctx, &mut app, c, Modifiers::SHIFT);
     assert_eq!(app.node_selection, vec![(id, 0), (id, 1), (id, 2)]);
 }
+
+/// The Shape tool's node commands have keys of their own while nodes
+/// are chosen (#2001): Shift+U makes the segment ending at the chosen
+/// node a curve and Shift+L a line again, Shift+C, Shift+M and Shift+Y
+/// make the node cusp, smooth and symmetrical, Shift+B breaks the curve
+/// there and Shift+J joins the two end nodes again. They are the Object
+/// > Nodes commands, listed for Options > Customization > Commands with
+/// those keys, and a key the user gives one runs it too. Without chosen
+/// nodes the keys do nothing to the curve.
+#[test]
+fn node_commands_have_keys_of_their_own() {
+    use tracedraw_core::nodes::{self, NodeType};
+    let (ctx, mut app, id) = setup();
+    app.convert_to_curves();
+    app.set_tool(Tool::Shape);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let path_of = |app: &App| match &app.doc().find_shape(id).expect("curve").kind {
+        ShapeKind::Path { path, .. } => path.clone(),
+        _ => panic!("a curve"),
+    };
+    let curved_into = |app: &App, index: usize| {
+        nodes::nodes(&path_of(app))
+            .into_iter()
+            .find(|n| n.index == index)
+            .expect("node")
+            .ctrl_in
+            .is_some()
+    };
+    let press = |ctx: &egui::Context, app: &mut App, k: egui::Key, mods: Modifiers| {
+        frame(ctx, app, vec![key(k, mods), key_up(k, mods)], mods);
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    let hit = app.node_at(Point::new(60.0, 40.0)).expect("node");
+    let node = (hit.shape, hit.index);
+    // No node chosen: the curve stays as it is.
+    app.node_selection.clear();
+    let before = path_of(&app);
+    press(&ctx, &mut app, egui::Key::U, Modifiers::SHIFT);
+    assert_eq!(path_of(&app), before);
+    app.select(vec![id]);
+    app.set_tool(Tool::Shape);
+    app.node_selection = vec![node];
+    assert!(!curved_into(&app, node.1));
+    press(&ctx, &mut app, egui::Key::U, Modifiers::SHIFT);
+    assert!(curved_into(&app, node.1), "To Curve");
+    press(&ctx, &mut app, egui::Key::L, Modifiers::SHIFT);
+    assert!(!curved_into(&app, node.1), "To Line");
+    press(&ctx, &mut app, egui::Key::U, Modifiers::SHIFT);
+    for (k, ty) in [
+        (egui::Key::Y, NodeType::Symmetrical),
+        (egui::Key::C, NodeType::Cusp),
+        (egui::Key::M, NodeType::Smooth),
+    ] {
+        press(&ctx, &mut app, k, Modifiers::SHIFT);
+        assert_eq!(app.current_node_type(), Some(ty), "{k:?}");
+    }
+    // A key of the user's for To Line runs it as the menu command.
+    app.settings
+        .shortcuts
+        .push(("menu.object.node_to_line".into(), "Ctrl+Alt+F6".into()));
+    press(
+        &ctx,
+        &mut app,
+        egui::Key::F6,
+        Modifiers::CTRL | Modifiers::ALT,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(!curved_into(&app, node.1), "the user's key");
+    // Break, then join the two ends again.
+    press(&ctx, &mut app, egui::Key::B, Modifiers::SHIFT);
+    assert_eq!(app.engine.undo_label(), Some("Break Curve"));
+    let ends = nodes::nodes(&path_of(&app));
+    let (first, last) = (ends.first().expect("start"), ends.last().expect("end"));
+    app.node_selection = vec![(id, first.index), (id, last.index)];
+    press(&ctx, &mut app, egui::Key::J, Modifiers::SHIFT);
+    assert_eq!(app.engine.undo_label(), Some("Join Nodes"));
+    // Object > Nodes lists them with their keys.
+    let mut entries = Vec::new();
+    let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+        entries = crate::ui::menus::commands(&mut app, ui.ctx());
+    });
+    out.textures_delta.clear();
+    for (key, keys) in crate::ui::menus::NODE_COMMANDS {
+        let e = entries
+            .iter()
+            .find(|e| e.key == key)
+            .unwrap_or_else(|| panic!("{key} listed"));
+        assert_eq!(e.shortcut, keys);
+        assert_eq!(e.path, ["menu.object", "menu.object.nodes"]);
+    }
+}

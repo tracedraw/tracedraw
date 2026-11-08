@@ -4239,6 +4239,17 @@ impl App {
         // tool letters).
         let nodes_chosen = self.tool == Tool::Shape && !self.node_selection.is_empty();
         if nodes_chosen {
+            // The node commands' own keys (Object > Nodes, Shift and a
+            // letter: To Line Shift+L, To Curve Shift+U, Cusp Shift+C,
+            // Smooth Shift+M, Symmetrical Shift+Y, Break Shift+B, Join
+            // Shift+J; #2001).
+            if let Some(id) = presses
+                .iter()
+                .find_map(|(k, m)| App::node_command_key(*k, *m))
+            {
+                self.run_node_command(id);
+                return;
+            }
             use tracedraw_core::nodes::NodeType;
             let now = self.current_node_type();
             let toggled = |key: Key, pair: NodeType| {

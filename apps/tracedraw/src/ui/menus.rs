@@ -355,6 +355,9 @@ pub const NEW_IN_THIS_VERSION: &[&str] = &[
     // Help > Search Commands finds a menu command by its name.
     "menu.help",
     "menu.help.search_commands",
+    // Object > Nodes: the Shape tool's node commands, with keys (#2001).
+    "menu.object",
+    "menu.object.nodes",
 ];
 
 thread_local! {
@@ -603,6 +606,14 @@ fn menu_pic(key: &str) -> Option<crate::ui::propbar::Pic> {
         "menu.object.to_back_of_page" => Pic::ToBack,
         "menu.object.to_back_of_layer" => Pic::ToBack,
         "menu.object.convert_to_curves" => Pic::ToCurves,
+        "menu.object.node_add" => Pic::AddNode,
+        "menu.object.node_join" => Pic::JoinNodes,
+        "menu.object.node_break" => Pic::BreakCurve,
+        "menu.object.node_to_line" => Pic::ToLine,
+        "menu.object.node_to_curve" => Pic::ToCurve,
+        "menu.object.node_cusp" => Pic::NodeCusp,
+        "menu.object.node_smooth" => Pic::NodeSmooth,
+        "menu.object.node_symmetrical" => Pic::NodeSymmetrical,
         "menu.object.lock_object" | "menu.object.lock" => Pic::Lock(true),
         "menu.object.group" => Pic::Group,
         "menu.object.shaping" => Pic::Weld,
@@ -3007,6 +3018,43 @@ pub(crate) fn layout_menu(app: &mut App, ui: &mut Ui) {
     }
 }
 
+/// The Shape tool's node commands, with their keys (#2001): Object >
+/// Nodes, so that they are in Options > Customization > Commands and can
+/// take keys of the user's. They work on the chosen nodes with the Shape
+/// tool; the keys are also read by the canvas
+/// (`App::node_command_key`).
+pub(crate) const NODE_COMMANDS: [(&str, &str); 8] = [
+    ("menu.object.node_add", "+"),
+    ("menu.object.node_join", "Shift+J"),
+    ("menu.object.node_break", "Shift+B"),
+    ("menu.object.node_to_line", "Shift+L"),
+    ("menu.object.node_to_curve", "Shift+U"),
+    ("menu.object.node_cusp", "Shift+C"),
+    ("menu.object.node_smooth", "Shift+M"),
+    ("menu.object.node_symmetrical", "Shift+Y"),
+];
+
+/// Object > Nodes: the node commands of the Shape tool's property bar.
+fn node_items(app: &mut App, ui: &mut Ui) {
+    let has = app.tool == crate::tools::Tool::Shape && !app.node_selection.is_empty();
+    for (key, keys) in NODE_COMMANDS {
+        let enabled = if key == "menu.object.node_join" {
+            has && app.node_selection.len() == 2
+        } else {
+            has
+        };
+        if matches!(
+            key,
+            "menu.object.node_join" | "menu.object.node_to_line" | "menu.object.node_cusp"
+        ) {
+            sep(ui);
+        }
+        if item(ui, key, keys, enabled) {
+            app.run_node_command(key);
+        }
+    }
+}
+
 fn object_menu(app: &mut App, ui: &mut Ui) {
     let has = !app.selection.is_empty();
     let many = app.selection.len() > 1;
@@ -3403,6 +3451,7 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         app.show_dockers = true;
         app.docker_tab = crate::app::DockerTab::JoinCurves;
     }
+    sub(ui, "menu.object.nodes", |ui| node_items(app, ui));
     sep(ui);
     let has_fill = app
         .selected_shapes()
