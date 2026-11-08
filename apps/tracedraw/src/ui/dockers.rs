@@ -2498,7 +2498,9 @@ fn outline_editor_mixed(
                     .add(
                         crate::ui::Slider::new(&mut s.width, 0.1..=25.0)
                             .logarithmic(true)
-                            .show_value(false),
+                            .show_value(false)
+                            // The width box and the unit list after it.
+                            .reserve(150.0),
                     )
                     .rich_tip(width_tip.clone());
                 let mut w = r.settled();

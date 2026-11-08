@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Sliders in dockers and dialogs take the whole width of their row, as Object opacity does, also when a box or a unit list shares the row (the outline width, tolerances, the font sample size); before they kept a short fixed length there.
+
 - File managers show a .tdraw drawing as a small picture of its first page. On Windows the installer adds a thumbnail provider for the Explorer; on Linux the .deb installs the drawing type and a thumbnailer, and `tracedraw-cli thumbnail <file> <out.png> [size]` makes the picture for any file TraceDraw opens.
 
 - Ellipse arcs stay unfilled while Fill open curves is off; uniform transparency set on the fill alone or on the outline alone fades only that part; the dimension tools snap to the ends, nodes and edges of objects even with Snap To Objects off.

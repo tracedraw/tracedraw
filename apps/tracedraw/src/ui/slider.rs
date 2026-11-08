@@ -45,6 +45,11 @@ const MAJOR_TICK: f32 = 6.0;
 const RAIL_H: f32 = 20.0;
 /// The narrowest groove.
 const MIN_RAIL_W: f32 = 40.0;
+/// A row at most this wide is a docker's or a dialog's, whose sliders
+/// take the rest of the row; a wider one is a bar's.
+const ROW_FILL_MAX: f32 = 640.0;
+/// The shortest groove a row gives when it has little room left.
+const MIN_ROW_RAIL_W: f32 = 80.0;
 /// The number box with its spin arrows.
 const BOX_W: f32 = field::DEFAULT_WIDTH;
 /// Points between the groove and the box.
@@ -126,6 +131,9 @@ pub struct Slider<'a, N: Numeric> {
     mixed: bool,
     /// The groove's length when the layout does not decide it.
     length: Option<f32>,
+    /// Points kept free at the end of a row for what follows the slider
+    /// there (a unit list, a label): see [`Self::reserve`].
+    reserve: f32,
 }
 
 impl<'a, N: Numeric> Slider<'a, N> {
@@ -147,6 +155,7 @@ impl<'a, N: Numeric> Slider<'a, N> {
             vertical: false,
             mixed: false,
             length: None,
+            reserve: 0.0,
         }
     }
 
@@ -235,6 +244,14 @@ impl<'a, N: Numeric> Slider<'a, N> {
     /// `Spacing::slider_width` in a row (a bar).
     pub fn width(mut self, width: f32) -> Self {
         self.length = Some(width);
+        self
+    }
+
+    /// In a row of a docker or a dialog the groove takes the rest of the
+    /// row, as one alone in a column does; `points` are kept free after
+    /// it (and its number box) for the controls that follow in the row.
+    pub fn reserve(mut self, points: f32) -> Self {
+        self.reserve = points.max(0.0);
         self
     }
 
@@ -481,6 +498,14 @@ impl<N: Numeric> Widget for Slider<'_, N> {
                 } else {
                     ui.spacing().slider_width
                 }
+            }
+            // In a row of a docker or a dialog (narrower than a bar across
+            // the window): the rest of the row, so no slider there is a
+            // short one beside a long one in a column.
+            None if ui.max_rect().width() <= ROW_FILL_MAX && ui.available_width().is_finite() => {
+                (ui.available_width() - box_w - self.reserve)
+                    .max(ui.spacing().slider_width.min(MIN_ROW_RAIL_W))
+                    .max(MIN_RAIL_W)
             }
             None => ui.spacing().slider_width.max(MIN_RAIL_W),
         };
