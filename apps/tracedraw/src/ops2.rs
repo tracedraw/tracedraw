@@ -1811,6 +1811,19 @@ impl App {
     /// the place and properties of the curve selected last. Returns the
     /// number of joints made.
     pub fn join_curves(&mut self) -> usize {
+        self.join_selected_curves(false)
+    }
+
+    /// Weld of open curves alone (#1934): their ends that meet, or lie
+    /// within the Join Curves gap, are joined as [`App::join_curves`]
+    /// joins them, and the curves become one object either way, the
+    /// parts whose ends meet nothing as subpaths of it (as welding
+    /// closed objects apart from each other gives one object).
+    pub fn weld_open_curves(&mut self) -> usize {
+        self.join_selected_curves(true)
+    }
+
+    fn join_selected_curves(&mut self, weld: bool) -> usize {
         let shapes: Vec<Shape> = self
             .selected_shapes_target_last()
             .into_iter()
@@ -1830,7 +1843,7 @@ impl App {
             JoinKind::Bezier => tracedraw_core::join::JoinMode::Bezier,
         };
         let (joined, n) = tracedraw_core::join::join_curves(&paths, mode, j.gap);
-        if n == 0 {
+        if n == 0 && !(weld && shapes.len() > 1) {
             self.status = tr("status.join_gap_too_small");
             return 0;
         }
@@ -1868,7 +1881,8 @@ impl App {
         if !others.is_empty() {
             cmds.push(Command::DeleteShapes { shapes: others });
         }
-        if let Err(e) = self.engine.run_batch("Join Curves", &cmds) {
+        let label = if weld { "Weld" } else { "Join Curves" };
+        if let Err(e) = self.engine.run_batch(label, &cmds) {
             self.status = e.to_string();
             return 0;
         }

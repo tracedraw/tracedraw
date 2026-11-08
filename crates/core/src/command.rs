@@ -1297,10 +1297,24 @@ impl Command {
                 let top = doc.shape(top_id)?.1.clone();
                 let layer_id = located[0].1;
                 let insert_at = located[0].2;
+                // Open curves stay open (#1934): the result is an open
+                // curve of several subpaths when any part is open, and the
+                // parts that were closed keep a close of their own, so
+                // they still fill and break apart as closed curves.
+                let any_open = located.iter().any(|(id, _, _)| {
+                    doc.shape(*id)
+                        .is_ok_and(|(_, s)| matches!(s.kind, ShapeKind::Path { closed: false, .. }))
+                });
                 let mut path = BezPath::new();
                 for (id, _, _) in &located {
                     let s = doc.shape(*id)?.1;
-                    path.extend(s.page_path());
+                    let part = s.page_path();
+                    let open = matches!(s.kind, ShapeKind::Path { closed: false, .. });
+                    if any_open && !open {
+                        path.extend(close_subpaths(&part));
+                    } else {
+                        path.extend(part);
+                    }
                 }
                 for (id, l, _) in &located {
                     let layer = doc.layer_mut(*l)?;
@@ -1308,7 +1322,13 @@ impl Command {
                         layer.shapes.remove(i);
                     }
                 }
-                let mut combined = Shape::new(top_id, ShapeKind::Path { path, closed: true });
+                let mut combined = Shape::new(
+                    top_id,
+                    ShapeKind::Path {
+                        path,
+                        closed: !any_open,
+                    },
+                );
                 combined.fill = top.fill;
                 combined.stroke = top.stroke;
                 combined.opacity = top.opacity;
@@ -1391,13 +1411,12 @@ impl Command {
                             .into_iter()
                             .zip(ids)
                             .map(|(p, id)| {
-                                let mut piece = Shape::new(
-                                    id,
-                                    ShapeKind::Path {
-                                        path: p,
-                                        closed: *closed,
-                                    },
-                                );
+                                // A closed part of an open curve (Combine
+                                // of open and closed curves) comes out
+                                // closed (#1934).
+                                let closed =
+                                    *closed || p.elements().last() == Some(&PathEl::ClosePath);
+                                let mut piece = Shape::new(id, ShapeKind::Path { path: p, closed });
                                 piece.transform = s.transform;
                                 piece.fill = s.fill.clone();
                                 piece.stroke = s.stroke.clone();
@@ -1846,6 +1865,30 @@ fn clip_frame_pieces(
             piece
         })
         .collect()
+}
+
+/// `path` with every subpath that has a segment ended by a close.
+fn close_subpaths(path: &BezPath) -> BezPath {
+    let mut out = BezPath::new();
+    // Whether the subpath being copied has a segment and no close yet.
+    let mut open = false;
+    for el in path.elements() {
+        match el {
+            PathEl::MoveTo(_) => {
+                if open {
+                    out.close_path();
+                }
+                open = false;
+            }
+            PathEl::ClosePath => open = false,
+            _ => open = true,
+        }
+        out.push(*el);
+    }
+    if open {
+        out.close_path();
+    }
+    out
 }
 
 fn reid_shape(s: &Shape, doc: &mut Document) -> Shape {
@@ -3349,6 +3392,80 @@ mod tests {
         assert_eq!(shapes.len(), 3);
         assert!(matches!(shapes[1].kind, ShapeKind::Group { .. }));
         assert_eq!(shapes[2].id, nib_id);
+    }
+
+    /// Combine of open curves gives one open curve with a subpath for
+    /// each; with a closed object among them, that part keeps its close
+    /// (it still fills) and Break Apart gives it back closed (#1934).
+    #[test]
+    fn combining_open_curves_keeps_them_open() {
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let line = |doc: &mut Document, y: f64| {
+            let mut p = BezPath::new();
+            p.move_to((0.0, y));
+            p.line_to((10.0, y));
+            Shape::new(
+                doc.ids_mut().shape(),
+                ShapeKind::Path {
+                    path: p,
+                    closed: false,
+                },
+            )
+        };
+        let a = line(&mut doc, 0.0);
+        let b = line(&mut doc, 5.0);
+        let mut square = BezPath::new();
+        square.move_to((20.0, 0.0));
+        square.line_to((30.0, 0.0));
+        square.line_to((30.0, 10.0));
+        square.line_to((20.0, 0.0));
+        let c = Shape::new(
+            doc.ids_mut().shape(),
+            ShapeKind::Path {
+                path: square,
+                closed: true,
+            },
+        );
+        let (ia, ib, ic) = (a.id, b.id, c.id);
+        for shape in [a, b, c] {
+            Command::AddShape { layer, shape }.apply(&mut doc).unwrap();
+        }
+        Command::Combine {
+            shapes: vec![ia, ib],
+        }
+        .apply(&mut doc)
+        .unwrap();
+        let ShapeKind::Path { path, closed } = &doc.find_shape(ib).unwrap().kind else {
+            panic!("a curve");
+        };
+        assert!(!closed, "two lines combine into an open curve");
+        let moves = |p: &BezPath| {
+            p.elements()
+                .iter()
+                .filter(|e| matches!(e, PathEl::MoveTo(_)))
+                .count()
+        };
+        assert_eq!(moves(path), 2);
+        assert!(!path.elements().contains(&PathEl::ClosePath));
+        Command::Combine {
+            shapes: vec![ib, ic],
+        }
+        .apply(&mut doc)
+        .unwrap();
+        let ShapeKind::Path { path, closed } = &doc.find_shape(ic).unwrap().kind else {
+            panic!("a curve");
+        };
+        assert!(!closed);
+        assert_eq!(moves(path), 3);
+        assert_eq!(path.elements().last(), Some(&PathEl::ClosePath));
+        Command::BreakApart { shape: ic }.apply(&mut doc).unwrap();
+        let shapes = &doc.layer(layer).unwrap().shapes;
+        let closed: Vec<bool> = shapes
+            .iter()
+            .map(|s| matches!(s.kind, ShapeKind::Path { closed: true, .. }))
+            .collect();
+        assert_eq!(closed, vec![false, false, true]);
     }
 
     #[test]
