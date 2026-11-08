@@ -1111,21 +1111,22 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
     // move goes on while the left button is held): the pointer keeps
     // being drawn until the move ends.
     if response.hovered() || response.dragged() || app.transforming() {
-        let (shift, primary, middle, pos) = ui.input(|i| {
+        let (shift, ctrl, primary, middle, pos) = ui.input(|i| {
             (
                 i.modifiers.shift,
+                i.modifiers.ctrl,
                 i.pointer.primary_down(),
                 i.pointer.middle_down(),
                 i.pointer.hover_pos().or(i.pointer.latest_pos()),
             )
         });
-        let cursor = cursors::for_tool(app, shift, primary, middle, pos);
+        let cursor = cursors::for_tool_with_ctrl(app, shift, ctrl, primary, middle, pos);
         cursors::show(ui.ctx(), cursor, pos);
         // A colour eyedropper waiting to sample: the colour under the
         // pointer beside it (#990).
         let picker = crate::ui::color_picker::picking(ui.ctx());
         if let (true, Some(at), Some(p)) = (
-            (picker || app.eyedropper_sampling()) && !primary && !middle,
+            (picker || app.eyedropper_sampling(ctrl)) && !primary && !middle,
             pos,
             app.pointer_page,
         ) {

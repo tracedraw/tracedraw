@@ -138,7 +138,7 @@ Counts: works 192, partial 7 (`.cdr` content coverage; CMX import; print preview
 | Arrowhead editor: per end the head, its size (percentage of the preset size), offset along the line, mirror horizontally and vertically, rotation, with a preview; Share attributes copies the start to the end and keeps them the same; rendered and exported alike (see `behavior/outline-pen.md`) | works |
 | Outline paint: every fill kind (none, uniform, gradient, pattern, texture, mesh) with the fill editors, on screen, in SVG (gradient and pattern strokes) and PDF (the outline's area shaded or rasterised) | works (see `behavior/outline-pen.md`, Outline paint; other exports use the outline colour) |
 | Outline Pen and Outline Color (hidden flyout, Options toggle); the Outline Pen dialog's changes show live on the selection until OK or Cancel; calligraphic nib rendered and exported | works |
-| Eyedroppers: colour (bitmap sampling, fill or outline) and attributes (properties with transparency, transformations, effects groups, #1338); a live readout beside the pointer while the colour eyedropper or a colour picker's eyedropper hovers: swatch, palette or ink name, values in the drawing's CMYK or RGB mode and hex (#990) | works (see `behavior/eyedroppers.md`) |
+| Eyedroppers: colour (bitmap sampling, fill or outline) and attributes (properties with transparency, transformations, effects groups, #1338); Ctrl+click samples again in Apply mode (#1302); a live readout beside the pointer while the colour eyedropper or a colour picker's eyedropper hovers: swatch, palette or ink name, values in the drawing's CMYK or RGB mode and hex (#990) | works (see `behavior/eyedroppers.md`) |
 
 ## 6. Interactive effects
 

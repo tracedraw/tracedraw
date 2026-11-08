@@ -68,6 +68,8 @@ full, row-by-row status.
 
 - Options > Display > View when a drawing opens has Zoom level: a drawing opens at the zoom typed beside the list, its page in the middle of the window (#1266).
 
+- Colour Eyedropper and Attributes Eyedropper: Ctrl+click in Apply mode samples again without leaving Apply mode (Ctrl+Shift+click with the Colour Eyedropper takes the outline colour first); the pointer is the pipette while Ctrl is held (#1302).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

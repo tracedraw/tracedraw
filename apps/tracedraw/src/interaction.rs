@@ -1562,7 +1562,8 @@ impl App {
             Tool::ColorEyedropper | Tool::AttributesEyedropper => {
                 if response.clicked() {
                     let attrs = self.tool == Tool::AttributesEyedropper;
-                    self.eyedropper_click(p, attrs, mods.shift);
+                    // Ctrl samples again in Apply mode (#1302).
+                    self.eyedropper_click(p, attrs, mods.shift, mods.ctrl);
                 }
             }
             Tool::InteractiveFill => self.fill_input(response, p, mods),

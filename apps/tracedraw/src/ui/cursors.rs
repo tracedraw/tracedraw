@@ -302,10 +302,24 @@ fn shape_mark(app: &App, pos: Option<Pos2>) -> ShapeMark {
 }
 
 /// The cursor for the current tool and input state, the pointer at `pos`
-/// (screen).
+/// (screen), Ctrl not held (the tests' shorthand).
+#[cfg(test)]
 pub fn for_tool(
     app: &App,
     shift: bool,
+    primary_down: bool,
+    middle_down: bool,
+    pos: Option<Pos2>,
+) -> ToolCursor {
+    for_tool_with_ctrl(app, shift, false, primary_down, middle_down, pos)
+}
+
+/// [`for_tool`] with Ctrl held or not: Ctrl in an eyedropper's Apply
+/// mode samples again, so the pointer is the pipette (#1302).
+pub fn for_tool_with_ctrl(
+    app: &App,
+    shift: bool,
+    ctrl: bool,
     primary_down: bool,
     middle_down: bool,
     pos: Option<Pos2>,
@@ -347,13 +361,15 @@ pub fn for_tool(
         Tool::Pan => ToolCursor::Hand {
             closed: primary_down,
         },
-        // Apply mode paints what was sampled: the bucket (Shift with the
-        // attributes eyedropper samples again: the pipette).
-        Tool::ColorEyedropper if app.eyedropper_apply && app.eyedropper_color.is_some() => {
+        // Apply mode paints what was sampled: the bucket (Ctrl, and Shift
+        // with the attributes eyedropper, samples again: the pipette).
+        Tool::ColorEyedropper
+            if app.eyedropper_apply && app.eyedropper_color.is_some() && !ctrl =>
+        {
             ToolCursor::Bucket
         }
         Tool::AttributesEyedropper
-            if app.eyedropper_apply && app.eyedropper_attrs.is_some() && !shift =>
+            if app.eyedropper_apply && app.eyedropper_attrs.is_some() && !shift && !ctrl =>
         {
             ToolCursor::Bucket
         }
@@ -1599,6 +1615,37 @@ mod tests {
             for_tool(&app, false, false, false, None),
             ToolCursor::Bucket
         );
+        // Ctrl samples again in Apply mode: the pipette (#1302).
+        assert_eq!(
+            for_tool_with_ctrl(&app, false, true, false, false, None),
+            ToolCursor::Pipette
+        );
+        app.tool = Tool::AttributesEyedropper;
+        app.eyedropper_attrs = Some(crate::eyedropper::SampledAttrs {
+            fill: tracedraw_core::Fill::None,
+            stroke: None,
+            text: None,
+            width: 1.0,
+            height: 1.0,
+            rotation: 0.0,
+            center: tracedraw_core::geometry::Point::ZERO,
+            opacity: 1.0,
+            shadow: None,
+            effects: Vec::new(),
+            fill_source: None,
+        });
+        app.eyedropper_apply = true;
+        assert_eq!(
+            for_tool(&app, false, false, false, None),
+            ToolCursor::Bucket
+        );
+        for (shift, ctrl) in [(true, false), (false, true)] {
+            assert_eq!(
+                for_tool_with_ctrl(&app, shift, ctrl, false, false, None),
+                ToolCursor::Pipette
+            );
+        }
+        app.tool = Tool::ColorEyedropper;
         app.eyedropper_reset();
         assert_eq!(
             for_tool(&app, false, false, false, None),
