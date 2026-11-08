@@ -3539,6 +3539,18 @@ impl App {
         // Text typing has priority; the zoom keys, which type nothing,
         // still zoom (#1699).
         if self.text_edit.is_some() && !dialog_open {
+            // Shift+F3 while typing: Text > Change Case for the text being
+            // edited, which the editing ends and selects first (#2059).
+            if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F3)) {
+                let shape = self.text_edit.as_ref().map(|t| t.shape);
+                self.finish_text();
+                if let Some(shape) = shape {
+                    self.select(vec![shape]);
+                }
+                self.dialog =
+                    crate::ui::dialogs::Dialog::ChangeCase(crate::ops2::CaseMode::Sentence);
+                return;
+            }
             self.text_view_keys(ctx);
             self.text_keyboard(ctx);
             return;
