@@ -3611,6 +3611,16 @@ fn effects_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.effects.flatten", "", has) {
         app.flatten_effects();
     }
+    // The selected picture's effects on every picture of the drawing
+    // (#1551).
+    if item(
+        ui,
+        "menu.effects.all_pages",
+        "",
+        app.doc().pages.len() > 1 && app.can_apply_effects_to_all_pages(),
+    ) {
+        app.apply_effects_to_all_pages();
+    }
     sep(ui);
     // Bitmap effect groups.
     for (key, group) in crate::fx::groups() {

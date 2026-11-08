@@ -104,6 +104,8 @@ full, row-by-row status.
 
 - Contour tool: an object with a contour shows two handles on the drawing, a square at the last step that sets how far the contour reaches and a bar at the first step that sets the number of steps (the last step staying where it is). The contour follows live and each drag is one undo step. Steps on the property bar is a slider (#1265).
 
+- Bitmap effects on all pages: in a drawing of several pages the effect dialogs have an All pages box that gives the effect to every picture on every page as well, and Effects > Apply to Pictures on All Pages gives every other picture the effects of the selected one (effects without a dialog included), each as one undo step (#1551).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
