@@ -16,6 +16,8 @@ full, row-by-row status.
 
 - Browser version: the module no longer carries the eighteen interface languages besides English (about 10 MB of text); the page fetches the chosen language's file when the editor starts in it or it is chosen, showing English until it arrives, then switching without a reload, and the installed app keeps a fetched language for use without a network. The desktop program keeps every language built in.
 
+- Icon buttons (toolbox, standard toolbar, property bar, the Outline Pen's picture buttons): a button that is on, such as the active tool or Portrait or Landscape, stands out with a sharp blue frame, and a hovered button shows a clearer blue fill and frame; on and hovered together look different again. The pressed look was white with a grey frame and the hover a faint tint, hard to tell apart from the panel. The same looks apply in the light, dark and high contrast themes.
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
