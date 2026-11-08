@@ -3358,6 +3358,68 @@ mod tests {
         assert!(!band.contains(Point::new(25.0, 25.0)));
     }
 
+    /// A live test of 0.41: on a closed object the variable outline made
+    /// a step and left an open node where the path closes. Nodes either
+    /// side of the closing point, or on it, taper across it as anywhere
+    /// else: the reach there is the eased one, the same just before and
+    /// just after it, and the band stays one ring of two smooth contours.
+    #[test]
+    fn a_variable_band_tapers_across_the_closing_point() {
+        use super::variable_band;
+        use crate::geometry::{ellipse_path, PathEl, Point, Rect};
+        use crate::style::WidthNode;
+        // Starts and closes at the right, (100, 50), running up.
+        let circle = ellipse_path(Rect::new(0.0, 0.0, 100.0, 100.0));
+        let ring_count = |band: &crate::geometry::BezPath| {
+            band.elements()
+                .iter()
+                .filter(|e| matches!(e, PathEl::MoveTo(_)))
+                .count()
+        };
+        // How far out the band reaches at `deg` degrees round from the
+        // closing point.
+        let reach = |band: &crate::geometry::BezPath, deg: f64| {
+            let (c, s) = (deg.to_radians().cos(), deg.to_radians().sin());
+            (0..800)
+                .map(|i| 50.0 + i as f64 * 0.01)
+                .take_while(|r| band.contains(Point::new(50.0 + r * c, 50.0 + r * s)))
+                .last()
+                .map_or(0.0, |r| r - 50.0)
+        };
+        // A node a twentieth before the close and one after, 10 mm wide.
+        let band = variable_band(
+            &circle,
+            2.0,
+            &[
+                WidthNode::symmetric(0.05, 10.0),
+                WidthNode::symmetric(0.95, 10.0),
+            ],
+        );
+        assert_eq!(ring_count(&band), 2);
+        for deg in [-10.0, -3.0, -0.5, 0.0, 0.5, 3.0, 10.0] {
+            let r = reach(&band, deg);
+            assert!((r - 5.0).abs() < 0.1, "{deg}: {r}");
+        }
+        // Half way round too: the two nodes say the same.
+        assert!((reach(&band, 180.0) - 5.0).abs() < 0.1);
+        // One node on the closing point itself: the same either side,
+        // easing away smoothly with no step.
+        let band = variable_band(&circle, 2.0, &[WidthNode::symmetric(0.0, 10.0)]);
+        assert_eq!(ring_count(&band), 2);
+        assert!((reach(&band, 0.0) - 5.0).abs() < 0.1);
+        let mut last = reach(&band, 0.0);
+        for deg in (1..=180).step_by(3) {
+            let (up, down) = (reach(&band, deg as f64), reach(&band, -deg as f64));
+            assert!((up - down).abs() < 0.1, "{deg}: {up} {down}");
+            assert!(
+                up <= last + 0.02 && last - up < 0.5,
+                "{deg}: {last} to {up}"
+            );
+            last = up;
+        }
+        assert!((last - 1.0).abs() < 0.1, "{last}");
+    }
+
     /// #776: a wide node at a rectangle's corner, its reach falling away
     /// down the next side. The inside of the corner follows that fall
     /// with no round bulge as wide as the corner's reach standing out

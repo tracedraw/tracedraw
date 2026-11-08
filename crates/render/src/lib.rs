@@ -4800,6 +4800,48 @@ mod tests {
         assert_eq!(colour(&pm, fill), (0, 0, 255));
     }
 
+    /// A live test of 0.41: a variable outline on a closed object (an
+    /// ellipse here) spread over the whole object, stepped and left an
+    /// open node where the path closes. A node on the closing point (the
+    /// right of the ellipse) is wide there on both sides of it, with no
+    /// gap, and the outline tapers to its base width half way round.
+    #[test]
+    fn a_variable_outline_on_an_ellipse_tapers_across_its_closing_point() {
+        use tracedraw_core::style::WidthNode;
+        let mut s = Shape::new(
+            tracedraw_core::ShapeId(1),
+            ShapeKind::Ellipse {
+                rect: Rect::new(20.0, 20.0, 80.0, 80.0),
+                arc: None,
+            },
+        );
+        s.fill = Fill::None;
+        let mut st = tracedraw_core::Stroke::new(Color::BLACK, 2.0);
+        st.widths = vec![WidthNode::symmetric(0.0, 8.0)];
+        s.stroke = Some(st);
+        let (doc, page) = doc_with(vec![s]);
+        let opts = RenderOptions {
+            width: 100,
+            height: 100,
+            view: ViewTransform {
+                zoom: 1.0,
+                origin_x: 0.0,
+                origin_y: 100.0,
+            },
+            ..RenderOptions::default()
+        };
+        let pm = render_page(&doc, page, &opts).unwrap();
+        let ink = |x: f64, y: f64| pm.pixel(x as u32, (100.0 - y) as u32).unwrap().alpha() > 200;
+        // At the closing point, (80, 50): 4 mm each way, just above and
+        // just below it alike.
+        for y in [47.5, 49.5, 50.5, 52.5] {
+            assert!(ink(83.2, y) && ink(76.8, y), "at {y}");
+            assert!(!ink(84.8, y), "at {y}");
+        }
+        // Half way round, (20, 50): the base width, 1 mm each way.
+        assert!(ink(20.2, 50.5) && !ink(17.5, 50.5) && !ink(22.5, 50.5));
+    }
+
     #[test]
     fn calligraphic_outline_is_wide_across_the_nib_and_thin_along_it() {
         // 25.4 dpi: one pixel per millimetre. Flat 6 mm nib at 0 degrees.

@@ -23571,3 +23571,72 @@ fn overprint_is_set_from_the_docker() {
     app.select(Vec::new());
     assert_eq!(overprint_state(&app, true), None);
 }
+
+/// A live test of 0.41: Ctrl+K (Break Apart) did nothing on a stroke
+/// drawn with the Brush Strokes tool. Pressed in the window it sets the
+/// stroke apart: the drawn brush band as a group of filled curves, the
+/// path a plain line above it, both selected, one undo step.
+#[test]
+fn ctrl_k_breaks_a_brush_stroke_into_its_band_and_path() {
+    let (ctx, mut app, rect) = setup();
+    app.media_mode = crate::media::MediaMode::Preset;
+    app.media_width = 6.0;
+    app.set_tool(Tool::BrushStrokes);
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let from = app.view.to_screen(Point::new(80.0, 150.0));
+    let to = app.view.to_screen(Point::new(160.0, 170.0));
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    let [stroke] = app.selection[..] else {
+        panic!("one stroke: {:?}", app.selection);
+    };
+    assert_ne!(stroke, rect);
+    assert!(app
+        .doc()
+        .find_shape(stroke)
+        .is_some_and(|s| s.is_brush_stroke()));
+    let count = |app: &App| {
+        app.doc().pages[0]
+            .layers
+            .iter()
+            .map(|l| l.shapes.len())
+            .sum::<usize>()
+    };
+    let before = count(&app);
+    frame(
+        &ctx,
+        &mut app,
+        vec![
+            key(egui::Key::K, Modifiers::COMMAND),
+            key_up(egui::Key::K, Modifiers::COMMAND),
+        ],
+        Modifiers::COMMAND,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert_eq!(count(&app), before + 1);
+    assert_eq!(app.selection.len(), 2, "{:?}", app.selection);
+    let line = app.doc().find_shape(stroke).cloned().expect("the path");
+    assert!(matches!(line.kind, ShapeKind::Path { .. }));
+    assert!(!line.is_brush_stroke());
+    let band = app
+        .selection
+        .iter()
+        .filter(|id| **id != stroke)
+        .find_map(|id| app.doc().find_shape(*id).cloned())
+        .expect("the band");
+    let ShapeKind::Group { children } = &band.kind else {
+        panic!("a group: {:?}", band.kind);
+    };
+    assert!(!children.is_empty());
+    assert!(children
+        .iter()
+        .all(|c| c.stroke.is_none() && !matches!(c.fill, tracedraw_core::Fill::None)));
+    // One undo step gives the stroke back.
+    app.undo();
+    assert_eq!(count(&app), before);
+    assert!(app
+        .doc()
+        .find_shape(stroke)
+        .is_some_and(|s| s.is_brush_stroke()));
+}
