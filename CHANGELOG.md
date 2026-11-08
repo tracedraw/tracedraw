@@ -18,6 +18,8 @@ full, row-by-row status.
 
 - Icon buttons (toolbox, standard toolbar, property bar, the Outline Pen's picture buttons): a button that is on, such as the active tool or Portrait or Landscape, stands out with a sharp blue frame, and a hovered button shows a clearer blue fill and frame; on and hovered together look different again. The pressed look was white with a grey frame and the hover a faint tint, hard to tell apart from the panel. The same looks apply in the light, dark and high contrast themes.
 
+- Text docker, Character section: the OpenType row now has a button for every common feature (ligatures, discretionary ligatures, small caps, capitals to small caps, case-sensitive forms, lining, old-style and tabular numerals, fractions, ordinals, slashed zero, stylistic alternates, swash), each enabled only when the font has the feature and greyed with a tip saying so when it does not; a feature the font applies by itself (ligatures) shows on and can be switched off; and Superscript and Subscript buttons use the font's own forms where it has them, else draw the characters at 58 % of the size raised by 33 % or lowered by 15 %. Settings are kept in .tdraw files, and files saved before open unchanged (#1201).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
