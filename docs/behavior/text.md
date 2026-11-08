@@ -89,6 +89,23 @@ hangul; `App::vertical_text_offered`, `tracedraw_text::upright`).
   room left. Text fitted to a path, and text wrapping around objects,
   stay horizontal. Files of other formats hold the text as written lines
   (`.cdr`, SVG as curves); `.tdraw` keeps the flag.
+- Column order (#1986): the columns run right to left (the default) or
+  left to right. The two arrow buttons after the Vertical text button on
+  the property bar (shown while the text is vertical) and Text >
+  Vertical Columns Left to Right (a check item) set it for the selected
+  texts and the one being edited, one "Column Order" undo step
+  (`App::set_vertical_columns`, `ParagraphStyle::vertical_columns`,
+  saved in `.tdraw` only when left to right, so older files read as
+  right to left; a text set back in lines keeps it). Left to right,
+  paragraph text starts at the top left of its frame and artistic text
+  at its origin, the columns going right. Each written line is placed
+  mirrored across its own band (`tracedraw_text::mirrored_baseline`:
+  the baseline `y` with ascent `a` and descent `d` goes to
+  `-y - a + d`), so the columns change order while every letter keeps
+  its orientation; vertical alignment moves them towards the far (right)
+  side. `TextLayout::columns_left_to_right` tells the caret code: Right
+  moves to the next column and Left to the previous one
+  (`vertical_columns_can_run_left_to_right`).
 
 ## Font list
 

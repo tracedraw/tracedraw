@@ -3815,6 +3815,21 @@ fn text_menu(app: &mut App, ui: &mut Ui) {
         if mark_item_if(ui, "menu.text.vertical_text", "", Mark::Check(on), offered) {
             app.set_vertical_text(!on);
         }
+        // The columns of vertical text left to right (#1986).
+        let ltr = app.vertical_columns() == Some(tracedraw_core::VerticalColumns::LeftToRight);
+        if mark_item_if(
+            ui,
+            "menu.text.vertical_columns_ltr",
+            "",
+            Mark::Check(ltr),
+            offered && on,
+        ) {
+            app.set_vertical_columns(if ltr {
+                tracedraw_core::VerticalColumns::RightToLeft
+            } else {
+                tracedraw_core::VerticalColumns::LeftToRight
+            });
+        }
     }
     if item(ui, "menu.text.edit_text", "Ctrl+Shift+T", is_text) {
         app.open_edit_text_dialog();

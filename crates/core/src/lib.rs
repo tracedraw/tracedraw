@@ -53,7 +53,7 @@ pub use document::{
     LeadingUnit, MasterScope, Metadata, ObjectDefaults, ObjectStyle, Page, ParagraphStyle,
     PathTextOrientation, PathTextVertical, QrCode, QrKind, Shadow, Shape, ShapeKind, StyleParts,
     Symbol, TabKind, TabStop, Table, TableCell, TextAlign, TextOnPath, TextSpan, TimeTracker,
-    TrackedTask, VerticalAlign, DEFAULT_TAB_STEP,
+    TrackedTask, VerticalAlign, VerticalColumns, DEFAULT_TAB_STEP,
 };
 pub use engine::Engine;
 pub use geometry::{Affine, BezPath, Point, Rect, Size, Vec2};

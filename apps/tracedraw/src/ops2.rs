@@ -2713,6 +2713,7 @@ impl App {
             own.baseline_grid_mm = para.baseline_grid_mm;
             own.vertical_align = para.vertical_align;
             own.vertical = para.vertical;
+            own.vertical_columns = para.vertical_columns;
             own.frame_fill = para.frame_fill.clone();
         }
         let before = tracedraw_core::ParagraphFormat::of(align, &old);

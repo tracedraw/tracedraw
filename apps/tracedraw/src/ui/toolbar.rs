@@ -2160,6 +2160,29 @@ fn text_properties(app: &mut App, ui: &mut Ui) {
         {
             app.set_vertical_text(true);
         }
+        // The order of the columns of vertical text (#1986).
+        if let Some(cols) = app.vertical_columns() {
+            use tracedraw_core::VerticalColumns as C;
+            for (value, label, key) in [
+                (C::RightToLeft, "\u{2190}", "toolbar.columns_right_to_left"),
+                (C::LeftToRight, "\u{2192}", "toolbar.columns_left_to_right"),
+            ] {
+                if ui
+                    .add_sized(
+                        [22.0, 22.0],
+                        egui::Button::selectable(
+                            cols == value,
+                            egui::RichText::new(label).size(14.0),
+                        ),
+                    )
+                    .rich_tip(crate::ui::tips::keyed(key))
+                    .clicked()
+                    && cols != value
+                {
+                    app.set_vertical_columns(value);
+                }
+            }
+        }
     }
     vsep(ui);
     let shapes = app.selected_rc();

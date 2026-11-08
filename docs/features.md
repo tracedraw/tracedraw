@@ -50,7 +50,7 @@ Counts: works 190, partial 7 (`.cdr` content coverage; CMX import; print preview
 | 3-point callout: a drag or two clicks for the leader, a click for the text (typed at once); its bar's outline width, line style, head, shape round the text (underline, rectangle, rounded, ellipse) and gap; leader and shape fitted to the text as it is typed or moved (see `behavior/dimensions.md`) | works |
 | Connectors: straight, right-angle, rounded right-angle, attached (they follow the objects they join), with a bar (kind, corner radius, outline); Anchor Editing tool (add, move, delete anchors; connectors snap to them) (see `behavior/connectors-and-anchors.md`) | works |
 | Text (artistic and paragraph), Table | works |
-| Vertical text for CJK typesetting (columns top to bottom, right to left; ideographs, kana and hangul upright, Latin turned; carets, selection and editing keys follow the columns), offered with a Japanese or Chinese interface language or for text in those scripts | works (see `behavior/text.md`, Vertical text) |
+| Vertical text for CJK typesetting (columns top to bottom, right to left or left to right, #1986; ideographs, kana and hangul upright, Latin turned; carets, selection and editing keys follow the columns), offered with a Japanese or Chinese interface language or for text in those scripts | works (see `behavior/text.md`, Vertical text) |
 | Browser version (WebAssembly, WebGL 2): opens, edits and exports documents with uploads and downloads | works |
 | Import of HPGL plotter files (PLT) and export of pages as pen strokes | works |
 | Import of TXT, RTF and DOCX as paragraph text with run formatting | works |
