@@ -48,6 +48,8 @@ full, row-by-row status.
 
 - Dimensions: Object > Insert > Add Dimensions measures the selection, a width along its bottom and a height along its right, 5 mm away, in the Dimension tool's style and units; Add Dimensions to Each Object gives every selected object its own pair. Both are in the right-click menu too, and one undo takes them away.
 
+- Gradient fills: the Properties docker gets Blend direction (straight through RGB, or clockwise or counterclockwise round the colour wheel), Steps (the fill drawn as 2 to 255 colour bands; unticked, smooth), Smooth transition (the colour change eases in and out at each node) and Acceleration (-100 to 100, skewing every blend's midpoint on top of the nodes' own). The screen, SVG (a pair of stops per band, a sampled run for a hue path) and PDF (a sampled function) draw them alike, each setting is one undo step and goes into each selected object's own gradient, and `.tdraw` files keep them while files without them read as before (#1208).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
