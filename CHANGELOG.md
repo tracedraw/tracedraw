@@ -74,6 +74,8 @@ full, row-by-row status.
 
 - Colour picker: under the sliders a Harmony list and a row of swatches (complementary, analogous, triadic and the other rules) offer colours that go with the one picked; a click on a swatch picks it (#1498).
 
+- Shape tool: beside Corner rounding, Round, Scalloped and Chamfered Corner choose what the value does to the chosen corners (or every corner of the selected curves), cut as the Corners docker cuts them (#1147).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

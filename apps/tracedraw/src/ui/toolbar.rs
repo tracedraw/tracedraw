@@ -2927,6 +2927,26 @@ fn shape_tool_bar(app: &mut App, ui: &mut Ui) {
     // chosen; the button makes them sharp again.
     if let Some((radius, mixed)) = app.corner_rounding() {
         sep(ui);
+        // The kind of corner the radius makes (#1147), as the Corners
+        // docker cuts them.
+        use crate::corners::CornerOp;
+        for (op, pic, key) in [
+            (CornerOp::Fillet, Pic::CornerRound, "toolbar.corner_round"),
+            (
+                CornerOp::Scallop,
+                Pic::CornerScallop,
+                "toolbar.corner_scallop",
+            ),
+            (
+                CornerOp::Chamfer,
+                Pic::CornerChamfer,
+                "toolbar.corner_chamfer",
+            ),
+        ] {
+            if pic_button(ui, pic, &tr(key), true, app.corner_bar_op == op).clicked() {
+                app.corner_bar_op = op;
+            }
+        }
         let mut set = None;
         crate::ui::tips::tip_over(
             ui,

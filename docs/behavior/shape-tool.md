@@ -242,6 +242,15 @@ round their corners with their own handles either way.
   Rounding button beside it makes them sharp. One undo step each
   ("Fillet", "Clear Rounding"); the chosen corners stay chosen (#2057,
   `pick_drag_tests::the_property_bar_sets_the_corner_rounding_of_curves`).
+- Three buttons before the field choose the kind of corner it makes
+  (#1147, `App::corner_bar_op`, Round at first): Round Corner as above,
+  Scalloped Corner or Chamfered Corner, which cut the same corners as
+  the Corners docker does (`corner_cut::cut_corners`), the value being
+  the distance along each side; a distance some corner cannot take is
+  cut down by tenths until every one of them takes it. One undo step
+  ("Scallop", "Chamfer"); a cut corner is no longer a corner of its
+  own, so it leaves the chosen corners and shows no ring. Clear
+  Rounding takes back round corners only.
 - Checked by `pick_drag_tests::corner_widgets_round_every_corner_or_the_chosen_ones`,
   `pick_drag_tests::corner_widgets_follow_their_preference_off_by_default`,
   `pick_drag_tests::rounded_corners_keep_their_widgets_and_round_again`,
@@ -311,8 +320,9 @@ to Line, Convert to Curve | Cusp, Smooth, Symmetrical | Reverse
 Direction, Extend Curve to Close, Extract Subpath, Close Curve | Stretch
 and Scale Nodes, Rotate and Skew Nodes, Align Nodes | Reflect
 Horizontally, Reflect Vertically, Elastic Mode | Select All Nodes |
-Reduce Nodes, Curve smoothness | Corner rounding, Clear Rounding (a curve
-with a corner selected, see Corner widgets).
+Reduce Nodes, Curve smoothness | Round, Scalloped or Chamfered Corner,
+Corner rounding, Clear Rounding (a curve with a corner selected, see
+Corner widgets).
 
 ## Checks
 

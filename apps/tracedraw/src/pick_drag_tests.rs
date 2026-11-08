@@ -19433,7 +19433,8 @@ fn corner_rings_round_one_corner_or_the_ctrl_chosen_ones() {
 /// value (#2057): with no ring chosen the radius goes to every corner; a
 /// plain click on a ring chooses it alone (drawn filled) and the radius
 /// then goes to that corner only, which stays chosen; 0 and the Clear
-/// Rounding button make the corners sharp again. One undo step each.
+/// Rounding button make the corners sharp again. One undo step each. The
+/// corner kind beside it chamfers or scallops instead (#1147).
 #[test]
 fn the_property_bar_sets_the_corner_rounding_of_curves() {
     use tracedraw_core::corner_cut::fillets;
@@ -19520,6 +19521,44 @@ fn the_property_bar_sets_the_corner_rounding_of_curves() {
     assert!(r.iter().all(|x| *x < 20.0 && *x > 19.0), "{r:?}");
     app.undo();
     assert!(radii(&app).is_empty());
+    // Chamfered and scalloped corners (#1147): the bar's corner kind
+    // cuts every corner that way, the radius along each side, as the
+    // Corners docker does; one undo step named after it.
+    use tracedraw_core::geometry::PathEl;
+    let curves = |app: &App| {
+        path_of(app)
+            .elements()
+            .iter()
+            .filter(|e| matches!(e, PathEl::CurveTo(..)))
+            .count()
+    };
+    let has_point = |app: &App, x: f64, y: f64| {
+        path_of(app).elements().iter().any(|e| match e {
+            PathEl::MoveTo(p) | PathEl::LineTo(p) => {
+                (p.x - x).abs() < 1e-6 && (p.y - y).abs() < 1e-6
+            }
+            _ => false,
+        })
+    };
+    app.corner_bar_op = crate::corners::CornerOp::Chamfer;
+    assert!(app.set_corner_rounding(3.0));
+    assert_eq!(app.engine.history_labels().0.last(), Some(&"Chamfer"));
+    assert_eq!(curves(&app), 0, "straight cuts");
+    assert!(has_point(&app, 23.0, 20.0) && has_point(&app, 20.0, 23.0));
+    assert!(!has_point(&app, 20.0, 20.0), "the corner is cut off");
+    app.undo();
+    app.corner_bar_op = crate::corners::CornerOp::Scallop;
+    assert!(app.set_corner_rounding(3.0));
+    assert_eq!(app.engine.history_labels().0.last(), Some(&"Scallop"));
+    assert!(curves(&app) >= 4, "a notch at each corner");
+    assert!(has_point(&app, 57.0, 60.0) || has_point(&app, 60.0, 57.0));
+    app.undo();
+    // Too large a distance is cut down until every corner takes it.
+    app.corner_bar_op = crate::corners::CornerOp::Chamfer;
+    assert!(app.set_corner_rounding(500.0));
+    assert!(!has_point(&app, 20.0, 20.0) && !has_point(&app, 60.0, 60.0));
+    app.undo();
+    app.corner_bar_op = crate::corners::CornerOp::Fillet;
     // The bar draws the field with the curve selected, and nothing for
     // a curve without corners or with the widgets turned off.
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);

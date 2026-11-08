@@ -1323,6 +1323,9 @@ pub struct App {
     pub snap: crate::snap::SnapSettings,
     /// The Corners docker's operation and sizes.
     pub corners: crate::corners::CornersSettings,
+    /// The kind of corner the Shape tool bar's corner radius makes:
+    /// round, scalloped or chamfered (#1147).
+    pub corner_bar_op: crate::corners::CornerOp,
     /// The Join Curves docker's joint, gap tolerance and radius.
     pub join_settings: crate::corners::JoinSettings,
     /// The Fit Objects to Path docker's spacing, offset and turning.
@@ -2745,6 +2748,7 @@ impl App {
             guide_anchors: Default::default(),
             align_cache: Default::default(),
             corners: Default::default(),
+            corner_bar_op: Default::default(),
             join_settings: Default::default(),
             fit_path: Default::default(),
             fit_path_for: None,
