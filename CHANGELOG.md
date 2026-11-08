@@ -22,6 +22,8 @@ full, row-by-row status.
 
 - Text docker, Character: the underline and the strikethrough are lists of styles (none, single thin, single thick, double thin, and each of those under the words only, skipping the spaces); All caps draws the characters as capitals while the text keeps the case typed; Enclosed draws the font's enclosed forms, or a ring round each character where the font has none; Overprint fill and Overprint outline mark characters of their own, used by Simulate Overprints and the PDF export like the object's. All are drawn on the page and in every export and kept in `.tdraw` files, which still write a plain underline as before. The Strikethrough button beside Underline and the property bar's buttons switch between none and a single thin line and show on for any style (#1209).
 
+- Transparency: ten more merge modes, Texturize, Lightness, Behind, Screen, Overlay, Soft Light, Hard Light, Color Dodge, Color Burn and Exclusion (28 in all), drawn by their formulas, kept in `.tdraw` files and carried into SVG and PDF exports as their blend modes where those exist; drop shadows can use them too (#1203).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

@@ -160,9 +160,11 @@ PDF) draw each shadow beneath its object as a picture of the blurred
 silhouette at 300 dpi (fewer when the shadow is so large it would pass
 40 million pixels), in the shadow's colour, with its feathering, fade
 and opacity in a soft mask; PDF has no blur of its own. The merge mode
-goes in as the PDF blend mode nearest to it (Multiply, Difference,
-Screen for Divide, Lighten, Darken, Hue, Saturation, Color, Exclusion
-for Invert; the others draw normally). The object stays vector on top.
+goes in as the PDF blend mode nearest to it (the table of
+`transparency.md`, Merge modes: Multiply, Difference, Screen for Divide,
+Lighten, Darken, Hue, Saturation, Color, Luminosity for Lightness,
+Exclusion for Invert, Overlay, SoftLight, HardLight, ColorDodge,
+ColorBurn; the others draw normally). The object stays vector on top.
 The colour image downsampling asked for applies to the shadow's picture
 too. PDF/X-1a and X-3 keep no transparency: an object with a shadow is
 flattened with what lies beneath it, over the shadow's area (#1029).
