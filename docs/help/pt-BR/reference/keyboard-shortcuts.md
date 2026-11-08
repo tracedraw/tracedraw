@@ -20,6 +20,7 @@ comando ao lado dele, e você pode acrescentar os seus; veja
 | <kbd>Ctrl+N</kbd>, <kbd>Ctrl+O</kbd> | novo desenho, abrir |
 | <kbd>Ctrl+S</kbd>, <kbd>Ctrl+Shift+S</kbd> | salvar, salvar como |
 | <kbd>Ctrl+I</kbd>, <kbd>Ctrl+E</kbd>, <kbd>Ctrl+P</kbd> | importar, exportar, imprimir |
+| <kbd>Ctrl+Shift+E</kbd> | exportar mostrando as opções |
 | <kbd>Ctrl+F4</kbd>, <kbd>Alt+F4</kbd> | fechar o desenho, sair |
 | <kbd>Ctrl+Z</kbd>, <kbd>Ctrl+Shift+Z</kbd>, <kbd>Ctrl+R</kbd> | desfazer, refazer, repetir |
 | <kbd>Ctrl+X</kbd>, <kbd>Ctrl+C</kbd>, <kbd>Ctrl+V</kbd>, <kbd>Ctrl+Shift+V</kbd> | recortar, copiar, colar, colar na vista |

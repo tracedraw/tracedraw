@@ -387,6 +387,10 @@ pub const NEW_IN_THIS_VERSION: &[&str] = &[
     // View > Pages in Multipage View (#1440).
     "menu.view",
     "menu.view.multipage_pages",
+    // File > Export with Options shows the export options even when
+    // they are set not to show.
+    "menu.file",
+    "menu.file.export_with_options",
 ];
 
 thread_local! {
@@ -2557,7 +2561,15 @@ fn file_menu(app: &mut App, ui: &mut Ui) {
         app.import();
     }
     if item(ui, "menu.file.export", "Ctrl+E", doc) {
-        app.export();
+        // Shift held shows the options even when they are set not to show.
+        if !invoke::active() && ui.input(|i| i.modifiers.shift) {
+            app.export_with_options();
+        } else {
+            app.export();
+        }
+    }
+    if item(ui, "menu.file.export_with_options", "Ctrl+Shift+E", doc) {
+        app.export_with_options();
     }
     sub(ui, "menu.file.export_for", |ui| {
         if item(ui, "menu.file.export_for_web", "", doc) {

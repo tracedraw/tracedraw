@@ -150,6 +150,16 @@ for the next session (#617). Export for Web and Export for Office keep
 their own presets and never change these
 (`pick_drag_tests::the_export_dialog_starts_with_the_last_exports_choices`).
 
+Export without showing the options (use the last ones)
+(`skip_export_dialog`, off): the Export dialog's "Do not show this
+dialog again", kept here so it can be found and turned off once the
+dialog no longer shows; on, File > Export writes the file right after
+the Save dialog with the last options (see `export.md`, "Skipping the
+options"). Until 0.42.1 the dialog's check box was this setting itself,
+so a tick that was then cancelled stayed, and this page did not show it:
+preferences saved before are brought back to off once (upgrade 7,
+`settings::tests::older_preferences_show_the_export_options_again_once`).
+
 Place imported files with the import cursor (`import_with_cursor`, on):
 after File > Import (Ctrl+I, the toolbar button or Import on the
 drawing's right-click menu) and the file chosen, nothing comes in yet;

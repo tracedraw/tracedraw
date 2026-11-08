@@ -735,7 +735,7 @@ fn default_desktop() -> [u8; 3] {
 }
 
 /// How many one-time upgrades `Settings::upgrade` knows.
-const UPGRADES: u32 = 6;
+const UPGRADES: u32 = 7;
 
 fn default_outline_units() -> String {
     "pt".into()
@@ -2062,7 +2062,8 @@ impl Settings {
     /// 2. new rectangles keep their corners; 3. the alignment and dynamic
     ///    guides start off; 4. the last export's settings are remembered;
     /// 5. Duplicate's old default offset (6.35 mm) becomes none; 6. the
-    /// Crop tool cuts a picture's pixels.
+    ///    Crop tool cuts a picture's pixels; 7. File > Export shows its
+    ///    options again.
     pub fn upgrade(mut self) -> Settings {
         self.autocorrect.upgrade();
         if self.upgrades < 1 {
@@ -2102,6 +2103,16 @@ impl Settings {
         // pixels. On once; switched off afterwards it stays off.
         if self.upgrades < 6 {
             self.crop_picture_pixels = true;
+        }
+        // "Do not show filter dialog" was the preference itself, ticked
+        // in the Export dialog and kept even when the dialog was then
+        // cancelled, with nothing in Options to turn it back: File >
+        // Export went straight to the Save dialog for good, with no
+        // options (report on 0.42.1). The options show again once; the
+        // setting chosen afterwards (in the dialog on OK, or in Options >
+        // Global > File Formats) stays.
+        if self.upgrades < 7 {
+            self.formats.skip_export_dialog = false;
         }
         self.upgrades = self.upgrades.max(UPGRADES);
         self.migrate_ai();
@@ -2608,6 +2619,29 @@ mod tests {
         let again: Settings = serde_json::from_str(&saved).expect("read back");
         assert!(!again.upgrade().formats.remember_last);
         assert!(Settings::default().formats.remember_last);
+    }
+
+    /// "Do not show filter dialog" could be left on by a tick in the
+    /// Export dialog that was then cancelled, with no way back in Options:
+    /// preferences of older versions show the export options again, once;
+    /// set again afterwards, the setting stays (report on 0.42.1).
+    #[test]
+    fn older_preferences_show_the_export_options_again_once() {
+        let old: Settings = serde_json::from_str(
+            r#"{"upgrades": 6, "formats": {"skip_export_dialog": true, "export_format": 2}}"#,
+        )
+        .expect("old preferences");
+        assert!(old.formats.skip_export_dialog);
+        let s = old.upgrade();
+        assert!(!s.formats.skip_export_dialog);
+        assert_eq!(s.formats.export_format, 2, "the other choices stay");
+        assert_eq!(s.upgrades, UPGRADES);
+        let mut s = s;
+        s.formats.skip_export_dialog = true;
+        let saved = serde_json::to_string(&s).expect("saved");
+        let again: Settings = serde_json::from_str(&saved).expect("read back");
+        assert!(again.upgrade().formats.skip_export_dialog);
+        assert!(!Settings::default().formats.skip_export_dialog);
     }
 
     #[test]

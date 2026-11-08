@@ -92,6 +92,15 @@ pub struct ExportState {
     /// JPEG and TIFF: the colours written, an index into
     /// [`EXPORT_COLOR_MODES`] (0 RGB, 1 CMYK, 2 Grayscale; #1763).
     pub color_mode: usize,
+    /// The file chosen in the Save dialog before the options were shown
+    /// (File > Export on the desktop): OK writes it, its extension
+    /// following the format chosen. `None`: OK asks where to save (the
+    /// presets for the web and office, the browser, Android).
+    pub target: Option<std::path::PathBuf>,
+    /// "Do not show this dialog again" as ticked in the dialog: it
+    /// becomes Options > Global > File Formats' setting on OK only, so
+    /// Cancel leaves the setting as it was.
+    pub dont_show: bool,
 }
 
 impl Default for ExportState {
@@ -123,6 +132,8 @@ impl Default for ExportState {
             size_unit: 0,
             scale: 1.0,
             color_mode: 0,
+            target: None,
+            dont_show: false,
         }
     }
 }
@@ -4023,25 +4034,53 @@ fn export_preview_box(app: &App, ui: &mut Ui, st: &ExportState, size: egui::Vec2
     preview.bytes
 }
 
-/// Ask for the file and export to it with `st`'s choices.
-pub fn export_with_file_dialog(app: &mut App, st: &ExportState) {
+/// File > Export asks for the file before the options (the folder, the
+/// name and the format, from the extension), as on every desktop; in a
+/// browser, which has no Save dialog (the file is downloaded under the
+/// name given), and on Android, whose picker makes the document as soon
+/// as it is chosen, the options come first and OK asks for the file.
+pub const EXPORT_FILE_FIRST: bool = !crate::files::WEB && !crate::files::ANDROID;
+
+/// The extensions a file of the export format `ext` takes, the usual one
+/// first: "jpg" and "jpeg" for JPEG, "tif" and "tiff" for TIFF, "html"
+/// and "htm" for HTML.
+pub fn export_extensions(ext: &'static str) -> Vec<&'static str> {
+    match export_patterns(ext) {
+        "*.*" => vec![ext],
+        patterns => patterns
+            .split(';')
+            .map(|p| p.trim_start_matches("*."))
+            .collect(),
+    }
+}
+
+/// The export format (an index into [`EXPORT_FORMATS`]) whose extension
+/// `path` has, in any case; `None` for a name without one of them.
+pub fn export_format_of(path: &std::path::Path) -> Option<usize> {
+    let typed = path.extension()?.to_str()?.to_ascii_lowercase();
+    EXPORT_FORMATS
+        .iter()
+        .position(|(_, e)| export_extensions(e).contains(&typed.as_str()))
+}
+
+/// The Save dialog of an export with `st`: every format, the one of `st`
+/// (the last one used) first, so the extension of the name typed decides
+/// (live test of 0.41: only the format of Options > File Formats was
+/// offered); the drawing's name with that format's extension; the folder
+/// exported to last, else the drawing's own (#1817).
+fn export_save_dialog(app: &App, st: &ExportState) -> crate::files::Dialog {
     let (name, ext) = EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)];
     let stem = app
         .file
         .as_ref()
         .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
         .unwrap_or_else(|| "Graphic1".into());
-    let st = st.clone();
-    // The chosen format first, then every other one, so the file dialog
-    // offers them all (live test of 0.41: only the format of Options >
-    // File Formats was offered); the extension of the name typed decides.
-    let mut dialog = crate::files::Dialog::new().add_filter(name, &[ext]);
+    let mut dialog = crate::files::Dialog::new().add_filter(name, &export_extensions(ext));
     for (other, e) in EXPORT_FORMATS.iter() {
         if *e != ext {
-            dialog = dialog.add_filter(*other, &[*e]);
+            dialog = dialog.add_filter(*other, &export_extensions(e));
         }
     }
-    // The folder exported to last, else the drawing's own (#1817).
     let folder = app
         .settings
         .last_export_dir
@@ -4057,28 +4096,122 @@ pub fn export_with_file_dialog(app: &mut App, st: &ExportState) {
     if let Some(dir) = folder {
         dialog = dialog.set_directory(dir);
     }
-    dialog
-        .set_file_name(format!("{stem}.{ext}"))
-        .save_file(app, move |app, path| {
-            if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
-                app.settings.last_export_dir = Some(dir.to_path_buf());
+    dialog.set_file_name(format!("{stem}.{ext}"))
+}
+
+/// The file `path` chosen in an export's Save dialog: its folder is the
+/// next export's, its extension picks the format (with the choices that
+/// format was exported with last), and a name without an export format's
+/// extension gets the extension of `st`'s format. Returns the path to
+/// write.
+pub fn export_chosen_file(
+    app: &mut App,
+    st: &mut ExportState,
+    path: std::path::PathBuf,
+) -> std::path::PathBuf {
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        app.settings.last_export_dir = Some(dir.to_path_buf());
+    }
+    match export_format_of(&path) {
+        Some(i) => {
+            if i != st.format || st.script.is_some() {
+                app.recall_export_format(st, i);
             }
-            let mut st = st.clone();
-            if let Some(typed) = path.extension().and_then(|e| e.to_str()) {
-                if let Some(i) = EXPORT_FORMATS
-                    .iter()
-                    .position(|(_, e)| e.eq_ignore_ascii_case(typed))
-                {
-                    if i != st.format {
-                        app.recall_export_format(&mut st, i);
-                    }
+            path
+        }
+        None => {
+            let ext = EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)].1;
+            match path.extension().filter(|e| !e.is_empty()) {
+                // "Poster.v2": the extension is added, not put instead.
+                Some(_) => {
+                    let mut name = path.into_os_string();
+                    name.push(".");
+                    name.push(ext);
+                    name.into()
                 }
+                None => path.with_extension(ext),
             }
-            match crate::export::export(app, &path, &st) {
-                Ok(msg) => app.status = msg,
-                Err(e) => app.status = format!("{}: {e}", tr("dialog.export_failed")),
-            }
-        });
+        }
+    }
+}
+
+/// Write the export of `st` to `path` and say so on the status line.
+/// With `last_options` (the options dialog was not shown) the status line
+/// says the last options were used and how to see them, and a click on it
+/// opens Options > Global > File Formats, where the setting is.
+pub fn write_export(app: &mut App, path: &std::path::Path, st: &ExportState, last_options: bool) {
+    match crate::export::export(app, path, st) {
+        Ok(msg) if last_options => {
+            log::info!("{msg}");
+            app.status = tr("status.exported_last_options");
+            app.status_opens_options = Some((app.status.clone(), OptionsPage::FileFormats));
+        }
+        Ok(msg) => app.status = msg,
+        Err(e) => app.status = format!("{}: {e}", tr("dialog.export_failed")),
+    }
+}
+
+/// Ask for the file and export to it with `st`'s choices: the options
+/// were chosen first (the presets for the web and office, the browser,
+/// Android) or are not shown (`last_options`).
+pub fn export_with_file_dialog(app: &mut App, st: &ExportState, last_options: bool) {
+    let st = st.clone();
+    export_save_dialog(app, &st).save_file(app, move |app, path| {
+        let mut st = st;
+        let path = export_chosen_file(app, &mut st, path);
+        write_export(app, &path, &st, last_options);
+    });
+}
+
+/// File > Export on the desktop: the Save dialog with every format, then
+/// the Export dialog with the options of the format chosen and the file
+/// in its title; OK writes it, Cancel writes nothing. With `skip` ("Do not
+/// show this dialog again" on, Shift not held) the file is written right
+/// after the Save dialog with the last options instead.
+pub fn choose_export_file(app: &mut App, st: ExportState, skip: bool) {
+    export_save_dialog(app, &st).save_file(app, move |app, path| {
+        let mut st = st;
+        let path = export_chosen_file(app, &mut st, path);
+        if skip {
+            write_export(app, &path, &st, true);
+            app.keep_export_choices(&st);
+        } else {
+            st.target = Some(path);
+            st.dont_show = app.settings.formats.skip_export_dialog;
+            app.dialog = Dialog::Export(st);
+        }
+    });
+}
+
+/// The file chosen before the options takes the extension of the format
+/// chosen in them (a script filter's first one): "Graphic1.svg" becomes
+/// "Graphic1.png" when PNG is chosen. An extension the format already
+/// takes ("photo.jpeg" for JPEG) stays.
+pub fn sync_export_target(app: &App, st: &mut ExportState) {
+    let Some(path) = st.target.as_mut() else {
+        return;
+    };
+    let wanted: Vec<String> = match &st.script {
+        Some(name) => app
+            .settings
+            .script_filters
+            .iter()
+            .find(|f| &f.name == name && f.export)
+            .map(|f| f.extensions.clone())
+            .unwrap_or_default(),
+        None => export_extensions(EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)].1)
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+    };
+    let Some(first) = wanted.first() else {
+        return;
+    };
+    let has = path.extension().and_then(|e| e.to_str());
+    if has.is_some_and(|h| wanted.iter().any(|w| w.eq_ignore_ascii_case(h))) {
+        return;
+    }
+    path.set_extension(first);
 }
 
 /// The Export dialog's presets (#547): a list of every saved one, each
@@ -4276,16 +4409,27 @@ pub(crate) fn preset_label(p: &crate::prefs::ExportPreset) -> String {
     }
 }
 
+/// The Export dialog's title: the file chosen before it ("Export
+/// Graphic1.png"), else Export, or Export for Web for that preset.
+pub fn export_dialog_title(st: &ExportState) -> String {
+    if st.web {
+        return tr("menu.file.export_for_web");
+    }
+    match st.target.as_ref().and_then(|p| p.file_name()) {
+        Some(name) => trf(
+            "dialog.export_file_title",
+            &[("name", &name.to_string_lossy())],
+        ),
+        None => tr("dialog.export"),
+    }
+}
+
 fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut bool) {
-    window(
-        ctx,
-        if st.web {
-            tr("menu.file.export_for_web")
-        } else {
-            tr("dialog.export")
-        },
-    )
-    .show(ctx, |ui| {
+    // The file chosen follows the format chosen in the dialog.
+    sync_export_target(app, st);
+    // Named apart from its title, which follows the file chosen.
+    let win = window(ctx, export_dialog_title(st)).id_salt("export_dialog");
+    win.show(ctx, |ui| {
         ui.horizontal_top(|ui| {
             let estimate = export_preview_box(app, ui, st, egui::vec2(260.0, 300.0));
             ui.add_space(14.0);
@@ -4567,16 +4711,6 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                 if !st.selection_only {
                     export_range_fields(app, ui, st);
                 }
-                if !st.web {
-                    ui.checkbox(
-                        &mut app.settings.formats.skip_export_dialog,
-                        tr("dialog.skip_export_dialog"),
-                    )
-                    .rich_tip(crate::ui::tips::pair(
-                        "dialog.skip_export_dialog",
-                        "dialog.skip_export_dialog_tip",
-                    ));
-                }
                 if !scripted && export_keeps_properties(EXPORT_FORMATS[st.format].1) {
                     egui::Grid::new("exp_props").num_columns(2).show(ui, |ui| {
                         ui.label(tr("dialog.title"));
@@ -4604,38 +4738,70 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                 }
             });
         });
+        // File > Export's own setting, in sight where it takes effect; it
+        // is kept on OK only (it was the preference itself, so a tick
+        // undone by Cancel stayed, and every export after went straight
+        // to the file).
+        if st.remember {
+            ui.add_space(4.0);
+            ui.checkbox(&mut st.dont_show, tr("dialog.skip_export_dialog"))
+                .rich_tip(crate::ui::tips::pair(
+                    "dialog.skip_export_dialog",
+                    "dialog.skip_export_dialog_tip",
+                ));
+        }
         if ok_cancel(ui, close) {
-            let filter = st.script.as_ref().and_then(|n| {
-                app.settings
-                    .script_filters
-                    .iter()
-                    .find(|f| &f.name == n && f.export)
-                    .cloned()
-            });
-            if let Some(filter) = filter {
-                let stem = app
-                    .file
-                    .as_ref()
-                    .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-                    .unwrap_or_else(|| "Graphic1".into());
-                let ext = filter.extensions.first().cloned().unwrap_or_default();
-                let exts: Vec<&str> = filter.extensions.iter().map(String::as_str).collect();
-                let st2 = st.clone();
-                crate::files::Dialog::new()
-                    .add_filter(filter.label(), &exts)
-                    .set_file_name(format!("{stem}.{ext}"))
-                    .save_file(app, move |app, path| {
-                        match app.export_with_script(&path, &filter, &st2) {
-                            Ok(msg) => app.status = msg,
-                            Err(e) => app.status = format!("{}: {e}", tr("dialog.export_failed")),
-                        }
-                    });
-                return;
-            }
-            export_with_file_dialog(app, st);
-            app.keep_export_choices(st);
+            export_dialog_ok(app, st);
         }
     });
+}
+
+/// OK in the Export dialog: "Do not show this dialog again" becomes the
+/// preference (File > Export only), then the file chosen before the
+/// dialog is written, or, without one, the Save dialog asks for it.
+pub fn export_dialog_ok(app: &mut App, st: &ExportState) {
+    if st.remember && app.settings.formats.skip_export_dialog != st.dont_show {
+        app.settings.formats.skip_export_dialog = st.dont_show;
+        app.settings.save();
+    }
+    let filter = st.script.as_ref().and_then(|n| {
+        app.settings
+            .script_filters
+            .iter()
+            .find(|f| &f.name == n && f.export)
+            .cloned()
+    });
+    if let Some(filter) = filter {
+        let (label, exts) = (filter.label(), filter.extensions.clone());
+        let write = move |app: &mut App, path: std::path::PathBuf, st: &ExportState| match app
+            .export_with_script(&path, &filter, st)
+        {
+            Ok(msg) => app.status = msg,
+            Err(e) => app.status = format!("{}: {e}", tr("dialog.export_failed")),
+        };
+        if let Some(path) = st.target.clone() {
+            write(app, path, st);
+            return;
+        }
+        let stem = app
+            .file
+            .as_ref()
+            .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
+            .unwrap_or_else(|| "Graphic1".into());
+        let ext = exts.first().cloned().unwrap_or_default();
+        let patterns: Vec<&str> = exts.iter().map(String::as_str).collect();
+        let st2 = st.clone();
+        crate::files::Dialog::new()
+            .add_filter(label, &patterns)
+            .set_file_name(format!("{stem}.{ext}"))
+            .save_file(app, move |app, path| write(app, path, &st2));
+        return;
+    }
+    match st.target.clone() {
+        Some(path) => write_export(app, &path, st, false),
+        None => export_with_file_dialog(app, st, false),
+    }
+    app.keep_export_choices(st);
 }
 
 /// Export: the pages to export (the current page, every page or a list
@@ -8322,6 +8488,73 @@ pub(crate) mod tests {
         frame(&ctx, &mut app, false);
         frame(&ctx, &mut app, false);
         assert_ne!(ctx.layer_id_at(egui::pos2(5.0, 5.0)), Some(blocker));
+    }
+
+    /// The file chosen in the Save dialog picks the export format by its
+    /// extension, in any case and with the other spellings ("jpeg",
+    /// "TIFF"); a name without an export format's extension gets the
+    /// format's; and a format chosen in the options afterwards changes
+    /// the extension, one the format takes staying as typed.
+    #[test]
+    fn the_exported_file_follows_the_format() {
+        use std::path::{Path, PathBuf};
+        let at = |ext: &str| EXPORT_FORMATS.iter().position(|f| f.1 == ext).expect(ext);
+        assert_eq!(export_format_of(Path::new("a/photo.JPEG")), Some(at("jpg")));
+        assert_eq!(export_format_of(Path::new("scan.TIFF")), Some(at("tif")));
+        assert_eq!(export_format_of(Path::new("page.htm")), Some(at("html")));
+        assert_eq!(export_format_of(Path::new("logo.svg")), Some(at("svg")));
+        assert_eq!(export_format_of(Path::new("Poster.v2")), None);
+        assert_eq!(export_format_of(Path::new("Poster")), None);
+        assert_eq!(export_extensions("jpg"), ["jpg", "jpeg"]);
+        assert_eq!(export_extensions("svg"), ["svg"]);
+        let mut app = App::headless();
+        let mut st = ExportState {
+            format: at("svg"),
+            remember: true,
+            ..ExportState::default()
+        };
+        // The extension typed picks the format.
+        let p = export_chosen_file(&mut app, &mut st, PathBuf::from("/x/photo.jpeg"));
+        assert_eq!((p, st.format), (PathBuf::from("/x/photo.jpeg"), at("jpg")));
+        assert_eq!(app.settings.last_export_dir, Some(PathBuf::from("/x")));
+        // None, or one of no export format: the format's is added.
+        let p = export_chosen_file(&mut app, &mut st, PathBuf::from("/x/Poster"));
+        assert_eq!(p, PathBuf::from("/x/Poster.jpg"));
+        let p = export_chosen_file(&mut app, &mut st, PathBuf::from("/x/Poster.v2"));
+        assert_eq!(p, PathBuf::from("/x/Poster.v2.jpg"));
+        assert_eq!(st.format, at("jpg"));
+        // The options' format decides the extension.
+        st.target = Some(PathBuf::from("/x/photo.jpeg"));
+        sync_export_target(&app, &mut st);
+        assert_eq!(st.target, Some(PathBuf::from("/x/photo.jpeg")), "kept");
+        st.format = at("png");
+        sync_export_target(&app, &mut st);
+        assert_eq!(st.target, Some(PathBuf::from("/x/photo.png")));
+        st.format = at("tif");
+        sync_export_target(&app, &mut st);
+        assert_eq!(st.target, Some(PathBuf::from("/x/photo.tif")));
+        assert!(export_dialog_title(&st).contains("photo.tif"));
+        // An installed script filter: its own extension.
+        app.settings
+            .script_filters
+            .push(crate::scripting::ScriptFilter {
+                name: "Plotter".into(),
+                extensions: vec!["hpgl".into()],
+                import: false,
+                export: true,
+                source: String::new(),
+            });
+        st.script = Some("Plotter".into());
+        sync_export_target(&app, &mut st);
+        assert_eq!(st.target, Some(PathBuf::from("/x/photo.hpgl")));
+        // No file chosen yet (the browser, Android, the presets): the
+        // dialog keeps its plain title.
+        let plain = ExportState::default();
+        assert_eq!(export_dialog_title(&plain), tr("dialog.export"));
+        assert_eq!(
+            export_dialog_title(&ExportState::web()),
+            tr("menu.file.export_for_web")
+        );
     }
 
     #[test]

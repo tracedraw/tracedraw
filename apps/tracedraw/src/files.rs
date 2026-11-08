@@ -1714,7 +1714,12 @@ impl Dialog {
             log::info!("saved without a picker to {}", dir.display());
             return Some(dir.join(name));
         }
-        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+        // Unit tests answer the dialog themselves (see `test_save`).
+        #[cfg(all(test, not(any(target_arch = "wasm32", target_os = "android"))))]
+        {
+            return test_save::ask(self);
+        }
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android", test)))]
         {
             let mut d = rfd::FileDialog::new();
             for (name, exts) in &self.filters {
@@ -1731,6 +1736,24 @@ impl Dialog {
         }
         #[allow(unreachable_code)]
         None
+    }
+
+    /// The filters offered, in order: a name and its extensions.
+    #[cfg(test)]
+    pub fn filters(&self) -> &[(String, Vec<String>)] {
+        &self.filters
+    }
+
+    /// The file name offered.
+    #[cfg(test)]
+    pub fn file_name(&self) -> Option<&str> {
+        self.file_name.as_deref()
+    }
+
+    /// The folder the dialog opens in.
+    #[cfg(test)]
+    pub fn directory(&self) -> Option<&Path> {
+        self.directory.as_deref()
     }
 
     #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
@@ -1819,6 +1842,37 @@ fn download(name: &str, bytes: &[u8]) -> std::io::Result<()> {
 #[cfg(not(target_arch = "wasm32"))]
 fn download(_name: &str, _bytes: &[u8]) -> std::io::Result<()> {
     Ok(())
+}
+
+/// Unit tests never open the system's save dialog: each dialog asked
+/// for is kept for the test to look at, and it gets the next answer the
+/// test queued (`None` for Cancel); with nothing queued it is cancelled.
+#[cfg(test)]
+pub mod test_save {
+    use super::{Dialog, PathBuf, RefCell};
+    use std::collections::VecDeque;
+
+    thread_local! {
+        static ANSWERS: RefCell<VecDeque<Option<PathBuf>>> = const { RefCell::new(VecDeque::new()) };
+        static ASKED: RefCell<Vec<Dialog>> = const { RefCell::new(Vec::new()) };
+    }
+
+    /// The answer of the next save dialog: the path chosen, or `None`
+    /// for Cancel.
+    pub fn answer(path: Option<PathBuf>) {
+        ANSWERS.with(|a| a.borrow_mut().push_back(path));
+    }
+
+    /// The save dialogs asked for since the last call, in order.
+    pub fn asked() -> Vec<Dialog> {
+        ASKED.with(|a| std::mem::take(&mut *a.borrow_mut()))
+    }
+
+    #[cfg_attr(any(target_arch = "wasm32", target_os = "android"), allow(dead_code))]
+    pub(super) fn ask(dialog: Dialog) -> Option<PathBuf> {
+        ASKED.with(|a| a.borrow_mut().push(dialog));
+        ANSWERS.with(|a| a.borrow_mut().pop_front()).flatten()
+    }
 }
 
 #[cfg(test)]

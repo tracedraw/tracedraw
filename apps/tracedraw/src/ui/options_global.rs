@@ -248,6 +248,13 @@ pub fn file_formats_page(app: &mut App, ui: &mut Ui) {
             "options.export_remember",
             "options.export_remember_tip",
         ));
+    // The Export dialog's "Do not show this dialog again", where it can
+    // be found again once the dialog no longer shows.
+    ui.checkbox(&mut f.skip_export_dialog, tr("options.skip_export_dialog"))
+        .rich_tip(crate::ui::tips::pair(
+            "options.skip_export_dialog",
+            "options.skip_export_dialog_tip",
+        ));
     hint(ui, "options.export_presets_hint");
     chrome::section(ui, &tr("options.import_section"));
     ui.checkbox(&mut f.import_with_cursor, tr("options.import_with_cursor"))

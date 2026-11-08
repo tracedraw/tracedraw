@@ -1309,6 +1309,8 @@ mod tests {
         assert!(matches!(&app.dialog, Dialog::Print(st) if st.crop_marks));
         app.settings.formats.export_format = 1;
         app.settings.formats.remember_last = true;
+        // The Save dialog first; a name without an extension keeps PDF.
+        crate::files::test_save::answer(Some(std::env::temp_dir().join("td-prefs")));
         app.export();
         assert!(matches!(&app.dialog, Dialog::Export(st) if st.format == 1 && st.remember));
         // The presets for the web and office never overwrite the choices.

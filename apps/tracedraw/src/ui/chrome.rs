@@ -325,6 +325,14 @@ fn title_width(ui: &Ui, title: &str) -> f32 {
 }
 
 impl Window {
+    /// Name the window by `salt` rather than by its title, for a title
+    /// that changes while it is open (a file name): it then stays where
+    /// it is instead of opening afresh.
+    pub fn id_salt(mut self, salt: &'static str) -> Self {
+        self.id = egui::Id::new(("chrome_dialog_salt", salt));
+        self
+    }
+
     /// The window the user sizes, from `default` down to `min` (its body
     /// gets the whole room, nothing scrolls), with a maximize button.
     pub fn resizable(mut self, default: Vec2, min: Vec2) -> Self {

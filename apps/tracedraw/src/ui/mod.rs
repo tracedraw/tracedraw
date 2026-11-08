@@ -2295,6 +2295,8 @@ mod tests {
         assert_eq!(shape_count(&app), n0 + 1, "Ctrl+Shift+Z redoes only");
         app.select(vec![first]);
         let before = app.selection_bounds();
+        // Export asks for the file first, then shows the options.
+        crate::files::test_save::answer(Some(std::env::temp_dir().join("td-keys")));
         key(&ctx, &mut app, Key::E, Modifiers::COMMAND);
         assert!(
             matches!(app.dialog, crate::ui::dialogs::Dialog::Export(_)),

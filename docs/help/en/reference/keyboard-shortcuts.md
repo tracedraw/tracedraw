@@ -18,6 +18,7 @@ shortcut beside it, and you can add your own; see
 | <kbd>Ctrl+N</kbd>, <kbd>Ctrl+O</kbd> | new drawing, open |
 | <kbd>Ctrl+S</kbd>, <kbd>Ctrl+Shift+S</kbd> | save, save as |
 | <kbd>Ctrl+I</kbd>, <kbd>Ctrl+E</kbd>, <kbd>Ctrl+P</kbd> | import, export, print |
+| <kbd>Ctrl+Shift+E</kbd> | export with the options shown |
 | <kbd>Ctrl+F4</kbd>, <kbd>Alt+F4</kbd> | close the drawing, exit |
 | <kbd>Ctrl+Z</kbd>, <kbd>Ctrl+Shift+Z</kbd>, <kbd>Ctrl+R</kbd> | undo, redo, repeat |
 | <kbd>Ctrl+X</kbd>, <kbd>Ctrl+C</kbd>, <kbd>Ctrl+V</kbd>, <kbd>Ctrl+Shift+V</kbd> | cut, copy, paste, paste in view |

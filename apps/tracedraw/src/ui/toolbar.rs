@@ -603,7 +603,12 @@ pub(crate) fn draw_item(app: &mut App, ui: &mut Ui, bar: &str, id: &str) {
             )
             .clicked()
             {
-                app.export();
+                // Shift held shows the options whatever the setting says.
+                if ui.input(|i| i.modifiers.shift) {
+                    app.export_with_options();
+                } else {
+                    app.export();
+                }
             }
         }
         "publish_pdf" => {

@@ -8009,22 +8009,47 @@ impl App {
         }
     }
 
-    /// File > Export (Ctrl+E, the toolbar button): the Export dialog with
-    /// every format, starting with the choices of the last export of this
-    /// session, else those of Options > Global > File Formats (#617).
+    /// File > Export (Ctrl+E, the toolbar button). On the desktop the
+    /// Save dialog comes first (folder, name and format, every format
+    /// offered, the last one used first), then the Export dialog with the
+    /// options of the format chosen; OK writes the file, Cancel nothing.
+    /// With "Do not show this dialog again" (Options > Global > File
+    /// Formats) the file is written right after the Save dialog with the
+    /// last options. In the browser and on Android the options come first
+    /// and OK asks for the file (see `EXPORT_FILE_FIRST`). The choices
+    /// start with those of the last export of this session, else those
+    /// of Options > Global > File Formats (#617).
     pub fn export(&mut self) {
+        self.export_asking(false);
+    }
+
+    /// File > Export with Options (Ctrl+Shift+E), or Export chosen with
+    /// Shift held: [`App::export`] with the options shown whatever "Do
+    /// not show this dialog again" says.
+    pub fn export_with_options(&mut self) {
+        self.export_asking(true);
+    }
+
+    fn export_asking(&mut self, show_options: bool) {
+        use crate::ui::dialogs::{
+            choose_export_file, export_with_file_dialog, Dialog, EXPORT_FILE_FIRST,
+        };
         let mut st = self
             .last_export
             .clone()
             .unwrap_or_else(|| self.settings.formats.state());
         st.remember = true;
-        // "Do not show filter dialog": straight to the file.
-        if self.settings.formats.skip_export_dialog {
-            crate::ui::dialogs::export_with_file_dialog(self, &st);
+        st.target = None;
+        st.dont_show = self.settings.formats.skip_export_dialog;
+        let skip = self.settings.formats.skip_export_dialog && !show_options;
+        if EXPORT_FILE_FIRST {
+            choose_export_file(self, st, skip);
+        } else if skip {
+            export_with_file_dialog(self, &st, true);
             self.keep_export_choices(&st);
-            return;
+        } else {
+            self.dialog = Dialog::Export(st);
         }
-        self.dialog = crate::ui::dialogs::Dialog::Export(st);
     }
 
     /// A File > Export done with `st`: the next export of the session
@@ -8043,6 +8068,9 @@ impl App {
         kept.tags.clear();
         kept.selection_only = false;
         kept.preset_name = None;
+        // The file belongs to this export; the check box to the settings.
+        kept.target = None;
+        kept.dont_show = false;
         crate::prefs::keep_format_choices(&mut self.export_by_format, &kept);
         self.last_export = Some(kept);
         if self.settings.formats.remember_last {

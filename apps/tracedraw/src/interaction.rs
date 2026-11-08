@@ -4073,6 +4073,10 @@ impl App {
         if pressed(Key::E, cmd) {
             self.export();
         }
+        // File > Export with Options: the options whatever the setting.
+        if pressed(Key::E, cmd | Modifiers::SHIFT) {
+            self.export_with_options();
+        }
         if pressed(Key::I, cmd) {
             self.import();
         }

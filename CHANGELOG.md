@@ -118,6 +118,8 @@ full, row-by-row status.
 
 - Options > Tools > Zoom/Pan: Pan inertia (off at first). A pan with the Pan tool, the middle button or two fingers let go while still moving keeps the view sliding and easing out; a click or the wheel stops it (#831).
 
+- File > Export asks for the file first, then shows the export options: the Save dialog offers every format, the one used last first, and the extension of the name chosen picks the format; the Export dialog then opens with that format's last choices and its preview, titled with the file name, OK writes the file and Cancel writes nothing. Choosing another format in the dialog changes the file's extension. In the browser and on Android the options still come first. Export used to go straight to the Save dialog and write the file with no options for anyone who had once ticked "Do not show filter dialog": the tick was the setting itself, so it stayed even when the dialog was cancelled, and Options did not show it. It is now "Do not show this dialog again", kept on OK only, also on the Options > Global > File Formats page; with it on, the status bar says the last options were used, and holding Shift while choosing Export, or the new File > Export with Options (Ctrl+Shift+E), shows them. Preferences of earlier versions show the options again once.
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

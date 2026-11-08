@@ -11504,6 +11504,8 @@ fn the_export_dialog_starts_with_the_last_exports_choices() {
     let (ctx, mut app, _) = setup();
     let ctrl_e = |ctx: &egui::Context, app: &mut App| {
         app.dialog = Dialog::None;
+        // A name without an extension keeps the format the dialog starts at.
+        crate::files::test_save::answer(Some(std::env::temp_dir().join("td-ctrl-e")));
         frame(
             ctx,
             app,
@@ -11535,7 +11537,7 @@ fn the_export_dialog_starts_with_the_last_exports_choices() {
     assert!(next.title.is_empty());
     assert!(!next.selection_only, "Selected only is for one export");
     assert!(next.all_pages);
-    // "Do not show filter dialog" goes straight to the file with the same
+    // "Do not show this dialog again" writes the file with the same
     // starting choices, so it never exports a selection that is gone.
     assert_eq!(
         app.last_export.as_ref().map(|e| e.selection_only),
@@ -11553,6 +11555,204 @@ fn the_export_dialog_starts_with_the_last_exports_choices() {
     app.keep_export_choices(&web);
     assert_eq!(ctrl_e(&ctx, &mut app).quality, 100);
     app.dialog = Dialog::None;
+}
+
+/// A folder of this test's own for exported files.
+fn export_test_dir(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("td-export-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("test folder");
+    dir
+}
+
+/// File > Export (Ctrl+E) asks for the file first, every format offered
+/// with the last one first, then shows the options of the format the
+/// name chose, titled with the file; choosing another format there
+/// changes the file's extension, and OK writes it (report on 0.42.1:
+/// Export went to the Save dialog and wrote the file with no options).
+#[test]
+fn export_asks_for_the_file_then_shows_the_options_of_its_format() {
+    use crate::files::test_save;
+    use crate::ui::dialogs::{export_dialog_title, Dialog, EXPORT_FORMATS};
+    let (ctx, mut app, _) = setup();
+    let dir = export_test_dir("order");
+    assert!(!app.settings.formats.skip_export_dialog);
+    test_save::asked();
+    test_save::answer(Some(dir.join("poster.png")));
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::E, Modifiers::COMMAND)],
+        Modifiers::COMMAND,
+    );
+    // The Save dialog: every format, the one used last (SVG at first)
+    // first, the drawing's name with its extension.
+    let asked = test_save::asked();
+    assert_eq!(asked.len(), 1, "one Save dialog");
+    let filters = asked[0].filters();
+    assert_eq!(filters.len(), EXPORT_FORMATS.len());
+    assert_eq!(filters[0].1, vec!["svg".to_string()]);
+    assert!(filters
+        .iter()
+        .any(|(_, e)| e.contains(&"jpg".to_string()) && e.contains(&"jpeg".to_string())));
+    assert_eq!(asked[0].file_name(), Some("Graphic1.svg"));
+    // Then the options of PNG, the format the name chose, for that file.
+    let Dialog::Export(st) = &app.dialog else {
+        panic!("no options after the Save dialog: {:?}", app.dialog);
+    };
+    assert_eq!(EXPORT_FORMATS[st.format].1, "png");
+    assert_eq!(st.target.as_deref(), Some(dir.join("poster.png").as_path()));
+    assert!(export_dialog_title(st).contains("poster.png"));
+    assert_eq!(app.settings.last_export_dir.as_deref(), Some(dir.as_path()));
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(
+        !dir.join("poster.png").exists(),
+        "nothing written before OK"
+    );
+    // PDF chosen in the dialog: the file becomes poster.pdf.
+    let Dialog::Export(st) = &mut app.dialog else {
+        panic!("the options closed");
+    };
+    let mut st2 = st.clone();
+    app.recall_export_format(&mut st2, 1);
+    app.dialog = Dialog::Export(st2);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let Dialog::Export(st) = &app.dialog else {
+        panic!("the options closed");
+    };
+    assert_eq!(st.target.as_deref(), Some(dir.join("poster.pdf").as_path()));
+    assert!(export_dialog_title(st).contains("poster.pdf"));
+    // OK (Enter) writes it, with no second Save dialog.
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Enter, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(matches!(app.dialog, Dialog::None), "{:?}", app.dialog);
+    assert!(test_save::asked().is_empty(), "asked twice");
+    assert!(dir.join("poster.pdf").exists(), "{}", app.status);
+    assert!(!dir.join("poster.png").exists());
+    // The next export offers PDF first.
+    test_save::answer(None);
+    app.export();
+    let asked = test_save::asked();
+    assert_eq!(asked[0].filters()[0].1, vec!["pdf".to_string()]);
+    assert_eq!(asked[0].directory(), Some(dir.as_path()));
+    assert!(matches!(app.dialog, Dialog::None), "Save dialog cancelled");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Cancel in the Save dialog or in the options writes nothing, and a
+/// "Do not show this dialog again" ticked in options then cancelled
+/// leaves the setting as it was (it was the setting itself before, and a
+/// cancelled tick hid the options for good).
+#[test]
+fn cancelling_the_export_writes_nothing() {
+    use crate::files::test_save;
+    use crate::ui::dialogs::Dialog;
+    let (ctx, mut app, _) = setup();
+    let dir = export_test_dir("cancel");
+    test_save::answer(None);
+    app.export();
+    assert_eq!(test_save::asked().len(), 1);
+    assert!(matches!(app.dialog, Dialog::None));
+    test_save::answer(Some(dir.join("a.svg")));
+    app.export();
+    let Dialog::Export(st) = &mut app.dialog else {
+        panic!("no options");
+    };
+    st.dont_show = true;
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Escape, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(matches!(app.dialog, Dialog::None), "{:?}", app.dialog);
+    assert!(!dir.join("a.svg").exists(), "Cancel wrote the file");
+    assert!(
+        !app.settings.formats.skip_export_dialog,
+        "Cancel kept the tick"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// "Do not show this dialog again" ticked and OK: the next Export writes
+/// the file right after the Save dialog with the last options and says
+/// so on the status line (a click there opens Options > Global > File
+/// Formats); Shift (Ctrl+Shift+E, File > Export with Options) shows the
+/// options all the same, where the tick can be taken off.
+#[test]
+fn with_the_options_set_not_to_show_export_writes_at_once() {
+    use crate::files::test_save;
+    use crate::i18n::tr;
+    use crate::ui::dialogs::{Dialog, OptionsPage};
+    let (ctx, mut app, _) = setup();
+    let dir = export_test_dir("skip");
+    test_save::answer(Some(dir.join("first.svg")));
+    app.export();
+    let Dialog::Export(st) = &mut app.dialog else {
+        panic!("no options");
+    };
+    st.dont_show = true;
+    let st = st.clone();
+    app.dialog = Dialog::None;
+    crate::ui::dialogs::export_dialog_ok(&mut app, &st);
+    assert!(dir.join("first.svg").exists());
+    assert!(app.settings.formats.skip_export_dialog, "kept on OK");
+    assert_eq!(test_save::asked().len(), 1, "OK asked for no file");
+    // Export again: the Save dialog, then the file at once.
+    test_save::answer(Some(dir.join("second.svg")));
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::E, Modifiers::COMMAND)],
+        Modifiers::COMMAND,
+    );
+    assert_eq!(test_save::asked().len(), 1);
+    assert!(matches!(app.dialog, Dialog::None), "{:?}", app.dialog);
+    assert!(dir.join("second.svg").exists(), "{}", app.status);
+    assert_eq!(app.status, tr("status.exported_last_options"));
+    assert_eq!(
+        app.status_opens_options,
+        Some((app.status.clone(), OptionsPage::FileFormats))
+    );
+    // Shift shows the options, the tick shown on.
+    test_save::answer(Some(dir.join("third.svg")));
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::E, Modifiers::COMMAND | Modifiers::SHIFT)],
+        Modifiers::COMMAND | Modifiers::SHIFT,
+    );
+    let Dialog::Export(st) = &mut app.dialog else {
+        panic!("Ctrl+Shift+E showed no options: {:?}", app.dialog);
+    };
+    assert!(st.dont_show);
+    assert!(!dir.join("third.svg").exists());
+    // Taken off and OK: the options show again next time.
+    st.dont_show = false;
+    let st = st.clone();
+    app.dialog = Dialog::None;
+    crate::ui::dialogs::export_dialog_ok(&mut app, &st);
+    assert!(dir.join("third.svg").exists());
+    assert!(!app.settings.formats.skip_export_dialog);
+    test_save::answer(Some(dir.join("fourth.svg")));
+    app.export();
+    assert!(matches!(app.dialog, Dialog::Export(_)));
+    assert!(!dir.join("fourth.svg").exists());
+    app.dialog = Dialog::None;
+    // File > Export with Options is in the File menu, after Export.
+    let entries = crate::ui::menus::commands(&mut app, &ctx);
+    let at = |k: &str| entries.iter().position(|e| e.key == k);
+    let with = at("menu.file.export_with_options").expect("listed");
+    assert_eq!(at("menu.file.export").map(|i| i + 1), Some(with));
+    assert_eq!(entries[with].shortcut, "Ctrl+Shift+E");
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// Drawing a rectangle or an ellipse with a wide black default outline:
@@ -11663,6 +11863,7 @@ fn the_export_dialog_asks_before_deleting_a_preset() {
         ..ExportState::default()
     };
     assert!(app.settings.formats.save_preset("FB-WEB", &png));
+    crate::files::test_save::answer(Some(std::env::temp_dir().join("td-presets")));
     app.export();
     let Dialog::Export(st) = &mut app.dialog else {
         panic!("no Export dialog");
@@ -11735,6 +11936,7 @@ fn the_export_dialog_lists_every_preset_and_a_format_change_unchooses() {
             .collect::<Vec<_>>()
     };
     let all = vec!["Web PNG (PNG)", "Print JPG (JPEG)", "Big PNG (PNG)"];
+    crate::files::test_save::answer(Some(std::env::temp_dir().join("td-presets")));
     app.export();
     // The dialog opens at SVG, which has no preset of its own: the list
     // still holds every preset.
