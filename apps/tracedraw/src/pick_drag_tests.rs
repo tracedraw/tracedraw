@@ -4064,7 +4064,8 @@ fn ctrl_keeps_the_marquee_square_and_space_copies_while_turning() {
 /// A right press during a selection box (or a freehand selection): the
 /// box goes on with the pointer and ends with the buttons, whichever
 /// goes up first, selecting what it encloses. It stayed on the canvas,
-/// frozen, until the next selection box (#1015).
+/// frozen, until the next selection box (#1015). (The selection box is
+/// drawn to its size first: with the right button held it moves, #2050.)
 #[test]
 fn a_right_press_during_a_selection_box_does_not_leave_it_frozen() {
     let n = Modifiers::NONE;
@@ -4092,11 +4093,18 @@ fn a_right_press_during_a_selection_box_does_not_leave_it_frozen() {
                     "{tool:?}: {:?}",
                     app.drag
                 );
-                frame(&ctx, &mut app, vec![right(p, true)], n);
-                // Moves with both buttons held go on shaping the box.
                 let corner = app.view.to_screen(Point::new(70.0, 2.0));
                 let mut end = app.view.to_screen(Point::new(70.0, 50.0));
-                frame(&ctx, &mut app, vec![Event::PointerMoved(corner)], n);
+                if tool == Tool::Pick {
+                    frame(&ctx, &mut app, vec![Event::PointerMoved(end)], n);
+                    p = end;
+                }
+                frame(&ctx, &mut app, vec![right(p, true)], n);
+                // Moves with both buttons held go on shaping the freehand
+                // selection; the box stays where it is.
+                if tool == Tool::FreeformPick {
+                    frame(&ctx, &mut app, vec![Event::PointerMoved(corner)], n);
+                }
                 frame(&ctx, &mut app, vec![Event::PointerMoved(end)], n);
                 if tool == Tool::FreeformPick {
                     // On round the bottom left, so that the freehand
@@ -4140,12 +4148,76 @@ fn a_right_press_during_a_selection_box_does_not_leave_it_frozen() {
     }
 }
 
+/// The right button held while a selection box is dragged moves the
+/// box instead of sizing it; let go, the box is sized again, and the
+/// left release selects what the box encloses where it was moved to
+/// (#2050).
+#[test]
+fn the_right_button_moves_the_selection_box_while_it_is_held() {
+    let n = Modifiers::NONE;
+    let right = |p: Pos2, down: bool| button(p, down, PointerButton::Secondary, n);
+    let left = |p: Pos2, down: bool| button(p, down, PointerButton::Primary, n);
+    let (ctx, mut app, id) = setup();
+    app.select(Vec::new());
+    frame(&ctx, &mut app, Vec::new(), n);
+    let at = |app: &App, x: f64, y: f64| app.view.to_screen(Point::new(x, y));
+    // A box from (1, 1) to (56, 36): too small for the rectangle at
+    // (10, 10) to (60, 40).
+    let from = at(&app, 1.0, 1.0);
+    frame(&ctx, &mut app, vec![Event::PointerMoved(from)], n);
+    frame(&ctx, &mut app, vec![left(from, true)], n);
+    for k in 1..=5 {
+        let t = k as f64 / 5.0;
+        let p = at(&app, 1.0 + 55.0 * t, 1.0 + 35.0 * t);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(p)], n);
+    }
+    let size = |app: &App| match &app.drag {
+        Drag::Marquee { start, current, .. } => Some((*start, *current)),
+        _ => None,
+    };
+    let (s0, c0) = size(&app).expect("a selection box");
+    // The right button held: three moves of 2 mm each way move the box.
+    let mut p = at(&app, 56.0, 36.0);
+    frame(&ctx, &mut app, vec![right(p, true)], n);
+    for k in 1..=3 {
+        p = at(&app, 56.0 + 2.0 * k as f64, 36.0 + 2.0 * k as f64);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(p)], n);
+    }
+    let (s1, c1) = size(&app).expect("still a selection box");
+    let moved = s1 - s0;
+    assert!(
+        (moved.x - 6.0).abs() < 0.2 && (moved.y - 6.0).abs() < 0.2,
+        "the box moves: {moved:?}"
+    );
+    assert!(
+        ((c1 - s1) - (c0 - s0)).hypot() < 0.2,
+        "and keeps its size: {s1:?} {c1:?}"
+    );
+    // The right button up: the box is sized again by the pointer.
+    frame(&ctx, &mut app, vec![right(p, false)], n);
+    let q = at(&app, 63.0, 43.0);
+    frame(&ctx, &mut app, vec![Event::PointerMoved(q)], n);
+    let (s2, c2) = size(&app).expect("still a selection box");
+    assert!((s2 - s1).hypot() < 0.2, "the start stays: {s2:?}");
+    assert!(
+        (c2 - Point::new(63.0, 43.0)).hypot() < 0.2,
+        "the corner follows: {c2:?}"
+    );
+    frame(&ctx, &mut app, vec![left(q, false)], n);
+    frame(&ctx, &mut app, Vec::new(), n);
+    assert!(matches!(app.drag, Drag::None), "{:?}", app.drag);
+    assert_eq!(app.selection, vec![id], "the moved box takes the rectangle");
+    assert!(app.drop_menu.is_none() && app.right_drag.is_none());
+}
+
 /// The Shape tool's selection box (and freehand selection) over a
 /// curve's nodes, as the Pick tool's: a right press during the drag opens
 /// no node menu, the box goes on with the pointer and ends with the left
 /// button, choosing the nodes it encloses, and nothing of it stays on the
 /// canvas. The menu opened in the middle of the drag and the box stayed
-/// frozen on screen, also after another tool was chosen (#1848).
+/// frozen on screen, also after another tool was chosen (#1848). (The
+/// box is drawn to its size first: with the right button held it moves,
+/// #2050.)
 #[test]
 fn a_right_press_during_a_shape_tool_selection_box_opens_no_menu() {
     let n = Modifiers::NONE;
@@ -4184,10 +4256,18 @@ fn a_right_press_during_a_shape_tool_selection_box_opens_no_menu() {
                 "{what}: {:?}",
                 app.drag
             );
-            frame(&ctx, &mut app, vec![right(p, true)], n);
             let corner = app.view.to_screen(Point::new(75.0, 35.0));
             let mut end = app.view.to_screen(Point::new(75.0, 5.0));
-            frame(&ctx, &mut app, vec![Event::PointerMoved(corner)], n);
+            // The box at its size first: with the right button held it
+            // moves (#2050).
+            if !lasso {
+                frame(&ctx, &mut app, vec![Event::PointerMoved(end)], n);
+                p = end;
+            }
+            frame(&ctx, &mut app, vec![right(p, true)], n);
+            if lasso {
+                frame(&ctx, &mut app, vec![Event::PointerMoved(corner)], n);
+            }
             frame(&ctx, &mut app, vec![Event::PointerMoved(end)], n);
             if lasso {
                 end = app.view.to_screen(Point::new(5.0, 5.0));

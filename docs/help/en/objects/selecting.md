@@ -36,9 +36,11 @@ in the middle. The status bar says what is selected and on which layer.
 
 The pointer shows the move arrows only over what is selected. Over any other
 object it keeps the plain arrow, since a press there picks that object first;
-dragging an unselected object still picks and moves it. A right click while
-you drag a selection frame is ignored: the frame goes on and selects when you
-let go of the left button.
+dragging an unselected object still picks and moves it. While you drag a
+selection frame, hold the right mouse button as well to move the frame
+without changing its size, so that it sits exactly round the objects you
+want; let go of the right button to size it again. The frame selects when
+you let go of the left button.
 
 Drawing and shaping tools whose click has no job of its own (the rectangle,
 ellipse, polygon and other shape tools, the Knife, the connectors, Blend and

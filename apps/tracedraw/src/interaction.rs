@@ -1233,18 +1233,37 @@ impl App {
     /// freehand selection over nodes go the same way: the right press
     /// opened the node menu during the drag and left the box on the
     /// canvas (#1848).
+    /// While the right button is held as well, a selection box (of
+    /// objects or of nodes) moves with the pointer instead of changing
+    /// its size, and takes up its sizing again when the right button
+    /// goes up (#2050).
     fn selection_drag_input(
         &mut self,
         response: &Response,
         hover: Option<egui::Pos2>,
         mods: Modifiers,
     ) {
-        let held = response.ctx.input(|i| i.pointer.primary_down());
+        let (held, right) = response
+            .ctx
+            .input(|i| (i.pointer.primary_down(), i.pointer.secondary_down()));
         let at = hover.or(if held { self.pointer_screen } else { None });
         if let Some(s) = at {
             let p = self.view.to_page(s);
             self.pointer_page = Some(p);
-            if held {
+            let boxed = matches!(self.drag, Drag::Marquee { .. } | Drag::NodeMarquee { .. });
+            if held && right && boxed {
+                if let Some(last) = self.marquee_moved_from {
+                    let d = p - last;
+                    if let Drag::Marquee { start, current, .. }
+                    | Drag::NodeMarquee { start, current } = &mut self.drag
+                    {
+                        *start += d;
+                        *current += d;
+                    }
+                }
+                self.marquee_moved_from = Some(p);
+            } else if held {
+                self.marquee_moved_from = None;
                 let step = 0.2 / self.view.zoom as f64;
                 match &mut self.drag {
                     Drag::NodeMarquee { current, .. } => *current = p,
@@ -1258,6 +1277,7 @@ impl App {
             }
         }
         if !held {
+            self.marquee_moved_from = None;
             self.end_drag();
         }
     }

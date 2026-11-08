@@ -1388,6 +1388,9 @@ pub struct App {
     /// A tab stop dragged on the tab ruler of the frame being edited
     /// (#1852).
     pub tab_drag: Option<crate::tab_ruler::TabDrag>,
+    /// Where the pointer was (page) when a selection box was last moved
+    /// with the right button held during its drag (#2050).
+    pub marquee_moved_from: Option<Point>,
     /// An indent marker of the tab ruler being dragged (#1993).
     pub indent_drag: Option<crate::tab_ruler::IndentDrag>,
     /// The right click that opened the context menu was on the tab ruler:
@@ -2774,6 +2777,7 @@ impl App {
             text_link_from_tab: false,
             tab_drag: None,
             indent_drag: None,
+            marquee_moved_from: None,
             tab_ruler_menu: None,
             clip_frame_edit: None,
             clip_edit_marks: Vec::new(),
