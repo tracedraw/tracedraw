@@ -221,7 +221,21 @@ quarter of the **tolerance** (0.05 mm at first); neighbouring segments
 of one subpath and segments running along each other do not count, and
 crossings closer than the tolerance for the same objects are one. With
 **Also between objects** (off at first) crossings between different
-objects count too. OK selects the objects that have crossings.
+objects count too.
+
+**On OK**: **Select them** (at first) selects the objects that have
+crossings and changes nothing; **Fix them** fixes the crossings in one
+undo step ("Fix Crossings"). Each outline crossing itself is split
+where it crosses and rebuilt, read with the object's fill rule, as the
+outlines of the area it fills (outer outlines and holes that cross
+nowhere): a figure eight becomes two loops, a star drawn as one line
+its outline or its points. Where two rebuilt loops would still touch at
+a former crossing, a dot as wide as the tolerance is cut out there so
+they come apart. With **Also between objects**, objects that cross each
+other are welded into the lowest of them and the others deleted. Open
+lines are kept as they are; curves, rectangles, ellipses and polygons
+become curves, and groups, text, pictures and locked objects are left
+alone.
 
 ## Nesting tools
 
