@@ -21,7 +21,7 @@ Counts: works 192, partial 7 (`.cdr` content coverage; CMX import; print preview
 | Freehand Pick (lasso, Alt for touching, also started over any object, selected or not, Ctrl for a rectangle, the Pick tool's handles; Alt+drag with the Pick tool starts its touching frame over objects too, #1341, #1350) | works |
 | Selection groups 0 to 9: Ctrl+number stores the selection, the number selects it again (twice: and zooms to it), Alt+number adds to it; saved with the drawing (see `behavior/pick-tool.md`) | works |
 | Free Transform (rotation, angle reflection, scale, skew modes, Apply to Duplicate; one drag is one undo step, a skew never mirrors) | works |
-| Zoom tool, zoom levels, zoom to page/fit/selected, marquee zoom, Shift+F4 | works |
+| Zoom tool, zoom levels, zoom to page/fit/selected, marquee zoom, Shift+F4; the view scrolls when a drag reaches the window edge (#2051) | works |
 | Pan, mouse wheel, Ctrl and Shift wheel | works |
 | Rulers with numbers from the origin without sign, the unit name, an origin button and pointer markers; draggable origin, double-click for ruler settings, a right-click menu with Ruler, Grid and Guidelines Setup and Rulers off (#1831), guidelines from rulers, Guidelines panel; all 13 units | works |
 | Grid: document (lines or dots, spacing or frequency, thinned when dense, through the origin), pixel (Pixels view from 800%, colour and opacity), baseline (spacing, start from top, colour); snapping with threshold | works |

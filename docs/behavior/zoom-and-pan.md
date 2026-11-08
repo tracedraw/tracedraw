@@ -48,6 +48,24 @@
   go, and releasing the left button makes the shape. Changing the tool
   drops an unfinished shape drag (#1923).
 
+## Scrolling at the edge during a drag
+
+- While the left button drags objects (moving, sizing), draws (a shape
+  dragged out, Freehand, a connector, a text frame), selects (a
+  selection box or freehand selection, of objects or of nodes) or drags
+  nodes and handles with the Shape tool, a pointer within 24 interface
+  points of the drawing window's edge, or past it, scrolls the view
+  toward that edge: up to 900 points a second, from nothing at 24
+  points in to the full speed at the edge, along each axis on its own
+  (a corner scrolls both ways). It goes on while the pointer rests
+  there (each frame asks for the next), and the drag follows the pointer
+  in the scrolled view, so a box grows and a moved object travels over
+  what comes in (#2051, `interaction::edge_scroll_step`,
+  `pick_drag_tests::a_drag_at_the_window_edge_scrolls_the_view`). A drag
+  that has left the window keeps following the pointer.
+- The cost a frame is a few comparisons; nothing scrolls without a drag
+  or in a drawing window smaller than four bands.
+
 ## Navigator and scrollbars
 
 - The scrollbars cover the page plus a margin of one page in every

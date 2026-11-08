@@ -2,6 +2,38 @@
 
 use crate::app::{App, CurveInProgress, Drag, Handle};
 
+/// How near the drawing window's edge (interface points) a drag starts
+/// scrolling the view (#2051).
+pub const EDGE_SCROLL_BAND: f32 = 24.0;
+/// The fastest the view scrolls during a drag, interface points a
+/// second, with the pointer at the edge or past it.
+pub const EDGE_SCROLL_SPEED: f32 = 900.0;
+
+/// How far the view scrolls this frame (`dt` seconds) for a drag with the
+/// pointer at `p` in the drawing window `rect`: toward each edge the
+/// pointer is within [`EDGE_SCROLL_BAND`] of, faster the nearer, at most
+/// [`EDGE_SCROLL_SPEED`]. Nothing in a window too small to have room for
+/// the bands.
+pub fn edge_scroll_step(rect: egui::Rect, p: egui::Pos2, dt: f32) -> egui::Vec2 {
+    if !rect.is_positive()
+        || rect.width() < 4.0 * EDGE_SCROLL_BAND
+        || rect.height() < 4.0 * EDGE_SCROLL_BAND
+    {
+        return egui::Vec2::ZERO;
+    }
+    let axis = |lo: f32, hi: f32, v: f32| -> f32 {
+        let toward_lo = ((lo + EDGE_SCROLL_BAND - v) / EDGE_SCROLL_BAND).clamp(0.0, 1.0);
+        let toward_hi = ((v - (hi - EDGE_SCROLL_BAND)) / EDGE_SCROLL_BAND).clamp(0.0, 1.0);
+        // Near the left (top) edge the drawing moves right (down) to show
+        // what lies beyond it.
+        (toward_lo - toward_hi) * EDGE_SCROLL_SPEED * dt
+    };
+    egui::Vec2::new(
+        axis(rect.left(), rect.right(), p.x),
+        axis(rect.top(), rect.bottom(), p.y),
+    )
+}
+
 /// What a Pen or Bezier press would edit on the selected curve.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PenEdit {
@@ -1282,6 +1314,54 @@ impl App {
         }
     }
 
+    /// Whether the drag running scrolls the view when the pointer nears
+    /// the window's edge (#2051): moving and sizing objects, drawing,
+    /// selecting, dragging nodes and handles, connectors and text frames.
+    pub(crate) fn scrolls_at_edge(&self) -> bool {
+        matches!(
+            self.drag,
+            Drag::Box { .. }
+                | Drag::ThreePointBase { .. }
+                | Drag::Move { .. }
+                | Drag::Scale { .. }
+                | Drag::Marquee { .. }
+                | Drag::Lasso { .. }
+                | Drag::Freehand { .. }
+                | Drag::Node { .. }
+                | Drag::Handle { .. }
+                | Drag::KindNode { .. }
+                | Drag::NodeMove { .. }
+                | Drag::SegmentBend { .. }
+                | Drag::NodeLasso { .. }
+                | Drag::NodeMarquee { .. }
+                | Drag::Connector { .. }
+                | Drag::TextFrame { .. }
+        )
+    }
+
+    /// Auto-scroll (#2051): while a drag that [`App::scrolls_at_edge`]
+    /// has the left button held within [`EDGE_SCROLL_BAND`] of the
+    /// drawing window's edge, or past it, the view scrolls toward that
+    /// edge, faster the nearer it is, and the frame after is asked for so
+    /// it goes on while the pointer rests. A few comparisons a frame; the
+    /// drag then follows the pointer in the scrolled view.
+    fn edge_scroll(&mut self, response: &Response) {
+        if !self.scrolls_at_edge() {
+            return;
+        }
+        let (held, dt) = response
+            .ctx
+            .input(|i| (i.pointer.primary_down(), i.stable_dt));
+        let Some(p) = self.pointer_screen.filter(|_| held) else {
+            return;
+        };
+        let step = edge_scroll_step(response.rect, p, dt.clamp(0.0, 0.05));
+        if step != egui::Vec2::ZERO {
+            self.view.pan(step);
+            response.ctx.request_repaint();
+        }
+    }
+
     pub(crate) fn handle_at(&self, screen: egui::Pos2) -> Option<Handle> {
         let b = self.selection_bounds()?;
         let reach = if self.rotate_mode {
@@ -1299,6 +1379,7 @@ impl App {
         self.snap_mark.set(None);
         self.clear_live_guides();
         self.pointer_screen = response.ctx.pointer_latest_pos();
+        self.edge_scroll(response);
         // egui ends a drag when the right button of a right click goes up
         // and then hovers nothing while the left one is held: the
         // transform goes on with the latest pointer position.
@@ -1306,9 +1387,11 @@ impl App {
         // following the pointer, and its release ends it there (#1014).
         // A shape being drawn after a middle-button pan: egui counts no
         // drag of the held left button any more and hovers nothing (#1923).
+        // A drag taken past the window's edge goes on with the pointer
+        // while the view scrolls (#2051).
         let hover = response.hover_pos().or_else(|| {
             let held = response.ctx.input(|i| i.pointer.primary_down());
-            let boxing = matches!(self.drag, Drag::Box { .. });
+            let boxing = matches!(self.drag, Drag::Box { .. }) || self.scrolls_at_edge();
             if ((self.transforming() || boxing) && held) || self.curve_drag_running(response) {
                 self.pointer_screen
             } else {

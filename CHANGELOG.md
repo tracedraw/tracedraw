@@ -94,6 +94,8 @@ full, row-by-row status.
 
 - The browser version's start notice says where its fonts come from: not the computer's installed fonts, but free fonts fetched from the page's catalogue when a drawing needs them and fonts added in the Font Manager; it said only the bundled fonts were available (#1417).
 
+- Auto-scroll: a drag that reaches the edge of the drawing window (moving or sizing objects, drawing, a selection box, nodes) scrolls the view that way, faster the nearer the edge, while the button is held (#2051).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

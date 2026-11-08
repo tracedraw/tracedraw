@@ -2604,7 +2604,9 @@ fn shape_tool_marks_the_last_picked_object_blue_and_the_others_red() {
     assert_eq!(colors, vec![blue], "b, picked last");
     // Drag the start node of a: while dragging it stays red and b blue.
     let b_before = curve_path(&app, b);
-    let to = start_a + egui::vec2(0.0, 40.0);
+    // Up, away from the window's edge, where the view would scroll
+    // (#2051).
+    let to = start_a - egui::vec2(0.0, 40.0);
     frame(
         &ctx,
         &mut app,
@@ -2625,7 +2627,7 @@ fn shape_tool_marks_the_last_picked_object_blue_and_the_others_red() {
     frame(
         &ctx,
         &mut app,
-        vec![Event::PointerMoved(start_a + egui::vec2(0.0, 20.0))],
+        vec![Event::PointerMoved(start_a - egui::vec2(0.0, 20.0))],
         Modifiers::NONE,
     );
     let colors = outline_colors_through(&ctx, &mut app, vec![Event::PointerMoved(to)], start_b);
@@ -4146,6 +4148,68 @@ fn a_right_press_during_a_selection_box_does_not_leave_it_frozen() {
             }
         }
     }
+}
+
+/// A drag near the drawing window's edge scrolls the view toward it,
+/// faster the nearer, and the drag goes on in the scrolled view: a
+/// selection box held at the right edge grows over what scrolls in
+/// (#2051).
+#[test]
+fn a_drag_at_the_window_edge_scrolls_the_view() {
+    use crate::interaction::{edge_scroll_step, EDGE_SCROLL_BAND, EDGE_SCROLL_SPEED};
+    let r = egui::Rect::from_min_size(Pos2::new(100.0, 50.0), egui::vec2(800.0, 600.0));
+    assert_eq!(edge_scroll_step(r, r.center(), 0.1), egui::Vec2::ZERO);
+    let at_right = edge_scroll_step(r, Pos2::new(899.0, 300.0), 0.1);
+    assert!(at_right.x < 0.0 && at_right.y == 0.0, "{at_right:?}");
+    let halfway = edge_scroll_step(r, Pos2::new(900.0 - EDGE_SCROLL_BAND / 2.0, 300.0), 0.1);
+    assert!(
+        (halfway.x + EDGE_SCROLL_SPEED * 0.05).abs() < 0.5,
+        "{halfway:?}"
+    );
+    let past = edge_scroll_step(r, Pos2::new(40.0, 20.0), 0.1);
+    assert!(
+        (past.x - EDGE_SCROLL_SPEED * 0.1).abs() < 0.5 && (past.y - past.x).abs() < 0.5,
+        "{past:?}"
+    );
+
+    let n = Modifiers::NONE;
+    let left = |p: Pos2, down: bool| button(p, down, PointerButton::Primary, n);
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    frame(&ctx, &mut app, Vec::new(), n);
+    let canvas = app.canvas_rect;
+    let from = app.view.to_screen(Point::new(1.0, 1.0));
+    frame(&ctx, &mut app, vec![Event::PointerMoved(from)], n);
+    frame(&ctx, &mut app, vec![left(from, true)], n);
+    let edge = Pos2::new(canvas.right() - 4.0, from.y);
+    for k in 1..=4 {
+        let t = k as f32 / 4.0;
+        let p = from + (edge - from) * t;
+        frame(&ctx, &mut app, vec![Event::PointerMoved(p)], n);
+    }
+    let corner = |app: &App| match &app.drag {
+        Drag::Marquee { current, .. } => current.x,
+        _ => panic!("a selection box: {:?}", app.drag),
+    };
+    let origin = app.view.origin.x;
+    let reach = corner(&app);
+    // The pointer rests at the edge: the view goes on scrolling and the
+    // box on growing.
+    for _ in 0..5 {
+        frame(&ctx, &mut app, Vec::new(), n);
+    }
+    assert!(app.view.origin.x < origin - 1.0, "the view scrolls");
+    assert!(corner(&app) > reach + 0.1, "the box grows with it");
+    let page_at = app.view.to_page(edge).x;
+    assert!((corner(&app) - page_at).abs() < 0.5, "under the pointer");
+    frame(&ctx, &mut app, vec![left(edge, false)], n);
+    frame(&ctx, &mut app, Vec::new(), n);
+    assert!(matches!(app.drag, Drag::None));
+    // Nothing scrolls without a drag.
+    let still = app.view.origin;
+    frame(&ctx, &mut app, vec![Event::PointerMoved(edge)], n);
+    frame(&ctx, &mut app, Vec::new(), n);
+    assert_eq!(app.view.origin, still);
 }
 
 /// The right button held while a selection box is dragged moves the
