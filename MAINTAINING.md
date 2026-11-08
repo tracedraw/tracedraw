@@ -175,26 +175,6 @@ everything above holds. Thank the contributor either way.
 - A merge that breaks something: revert it (the Revert button on the pull
   request), then fix it in a new pull request. Never rewrite `main`.
 
-### Pushes and pull requests by the project's own app
-
-- Branches named `claude/<topic>` carry the work of the AI assistant. They
-  are pushed by the project's GitHub App, `tracedraw-ci`, which GitHub
-  shows as `tracedraw-ci[bot]`: it applies the change on top of a fresh
-  `main`, pushes the branch, opens the pull request (title from the
-  newest commit, description from the commit messages) and turns on
-  auto-merge, so the change lands once the required checks pass. The
-  `claude-pr` workflow does the same for a `claude/` branch pushed any
-  other way, as `claude[bot]`.
-- Why: on November 6, 2026, GitHub suspended the accounts the
-  contributors used to work on TraceDraw, with the message "Access to
-  your account has been suspended due to a violation of our Terms of
-  Service", and gave no reason when asked. Pull requests, merges and
-  releases stopped for two days. Since then the work goes through the
-  App, which belongs to the organization and not to any person, so the
-  repository no longer depends on a personal account being in good
-  standing. The commits keep their author (`Claude <noreply@anthropic.com>`,
-  signed off by the maintainers); only the pusher changed.
-
 ### Releases and signing
 
 Tags, signed builds, the Microsoft Store and Google Play submissions and
