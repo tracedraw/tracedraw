@@ -1002,10 +1002,17 @@ impl PageWriter<'_> {
             // The merge mode goes out as the PDF blend mode when one
             // matches it.
             let mut blend = "Normal";
+            // The transparency's opacity and its target (the fill, the
+            // outline or the whole object, live test of 0.41).
+            let mut fade: Option<(f64, u8)> = None;
             for e in &shape.effects {
                 match e {
-                    tracedraw_core::live::Effect::Transparency { mask, merge, .. } => {
-                        main.opacity *= crate::svg::average_luminance(mask) as f64;
+                    tracedraw_core::live::Effect::Transparency {
+                        mask,
+                        merge,
+                        target,
+                    } => {
+                        fade = Some((crate::svg::average_luminance(mask) as f64, *target));
                         blend = pdf_blend_mode(*merge);
                     }
                     tracedraw_core::live::Effect::Lens(
@@ -1018,17 +1025,30 @@ impl PageWriter<'_> {
                     _ => {}
                 }
             }
-            if blend != "Normal" && self.pdf.allow_alpha {
-                let name = format!("GS{}", self.gstates.len());
-                let id = self
-                    .pdf
-                    .add_str(format!("<< /Type /ExtGState /BM /{blend} >>"));
-                self.gstates.push((name.clone(), id));
-                let _ = writeln!(self.content, "q\n/{name} gs");
-                self.shape(&main, parent);
-                self.content.push_str("Q\n");
-            } else {
-                self.shape(&main, parent);
+            let parts = match fade {
+                Some((_, target)) => tracedraw_core::live::transparency_parts(&main, target),
+                None => vec![(main, false)],
+            };
+            for (mut part, faded) in parts {
+                if !faded {
+                    self.shape(&part, parent);
+                    continue;
+                }
+                if let Some((opacity, _)) = fade {
+                    part.opacity *= opacity;
+                }
+                if blend != "Normal" && self.pdf.allow_alpha {
+                    let name = format!("GS{}", self.gstates.len());
+                    let id = self
+                        .pdf
+                        .add_str(format!("<< /Type /ExtGState /BM /{blend} >>"));
+                    self.gstates.push((name.clone(), id));
+                    let _ = writeln!(self.content, "q\n/{name} gs");
+                    self.shape(&part, parent);
+                    self.content.push_str("Q\n");
+                } else {
+                    self.shape(&part, parent);
+                }
             }
             for a in &ev.above {
                 let mut a = a.clone();
@@ -3329,6 +3349,25 @@ mod tests {
         }
         // The plain head's base is not there: the head moved.
         assert!(!content.contains(&format!("{} {} l", f(52.0 * MM_PT), f(146.8 * MM_PT))));
+    }
+
+    /// A live test of 0.41: the transparency's target made no difference.
+    /// The fill alone (0) or the outline alone (1) is painted under a
+    /// see-through graphics state, the other part without one.
+    #[test]
+    fn a_transparency_target_fades_the_fill_or_the_outline() {
+        for target in [0u8, 1] {
+            let doc = crate::svg::tests::doc_with_targeted_transparency(target);
+            let content = page_content(&document_to_pdf(&doc));
+            let at = |s: &str| content.find(s).unwrap_or_else(|| panic!("{s}: {content}"));
+            let (red, blue, gs) = (at("1 0 0 rg"), at("0 0 1 RG"), at(" gs\n"));
+            assert_eq!(content.matches(" gs\n").count(), 1, "{content}");
+            if target == 0 {
+                assert!(gs < red && red < blue, "{content}");
+            } else {
+                assert!(red < gs && gs < blue, "{content}");
+            }
+        }
     }
 
     /// The page's content streams, inflated.

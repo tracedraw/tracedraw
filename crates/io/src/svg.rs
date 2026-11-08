@@ -192,10 +192,17 @@ fn write_unlinked(
         // approximate with the average opacity of the mask. The merge
         // mode goes out as the CSS blend mode when one matches it.
         let mut blend = None;
+        // The transparency's opacity and its target (the fill, the
+        // outline or the whole object, live test of 0.41).
+        let mut fade: Option<(f64, u8)> = None;
         for e in &shape.effects {
             match e {
-                tracedraw_core::live::Effect::Transparency { mask, merge, .. } => {
-                    main.opacity *= average_luminance(mask) as f64;
+                tracedraw_core::live::Effect::Transparency {
+                    mask,
+                    merge,
+                    target,
+                } => {
+                    fade = Some((average_luminance(mask) as f64, *target));
                     blend = svg_blend_mode(*merge);
                 }
                 tracedraw_core::live::Effect::Lens(tracedraw_core::live::Lens::Transparency {
@@ -211,13 +218,26 @@ fn write_unlinked(
                 _ => {}
             }
         }
-        match blend {
-            Some(b) => {
-                let _ = writeln!(out, "{pad}  <g style=\"mix-blend-mode:{b}\">");
-                write_shape(&main, symbols, parent, out, defs, ctx, indent + 2);
-                let _ = writeln!(out, "{pad}  </g>");
+        let parts = match fade {
+            Some((_, target)) => tracedraw_core::live::transparency_parts(&main, target),
+            None => vec![(main, false)],
+        };
+        for (mut part, faded) in parts {
+            if !faded {
+                write_shape(&part, symbols, parent, out, defs, ctx, indent + 1);
+                continue;
             }
-            None => write_shape(&main, symbols, parent, out, defs, ctx, indent + 1),
+            if let Some((opacity, _)) = fade {
+                part.opacity *= opacity;
+            }
+            match blend {
+                Some(b) => {
+                    let _ = writeln!(out, "{pad}  <g style=\"mix-blend-mode:{b}\">");
+                    write_shape(&part, symbols, parent, out, defs, ctx, indent + 2);
+                    let _ = writeln!(out, "{pad}  </g>");
+                }
+                None => write_shape(&part, symbols, parent, out, defs, ctx, indent + 1),
+            }
         }
         for a in &ev.above {
             let mut a = a.clone();
@@ -1008,9 +1028,56 @@ fn escape(s: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use tracedraw_core::{geometry::Rect, Color, Document, Stroke};
+
+    /// A rounded rectangle, red with a blue outline, with a uniform
+    /// transparency of half on `target` (0 the fill, 1 the outline, 2 all).
+    pub(crate) fn doc_with_targeted_transparency(target: u8) -> Document {
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let mut s = Shape::new(
+            doc.ids_mut().shape(),
+            ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 60.0, 40.0),
+                radius: 6.0,
+                corners: None,
+            },
+        );
+        s.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        s.stroke = Some(Stroke::new(Color::rgb8(0, 0, 255), 2.0));
+        s.effects.push(tracedraw_core::live::Effect::Transparency {
+            mask: Fill::Solid(Color::Gray { v: 0.5 }),
+            merge: tracedraw_core::live::MergeMode::Normal,
+            target,
+        });
+        doc.layer_mut(layer).unwrap().shapes.push(s);
+        doc
+    }
+
+    /// A live test of 0.41: the transparency's target made no difference,
+    /// the whole object faded. The fill alone, the outline alone or both
+    /// go out see-through as the target says.
+    #[test]
+    fn a_transparency_target_fades_the_fill_the_outline_or_both() {
+        for target in 0..=2u8 {
+            let svg = page_to_svg(&doc_with_targeted_transparency(target), 0);
+            let line = |paint: &str| {
+                svg.lines()
+                    .filter(|l| l.contains("<path") && l.contains(paint))
+                    .map(|l| l.contains(" opacity=\"0."))
+                    .collect::<Vec<_>>()
+            };
+            let (fill, outline) = (line("fill=\"#ff0000\""), line("stroke=\"#0000ff\""));
+            assert!(!fill.is_empty() && !outline.is_empty(), "{svg}");
+            assert!(fill.iter().all(|f| *f == (target != 1)), "{target}: {svg}");
+            assert!(
+                outline.iter().all(|o| *o == (target != 0)),
+                "{target}: {svg}"
+            );
+        }
+    }
 
     #[test]
     fn opacity_masks_are_svg_masks() {

@@ -1116,6 +1116,53 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
     Evaluated { below, main, above }
 }
 
+/// The parts of `shape` a transparency with `target` (0 the fill, 1 the
+/// outline, 2 the whole object) draws, in drawing order, each with
+/// whether the transparency applies to it. The fill and the outline of
+/// an object that has both are drawn apart, the outline first when it is
+/// set behind the fill; a part the object lacks leaves the other drawn as
+/// it is. Groups, clip frames, tables and symbols, whose members have
+/// fills and outlines of their own, and pictures are faded whole.
+pub fn transparency_parts(shape: &Shape, target: u8) -> Vec<(Shape, bool)> {
+    let container = matches!(
+        shape.kind,
+        ShapeKind::Group { .. }
+            | ShapeKind::ClipFrame { .. }
+            | ShapeKind::Table(_)
+            | ShapeKind::SymbolInstance { .. }
+            | ShapeKind::Bitmap { .. }
+    );
+    let has_fill = !matches!(shape.fill, Fill::None);
+    let has_outline = shape.stroke.is_some();
+    if target >= 2 || container {
+        return vec![(shape.clone(), true)];
+    }
+    let fill_faded = target == 0;
+    match (has_fill, has_outline) {
+        (true, true) => {
+            let mut fill = shape.clone();
+            fill.stroke = None;
+            let mut outline = shape.clone();
+            outline.fill = Fill::None;
+            // The shadow goes once, beneath the part drawn first.
+            let behind = shape.stroke.as_ref().is_some_and(|s| s.behind_fill);
+            if let Some(st) = outline.stroke.as_mut() {
+                st.behind_fill = false;
+            }
+            if behind {
+                fill.shadow = None;
+                vec![(outline, !fill_faded), (fill, fill_faded)]
+            } else {
+                outline.shadow = None;
+                vec![(fill, fill_faded), (outline, !fill_faded)]
+            }
+        }
+        (true, false) => vec![(shape.clone(), fill_faded)],
+        (false, true) => vec![(shape.clone(), !fill_faded)],
+        (false, false) => vec![(shape.clone(), true)],
+    }
+}
+
 /// Reshape `shape` by `f`, which works in the shape's own space. A group
 /// (or a clip frame) is reshaped object by object, each keeping its own
 /// fill and outline, as the reference program does with an envelope on a
@@ -2345,6 +2392,53 @@ pub fn homography(src: &[Point; 4], dst: &[Point; 4]) -> Option<[f64; 8]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The parts a transparency's target fades (live test of 0.41: the
+    /// target made no difference): the fill and the outline apart, the
+    /// outline first when it is behind the fill, an object lacking the
+    /// part named drawn as it is, a group faded whole.
+    #[test]
+    fn transparency_parts_follow_the_target() {
+        let mut s = Shape::new(
+            crate::ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 2.0,
+                corners: None,
+            },
+        );
+        s.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        s.stroke = Some(crate::Stroke::new(Color::BLACK, 1.0));
+        let look = |parts: &[(Shape, bool)]| {
+            parts
+                .iter()
+                .map(|(p, faded)| (!matches!(p.fill, Fill::None), p.stroke.is_some(), *faded))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            look(&transparency_parts(&s, 0)),
+            [(true, false, true), (false, true, false)]
+        );
+        assert_eq!(
+            look(&transparency_parts(&s, 1)),
+            [(true, false, false), (false, true, true)]
+        );
+        assert_eq!(look(&transparency_parts(&s, 2)), [(true, true, true)]);
+        if let Some(st) = s.stroke.as_mut() {
+            st.behind_fill = true;
+        }
+        assert_eq!(
+            look(&transparency_parts(&s, 1)),
+            [(false, true, true), (true, false, false)]
+        );
+        // No outline: the outline target fades nothing, the fill target all.
+        s.stroke = None;
+        assert_eq!(look(&transparency_parts(&s, 1)), [(true, false, false)]);
+        assert_eq!(look(&transparency_parts(&s, 0)), [(true, false, true)]);
+        let group = Shape::new(crate::ShapeId(2), ShapeKind::Group { children: vec![s] });
+        let parts = transparency_parts(&group, 0);
+        assert!(parts.len() == 1 && parts[0].1);
+    }
 
     /// A symmetry goes with its object: the centre and the first line are
     /// carried by a move, a turn and a mirror, so the copies the object

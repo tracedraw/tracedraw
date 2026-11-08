@@ -14,6 +14,25 @@ mask, then composited with the merge mode. A shaped gradient follows
 the object's outline (`tests::shaped_transparency_follows_the_object`).
 A gradient mask turns, mirrors and skews with its object as a gradient
 fill does (see `gradient-fill.md`, #775).
+
+The mask is drawn over the object's box; past the box (where the outer
+half of an outline lies, or a drop shadow) it goes on as it is at the
+box's edge. It was taken as no transparency there, so the outline of a
+rounded rectangle stayed opaque outside the box and faded inside it:
+part of it seemed to vanish (a live test of 0.41).
+
+Apply to (the target): Fill fades the fill alone and draws the outline
+as it is, Outline the reverse, All the whole object. The fill and the
+outline are then drawn apart, each through the same mask (placed on the
+object's box), the outline first when it is set behind the fill; an
+object without the part named is drawn as it is. Groups, clip frames,
+tables, symbols and pictures fade whole whatever the target
+(`live::transparency_parts`). The screen, SVG and PDF exports draw the
+target alike; the exports give the faded part the mask's average
+opacity (`render::tests::a_transparency_fades_the_part_its_target_names_outline_and_all`,
+`svg::tests::a_transparency_target_fades_the_fill_the_outline_or_both`,
+`pdf::tests::a_transparency_target_fades_the_fill_or_the_outline`; a
+live test of 0.41: the outline never faded).
 Moving nodes or cropping keeps a gradient mask where it lies on the
 page, cut by the new outline, not squeezed into its new box (see
 `gradient-fill.md`, #1491).

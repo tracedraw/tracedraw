@@ -784,22 +784,13 @@ impl Renderer<'_> {
                 // outline alone (1) or the whole object (2). The part it
                 // leaves out is drawn as it is (live test of 0.41: the
                 // target was ignored).
-                match target {
-                    0 | 1 if main.stroke.is_some() && !matches!(main.fill, Fill::None) => {
-                        let mut fill = main.clone();
-                        fill.stroke = None;
-                        let mut outline = main.clone();
-                        outline.fill = Fill::None;
-                        outline.shadow = None;
-                        if target == 0 {
-                            self.draw_with_mask(&fill, parent, &mask, merge);
-                            self.draw_shape(&outline, parent);
-                        } else {
-                            self.draw_shape(&fill, parent);
-                            self.draw_with_mask(&outline, parent, &mask, merge);
-                        }
+                // An outline set behind the fill is drawn first.
+                for (part, faded) in tracedraw_core::live::transparency_parts(&main, target) {
+                    if faded {
+                        self.draw_with_mask(&part, parent, &mask, merge);
+                    } else {
+                        self.draw_shape(&part, parent);
                     }
-                    _ => self.draw_with_mask(&main, parent, &mask, merge),
                 }
             } else {
                 self.draw_shape(&main, parent);
@@ -1778,19 +1769,36 @@ impl Renderer<'_> {
                 _ => sub.draw_fill(mask_fill, &rect_path, &sk, FillRule::Winding),
             }
         }
-        let mdata: Vec<u8> = mask_pm
-            .pixels()
-            .iter()
-            .map(|p| {
-                let d = p.demultiply();
-                if d.alpha() == 0 {
-                    255
-                } else {
-                    ((d.red() as u32 * 54 + d.green() as u32 * 183 + d.blue() as u32 * 19) / 256)
-                        as u8
-                }
-            })
-            .collect();
+        let lum = |p: &tiny_skia::PremultipliedColorU8| {
+            let d = p.demultiply();
+            if d.alpha() == 0 {
+                255
+            } else {
+                ((d.red() as u32 * 54 + d.green() as u32 * 183 + d.blue() as u32 * 19) / 256) as u8
+            }
+        };
+        let mask_px = mask_pm.pixels();
+        // The mask is drawn over the object's box; past it (where the
+        // outer half of an outline lies) it goes on as it is at the box's
+        // edge, the nearest pixel wholly inside the box. Taken as no
+        // transparency there, the outline of a rounded rectangle showed
+        // opaque outside the box and faded inside it, so most of it
+        // seemed to stay and its corners to vanish (live test of 0.41).
+        let sb = (self.screen * rect_path).bounding_box();
+        let inner = |lo: f64, hi: f64, n: u32| -> Option<(usize, usize)> {
+            let (a, b) = (lo.ceil().max(0.0), (hi.floor() - 1.0).min(n as f64 - 1.0));
+            (a.is_finite() && b.is_finite() && a <= b).then_some((a as usize, b as usize))
+        };
+        let mdata: Vec<u8> = match (inner(sb.x0, sb.x1, w), inner(sb.y0, sb.y1, h)) {
+            (Some((x0, x1)), Some((y0, y1))) => (0..h as usize)
+                .flat_map(|y| (0..w as usize).map(move |x| (x, y)))
+                .map(|(x, y)| {
+                    let (cx, cy) = (x.clamp(x0, x1), y.clamp(y0, y1));
+                    mask_px.get(cy * w as usize + cx).map_or(255, lum)
+                })
+                .collect(),
+            _ => mask_px.iter().map(lum).collect(),
+        };
         for (px, m) in layer.pixels_mut().iter_mut().zip(mdata) {
             let d = px.demultiply();
             let a = (d.alpha() as u32 * m as u32 / 255) as u8;
@@ -4712,6 +4720,84 @@ mod tests {
         doc.metadata.fill_open_curves = true;
         let pm = render_page(&doc, page, &opts).unwrap();
         assert_eq!(px(&pm, 25, 50), (255, 0, 0));
+    }
+
+    /// A live test of 0.41: on a rounded rectangle with a transparency,
+    /// part of the outline vanished and the target (fill, outline or
+    /// all) made no difference to the outline. The mask stopped at the
+    /// object's box, so the outer half of the outline stayed opaque while
+    /// the inner half and the corners faded. Now the whole outline fades
+    /// with the outline or the whole object as the target, and keeps its
+    /// colour with the fill alone.
+    #[test]
+    fn a_transparency_fades_the_part_its_target_names_outline_and_all() {
+        use tracedraw_core::live::{Effect, MergeMode};
+        let shape = |target: u8| {
+            let mut s = Shape::new(
+                tracedraw_core::ShapeId(1),
+                ShapeKind::Rect {
+                    rect: Rect::new(20.0, 20.0, 80.0, 60.0),
+                    radius: 8.0,
+                    corners: None,
+                },
+            );
+            s.fill = Fill::Solid(Color::rgb8(0, 0, 255));
+            s.stroke = Some(tracedraw_core::Stroke::new(Color::BLACK, 4.0));
+            s.effects.push(Effect::Transparency {
+                mask: Fill::Solid(Color::Gray { v: 0.5 }),
+                merge: MergeMode::Normal,
+                target,
+            });
+            s
+        };
+        let opts = RenderOptions {
+            width: 100,
+            height: 100,
+            view: ViewTransform {
+                zoom: 1.0,
+                origin_x: 0.0,
+                origin_y: 100.0,
+            },
+            ..RenderOptions::default()
+        };
+        let alpha = |pm: &Pixmap, (x, y): (f64, f64)| {
+            pm.pixel(x as u32, (100.0 - y) as u32).unwrap().alpha()
+        };
+        let half = |a: u8| (100..=160).contains(&a);
+        // Page points: the outline's outer half on the top side (outside
+        // the box), the round corner's outline past the fill, the
+        // outline's inner half (over the fill), the fill.
+        let (outer, corner, inner, fill) = ((50.0, 61.5), (21.8, 58.2), (50.0, 58.5), (50.0, 40.0));
+        let colour = |pm: &Pixmap, (x, y): (f64, f64)| px(pm, x as u32, (100.0 - y) as u32);
+        for target in [1u8, 2] {
+            let (doc, page) = doc_with(vec![shape(target)]);
+            let pm = render_page(&doc, page, &opts).unwrap();
+            for p in [outer, corner] {
+                let a = alpha(&pm, p);
+                assert!(half(a), "target {target} at {p:?}: {a}");
+                assert_eq!(colour(&pm, p), (0, 0, 0));
+            }
+            let (f, i) = (alpha(&pm, fill), alpha(&pm, inner));
+            if target == 1 {
+                // The fill as it is, the outline over it half see-through.
+                assert_eq!((f, colour(&pm, fill)), (255, (0, 0, 255)));
+                let (r, g, b) = colour(&pm, inner);
+                assert!(i == 255 && r == 0 && g == 0 && half(b), "{r} {g} {b}");
+            } else {
+                // The whole object half see-through.
+                assert!(half(f) && half(i), "{f} {i}");
+                assert_eq!(colour(&pm, inner), (0, 0, 0));
+            }
+        }
+        // The fill alone: the outline stays opaque all round.
+        let (doc, page) = doc_with(vec![shape(0)]);
+        let pm = render_page(&doc, page, &opts).unwrap();
+        for p in [outer, corner, inner] {
+            assert_eq!(alpha(&pm, p), 255, "at {p:?}");
+            assert_eq!(colour(&pm, p), (0, 0, 0));
+        }
+        assert!(half(alpha(&pm, fill)));
+        assert_eq!(colour(&pm, fill), (0, 0, 255));
     }
 
     #[test]
