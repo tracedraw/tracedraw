@@ -157,17 +157,25 @@ pub enum Change {
         paths: Vec<BezPath>,
         style: AddStyle,
     },
+    /// A new group named by the i18n key `name` holding one group for
+    /// each part: its i18n name, its paths and how they are drawn.
+    AddNested {
+        name: &'static str,
+        parts: Vec<(&'static str, Vec<BezPath>, AddStyle)>,
+    },
     /// A command as it is.
     Cmd(Box<Command>),
 }
 
 /// How new objects look.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AddStyle {
     /// A hairline, no fill (weeding lines).
     Hairline,
     /// Filled black, no outline (registration marks).
     Filled,
+    /// A hairline of this colour, no fill (one pass of a cut).
+    Line(Color),
 }
 
 /// What a Cut tool worked out: the changes for OK in one undo step
@@ -178,6 +186,9 @@ pub struct Changes {
     pub changes: Vec<Change>,
     /// Outlines to draw over the objects in the preview.
     pub preview: Vec<BezPath>,
+    /// Lines grooved or scored rather than cut through, drawn in the
+    /// preview in a colour of their own.
+    pub scored: Vec<BezPath>,
     /// Places to ring in the preview.
     pub points: Vec<Point>,
     /// Moves with the knife up, for the preview.
@@ -785,6 +796,18 @@ impl App {
                     added.push(g.id);
                     cmds.push(Command::AddShape { layer, shape: g });
                 }
+                Change::AddNested { name, parts } => {
+                    let Some(layer) = self.active_layer() else {
+                        continue;
+                    };
+                    let children = parts
+                        .iter()
+                        .map(|(n, paths, style)| self.tracecut_group(layer, n, paths, *style))
+                        .collect();
+                    let g = self.tracecut_group_of(name, children);
+                    added.push(g.id);
+                    cmds.push(Command::AddShape { layer, shape: g });
+                }
             }
         }
         if cmds.is_empty() {
@@ -831,10 +854,19 @@ impl App {
                         s.fill = Fill::Solid(Color::BLACK);
                         s.stroke = None;
                     }
+                    AddStyle::Line(c) => {
+                        s.fill = Fill::None;
+                        s.stroke = Some(Stroke::hairline(c));
+                    }
                 }
                 s
             })
             .collect();
+        self.tracecut_group_of(name, children)
+    }
+
+    /// A group of `children` named by the i18n key `name`.
+    fn tracecut_group_of(&mut self, name: &str, children: Vec<Shape>) -> Shape {
         let id = self.engine.new_shape_id();
         let mut g = Shape::new(id, ShapeKind::Group { children });
         g.fill = Fill::None;

@@ -32,6 +32,12 @@ const OBJECT: Color32 = Color32::from_gray(70);
 const MARKED: Color32 = Color32::from_rgb(0xD0, 0x20, 0x20);
 /// Moves with the knife up.
 const MOVE: Color32 = Color32::from_rgb(0x30, 0x80, 0xD0);
+/// Lines grooved, not cut through (a folded tray's first pass).
+const SCORED: Color32 = Color32::from_rgb(
+    crate::tracecut_make::GROOVE_COLOR.0,
+    crate::tracecut_make::GROOVE_COLOR.1,
+    crate::tracecut_make::GROOVE_COLOR.2,
+);
 /// The status line under the preview.
 const STRIP: Color32 = Color32::from_rgb(0xFF, 0xF4, 0xB0);
 
@@ -144,11 +150,20 @@ fn tool_pane(app: &mut App, ui: &mut Ui, st: &mut TraceCutState, width: f32) -> 
         .show(ui, |ui| {
             let a = crate::ui::tracecut_cut::settings(ui, app.units, st);
             crate::ui::tracecut_nest::settings(ui, app.units, st);
-            crate::ui::tracecut_make::settings(ui, app.units, st);
+            let take =
+                crate::ui::tracecut_make::settings(ui, app.units, st, !app.selection.is_empty());
             settings(ui, app.units, st);
-            a
+            (a, take)
         })
         .inner;
+    let (action, take_size) = action;
+    if take_size {
+        // Folded Tray's face takes the selection's size.
+        if let Some(b) = app.tracecut_selection_box() {
+            st.settings.tray.width = b.width();
+            st.settings.tray.height = b.height();
+        }
+    }
     if action == Some(crate::ui::tracecut_cut::Action::TestCut) {
         let plot = app.tracecut_test_job(&st.settings.plotter);
         let s = st.settings.plotter.clone();
@@ -158,12 +173,16 @@ fn tool_pane(app: &mut App, ui: &mut Ui, st: &mut TraceCutState, width: f32) -> 
         // A setting changed: the result shown is not this one's.
         st.worked = None;
     }
+    if app.settings.tracecut.tray != st.settings.tray {
+        // Folded Tray starts from its last settings next time.
+        app.settings.tracecut.tray = st.settings.tray.clone();
+    }
     let targets = app.tracecut_targets();
     st.track_targets(&targets);
-    // The Measure tools show their results live, worked out again only
-    // when the drawing, the selection or a setting changes.
-    if st.tool.group() == Group::Measure
-        && !targets.is_empty()
+    // The Measure tools and Folded Tray show their results live, worked
+    // out again only when the drawing, the selection or a setting changes.
+    if st.tool.live()
+        && (!targets.is_empty() || !st.tool.needs_selection())
         && !st
             .worked
             .as_ref()
@@ -799,6 +818,9 @@ fn preview(
     for path in &scene.objects {
         draw(path, Stroke::new(1.0, OBJECT));
     }
+    for path in &scene.scored {
+        draw(path, Stroke::new(1.5, SCORED));
+    }
     for path in &scene.marked {
         draw(path, Stroke::new(2.5, MARKED));
     }
@@ -1025,6 +1047,70 @@ mod tests {
         assert!(matches!(app.dialog, Dialog::None));
         assert_eq!(app.engine.history_labels().0.len(), before + 1);
         assert_eq!(app.selection.len(), 1);
+    }
+
+    #[test]
+    fn the_folded_tray_shows_its_pattern_live_and_remembers_its_settings() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.select(Vec::new());
+        app.settings.tracecut.tool = ToolId::FoldedTray;
+        app.settings.tracecut.tray.width = 800.0;
+        app.open_tracecut();
+        let Dialog::TraceCut(st) = &mut app.dialog else {
+            panic!("open");
+        };
+        // The window starts from the last settings; every option on, so
+        // every row draws.
+        assert_eq!(st.settings.tray.width, 800.0);
+        let t = &mut st.settings.tray;
+        (t.per_side, t.ears, t.holes, t.window, t.flaps) = (true, true, true, true, true);
+        t.auto_allowance = false;
+        t.ear_by_count = true;
+        frame(&ctx, &mut app, false);
+        // Worked out without Apply, grooves and cuts in the preview.
+        let worked = match &app.dialog {
+            Dialog::TraceCut(st) => {
+                let w = st.worked.clone().expect("worked out live");
+                assert!(app.tracecut_current(&w, ToolId::FoldedTray, &st.settings));
+                let scene = app.tracecut_scene(Some(&w));
+                assert!(scene.objects.is_empty());
+                assert!(scene.scored.len() > 4 && scene.marked.len() > 2);
+                w
+            }
+            _ => panic!("open"),
+        };
+        // Remembered for the next time.
+        let kept = app.settings.tracecut.tray.clone();
+        assert!(kept.ears && kept.window && kept.flaps && kept.width == 800.0);
+        // Nothing changed: the result stands, not worked out again.
+        frame(&ctx, &mut app, false);
+        assert!(matches!(&app.dialog, Dialog::TraceCut(st) if st.worked.as_ref() == Some(&worked)));
+        // OK adds the pattern in one step.
+        let before = app.engine.history_labels().0.len();
+        frame(&ctx, &mut app, true);
+        frame(&ctx, &mut app, false);
+        assert!(matches!(app.dialog, Dialog::None));
+        assert_eq!(app.engine.history_labels().0.len(), before + 1);
+        app.open_tracecut();
+        assert!(matches!(&app.dialog, Dialog::TraceCut(st) if st.settings.tray == kept));
+    }
+
+    #[test]
+    fn folded_tray_presets_keep_every_setting() {
+        let mut store = crate::tracecut::PresetStore::default();
+        let mut s = crate::tracecut::ToolSettings::default();
+        s.tray.width = 1200.0;
+        s.tray.per_side = true;
+        s.tray.depths = [30.0, 40.0, 50.0, 60.0];
+        s.tray.through = tracedraw_tracecut::tray::Pair::TopBottom;
+        s.tray.place = tracedraw_tracecut::tray::Place::BesideSelection;
+        assert!(store.save_preset(ToolId::FoldedTray, "Shop front", &s));
+        let saved = s.tray.clone();
+        s.reset(ToolId::FoldedTray);
+        assert_eq!(s.tray, tracedraw_tracecut::tray::TraySpec::default());
+        assert!(store.apply_preset(ToolId::FoldedTray, "Shop front", &mut s));
+        assert_eq!(s.tray, saved);
     }
 
     #[test]

@@ -48,8 +48,12 @@ commands. Contributed by LaMka21 (#170).
   outside the preview are skipped. Each tool keeps its own zoom and
   place while the window is open; a change of the selection fits every
   tool again.
-- **Box Maker** needs no selection: its preview shows the panels alone
-  and Apply and OK work with nothing selected.
+- **Box Maker** and **Folded Tray** need no selection: their preview
+  shows the result alone and Apply and OK work with nothing selected.
+  Folded Tray works its pattern out live, like the Measure tools: again
+  only when a setting, the drawing or the selection changes, so the
+  preview costs nothing from frame to frame. Its grooves are drawn in
+  blue under the red cut lines.
 - **Status line** (pale yellow): what was found, or "Select the objects
   to work on." with nothing selected, or "Apply shows the result here
   without changing the drawing; OK applies it." before Apply, or that
@@ -441,3 +445,69 @@ needs no selection. The geometry is `tracedraw_tracecut::boxes`.
 
 No allowance for the laser's kerf or the cutter's radius is made; cut
 on the line with a laser, or with CNC Toolpath set to Outside.
+
+### Folded Tray
+
+The flat pattern of a tray folded from composite panel, such as a sign
+face with returns or the body of a light box. It needs no selection.
+The geometry is `tracedraw_tracecut::tray`. Its settings are kept in
+the preferences (`tracecut.tray`) and come back the next time the
+window opens; presets work as for every tool.
+
+- **Face width** (600 mm) and **face height** (400 mm), finished,
+  outside. **Size from selection** (greyed out with nothing selected)
+  sets them to the box of the selected outlines, strokes left out.
+- **Return depth** `d` (50 mm), finished, outside; with **depth per
+  side** (off) the left, right, top and bottom returns (as seen from
+  the front) each have their own.
+- **Panel thickness** `t` (4 mm). **Groove allowance** `a`, the length
+  one fold takes up: with **automatic allowance** (on) `t / 4`, else
+  the value given (0 to 20 mm).
+- Folds: between its fold lines the face is `(W - a)` by `(H - a)`; a
+  return is `d - a/2` deep, `d - a` with ears on its edge; an ear is
+  `e - a/2` long. Across the pattern the flat length is the finished
+  lengths less `a` for each fold: `W + dl + dr - 2a` without ears.
+- **Running through** **left and right** (at first) or **top and
+  bottom**: those returns reach the corners; the other two stop the
+  **corner relief** (4 mm) short of the through returns' fold lines,
+  so their cut runs that far along the face's fold line. The square
+  between two returns is cut away.
+- **Overlap flaps** (off): each end of a through return gets a flap
+  reaching **flap length** (20 mm, at most the next return's flat
+  depth) past the corner, its sides the relief (at least 1 mm, at most
+  a quarter of the depth) in from the return's fold line and edge, and
+  a fold groove where it joins the return.
+- **Mounting ears** (off) on **all returns**, **left and right** or
+  **top and bottom**: **ear width** (40 mm) along the return's edge,
+  **ear length** `e` (25 mm) out from it, with a fold groove on the
+  edge. **By spacing** (400 mm) gives `ceil(L / spacing)` ears on a
+  return whose edge is `L` long, **by count** (2, 1 to 100) that many;
+  their centres split `L` evenly, half a step from each end, and an
+  ear never takes more than its step less 2 mm. Each gets a hole of
+  **ear hole** (5 mm, 0 for none) at **ear hole offset** (12 mm) from
+  its fold line, kept 1 mm inside the ear.
+- **Holes in returns** (off): **hole diameter** (6 mm) at **hole
+  offset** (25 mm) from the face's fold line (kept inside the return),
+  spread like the ears, at most **hole spacing** (300 mm) apart.
+- **Window** (off): an opening **window inset** (30 mm) in from the
+  face's fold lines, its corners rounded by **corner radius** (10 mm,
+  at most half the opening).
+- **Place**: **page corner** (the gap in from the page's bottom-left
+  corner) or **beside the selection** (the gap to the right of the
+  selection's box, bottoms level; the page corner with nothing
+  selected); **gap** 10 mm.
+- The pattern is drawn as seen from the back, the side that is routed:
+  mirrored left to right, so the front's left return lies on the right.
+- A return or an ear left no deeper than 1 mm by the allowance, a face
+  side with no return left between its reliefs, or a window inset
+  leaving no opening makes no pattern; the status line says which.
+
+OK adds a group named Folded tray holding two groups: **Fold grooves**,
+the open straight lines on the fold lines (the face's four sides, then
+the ears' and flaps' folds), blue hairlines, the first pass with a
+V-groove cutter; and **Cut**, the closed cut lines (the holes, the
+window, then the outline, inner cuts first), red hairlines, the second
+pass. CNC Toolpath cuts the open grooves on the line and the closed
+outlines outside or inside; Cut Order and Plotter Output take them as
+they take any outline. The status line gives the flat size and counts
+the grooves and cut lines.

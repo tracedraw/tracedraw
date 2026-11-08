@@ -23,6 +23,7 @@ use tracedraw_tracecut::boxes::BoxSpec;
 use tracedraw_tracecut::cnc::{CncSpec, Program};
 use tracedraw_tracecut::cut::weed::WeedSpec;
 use tracedraw_tracecut::eyelets::EyeletSpec;
+use tracedraw_tracecut::tray::TraySpec;
 use tracedraw_tracecut::{cleanup, crossings};
 
 /// The groups of the tool list, in the order they are shown.
@@ -31,7 +32,7 @@ pub enum Group {
     Cut,
     Nesting,
     Measure,
-    /// New objects for sign and sheet work: eyelets, boxes.
+    /// New objects for sign and sheet work: eyelets, boxes, folded trays.
     Make,
 }
 
@@ -78,10 +79,11 @@ pub enum ToolId {
     Cost,
     Eyelets,
     BoxMaker,
+    FoldedTray,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 16] = [
+    pub const ALL: [ToolId; 17] = [
         ToolId::PlotterOutput,
         ToolId::CncToolpath,
         ToolId::Weeding,
@@ -98,13 +100,14 @@ impl ToolId {
         ToolId::Cost,
         ToolId::Eyelets,
         ToolId::BoxMaker,
+        ToolId::FoldedTray,
     ];
 
     pub fn group(self) -> Group {
         match self {
             ToolId::ShapeNesting | ToolId::RectNesting => Group::Nesting,
             ToolId::Measure | ToolId::CuttingTime | ToolId::Cost => Group::Measure,
-            ToolId::Eyelets | ToolId::BoxMaker => Group::Make,
+            ToolId::Eyelets | ToolId::BoxMaker | ToolId::FoldedTray => Group::Make,
             _ => Group::Cut,
         }
     }
@@ -128,13 +131,20 @@ impl ToolId {
             ToolId::Cost => "cost",
             ToolId::Eyelets => "eyelets",
             ToolId::BoxMaker => "box_maker",
+            ToolId::FoldedTray => "folded_tray",
         }
     }
 
-    /// Whether the tool works on the selection (Box Maker makes its
-    /// objects from its settings alone).
+    /// Whether the tool works on the selection (Box Maker and Folded
+    /// Tray make their objects from their settings alone).
     pub fn needs_selection(self) -> bool {
-        self != ToolId::BoxMaker
+        !matches!(self, ToolId::BoxMaker | ToolId::FoldedTray)
+    }
+
+    /// Whether the window works the result out as the settings change,
+    /// without Apply (the Measure tools and Folded Tray, all cheap).
+    pub fn live(self) -> bool {
+        self.group() == Group::Measure || self == ToolId::FoldedTray
     }
 
     /// The i18n key of the tool's name; `<key>_desc` describes it.
@@ -156,6 +166,7 @@ impl ToolId {
             ToolId::Cost => "tracecut.cost",
             ToolId::Eyelets => "tracecut.eyelets",
             ToolId::BoxMaker => "tracecut.box_maker",
+            ToolId::FoldedTray => "tracecut.tray",
         }
     }
 }
@@ -169,6 +180,8 @@ pub struct TraceCutPrefs {
     /// menu.
     pub show: bool,
     pub tool: ToolId,
+    /// Folded Tray's settings as last used.
+    pub tray: TraySpec,
 }
 
 impl Default for TraceCutPrefs {
@@ -176,6 +189,7 @@ impl Default for TraceCutPrefs {
         TraceCutPrefs {
             show: true,
             tool: ToolId::default(),
+            tray: TraySpec::default(),
         }
     }
 }
@@ -243,6 +257,7 @@ pub struct ToolSettings {
     pub cost: CostSettings,
     pub eyelets: EyeletSpec,
     pub boxes: BoxSpec,
+    pub tray: TraySpec,
 }
 
 /// Perimeter and Area has nothing to set; its presets are empty.
@@ -315,6 +330,10 @@ macro_rules! with_settings {
             }
             ToolId::BoxMaker => {
                 let $v = &mut $s.boxes;
+                $body
+            }
+            ToolId::FoldedTray => {
+                let $v = &mut $s.tray;
                 $body
             }
         }
@@ -597,15 +616,17 @@ pub struct Scene {
     pub points: Vec<Point>,
     /// Moves with the knife up (drawn as thin lines).
     pub moves: Vec<(Point, Point)>,
+    /// Lines grooved or scored, not cut through.
+    pub scored: Vec<BezPath>,
     pub extent: Option<Rect>,
 }
 
 impl App {
     /// Open the TraceCut window on the tool picked last.
     pub fn open_tracecut(&mut self) {
-        self.dialog = crate::ui::dialogs::Dialog::TraceCut(Box::new(TraceCutState::new(
-            self.settings.tracecut.tool,
-        )));
+        let mut st = TraceCutState::new(self.settings.tracecut.tool);
+        st.settings.tray = self.settings.tracecut.tray.clone();
+        self.dialog = crate::ui::dialogs::Dialog::TraceCut(Box::new(st));
     }
 
     /// The objects the tools work on: the selection, in stacking order
@@ -688,6 +709,7 @@ impl App {
             }
             ToolId::Eyelets => Outcome::Changes(Box::new(self.tracecut_eyelets(&settings.eyelets))),
             ToolId::BoxMaker => Outcome::Changes(Box::new(self.tracecut_box(&settings.boxes))),
+            ToolId::FoldedTray => Outcome::Changes(Box::new(self.tracecut_tray(&settings.tray))),
             ToolId::Measure => Outcome::Report(Box::new(self.tracecut_measure())),
             ToolId::CuttingTime => Outcome::Report(Box::new(self.tracecut_time(&settings.time).0)),
             ToolId::Cost => {
@@ -878,6 +900,7 @@ impl App {
                         scene.objects.clear();
                     }
                     scene.marked = c.preview.clone();
+                    scene.scored = c.scored.clone();
                     scene.points = c.points.clone();
                     scene.moves = c.moves.clone();
                 }
@@ -887,6 +910,7 @@ impl App {
             .objects
             .iter()
             .chain(scene.marked.iter())
+            .chain(scene.scored.iter())
             .map(|p| p.bounding_box())
             .filter(|b| {
                 b.x0.is_finite() && b.y0.is_finite() && b.x1.is_finite() && b.y1.is_finite()

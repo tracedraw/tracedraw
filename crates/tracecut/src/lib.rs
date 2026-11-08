@@ -13,6 +13,7 @@
 //! - [`cnc`]: toolpaths and G-code for CNC routers and mills.
 //! - [`eyelets`]: eyelet (grommet) marks along an edge.
 //! - [`boxes`]: the panels of a box with finger joints.
+//! - [`tray`]: the flat pattern of a tray folded from composite panel.
 //!
 //! Units are millimetres, Y up, like the rest of the model.
 
@@ -25,6 +26,7 @@ pub mod cut;
 pub mod eyelets;
 pub mod measure;
 pub mod nest;
+pub mod tray;
 
 use tracedraw_core::geometry::{Affine, BezPath, PathEl, Point};
 use tracedraw_core::{Shape, ShapeKind};

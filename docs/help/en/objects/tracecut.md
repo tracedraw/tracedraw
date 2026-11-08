@@ -15,8 +15,11 @@ the buttons:
 - **Cancel** closes the window without a change.
 
 With nothing selected the preview asks you to select the objects to cut,
-nest or measure, and Apply and OK are greyed out (Box Maker needs no
-selection).
+nest or measure, and Apply and OK are greyed out (Box Maker and Folded
+Tray need no selection).
+
+Folded Tray shows its pattern at once and updates it as you change a
+setting; there is no need to press Apply.
 
 The Measure tools (Perimeter and Area, Cutting Time, Cost) show their
 results beside the preview at once, and update as you change the selection
@@ -144,6 +147,48 @@ the **outside** or **inside** sizes, the **material thickness** and the
 five or six panels side by side at the bottom left of the page, a **gap**
 apart, as a group named Box. Every finger on one panel matches a slot on
 the panel it joins.
+
+## Folded Tray {#folded-tray}
+
+In the **Make** group. Draws the flat pattern of a tray folded from
+composite panel (two thin aluminium skins round a plastic core), such as a
+sign face with returns or the body of a light box. The fold lines are
+routed from the back with a V-groove cutter that leaves the front skin, the
+outline is cut through, and the returns are folded up by hand. It needs no
+selection, and the preview shows the pattern as you change the settings.
+
+- **Face width** and **face height** are the finished sizes, outside;
+  **Size from selection** takes them from the selected objects.
+- **Return depth** is how far the sides stand back from the face; tick
+  **depth per side** to give the left, right, top and bottom returns
+  their own.
+- **Panel thickness** and the **groove allowance**, the length a fold
+  takes up (with **automatic allowance**, a quarter of the thickness).
+  Check it on an offcut: fold a test piece and measure it.
+- **Running through**: the pair of returns that run to the corners; the
+  other two stop the **corner relief** short of them, so the folds never
+  bind. A relief equal to the panel thickness makes a neat butt joint.
+- **Overlap flaps** add a flap at each end of the through returns that
+  folds round the corner onto the next return, to be riveted.
+- **Mounting ears** stand out from the back edge of the returns and fold
+  out to fix the tray to a wall, each with a hole. Choose the returns,
+  their width and length, how many or how far apart, and the hole's size
+  and distance from the ear's fold.
+- **Holes in returns**: round holes along every return, for fixings or
+  cables.
+- **Window**: an opening in the face for a light box, inset from the
+  face's edges, with rounded corners.
+- **Place**: the page's bottom-left corner or beside the selection, a
+  **gap** away.
+
+The pattern is drawn as seen from the back, the side you rout, so the
+left return of the finished face lies on the right of the pattern. OK adds
+it as one group named Folded tray, holding two groups: **Fold grooves**
+(blue open lines, the first pass with the V-groove cutter) and **Cut**
+(red closed lines: holes and the window first, then the outline, the
+second pass). Select either group and use CNC Toolpath or Plotter Output
+for each pass. The last settings are kept for next time, and presets save
+your own.
 
 ## Nesting {#nesting}
 
