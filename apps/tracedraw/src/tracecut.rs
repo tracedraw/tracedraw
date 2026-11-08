@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tracedraw_core::geometry::{BezPath, Point, Rect, Shape as _};
 use tracedraw_core::{Command, ShapeId, ShapeKind};
+use tracedraw_tracecut::boxes::BoxSpec;
 use tracedraw_tracecut::cnc::{CncSpec, Program};
 use tracedraw_tracecut::cut::weed::WeedSpec;
 use tracedraw_tracecut::eyelets::EyeletSpec;
@@ -30,7 +31,7 @@ pub enum Group {
     Cut,
     Nesting,
     Measure,
-    /// New objects for sign and sheet work: eyelets.
+    /// New objects for sign and sheet work: eyelets, boxes.
     Make,
 }
 
@@ -76,10 +77,11 @@ pub enum ToolId {
     CuttingTime,
     Cost,
     Eyelets,
+    BoxMaker,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 15] = [
+    pub const ALL: [ToolId; 16] = [
         ToolId::PlotterOutput,
         ToolId::CncToolpath,
         ToolId::Weeding,
@@ -95,13 +97,14 @@ impl ToolId {
         ToolId::CuttingTime,
         ToolId::Cost,
         ToolId::Eyelets,
+        ToolId::BoxMaker,
     ];
 
     pub fn group(self) -> Group {
         match self {
             ToolId::ShapeNesting | ToolId::RectNesting => Group::Nesting,
             ToolId::Measure | ToolId::CuttingTime | ToolId::Cost => Group::Measure,
-            ToolId::Eyelets => Group::Make,
+            ToolId::Eyelets | ToolId::BoxMaker => Group::Make,
             _ => Group::Cut,
         }
     }
@@ -124,7 +127,14 @@ impl ToolId {
             ToolId::CuttingTime => "cutting_time",
             ToolId::Cost => "cost",
             ToolId::Eyelets => "eyelets",
+            ToolId::BoxMaker => "box_maker",
         }
+    }
+
+    /// Whether the tool works on the selection (Box Maker makes its
+    /// objects from its settings alone).
+    pub fn needs_selection(self) -> bool {
+        self != ToolId::BoxMaker
     }
 
     /// The i18n key of the tool's name; `<key>_desc` describes it.
@@ -145,6 +155,7 @@ impl ToolId {
             ToolId::CuttingTime => "tracecut.cutting_time",
             ToolId::Cost => "tracecut.cost",
             ToolId::Eyelets => "tracecut.eyelets",
+            ToolId::BoxMaker => "tracecut.box_maker",
         }
     }
 }
@@ -231,6 +242,7 @@ pub struct ToolSettings {
     pub time: TimeSettings,
     pub cost: CostSettings,
     pub eyelets: EyeletSpec,
+    pub boxes: BoxSpec,
 }
 
 /// Perimeter and Area has nothing to set; its presets are empty.
@@ -299,6 +311,10 @@ macro_rules! with_settings {
             }
             ToolId::Eyelets => {
                 let $v = &mut $s.eyelets;
+                $body
+            }
+            ToolId::BoxMaker => {
+                let $v = &mut $s.boxes;
                 $body
             }
         }
@@ -671,6 +687,7 @@ impl App {
                 Outcome::Changes(Box::new(self.tracecut_rect_nest(&settings.rect_nest)))
             }
             ToolId::Eyelets => Outcome::Changes(Box::new(self.tracecut_eyelets(&settings.eyelets))),
+            ToolId::BoxMaker => Outcome::Changes(Box::new(self.tracecut_box(&settings.boxes))),
             ToolId::Measure => Outcome::Report(Box::new(self.tracecut_measure())),
             ToolId::CuttingTime => Outcome::Report(Box::new(self.tracecut_time(&settings.time).0)),
             ToolId::Cost => {

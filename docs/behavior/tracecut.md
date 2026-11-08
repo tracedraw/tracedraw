@@ -48,6 +48,8 @@ commands. Contributed by LaMka21 (#170).
   outside the preview are skipped. Each tool keeps its own zoom and
   place while the window is open; a change of the selection fits every
   tool again.
+- **Box Maker** needs no selection: its preview shows the panels alone
+  and Apply and OK work with nothing selected.
 - **Status line** (pale yellow): what was found, or "Select the objects
   to work on." with nothing selected, or "Apply shows the result here
   without changing the drawing; OK applies it." before Apply, or that
@@ -404,3 +406,38 @@ first), added as a group named Eyelets. The geometry is
   eyelets closer than 0.001 mm are one.
 
 The preview shows the circles; the status line counts them.
+
+### Box Maker
+
+The flat panels of a box with finger joints, for cutting from sheet
+material with a laser or a CNC router, added as a group named Box. It
+needs no selection. The geometry is `tracedraw_tracecut::boxes`.
+
+- **Width** (200 mm), **depth** (150 mm) and **height** (100 mm) of the
+  box; **sizes are** **outside** (at first) or **inside**, the room in
+  the box: then the outside is `width + 2t` by `depth + 2t` by
+  `height + 2t` (`height + t` with an open top), `t` the **material
+  thickness** (6 mm).
+- Panels: the front and the back (width by height), the left and right
+  sides (depth by height), the bottom and, unless **open top** (off),
+  the top (width by depth). Each is a closed outline at its outside
+  size.
+- Joints: along every edge where two panels meet, the length between
+  the corners at its ends (`t` where a third panel meets it, 0 at an
+  open top) is split into `n` equal stretches, `n` the odd number
+  nearest under `length / finger width` (**finger width** 20 mm), at
+  least 3 and at most 999. One panel keeps its material out to the edge
+  on the even stretches and the corners, the other on the odd
+  stretches, and each is cut back by `t` elsewhere, so every finger
+  fills a slot of its mate. The front and the back own their joints
+  with the sides, and the four walls own theirs with the bottom and the
+  top, so every corner of the box belongs to the front or the back. An
+  open box's walls have a straight top edge.
+- A side shorter than four thicknesses makes no box: the status line
+  says the box is too small for the material.
+- Layout: the front, the back, the left and the right side in a row
+  from the page's bottom-left corner, the **gap between panels** (5 mm)
+  in from it and between them, the bottom and the top in a row above.
+
+No allowance for the laser's kerf or the cutter's radius is made; cut
+on the line with a laser, or with CNC Toolpath set to Outside.

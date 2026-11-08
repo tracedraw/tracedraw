@@ -1,4 +1,5 @@
-//! The settings of TraceCut's Make tools in the TraceCut window: eyelets.
+//! The settings of TraceCut's Make tools in the TraceCut window: eyelets
+//! and the box maker.
 //! See docs/behavior/tracecut.md.
 
 use crate::app::Units;
@@ -7,6 +8,7 @@ use crate::tracecut::{ToolId, TraceCutState};
 use crate::ui::tips::RichTip;
 use crate::ui::tracecut::{length, row};
 use egui::Ui;
+use tracedraw_tracecut::boxes::{self, Sizes};
 use tracedraw_tracecut::eyelets::{self, Along};
 
 /// A whole-number field with its tip.
@@ -44,8 +46,62 @@ fn choice<T: PartialEq + Copy>(ui: &mut Ui, id: &str, v: &mut T, options: &[(T, 
         .rich_tip(crate::ui::tips::keyed(tip));
 }
 
+/// Box Maker: the sizes, the material, the fingers and the layout.
+fn box_settings(ui: &mut Ui, units: Units, st: &mut TraceCutState) {
+    let s = &mut st.settings.boxes;
+    for (key, v) in [
+        ("tracecut.box_width", &mut s.width),
+        ("tracecut.box_depth", &mut s.depth),
+        ("tracecut.box_height", &mut s.height),
+    ] {
+        row(ui, &tr(key), |ui| {
+            length(ui, units, v, boxes::SIZE_RANGE, key)
+        });
+    }
+    row(ui, &tr("tracecut.box_sizes"), |ui| {
+        choice(
+            ui,
+            "box_sizes",
+            &mut s.sizes,
+            &[
+                (Sizes::Outside, "tracecut.box_outside"),
+                (Sizes::Inside, "tracecut.box_inside"),
+            ],
+            "tracecut.box_sizes",
+        )
+    });
+    row(ui, &tr("tracecut.box_thickness"), |ui| {
+        length(
+            ui,
+            units,
+            &mut s.thickness,
+            boxes::THICKNESS_RANGE,
+            "tracecut.box_thickness",
+        )
+    });
+    row(ui, &tr("tracecut.box_finger"), |ui| {
+        length(
+            ui,
+            units,
+            &mut s.finger,
+            boxes::FINGER_RANGE,
+            "tracecut.box_finger",
+        )
+    });
+    row(ui, "", |ui| {
+        ui.checkbox(&mut s.open_top, tr("tracecut.box_open_top"))
+            .rich_tip(crate::ui::tips::keyed("tracecut.box_open_top"));
+    });
+    row(ui, &tr("tracecut.box_gap"), |ui| {
+        length(ui, units, &mut s.gap, boxes::GAP_RANGE, "tracecut.box_gap")
+    });
+}
+
 /// The settings of a Make tool; nothing for the other tools.
 pub fn settings(ui: &mut Ui, units: Units, st: &mut TraceCutState) {
+    if st.tool == ToolId::BoxMaker {
+        box_settings(ui, units, st);
+    }
     if st.tool == ToolId::Eyelets {
         let s = &mut st.settings.eyelets;
         row(ui, &tr("tracecut.eyelet_along"), |ui| {

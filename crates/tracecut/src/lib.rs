@@ -12,9 +12,11 @@
 //! - [`calc`]: cutting time and cost.
 //! - [`cnc`]: toolpaths and G-code for CNC routers and mills.
 //! - [`eyelets`]: eyelet (grommet) marks along an edge.
+//! - [`boxes`]: the panels of a box with finger joints.
 //!
 //! Units are millimetres, Y up, like the rest of the model.
 
+pub mod boxes;
 pub mod calc;
 pub mod cleanup;
 pub mod cnc;

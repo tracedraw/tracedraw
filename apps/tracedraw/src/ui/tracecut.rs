@@ -84,7 +84,10 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut TraceCutState, close: &mut 
                 Some(w) if app.tracecut_current(&w, st.tool, &st.settings) => w,
                 _ => app.tracecut_work_out(st.tool, &st.settings),
             };
-            if !worked.targets.is_empty() || st.tool == ToolId::RegistrationMarks {
+            if !worked.targets.is_empty()
+                || st.tool == ToolId::RegistrationMarks
+                || !st.tool.needs_selection()
+            {
                 app.tracecut_commit(&worked, &st.settings, Some(ctx.clone()));
             }
             *close = true;
@@ -173,7 +176,8 @@ fn tool_pane(app: &mut App, ui: &mut Ui, st: &mut TraceCutState, width: f32) -> 
         .as_ref()
         .filter(|w| app.tracecut_current(w, st.tool, &st.settings));
     let scene = app.tracecut_scene(current);
-    let has_targets = !scene.objects.is_empty() || !app.selection.is_empty();
+    let has_targets =
+        !scene.objects.is_empty() || !app.selection.is_empty() || !st.tool.needs_selection();
     let input = PreviewInput {
         scene: &scene,
         actual: f64::from(crate::settings::screen_points_per_inch(&app.settings)) / 25.4,
@@ -1005,6 +1009,22 @@ mod tests {
         frame(&ctx, &mut app, false);
         frame(&ctx, &mut app, true);
         assert_eq!(app.engine.revision(), rev);
+    }
+
+    #[test]
+    fn the_box_maker_needs_no_selection() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.select(Vec::new());
+        app.settings.tracecut.tool = ToolId::BoxMaker;
+        app.open_tracecut();
+        frame(&ctx, &mut app, false);
+        let before = app.engine.history_labels().0.len();
+        frame(&ctx, &mut app, true);
+        frame(&ctx, &mut app, false);
+        assert!(matches!(app.dialog, Dialog::None));
+        assert_eq!(app.engine.history_labels().0.len(), before + 1);
+        assert_eq!(app.selection.len(), 1);
     }
 
     #[test]

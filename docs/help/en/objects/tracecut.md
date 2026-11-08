@@ -15,7 +15,8 @@ the buttons:
 - **Cancel** closes the window without a change.
 
 With nothing selected the preview asks you to select the objects to cut,
-nest or measure, and Apply and OK are greyed out.
+nest or measure, and Apply and OK are greyed out (Box Maker needs no
+selection).
 
 The Measure tools (Perimeter and Area, Cutting Time, Cost) show their
 results beside the preview at once, and update as you change the selection
@@ -132,6 +133,17 @@ or along **each closed curve** of the selection, how far from the edge
 their centres are, and whether they are **at most this far apart** or **a
 number per side** (corners included). OK adds the circles as a group named
 Eyelets.
+
+## Box Maker {#box-maker}
+
+In the **Make** group. Draws the flat panels of a box with finger joints,
+ready to cut from plywood or acrylic with a laser or a CNC router. It needs
+no selection. Give the **width**, **depth** and **height**, whether they are
+the **outside** or **inside** sizes, the **material thickness** and the
+**finger width**; tick **open top** for a box without a lid. OK adds the
+five or six panels side by side at the bottom left of the page, a **gap**
+apart, as a group named Box. Every finger on one panel matches a slot on
+the panel it joins.
 
 ## Nesting {#nesting}
 
