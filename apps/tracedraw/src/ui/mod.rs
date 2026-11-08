@@ -1196,14 +1196,24 @@ pub(crate) fn view_navigator(app: &mut App, ui: &mut Ui, corner: egui::Rect, can
     painter.line_segment([c + egui::vec2(-2.5, 0.0), c + egui::vec2(2.5, 0.0)], s);
     painter.line_segment([c + egui::vec2(0.0, -2.5), c + egui::vec2(0.0, 2.5)], s);
     let resp = resp.rich_tip(crate::i18n::tr("status.navigator"));
-    // N held over the drawing opens the Navigator as the held button does
-    // (live test of 0.41), while no field or text takes the keys.
-    let n_held = app.text_edit.is_none()
+    // Its key (View > Navigator, N unless changed in Options) held over
+    // the drawing opens the Navigator as the held button does (live test
+    // of 0.41), while no field or text takes the keys.
+    let free = app.text_edit.is_none()
         && !ui.ctx().egui_wants_keyboard_input()
-        && matches!(app.dialog, crate::ui::dialogs::Dialog::None)
-        && ui.input(|i| i.key_down(egui::Key::N) && i.modifiers.is_none());
-    let down = ui.input(|i| i.pointer.primary_down()) || n_held;
-    if resp.drag_started() || resp.is_pointer_button_down_on() || n_held {
+        && matches!(app.dialog, crate::ui::dialogs::Dialog::None);
+    let key_held = free && navigator_key_held(app, ui);
+    if !app.has_document() {
+        app.navigator_pinned = false;
+    }
+    // Opened from the menu it stays until Esc or a click: a click on the
+    // picture goes there, anywhere else closes it (see the pop-up below).
+    let pinned = app.navigator_pinned;
+    if pinned && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+        app.navigator_pinned = false;
+    }
+    let down = ui.input(|i| i.pointer.primary_down()) || key_held || app.navigator_pinned;
+    if resp.drag_started() || resp.is_pointer_button_down_on() || key_held || app.navigator_pinned {
         app.navigator_open = true;
     }
     if !down {
@@ -1252,6 +1262,11 @@ pub(crate) fn view_navigator(app: &mut App, ui: &mut Ui, corner: egui::Rect, can
         egui::pos2(corner.max.x - thumb_w - 8.0, corner.min.y - thumb_h - 8.0),
         egui::pos2(corner.max.x, corner.min.y),
     );
+    // Shown only because View > Navigator opened it (no button or key
+    // held): the picture follows clicks, not the pointer passing over.
+    let pinned_only =
+        app.navigator_pinned && !key_held && !resp.is_pointer_button_down_on() && !resp.dragged();
+    let mut close_pin = false;
     egui::Area::new(egui::Id::new("view_navigator_popup"))
         .fixed_pos(area_rect.min)
         .order(egui::Order::Foreground)
@@ -1300,8 +1315,35 @@ pub(crate) fn view_navigator(app: &mut App, ui: &mut Ui, corner: egui::Rect, can
                     egui::Stroke::new(1.5, Tokens::SELECTION),
                     egui::StrokeKind::Inside,
                 );
+                // Opened from the menu: a press on the picture goes there
+                // (and follows the pointer while held), its release or a
+                // press anywhere else closes it.
+                let (origin, pressed, held, released) = ui.input(|i| {
+                    (
+                        i.pointer.press_origin(),
+                        i.pointer.primary_pressed(),
+                        i.pointer.primary_down(),
+                        i.pointer.primary_released(),
+                    )
+                });
+                // Where the press began is gone on its release's frame:
+                // kept here meanwhile.
+                let kept = egui::Id::new("navigator_press_on_picture");
+                if pressed {
+                    let on = origin.is_some_and(|o| rect.contains(o));
+                    ui.ctx().data_mut(|d| d.insert_temp(kept, on));
+                }
+                let on_picture =
+                    ui.ctx().data(|d| d.get_temp::<bool>(kept)) == Some(true) && (held || released);
+                if released {
+                    ui.ctx().data_mut(|d| d.remove::<bool>(kept));
+                }
+                if pinned_only && ((pressed && !on_picture) || (released && on_picture)) {
+                    close_pin = true;
+                }
+                let pans = !pinned_only || (held && on_picture);
                 // Pointer over the thumbnail: centre the view there.
-                if let Some(pos) = ui.input(|i| i.pointer.latest_pos()) {
+                if let Some(pos) = ui.input(|i| i.pointer.latest_pos()).filter(|_| pans) {
                     if rect.contains(pos) {
                         let px = page.x0 + ((pos.x - rect.min.x) / sx) as f64;
                         let py = page.y0 + ((rect.max.y - pos.y) / sy) as f64;
@@ -1316,6 +1358,31 @@ pub(crate) fn view_navigator(app: &mut App, ui: &mut Ui, corner: egui::Rect, can
                 }
             });
         });
+    if close_pin {
+        app.navigator_pinned = false;
+        ui.ctx().request_repaint();
+    }
+}
+
+/// View > Navigator's command: its key held shows the Navigator.
+pub(crate) const NAVIGATOR_KEY: &str = "menu.view.navigator";
+/// Its built-in key: free in the shortcut table
+/// (`options::tests::no_two_default_commands_share_a_shortcut`).
+pub(crate) const NAVIGATOR_DEFAULT_KEYS: &str = "N";
+
+/// Whether a key of View > Navigator (the user's, else N) is held with
+/// exactly its modifiers.
+fn navigator_key_held(app: &App, ui: &Ui) -> bool {
+    let keys = crate::shortcuts::keys_for(
+        &app.settings.shortcuts,
+        NAVIGATOR_KEY,
+        Some(NAVIGATOR_DEFAULT_KEYS),
+    );
+    ui.input(|i| {
+        keys.iter()
+            .filter_map(|k| crate::shortcuts::parse(k))
+            .any(|(m, k)| i.key_down(k) && i.modifiers.matches_exact(m))
+    })
 }
 
 #[cfg(test)]

@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "تراجع عن آخر تغيير أُجري في ا
 dialog.palette_selected = "{n} لون محدد" # mt
 dialog.palette_color_name = "اللون {n}" # mt
 palette.reset_desc = "الاحتفاظ في لوحة المستند بالألوان التي يستخدمها الرسم فقط." # mt
+menu.view.navigator = "المتصفح" # mt

@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "Cofnij ostatnią zmianę wprowadzoną w edytorze. An
 dialog.palette_selected = "Zaznaczone kolory: {n}" # mt
 dialog.palette_color_name = "Kolor {n}" # mt
 palette.reset_desc = "Zachowaj w palecie dokumentu tylko kolory używane w rysunku." # mt
+menu.view.navigator = "Nawigator" # mt

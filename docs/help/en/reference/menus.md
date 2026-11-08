@@ -94,6 +94,7 @@ only the Welcome Screen is open. The menus can show your own shortcuts; see
 | [[menu.view.zoom_in]] | [Views](../get-started/undo-and-views.md#views) |
 | [[menu.view.zoom_out]] | [Views](../get-started/undo-and-views.md#views) |
 | [[menu.view.zoom_to_fit]] | [Views](../get-started/undo-and-views.md#views) |
+| [[menu.view.navigator]] | [Views](../get-started/undo-and-views.md#views) |
 | [[menu.view.proof_colors]] | [Color management](../color/color-management.md#proof) |
 | [[menu.view.simulate_overprints]] | [Color management](../color/color-management.md#proof) |
 | [[menu.view.rasterize_complex_effects]] | [Rulers, grids and guidelines](../pages-layout/guidelines-and-grid.md) |

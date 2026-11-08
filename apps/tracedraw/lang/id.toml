@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "Urungkan perubahan terakhir di penyunting. Batal men
 dialog.palette_selected = "{n} warna dipilih" # mt
 dialog.palette_color_name = "Warna {n}" # mt
 palette.reset_desc = "Simpan hanya warna yang dipakai gambar di palet dokumen." # mt
+menu.view.navigator = "Navigator" # mt

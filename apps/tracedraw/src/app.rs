@@ -1607,6 +1607,9 @@ pub struct App {
     pub options_labels: bool,
     /// Navigator pop-up (corner of the scrollbars).
     pub navigator_open: bool,
+    /// View > Navigator opened the Navigator: it stays open until a click
+    /// (on its picture: the view goes there) or Esc.
+    pub navigator_pinned: bool,
     /// A right-button drag of the selection and the menu where it ended
     /// (see drop_menu.rs).
     pub right_drag: Option<crate::drop_menu::RightDrag>,
@@ -2908,6 +2911,7 @@ impl App {
             pending_clone_effect: None,
             options_labels: false,
             navigator_open: false,
+            navigator_pinned: false,
             right_drag: None,
             bar_drag: None,
             bar_rows: Vec::new(),

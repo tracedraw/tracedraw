@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "Take back the last change made in the editor. Cancel
 dialog.palette_selected = "{n} colors selected"
 dialog.palette_color_name = "Color {n}"
 palette.reset_desc = "Keep only the colors the drawing uses in the document palette."
+menu.view.navigator = "Navigator"

@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "De laatste wijziging in de editor terugdraaien. Annu
 dialog.palette_selected = "{n} kleuren geselecteerd" # mt
 dialog.palette_color_name = "Kleur {n}" # mt
 palette.reset_desc = "Alleen de kleuren die de tekening gebruikt in het documentpalet houden." # mt
+menu.view.navigator = "Navigator" # mt

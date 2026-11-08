@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "एडिटर में किया गया अ
 dialog.palette_selected = "{n} रंग चुने गए" # mt
 dialog.palette_color_name = "रंग {n}" # mt
 palette.reset_desc = "दस्तावेज़ पैलेट में केवल वे रंग रखें जो ड्रॉइंग उपयोग करती है।" # mt
+menu.view.navigator = "नेविगेटर" # mt

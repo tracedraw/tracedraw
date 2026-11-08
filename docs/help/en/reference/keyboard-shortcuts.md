@@ -35,6 +35,7 @@ shortcut beside it, and you can add your own; see
 | <kbd>F2</kbd>, <kbd>Shift+F2</kbd>, <kbd>F3</kbd> | Zoom tool for one zoom (then the tool before comes back; <kbd>Z</kbd> keeps it), zoom to the selection, zoom out |
 | <kbd>F4</kbd>, <kbd>Shift+F4</kbd> | zoom to fit, zoom to the page |
 | <kbd>Ctrl++</kbd>, <kbd>Ctrl+-</kbd> | zoom in and out one step |
+| <kbd>N</kbd> (held) | the Navigator: move the pointer over the page's picture to go there ([[menu.view > menu.view.navigator]]) |
 | <kbd>Alt+Shift+R</kbd> | rulers on and off |
 | <kbd>Alt+Q</kbd>, <kbd>Alt+Z</kbd>, <kbd>Ctrl+Y</kbd> | snapping off, snap to objects, snap to the grid |
 | <kbd>Alt+Shift+A</kbd>, <kbd>Alt+Shift+D</kbd> | alignment guides, dynamic guides |

@@ -37,6 +37,7 @@ comando ao lado dele, e você pode acrescentar os seus; veja
 | <kbd>F2</kbd>, <kbd>Shift+F2</kbd>, <kbd>F3</kbd> | ferramenta Zoom para um zoom (depois a ferramenta anterior volta; <kbd>Z</kbd> a mantém), zoom na seleção, afastar |
 | <kbd>F4</kbd>, <kbd>Shift+F4</kbd> | zoom para caber, zoom na página |
 | <kbd>Ctrl++</kbd>, <kbd>Ctrl+-</kbd> | aproximar e afastar um passo |
+| <kbd>N</kbd> (mantida) | o Navegador: mova o ponteiro sobre a miniatura da página para ir até lá ([[menu.view > menu.view.navigator]]) |
 | <kbd>Alt+Shift+R</kbd> | ligar e desligar as réguas |
 | <kbd>Alt+Q</kbd>, <kbd>Alt+Z</kbd>, <kbd>Ctrl+Y</kbd> | desligar o encaixe, encaixar em objetos, encaixar na grade |
 | <kbd>Alt+Shift+A</kbd>, <kbd>Alt+Shift+D</kbd> | guias de alinhamento, guias dinâmicas |

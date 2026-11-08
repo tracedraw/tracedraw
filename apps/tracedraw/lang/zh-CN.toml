@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "撤消在编辑器中的最后一次更改。“取�
 dialog.palette_selected = "已选择 {n} 种颜色" # mt
 dialog.palette_color_name = "颜色 {n}" # mt
 palette.reset_desc = "文档调色板中只保留绘图使用的颜色。" # mt
+menu.view.navigator = "导航器" # mt

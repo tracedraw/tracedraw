@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "Отменить последнее изменени
 dialog.palette_selected = "Выбрано цветов: {n}" # mt
 dialog.palette_color_name = "Цвет {n}" # mt
 palette.reset_desc = "Оставить в палитре документа только цвета, которые использует рисунок." # mt
+menu.view.navigator = "Навигатор" # mt

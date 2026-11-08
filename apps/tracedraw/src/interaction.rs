@@ -3947,6 +3947,10 @@ impl App {
             else {
                 continue;
             };
+            // The Navigator's key works while held (`ui::view_navigator`).
+            if id == crate::ui::NAVIGATOR_KEY {
+                return;
+            }
             if id.starts_with("menu.") {
                 self.pending_command = Some(id);
                 return;

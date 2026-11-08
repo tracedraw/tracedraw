@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "Düzenleyicide yapılan son değişikliği geri al. 
 dialog.palette_selected = "{n} renk seçili" # mt
 dialog.palette_color_name = "Renk {n}" # mt
 palette.reset_desc = "Belge paletinde yalnızca çizimin kullandığı renkleri tut." # mt
+menu.view.navigator = "Gezgin" # mt

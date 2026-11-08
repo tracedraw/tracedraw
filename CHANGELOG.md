@@ -16,6 +16,8 @@ full, row-by-row status.
 
 - Objects docker: dragging an object's row now also moves objects between layers: let go on an object of another layer (of any page or of the master page) it goes in front of or behind that object in its layer, and let go on a layer's row it goes on the top of that layer. A selected row carries the rest of the selection along, the whole move is one undo step, and the objects stay selected with their layer active. Rows inside groups no longer start a drag that failed, locked objects stay and a locked layer takes nothing (live test of 0.41).
 
+- View > Navigator, with the key N, in the shortcut table like any menu command, so it can be changed or removed in Options > Customization > Commands and is found by Help > Search Commands. N held shows the Navigator as before; the menu row opens it until a click: a click on the picture goes there, a click elsewhere or Esc closes it (live test of 0.41).
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).

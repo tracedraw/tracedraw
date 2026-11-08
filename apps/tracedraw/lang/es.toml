@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "Deshacer el último cambio hecho en el editor. Cance
 dialog.palette_selected = "{n} colores seleccionados" # mt
 dialog.palette_color_name = "Color {n}" # mt
 palette.reset_desc = "Conservar en la paleta del documento solo los colores que usa el dibujo." # mt
+menu.view.navigator = "Navegador" # mt

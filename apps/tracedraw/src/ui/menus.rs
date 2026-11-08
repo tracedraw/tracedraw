@@ -2851,6 +2851,16 @@ fn view_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.view.zoom_to_fit", "F4", true) {
         app.zoom_to_fit();
     }
+    // The key held shows the Navigator while it is down (`view_navigator`);
+    // the menu row opens it until a click.
+    if item(
+        ui,
+        crate::ui::NAVIGATOR_KEY,
+        crate::ui::NAVIGATOR_DEFAULT_KEYS,
+        app.has_document(),
+    ) {
+        app.navigator_pinned = !app.navigator_pinned;
+    }
     sep(ui);
     if check(ui, "menu.view.proof_colors", "", app.proof_colors) {
         app.proof_colors = !app.proof_colors;

@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "Vrátit poslední změnu provedenou v editoru. Zruš
 dialog.palette_selected = "Vybráno barev: {n}" # mt
 dialog.palette_color_name = "Barva {n}" # mt
 palette.reset_desc = "Ponechat v paletě dokumentu jen barvy, které kresba používá." # mt
+menu.view.navigator = "Navigátor" # mt

@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "এডিটরে করা শেষ পরিব�
 dialog.palette_selected = "{n}টি রং নির্বাচিত" # mt
 dialog.palette_color_name = "রং {n}" # mt
 palette.reset_desc = "ডকুমেন্ট প্যালেটে কেবল আঁকায় ব্যবহৃত রংগুলো রাখুন।" # mt
+menu.view.navigator = "নেভিগেটর" # mt

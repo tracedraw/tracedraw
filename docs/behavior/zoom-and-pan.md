@@ -110,6 +110,18 @@
   thumbnail centres the view on that point; releasing closes the pop-up.
   The thumbnail is rendered once per opening at
   `dpi = 220 / page width in mm * 25.4`.
+- View > Navigator has the key N (live test of 0.41; free in the shortcut
+  table, `options::tests::no_two_default_commands_share_a_shortcut`).
+  The key held over the drawing does what the held button does: the
+  pop-up shows while it is down and the view follows the pointer over
+  the thumbnail; it does nothing while a text field or text editing has
+  the keys or a dialog is open. The key can be changed or removed in
+  Options > Customization > Commands like any menu command's; a key of
+  the user's replaces N. The menu row itself opens the pop-up until a
+  click: passing over the thumbnail moves nothing, a press on it centres
+  the view there (and follows the pointer while held) and its release
+  closes the pop-up; a press anywhere else or Esc closes it. Check:
+  `ui::window_bars::tests::view_navigator_has_the_key_n`.
 
 ## Checks
 

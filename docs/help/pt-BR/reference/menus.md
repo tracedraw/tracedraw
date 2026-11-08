@@ -95,6 +95,7 @@ próprios atalhos; veja
 | [[menu.view.zoom_in]] | [Desfazer, zoom e deslocamento](../get-started/undo-and-views.md#views) |
 | [[menu.view.zoom_out]] | [Desfazer, zoom e deslocamento](../get-started/undo-and-views.md#views) |
 | [[menu.view.zoom_to_fit]] | [Desfazer, zoom e deslocamento](../get-started/undo-and-views.md#views) |
+| [[menu.view.navigator]] | [Desfazer, zoom e deslocamento](../get-started/undo-and-views.md#views) |
 | [[menu.view.proof_colors]] | [Gerenciamento de cores](../color/color-management.md#proof) |
 | [[menu.view.simulate_overprints]] | [Gerenciamento de cores](../color/color-management.md#proof) |
 | [[menu.view.rasterize_complex_effects]] | [Réguas, grades e linhas-guia](../pages-layout/guidelines-and-grid.md) |

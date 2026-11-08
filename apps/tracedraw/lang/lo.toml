@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "ຍົກເລີກການປ່ຽນແປງ�
 dialog.palette_selected = "ເລືອກ {n} ສີແລ້ວ" # mt
 dialog.palette_color_name = "ສີ {n}" # mt
 palette.reset_desc = "ເກັບໄວ້ໃນຈານສີຂອງເອກະສານສະເພາະສີທີ່ຮູບແຕ້ມໃຊ້." # mt
+menu.view.navigator = "ຕົວນໍາທາງມຸມມອງ" # mt

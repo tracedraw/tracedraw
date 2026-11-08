@@ -8332,3 +8332,4 @@ dialog.palette_undo_desc = "Die letzte Änderung im Editor zurücknehmen. Abbrec
 dialog.palette_selected = "{n} Farben ausgewählt" # mt
 dialog.palette_color_name = "Farbe {n}" # mt
 palette.reset_desc = "Nur die Farben, die die Zeichnung verwendet, in der Dokumentpalette behalten." # mt
+menu.view.navigator = "Navigator" # mt
