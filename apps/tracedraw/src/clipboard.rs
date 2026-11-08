@@ -111,7 +111,13 @@ fn image_sample(img: &image::RgbaImage) -> u64 {
 /// a paste can tell nothing changed without reading the clipboard.
 #[cfg(windows)]
 pub fn change_count() -> Option<u32> {
-    #[link(name = "user32", kind = "raw-dylib")]
+    // 32-bit Windows: the DLL exports the plain name, not the stdcall
+    // decorated one raw-dylib imports by default (#1975).
+    #[cfg_attr(
+        target_arch = "x86",
+        link(name = "user32", kind = "raw-dylib", import_name_type = "undecorated")
+    )]
+    #[cfg_attr(not(target_arch = "x86"), link(name = "user32", kind = "raw-dylib"))]
     unsafe extern "system" {
         fn GetClipboardSequenceNumber() -> u32;
     }

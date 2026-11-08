@@ -1,11 +1,16 @@
 ﻿; Inno Setup script for TraceDraw. Built by CI on windows-latest.
 ; Variables: /DVersion=x.y.z /DSrcDir=<dir with tracedraw.exe and tracedraw-cli.exe>
+; /DArch=x86 for the 32-bit Windows build (i686-pc-windows-msvc, #1975);
+; x86_64 when not given.
 
 #ifndef Version
   #define Version "0.0.0"
 #endif
 #ifndef SrcDir
   #define SrcDir "..\..\target\release"
+#endif
+#ifndef Arch
+  #define Arch "x86_64"
 #endif
 
 [Setup]
@@ -19,13 +24,19 @@ DefaultDirName={autopf}\TraceDraw
 DefaultGroupName=TraceDraw
 UninstallDisplayIcon={app}\tracedraw.exe
 OutputDir=..\..\dist
-OutputBaseFilename=tracedraw-{#Version}-windows-x86_64-setup
+OutputBaseFilename=tracedraw-{#Version}-windows-{#Arch}-setup
 SetupIconFile=..\..\assets\icon\tracedraw.ico
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+#if Arch == "x86"
+; The 32-bit build installs on 32-bit Windows only: 64-bit Windows takes
+; the x86_64 setup, which shares this AppId and folder.
+ArchitecturesAllowed=x86os
+#else
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+#endif
 PrivilegesRequiredOverridesAllowed=dialog
 ChangesAssociations=yes
 ChangesEnvironment=yes

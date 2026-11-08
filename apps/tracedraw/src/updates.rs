@@ -143,6 +143,8 @@ fn arch_names(arch: &str) -> Option<(&'static str, &'static str)> {
     match arch {
         "x86_64" => Some(("x86_64", "amd64")),
         "aarch64" => Some(("arm64", "arm64")),
+        // 32-bit Windows (#1975); no other system has a 32-bit build.
+        "x86" => Some(("x86", "i386")),
         _ => None,
     }
 }
@@ -154,10 +156,14 @@ fn arch_names(arch: &str) -> Option<(&'static str, &'static str)> {
 /// x86_64 AppImage is `linux-amd64` from 0.19.9 on, so that it sorts
 /// before the arm64 one for updaters of 0.19.8 and earlier, which take
 /// the first AppImage listed (#1038); older releases name it `linux-x86_64`.
+/// 32-bit Windows (`x86`) has its own `windows-x86` files (#1975).
 pub fn asset_names(version: &str, os: &str, arch: &str, kind: Kind) -> Vec<String> {
     let Some((a, deb)) = arch_names(arch) else {
         return Vec::new();
     };
+    if arch == "x86" && os != "windows" {
+        return Vec::new();
+    }
     let one = match (os, kind) {
         ("linux", Kind::AppImage) if arch == "x86_64" => {
             return vec![
@@ -211,7 +217,17 @@ pub fn linux_kind(
 pub fn store_install() -> bool {
     static STORE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *STORE.get_or_init(|| {
-        #[link(name = "kernel32", kind = "raw-dylib")]
+        // 32-bit Windows: the DLL exports the plain name, not the stdcall
+        // decorated one raw-dylib imports by default (#1975).
+        #[cfg_attr(
+            target_arch = "x86",
+            link(
+                name = "kernel32",
+                kind = "raw-dylib",
+                import_name_type = "undecorated"
+            )
+        )]
+        #[cfg_attr(not(target_arch = "x86"), link(name = "kernel32", kind = "raw-dylib"))]
         unsafe extern "system" {
             fn GetCurrentPackageFullName(length: *mut u32, name: *mut u16) -> i32;
         }
@@ -1492,6 +1508,145 @@ mod tests {
             .expect("newer");
         assert_eq!(r.version, "0.5.0");
         assert!(r.page.ends_with("v0.5.0"));
+    }
+
+    /// #1975: 32-bit Windows (`x86`) has a setup and a portable zip of
+    /// its own, `windows-x86`, which the 64-bit copies never take, nor it
+    /// theirs; no other system has a 32-bit build.
+    #[test]
+    fn thirty_two_bit_windows_gets_its_own_files() {
+        use Kind::*;
+        let json = r#"{
+            "tag_name": "v0.5.0",
+            "html_url": "https://github.com/tracedraw/tracedraw/releases/tag/v0.5.0",
+            "prerelease": false,
+            "draft": false,
+            "assets": [
+                {"name": "tracedraw-0.5.0-windows-x86-portable.zip", "browser_download_url": "https://x/tracedraw-0.5.0-windows-x86-portable.zip"},
+                {"name": "tracedraw-0.5.0-windows-x86-setup.exe", "browser_download_url": "https://x/tracedraw-0.5.0-windows-x86-setup.exe"},
+                {"name": "tracedraw-0.5.0-windows-x86_64-portable.zip", "browser_download_url": "https://x/tracedraw-0.5.0-windows-x86_64-portable.zip"},
+                {"name": "tracedraw-0.5.0-windows-x86_64-setup.exe", "browser_download_url": "https://x/tracedraw-0.5.0-windows-x86_64-setup.exe"}
+            ]
+        }"#;
+        let cases = [
+            ("x86", Setup, "tracedraw-0.5.0-windows-x86-setup.exe"),
+            ("x86", Portable, "tracedraw-0.5.0-windows-x86-portable.zip"),
+            ("x86_64", Setup, "tracedraw-0.5.0-windows-x86_64-setup.exe"),
+            (
+                "x86_64",
+                Portable,
+                "tracedraw-0.5.0-windows-x86_64-portable.zip",
+            ),
+        ];
+        for (arch, kind, want) in cases {
+            assert_eq!(
+                pick_in(json, "windows", arch, kind).as_deref(),
+                Some(want),
+                "{arch} {kind:?}"
+            );
+        }
+        // A release without the 32-bit files offers the 32-bit copy none.
+        assert_eq!(pick("windows", "x86", Setup), None);
+        assert_eq!(pick("windows", "x86", Portable), None);
+        // No 32-bit build of the other systems.
+        for (os, kind) in [("linux", AppImage), ("linux", Deb), ("macos", Dmg)] {
+            assert!(asset_names("0.5.0", os, "x86", kind).is_empty(), "{os}");
+        }
+    }
+
+    /// #1975: the release builds the 32-bit Windows programs, with the C
+    /// runtime inside as the 64-bit ones, and names their setup and zip
+    /// as the updater of a 32-bit copy looks for them; the setup installs
+    /// on 32-bit Windows only.
+    #[test]
+    fn the_release_builds_the_32_bit_windows_files() {
+        let ci = include_str!("../../../.github/workflows/build.yml");
+        let iss = include_str!("../../../packaging/windows/tracedraw.iss");
+        let cargo = include_str!("../../../.cargo/config.toml");
+        assert!(ci.contains("target: i686-pc-windows-msvc"));
+        assert!(ci.contains(r#"$arch = if ("${{ matrix.target }}" -like "i686-*") { "x86" }"#));
+        assert!(ci.contains("/DArch=$arch"));
+        assert!(ci.contains("-windows-$arch-portable.zip"));
+        assert!(iss.contains("OutputBaseFilename=tracedraw-{#Version}-windows-{#Arch}-setup"));
+        assert!(iss.contains("#if Arch == \"x86\"\n"));
+        assert!(iss.contains("ArchitecturesAllowed=x86os\n"));
+        assert!(cargo.contains(
+            "[target.i686-pc-windows-msvc]\nrustflags = [\"-C\", \"target-feature=+crt-static\"]"
+        ));
+        // What those make for a version is what the updater asks for.
+        assert_eq!(
+            asset_names("0.5.0", "windows", "x86", Kind::Setup),
+            vec!["tracedraw-0.5.0-windows-x86-setup.exe".to_string()]
+        );
+        assert_eq!(
+            asset_names("0.5.0", "windows", "x86", Kind::Portable),
+            vec!["tracedraw-0.5.0-windows-x86-portable.zip".to_string()]
+        );
+    }
+
+    /// #1975: on 32-bit Windows a function a program imports by
+    /// `raw-dylib` is looked up by its stdcall decorated name
+    /// (`_GetUserDefaultUILanguage@0`) unless told otherwise, which the
+    /// system's DLLs do not export: the program would not start. Every
+    /// such import names its DLL through `cfg_attr`, undecorated on x86.
+    #[test]
+    fn raw_dylib_imports_are_undecorated_on_32_bit_windows() {
+        fn sources(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("source folder").flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    sources(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        sources(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut files,
+        );
+        let mut imports = 0;
+        for file in files {
+            let text = std::fs::read_to_string(&file).expect("source");
+            // This test's own text names the attribute too.
+            if file.ends_with("updates.rs") {
+                let code = text.split("mod tests").next().unwrap_or("");
+                imports += check_raw_dylib(code, &file);
+            } else {
+                imports += check_raw_dylib(&text, &file);
+            }
+        }
+        assert!(imports >= 5, "the Windows imports were found ({imports})");
+    }
+
+    /// The `raw-dylib` imports of `code`, each checked as
+    /// [`raw_dylib_imports_are_undecorated_on_32_bit_windows`] asks.
+    fn check_raw_dylib(code: &str, file: &std::path::Path) -> usize {
+        let lines: Vec<&str> = code.lines().map(str::trim).collect();
+        let mut imports = 0;
+        for (n, line) in lines.iter().enumerate() {
+            if !line.contains("kind = \"raw-dylib\"") {
+                continue;
+            }
+            assert!(
+                !line.starts_with("#[link("),
+                "{}:{}: a raw-dylib import without its x86 form",
+                file.display(),
+                n + 1
+            );
+            if line.starts_with("#[cfg_attr(not(target_arch = \"x86\")") {
+                imports += 1;
+                let before = lines[n.saturating_sub(6)..n].join(" ");
+                assert!(
+                    before.contains("import_name_type = \"undecorated\""),
+                    "{}:{}: no undecorated x86 form before this import",
+                    file.display(),
+                    n + 1
+                );
+            }
+        }
+        imports
     }
 
     /// With no file for this system, processor or install there is no
