@@ -24,6 +24,8 @@ full, row-by-row status.
 
 - Transparency: ten more merge modes, Texturize, Lightness, Behind, Screen, Overlay, Soft Light, Hard Light, Color Dodge, Color Burn and Exclusion (28 in all), drawn by their formulas, kept in `.tdraw` files and carried into SVG and PDF exports as their blend modes where those exist; drop shadows can use them too (#1203).
 
+- Properties docker: the Summary section now reports the selection's count, layer, kind, size, centre and centre of rotation, and holds Wrap paragraph text (style and offset) and Lock Object; it listed only each object's kind and id. Crop tool: Crop and Clear buttons float under the crop area on the canvas, so the area is applied or dropped without reaching the property bar (#1202).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
