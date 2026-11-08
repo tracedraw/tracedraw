@@ -1658,6 +1658,8 @@ pub struct App {
     /// Align and Distribute docker: spread between the outermost objects
     /// or across the page.
     pub distribute_to: crate::ops::DistributeTo,
+    /// Distribute with a set spacing: the distance, mm (#2005).
+    pub distribute_gap: f64,
     pub lens: crate::lens::LensSettings,
     /// How dragging an envelope node reshapes its sides.
     pub envelope_mode: tracedraw_core::envelope::Mode,
@@ -2877,6 +2879,7 @@ impl App {
             align_to: Default::default(),
             align_use_outline: false,
             distribute_to: Default::default(),
+            distribute_gap: 1.0,
             lens: Default::default(),
             envelope_mode: Default::default(),
             envelope_mapping: Default::default(),
@@ -3680,6 +3683,7 @@ impl App {
             align_to: self.align_to.id().into(),
             align_use_outline: self.align_use_outline,
             distribute_to: self.distribute_to.id().into(),
+            distribute_gap: self.distribute_gap,
             shaping_op: self.shaping_op.id().into(),
             shaping_leave: self.shaping_leave,
         }
@@ -3699,6 +3703,9 @@ impl App {
         self.align_to = crate::ops2::AlignTo::from_id(&p.align_to);
         self.align_use_outline = p.align_use_outline;
         self.distribute_to = crate::ops::DistributeTo::from_id(&p.distribute_to);
+        if p.distribute_gap.is_finite() {
+            self.distribute_gap = p.distribute_gap;
+        }
         self.shaping_op = crate::ops::Shaping::from_id(&p.shaping_op);
         self.shaping_leave = p.shaping_leave;
     }

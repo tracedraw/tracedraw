@@ -41,6 +41,9 @@ pub enum DistributeTo {
     #[default]
     Selection,
     Page,
+    /// From the first object on, a set distance apart (`App::distribute_gap`):
+    /// the gaps between them, or their edges or centres (#2005).
+    Spacing,
 }
 
 impl DistributeTo {
@@ -49,6 +52,7 @@ impl DistributeTo {
         match self {
             DistributeTo::Selection => "selection",
             DistributeTo::Page => "page",
+            DistributeTo::Spacing => "spacing",
         }
     }
 
@@ -56,6 +60,7 @@ impl DistributeTo {
     pub fn from_id(id: &str) -> DistributeTo {
         match id {
             "page" => DistributeTo::Page,
+            "spacing" => DistributeTo::Spacing,
             _ => DistributeTo::Selection,
         }
     }
@@ -159,11 +164,11 @@ impl App {
     }
 
     /// How many objects `to` needs: three between the outermost ones, two
-    /// across the page.
+    /// across the page or a set distance apart.
     pub fn can_distribute(&self, to: DistributeTo) -> bool {
         let need = match to {
             DistributeTo::Selection => 3,
-            DistributeTo::Page => 2,
+            DistributeTo::Page | DistributeTo::Spacing => 2,
         };
         self.selection.len() >= need
     }
@@ -171,7 +176,8 @@ impl App {
     /// Spread the selected objects evenly along x or y: their left edges,
     /// centres or right edges (top, centres, bottom), or the gaps between
     /// them. Between the outermost objects they stay put; across the page
-    /// the first and last touch its edges.
+    /// the first and last touch its edges; with a set spacing the first
+    /// stays put and the others follow it `distribute_gap` apart.
     pub fn distribute_with(&mut self, how: Distribute, to: DistributeTo) {
         if !self.can_distribute(to) {
             return;
@@ -230,10 +236,13 @@ impl App {
         if kind == 3 {
             let total: f64 = boxes.iter().map(|(_, b)| hi(b) - lo(b)).sum();
             let (start, end) = match to {
-                DistributeTo::Selection => (lo(&first), hi(&last)),
+                DistributeTo::Selection | DistributeTo::Spacing => (lo(&first), hi(&last)),
                 DistributeTo::Page => (e0, e1),
             };
-            let gap = (end - start - total) / (n - 1) as f64;
+            let gap = match to {
+                DistributeTo::Spacing => self.distribute_gap,
+                _ => (end - start - total) / (n - 1) as f64,
+            };
             let mut cursor = start;
             for (s, b) in &boxes {
                 shift(s, cursor - lo(b));
@@ -243,6 +252,10 @@ impl App {
             let len = |b: &Rect| hi(b) - lo(b);
             let (k0, k1) = match to {
                 DistributeTo::Selection => (key(&first), key(&last)),
+                DistributeTo::Spacing => (
+                    key(&first),
+                    key(&first) + self.distribute_gap * (n - 1) as f64,
+                ),
                 DistributeTo::Page => match kind {
                     0 => (e0, e1 - len(&last)),
                     1 => (e0 + len(&first) / 2.0, e1 - len(&last) / 2.0),
