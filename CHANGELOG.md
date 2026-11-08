@@ -110,6 +110,8 @@ full, row-by-row status.
 
 - Edit > Invert Selection selects the objects of the page that are not selected and deselects the others; Edit > Select Similar selects the objects with the same fill, the same outline, the same text formatting (font and size) or of the same kind as the selected ones. Each one is a step of Undo and Redo (#2002).
 
+- The Transparency tool's icon is a checkerboard fading in steps, no longer a disc fading like a gradient that was taken for the fill tools (#1682).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
