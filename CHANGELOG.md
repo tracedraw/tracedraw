@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Twirl and Attract and Repel start at the press and keep working with the button held still; they waited for the pointer to move before doing anything. Roughen adds its teeth once per spacing along the stroke instead of at every frame, so going over a stretch no longer piles nodes into a tangle.
+
 - Area Fill fills the area an open line closes off when its ends lie exactly on another outline, as Virtual Segment Delete leaves them: on a large circle the ends sat a hair outside the outline as it is measured, and the area was taken for open (#2076).
 
 - Sliders in dockers and dialogs take the whole width of their row, as Object opacity does, also when a box or a unit list shares the row (the outline width, tolerances, the font sample size); before they kept a short fixed length there.

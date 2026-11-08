@@ -139,11 +139,42 @@ impl App {
 
     /// The brushes' pointer input.
     pub fn brush_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
-        if response.drag_started_by(PointerButton::Primary) {
-            self.brush_begin(p);
+        let held = matches!(self.tool, Tool::Twirl | Tool::AttractRepel);
+        // A press let go without a drag ends its stroke too.
+        if held
+            && matches!(self.drag, Drag::Node { .. })
+            && response.ctx.input(|i| i.pointer.primary_released())
+            && !response.drag_stopped()
+        {
+            self.drag = Drag::None;
+            return;
         }
-        if response.dragged_by(PointerButton::Primary) {
-            let held = matches!(self.tool, Tool::Twirl | Tool::AttractRepel);
+        // Twirl and Attract and Repel work from the press, the button held
+        // still: they waited for the pointer to move far enough to count
+        // as a drag (live test of 0.41).
+        let pressed = held
+            && response.is_pointer_button_down_on()
+            && response.ctx.input(|i| i.pointer.primary_pressed());
+        if response.drag_started_by(PointerButton::Primary) || pressed {
+            if !matches!(self.drag, Drag::Node { .. }) {
+                self.brush_begin(p);
+            }
+        }
+        let down_here = held
+            && response.is_pointer_button_down_on()
+            && response.ctx.input(|i| i.pointer.primary_down())
+            && matches!(self.drag, Drag::Node { .. });
+        if response.dragged_by(PointerButton::Primary) || down_here {
+            // Roughen adds its teeth once per spacing along the way, not
+            // at every frame over the same stretch, which piled up nodes
+            // in a tangle (live test of 0.41).
+            if self.tool == Tool::Roughen {
+                if let Drag::Node { last } = self.drag {
+                    if (p - last).hypot() < self.brush.roughen_spacing() * 0.5 {
+                        return;
+                    }
+                }
+            }
             let dt = if held {
                 // Keep going while the button is held still.
                 response.ctx.request_repaint();
