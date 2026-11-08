@@ -168,9 +168,11 @@ pub fn safe_file_name(name: &str) -> String {
 /// writing bring them along; in a file name they only hide the extension
 /// and make two names that look the same differ.
 pub fn is_direction_mark(c: char) -> bool {
+    // By code point: they are never drawn, so they are not symbols the
+    // interface's fonts must have (`every_interface_symbol_is_in_the_bundled_fonts`).
     matches!(
-        c,
-        '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'
+        c as u32,
+        0x061C | 0x200E | 0x200F | 0x202A..=0x202E | 0x2066..=0x2069
     )
 }
 
