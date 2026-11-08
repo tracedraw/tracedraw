@@ -911,56 +911,26 @@ impl Renderer<'_> {
             return;
         }
         if let ShapeKind::ClipFrame { frame, contents } = &shape.kind {
+            // A shadow the frame had of its own (given before it became a
+            // frame, or while editing inside it) goes once beneath it all.
+            // It went with both the fill and the outline drawn below, so
+            // it came twice, the second time over the contents.
+            if let Some(sh) = frame.shadow.as_ref().filter(|sh| sh.opacity > 0.0) {
+                if frame.visible && frame.opacity > 0.0 && shape.opacity > 0.0 {
+                    let page_path = (transform * frame.transform) * frame.local_path();
+                    self.draw_object_shadow(sh, frame, transform, &page_path);
+                }
+            }
             // Frame's fill first, contents clipped to the frame, then the frame's outline.
             let mut frame_fill_only = (**frame).clone();
             frame_fill_only.stroke = None;
+            frame_fill_only.shadow = None;
             frame_fill_only.opacity = shape.opacity;
-            self.draw_shape(&frame_fill_only, transform);
-            let frame_path = self.screen * (transform * frame.page_path());
-            if let Some(sk_frame) = to_sk_path(&frame_path) {
-                let (w, h) = (self.pixmap.width(), self.pixmap.height());
-                if let Some(mut mask) = tiny_skia::Mask::new(w, h) {
-                    let rule = shape_fill_rule(frame, false);
-                    mask.fill_path(&sk_frame, rule, true, Transform::identity());
-                    // The contents are drawn over a copy of what lies
-                    // beneath, so their merge modes (Multiply on a photo,
-                    // say) work on it as outside a frame; inside the frame
-                    // the copy then takes the place of the page (#13).
-                    let mut layer = self.pixmap.clone();
-                    {
-                        let mut sub = self.sub(&mut layer);
-                        for c in contents {
-                            let t = sub.child_transform(c, transform);
-                            sub.draw_shape(c, t);
-                        }
-                    }
-                    let b = sk_frame.bounds();
-                    let x0 = (b.left().floor().max(0.0) as usize).min(w as usize);
-                    let x1 = (b.right().ceil().max(0.0) as usize).min(w as usize);
-                    let y0 = (b.top().floor().max(0.0) as usize).min(h as usize);
-                    let y1 = (b.bottom().ceil().max(0.0) as usize).min(h as usize);
-                    let opacity = shape.opacity.clamp(0.0, 1.0) as f32;
-                    let m = mask.data();
-                    let src = layer.data();
-                    let dst = self.pixmap.data_mut();
-                    for y in y0..y1 {
-                        for x in x0..x1 {
-                            let i = y * w as usize + x;
-                            let k = m[i] as f32 / 255.0 * opacity;
-                            if k <= 0.0 {
-                                continue;
-                            }
-                            for c in 0..4 {
-                                let (a, b) = (dst[i * 4 + c] as f32, src[i * 4 + c] as f32);
-                                dst[i * 4 + c] = (a + (b - a) * k).round() as u8;
-                            }
-                        }
-                    }
-                }
-            }
+            self.draw_clip_frame_inside(shape, &frame_fill_only, contents, transform);
             if frame.stroke.is_some() {
                 let mut outline_only = (**frame).clone();
                 outline_only.fill = Fill::None;
+                outline_only.shadow = None;
                 outline_only.opacity = shape.opacity;
                 self.draw_shape(&outline_only, transform);
             }
@@ -1011,26 +981,7 @@ impl Renderer<'_> {
         // shows (#2027).
         if let Some(sh) = &shape.shadow {
             if !self.flags.wireframe && sh.opacity > 0.0 {
-                let drawn = match &shape.kind {
-                    ShapeKind::Bitmap {
-                        rect,
-                        width_px,
-                        height_px,
-                        png,
-                        ..
-                    } => self.draw_bitmap_shadow(
-                        sh,
-                        &page_path,
-                        transform,
-                        *rect,
-                        (*width_px, *height_px),
-                        png,
-                    ),
-                    _ => false,
-                };
-                if !drawn {
-                    self.draw_drop_shadow(sh, &page_path);
-                }
+                self.draw_object_shadow(sh, shape, parent, &page_path);
             }
         }
 
@@ -1298,6 +1249,192 @@ impl Renderer<'_> {
             };
             self.pixmap
                 .stroke_path(&sk, &paint, &s, Transform::identity(), None);
+        }
+    }
+
+    /// The drop shadow `sh` of `shape` drawn inside `parent`, whose
+    /// page-space path is `page_path`, without the object: a picture's
+    /// from its pixels, a group's or clip frame's from what it shows,
+    /// any other object's from its path.
+    fn draw_object_shadow(
+        &mut self,
+        sh: &tracedraw_core::Shadow,
+        shape: &Shape,
+        parent: Affine,
+        page_path: &BezPath,
+    ) {
+        let drawn = match &shape.kind {
+            ShapeKind::Group { .. } | ShapeKind::ClipFrame { .. } => {
+                self.draw_group_shadow(sh, shape, parent);
+                true
+            }
+            _ if page_path.elements().is_empty() => true,
+            ShapeKind::Bitmap {
+                rect,
+                width_px,
+                height_px,
+                png,
+                ..
+            } => self.draw_bitmap_shadow(
+                sh,
+                page_path,
+                parent * shape.transform,
+                *rect,
+                (*width_px, *height_px),
+                png,
+            ),
+            _ => false,
+        };
+        if !drawn {
+            self.draw_drop_shadow(sh, page_path);
+        }
+    }
+
+    /// The inside of a clip frame `clip` drawn inside `parent`: the
+    /// frame's fill (`fill_only`, its outline and shadow taken off) and
+    /// the contents over it, cut to the frame. Both are put together
+    /// first and then cut by the frame's coverage in one step, so an edge
+    /// pixel the frame half covers takes half of what the frame shows
+    /// and half of what lies beneath. The fill was drawn with its own
+    /// soft edge and the contents then blended over it by the same
+    /// coverage again, which left a thin line of the fill's colour (or
+    /// of a shadow beneath) all round a frame that did not sit on whole
+    /// pixels.
+    fn draw_clip_frame_inside(
+        &mut self,
+        clip: &Shape,
+        fill_only: &Shape,
+        contents: &[Shape],
+        parent: Affine,
+    ) {
+        let (w, h) = (self.pixmap.width(), self.pixmap.height());
+        let frame_path = self.screen * (parent * fill_only.page_path());
+        let mask = to_sk_path(&frame_path).and_then(|sk| {
+            let mut mask = tiny_skia::Mask::new(w, h)?;
+            let rule = shape_fill_rule(fill_only, false);
+            mask.fill_path(&sk, rule, true, Transform::identity());
+            Some((sk.bounds(), mask))
+        });
+        let Some((b, mask)) = mask else {
+            // No frame to cut to: its fill alone, as it is.
+            self.draw_shape(fill_only, parent);
+            return;
+        };
+        // The fill on a layer of its own, only as large as it reaches.
+        let (fx, fy, fw, fh) = self.layer_area(fill_only, parent);
+        let fill_px = Pixmap::new(fw, fh).map(|mut px| {
+            let mut sub = self.sub(&mut px);
+            sub.screen = Affine::translate((-f64::from(fx), -f64::from(fy))) * self.screen;
+            sub.origin = (self.origin.0 + fx as i32, self.origin.1 + fy as i32);
+            sub.draw_shape(fill_only, parent);
+            px
+        });
+        let x0 = (b.left().floor().max(0.0) as usize).min(w as usize);
+        let x1 = (b.right().ceil().max(0.0) as usize).min(w as usize);
+        let y0 = (b.top().floor().max(0.0) as usize).min(h as usize);
+        let y1 = (b.bottom().ceil().max(0.0) as usize).min(h as usize);
+        let (bw, w) = (x1.saturating_sub(x0), w as usize);
+        // What lies beneath inside the frame's box, before the fill.
+        let mut beneath = Vec::with_capacity(bw * (y1.saturating_sub(y0)) * 4);
+        for y in y0..y1 {
+            if let Some(row) = self.pixmap.data().get((y * w + x0) * 4..(y * w + x1) * 4) {
+                beneath.extend_from_slice(row);
+            }
+        }
+        if beneath.len() != bw * (y1.saturating_sub(y0)) * 4 {
+            return;
+        }
+        // The fill as drawn, edge and all: where the frame does not reach
+        // (the outlines of a group used as a frame) it stays so.
+        if let Some(px) = &fill_px {
+            self.pixmap.draw_pixmap(
+                fx as i32,
+                fy as i32,
+                px.as_ref(),
+                &tiny_skia::PixmapPaint::default(),
+                Transform::identity(),
+                None,
+            );
+        }
+        // The contents are drawn over a copy of what lies beneath, so
+        // their merge modes (Multiply on a photo, say) work on it as
+        // outside a frame; inside the frame the copy then takes the place
+        // of the page (#13). Inside the frame the copy holds the fill
+        // without its soft edge (the frame's coverage gives the edge
+        // once, at the end).
+        let mut layer = self.pixmap.clone();
+        let m = mask.data();
+        let mut under = beneath.clone();
+        {
+            let fill = fill_px.as_ref().map(|p| (p.data(), p.width() as usize));
+            let dst = layer.data_mut();
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    let i = y * w + x;
+                    let k = m.get(i).copied().unwrap_or(0);
+                    if k == 0 {
+                        continue;
+                    }
+                    let j = ((y - y0) * bw + (x - x0)) * 4;
+                    let f = fill.and_then(|(d, fw)| {
+                        let (lx, ly) = (x.checked_sub(fx as usize)?, y.checked_sub(fy as usize)?);
+                        if lx >= fw {
+                            return None;
+                        }
+                        d.get((ly * fw + lx) * 4..(ly * fw + lx) * 4 + 4)
+                    });
+                    let mut f = match f {
+                        Some(f) => [f[0] as f32, f[1] as f32, f[2] as f32, f[3] as f32],
+                        None => [0.0; 4],
+                    };
+                    if k < 255 {
+                        let s = 255.0 / k as f32;
+                        f[3] = (f[3] * s).min(255.0);
+                        for c in 0..3 {
+                            f[c] = (f[c] * s).min(f[3]);
+                        }
+                    }
+                    let keep = 1.0 - f[3] / 255.0;
+                    for c in 0..4 {
+                        let v = (f[c] + under[j + c] as f32 * keep)
+                            .round()
+                            .clamp(0.0, 255.0);
+                        under[j + c] = v as u8;
+                        if let Some(d) = dst.get_mut(i * 4 + c) {
+                            *d = v as u8;
+                        }
+                    }
+                }
+            }
+        }
+        {
+            let mut sub = self.sub(&mut layer);
+            for c in contents {
+                let t = sub.child_transform(c, parent);
+                sub.draw_shape(c, t);
+            }
+        }
+        let opacity = clip.opacity.clamp(0.0, 1.0) as f32;
+        let src = layer.data();
+        let dst = self.pixmap.data_mut();
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let i = y * w + x;
+                let k = m.get(i).copied().unwrap_or(0) as f32 / 255.0;
+                if k <= 0.0 {
+                    continue;
+                }
+                let j = ((y - y0) * bw + (x - x0)) * 4;
+                for c in 0..4 {
+                    let (Some(s), Some(d)) = (src.get(i * 4 + c), dst.get_mut(i * 4 + c)) else {
+                        continue;
+                    };
+                    let u = under[j + c] as f32;
+                    let inside = u + (*s as f32 - u) * opacity;
+                    let bg = beneath[j + c] as f32;
+                    *d = (bg + (inside - bg) * k).round().clamp(0.0, 255.0) as u8;
+                }
+            }
         }
     }
 
@@ -2438,6 +2575,23 @@ fn fill_silhouette(
             let Some(sk_frame) = to_sk_path(&(inner * frame.page_path())) else {
                 return;
             };
+            // A filled frame shows whole: its fill casts the shadow, and
+            // the contents, all inside it, add nothing. Painted over the
+            // fill they thickened its soft edge, a darker line along a
+            // sharp shadow's edge.
+            if !matches!(frame.fill, Fill::None) && frame.visible {
+                let mut paint = Paint::default();
+                paint.anti_alias = anti_alias;
+                paint.set_color_rgba8(255, 255, 255, 255);
+                layer.fill_path(
+                    &sk_frame,
+                    &paint,
+                    FillRule::Winding,
+                    Transform::identity(),
+                    clip,
+                );
+                return;
+            }
             let mask = match clip {
                 Some(m) => {
                     let mut m = m.clone();
@@ -2462,19 +2616,6 @@ fn fill_silhouette(
             let Some(mask) = mask else {
                 return;
             };
-            // A filled frame shows whole: its fill casts the shadow too.
-            if !matches!(frame.fill, Fill::None) && frame.visible {
-                let mut paint = Paint::default();
-                paint.anti_alias = anti_alias;
-                paint.set_color_rgba8(255, 255, 255, 255);
-                layer.fill_path(
-                    &sk_frame,
-                    &paint,
-                    FillRule::Winding,
-                    Transform::identity(),
-                    clip,
-                );
-            }
             for c in contents {
                 fill_silhouette(layer, c, inner, Some(&mask), anti_alias);
             }
@@ -5865,6 +6006,80 @@ mod tests {
         assert!(dark(&img, 47, 15));
         assert!(white(&img, 40, 15));
         assert!(white(&img, 15, 15));
+    }
+
+    /// A clip frame with a drop shadow, its frame off whole pixels, draws
+    /// as the plain object it shows with the same shadow: no thin line of
+    /// the frame's fill or of the shadow along its edge, and nothing past
+    /// the shadow. A shadow the frame had of its own goes once, beneath
+    /// the contents, not a second time over them (live test of 0.41).
+    #[test]
+    fn a_clip_frame_with_a_shadow_draws_no_line_at_its_edge() {
+        use tracedraw_core::live::MergeMode;
+        let soft = tracedraw_core::Shadow::default();
+        let sharp = tracedraw_core::Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(3.0, -3.0),
+            opacity: 1.0,
+            blur: 0.0,
+            merge: MergeMode::Normal,
+            ..soft
+        };
+        let blue = Color::rgb8(0, 0, 255);
+        let box_ = Rect::new(20.06, 20.06, 40.06, 40.06);
+        let render = |s: Shape| {
+            let (doc, page) = doc_with(vec![s]);
+            render_page_image(&doc, page, 25.4 * 8.0).expect("image")
+        };
+        let worst = |a: &Pixmap, b: &Pixmap| {
+            let mut worst = (0i32, 0u32, 0u32);
+            for y in 0..a.height() {
+                for x in 0..a.width() {
+                    let (p, q) = (px(a, x, y), px(b, x, y));
+                    let d = [(p.0, q.0), (p.1, q.1), (p.2, q.2)]
+                        .iter()
+                        .map(|(u, v)| (*u as i32 - *v as i32).abs())
+                        .max()
+                        .unwrap_or(0);
+                    if d > worst.0 {
+                        worst = (d, x, y);
+                    }
+                }
+            }
+            worst
+        };
+        for fill in [
+            Fill::Solid(Color::rgb8(255, 0, 0)),
+            Fill::Solid(Color::WHITE),
+            Fill::None,
+        ] {
+            for (k, sh) in [soft, sharp].into_iter().enumerate() {
+                for on_frame in [false, true] {
+                    let mut frame = rect(1, box_, Color::WHITE);
+                    frame.fill = fill.clone();
+                    let inside = rect(2, Rect::new(10.0, 10.0, 50.0, 50.0), blue);
+                    if on_frame {
+                        frame.shadow = Some(sh);
+                    }
+                    let mut clip = Shape::new(
+                        ShapeId(3),
+                        ShapeKind::ClipFrame {
+                            frame: Box::new(frame),
+                            contents: vec![inside],
+                        },
+                    );
+                    if !on_frame {
+                        clip.shadow = Some(sh);
+                    }
+                    let mut plain = rect(4, box_, blue);
+                    plain.shadow = Some(sh);
+                    let (d, x, y) = worst(&render(clip), &render(plain));
+                    assert!(
+                        d <= 3,
+                        "fill {fill:?}, shadow {k}, on frame {on_frame}: off by {d} at {x}, {y}"
+                    );
+                }
+            }
+        }
     }
 
     /// A native ellipse or star casts the same shadow, flat or in
