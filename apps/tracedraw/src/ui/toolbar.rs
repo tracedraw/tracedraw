@@ -2164,8 +2164,8 @@ fn text_properties(app: &mut App, ui: &mut Ui) {
         if let Some(cols) = app.vertical_columns() {
             use tracedraw_core::VerticalColumns as C;
             for (value, label, key) in [
-                (C::RightToLeft, "\u{2190}", "toolbar.columns_right_to_left"),
-                (C::LeftToRight, "\u{2192}", "toolbar.columns_left_to_right"),
+                (C::RightToLeft, "\u{25C0}", "toolbar.columns_right_to_left"),
+                (C::LeftToRight, "\u{25B6}", "toolbar.columns_left_to_right"),
             ] {
                 if ui
                     .add_sized(

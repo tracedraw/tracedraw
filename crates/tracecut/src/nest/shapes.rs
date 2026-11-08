@@ -228,11 +228,7 @@ fn path_to_rings(p: &BezPath, tol: f64) -> Vec<Vec<Point>> {
             cur.push(q);
         }
         PathEl::LineTo(q) => cur.push(q),
-        PathEl::ClosePath => {
-            if !cur.is_empty() {
-                out.push(std::mem::take(&mut cur));
-            }
-        }
+        PathEl::ClosePath if !cur.is_empty() => out.push(std::mem::take(&mut cur)),
         _ => {}
     });
     if !cur.is_empty() {
