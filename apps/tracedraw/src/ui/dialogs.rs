@@ -5359,6 +5359,9 @@ fn print_dialog(app: &mut App, ctx: &Context, st: &mut PrintState, close: &mut b
                         Ok(_) => {}
                         Err(e) => app.status = format!("{}: {e}", tr("dialog.print_failed")),
                     }
+                    if st.destination == 0 {
+                        app.printer_last = st.printer.clone();
+                    }
                     if app.settings.printing.remember_last {
                         app.settings.printing.remember(st);
                         app.settings.save();

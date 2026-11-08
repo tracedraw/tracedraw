@@ -537,8 +537,10 @@ fn page_tabs(app: &mut App, ui: &mut Ui, area: Rect) {
             Pos2::new(r.max.x - slant, r.max.y),
             Pos2::new(r.min.x + slant, r.max.y),
         ];
+        // The current page's tab is highlighted as the active document
+        // tab above the rulers is (#2049).
         let fill = if selected {
-            crate::theme::Tokens::field()
+            crate::theme::Tokens::tab_active()
         } else if resp.hovered() || drop_target {
             Tokens::tool_hover()
         } else {

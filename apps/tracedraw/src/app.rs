@@ -1419,6 +1419,11 @@ pub struct App {
     /// meanwhile (#810). The status it ends with.
     pub print_job: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
     pub printers_seen: Vec<crate::printers::Printer>,
+    /// The printer printed to last in this session, which the next Print
+    /// dialog and Print Preview start on; not kept across runs, which
+    /// start on the system's default again unless Printing remembers the
+    /// last choices (#2056).
+    pub printer_last: Option<String>,
     pub preview_selected_only: bool,
     pub page_sorter: bool,
     /// View > Multipage View: every page laid out beside the current one.
@@ -2738,6 +2743,7 @@ impl App {
             printer_fetch: None,
             print_job: None,
             printers_seen: Vec::new(),
+            printer_last: None,
             preview_selected_only: false,
             page_sorter: false,
             multipage: false,
@@ -8004,6 +8010,9 @@ impl App {
         // it happens off the interface's thread; the list read last shows
         // meanwhile (#614).
         st.printers = self.printers_seen.clone();
+        if self.printer_last.is_some() {
+            st.printer = self.printer_last.clone();
+        }
         if !st.printers.is_empty() {
             st.printer = crate::printers::starting_printer(st.printer.as_deref(), &st.printers);
         }
@@ -8118,6 +8127,9 @@ impl App {
         // thread, as the Print dialog does.
         if st.printers.is_empty() {
             st.printers = self.printers_seen.clone();
+            if !st.printer_picked && self.printer_last.is_some() {
+                st.printer = self.printer_last.clone();
+            }
             if !st.printers.is_empty() && !st.printer_picked {
                 st.printer = crate::printers::starting_printer(st.printer.as_deref(), &st.printers);
             }
