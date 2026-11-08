@@ -12565,6 +12565,31 @@ fn shift_f3_opens_change_case_for_selected_text() {
     );
 }
 
+/// Shift+F3 while a text is being typed ends the editing, selects that
+/// text and opens Text > Change Case for it (#2059).
+#[test]
+fn shift_f3_while_typing_opens_change_case_for_the_edited_text() {
+    use crate::ui::dialogs::Dialog;
+    let (ctx, mut app, _rect) = setup();
+    tracedraw_text::install();
+    app.start_text(Point::new(20.0, 100.0), None);
+    app.text_insert("hello world");
+    let id = app.text_edit.as_ref().expect("editing").shape;
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::F3, Modifiers::SHIFT)],
+        Modifiers::SHIFT,
+    );
+    assert!(app.text_edit.is_none(), "the editing ended");
+    assert_eq!(app.selection, vec![id]);
+    assert!(
+        matches!(app.dialog, Dialog::ChangeCase(_)),
+        "{:?}",
+        app.dialog
+    );
+}
+
 /// Edit Fill's eyedropper: a click on the drawing gives the dialog the
 /// colour there, though the dialog is open, and no tool takes the click
 /// (#814).
