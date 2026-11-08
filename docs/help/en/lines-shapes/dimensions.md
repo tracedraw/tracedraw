@@ -66,6 +66,9 @@ the next ones you make.
 - **Show units**: the unit after the number (the degree sign for angles).
 - **Prefix** and **Suffix**: text before and after the number.
 - **Text**: above the line (at first), in the line, or below the line.
+- **Place**: where a linear dimension's label sits along its line: in the
+  middle (at first), toward the start or the end, or outside the extension
+  lines at either end, for a short dimension with no room for its label.
 - **Label size**: 1 to 500 points (10 at first).
 - **Font** of the label (the font of new text at first) and the **label
   color** (black).

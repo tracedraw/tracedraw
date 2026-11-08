@@ -62,6 +62,18 @@ moved, scaled, turned or skewed (`dimensions.rs`).
   angles outside the arc), In the line (centred on it, the line broken
   1 mm either side of the label), Below the line (for angles inside the
   arc).
+- Place (linear dimensions, #1500): In the middle (as before), Toward
+  the start or Toward the end (the label's near edge 1 mm past the
+  arrowhead at the first or the second point measured; a label too long
+  for the room between the arrowheads stays in the middle), or Outside,
+  at the start or at the end (the label's middle `2 mm + half its
+  reach` past the extension line; above or below the line the
+  dimension line runs on under the label to its far edge, in the line
+  it is left unbroken). The label keeps its text position and reading
+  direction (`LabelAlong::offset`,
+  `dimensions::tests::the_label_sits_where_chosen_along_the_line`).
+  Angular dimensions keep the label in the middle of the arc. Turning
+  the label is Options > Horizontal text.
 - Lines, arrowheads and label take the style's look (#475): at first
   hairlines, black filled arrowheads and a black label in the font of new
   text at the style's size
@@ -83,6 +95,7 @@ is kept in the preferences (`tools.dimension_style`).
 | Show units | on | the unit's sign after the number; for angles, the degree sign |
 | Prefix, Suffix | empty | text before and after (applied when the field is left or Enter is pressed) |
 | Text | Above the line | Above the line, In the line, Below the line |
+| Place | In the middle | In the middle, Toward the start, Toward the end, Outside, at the start, Outside, at the end (linear dimensions) |
 | Label size | 10 pt | 1 to 500 pt |
 | Font | the font of new text | any font (the label keeps it; empty in styles saved before) |
 | Label colour | black | any colour (the swatch opens the colour picker) |

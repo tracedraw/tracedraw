@@ -70,6 +70,8 @@ full, row-by-row status.
 
 - Colour Eyedropper and Attributes Eyedropper: Ctrl+click in Apply mode samples again without leaving Apply mode (Ctrl+Shift+click with the Colour Eyedropper takes the outline colour first); the pointer is the pipette while Ctrl is held (#1302).
 
+- Dimensions: Place on the property bar puts a linear dimension's label in the middle of its line, toward either end, or outside the extension lines at either end, where the line runs on under it (#1500).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

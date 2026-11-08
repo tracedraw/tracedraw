@@ -57,6 +57,61 @@ impl TextPosition {
     }
 }
 
+/// Where a linear dimension's label sits along its line (#1500): in
+/// the middle, toward the start (the first point measured) or the end,
+/// or outside the extension lines past either one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LabelAlong {
+    #[default]
+    Middle,
+    Start,
+    End,
+    OutsideStart,
+    OutsideEnd,
+}
+
+impl LabelAlong {
+    pub const ALL: [LabelAlong; 5] = [
+        LabelAlong::Middle,
+        LabelAlong::Start,
+        LabelAlong::End,
+        LabelAlong::OutsideStart,
+        LabelAlong::OutsideEnd,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            LabelAlong::Middle => "dimension.along_middle",
+            LabelAlong::Start => "dimension.along_start",
+            LabelAlong::End => "dimension.along_end",
+            LabelAlong::OutsideStart => "dimension.along_outside_start",
+            LabelAlong::OutsideEnd => "dimension.along_outside_end",
+        }
+    }
+
+    /// The label's middle, as a distance from the middle of a line `len`
+    /// long toward its end (negative: toward its start), for a label
+    /// reaching `half` along the line either way, with arrowheads
+    /// `arrow` long at the ends. A label that does not fit between the
+    /// arrowheads stays in the middle.
+    fn offset(self, len: f64, half: f64, arrow: f64) -> f64 {
+        let inside = (len / 2.0 - half - GAP - arrow).max(0.0);
+        let outside = len / 2.0 + 2.0 * GAP + half;
+        match self {
+            LabelAlong::Middle => 0.0,
+            LabelAlong::Start => -inside,
+            LabelAlong::End => inside,
+            LabelAlong::OutsideStart => -outside,
+            LabelAlong::OutsideEnd => outside,
+        }
+    }
+
+    fn outside(self) -> bool {
+        matches!(self, LabelAlong::OutsideStart | LabelAlong::OutsideEnd)
+    }
+}
+
 /// The marks at the ends of the dimension line (#475).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -106,6 +161,8 @@ pub struct DimensionStyle {
     pub prefix: String,
     pub suffix: String,
     pub text_position: TextPosition,
+    /// Where a linear dimension's label sits along its line (#1500).
+    pub label_along: LabelAlong,
     /// Label size, points.
     pub text_size: f64,
     /// The label's font; empty for the font of new text (as before the
@@ -142,6 +199,7 @@ impl Default for DimensionStyle {
             prefix: String::new(),
             suffix: String::new(),
             text_position: TextPosition::Above,
+            label_along: LabelAlong::Middle,
             text_size: 10.0,
             font: String::new(),
             line_color: Color::BLACK,
@@ -689,7 +747,6 @@ impl Dimension {
                     dir
                 };
                 let up = Vec2::new(-read.y, read.x);
-                let mid = a2.midpoint(b2);
                 let horizontal = self.style.horizontal_text;
                 // How far the label reaches along the line from its middle.
                 let half = if horizontal {
@@ -697,11 +754,20 @@ impl Dimension {
                 } else {
                     tb.width() / 2.0
                 };
+                // The label's middle on the line: the line's middle,
+                // toward either end, or past an extension line (#1500).
+                let along = self.style.label_along;
+                let arrow_len = if self.style.arrows == ArrowStyle::None {
+                    0.0
+                } else {
+                    ARROW_LEN
+                };
+                let mid = a2.midpoint(b2) + dir * along.offset(len, half, arrow_len);
                 // The dimension line, with a gap for a centred label.
                 // Joined, the extension lines run into it in a corner
                 // (#641).
                 let radius = self.style.radius();
-                if pos == TextPosition::Centered && len > 2.0 * (half + GAP) {
+                if pos == TextPosition::Centered && !along.outside() && len > 2.0 * (half + GAP) {
                     let (g1, g2) = (mid - dir * (half + GAP), mid + dir * (half + GAP));
                     if joined {
                         rounded_polyline(&mut lines, &[a1, a2, g1], radius);
@@ -717,6 +783,17 @@ impl Dimension {
                 } else {
                     lines.move_to(a2);
                     lines.line_to(b2);
+                }
+                // A label outside the extension lines above or below the
+                // line sits on the line run on to its far edge.
+                if along.outside() && pos != TextPosition::Centered {
+                    let (end, out) = if along == LabelAlong::OutsideStart {
+                        (a2, -dir)
+                    } else {
+                        (b2, dir)
+                    };
+                    lines.move_to(end);
+                    lines.line_to(mid + out * half);
                 }
                 arrow(a2, dir);
                 arrow(b2, -dir);
@@ -2536,6 +2613,51 @@ mod tests {
         assert!(!json.contains("drawn") && !json.contains("\"text\""));
         let g = app.doc().find_shape(id).cloned().expect("g");
         assert_eq!(old.read_back(&g, None, None), None);
+    }
+
+    /// A linear dimension's label sits in the middle of its line, toward
+    /// either end, or outside the extension lines, where the line runs
+    /// on under it (#1500); a style saved before reads as the middle.
+    #[test]
+    fn the_label_sits_where_chosen_along_the_line() {
+        let measure = Measure::Linear {
+            a: Point::new(0.0, 0.0),
+            b: Point::new(100.0, 0.0),
+            at: Point::new(0.0, 10.0),
+        };
+        let ids = [ShapeId(1), ShapeId(2), ShapeId(3)];
+        let placed = |along: LabelAlong| {
+            let d = Dimension::new(
+                measure,
+                DimensionStyle {
+                    label_along: along,
+                    ..Default::default()
+                },
+            );
+            let [lines, _, label] = d.shapes(ids, "Arial", Units::Millimeters);
+            let reach = match &lines.kind {
+                ShapeKind::Path { path, .. } => path.bounding_box(),
+                _ => panic!("path"),
+            };
+            (label.transform.as_coeffs()[4], reach)
+        };
+        let (middle, plain) = placed(LabelAlong::Middle);
+        let (start, _) = placed(LabelAlong::Start);
+        let (end, _) = placed(LabelAlong::End);
+        let (before, run_back) = placed(LabelAlong::OutsideStart);
+        let (after, run_on) = placed(LabelAlong::OutsideEnd);
+        assert!(start > 0.0 && start < middle - 10.0, "{start} {middle}");
+        assert!(end < 100.0 && end > middle + 10.0, "{end} {middle}");
+        assert!(before < -2.0, "{before}");
+        assert!(after > 100.0, "{after}");
+        assert!(plain.x0 > -1e-9 && plain.x1 < 100.0 + 1e-9, "{plain:?}");
+        assert!(run_back.x0 < -2.0, "{run_back:?}");
+        assert!(run_on.x1 > 102.0, "{run_on:?}");
+        // A line too short for the label between its arrowheads keeps it
+        // in the middle.
+        assert_eq!(LabelAlong::Start.offset(10.0, 8.0, ARROW_LEN), 0.0);
+        let old: DimensionStyle = serde_json::from_str(r#"{"precision":1}"#).expect("old");
+        assert_eq!(old.label_along, LabelAlong::Middle);
     }
 
     /// The extension lines' gap and overshoot, the arrowheads' size and a
