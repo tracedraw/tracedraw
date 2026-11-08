@@ -1197,6 +1197,19 @@ fn reshape_inside(
             set_path(shape, t.inverse() * warped);
         }
     }
+    // A blend on the object mixes it with its end copy, in the same space
+    // as the object, along a path in that space: both bend with it, or
+    // the steps between them ignore the warp (#2120).
+    for effect in shape.effects.iter_mut() {
+        if let Effect::Blend { end, path, .. } = effect {
+            reshape_inside(end, parent, b, f);
+            if let Some(p) = path.as_mut() {
+                if parent.determinant().abs() > 1e-12 {
+                    *p = parent.inverse() * f(&(parent * p.clone()), b);
+                }
+            }
+        }
+    }
 }
 
 fn set_path(shape: &mut Shape, path: BezPath) {
@@ -3533,6 +3546,52 @@ mod tests {
         let p = baked.local_path();
         assert!(pieces(&p) <= 12, "{} pieces", pieces(&p));
         assert!(same_outline(&p, &evaluate(&circle).main.local_path(), 0.05));
+    }
+
+    /// A blend inside a group the group's envelope bends: its end copy
+    /// bends too, so the middle steps follow the warp (#2120). They were
+    /// mixed toward the unwarped end and stayed where they were.
+    #[test]
+    fn a_grouped_blend_bends_with_the_group() {
+        let a = rect_shape();
+        let mut b = rect_shape();
+        b.id = crate::ShapeId(2);
+        b.transform = Affine::translate((100.0, 0.0));
+        let mut start = a.clone();
+        start.effects.push(Effect::Blend {
+            end: Box::new(b.clone()),
+            steps: 3,
+            accel_objects: 0.0,
+            accel_colors: 0.0,
+            rotation: 0.0,
+            path: None,
+            rotate_on_path: false,
+            end_id: Some(b.id),
+            options: BlendOptions::default(),
+        });
+        let mut group = Shape::new(
+            crate::ShapeId(3),
+            ShapeKind::Group {
+                children: vec![start, b],
+            },
+        );
+        // The group moved: its objects' space is not the page.
+        group.transform = Affine::translate((5.0, 7.0));
+        // A warp raising everything by half its distance from the left.
+        reshape(&mut group, &|p, _| {
+            let mut q = p.clone();
+            q.apply_affine(Affine::new([1.0, 0.5, 0.0, 1.0, 0.0, 0.0]));
+            q
+        });
+        let ShapeKind::Group { children } = &group.kind else {
+            panic!("still a group");
+        };
+        let ev = evaluate(&children[0]);
+        let end = children[1].bounds().center();
+        let first = children[0].bounds().center();
+        let mid = ev.above[1].bounds().center();
+        let want = first.midpoint(end);
+        assert!((mid - want).hypot() < 0.5, "{mid:?} not {want:?}");
     }
 
     /// A blend asking for more steps than the Blend tool offers draws

@@ -80,6 +80,8 @@ full, row-by-row status.
 
 - Symmetry: the mirrored copies keep the object's transparency and lens, and what its other effects draw (contour, blend, extrusion, bevel, block shadow) is mirrored with it; the copies had the fill and outline only (#2121).
 
+- An envelope, perspective or distortion on a group bends the blends inside it: the steps between the two objects follow the warp instead of staying where they were (#2120).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
