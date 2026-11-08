@@ -8671,6 +8671,95 @@ fn font_sizes_show_and_type_in_the_text_units() {
     );
 }
 
+/// #1550: Copy Properties From and the Attributes Eyedropper read the
+/// fill and outline from the object clicked inside a group (the group
+/// has none of its own, and copying from it took the target's fill and
+/// outline away), and a text whose characters carry a colour of their
+/// own takes the copied fill: its characters let their colour go.
+#[test]
+fn copying_properties_from_a_group_takes_the_object_clicked() {
+    use tracedraw_core::document::TextSpan;
+    use tracedraw_core::{Color, Fill, Stroke};
+    let (ctx, mut app, id) = setup();
+    let rect = |app: &mut App, r: Rect| {
+        app.new_shape(ShapeKind::Rect {
+            rect: r,
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect")
+    };
+    let a = rect(&mut app, Rect::new(100.0, 10.0, 150.0, 40.0));
+    let b = rect(&mut app, Rect::new(160.0, 10.0, 190.0, 40.0));
+    let gradient = Fill::linear(Color::rgb8(255, 200, 0), Color::rgb8(0, 0, 160), 30.0);
+    let pen = Stroke {
+        color: Color::rgb8(0, 160, 0),
+        width: 2.0,
+        ..Stroke::default()
+    };
+    app.run(tracedraw_core::Command::SetFill {
+        shapes: vec![a],
+        fill: gradient.clone(),
+    });
+    app.run(tracedraw_core::Command::SetStroke {
+        shapes: vec![a],
+        stroke: Some(pen.clone()),
+    });
+    app.select(vec![a, b]);
+    app.group_selection();
+    let group = app.selection[0];
+    // A text whose characters are green of their own.
+    let mut span = TextSpan::new("Hello", "Sans", 24.0);
+    span.fill = Some(Fill::Solid(Color::rgb8(0, 255, 0)));
+    let text = app
+        .new_shape(ShapeKind::Text {
+            spans: vec![span],
+            origin: Point::new(20.0, 80.0),
+            frame: None,
+            align: Default::default(),
+            para: Default::default(),
+            on_path: None,
+        })
+        .expect("text");
+    app.select(vec![id, text]);
+    app.copy_properties_choice = crate::ops2::CopyProperties::default();
+    app.pending_copy_properties = true;
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let on_a = app.view.to_screen(Point::new(125.0, 25.0));
+    click_at(&ctx, &mut app, on_a, Modifiers::NONE);
+    assert!(!app.pending_copy_properties);
+    let target = app.doc().find_shape(id).expect("target").clone();
+    assert_eq!(target.fill, gradient, "the gradient of the object clicked");
+    assert_eq!(target.stroke.as_ref(), Some(&pen));
+    let t = app.doc().find_shape(text).expect("text").clone();
+    assert_eq!(t.fill, gradient);
+    let ShapeKind::Text { spans, .. } = &t.kind else {
+        panic!("a text");
+    };
+    assert!(spans.iter().all(|sp| sp.fill.is_none()), "{spans:?}");
+    // By id, a group gives its frontmost object's properties (b's, no
+    // gradient).
+    app.select(vec![id, group]);
+    app.copy_properties_from(group);
+    let target = app.doc().find_shape(id).expect("target").clone();
+    let b_now = app.doc().find_shape(b).expect("b").clone();
+    assert_eq!(target.fill, b_now.fill);
+    assert_eq!(target.stroke, b_now.stroke);
+
+    // The Attributes Eyedropper samples the object clicked in the group.
+    let sampled = app
+        .sample_attrs_at(Point::new(125.0, 25.0))
+        .expect("sampled");
+    assert_eq!(sampled.fill, gradient);
+    assert_eq!(sampled.stroke.as_ref(), Some(&pen));
+    let groups = crate::eyedropper::AttrGroups::default();
+    assert!(groups.fill && groups.outline, "{groups:?}");
+    assert!(app.apply_attrs_at(Point::new(35.0, 25.0), &sampled, groups));
+    let target = app.doc().find_shape(id).expect("target").clone();
+    assert_eq!(target.fill, gradient);
+    assert_eq!(target.stroke.as_ref(), Some(&pen));
+}
+
 /// Ctrl+Shift+A opens Copy Properties From: its boxes say what to copy,
 /// OK waits for a click on the object to copy from, and only the ticked
 /// properties come across (#1345: the shortcut did nothing).

@@ -84,7 +84,12 @@ impl App {
         } else if self.pending_copy_properties {
             self.pending_copy_properties = false;
             if let Some(t) = target {
-                self.copy_properties_from(t);
+                // Read from the object clicked inside a group or clip
+                // frame, which shows the properties (#1550).
+                match self.leaf_of(t, p) {
+                    Some(leaf) => self.copy_properties_from_shape(t, &leaf),
+                    None => self.copy_properties_from(t),
+                }
             }
         } else if let Some(kind) = self.pending_copy_effect.take() {
             if let Some(t) = target {

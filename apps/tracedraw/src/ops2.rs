@@ -1573,34 +1573,50 @@ impl App {
 
     /// Copy Properties From: the properties ticked in its dialog
     /// (outline pen, outline colour, fill, text) from `source` to the
-    /// other selected objects, one undo step.
+    /// other selected objects, one undo step. A group gives the
+    /// properties of its frontmost object (see
+    /// [`App::copy_properties_from_shape`]).
     pub fn copy_properties_from(&mut self, source: ShapeId) {
         let Some(src) = self.doc().find_shape(source).cloned() else {
             return;
+        };
+        let shown = crate::copy_props::properties_source(&src);
+        self.copy_properties_from_shape(source, &shown);
+    }
+
+    /// Copy Properties From with `src` the object the properties are
+    /// read from: the one clicked inside the group or clip frame
+    /// `source`, or `source` itself (#1550: copying from a group took
+    /// the fill and outline away, a group having none of its own).
+    pub fn copy_properties_from_shape(&mut self, source: ShapeId, src: &Shape) {
+        use crate::copy_props::{
+            clear_character_outlines, fill_commands, kind_after, shown_fill, shown_stroke,
+            with_character_format,
         };
         let c = self.copy_properties_choice;
         let targets: Vec<Shape> = self
             .selected_shapes()
             .into_iter()
-            .filter(|s| s.id != source)
+            .filter(|s| s.id != source && s.id != src.id)
             .collect();
         if targets.is_empty() {
             return;
         }
+        let src_stroke = shown_stroke(src);
         let mut cmds = Vec::new();
         if c.fill {
-            cmds.push(Command::SetFill {
-                shapes: targets.iter().map(|s| s.id).collect(),
-                fill: src.fill.clone(),
-            });
+            cmds.extend(fill_commands(&shown_fill(src), src, &targets));
+        }
+        if c.outline_pen && c.outline_color {
+            cmds.extend(clear_character_outlines(&targets));
         }
         for t in &targets {
             let stroke = match (c.outline_pen, c.outline_color) {
                 (false, false) => continue,
-                (true, true) => src.stroke.clone(),
+                (true, true) => src_stroke.clone(),
                 // The pen (width, style, ends, corners) with the target's
                 // own colour.
-                (true, false) => match (&src.stroke, &t.stroke) {
+                (true, false) => match (&src_stroke, &t.stroke) {
                     (Some(s), Some(own)) => Some(Stroke {
                         color: own.color,
                         fill: own.fill.clone(),
@@ -1609,7 +1625,7 @@ impl App {
                     (s, _) => s.clone(),
                 },
                 // The colour on the target's own pen.
-                (false, true) => match (&src.stroke, &t.stroke) {
+                (false, true) => match (&src_stroke, &t.stroke) {
                     (Some(s), Some(own)) => Some(Stroke {
                         color: s.color,
                         fill: s.fill.clone(),
@@ -1628,17 +1644,17 @@ impl App {
         }
         if c.text {
             if let ShapeKind::Text { spans: from, .. } = &src.kind {
-                if let Some(f) = from.first() {
+                if let Some(f) = from.iter().find(|sp| !sp.text.is_empty()).or(from.first()) {
                     for t in &targets {
-                        let mut kind = t.kind.clone();
+                        // The kind as the commands above left it (the
+                        // characters' own colours let go).
+                        let now = kind_after(&cmds, t);
+                        let mut kind = now.clone();
                         if let ShapeKind::Text { spans, .. } = &mut kind {
                             for sp in spans.iter_mut() {
-                                sp.font_family = f.font_family.clone();
-                                sp.size_pt = f.size_pt;
-                                sp.bold = f.bold;
-                                sp.italic = f.italic;
+                                *sp = with_character_format(sp, f);
                             }
-                            if kind != t.kind {
+                            if kind != now {
                                 cmds.push(Command::SetShapeKind { shape: t.id, kind });
                             }
                         }

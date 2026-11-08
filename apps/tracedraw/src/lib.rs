@@ -48,6 +48,7 @@ mod content_link;
 mod contour_tool;
 mod coords;
 mod copy_effect;
+mod copy_props;
 mod corner_widgets;
 mod corners;
 mod crop_tool;

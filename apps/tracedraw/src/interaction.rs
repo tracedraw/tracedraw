@@ -350,6 +350,14 @@ impl App {
         Some(self.leaf_at(s, p, tol).unwrap_or_else(|| s.clone()))
     }
 
+    /// The innermost part of the object `id` under `p` (see
+    /// [`Self::leaf_to_read`]), its transforms composed; `None` when
+    /// `p` is on no part of it.
+    pub fn leaf_of(&self, id: tracedraw_core::ShapeId, p: Point) -> Option<tracedraw_core::Shape> {
+        let (_, s) = self.doc().shape(id).ok()?;
+        self.leaf_at(s, p, self.object_pick_tol())
+    }
+
     fn leaf_at(
         &self,
         s: &tracedraw_core::Shape,
