@@ -120,6 +120,9 @@ drawn, printed or exported. To make it fit:
   to resize the text to fill the frame;
 - link the frame to another one, so the text flows on:
   [[menu.text.frame_link]]. [[menu.text.frame_unlink]] breaks the link.
+  With two frames picked, the first flows into the second; an empty frame
+  always takes the text that does not fit in the other one, whichever you
+  picked first.
   Or click the small tab under the frame's bottom edge, then click another
   frame (on this page or another one) or click or drag on an empty spot
   for a new frame: the text flows on into it. You can also drag from the

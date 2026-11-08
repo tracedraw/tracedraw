@@ -540,7 +540,12 @@ on its own line, which is why the lines are joined first.
   its frames in order and overflow runs on into the next frame after
   typing, linking and resizing (`textflow.rs`, links kept in the object
   data as `text.next` and `text.prev`). Unlink leaves each frame with the
-  text it shows.
+  text it shows. An empty frame that is in no chain always takes the
+  overflow of the other frame, whichever of the two was picked first:
+  the text stays in the frame it starts in, and typing in that frame
+  afterwards flows on into the empty one (picked first, the empty frame
+  took the whole text and the frame it came from was left empty;
+  `textflow::tests::linking_to_an_empty_frame_keeps_the_source_text_whatever_the_order`).
 - Deleting a frame of a chain (Delete, Cut, or a group or clip frame
   holding it) removes only the frame: the frames left are linked to one
   another in their order and the chain's whole text flows anew over them,
