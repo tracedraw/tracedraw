@@ -8065,6 +8065,30 @@ fn the_bottom_handle_of_a_converted_frame_drags_it_taller() {
     assert!(app.next_frame(id).is_none());
 }
 
+/// Edit Contents fades the rest of the page by the "Visibility of
+/// inactive objects" setting, as focus mode does, so 0 % hides it
+/// (#981).
+#[test]
+fn editing_a_clip_frame_fades_the_rest_by_the_focus_setting() {
+    let (_ctx, mut app, frame_id) = setup();
+    let inner = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(15.0, 15.0, 30.0, 30.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.place_inside(vec![inner], frame_id);
+    app.select(vec![frame_id]);
+    app.edit_clip_frame();
+    for (setting, visibility) in [(0u8, 0.0f32), (20, 0.2), (100, 1.0)] {
+        app.settings.focus_visibility = setting;
+        let (ids, v) = app.render_focus().expect("editing");
+        assert!(ids.contains(&frame_id) && ids.contains(&inner));
+        assert!((v - visibility).abs() < 1e-6, "{setting} % gives {v}");
+    }
+}
+
 /// Editing a clip frame's contents, a group inside drags, ungroups, and
 /// its members (and an object drawn meanwhile) go back into the frame on
 /// Finish; the ungrouped members were left out and the frame lost its

@@ -1396,7 +1396,7 @@ impl App {
                 vec![*frame]
             };
             all.extend(self.clip_edit_contents());
-            return Some((all, CLIP_EDIT_VISIBILITY));
+            return Some((all, self.focus_visibility()));
         }
         self.focus_target()
             .map(|id| (vec![id], self.focus_visibility()))
@@ -5943,10 +5943,6 @@ mod tests {
             .all(|p| p.elements().len() <= 6));
     }
 }
-
-/// How much of the rest of the page shows while a clip frame's contents
-/// are edited (the frame and its contents are drawn in full).
-pub const CLIP_EDIT_VISIBILITY: f32 = 0.25;
 
 /// The page transform that takes `contents` (its box) to `frame` as the
 /// Fit Contents `mode` says: centred without scaling, scaled alike to fit

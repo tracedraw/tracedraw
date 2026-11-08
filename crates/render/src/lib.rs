@@ -476,7 +476,11 @@ fn render_page_whole(doc: &Document, page: PageId, opts: &RenderOptions) -> Opti
         preview: opts.preview.as_ref(),
         origin: (0, 0),
     };
-    if let Some(bg) = &page.background {
+    // Focus at 0 % visibility hides everything but the objects in focus:
+    // the page and its layers are not drawn at all, as their faded
+    // pixels would all be clear (#981).
+    let rest_hidden = rest_hidden(opts);
+    if let Some(bg) = page.background.as_ref().filter(|_| !rest_hidden) {
         let mut bg_shape = Shape::new(
             tracedraw_core::ShapeId(0),
             ShapeKind::Rect {
@@ -492,7 +496,7 @@ fn render_page_whole(doc: &Document, page: PageId, opts: &RenderOptions) -> Opti
     let visible = visible_page_rect(opts);
     let layers = doc.layers_drawn_for_page(page.id).ok()?;
     for layer in layers {
-        if !layer.visible {
+        if !layer.visible || rest_hidden {
             continue;
         }
         for shape in &layer.shapes {
@@ -507,7 +511,12 @@ fn render_page_whole(doc: &Document, page: PageId, opts: &RenderOptions) -> Opti
     // again over it as they are.
     if let Some((ids, visibility)) = &opts.focus {
         let v = visibility.clamp(0.0, 1.0);
-        for px in r.pixmap.pixels_mut() {
+        let faded = if rest_hidden {
+            &mut [][..]
+        } else {
+            r.pixmap.pixels_mut()
+        };
+        for px in faded {
             let c = |x: u8| (x as f32 * v).round() as u8;
             if let Some(faded) = tiny_skia::PremultipliedColorU8::from_rgba(
                 c(px.red()),
@@ -526,6 +535,14 @@ fn render_page_whole(doc: &Document, page: PageId, opts: &RenderOptions) -> Opti
         }
     }
     Some(pixmap)
+}
+
+/// Whether focus mode hides everything outside the focus: a visibility
+/// of 0 (or one that is not a number, read from damaged settings).
+fn rest_hidden(opts: &RenderOptions) -> bool {
+    opts.focus
+        .as_ref()
+        .is_some_and(|(_, v)| v.is_nan() || *v <= 0.0)
 }
 
 /// The part of the page the target shows, page millimetres.
@@ -7444,6 +7461,50 @@ mod culling_tests {
         doc.layer_mut(layer).unwrap().shapes.push(inside);
         let px = render_page(&doc, page, &opts).unwrap();
         assert!(px.pixels().iter().any(|p| p.alpha() > 0));
+    }
+
+    /// Focus at 0 % visibility draws the objects in focus and nothing
+    /// else: no page colour, no other object (#981). Above 0 the rest
+    /// still shows, faded.
+    #[test]
+    fn focus_at_no_visibility_draws_only_the_focus() {
+        let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(100.0, 100.0));
+        let page = doc.pages[0].id;
+        let layer = doc.pages[0].layers[0].id;
+        doc.pages[0].background = Some(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+            200, 0, 0,
+        )));
+        let shapes = &mut doc.layer_mut(layer).unwrap().shapes;
+        shapes.push(rect_shape(1, Rect::new(0.0, 0.0, 40.0, 100.0)));
+        shapes.push(rect_shape(2, Rect::new(60.0, 0.0, 100.0, 100.0)));
+        let opts = |v: f32| RenderOptions {
+            width: 100,
+            height: 100,
+            view: ViewTransform {
+                zoom: 1.0,
+                origin_x: 0.0,
+                origin_y: 100.0,
+            },
+            focus: Some((vec![tracedraw_core::ShapeId(2)], v)),
+            ..RenderOptions::default()
+        };
+        assert!(rest_hidden(&opts(0.0)));
+        assert!(rest_hidden(&opts(f32::NAN)));
+        assert!(!rest_hidden(&opts(0.2)));
+        assert!(!rest_hidden(&RenderOptions::default()));
+        let alpha = |pm: &Pixmap, x: u32| pm.pixel(x, 50).unwrap().alpha();
+        let hidden = render_page(&doc, page, &opts(0.0)).unwrap();
+        assert_eq!(
+            alpha(&hidden, 20),
+            0,
+            "the object out of focus is not drawn"
+        );
+        assert_eq!(alpha(&hidden, 50), 0, "the page colour is not drawn");
+        assert_eq!(alpha(&hidden, 80), 255, "the object in focus is drawn");
+        let faded = render_page(&doc, page, &opts(0.5)).unwrap();
+        assert!((120..=135).contains(&alpha(&faded, 20)));
+        assert!((120..=135).contains(&alpha(&faded, 50)));
+        assert_eq!(alpha(&faded, 80), 255);
     }
 }
 

@@ -49,9 +49,11 @@ frame is edited node by node, and the clip frame stays one
   rows show it (#1273,
   `pick_drag_tests::the_context_menu_and_a_key_edit_and_extract_clip_frame_contents`).
 - Edit Contents: takes the contents out of the frame to edit them (where
-  they show, as Extract Contents does); the rest of the page fades to a quarter of its strength while the frame
-  and the contents are drawn in full (`App::render_focus`, the
-  renderer's focus option with several objects, `CLIP_EDIT_VISIBILITY`).
+  they show, as Extract Contents does); the rest of the page fades to the
+  "Visibility of inactive objects" of focus mode (Tools > Options >
+  TraceDraw > Edit, 20 % at first) while the frame and the contents are
+  drawn in full (`App::render_focus`, the renderer's focus option with
+  several objects; #981). At 0 % the rest is not drawn at all.
   Finish Editing Contents (the bar's Finish) puts them back; so does a
   Ctrl+click off the contents, on bare canvas or on a faded object (a
   plain click there only empties the selection; #1337,
