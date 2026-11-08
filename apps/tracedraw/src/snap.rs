@@ -238,7 +238,7 @@ impl App {
     /// The pieces of `still` within the snapping radius of `p`: what a
     /// node dragged there snaps to of its own curves.
     pub(crate) fn still_near<'a>(&self, still: &'a StillGeometry, p: Point) -> Vec<&'a Geo> {
-        if self.snap.off || !self.snap.objects || !self.snap_enabled() {
+        if self.snap.off || !self.snaps_to_objects() || !self.snap_enabled() {
             return Vec::new();
         }
         let tol = self.snap_tolerance();
@@ -382,7 +382,7 @@ impl App {
     /// only on the objects' boxes (#1645); a point wins over an edge, as
     /// it does for the pointer.
     fn guide_axis_point(&self, v: f64, horizontal: bool) -> Option<f64> {
-        if !self.snap.objects {
+        if !self.snaps_to_objects() {
             return None;
         }
         let tol = self.snap_tolerance();
@@ -433,6 +433,21 @@ impl App {
             .or_else(|| self.dimension_points.last().copied())
     }
 
+    /// Objects are snapped to: Snap To Objects is on, or a dimension tool
+    /// is measuring, which always takes the objects' ends and edges so a
+    /// dimension starts and ends on them (live test of 0.41).
+    pub fn snaps_to_objects(&self) -> bool {
+        use crate::tools::Tool;
+        self.snap.objects
+            || matches!(
+                self.tool,
+                Tool::ParallelDimension
+                    | Tool::HorizontalVerticalDimension
+                    | Tool::SegmentDimension
+                    | Tool::AngularDimension
+            )
+    }
+
     /// Snapping geometry of the page and of the objects whose bounds come
     /// within `tol` of `p`, leaving out `exclude`.
     fn snap_geometry(&self, p: Point, tol: f64, exclude: &[ShapeId]) -> Vec<Geo> {
@@ -440,7 +455,7 @@ impl App {
         if self.snap.page {
             snap_points::page_geometry(self.page_rect(), &mut g);
         }
-        if self.snap.objects {
+        if self.snaps_to_objects() {
             for sh in self
                 .page_layers()
                 .into_iter()
@@ -490,7 +505,7 @@ impl App {
     /// point is near: what the Pick tool marks, with its name, while the
     /// pointer rests over the selection.
     pub fn selection_hover_target(&self, p: Point) -> Option<Target> {
-        if !self.snap_enabled() || !self.snap.objects {
+        if !self.snap_enabled() || !self.snaps_to_objects() {
             return None;
         }
         let tol = self.snap_tolerance();
@@ -1170,7 +1185,7 @@ impl App {
         !self.snap.off
             && (self.snap.grid
                 || self.snap.guides
-                || self.snap.objects
+                || self.snaps_to_objects()
                 || self.snap.page
                 || self.snap.pixels
                 || self.snap.baseline_grid)

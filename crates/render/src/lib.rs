@@ -745,9 +745,11 @@ impl Renderer<'_> {
                 _ => None,
             });
             let transparency = shape.effects.iter().find_map(|e| match e {
-                tracedraw_core::live::Effect::Transparency { mask, merge, .. } => {
-                    Some((mask.clone(), *merge))
-                }
+                tracedraw_core::live::Effect::Transparency {
+                    mask,
+                    merge,
+                    target,
+                } => Some((mask.clone(), *merge, *target)),
                 _ => None,
             });
             let mut main = ev.main.clone();
@@ -760,8 +762,28 @@ impl Renderer<'_> {
                 self.draw_shape(&main, parent);
             } else if let Some(l) = lens {
                 self.draw_lens(&main, parent, &l);
-            } else if let Some((mask, merge)) = transparency {
-                self.draw_with_mask(&main, parent, &mask, merge);
+            } else if let Some((mask, merge, target)) = transparency {
+                // The transparency's target: the fill alone (0), the
+                // outline alone (1) or the whole object (2). The part it
+                // leaves out is drawn as it is (live test of 0.41: the
+                // target was ignored).
+                match target {
+                    0 | 1 if main.stroke.is_some() && !matches!(main.fill, Fill::None) => {
+                        let mut fill = main.clone();
+                        fill.stroke = None;
+                        let mut outline = main.clone();
+                        outline.fill = Fill::None;
+                        outline.shadow = None;
+                        if target == 0 {
+                            self.draw_with_mask(&fill, parent, &mask, merge);
+                            self.draw_shape(&outline, parent);
+                        } else {
+                            self.draw_shape(&fill, parent);
+                            self.draw_with_mask(&outline, parent, &mask, merge);
+                        }
+                    }
+                    _ => self.draw_with_mask(&main, parent, &mask, merge),
+                }
             } else {
                 self.draw_shape(&main, parent);
             }
@@ -1169,7 +1191,10 @@ impl Renderer<'_> {
                 // Mesh nodes are local: bring them to page space first.
                 self.fill_mesh(&m.transformed(transform), &sk, rule, blend);
             } else if !self.flags.fill_open_curves
-                && matches!(shape.kind, ShapeKind::Path { closed: false, .. })
+                && (matches!(shape.kind, ShapeKind::Path { closed: false, .. })
+                    // An ellipse made an arc (not a pie) is an open curve
+                    // too: not filled while Fill open curves is off.
+                    || matches!(&shape.kind, ShapeKind::Ellipse { arc: Some(a), .. } if !a.pie))
                 && !matches!(shape.fill, Fill::None)
             {
                 // Only the closed subpaths of a curve get the fill.
