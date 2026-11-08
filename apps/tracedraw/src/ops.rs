@@ -1290,7 +1290,16 @@ impl App {
                         closed: !open_target,
                     },
                 );
-                shape.fill = attrs.fill.clone();
+                // The result lies in page space: a mesh fill's nodes, kept
+                // in the object's own space, go there with it, or the mesh
+                // sat away from the result and its colour was lost (live
+                // test of 0.41).
+                shape.fill = match &attrs.fill {
+                    tracedraw_core::Fill::Mesh(m) => {
+                        tracedraw_core::Fill::Mesh(m.transformed(attrs.transform))
+                    }
+                    f => f.clone(),
+                };
                 shape.stroke = attrs.stroke.clone();
                 shape.opacity = attrs.opacity;
                 shape
