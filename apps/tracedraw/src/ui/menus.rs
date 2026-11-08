@@ -364,33 +364,38 @@ pub(crate) fn open_whats_new(app: &mut App) {
 /// submenus that lead to them, by their keys. Each version replaces the
 /// list with its own.
 pub const NEW_IN_THIS_VERSION: &[&str] = &[
-    // Page > Facing Pages shows the pages side by side in spreads.
-    "menu.layout",
-    "menu.layout.facing_pages",
-    "menu.layout.facing_start",
-    // Text > Link Text Content links the characters of several texts.
-    "menu.text",
-    "menu.text.link_content",
-    // Help > Search Commands finds a menu command by its name.
-    "menu.help",
-    "menu.help.search_commands",
-    // Object > Nodes: the Shape tool's node commands, with keys (#2001).
-    "menu.object",
-    "menu.object.nodes",
-    // Object > Symbol > Edit Symbol changes a symbol in place (#1980).
-    "menu.object.symbol",
-    "menu.object.symbol_edit",
-    // Edit > Invert Selection and Select Similar (#2002).
-    "menu.edit",
-    "menu.edit.invert_selection",
-    "menu.edit.select_similar",
-    // View > Pages in Multipage View (#1440).
-    "menu.view",
-    "menu.view.multipage_pages",
     // File > Export with Options shows the export options even when
     // they are set not to show.
     "menu.file",
     "menu.file.export_with_options",
+    // Edit > Invert Selection and Select Similar (#2002).
+    "menu.edit",
+    "menu.edit.invert_selection",
+    "menu.edit.select_similar",
+    "menu.edit.similar_fill",
+    "menu.edit.similar_outline",
+    "menu.edit.similar_text_format",
+    "menu.edit.similar_kind",
+    // View > Pages in Multipage View (#1440).
+    "menu.view",
+    "menu.view.multipage_pages",
+    // Object > Create > Add Selection as Common Shape (#481, #782).
+    "menu.object",
+    "menu.object.create",
+    "menu.object.add_common_shape",
+    // Object > Insert > Add Dimensions measures the selection.
+    "menu.object.insert",
+    "menu.object.add_dimensions",
+    "menu.object.add_dimensions_each",
+    // Object > Clip to Frame: the clip bar's Fit Contents choices (#1299).
+    "menu.object.clip_frame",
+    "menu.object.clip_frame_fit_center",
+    "menu.object.clip_frame_fit_proportional",
+    "menu.object.clip_frame_fill_proportional",
+    "menu.object.clip_frame_stretch",
+    // Effects > Apply to Pictures on All Pages (#1551).
+    "menu.effects",
+    "menu.effects.all_pages",
 ];
 
 thread_local! {
@@ -1605,9 +1610,9 @@ mod tests {
                 "{key} is not in the menus"
             );
         }
-        assert!(!marked_new("menu.layout.facing_pages"));
+        assert!(!marked_new("menu.edit.invert_selection"));
         set_highlight_new(true);
-        assert!(marked_new("menu.layout.facing_pages"));
+        assert!(marked_new("menu.edit.invert_selection"));
         assert!(!marked_new("menu.file.export"));
         set_highlight_new(false);
         assert!(
