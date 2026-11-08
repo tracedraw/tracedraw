@@ -14,6 +14,8 @@ full, row-by-row status.
 
 - Windows: the Microsoft Store package carries the thumbnail provider of `.tdraw` files and declares it, so Store installs show a picture of the first page in the Explorer as the setup's do; the setup also registers it under `SystemFileAssociations\.tdraw`, which stays when another program opens `.tdraw` files. A test checks the setup's keys and that the release build makes, signs and packs the DLL (#1740; 0.41 had no thumbnail provider, it came in 0.42.0).
 
+- Objects docker: dragging an object's row now also moves objects between layers: let go on an object of another layer (of any page or of the master page) it goes in front of or behind that object in its layer, and let go on a layer's row it goes on the top of that layer. A selected row carries the rest of the selection along, the whole move is one undo step, and the objects stay selected with their layer active. Rows inside groups no longer start a drag that failed, locked objects stay and a locked layer takes nothing (live test of 0.41).
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).
