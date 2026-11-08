@@ -125,6 +125,7 @@ próprios atalhos; veja
 | [[menu.object.create]] | [Objetos, símbolos e camadas](../objects/index.md) |
 | [[menu.object.create_arrowhead]] | [Definir contornos](../lines-shapes/outlines.md#outline-pen) |
 | [[menu.object.create_pattern]] | [Preenchimentos de padrão](../color/patterns.md) |
+| [[menu.object.add_common_shape]] | [Formas comuns](../lines-shapes/polygons-stars-spirals.md#common-shapes) |
 | [[menu.object.insert]] | [Códigos de barras e QR codes](../objects/barcodes.md) |
 | [[menu.object.insert_barcode]] | [Códigos de barras e QR codes](../objects/barcodes.md) |
 | [[menu.object.insert_qr]] | [Códigos de barras e QR codes](../objects/barcodes.md) |
@@ -349,6 +350,7 @@ próprios atalhos; veja
 | Comando | Veja |
 |---|---|
 | [[menu.effects.flatten]] | [Efeitos de bitmap](../effects/bitmap-effects.md) |
+| [[menu.effects.all_pages]] | [Efeitos de bitmap](../effects/bitmap-effects.md) |
 | [[menu.effects.brush_strokes]] | [Pinceladas e pincéis pictóricos](../lines-shapes/artistic-media.md) |
 | [[menu.effects.bevel]] | [Chanfros](../effects/bevel.md) |
 | [[menu.effects.blend]] | [Misturas](../effects/blend.md) |
