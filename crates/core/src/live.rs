@@ -1077,14 +1077,40 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             Effect::BlockShadow { offset, color, gap } => {
                 below.extend(block_shadow(&main, *offset, *color, *gap));
             }
-            Effect::Symmetry {
-                center,
-                angle,
-                lines,
-            } => {
-                above.extend(symmetry(&main, *center, *angle, *lines));
-            }
+            // Mirrored last, whatever its place in the list: the copies
+            // carry every other effect of the object (#2121).
+            Effect::Symmetry { .. } => {}
             Effect::Lens(_) | Effect::Transparency { .. } => {}
+        }
+    }
+    for effect in &shape.effects {
+        if let Effect::Symmetry {
+            center,
+            angle,
+            lines,
+        } = effect
+        {
+            let mut original = main.clone();
+            // The copies keep the effects the renderer draws on the object
+            // itself (transparency, lens); the objects the other effects
+            // add are mirrored with it.
+            original
+                .effects
+                .retain(|e| matches!(e, Effect::Lens(_) | Effect::Transparency { .. }));
+            let mirrors = symmetry_mirrors(*center, *angle, *lines);
+            let (mut under, mut over) = (Vec::new(), Vec::new());
+            for m in &mirrors {
+                let flip = |s: &Shape| {
+                    let mut s = s.clone();
+                    s.transform = *m * s.transform;
+                    s
+                };
+                under.extend(below.iter().map(flip));
+                over.push(flip(&original));
+                over.extend(above.iter().map(flip));
+            }
+            below.extend(under);
+            above.extend(over);
         }
     }
     Evaluated { below, main, above }
@@ -1847,10 +1873,11 @@ pub fn carry_effects<'a>(effects: impl IntoIterator<Item = &'a mut Effect>, t: A
 /// Mirror copies for the Symmetry effect. With `n` lines through `center`
 /// the result is the dihedral orbit of the shape: reflections across each
 /// line and the rotations they generate (2n - 1 copies).
-fn symmetry(shape: &Shape, center: Point, angle: f64, lines: u8) -> Vec<Shape> {
+/// The mirror maps of a symmetry, page to page: one reflection a mirror
+/// line, then the rotations between them (the identity left out).
+fn symmetry_mirrors(center: Point, angle: f64, lines: u8) -> Vec<Affine> {
     let n = lines.clamp(1, 12) as usize;
     let mut out = Vec::with_capacity(2 * n);
-    let base = shape.clone();
     let to_center = Affine::translate(center.to_vec2());
     let from_center = Affine::translate(-center.to_vec2());
     let reflect = |theta: f64| -> Affine {
@@ -1861,20 +1888,12 @@ fn symmetry(shape: &Shape, center: Point, angle: f64, lines: u8) -> Vec<Shape> {
     let a0 = angle.to_radians();
     for k in 0..n {
         let theta = a0 + std::f64::consts::PI * k as f64 / n as f64;
-        let m = to_center * reflect(theta) * from_center;
-        let mut s = base.clone();
-        s.effects.clear();
-        s.transform = m * s.transform;
-        out.push(s);
+        out.push(to_center * reflect(theta) * from_center);
     }
     // Rotations (products of two reflections), skipping the identity.
     for k in 1..n {
         let rot = Affine::rotate(2.0 * std::f64::consts::PI * k as f64 / n as f64);
-        let m = to_center * rot * from_center;
-        let mut s = base.clone();
-        s.effects.clear();
-        s.transform = m * s.transform;
-        out.push(s);
+        out.push(to_center * rot * from_center);
     }
     out
 }
@@ -3938,5 +3957,61 @@ mod symmetry_tests {
         };
         let ev = evaluate(&s);
         assert_eq!(ev.above.len(), 3);
+    }
+
+    /// The mirrored copies carry the object's other effects (#2121): its
+    /// transparency stays on each copy, and what a contour draws around
+    /// the object is mirrored with it, whichever came first in the list.
+    #[test]
+    fn mirrored_copies_carry_the_other_effects() {
+        let mut s = Shape::new(
+            crate::ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(10.0, 0.0, 20.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        s.effects = vec![
+            Effect::Symmetry {
+                center: Point::new(0.0, 0.0),
+                angle: 90.0,
+                lines: 1,
+            },
+            Effect::Transparency {
+                mask: crate::style::Fill::Solid(crate::color::Color::rgb8(128, 128, 128)),
+                merge: MergeMode::Normal,
+                target: 2,
+            },
+            Effect::Contour {
+                steps: 1,
+                offset: 2.0,
+                outside: true,
+                to_center: false,
+                fill_to: crate::color::Color::WHITE,
+                outline_to: None,
+                color_blend: 0,
+                corners: None,
+                accel_objects: 0.0,
+                accel_colors: 0.0,
+            },
+        ];
+        let ev = evaluate(&s);
+        assert_eq!(ev.above.len(), 1);
+        let copy = &ev.above[0];
+        assert_eq!(copy.effects.len(), 1);
+        assert!(matches!(copy.effects[0], Effect::Transparency { .. }));
+        let b = copy.bounds();
+        assert!(
+            (b.x0 + 20.0).abs() < 1e-9 && (b.x1 + 10.0).abs() < 1e-9,
+            "{b:?}"
+        );
+        // The contour step and its mirror image.
+        assert_eq!(ev.below.len(), 2);
+        let c = ev.below[1].page_path().bounding_box();
+        assert!(
+            (c.x0 + 22.0).abs() < 0.1 && (c.x1 + 8.0).abs() < 0.1,
+            "{c:?}"
+        );
     }
 }

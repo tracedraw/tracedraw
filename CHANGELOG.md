@@ -78,6 +78,8 @@ full, row-by-row status.
 
 - Welcome Screen: the recent documents are a table across the window with each drawing's name, location, size and last edit, under a header row; a narrow window and a phone keep the list (#1675).
 
+- Symmetry: the mirrored copies keep the object's transparency and lens, and what its other effects draw (contour, blend, extrusion, bevel, block shadow) is mirrored with it; the copies had the fill and outline only (#2121).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

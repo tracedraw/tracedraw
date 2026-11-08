@@ -807,7 +807,14 @@ impl Renderer<'_> {
             self.flags.text_outline = was_text;
             for a in &ev.above {
                 let mut a = a.clone();
-                a.effects.clear();
+                // A mirrored copy keeps its transparency or lens (#2121).
+                a.effects.retain(|e| {
+                    matches!(
+                        e,
+                        tracedraw_core::live::Effect::Lens(_)
+                            | tracedraw_core::live::Effect::Transparency { .. }
+                    )
+                });
                 self.draw_shape(&a, parent);
             }
             return;
@@ -5029,6 +5036,35 @@ mod tests {
         let pm2 = render_page_image(&plain, page, 25.4).unwrap();
         assert_eq!(px(&pm2, 53, 48), (255, 255, 255));
         assert_eq!(px(&pm2, 53, 52), (255, 255, 255));
+    }
+
+    /// A symmetry's mirrored copy is as see-through as the object (#2121):
+    /// the copies were drawn opaque, with fill and outline only.
+    #[test]
+    fn a_mirrored_copy_keeps_the_transparency() {
+        let mut s = rect(1, Rect::new(10.0, 0.0, 30.0, 10.0), Color::rgb8(0, 0, 0));
+        s.effects.push(tracedraw_core::live::Effect::Symmetry {
+            center: tracedraw_core::geometry::Point::new(50.0, 0.0),
+            angle: 90.0,
+            lines: 1,
+        });
+        s.effects.push(tracedraw_core::live::Effect::Transparency {
+            mask: Fill::Solid(Color::rgb8(128, 128, 128)),
+            merge: tracedraw_core::live::MergeMode::Normal,
+            target: 2,
+        });
+        let (doc, page) = doc_with(vec![s]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        let original = px(&pm, 20, 95).0;
+        let copy = px(&pm, 80, 95).0;
+        assert!(
+            (90..170).contains(&original),
+            "the object is half see-through: {original}"
+        );
+        assert!(
+            original.abs_diff(copy) <= 2,
+            "the copy as the object: {original} against {copy}"
+        );
     }
 
     #[test]
