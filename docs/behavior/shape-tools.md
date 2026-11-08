@@ -181,7 +181,10 @@ whatever tool is active.
 71 shapes in five sets (`common_shapes.rs`), picked on the property bar:
 the button shows the shape and its name; a click opens the sets as tabs
 (the current shape's set first) over a grid of outlines, nine to a row,
-each named in its tooltip. Picking one closes the grid.
+each named in its tooltip. Picking one closes the grid. The first tab,
+All, shows every set at once, each under its name, scrolling past 70 %
+of the window's height (#1650,
+`toolbar::tests::the_common_shapes_picker_has_an_all_tab`).
 
 - Basic shapes (18): parallelogram, trapezoid, diamond, triangle, right
   triangle, hexagon, octagon, plus, heart, lightning, crescent, ring,

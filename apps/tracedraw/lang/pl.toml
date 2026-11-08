@@ -3551,6 +3551,7 @@ shape.triangle = "Trójkąt"
 shape.up_arrow = "Strzałka w górę"
 shape.up_down_arrow = "Strzałka w górę i w dół"
 shape.wave = "Fala"
+shapes.all = "Wszystkie" # mt
 shapes.arrows = "Strzałki"
 shapes.banners = "Wstęgi"
 shapes.basic = "Kształty podstawowe"

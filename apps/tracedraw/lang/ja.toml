@@ -3551,6 +3551,7 @@ shape.triangle = "三角形"
 shape.up_arrow = "上矢印"
 shape.up_down_arrow = "上下矢印"
 shape.wave = "波"
+shapes.all = "すべて" # mt
 shapes.arrows = "矢印"
 shapes.banners = "バナー"
 shapes.basic = "基本図形"

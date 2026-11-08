@@ -3551,6 +3551,7 @@ shape.triangle = "Dreieck"
 shape.up_arrow = "Pfeil nach oben"
 shape.up_down_arrow = "Doppelpfeil senkrecht"
 shape.wave = "Welle"
+shapes.all = "Alle" # mt
 shapes.arrows = "Pfeile"
 shapes.banners = "Banner"
 shapes.basic = "Grundformen"

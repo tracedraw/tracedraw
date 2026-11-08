@@ -3551,6 +3551,7 @@ shape.triangle = "三角形"
 shape.up_arrow = "上箭头"
 shape.up_down_arrow = "上下箭头"
 shape.wave = "波形"
+shapes.all = "全部" # mt
 shapes.arrows = "箭头"
 shapes.banners = "横幅"
 shapes.basic = "基本形状"

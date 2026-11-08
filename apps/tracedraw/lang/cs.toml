@@ -3551,6 +3551,7 @@ shape.triangle = "Trojúhelník"
 shape.up_arrow = "Šipka nahoru"
 shape.up_down_arrow = "Šipka nahoru a dolů"
 shape.wave = "Vlna"
+shapes.all = "Vše" # mt
 shapes.arrows = "Šipky"
 shapes.banners = "Stuhy"
 shapes.basic = "Základní tvary"

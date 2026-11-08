@@ -3551,6 +3551,7 @@ shape.triangle = "Треугольник"
 shape.up_arrow = "Стрелка вверх"
 shape.up_down_arrow = "Вертикальная двусторонняя стрелка"
 shape.wave = "Волна"
+shapes.all = "Все" # mt
 shapes.arrows = "Стрелки"
 shapes.banners = "Ленты"
 shapes.basic = "Основные фигуры"

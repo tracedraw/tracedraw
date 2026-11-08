@@ -3228,7 +3228,7 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
 /// The Common Shapes tool's bar: the shape picked from a grid of
 /// thumbnails, set by set.
 fn common_shapes_bar(app: &mut App, ui: &mut Ui) {
-    use crate::common_shapes::{Category, CommonShape};
+    use crate::common_shapes::Category;
     let popup = egui::Id::new("common_shapes_popup");
     let resp = dim_labelled(ui, "toolbar.shape", |ui| {
         ui.horizontal(|ui| {
@@ -3244,30 +3244,59 @@ fn common_shapes_bar(app: &mut App, ui: &mut Ui) {
         .id(popup)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .show(|ui| {
-            let shown = ui.data_mut(|d| {
-                *d.get_temp_mut_or_insert_with(popup, || app.common_shape.category())
+            // The tab shown: one set, or every set at once (`None`, All,
+            // #1650).
+            let shown: Option<Category> = ui.data_mut(|d| {
+                *d.get_temp_mut_or_insert_with(popup, || Some(app.common_shape.category()))
             });
             ui.horizontal(|ui| {
+                if ui
+                    .selectable_label(shown.is_none(), tr("shapes.all"))
+                    .clicked()
+                {
+                    ui.data_mut(|d| d.insert_temp::<Option<Category>>(popup, None));
+                }
                 for c in Category::ALL {
-                    if ui.selectable_label(shown == c, tr(c.key())).clicked() {
-                        ui.data_mut(|d| d.insert_temp(popup, c));
+                    if ui.selectable_label(shown == Some(c), tr(c.key())).clicked() {
+                        ui.data_mut(|d| d.insert_temp(popup, Some(c)));
                     }
                 }
             });
             ui.separator();
-            egui::Grid::new("common_shapes_grid")
-                .spacing([2.0, 2.0])
+            let sections = common_shape_sections(shown);
+            let all = sections.len() > 1;
+            let max_height = (ui.ctx().content_rect().height() * 0.7).max(200.0);
+            // The popup's area keeps last frame's size: a scroll area
+            // asked to be as tall as its contents (up to the limit) lets
+            // it grow when the tab changes to All.
+            egui::ScrollArea::vertical()
+                .max_height(max_height)
+                .min_scrolled_height(max_height)
                 .show(ui, |ui| {
-                    for (i, s) in CommonShape::of(shown).enumerate() {
-                        let picked =
-                            shape_thumbnail(ui, s, app.common_shape == s, false).rich_tip(s.name());
-                        if picked.clicked() {
-                            app.common_shape = s;
-                            egui::Popup::close_id(ui.ctx(), popup);
+                    for (c, shapes) in sections {
+                        if all {
+                            ui.label(
+                                egui::RichText::new(tr(c.key()))
+                                    .color(Tokens::text_dim())
+                                    .size(11.0),
+                            );
                         }
-                        if i % 9 == 8 {
-                            ui.end_row();
-                        }
+                        egui::Grid::new(("common_shapes_grid", c.key()))
+                            .spacing([2.0, 2.0])
+                            .show(ui, |ui| {
+                                for (i, s) in shapes.into_iter().enumerate() {
+                                    let picked =
+                                        shape_thumbnail(ui, s, app.common_shape == s, false)
+                                            .rich_tip(s.name());
+                                    if picked.clicked() {
+                                        app.common_shape = s;
+                                        egui::Popup::close_id(ui.ctx(), popup);
+                                    }
+                                    if i % 9 == 8 {
+                                        ui.end_row();
+                                    }
+                                }
+                            });
                     }
                 });
         });
@@ -3276,6 +3305,23 @@ fn common_shapes_bar(app: &mut App, ui: &mut Ui) {
             .color(Tokens::text_dim())
             .size(11.0),
     );
+}
+
+/// The Common Shapes picker's sections for the tab shown: the shapes of
+/// one set, or with `None` (the All tab) every set in its order, each
+/// under its name.
+fn common_shape_sections(
+    shown: Option<crate::common_shapes::Category>,
+) -> Vec<(
+    crate::common_shapes::Category,
+    Vec<crate::common_shapes::CommonShape>,
+)> {
+    use crate::common_shapes::{Category, CommonShape};
+    Category::ALL
+        .into_iter()
+        .filter(|c| shown.is_none_or(|s| s == *c))
+        .map(|c| (c, CommonShape::of(c).collect()))
+        .collect()
 }
 
 /// A shape's outline drawn small, as a button (`on`: the one picked).
@@ -3626,6 +3672,50 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    /// The Common Shapes picker has an All tab listing every set at once,
+    /// each under its name, besides the tab of each set (#1650).
+    #[test]
+    fn the_common_shapes_picker_has_an_all_tab() {
+        use crate::common_shapes::{Category, CommonShape};
+        let all = common_shape_sections(None);
+        assert_eq!(
+            all.iter().map(|(c, _)| *c).collect::<Vec<_>>(),
+            Category::ALL.to_vec()
+        );
+        let listed: Vec<CommonShape> = all.iter().flat_map(|(_, s)| s.clone()).collect();
+        assert_eq!(listed.len(), CommonShape::ALL.len());
+        assert!(CommonShape::ALL.iter().all(|s| listed.contains(s)));
+        let arrows = common_shape_sections(Some(Category::Arrows));
+        assert_eq!(arrows.len(), 1);
+        assert!(arrows[0].1.iter().all(|s| s.category() == Category::Arrows));
+
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.set_tool(crate::tools::Tool::CommonShapes);
+        let popup = egui::Id::new("common_shapes_popup");
+        let count = |texts: &[(String, egui::Rect)], key: &str| {
+            let label = tr(key);
+            texts.iter().filter(|(t, _)| *t == label).count()
+        };
+        frame(&ctx, &mut app, Vec::new());
+        egui::Popup::open_id(&ctx, popup);
+        let mut texts = Vec::new();
+        for _ in 0..2 {
+            texts = frame(&ctx, &mut app, Vec::new());
+        }
+        // The tab of the shape picked shows alone: each set's name once.
+        assert_eq!(count(&texts, "shapes.all"), 1, "the All tab");
+        assert_eq!(count(&texts, "shapes.arrows"), 1);
+        ctx.data_mut(|d| d.insert_temp::<Option<Category>>(popup, None));
+        for _ in 0..2 {
+            texts = frame(&ctx, &mut app, Vec::new());
+        }
+        for c in Category::ALL {
+            assert_eq!(count(&texts, c.key()), 2, "{c:?}: its tab and heading");
+        }
     }
 
     /// The Launch list holds the tools (Font Manager, TraceCut, the

@@ -3551,6 +3551,7 @@ shape.triangle = "Segitiga"
 shape.up_arrow = "Panah atas"
 shape.up_down_arrow = "Panah atas-bawah"
 shape.wave = "Gelombang"
+shapes.all = "Semua" # mt
 shapes.arrows = "Panah"
 shapes.banners = "Spanduk"
 shapes.basic = "Bentuk dasar"

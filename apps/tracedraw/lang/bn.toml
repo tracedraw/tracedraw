@@ -3551,6 +3551,7 @@ shape.triangle = "ত্রিভুজ"
 shape.up_arrow = "উপর তীর"
 shape.up_down_arrow = "উপর-নিচ তীর"
 shape.wave = "তরঙ্গ"
+shapes.all = "সব" # mt
 shapes.arrows = "তীর"
 shapes.banners = "ব্যানার"
 shapes.basic = "মৌলিক আকার"

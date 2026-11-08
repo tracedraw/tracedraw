@@ -64,6 +64,8 @@ full, row-by-row status.
 
 - Print Preview: with Print separations on, the ink boxes stand side by side in a row that wraps, instead of one per line (#1737).
 
+- Common Shapes: the shape picker has an All tab that shows every set at once, each under its name (#1650).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

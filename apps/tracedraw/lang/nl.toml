@@ -3551,6 +3551,7 @@ shape.triangle = "Driehoek"
 shape.up_arrow = "Pijl omhoog"
 shape.up_down_arrow = "Pijl omhoog en omlaag"
 shape.wave = "Golf"
+shapes.all = "Alle" # mt
 shapes.arrows = "Pijlen"
 shapes.banners = "Linten"
 shapes.basic = "Basisvormen"

@@ -3551,6 +3551,7 @@ shape.triangle = "Triángulo"
 shape.up_arrow = "Flecha arriba"
 shape.up_down_arrow = "Flecha arriba y abajo"
 shape.wave = "Onda"
+shapes.all = "Todas" # mt
 shapes.arrows = "Flechas"
 shapes.banners = "Pancartas"
 shapes.basic = "Formas básicas"

@@ -3551,6 +3551,7 @@ shape.triangle = "त्रिभुज"
 shape.up_arrow = "ऊपर तीर"
 shape.up_down_arrow = "ऊपर-नीचे तीर"
 shape.wave = "लहर"
+shapes.all = "सभी" # mt
 shapes.arrows = "तीर"
 shapes.banners = "बैनर"
 shapes.basic = "मूल आकृतियाँ"

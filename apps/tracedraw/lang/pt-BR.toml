@@ -3551,6 +3551,7 @@ shape.triangle = "Triângulo"
 shape.up_arrow = "Seta para cima"
 shape.up_down_arrow = "Seta dupla vertical"
 shape.wave = "Onda"
+shapes.all = "Todas" # mt
 shapes.arrows = "Setas"
 shapes.banners = "Faixas"
 shapes.basic = "Formas básicas"

@@ -52,6 +52,8 @@ button on the property bar to choose one from five sets:
 - **Banners**: ribbons, waves, scroll, explosion, burst and pennant.
 - **Callouts**: rectangle, rounded, oval, cloud and line callouts.
 
+The **All** tab shows every set at once, one under the other.
+
 Then drag a box. The shape becomes one curve with the default fill and
 outline. Parts that should look separate, such as the faces of a cube, are
 separate parts of the curve, and holes such as the middle of a ring stay

@@ -3551,6 +3551,7 @@ shape.triangle = "Üçgen"
 shape.up_arrow = "Yukarı ok"
 shape.up_down_arrow = "Yukarı ve aşağı ok"
 shape.wave = "Dalga"
+shapes.all = "Tümü" # mt
 shapes.arrows = "Oklar"
 shapes.banners = "Şeritler"
 shapes.basic = "Temel şekiller"

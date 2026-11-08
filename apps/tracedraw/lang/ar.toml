@@ -3551,6 +3551,7 @@ shape.triangle = "مثلث"
 shape.up_arrow = "سهم لأعلى"
 shape.up_down_arrow = "سهم أعلى وأسفل"
 shape.wave = "موجة"
+shapes.all = "الكل" # mt
 shapes.arrows = "أسهم"
 shapes.banners = "لافتات"
 shapes.basic = "أشكال أساسية"
