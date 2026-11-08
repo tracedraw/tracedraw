@@ -6695,7 +6695,7 @@ pub(crate) fn tab_kind_key(k: tracedraw_core::TabKind) -> &'static str {
 }
 
 /// `v` with at most three decimals and no trailing zeros.
-fn trim_number(v: f64) -> String {
+pub(crate) fn trim_number(v: f64) -> String {
     let s = format!("{v:.3}");
     s.trim_end_matches('0').trim_end_matches('.').to_string()
 }

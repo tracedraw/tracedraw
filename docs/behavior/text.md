@@ -862,7 +862,13 @@ the preferences, `text_sections_closed`).
   spacing with its unit (% of the character height, points, or % of the
   font size; a change of unit keeps about the same spacing); left,
   first-line and right indents and space before and after paragraphs in
-  the ruler unit. The expander shows character and word spacing.
+  the ruler unit; Tab stops (#2003): a Tabs... button opening the Tabs
+  dialog (Text > Tabs) for the selected text, and the stops' places in
+  the ruler unit, the first six ("20, 42.5 mm", an ellipsis for more),
+  or "Every 12.7 mm" (the default grid's step) for a paragraph with none
+  (`text_docker::tab_summary`,
+  `text_docker::tests::the_paragraph_section_sums_up_the_tab_stops`).
+  The expander shows character and word spacing.
 - Frame, for paragraph text: the frame's background colour (on or off
   and its colour; drawn behind the text inside the frame), the vertical
   alignment as a list (top, middle, bottom), Fit Text to Frame, columns

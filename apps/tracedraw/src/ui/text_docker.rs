@@ -1581,6 +1581,22 @@ fn paragraph(app: &mut App, ui: &mut Ui, first: Option<&tracedraw_core::Shape>) 
             pc |= length(ui, app, &mut p.right_indent);
             ui.end_row();
         });
+    // The paragraph's tab stops at a glance, and the Tabs dialog box that
+    // sets them (#2003).
+    ui.horizontal(|ui| {
+        let tip = crate::ui::tips::pair("dialog.tab_stops", "docker.tabs_tip");
+        ui.label(tr("dialog.tab_stops")).rich_tip(&tip);
+        if ui.button(tr("menu.text.tabs")).rich_tip(&tip).clicked() {
+            app.dialog = crate::ui::dialogs::Dialog::TextTabs;
+        }
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(tab_summary(&p.tabs, app.units)).color(Tokens::text_dim()),
+            )
+            .truncate(),
+        )
+        .rich_tip(&tip);
+    });
     if expander(ui, "paragraph") {
         egui::Grid::new("text_paragraph_more")
             .num_columns(2)
@@ -1604,6 +1620,29 @@ fn paragraph(app: &mut App, ui: &mut Ui, first: Option<&tracedraw_core::Shape>) 
             f.apply_to(q);
         });
     }
+}
+
+/// The tab stops of a paragraph in a few words: their places in the
+/// unit `u` ("20, 40, 60 mm", the first six), or the default grid's step.
+pub(crate) fn tab_summary(tabs: &[tracedraw_core::TabStop], u: crate::app::Units) -> String {
+    use crate::ui::dialogs::trim_number;
+    if tabs.is_empty() {
+        let step = format!(
+            "{} {}",
+            trim_number(u.from_mm(tracedraw_core::default_tab_step())),
+            u.short()
+        );
+        return crate::i18n::trf("docker.tabs_default", &[("step", &step)]);
+    }
+    let mut places: Vec<String> = tabs
+        .iter()
+        .take(6)
+        .map(|t| trim_number((u.from_mm(t.pos) * 100.0).round() / 100.0))
+        .collect();
+    if tabs.len() > 6 {
+        places.push("\u{2026}".into());
+    }
+    format!("{} {}", places.join(", "), u.short())
 }
 
 /// The largest font size of a text, points.
@@ -2195,6 +2234,44 @@ mod tests {
         click(&ctx, &mut app, egui::pos2(-10.0, -10.0));
         app.sync_text_defaults_from(id);
         assert!(app.text_underline);
+    }
+
+    /// The Paragraph section names the stops of the paragraph, or the
+    /// default grid when it has none, beside the button to the Tabs
+    /// dialog box (#2003).
+    #[test]
+    fn the_paragraph_section_sums_up_the_tab_stops() {
+        use tracedraw_core::TabStop;
+        let mm = crate::app::Units::Millimeters;
+        let step = crate::ui::dialogs::trim_number(tracedraw_core::default_tab_step());
+        assert!(tab_summary(&[], mm).contains(&format!("{step} mm")));
+        let tabs = vec![
+            TabStop::left(20.0),
+            TabStop::new(42.5, tracedraw_core::TabKind::Right),
+        ];
+        assert_eq!(tab_summary(&tabs, mm), "20, 42.5 mm");
+        let many: Vec<TabStop> = (1..=8).map(|i| TabStop::left(10.0 * i as f64)).collect();
+        assert_eq!(
+            tab_summary(&many, mm),
+            "10, 20, 30, 40, 50, 60, \u{2026} mm"
+        );
+        // Drawn for a paragraph frame with stops.
+        let mut app = App::headless();
+        let mut para = ParagraphStyle::default();
+        para.tabs = tabs;
+        let id = app
+            .new_shape(ShapeKind::Text {
+                spans: vec![TextSpan::new("Text", "Arial", 24.0)],
+                origin: Point::new(10.0, 10.0),
+                frame: Some(Size::new(60.0, 40.0)),
+                align: TextAlign::Left,
+                para,
+                on_path: None,
+            })
+            .expect("text");
+        app.select(vec![id]);
+        draw(&mut app);
+        assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::None));
     }
 
     #[test]
