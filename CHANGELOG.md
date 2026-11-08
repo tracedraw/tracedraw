@@ -26,6 +26,8 @@ full, row-by-row status.
 
 - Properties docker: the Summary section now reports the selection's count, layer, kind, size, centre and centre of rotation, and holds Wrap paragraph text (style and offset) and Lock Object; it listed only each object's kind and id. Crop tool: Crop and Clear buttons float under the crop area on the canvas, so the area is applied or dropped without reaching the property bar (#1202).
 
+- Properties docker: a fountain fill's placement in numbers (W, H with a lock, X, Y, skew and rotate, setting the nodes the Interactive Fill tool drags), the opacity of each colour stop, Overprint fill and Overprint outline, and Edit Fill... and Outline Pen... buttons that open the dialogs; the calligraphic nib under Advanced is a percentage field, an angle field and the nib picture to drag, as in the dialog (#1200).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

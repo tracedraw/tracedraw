@@ -1086,7 +1086,10 @@ mod tests {
         let ctx = crate::theme::ui_context();
         let mut app = App::headless();
         app.show_welcome = false;
-        app.settings.properties_closed.clear();
+        // The Outline section closed, so the Transparency section's title
+        // stays within the test screen's height under the Fill section's
+        // overprint and Edit Fill rows (#1200).
+        app.settings.properties_closed = vec!["outline".to_string()];
         let id = app
             .new_shape(ShapeKind::Rect {
                 rect: GRect::new(10.0, 10.0, 60.0, 40.0),
