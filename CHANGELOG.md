@@ -116,6 +116,8 @@ full, row-by-row status.
 
 - Wheel zoom: the glide after a notch is shorter the faster the wheel turns, so a quick spin zooms at once and a single notch still glides; Options > Tools > Zoom/Pan has Smooth zoom (on; off zooms each notch at once) and the zoom per wheel notch, 15 % at first (#1648, #895).
 
+- Options > Tools > Zoom/Pan: Pan inertia (off at first). A pan with the Pan tool, the middle button or two fingers let go while still moving keeps the view sliding and easing out; a click or the wheel stops it (#831).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

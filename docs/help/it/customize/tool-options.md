@@ -42,6 +42,10 @@ strumento.
 - [[options.wheel_zoom_step]] di quanto uno scatto ingrandisce o riduce, da 1 a
   100 per cento (15 % all'inizio).
 - [[options.pan_right_button]] [[options.zoom_out]] o il [[options.context_menu]] (all'inizio).
+- [[options.pan_inertia]] (disattivo): una panoramica rilasciata mentre il
+  puntatore si muove ancora fa scorrere la vista nella stessa direzione,
+  rallentando fino a fermarsi. Un clic o la rotellina la ferma. Vale per lo
+  strumento Panoramica, il pulsante centrale e due dita.
 
 ## Mano libera/Bézier {#curves}
 

@@ -42,6 +42,10 @@ ada di bilah properti masing-masing alat.
 - [[options.wheel_zoom_step]] seberapa besar satu takik memperbesar atau
   memperkecil, 1 sampai 100 persen (awalnya 15 %).
 - [[options.pan_right_button]] [[options.zoom_out]] atau [[options.context_menu]] (awalnya).
+- [[options.pan_inertia]] (nonaktif): geseran yang dilepas saat penunjuk masih
+  bergerak membuat tampilan terus meluncur ke arah yang sama lalu melambat.
+  Klik atau roda menghentikannya. Berlaku untuk alat Geser, tombol tengah dan
+  dua jari.
 
 ## Tangan bebas/Bézier {#curves}
 

@@ -8223,3 +8223,5 @@ options.smooth_zoom = "Zoom fluido" # mt
 options.smooth_zoom_tip = "Uno scatto della rotellina zooma con un breve scorrimento, più breve quanto più veloce gira la rotellina. Disattivato: ogni scatto zooma subito." # mt
 options.wheel_zoom_step = "Zoom per scatto della rotellina:" # mt
 options.wheel_zoom_step_tip = "Di quanto uno scatto della rotellina ingrandisce o riduce, in percentuale (15 % all'inizio)." # mt
+options.pan_inertia = "Inerzia della panoramica" # mt
+options.pan_inertia_tip = "Una panoramica rilasciata mentre il puntatore si muove ancora fa scorrere la vista, che rallenta fino a fermarsi. Un clic o la rotellina la ferma. Disattivato all'inizio." # mt

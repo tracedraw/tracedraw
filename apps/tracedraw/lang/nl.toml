@@ -8223,3 +8223,5 @@ options.smooth_zoom = "Vloeiend zoomen" # mt
 options.smooth_zoom_tip = "Een klik van het muiswiel zoomt in een korte glijbeweging, korter naarmate het wiel sneller draait. Uit: elke klik zoomt meteen." # mt
 options.wheel_zoom_step = "Zoom per wielklik:" # mt
 options.wheel_zoom_step_tip = "Hoeveel één klik van het muiswiel in- of uitzoomt, in procent (eerst 15 %)." # mt
+options.pan_inertia = "Traagheid bij pannen" # mt
+options.pan_inertia_tip = "Een pan die wordt losgelaten terwijl de aanwijzer nog beweegt, laat de weergave doorglijden en uitlopen. Een klik of het wiel stopt hem. Eerst uit." # mt

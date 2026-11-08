@@ -8223,3 +8223,5 @@ options.smooth_zoom = "Zoom suave" # mt
 options.smooth_zoom_tip = "Cada clique da roda aplica o zoom num breve deslizamento, mais curto quanto mais rápido a roda gira. Desligado: cada clique aplica o zoom na hora." # mt
 options.wheel_zoom_step = "Zoom por clique da roda:" # mt
 options.wheel_zoom_step_tip = "Quanto um clique da roda do mouse aproxima ou afasta, em porcentagem (15 % no início)." # mt
+options.pan_inertia = "Inércia ao deslocar" # mt
+options.pan_inertia_tip = "Um deslocamento solto com o ponteiro ainda em movimento faz a vista continuar deslizando e parar aos poucos. Um clique ou a roda a interrompe. Desligado no início." # mt

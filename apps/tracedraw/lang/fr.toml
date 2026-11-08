@@ -8223,3 +8223,5 @@ options.smooth_zoom = "Zoom fluide" # mt
 options.smooth_zoom_tip = "Un cran de molette zoome en un court glissement, d'autant plus court que la molette tourne vite. Désactivé : chaque cran zoome aussitôt." # mt
 options.wheel_zoom_step = "Zoom par cran de molette :" # mt
 options.wheel_zoom_step_tip = "De combien un cran de la molette zoome ou dézoome, en pourcentage (15 % au départ)." # mt
+options.pan_inertia = "Inertie du panoramique" # mt
+options.pan_inertia_tip = "Un panoramique relâché alors que le pointeur bouge encore fait glisser la vue, qui ralentit peu à peu. Un clic ou la molette l'arrête. Désactivé au départ." # mt

@@ -1054,6 +1054,8 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
         }
         ui.ctx().request_repaint();
     }
+    // A flick's slide (Pan inertia, #831).
+    app.pan_inertia_tick(ui.ctx());
     let mods = ui.input(|i| i.modifiers);
 
     // Two fingers on a touch screen pan (and pinch zooms, above):
@@ -1066,7 +1068,7 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
     }
     if let Some(t) = two_fingers {
         if response.rect.contains(t.center_pos) {
-            app.view.pan(t.translation_delta);
+            app.pan_drag(t.translation_delta, ui.ctx());
         }
         if !matches!(app.drag, crate::app::Drag::None) {
             app.drag = crate::app::Drag::None;

@@ -8223,3 +8223,5 @@ options.smooth_zoom = "Weiches Zoomen" # mt
 options.smooth_zoom_tip = "Eine Rastung des Mausrads zoomt in einer kurzen Gleitbewegung, umso kürzer, je schneller das Rad gedreht wird. Aus: Jede Rastung zoomt sofort." # mt
 options.wheel_zoom_step = "Zoom pro Mausrad-Rastung:" # mt
 options.wheel_zoom_step_tip = "Wie stark eine Rastung des Mausrads hinein- oder herauszoomt, in Prozent (anfangs 15 %)." # mt
+options.pan_inertia = "Schwung beim Verschieben" # mt
+options.pan_inertia_tip = "Ein Verschieben, das losgelassen wird, während sich der Zeiger noch bewegt, lässt die Ansicht weitergleiten und sanft auslaufen. Ein Klick oder das Mausrad hält sie an. Anfangs aus." # mt

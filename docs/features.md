@@ -23,7 +23,7 @@ Counts: works 192, partial 7 (`.cdr` content coverage; CMX import; print preview
 | Edit > Invert Selection, Edit > Select Similar (Fill, Outline, Text Formatting: font and size, Object Type), each one step of Undo and Redo while the drawing is unchanged (#2002, see `behavior/pick-tool.md`) | works |
 | Free Transform (rotation, angle reflection, scale, skew modes, Apply to Duplicate; one drag is one undo step, a skew never mirrors) | works |
 | Zoom tool, zoom levels, zoom to page/fit/selected, marquee zoom, Shift+F4; the view scrolls when a drag reaches the window edge (#2051) | works |
-| Pan, mouse wheel, Ctrl and Shift wheel; the wheel zoom glides, shorter for faster wheel turns, with Smooth zoom (on) and the zoom per notch (15 %) in Options > Tools > Zoom/Pan (#1648, #895) | works (see `behavior/zoom-and-pan.md`) |
+| Pan, mouse wheel, Ctrl and Shift wheel; the wheel zoom glides, shorter for faster wheel turns, with Smooth zoom (on) and the zoom per notch (15 %) in Options > Tools > Zoom/Pan (#1648, #895); Pan inertia there (off): a flicked pan slides on and eases out (#831) | works (see `behavior/zoom-and-pan.md`) |
 | Rulers with numbers from the origin without sign, the unit name, an origin button and pointer markers; draggable origin, double-click for ruler settings, a right-click menu with Ruler, Grid and Guidelines Setup and Rulers off (#1831), guidelines from rulers, Guidelines panel; all 13 units | works |
 | Grid: document (lines or dots, spacing or frequency, thinned when dense, through the origin), pixel (Pixels view from 800%, colour and opacity), baseline (spacing, start from top, colour); snapping with threshold | works |
 | Snap to objects, page, guidelines; Alt+Q snap off, Alt+Z objects, Ctrl+Y grid | works |

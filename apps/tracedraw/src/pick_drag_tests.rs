@@ -12997,6 +12997,59 @@ fn smooth_zoom_off_zooms_the_fixed_step_at_once() {
     assert!((app.view.zoom / z0 - 1.25).abs() < 0.01);
 }
 
+/// Pan inertia (Options > Tools > Zoom/Pan, off at first): a Pan tool
+/// drag let go while moving keeps the view sliding the same way, slower
+/// each frame, until it stops; off, the view stays where the drag left
+/// it (#831).
+#[test]
+fn a_flicked_pan_slides_on_with_pan_inertia() {
+    let (ctx, mut app, _) = setup();
+    assert!(!app.settings.pan_inertia);
+    app.set_tool(Tool::Pan);
+    let mut t = 10.0;
+    let mut flick = |app: &mut App| -> (f32, Vec<f32>) {
+        let mut at = Pos2::new(600.0, 500.0);
+        let mut step = |app: &mut App, events: Vec<Event>| {
+            t += 1.0 / 60.0;
+            wheel_frame(&ctx, app, t, events);
+        };
+        step(app, vec![Event::PointerMoved(at)]);
+        step(
+            app,
+            vec![button(at, true, PointerButton::Primary, Modifiers::NONE)],
+        );
+        for _ in 0..8 {
+            at.x += 20.0;
+            step(app, vec![Event::PointerMoved(at)]);
+        }
+        step(
+            app,
+            vec![button(at, false, PointerButton::Primary, Modifiers::NONE)],
+        );
+        let let_go = app.view.origin.x;
+        let mut moves = Vec::new();
+        for _ in 0..90 {
+            let before = app.view.origin.x;
+            step(app, Vec::new());
+            moves.push(app.view.origin.x - before);
+        }
+        (app.view.origin.x - let_go, moves)
+    };
+    let (slid, _) = flick(&mut app);
+    assert!(slid.abs() < 0.01, "off: no slide ({slid})");
+    app.settings.pan_inertia = true;
+    let (slid, moves) = flick(&mut app);
+    assert!(slid > 100.0, "slid on the way it went: {slid}");
+    let moving: Vec<f32> = moves.iter().copied().filter(|m| *m > 0.0).collect();
+    assert!(moving.len() > 5, "{moves:?}");
+    assert!(
+        moving.windows(2).all(|w| w[1] <= w[0] + 1e-3),
+        "easing out: {moves:?}"
+    );
+    assert_eq!(*moves.last().expect("frames"), 0.0, "and stopping");
+    assert!(!app.pan_inertia.sliding());
+}
+
 /// Ctrl+Z through a curve drawn with the Pen goes back to drawing it: the
 /// Pen is chosen again and a line goes on from the last node left,
 /// leaving along the mirror of its handle, with a curved preview; that

@@ -462,6 +462,10 @@ pub struct Settings {
     /// out (off, the default: it opens the context menu).
     #[serde(default)]
     pub pan_right_click_out: bool,
+    /// Options > Tools > Zoom/Pan > Pan inertia: a pan let go while
+    /// moving slides on and eases out (off by default, #831).
+    #[serde(default)]
+    pub pan_inertia: bool,
     /// Options > Customization > Color Palette.
     #[serde(default)]
     pub palette: PalettePrefs,
@@ -1905,6 +1909,7 @@ impl Default for Settings {
             smooth_zoom: true,
             wheel_zoom_step: default_wheel_zoom_step(),
             pan_right_click_out: false,
+            pan_inertia: false,
             palette: PalettePrefs::default(),
             palette_bars: Vec::new(),
             main_palette: String::new(),
@@ -2849,6 +2854,7 @@ mod tests {
         odd.wheel_zoom_step = f32::NAN;
         assert!((odd.wheel_zoom_factor() - 1.15).abs() < 1e-6);
         assert!(!partial.pan_right_click_out);
+        assert!(!partial.pan_inertia, "pan inertia is off at first (#831)");
         assert!(partial.snap.guides);
     }
 

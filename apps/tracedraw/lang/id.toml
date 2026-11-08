@@ -8223,3 +8223,5 @@ options.smooth_zoom = "Zoom halus" # mt
 options.smooth_zoom_tip = "Satu takik roda melakukan zoom dalam luncuran singkat, makin singkat makin cepat roda diputar. Mati: tiap takik langsung melakukan zoom." # mt
 options.wheel_zoom_step = "Zoom per takik roda:" # mt
 options.wheel_zoom_step_tip = "Seberapa besar satu takik roda mouse memperbesar atau memperkecil, dalam persen (awalnya 15 %)." # mt
+options.pan_inertia = "Inersia geser" # mt
+options.pan_inertia_tip = "Geseran yang dilepas saat penunjuk masih bergerak membuat tampilan terus meluncur lalu melambat. Klik atau roda menghentikannya. Awalnya mati." # mt

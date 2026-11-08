@@ -8223,3 +8223,5 @@ options.smooth_zoom = "平滑縮放" # mt
 options.smooth_zoom_tip = "滾輪每轉一格以短暫的平滑過渡縮放，滾輪轉得越快過渡越短。關閉：每格立即縮放。" # mt
 options.wheel_zoom_step = "每格滾輪縮放：" # mt
 options.wheel_zoom_step_tip = "滑鼠滾輪每轉一格放大或縮小的幅度，百分比（初始為 15 %）。" # mt
+options.pan_inertia = "平移慣性" # mt
+options.pan_inertia_tip = "在指標仍在移動時放開平移，檢視會繼續滑動並逐漸停下。按一下或捲動滾輪可停止。初始為關閉。" # mt

@@ -8223,3 +8223,5 @@ options.smooth_zoom = "Yumuşak yakınlaştırma" # mt
 options.smooth_zoom_tip = "Tekerleğin her çentiği kısa bir kaymayla yakınlaştırır; tekerlek hızlı döndükçe kayma kısalır. Kapalı: her çentik hemen yakınlaştırır." # mt
 options.wheel_zoom_step = "Tekerlek çentiği başına yakınlaştırma:" # mt
 options.wheel_zoom_step_tip = "Fare tekerleğinin bir çentiğinin ne kadar yakınlaştırıp uzaklaştırdığı, yüzde olarak (başta %15)." # mt
+options.pan_inertia = "Kaydırma ataleti" # mt
+options.pan_inertia_tip = "İşaretçi hâlâ hareket ederken bırakılan kaydırma, görünümün kaymaya devam edip yavaşça durmasını sağlar. Bir tıklama ya da tekerlek onu durdurur. Başta kapalı." # mt

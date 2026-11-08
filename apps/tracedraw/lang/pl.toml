@@ -8223,3 +8223,5 @@ options.smooth_zoom = "Płynne powiększanie" # mt
 options.smooth_zoom_tip = "Każdy ząbek kółka powiększa w krótkim płynnym ruchu, tym krótszym, im szybciej obraca się kółko. Wyłączone: każdy ząbek powiększa od razu." # mt
 options.wheel_zoom_step = "Powiększenie na ząbek kółka:" # mt
 options.wheel_zoom_step_tip = "Jak bardzo jeden ząbek kółka myszy powiększa lub pomniejsza, w procentach (na początku 15 %)." # mt
+options.pan_inertia = "Bezwładność przesuwania" # mt
+options.pan_inertia_tip = "Przesunięcie puszczone, gdy wskaźnik jeszcze się porusza, sprawia, że widok sunie dalej i łagodnie wyhamowuje. Kliknięcie lub kółko go zatrzymuje. Na początku wyłączone." # mt

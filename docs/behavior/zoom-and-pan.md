@@ -67,6 +67,19 @@
   as the page moves, the drag goes on after the middle button is let
   go, and releasing the left button makes the shape. Changing the tool
   drops an unfinished shape drag (#1923).
+- Pan inertia (Options > Tools > Zoom/Pan, off at first, #831): a pan
+  drag (the Pan tool, the middle button, two fingers) let go while
+  moving keeps the view sliding the same way and easing out. The drag's
+  speed is smoothed over its last frames (`0.4 * before + 0.6 * now`);
+  let go at 150 points a second or faster, with the pointer moved in the
+  last 0.06 s, the view slides on at that speed (at most 8000 points a
+  second), which falls by `exp(-dt / 0.3 s)` a frame; under 15 points a
+  second it stops, so a flick slides about 0.3 s worth of its speed. A
+  press, a wheel turn or a new pan drag stops it. A few float
+  operations a frame, and a repaint is asked only while it slides
+  (`view_motion::tests::a_flick_slides_on_and_eases_out`,
+  `view_motion::tests::no_slide_when_off_held_still_slow_or_stopped`,
+  `pick_drag_tests::a_flicked_pan_slides_on_with_pan_inertia`).
 
 ## Scrolling at the edge during a drag
 

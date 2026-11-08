@@ -1456,7 +1456,7 @@ impl App {
         // Middle button always pans. A shape being drawn with the left
         // button held follows the pointer over the moving page (#1923).
         if response.dragged_by(PointerButton::Middle) {
-            self.view.pan(response.drag_delta());
+            self.pan_drag(response.drag_delta(), &response.ctx);
             if matches!(self.drag, Drag::Box { .. })
                 && response.ctx.input(|i| i.pointer.primary_down())
             {
@@ -1650,7 +1650,7 @@ impl App {
             Tool::Zoom => self.zoom_input(response, p, screen, mods),
             Tool::Pan => {
                 if response.dragged() {
-                    self.view.pan(response.drag_delta());
+                    self.pan_drag(response.drag_delta(), &response.ctx);
                 }
             }
             t if t.is_box_tool() => self.box_input(response, p, mods),

@@ -41,6 +41,10 @@ deze waarden staan ook op de eigenschappenbalk van elk gereedschap.
 - [[options.wheel_zoom_step]] hoeveel één klik in- of uitzoomt, van 1 tot 100
   procent (eerst 15 %).
 - [[options.pan_right_button]] [[options.zoom_out]] of het [[options.context_menu]] (eerst).
+- [[options.pan_inertia]] (uit): een pan die u loslaat terwijl de aanwijzer nog
+  beweegt, laat de weergave dezelfde kant op doorglijden en uitlopen. Een klik
+  of het wiel stopt hem. Geldt voor het pangereedschap, de middelste knop en
+  twee vingers.
 
 ## Vrije hand/Bézier {#curves}
 

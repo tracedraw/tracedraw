@@ -42,6 +42,10 @@ Werkzeugs.
 - [[options.wheel_zoom_step]] wie stark eine Rastung hinein- oder herauszoomt,
   von 1 bis 100 Prozent (anfangs 15 %).
 - [[options.pan_right_button]] [[options.zoom_out]] oder das [[options.context_menu]] (anfangs).
+- [[options.pan_inertia]] (aus): ein Verschieben, das Sie loslassen, während sich
+  der Zeiger noch bewegt, lässt die Ansicht in dieselbe Richtung weitergleiten
+  und sanft auslaufen. Ein Klick oder das Mausrad hält sie an. Gilt für das
+  Verschiebewerkzeug, die mittlere Maustaste und zwei Finger.
 
 ## Freihand/Bézier {#curves}
 

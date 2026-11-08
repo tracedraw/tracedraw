@@ -38,6 +38,10 @@ property bar of each tool.
 - [[options.wheel_zoom_step]] how much one notch zooms in or out, from 1 to 100
   percent (15 % at first).
 - [[options.pan_right_button]] [[options.zoom_out]] or the [[options.context_menu]] (at first).
+- [[options.pan_inertia]] (off): a pan you let go of while the pointer is still
+  moving keeps the view sliding the same way and easing out, as a flick does.
+  A click or the wheel stops it. It works for the Pan tool, the middle button
+  and two fingers.
 
 ## Freehand/Bézier {#curves}
 

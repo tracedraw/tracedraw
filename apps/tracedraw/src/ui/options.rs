@@ -4015,6 +4015,12 @@ fn zoom_pan_page(app: &mut App, ui: &mut Ui) {
             "options.pan_context_menu_tip",
         ));
     });
+    // A flick keeps the view sliding (#831).
+    ui.checkbox(&mut app.settings.pan_inertia, tr("options.pan_inertia"))
+        .rich_tip(crate::ui::tips::pair(
+            "options.pan_inertia",
+            "options.pan_inertia_tip",
+        ));
 }
 
 fn rectangle_page(app: &mut App, ui: &mut Ui) {

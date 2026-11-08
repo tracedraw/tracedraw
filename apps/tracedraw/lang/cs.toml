@@ -8223,3 +8223,5 @@ options.smooth_zoom = "Plynulé zvětšování" # mt
 options.smooth_zoom_tip = "Každý zub kolečka zvětšuje krátkým plynulým pohybem, tím kratším, čím rychleji se kolečko točí. Vypnuto: každý zub zvětší hned." # mt
 options.wheel_zoom_step = "Zvětšení na zub kolečka:" # mt
 options.wheel_zoom_step_tip = "Jak moc jeden zub kolečka myši zvětší nebo zmenší, v procentech (zpočátku 15 %)." # mt
+options.pan_inertia = "Setrvačnost posunu" # mt
+options.pan_inertia_tip = "Posun puštěný, když se ukazatel ještě pohybuje, nechá zobrazení klouzat dál a plynule zastavit. Kliknutí nebo kolečko jej zastaví. Zpočátku vypnuto." # mt

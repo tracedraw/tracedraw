@@ -1484,6 +1484,8 @@ pub struct App {
     pub multipage: bool,
     /// The wheel zoom still gliding (#1648).
     pub zoom_glide: crate::view_motion::ZoomGlide,
+    /// The pan's slide after a flick (#831).
+    pub pan_inertia: crate::view_motion::PanInertia,
     /// The Font Sampler docker.
     pub font_sampler: crate::ui::font_sampler::FontSampler,
     /// View > Draw in Perspective.
@@ -2836,6 +2838,7 @@ impl App {
             page_sorter: false,
             multipage: false,
             zoom_glide: Default::default(),
+            pan_inertia: Default::default(),
             font_sampler: Default::default(),
             perspective: None,
             effect_picker: Default::default(),

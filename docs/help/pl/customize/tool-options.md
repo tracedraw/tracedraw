@@ -41,6 +41,10 @@ również na pasku właściwości każdego narzędzia.
 - [[options.wheel_zoom_step]] jak bardzo jeden ząbek powiększa lub pomniejsza,
   od 1 do 100 procent (na początku 15 %).
 - [[options.pan_right_button]] [[options.zoom_out]] lub [[options.context_menu]] (na początku).
+- [[options.pan_inertia]] (wyłączone): przesunięcie puszczone, gdy wskaźnik
+  jeszcze się porusza, sprawia, że widok sunie dalej w tę samą stronę i
+  łagodnie wyhamowuje. Kliknięcie lub kółko go zatrzymuje. Działa dla narzędzia
+  Przesuwanie, środkowego przycisku i dwóch palców.
 
 ## Odręczne/Bézier {#curves}
 
