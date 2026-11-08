@@ -1,7 +1,7 @@
 //! Fill and outline (stroke) properties of a shape.
 
 use crate::color::Color;
-use crate::geometry::{Affine, Point, Rect, Size, Vec2};
+use crate::geometry::{Affine, BezPath, Point, Rect, Size, Vec2};
 use serde::{Deserialize, Serialize};
 
 /// Fountain (gradient) fill geometry.
@@ -1953,6 +1953,54 @@ impl Mesh {
         Some(Color::rgb8(c(sum[0]), c(sum[1]), c(sum[2])))
     }
 
+    /// The outer edge of the grid, round its first row, last column, last
+    /// row and first column: the area the mesh paints (nothing outside
+    /// it). Empty for a mesh without cells.
+    pub fn outline(&self) -> BezPath {
+        let mut out = BezPath::new();
+        let (rows, cols) = (self.rows, self.cols);
+        if rows == 0 || cols == 0 || self.nodes.len() < ((rows + 1) * (cols + 1)) as usize {
+            return out;
+        }
+        let mut edges: Vec<crate::geometry::CubicBez> = Vec::new();
+        edges.extend((0..cols).filter_map(|c| self.edge(0, c, true)));
+        edges.extend((0..rows).filter_map(|r| self.edge(r, cols, false)));
+        edges.extend((0..cols).rev().filter_map(|c| {
+            self.edge(rows, c, true)
+                .map(|e| crate::geometry::CubicBez::new(e.p3, e.p2, e.p1, e.p0))
+        }));
+        edges.extend((0..rows).rev().filter_map(|r| {
+            self.edge(r, 0, false)
+                .map(|e| crate::geometry::CubicBez::new(e.p3, e.p2, e.p1, e.p0))
+        }));
+        if let Some(first) = edges.first() {
+            out.move_to(first.p0);
+        }
+        for e in &edges {
+            out.curve_to(e.p1, e.p2, e.p3);
+        }
+        out.close_path();
+        out
+    }
+
+    /// Whether the mesh paints all of `area` (in the mesh's space): what
+    /// lies outside its grid would be left empty. Within a thousandth of
+    /// the area, so a result whose edge runs along the grid's counts.
+    pub fn covers(&self, area: &BezPath) -> bool {
+        use crate::geometry::Shape as _;
+        let outline = self.outline();
+        if outline.elements().is_empty() {
+            return false;
+        }
+        let whole = crate::shaping::overlay(area, &BezPath::new(), crate::shaping::Op::Weld)
+            .area()
+            .abs();
+        let outside = crate::shaping::overlay(area, &outline, crate::shaping::Op::Trim)
+            .area()
+            .abs();
+        whole.is_finite() && outside.is_finite() && outside <= whole * 1e-3 + 1e-9
+    }
+
     /// The mesh as the grid sees it at row `v` and column `u` (fractions
     /// of the rows and columns, 0 to 1): position, colour and opacity
     /// mixed from the four nodes around it.
@@ -2309,6 +2357,29 @@ impl Fill {
     pub fn keep_in_place(&mut self, before: Rect, after: Rect) {
         if let Fill::Fountain(f) = self {
             f.keep_in_place(before, after);
+        }
+    }
+
+    /// The fill an object made in page space from others (Weld, Combine
+    /// and the other shaping operations), covering `area` (page space),
+    /// takes from this fill of an object whose transform was `t`. A mesh
+    /// fill's nodes go to page space with it while the mesh still covers
+    /// the whole result; a result reaching past the mesh's grid (which
+    /// paints nothing outside it) takes the mesh's mean colour instead, so
+    /// it is never left empty. Other fills stay as they are.
+    pub fn for_result(&self, t: Affine, area: &BezPath) -> Fill {
+        match self {
+            Fill::Mesh(m) => {
+                let placed = m.transformed(t);
+                if placed.covers(area) {
+                    Fill::Mesh(placed)
+                } else {
+                    placed
+                        .mean_color()
+                        .map_or(Fill::Solid(Color::Gray { v: 0.5 }), Fill::Solid)
+                }
+            }
+            f => f.clone(),
         }
     }
 

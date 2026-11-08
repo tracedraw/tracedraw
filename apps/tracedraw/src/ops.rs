@@ -1290,7 +1290,7 @@ impl App {
                 ShapeKind::Path { path, closed: true },
             );
             let look = own.as_ref().unwrap_or(&attrs);
-            frame.fill = look.fill.clone();
+            frame.fill = look.fill.for_result(look.transform, &frame.page_path());
             frame.stroke = look.stroke.clone();
             frame.opacity = look.opacity;
             let contents = held
@@ -1323,13 +1323,9 @@ impl App {
                 // The result lies in page space: a mesh fill's nodes, kept
                 // in the object's own space, go there with it, or the mesh
                 // sat away from the result and its colour was lost (live
-                // test of 0.41).
-                shape.fill = match &attrs.fill {
-                    tracedraw_core::Fill::Mesh(m) => {
-                        tracedraw_core::Fill::Mesh(m.transformed(attrs.transform))
-                    }
-                    f => f.clone(),
-                };
+                // test of 0.41). A result the mesh does not cover takes its
+                // mean colour.
+                shape.fill = attrs.fill.for_result(attrs.transform, &shape.page_path());
                 shape.stroke = attrs.stroke.clone();
                 shape.opacity = attrs.opacity;
                 shape
@@ -1372,7 +1368,7 @@ impl App {
                             closed: true,
                         },
                     );
-                    piece.fill = leaf.fill.clone();
+                    piece.fill = leaf.fill.for_result(leaf.transform, &piece.page_path());
                     piece.stroke = leaf.stroke.clone();
                     piece.opacity = leaf.opacity;
                     children.push(piece);
@@ -1397,7 +1393,7 @@ impl App {
                     closed: true,
                 },
             );
-            shape.fill = first.fill.clone();
+            shape.fill = first.fill.for_result(first.transform, &shape.page_path());
             shape.stroke = first.stroke.clone();
             shape.opacity = first.opacity;
             shape
@@ -1557,6 +1553,84 @@ mod smoke_tests {
             .iter()
             .all(|s| s.page_path().bounding_box().y1 <= 10.0 + 1e-6));
         assert!(app.doc().find_shape(g).is_none() && app.doc().find_shape(front).is_none());
+    }
+
+    /// A live test of 0.41: Weld or Combine of objects with a mesh fill
+    /// lost the colour. A result the mesh covers keeps the mesh, in its
+    /// place on the page; one reaching past the mesh's grid takes its mean
+    /// colour, as Combine does.
+    #[test]
+    fn weld_and_combine_keep_a_mesh_fill_or_its_mean_colour() {
+        use tracedraw_core::{command::Command, Color, Fill, Mesh, Shape};
+        let red = Color::rgb8(255, 0, 0);
+        let blue = Color::rgb8(0, 0, 255);
+        let meshed = |app: &mut App| {
+            let layer = app.active_layer().expect("layer");
+            let mut m = Mesh::new(Rect::new(0.0, 0.0, 20.0, 20.0), 1, 1, red);
+            for n in m.nodes.iter_mut().filter(|n| n.pos.x > 10.0) {
+                n.color = blue;
+            }
+            let mut s = Shape::new(
+                app.engine.new_shape_id(),
+                ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, 20.0, 20.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            s.fill = Fill::Mesh(m);
+            s.transform = tracedraw_core::geometry::Affine::translate((100.0, 100.0));
+            let id = s.id;
+            app.run(Command::AddShape { layer, shape: s });
+            id
+        };
+        let circle = |app: &mut App, r: Rect| {
+            let id = app
+                .new_shape(ShapeKind::Ellipse { rect: r, arc: None })
+                .expect("circle");
+            app.select(vec![id]);
+            app.apply_fill(Fill::Solid(Color::BLACK));
+            id
+        };
+        let colour_at = |app: &App, x: f64, y: f64| {
+            let pm = tracedraw_render::render_page_image(app.doc(), app.page, 25.4).expect("page");
+            let p = pm
+                .pixel(x as u32, (pm.height() as f64 - y) as u32)
+                .expect("pixel")
+                .demultiply();
+            (p.red(), p.green(), p.blue())
+        };
+        // Weld with a circle inside the square: the mesh, on the page.
+        let mut app = App::headless();
+        let sq = meshed(&mut app);
+        let inner = circle(&mut app, Rect::new(105.0, 105.0, 110.0, 110.0));
+        app.select(vec![inner, sq]);
+        app.shaping(crate::ops::Shaping::Weld);
+        let result = app.selected_shapes().first().cloned().expect("result");
+        assert!(matches!(result.fill, Fill::Mesh(_)), "{:?}", result.fill);
+        let (r, _, b) = colour_at(&app, 103.0, 110.0);
+        assert!(r > 200 && b < 60, "{r} {b}");
+        let (r, _, b) = colour_at(&app, 117.0, 110.0);
+        assert!(b > 200 && r < 60, "{r} {b}");
+        // Weld with a circle reaching out of it: the mesh's mean colour.
+        let mut app = App::headless();
+        let sq = meshed(&mut app);
+        let out = circle(&mut app, Rect::new(115.0, 105.0, 130.0, 115.0));
+        app.select(vec![out, sq]);
+        app.shaping(crate::ops::Shaping::Weld);
+        let result = app.selected_shapes().first().cloned().expect("result");
+        let purple = Color::rgb8(128, 0, 128);
+        assert_eq!(result.fill, Fill::Solid(purple));
+        assert_eq!(colour_at(&app, 127.0, 110.0), (128, 0, 128));
+        // Combine likewise, the meshed square on top giving its look.
+        let mut app = App::headless();
+        let other = circle(&mut app, Rect::new(140.0, 105.0, 150.0, 115.0));
+        let sq = meshed(&mut app);
+        app.select(vec![other, sq]);
+        app.combine();
+        let result = app.selected_shapes().first().cloned().expect("result");
+        assert_eq!(result.fill, Fill::Solid(purple));
+        assert_eq!(colour_at(&app, 145.0, 110.0), (128, 0, 128));
     }
 
     /// The sequence a user runs through: draw one of everything, then

@@ -10,6 +10,8 @@ full, row-by-row status.
 
 - Transparency: the outline of an object with a transparency no longer stays partly opaque, which on a rounded rectangle made part of the outline seem to vanish: the mask, drawn over the object's box, now goes on past the box as it is at its edge. The target (Apply to: Fill, Outline, All) is drawn on screen and in SVG and PDF exports: Outline fades the outline alone, Fill the fill alone, the other part as it is; an outline set behind the fill stays behind it.
 
+- Weld, Combine and the other shaping operations keep a mesh fill: the result takes the mesh in its place on the page when the mesh covers it, else the mesh's mean colour; Combine left the mesh in the wrong place and a result reaching past the mesh showed no colour there.
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).
