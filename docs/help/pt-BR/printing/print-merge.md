@@ -81,6 +81,17 @@ número do registro.
   os registros, ou informe um valor final para criar de uma vez os registros
   do início ao fim (15 a 25 com três dígitos cria onze registros, de 015 a
   025), sem arquivo de dados nenhum.
+- **[[merge.kind_random]]**: um número inteiro aleatório para cada registro,
+  sorteado [[merge.random_min]] um número [[merge.random_max]] outro,
+  completado com zeros até os [[merge.digits]] e escrito depois do
+  [[merge.prefix]] que você der (rifas, códigos). Com [[merge.random_unique]]
+  (ligado de início) nenhum número se repete; quando o intervalo tem menos
+  números que registros, a caixa de diálogo avisa e a mesclagem não é feita,
+  então amplie o intervalo ou permita repetições. [[merge.random_records]]
+  cria esse número de registros quando há menos, assim números aleatórios
+  dispensam arquivo de dados. Os números ficam os mesmos, na grade, nas
+  páginas mescladas e na impressão, até você clicar em [[merge.random_draw]]
+  em Configurar colunas.
 - **Imagem**: a célula tem o caminho de uma imagem. Um texto que contém apenas
   `<Field>` vira a imagem, do maior tamanho que caiba na caixa dele. Ponha esse
   texto dentro de uma moldura com [[menu.object.clip_frame_place_inside]] (uma moldura de

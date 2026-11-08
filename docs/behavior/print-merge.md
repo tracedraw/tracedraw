@@ -38,6 +38,22 @@ Record); Save Data Source, Finish and Cancel.
   made. An end the counter never reaches makes none (#791,
   `print_merge::tests::a_number_column_with_an_end_value_makes_its_records`,
   `pick_drag_tests::add_column_offers_a_number_range`).
+- Add Column with the type Random number asks for From and To (both
+  included, either order), Digits (zeros in front), Text before, No
+  repeats (on at first) and Records (0 at first: as many records are made
+  when there are fewer, at most 100,000, so no data file is needed). The
+  field keeps a seed, drawn from the clock when it is made and again with
+  Draw Again in Configure Columns; the numbers come from it with the
+  SplitMix64 generator, the same on every system, so the grid, the merged
+  pages and the print show the same numbers. With No repeats the numbers
+  are a Fisher-Yates shuffle of the range taken as far as the records go
+  (any range, memory for the records only). When the range holds fewer
+  numbers than there are records the dialog says so in red, the cells past
+  the range stay empty, and Create and Print Merged Document and Perform
+  Merge stop with that message and change nothing
+  (`print_merge::tests::a_random_number_field_draws_in_range_without_repeats`,
+  `ui::dialogs::tests::the_merge_dialog_adds_a_random_number_field`). A
+  sequence (start, step, digits, text before) is the Number type.
 - Configure Columns shows each field's name (edited in place), type,
   counter settings and the x that removes it.
 - View Single Record shows the current record as a form; View All

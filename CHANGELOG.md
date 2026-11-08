@@ -40,6 +40,8 @@ full, row-by-row status.
 
 - Print, Layout: several pages per sheet can go in the order Cut and stack, numbering down the stack for merged tickets and cards: each place on the sheet takes the next page on the next sheet, so the piles cut from the stacked sheets each run in order (100 records 4 up: 1, 26, 51 and 76 on the first sheet). The other orders are unchanged.
 
+- Print Merge: a Random number field, for raffle tickets and codes without a data file: From and To, Digits, Text before and No repeats, and Records to make that many records at once. The numbers stay the same in the grid, the merged pages and the print until Draw Again; a range too small for No repeats is said in the dialog and the merge is not made. Numbers counting from a start by a step are the Number field, as before.
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

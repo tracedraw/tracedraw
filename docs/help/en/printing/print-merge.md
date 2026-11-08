@@ -77,6 +77,16 @@ number.
   number, or give an ending value to make the records from the start to the
   end at once (15 to 25 in three digits makes eleven records, 015 to 025),
   with no data file at all.
+- **[[merge.kind_random]]**: a random whole number for each record, drawn
+  [[merge.random_min]] one number [[merge.random_max]] another, padded with
+  zeros to its [[merge.digits]] and written after the [[merge.prefix]] you
+  give (raffle tickets, codes). With [[merge.random_unique]] (on at first)
+  no number comes twice; when the range holds fewer numbers than there are
+  records, the dialog says so and the merge is not made, so widen the range
+  or allow repeats. [[merge.random_records]] makes that many records when
+  there are fewer, so random numbers need no data file. The numbers stay
+  the same, in the grid, the merged pages and the print, until you click
+  [[merge.random_draw]] in Configure columns.
 - **Picture**: the cell holds the path of a picture. A text holding only
   `<Field>` becomes the picture, as large as fits its box. Put that text
   inside a frame with [[menu.object.clip_frame_place_inside]] (a photo frame) and the

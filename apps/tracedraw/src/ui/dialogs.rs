@@ -830,6 +830,8 @@ pub struct PrintMergeState {
     /// step (0 when "continually increment" is off), digits, and the end
     /// value when one is set (#791).
     pub adding_number: NumberForm,
+    /// The Add Column form's settings for a random number field.
+    pub adding_random: RandomForm,
     /// The Go to Record field.
     pub go_to: String,
     /// The folder picture cells are looked for in first (the Print Merge
@@ -839,6 +841,33 @@ pub struct PrintMergeState {
     pub cells: Option<crate::print_merge::CellRange>,
     /// A drag selecting in the grid: what it selects and where it began.
     pub grid_drag: Option<(crate::print_merge::GridDrag, (usize, usize))>,
+}
+
+/// The settings of a random number field being added (see
+/// [`PrintMergeState::adding_random`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RandomForm {
+    pub min: i64,
+    pub max: i64,
+    pub digits: u32,
+    pub prefix: String,
+    pub unique: bool,
+    /// Records to make when there are fewer (0: none), so random numbers
+    /// merge without a data file.
+    pub records: usize,
+}
+
+impl Default for RandomForm {
+    fn default() -> Self {
+        RandomForm {
+            min: 1,
+            max: 1000,
+            digits: 1,
+            prefix: String::new(),
+            unique: true,
+            records: 0,
+        }
+    }
 }
 
 /// The counter of a number field being added (see
@@ -5864,12 +5893,13 @@ fn print_tab_issues(
     }
 }
 
-fn merge_kind_names() -> [String; 4] {
+fn merge_kind_names() -> [String; 5] {
     [
         tr("merge.kind_text"),
         tr("merge.kind_number"),
         tr("merge.kind_image"),
         tr("merge.kind_qr"),
+        tr("merge.kind_random"),
     ]
 }
 
@@ -5884,8 +5914,49 @@ fn merge_kind_of(index: usize) -> crate::print_merge::FieldKind {
         },
         2 => FieldKind::Image,
         3 => FieldKind::Qr,
+        4 => {
+            let f = RandomForm::default();
+            FieldKind::Random {
+                min: f.min,
+                max: f.max,
+                digits: f.digits,
+                prefix: f.prefix,
+                unique: f.unique,
+                seed: crate::print_merge::new_seed(),
+            }
+        }
         _ => FieldKind::Text,
     }
+}
+
+/// A random number field's range, digits, text before and No repeats.
+fn merge_random_fields(
+    ui: &mut egui::Ui,
+    min: &mut i64,
+    max: &mut i64,
+    digits: &mut u32,
+    prefix: &mut String,
+    unique: &mut bool,
+) {
+    ui.horizontal(|ui| {
+        ui.add(crate::ui::field::NumField::new(min).prefix(tr("merge.random_min")))
+            .rich_tip(crate::ui::tips::keyed("merge.random_min"));
+        ui.add(crate::ui::field::NumField::new(max).prefix(tr("merge.random_max")))
+            .rich_tip(crate::ui::tips::keyed("merge.random_max"));
+    });
+    ui.horizontal(|ui| {
+        ui.add(
+            crate::ui::field::NumField::new(digits)
+                .range(1..=12)
+                .prefix(tr("merge.digits")),
+        )
+        .rich_tip(crate::ui::tips::keyed("merge.digits"));
+        ui.label(tr("merge.prefix"));
+        ui.add(egui::TextEdit::singleline(prefix).desired_width(90.0))
+            .rich_tip(crate::ui::tips::keyed("merge.prefix"));
+    });
+    ui.checkbox(unique, tr("merge.random_unique"))
+        .rich_tip(crate::ui::tips::keyed("merge.random_unique"));
 }
 
 /// A number field's Format: 1, 2, 3 / A, B, C / a, b, c / Custom, and for
@@ -6068,6 +6139,25 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
                         .rich_tip_always(crate::ui::tips::keyed("merge.end_value"));
                     });
                 }
+                // A random number field: its range and, with no data
+                // file, how many records to make.
+                if *kind == 4 {
+                    let f = &mut st.adding_random;
+                    merge_random_fields(
+                        ui,
+                        &mut f.min,
+                        &mut f.max,
+                        &mut f.digits,
+                        &mut f.prefix,
+                        &mut f.unique,
+                    );
+                    ui.add(
+                        crate::ui::field::NumField::new(&mut f.records)
+                            .range(0..=crate::print_merge::MAX_RANGE_RECORDS)
+                            .prefix(tr("merge.random_records")),
+                    )
+                    .rich_tip(crate::ui::tips::keyed("merge.random_records"));
+                }
                 ui.horizontal(|ui| {
                     let ok = !name.trim().is_empty();
                     if ui
@@ -6099,6 +6189,19 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
                         f.digits,
                         f.format,
                         (f.use_end && f.increment).then_some(f.end),
+                    );
+                } else if kind == 4 {
+                    let f = st.adding_random.clone();
+                    pm::add_random_field(
+                        st,
+                        &name,
+                        f.min,
+                        f.max,
+                        f.digits,
+                        &f.prefix,
+                        f.unique,
+                        pm::new_seed(),
+                        f.records,
                     );
                 } else {
                     pm::add_field(st, &name);
@@ -6147,6 +6250,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
                                         FieldKind::Number { .. } => 1,
                                         FieldKind::Image => 2,
                                         FieldKind::Qr => 3,
+                                        FieldKind::Random { .. } => 4,
                                     };
                                     let mut pick = cur;
                                     crate::ui::keynav::ComboBox::from_id_salt(("merge_kind", i))
@@ -6191,6 +6295,24 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
                                         )
                                         .rich_tip_always(crate::ui::tips::keyed("merge.digits"));
                                     }
+                                    if let FieldKind::Random {
+                                        min,
+                                        max,
+                                        digits,
+                                        prefix,
+                                        unique,
+                                        seed,
+                                    } = &mut st.kinds[i]
+                                    {
+                                        merge_random_fields(ui, min, max, digits, prefix, unique);
+                                        if ui
+                                            .button(tr("merge.random_draw"))
+                                            .rich_tip(crate::ui::tips::keyed("merge.random_draw"))
+                                            .clicked()
+                                        {
+                                            *seed = pm::new_seed();
+                                        }
+                                    }
                                 });
                                 ui.separator();
                             }
@@ -6200,6 +6322,11 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
         }
         if let Some(i) = remove_field {
             pm::remove_field(st, i);
+        }
+        // A range without repeats too small for the records: said here,
+        // and the merge is not made.
+        if let Err(why) = pm::check(st) {
+            ui.label(egui::RichText::new(why).color(egui::Color32::from_rgb(0xC4, 0x2B, 0x1C)));
         }
         st.current = st.current.min(st.rows.len().saturating_sub(1));
         // The records: a grid, or the current one as a form.
@@ -6223,7 +6350,7 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
                                     c: usize,
                                     w: f32|
                          -> Option<egui::Response> {
-                            if matches!(pm::kind_of(st, c), FieldKind::Number { .. }) {
+                            if pm::kind_of(st, c).is_generated() {
                                 let v = values
                                     .get(r)
                                     .and_then(|row| row.get(c))
@@ -7821,6 +7948,82 @@ pub(crate) mod tests {
         assert_eq!(tabs(&app).len(), 1, "{:?}", tabs(&app));
         app.insert_text("Mango\t89,-");
         assert_eq!(tabs(&app).len(), 1, "{:?}", tabs(&app));
+    }
+
+    /// Add Column with Random number makes the field and, with Records,
+    /// the records, with no data file; the grid shows the numbers drawn,
+    /// Configure Columns edits the field and Draw Again draws new ones; a
+    /// range too small for No repeats is said in the dialog.
+    #[test]
+    fn the_merge_dialog_adds_a_random_number_field() {
+        use crate::print_merge::FieldKind;
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let mut st = PrintMergeState {
+            adding: Some(("Ticket".into(), 4)),
+            ..Default::default()
+        };
+        st.adding_random = RandomForm {
+            min: 1,
+            max: 50,
+            digits: 3,
+            prefix: "T".into(),
+            unique: true,
+            records: 20,
+        };
+        app.dialog = Dialog::PrintMerge(st);
+        let mut texts = Vec::new();
+        for _ in 0..3 {
+            texts = frame_texts(&ctx, &mut app, Vec::new());
+        }
+        let add = texts
+            .iter()
+            .find(|(t, _)| *t == tr("merge.add"))
+            .map(|(_, p)| *p)
+            .expect("Add is drawn");
+        let press = |pressed| egui::Event::PointerButton {
+            pos: add,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame_texts(&ctx, &mut app, vec![egui::Event::PointerMoved(add)]);
+        frame_texts(&ctx, &mut app, vec![press(true)]);
+        frame_texts(&ctx, &mut app, vec![press(false)]);
+        let texts = frame_texts(&ctx, &mut app, Vec::new());
+        let Dialog::PrintMerge(st) = &mut app.dialog else {
+            panic!("the dialog closed");
+        };
+        assert_eq!(st.headers, ["Ticket"]);
+        assert_eq!(st.rows.len(), 20);
+        assert!(matches!(
+            st.kinds[0],
+            FieldKind::Random {
+                min: 1,
+                max: 50,
+                digits: 3,
+                unique: true,
+                ..
+            }
+        ));
+        let drawn = crate::print_merge::values(st);
+        assert!(drawn
+            .iter()
+            .all(|r| r[0].starts_with('T') && r[0].len() == 4));
+        assert!(
+            texts.iter().any(|(t, _)| *t == drawn[0][0]),
+            "the grid shows them"
+        );
+        // Too small a range for No repeats: said in the dialog.
+        if let FieldKind::Random { max, .. } = &mut st.kinds[0] {
+            *max = 10;
+        }
+        st.configure = true;
+        let why = crate::print_merge::check(st).expect_err("too small");
+        let texts = frame_texts(&ctx, &mut app, Vec::new());
+        assert!(texts.iter().any(|(t, _)| *t == why), "{why}");
+        assert!(texts.iter().any(|(t, _)| *t == tr("merge.random_draw")));
+        assert!(texts.iter().any(|(t, _)| *t == tr("merge.random_unique")));
     }
 
     /// A drag from one cell of the Print Merge grid to another selects the
