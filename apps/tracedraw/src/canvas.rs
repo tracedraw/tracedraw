@@ -1675,7 +1675,10 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
             .rotation_center()
             .map(|c| app.view.to_screen(c))
             .unwrap_or(r.center());
-        // The centre of rotation: a ring with a dot.
+        // The centre of rotation: a ring with a dot, black on a white
+        // edge so it shows on a dark drawing (#1664).
+        painter.circle_stroke(c, 8.0, EStroke::new(4.0, Color32::WHITE));
+        painter.circle_filled(c, 3.0, Color32::WHITE);
         painter.circle_stroke(c, 8.0, EStroke::new(2.0, Color32::BLACK));
         painter.circle_filled(c, 2.0, Color32::BLACK);
         for (h, p) in app.handle_positions(bounds) {
@@ -1722,10 +1725,31 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
 /// A rotate mode handle at `p`: a curved double arrow around each
 /// corner, a straight double arrow along each side (sideways at the top
 /// and bottom, up and down at the left and right). Black, 2 points thick,
-/// with solid heads.
+/// with solid heads, over a white edge so it shows on a dark drawing
+/// (#1664).
 fn draw_rotate_handle(painter: &Painter, p: Pos2, h: Handle) {
-    let ink = Color32::BLACK;
-    let stroke = EStroke::new(2.0, ink);
+    draw_rotate_arrows(
+        painter,
+        p,
+        h,
+        Color32::WHITE,
+        4.0,
+        EStroke::new(1.5, Color32::WHITE),
+    );
+    draw_rotate_arrows(painter, p, h, Color32::BLACK, 2.0, EStroke::NONE);
+}
+
+/// One pass of [`draw_rotate_handle`]: its arrows in `ink`, `width` thick,
+/// the heads with an `edge`.
+fn draw_rotate_arrows(
+    painter: &Painter,
+    p: Pos2,
+    h: Handle,
+    ink: Color32,
+    width: f32,
+    edge: EStroke,
+) {
+    let stroke = EStroke::new(width, ink);
     // A solid head with its tip at `tip`, pointing along `dir`.
     let head = |tip: Pos2, dir: egui::Vec2| {
         let d = dir.normalized();
@@ -1733,7 +1757,7 @@ fn draw_rotate_handle(painter: &Painter, p: Pos2, h: Handle) {
         epaint::PathShape::convex_polygon(
             vec![tip, tip - d * 4.5 + n * 3.0, tip - d * 4.5 - n * 3.0],
             ink,
-            EStroke::NONE,
+            edge,
         )
     };
     if h.is_corner() {
