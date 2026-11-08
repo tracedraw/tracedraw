@@ -1019,21 +1019,28 @@ impl Default for NodePrefs {
 
 impl NodePrefs {
     /// The pick distance in screen pixels, kept sensible and never less
-    /// than the node marker reaches.
+    /// than the node marker reaches, out to the corners of its square,
+    /// and a pixel more: larger nodes take a press on all of their marker
+    /// (#1935).
     pub fn pick_px(&self) -> f64 {
         let set = if self.pick_distance.is_finite() {
             self.pick_distance.clamp(2.0, 20.0)
         } else {
             6.0
         };
-        f64::from(set.max(self.size.px() / 2.0 + 1.0))
+        let corner = f64::from(self.size.px()) / 2.0 * std::f64::consts::SQRT_2;
+        f64::from(set).max(corner + 1.0)
     }
 
     /// How near a press must land on a control handle's end to take it:
-    /// the pick distance, and never less than its arrow head is long, so
-    /// the whole head takes a press (#1643).
+    /// the pick distance, and never less than the far corners of its
+    /// arrow head lie from its tip (the head is as long as a node is
+    /// wide and half as wide on each side, so they lie at the root of
+    /// 5/4 of its length) and a pixel more, so the whole head takes a
+    /// press and the reach grows with the node size (#1643, #1935).
     pub fn handle_pick_px(&self) -> f64 {
-        self.pick_px().max(f64::from(self.size.handle_head()))
+        let head = f64::from(self.size.handle_head());
+        self.pick_px().max(head * 1.25f64.sqrt() + 1.0)
     }
 
     /// The object click distance in screen pixels, kept sensible

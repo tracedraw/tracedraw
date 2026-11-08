@@ -1004,7 +1004,9 @@ impl App {
         out
     }
 
-    /// Nearest segment of a selected curve within a few pixels.
+    /// Nearest segment of a selected curve within a few pixels, or
+    /// anywhere on its outline as drawn: a thick outline takes a press
+    /// out to its edge, not only near the path down its middle (#1935).
     pub(crate) fn segment_at(&self, p: Point) -> Option<(ShapeId, usize, f64)> {
         let tol = (self.settings.nodes.pick_px() + 1.0) / self.view.zoom as f64;
         let mut best: Option<(ShapeId, usize, f64, f64)> = None;
@@ -1012,9 +1014,14 @@ impl App {
             let Some((path, _, t)) = self.path_of(*id) else {
                 continue;
             };
+            let reach = self
+                .doc()
+                .find_shape(*id)
+                .map(|s| crate::interaction::outline_reach(s, t))
+                .unwrap_or(0.0);
             // Measured on the page, as the nodes are.
             if let Some((i, tt, d)) = nodes::nearest_segment(&(t * path), p) {
-                if d <= tol && best.map(|b| d < b.3).unwrap_or(true) {
+                if d <= tol + reach && best.map(|b| d < b.3).unwrap_or(true) {
                     best = Some((*id, i, tt, d));
                 }
             }

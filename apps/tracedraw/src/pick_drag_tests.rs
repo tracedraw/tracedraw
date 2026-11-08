@@ -21675,6 +21675,128 @@ fn the_object_click_distance_is_a_setting() {
     assert_eq!(app.hit_test(px(&app, 2.5)), None);
 }
 
+/// How far an outline reaches from its path on the page: half its width,
+/// scaled with the object when it scales with it, all of it outside a
+/// closed object whose outline lies outside, the widest node of a
+/// variable outline (#1935).
+#[test]
+fn an_outline_reaches_as_far_as_it_is_drawn() {
+    use crate::interaction::outline_reach;
+    use tracedraw_core::{Color, OutlinePosition, Stroke, WidthNode};
+    let mut path = tracedraw_core::BezPath::new();
+    path.move_to((0.0, 0.0));
+    path.line_to((10.0, 0.0));
+    let mut s = tracedraw_core::Shape::new(
+        ShapeId(1),
+        ShapeKind::Path {
+            path,
+            closed: false,
+        },
+    );
+    s.stroke = None;
+    assert_eq!(outline_reach(&s, Affine::IDENTITY), 0.0);
+    let mut st = Stroke::new(Color::BLACK, 4.0);
+    st.scale_with_object = false;
+    s.stroke = Some(st.clone());
+    assert_eq!(outline_reach(&s, Affine::IDENTITY), 2.0);
+    // Fixed width: the object's scale does not count.
+    assert_eq!(outline_reach(&s, Affine::scale(2.0)), 2.0);
+    st.scale_with_object = true;
+    s.stroke = Some(st.clone());
+    assert!((outline_reach(&s, Affine::scale(2.0)) - 4.0).abs() < 1e-9);
+    // Outside the path: all of it on a closed object; an open one keeps
+    // its outline centred.
+    st.scale_with_object = false;
+    st.position = OutlinePosition::Outside;
+    s.stroke = Some(st.clone());
+    assert_eq!(outline_reach(&s, Affine::IDENTITY), 2.0);
+    let mut closed = tracedraw_core::Shape::new(
+        ShapeId(2),
+        ShapeKind::Rect {
+            rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+            radius: 0.0,
+            corners: None,
+        },
+    );
+    closed.stroke = Some(st.clone());
+    assert_eq!(outline_reach(&closed, Affine::IDENTITY), 4.0);
+    // A variable outline: its widest side.
+    st.position = OutlinePosition::Center;
+    st.widths = vec![WidthNode::symmetric(0.0, 4.0), WidthNode::symmetric(0.5, 9.0)];
+    s.stroke = Some(st);
+    assert_eq!(outline_reach(&s, Affine::IDENTITY), 4.5);
+}
+
+/// The Shape tool takes a segment of a curve with a thick outline where
+/// the outline shows, out to its edge, not only near the path down its
+/// middle (#1935).
+#[test]
+fn a_thick_outline_takes_a_press_on_its_segment_out_to_its_edge() {
+    use tracedraw_core::{Color, Command, Stroke};
+    let (ctx, mut app, _) = setup();
+    let id = line_curve(&ctx, &mut app);
+    let mut st = Stroke::new(Color::BLACK, 10.0);
+    st.scale_with_object = false;
+    app.run(Command::SetStroke {
+        shapes: vec![id],
+        stroke: Some(st),
+    });
+    app.set_tool(Tool::Shape);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let zoom = app.view.zoom as f64;
+    let pick = (app.settings.nodes.pick_px() + 1.0) / zoom;
+    // Inside the outline's 5 mm half width, beyond the pick distance.
+    let inside = Point::new(125.0, 100.0 + 4.5);
+    assert!(4.5 > pick, "the view is zoomed in enough: {pick}");
+    assert_eq!(app.segment_at(inside).map(|s| s.0), Some(id));
+    // Beyond its edge and the pick distance: nothing.
+    let beyond = Point::new(125.0, 100.0 + 5.0 + pick + 1.0);
+    assert_eq!(app.segment_at(beyond), None);
+    // The Pick tool picks it there too.
+    assert_eq!(app.hit_test(inside), Some(id));
+}
+
+/// A node is taken by a press on the corner of its square, and a control
+/// handle by one on the corner of its arrow head: the reach grows with
+/// the node size (#1935).
+#[test]
+fn nodes_and_handles_are_taken_on_their_whole_marker() {
+    use crate::settings::NodeSize;
+    use tracedraw_core::nodes::Which;
+    let (ctx, mut app, _) = setup();
+    let mut path = tracedraw_core::BezPath::new();
+    path.move_to((100.0, 100.0));
+    path.curve_to((110.0, 130.0), (140.0, 130.0), (150.0, 100.0));
+    let id = app
+        .new_shape(ShapeKind::Path {
+            path,
+            closed: false,
+        })
+        .expect("curve");
+    app.select(vec![id]);
+    app.set_tool(Tool::Shape);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let zoom = app.view.zoom as f64;
+    let node = Point::new(150.0, 100.0);
+    // The corner of a large node's 11 px square: 7.8 px from its middle.
+    let corner = node + Vec2::new(5.5, 5.5) / zoom;
+    app.settings.nodes.size = NodeSize::Large;
+    assert_eq!(app.node_at(corner).map(|h| h.shape), Some(id));
+    // Small nodes keep the pick distance (6 px).
+    app.settings.nodes.size = NodeSize::Small;
+    assert_eq!(app.node_at(corner).map(|h| h.index), None);
+    // A small node's handle head (7 px long, 3.5 px each side): its far
+    // corner, 7.8 px from the tip, takes the handle; 10 px along it does
+    // not.
+    app.node_selection = vec![(id, 0)];
+    let ctrl = Point::new(110.0, 130.0);
+    let u = (Point::new(100.0, 100.0) - ctrl) / (Point::new(100.0, 100.0) - ctrl).hypot();
+    let n = Vec2::new(-u.y, u.x);
+    let head_corner = ctrl + u * (7.0 / zoom) + n * (3.5 / zoom);
+    assert_eq!(app.ctrl_handle_at(head_corner), Some((id, 0, Which::Out)));
+    assert_eq!(app.ctrl_handle_at(ctrl + u * (10.0 / zoom)), None);
+}
+
 /// With Edit Fill or Outline Pen open, the wheel over the drawing
 /// (outside the dialog) still zooms it; a click there does nothing and
 /// the dialog stays (#1035).

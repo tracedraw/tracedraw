@@ -265,22 +265,35 @@ pub fn release_chorded_left(ctx: &egui::Context, raw: &mut egui::RawInput) {
     });
 }
 
-/// Half the width of the outline of `s` (in page space) as it is drawn:
-/// its own width, scaled by the object's scale when the outline scales
-/// with the object, as the renderer draws it; 0 without an outline.
-fn outline_half_width(s: &tracedraw_core::Shape) -> f64 {
+/// How far the outline of `s` reaches from its path on the page, as it
+/// is drawn: half its width, all of it for a closed object whose outline
+/// lies inside or outside the path, the widest side of a variable-width
+/// outline's nodes; scaled by `to_page` (the object's transform to the
+/// page) when the outline scales with the object, as the renderer draws
+/// it; 0 without an outline. A click within this, plus the pick
+/// distance, picks the object (#1678, #1935).
+pub(crate) fn outline_reach(s: &tracedraw_core::Shape, to_page: Affine) -> f64 {
     let Some(stroke) = &s.stroke else {
         return 0.0;
     };
     let scale = if stroke.scale_with_object {
-        let c = s.transform.as_coeffs();
+        let c = to_page.as_coeffs();
         (c[0] * c[3] - c[1] * c[2]).abs().sqrt()
     } else {
         1.0
     };
-    let half = stroke.width * scale / 2.0;
-    if half.is_finite() {
-        half.max(0.0)
+    let open = matches!(s.kind, ShapeKind::Path { closed: false, .. });
+    let mut reach = match stroke.position {
+        tracedraw_core::OutlinePosition::Center => stroke.width / 2.0,
+        _ if open => stroke.width / 2.0,
+        _ => stroke.width,
+    };
+    for n in &stroke.widths {
+        reach = reach.max(n.left).max(n.right);
+    }
+    let r = reach * scale;
+    if r.is_finite() {
+        r.max(0.0)
     } else {
         0.0
     }
@@ -496,7 +509,7 @@ impl App {
         // A thick outline is picked anywhere it shows, out to the
         // tolerance beyond its visible edge, not only near its centre
         // line (#1678); a thin one within the tolerance as before.
-        let half = outline_half_width(s);
+        let half = outline_reach(s, s.transform);
         if !self
             .visual_bounds(s)
             .inflate(tol + half, tol + half)

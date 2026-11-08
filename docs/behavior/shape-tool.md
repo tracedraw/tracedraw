@@ -20,8 +20,16 @@ each ending in a solid arrow head with a white edge at its control point
 (so they show on any colour, #670) (the curve tools show the handles of the curve
 being drawn the same way). The arrow head is as long and as wide as a
 node marker: 7, 9 or 11 pixels with Node size Small, Medium or Large
-(`NodeSize::handle_head`, #1643). The arrow showing the curve's
-direction is off by default (Options > Nodes and Handles).
+(`NodeSize::handle_head`, #1643). A press takes a node out to the
+corners of its marker and a pixel beyond, and a control handle out to
+the far corners of its arrow head and a pixel beyond (the pick distance
+when that is more), so the reach grows with the node size; a press on a
+curve with a thick outline takes its segment anywhere the outline
+shows, out to its edge and the pick distance beyond (#1935,
+`pick_drag_tests::nodes_and_handles_are_taken_on_their_whole_marker`,
+`pick_drag_tests::a_thick_outline_takes_a_press_on_its_segment_out_to_its_edge`).
+The arrow showing the curve's direction is off by default (Options >
+Nodes and Handles).
 
 With several objects selected, the one picked last shows its outline in
 the node colour and the others in the secondary node colour (red by
