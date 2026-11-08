@@ -1109,6 +1109,12 @@ pub enum Dialog {
     PageSpacing {
         value: f64,
     },
+    /// View > Pages in Multipage View (#1440): every page, or the pages
+    /// of `range` ("1-3, 7").
+    MultipagePages {
+        all: bool,
+        range: String,
+    },
     InsertPage {
         count: u32,
         after: bool,
@@ -1828,6 +1834,61 @@ pub fn show(app: &mut App, ctx: &Context) {
                 });
                 if ok_cancel(ui, &mut close) {
                     app.set_page_spacing(u.to_mm(*value));
+                }
+            });
+        }
+        Dialog::MultipagePages { all, range } => {
+            let count = app.doc().pages.len();
+            window(ctx, tr("dialog.multipage_pages")).show(ctx, |ui| {
+                ui.radio_value(all, true, tr("dialog.multipage_all_pages"))
+                    .rich_tip(crate::ui::tips::pair(
+                        "dialog.multipage_all_pages",
+                        "dialog.multipage_all_pages_desc",
+                    ));
+                ui.horizontal(|ui| {
+                    ui.radio_value(all, false, tr("dialog.multipage_some_pages"))
+                        .rich_tip(crate::ui::tips::pair(
+                            "dialog.multipage_some_pages",
+                            "dialog.multipage_some_pages_desc",
+                        ));
+                    let field = ui
+                        .add(
+                            egui::TextEdit::singleline(range)
+                                .hint_text("1-3, 7")
+                                .desired_width(140.0),
+                        )
+                        .rich_tip(crate::ui::tips::pair(
+                            "dialog.multipage_some_pages",
+                            "dialog.multipage_some_pages_desc",
+                        ));
+                    if field.changed() {
+                        *all = false;
+                    }
+                });
+                let shown = tracedraw_core::document::parse_page_range(range, count).len();
+                let bad = !*all && shown == 0;
+                ui.label(
+                    egui::RichText::new(if bad {
+                        tr("dialog.multipage_no_page")
+                    } else if *all {
+                        trf("dialog.multipage_n_pages", &[("n", &count.to_string())])
+                    } else {
+                        trf("dialog.multipage_n_pages", &[("n", &shown.to_string())])
+                    })
+                    .size(12.0)
+                    .color(Tokens::text_dim()),
+                );
+                if ok_cancel(ui, &mut close) {
+                    if bad {
+                        // Nothing to show: the dialog stays open.
+                        close = false;
+                    } else {
+                        let r = if *all { String::new() } else { range.clone() };
+                        app.set_multipage_pages(&r);
+                        if !app.multipage {
+                            app.set_multipage(true);
+                        }
+                    }
                 }
             });
         }
@@ -7716,6 +7777,10 @@ pub(crate) mod tests {
             },
             Dialog::GoToPage { page: 1 },
             Dialog::PageSpacing { value: 30.0 },
+            Dialog::MultipagePages {
+                all: false,
+                range: "1-2".into(),
+            },
             Dialog::InsertPage {
                 count: 1,
                 after: true,
@@ -8111,6 +8176,50 @@ pub(crate) mod tests {
         assert_eq!(app.doc().metadata.page_spacing, Some(15.0));
         app.undo();
         assert_eq!(app.page_spacing(), 30.0);
+    }
+
+    /// View > Pages in Multipage View: OK keeps the range in the drawing
+    /// (one undo step) and turns the view on; a range naming no page of
+    /// the drawing keeps the dialog open; All pages clears it (#1440).
+    #[test]
+    fn the_multipage_pages_dialog_keeps_the_range_and_shows_the_view() {
+        let mut app = App::headless();
+        for _ in 0..4 {
+            app.insert_page(true);
+        }
+        assert_eq!(app.doc().pages.len(), 5);
+        let ctx = crate::theme::ui_context();
+        app.dialog = Dialog::MultipagePages {
+            all: false,
+            range: "9-12".into(),
+        };
+        frame(&ctx, &mut app, false);
+        frame(&ctx, &mut app, true);
+        assert!(
+            matches!(app.dialog, Dialog::MultipagePages { .. }),
+            "no page in the range: the dialog stays"
+        );
+        app.dialog = Dialog::MultipagePages {
+            all: false,
+            range: "2-3, 5".into(),
+        };
+        frame(&ctx, &mut app, false);
+        frame(&ctx, &mut app, true);
+        assert!(matches!(app.dialog, Dialog::None));
+        assert!(app.multipage);
+        assert_eq!(app.doc().metadata.multipage_pages, "2-3, 5");
+        assert_eq!(app.multipage_page_indices(), vec![1, 2, 4]);
+        assert_eq!(app.multipage_layout().len(), 3);
+        app.dialog = Dialog::MultipagePages {
+            all: true,
+            range: "2-3, 5".into(),
+        };
+        frame(&ctx, &mut app, false);
+        frame(&ctx, &mut app, true);
+        assert_eq!(app.doc().metadata.multipage_pages, "");
+        assert_eq!(app.multipage_layout().len(), 5);
+        app.undo();
+        assert_eq!(app.doc().metadata.multipage_pages, "2-3, 5");
     }
 
     #[test]

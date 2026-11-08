@@ -49,6 +49,37 @@ off too and is lit while it is on (#1019).
 - Printing and export work on pages, not on this view, so the spacing
   does not change them.
 
+## Choosing the pages
+
+- View > Pages in Multipage View and the page bar's button right after
+  the Multipage View button (two pages with a tick, lit while a range is
+  chosen) open a dialog: All pages, or Pages: with a range of page
+  numbers such as `1-3, 7` (single pages and ranges, either way round,
+  commas or semicolons between; pages past the end are left out). It
+  tells how many pages the range shows; a range naming no page of the
+  drawing keeps the dialog open. OK keeps the range and turns the view
+  on (#1440).
+- The range is a document property (`Metadata::multipage_pages`, the
+  text as typed, empty for every page), saved in `.tdraw` files only
+  once set, one undo step, like the page spacing. A range that names no
+  page left (pages deleted since) shows every page
+  (`tracedraw_core` `the_multipage_pages_are_kept_and_default_to_all`,
+  `page_ranges_read_numbers_and_ranges_in_page_order`).
+- The pages shown are packed into the grid in page order, as if the
+  others were not there; with facing pages each page keeps its side of
+  the spine and the spreads shown follow each other
+  (`multipage::tests::the_multipage_view_shows_the_chosen_pages_only`,
+  `multipage::tests::a_range_of_facing_pages_keeps_their_sides_and_packs_the_spreads`).
+- The current page always shows. Choosing a range that leaves it out
+  makes the first chosen page current; going to a page outside the range
+  (page tabs, navigator, Page > Go To Page) shows it in its place in page
+  order while it is current, the page that was current staying where it
+  is on screen.
+- The normal view and a spread of facing pages outside this view are not
+  changed by the range.
+- Checks: `ui::dialogs::tests::the_multipage_pages_dialog_keeps_the_range_and_shows_the_view`,
+  `pick_drag_tests::the_page_bar_chooses_the_multipage_view_s_pages`.
+
 ## Working
 
 - The current page is edited as in the normal view: rulers, guides,

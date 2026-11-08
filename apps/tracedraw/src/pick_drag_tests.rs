@@ -16069,6 +16069,39 @@ fn the_page_bar_turns_the_multipage_view_on_and_off() {
     assert!(lit(&ctx, &mut app));
 }
 
+/// Next to the Multipage View button, the page bar's pages button opens
+/// the dialog choosing the pages the view shows, filled in with the
+/// drawing's range (#1440).
+#[test]
+fn the_page_bar_chooses_the_multipage_view_s_pages() {
+    use crate::ui::window_bars::{MULTIPAGE_BUTTON, MULTIPAGE_PAGES_BUTTON};
+    let (ctx, mut app, _) = setup();
+    app.add_page();
+    app.add_page();
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let rect_of = |id: &str| {
+        ctx.read_response(egui::Id::new(id))
+            .map(|r| r.rect)
+            .expect("the button")
+    };
+    let view = rect_of(MULTIPAGE_BUTTON);
+    let pages = rect_of(MULTIPAGE_PAGES_BUTTON);
+    assert!(
+        pages.min.x >= view.max.x && pages.min.x - view.max.x < 4.0,
+        "right after the Multipage View button: {view:?} {pages:?}"
+    );
+    assert!((pages.center().y - view.center().y).abs() < 0.5);
+    assert!(app.set_multipage_pages("2-3"));
+    click_at(&ctx, &mut app, pages.center(), Modifiers::NONE);
+    match &app.dialog {
+        crate::ui::dialogs::Dialog::MultipagePages { all, range } => {
+            assert!(!*all);
+            assert_eq!(range, "2-3");
+        }
+        other => panic!("{:?}", std::mem::discriminant(other)),
+    }
+}
+
 /// The Fit Objects to Path panel's Origin grid: a click on a square
 /// picks that point of the objects' boxes while the reference is a box;
 /// with Center of rotation the grid does nothing (#1091).

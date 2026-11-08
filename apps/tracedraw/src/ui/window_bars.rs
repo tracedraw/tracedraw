@@ -363,7 +363,62 @@ pub fn page_navigator(app: &mut App, ui: &mut Ui) {
         if multipage_button(ui, app.multipage) {
             app.set_multipage(!app.multipage);
         }
+        // Next to it: which pages the view shows (#1440), lit while a
+        // range of pages is chosen.
+        let some = !app.doc().metadata.multipage_pages.is_empty();
+        if multipage_pages_button(ui, some) {
+            app.dialog = app.multipage_pages_dialog();
+        }
     });
+}
+
+/// The id of the page bar's button choosing the Multipage View's pages.
+pub const MULTIPAGE_PAGES_BUTTON: &str = "page_bar_multipage_pages";
+
+/// The Multipage View's pages: two small pages with a tick on the
+/// second, on a lit square while a range of pages is chosen. True when
+/// clicked.
+fn multipage_pages_button(ui: &mut Ui, some: bool) -> bool {
+    let (r, _) = ui.allocate_exact_size(Vec2::new(18.0, BAR - 1.0), Sense::hover());
+    let resp = ui.interact(r, egui::Id::new(MULTIPAGE_PAGES_BUTTON), Sense::click());
+    let p = ui.painter();
+    if some {
+        p.rect_filled(r.shrink2(Vec2::new(0.0, 1.0)), 2.0, Tokens::tool_active());
+    } else if resp.hovered() {
+        p.rect_filled(r, 0.0, Tokens::tool_hover());
+    }
+    let color = if some {
+        Tokens::text()
+    } else {
+        Tokens::text_dim()
+    };
+    let s = Stroke::new(1.0, color);
+    let c = r.center();
+    // A page behind, a page in front with a tick: "these pages".
+    let back = Rect::from_center_size(c + Vec2::new(-2.0, -1.5), Vec2::new(7.0, 9.0));
+    let front = Rect::from_center_size(c + Vec2::new(2.0, 1.5), Vec2::new(7.0, 9.0));
+    p.rect_stroke(back, 0.0, s, egui::StrokeKind::Inside);
+    p.rect_filled(front, 0.0, Tokens::panel());
+    p.rect_stroke(front, 0.0, s, egui::StrokeKind::Inside);
+    p.line_segment(
+        [
+            front.center() + Vec2::new(-2.0, 0.0),
+            front.center() + Vec2::new(-0.5, 1.5),
+        ],
+        s,
+    );
+    p.line_segment(
+        [
+            front.center() + Vec2::new(-0.5, 1.5),
+            front.center() + Vec2::new(2.0, -1.5),
+        ],
+        s,
+    );
+    resp.rich_tip(crate::ui::tips::pair(
+        "menu.view.multipage_pages",
+        "status.multipage_pages_desc",
+    ))
+    .clicked()
 }
 
 /// The id of the page bar's Multipage View button.

@@ -88,6 +88,7 @@ only the Welcome Screen is open. The menus can show your own shortcuts; see
 | [[menu.view.preview_selected_only]] | [Views](../get-started/undo-and-views.md#views) |
 | [[menu.view.page_sorter]] | [Multipage view](../pages-layout/multipage-view.md) |
 | [[menu.view.multipage]] | [Multipage view](../pages-layout/multipage-view.md) |
+| [[menu.view.multipage_pages]] | [Multipage view](../pages-layout/multipage-view.md#choose-pages) |
 | [[menu.view.draw_in_perspective]] | [Perspective](../effects/perspective.md#draw) |
 | [[menu.view.zoom_in]] | [Views](../get-started/undo-and-views.md#views) |
 | [[menu.view.zoom_out]] | [Views](../get-started/undo-and-views.md#views) |

@@ -90,26 +90,55 @@ pub fn facing_layout(
     gap: f64,
     start: PageSide,
 ) -> Vec<(PageId, Rect)> {
+    let all: Vec<usize> = (0..pages.len()).collect();
+    facing_layout_of(pages, &all, active, gap, start)
+}
+
+/// [`facing_layout`] of the pages at `keep` (indices into `pages`, in
+/// order) only, as the Multipage View shows a range of pages (#1440):
+/// each page keeps its side of the spine, and the spreads they are in
+/// follow each other with no room left for the spreads not shown.
+pub fn facing_layout_of(
+    pages: &[(PageId, Size)],
+    keep: &[usize],
+    active: PageId,
+    gap: f64,
+    start: PageSide,
+) -> Vec<(PageId, Rect)> {
     let gap = if gap.is_finite() { gap.max(0.0) } else { 0.0 };
-    let n = pages.len();
+    let kept: Vec<(usize, PageId, Size)> = keep
+        .iter()
+        .filter_map(|&i| pages.get(i).map(|(id, size)| (i, *id, *size)))
+        .collect();
+    let n = kept.len();
     if n == 0 {
         return Vec::new();
     }
-    let slot = pages
+    let slot = kept
         .iter()
-        .map(|(_, s)| s.width.max(0.0))
+        .map(|(_, _, s)| s.width.max(0.0))
         .fold(0.0f64, f64::max);
-    let row_of = |i: usize| spreads::spread_number(i, start) / SPREAD_COLUMNS;
-    let rows = row_of(n - 1) + 1;
+    // The spreads shown, numbered from 0 in order.
+    let mut shown: Vec<usize> = kept
+        .iter()
+        .map(|(i, _, _)| spreads::spread_number(*i, start))
+        .collect();
+    shown.dedup();
+    let spread_of = |i: usize| {
+        let k = spreads::spread_number(i, start);
+        shown.iter().position(|s| *s == k).unwrap_or(0)
+    };
+    let row_of = |i: usize| spread_of(i) / SPREAD_COLUMNS;
+    let rows = kept.last().map(|(i, _, _)| row_of(*i)).unwrap_or(0) + 1;
     let mut row_h = vec![0.0f64; rows];
-    for (i, (_, size)) in pages.iter().enumerate() {
-        if let Some(h) = row_h.get_mut(row_of(i)) {
+    for (i, _, size) in &kept {
+        if let Some(h) = row_h.get_mut(row_of(*i)) {
             *h = h.max(size.height.max(0.0));
         }
     }
     let mut placed: Vec<(PageId, Rect)> = Vec::with_capacity(n);
-    for (i, (id, size)) in pages.iter().enumerate() {
-        let k = spreads::spread_number(i, start);
+    for &(i, id, size) in &kept {
+        let k = spread_of(i);
         let (r, c) = (k / SPREAD_COLUMNS, k % SPREAD_COLUMNS);
         let spine = c as f64 * (2.0 * slot + gap) + slot;
         let top: f64 = -(row_h.iter().take(r).sum::<f64>() + r as f64 * gap);
@@ -119,7 +148,7 @@ pub fn facing_layout(
             PageSide::Left => spine - w,
             PageSide::Right => spine,
         };
-        placed.push((*id, Rect::new(x0, top - h, x0 + w, top)));
+        placed.push((id, Rect::new(x0, top - h, x0 + w, top)));
     }
     let (dx, dy) = placed
         .iter()
@@ -149,14 +178,43 @@ pub fn bounds(placed: &[(PageId, Rect)]) -> Option<Rect> {
 }
 
 impl App {
+    /// The pages the Multipage View shows (indices, in page order): the
+    /// drawing's range of pages (#1440), or every page, and the current
+    /// page always, so it can be edited.
+    pub fn multipage_page_indices(&self) -> Vec<usize> {
+        let doc = self.doc();
+        let n = doc.pages.len();
+        match doc.metadata.multipage_page_indices(n) {
+            Some(mut keep) => {
+                let current = self.page_index();
+                if current < n && !keep.contains(&current) {
+                    keep.push(current);
+                    keep.sort_unstable();
+                }
+                keep
+            }
+            None => (0..n).collect(),
+        }
+    }
+
     /// The grid of pages around the current one (in spreads with facing
-    /// pages).
+    /// pages): the pages the Multipage View shows.
     pub fn multipage_layout(&self) -> Vec<(PageId, Rect)> {
+        self.pages_layout(&self.multipage_page_indices())
+    }
+
+    /// The grid of the pages at `keep` (indices in page order).
+    fn pages_layout(&self, keep: &[usize]) -> Vec<(PageId, Rect)> {
         let doc = self.doc();
         let pages: Vec<(PageId, Size)> = doc.pages.iter().map(|p| (p.id, p.size)).collect();
+        let gap = doc.metadata.page_spacing();
         match doc.facing() {
-            Some(start) => facing_layout(&pages, self.page, doc.metadata.page_spacing(), start),
-            None => layout(&pages, self.page, doc.metadata.page_spacing()),
+            Some(start) => facing_layout_of(&pages, keep, self.page, gap, start),
+            None => {
+                let kept: Vec<(PageId, Size)> =
+                    keep.iter().filter_map(|&i| pages.get(i).copied()).collect();
+                layout(&kept, self.page, gap)
+            }
         }
     }
 
@@ -175,8 +233,9 @@ impl App {
                 .filter_map(|i| doc.pages.get(i).map(|p| p.id))
                 .collect();
             if ids.len() > 1 {
+                let all: Vec<usize> = (0..doc.pages.len()).collect();
                 return self
-                    .multipage_layout()
+                    .pages_layout(&all)
                     .into_iter()
                     .filter(|(id, _)| ids.contains(id))
                     .collect();
@@ -255,7 +314,60 @@ impl App {
         true
     }
 
-    /// Turn the Multipage View on or off; turning it on shows every page.
+    /// View > Pages in Multipage View and the page bar's button next to
+    /// the Multipage View's (#1440): the pages the view shows, as a range
+    /// of page numbers ("1-3, 7"), empty for every page. Saved with the
+    /// drawing like the page spacing, one undo step; the view fits the
+    /// pages anew. False when nothing changed or the range names no page
+    /// of the drawing.
+    pub fn set_multipage_pages(&mut self, range: &str) -> bool {
+        if !self.has_document() {
+            return false;
+        }
+        let range = range.trim();
+        let count = self.doc().pages.len();
+        if !range.is_empty() && tracedraw_core::document::parse_page_range(range, count).is_empty()
+        {
+            return false;
+        }
+        if self.doc().metadata.multipage_pages == range {
+            return false;
+        }
+        let mut metadata = self.doc().metadata.clone();
+        metadata.multipage_pages = range.to_string();
+        self.run(tracedraw_core::Command::SetMetadata { metadata });
+        // The current page among the chosen ones, so they show together.
+        if let Some(chosen) = self.doc().metadata.multipage_page_indices(count) {
+            if !chosen.contains(&self.page_index()) {
+                if let Some(id) = chosen
+                    .first()
+                    .and_then(|i| self.doc().pages.get(*i))
+                    .map(|p| p.id)
+                {
+                    self.page = id;
+                    self.selection.clear();
+                }
+            }
+        }
+        self.page_rasters.borrow_mut().clear();
+        if self.multipage {
+            self.fit_pending = true;
+        }
+        true
+    }
+
+    /// The dialog choosing the Multipage View's pages, filled in with the
+    /// drawing's range.
+    pub fn multipage_pages_dialog(&self) -> crate::ui::dialogs::Dialog {
+        let range = self.doc().metadata.multipage_pages.clone();
+        crate::ui::dialogs::Dialog::MultipagePages {
+            all: range.is_empty(),
+            range,
+        }
+    }
+
+    /// Turn the Multipage View on or off; turning it on shows the pages
+    /// chosen for it (every page at first).
     pub fn set_multipage(&mut self, on: bool) {
         self.multipage = on;
         if !on {
@@ -280,6 +392,23 @@ impl App {
             .find(|(id, _)| *id == page)
             .map(|(_, r)| r)
         else {
+            // A page left out of the Multipage View's range (#1440): it
+            // shows while it is current; the page that was current stays
+            // where it is on screen if it still shows, else the view fits.
+            if self.multipage && self.doc().pages.iter().any(|p| p.id == page) {
+                let before = self.page;
+                self.page = page;
+                match self.shown_pages().into_iter().find(|(id, _)| *id == before) {
+                    Some((_, old)) => {
+                        let z = self.view.zoom;
+                        self.view.origin -= egui::vec2(old.x0 as f32 * z, -(old.y0 as f32) * z);
+                    }
+                    None => self.fit_pending = true,
+                }
+                self.selection.clear();
+                self.focus.clear();
+                self.picked_layer = None;
+            }
             return;
         };
         self.view.origin = self
@@ -887,6 +1016,103 @@ mod tests {
             corners: None,
         });
         app
+    }
+
+    /// A range of pages chosen for the Multipage View (#1440): only those
+    /// pages and the current one are laid out, in page order and packed
+    /// into the grid; the range is one undo step kept in the drawing, and
+    /// choosing it makes a chosen page current.
+    #[test]
+    fn the_multipage_view_shows_the_chosen_pages_only() {
+        let mut app = App::headless();
+        for _ in 0..6 {
+            app.add_page();
+        }
+        let ids: Vec<PageId> = app.doc().pages.iter().map(|p| p.id).collect();
+        assert_eq!(ids.len(), 7);
+        app.set_multipage(true);
+        assert_eq!(app.multipage_layout().len(), 7);
+        app.goto_page(0);
+        assert!(!app.set_multipage_pages("9-12"), "no page of the drawing");
+        assert!(!app.set_multipage_pages("x"));
+        assert!(app.set_multipage_pages(" 3-5, 7 "));
+        assert!(!app.set_multipage_pages("3-5, 7"), "no change");
+        assert_eq!(app.doc().metadata.multipage_pages, "3-5, 7");
+        assert_eq!(app.page, ids[2], "the first chosen page is current");
+        let placed = app.multipage_layout();
+        let shown: Vec<PageId> = placed.iter().map(|(id, _)| *id).collect();
+        assert_eq!(shown, vec![ids[2], ids[3], ids[4], ids[6]]);
+        // Packed: page 7 takes the fourth cell, next to page 5.
+        assert!(placed[3].1.x0 > placed[2].1.x0);
+        assert_eq!(placed[3].1.y1, placed[0].1.y1);
+        assert_eq!(app.shown_pages(), placed);
+        // The current page always shows, in its place in page order; the
+        // page that was current stays where it was on screen.
+        let page3 = app.view.rect_to_screen(app.page_rect());
+        app.goto_page(1);
+        assert_eq!(app.page, ids[1]);
+        let still = app
+            .multipage_layout()
+            .into_iter()
+            .find(|(id, _)| *id == ids[2])
+            .map(|(_, r)| app.view.rect_to_screen(r))
+            .expect("page 3 shown");
+        assert!(
+            (still.min - page3.min).length() < 0.01,
+            "{still:?} {page3:?}"
+        );
+        let shown: Vec<PageId> = app.multipage_layout().iter().map(|(id, _)| *id).collect();
+        assert_eq!(shown, vec![ids[1], ids[2], ids[3], ids[4], ids[6]]);
+        // Back to every page, and the range again with Undo.
+        assert!(app.set_multipage_pages(""));
+        assert_eq!(app.multipage_layout().len(), 7);
+        app.undo();
+        assert_eq!(app.doc().metadata.multipage_pages, "3-5, 7");
+        // Out of the Multipage View the range changes nothing.
+        app.set_multipage(false);
+        assert_eq!(app.shown_pages().len(), 1);
+    }
+
+    /// With facing pages a range keeps each page on its side of the
+    /// spine; the spreads shown follow each other (#1440).
+    #[test]
+    fn a_range_of_facing_pages_keeps_their_sides_and_packs_the_spreads() {
+        let p = pages(7);
+        // Right start: spreads [1], [2 3], [4 5], [6 7]; show 2 and 6-7.
+        let all = facing_layout(&p, p[0].0, 10.0, PageSide::Right);
+        let some = facing_layout_of(&p, &[1, 5, 6], p[1].0, 10.0, PageSide::Right);
+        assert_eq!(some.len(), 3);
+        let x0 = |placed: &[(PageId, Rect)], id: PageId| {
+            placed
+                .iter()
+                .find(|(i, _)| *i == id)
+                .map(|(_, r)| r.x0)
+                .expect("placed")
+        };
+        // Page 2 is a left page: it ends at the first spine, at the
+        // origin as the current page.
+        assert_eq!(some[0], (p[1].0, Rect::new(0.0, 0.0, 100.0, 50.0)));
+        // Pages 6 and 7 form the next spread, beside it in the first row
+        // (in the full layout their spread is in the second row).
+        assert_eq!(x0(&some, p[5].0), 210.0);
+        assert_eq!(x0(&some, p[6].0), 310.0);
+        let y1 = |placed: &[(PageId, Rect)], id: PageId| {
+            placed
+                .iter()
+                .find(|(i, _)| *i == id)
+                .map(|(_, r)| r.y1)
+                .expect("placed")
+        };
+        assert!(y1(&all, p[5].0) < y1(&all, p[1].0));
+        assert_eq!(some[1].1.y1, some[0].1.y1, "one row");
+        // Every page kept: the same as the full layout.
+        let every: Vec<usize> = (0..7).collect();
+        assert_eq!(
+            facing_layout_of(&p, &every, p[0].0, 10.0, PageSide::Right),
+            all
+        );
+        assert!(facing_layout_of(&p, &[], p[0].0, 10.0, PageSide::Right).is_empty());
+        assert!(facing_layout_of(&p, &[99], p[0].0, 10.0, PageSide::Right).is_empty());
     }
 
     /// Facing pages on: the desktop shows the current page's spread, the

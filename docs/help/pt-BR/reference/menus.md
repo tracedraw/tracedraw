@@ -89,6 +89,7 @@ próprios atalhos; veja
 | [[menu.view.preview_selected_only]] | [Desfazer, zoom e deslocamento](../get-started/undo-and-views.md#views) |
 | [[menu.view.page_sorter]] | [Vista de várias páginas](../pages-layout/multipage-view.md) |
 | [[menu.view.multipage]] | [Vista de várias páginas](../pages-layout/multipage-view.md) |
+| [[menu.view.multipage_pages]] | [Vista de várias páginas](../pages-layout/multipage-view.md#choose-pages) |
 | [[menu.view.draw_in_perspective]] | [Perspectiva](../effects/perspective.md#draw) |
 | [[menu.view.zoom_in]] | [Desfazer, zoom e deslocamento](../get-started/undo-and-views.md#views) |
 | [[menu.view.zoom_out]] | [Desfazer, zoom e deslocamento](../get-started/undo-and-views.md#views) |

@@ -88,6 +88,7 @@ Anda sendiri; lihat [Opsi kustomisasi](../customize/customization.md#commands).
 | [[menu.view.preview_selected_only]] | [Undoing, zooming and panning](../get-started/undo-and-views.md#views) |
 | [[menu.view.page_sorter]] | [Multipage view](../pages-layout/multipage-view.md) |
 | [[menu.view.multipage]] | [Multipage view](../pages-layout/multipage-view.md) |
+| [[menu.view.multipage_pages]] | [Multipage view](../pages-layout/multipage-view.md#choose-pages) |
 | [[menu.view.draw_in_perspective]] | [Perspective](../effects/perspective.md#draw) |
 | [[menu.view.zoom_in]] | [Undoing, zooming and panning](../get-started/undo-and-views.md#views) |
 | [[menu.view.zoom_out]] | [Undoing, zooming and panning](../get-started/undo-and-views.md#views) |

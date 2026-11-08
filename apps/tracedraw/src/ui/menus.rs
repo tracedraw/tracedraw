@@ -384,6 +384,9 @@ pub const NEW_IN_THIS_VERSION: &[&str] = &[
     "menu.edit",
     "menu.edit.invert_selection",
     "menu.edit.select_similar",
+    // View > Pages in Multipage View (#1440).
+    "menu.view",
+    "menu.view.multipage_pages",
 ];
 
 thread_local! {
@@ -2808,6 +2811,10 @@ fn view_menu(app: &mut App, ui: &mut Ui) {
     }
     if check(ui, "menu.view.multipage", "", app.multipage) {
         app.set_multipage(!app.multipage);
+    }
+    // Which pages the Multipage View shows (#1440).
+    if item(ui, "menu.view.multipage_pages", "", app.has_document()) {
+        app.dialog = app.multipage_pages_dialog();
     }
     if check(
         ui,

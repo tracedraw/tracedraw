@@ -4492,6 +4492,45 @@ pub struct Metadata {
     /// right (the default) or starting a spread on the left.
     #[serde(skip_serializing_if = "crate::spreads::PageSide::is_right")]
     pub facing_start: crate::spreads::PageSide,
+    /// The pages the Multipage View shows, as a range of page numbers
+    /// such as "1-3, 7" (#1440); empty: every page. Left out of the file
+    /// while empty.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub multipage_pages: String,
+}
+
+/// The pages of `range` ("1-3, 5"; page numbers from 1, ranges either
+/// way round, commas or semicolons between) that exist among `count`,
+/// 0-based, in page order, each once. A part that is not a page number
+/// or a range of them makes the whole range read as none.
+pub fn parse_page_range(range: &str, count: usize) -> Vec<usize> {
+    let mut seen = vec![false; count];
+    for part in range.split([',', ';']) {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let (a, b) = match part.split_once('-') {
+            Some((a, b)) => (a.trim().parse::<usize>(), b.trim().parse::<usize>()),
+            None => (part.parse::<usize>(), part.parse::<usize>()),
+        };
+        let (Ok(a), Ok(b)) = (a, b) else {
+            return Vec::new();
+        };
+        if a == 0 || b == 0 {
+            return Vec::new();
+        }
+        let (lo, hi) = (a.min(b), a.max(b).min(count));
+        for n in lo..=hi {
+            if let Some(f) = seen.get_mut(n - 1) {
+                *f = true;
+            }
+        }
+    }
+    seen.iter()
+        .enumerate()
+        .filter_map(|(i, f)| f.then_some(i))
+        .collect()
 }
 
 /// The space between pages in the Multipage View when a drawing sets
@@ -4510,6 +4549,15 @@ impl Metadata {
             Some(v) if v.is_finite() => v.clamp(0.0, MAX_PAGE_SPACING),
             _ => DEFAULT_PAGE_SPACING,
         }
+    }
+
+    /// The pages (0-based, in order) the Multipage View shows of a
+    /// drawing of `count` pages: those of [`Metadata::multipage_pages`],
+    /// or `None` for every page (no range, or one that names no page of
+    /// the drawing).
+    pub fn multipage_page_indices(&self, count: usize) -> Option<Vec<usize>> {
+        let pages = parse_page_range(&self.multipage_pages, count);
+        (!pages.is_empty()).then_some(pages)
     }
 
     /// Bitmap effects that spread past the edges grow the bitmap first.
@@ -6894,6 +6942,38 @@ mod tests {
         assert_eq!(m.rulers.tick_divisions, 10);
         assert!((m.grid.baseline_spacing - 4.938_888).abs() < 1e-5);
         assert_eq!(m.guides, GuideSettings::default());
+    }
+
+    #[test]
+    fn page_ranges_read_numbers_and_ranges_in_page_order() {
+        assert_eq!(parse_page_range("1-3, 7", 10), vec![0, 1, 2, 6]);
+        assert_eq!(parse_page_range(" 7 ; 3-1 ", 10), vec![0, 1, 2, 6]);
+        assert_eq!(parse_page_range("2,2,2-3", 10), vec![1, 2]);
+        // Pages past the end are left out; a huge range costs nothing.
+        assert_eq!(parse_page_range("4-99999999999", 5), vec![3, 4]);
+        assert_eq!(parse_page_range("9", 5), Vec::<usize>::new());
+        // Not a range: none.
+        for bad in ["", "a", "0", "1-x", "1,,b", "-3"] {
+            assert!(parse_page_range(bad, 5).is_empty(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn the_multipage_pages_are_kept_and_default_to_all() {
+        // A drawing saved before the setting existed shows every page.
+        let m: Metadata = serde_json::from_str(r#"{"author":"a"}"#).unwrap();
+        assert_eq!(m.multipage_pages, "");
+        assert_eq!(m.multipage_page_indices(5), None);
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(!json.contains("multipage_pages"), "{json}");
+        let mut m = m;
+        m.multipage_pages = "1-2, 5".into();
+        let back: Metadata = serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
+        assert_eq!(back.multipage_page_indices(5), Some(vec![0, 1, 4]));
+        // Fewer pages now: the ones left; none of them: every page.
+        assert_eq!(back.multipage_page_indices(2), Some(vec![0, 1]));
+        m.multipage_pages = "7-9".into();
+        assert_eq!(m.multipage_page_indices(5), None);
     }
 
     #[test]

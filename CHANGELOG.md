@@ -112,6 +112,8 @@ full, row-by-row status.
 
 - The Transparency tool's icon is a checkerboard fading in steps, no longer a disc fading like a gradient that was taken for the fill tools (#1682).
 
+- Multipage View: View > Pages in Multipage View, and a button next to the view's in the page bar, choose which pages the view shows, all of them or a range such as "1-3, 7"; the range is saved with the drawing like the page spacing (#1440).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
