@@ -492,7 +492,9 @@ pub fn options_dialog(app: &mut App, ctx: &Context, close: &mut bool) {
                             .max_height(page.height() - 30.0)
                             .show(ui, |ui| {
                                 ui.spacing_mut().item_spacing.y = 7.0;
+                                let from = shapes_drawn(ui);
                                 draw_page(app, ui);
+                                highlight_setting(app, ui, from);
                             });
                     });
             });
@@ -714,6 +716,232 @@ fn draw_page(app: &mut App, ui: &mut Ui) {
         Grid => crate::ui::layout_options::grid_page(app, ui),
         Guidelines => crate::ui::layout_options::guidelines_page(app, ui),
     }
+}
+
+/// A setting of an Options page or of Document Options, as Help > Search
+/// Commands finds it: the key of its label, the key of its tip when it
+/// has one, and the page (and tab of Options > Text) that shows it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SettingEntry {
+    pub key: String,
+    pub tip: Option<String>,
+    pub page: OptionsPage,
+    pub tab: usize,
+}
+
+/// Whether the translated text of `key` names a setting the search can
+/// list: a short label of one line, without placeholders (tips, hints
+/// and sentences are found through the label they belong to).
+fn is_setting_label(key: &str) -> bool {
+    const NOT_LABELS: [&str; 6] = ["_tip", "_desc", "_hint", "_help", "_note", "_title"];
+    if NOT_LABELS.iter().any(|s| key.ends_with(s)) || !key.contains('.') {
+        return false;
+    }
+    let text = tr(key);
+    let text = text.trim();
+    // A key with no text comes back as its last part.
+    let missing = key.rsplit('.').next() == Some(text);
+    !missing
+        && !text.is_empty()
+        && text.chars().count() <= 60
+        && !text.contains(['{', '\n'])
+        && text.chars().any(char::is_alphabetic)
+}
+
+/// The settings of every page of the Options and Document Options: each
+/// page is drawn once, out of sight, and the labels it translates are
+/// its settings, paired with their tips (`key_tip`, `key_desc`). The
+/// page's own name opens it too. Options > Customization > Commands is
+/// left out: its rows are the menu commands, listed already. Cheap
+/// enough to run when the search box opens; the dialog's state is put
+/// back.
+pub fn settings_index(app: &mut App, ctx: &Context) -> Vec<SettingEntry> {
+    let far = egui::Rect::from_min_size(
+        egui::pos2(-100_000.0, -100_000.0),
+        egui::vec2(620.0, 50_000.0),
+    );
+    let saved = (
+        app.options_page,
+        app.options_text_tab,
+        app.shortcut_editor.capture.take(),
+    );
+    let mut out: Vec<SettingEntry> = Vec::new();
+    for set in OptionsSet::ALL {
+        for &page in set.pages() {
+            if page == OptionsPage::Commands {
+                continue;
+            }
+            out.push(SettingEntry {
+                key: page.key().to_string(),
+                tip: None,
+                page,
+                tab: 0,
+            });
+            let tabs = if page == OptionsPage::Text {
+                TEXT_TABS.len()
+            } else {
+                1
+            };
+            for tab in 0..tabs {
+                app.options_page = page;
+                app.options_text_tab = tab;
+                let id = egui::Id::new(("settings_walk", format!("{page:?}"), tab));
+                let mut ui = Ui::new(
+                    ctx.clone(),
+                    id,
+                    egui::UiBuilder::new()
+                        .invisible()
+                        .max_rect(far)
+                        .layer_id(egui::LayerId::new(egui::Order::Background, id)),
+                );
+                let ((), keys) = crate::i18n::recording(|| draw_page(app, &mut ui));
+                let seen: std::collections::HashSet<&str> =
+                    keys.iter().map(String::as_str).collect();
+                for key in &keys {
+                    // A tab's name belongs to its own tab.
+                    let other_tab = page == OptionsPage::Text
+                        && TEXT_TABS
+                            .iter()
+                            .position(|k| k == key)
+                            .is_some_and(|i| i != tab);
+                    if other_tab
+                        || out.iter().any(|e| e.page == page && &e.key == key)
+                        || !is_setting_label(key)
+                    {
+                        continue;
+                    }
+                    let tip = ["_tip", "_desc"]
+                        .iter()
+                        .map(|s| format!("{key}{s}"))
+                        .find(|k| seen.contains(k.as_str()));
+                    out.push(SettingEntry {
+                        key: key.clone(),
+                        tip,
+                        page,
+                        tab,
+                    });
+                }
+            }
+        }
+    }
+    (
+        app.options_page,
+        app.options_text_tab,
+        app.shortcut_editor.capture,
+    ) = saved;
+    out
+}
+
+/// A setting found with Help > Search Commands, shown framed on its page
+/// for a moment when the Options open there.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SettingHighlight {
+    pub page: OptionsPage,
+    /// The setting's label as the page draws it.
+    pub label: String,
+    /// When the frame began (the input's time), once drawn.
+    pub since: Option<f64>,
+}
+
+/// Where a page lies, as the search shows it: "Options > Tools >
+/// Rectangle", "Document Setup > General".
+pub fn setting_place(page: OptionsPage) -> String {
+    let set = page.set();
+    let name = tr(page.key());
+    if set == OptionsSet::Document {
+        return format!("{} > {name}", set.tab_label());
+    }
+    format!(
+        "{} > {} > {name}",
+        tr("menu.tools.options"),
+        set.tab_label()
+    )
+}
+
+/// How long the frame stays, seconds.
+const HIGHLIGHT_SECS: f64 = 2.5;
+
+/// Open the Options (or Document Options) at `page` with the setting
+/// `key` framed.
+pub fn open_at_setting(app: &mut App, page: OptionsPage, tab: usize, key: &str) {
+    app.dialog = crate::ui::dialogs::Dialog::Options;
+    app.options_page = page;
+    if page == OptionsPage::Text {
+        app.options_text_tab = tab;
+    }
+    app.options_highlight = Some(SettingHighlight {
+        page,
+        label: tr(key).trim().to_string(),
+        since: None,
+    });
+}
+
+/// Where the page drew the text `label`, among the shapes of the
+/// layer from `from` on.
+fn text_rect(ctx: &Context, layer: egui::LayerId, from: usize, label: &str) -> Option<egui::Rect> {
+    fn find(shape: &egui::Shape, label: &str) -> Option<egui::Rect> {
+        match shape {
+            egui::Shape::Text(t) if t.galley.text().trim() == label => {
+                Some(t.galley.rect.translate(t.pos.to_vec2()))
+            }
+            egui::Shape::Vec(v) => v.iter().find_map(|s| find(s, label)),
+            _ => None,
+        }
+    }
+    ctx.graphics(|g| {
+        g.get(layer)?
+            .all_entries()
+            .skip(from)
+            .find_map(|c| find(&c.shape, label))
+    })
+}
+
+/// Tests: where the last frame around a found setting was drawn.
+#[cfg(test)]
+pub fn highlighted_rect(ctx: &Context) -> Option<egui::Rect> {
+    ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new("options_highlight_rect")))
+}
+
+/// How many shapes the layer of `ui` holds so far.
+fn shapes_drawn(ui: &Ui) -> usize {
+    ui.ctx()
+        .graphics(|g| g.get(ui.layer_id()).map_or(0, |l| l.all_entries().len()))
+}
+
+/// Frame the setting found with the search, drawn on this page since
+/// `from` shapes: scrolled into view the first time, gone after
+/// [`HIGHLIGHT_SECS`] or once another page shows.
+fn highlight_setting(app: &mut App, ui: &mut Ui, from: usize) {
+    let Some(mut h) = app.options_highlight.take() else {
+        return;
+    };
+    if h.page != app.options_page {
+        return;
+    }
+    let now = ui.input(|i| i.time);
+    let since = *h.since.get_or_insert(now);
+    if now - since > HIGHLIGHT_SECS {
+        return;
+    }
+    if let Some(r) = text_rect(ui.ctx(), ui.layer_id(), from, &h.label) {
+        let frame = r.expand2(egui::vec2(6.0, 3.0));
+        if since == now {
+            ui.scroll_to_rect(frame, Some(egui::Align::Center));
+        }
+        #[cfg(test)]
+        ui.ctx()
+            .data_mut(|d| d.insert_temp(egui::Id::new("options_highlight_rect"), frame));
+        ui.painter().rect(
+            frame,
+            3.0,
+            Tokens::ACCENT.gamma_multiply(0.15),
+            egui::Stroke::new(2.0, Tokens::ACCENT),
+            egui::StrokeKind::Outside,
+        );
+    }
+    ui.ctx()
+        .request_repaint_after(std::time::Duration::from_secs_f64(HIGHLIGHT_SECS));
+    app.options_highlight = Some(h);
 }
 
 /// A label right-aligned in a grid's first column.

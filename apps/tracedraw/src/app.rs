@@ -1528,6 +1528,8 @@ pub struct App {
     /// Options > Text's tab (Display, Paragraph Text, Fonts, Spelling,
     /// Autocorrect).
     pub options_text_tab: usize,
+    /// A setting Help > Search Commands found, framed on its page.
+    pub options_highlight: Option<crate::ui::options::SettingHighlight>,
     /// What an open options dialog may change, for its Cancel button.
     pub options_snapshot: Option<crate::ui::options::OptionsSnapshot>,
     /// Options > Customization > Commands: the commands listed and the one
@@ -2868,6 +2870,7 @@ impl App {
             show_baseline_grid: false,
             options_page: crate::ui::dialogs::OptionsPage::General,
             options_text_tab: 0,
+            options_highlight: None,
             options_snapshot: None,
             shortcut_editor: Default::default(),
             pending_command: None,

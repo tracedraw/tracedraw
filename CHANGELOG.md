@@ -18,6 +18,8 @@ full, row-by-row status.
 
 - View > Navigator, with the key N, in the shortcut table like any menu command, so it can be changed or removed in Options > Customization > Commands and is found by Help > Search Commands. N held shows the Navigator as before; the menu row opens it until a click: a click on the picture goes there, a click elsewhere or Esc closes it (live test of 0.41).
 
+- Help > Search Commands (Ctrl+Shift+P) finds settings too: every setting of the Options and of Document Setup by its label or the words of its tip, and each options page by its name, listed after the menu commands with the page they are on. Choosing one opens the Options or Document Setup at that page with the setting framed for a moment, scrolled into view; "fill open" finds Fill open curves (live test of 0.41).
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).

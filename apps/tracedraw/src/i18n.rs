@@ -264,8 +264,31 @@ pub fn with_thread_language<R>(code: &str, f: impl FnOnce() -> R) -> R {
     out
 }
 
+thread_local! {
+    /// The keys translated on this thread while [`recording`] runs.
+    static RECORDED: std::cell::RefCell<Option<Vec<String>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Run `f` and return, with its result, every key it translated, in
+/// order (Help > Search Commands learns the Options pages' settings this
+/// way, `options::settings_index`).
+pub fn recording<R>(f: impl FnOnce() -> R) -> (R, Vec<String>) {
+    let before = RECORDED.with(|r| r.replace(Some(Vec::new())));
+    let out = f();
+    let keys = RECORDED.with(|r| r.replace(before)).unwrap_or_default();
+    (out, keys)
+}
+
 /// Translate a key.
 pub fn tr(key: &str) -> String {
+    RECORDED.with(|r| {
+        if let Ok(mut r) = r.try_borrow_mut() {
+            if let Some(keys) = r.as_mut() {
+                keys.push(key.to_string());
+            }
+        }
+    });
     #[cfg(test)]
     if let Some(v) = THREAD_TABLE.with(|t| t.borrow().as_ref().and_then(|m| m.get(key).cloned())) {
         return v;

@@ -10,6 +10,7 @@ shortcut beside it, and you can add your own; see
 | Keys | Action |
 |---|---|
 | <kbd>F1</kbd> | the Help page of the open dialog box, else of the panel on show, else of the active tool |
+| <kbd>Ctrl+Shift+P</kbd> | Search Commands: find a menu command or a setting by name and run or open it |
 
 ## Files and editing {#files}
 
