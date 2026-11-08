@@ -3943,10 +3943,29 @@ pub fn export_with_file_dialog(app: &mut App, st: &ExportState) {
         .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
         .unwrap_or_else(|| "Graphic1".into());
     let st = st.clone();
-    crate::files::Dialog::new()
-        .add_filter(name, &[ext])
+    // The chosen format first, then every other one, so the file dialog
+    // offers them all (live test of 0.41: only the format of Options >
+    // File Formats was offered); the extension of the name typed decides.
+    let mut dialog = crate::files::Dialog::new().add_filter(name, &[ext]);
+    for (other, e) in EXPORT_FORMATS.iter() {
+        if *e != ext {
+            dialog = dialog.add_filter(*other, &[*e]);
+        }
+    }
+    dialog
         .set_file_name(format!("{stem}.{ext}"))
         .save_file(app, move |app, path| {
+            let mut st = st.clone();
+            if let Some(typed) = path.extension().and_then(|e| e.to_str()) {
+                if let Some(i) = EXPORT_FORMATS
+                    .iter()
+                    .position(|(_, e)| e.eq_ignore_ascii_case(typed))
+                {
+                    if i != st.format {
+                        app.recall_export_format(&mut st, i);
+                    }
+                }
+            }
             match crate::export::export(app, &path, &st) {
                 Ok(msg) => app.status = msg,
                 Err(e) => app.status = format!("{}: {e}", tr("dialog.export_failed")),

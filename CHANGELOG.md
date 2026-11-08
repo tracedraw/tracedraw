@@ -6,6 +6,10 @@ full, row-by-row status.
 
 ## Unreleased
 
+- File > Export with "Do not show filter dialog" on offers every format in the file dialog, the one set in Options > File Formats first, and exports in the format of the extension chosen; it offered that one format only.
+
+- Weld, Trim and the other shaping operations keep a mesh fill: the result showed no colour when the object with the mesh had been moved or resized.
+
 - Objects docker: an object's row dragged up or down the list moves the object in the stacking order, in front of the row it is let go on (its upper half) or behind it (its lower half), with a line showing where it goes; before, only the Order commands and their shortcuts changed the order.
 
 - Holding N opens the Navigator, as holding its button in the corner between the scrollbars does: move the pointer over the picture to go there.
