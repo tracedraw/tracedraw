@@ -396,6 +396,7 @@ impl App {
         let own_fields = match new {
             Fill::Fountain(_) => !fields.contains(&FillField::All),
             Fill::Pattern(_) => fields.iter().all(|f| f.is_placement()),
+            Fill::Procedural(_) => !fields.contains(&FillField::All),
             _ => false,
         };
         if !own_fields {

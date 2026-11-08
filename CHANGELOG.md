@@ -54,6 +54,8 @@ full, row-by-row status.
 
 - Outline, Arrowhead editor: the "..." beside the start and end arrowhead lists (Properties docker, Outline Pen dialog) opens an editor for that end with the head list, Size (10 to 1000 % of the preset size), Offset along the line, Mirror horizontally and vertically, Rotation and a preview of the line's end; OK applies it to the selection as one undo step, to the default outline with nothing selected, or back into the Outline Pen dialog. Share attributes beside the End list copies the start arrowhead and its settings to the end and keeps them the same while on. The settings are drawn on the canvas and in SVG, PDF, EPS and EMF files alike and saved in `.tdraw` files (untouched files stay as they were). Arrowheads had a shape only (#1210).
 
+- Procedural fill: a new fill kind in the Properties panel (Fill > Procedural), the Edit Fill dialog and the Interactive Fill tool's bar, with a library of nine patterns drawn from a few numbers (octagons and squares, triangles, bricks, honeycomb, crosshatch, dots, waves, spirals, speckle): tile size, line width, cover, amplitude, turns, specks per tile and a seed, a foreground colour and an optional background colour, with a preview. The pattern is a vector tile repeated from the page origin on screen, a `<pattern>` with the tile's paths in SVG and a tiling pattern in PDF, kept in `.tdraw`; each setting is one undo step and goes into every selected object's own fill. Other exports draw it rasterised or in its foreground colour (#1212).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

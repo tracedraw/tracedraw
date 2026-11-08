@@ -35,6 +35,7 @@ pub mod paragraphs;
 pub mod patch;
 pub mod picture_inks;
 mod press;
+pub mod procedural;
 pub mod shadow;
 pub mod shaping;
 pub mod spreads;
@@ -64,7 +65,8 @@ pub use paragraphs::ParagraphFormat;
 pub use style::{
     arrowhead_paths, Arrowhead, ArrowheadPlacement, ColorBlend, Fill, Fountain, FountainKind,
     FountainRepeat, LineCap, LineJoin, Mesh, MeshHandle, MeshNode, OutlinePosition, Pattern,
-    PatternTile, Stop, Stroke, Texture, TextureKind, WidthNode,
+    PatternTile, Procedural, ProceduralParam, ProceduralParams, ProceduralPattern, Stop, Stroke,
+    Texture, TextureKind, WidthNode,
 };
 pub use table::{BorderSet, CellBorders, CellMargins, CellSide, EdgeBorder, TableHit};
 pub use text_flow::{TextWrap, WrapMode, WrapSide};

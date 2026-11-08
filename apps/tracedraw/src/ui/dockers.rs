@@ -10,7 +10,8 @@ use egui::Ui;
 use tracedraw_core::patch::{FillField, FillMix, StrokeField, StrokeMix};
 use tracedraw_core::{
     document::ShapeKind, Arrowhead, Color, ColorBlend, Command, Fill, Fountain, FountainKind,
-    FountainRepeat, Pattern, PatternTile, Stop, Stroke, Texture, TextureKind,
+    FountainRepeat, Pattern, PatternTile, Procedural, ProceduralParam, ProceduralParams,
+    ProceduralPattern, Stop, Stroke, Texture, TextureKind,
 };
 
 /// The vertical strip of docker tabs on the right edge of the window.
@@ -1996,11 +1997,34 @@ fn rectangle_section(app: &mut App, ui: &mut Ui, c: tracedraw_core::Corners) {
 }
 
 /// The picture of a fill kind (0 none, 1 uniform, 2 gradient, 3 pattern,
-/// 4 texture, 5 mesh) in a 16 x 16 square.
+/// 4 texture, 5 mesh, 6 procedural, 7 vector pattern, 8 bitmap pattern)
+/// in a 16 x 16 square.
 pub(crate) fn fill_kind_picture(painter: &egui::Painter, r: egui::Rect, kind: usize) {
     let edge = egui::Stroke::new(1.0, Tokens::icon());
     let sq = r.shrink(1.0);
     match kind {
+        6 => {
+            // An octagon of the procedural tiling, its flats on the edges.
+            let s = sq.width();
+            let k = s / (1.0 + std::f32::consts::SQRT_2) / 2.0;
+            let (h, m) = (s / 2.0, sq.min);
+            let at = |x: f32, y: f32| m + egui::vec2(x, y);
+            let pts = vec![
+                at(h - k, 0.0),
+                at(h + k, 0.0),
+                at(s, h - k),
+                at(s, h + k),
+                at(h + k, s),
+                at(h - k, s),
+                at(0.0, h + k),
+                at(0.0, h - k),
+            ];
+            painter.add(egui::Shape::closed_line(
+                pts,
+                egui::Stroke::new(1.2, Tokens::icon()),
+            ));
+            painter.rect_stroke(sq, 0.0, edge, egui::StrokeKind::Inside);
+        }
         0 => {
             painter.rect_stroke(sq, 0.0, edge, egui::StrokeKind::Inside);
             painter.line_segment(
@@ -2054,7 +2078,7 @@ pub(crate) fn fill_kind_picture(painter: &egui::Painter, r: egui::Rect, kind: us
             }
             painter.rect_stroke(sq, 0.0, edge, egui::StrokeKind::Inside);
         }
-        6 | 7 => crate::ui::pattern_pick::draw_pattern_kind(painter, r, kind),
+        7 | 8 => crate::ui::pattern_pick::draw_pattern_kind(painter, r, kind),
         _ => {
             painter.rect_stroke(sq, 0.0, edge, egui::StrokeKind::Inside);
             for t in [1.0 / 3.0, 2.0 / 3.0] {
@@ -2074,26 +2098,29 @@ pub(crate) fn fill_kind_picture(painter: &egui::Painter, r: egui::Rect, kind: us
 }
 
 /// The fill type shown in the type row: `fill_kind`, with a pattern's
-/// kind told apart (3 two-colour, 6 vector, 7 bitmap).
+/// kind told apart (3 two-colour, 7 vector, 8 bitmap; 6 is the
+/// procedural fill).
 pub(crate) fn fill_kind_shown(fill: &Fill) -> usize {
     match fill {
-        Fill::Pattern(Pattern::Vector { .. }) => 6,
-        Fill::Pattern(Pattern::Bitmap { .. }) => 7,
+        Fill::Pattern(Pattern::Vector { .. }) => 7,
+        Fill::Pattern(Pattern::Bitmap { .. }) => 8,
         _ => tracedraw_core::patch::fill_kind(fill),
     }
 }
 
 /// The fill types of the type row, in order: none, uniform, gradient,
-/// two-colour pattern, vector pattern, bitmap pattern, texture, mesh.
-const FILL_KINDS: [(usize, &str); 8] = [
+/// two-colour pattern, vector pattern, bitmap pattern, texture, mesh,
+/// procedural.
+const FILL_KINDS: [(usize, &str); 9] = [
     (0, "docker.fill_none"),
     (1, "docker.fill_uniform"),
     (2, "docker.fill_fountain"),
     (3, "docker.fill_pattern"),
-    (6, "docker.fill_vector_pattern"),
-    (7, "docker.fill_bitmap_pattern"),
+    (7, "docker.fill_vector_pattern"),
+    (8, "docker.fill_bitmap_pattern"),
     (4, "docker.fill_texture"),
     (5, "docker.fill_mesh"),
+    (6, "docker.fill_procedural"),
 ];
 
 fn fill_editor(ui: &mut Ui, fill: &mut Fill) -> bool {
@@ -2116,7 +2143,7 @@ fn fill_editor_mixed(
     let mut kind = fill_kind_shown(fill);
     let shown_kind = (!mix.kind).then_some(kind);
     // The kinds as pictures: none, uniform, gradient, two-colour, vector
-    // and bitmap pattern, texture, mesh.
+    // and bitmap pattern, texture, mesh, procedural.
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         for (i, n) in FILL_KINDS {
@@ -2170,12 +2197,12 @@ fn fill_editor_mixed(
             // a bitmap pattern from a picture on the page; with none, the
             // way to make one (Object > Create > Pattern Fill, or a picture
             // file), the fill unchanged until then.
-            6 | 7 => {
+            7 | 8 => {
                 let Some(pk) = pickers.as_deref_mut() else {
                     return false;
                 };
                 let lib = pk.library();
-                let found = if kind == 6 {
+                let found = if kind == 7 {
                     lib.vector.first().cloned()
                 } else {
                     lib.bitmap
@@ -2186,7 +2213,7 @@ fn fill_editor_mixed(
                 match found {
                     Some(p) => Fill::Pattern(p.with_placement(placement)),
                     None => {
-                        pk.action = Some(if kind == 6 {
+                        pk.action = Some(if kind == 7 {
                             PatternAction::CreateVector
                         } else if crate::files::WEB {
                             PatternAction::ImportBitmap
@@ -2204,12 +2231,13 @@ fn fill_editor_mixed(
                 scale: 20.0,
                 seed: 1,
             }),
-            _ => Fill::Mesh(tracedraw_core::Mesh::new(
+            5 => Fill::Mesh(tracedraw_core::Mesh::new(
                 tracedraw_core::geometry::Rect::new(0.0, 0.0, 100.0, 100.0),
                 2,
                 2,
                 base,
             )),
+            _ => Fill::Procedural(Procedural::new(ProceduralPattern::Octagons, base)),
         };
     }
     if !mix.kind && !mix.fields.is_empty() && !matches!(fill, Fill::Solid(_)) {
@@ -2229,6 +2257,7 @@ fn fill_editor_mixed(
         Fill::Fountain(f) => changed |= fountain_editor(ui, f),
         Fill::Pattern(p) => changed |= pattern_editor(ui, p, mix, touched, pickers),
         Fill::Texture(t) => changed |= texture_editor(ui, t),
+        Fill::Procedural(p) => changed |= procedural_editor(ui, p),
         Fill::Mesh(m) => {
             ui.label(trf(
                 "docker.mesh_n",
@@ -2994,6 +3023,154 @@ pub(crate) fn texture_editor(ui: &mut Ui, t: &mut Texture) -> bool {
         if ui.small_button(tr("docker.regenerate")).clicked() {
             t.seed = t.seed.wrapping_add(1);
             changed = true;
+        }
+    });
+    changed
+}
+
+/// The i18n key of a procedural pattern's name.
+pub fn procedural_pattern_key(p: ProceduralPattern) -> &'static str {
+    match p {
+        ProceduralPattern::Octagons => "procedural.octagons",
+        ProceduralPattern::Triangles => "procedural.triangles",
+        ProceduralPattern::Bricks => "procedural.bricks",
+        ProceduralPattern::Honeycomb => "procedural.honeycomb",
+        ProceduralPattern::Crosshatch => "procedural.crosshatch",
+        ProceduralPattern::Dots => "procedural.dots",
+        ProceduralPattern::Waves => "procedural.waves",
+        ProceduralPattern::Spirals => "procedural.spirals",
+        ProceduralPattern::Speckle => "procedural.speckle",
+    }
+}
+
+/// The procedural fill's editor: the pattern list by name, a preview of
+/// four tiles (the renderer's picture of the tile paths, kept until the
+/// fill changes), the numbers the pattern uses, then the foreground and
+/// the background colour. A slider reports its change when the drag ends,
+/// so a drag is one undo step.
+pub(crate) fn procedural_editor(ui: &mut Ui, p: &mut Procedural) -> bool {
+    let mut changed = false;
+    egui::ComboBox::from_id_salt("procedural_pattern")
+        .selected_text(tr(procedural_pattern_key(p.pattern)))
+        .show_ui(ui, |ui| {
+            for k in ProceduralPattern::ALL {
+                if ui
+                    .selectable_label(p.pattern == k, tr(procedural_pattern_key(k)))
+                    .clicked()
+                    && p.pattern != k
+                {
+                    p.pattern = k;
+                    changed = true;
+                }
+            }
+        })
+        .response
+        .rich_tip(tr("docker.proc_pattern"));
+    // Two tiles each way, the box in the tile's proportions.
+    let tile = tracedraw_core::procedural::procedural_tile(p);
+    let (tw, th) = (tile.size.width.max(1e-6), tile.size.height.max(1e-6));
+    let ratio = (th / tw).clamp(0.5, 2.0) as f32;
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(72.0, 72.0 * ratio), egui::Sense::hover());
+    crate::ui::edit_fill::draw_fill_in(
+        ui,
+        rect,
+        &Fill::Procedural(p.clone()),
+        tracedraw_core::geometry::Rect::new(0.0, 0.0, 2.0 * tw, 2.0 * th),
+        egui::Id::new("procedural_editor_preview_tex"),
+    );
+    let q = &mut p.params;
+    for param in p.pattern.params() {
+        match param {
+            ProceduralParam::Size => {
+                changed |= ui
+                    .add(crate::ui::Rail(
+                        egui::Slider::new(
+                            &mut q.size_mm,
+                            ProceduralParams::MIN_SIZE_MM..=ProceduralParams::MAX_SIZE_MM,
+                        )
+                        .text(tr("docker.tile_size_mm"))
+                        .logarithmic(true),
+                    ))
+                    .drag_stopped();
+            }
+            ProceduralParam::LineWidth => {
+                changed |= ui
+                    .add(crate::ui::Rail(
+                        egui::Slider::new(
+                            &mut q.line_width_mm,
+                            ProceduralParams::MIN_LINE_WIDTH_MM..=10.0,
+                        )
+                        .text(tr("docker.line_width_mm"))
+                        .logarithmic(true),
+                    ))
+                    .drag_stopped();
+            }
+            ProceduralParam::Share => {
+                let mut pct = q.share * 100.0;
+                if ui
+                    .add(crate::ui::Rail(
+                        egui::Slider::new(&mut pct, 0.0..=ProceduralParams::MAX_SHARE * 100.0)
+                            .text(tr("docker.cover_pct")),
+                    ))
+                    .drag_stopped()
+                {
+                    q.share = pct / 100.0;
+                    changed = true;
+                }
+            }
+            ProceduralParam::Amplitude => {
+                let mut pct = q.amplitude * 100.0;
+                if ui
+                    .add(crate::ui::Rail(
+                        egui::Slider::new(&mut pct, 0.0..=ProceduralParams::MAX_AMPLITUDE * 100.0)
+                            .text(tr("docker.amplitude_pct")),
+                    ))
+                    .drag_stopped()
+                {
+                    q.amplitude = pct / 100.0;
+                    changed = true;
+                }
+            }
+            ProceduralParam::Turns => {
+                changed |= ui
+                    .add(crate::ui::Rail(
+                        egui::Slider::new(&mut q.turns, 0.5..=ProceduralParams::MAX_TURNS)
+                            .text(tr("docker.turns")),
+                    ))
+                    .drag_stopped();
+            }
+            ProceduralParam::Density => {
+                changed |= ui
+                    .add(crate::ui::Rail(
+                        egui::Slider::new(&mut q.density, 1.0..=ProceduralParams::MAX_DENSITY)
+                            .text(tr("docker.specks"))
+                            .logarithmic(true),
+                    ))
+                    .drag_stopped();
+            }
+            ProceduralParam::Seed => {
+                ui.horizontal(|ui| {
+                    ui.label(tr("docker.seed"));
+                    changed |= ui
+                        .add(crate::ui::field::NumField::new(&mut p.seed))
+                        .changed();
+                    if ui.small_button(tr("docker.regenerate")).clicked() {
+                        p.seed = p.seed.wrapping_add(1);
+                        changed = true;
+                    }
+                });
+            }
+        }
+    }
+    changed |= color_row(ui, &tr("docker.foreground"), &mut p.foreground);
+    ui.horizontal(|ui| {
+        let mut has = p.background.is_some();
+        if ui.checkbox(&mut has, tr("docker.background")).changed() {
+            p.background = has.then_some(Color::WHITE);
+            changed = true;
+        }
+        if let Some(bg) = p.background.as_mut() {
+            changed |= crate::ui::color_picker::color_button(ui, bg);
         }
     });
     changed
@@ -4320,6 +4497,100 @@ pub(crate) mod tests {
         app.apply_fill_live(Fill::Solid(colours[1]));
         app.end_live_fill();
         assert_eq!(steps(&app), n + 2);
+    }
+
+    /// A procedural fill shows its section in the Properties panel: the
+    /// pattern's name, the numbers the pattern uses (and not the others)
+    /// and the colour rows; a change of one number through the panel's
+    /// path is one undo step that goes into each object's own fill, which
+    /// keeps its other numbers (#1212).
+    #[test]
+    fn procedural_fill_section_shows_its_fields_and_patches_one_at_a_time() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.settings.autocorrect.enabled = false;
+        let mut ids = Vec::new();
+        for x in [10.0, 70.0] {
+            let id = app
+                .new_shape(ShapeKind::Rect {
+                    rect: tracedraw_core::geometry::Rect::new(x, 10.0, x + 40.0, 40.0),
+                    radius: 0.0,
+                    corners: None,
+                })
+                .expect("rect");
+            ids.push(id);
+        }
+        app.show_dockers = true;
+        app.docker_tab = DockerTab::Properties;
+        // The Outline section closed, so the fill's rows are in view (the
+        // docker paints only what its scroll area shows).
+        app.settings.properties_closed = vec!["outline".into()];
+        let mut spirals = Procedural::new(ProceduralPattern::Spirals, Color::rgb8(200, 0, 0));
+        spirals.params.size_mm = 8.0;
+        app.select(vec![ids[0]]);
+        app.apply_fill(Fill::Procedural(spirals.clone()));
+        let texts = painted_texts(&ctx, &mut app);
+        let count = |t: &str| texts.iter().filter(|x| x.as_str() == t).count();
+        assert_eq!(count("Spirals"), 1, "{texts:?}");
+        assert_eq!(count("line width mm"), 1, "{texts:?}");
+        assert_eq!(count("turns"), 1, "{texts:?}");
+        assert_eq!(count("Foreground"), 1, "{texts:?}");
+        assert_eq!(count("Background"), 1, "{texts:?}");
+        // Spirals have no cover, amplitude or specks; the seed is the
+        // speckle's.
+        assert_eq!(
+            count("cover %") + count("amplitude %") + count("specks per tile"),
+            0
+        );
+        let seeds = count("Seed");
+        let mut speckle = spirals.clone();
+        speckle.pattern = ProceduralPattern::Speckle;
+        app.apply_fill(Fill::Procedural(speckle));
+        let texts = painted_texts(&ctx, &mut app);
+        assert_eq!(texts.iter().filter(|x| x.as_str() == "Speckle").count(), 1);
+        assert_eq!(
+            texts
+                .iter()
+                .filter(|x| x.as_str() == "specks per tile")
+                .count(),
+            1
+        );
+        assert_eq!(
+            texts.iter().filter(|x| x.as_str() == "Seed").count(),
+            seeds + 1
+        );
+
+        // Two objects, tiles of 8 and 20 mm: a new line width goes into
+        // both as one step, their sizes kept.
+        let mut big = spirals.clone();
+        big.params.size_mm = 20.0;
+        app.select(vec![ids[1]]);
+        app.apply_fill(Fill::Procedural(big.clone()));
+        app.select(ids.clone());
+        let steps = |app: &App| app.engine.history_labels().0.len();
+        let n = steps(&app);
+        let old = Fill::Procedural(spirals.clone());
+        let mut wide = spirals.clone();
+        wide.params.line_width_mm = 1.5;
+        app.patch_selection_fill(&old, &Fill::Procedural(wide), &[]);
+        assert_eq!(steps(&app), n + 1);
+        let fill_of = |app: &App, id| app.doc().find_shape(id).expect("shape").fill.clone();
+        let (Fill::Procedural(a), Fill::Procedural(b)) =
+            (fill_of(&app, ids[0]), fill_of(&app, ids[1]))
+        else {
+            panic!("procedural fills");
+        };
+        assert_eq!((a.params.line_width_mm, b.params.line_width_mm), (1.5, 1.5));
+        assert_eq!((a.params.size_mm, b.params.size_mm), (8.0, 20.0));
+        // The panel shows the width once, the size as mixed.
+        let mix = app.selection_fill_mix();
+        assert!(mix.has(FillField::ProceduralSize));
+        assert!(!mix.has(FillField::ProceduralLineWidth));
+        app.undo();
+        let Fill::Procedural(a) = fill_of(&app, ids[0]) else {
+            panic!("a procedural fill");
+        };
+        assert_eq!(a.params.line_width_mm, 0.5);
     }
 
     /// Every text the frame painted.

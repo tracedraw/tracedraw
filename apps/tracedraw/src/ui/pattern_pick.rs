@@ -393,13 +393,13 @@ pub fn draw_lock(p: &Painter, r: Rect, locked: bool) {
 }
 
 /// The two-colour, vector and bitmap pattern kind pictures of the fill
-/// type row (kinds 3, 6 and 7 of `fill_kind_picture`).
+/// type row (kinds 3, 7 and 8 of `fill_kind_picture`).
 pub fn draw_pattern_kind(p: &Painter, r: Rect, kind: usize) {
     let edge = egui::Stroke::new(1.0, Tokens::icon());
     let sq = r.shrink(1.0);
     match kind {
         // Vector pattern: a tile of small shapes, a circle and a triangle.
-        6 => {
+        7 => {
             p.rect_stroke(sq, 0.0, edge, egui::StrokeKind::Inside);
             let q = sq.width() / 4.0;
             for (cx, cy) in [(1.0, 1.0), (3.0, 3.0)] {
