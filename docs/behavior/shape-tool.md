@@ -219,7 +219,20 @@ round their corners with their own handles either way.
 - The arcs are found from the curve itself, so a drawing saved and
   opened again, or a curve rounded with the Corners panel, keeps its
   widgets too; no extra data is stored.
-- A click on a widget keeps the selection.
+- A plain click on a widget chooses its corner alone, and its widget is
+  drawn filled (#2057); a click with Shift, Ctrl or Alt keeps the
+  selection (Ctrl+click chooses as above).
+- The property bar sets the rounding by value while a curve with a
+  corner is selected (and the rings option is on): Corner rounding, a
+  radius field in the drawing unit, shows the radius of the chosen
+  corners, or of every corner with none chosen (0 for a sharp one,
+  empty when they differ); a value typed there rounds those corners to
+  it on the page, each rounded corner first taken back to its sharp
+  corner, at most the largest radius every one of them still fits (the
+  status bar shows the radius used), and 0 makes them sharp. The Clear
+  Rounding button beside it makes them sharp. One undo step each
+  ("Fillet", "Clear Rounding"); the chosen corners stay chosen (#2057,
+  `pick_drag_tests::the_property_bar_sets_the_corner_rounding_of_curves`).
 - Checked by `pick_drag_tests::corner_widgets_round_every_corner_or_the_chosen_ones`,
   `pick_drag_tests::corner_widgets_follow_their_preference_off_by_default`,
   `pick_drag_tests::rounded_corners_keep_their_widgets_and_round_again`,
@@ -289,7 +302,8 @@ to Line, Convert to Curve | Cusp, Smooth, Symmetrical | Reverse
 Direction, Extend Curve to Close, Extract Subpath, Close Curve | Stretch
 and Scale Nodes, Rotate and Skew Nodes, Align Nodes | Reflect
 Horizontally, Reflect Vertically, Elastic Mode | Select All Nodes |
-Reduce Nodes, Curve smoothness.
+Reduce Nodes, Curve smoothness | Corner rounding, Clear Rounding (a curve
+with a corner selected, see Corner widgets).
 
 ## Checks
 

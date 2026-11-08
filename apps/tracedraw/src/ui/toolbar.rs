@@ -2926,6 +2926,36 @@ fn shape_tool_bar(app: &mut App, ui: &mut Ui) {
     if r.changed() {
         app.set_curve_smoothness(v);
     }
+    // The corners' rounding, as the corner widgets set it by dragging
+    // (#2057): the chosen rings' radius, or every corner's with none
+    // chosen; the button makes them sharp again.
+    if let Some((radius, mixed)) = app.corner_rounding() {
+        sep(ui);
+        let mut set = None;
+        crate::ui::tips::tip_over(
+            ui,
+            crate::ui::tips::keyed("toolbar.corner_rounding"),
+            |ui| {
+                let size = Tokens::prop_icon();
+                let (spot, _) =
+                    ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
+                crate::ui::propbar::draw_pic(ui.painter(), spot, Pic::CornerRound, Tokens::icon());
+                set = crate::ui::propbar::distance_mixed(ui, app, radius, 72.0, mixed);
+            },
+        );
+        if button(
+            ui,
+            Pic::CornerClear,
+            "toolbar.clear_rounding",
+            mixed || radius > 0.0,
+            false,
+        ) {
+            set = Some(0.0);
+        }
+        if let Some(r) = set {
+            app.set_corner_rounding(r);
+        }
+    }
     if !has_curve && !app.selection.is_empty() {
         sep(ui);
         if pic_button(

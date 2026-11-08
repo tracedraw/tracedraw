@@ -19038,6 +19038,105 @@ fn corner_rings_round_one_corner_or_the_ctrl_chosen_ones() {
     assert_eq!(fillets(&path_of(&app)).len(), 4, "every corner");
 }
 
+/// The Shape tool's property bar sets the corner rounding of a curve by
+/// value (#2057): with no ring chosen the radius goes to every corner; a
+/// plain click on a ring chooses it alone (drawn filled) and the radius
+/// then goes to that corner only, which stays chosen; 0 and the Clear
+/// Rounding button make the corners sharp again. One undo step each.
+#[test]
+fn the_property_bar_sets_the_corner_rounding_of_curves() {
+    use tracedraw_core::corner_cut::fillets;
+    use tracedraw_core::geometry::BezPath;
+    let (ctx, mut app, rect) = setup();
+    app.select(vec![rect]);
+    app.delete_selection();
+    let mut square = BezPath::new();
+    square.move_to((20.0, 20.0));
+    square.line_to((60.0, 20.0));
+    square.line_to((60.0, 60.0));
+    square.line_to((20.0, 60.0));
+    square.close_path();
+    let id = app
+        .new_shape(ShapeKind::Path {
+            path: square.clone(),
+            closed: true,
+        })
+        .expect("square");
+    app.select(vec![id]);
+    app.set_tool(Tool::Shape);
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let path_of = |app: &App| match &app.doc().find_shape(id).expect("curve").kind {
+        ShapeKind::Path { path, .. } => path.clone(),
+        _ => panic!("a curve"),
+    };
+    let radii = |app: &App| -> Vec<f64> {
+        let mut r: Vec<f64> = fillets(&path_of(app)).iter().map(|f| f.radius).collect();
+        r.sort_by(f64::total_cmp);
+        r
+    };
+    // Sharp corners: the field reads 0; every corner takes 5 mm.
+    assert_eq!(app.corner_rounding(), Some((0.0, false)));
+    let depth = app.engine.history_labels().0.len();
+    assert!(app.set_corner_rounding(5.0));
+    let r = radii(&app);
+    assert_eq!(r.len(), 4, "{r:?}");
+    assert!(r.iter().all(|x| (x - 5.0).abs() < 1e-6), "{r:?}");
+    assert_eq!(app.engine.history_labels().0.len(), depth + 1);
+    let (shown, mixed) = app.corner_rounding().expect("corners");
+    assert!((shown - 5.0).abs() < 1e-6 && !mixed);
+    // A plain click on a ring chooses its corner alone, drawn chosen.
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let w = app.corner_widgets()[1];
+    let before = path_of(&app);
+    click_at(&ctx, &mut app, w.at, Modifiers::NONE);
+    let chosen: Vec<_> = app
+        .corner_widgets()
+        .into_iter()
+        .filter(|w| w.chosen)
+        .collect();
+    assert_eq!(chosen.len(), 1);
+    assert_eq!(path_of(&app), before, "a click rounds nothing");
+    // The radius goes to that corner only; it stays chosen.
+    assert!(app.set_corner_rounding(2.0));
+    let r = radii(&app);
+    assert_eq!(r.len(), 4, "{r:?}");
+    assert!((r[0] - 2.0).abs() < 1e-6, "{r:?}");
+    assert!(r[1..].iter().all(|x| (x - 5.0).abs() < 1e-6), "{r:?}");
+    let (shown, mixed) = app.corner_rounding().expect("corners");
+    assert!((shown - 2.0).abs() < 1e-6 && !mixed, "{shown}");
+    assert_eq!(
+        app.corner_widgets().iter().filter(|w| w.chosen).count(),
+        1,
+        "still chosen"
+    );
+    // 0 makes that corner sharp again, the others stay round.
+    assert!(app.set_corner_rounding(0.0));
+    assert_eq!(radii(&app).len(), 3);
+    // None chosen: the radii differ, the field is empty; Clear Rounding
+    // makes every corner sharp.
+    app.node_selection.clear();
+    let (_, mixed) = app.corner_rounding().expect("corners");
+    assert!(mixed);
+    assert!(app.set_corner_rounding(0.0));
+    assert!(radii(&app).is_empty());
+    assert_eq!(app.corner_rounding(), Some((0.0, false)));
+    // Too large a radius rounds as far as the sides allow.
+    assert!(app.set_corner_rounding(500.0));
+    let r = radii(&app);
+    assert_eq!(r.len(), 4);
+    assert!(r.iter().all(|x| *x < 20.0 && *x > 19.0), "{r:?}");
+    app.undo();
+    assert!(radii(&app).is_empty());
+    // The bar draws the field with the curve selected, and nothing for
+    // a curve without corners or with the widgets turned off.
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    app.settings.nodes.corner_widgets = false;
+    assert_eq!(app.corner_rounding(), None);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+}
+
 /// The gradient mask an object has, its start and end on the page.
 fn mask_line(app: &App, id: ShapeId) -> Option<(Point, Point)> {
     use tracedraw_core::geometry::Shape as _;

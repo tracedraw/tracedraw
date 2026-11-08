@@ -911,8 +911,14 @@ impl App {
             if self.ctrl_handle_at(p).is_some() {
                 return;
             }
-            // A click on a corner widget keeps the selection.
-            if self.corner_widget_at(p).is_some() {
+            // A plain click on a corner widget chooses its corner alone:
+            // the ring is drawn chosen and the property bar's corner
+            // radius sets it (#2057). With a key held it keeps the
+            // selection.
+            if let Some(w) = self.corner_widget_at(p) {
+                if !(mods.shift || mods.ctrl || mods.command || mods.alt) {
+                    self.choose_corner_widget(w);
+                }
                 return;
             }
             // A click on a segment chooses the segment: it is drawn
