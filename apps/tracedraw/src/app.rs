@@ -4910,6 +4910,17 @@ impl App {
     /// The bounds of what `s` (in page space) draws, its live effects
     /// included; measured once per change of the drawing.
     pub fn visual_bounds(&self, s: &Shape) -> Rect {
+        // A symbol instance's box is its symbol's, placed by the instance's
+        // transform; the shape alone only knows a unit box, which put the
+        // handles of a new symbol in its corner at 10 x 10 mm (#1939).
+        if let ShapeKind::SymbolInstance { index } = &s.kind {
+            if let Some(def) = self.doc().symbols.get(*index) {
+                return tracedraw_core::geometry::transformed_bounds(
+                    &def.shape.page_path(),
+                    s.transform,
+                );
+            }
+        }
         if !s.has_live_effects() {
             return s.bounds();
         }
