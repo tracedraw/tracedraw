@@ -4444,7 +4444,12 @@ fn help_menu(app: &mut App, ui: &mut Ui) {
     }
     // Find a menu command by its name and run it (see
     // `ui::command_search`).
-    if item(ui, crate::ui::command_search::MENU_KEY, "Ctrl+Shift+P", true) {
+    if item(
+        ui,
+        crate::ui::command_search::MENU_KEY,
+        "Ctrl+Shift+P",
+        true,
+    ) {
         app.command_search.open();
     }
     sep(ui);

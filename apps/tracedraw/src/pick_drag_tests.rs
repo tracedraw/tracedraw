@@ -21877,7 +21877,10 @@ fn an_outline_reaches_as_far_as_it_is_drawn() {
     assert_eq!(outline_reach(&closed, Affine::IDENTITY), 4.0);
     // A variable outline: its widest side.
     st.position = OutlinePosition::Center;
-    st.widths = vec![WidthNode::symmetric(0.0, 4.0), WidthNode::symmetric(0.5, 9.0)];
+    st.widths = vec![
+        WidthNode::symmetric(0.0, 4.0),
+        WidthNode::symmetric(0.5, 9.0),
+    ];
     s.stroke = Some(st);
     assert_eq!(outline_reach(&s, Affine::IDENTITY), 4.5);
 }
@@ -22144,12 +22147,26 @@ fn shift_drag_and_the_wheel_size_the_brush_nib() {
         modifiers: mods,
     };
     app.brush_radius = 10.0;
-    frame(&ctx, &mut app, vec![Event::PointerMoved(from)], Modifiers::NONE);
-    frame(&ctx, &mut app, vec![wheel(Modifiers::SHIFT)], Modifiers::SHIFT);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(from)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![wheel(Modifiers::SHIFT)],
+        Modifiers::SHIFT,
+    );
     for _ in 0..20 {
         frame(&ctx, &mut app, Vec::new(), Modifiers::SHIFT);
     }
-    assert!((app.brush_radius - 11.0).abs() < 1e-9, "{}", app.brush_radius);
+    assert!(
+        (app.brush_radius - 11.0).abs() < 1e-9,
+        "{}",
+        app.brush_radius
+    );
     assert_eq!(app.view.zoom, zoom, "Shift+wheel does not zoom");
     // With the wheel scrolling, Alt+wheel sizes it.
     app.settings.wheel_zooms = false;
@@ -22158,11 +22175,20 @@ fn shift_drag_and_the_wheel_size_the_brush_nib() {
     for _ in 0..20 {
         frame(&ctx, &mut app, Vec::new(), Modifiers::ALT);
     }
-    assert!((app.brush_radius - 12.1).abs() < 1e-9, "{}", app.brush_radius);
+    assert!(
+        (app.brush_radius - 12.1).abs() < 1e-9,
+        "{}",
+        app.brush_radius
+    );
     assert_eq!(app.view.origin, origin, "Alt+wheel does not scroll");
     // The plain wheel zooms as before and leaves the nib.
     app.settings.wheel_zooms = true;
-    frame(&ctx, &mut app, vec![wheel(Modifiers::NONE)], Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![wheel(Modifiers::NONE)],
+        Modifiers::NONE,
+    );
     for _ in 0..20 {
         frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
     }
@@ -22216,7 +22242,12 @@ fn a_palette_bar_docks_between_the_toolbars_at_the_top() {
         last: None,
     });
     let line = Pos2::new(400.0, rows[0].bottom() - 2.0);
-    frame(&ctx, &mut app, vec![Event::PointerMoved(line)], Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(line)],
+        Modifiers::NONE,
+    );
     assert!(app.palette_bar_drag.is_none(), "dropped");
     let bar = &app.settings.palette_bars[0];
     assert_eq!((bar.dock, bar.toolbar_row), (Dock::Top, Some(1)));
@@ -22458,7 +22489,10 @@ fn mesh_nodes_and_their_handles_are_dragged() {
     frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
     let to_page = app.doc().find_shape(id).expect("rect").transform;
     let corner = to_page * mesh(&app).nodes[0].pos;
-    assert!((corner - Point::new(10.0, 10.0)).hypot() < 1e-6, "{corner:?}");
+    assert!(
+        (corner - Point::new(10.0, 10.0)).hypot() < 1e-6,
+        "{corner:?}"
+    );
     let target = Point::new(18.0, 16.0);
     let (from, to) = (app.view.to_screen(corner), app.view.to_screen(target));
     drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());

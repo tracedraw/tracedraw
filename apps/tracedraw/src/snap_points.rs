@@ -636,9 +636,7 @@ pub fn object_geometry(s: &Shape, baselines: BaselinesOf, out: &mut Vec<Geo>) {
         s.kind,
         ShapeKind::Group { .. } | ShapeKind::ClipFrame { .. }
     );
-    let own_centre = !composite
-        && out.len() > start
-        && matches!(out.last(), Some(Geo::Center(_)));
+    let own_centre = !composite && out.len() > start && matches!(out.last(), Some(Geo::Center(_)));
     if own_centre {
         return;
     }
@@ -1287,6 +1285,8 @@ mod tests {
         assert!(!xs.iter().any(|(_, _, m)| *m == SnapMode::Node), "{xs:?}");
         // Without a stretch they count.
         let xs = axis_stops(&g, &modes, true, None, 1.0);
-        assert!(xs.iter().any(|(v, _, m)| *v == 40.0 && *m == SnapMode::Node));
+        assert!(xs
+            .iter()
+            .any(|(v, _, m)| *v == 40.0 && *m == SnapMode::Node));
     }
 }

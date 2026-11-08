@@ -3962,7 +3962,12 @@ pub fn export_with_file_dialog(app: &mut App, st: &ExportState) {
         .last_export_dir
         .clone()
         .filter(|d| crate::files::is_dir(d))
-        .or_else(|| app.file.as_ref().and_then(|f| f.parent()).map(|p| p.to_path_buf()))
+        .or_else(|| {
+            app.file
+                .as_ref()
+                .and_then(|f| f.parent())
+                .map(|p| p.to_path_buf())
+        })
         .or_else(|| app.settings.last_dir.clone());
     if let Some(dir) = folder {
         dialog = dialog.set_directory(dir);

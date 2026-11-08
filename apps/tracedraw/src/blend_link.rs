@@ -332,7 +332,10 @@ mod tests {
         let mut mid = steps_of(&app, a)[1].clone();
         mid.transform = parent * mid.transform;
         let c = mid.bounds().center();
-        assert!((c.x - 55.0).abs() < 0.5 && (c.y - 45.0).abs() < 0.5, "{c:?}");
+        assert!(
+            (c.x - 55.0).abs() < 0.5 && (c.y - 45.0).abs() < 0.5,
+            "{c:?}"
+        );
     }
 
     #[test]

@@ -207,9 +207,8 @@ pub fn toolbar_target(
     bands: &[(u32, Rect)],
     p: Pos2,
 ) -> Option<(u32, Rect)> {
-    let line = |r: Rect, y: f32| {
-        Rect::from_min_max(pos2(r.left(), y - 3.0), pos2(r.right(), y + 3.0))
-    };
+    let line =
+        |r: Rect, y: f32| Rect::from_min_max(pos2(r.left(), y - 3.0), pos2(r.right(), y + 3.0));
     if let Some((row, r)) = bands.iter().find(|(_, r)| r.contains(p)) {
         return Some((*row, line(*r, r.top())));
     }

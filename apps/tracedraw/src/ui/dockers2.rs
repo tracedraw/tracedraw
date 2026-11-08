@@ -2447,8 +2447,12 @@ fn bitmap_mask(app: &mut App, ui: &mut Ui) {
         let i = app.mask.picked.min(MASK_SLOTS - 1);
         let tol = &mut app.mask.slots[i].tolerance;
         let tip = crate::ui::tips::pair("docker.tolerance", "docker.mask_tolerance_desc");
-        ui.add(crate::ui::Slider::new(tol, 0..=100).show_value(false).reserve(80.0))
-            .rich_tip(&tip);
+        ui.add(
+            crate::ui::Slider::new(tol, 0..=100)
+                .show_value(false)
+                .reserve(80.0),
+        )
+        .rich_tip(&tip);
         ui.add(
             crate::ui::field::NumField::new(tol)
                 .range(0..=100)

@@ -819,7 +819,11 @@ impl App {
             return (q, (sx, sy));
         }
         let b = *start_bounds;
-        let from = if mods.from_center { b.center() } else { *anchor };
+        let from = if mods.from_center {
+            b.center()
+        } else {
+            *anchor
+        };
         // The stretch of the other axis a moving side runs along: the
         // box's for a side handle, from the fixed point to the pointer
         // (both ways from the centre) for a corner.

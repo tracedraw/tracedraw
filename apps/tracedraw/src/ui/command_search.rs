@@ -37,7 +37,11 @@ pub struct Found {
 impl Found {
     pub fn new(key: &str, name: String, place: String, shortcut: String) -> Self {
         let name_lc = name.to_lowercase();
-        let all_lc = format!("{name_lc} {} {}", place.to_lowercase(), shortcut.to_lowercase());
+        let all_lc = format!(
+            "{name_lc} {} {}",
+            place.to_lowercase(),
+            shortcut.to_lowercase()
+        );
         Found {
             key: key.to_string(),
             name,
@@ -341,14 +345,14 @@ mod tests {
         // A press and its release: a key pressed again without a release
         // between is a held key's repeat.
         let key = |k: Key, modifiers: Modifiers| {
-            vec![key_event(k, true, modifiers), key_event(k, false, modifiers)]
+            vec![
+                key_event(k, true, modifiers),
+                key_event(k, false, modifiers),
+            ]
         };
         frame(&mut app, Vec::new());
         // Ctrl+Shift+P opens it, with the commands of every menu.
-        frame(
-            &mut app,
-            key(Key::P, Modifiers::COMMAND | Modifiers::SHIFT),
-        );
+        frame(&mut app, key(Key::P, Modifiers::COMMAND | Modifiers::SHIFT));
         frame(&mut app, Vec::new());
         assert!(app.command_search.open, "Ctrl+Shift+P opens the box");
         let st = &app.command_search;
@@ -387,10 +391,7 @@ mod tests {
         frame(&mut app, Vec::new());
         assert_eq!(app.selection, vec![a], "and runs the command");
         // Esc closes it without running anything.
-        frame(
-            &mut app,
-            key(Key::P, Modifiers::COMMAND | Modifiers::SHIFT),
-        );
+        frame(&mut app, key(Key::P, Modifiers::COMMAND | Modifiers::SHIFT));
         frame(&mut app, Vec::new());
         assert!(app.command_search.open);
         frame(&mut app, key(Key::Escape, Modifiers::NONE));
