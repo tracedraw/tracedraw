@@ -905,18 +905,23 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
         canvas_rect.contains(p) && crate::ui::chrome::over_modal_blocker(ui.ctx(), p)
     });
     if response.hovered() || wheel_through_dialog {
-        let (scroll, notches, zoom_delta, mods, unit) = ui.input(|i| {
+        let (scroll, notches, any_notches, zoom_delta, mods, unit) = ui.input(|i| {
             // Wheel notches this frame (the smoothed delta is spread
             // over several frames, so the zoom steps come from the
             // raw events).
             let mut unit = None;
+            let mut any_notches = 0.0;
             let notches: f32 = i
                 .events
                 .iter()
                 .map(|e| match e {
                     egui::Event::MouseWheel { unit: u, delta, .. } => {
                         unit = Some(*u);
-                        delta.y / wheel_notch(*u, crate::ui::field::web_wheel())
+                        let per = wheel_notch(*u, crate::ui::field::web_wheel());
+                        // Either way: a system can send Shift+wheel
+                        // sideways.
+                        any_notches += (delta.x + delta.y) / per;
+                        delta.y / per
                     }
                     _ => 0.0,
                 })
@@ -924,6 +929,7 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
             (
                 i.smooth_scroll_delta,
                 notches,
+                any_notches,
                 i.zoom_delta(),
                 i.modifiers,
                 unit,
@@ -946,7 +952,15 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                 .then(|| ui.ctx().pointer_hover_pos())
                 .flatten()
         });
-        if let Some(h) = hover {
+        // A shaping brush: Shift+wheel (Alt+wheel while the wheel
+        // scrolls) sizes its nib, and neither zooms nor scrolls.
+        let brush_wheel = response.hovered()
+            && app.tool.is_shaping_brush()
+            && crate::brushes::wheel_resizes(app.settings.wheel_zooms, mods);
+        if brush_wheel {
+            app.brush_wheel(any_notches);
+        }
+        if let Some(h) = hover.filter(|_| !brush_wheel) {
             let zoom_factor = 1.15f32.powf(notches);
             // Options > Tools > Zoom/Pan > Center mouse when zooming with
             // the mouse wheel: a notch brings the point under the pointer
@@ -1040,6 +1054,13 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
     {
         app.canvas_input(&response, mods);
     }
+    // A Shift+drag sizing the brush ends with the button, wherever it is
+    // let go, and with the tool.
+    if app.brush_resize.is_some()
+        && (!app.tool.is_shaping_brush() || !ui.input(|i| i.pointer.primary_down()))
+    {
+        app.brush_resize = None;
+    }
     app.perspective_tick();
 
     canvas::draw_canvas(app, &painter, canvas_rect);
@@ -1056,6 +1077,7 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
     crate::step_repeat::draw_preview(app, &painter);
     canvas::draw_live_guides(app, &painter, canvas_rect);
     canvas::draw_snap_mark(app, &painter);
+    crate::brushes::draw_resize(app, &painter);
     app.draw_right_drag(&painter);
     context::context_menu(app, ui, &response);
     crate::drop_menu::drop_menu_ui(app, ui);

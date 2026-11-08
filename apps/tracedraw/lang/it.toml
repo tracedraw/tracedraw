@@ -7839,3 +7839,6 @@ print.layout_file = "Layout di stampa TraceDraw" # mt
 print.layout_file_default = "Layout di stampa" # mt
 print.layout_file_bad = "Questo file non è un layout di stampa TraceDraw." # mt
 print.layout_loaded = "Layout di stampa «{name}» caricato." # mt
+status.brush_size = "Dimensione del pennello: {size}" # mt
+status_hint.brush_size = "Maiusc+trascina o Maiusc+rotellina cambia la dimensione del pennello" # mt
+status_hint.brush_size_alt = "Maiusc+trascina o Alt+rotellina cambia la dimensione del pennello" # mt

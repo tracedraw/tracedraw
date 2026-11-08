@@ -7839,3 +7839,6 @@ print.layout_file = "TraceDraw yazdırma düzeni" # mt
 print.layout_file_default = "Yazdırma düzeni" # mt
 print.layout_file_bad = "Bu dosya bir TraceDraw yazdırma düzeni değil." # mt
 print.layout_loaded = "\"{name}\" yazdırma düzeni yüklendi." # mt
+status.brush_size = "Fırça boyutu: {size}" # mt
+status_hint.brush_size = "Shift+sürükle veya Shift+tekerlek fırça boyutunu değiştirir" # mt
+status_hint.brush_size_alt = "Shift+sürükle veya Alt+tekerlek fırça boyutunu değiştirir" # mt

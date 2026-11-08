@@ -7839,3 +7839,6 @@ print.layout_file = "Układ wydruku TraceDraw" # mt
 print.layout_file_default = "Układ wydruku" # mt
 print.layout_file_bad = "Ten plik nie jest układem wydruku TraceDraw." # mt
 print.layout_loaded = "Wczytano układ wydruku „{name}”." # mt
+status.brush_size = "Rozmiar pędzla: {size}" # mt
+status_hint.brush_size = "Shift+przeciągnięcie lub Shift+kółko zmienia rozmiar pędzla" # mt
+status_hint.brush_size_alt = "Shift+przeciągnięcie lub Alt+kółko zmienia rozmiar pędzla" # mt

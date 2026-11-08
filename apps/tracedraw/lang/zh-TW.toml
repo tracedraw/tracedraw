@@ -7839,3 +7839,6 @@ print.layout_file = "TraceDraw 列印版面" # mt
 print.layout_file_default = "列印版面" # mt
 print.layout_file_bad = "此檔案不是 TraceDraw 列印版面。" # mt
 print.layout_loaded = "已載入列印版面「{name}」。" # mt
+status.brush_size = "筆刷大小：{size}" # mt
+status_hint.brush_size = "Shift+拖曳或 Shift+滾輪可調整筆刷大小" # mt
+status_hint.brush_size_alt = "Shift+拖曳或 Alt+滾輪可調整筆刷大小" # mt

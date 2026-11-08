@@ -7839,3 +7839,6 @@ print.layout_file = "TraceDraw-Drucklayout" # mt
 print.layout_file_default = "Drucklayout" # mt
 print.layout_file_bad = "Diese Datei ist kein TraceDraw-Drucklayout." # mt
 print.layout_loaded = "Drucklayout „{name}“ geladen." # mt
+status.brush_size = "Pinselgröße: {size}" # mt
+status_hint.brush_size = "Umschalt+Ziehen oder Umschalt+Mausrad ändert die Pinselgröße" # mt
+status_hint.brush_size_alt = "Umschalt+Ziehen oder Alt+Mausrad ändert die Pinselgröße" # mt

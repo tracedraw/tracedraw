@@ -7839,3 +7839,6 @@ print.layout_file = "Раскладка печати TraceDraw" # mt
 print.layout_file_default = "Раскладка печати" # mt
 print.layout_file_bad = "Этот файл не является раскладкой печати TraceDraw." # mt
 print.layout_loaded = "Раскладка печати «{name}» загружена." # mt
+status.brush_size = "Размер кисти: {size}" # mt
+status_hint.brush_size = "Shift+перетаскивание или Shift+колесо меняет размер кисти" # mt
+status_hint.brush_size_alt = "Shift+перетаскивание или Alt+колесо меняет размер кисти" # mt

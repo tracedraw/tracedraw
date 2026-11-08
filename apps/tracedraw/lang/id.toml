@@ -7839,3 +7839,6 @@ print.layout_file = "Tata letak cetak TraceDraw" # mt
 print.layout_file_default = "Tata letak cetak" # mt
 print.layout_file_bad = "Berkas ini bukan tata letak cetak TraceDraw." # mt
 print.layout_loaded = "Tata letak cetak \"{name}\" dimuat." # mt
+status.brush_size = "Ukuran kuas: {size}" # mt
+status_hint.brush_size = "Shift+seret atau Shift+roda mengubah ukuran kuas" # mt
+status_hint.brush_size_alt = "Shift+seret atau Alt+roda mengubah ukuran kuas" # mt

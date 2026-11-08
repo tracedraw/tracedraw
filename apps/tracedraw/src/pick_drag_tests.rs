@@ -21645,3 +21645,81 @@ fn the_text_bar_has_a_strikethrough_button() {
     click_at(&ctx, &mut app, at, Modifiers::NONE);
     assert!(!struck(&app), "taken off");
 }
+
+/// The shaping brushes' nib is sized on the drawing: a drag that starts
+/// with Shift held grows it as far as the pointer goes right (and
+/// changes nothing in the drawing), Shift+wheel steps it while the wheel
+/// zooms, Alt+wheel while the wheel scrolls; the plain wheel still zooms.
+#[test]
+fn shift_drag_and_the_wheel_size_the_brush_nib() {
+    let (ctx, mut app, _) = setup();
+    app.set_tool(Tool::Twirl);
+    app.brush_radius = 10.0;
+    let rev = app.engine.revision();
+    let from = app.view.to_screen(Point::new(35.0, 25.0));
+    let zoom = app.view.zoom;
+    drag(
+        &ctx,
+        &mut app,
+        from,
+        from + egui::vec2(40.0, 0.0),
+        Modifiers::SHIFT,
+        Vec::new(),
+    );
+    let want = 10.0 + 40.0 / f64::from(zoom);
+    assert!(
+        (app.brush_radius - want).abs() < 1e-3,
+        "{} {want}",
+        app.brush_radius
+    );
+    assert!(app.brush_resize.is_none(), "the release ends it");
+    assert_eq!(app.engine.revision(), rev, "the drawing stays as it was");
+    // Leftwards it shrinks, never below the smallest nib.
+    drag(
+        &ctx,
+        &mut app,
+        from,
+        from - egui::vec2(4000.0, 0.0),
+        Modifiers::SHIFT,
+        Vec::new(),
+    );
+    assert_eq!(app.brush_radius, crate::brushes::MIN_RADIUS);
+    let wheel = |mods: Modifiers| Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: egui::vec2(0.0, 1.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: mods,
+    };
+    app.brush_radius = 10.0;
+    frame(&ctx, &mut app, vec![Event::PointerMoved(from)], Modifiers::NONE);
+    frame(&ctx, &mut app, vec![wheel(Modifiers::SHIFT)], Modifiers::SHIFT);
+    for _ in 0..20 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::SHIFT);
+    }
+    assert!((app.brush_radius - 11.0).abs() < 1e-9, "{}", app.brush_radius);
+    assert_eq!(app.view.zoom, zoom, "Shift+wheel does not zoom");
+    // With the wheel scrolling, Alt+wheel sizes it.
+    app.settings.wheel_zooms = false;
+    let origin = app.view.origin;
+    frame(&ctx, &mut app, vec![wheel(Modifiers::ALT)], Modifiers::ALT);
+    for _ in 0..20 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::ALT);
+    }
+    assert!((app.brush_radius - 12.1).abs() < 1e-9, "{}", app.brush_radius);
+    assert_eq!(app.view.origin, origin, "Alt+wheel does not scroll");
+    // The plain wheel zooms as before and leaves the nib.
+    app.settings.wheel_zooms = true;
+    frame(&ctx, &mut app, vec![wheel(Modifiers::NONE)], Modifiers::NONE);
+    for _ in 0..20 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    assert!(app.view.zoom > zoom);
+    assert!((app.brush_radius - 12.1).abs() < 1e-9);
+    // The status bar tells how the nib is sized.
+    crate::i18n::set_language("en");
+    assert!(crate::ui::status::tool_hint(&app).contains("Shift+wheel"));
+    app.settings.wheel_zooms = false;
+    assert!(crate::ui::status::tool_hint(&app).contains("Alt+wheel"));
+    app.set_tool(Tool::Pick);
+    assert!(!crate::ui::status::tool_hint(&app).contains("wheel"));
+}

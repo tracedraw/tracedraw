@@ -7839,3 +7839,6 @@ print.layout_file = "TraceDraw प्रिंट लेआउट" # mt
 print.layout_file_default = "प्रिंट लेआउट" # mt
 print.layout_file_bad = "यह फ़ाइल TraceDraw प्रिंट लेआउट नहीं है।" # mt
 print.layout_loaded = "प्रिंट लेआउट \"{name}\" लोड हुआ।" # mt
+status.brush_size = "ब्रश का आकार: {size}" # mt
+status_hint.brush_size = "Shift+खींचें या Shift+व्हील से ब्रश का आकार बदलें" # mt
+status_hint.brush_size_alt = "Shift+खींचें या Alt+व्हील से ब्रश का आकार बदलें" # mt

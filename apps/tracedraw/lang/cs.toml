@@ -7839,3 +7839,6 @@ print.layout_file = "Tiskové rozvržení TraceDraw" # mt
 print.layout_file_default = "Tiskové rozvržení" # mt
 print.layout_file_bad = "Tento soubor není tiskové rozvržení TraceDraw." # mt
 print.layout_loaded = "Tiskové rozvržení „{name}“ načteno." # mt
+status.brush_size = "Velikost štětce: {size}" # mt
+status_hint.brush_size = "Shift+tažení nebo Shift+kolečko mění velikost štětce" # mt
+status_hint.brush_size_alt = "Shift+tažení nebo Alt+kolečko mění velikost štětce" # mt

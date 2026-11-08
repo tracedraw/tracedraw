@@ -7839,3 +7839,6 @@ print.layout_file = "Mise en page d'impression TraceDraw" # mt
 print.layout_file_default = "Mise en page d'impression" # mt
 print.layout_file_bad = "Ce fichier n'est pas une mise en page d'impression TraceDraw." # mt
 print.layout_loaded = "Mise en page d'impression « {name} » chargée." # mt
+status.brush_size = "Taille du pinceau : {size}" # mt
+status_hint.brush_size = "Maj+glisser ou Maj+molette change la taille du pinceau" # mt
+status_hint.brush_size_alt = "Maj+glisser ou Alt+molette change la taille du pinceau" # mt

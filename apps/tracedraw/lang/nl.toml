@@ -7839,3 +7839,6 @@ print.layout_file = "TraceDraw-afdrukindeling" # mt
 print.layout_file_default = "Afdrukindeling" # mt
 print.layout_file_bad = "Dit bestand is geen TraceDraw-afdrukindeling." # mt
 print.layout_loaded = "Afdrukindeling '{name}' geladen." # mt
+status.brush_size = "Penseelgrootte: {size}" # mt
+status_hint.brush_size = "Shift+slepen of Shift+wiel wijzigt de penseelgrootte" # mt
+status_hint.brush_size_alt = "Shift+slepen of Alt+wiel wijzigt de penseelgrootte" # mt

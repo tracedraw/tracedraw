@@ -7839,3 +7839,6 @@ print.layout_file = "TraceDraw মুদ্রণ বিন্যাস" # mt
 print.layout_file_default = "মুদ্রণ বিন্যাস" # mt
 print.layout_file_bad = "এই ফাইলটি TraceDraw মুদ্রণ বিন্যাস নয়।" # mt
 print.layout_loaded = "মুদ্রণ বিন্যাস \"{name}\" লোড হয়েছে।" # mt
+status.brush_size = "ব্রাশের আকার: {size}" # mt
+status_hint.brush_size = "Shift+টানা বা Shift+হুইল ব্রাশের আকার বদলায়" # mt
+status_hint.brush_size_alt = "Shift+টানা বা Alt+হুইল ব্রাশের আকার বদলায়" # mt

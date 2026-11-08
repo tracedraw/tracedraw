@@ -1790,6 +1790,9 @@ pub struct App {
     pub brush: crate::ui::brush_bars::BrushSettings,
     /// A step of the brush stroke under way is on the undo list.
     pub brush_stepped: bool,
+    /// The shaping brushes' nib being sized by a Shift+drag (see
+    /// `brushes.rs`).
+    pub brush_resize: Option<crate::brushes::BrushResize>,
     /// The style new dimensions take (the dimension tools' bar).
     pub dimension_style: crate::dimensions::DimensionStyle,
     /// The document revision dimensions were last checked at for moves
@@ -2939,6 +2942,7 @@ impl App {
             roughen_amount: 2.0,
             brush: Default::default(),
             brush_stepped: false,
+            brush_resize: None,
             dimension_style: Default::default(),
             dimensions_checked: u64::MAX,
             dimension_labels_seen: Default::default(),

@@ -7839,3 +7839,6 @@ print.layout_file = "Diseño de impresión de TraceDraw" # mt
 print.layout_file_default = "Diseño de impresión" # mt
 print.layout_file_bad = "Este archivo no es un diseño de impresión de TraceDraw." # mt
 print.layout_loaded = "Diseño de impresión «{name}» cargado." # mt
+status.brush_size = "Tamaño del pincel: {size}" # mt
+status_hint.brush_size = "Mayús+arrastrar o Mayús+rueda cambia el tamaño del pincel" # mt
+status_hint.brush_size_alt = "Mayús+arrastrar o Alt+rueda cambia el tamaño del pincel" # mt

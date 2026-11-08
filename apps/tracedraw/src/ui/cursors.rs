@@ -409,6 +409,11 @@ pub fn for_tool(
         {
             ToolCursor::System(egui::CursorIcon::Move)
         }
+        // The nib being sized by a Shift+drag: its circle stays at the
+        // press (see `brushes::draw_resize`), the pointer sizes it across.
+        t if t.is_shaping_brush() && app.brush_resize.is_some() => {
+            ToolCursor::System(egui::CursorIcon::ResizeHorizontal)
+        }
         Tool::Eraser => ToolCursor::Nib {
             radius: nib_px(app.eraser_width / 2.0, app.view.zoom),
             square: app.eraser_square,
