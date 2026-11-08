@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Saving .cdr (version 16 and later) with Embed fonts: a drawing whose text uses only the bold face of a font (bold "Khand" text, or regular Khand text drawn by the only Khand file installed, the bold one) no longer lists a regular face of that font too. The file carried a plain record of the regular face and named it in its style table, two references to a face it neither used nor embedded, so the program that reads `.cdr` files could ask for "Khand (Normal)" on a computer where Khand is not installed, although the bold face is in the file. Files that program saves hold a record per face used and name the first of them in the style table, and TraceDraw now writes the same; regular text keeps its record, and files before version 16 are unchanged (#1733, #1009, #1055).
+
 - File > Export with "Do not show filter dialog" on offers every format in the file dialog, the one set in Options > File Formats first, and exports in the format of the extension chosen; it offered that one format only.
 
 - Weld, Trim and the other shaping operations keep a mesh fill: the result showed no colour when the object with the mesh had been moved or resized.

@@ -2545,6 +2545,10 @@ struct StyleUses {
     graphic_fill: u32,
     outline: u32,
     font: u16,
+    /// The style flags of the face of `font` the styles name: the flags
+    /// of its first `font` record (0x40 where the regular face is used
+    /// or before version 16), so the styles name a face the file has.
+    font_flags: u32,
     /// Text formats of versions 7 to 15, one style each after the
     /// graphic style (ids from `GRAPHIC_STYLE_ID + 1`).
     formats: Vec<TextFormat>,
@@ -2663,7 +2667,7 @@ fn stlt(v: Ver, uses: StyleUses) -> Vec<u8> {
         font,
         uses.font,
         (12.0 * 254000.0 / 72.0) as i32,
-        0x40,
+        uses.font_flags,
     );
     for (f, (_, entry)) in uses.formats.iter().zip(&format_entries) {
         font_entry(&mut t, *entry, f.font, f.size, f.flags);
@@ -4071,6 +4075,11 @@ impl<'a> Writer<'a> {
         if self.fonts.is_empty() {
             self.font_id("Arial");
         }
+        // The face the style table names: the first record of the first
+        // font, as the file of #1733 names its one face there (Khand at
+        // 0x1000, the bold face, with no regular record).
+        let first_font = self.fonts.first().map(|(id, _)| *id);
+        let mut style_face = 0x40;
         if !self.fonts.is_empty() {
             // What the package's font table says about each embedded
             // face, for the records of version 16 and later (faces not
@@ -4087,10 +4096,6 @@ impl<'a> Writer<'a> {
             };
             let mut fonts = Vec::new();
             for (id, f) in &self.fonts {
-                fonts.push(chunk(
-                    b"font",
-                    font_record(v, *id, f, 0x40, record_of(*id, 0x40)),
-                ));
                 // The faces the text asks for, and the faces the font
                 // table lists for them (a bold face drawing bold italic
                 // text), each of which has its record in files (#1455).
@@ -4104,10 +4109,22 @@ impl<'a> Writer<'a> {
                             .filter(|r| r.number == *id)
                             .flat_map(|r| r.flags.iter().copied()),
                     )
-                    .filter(|flags| *flags != 0x40)
                     .collect();
+                // Files of version 16 and later hold a record for each
+                // face used and none for a regular face nothing uses: the
+                // file of #1733 that program saved has one "Khand" record,
+                // the bold one. A plain record beside it named a regular
+                // face the file neither embeds nor needs, which was asked
+                // for where the font is not installed. Before 16 the
+                // regular record is the font the text styles name.
+                if faces.is_empty() || !v.redirects() {
+                    faces.push(0x40);
+                }
                 faces.sort_unstable();
                 faces.dedup();
+                if Some(*id) == first_font {
+                    style_face = faces[0];
+                }
                 for flags in faces {
                     fonts.push(chunk(
                         b"font",
@@ -4124,6 +4141,7 @@ impl<'a> Writer<'a> {
             graphic_fill: self.fill_id(&Fill::None),
             outline: self.outline_id(None),
             font: self.fonts.first().map(|(id, _)| *id).unwrap_or(1),
+            font_flags: style_face,
             formats: std::mem::take(&mut self.text_formats),
         };
 
