@@ -536,8 +536,10 @@ jobs:
 
   # GitHub Pages must be set to "GitHub Actions" (Settings > Pages); the
   # job tries to enable it and does not fail the build when it cannot.
+  # Runs for every push to main and for a manual run of main, so the site
+  # can be published again by hand after Pages was turned off.
   pages:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: web
     runs-on: ubuntu-latest
     continue-on-error: true
