@@ -3874,6 +3874,16 @@ impl App {
         if pressed(Key::J, cmd) {
             self.dialog = crate::ui::dialogs::Dialog::Options;
         }
+        // Ctrl+Tab and Ctrl+Shift+Tab: the next and the previous document
+        // tab, round the end (#2068, #2058).
+        if self.docs.len() > 1 {
+            let n = self.docs.len();
+            if pressed(Key::Tab, cmd) {
+                self.switch_document((self.active_doc + 1) % n);
+            } else if pressed(Key::Tab, cmd | Modifiers::SHIFT) {
+                self.switch_document((self.active_doc + n - 1) % n);
+            }
+        }
         // With the Shape tool, Tab steps through the nodes of the curve.
         let shape_tool = self.tool == Tool::Shape;
         if pressed(Key::Tab, Modifiers::NONE) && !(shape_tool && self.cycle_node(true)) {

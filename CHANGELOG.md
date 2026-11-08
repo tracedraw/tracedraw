@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Ctrl+Tab brings the next document tab to the front and Ctrl+Shift+Tab the previous one, round the end, so open drawings can be switched from the keyboard (#2068, #2058).
+
 - Touch screens: a finger dragged along a toolbar, the property bar, the toolbox, the colour palette or a column of docker tabs that is longer than the screen slides it with the finger, so the hidden buttons, tools, options and colours of a phone's narrow screen can be reached; a tap on a button still works, a finger that slid the bar presses nothing when it lifts, and a finger dragged off the palette onto the drawing still drags the colour. The mouse keeps its drags on the bars. A docker's contents longer than the docker scroll under a finger too (#1997).
 
 - Linked text content: Text > Link Text Content (also on the right-click menu) links the characters of two texts or more, so whatever is typed in any of them appears in the others at once, both ways, while each keeps its own font, size, colours and effects. Change the word of a 3D blend, an extrusion or a shadow text once. The Blend panel can link the two texts of a blend; a linked text shows the others of its link with dashed outlines and a chain mark, Undo takes a change back in all of them in one step, copies stay linked, and Unlink Text Content lets a text go its own way. This is not the frame flow of Paragraph Text Frame > Link; `.tdraw` files keep the link, `.cdr` files get plain texts (#1568, #1364, #1194).
