@@ -12,7 +12,9 @@ everything, and can also save `.cdr` files. It opens many other formats; see
 
 The drawing opens in a new tab. To open a drawing you used recently, use
 [[menu.file > menu.file.open_recent]], the arrow of the Open button, or the
-list on the Welcome Screen; [[menu.file.clear_recent]] empties the list. To
+list on the Welcome Screen, which shows each drawing's name, folder, size and
+last edit in a table when the window is wide enough;
+[[menu.file.clear_recent]] empties the list. To
 take one drawing off the Welcome Screen list, point at it and click the x at
 its right, or right-click it and choose [[welcome.remove_recent]]; the file
 itself stays where it is.

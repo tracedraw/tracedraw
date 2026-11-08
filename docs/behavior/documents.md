@@ -20,6 +20,16 @@ rulers:
   when it is taller than the window, each tab keeping its own place; the
   tab row stays put, so recent documents below the window are reached
   (#1288, `ui::welcome::tests::the_recent_documents_scroll_into_view`).
+- Get Started's recent documents are a table across the free width when
+  it is 560 points or more (#1675): a header row (Name, Location, Size,
+  Last edited) over rows with the thumbnail, the file name, its folder,
+  its size (KB or MB) and its last change as a local date and time, each
+  text kept to its column (32, 38, 12 and 18 % of the width after the
+  thumbnail). Size and date are read with the check that the file is
+  there, on a worker thread (`file_presence::info`), so a slow share
+  never holds the window; a missing file shows neither. A narrower
+  window and a phone keep the list of name over folder
+  (`ui::welcome::tests::the_recent_documents_are_a_table_with_size_and_date`).
 - The Welcome Screen tab has a close button on hover (a middle click
   also closes it): the tab shrinks to its house alone (a 26 px square,
   the title as its tip) and the active drawing shows. With no drawing

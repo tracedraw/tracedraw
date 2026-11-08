@@ -76,6 +76,8 @@ full, row-by-row status.
 
 - Shape tool: beside Corner rounding, Round, Scalloped and Chamfered Corner choose what the value does to the chosen corners (or every corner of the selected curves), cut as the Corners docker cuts them (#1147).
 
+- Welcome Screen: the recent documents are a table across the window with each drawing's name, location, size and last edit, under a header row; a narrow window and a phone keep the list (#1675).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
