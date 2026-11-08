@@ -8333,3 +8333,5 @@ dialog.palette_selected = "已選取 {n} 種色彩" # mt
 dialog.palette_color_name = "色彩 {n}" # mt
 palette.reset_desc = "文件調色盤中只保留繪圖使用的色彩。" # mt
 menu.view.navigator = "導覽器" # mt
+docker.distribute_gap_tip = "分佈按鈕在物件之間(或其邊緣、中心之間)保持的距離。分佈按鈕分佈過選取範圍後,新值會立即重新分佈;在方塊上捲動滾輪可逐步調整。" # mt
+docker.distribute_gap_slider_tip = "拖曳以變更間距:拖曳時選取範圍隨之重新分佈。放開即保留(一步復原);Esc 恢復原狀。" # mt

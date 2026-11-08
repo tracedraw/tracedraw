@@ -8333,3 +8333,5 @@ dialog.palette_selected = "{n} Farben ausgewählt" # mt
 dialog.palette_color_name = "Farbe {n}" # mt
 palette.reset_desc = "Nur die Farben, die die Zeichnung verwendet, in der Dokumentpalette behalten." # mt
 menu.view.navigator = "Navigator" # mt
+docker.distribute_gap_tip = "Der Abstand, den die Verteilen-Schaltflächen zwischen den Objekten oder zwischen ihren Kanten oder Mitten einhalten. Hat eine Verteilen-Schaltfläche die Auswahl verteilt, verteilt ein neuer Wert sie sofort erneut; das Mausrad über dem Feld ändert ihn schrittweise." # mt
+docker.distribute_gap_slider_tip = "Ziehen ändert den Abstand: Die Auswahl wird dabei laufend neu verteilt. Loslassen behält ihn (ein Rückgängig-Schritt); Esc stellt alles wieder her." # mt

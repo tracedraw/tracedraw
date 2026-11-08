@@ -706,6 +706,8 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     bar_items::drop_overlay(app, &ctx);
     dockers::floating_dockers(app, &ctx);
     dockers::drag_overlay(app, &ctx, 24.0);
+    // A set spacing being adjusted in a docker no longer shown goes back.
+    align_docker::settle_gap(app);
 
     // Document tabs above the rulers.
     // The tabs' blue line is the strip's lower edge: no separator and no

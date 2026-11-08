@@ -8333,3 +8333,5 @@ dialog.palette_selected = "{n} couleurs sélectionnées" # mt
 dialog.palette_color_name = "Couleur {n}" # mt
 palette.reset_desc = "Ne garder dans la palette du document que les couleurs utilisées par le dessin." # mt
 menu.view.navigator = "Navigateur" # mt
+docker.distribute_gap_tip = "La distance que les boutons Répartir gardent entre les objets, ou entre leurs bords ou leurs centres. Une fois la sélection répartie par un bouton Répartir, une nouvelle valeur la répartit à nouveau aussitôt ; la molette sur la case la change pas à pas." # mt
+docker.distribute_gap_slider_tip = "Faites glisser pour changer l'espacement : la sélection est répartie à nouveau au fur et à mesure. Relâchez pour le garder (une seule étape d'annulation) ; Échap remet tout comme avant." # mt

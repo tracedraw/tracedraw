@@ -8333,3 +8333,5 @@ dialog.palette_selected = "Zaznaczone kolory: {n}" # mt
 dialog.palette_color_name = "Kolor {n}" # mt
 palette.reset_desc = "Zachowaj w palecie dokumentu tylko kolory używane w rysunku." # mt
 menu.view.navigator = "Nawigator" # mt
+docker.distribute_gap_tip = "Odległość, jaką przyciski Rozmieść zachowują między obiektami albo między ich krawędziami lub środkami. Gdy przycisk Rozmieść rozmieścił już zaznaczenie, nowa wartość od razu rozmieszcza je ponownie; kółko nad polem zmienia ją krokami." # mt
+docker.distribute_gap_slider_tip = "Przeciągnij, aby zmienić odstęp: zaznaczenie jest rozmieszczane na bieżąco. Puść, aby go zachować (jeden krok cofania); Esc przywraca wszystko." # mt

@@ -8333,3 +8333,5 @@ dialog.palette_selected = "Vybráno barev: {n}" # mt
 dialog.palette_color_name = "Barva {n}" # mt
 palette.reset_desc = "Ponechat v paletě dokumentu jen barvy, které kresba používá." # mt
 menu.view.navigator = "Navigátor" # mt
+docker.distribute_gap_tip = "Vzdálenost, kterou tlačítka Rozmístit udržují mezi objekty nebo mezi jejich okraji či středy. Jakmile tlačítko Rozmístit výběr rozmístí, nová hodnota jej hned rozmístí znovu; kolečko nad polem ji krokuje." # mt
+docker.distribute_gap_slider_tip = "Tažením měníte rozestup: výběr se při tom znovu rozmisťuje. Uvolněním jej ponecháte (jeden krok zpět); Esc vše vrátí." # mt

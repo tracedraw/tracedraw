@@ -8333,3 +8333,5 @@ dialog.palette_selected = "{n} warna dipilih" # mt
 dialog.palette_color_name = "Warna {n}" # mt
 palette.reset_desc = "Simpan hanya warna yang dipakai gambar di palet dokumen." # mt
 menu.view.navigator = "Navigator" # mt
+docker.distribute_gap_tip = "Jarak yang dijaga tombol Distribusikan di antara objek, atau di antara tepi atau pusatnya. Setelah tombol Distribusikan menyebarkan pilihan, nilai baru langsung menyebarkannya lagi; roda di atas kotak mengubahnya selangkah demi selangkah." # mt
+docker.distribute_gap_slider_tip = "Seret untuk mengubah jarak: pilihan disebarkan lagi saat Anda menyeret. Lepaskan untuk menyimpannya (satu langkah urung); Esc mengembalikannya." # mt

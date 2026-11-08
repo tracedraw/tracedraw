@@ -1725,6 +1725,13 @@ pub struct App {
     pub distribute_to: crate::ops::DistributeTo,
     /// Distribute with a set spacing: the distance, mm (#2005).
     pub distribute_gap: f64,
+    /// The last Distribute button used with a set spacing and the
+    /// selection it spread: changing the spacing then spreads it again,
+    /// live (`align_docker::GapLive`).
+    pub distribute_last: Option<(crate::ops::Distribute, Vec<tracedraw_core::ShapeId>)>,
+    /// The set spacing being changed with its slider or the wheel, shown
+    /// on the drawing as a preview until it is kept or put back.
+    pub gap_live: Option<crate::ui::align_docker::GapLive>,
     pub lens: crate::lens::LensSettings,
     /// How dragging an envelope node reshapes its sides.
     pub envelope_mode: tracedraw_core::envelope::Mode,
@@ -2977,6 +2984,8 @@ impl App {
             align_use_outline: false,
             distribute_to: Default::default(),
             distribute_gap: 1.0,
+            distribute_last: None,
+            gap_live: None,
             lens: Default::default(),
             envelope_mode: Default::default(),
             envelope_mapping: Default::default(),

@@ -20,6 +20,8 @@ full, row-by-row status.
 
 - Help > Search Commands (Ctrl+Shift+P) finds settings too: every setting of the Options and of Document Setup by its label or the words of its tip, and each options page by its name, listed after the menu commands with the page they are on. Choosing one opens the Options or Document Setup at that page with the setting framed for a moment, scrolled into view; "fill open" finds Fill open curves (live test of 0.41).
 
+- Align and Distribute, Distribute To > Set spacing: a slider under the spacing box, and the wheel over the box, change the spacing live: once a Distribute button has spread the selection, it spreads again at each new value as you adjust. Letting go of the slider or moving away from the box keeps the result as one undo step; Esc puts the spacing and the objects back. Before, a new spacing took a click on the button again.
+
 ## 0.43.0 (2026-11-08)
 
 - The interface comes in Lao (ພາສາລາວ): Options > Global, the Windows installer and the system language offer it, and the browser build fetches Noto Sans Lao for its letters (#2062).

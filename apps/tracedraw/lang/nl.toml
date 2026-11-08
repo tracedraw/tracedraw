@@ -8333,3 +8333,5 @@ dialog.palette_selected = "{n} kleuren geselecteerd" # mt
 dialog.palette_color_name = "Kleur {n}" # mt
 palette.reset_desc = "Alleen de kleuren die de tekening gebruikt in het documentpalet houden." # mt
 menu.view.navigator = "Navigator" # mt
+docker.distribute_gap_tip = "De afstand die de knoppen Verdelen tussen de objecten houden, of tussen hun randen of middens. Zodra een knop Verdelen de selectie heeft verdeeld, verdeelt een nieuwe waarde haar meteen opnieuw; het wiel boven het vak wijzigt haar stap voor stap." # mt
+docker.distribute_gap_slider_tip = "Sleep om de afstand te wijzigen: de selectie wordt al slepend opnieuw verdeeld. Laat los om haar te houden (een stap ongedaan maken); Esc zet alles terug." # mt

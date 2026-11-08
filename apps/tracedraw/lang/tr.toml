@@ -8333,3 +8333,5 @@ dialog.palette_selected = "{n} renk seçili" # mt
 dialog.palette_color_name = "Renk {n}" # mt
 palette.reset_desc = "Belge paletinde yalnızca çizimin kullandığı renkleri tut." # mt
 menu.view.navigator = "Gezgin" # mt
+docker.distribute_gap_tip = "Dağıt düğmelerinin nesneler arasında ya da kenarları veya merkezleri arasında koruduğu uzaklık. Bir Dağıt düğmesi seçimi dağıttıktan sonra yeni bir değer onu hemen yeniden dağıtır; kutunun üzerindeki tekerlek adım adım değiştirir." # mt
+docker.distribute_gap_slider_tip = "Aralığı değiştirmek için sürükleyin: seçim siz sürükledikçe yeniden dağıtılır. Korumak için bırakın (tek geri alma adımı); Esc her şeyi geri getirir." # mt
