@@ -121,7 +121,7 @@ editor de paletas.
    atual e [[dialog.remove_color]] remove a selecionada.
 4. Marque [[dialog.spot_color]] para tornar a cor selecionada uma cor especial: uma tinta com nome impressa em uma chapa própria. As exportações em PDF a mantêm como tinta separada.
 5. Clique em [[dialog.save_palette]] para salvá-la como arquivo.
-6. Clique em [[dialog.close]].
+6. Clique em [[dialog.ok]].
 
 As paletas de fábrica não podem ser editadas; crie uma paleta nova ou edite uma
 cópia.

@@ -70,7 +70,7 @@ el editor de paletas.
    color actual y [[dialog.remove_color]] quita el seleccionado.
 4. Marque [[dialog.spot_color]] para convertir el color seleccionado en un color directo: una tinta con nombre que se imprime en su propia plancha. Las exportaciones a PDF la conservan como tinta separada.
 5. Haga clic en [[dialog.save_palette]] para guardarla como archivo.
-6. Haga clic en [[dialog.close]].
+6. Haga clic en [[dialog.ok]].
 
 Las paletas integradas no se pueden editar; cree una paleta nueva o edite una
 copia.

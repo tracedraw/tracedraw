@@ -67,6 +67,6 @@ otevře editor palet.
    a [[dialog.remove_color]] odebere vybranou.
 4. Zaškrtnutím [[dialog.spot_color]] uděláte z vybrané barvy přímou barvu: pojmenovanou barvu tištěnou na vlastní desce pod názvem barvy. Export do PDF ji zachová jako samostatnou barvu.
 5. Kliknutím na [[dialog.save_palette]] ji uložíte jako soubor.
-6. Klikněte na [[dialog.close]].
+6. Klikněte na [[dialog.ok]].
 
 Vestavěné palety nelze upravovat; vytvořte novou paletu nebo upravte kopii.

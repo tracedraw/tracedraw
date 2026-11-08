@@ -801,11 +801,9 @@ fn row_menu(app: &mut App, ui: &mut Ui, i: usize) {
     }
     sep(ui);
     if item(ui, "docker.edit", "", true) {
-        app.dialog =
-            crate::ui::dialogs::Dialog::PaletteEditor(crate::ui::dialogs::PaletteEditorState {
-                palette: i,
-                ..Default::default()
-            });
+        app.dialog = crate::ui::dialogs::Dialog::PaletteEditor(
+            crate::ui::dialogs::PaletteEditorState::on(i),
+        );
     }
     if item(ui, "palette.rename", "", true) {
         start_rename_index(app, i);

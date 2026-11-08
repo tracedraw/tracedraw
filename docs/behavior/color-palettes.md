@@ -260,7 +260,11 @@ objects, a picture with others) does what it did before.
   (every colour used in the drawing, after the ones already there), Add
   Colors from Bitmap (see below),
   Delete Color (the current swatch), Palette > Reset Palette (keeps only
-  the colours the drawing still uses).
+  the colours the drawing still uses; a question comes first, Reset or
+  Cancel, and it is one undo step, #2138).
+- A swatch's own menu (right click, or the right button held when a right
+  click sets the outline) starts with Delete Color for that swatch: one
+  undo step on the document palette (#2138).
 - It is saved with the drawing; opening a `.cdr` reads its
   `color/docPalette.xml`.
 
@@ -274,15 +278,46 @@ with no colour that can be read says so in the status bar, #882,
 `palette::tests::xml_palettes_open_with_names_and_values`; the palette
 opened gets a strip of its own next to the default palette, which stays
 first, and the same file opened again replaces the copy already open
-instead of adding another, #1343), Palette Editor..., Palette Manager, the Document
+instead of adding another, #1343), Edit Palette... (the Palette Editor on this palette, #2138), Palette Manager, the Document
 Palette switch, Swatch Size (five sizes), Rows (1 Row to 8 Rows, Fit),
 Position (Top, Bottom, Left, Right, Floating), Open as Palette Bar and
 Rename... (radio choices kept in the preferences, the same settings as
-in Options). A palette bar's menu has the Palette Editor, the Palette
+in Options). A palette bar's menu has Edit Palette..., the Palette
 Manager, Swatch Size, Rows, Position, Open as Palette Bar, Rename... and
 Close Palette; the document palette's bar has the document palette's
 items instead of the first two. A right click on a row outside the
-swatches, or on a floating bar's title, opens the same menu.
+swatches, or on a floating bar's title, opens the same menu; a double
+click there opens the Palette Editor on the palette (not on the
+document palette). A swatch's menu starts with Delete Color: that colour
+leaves the user's palette at once (its file is saved again, the status
+bar names the colour); on a built-in or locked palette the item is
+greyed and its tooltip says why (#2138).
+
+## Palette Editor (#2138)
+
+Window > Color Palettes > Palette Editor..., Edit Palette... in a
+palette's menu, a double click on a bar outside its swatches, or Edit in
+the Palette Manager. The editor works on a copy of the palette: OK gives
+the palette the copy and closes, Apply gives it and stays open, Cancel
+or Esc drops it. While the copy has changes the palette list is greyed
+(its tooltip asks to apply or cancel first). Palettes are outside the
+drawing's undo; the editor's Undo takes back its last change (a name
+typed, or a colour dragged in the picker, is one step; up to 100), and
+Cancel all of them.
+
+- Selection as in a list: a click selects one swatch, Ctrl+click adds or
+  removes one, Shift+click selects the run from the last swatch clicked
+  (Ctrl+Shift adds the run). Selected swatches have a blue frame.
+- Delete (the button, or the Delete key while no field has the focus)
+  takes every selected colour out; the colour after them is selected
+  next. Move up and Move down move the selected colours together a
+  place; a swatch dragged onto another takes its place (a blue line shows
+  where).
+- With one colour selected: its name, its value (the colour picker) and
+  Spot color; with several, how many are selected.
+- The palette's name, changed, is given as Rename gives it.
+- Built-in and locked palettes are shown with the hint that they cannot
+  be edited, and nothing changes them.
 
 ## Palette Manager
 
@@ -384,6 +419,10 @@ update the document palette (on).
   preferences; old preferences give one palette at the bottom; names and
   Reset Name; a palette file keeps its name)
 - `ui::palette_bars::rename_tests::the_rename_window_takes_the_typed_name`
+- `ui::palette_editor::tests` (Ctrl and Shift selection, several colours
+  deleted or moved at once, the Delete key, Undo, OK, Apply and Cancel,
+  built-in palettes unchanged, Delete Color on a swatch)
+- `ui::palette::tests::delete_color_and_edit_palette_in_the_palette_menus`
 - `ui::palette_manager::tests` (the slider's steps, the slider sizes the
   selected bar, the list's eye, duplicate, move, delete and filter, the
   colour model)

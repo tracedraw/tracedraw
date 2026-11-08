@@ -73,7 +73,7 @@ ouvre l'éditeur de palette.
    sélectionnée.
 4. Cochez [[dialog.spot_color]] pour faire de la couleur sélectionnée une couleur d'accompagnement : une encre nommée imprimée sur sa propre plaque. Les exports PDF la gardent comme encre séparée.
 5. Cliquez sur [[dialog.save_palette]] pour l'enregistrer dans un fichier.
-6. Cliquez sur [[dialog.close]].
+6. Cliquez sur [[dialog.ok]].
 
 Les palettes intégrées ne peuvent pas être modifiées ; créez une nouvelle
 palette ou modifiez une copie.

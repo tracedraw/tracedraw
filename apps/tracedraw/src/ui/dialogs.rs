@@ -1083,12 +1083,7 @@ pub struct EncodeState {
 
 pub use crate::ui::font_manager::FontManagerState;
 
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct PaletteEditorState {
-    pub palette: usize,
-    pub selected: Option<usize>,
-    pub name: String,
-}
+pub use crate::ui::palette_editor::PaletteEditorState;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Dialog {
@@ -1259,6 +1254,9 @@ pub enum Dialog {
     /// A picture dropped on a palette bar: how many of its colours go
     /// to that palette (#2137).
     PictureColors(Box<crate::ui::picture_colors::PictureColorsState>),
+    /// Reset Palette of the document palette: keep only the colours the
+    /// drawing uses?
+    ConfirmResetPalette,
     NewDocument(crate::new_document::NewDocState),
     About,
     /// File > GitHub.
@@ -2993,8 +2991,26 @@ pub fn show(app: &mut App, ctx: &Context) {
         }
         Dialog::FontManager(st) => font_manager_dialog(app, ctx, st, &mut close),
         Dialog::TraceCut(st) => crate::ui::tracecut::dialog(app, ctx, st, &mut close),
-        Dialog::PaletteEditor(st) => palette_editor_dialog(app, ctx, st, &mut close),
+        Dialog::PaletteEditor(st) => crate::ui::palette_editor::dialog(app, ctx, st, &mut close),
         Dialog::PictureColors(st) => crate::ui::picture_colors::dialog(app, ctx, st, &mut close),
+        Dialog::ConfirmResetPalette => {
+            let (reset, cancel) = (tr("palette.reset"), tr("dialog.cancel"));
+            match crate::ui::chrome::message_box(
+                ctx,
+                crate::ui::chrome::MessageIcon::Question,
+                &tr("palette.reset_question"),
+                &[&reset, &cancel],
+            ) {
+                Some(0) => {
+                    if app.has_document() {
+                        app.reset_document_palette();
+                    }
+                    close = true;
+                }
+                Some(_) => close = true,
+                None => {}
+            }
+        }
         Dialog::NewDocument(st) => {
             crate::new_document::new_document_dialog(app, ctx, st, &mut close)
         }
@@ -7567,7 +7583,7 @@ fn font_manager_dialog(app: &mut App, ctx: &Context, st: &mut FontManagerState, 
 /// colour keeps its stand-in and tint under the new name), otherwise the
 /// colour itself (a spot colour's process colour at its tint when it was
 /// one).
-fn palette_entry_color(name: &str, c: Color, spot: bool) -> Color {
+pub(crate) fn palette_entry_color(name: &str, c: Color, spot: bool) -> Color {
     match (spot, c) {
         (
             true,
@@ -7586,220 +7602,6 @@ fn palette_entry_color(name: &str, c: Color, spot: bool) -> Color {
         (false, s @ Color::Spot { .. }) => s.process(),
         (false, other) => other,
     }
-}
-
-fn palette_editor_dialog(
-    app: &mut App,
-    ctx: &Context,
-    st: &mut PaletteEditorState,
-    close: &mut bool,
-) {
-    window(ctx, tr("menu.window.palette_editor")).show(ctx, |ui| {
-        ui.horizontal(|ui| {
-            ui.label(tr("dialog.palette"));
-            let names: Vec<String> = app.palettes.iter().map(|p| p.display_name()).collect();
-            crate::ui::keynav::ComboBox::from_id_salt("pal_sel")
-                .selected_text(names.get(st.palette).cloned().unwrap_or_default())
-                .show_ui(ui, |ui| {
-                    for (i, n) in names.iter().enumerate() {
-                        if ui.selectable_label(st.palette == i, n).clicked() {
-                            st.palette = i;
-                            st.selected = None;
-                        }
-                    }
-                })
-                .response
-                .rich_tip(crate::ui::tips::pair(
-                    "dialog.palette",
-                    "dialog.palette_pick_desc",
-                ));
-            if ui
-                .button(tr("dialog.new_palette"))
-                .rich_tip(crate::ui::tips::pair(
-                    "dialog.new_palette_tip",
-                    "dialog.new_palette_desc",
-                ))
-                .clicked()
-            {
-                app.palettes.push(crate::palette::Palette {
-                    name: format!("Palette {}", app.palettes.len() + 1),
-                    key: "",
-                    colors: Vec::new(),
-                    builtin: false,
-                    path: None,
-                });
-                st.palette = app.palettes.len() - 1;
-            }
-        });
-        // A locked palette shows as a built-in one does: nothing changes
-        // it until it is unlocked in the Palette Manager (#1343).
-        let locked = app.palette_locked(st.palette);
-        let mut save_as = None;
-        let Some(pal) = app.palettes.get_mut(st.palette) else {
-            *close = true;
-            return;
-        };
-        let read_only = pal.builtin || locked;
-        if !read_only {
-            ui.horizontal(|ui| {
-                ui.label(tr("dialog.name"));
-                ui.text_edit_singleline(&mut pal.name)
-                    .rich_tip(crate::ui::tips::pair(
-                        "dialog.name",
-                        "dialog.palette_name_desc",
-                    ));
-            });
-        }
-        let cols = 12;
-        egui::ScrollArea::vertical()
-            .max_height(180.0)
-            .show(ui, |ui| {
-                egui::Grid::new("pal_grid")
-                    .spacing(egui::vec2(2.0, 2.0))
-                    .show(ui, |ui| {
-                        for (i, (_, c)) in pal.colors.iter().enumerate() {
-                            let [r, g, b] = c.to_rgb8();
-                            let (rect, resp) = ui
-                                .allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::click());
-                            ui.painter()
-                                .rect_filled(rect, 2.0, egui::Color32::from_rgb(r, g, b));
-                            if st.selected == Some(i) {
-                                ui.painter().rect_stroke(
-                                    rect,
-                                    2.0,
-                                    egui::Stroke::new(2.0, egui::Color32::BLACK),
-                                    egui::StrokeKind::Outside,
-                                );
-                            }
-                            let resp = resp.rich_tip_with(|| {
-                                format!("{}\n{}", pal.colors[i].0, tr("dialog.palette_swatch_desc"))
-                            });
-                            if resp.clicked() {
-                                st.selected = Some(i);
-                            }
-                            if (i + 1) % cols == 0 {
-                                ui.end_row();
-                            }
-                        }
-                    });
-            });
-        if let Some(i) = st.selected {
-            if let Some((name, c)) = pal.colors.get_mut(i) {
-                ui.horizontal(|ui| {
-                    // A built-in or locked palette's names stay as they are.
-                    let mut shown = name.clone();
-                    let name = if read_only { &mut shown } else { name };
-                    let renamed = ui
-                        .add_enabled(!read_only, egui::TextEdit::singleline(name))
-                        .rich_tip(crate::ui::tips::pair(
-                            "dialog.color_name",
-                            "dialog.color_name_desc",
-                        ))
-                        .changed();
-                    let was_spot = matches!(c, Color::Spot { .. });
-                    let mut edited = *c;
-                    let changed = crate::ui::tips::tip_over(
-                        ui,
-                        crate::ui::tips::pair("dialog.color_value", "dialog.color_value_desc"),
-                        |ui| crate::ui::color_picker::color_button(ui, &mut edited),
-                    );
-                    if changed && !read_only {
-                        *c = edited;
-                    }
-                    // A spot colour: a named ink with this colour as its
-                    // process stand-in, printed on a plate of its own. A
-                    // spot colour given another colour stays one.
-                    let mut spot = was_spot;
-                    let toggled = ui
-                        .add_enabled(
-                            !read_only,
-                            egui::Checkbox::new(&mut spot, tr("dialog.spot_color")),
-                        )
-                        .rich_tip(crate::ui::tips::pair(
-                            "dialog.spot_color",
-                            "dialog.spot_color_desc",
-                        ))
-                        .changed();
-                    // Only what the user changed: an entry shown as it is
-                    // keeps its ink number and tint.
-                    if !read_only && (renamed || changed || toggled) {
-                        *c = palette_entry_color(name, *c, spot);
-                    }
-                    ui.label(crate::app::color_description(*c));
-                });
-            }
-        }
-        if !read_only {
-            ui.horizontal(|ui| {
-                if ui
-                    .button(tr("dialog.add_color"))
-                    .rich_tip(crate::ui::tips::keyed("dialog.add_color"))
-                    .clicked()
-                {
-                    let n = pal.colors.len() + 1;
-                    pal.colors
-                        .push((format!("Color {n}"), Color::rgb8(128, 128, 128)));
-                    st.selected = Some(pal.colors.len() - 1);
-                }
-                if let Some(i) = st.selected {
-                    if ui
-                        .button(tr("dialog.remove_color"))
-                        .rich_tip(crate::ui::tips::keyed("dialog.remove_color"))
-                        .clicked()
-                        && i < pal.colors.len()
-                    {
-                        pal.colors.remove(i);
-                        st.selected = None;
-                    }
-                }
-                if ui
-                    .button(tr("dialog.save_palette"))
-                    .rich_tip(crate::ui::tips::keyed("dialog.save_palette"))
-                    .clicked()
-                {
-                    save_as = Some(pal.name.clone());
-                }
-            });
-        } else {
-            ui.label(
-                egui::RichText::new(tr(if pal.builtin {
-                    "dialog.builtin_palette_hint"
-                } else {
-                    "dialog.locked_palette_hint"
-                }))
-                .color(Tokens::text_dim())
-                .size(11.0),
-            );
-        }
-        // The save dialog, a download, or the system's save picker on
-        // Android (#1402); the palette keeps the file it was saved as.
-        if let Some(name) = save_as {
-            let index = st.palette;
-            crate::files::Dialog::new()
-                .add_filter(
-                    crate::palette::filter_label(&tr("file.palettes"), &["tdpal", "gpl"]),
-                    &["tdpal", "gpl"],
-                )
-                .set_file_name(format!("{name}.tdpal"))
-                .save_file(app, move |app, p| {
-                    let Some(pal) = app.palettes.get_mut(index) else {
-                        return;
-                    };
-                    match crate::palette::save_palette(pal, &p) {
-                        Ok(()) => pal.path = Some(p),
-                        Err(e) => app.status = e.to_string(),
-                    }
-                });
-        }
-        if ui
-            .button(tr("dialog.close"))
-            .rich_tip(crate::ui::tips::keyed("dialog.close"))
-            .clicked()
-        {
-            app.rebuild_palette();
-            *close = true;
-        }
-    });
 }
 
 #[cfg(test)]
@@ -8060,6 +7862,7 @@ pub(crate) mod tests {
                     vec![[200, 20, 20], [20, 20, 200], [250, 250, 250]],
                 ),
             )),
+            Dialog::ConfirmResetPalette,
             Dialog::NewDocument(crate::new_document::NewDocState::from_settings(
                 &Default::default(),
                 "n".into(),

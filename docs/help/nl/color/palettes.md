@@ -68,7 +68,7 @@ de paleteditor.
    huidige kleur toe en [[dialog.remove_color]] verwijdert de geselecteerde.
 4. Vink [[dialog.spot_color]] aan om de gekozen kleur een steunkleur te maken: een benoemde inkt op een eigen plaat. PDF-exports houden hem als aparte inkt.
 5. Klik op [[dialog.save_palette]] om het als bestand op te slaan.
-6. Klik op [[dialog.close]].
+6. Klik op [[dialog.ok]].
 
 Ingebouwde paletten kunnen niet worden bewerkt; maak een nieuw palet of bewerk
 een kopie.

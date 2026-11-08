@@ -124,6 +124,8 @@ full, row-by-row status.
 
 - Palettes: drag a picture from the drawing onto a palette (any palette bar, docked or floating, or the document palette) and a small window asks how many of its colours to take, 2 to 64 with a slider and a number box, showing the colours as the number changes; OK adds them to that palette, skipping the colours it already has, and Cancel adds nothing. A built-in or locked palette is left as it is and OK makes a new palette with the colours. The colours are those of Add Colors from Bitmap, which keeps working (#2137).
 
+- Palettes: colours can be deleted one or several at a time. Right-click a colour of one of your palettes (or of the document palette) and choose Delete Color; on a built-in palette the item is greyed and says why. Edit Palette... in a palette's menu, or a double-click on the palette outside its colours, opens the Palette Editor on that palette, where Ctrl+click and Shift+click select several colours, Delete (the button or the key) removes them all, Move up and Move down or a drag reorder them, and the selected colour can be renamed. The editor now works on a copy: OK or Apply keeps the changes, Cancel drops them, and Undo takes back the last one. Reset Palette asks before it takes out the colours the drawing does not use (#2138).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.

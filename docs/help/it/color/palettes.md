@@ -70,7 +70,7 @@ l'editor delle tavolozze.
    colore corrente e [[dialog.remove_color]] rimuove quello selezionato.
 4. Spunta [[dialog.spot_color]] per rendere il colore selezionato un colore spot: un inchiostro con nome stampato su una lastra propria. Le esportazioni PDF lo mantengono come inchiostro separato.
 5. Fai clic su [[dialog.save_palette]] per salvarla come file.
-6. Fai clic su [[dialog.close]].
+6. Fai clic su [[dialog.ok]].
 
 Le tavolozze integrate non possono essere modificate; crea una nuova
 tavolozza o modificane una copia.

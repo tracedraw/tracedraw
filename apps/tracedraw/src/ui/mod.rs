@@ -82,6 +82,7 @@ pub mod overflow;
 pub mod package_dialog;
 pub mod palette;
 pub mod palette_bars;
+pub mod palette_editor;
 pub mod palette_manager;
 pub mod pattern_pick;
 pub mod pdf_import_dialog;

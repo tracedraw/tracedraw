@@ -69,6 +69,6 @@ membuka penyunting palet.
    ini dan [[dialog.remove_color]] menghapus warna yang dipilih.
 4. Centang [[dialog.spot_color]] untuk menjadikan warna terpilih warna spot: tinta bernama yang dicetak di pelatnya sendiri. Ekspor PDF menyimpannya sebagai tinta terpisah.
 5. Klik [[dialog.save_palette]] untuk menyimpannya sebagai berkas.
-6. Klik [[dialog.close]].
+6. Klik [[dialog.ok]].
 
 Palet bawaan tidak dapat disunting; buat palet baru, atau sunting salinannya.
