@@ -157,7 +157,7 @@ Counts: works 190, partial 7 (`.cdr` content coverage; CMX import; print preview
 | Transparency: uniform, gradient, pattern (two-colour, vector, bitmap), texture; merge modes; fill/outline/all; Properties docker with type buttons and titles, a picker of ready-made transparencies, gradient stops (opacity, position, add, remove), foreground and background with swap, target buttons (#1439) | works (see `behavior/transparency.md`) |
 | Lens (12 types, frozen, rate, palette rotation), Bitmap Effects lens: any bitmap effects run over what lies beneath (Lens panel, Effect Picker > Apply as a lens) | works (see `behavior/lens.md`) |
 | clip frame (place inside, extract, empty frame, text frame, edit in place with only the contents to pick and undo kept to the edit, left by Ctrl+click off the contents (#1337), drop with W or Alt to place inside, lock contents, opacity mask and inverted mask) | works (see `behavior/clip-frame.md`) |
-| Symbols (Object > Symbol menu, create, insert, revert, Symbols panel, Ctrl+F3) | works |
+| Symbols (Object > Symbol menu, create, insert, edit in place from the Symbols panel, the right-click menu or a double-click with the Pick tool, every instance following on Finish, #1980, revert, Symbols panel, Ctrl+F3) | works |
 | Copy effect (drop shadow, transparency, envelope, perspective, distortion, extrude, contour, blend settings, lens, bevel, block shadow; pinned points carried by the box), Clone effect (shadow and transparency follow the source until edited), Clear effect, Clear transformations, Symmetry (live, 1 to 12 mirror lines) | works (see `behavior/copy-effect.md`) |
 | Rollover | not applicable: web-page interactivity with no HTML export target |
 

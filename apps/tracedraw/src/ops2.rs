@@ -1183,7 +1183,11 @@ impl App {
             self.clip_frame_edit = Some((mark.frame, mark.outside));
             let contents = self.clip_edit_contents();
             self.select(contents);
-            self.status = tr("status.editing_clip_frame");
+            self.status = if self.symbol_edit_index().is_some() {
+                tr("status.editing_symbol")
+            } else {
+                tr("status.editing_clip_frame")
+            };
         } else {
             self.clip_frame_edit = None;
             self.select(vec![mark.frame]);
@@ -1217,6 +1221,13 @@ impl App {
             return;
         };
         if self.doc().find_shape(frame).is_none() {
+            return;
+        }
+        if let Some(ShapeKind::SymbolInstance { index }) =
+            self.doc().find_shape(frame).map(|s| &s.kind)
+        {
+            let index = *index;
+            self.finish_symbol_edit(frame, index, contents, outside);
             return;
         }
         if contents.is_empty() {
@@ -1300,7 +1311,13 @@ impl App {
     /// (Edit Contents).
     pub fn render_focus(&self) -> Option<(Vec<ShapeId>, f32)> {
         if let Some((frame, _)) = &self.clip_frame_edit {
-            let mut all = vec![*frame];
+            // The instance of a symbol being edited fades with the rest:
+            // its objects on the page stand in for it until Finish.
+            let mut all = if self.symbol_edit_index().is_some() {
+                Vec::new()
+            } else {
+                vec![*frame]
+            };
             all.extend(self.clip_edit_contents());
             return Some((all, CLIP_EDIT_VISIBILITY));
         }
@@ -4385,6 +4402,170 @@ impl App {
             self.selection = new_sel;
         }
     }
+
+    /// The symbol whose objects are being edited (Edit Symbol), when the
+    /// edit going on is one.
+    pub fn symbol_edit_index(&self) -> Option<usize> {
+        let (frame, _) = self.clip_frame_edit.as_ref()?;
+        match self.doc().find_shape(*frame)?.kind {
+            ShapeKind::SymbolInstance { index } => Some(index),
+            _ => None,
+        }
+    }
+
+    /// The one symbol instance selected, for Edit Symbol.
+    pub fn selected_symbol_instance(&self) -> Option<ShapeId> {
+        match self.selected_shapes().as_slice() {
+            [s] if matches!(s.kind, ShapeKind::SymbolInstance { .. }) => Some(s.id),
+            _ => None,
+        }
+    }
+
+    /// Edit Symbol from the Symbols docker: the first instance of symbol
+    /// `index` on the page is edited, a new one placed at the page centre
+    /// when the page has none.
+    pub fn edit_symbol(&mut self, index: usize) {
+        if index >= self.doc().symbols.len() {
+            return;
+        }
+        fn find(shapes: &[Shape], index: usize) -> Option<ShapeId> {
+            shapes.iter().find_map(|s| match &s.kind {
+                ShapeKind::SymbolInstance { index: i } if *i == index => Some(s.id),
+                ShapeKind::Group { children } => find(children, index),
+                ShapeKind::ClipFrame { contents, .. } => find(contents, index),
+                _ => None,
+            })
+        }
+        let on_page = self
+            .page_layers()
+            .iter()
+            .find_map(|l| find(&l.shapes, index));
+        let instance = match on_page {
+            Some(id) => id,
+            None => {
+                self.insert_symbol_instance(index);
+                match self.selected_symbol_instance() {
+                    Some(id) => id,
+                    None => return,
+                }
+            }
+        };
+        self.edit_symbol_instance(instance);
+    }
+
+    /// Edit Symbol (#1980): the objects of the symbol shown by `instance`
+    /// come onto the page over it, as the instance places them, to be
+    /// edited like any object while the rest of the page fades. Finish
+    /// (the bar, the menu, Esc with nothing selected, a Ctrl+click off
+    /// them) makes them the symbol's objects again, so every instance
+    /// shows the change. The edit uses the clip frame contents edit
+    /// with the instance as its frame, so undo inside it keeps to it.
+    pub fn edit_symbol_instance(&mut self, instance: ShapeId) {
+        if self.clip_frame_edit.is_some() {
+            return;
+        }
+        self.finish_text();
+        let doc = self.doc();
+        let Some(inst) = doc.shape_on_page(instance) else {
+            return;
+        };
+        let ShapeKind::SymbolInstance { index } = inst.kind else {
+            return;
+        };
+        let Some(def) = doc.symbols.get(index).map(|s| s.shape.clone()) else {
+            return;
+        };
+        let top = doc.top_level_of(instance).unwrap_or(instance);
+        let Ok((layer, _)) = doc.shape(top) else {
+            return;
+        };
+        let layer = layer.id;
+        // An instance squeezed flat cannot give its objects back.
+        if !invertible(inst.transform) {
+            return;
+        }
+        let outside: std::collections::HashSet<ShapeId> = self
+            .page_layers()
+            .iter()
+            .flat_map(|l| &l.shapes)
+            .map(|s| s.id)
+            .filter(|id| *id != instance)
+            .collect();
+        let engine = &mut self.engine;
+        let mut copy = def.with_fresh_ids(&mut || engine.new_shape_id());
+        copy.transform_by(inst.transform);
+        let first = copy.id;
+        let before = self.engine.last_step_id();
+        if let Err(e) = self
+            .engine
+            .run_batch("Edit Symbol", &[Command::AddShape { layer, shape: copy }])
+        {
+            self.status = e.to_string();
+            return;
+        }
+        self.mark_clip_edit_step(before, instance, &outside, true);
+        self.clip_frame_edit = Some((instance, outside));
+        self.select(vec![first]);
+        self.status = tr("status.editing_symbol");
+    }
+
+    /// The end of Edit Symbol: `contents` (page objects, in their order)
+    /// become the objects of symbol `index`, placed back by the inverse
+    /// of `instance`'s transform, and leave the page; one undo step. A
+    /// symbol left with no objects keeps the ones it had. Contents that
+    /// hold an instance of the symbol itself keep the edit going, with
+    /// a message.
+    fn finish_symbol_edit(
+        &mut self,
+        instance: ShapeId,
+        index: usize,
+        contents: Vec<ShapeId>,
+        outside: std::collections::HashSet<ShapeId>,
+    ) {
+        let Some(t) = self.doc().shape_on_page(instance).map(|s| s.transform) else {
+            return;
+        };
+        let mut parts: Vec<Shape> = contents
+            .iter()
+            .filter_map(|id| self.doc().find_shape(*id).cloned())
+            .collect();
+        if parts.is_empty() || !invertible(t) {
+            self.select(vec![instance]);
+            return;
+        }
+        let mut def = if parts.len() == 1 {
+            parts.remove(0)
+        } else {
+            let mut g = Shape::new(ShapeId(0), ShapeKind::Group { children: parts });
+            g.fill = Fill::None;
+            g
+        };
+        def.transform_by(t.inverse());
+        def.id = ShapeId(0);
+        let cmds = [
+            Command::SetSymbolShape { index, shape: def },
+            Command::DeleteShapes { shapes: contents },
+        ];
+        let before = self.engine.last_step_id();
+        if let Err(e) = self.engine.run_batch("Finish Editing Symbol", &cmds) {
+            self.status = match e {
+                tracedraw_core::Error::SymbolCycle(_) => tr("status.symbol_holds_itself"),
+                e => e.to_string(),
+            };
+            // Still editing: the objects are all there to be put right.
+            self.clip_frame_edit = Some((instance, outside));
+            return;
+        }
+        self.mark_clip_edit_step(before, instance, &outside, false);
+        self.select(vec![instance]);
+        self.status = String::new();
+    }
+}
+
+/// Whether `t` can be undone (an instance scaled to nothing cannot).
+fn invertible(t: Affine) -> bool {
+    let d = t.determinant();
+    d.is_finite() && d.abs() > 1e-12
 }
 
 impl App {
@@ -4519,6 +4700,64 @@ mod tests {
         let orig = app.doc().find_shape(b).expect("b").bounds();
         assert!((copy.x0 - orig.x0).abs() < 1e-9);
         assert!((copy.y0 - orig.y0 - 20.0).abs() < 1e-9);
+    }
+
+    /// Edit Symbol (#1980): the symbol's objects come onto the page where
+    /// the instance shows them; changed and finished, every instance
+    /// shows the change. Undo goes back into the edit, then out of it
+    /// with the symbol as it was.
+    #[test]
+    fn editing_a_symbol_changes_every_instance() {
+        let mut app = App::headless();
+        let a = symbol_of(&mut app, kurbo::Rect::new(20.0, 30.0, 30.0, 40.0));
+        app.insert_symbol_instance(0);
+        let b = app.selection[0];
+        let width = |app: &App, id: ShapeId| {
+            let s = app.doc().find_shape(id).expect("instance");
+            let parts = s.expand(&app.doc().symbols);
+            parts.iter().map(|p| p.bounds().width()).sum::<f64>()
+        };
+        assert!((width(&app, b) - 10.0).abs() < 1e-9);
+        app.edit_symbol_instance(a);
+        assert_eq!(app.symbol_edit_index(), Some(0));
+        let copy = app.selection[0];
+        assert_ne!(copy, a);
+        // The objects lie where instance `a` draws them.
+        let on_page = app.doc().shape_on_page(copy).expect("copy").bounds();
+        assert!((on_page.x0 - 20.0).abs() < 1e-9 && (on_page.y0 - 30.0).abs() < 1e-9);
+        // Twice as wide, about their left side.
+        app.run(Command::TransformShapes {
+            shapes: vec![copy],
+            transform: Affine::translate((20.0, 0.0))
+                * Affine::scale_non_uniform(2.0, 1.0)
+                * Affine::translate((-20.0, 0.0)),
+        });
+        app.finish_clip_frame_edit();
+        assert!(app.clip_frame_edit.is_none());
+        assert!(
+            app.doc().find_shape(copy).is_none(),
+            "the objects left the page"
+        );
+        assert!((width(&app, a) - 20.0).abs() < 1e-9);
+        assert!((width(&app, b) - 20.0).abs() < 1e-9);
+        // Undo: back in the edit; again: the scaling undone, still in it;
+        // again: out of it, the symbol as it was.
+        app.undo();
+        assert_eq!(app.symbol_edit_index(), Some(0));
+        assert!((width(&app, b) - 10.0).abs() < 1e-9);
+        app.undo();
+        app.undo();
+        assert!(app.clip_frame_edit.is_none());
+        assert!(app.doc().find_shape(copy).is_none());
+        assert!((width(&app, b) - 10.0).abs() < 1e-9);
+
+        // A copy of the symbol among its own objects: the edit goes on.
+        app.edit_symbol_instance(a);
+        app.select(vec![b]);
+        app.duplicate();
+        app.finish_clip_frame_edit();
+        assert_eq!(app.symbol_edit_index(), Some(0));
+        assert_eq!(app.status, tr("status.symbol_holds_itself"));
     }
 
     /// New Symbol is one step to undo: the symbol goes with its instance.

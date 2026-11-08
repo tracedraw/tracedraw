@@ -3146,7 +3146,11 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         // Walked for the list of commands (Options > Customization >
         // Commands) both rows count, so each can take a shortcut (#1148).
         let editing = app.clip_frame_edit.is_some();
-        if (editing || invoke::active()) && item(ui, "menu.object.clip_frame_finish", "", editing) {
+        // A symbol being edited finishes from the Symbol menu.
+        let clip_editing = editing && app.symbol_edit_index().is_none();
+        if (clip_editing || invoke::active())
+            && item(ui, "menu.object.clip_frame_finish", "", clip_editing)
+        {
             app.finish_clip_frame_edit();
         }
         if (!editing || invoke::active())
@@ -3218,6 +3222,27 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         if item(ui, "menu.object.symbol_insert", "", has_symbols) {
             let last = app.doc().symbols.len().saturating_sub(1);
             app.insert_symbol_instance(last);
+        }
+        // Edit Symbol and Finish Editing Symbol take turns (#1980); both
+        // rows count for the list of commands.
+        let editing_symbol = app.symbol_edit_index().is_some();
+        let one_instance = app.selected_symbol_instance();
+        if (!editing_symbol || invoke::active())
+            && item(
+                ui,
+                "menu.object.symbol_edit",
+                "",
+                one_instance.is_some() && app.clip_frame_edit.is_none(),
+            )
+        {
+            if let Some(id) = one_instance {
+                app.edit_symbol_instance(id);
+            }
+        }
+        if (editing_symbol || invoke::active())
+            && item(ui, "menu.object.symbol_finish", "", editing_symbol)
+        {
+            app.finish_clip_frame_edit();
         }
         if item(ui, "menu.object.symbol_revert", "", has_instance) {
             app.revert_symbol_instances();

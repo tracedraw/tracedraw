@@ -2024,6 +2024,17 @@ impl App {
                 if self.edit_dimension_label_at(p) {
                     return;
                 }
+                // A symbol instance: editing its symbol's objects in
+                // place (#1980).
+                if self.clip_frame_edit.is_none()
+                    && self
+                        .doc()
+                        .find_shape(id)
+                        .is_some_and(|s| matches!(s.kind, ShapeKind::SymbolInstance { .. }))
+                {
+                    self.edit_symbol_instance(id);
+                    return;
+                }
                 // A group or clip frame: into focus mode.
                 if self.focus_on_double_click(id) {
                     self.focus_on(id);
@@ -4189,6 +4200,11 @@ impl App {
             // node is dropped.
             if self.curve.as_ref().is_some_and(|c| c.nodes.len() >= 2) {
                 self.finish_curve();
+                return;
+            }
+            // Editing a symbol with nothing selected: Finish (#1980).
+            if self.selection.is_empty() && self.symbol_edit_index().is_some() {
+                self.finish_clip_frame_edit();
                 return;
             }
             // In focus mode with nothing selected: one level out.

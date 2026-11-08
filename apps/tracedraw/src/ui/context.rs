@@ -471,6 +471,18 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
     if ci(ui, close, "context.create_symbol", "", true) {
         app.create_symbol_from_selection();
     }
+    // A symbol instance: its symbol's objects edited in place (#1980).
+    if let Some(id) = app.selected_symbol_instance() {
+        if ci(
+            ui,
+            close,
+            "menu.object.symbol_edit",
+            "",
+            app.clip_frame_edit.is_none(),
+        ) {
+            app.edit_symbol_instance(id);
+        }
+    }
     sub(ui, "context.internet_links", |ui| {
         if ci(ui, close, "docker.hyperlink", "", true) {
             app.show_dockers = true;

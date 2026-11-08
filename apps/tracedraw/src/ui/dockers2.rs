@@ -2670,6 +2670,7 @@ fn symbols(app: &mut App, ui: &mut Ui) {
         .enumerate()
         .map(|(i, s)| (i, s.name.clone()))
         .collect();
+    let editing = app.symbol_edit_index();
     for (i, name) in syms {
         ui.horizontal(|ui| {
             ui.label(&name);
@@ -2682,6 +2683,29 @@ fn symbols(app: &mut App, ui: &mut Ui) {
                 .clicked()
             {
                 app.insert_symbol_instance(i);
+            }
+            // Edit: the symbol's objects edited on the page; Finish while
+            // they are (#1980).
+            if editing == Some(i) {
+                if ui
+                    .small_button(tr("clip.finish"))
+                    .rich_tip(tr("menu.object.symbol_finish"))
+                    .clicked()
+                {
+                    app.finish_clip_frame_edit();
+                }
+            } else if ui
+                .add_enabled(
+                    app.clip_frame_edit.is_none(),
+                    egui::Button::new(tr("docker.edit_symbol")).small(),
+                )
+                .rich_tip(crate::ui::tips::pair(
+                    "docker.edit_symbol",
+                    "docker.edit_symbol_desc",
+                ))
+                .clicked()
+            {
+                app.edit_symbol(i);
             }
             let uses = app
                 .doc()

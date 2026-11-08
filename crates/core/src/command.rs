@@ -157,6 +157,14 @@ pub enum Command {
     AddSymbol {
         symbol: Symbol,
     },
+    /// Replace the objects of symbol `index` (Edit Symbol): every
+    /// instance draws the new ones. The symbol keeps its name. A
+    /// definition that would draw an instance of the symbol itself, at
+    /// any depth, is refused.
+    SetSymbolShape {
+        index: usize,
+        shape: Shape,
+    },
     /// Move a page to another index (Page Sorter drag).
     MovePage {
         page: PageId,
@@ -520,6 +528,7 @@ impl Command {
             Command::SetOpacityMask { .. } => "Opacity Mask",
             Command::SetRasterFx { .. } => "Effect",
             Command::AddSymbol { .. } => "New Symbol",
+            Command::SetSymbolShape { .. } => "Edit Symbol",
             Command::MovePage { .. } => "Move Page",
             Command::DeleteLayer { .. } => "Delete Layer",
             Command::SetLayerVisible { .. } => "Layer Visibility",
@@ -781,6 +790,17 @@ impl Command {
             }
             Command::AddSymbol { symbol } => {
                 doc.symbols.push(symbol.clone());
+            }
+            Command::SetSymbolShape { index, shape } => {
+                if *index >= doc.symbols.len() {
+                    return Err(Error::SymbolNotFound(*index));
+                }
+                if crate::document::draws_symbol(shape, *index, &doc.symbols) {
+                    return Err(Error::SymbolCycle(*index));
+                }
+                if let Some(sym) = doc.symbols.get_mut(*index) {
+                    sym.shape = shape.clone();
+                }
             }
             Command::MovePage { page, to } => {
                 let from = doc
@@ -4378,5 +4398,105 @@ mod tests {
         assert!(f.handles.is_some());
         let t1 = f.param_at(s.bounds(), thirty * p0).expect("after");
         assert!((t0 - t1).abs() < 1e-9, "{t0} {t1}");
+    }
+
+    /// Edit Symbol (#1980): a new definition shows in every instance at
+    /// once, keeps the symbol's name, and one undo puts the old objects
+    /// back. A definition drawing the symbol itself, or a symbol that is
+    /// not there, changes nothing.
+    #[test]
+    fn editing_a_symbol_updates_every_instance_and_undoes() {
+        use crate::document::{ShapeKind, Symbol};
+        let rect = |w: f64| {
+            Shape::new(
+                ShapeId(0),
+                ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, w, 5.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            )
+        };
+        let instance = |index: usize| Shape::new(ShapeId(0), ShapeKind::SymbolInstance { index });
+        let mut e = crate::Engine::default();
+        let layer = e.document().pages[0].layers[0].id;
+        e.run(&Command::AddSymbol {
+            symbol: Symbol {
+                name: "Logo".into(),
+                shape: rect(10.0),
+            },
+        })
+        .unwrap();
+        let mut ids = Vec::new();
+        for x in [0.0, 50.0] {
+            let id = e.new_shape_id();
+            let mut inst = instance(0);
+            inst.id = id;
+            inst.transform = Affine::translate((x, 20.0));
+            e.run(&Command::AddShape { layer, shape: inst }).unwrap();
+            ids.push(id);
+        }
+        let widths = |e: &crate::Engine| -> Vec<f64> {
+            ids.iter()
+                .map(|id| {
+                    let s = e.document().find_shape(*id).unwrap();
+                    let parts = s.expand(&e.document().symbols);
+                    assert_eq!(parts.len(), 1);
+                    parts[0].bounds().width()
+                })
+                .collect()
+        };
+        assert_eq!(widths(&e), vec![10.0, 10.0]);
+        e.run(&Command::SetSymbolShape {
+            index: 0,
+            shape: rect(30.0),
+        })
+        .unwrap();
+        assert_eq!(e.undo_label(), Some("Edit Symbol"));
+        assert_eq!(widths(&e), vec![30.0, 30.0]);
+        assert_eq!(e.document().symbols[0].name, "Logo");
+        e.undo().unwrap();
+        assert_eq!(widths(&e), vec![10.0, 10.0]);
+        e.redo().unwrap();
+        assert_eq!(widths(&e), vec![30.0, 30.0]);
+
+        // An instance of the symbol inside its own definition, directly
+        // or through another symbol, is refused.
+        let mut own = Shape::new(
+            ShapeId(0),
+            ShapeKind::Group {
+                children: vec![rect(4.0), instance(0)],
+            },
+        );
+        own.fill = Fill::None;
+        assert!(matches!(
+            e.run(&Command::SetSymbolShape {
+                index: 0,
+                shape: own
+            }),
+            Err(Error::SymbolCycle(0))
+        ));
+        e.run(&Command::AddSymbol {
+            symbol: Symbol {
+                name: "Holder".into(),
+                shape: instance(0),
+            },
+        })
+        .unwrap();
+        assert!(matches!(
+            e.run(&Command::SetSymbolShape {
+                index: 0,
+                shape: instance(1)
+            }),
+            Err(Error::SymbolCycle(0))
+        ));
+        assert!(matches!(
+            e.run(&Command::SetSymbolShape {
+                index: 7,
+                shape: rect(1.0)
+            }),
+            Err(Error::SymbolNotFound(7))
+        ));
+        assert_eq!(widths(&e), vec![30.0, 30.0]);
     }
 }

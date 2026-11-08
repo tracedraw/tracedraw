@@ -99,6 +99,10 @@ pub enum Error {
     NotText(ShapeId),
     #[error("a B-spline needs two finite control points or more")]
     BadSpline,
+    #[error("symbol {0} not found")]
+    SymbolNotFound(usize),
+    #[error("symbol {0} cannot hold an instance of itself")]
+    SymbolCycle(usize),
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),
 }

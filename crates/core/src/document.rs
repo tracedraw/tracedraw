@@ -4073,6 +4073,37 @@ pub struct Symbol {
     pub shape: Shape,
 }
 
+/// Whether `shape` draws an instance of symbol `index`, directly or
+/// through the definitions of the symbols it draws (Edit Symbol refuses
+/// such a definition: it would draw itself without end). Symbols met
+/// once are not walked again, so a cycle already in a file ends.
+pub fn draws_symbol(shape: &Shape, index: usize, symbols: &[Symbol]) -> bool {
+    fn walk(s: &Shape, index: usize, symbols: &[Symbol], seen: &mut Vec<bool>) -> bool {
+        match &s.kind {
+            ShapeKind::SymbolInstance { index: i } => {
+                if *i == index {
+                    return true;
+                }
+                match (symbols.get(*i), seen.get_mut(*i)) {
+                    (Some(sym), Some(flag)) if !*flag => {
+                        *flag = true;
+                        walk(&sym.shape, index, symbols, seen)
+                    }
+                    _ => false,
+                }
+            }
+            ShapeKind::Group { children } => children.iter().any(|c| walk(c, index, symbols, seen)),
+            ShapeKind::ClipFrame { frame, contents } => {
+                walk(frame, index, symbols, seen)
+                    || contents.iter().any(|c| walk(c, index, symbols, seen))
+            }
+            _ => false,
+        }
+    }
+    let mut seen = vec![false; symbols.len()];
+    walk(shape, index, symbols, &mut seen)
+}
+
 /// Document properties (File > Document Properties).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
