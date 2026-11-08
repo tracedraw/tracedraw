@@ -132,7 +132,7 @@ imposition and the marks.
   invert, transform and artwork position), then the layout with its sketch.
   Every change rebuilds the sheets at once. Drag the panel's edge to make
   it wider.
-- With **Print separations** on, a box for each ink stands under it. All
+- With **Print separations** on, a box for each ink stands under it, side by side. All
   ticked shows the sheet; one alone shows its plate in gray; some show the
   colors those inks print together.
 - Drag the dashed blue lines on the sheet to set the paper margins, and drag

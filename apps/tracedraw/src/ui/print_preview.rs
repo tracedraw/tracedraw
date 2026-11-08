@@ -454,11 +454,14 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 if st.separations {
                     // Each ink with a box under it, always in view: one
                     // alone shows its plate, several print together
-                    // (#571).
+                    // (#571). The boxes stand side by side and wrap at
+                    // the panel's edge (#1737).
                     ui.indent("print_preview_inks", |ui| {
-                        for (on, name) in pv.inks.iter_mut().zip(ink_names.iter().skip(1)) {
-                            ui.checkbox(on, name.clone());
-                        }
+                        ui.horizontal_wrapped(|ui| {
+                            for (on, name) in pv.inks.iter_mut().zip(ink_names.iter().skip(1)) {
+                                ui.checkbox(on, name.clone());
+                            }
+                        });
                     });
                 }
                 let st = &mut pv.st;
@@ -1211,6 +1214,16 @@ mod tests {
             let at = find(&shapes, &tr(ink)).expect(ink);
             assert!(at.x < 330.0, "{ink} in the left panel: {at:?}");
             assert!(at.y > option.y && at.x > option.x, "{ink} under it: {at:?}");
+        }
+        // The four process inks share a row, side by side, instead of a
+        // line each (#1737).
+        let cyan = find(&shapes, &tr("fxp.cyan")).expect("cyan");
+        let mut x = cyan.x;
+        for ink in ["fxp.magenta", "fxp.yellow", "fxp.black"] {
+            let at = find(&shapes, &tr(ink)).expect(ink);
+            assert!((at.y - cyan.y).abs() < 2.0, "{ink} beside cyan: {at:?}");
+            assert!(at.x > x, "{ink} right of the one before: {at:?}");
+            x = at.x;
         }
     }
 

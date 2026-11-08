@@ -241,8 +241,9 @@ same function (`export::print_sheets`).
   (#862, `print_preview::tests::the_options_panel_is_wider_and_its_edge_drags`,
   `print_preview::tests::no_option_is_cut_off_in_any_language`).
   While Print separations is on, a box for cyan, magenta, yellow, black
-  and each spot ink stands indented under it, all ticked at first
-  (#571; `print_preview::tests::the_ink_boxes_stand_under_print_separations`).
+  and each spot ink stands indented under it, side by side in a row that
+  wraps at the panel's edge, all ticked at first
+  (#571, #1737; `print_preview::tests::the_ink_boxes_stand_under_print_separations`).
   Every ink ticked shows the sheet as it is; one alone shows its plate
   in grey; some show the colours those inks print together (process
   colours keep the channels ticked, a spot colour shows when its ink is

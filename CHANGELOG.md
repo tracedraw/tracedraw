@@ -62,6 +62,8 @@ full, row-by-row status.
 
 - Object > Clip to Frame has Center Contents, Fit Contents Proportionally, Fill Frame Proportionally and Stretch Contents to Fill, the clip bar's Fit Contents choices, so they can take shortcuts in Options > Customization > Commands; with several clip frames selected each fits its own contents in one undo step (#1299).
 
+- Print Preview: with Print separations on, the ink boxes stand side by side in a row that wraps, instead of one per line (#1737).
+
 ## 0.42.1 (2026-11-08)
 
 - Release pages start with a download table that links every installer, the 64-bit Windows setup first: the page lists only the first ten files by name, so the 64-bit Windows setup was folded away behind the 32-bit one.
