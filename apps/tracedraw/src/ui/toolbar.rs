@@ -1656,7 +1656,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                         egui::StrokeKind::Inside,
                     );
                     ui.label(
-                        egui::RichText::new(crate::app::color_description(c))
+                        egui::RichText::new(crate::app::color_description_in(app.doc(), c))
                             .color(Tokens::text_dim())
                             .size(11.0),
                     );

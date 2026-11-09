@@ -9346,6 +9346,26 @@ pub fn fill_description(fill: &Fill) -> String {
     }
 }
 
+/// [`color_description`], a spot colour of `doc` by its ink's name and
+/// tint ("CutContour 100%", #2186) rather than its number.
+pub fn color_description_in(doc: &tracedraw_core::Document, c: Color) -> String {
+    if let Color::Spot { ink, tint, .. } = c {
+        if let Some(i) = doc.ink(ink).filter(|i| !i.name.is_empty()) {
+            let t = if tint.is_finite() { tint } else { 1.0 };
+            return format!("{} {:.0}%", i.name, t.clamp(0.0, 1.0) * 100.0);
+        }
+    }
+    color_description(c)
+}
+
+/// [`fill_description`], a spot colour of `doc` by its ink's name.
+pub fn fill_description_in(doc: &tracedraw_core::Document, fill: &Fill) -> String {
+    match fill {
+        Fill::Solid(c) => color_description_in(doc, *c),
+        other => fill_description(other),
+    }
+}
+
 pub fn color_description(c: Color) -> String {
     match c {
         Color::Rgb { r, g, b } => format!(

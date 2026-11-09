@@ -397,9 +397,18 @@ fn in_rgb(c: Color) -> Color {
     }
 }
 
-/// The name of `c` in the default palette or the palettes shown; empty
-/// when it has none.
+/// The name of `c`: a spot ink's of the drawing, else its name in the
+/// default palette or the palettes shown; empty when it has none.
 pub fn name_of(app: &App, c: Color) -> String {
+    // A spot colour of the drawing goes by its ink's name, such as the
+    // CutContour ink TraceCut adds (#2186).
+    if let Color::Spot { ink, .. } = c {
+        if let Some(i) = app.has_document().then(|| app.doc().ink(ink)).flatten() {
+            if !i.name.is_empty() {
+                return i.name.clone();
+            }
+        }
+    }
     app.palette
         .iter()
         .chain(app.palettes.iter().flat_map(|p| p.colors.iter()))
@@ -453,6 +462,18 @@ pub fn color_values(c: Color) -> String {
         }
         Color::Rgb { r, g, b } => format!("R: {} G: {} B: {}", byte(r), byte(g), byte(b)),
         Color::Gray { v } => crate::i18n::trf("palette.gray_value", &[("v", &byte(v).to_string())]),
+        // A spot colour: its tint and the process colour it stands for;
+        // its name (the ink's) goes above, not its number (#2186).
+        Color::Spot {
+            tint, c, m, y, k, ..
+        } => {
+            let t = if tint.is_finite() { tint } else { 1.0 };
+            format!(
+                "{}% {}",
+                pct(t.clamp(0.0, 1.0)),
+                color_values(Color::Cmyk { c, m, y, k })
+            )
+        }
         other => crate::app::color_description(other),
     }
 }

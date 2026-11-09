@@ -18,6 +18,9 @@ its swatches instead (one Tint control in the panel). A name typed in Ink name a
 standing for the new colour (in process inks); names are unique. The
 "..." menu's Add to Custom Spot Colors does the same with the name typed,
 or with the colour's `#rrggbb` code when none is (see `color-docker.md`).
+A spot colour's swatch, in the document palette and elsewhere, is named
+by its ink, and the status bar names a spot fill or outline by its ink
+and tint (#2186).
 
 ## Colour books
 
