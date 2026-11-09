@@ -537,6 +537,100 @@ fn triangle_container_survives_saving(filled: bool) {
     }
 }
 
+/// A picture scaled into a frame, whose shape's pixel size is stale (it
+/// says 10 x 10 for a 4 x 3 picture), goes out with its image's own pixel
+/// size and, from version 14, a box the image's size at its resolution,
+/// the object's transform doing the scaling, as every bitmap of the files
+/// seen holds it (#1222): the resolution was taken from the size on the
+/// page, so the box and the image disagreed for a scaled picture. The
+/// file passes the checker in every version, and the picture reads back
+/// where it was.
+#[test]
+fn a_scaled_picture_in_a_frame_agrees_with_its_image() {
+    let mut doc = doc_with(Vec::new());
+    let mut ids = doc.ids().clone();
+    let png = {
+        let mut pm = tiny_skia::Pixmap::new(4, 3).expect("pixmap");
+        pm.fill(tiny_skia::Color::from_rgba8(200, 30, 30, 255));
+        pm.encode_png().expect("png")
+    };
+    let mut bm = Shape::new(
+        ids.shape(),
+        ShapeKind::Bitmap {
+            rect: Rect::new(0.0, 0.0, 40.0, 30.0),
+            width_px: 10,
+            height_px: 10,
+            png: png.into(),
+            fx: None,
+        },
+    );
+    bm.fill = Fill::None;
+    bm.stroke = None;
+    bm.transform = Affine::translate((30.0, 20.0)) * Affine::scale(2.5);
+    let mut frame = Shape::new(
+        ids.shape(),
+        ShapeKind::Ellipse {
+            rect: Rect::new(40.0, 30.0, 100.0, 80.0),
+            arc: None,
+        },
+    );
+    frame.fill = Fill::None;
+    frame.stroke = Some(Stroke::new(Color::BLACK, 0.5));
+    let mut label = text_shape(
+        &mut ids,
+        vec![TextSpan::new("before", "Arial", 12.0)],
+        TextAlign::Left,
+    );
+    label.transform = Affine::translate((10.0, 90.0));
+    let pc = Shape::new(
+        ids.shape(),
+        ShapeKind::ClipFrame {
+            frame: Box::new(frame),
+            contents: vec![bm],
+        },
+    );
+    doc.pages[0].layers[0].shapes = vec![label, pc];
+    doc.set_ids(ids);
+    for v in versions() {
+        // The checker runs on every file written here, with the pixel
+        // size and box checks.
+        let bytes = document_to_cdr_version(&doc, v);
+        let (_, tree, riff) = chunk_ids(&bytes);
+        let mut coords = Vec::new();
+        tree.root.walk(&mut |c, _| {
+            if c.is(b"loda") {
+                let d = tree.data(&riff, c);
+                if crate::check::loda_args(d).is_some_and(|(k, _)| k == crate::parse::OBJ_BITMAP) {
+                    let args = loda_args(d);
+                    if let Some((_, a)) = args.into_iter().find(|(ty, _)| *ty == ARG_COORDS) {
+                        coords.push(a);
+                    }
+                }
+            }
+        });
+        assert_eq!(coords.len(), 1, "{v}: one bitmap object");
+        let c = &coords[0];
+        let u = |at: usize| u32::from_le_bytes(c[at..at + 4].try_into().expect("4"));
+        assert_eq!((u(36), u(40)), (4, 3), "{v}: the image's pixel size");
+        if v >= 14 {
+            let i = |at: usize| i32::from_le_bytes(c[at..at + 4].try_into().expect("4"));
+            assert_eq!((i(0), i(4), i(8), i(12)), (0, 300_000, 400_000, 0), "{v}");
+        }
+        let (back, rep) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let mut all = Vec::new();
+        shapes_on_page(&back.pages[0].layers[0].shapes, Affine::IDENTITY, &mut all);
+        let placed = all
+            .iter()
+            .find(|(_, s)| matches!(s.kind, ShapeKind::Bitmap { .. }))
+            .map(|(outer, s)| (*outer * s.page_path()).bounding_box())
+            .unwrap_or_else(|| panic!("{v}: no picture {:?}", rep.warnings));
+        assert!(
+            near(placed, Rect::new(30.0, 20.0, 130.0, 95.0), 0.05),
+            "{v}: {placed:?}"
+        );
+    }
+}
+
 #[test]
 fn written_files_survive_mutation() {
     let mut doc = doc_with(Vec::new());

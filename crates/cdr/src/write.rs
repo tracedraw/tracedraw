@@ -2805,7 +2805,8 @@ fn stlt(v: Ver, uses: StyleUses) -> Vec<u8> {
 /// 8): "RI", its length, 0, a 78-byte header (model 99, 1, size, 1 plane,
 /// 8 bits, stride, bytes, 64 at 62) and one byte per pixel, 255 opaque,
 /// rows bottom-up padded to 4 bytes.
-fn bmp_record(id: u32, png: &[u8], size_mm: (f64, f64)) -> Option<Vec<u8>> {
+/// Returns the record and the image's width and height in pixels.
+pub(crate) fn bmp_record(id: u32, png: &[u8], size_mm: (f64, f64)) -> Option<(Vec<u8>, u32, u32)> {
     let pm = tiny_skia::Pixmap::decode_png(png).ok()?;
     let (w, h) = (pm.width(), pm.height());
     if w == 0 || h == 0 {
@@ -2900,7 +2901,7 @@ fn bmp_record(id: u32, png: &[u8], size_mm: (f64, f64)) -> Option<Vec<u8>> {
             .zeros(12);
         b.bytes(&mask);
     }
-    Some(b.done())
+    Some((b.done(), w, h))
 }
 
 /// `loda`: header (length, argument count, offsets table, types table,
@@ -4040,12 +4041,14 @@ impl<'a> Writer<'a> {
         id
     }
 
-    fn bitmap_id(&mut self, png: &[u8], size_mm: (f64, f64)) -> Option<u32> {
+    /// A new `bmp ` record for `png`: its id and the image's size in
+    /// pixels.
+    fn bitmap_id(&mut self, png: &[u8], size_mm: (f64, f64)) -> Option<(u32, u32, u32)> {
         let id = self.next_bitmap;
-        let rec = bmp_record(id, png, size_mm)?;
+        let (rec, w, h) = bmp_record(id, png, size_mm)?;
         self.next_bitmap += 1;
         self.bitmaps.push(rec);
-        Some(id)
+        Some((id, w, h))
     }
 
     /// The whole file: version chunks, bitmaps, the document tables, the
@@ -5012,25 +5015,20 @@ impl<'a> Writer<'a> {
                 bounds: None,
             };
         };
-        let (sx, sy) = {
-            let c = s.transform.as_coeffs();
-            (c[0].hypot(c[1]), c[2].hypot(c[3]))
-        };
-        let Some(image) = self.bitmap_id(png, (rect.width() * sx, rect.height() * sy)) else {
+        // The image's resolution gives it the size of the object's box,
+        // which the object's transform places and scales, as every bitmap
+        // of the files seen holds it; the picture's pixel size is the
+        // image's own (#1222). The resolution was taken from the size on
+        // the page, so a scaled picture's box and image disagreed, and the
+        // pixel size from the shape, which need not match its picture.
+        let Some((image, width_px, height_px)) = self.bitmap_id(png, (rect.width(), rect.height()))
+        else {
             return Placed {
                 nodes: Vec::new(),
                 bounds: None,
             };
         };
         let v = self.v;
-        let (width_px, height_px) = match &s.kind {
-            ShapeKind::Bitmap {
-                width_px,
-                height_px,
-                ..
-            } => (*width_px, *height_px),
-            _ => (0, 0),
-        };
         // The page box is the shape's as it stands; the record then
         // speaks in the image's own space, from the origin.
         let page_box = match crop {

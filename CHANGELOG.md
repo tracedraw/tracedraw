@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Saving `.cdr`: a picture scaled on the page (a picture fitted into a frame, for one) is written with an image resolution that matches its box, the scaling left to its transform as the files hold it, and with its picture's own pixel size; the box and the image disagreed before, one candidate for the reading program closing when such a picture was clicked. `tracedraw-cli check` reports both differences (#1222).
+
 - Saving `.cdr` (version 12 and later): curly apostrophes and quotes, dashes, the euro sign and the other letters past U+00FF are written as two-byte letters, no longer as single Windows-1252 bytes, which the program that reads the files showed as unknown characters (version 18) or dropped (version 21) (#2124).
 
 - An ellipse made an arc (its node dragged outward with the Shape tool, or Arc on the property bar) is an open curve everywhere: with the document's Fill open curves off it shows no fill in SVG, PDF and the other vector exports and is picked on its outline only, as on screen; a pie keeps its fill. With Fill open curves on, a click inside an open curve's fill picks it.
