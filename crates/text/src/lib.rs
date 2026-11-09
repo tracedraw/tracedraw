@@ -5366,6 +5366,8 @@ impl ttf_parser::OutlineBuilder for OutlineSink {
 #[cfg(test)]
 mod devanagari_tests;
 #[cfg(test)]
+mod effect_outline_tests;
+#[cfg(test)]
 mod tamil_tests;
 
 /// `line` (an underline or a strike line) wound the same way as the

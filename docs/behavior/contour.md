@@ -43,6 +43,10 @@ step count, side and end colours, and the steps the file stores go
   object's scale, stretch and rotation applied and the steps are taken
   back into the object's own coordinates, so an 80 mm inside step of a
   scaled polygon lies 80 mm from its edges (#754).
+- The object's area is read with its fill rule: text, and objects set
+  to the nonzero rule, with the nonzero rule, so the overlapping strokes
+  of a letter (as many variable fonts draw them) make no holes, which
+  the even-odd rule gave contours of their own (#2156).
 - `accelerate(t, a) = t ^ (4 ^ a)`: 0 spaces the steps evenly, positive
   values pack them toward the object, negative ones toward the last
   step.
@@ -114,6 +118,13 @@ plain segments and two small rectangles):
 - `live::tests::contour_outside_three_steps`
 - `live::tests::contour_offset_is_measured_on_the_page`
 - `shaping::tests::offset_corners_are_mitred_round_or_bevelled`
+- `shaping::tests::offset_reads_overlapping_strokes_with_the_fill_rule_given`
+- `live::tests::effects_read_text_with_the_nonzero_rule`
+- `effect_outline_tests::inside_contour_of_letters_keeps_its_distance` and
+  `outside_contour_of_letters_keeps_its_distance` (text crate): on the
+  letters of a static and of a variable face, every point of a round
+  contour lies at the offset from the letters' outline, of a mitred one
+  no nearer.
 - `contour_tool::tests::a_drag_draws_a_live_contour`
 - `contour_tool::tests::the_bar_edits_the_selected_contour`
 - `contour_tool::tests::handles_drag_the_offset_and_the_steps`: a 20 mm

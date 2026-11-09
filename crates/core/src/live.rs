@@ -981,6 +981,7 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             } => {
                 let shapes = contour(
                     &main,
+                    area_rule(shape),
                     &ContourParams {
                         steps: *steps,
                         offset: *offset,
@@ -1075,7 +1076,7 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
                 above.extend(bevel(&main, e));
             }
             Effect::BlockShadow { offset, color, gap } => {
-                below.extend(block_shadow(&main, *offset, *color, *gap));
+                below.extend(block_shadow(&main, area_rule(shape), *offset, *color, *gap));
             }
             // Mirrored last, whatever its place in the list: the copies
             // carry every other effect of the object (#2121).
@@ -1405,7 +1406,7 @@ pub const MAX_BLEND_STEPS: u32 = 999;
 /// object's transformation applied and brought back to its local
 /// coordinates, so a scaled or stretched object keeps the distance the
 /// user typed (#754).
-fn contour(shape: &Shape, p: &ContourParams) -> Vec<Shape> {
+fn contour(shape: &Shape, rule: crate::shaping::FillRule, p: &ContourParams) -> Vec<Shape> {
     let to_page = shape.transform;
     let to_local = if to_page.determinant().abs() > 1e-12 {
         to_page.inverse()
@@ -1424,7 +1425,7 @@ fn contour(shape: &Shape, p: &ContourParams) -> Vec<Shape> {
     let mut paths = Vec::new();
     if p.to_center {
         for i in 1..=MAX_CONTOUR_STEPS {
-            let q = crate::shaping::offset_with(&base, sign * offset * i as f64, p.corners);
+            let q = crate::shaping::offset_filled(&base, sign * offset * i as f64, p.corners, rule);
             if q.elements().is_empty() {
                 break;
             }
@@ -1435,7 +1436,7 @@ fn contour(shape: &Shape, p: &ContourParams) -> Vec<Shape> {
         let total = offset * n as f64;
         for i in 1..=n {
             let d = total * accelerate(i as f64 / n as f64, p.accel_objects);
-            let q = crate::shaping::offset_with(&base, sign * d, p.corners);
+            let q = crate::shaping::offset_filled(&base, sign * d, p.corners, rule);
             if q.elements().is_empty() {
                 break;
             }
@@ -1958,21 +1959,35 @@ fn symmetry_mirrors(center: Point, angle: f64, lines: u8) -> Vec<Affine> {
     out
 }
 
-fn block_shadow(shape: &Shape, offset: Vec2, color: Color, gap: f64) -> Vec<Shape> {
+/// How the area of `shape`'s outline is read: text (warped text too,
+/// whose outline is a curve by the time an effect reads it) and objects
+/// set to the nonzero rule have contours that overlap without making
+/// holes (#2156).
+fn area_rule(shape: &Shape) -> crate::shaping::FillRule {
+    if matches!(shape.kind, ShapeKind::Text { .. }) {
+        crate::shaping::FillRule::NonZero
+    } else {
+        shape.fill_rule
+    }
+}
+
+/// The solid the object makes slid along `offset` (page space), each of
+/// its contours swept within itself, its own area included, less the
+/// object grown by `gap`.
+fn block_shadow(
+    shape: &Shape,
+    rule: crate::shaping::FillRule,
+    offset: Vec2,
+    color: Color,
+    gap: f64,
+) -> Vec<Shape> {
     let front = shape.page_path();
-    let pts = crate::effects::resample(&front, 96);
-    if pts.len() < 3 {
+    let mut solid = crate::shaping::sweep(&front, offset, rule);
+    if solid.elements().is_empty() {
         return Vec::new();
     }
-    // Union of the swept quads and the back face, as one solid.
-    let mut solid = crate::effects::polygon(&pts.iter().map(|p| *p + offset).collect::<Vec<_>>());
-    for i in 0..pts.len() - 1 {
-        let (a, b) = (pts[i], pts[i + 1]);
-        let quad = crate::effects::polygon(&[a, b, b + offset, a + offset]);
-        solid = crate::shaping::overlay(&solid, &quad, crate::shaping::Op::Weld);
-    }
     if gap > 0.0 {
-        let grown = crate::shaping::offset(&front, gap);
+        let grown = crate::shaping::offset_filled(&front, gap, crate::shaping::Join::Round, rule);
         solid = crate::shaping::overlay(&solid, &grown, crate::shaping::Op::Trim);
     }
     let mut s = shape.clone();
@@ -2712,6 +2727,118 @@ mod tests {
             crate::shaping::Op::Intersect,
         );
         assert!(!inside.elements().is_empty());
+    }
+
+    /// An outline of several parts, as the letters of a word: the block
+    /// shadow of each part follows that part, and nothing joins the end of
+    /// one to the start of the next (the shards of #2156).
+    #[test]
+    fn block_shadow_follows_each_part_of_the_outline() {
+        let square = |x: f64| Rect::new(x, 0.0, x + 10.0, 10.0).to_path(0.01);
+        let mut path = square(0.0);
+        path.extend(square(30.0).elements().iter().copied());
+        // A hole in the second part, wider than the shadow's depth.
+        path.extend(Rect::new(32.0, 2.0, 38.0, 8.0).to_path(0.01));
+        let mut s = Shape::new(crate::ShapeId(1), ShapeKind::Path { path, closed: true });
+        let offset = Vec2::new(4.0, -0.5);
+        s.effects.push(Effect::BlockShadow {
+            offset,
+            color: Color::BLACK,
+            gap: 0.0,
+        });
+        let ev = evaluate(&s);
+        assert_eq!(ev.below.len(), 1);
+        let shadow = ev.below[0].page_path();
+        let solid = 100.0 + 10.0 * 4.0 + 10.0 * 0.5;
+        // The hole, 6 x 6, slid by (4, -0.5): 2 x 5.5 of it stays open.
+        let expected = 2.0 * solid - 11.0;
+        assert!(
+            (shadow.area().abs() - expected).abs() < 1e-3,
+            "{}",
+            shadow.area()
+        );
+        let parts = shadow
+            .elements()
+            .iter()
+            .filter(|e| matches!(e, PathEl::MoveTo(_)))
+            .count();
+        assert_eq!(parts, 3);
+        // Nothing between the two parts.
+        let between = crate::shaping::overlay(
+            &shadow,
+            &Rect::new(14.5, -1.0, 29.5, 11.0).to_path(0.01),
+            crate::shaping::Op::Intersect,
+        );
+        assert!(between.elements().is_empty(), "{between:?}");
+        // The gap still trims the object grown by it away.
+        if let Some(Effect::BlockShadow { gap, .. }) = s.effects.first_mut() {
+            *gap = 1.0;
+        }
+        let trimmed = evaluate(&s).below[0].page_path();
+        assert!(trimmed.area().abs() < shadow.area().abs() - 1.0);
+    }
+
+    /// Text and objects set to the nonzero rule are read with it, so the
+    /// overlapping strokes of a letter make no holes in its contour or
+    /// block shadow (#2156).
+    #[test]
+    fn effects_read_text_with_the_nonzero_rule() {
+        use crate::shaping::FillRule;
+        let text = Shape::new(
+            crate::ShapeId(1),
+            ShapeKind::Text {
+                spans: Vec::new(),
+                origin: Point::ZERO,
+                frame: None,
+                align: Default::default(),
+                para: Default::default(),
+                on_path: None,
+            },
+        );
+        assert_eq!(area_rule(&text), FillRule::NonZero);
+        let mut curve = rect_shape();
+        assert_eq!(area_rule(&curve), FillRule::EvenOdd);
+        curve.fill_rule = FillRule::NonZero;
+        assert_eq!(area_rule(&curve), FillRule::NonZero);
+        // Two crossing bars turning the same way.
+        let mut path = Rect::new(0.0, 5.0, 20.0, 15.0).to_path(0.01);
+        path.extend(Rect::new(5.0, 0.0, 15.0, 20.0).to_path(0.01));
+        let mut s = Shape::new(crate::ShapeId(2), ShapeKind::Path { path, closed: true });
+        s.fill = Fill::Solid(Color::WHITE);
+        s.fill_rule = FillRule::NonZero;
+        s.effects.push(Effect::Contour {
+            steps: 1,
+            offset: 1.0,
+            outside: false,
+            to_center: false,
+            fill_to: Color::BLACK,
+            outline_to: None,
+            color_blend: 0,
+            corners: Some(crate::shaping::Join::Miter),
+            accel_objects: 0.0,
+            accel_colors: 0.0,
+        });
+        let inside = evaluate(&s).above;
+        assert_eq!(inside.len(), 1);
+        let parts = |p: &BezPath| {
+            p.elements()
+                .iter()
+                .filter(|e| matches!(e, PathEl::MoveTo(_)))
+                .count()
+        };
+        assert_eq!(parts(&inside[0].page_path()), 1);
+        s.effects = vec![Effect::BlockShadow {
+            offset: Vec2::new(1.0, 0.0),
+            color: Color::BLACK,
+            gap: 0.0,
+        }];
+        let shadow = evaluate(&s).below[0].page_path();
+        assert_eq!(parts(&shadow), 1);
+        assert!(
+            (shadow.area().abs() - 320.0).abs() < 1e-3,
+            "{}",
+            shadow.area()
+        );
     }
 
     /// The contour offset is the distance on the page, whatever the
