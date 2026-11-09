@@ -7058,6 +7058,75 @@ fn count_bitmaps(shapes: &[Shape]) -> usize {
         .sum()
 }
 
+/// A drop shadow survives saving in every version (#1193): the file
+/// holds a picture of it under the object, and from version 14 the
+/// object opens again with its shadow, an ellipse on the layer and a
+/// rectangle in a group alike; before 14 the picture stays.
+#[test]
+fn drop_shadows_survive_saving_in_every_version() {
+    let shadow = tracedraw_core::Shadow {
+        offset: tracedraw_core::geometry::Vec2::new(2.0, -2.0),
+        opacity: 0.5,
+        blur: 1.5,
+        color: Color::rgb8(40, 0, 80),
+        ..Default::default()
+    };
+    let mut doc = effect_rect(Vec::new());
+    let mut ids = doc.ids().clone();
+    let mut rect = doc.pages[0].layers[0].shapes.remove(0);
+    rect.shadow = Some(shadow);
+    let mut other = Shape::new(
+        ids.shape(),
+        ShapeKind::Rect {
+            rect: Rect::new(70.0, 20.0, 90.0, 40.0),
+            radius: 0.0,
+            corners: None,
+        },
+    );
+    other.fill = Fill::Solid(Color::rgb8(0, 0, 200));
+    let group = Shape::new(
+        ids.shape(),
+        ShapeKind::Group {
+            children: vec![rect, other],
+        },
+    );
+    let mut ellipse = Shape::new(
+        ids.shape(),
+        ShapeKind::Ellipse {
+            rect: Rect::new(110.0, 20.0, 150.0, 60.0),
+            arc: None,
+        },
+    );
+    ellipse.fill = Fill::Solid(Color::rgb8(0, 160, 0));
+    ellipse.shadow = Some(shadow);
+    doc.pages[0].layers[0].shapes = vec![group, ellipse];
+    doc.set_ids(ids);
+    for v in versions() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, rep) = crate::open_bytes(&bytes, "back").expect("reads back");
+        assert_eq!(rep.skipped_objects, 0, "{v}: {:?}", rep.warnings);
+        let read = &back.pages[0].layers[0].shapes;
+        if v < 14 {
+            assert_eq!(count_bitmaps(read), 2, "{v}: the two shadow pictures");
+            continue;
+        }
+        assert_eq!(count_bitmaps(read), 0, "{v}: {read:?}");
+        assert_eq!(read.len(), 2, "{v}: {read:?}");
+        let ShapeKind::Group { children } = &read[0].kind else {
+            panic!("{v}: {:?}", read[0].kind);
+        };
+        assert_eq!(children.len(), 2, "{v}");
+        assert_eq!(children[0].shadow, Some(shadow), "{v}");
+        assert_eq!(children[1].shadow, None, "{v}");
+        assert!(
+            matches!(read[1].kind, ShapeKind::Ellipse { .. }),
+            "{v}: {:?}",
+            read[1].kind
+        );
+        assert_eq!(read[1].shadow, Some(shadow), "{v}");
+    }
+}
+
 /// A hidden object (kept from version 21) casts no shadow picture, and
 /// from version 14 still comes back with its shadow (#1031).
 #[test]
