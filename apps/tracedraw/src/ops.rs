@@ -650,13 +650,14 @@ impl App {
                 return;
             }
         };
-        // Print-size pictures too (#2000).
-        let img = match crate::files::decode_picture(&bytes) {
-            Ok(i) => i.into_rgba8(),
+        // Print-size pictures too (#2000); a CMYK JPEG or TIFF keeps its
+        // inks and shows them as the drawing's CMYK colours show (#2163).
+        let picture = match crate::bitmap_file::read(&bytes) {
+            Ok(p) => p,
             Err(e) => {
                 self.status = crate::i18n::trf(
                     "status.could_not_read",
-                    &[("p", &path.display().to_string()), ("e", &e.to_string())],
+                    &[("p", &path.display().to_string()), ("e", &e)],
                 );
                 return;
             }
@@ -664,14 +665,34 @@ impl App {
         let name = path.file_name().and_then(|n| n.to_str()).map(String::from);
         // At the resolution the file records, else 96 dpi.
         let dpi = crate::image_dpi::resolution(&bytes);
-        if let Some(id) = self.place_image_at(img, name, dpi) {
-            // Remember where it came from: Image > Update from Link re-reads it.
-            self.run(Command::SetObjectData {
-                shape: id,
-                data: vec![("bitmap.link".into(), path.display().to_string())],
-            });
-            self.select(vec![id]);
+        let planes = picture.planes;
+        let Some(id) = self.place_image_at(picture.rgba, name, dpi) else {
+            return;
+        };
+        if let Some(planes) = planes {
+            // The pixels as the object keeps them, with the inks beside.
+            let png = match self.doc().find_shape(id).map(|s| &s.kind) {
+                Some(ShapeKind::Bitmap { png, .. }) => Some(png.clone()),
+                _ => None,
+            };
+            if let Some(png) = png {
+                let inks =
+                    tracedraw_core::picture_inks::PictureInks::cmyk(png.as_slice(), planes.into());
+                if let Err(e) = self.engine.amend(&Command::SetPictureInks {
+                    shape: id,
+                    cmyk: true,
+                    inks: Some(Box::new(inks)),
+                }) {
+                    self.status = e.to_string();
+                }
+            }
         }
+        // Remember where it came from: Image > Update from Link re-reads it.
+        self.run(Command::SetObjectData {
+            shape: id,
+            data: vec![("bitmap.link".into(), path.display().to_string())],
+        });
+        self.select(vec![id]);
     }
 
     /// Double-clicking the Rectangle tool: a rectangle exactly the size of

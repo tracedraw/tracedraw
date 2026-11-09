@@ -4,6 +4,19 @@ File > Import (Ctrl+I) of a PNG, JPEG, BMP, GIF, TIFF or WebP file
 embeds the image as a bitmap object centred on the page and remembers
 the file (Image > Update from Link reads it again).
 
+A CMYK JPEG (four components) comes in as a CMYK picture with its inks,
+as a CMYK TIFF does, its pixels showing the inks through the colour
+management as the drawing's CMYK colours show, so exporting an object
+as a CMYK JPEG and importing the file gives the colour the object had.
+The channels are read as stored: inverted (255 is no ink) under an
+Adobe `APP14` marker with transform 0, as the CMYK export and most
+programs write them; Y, Cb, Cr of the inverted C, M, Y and an inverted
+K under transform 2 (YCCK); as they are without the marker. Before,
+the image library turned the file into RGB by itself, taking every
+file as inverted and leaving the colour management out, so the picture
+came in brighter than the same inks in the drawing (#2163,
+`bitmap_file::tests::a_cmyk_jpeg_imports_with_its_inks_as_the_drawing_shows_them`).
+
 ## The bitmap editor
 
 Edit Bitmap writes the picture to a file in the temporary folder, links

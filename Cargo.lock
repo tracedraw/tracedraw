@@ -4310,6 +4310,8 @@ dependencies = [
  "winresource",
  "x11rb",
  "zip",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]

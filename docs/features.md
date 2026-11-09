@@ -187,7 +187,7 @@ Counts: works 192, partial 7 (`.cdr` content coverage; CMX import; print preview
 
 | Capability | Status |
 |---|---|
-| Import PNG, JPEG, BMP, GIF, WebP, TIFF; crop, resample; pictures drawn smoothly at every zoom (reduced copies when small, tiles meeting without seams, see `behavior/bitmap-import.md`) | works |
+| Import PNG, JPEG, BMP, GIF, WebP, TIFF (a CMYK JPEG or TIFF with its inks, shown through the colour management, #2163); crop, resample; pictures drawn smoothly at every zoom (reduced copies when small, tiles meeting without seams, see `behavior/bitmap-import.md`) | works |
 | Resample: pixels, percent or resolution, aspect ratio kept or not, Smooth, Sharp, Hard pixels and Enlarge with detail methods | works (see `behavior/resample.md`) |
 | Straighten Image: correct lens distortion, rotate -15 to 15 degrees, vertical and horizontal perspective, quarter turns, grid with size and colour, zoom and pan, Crop image, Crop and resample to original size | works (see `behavior/straighten-image.md`) |
 | Convert to bitmap (resolution list and value, colour mode, dithered, always overprint black, anti-aliasing, transparent background, uncompressed size) | works (see `behavior/bitmap-modes.md`) |
