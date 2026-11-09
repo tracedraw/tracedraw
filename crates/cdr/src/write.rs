@@ -5659,9 +5659,32 @@ impl<'a> Writer<'a> {
                 // A paragraph frame hangs from the object's (0, 0), its
                 // top left (`writes_frame` let only such frames through).
                 let frame = frame.filter(|_| self.writes_frame(s));
+                // Vertical text with its columns from the right goes out
+                // as files hold it (#1544): a horizontal line turned a
+                // quarter clockwise, set in the vertical form of its face,
+                // the family's name with a leading `@`.
+                let at_spans: Option<Vec<TextSpan>> =
+                    (para.vertical && para.columns_from_right() && frame.is_none()).then(|| {
+                        spans
+                            .iter()
+                            .map(|sp| {
+                                let mut sp = sp.clone();
+                                if !sp.font_family.starts_with('@') {
+                                    sp.font_family = format!("@{}", sp.font_family);
+                                }
+                                sp
+                            })
+                            .collect()
+                    });
+                let turn = if at_spans.is_some() {
+                    tracedraw_core::document::vertical_line_frame()
+                } else {
+                    Affine::IDENTITY
+                };
+                let spans = at_spans.as_deref().unwrap_or(spans);
                 let t = match frame {
                     Some(f) => s.transform * Affine::translate((origin.x, origin.y + f.height)),
-                    None => s.transform * Affine::translate(origin.to_vec2()),
+                    None => s.transform * Affine::translate(origin.to_vec2()) * turn,
                 };
                 self.has_text = true;
                 let record = if v.0 >= 16 {
@@ -5720,7 +5743,13 @@ impl<'a> Writer<'a> {
                 // The character settings of the first run, the width of
                 // the lines as the frame's one column (files give artistic
                 // text its line width there) and the alignment.
-                let width = s.local_path().bounding_box().width();
+                let lines_box = s.local_path().bounding_box();
+                // (A turned line runs down the box of the columns.)
+                let width = if at_spans.is_some() {
+                    lines_box.height()
+                } else {
+                    lines_box.width()
+                };
                 let character = format!(
                     r#"{},"frame":{{"equalWidthColumns":"1","rtlColumns":"0","columns":"{},0"}},"paragraph":{{"justify":"{}"}}"#,
                     spans

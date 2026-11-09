@@ -8992,3 +8992,71 @@ fn curly_quotes_go_out_as_marked_utf16_units_from_version_12() {
         assert_eq!(texts_of(&back), vec![s.to_string()], "{v}");
     }
 }
+
+/// Vertical text with its columns from the right goes out as files hold
+/// it (#1544): a horizontal line turned a quarter clockwise in the face's
+/// vertical form (`@` and the family), and reads back as the same
+/// vertical text in the same place in every version. Columns from the
+/// left keep going out as before.
+#[test]
+fn vertical_text_round_trips_through_the_at_face() {
+    let mut ids = tracedraw_core::id::IdSource::default();
+    let mut t = text_shape(
+        &mut ids,
+        vec![TextSpan::new("Up\nDown", "Verdana", 24.0)],
+        TextAlign::Left,
+    );
+    t.transform = Affine::translate((80.0, 60.0)) * Affine::rotate(0.3);
+    if let ShapeKind::Text { para, origin, .. } = &mut t.kind {
+        para.vertical = true;
+        *origin = Point::new(3.0, -4.0);
+    }
+    let place = |s: &Shape| match &s.kind {
+        ShapeKind::Text { origin, .. } => s.transform * *origin,
+        _ => Point::new(f64::NAN, f64::NAN),
+    };
+    let want = place(&t);
+    let doc = doc_with(vec![t.clone()]);
+    for v in versions() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let findings = crate::check::check_bytes(&bytes).expect("checks");
+        assert!(findings.is_empty(), "{v}: {findings:?}");
+        let (back, rep) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let read = &back.pages[0].layers[0].shapes;
+        assert_eq!(read.len(), 1, "{v}: {:?}", rep.warnings);
+        let ShapeKind::Text { spans, para, .. } = &read[0].kind else {
+            panic!("{v}: {:?}", read[0].kind);
+        };
+        assert!(para.vertical, "{v}");
+        assert!(para.columns_from_right(), "{v}");
+        assert!(
+            spans.iter().all(|s| s.font_family == "Verdana"),
+            "{v}: {spans:?}"
+        );
+        let text: String = spans.iter().map(|s| s.text.as_str()).collect();
+        assert_eq!(text, "Up\nDown", "{v}");
+        let got = place(&read[0]);
+        assert!((got - want).hypot() < 0.01, "{v}: {got:?} vs {want:?}");
+        let [a, b, c, d, _, _] = read[0].transform.as_coeffs();
+        let [a0, b0, c0, d0, _, _] = t.transform.as_coeffs();
+        for (x, y) in [(a, a0), (b, b0), (c, c0), (d, d0)] {
+            assert!((x - y).abs() < 1e-4, "{v}: {:?}", read[0].transform);
+        }
+    }
+    // Columns from the left: written horizontal, as before.
+    let mut left = t;
+    if let ShapeKind::Text { para, .. } = &mut left.kind {
+        para.vertical_columns = tracedraw_core::document::VerticalColumns::LeftToRight;
+    }
+    let doc = doc_with(vec![left]);
+    let (back, _) =
+        crate::open_bytes(&document_to_cdr_version(&doc, 21), "back").expect("reads back");
+    let ShapeKind::Text { spans, para, .. } = &back.pages[0].layers[0].shapes[0].kind else {
+        panic!("not text");
+    };
+    assert!(!para.vertical);
+    assert!(
+        spans.iter().all(|s| s.font_family == "Verdana"),
+        "{spans:?}"
+    );
+}
