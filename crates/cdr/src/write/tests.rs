@@ -401,6 +401,142 @@ fn clipped_bitmap_reads_back(back: &Document, rep: &crate::ParseReport, v: u16) 
     }
 }
 
+/// Every shape of `shapes` and of the groups and clip frames they hold,
+/// with the transform of the shapes holding it.
+fn shapes_on_page(shapes: &[Shape], outer: Affine, out: &mut Vec<(Affine, Shape)>) {
+    for s in shapes {
+        out.push((outer, s.clone()));
+        match &s.kind {
+            ShapeKind::Group { children } => shapes_on_page(children, outer * s.transform, out),
+            ShapeKind::ClipFrame { frame, contents } => {
+                let inner = outer * s.transform;
+                shapes_on_page(std::slice::from_ref(frame), inner, out);
+                shapes_on_page(contents, inner, out);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// A picture placed in a frame of no rectangular outline (a triangle,
+/// after another object) keeps its frame on reopening, in every version:
+/// from 11 as a clip frame whose frame is the triangle with its fill and
+/// outline, before as the triangle beside the picture, or as its crop
+/// path when the triangle has neither (#1305).
+#[test]
+fn a_clip_frames_triangle_container_survives_saving() {
+    for filled in [true, false] {
+        triangle_container_survives_saving(filled);
+    }
+}
+
+fn triangle_container_survives_saving(filled: bool) {
+    let mut doc = doc_with(Vec::new());
+    let mut ids = doc.ids().clone();
+    let png = {
+        let mut pm = tiny_skia::Pixmap::new(4, 4).expect("pixmap");
+        pm.fill(tiny_skia::Color::from_rgba8(10, 120, 30, 255));
+        pm.encode_png().expect("png")
+    };
+    let mut bm = Shape::new(
+        ids.shape(),
+        ShapeKind::Bitmap {
+            rect: Rect::new(0.0, 0.0, 80.0, 60.0),
+            width_px: 4,
+            height_px: 4,
+            png: png.into(),
+            fx: None,
+        },
+    );
+    bm.fill = Fill::None;
+    bm.stroke = None;
+    bm.transform = Affine::translate((30.0, 25.0));
+    let mut p = BezPath::new();
+    p.move_to((40.0, 30.0));
+    p.line_to((100.0, 30.0));
+    p.line_to((70.0, 80.0));
+    p.close_path();
+    let mut frame = Shape::new(
+        ids.shape(),
+        ShapeKind::Path {
+            path: p,
+            closed: true,
+        },
+    );
+    let look = if filled {
+        (
+            Fill::Solid(Color::rgb8(250, 200, 0)),
+            Some(Stroke::new(Color::BLACK, 0.5)),
+        )
+    } else {
+        (Fill::None, None)
+    };
+    (frame.fill, frame.stroke) = look.clone();
+    let mut before = Shape::new(
+        ids.shape(),
+        ShapeKind::Rect {
+            rect: Rect::new(150.0, 10.0, 170.0, 30.0),
+            radius: 0.0,
+            corners: None,
+        },
+    );
+    before.fill = Fill::Solid(Color::rgb8(0, 0, 200));
+    let pc = Shape::new(
+        ids.shape(),
+        ShapeKind::ClipFrame {
+            frame: Box::new(frame),
+            contents: vec![bm],
+        },
+    );
+    doc.pages[0].layers[0].shapes = vec![before, pc];
+    doc.set_ids(ids);
+    for v in versions() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, rep) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let l = &back.pages[0].layers[0];
+        let mut all = Vec::new();
+        shapes_on_page(&l.shapes, Affine::IDENTITY, &mut all);
+        let is_triangle = |(outer, s): &(Affine, Shape)| {
+            if !matches!(s.kind, ShapeKind::Path { .. }) {
+                return false;
+            }
+            let path = *outer * s.page_path();
+            let b = path.bounding_box();
+            (path.area().abs() - 1500.0).abs() < 1.0
+                && (b.x0 - 40.0).abs() < 0.05
+                && (b.x1 - 100.0).abs() < 0.05
+                && (b.y0 - 30.0).abs() < 0.05
+                && (b.y1 - 80.0).abs() < 0.05
+        };
+        assert!(
+            all.iter().any(is_triangle),
+            "{v} {filled}: the triangle is lost: {:?} {:?}",
+            all.iter().map(|(_, s)| &s.kind).collect::<Vec<_>>(),
+            rep.warnings
+        );
+        assert!(
+            all.iter()
+                .any(|(_, s)| matches!(s.kind, ShapeKind::Bitmap { .. })),
+            "{v}: the picture is lost"
+        );
+        if v >= 11 {
+            let clip = l
+                .shapes
+                .iter()
+                .find_map(|s| match &s.kind {
+                    ShapeKind::ClipFrame { frame, contents } => Some((s, frame, contents)),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("{v}: no clip frame {:?}", rep.warnings));
+            let (s, frame, contents) = clip;
+            assert!(is_triangle(&(s.transform, (**frame).clone())), "{v}");
+            assert_eq!(frame.fill, look.0, "{v}");
+            assert_eq!(frame.stroke.is_some(), filled, "{v}");
+            assert_eq!(contents.len(), 1, "{v}");
+        }
+    }
+}
+
 #[test]
 fn written_files_survive_mutation() {
     let mut doc = doc_with(Vec::new());
