@@ -416,7 +416,8 @@ fn jpeg_pixel_inks(px: [u8; 4], how: JpegInks) -> [u8; 4] {
 /// through the colour management. The image library turns such a file
 /// into RGB by itself, taking every file as inverted and leaving the
 /// colour management out, so pictures came in brighter than the same
-/// inks show in the drawing (#2163). None for any other file, or one too large to read.
+/// inks show in the drawing (#2163). Turned as its Exif orientation
+/// says. None for any other file, or one too large to read.
 fn read_cmyk_jpeg(bytes: &[u8]) -> Option<ReadPicture> {
     use zune_core::colorspace::ColorSpace;
     let how = jpeg_inks(bytes)?;
@@ -456,7 +457,41 @@ fn read_cmyk_jpeg(bytes: &[u8]) -> Option<ReadPicture> {
         .chunks_exact(4)
         .map(|p| (jpeg_pixel_inks([p[0], p[1], p[2], p[3]], how), 255));
     let (rgba, planes) = inks_to_picture(w, h, px)?;
+    let (rgba, planes) = oriented(bytes, rgba, planes)?;
     picture_with_planes(rgba, planes)
+}
+
+/// The pixels and the ink planes of picture file `bytes` turned the way
+/// its Exif orientation says, as the pixels of other files are.
+fn oriented(
+    bytes: &[u8],
+    rgba: image::RgbaImage,
+    planes: image::GrayImage,
+) -> Option<(image::RgbaImage, image::GrayImage)> {
+    use image::ImageDecoder;
+    let orientation = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()
+        .and_then(|r| r.into_decoder().ok())
+        .and_then(|mut d| d.orientation().ok())
+        .unwrap_or(image::metadata::Orientation::NoTransforms);
+    if orientation == image::metadata::Orientation::NoTransforms {
+        return Some((rgba, planes));
+    }
+    let (w, h) = rgba.dimensions();
+    let mut pixels = image::DynamicImage::ImageRgba8(rgba);
+    pixels.apply_orientation(orientation);
+    let pixels = pixels.into_rgba8();
+    let (tw, th) = pixels.dimensions();
+    // Each plane turned alone, then laid one under the other again.
+    let mut out = image::GrayImage::new(tw, th.checked_mul(4)?);
+    for k in 0..4u32 {
+        let plane = image::imageops::crop_imm(&planes, 0, k * h, w, h).to_image();
+        let mut plane = image::DynamicImage::ImageLuma8(plane);
+        plane.apply_orientation(orientation);
+        image::imageops::replace(&mut out, &plane.into_luma8(), 0, i64::from(k * th));
+    }
+    Some((pixels, out))
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -772,6 +807,41 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    /// `jpg` with an Exif `APP1` segment right after its start, holding
+    /// orientation `o` (CIPA DC-008: a TIFF header and IFD0 with tag
+    /// 274).
+    fn with_orientation(jpg: &[u8], o: u16) -> Vec<u8> {
+        let mut tiff = b"II*\0".to_vec();
+        tiff.extend_from_slice(&8u32.to_le_bytes());
+        tiff.extend_from_slice(&1u16.to_le_bytes());
+        tiff.extend_from_slice(&274u16.to_le_bytes());
+        tiff.extend_from_slice(&3u16.to_le_bytes());
+        tiff.extend_from_slice(&1u32.to_le_bytes());
+        tiff.extend_from_slice(&o.to_le_bytes());
+        tiff.extend_from_slice(&[0, 0]);
+        tiff.extend_from_slice(&0u32.to_le_bytes());
+        let mut body = b"Exif\0\0".to_vec();
+        body.extend(tiff);
+        let mut out = jpg[..2].to_vec();
+        out.extend_from_slice(&[0xFF, 0xE1]);
+        out.extend_from_slice(&((body.len() + 2) as u16).to_be_bytes());
+        out.extend(body);
+        // A file has one Exif segment: the one the writer made for the
+        // resolution goes.
+        let mut at = 2;
+        while jpg.get(at) == Some(&0xFF)
+            && jpg.get(at + 1).is_some_and(|m| (0xE0..=0xEF).contains(m))
+        {
+            let len = usize::from(u16::from_be_bytes([jpg[at + 2], jpg[at + 3]]));
+            if !(jpg[at + 1] == 0xE1 && jpg[at + 4..].starts_with(b"Exif")) {
+                out.extend_from_slice(&jpg[at..at + 2 + len]);
+            }
+            at += 2 + len;
+        }
+        out.extend_from_slice(&jpg[at..]);
+        out
+    }
+
     /// `jpg` without its Adobe `APP14` segment.
     fn without_adobe(jpg: &[u8]) -> Vec<u8> {
         let at = jpg
@@ -818,6 +888,17 @@ mod tests {
             .to_rgba8()
             .get_pixel(x, y)
             .0
+    }
+
+    fn size_px(s: &Shape) -> (u32, u32) {
+        match &s.kind {
+            ShapeKind::Bitmap {
+                width_px,
+                height_px,
+                ..
+            } => (*width_px, *height_px),
+            _ => (0, 0),
+        }
     }
 
     /// #2163: a CMYK JPEG (inverted under an Adobe marker, as the CMYK
@@ -960,7 +1041,8 @@ mod tests {
             assert!(read_cmyk_jpeg(b).is_none());
         }
         // Cut short anywhere: read or refused, never a panic.
-        for file in [&jpg] {
+        let turned = with_orientation(&jpg, 6);
+        for file in [&jpg, &turned] {
             for cut in [3, 20, 40, file.len() / 2, file.len() - 3] {
                 let _ = read(&file[..cut]);
             }
@@ -970,5 +1052,143 @@ mod tests {
         let at = odd.windows(5).position(|w| w == b"Adobe").expect("Adobe");
         odd[at + 11] = 7;
         assert_eq!(jpeg_inks(&odd), None);
+    }
+
+    /// #2167: a photo whose Exif orientation says it was taken with the
+    /// camera on its side comes in upright, its CMYK inks turned with it.
+    #[test]
+    fn an_exif_orientation_stands_the_picture_upright() {
+        let d = dir("2167-orient");
+        let mut app = App::headless();
+        // 16 by 8: red on the left, blue on the right.
+        let img = image::RgbImage::from_fn(16, 8, |x, _| {
+            image::Rgb(if x < 8 { [230, 20, 20] } else { [20, 20, 230] })
+        });
+        let mut jpg = std::io::Cursor::new(Vec::new());
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpg, 95)
+            .encode_image(&img)
+            .expect("jpeg");
+        // 6: turned a quarter turn clockwise to stand upright.
+        let photo = with_orientation(&jpg.into_inner(), 6);
+        let s = imported(&mut app, &d, "photo.jpg", &photo);
+        assert_eq!(size_px(&s), (8, 16));
+        let top = pixel(&s, 4, 2);
+        let bottom = pixel(&s, 4, 13);
+        assert!(top[0] > 150 && top[2] < 100, "red on top: {top:?}");
+        assert!(bottom[2] > 150 && bottom[0] < 100, "blue below: {bottom:?}");
+        let ShapeKind::Bitmap { rect, .. } = &s.kind else {
+            panic!("bitmap");
+        };
+        assert!(rect.height() > rect.width() * 1.9, "{rect:?}");
+        // A CMYK JPEG: cyan on the left, black on the right.
+        let ink: Vec<u8> = (0..16 * 8)
+            .flat_map(|i| {
+                if i % 16 < 8 {
+                    [255, 0, 0, 0]
+                } else {
+                    [0, 0, 0, 255]
+                }
+            })
+            .collect();
+        let cmyk = tracedraw_io::cmyk_bitmap::cmyk_jpeg(16, 8, &ink, 95, 72.0, None).expect("jpg");
+        let s = imported(&mut app, &d, "cmyk.jpg", &with_orientation(&cmyk, 6));
+        assert_eq!(size_px(&s), (8, 16));
+        let p = planes(&s);
+        let at = |k: usize, x: usize, y: usize| p[k * 128 + y * 8 + x];
+        assert!(at(0, 4, 2) > 200 && at(3, 4, 2) < 50, "cyan on top");
+        assert!(at(3, 4, 13) > 200 && at(0, 4, 13) < 50, "black below");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// #2167: File > Import reads every common kind of PNG and JPEG:
+    /// 8 and 16 bits, grey, with and without alpha, a palette with a
+    /// transparent entry, baseline, progressive and CMYK JPEG.
+    #[test]
+    fn every_common_png_and_jpeg_imports() {
+        use image::DynamicImage as Dyn;
+        let d = dir("2167-kinds");
+        let mut app = App::headless();
+        let encode = |img: Dyn, f: image::ImageFormat| {
+            let mut out = std::io::Cursor::new(Vec::new());
+            img.write_to(&mut out, f).expect("encode");
+            out.into_inner()
+        };
+        let rgb = image::RgbImage::from_fn(6, 4, |x, _| {
+            image::Rgb(if x < 3 { [230, 20, 20] } else { [20, 20, 230] })
+        });
+        let dynamic = Dyn::ImageRgb8(rgb);
+        let mut half_clear = dynamic.to_rgba8();
+        for (x, _, p) in half_clear.enumerate_pixels_mut() {
+            if x >= 3 {
+                p.0[3] = 0;
+            }
+        }
+        let half_clear = Dyn::ImageRgba8(half_clear);
+        let png = image::ImageFormat::Png;
+        let jpeg = image::ImageFormat::Jpeg;
+        let cases: Vec<(&str, Vec<u8>)> = vec![
+            ("rgb8.png", encode(dynamic.clone(), png)),
+            ("rgba8.png", encode(half_clear.clone(), png)),
+            (
+                "rgb16.png",
+                encode(Dyn::ImageRgb16(dynamic.to_rgb16()), png),
+            ),
+            (
+                "rgba16.png",
+                encode(Dyn::ImageRgba16(half_clear.to_rgba16()), png),
+            ),
+            (
+                "grey8.png",
+                encode(Dyn::ImageLuma8(dynamic.to_luma8()), png),
+            ),
+            (
+                "grey16.png",
+                encode(Dyn::ImageLuma16(dynamic.to_luma16()), png),
+            ),
+            (
+                "greya8.png",
+                encode(Dyn::ImageLumaA8(half_clear.to_luma_alpha8()), png),
+            ),
+            ("baseline.jpg", encode(dynamic.clone(), jpeg)),
+            (
+                "grey.jpg",
+                encode(Dyn::ImageLuma8(dynamic.to_luma8()), jpeg),
+            ),
+        ];
+        for (name, bytes) in &cases {
+            let s = imported(&mut app, &d, name, bytes);
+            assert_eq!(size_px(&s), (6, 4), "{name}");
+            let (left, right) = (pixel(&s, 0, 1), pixel(&s, 5, 1));
+            if name.starts_with("grey") {
+                assert!(left[0] > right[0] + 20, "{name}: {left:?} {right:?}");
+            } else {
+                assert!(left[0] > 150 && left[2] < 100, "{name}: red {left:?}");
+                if !name.starts_with("rgba") {
+                    assert!(right[2] > 150 && right[0] < 100, "{name}: blue {right:?}");
+                }
+            }
+            if name.starts_with("rgba") || name.starts_with("greya") {
+                assert_eq!(left[3], 255, "{name}");
+                assert_eq!(right[3], 0, "{name}: clear");
+            }
+            assert!(!s.cmyk_bitmap, "{name} is RGB");
+        }
+        // Made for these tests: a palette PNG (green, a clear entry) and
+        // progressive JPEG files.
+        let palette = include_bytes!("../testdata/palette.png");
+        let s = imported(&mut app, &d, "palette.png", palette);
+        assert_eq!(size_px(&s), (8, 4));
+        assert_eq!(pixel(&s, 1, 1), [0, 200, 0, 255]);
+        assert_eq!(pixel(&s, 6, 1)[3], 0);
+        let progressive = include_bytes!("../testdata/progressive-rgb.jpg");
+        let s = imported(&mut app, &d, "progressive.jpg", progressive);
+        assert_eq!(size_px(&s), (24, 16));
+        let (left, right) = (pixel(&s, 2, 8), pixel(&s, 21, 8));
+        assert!(left[0] > 180 && left[2] < 70, "{left:?}");
+        assert!(right[2] > 180 && right[0] < 70, "{right:?}");
+        let cmyk = include_bytes!("../testdata/progressive-cmyk.jpg");
+        let s = imported(&mut app, &d, "progressive-cmyk.jpg", cmyk);
+        assert!(s.cmyk_bitmap && s.picture_inks.is_some());
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

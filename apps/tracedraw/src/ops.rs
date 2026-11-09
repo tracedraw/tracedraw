@@ -663,8 +663,15 @@ impl App {
             }
         };
         let name = path.file_name().and_then(|n| n.to_str()).map(String::from);
-        // At the resolution the file records, else 96 dpi.
-        let dpi = crate::image_dpi::resolution(&bytes);
+        // At the resolution the file records, else 96 dpi; a picture its
+        // orientation stands upright has its across and down swapped.
+        let dpi = crate::image_dpi::resolution(&bytes).map(|(x, y)| {
+            if crate::files::picture_turns_sideways(&bytes) {
+                (y, x)
+            } else {
+                (x, y)
+            }
+        });
         let planes = picture.planes;
         let Some(id) = self.place_image_at(picture.rgba, name, dpi) else {
             return;

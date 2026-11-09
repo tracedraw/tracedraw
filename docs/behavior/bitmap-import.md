@@ -2,7 +2,16 @@
 
 File > Import (Ctrl+I) of a PNG, JPEG, BMP, GIF, TIFF or WebP file
 embeds the image as a bitmap object centred on the page and remembers
-the file (Image > Update from Link reads it again).
+the file (Image > Update from Link reads it again). PNG files of 8 or
+16 bits, grey or colour, with or without alpha or with a palette, and
+baseline or progressive JPEG files all come in
+(`bitmap_file::tests::every_common_png_and_jpeg_imports`, #2167).
+
+A picture whose Exif orientation says it was taken with the camera
+turned comes in upright, its width and height (and its resolution
+across and down) swapped for a quarter turn
+(`bitmap_file::tests::an_exif_orientation_stands_the_picture_upright`,
+#2167).
 
 A CMYK JPEG (four components) comes in as a CMYK picture with its inks,
 as a CMYK TIFF does, its pixels showing the inks through the colour
