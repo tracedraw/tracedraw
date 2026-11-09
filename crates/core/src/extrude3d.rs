@@ -204,6 +204,119 @@ fn inset(pts: &[Point], b: f64) -> Vec<Point> {
         .collect()
 }
 
+/// Twice the signed area of the triangle `a`, `b`, `c`: positive with `c`
+/// on the left of the way from `a` to `b`.
+fn side(a: Point, b: Point, c: Point) -> f64 {
+    (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+}
+
+/// One edge of a closed loop for [`loops_cross`]: its box, its ends, its
+/// loop and its place in it.
+struct LoopEdge {
+    lo: Point,
+    hi: Point,
+    a: Point,
+    b: Point,
+    of: usize,
+    at: usize,
+    n: usize,
+}
+
+/// Whether an edge of the closed `loops` crosses another edge, of its own
+/// loop or of another one (edges that only touch do not count).
+fn loops_cross(loops: &[Vec<Point>]) -> bool {
+    let mut edges: Vec<LoopEdge> = Vec::new();
+    for (of, pts) in loops.iter().enumerate() {
+        let n = pts.len();
+        for at in 0..n {
+            let (a, b) = (pts[at], pts[(at + 1) % n]);
+            edges.push(LoopEdge {
+                lo: Point::new(a.x.min(b.x), a.y.min(b.y)),
+                hi: Point::new(a.x.max(b.x), a.y.max(b.y)),
+                a,
+                b,
+                of,
+                at,
+                n,
+            });
+        }
+    }
+    // Sorted by their left end, an edge is only tried against those that
+    // start before it ends.
+    edges.sort_by(|p, q| p.lo.x.total_cmp(&q.lo.x));
+    for (k, e) in edges.iter().enumerate() {
+        for f in edges.iter().skip(k + 1) {
+            if f.lo.x > e.hi.x {
+                break;
+            }
+            if f.lo.y > e.hi.y || f.hi.y < e.lo.y {
+                continue;
+            }
+            // Neighbours on a loop share a corner.
+            if e.of == f.of {
+                let d = e.at.abs_diff(f.at);
+                if d <= 1 || d + 1 == e.n {
+                    continue;
+                }
+            }
+            if side(e.a, e.b, f.a) * side(e.a, e.b, f.b) < 0.0
+                && side(f.a, f.b, e.a) * side(f.a, f.b, e.b) < 0.0
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Halvings [`fitting_bevel`] makes: what it finds is within a thousandth
+/// of the bevel asked for of the widest one that fits.
+const BEVEL_FIT_STEPS: usize = 10;
+
+/// The widest bevel up to `b` the outline takes: inset by it, the closed
+/// subpaths keep their sense, cross neither themselves nor one another
+/// and still enclose an area. A bevel wider than a letter's stem, or than
+/// the wall between an outline and its hole, folded the near cap over
+/// itself (#2205).
+fn fitting_bevel(subs: &[(Vec<Point>, bool, bool)], b: f64) -> f64 {
+    let loops: Vec<&Vec<Point>> = subs
+        .iter()
+        .filter(|(pts, closed, _)| *closed && pts.len() >= 3)
+        .map(|(pts, _, _)| pts)
+        .collect();
+    if loops.is_empty() || b <= 0.0 {
+        return b;
+    }
+    let filled: f64 = loops.iter().map(|pts| area2(pts)).sum();
+    let fits = |w: f64| {
+        let ins: Vec<Vec<Point>> = loops.iter().map(|pts| inset(pts, w)).collect();
+        ins.iter()
+            .zip(&loops)
+            .all(|(i, pts)| area2(i) * area2(pts) > 0.0)
+            && ins.iter().map(|i| area2(i)).sum::<f64>() * filled > 0.0
+            && !loops_cross(&ins)
+    };
+    if fits(b) {
+        return b;
+    }
+    // An outline that crosses itself as drawn has no bevel that fits: it
+    // keeps the one asked for.
+    let own: Vec<Vec<Point>> = loops.iter().map(|pts| (*pts).clone()).collect();
+    if loops_cross(&own) {
+        return b;
+    }
+    let (mut lo, mut hi) = (0.0, b);
+    for _ in 0..BEVEL_FIT_STEPS {
+        let mid = (lo + hi) / 2.0;
+        if fits(mid) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
 /// A face that shows: its z key, flat key, shape and drawn corners.
 type ShownFace = (f64, f64, Shape, [Point; 4]);
 
@@ -350,6 +463,7 @@ pub(crate) fn faces(body: &Body, shape: &Shape, subs: &[(Vec<Point>, bool, bool)
     } else {
         0.0
     };
+    let bevel = fitting_bevel(subs, bevel);
     let turned = body.solid.turned();
     let replace_main = turned || bevel > 0.0;
 
@@ -791,6 +905,58 @@ mod tests {
             "{:?}",
             f.above.iter().map(|s| s.bounds()).collect::<Vec<_>>()
         );
+    }
+
+    /// #2205: a bevel wider than a letter's stems folded the near cap over
+    /// itself.
+    #[test]
+    fn a_bevel_wider_than_the_outline_takes_is_narrowed_to_fit() {
+        let pts = |v: &[(f64, f64)]| -> Vec<Point> {
+            v.iter().map(|(x, y)| Point::new(*x, *y)).collect()
+        };
+        // A letter K, 20 high, its stems 4 wide.
+        let k = pts(&[
+            (0.0, 0.0),
+            (4.0, 0.0),
+            (4.0, 8.0),
+            (10.0, 0.0),
+            (15.0, 0.0),
+            (7.5, 10.5),
+            (15.0, 20.0),
+            (10.0, 20.0),
+            (4.0, 12.5),
+            (4.0, 20.0),
+            (0.0, 20.0),
+        ]);
+        let subs = vec![(k.clone(), true, false)];
+        assert!(loops_cross(&[inset(&k, 2.0)]), "as asked, it folds");
+        for b in [1.0, 2.0, 3.0, 5.0] {
+            let w = fitting_bevel(&subs, b);
+            assert!(w > 0.3 && w < b, "{b}: {w}");
+            let ins = inset(&k, w);
+            assert!(area2(&ins) * area2(&k) > 0.0, "{b}: {w}");
+            assert!(!loops_cross(&[ins]), "{b}: {w}");
+        }
+        // A bevel that fits stays as asked.
+        assert_eq!(fitting_bevel(&subs, 0.5), 0.5);
+        // A frame with a wall 4 wide: the cap and its hole would swap
+        // places past a bevel of 2.
+        let frame = vec![
+            (
+                pts(&[(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)]),
+                true,
+                false,
+            ),
+            (
+                pts(&[(4.0, 4.0), (4.0, 16.0), (16.0, 16.0), (16.0, 4.0)]),
+                true,
+                true,
+            ),
+        ];
+        let w = fitting_bevel(&frame, 3.0);
+        assert!(w > 1.9 && w < 2.0, "{w}");
+        // An open outline has no bevel to narrow.
+        assert_eq!(fitting_bevel(&[(k, false, false)], 3.0), 3.0);
     }
 
     #[test]

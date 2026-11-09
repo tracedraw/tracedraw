@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Extrude, Bevel: a bevel wider than the narrowest part of the outline (a letter's stem, the wall between an outline and its hole) is narrowed to the widest one that fits, so the near face of bevelled text no longer folds over itself into stray shapes (#2205).
+
 - Saving `.cdr`: a picture scaled on the page (a picture fitted into a frame, for one) is written with an image resolution that matches its box, the scaling left to its transform as the files hold it, and with its picture's own pixel size; the box and the image disagreed before, one candidate for the reading program closing when such a picture was clicked. `tracedraw-cli check` reports both differences (#1222).
 
 - Saving `.cdr` (version 12 and later): curly apostrophes and quotes, dashes, the euro sign and the other letters past U+00FF are written as two-byte letters, no longer as single Windows-1252 bytes, which the program that reads the files showed as unknown characters (version 18) or dropped (version 21) (#2124).
