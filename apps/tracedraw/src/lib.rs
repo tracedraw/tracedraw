@@ -164,6 +164,8 @@ mod select_similar;
 mod settings;
 mod shadow_tool;
 mod shape_tool;
+#[cfg(test)]
+mod shaping_tests;
 mod shelf;
 mod shortcuts;
 mod snap;

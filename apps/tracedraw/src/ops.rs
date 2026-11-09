@@ -941,6 +941,38 @@ fn group_leaves(s: &Shape) -> Vec<Shape> {
     out
 }
 
+/// The area an object covers on the page, as an outline read with the
+/// even-odd rule, for the shaping operations: text and curves set to the
+/// nonzero rule (#1919) without holes where their contours overlap, and
+/// a group as the union of its objects. A group's outline is its
+/// objects' outlines one after the other, so where two of them overlapped
+/// the even-odd rule left a hole, and Weld, Trim and Intersect cut it
+/// out of their results (#555).
+fn shaping_area(s: &Shape) -> tracedraw_core::BezPath {
+    use tracedraw_core::shaping::{nonzero_as_even_odd, overlay, overlay_with, FillRule, Op};
+    let own = |s: &Shape| {
+        if matches!(s.kind, ShapeKind::Text { .. }) || s.fill_rule == FillRule::NonZero {
+            nonzero_as_even_odd(&s.page_path())
+        } else {
+            s.page_path()
+        }
+    };
+    let leaves = group_leaves(s);
+    if leaves.is_empty() {
+        return own(s);
+    }
+    // Each object's area as clean contours (outer ones turning one way,
+    // holes the other), so all of them together fill, with the nonzero
+    // rule, what any of them covers: one pass instead of a weld for each.
+    let empty = tracedraw_core::BezPath::new();
+    let mut all = tracedraw_core::BezPath::new();
+    for leaf in &leaves {
+        let clean = overlay(&own(leaf), &empty, Op::Weld);
+        all.extend(clean.elements().iter().copied());
+    }
+    overlay_with(&all, &empty, Op::Weld, FillRule::NonZero)
+}
+
 /// What a picture target shows, for a shaping result to hold: the picture
 /// itself, or what a cropped picture (a clip frame holding one) holds,
 /// placed on the page. `None` for other objects.
@@ -1097,18 +1129,11 @@ impl App {
         let target = kept;
         let mut used: Vec<tracedraw_core::ShapeId> = ordered.iter().map(|s| s.id).collect();
         used.extend(&slicer_ids);
-        // The area each object fills: a curve that fills nonzero (#1919)
-        // as the even-odd outline of that area, so its overlaps are not
-        // read as holes.
-        let paths: Vec<tracedraw_core::BezPath> = ordered
-            .iter()
-            .map(|s| match s.fill_rule {
-                tracedraw_core::shaping::FillRule::NonZero => {
-                    tracedraw_core::shaping::nonzero_as_even_odd(&s.page_path())
-                }
-                tracedraw_core::shaping::FillRule::EvenOdd => s.page_path(),
-            })
-            .collect();
+        // The area each object fills: text and a curve that fills nonzero
+        // (#1919) as the even-odd outline of that area, so its overlaps
+        // are not read as holes, and a group as what its objects cover
+        // together (#555).
+        let paths: Vec<tracedraw_core::BezPath> = ordered.iter().map(shaping_area).collect();
         let open_result = open_target.then(|| {
             use tracedraw_core::shaping::{cut_open, Keep};
             let regions: Vec<tracedraw_core::BezPath> = ordered
@@ -1181,10 +1206,10 @@ impl App {
                     return;
                 }
                 Shaping::Trim => {
-                    let mut p = target.page_path();
-                    for s in &ordered {
+                    let mut p = shaping_area(&target);
+                    for (s, cut) in ordered.iter().zip(&paths) {
                         if s.id != target.id {
-                            p = overlay(&p, &s.page_path(), Op::Trim);
+                            p = overlay(&p, cut, Op::Trim);
                         }
                     }
                     p
@@ -1372,8 +1397,9 @@ impl App {
             // (#539).
             let cutters: Vec<tracedraw_core::BezPath> = ordered
                 .iter()
-                .filter(|s| s.id != attrs.id)
-                .map(Shape::page_path)
+                .zip(&paths)
+                .filter(|(s, _)| s.id != attrs.id)
+                .map(|(_, p)| p.clone())
                 .collect();
             let mut children = Vec::new();
             for leaf in &leaves {
