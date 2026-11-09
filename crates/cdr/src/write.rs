@@ -633,6 +633,17 @@ fn cp1252(s: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
+/// The one byte a letter of a version 12+ text record takes, or `None`
+/// when it must go out as a marked UTF-16 unit: the byte is the letter's
+/// own code point, so only U+0000 to U+00FF have one. The program that
+/// reads the files takes such a byte as that code point, not as a
+/// Windows-1252 byte: curly quotes written as Windows-1252 0x92 and 0x94
+/// showed as missing glyphs in its version 18 reader and vanished in
+/// its version 21 one (#2124).
+fn text_byte(c: char) -> Option<u8> {
+    u8::try_from(u32::from(c)).ok()
+}
+
 /// A layer or object name: UTF-16 from version 12, 8-bit before.
 fn name_bytes(v: Ver, s: &str) -> Vec<u8> {
     if v.unicode() {
@@ -5904,7 +5915,8 @@ impl<'a> Writer<'a> {
     /// `txsm` of versions 7 to 15: one frame, a paragraph per line, one
     /// style per run (font, encoding, style flags, size and, when it
     /// differs from the object's, the fill), the text in UTF-16 from
-    /// version 12 and in Windows-1252 before.
+    /// version 12 (one byte for U+0000 to U+00FF) and in Windows-1252
+    /// before.
     /// The style id of a text format (versions 7 to 15), adding it to
     /// the style table when new.
     fn text_style(&mut self, f: TextFormat) -> u32 {
@@ -6079,19 +6091,21 @@ impl<'a> Writer<'a> {
             }
             let chars = text.chars().count();
             if v.unicode() {
-                // From version 12 a letter is one byte in Windows-1252
-                // unless bit 0 of the first byte of its 8-byte record marks
-                // it as a UTF-16 unit in two bytes. Text all in UTF-16 with
-                // no letter marked made the program that wrote the samples
-                // crash.
+                // From version 12 a letter of U+0000 to U+00FF is one byte
+                // (its code point) unless bit 0 of the first byte of its
+                // 8-byte record marks it as a UTF-16 unit in two bytes.
+                // Text all in UTF-16 with no letter marked made the
+                // program that wrote the samples crash. Letters Windows-1252
+                // holds above 0x7f but Latin-1 does not (curly quotes,
+                // dashes, the euro) go out marked too (#2124).
                 let mut descriptions = Buf::default();
                 let mut bytes = Vec::new();
                 for (i, c) in text.chars().enumerate() {
                     let number = record_of_letter.get(i).copied().unwrap_or(0);
-                    match cp1252(&c.to_string()) {
+                    match text_byte(c) {
                         Some(b) => {
                             descriptions.u8(0).u8(0).u8(number << 1).zeros(5);
-                            bytes.extend_from_slice(&b);
+                            bytes.push(b);
                         }
                         None => {
                             let unit = if (c as u32) <= 0xffff {
@@ -6131,9 +6145,9 @@ impl<'a> Writer<'a> {
     /// versions 16 to 18 and 1800 from 19 (#1698), one frame with the
     /// text's matrix, then a paragraph per line with the default style
     /// string (the first run's style and the alignment) and one record
-    /// per run whose style string the letters select; text in UTF-16
-    /// (16) or one byte per letter (17 on: Windows-1252, or UTF-8 for
-    /// letters it lacks).
+    /// per run whose style string the letters select; text one byte per
+    /// letter of U+0000 to U+00FF (its code point), other letters as
+    /// marked UTF-16 units.
     fn txsm16(
         &mut self,
         spans: &[TextSpan],
@@ -6282,24 +6296,22 @@ impl<'a> Writer<'a> {
             // The letters are one byte each from version 16 (files saved
             // for 16 hold them so, while their style strings are UTF-16;
             // UTF-16 letters in a version 16 file are read as half the
-            // text by the program that opens it), Windows-1252, except a
-            // letter Windows-1252 lacks (Cyrillic, Greek, most of Central
-            // European): bit 0 of its record's flags marks it as a UTF-16
-            // unit of two bytes, as from version 12 (#368). A letter beyond
-            // the 16-bit range goes out as "?".
+            // text by the program that opens it), the letter's code point
+            // for U+0000 to U+00FF, except a letter beyond them (Cyrillic,
+            // Greek, most of Central European, and the curly quotes,
+            // dashes and euro Windows-1252 puts in 0x80 to 0x9f, #2124):
+            // bit 0 of its record's flags marks it as a UTF-16 unit of two
+            // bytes, as from version 12 (#368). A letter beyond the 16-bit
+            // range goes out as "?".
             let mut bytes = Vec::new();
             for (c, k) in text.chars().zip(&index) {
-                let one = if v.0 >= 16 {
-                    cp1252(&c.to_string())
-                } else {
-                    None
-                };
+                let one = if v.0 >= 16 { text_byte(c) } else { None };
                 let wide = one.is_none();
                 t.u16(u16::from(wide && v.0 >= 16))
                     .u8(k.saturating_mul(2))
                     .zeros(5);
                 match one {
-                    Some(b) => bytes.extend_from_slice(&b),
+                    Some(b) => bytes.push(b),
                     None => {
                         let unit = if (c as u32) <= 0xffff {
                             c as u16

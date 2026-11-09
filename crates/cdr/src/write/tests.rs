@@ -8607,3 +8607,89 @@ fn font_records_and_the_style_table_name_the_faces_the_text_uses() {
     let (faces, _) = records(&document_to_cdr_version(&bold_doc, 15));
     assert_eq!(faces, vec![(1, 0x40), (1, 0x1000)], "15: {faces:x?}");
 }
+
+/// The text of every shape of `doc`, in order.
+fn texts_of(doc: &Document) -> Vec<String> {
+    doc.pages
+        .iter()
+        .flat_map(|p| &p.layers)
+        .flat_map(|l| &l.shapes)
+        .filter_map(|s| match &s.kind {
+            ShapeKind::Text { spans, .. } => {
+                Some(spans.iter().map(|sp| sp.text.as_str()).collect::<String>())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The data of every `txsm` chunk of a written file.
+fn text_records(bytes: &[u8]) -> Vec<Vec<u8>> {
+    let (_, tree, riff) = chunk_ids(bytes);
+    let mut recs = Vec::new();
+    tree.root.walk(&mut |c, _| {
+        if c.is(b"txsm") {
+            recs.push(tree.data(&riff, c).to_vec());
+        }
+    });
+    recs
+}
+
+/// Accented Latin letters and typographic punctuation read back as
+/// written from every version TraceDraw saves (#1139, #2124).
+#[test]
+fn accented_latin_text_round_trips_in_every_version() {
+    let mut ids = tracedraw_core::id::IdSource::default();
+    let s = "Interop test éàü ñç \u{2019}s \u{201c}q\u{201d} \u{2013} \u{20ac}";
+    let t = text_shape(
+        &mut ids,
+        vec![TextSpan::new(s, "Arial", 12.0)],
+        TextAlign::Left,
+    );
+    let doc = doc_with(vec![t]);
+    for v in crate::write::versions() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, _) = crate::open_bytes(&bytes, "back").expect("reads back");
+        assert_eq!(texts_of(&back), vec![s.to_string()], "{v}");
+        // Before 12 the letters are Windows-1252 bytes: "à" is 0xE0.
+        if v < 12 {
+            let found = text_records(&bytes)
+                .iter()
+                .any(|d| d.windows(3).any(|w| w == [0xE9, 0xE0, 0xFC]));
+            assert!(found, "{v}: éàü not stored as Windows-1252");
+        }
+    }
+}
+
+/// From version 12 a letter is one byte only when it is U+0000 to
+/// U+00FF: a curly apostrophe or quote goes out as a marked UTF-16 unit,
+/// not as the Windows-1252 byte 0x92 that the program that reads the
+/// files showed as a missing glyph or dropped (#2124).
+#[test]
+fn curly_quotes_go_out_as_marked_utf16_units_from_version_12() {
+    let mut ids = tracedraw_core::id::IdSource::default();
+    let s = "a\u{2019}\u{e9}\u{201d}";
+    let t = text_shape(
+        &mut ids,
+        vec![TextSpan::new(s, "Arial", 12.0)],
+        TextAlign::Left,
+    );
+    let doc = doc_with(vec![t]);
+    for v in 12u16..=*crate::write::versions().end() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let recs = text_records(&bytes);
+        let d = recs.first().expect("a text record");
+        // The letters close the record before its path flag: their byte
+        // count, "a", U+2019 as 19 20, "é" as E9, U+201D as 1D 20.
+        let want: [u8; 10] = [6, 0, 0, 0, b'a', 0x19, 0x20, 0xE9, 0x1D, 0x20];
+        let end = d.len() - 1 - if v >= 22 { 4 } else { 0 };
+        assert_eq!(d.get(end - want.len()..end), Some(&want[..]), "{v}");
+        // Each letter's record: the wide ones marked by bit 0 of the
+        // first byte, the others not.
+        let at = end - want.len() - 4 * 8;
+        let marks: Vec<u8> = (0..4).map(|i| d[at + 8 * i] & 1).collect();
+        assert_eq!(marks, [0, 1, 0, 1], "{v}");
+        let (back, _) = crate::open_bytes(&bytes, "back").expect("reads back");
+        assert_eq!(texts_of(&back), vec![s.to_string()], "{v}");
+    }
+}

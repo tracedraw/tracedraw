@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Saving `.cdr` (version 12 and later): curly apostrophes and quotes, dashes, the euro sign and the other letters past U+00FF are written as two-byte letters, no longer as single Windows-1252 bytes, which the program that reads the files showed as unknown characters (version 18) or dropped (version 21) (#2124).
+
 - An ellipse made an arc (its node dragged outward with the Shape tool, or Arc on the property bar) is an open curve everywhere: with the document's Fill open curves off it shows no fill in SVG, PDF and the other vector exports and is picked on its outline only, as on screen; a pie keeps its fill. With Fill open curves on, a click inside an open curve's fill picks it.
 
 - Transparency: the outline of an object with a transparency no longer stays partly opaque, which on a rounded rectangle made part of the outline seem to vanish: the mask, drawn over the object's box, now goes on past the box as it is at its edge. The target (Apply to: Fill, Outline, All) is drawn on screen and in SVG and PDF exports: Outline fades the outline alone, Fill the fill alone, the other part as it is; an outline set behind the fill stays behind it.
