@@ -18,9 +18,15 @@ its swatches instead (one Tint control in the panel). A name typed in Ink name a
 standing for the new colour (in process inks); names are unique. The
 "..." menu's Add to Custom Spot Colors does the same with the name typed,
 or with the colour's `#rrggbb` code when none is (see `color-docker.md`).
-A spot colour's swatch, in the document palette and elsewhere, is named
-by its ink, and the status bar names a spot fill or outline by its ink
-and tint (#2186).
+
+An ink's name in the list is a field: typing over it and pressing Enter,
+or leaving the field, renames the ink in one undo step; an empty name or
+one another ink has changes nothing. Objects and swatches refer to the
+ink by its number, so they all take the new name, as do its separation
+in PDF, EPS and PostScript and the plate it prints on (#2187,
+`ui::color_docker::tests::a_spot_ink_is_renamed`). A spot colour's
+swatch, in the document palette and elsewhere, is named by its ink, and
+the status bar names a spot fill or outline by its ink and tint (#2186).
 
 ## Colour books
 
