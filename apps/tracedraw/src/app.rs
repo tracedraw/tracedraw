@@ -4561,7 +4561,17 @@ impl App {
             let Some((below, prev)) = self.engine.step_below(id).and_then(find) else {
                 break;
             };
-            if !same_objects(&prev.after, &entry.before) {
+            // An action that left other objects selected than it was done
+            // to (a copy, which selects the copy) was not done to the
+            // objects of the action before it, although the selection
+            // that one left is the one it began with: a Repeat of a
+            // mirror copy joined the copy before it and made two copies,
+            // and a move done before the first copy was replayed on
+            // every Repeat, pushing the copies apart (#2173). What was
+            // done to the copy afterwards still repeats with it.
+            if !same_objects(&prev.after, &entry.before)
+                || !same_objects(&entry.before, &entry.after)
+            {
                 break;
             }
             group.push(prev.action.clone());

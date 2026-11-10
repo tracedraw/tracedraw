@@ -42,6 +42,7 @@ full, row-by-row status.
 - File > Import of a CMYK JPEG shows its colours as the drawing shows the same CMYK colours, through the colour management, and keeps the file's inks (a CMYK picture, as a CMYK TIFF comes in): an object exported as a CMYK JPEG and imported again no longer comes back brighter than it was, such as a bright blue for a muted purple. The four channels are read as stored: inverted under an Adobe marker (as the CMYK export and most programs write them), YCCK, or as they are without the marker (#2163).
 
 - Smudge: the nib carries the outline under it along, so a stroke draws the outline out into a smooth tongue about half as wide as the nib, the same whether the stroke is quick or slow. Before, a quick stroke left a thin spike and a slow one hardly moved the outline: a 10 mm nib dragged 30 mm out of a square's side moved it 11 mm (#2228).
+- Edit > Repeat (Ctrl+R) after a mirror copy: each press adds one copy next to the last. The second press made two copies, and a move of the object done before the first copy was repeated with every press, which pushed the copies apart (#2173).
 
 - Android, Options > Display > Screen margins: a margin goes from 0 to 32 dp (it took up to 200 dp, and a large one squeezed the interface until the Options dialog itself was cut off), the corner radius up to 64 dp, and on a small window the margins of two facing sides together take at most a fifth of its width or height. Larger values in a settings file are read as the limit (#2174).
 

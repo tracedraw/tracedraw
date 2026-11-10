@@ -358,6 +358,51 @@ fn repeat_after_a_mirror_copy_continues_from_the_selected_copy() {
     );
 }
 
+/// Repeat pressed again and again after a mirror copy adds one copy a
+/// press, each mirrored over the same side of the one before, so they
+/// line up with no gap; a move done before the first copy is not done
+/// again (#2173). The second Repeat joined the copy before it (the
+/// selection that copy left was the one the Repeat began with) and made
+/// two copies a press, and a move before the first copy was replayed on
+/// every press, which pushed the copies apart.
+#[test]
+fn repeat_after_a_mirror_copy_adds_one_copy_a_press() {
+    use tracedraw_core::Affine;
+    let (_ctx, mut app, id) = setup();
+    app.select(vec![id]);
+    // The object is moved first, as one placed by hand is.
+    app.transform_selection(Affine::translate((7.0, 3.0)));
+    let b = bounds(&app, id);
+    let w = b.width();
+    let right = b.x1;
+    // Ctrl and the left side handle dragged across to the right, with a
+    // right click: a mirror copy over the right side.
+    let mirror = Affine::translate((right, 0.0))
+        * Affine::scale_non_uniform(-1.0, 1.0)
+        * Affine::translate((-right, 0.0));
+    app.copy_selection_by(mirror);
+    assert_eq!(shape_count(&app), 2);
+    let mut placed = vec![id, app.selection[0]];
+    for press in 1..=4usize {
+        app.repeat_last();
+        assert_eq!(shape_count(&app), 2 + press, "one copy a press");
+        assert_eq!(app.selection.len(), 1);
+        placed.push(app.selection[0]);
+        for (k, s) in placed.iter().enumerate() {
+            let sb = bounds(&app, *s);
+            assert!(
+                close(sb.x0, b.x0 + k as f64 * w) && close(sb.y0, b.y0),
+                "press {press}: object {k} at {sb:?}, the first at {b:?}"
+            );
+        }
+    }
+    // Each press is one undo step.
+    let steps = app.engine.history_labels().0.len();
+    app.undo();
+    assert_eq!(app.engine.history_labels().0.len(), steps - 1);
+    assert_eq!(shape_count(&app), 5);
+}
+
 /// Repeat after an undo repeats the last action still in effect, not the
 /// one just undone; after a redo the redone action is the last again
 /// (#366).

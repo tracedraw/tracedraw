@@ -59,6 +59,13 @@ object and filling another only the fill is repeated. Repeat again
 replays the same group (#1566, #1547, `App::repeat_group`,
 `Engine::step_below`,
 `pick_drag_tests::repeat_replays_the_last_group_of_actions_on_one_selection`).
+A copy starts a group: what was done before it was done to the object
+copied, not to the copy, so it is not replayed with the copy. Repeat
+pressed again and again after a mirror copy therefore adds one copy a
+press, each next to the last, and a move of the object done before the
+first copy is not done again; the second press made two copies and the
+move pushed the copies apart (#2173,
+`pick_drag_tests::repeat_after_a_mirror_copy_adds_one_copy_a_press`).
 
 Each action is kept with the undo step it made
 (`Engine::last_step_id`, `App::repeatables`): an action undone is never
