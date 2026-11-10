@@ -795,6 +795,75 @@ mod tests {
         assert!((far.x0 - 10.0).abs() < 0.05 && (far.y0 + 10.0).abs() < 0.05);
     }
 
+    /// #2213: with the Shape tool an enveloped curve shows its frame
+    /// only. Its own nodes lie where the curve was before the envelope,
+    /// so they, the curve's outline in the node colour and the corner
+    /// widgets stood as a second, unbent curve beside the bent one.
+    /// Nothing of the unbent curve is shown or taken while the envelope
+    /// is on; the frame is edited, and the nodes are back once the
+    /// envelope is cleared.
+    #[test]
+    fn the_shape_tool_shows_only_the_frame_of_an_enveloped_curve() {
+        let mut app = App::headless();
+        let id = rect(&mut app, 0.0, 0.0, 40.0, 20.0);
+        app.select(vec![id]);
+        app.convert_selection_to_curves(false);
+        app.tool = crate::tools::Tool::Shape;
+        app.settings.nodes.corner_widgets = true;
+        // A plain curve: its nodes, segments and corner widgets.
+        let corner = Point::new(40.0, 20.0);
+        assert_eq!(app.shape_tool_shapes().len(), 1);
+        assert!(app.node_at(corner).is_some());
+        assert!(app.segment_at(Point::new(20.0, 20.0)).is_some());
+        assert!(!app.corner_widgets().is_empty());
+        // A node chosen before the envelope is let go with it.
+        app.node_selection = vec![(id, 2)];
+        app.add_new_envelope();
+        // The top right corner of the frame pulled far out: the curve is
+        // drawn out to there, its own node stays at (40, 20).
+        app.envelope_mode = Mode::Unconstrained;
+        app.begin_envelope_drag(id, Part::Node(4), corner);
+        app.envelope_drag_to(Point::new(90.0, 70.0));
+        app.envelope_drag = None;
+        assert!(bounds(&app, id).x1 > 80.0);
+        assert!(app.shape_tool_shapes().is_empty());
+        assert!(app.node_at(corner).is_none());
+        assert!(app.segment_at(Point::new(20.0, 20.0)).is_none());
+        assert!(!app.near_selected_nodes(corner));
+        assert!(app.corner_widgets().is_empty());
+        app.drop_hidden_node_choices();
+        assert!(app.node_selection.is_empty());
+        app.select_all_nodes();
+        assert!(app.node_selection.is_empty());
+        // The frame is what the tool takes.
+        assert_eq!(
+            app.envelope_part_at(Point::new(90.0, 70.0)),
+            Some((id, Part::Node(4)))
+        );
+        // A perspective bends the outline as well.
+        let effects = app.doc().find_shape(id).expect("shape").effects.clone();
+        app.run(Command::SetEffects {
+            shape: id,
+            effects: vec![Effect::Perspective {
+                corners: [
+                    Point::new(0.0, 0.0),
+                    Point::new(40.0, 5.0),
+                    Point::new(40.0, 15.0),
+                    Point::new(0.0, 20.0),
+                ],
+            }],
+        });
+        assert!(app.shape_tool_shapes().is_empty());
+        assert!(app.node_at(corner).is_none());
+        app.run(Command::SetEffects { shape: id, effects });
+        // Envelope cleared: the nodes are back.
+        app.clear_envelope();
+        assert!(app.envelope_of(id).is_none());
+        assert_eq!(app.shape_tool_shapes().len(), 1);
+        assert!(app.node_at(corner).is_some());
+        assert!(!app.corner_widgets().is_empty());
+    }
+
     /// In the Unconstrained mode the selected node's handles show and move
     /// on their own; nodes come and go with double-clicks.
     #[test]

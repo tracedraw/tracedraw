@@ -201,11 +201,8 @@ impl App {
     /// Work the corners of the selected curves out again when the drawing
     /// or the selection changed since the last time.
     fn refresh_corner_cache(&self) {
-        let targets: Vec<ShapeId> = self
-            .selection
-            .iter()
-            .map(|id| self.node_target(*id))
-            .collect();
+        // Not the objects that show their frame only (#2213).
+        let targets: Vec<ShapeId> = self.node_targets();
         let key = (self.engine.revision(), targets);
         let mut cache = self.corner_cache.borrow_mut();
         if cache.key.as_ref() != Some(&key) {
@@ -480,7 +477,8 @@ impl App {
             return Vec::new();
         }
         let mut out = Vec::new();
-        for id in self.selection.iter().map(|id| self.node_target(*id)) {
+        // Not the objects that show their frame only (#2213).
+        for id in self.node_targets() {
             let Some(s) = self.doc().find_shape(id) else {
                 continue;
             };

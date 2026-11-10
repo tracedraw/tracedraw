@@ -42,6 +42,23 @@ pub(crate) fn bitmap_corners(s: &tracedraw_core::Shape) -> Option<[Point; 4]> {
     ])
 }
 
+/// Whether the Shape tool shows only the frame of `s`: an object drawn
+/// through an envelope or a perspective is not where its own nodes are,
+/// so the nodes, their outline in the node colour, the corner widgets
+/// and a picture's corners would stand as a second, unbent copy beside
+/// what is drawn (#2213). The frame is edited instead (`envelope_edit`,
+/// the perspective's corners); the nodes are back once the effect is
+/// cleared, switched off or made part of the curve (Convert to Curves).
+pub(crate) fn frame_only(s: &tracedraw_core::Shape) -> bool {
+    s.effects.iter().any(|e| {
+        matches!(
+            e,
+            tracedraw_core::live::Effect::Envelope { .. }
+                | tracedraw_core::live::Effect::Perspective { .. }
+        )
+    })
+}
+
 /// The objects a double click with the Shape tool turns into curves:
 /// rectangles, ellipses and polygons. A picture, text, group or clip frame
 /// would lose what it is (#60).
@@ -173,10 +190,12 @@ impl App {
     /// The selected objects as the Shape tool sees them: a clip frame
     /// gives way to its frame, on the page (an old file whose frame shares
     /// the clip frame's id shows the clip frame itself, which has no
-    /// nodes).
+    /// nodes). An object drawn through an envelope or a perspective is
+    /// left out: it shows its frame only (see [`frame_only`]).
     pub(crate) fn shape_tool_shapes(&self) -> Vec<tracedraw_core::Shape> {
         self.selected_shapes()
             .into_iter()
+            .filter(|s| !frame_only(s))
             .map(|s| match &s.kind {
                 ShapeKind::ClipFrame { frame, .. } if frame.id != s.id => {
                     self.doc().shape_on_page(frame.id).unwrap_or(s)
@@ -191,6 +210,9 @@ impl App {
     fn bitmap_corner_at(&self, p: Point) -> Option<(ShapeId, usize)> {
         let tol = self.settings.nodes.pick_px() / self.view.zoom as f64;
         self.selected_shapes().iter().find_map(|s| {
+            if frame_only(s) {
+                return None;
+            }
             bitmap_corners(s)?
                 .iter()
                 .position(|c| (*c - p).hypot() <= tol)
@@ -234,12 +256,39 @@ impl App {
         Some(frame_id)
     }
 
-    /// The node targets of the selection (see [`Self::node_target`]).
-    fn node_targets(&self) -> Vec<ShapeId> {
+    /// The node targets of the selection (see [`Self::node_target`]),
+    /// without the objects that show their frame only ([`frame_only`]).
+    pub(crate) fn node_targets(&self) -> Vec<ShapeId> {
         self.selection
             .iter()
+            .filter(|id| !self.doc().find_shape(**id).is_some_and(frame_only))
             .map(|id| self.node_target(*id))
             .collect()
+    }
+
+    /// Nodes chosen on an object that has since taken an envelope or a
+    /// perspective are let go: they no longer show, and a key (Delete,
+    /// an arrow) must not change what cannot be seen.
+    pub(crate) fn drop_hidden_node_choices(&mut self) {
+        if self.node_selection.is_empty() && self.segment_spot.is_none() {
+            return;
+        }
+        let hidden: Vec<ShapeId> = self
+            .selection
+            .iter()
+            .filter(|id| self.doc().find_shape(**id).is_some_and(frame_only))
+            .map(|id| self.node_target(*id))
+            .collect();
+        if hidden.is_empty() {
+            return;
+        }
+        self.node_selection.retain(|(id, _)| !hidden.contains(id));
+        if self
+            .segment_spot
+            .is_some_and(|(id, _, _)| hidden.contains(&id))
+        {
+            self.segment_spot = None;
+        }
     }
 
     fn set_path(&mut self, id: ShapeId, path: BezPath, closed: bool, label: &'static str) {
@@ -385,6 +434,7 @@ impl App {
     }
 
     pub fn shape_tool_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
+        self.drop_hidden_node_choices();
         if response.double_clicked_by(PointerButton::Primary) {
             // A character's node: a second click there within the double
             // click time and distance chooses it as a click does.

@@ -38,6 +38,10 @@ apart; the nodes of all of them can be chosen and moved, but end nodes of
 two objects are not joined (#1007,
 `pick_drag_tests::shape_tool_marks_the_last_picked_object_blue_and_the_others_red`).
 
+An object drawn through an envelope or a perspective shows that
+effect's frame only, not its own nodes, which lie where the object was
+before the effect (#2213; see `envelope.md`, Envelope tool).
+
 ## Taking nodes and handles
 
 A press takes the nearest node, or the nearest control handle of a

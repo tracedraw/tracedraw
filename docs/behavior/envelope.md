@@ -75,6 +75,20 @@ Ctrl+F7).
 - The Shape tool edits the frame of a selected enveloped object the same
   way. Other tools do not show it; the Envelope tool does not show the
   selection handles.
+- With the Shape tool an enveloped object shows its frame only. Its own
+  nodes lie where the object was before the envelope, not where it is
+  drawn, so the nodes, the curve's outline in the node colour, the
+  control handles, the corner widgets, a rectangle's, ellipse's or
+  polygon's own nodes, a text's character nodes and a picture's corners
+  are neither shown nor taken while the envelope is on: they stood as a
+  second, unbent curve beside the bent one (#2213). Nodes chosen before
+  the envelope are let go. The same holds for an object with a
+  perspective, which shows its four corners. The nodes are back, where
+  the object is drawn, once the envelope is cleared (Clear Envelope),
+  switched off in the Effects panel, or made part of the curve (Convert
+  to Curves, Ctrl+Q)
+  (`envelope_edit::tests::the_shape_tool_shows_only_the_frame_of_an_enveloped_curve`,
+  `shape_tool::frame_only`).
 - Over a node or a handle the pointer is the Shape tool's arrow with the
   node or handle mark; over a segment, with the segment mark.
 
