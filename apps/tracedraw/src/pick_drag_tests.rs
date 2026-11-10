@@ -6041,6 +6041,71 @@ fn the_context_menu_and_a_key_edit_and_extract_clip_frame_contents() {
     assert_eq!(app.doc().top_level_of(text), Some(clip));
 }
 
+/// The Hyperlink field of the Links and Bookmarks docker takes what is
+/// typed and sets it as the selection's link when the field is left
+/// (#2191). The field showed the stored link again on every frame, so
+/// no key typed into it stayed and no link could be given.
+#[test]
+fn the_hyperlink_field_takes_what_is_typed() {
+    let (ctx, mut app, id) = setup();
+    app.select(vec![id]);
+    app.show_dockers = true;
+    app.docker_tab = crate::app::DockerTab::Links;
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let field = ctx
+        .read_response(crate::ui::dockers2::hyperlink_field_id())
+        .expect("the hyperlink field")
+        .rect
+        .center();
+    click_at(&ctx, &mut app, field, Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Text("example".into())],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Text(".org".into())],
+        Modifiers::NONE,
+    );
+    let link_of = |app: &App| app.doc().find_shape(id).and_then(|s| s.link.clone());
+    assert_eq!(link_of(&app), None, "not before the field is left");
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Enter, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert_eq!(link_of(&app).as_deref(), Some("example.org"));
+    // Emptied and left: the link goes.
+    click_at(&ctx, &mut app, field, Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::A, Modifiers::COMMAND)],
+        Modifiers::COMMAND,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Backspace, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Enter, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert_eq!(link_of(&app), None);
+}
+
 /// Ctrl+click on a clip frame edits its contents (#982): the contents
 /// come out of the frame, the one under the pointer selected, and only
 /// they can be picked; Finish puts them back. Off the contents the click
