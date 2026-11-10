@@ -26,6 +26,11 @@ parallel, or Small back when they have a vanishing point.
 - The outline is flattened (0.05 mm) subpath by subpath (at most 400
   points each); a subpath that ends where it started counts as closed.
   Every edge gives a quad to its copy.
+- The outline is the object's as its outline warps leave it: an
+  envelope, perspective or distortion bends the body with the object,
+  also when it comes after the extrusion in the object's effects (it is
+  then put on the outline before the body is built; #2214, see
+  `envelope.md`).
 - A face shows when its normal (pointing away from the filled side, so a
   hole's walls face into the hole) points along the way the body runs
   at that face (back types) or against it (front types). Open subpaths
@@ -171,6 +176,7 @@ The panel shows these under the other controls; the bar has them in its
 - `extrude::tests::every_subpath_extrudes_and_holes_show_their_far_walls`
 - `extrude::tests::a_curved_side_is_one_outlined_surface`
 - `extrude::tests::odd_values_give_no_faces`
+- `live::warped_extrusion_tests::an_envelope_on_an_extruded_object_bends_its_body`
 - `extrude::tests::area_fill_reaches_the_side_of_a_back_cylinder`
 - `extrude_tool::tests::area_fill_takes_the_side_of_a_back_cylinder`
 - `extrude_tool::tests::a_drag_extrudes_toward_the_pointer`

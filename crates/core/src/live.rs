@@ -443,7 +443,9 @@ impl Effect {
 
     /// Draws objects made from the outline as it is at its place in the
     /// stack (contours, blends, extrusions, shadows, symmetry...): a warp
-    /// after it changes nothing of what it drew, so it stays live.
+    /// after it changes nothing of what it drew, so it stays live. (An
+    /// extrusion's body is built from the outline as the warps after it
+    /// leave it, #2214; a bake still leaves those warps live.)
     fn draws_from_outline(&self) -> bool {
         !self.warps_outline() && !matches!(self, Effect::Lens(_) | Effect::Transparency { .. })
     }
@@ -942,30 +944,59 @@ pub fn evaluate(shape: &Shape) -> Evaluated {
     ev
 }
 
+/// The box of the object's outline where the effect at `at` of its list
+/// takes it: after the warps before it. The other effects leave the
+/// outline alone, but for an extrusion turned in space or bevelled, whose
+/// object is drawn among its faces: a warp after an extrusion is put on
+/// the outline before the body is built (#2214), so the box is the
+/// outline's there too.
+pub fn warp_box(shape: &Shape, at: usize) -> Rect {
+    let mut s = shape.clone();
+    s.effects.truncate(at);
+    s.effects.retain(Effect::warps_outline);
+    evaluate(&s).main.local_path().bounding_box()
+}
+
+/// One outline warp (envelope, perspective, distortion) applied to
+/// `main` in the box of its outline; other effects change nothing.
+fn warp_shape(main: &mut Shape, effect: &Effect) {
+    match effect {
+        Effect::Distort(how) => {
+            reshape(main, &|p, b| crate::effects::distort_in(p, b, *how));
+        }
+        Effect::Envelope {
+            nodes,
+            keep_lines,
+            handles,
+            corners,
+            mapping,
+        } => {
+            if let Some(frame) = crate::envelope::Frame::from_parts(nodes, handles, corners) {
+                reshape(main, &|p, b| {
+                    crate::envelope::apply_in(p, b, &frame, *keep_lines, *mapping)
+                });
+            }
+        }
+        Effect::Perspective { corners } => {
+            reshape(main, &|p, b| perspective_in(p, b, corners));
+        }
+        _ => {}
+    }
+}
+
 fn evaluate_now(shape: &Shape) -> Evaluated {
     let mut main = shape.clone();
     let mut below: Vec<Shape> = Vec::new();
     let mut above: Vec<Shape> = Vec::new();
-    for effect in &shape.effects {
+    // The warps left in the list were applied ahead, for an extrusion.
+    let mut warped_ahead = false;
+    for (at, effect) in shape.effects.iter().enumerate() {
         match effect {
-            Effect::Distort(how) => {
-                reshape(&mut main, &|p, b| crate::effects::distort_in(p, b, *how));
-            }
-            Effect::Envelope {
-                nodes,
-                keep_lines,
-                handles,
-                corners,
-                mapping,
-            } => {
-                if let Some(frame) = crate::envelope::Frame::from_parts(nodes, handles, corners) {
-                    reshape(&mut main, &|p, b| {
-                        crate::envelope::apply_in(p, b, &frame, *keep_lines, *mapping)
-                    });
+            Effect::Distort(_) | Effect::Envelope { .. } | Effect::Perspective { .. } => {
+                // An extrusion before it already took it into its outline.
+                if !warped_ahead {
+                    warp_shape(&mut main, effect);
                 }
-            }
-            Effect::Perspective { corners } => {
-                reshape(&mut main, &|p, b| perspective_in(p, b, corners));
             }
             Effect::Contour {
                 steps,
@@ -1064,11 +1095,38 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
                 ) {
                     body.bevel = *bevel;
                     body.solid = space.clone();
-                    let faces = body.faces(&main);
+                    // The body follows the outline as the warps after it
+                    // in the list leave it (#2214): an envelope put on an
+                    // extruded object bends the object, and the sides and
+                    // the far face built from the outline before it stayed
+                    // behind, poking out around the bent object.
+                    let rest = shape.effects.get(at + 1..).unwrap_or(&[]);
+                    let ahead =
+                        (!warped_ahead && rest.iter().any(Effect::warps_outline)).then(|| {
+                            let mut bent = main.clone();
+                            for e in rest {
+                                warp_shape(&mut bent, e);
+                            }
+                            bent
+                        });
+                    let faces = body.faces(ahead.as_ref().unwrap_or(&main));
                     below.extend(faces.below);
                     above.extend(faces.above);
-                    if let Some(m) = faces.main {
-                        main = m;
+                    // The bent outline is the object's from here on, unless
+                    // an effect between the extrusion and a warp draws from
+                    // the outline as it is at its own place (a contour, a
+                    // blend): the warps then come at their places.
+                    let plain_rest = !rest.iter().any(Effect::draws_from_outline);
+                    match (faces.main, ahead) {
+                        (Some(m), bent) => {
+                            warped_ahead |= bent.is_some();
+                            main = m;
+                        }
+                        (None, Some(bent)) if plain_rest => {
+                            warped_ahead = true;
+                            main = bent;
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -4197,6 +4255,285 @@ mod tests {
         assert_eq!(ev.below.len(), 5);
         let back = ev.below[0].bounds();
         assert!((back.x0 - 10.0).abs() < 0.5);
+    }
+}
+
+#[cfg(test)]
+mod warped_extrusion_tests {
+    use super::*;
+    use crate::geometry::Rect;
+
+    /// A letter-like outline: a "D" with its hole, curves on the right.
+    fn letter() -> Shape {
+        let mut p = BezPath::new();
+        p.move_to((0.0, 0.0));
+        p.line_to((0.0, 30.0));
+        p.line_to((10.0, 30.0));
+        p.curve_to((30.0, 30.0), (30.0, 0.0), (10.0, 0.0));
+        p.close_path();
+        p.move_to((4.0, 5.0));
+        p.line_to((8.0, 5.0));
+        p.curve_to((20.0, 5.0), (20.0, 25.0), (8.0, 25.0));
+        p.line_to((4.0, 25.0));
+        p.close_path();
+        let mut s = Shape::new(
+            crate::ShapeId(1),
+            ShapeKind::Path {
+                path: p,
+                closed: true,
+            },
+        );
+        s.fill = Fill::Solid(Color::rgb8(160, 20, 40));
+        s
+    }
+
+    fn extrusion(depth: Vec2) -> Effect {
+        Effect::Extrude {
+            depth,
+            vanishing: None,
+            amount: 0.0,
+            shade_from: None,
+            shade_to: None,
+            light_angle: 135.0,
+            light_intensity: 50.0,
+            bevel: 0.0,
+            kind: None,
+            on_object: false,
+            solid: None,
+            space: Default::default(),
+        }
+    }
+
+    /// An envelope around `b` with its top side arched and its top-right
+    /// corner pulled up and out.
+    fn arch(b: Rect) -> Effect {
+        let mut frame = crate::envelope::Frame::around(b);
+        frame.move_node(5, Vec2::new(0.0, 12.0), crate::envelope::Mode::SingleArc);
+        frame.move_node(4, Vec2::new(6.0, 5.0), crate::envelope::Mode::SingleArc);
+        Effect::from_envelope(&frame, false, Default::default())
+    }
+
+    /// The lines of `p`, its curves flattened.
+    fn lines(p: &BezPath) -> Vec<(Point, Point)> {
+        let mut out = Vec::new();
+        let (mut at, mut start) = (Point::ZERO, Point::ZERO);
+        crate::geometry::flatten(p, 0.01, &mut |el| match el {
+            PathEl::MoveTo(q) => {
+                at = q;
+                start = q;
+            }
+            PathEl::LineTo(q) => {
+                out.push((at, q));
+                at = q;
+            }
+            PathEl::ClosePath => {
+                out.push((at, start));
+                at = start;
+            }
+            _ => {}
+        });
+        out
+    }
+
+    /// How far the corners of `a` lie from the lines of `b`, at most.
+    fn gap(a: &BezPath, b: &BezPath) -> f64 {
+        let to = lines(b);
+        let dist = |p: Point, (a, b): (Point, Point)| {
+            let d = b - a;
+            let len = d.hypot2();
+            let t = if len > 0.0 {
+                ((p - a).dot(d) / len).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            (p - (a + d * t)).hypot()
+        };
+        lines(a)
+            .iter()
+            .flat_map(|l| [l.0, l.1])
+            .map(|p| to.iter().map(|l| dist(p, *l)).fold(f64::MAX, f64::min))
+            .fold(0.0, f64::max)
+    }
+
+    /// How far the body of `ev` (a back parallel one, by `depth`) strays
+    /// from the object's outline: the far face from the outline moved by
+    /// the offset, and each side from the outline and that copy.
+    fn body_gap(ev: &Evaluated, depth: Vec2) -> f64 {
+        let front = ev.main.page_path();
+        let far = Affine::translate(depth) * front.clone();
+        let mut both = front;
+        both.extend(far.elements().iter().copied());
+        assert!(ev.below.len() > 1, "a far face and sides");
+        let back = ev.below[0].page_path();
+        let mut worst = gap(&back, &far).max(gap(&far, &back));
+        for side in &ev.below[1..] {
+            worst = worst.max(gap(&side.page_path(), &both));
+        }
+        worst
+    }
+
+    /// An envelope put on an extruded object bends the whole body
+    /// (#2214): the sides and the far face are built from the bent
+    /// outline, so they meet the object all along it. They were built
+    /// from the outline as it was before the envelope and stayed behind,
+    /// poking out around the bent object.
+    #[test]
+    fn an_envelope_on_an_extruded_object_bends_its_body() {
+        let depth = Vec2::new(10.0, -10.0);
+        let mut s = letter();
+        let b = s.local_path().bounding_box();
+        s.effects = vec![extrusion(depth), arch(b)];
+        let ev = evaluate(&s);
+        // The envelope did bend the object.
+        let front = ev.main.page_path().bounding_box();
+        assert!(front.y1 > 35.0, "{front:?}");
+        let worst = body_gap(&ev, depth);
+        assert!(worst < 0.1, "the body is {worst} mm off the bent outline");
+        // Large letters too: the same outline six times the size.
+        s.transform = Affine::scale(6.0);
+        let worst = body_gap(&evaluate(&s), depth);
+        assert!(worst < 0.1, "the large body is {worst} mm off");
+        // It is the body of the object enveloped first, then extruded.
+        s.transform = Affine::IDENTITY;
+        let mut first = s.clone();
+        first.effects.reverse();
+        let first = evaluate(&first);
+        assert_eq!(ev.main.page_path(), first.main.page_path());
+        assert_eq!(ev.below.len(), first.below.len());
+        for (a, b) in ev.below.iter().zip(&first.below) {
+            assert_eq!(a.page_path(), b.page_path());
+        }
+    }
+
+    /// Other warps after an extrusion bend its body too, and a front
+    /// body's near face (#2214).
+    #[test]
+    fn every_warp_after_an_extrusion_reaches_its_body() {
+        let depth = Vec2::new(8.0, 6.0);
+        let mut s = letter();
+        let b = s.local_path().bounding_box();
+        let lean = Effect::Perspective {
+            corners: [
+                Point::new(b.x0, b.y0),
+                Point::new(b.x1, b.y0 + 4.0),
+                Point::new(b.x1, b.y1 - 4.0),
+                Point::new(b.x0, b.y1),
+            ],
+        };
+        let mut front = extrusion(depth);
+        if let Effect::Extrude { kind, .. } = &mut front {
+            *kind = Some(crate::extrude::ExtrudeKind::FrontParallel);
+        }
+        s.effects = vec![front, lean.clone(), arch(b)];
+        let ev = evaluate(&s);
+        let mut plain = s.clone();
+        plain.effects = vec![lean, arch(b)];
+        let bent = evaluate(&plain).main.page_path();
+        assert_eq!(ev.main.page_path(), bent);
+        // The near face, drawn last, is the bent outline moved.
+        let near = ev.above.last().expect("a near face").page_path();
+        let moved = Affine::translate(depth) * bent;
+        let worst = gap(&near, &moved).max(gap(&moved, &near));
+        assert!(worst < 0.1, "the near face is {worst} mm off");
+    }
+
+    /// A contour between the extrusion and the envelope is still drawn
+    /// from the outline as it is at the contour's place, and the body
+    /// follows the envelope all the same (#2214).
+    #[test]
+    fn a_contour_before_the_envelope_keeps_its_outline() {
+        let depth = Vec2::new(10.0, -10.0);
+        let mut s = letter();
+        let b = s.local_path().bounding_box();
+        let contour = Effect::Contour {
+            steps: 1,
+            offset: 2.0,
+            outside: true,
+            to_center: false,
+            fill_to: Color::WHITE,
+            outline_to: None,
+            color_blend: 0,
+            corners: None,
+            accel_objects: 0.0,
+            accel_colors: 0.0,
+        };
+        s.effects = vec![extrusion(depth), contour.clone(), arch(b)];
+        let ev = evaluate(&s);
+        let mut alone = s.clone();
+        alone.effects = vec![contour];
+        let step = evaluate(&alone).below;
+        assert_eq!(step.len(), 1);
+        let drawn = ev.below.last().expect("the contour step");
+        assert_eq!(drawn.page_path(), step[0].page_path());
+        let mut body = ev.clone();
+        body.below.pop();
+        let worst = body_gap(&body, depth);
+        assert!(worst < 0.1, "the body is {worst} mm off the bent outline");
+    }
+
+    /// The box an envelope after an extrusion maps is the outline's. For a
+    /// body turned in space, whose object is drawn among its faces, it
+    /// was empty, and the envelope did nothing.
+    #[test]
+    fn the_warp_box_is_the_outline_before_the_body() {
+        let mut s = letter();
+        let b = s.local_path().bounding_box();
+        let mut turned = extrusion(Vec2::new(10.0, -10.0));
+        if let Effect::Extrude { space, .. } = &mut turned {
+            space.rotation = [0.0, 20.0, 0.0];
+        }
+        s.effects = vec![turned, arch(b)];
+        assert_eq!(warp_box(&s, 1), b);
+        assert_eq!(warp_box(&s, 0), b);
+        let bent = warp_box(&s, 2);
+        assert!(bent.y1 > b.y1 + 5.0, "{bent:?}");
+        // A fresh frame around that box leaves the body as it was.
+        let mut plain = s.clone();
+        plain.effects.truncate(1);
+        let mut framed = plain.clone();
+        framed.effects.push(Effect::envelope_around(b, false));
+        let (plain, framed) = (evaluate(&plain), evaluate(&framed));
+        // The object is drawn among the faces of a turned body.
+        let near = |ev: &Evaluated| ev.above.last().expect("the near face").page_path();
+        assert!(same_outline(&near(&plain), &near(&framed), 0.05));
+        let reach = |ev: &Evaluated| {
+            ev.above
+                .iter()
+                .map(|f| f.page_path().bounding_box())
+                .reduce(|a, c| a.union(c))
+                .expect("faces")
+        };
+        let (a, c) = (reach(&plain), reach(&framed));
+        assert!(
+            (a.x0 - c.x0).abs() < 0.05
+                && (a.y0 - c.y0).abs() < 0.05
+                && (a.x1 - c.x1).abs() < 0.05
+                && (a.y1 - c.y1).abs() < 0.05,
+            "{a:?} {c:?}"
+        );
+    }
+
+    /// A body turned in space is built from the bent outline as well: the
+    /// envelope is not put on the turned face again (#2214).
+    #[test]
+    fn a_turned_body_is_built_from_the_bent_outline() {
+        let depth = Vec2::new(10.0, -10.0);
+        let mut s = letter();
+        let b = s.local_path().bounding_box();
+        let mut turned = extrusion(depth);
+        if let Effect::Extrude { space, .. } = &mut turned {
+            space.rotation = [0.0, 20.0, 0.0];
+        }
+        s.effects = vec![turned.clone(), arch(b)];
+        let after = evaluate(&s);
+        s.effects = vec![arch(b), turned];
+        let before = evaluate(&s);
+        assert_eq!(after.below.len(), before.below.len());
+        assert!(!after.above.is_empty());
+        assert_eq!(after.above.len(), before.above.len());
+        for (a, b) in after.above.iter().zip(&before.above) {
+            assert_eq!(a.page_path(), b.page_path());
+        }
     }
 }
 

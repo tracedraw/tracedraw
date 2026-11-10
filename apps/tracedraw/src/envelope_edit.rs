@@ -14,8 +14,8 @@ use egui::{PointerButton, Response};
 use tracedraw_core::{
     document::Shape,
     envelope::{Frame, Mapping, Mode},
-    geometry::{Affine, Point, Rect, Shape as _, Vec2},
-    live::{evaluate, Effect},
+    geometry::{Affine, Point, Rect, Vec2},
+    live::Effect,
     Command, ShapeId,
 };
 
@@ -139,11 +139,10 @@ pub fn last_envelope(effects: &[Effect]) -> Option<(usize, Frame)> {
 }
 
 /// The object's own bounding box where the effect at `at` takes it: after
-/// the effects before it.
+/// the warps before it (an extrusion before it is built afterwards, from
+/// the outline the envelope leaves, #2214).
 pub fn box_at(shape: &Shape, at: usize) -> Rect {
-    let mut s = shape.clone();
-    s.effects.truncate(at);
-    evaluate(&s).main.local_path().bounding_box()
+    tracedraw_core::live::warp_box(shape, at)
 }
 
 /// The effect at `at` with its frame replaced (an envelope keeps its Keep
@@ -748,6 +747,52 @@ mod tests {
         assert_eq!(app.engine.history_labels().0.len(), depth + 2);
         app.undo();
         assert!((app.envelope_of(id).expect("env").1.nodes[1].y).abs() < 1e-9);
+    }
+
+    /// The Envelope tool on an extruded object (#2214): the frame goes
+    /// around the object, and dragging a node bends the body with it. The
+    /// far face stayed a rectangle behind the bent object.
+    #[test]
+    fn an_envelope_bends_the_body_of_an_extruded_object() {
+        let mut app = App::headless();
+        let id = rect(&mut app, 0.0, 0.0, 40.0, 20.0);
+        let extrude = Effect::Extrude {
+            depth: tracedraw_core::geometry::Vec2::new(10.0, -10.0),
+            vanishing: None,
+            amount: 0.0,
+            shade_from: None,
+            shade_to: None,
+            light_angle: 135.0,
+            light_intensity: 50.0,
+            bevel: 0.0,
+            kind: None,
+            on_object: false,
+            solid: None,
+            space: Default::default(),
+        };
+        app.engine
+            .run(&Command::SetEffects {
+                shape: id,
+                effects: vec![extrude],
+            })
+            .expect("extrude");
+        app.select(vec![id]);
+        app.add_new_envelope();
+        let (at, f) = app.envelope_of(id).expect("envelope");
+        assert_eq!(at, 1);
+        assert_eq!(f.bounds(), Rect::new(0.0, 0.0, 40.0, 20.0));
+        // The top's middle node up by 10: an arch.
+        app.envelope_mode = Mode::SingleArc;
+        app.begin_envelope_drag(id, Part::Node(5), Point::new(20.0, 20.0));
+        app.envelope_drag_to(Point::new(20.0, 30.0));
+        app.envelope_drag = None;
+        let s = app.doc().shape_on_page(id).expect("shape");
+        let ev = tracedraw_core::live::evaluate(&s);
+        assert!((ev.main.bounds().y1 - 30.0).abs() < 1e-6);
+        // The far face is the arch moved by the offset: its top at 30 - 10.
+        let far = ev.below.first().expect("the far face").bounds();
+        assert!((far.y1 - 20.0).abs() < 0.05, "{far:?}");
+        assert!((far.x0 - 10.0).abs() < 0.05 && (far.y0 + 10.0).abs() < 0.05);
     }
 
     /// In the Unconstrained mode the selected node's handles show and move

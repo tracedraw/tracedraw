@@ -31,6 +31,20 @@ Ctrl+F7).
   the steps between the two objects follow the envelope; they used to be
   mixed toward the unbent end and stayed where they were (#2120,
   `tracedraw_core::live::tests::a_grouped_blend_bends_with_the_group`).
+- On an extruded object the envelope bends the body too, whichever of
+  the two was put on first: an outline warp (envelope, perspective,
+  distortion) after an extrusion in the object's effects is put on the
+  outline before the body is built, so the sides and the far face meet
+  the bent object all along it. The frame is around the object's
+  outline, not around the body (for a body turned in space or bevelled,
+  whose object is drawn among its faces: around the outline before the
+  turn; `tracedraw_core::live::warp_box`). The body used to be built
+  from the outline as it was before the envelope and stayed behind the
+  bent object, and on a turned or bevelled body the envelope did
+  nothing (#2214,
+  `tracedraw_core::live::warped_extrusion_tests::an_envelope_on_an_extruded_object_bends_its_body`).
+  A contour or a blend between the extrusion and the envelope is still
+  drawn from the outline as it is at its own place.
 - Curves are flattened before the mapping with a tolerance of 1/50 000
   of the object's size (at most 0.05 units), so letters stay smooth; a
   fixed 0.05 left chords about 2 mm long on large text
@@ -195,6 +209,12 @@ rectangle selects it, and the selection box reaches the top of the arch.
 - `pick_drag_tests::dragging_an_envelope_segment_bends_it`
 - `tracedraw_core::envelope::tests::the_mappings_fill_the_frame_differently`
 - `tracedraw_core::live::tests::visual_bounds_follow_the_live_effects`
+- `tracedraw_core::live::warped_extrusion_tests::an_envelope_on_an_extruded_object_bends_its_body`
+- `tracedraw_core::live::warped_extrusion_tests::every_warp_after_an_extrusion_reaches_its_body`
+- `tracedraw_core::live::warped_extrusion_tests::a_contour_before_the_envelope_keeps_its_outline`
+- `tracedraw_core::live::warped_extrusion_tests::a_turned_body_is_built_from_the_bent_outline`
+- `tracedraw_core::live::warped_extrusion_tests::the_warp_box_is_the_outline_before_the_body`
+- `envelope_edit::tests::an_envelope_bends_the_body_of_an_extruded_object`
 - `envelope_edit::tests::dragging_a_node_is_one_step_in_the_chosen_mode`
 - `envelope_edit::tests::handles_and_nodes_in_the_unconstrained_mode`
 - `envelope_edit::tests::enveloped_objects_are_hit_and_boxed_as_drawn`
