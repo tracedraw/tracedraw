@@ -47,10 +47,11 @@ pub fn shadow_handles(sh: &Shadow, b: Rect) -> [(ShadowHandle, Point); 3] {
     ]
 }
 
-/// The bounds the shadow geometry is measured on: the object's path.
+/// The bounds the shadow geometry is measured on: the object's outline
+/// as it is drawn, an envelope or another warp taken in, which is what
+/// the shadow is drawn from (#2217).
 pub fn shadow_box(s: &Shape) -> Rect {
-    use tracedraw_core::geometry::Shape as _;
-    s.page_path().bounding_box()
+    s.shadow_box()
 }
 
 /// `p` (page space) lies on the drop shadow of `s`: inside its
@@ -63,7 +64,7 @@ pub fn shadow_covers(s: &Shape, p: Point) -> bool {
     let Some(sh) = s.shadow.filter(|sh| sh.opacity > 0.0) else {
         return false;
     };
-    let path = s.page_path();
+    let path = s.shadow_outline();
     let b = path.bounding_box();
     if !(Shadow { blur: 0.0, ..sh }).bounds(b).contains(p) {
         return false;
@@ -447,6 +448,60 @@ mod tests {
 
     fn shadow(app: &App, id: ShapeId) -> Option<Shadow> {
         app.doc().find_shape(id).and_then(|s| s.shadow)
+    }
+
+    /// #2217: the shadow of an object with an envelope is measured on the
+    /// outline the envelope draws, as the renderer casts it: a drag from
+    /// the middle of what shows gives a flat shadow, the handles sit on
+    /// the drawn object and the shadow is picked where it lies. Before,
+    /// all of it went by the outline without the envelope, so a press on
+    /// the bent object stood a perspective shadow on a far edge.
+    #[test]
+    fn the_shadow_of_an_enveloped_object_goes_by_what_is_drawn() {
+        use tracedraw_core::live::Effect;
+        let (mut app, id) = app_with_rect();
+        // The envelope stretches the 40 x 60 rectangle to three times its
+        // height: it shows from 20 to 200.
+        let drawn = Rect::new(20.0, 20.0, 60.0, 200.0);
+        app.push_effect(Effect::envelope_around(drawn, false), true);
+        let s = app.doc().shape_on_page(id).expect("shape");
+        let b = shadow_box(&s);
+        assert!(
+            (b.y0 - 20.0).abs() < 0.1 && (b.y1 - 200.0).abs() < 0.1 && (b.x1 - 60.0).abs() < 0.1,
+            "{b:?}"
+        );
+        // The middle of the drawn object lies above the plain outline.
+        let mid = Point::new(40.0, 110.0);
+        assert_eq!(app.hit_test(mid), Some(id));
+        app.drag_new_shadow(id, mid, mid, true);
+        app.drag_new_shadow(id, mid, Point::new(46.0, 104.0), false);
+        let sh = shadow(&app, id).expect("shadow");
+        assert!(sh.perspective.is_none(), "{:?}", sh.perspective);
+        assert!((sh.offset.x - 6.0).abs() < 1e-9 && (sh.offset.y + 6.0).abs() < 1e-9);
+        // The handles start at the middle of the drawn object.
+        let hs = app.shown_shadow_handles().expect("handles");
+        let start = hs
+            .iter()
+            .find(|(h, _)| *h == ShadowHandle::Start)
+            .map(|(_, p)| *p)
+            .expect("start");
+        assert!((start - Point::new(40.0, 110.0)).hypot() < 0.1, "{start:?}");
+        // The shadow is picked where it is drawn: beside the top of the
+        // bent object, far above the plain outline.
+        let s = app.doc().shape_on_page(id).expect("shape");
+        assert!(shadow_covers(&s, Point::new(63.0, 150.0)));
+        assert!(!shadow_covers(&s, Point::new(70.0, 150.0)));
+        // A drag from the bottom fifth of what shows stands the shadow on
+        // the drawn bottom edge and reaches the pointer.
+        app.undo();
+        let low = Point::new(40.0, 30.0);
+        app.drag_new_shadow(id, low, low, true);
+        app.drag_new_shadow(id, low, Point::new(120.0, 60.0), false);
+        let sh = shadow(&app, id).expect("shadow");
+        assert_eq!(sh.perspective.map(|p| p.edge), Some(ShadowEdge::Bottom));
+        let s = app.doc().shape_on_page(id).expect("shape");
+        let end = sh.end_point(shadow_box(&s));
+        assert!((end - Point::new(120.0, 60.0)).hypot() < 1e-6, "{end:?}");
     }
 
     #[test]

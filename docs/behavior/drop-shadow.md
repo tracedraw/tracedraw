@@ -51,6 +51,17 @@ written (the blend goes out alone, with a warning in the log).
   frame, cast none). The shadow is measured on the frame's box (the
   group's box). Break Drop Shadow Apart makes the same silhouette (#873).
 
+- An object with an envelope, a perspective or a distortion takes its
+  shadow by the outline it shows: the box the tool measures on (which
+  edge a press is next to, where the handles sit, where a perspective
+  shadow stands and how far it reaches) is the box of the outline as
+  drawn, the same the shadow is cast from, and the shadow is picked
+  where it lies (`Shape::shadow_outline`, `Shape::shadow_box`). The
+  tool went by the outline without the warp, so a press in the middle
+  of a bent object could stand a perspective shadow on a far edge and
+  the handles sat away from the object (#2217,
+  `shadow_tool::tests::the_shadow_of_an_enveloped_object_goes_by_what_is_drawn`).
+
 ## Perspective geometry
 
 With the edge's midpoint `A` (start handle), its inward unit normal
