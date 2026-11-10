@@ -1823,7 +1823,9 @@ impl<'a> Ctx<'a> {
 
     /// The text of a run with its style resolved: before version 12 its
     /// bytes in the code page of its character set, the style's or else its
-    /// font's (a non-Latin set wins: a Latin one tells nothing).
+    /// font's (a non-Latin set wins: a Latin one tells nothing), unless
+    /// the run is Latin text in a font of another script
+    /// ([`text::decode_run`]).
     fn run_text(&self, run: &text::TextRun, style: &text::RunStyle) -> String {
         let Some(raw) = &run.raw else {
             return run.text.clone();
@@ -1837,7 +1839,7 @@ impl<'a> Ctx<'a> {
             .flatten()
             .find(|cs| text::is_non_latin_charset(*cs));
         match charset {
-            Some(cs) => text::decode_charset(raw, cs),
+            Some(cs) => text::decode_run(raw, cs),
             None => run.text.clone(),
         }
     }
@@ -10226,6 +10228,76 @@ pub(crate) mod tests {
                 assert_eq!(spans[0].font_family, "\u{410}\u{440}\u{438}\u{430}\u{43b}");
                 assert_eq!(spans[1].text, " caf\u{e9}");
                 assert_eq!(spans[1].font_family, "Times");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// Spanish text set in a font whose record names the Arabic character
+    /// set (#2047): "Economia" with its i acute opened with an Arabic
+    /// letter in its middle. Arabic text in such a font stays Arabic.
+    #[test]
+    fn latin_text_in_a_font_of_another_script_keeps_its_accents() {
+        let spanish = [
+            b'E', b'c', b'o', b'n', b'o', b'm', 0xed, b'a', b' ', b'm', b'a', 0xf1, b'a', b'n',
+            b'a',
+        ];
+        // "marhaba" in Windows-1256.
+        let arabic = [0xe3, 0xd1, 0xcd, 0xc8, 0xc7];
+        let styles = [
+            Style7 {
+                chars: spanish.len() as u16,
+                font: Some(3),
+                flags: None,
+                size_units: None,
+                fill: None,
+            },
+            Style7 {
+                chars: arabic.len() as u16,
+                font: Some(4),
+                flags: None,
+                size_units: None,
+                fill: None,
+            },
+        ];
+        let mut t = txsm7(9, false, &styles, "");
+        let cut = t.len() - 1 - 4;
+        t.truncate(cut);
+        let bytes = [&spanish[..], &arabic[..]].concat();
+        t.extend_from_slice(&u32s(&[bytes.len() as u32]));
+        t.extend_from_slice(&vec![0; bytes.len() * 4]);
+        t.extend_from_slice(&bytes);
+        t.push(0);
+        let tables = [
+            chunk(b"font", &font_chunk_8bit(3, 178, b"Arial")),
+            chunk(b"font", &font_chunk_8bit(4, 178, b"Tahoma")),
+        ]
+        .concat();
+        let obj = list(
+            b"obj ",
+            &[
+                chunk(
+                    b"loda",
+                    &loda(OBJ_ARTISTIC_TEXT, &[(ARG_COORDS, i32s(&[0, 0]))]),
+                ),
+                chunk(b"txsm", &t),
+            ]
+            .concat(),
+        );
+        let layer = list(b"layr", &obj);
+        let body = [
+            chunk(b"mcfg", &mcfg(9, 2_540_000, 2_540_000)),
+            tables,
+            list(b"page", &layer),
+        ]
+        .concat();
+        let (doc, rep) = parse(&riff(b"CDR9", &body), 9);
+        assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+        match &first_shape(&doc).kind {
+            ShapeKind::Text { spans, .. } => {
+                assert_eq!(spans.len(), 2, "{spans:?}");
+                assert_eq!(spans[0].text, "Econom\u{ed}a ma\u{f1}ana");
+                assert_eq!(spans[1].text, "\u{645}\u{631}\u{62d}\u{628}\u{627}");
             }
             other => panic!("{other:?}"),
         }
