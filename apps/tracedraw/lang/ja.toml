@@ -6183,6 +6183,7 @@ docker.guides_all_pages = "ガイド（全ページ）"
 docker.guides_master_row_desc = "マスターページのガイドライン：すべてのページに表示されます。クリックすると編集でき、新しいガイドラインはここに追加されます。印刷されることはありません。"
 docker.grid_row_desc = "ドキュメントのグリッド。印刷されず、編集もできません。"
 docker.section_desc = "クリックでこのセクションを開閉します。"
+docker.section_pick_hint = "クリックするとこのセクションだけを表示し、もう一度クリックするとすべて表示します。Ctrl+クリックで他のセクションと並べて開閉します。" # mt
 docker.tf_position_desc = "選択範囲の移動先。相対位置のときは移動する距離。"
 docker.tf_angle = "回転角度"
 docker.tf_angle_desc = "選択範囲を回転させる角度（度）。"

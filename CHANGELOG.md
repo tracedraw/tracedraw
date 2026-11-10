@@ -75,6 +75,8 @@ full, row-by-row status.
 
 - Text > Insert Placeholder Text is also in the right-click menu of a paragraph frame and in the right-click menu shown while typing in one. A frame being edited, an empty one just drawn too, is filled and stays edited with the caret after the sample text; editing used to end.
 
+- Properties docker: a click on a button at the top shows its section alone, so the docker shows what was picked there with nothing to scroll past; a click on the button of the only open section shows them all again, and Ctrl+click or Shift+click opens or closes a section beside the others, as its header bar does. Before, a click only opened or closed that one section in the long list (#2200).
+
 - Drop shadows: a click on an object that has a shadow of its own picks it, also where another object's shadow falls over it; picking one shadowed object after another used to jump to the neighbour whose shadow lay there. A double click on a shadow with the Pick tool chooses the Drop Shadow tool for its object, and Edit Shadow in the object's right-click menu and in the new Drop Shadow section of the Properties docker does the same. The Drop Shadow tool's handles and property bar follow the first selected object that has a shadow.
 
 - Drop Shadow tool: every handle is grabbed and dragged, flat or standing on any edge. Where handles lie close together a press takes the nearest one; the end handle used to take every press within its reach, so the start handle under it could not be grabbed. The start handle follows the pointer while it is dragged.

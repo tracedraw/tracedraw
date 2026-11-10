@@ -6183,6 +6183,7 @@ docker.guides_all_pages = "Panduan (semua halaman)"
 docker.guides_master_row_desc = "Panduan halaman induk: setiap halaman menampilkannya. Klik untuk menyuntingnya; panduan baru masuk ke sini. Tidak pernah dicetak."
 docker.grid_row_desc = "Kisi dokumen. Tidak pernah dicetak dan tidak dapat diedit."
 docker.section_desc = "Klik untuk membuka atau menutup bagian ini."
+docker.section_pick_hint = "Klik untuk menampilkan bagian ini saja, klik lagi untuk menampilkan semuanya. Ctrl+klik membuka atau menutupnya di samping yang lain." # mt
 docker.tf_position_desc = "Ke mana memindahkan pilihan; dengan Posisi relatif, seberapa jauh memindahkannya."
 docker.tf_angle = "Sudut rotasi"
 docker.tf_angle_desc = "Seberapa jauh memutar pilihan, dalam derajat."

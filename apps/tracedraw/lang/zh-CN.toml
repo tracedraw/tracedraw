@@ -6183,6 +6183,7 @@ docker.guides_all_pages = "辅助线（所有页面）"
 docker.guides_master_row_desc = "主页面的辅助线：每个页面都会显示。单击即可编辑；新的辅助线会添加到这里。辅助线从不打印。"
 docker.grid_row_desc = "文档网格。它永远不会打印，也无法编辑。"
 docker.section_desc = "单击打开或关闭此部分。"
+docker.section_pick_hint = "单击只显示此部分，再次单击显示全部。Ctrl+单击可在其他部分旁打开或关闭它。" # mt
 docker.tf_position_desc = "将所选内容移到的位置；选中相对位置时为移动的距离。"
 docker.tf_angle = "旋转角度"
 docker.tf_angle_desc = "所选内容旋转的角度，以度为单位。"

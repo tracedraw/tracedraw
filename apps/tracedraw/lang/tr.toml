@@ -6183,6 +6183,7 @@ docker.guides_all_pages = "Kılavuzlar (tüm sayfalar)"
 docker.guides_master_row_desc = "Ana sayfanın kılavuzları: her sayfa bunları gösterir. Düzenlemek için tıklayın; yeni kılavuzlar buraya eklenir. Asla yazdırılmazlar."
 docker.grid_row_desc = "Belge ızgarası. Asla yazdırılmaz ve düzenlenemez."
 docker.section_desc = "Bu bölümü açmak veya kapatmak için tıklayın."
+docker.section_pick_hint = "Yalnızca bu bölümü göstermek için tıklayın, tümünü göstermek için yeniden tıklayın. Ctrl+tıklama bölümü diğerlerinin yanında açar veya kapatır." # mt
 docker.tf_position_desc = "Seçimin taşınacağı yer; Göreli konumla, ne kadar taşınacağı."
 docker.tf_angle = "Döndürme açısı"
 docker.tf_angle_desc = "Seçimin kaç derece döndürüleceği."

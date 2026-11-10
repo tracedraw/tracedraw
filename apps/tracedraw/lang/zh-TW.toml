@@ -6183,6 +6183,7 @@ docker.guides_all_pages = "參考線（所有頁面）"
 docker.guides_master_row_desc = "主頁面的參考線：每個頁面都會顯示。按一下即可編輯；新的參考線會加到這裡。參考線從不列印。"
 docker.grid_row_desc = "文件格線。它永遠不會列印，也無法編輯。"
 docker.section_desc = "按一下可開啟或關閉此區段。"
+docker.section_pick_hint = "按一下只顯示此區段，再按一下顯示全部。Ctrl+按一下可在其他區段旁開啟或關閉它。" # mt
 docker.tf_position_desc = "將選取範圍移到的位置；勾選相對位置時為移動的距離。"
 docker.tf_angle = "旋轉角度"
 docker.tf_angle_desc = "選取範圍旋轉的角度，以度為單位。"

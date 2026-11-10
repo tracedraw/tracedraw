@@ -6183,6 +6183,7 @@ docker.guides_all_pages = "Guías (todas las páginas)"
 docker.guides_master_row_desc = "Las guías de la página maestra: todas las páginas las muestran. Haga clic para editarlas; las guías nuevas van aquí. Nunca se imprimen."
 docker.grid_row_desc = "La cuadrícula del documento. Nunca se imprime y no se puede editar."
 docker.section_desc = "Haga clic para abrir o cerrar esta sección."
+docker.section_pick_hint = "Haga clic para mostrar solo esta sección; otro clic las muestra todas. Ctrl+clic la abre o la cierra junto a las demás." # mt
 docker.tf_position_desc = "Adónde mover la selección; con Posición relativa, cuánto moverla."
 docker.tf_angle = "Ángulo de rotación"
 docker.tf_angle_desc = "Cuánto girar la selección, en grados."

@@ -6183,6 +6183,7 @@ docker.guides_all_pages = "Vodítka (všechny stránky)"
 docker.guides_master_row_desc = "Vodítka stránky předlohy: zobrazuje je každá stránka. Klepnutím je upravíte; nová vodítka se přidají sem. Nikdy se netisknou."
 docker.grid_row_desc = "Mřížka dokumentu. Nikdy se netiskne a nelze ji upravit."
 docker.section_desc = "Kliknutím tuto část otevřete nebo zavřete."
+docker.section_pick_hint = "Kliknutím zobrazíte jen tento oddíl, dalším kliknutím všechny. Ctrl+kliknutí jej otevře nebo zavře vedle ostatních." # mt
 docker.tf_position_desc = "Kam výběr přesunout; s relativní polohou, o kolik jej posunout."
 docker.tf_angle = "Úhel otočení"
 docker.tf_angle_desc = "O kolik otočit výběr, ve stupních."

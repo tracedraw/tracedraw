@@ -6183,6 +6183,7 @@ docker.guides_all_pages = "Hulplijnen (alle pagina's)"
 docker.guides_master_row_desc = "De hulplijnen van de basispagina: elke pagina toont ze. Klik om ze te bewerken; nieuwe hulplijnen komen hier. Ze worden nooit afgedrukt."
 docker.grid_row_desc = "Het documentraster. Het wordt nooit afgedrukt en kan niet worden bewerkt."
 docker.section_desc = "Klik om deze sectie te openen of te sluiten."
+docker.section_pick_hint = "Klik om alleen deze sectie te tonen, klik opnieuw om ze allemaal te tonen. Ctrl+klik opent of sluit ze naast de andere." # mt
 docker.tf_position_desc = "Waarheen de selectie gaat; met Relatieve positie, hoe ver ze verschuift."
 docker.tf_angle = "Draaihoek"
 docker.tf_angle_desc = "Hoe ver de selectie draait, in graden."

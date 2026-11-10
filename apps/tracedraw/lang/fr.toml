@@ -6183,6 +6183,7 @@ docker.guides_all_pages = "Repères (toutes les pages)"
 docker.guides_master_row_desc = "Les repères de la page maître : chaque page les affiche. Cliquez pour les modifier ; les nouveaux repères vont ici. Ils ne s'impriment jamais."
 docker.grid_row_desc = "La grille du document. Elle ne s'imprime jamais et ne peut pas être modifiée."
 docker.section_desc = "Cliquez pour ouvrir ou fermer cette section."
+docker.section_pick_hint = "Cliquez pour afficher cette section seule, cliquez de nouveau pour les afficher toutes. Ctrl+clic l'ouvre ou la ferme à côté des autres." # mt
 docker.tf_position_desc = "Où déplacer la sélection ; avec Position relative, de combien la déplacer."
 docker.tf_angle = "Angle de rotation"
 docker.tf_angle_desc = "De combien faire pivoter la sélection, en degrés."
