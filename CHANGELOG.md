@@ -88,6 +88,7 @@ full, row-by-row status.
 - Drop Shadow and Block Shadow tools: a drag also starts in the hole of a ring and anywhere else an object's outline goes round, not only where the object is picked. A ring made with Trim or another shaping operation picks nothing in its hole, so a drag from its middle started no shadow; it now gives the ring a flat drop shadow, or its block shadow. The Block Shadow tool measures its drag from where the button went down (#2219).
 
 - Paragraph text: linking a frame of text to an empty frame flows the text that does not fit into the empty one, whichever of the two was picked first. Picked empty frame first, the whole text went into it and the frame it came from was left empty, so the text seemed to vanish when going back to that frame.
+- Symmetry: a fountain fill and a gradient transparency are mirrored on the copies, so a fade running toward the mirror line runs toward it from the other side too; the copies' gradients ran the same way as the object's (#2121).
 
 - Envelope: the Mapping list of the property bar and of the Envelope panel says in its tip which mapping is in use and what it does with the object, and each row of the open list explains its mapping (Putty, Original, Horizontal, Vertical). The tip was the same sentence for all four (#2212).
 

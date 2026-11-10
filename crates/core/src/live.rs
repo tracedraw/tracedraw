@@ -1163,8 +1163,13 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             let mirrors = symmetry_mirrors(*center, *angle, *lines);
             let (mut under, mut over) = (Vec::new(), Vec::new());
             for m in &mirrors {
+                // A fountain fill or a gradient transparency is placed on
+                // the object's page box, so it is mirrored with the copy:
+                // without this the copy's gradient ran the same way as
+                // the object's instead of as its mirror image (#2121).
                 let flip = |s: &Shape| {
                     let mut s = s.clone();
+                    s.carry_fills(*m, Affine::IDENTITY);
                     s.transform = *m * s.transform;
                     s
                 };
@@ -4732,6 +4737,74 @@ mod symmetry_tests {
         };
         let ev = evaluate(&s);
         assert_eq!(ev.above.len(), 3);
+    }
+
+    /// A mirrored copy's fountain fill and gradient transparency are
+    /// mirror images of the object's (#2121): a fill running from red at
+    /// the left to blue at the right, towards the mirror line, runs
+    /// from red at the right to blue at the left on the copy at the other
+    /// side of the line. The copy's gradients ran the object's way.
+    #[test]
+    fn mirrored_copies_mirror_their_gradients() {
+        use crate::color::Color;
+        use crate::style::Fill;
+        let mut s = Shape::new(
+            crate::ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(10.0, 0.0, 30.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let red = Color::rgb8(255, 0, 0);
+        let blue = Color::rgb8(0, 0, 255);
+        s.fill = Fill::linear(red, blue, 0.0);
+        s.effects = vec![
+            Effect::Symmetry {
+                center: Point::new(40.0, 0.0),
+                angle: 90.0,
+                lines: 1,
+            },
+            Effect::Transparency {
+                mask: Fill::linear(Color::WHITE, Color::BLACK, 0.0),
+                merge: MergeMode::Normal,
+                target: 2,
+            },
+        ];
+        let ev = evaluate(&s);
+        assert_eq!(ev.above.len(), 1);
+        let copy = &ev.above[0];
+        let b = copy.bounds();
+        assert!(
+            (b.x0 - 50.0).abs() < 1e-9 && (b.x1 - 70.0).abs() < 1e-9,
+            "{b:?}"
+        );
+        // Where each gradient starts and ends on the page.
+        let ends = |f: &Fill, on: Rect| match f {
+            Fill::Fountain(f) => {
+                let h = f.handles.unwrap_or_else(|| f.default_handles(on));
+                (
+                    crate::style::Fountain::rel_to_page(on, h.start),
+                    crate::style::Fountain::rel_to_page(on, h.end),
+                )
+            }
+            other => panic!("not a fountain: {other:?}"),
+        };
+        let (from, to) = ends(&ev.main.fill, ev.main.bounds());
+        assert!(from.x < to.x, "the object's fill runs to the right");
+        let (from, to) = ends(&copy.fill, b);
+        assert!(
+            (from.x - 70.0).abs() < 1e-6 && (to.x - 50.0).abs() < 1e-6,
+            "the copy's fill runs to the left: {from:?} {to:?}"
+        );
+        let Effect::Transparency { mask, .. } = &copy.effects[0] else {
+            panic!("the copy keeps its transparency");
+        };
+        let (from, to) = ends(mask, b);
+        assert!(
+            (from.x - 70.0).abs() < 1e-6 && (to.x - 50.0).abs() < 1e-6,
+            "the copy's transparency runs to the left: {from:?} {to:?}"
+        );
     }
 
     /// The mirrored copies carry the object's other effects (#2121): its
