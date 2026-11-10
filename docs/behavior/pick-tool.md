@@ -108,9 +108,13 @@ Edit > Invert Selection (#2002) selects the objects Select All takes
 contents only while a clip frame's contents are edited) that are not
 selected, and deselects the others; nothing selected selects all.
 
-Edit > Select Similar takes the same objects when they are like one of
+Edit > Select Similar takes the same objects, and the objects inside
+their groups (at any depth, each on its own), when they are like one of
 the selected objects (those inside a group, chosen with Ctrl+click,
-count as references too):
+count as references too). For Fill, Outline and Text Formatting a group
+is not compared itself: a selected group stands for the objects in it,
+and groups are never taken. For Object Type a group is a group: a
+selected group finds the other groups (#2203).
 
 | Item | Like when |
 |---|---|

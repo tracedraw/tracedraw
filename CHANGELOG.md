@@ -14,6 +14,8 @@ full, row-by-row status.
 
 - Saving `.cdr`: a picture scaled on the page (a picture fitted into a frame, for one) is written with an image resolution that matches its box, the scaling left to its transform as the files hold it, and with its picture's own pixel size; the box and the image disagreed before, one candidate for the reading program closing when such a picture was clicked. `tracedraw-cli check` reports both differences (#1222).
 
+- Edit > Select Similar: the objects inside groups are compared too, each on its own, and a selected group stands for the objects in it. Before, a yellow square in a group was never found, and a group (which has no fill of its own) was taken with the objects without a fill (#2203).
+
 - Saving `.cdr` (version 12 and later): curly apostrophes and quotes, dashes, the euro sign and the other letters past U+00FF are written as two-byte letters, no longer as single Windows-1252 bytes, which the program that reads the files showed as unknown characters (version 18) or dropped (version 21) (#2124).
 - Colour panel, Spot inks: an ink's name is a field, typed over to rename the ink (Enter or leaving the field gives it, one undo step; an empty name or another ink's is refused). Its swatches, the objects painted with it and its separation in PDF and PostScript take the new name, so a spot colour can be given the name a printer or cutter expects. The Palette Editor already renames the colours of your own palettes (#2187).
 

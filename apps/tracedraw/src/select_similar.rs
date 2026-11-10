@@ -68,6 +68,27 @@ fn kind_of(shape: &Shape) -> (std::mem::Discriminant<ShapeKind>, bool) {
     (std::mem::discriminant(&shape.kind), paragraph)
 }
 
+/// The objects of `shape` Select Similar compares: the shape itself, or
+/// for a group the objects in it at any depth, the groups themselves
+/// left out. A group has no fill or outline of its own to compare (its
+/// own fill is none), so compared as one object it matched every object
+/// without a fill and none of the objects it holds (#2203).
+/// For Object Type (`groups`) a group is an object of its kind as well,
+/// kept beside the objects in it.
+fn members<'a>(shape: &'a Shape, groups: bool, out: &mut Vec<&'a Shape>) {
+    match &shape.kind {
+        ShapeKind::Group { children } => {
+            if groups {
+                out.push(shape);
+            }
+            for c in children {
+                members(c, groups, out);
+            }
+        }
+        _ => out.push(shape),
+    }
+}
+
 /// Whether `candidate` is like `reference` in the way `how` asks.
 pub fn is_similar(reference: &Shape, candidate: &Shape, how: Similar) -> bool {
     match how {
@@ -158,16 +179,32 @@ impl App {
     }
 
     /// Edit > Select Similar: every object of the page Select All would
-    /// take that is like one of the selected objects in the way `how`
-    /// asks (the selected ones among them). Nothing selected: nothing
-    /// happens. One undo step.
+    /// take, and every object in its groups, that is like one of the
+    /// selected objects in the way `how` asks (the selected ones among
+    /// them; a selected group stands for the objects in it). Nothing
+    /// selected: nothing happens. One undo step.
     pub fn select_similar(&mut self, how: Similar) {
         if self.selection.is_empty() {
             return;
         }
-        let refs: Vec<Shape> = self.selected_shapes();
-        let ids: Vec<ShapeId> = self
-            .selectable_shapes()
+        let selected: Vec<Shape> = self.selected_shapes();
+        // Object Type compares a selected group as a group; the other ways
+        // compare the objects in it.
+        let kind = how == Similar::Kind;
+        let mut refs = Vec::new();
+        for s in &selected {
+            if kind {
+                refs.push(s);
+            } else {
+                members(s, false, &mut refs);
+            }
+        }
+        // The objects in groups count too, each on its own (#2203).
+        let mut candidates = Vec::new();
+        for s in self.selectable_shapes() {
+            members(s, kind, &mut candidates);
+        }
+        let ids: Vec<ShapeId> = candidates
             .into_iter()
             .filter(|c| refs.iter().any(|r| is_similar(r, c, how)))
             .map(|c| c.id)
@@ -467,6 +504,55 @@ mod tests {
             sorted(app.selection.clone()),
             sorted(vec![s.red_a, s.red_b, s.blue_r, s.red_e])
         );
+    }
+
+    /// #2203: yellow and purple squares, two of them grouped, and two
+    /// outlines without a fill. The objects in the group were never
+    /// compared, and the group itself (whose own fill is none) matched the
+    /// outlines.
+    #[test]
+    fn select_similar_reaches_into_groups_and_compares_what_they_hold() {
+        let mut app = App::headless();
+        for id in app.selectable_ids() {
+            app.select(vec![id]);
+            app.delete_selection();
+        }
+        let yellow = || Fill::Solid(Color::rgb8(255, 255, 0));
+        let purple = || Fill::Solid(Color::rgb8(128, 0, 128));
+        let line = Some(Stroke::default());
+        let y1 = rect(&mut app, 0.0, yellow(), line.clone());
+        let y2 = rect(&mut app, 20.0, yellow(), line.clone());
+        let p1 = rect(&mut app, 40.0, purple(), line.clone());
+        let y3 = rect(&mut app, 60.0, yellow(), line.clone());
+        let p2 = rect(&mut app, 80.0, purple(), line.clone());
+        let o1 = rect(&mut app, 100.0, Fill::None, line.clone());
+        let o2 = rect(&mut app, 120.0, Fill::None, line.clone());
+        let e = ellipse(&mut app, 140.0, yellow());
+        app.select(vec![y3, p2]);
+        app.group_selection();
+        let g = app.selection[0];
+        let mut run = |sel: Vec<ShapeId>, how: Similar| {
+            app.select(sel);
+            app.select_similar(how);
+            sorted(app.selection.clone())
+        };
+        // A yellow square, at the top or in the group: every yellow object.
+        let yellows = sorted(vec![y1, y2, y3, e]);
+        assert_eq!(run(vec![y1], Similar::Fill), yellows);
+        assert_eq!(run(vec![y3], Similar::Fill), yellows);
+        // An outline without a fill: the other outlines, not the group.
+        assert_eq!(run(vec![o1], Similar::Fill), sorted(vec![o1, o2]));
+        // The group stands for its yellow and purple squares.
+        assert_eq!(
+            run(vec![g], Similar::Fill),
+            sorted(vec![y1, y2, p1, y3, p2, e])
+        );
+        // Object Type: rectangles in the group too; a group finds groups.
+        assert_eq!(
+            run(vec![y1], Similar::Kind),
+            sorted(vec![y1, y2, p1, y3, p2, o1, o2])
+        );
+        assert_eq!(run(vec![g], Similar::Kind), vec![g]);
     }
 
     #[test]
