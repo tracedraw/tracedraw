@@ -129,6 +129,15 @@ class Shape {
   get CenterY() { const i = __call('shape_info', {id:this.id}); return i.y + i.h/2; }
   get Text() { return __call('shape_info', {id:this.id}).text; }
   set Text(t) { __call('set_text', {id:this.id, text:t}); }
+  get Font() { return __call('shape_info', {id:this.id}).font; }
+  set Font(f) { __call('set_text_style', {id:this.id, font:f}); }
+  get FontSize() { return __call('shape_info', {id:this.id}).size_pt; }
+  set FontSize(z) { __call('set_text_style', {id:this.id, size:z}); }
+  get Bold() { return __call('shape_info', {id:this.id}).bold; }
+  set Bold(b) { __call('set_text_style', {id:this.id, bold:!!b}); }
+  get Italic() { return __call('shape_info', {id:this.id}).italic; }
+  set Italic(i) { __call('set_text_style', {id:this.id, italic:!!i}); }
+  SetTextStyle(style) { __call('set_text_style', {id:this.id, ...style}); }
   SetPosition(x, y) { __call('set_position', {id:this.id, x:x, y:y}); }
   SetSize(w, h) { __call('set_size', {id:this.id, w:w, h:h}); }
   Move(dx, dy) { __call('move', {id:this.id, dx:dx, dy:dy}); }
@@ -1250,6 +1259,13 @@ impl HostInner {
             "shape_info" => {
                 let s = self.shape(id_arg(a, "id")?)?;
                 let b = s.bounds();
+                // The text's own style, from its first span: what the
+                // properties bar shows and what a script reads back after
+                // setting it.
+                let style = match &s.kind {
+                    ShapeKind::Text { spans, .. } => spans.first().cloned(),
+                    _ => None,
+                };
                 let text = match &s.kind {
                     ShapeKind::Text { spans, .. } => {
                         spans.iter().map(|x| x.text.as_str()).collect::<String>()
@@ -1262,7 +1278,64 @@ impl HostInner {
                     "x": b.x0, "y": b.y0, "w": b.width(), "h": b.height(),
                     "text": text,
                     "transparency": ((1.0 - s.opacity) * 100.0).round(),
+                    "font": style.as_ref().map(|sp| sp.font_family.clone()),
+                    "size_pt": style.as_ref().map(|sp| sp.size_pt),
+                    "bold": style.as_ref().map(|sp| sp.bold),
+                    "italic": style.as_ref().map(|sp| sp.italic),
                 })
+            }
+            "set_text_style" => {
+                let id = ShapeId(id_arg(a, "id")?);
+                let s = self.shape(id.0)?;
+                let ShapeKind::Text {
+                    spans,
+                    origin,
+                    frame,
+                    align,
+                    para,
+                    on_path,
+                } = s.kind
+                else {
+                    return Err("the object is not text".into());
+                };
+                let font = a.get("font").and_then(|v| v.as_str()).map(String::from);
+                let size = a.get("size").and_then(|v| v.as_f64());
+                let bold = a.get("bold").and_then(|v| v.as_bool());
+                let italic = a.get("italic").and_then(|v| v.as_bool());
+                if font.is_none() && size.is_none() && bold.is_none() && italic.is_none() {
+                    return Err("nothing to change".into());
+                }
+                let spans: Vec<TextSpan> = spans
+                    .into_iter()
+                    .map(|mut sp| {
+                        if let Some(f) = &font {
+                            sp.font_family = f.clone();
+                        }
+                        // A size of nothing or less is no size at all.
+                        if let Some(z) = size.filter(|z| *z > 0.0 && z.is_finite()) {
+                            sp.size_pt = z;
+                        }
+                        if let Some(b) = bold {
+                            sp.bold = b;
+                        }
+                        if let Some(i) = italic {
+                            sp.italic = i;
+                        }
+                        sp
+                    })
+                    .collect();
+                self.run(Command::SetShapeKind {
+                    shape: id,
+                    kind: ShapeKind::Text {
+                        spans,
+                        origin,
+                        frame,
+                        align,
+                        para,
+                        on_path,
+                    },
+                })?;
+                json!({})
             }
             "path_data" => {
                 let s = self.shape(id_arg(a, "id")?)?;
@@ -2294,5 +2367,99 @@ mod tests {
         a.undo();
         let out = run(&mut a, "print(ActivePage.Name);").unwrap();
         assert_eq!(out[0], "Página 1", "the name came back");
+    }
+
+    #[test]
+    fn a_text_object_reads_and_sets_its_font_and_size() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const t = ActiveLayer.CreateArtisticText(10, 10, 'Hello', 'Arial', 12);",
+        )
+        .unwrap();
+        let out = run(
+            &mut a,
+            "const s = ActiveLayer.Shapes.Item(1); print(s.Font + ' ' + s.FontSize);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "Arial 12");
+
+        run(&mut a, "ActiveLayer.Shapes.Item(1).FontSize = 36;").unwrap();
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Item(1).FontSize);").unwrap();
+        assert_eq!(out[0], "36");
+
+        run(&mut a, "ActiveLayer.Shapes.Item(1).Font = 'Georgia';").unwrap();
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Font);").unwrap();
+        assert_eq!(out[0], "Georgia");
+
+        // The text is still there: styling does not replace it.
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Text);").unwrap();
+        assert_eq!(out[0], "Hello");
+    }
+
+    #[test]
+    fn a_text_object_reads_and_sets_bold_and_italic() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const t = ActiveLayer.CreateArtisticText(10, 10, 'Hi', 'Arial', 12);",
+        )
+        .unwrap();
+        run(&mut a, "ActiveLayer.Shapes.Item(1).Bold = true;").unwrap();
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Bold);").unwrap();
+        assert_eq!(out[0], "true");
+        run(&mut a, "ActiveLayer.Shapes.Item(1).Italic = true;").unwrap();
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Italic);").unwrap();
+        assert_eq!(out[0], "true");
+        run(&mut a, "ActiveLayer.Shapes.Item(1).Bold = false;").unwrap();
+        let out = run(
+            &mut a,
+            "const s = ActiveLayer.Shapes.Item(1); print(s.Bold + ' ' + s.Italic);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "false true");
+    }
+
+    /// SetTextStyle changes only the fields it is given, in one call.
+    #[test]
+    fn set_text_style_changes_the_fields_it_names() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const t = ActiveLayer.CreateArtisticText(10, 10, 'Hi', 'Arial', 12);\n\
+             ActiveLayer.Shapes.Item(1).SetTextStyle({font:'Georgia', size:20});",
+        )
+        .unwrap();
+        let out = run(
+            &mut a,
+            "const s = ActiveLayer.Shapes.Item(1);\n\
+             print(s.Font + ' ' + s.FontSize + ' ' + s.Bold + ' ' + s.Text);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "Georgia 20 false Hi");
+    }
+
+    /// Styling an object that is not text is an error, not a silent
+    /// no-op, and a size of nothing leaves the size it had.
+    #[test]
+    fn styling_that_cannot_apply_is_refused() {
+        let mut a = app();
+        run(&mut a, "const r = ActiveLayer.CreateRectangle(0,0,10,10);").unwrap();
+        assert!(
+            run(&mut a, "ActiveLayer.Shapes.Item(1).Font = 'Georgia';").is_err(),
+            "a rectangle has no font"
+        );
+        assert!(
+            run(&mut a, "ActiveLayer.Shapes.Item(1).FontSize = 20;").is_err(),
+            "a rectangle has no size"
+        );
+        run(
+            &mut a,
+            "const t = ActiveLayer.CreateArtisticText(10, 10, 'Hi', 'Arial', 12);",
+        )
+        .unwrap();
+        run(&mut a, "ActiveLayer.Shapes.Item(2).FontSize = 0;").unwrap();
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Item(2).FontSize);").unwrap();
+        assert_eq!(out[0], "12", "the size it had");
     }
 }
