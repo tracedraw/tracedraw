@@ -112,7 +112,7 @@ pub fn tool_list() -> Vec<Value> {
         ),
         tool(
             "export",
-            "Export the first page (or page_index) to a path; the extension picks the format: svg, pdf, eps, dxf, emf, wmf, plt, psd, html, png. dpi applies to png and psd (default 96).",
+            "Export the first page (or page_index) to a path; the extension picks the format: svg, pdf, eps, ps, prn, dxf, emf, wmf, plt, psd, html, png. dpi applies to png and psd (default 96).",
             json!({"path": {"type": "string"}, "page_index": {"type": "integer"}, "dpi": {"type": "number"}}),
             &["path"],
         ),
@@ -296,6 +296,34 @@ mod tests {
             json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}).to_string();
         let reply = handle_line(app, &line).expect("reply");
         serde_json::from_str(&reply).expect("json")
+    }
+
+    /// The `export` tool's description names every format `export_to`
+    /// writes: an agent reads the description to choose the extension, so
+    /// a format the server takes and the description leaves out is one no
+    /// agent will ask for. The comparison is of whole words, so `ps`
+    /// does not pass on `psd`.
+    #[test]
+    fn the_export_description_names_every_format_it_writes() {
+        let formats = [
+            "svg", "pdf", "eps", "ps", "prn", "dxf", "emf", "wmf", "plt", "psd", "html", "png",
+        ];
+        let tools = tool_list();
+        let export = tools
+            .iter()
+            .find(|t| t["name"] == "export")
+            .expect("the export tool");
+        let description = export["description"].as_str().unwrap_or("");
+        let named: Vec<&str> = description
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .collect();
+        for f in formats {
+            assert!(
+                named.contains(&f),
+                "{f} is written by export_to but not named in: {description}"
+            );
+        }
     }
 
     #[test]
