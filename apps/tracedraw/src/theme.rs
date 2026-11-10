@@ -1048,6 +1048,21 @@ const UI_SCRIPT_FONTS: &[&[&str]] = &[
         "Leelawadee UI",
         "Saysettha OT",
     ],
+    // Thai: file names, layer and page names typed in it (#2168).
+    &[
+        "Noto Sans Thai",
+        "Noto Sans Thai UI",
+        "Leelawadee UI",
+        "Leelawadee",
+        "Tahoma",
+        "Thonburi",
+        "Sukhumvit Set",
+        "Loma",
+        "Garuda",
+        "Waree",
+        "Norasi",
+        "FreeSerif",
+    ],
 ];
 
 /// Add the system fonts covering the non-Latin UI languages to `defs`;
@@ -1101,6 +1116,48 @@ mod theme_tests {
             for c in "שלום".chars() {
                 assert!(ctx.fonts_mut(|f| f.has_glyph(&font, c)), "{c}");
             }
+        }
+    }
+
+    /// Names typed in Thai show in the interface (the file name field,
+    /// the file list, the recent files, the tabs) when the system has a
+    /// font for it, consonants and the marks above and below them
+    /// (#2168: a Thai file name showed as boxes).
+    #[test]
+    fn thai_names_have_an_interface_font() {
+        // The fonts Windows, macOS and the common Linux installs bring
+        // for Thai.
+        let thai = [
+            "Noto Sans Thai",
+            "Leelawadee UI",
+            "Tahoma",
+            "Thonburi",
+            "Loma",
+        ];
+        let has_one = tracedraw_text::fonts().first_face_data(&thai).is_some();
+        if has_one {
+            let ctx = ui_context();
+            let mut out = ctx.run_ui(Default::default(), |_| {});
+            out.textures_delta.clear();
+            let font = egui::FontId::proportional(14.0);
+            for c in "สวัสดี ไฟล์งานพิมพ์".chars().filter(|c| *c != ' ')
+            {
+                assert!(ctx.fonts_mut(|f| f.has_glyph(&font, c)), "{c}");
+            }
+        }
+    }
+
+    /// The fonts Windows (Leelawadee UI, Tahoma), macOS (Thonburi) and
+    /// the common Linux installs (Noto Sans Thai, Loma) bring for Thai
+    /// are asked for as one script's, so a Thai name does not depend on
+    /// the font of another script happening to hold Thai letters.
+    #[test]
+    fn the_thai_interface_fonts_cover_every_system() {
+        let thai = UI_SCRIPT_FONTS
+            .iter()
+            .find(|g| g.first() == Some(&"Noto Sans Thai"));
+        for family in ["Leelawadee UI", "Tahoma", "Thonburi", "Loma"] {
+            assert!(thai.is_some_and(|g| g.contains(&family)), "{family}");
         }
     }
 
