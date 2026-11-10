@@ -2207,7 +2207,7 @@ pub fn parse_csv(text: &str) -> (Vec<String>, Vec<Vec<String>>) {
 
 // ----- find and replace ----------------------------------------------------------
 
-fn matches_text(hay: &str, needle: &str, match_case: bool, whole_word: bool) -> bool {
+pub(crate) fn matches_text(hay: &str, needle: &str, match_case: bool, whole_word: bool) -> bool {
     if needle.is_empty() {
         return false;
     }
@@ -2334,7 +2334,7 @@ pub fn replace_text(
     }
 }
 
-fn replace_in(
+pub(crate) fn replace_in(
     text: &str,
     needle: &str,
     replacement: &str,

@@ -234,6 +234,11 @@ class ShapeRange {
   DistributeSpacingHorizontally() { this.Distribute('spacing_h'); }
   DistributeSpacingVertically() { this.Distribute('spacing_v'); }
   CreateSelection() { __call('select', {ids:this.ids, add:false}); }
+  ReplaceText(needle, replacement, options) {
+    const o = options || {};
+    return __call('replace_text', {ids:this.ids, needle:needle, replacement:replacement,
+      match_case:!!o.matchCase, whole_word:!!o.wholeWord}).replaced;
+  }
 }
 class Shapes {
   constructor(layer) { this.layer = layer; }
@@ -285,6 +290,11 @@ class Page {
   Duplicate(before) { return new Page(__call('duplicate_page', {page:this.id, before:!!before}).id); }
   get ActiveLayer() { return new Layer(__call('active_layer', {page:this.id}).id); }
   get Shapes() { const page = this.id; return { get All() { return new ShapeRange(__call('page_shapes', {page:page}).ids); }, get Count() { return __call('page_shapes', {page:page}).ids.length; } }; }
+  ReplaceText(needle, replacement, options) {
+    const o = options || {};
+    return __call('replace_text', {needle:needle, replacement:replacement,
+      match_case:!!o.matchCase, whole_word:!!o.wholeWord}).replaced;
+  }
   CreateLayer(name) { return new Layer(__call('create_layer', {page:this.id, name:name}).id); }
   Activate() { __call('activate_page', {page:this.id}); }
   get Index() { return __call('page_info', {page:this.id}).index; }
@@ -304,6 +314,9 @@ class Document {
   get SelectionRange() { return this.Selection; }
   ClearSelection() { __call('select', {ids:[], add:false}); }
   SelectAll() { __call('select_all', {}); }
+  ReplaceText(needle, replacement, options) {
+    return this.ActivePage.ReplaceText(needle, replacement, options);
+  }
   AddPages(n) { for (let i = 0; i < (n||1); i++) __call('add_page', {}); return this.Pages.Item(this.Pages.Count); }
   CreateRectangle(x, y, w, h, r) { return this.ActiveLayer.CreateRectangle(x, y, w, h, r); }
   CreateEllipse(x, y, w, h) { return this.ActiveLayer.CreateEllipse(x, y, w, h); }
@@ -1369,6 +1382,110 @@ impl HostInner {
                     .map(|s| s.to_string());
                 self.run(Command::SetShapeName { shape, name })?;
                 json!({})
+            }
+            "replace_text" => {
+                let needle = a.get("needle").and_then(|v| v.as_str()).unwrap_or("");
+                if needle.is_empty() {
+                    return Err("nothing to find: the text to replace is empty".into());
+                }
+                let replacement = a
+                    .get("replacement")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let match_case = a
+                    .get("match_case")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let whole_word = a
+                    .get("whole_word")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                // The objects named, or every text object of the page. The
+                // ones inside groups and frames are walked into, as the
+                // interface's Find and Replace does.
+                let only: Option<Vec<ShapeId>> = a
+                    .get("ids")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_u64()).map(ShapeId).collect());
+                let walk = |s: &Shape, out: &mut Vec<Shape>| {
+                    fn go(
+                        s: &Shape,
+                        only: &Option<Vec<ShapeId>>,
+                        needle: &str,
+                        mc: bool,
+                        ww: bool,
+                        out: &mut Vec<Shape>,
+                    ) {
+                        let wanted = only.as_ref().is_none_or(|ids| ids.contains(&s.id));
+                        if wanted {
+                            if let ShapeKind::Text { spans, .. } = &s.kind {
+                                let text: String = spans.iter().map(|x| x.text.as_str()).collect();
+                                if crate::export::matches_text(&text, needle, mc, ww) {
+                                    out.push(s.clone());
+                                }
+                            }
+                        }
+                        match &s.kind {
+                            ShapeKind::Group { children } => children
+                                .iter()
+                                .for_each(|c| go(c, only, needle, mc, ww, out)),
+                            ShapeKind::ClipFrame { frame, contents } => {
+                                go(frame, only, needle, mc, ww, out);
+                                contents
+                                    .iter()
+                                    .for_each(|c| go(c, only, needle, mc, ww, out));
+                            }
+                            _ => {}
+                        }
+                    }
+                    go(s, &only, needle, match_case, whole_word, out);
+                };
+                let page = self.doc.page(self.page).map_err(|e| e.to_string())?.clone();
+                let mut hits: Vec<Shape> = Vec::new();
+                for s in page.layers.iter().flat_map(|l| &l.shapes) {
+                    walk(s, &mut hits);
+                }
+                let mut changed = 0usize;
+                for s in hits {
+                    let ShapeKind::Text {
+                        spans,
+                        origin,
+                        frame,
+                        align,
+                        para,
+                        on_path,
+                    } = s.kind
+                    else {
+                        continue;
+                    };
+                    let spans: Vec<TextSpan> = spans
+                        .into_iter()
+                        .map(|sp| TextSpan {
+                            text: crate::export::replace_in(
+                                &sp.text,
+                                needle,
+                                &replacement,
+                                match_case,
+                                whole_word,
+                            ),
+                            ..sp
+                        })
+                        .collect();
+                    self.run(Command::SetShapeKind {
+                        shape: s.id,
+                        kind: ShapeKind::Text {
+                            spans,
+                            origin,
+                            frame,
+                            align,
+                            para,
+                            on_path,
+                        },
+                    })?;
+                    changed += 1;
+                }
+                json!({"replaced": changed})
             }
             "set_text" => {
                 let id = id_arg(a, "id")?;
@@ -2707,5 +2824,144 @@ mod tests {
         assert_eq!(run(&mut a, ler).unwrap()[0], "0 50 100");
         a.undo();
         assert_eq!(run(&mut a, ler).unwrap()[0], "0 10 100", "one undo");
+    }
+
+    /// Every text object of the page takes the replacement, and the call
+    /// answers with how many it changed.
+    #[test]
+    fn replace_text_changes_every_text_on_the_page() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateArtisticText(0, 0, 'Hello World', 'Arial', 12);\n\
+             ActiveLayer.CreateArtisticText(0, 40, 'Hello', 'Arial', 12);\n\
+             print(ActivePage.ReplaceText('Hello', 'Bye'));",
+        )
+        .map(|out| assert_eq!(out[0], "2", "two objects changed"))
+        .unwrap();
+        let out = run(
+            &mut a,
+            "print(ActivePage.Shapes.All.Shapes.map(s => s.Text).join('|'));",
+        )
+        .unwrap();
+        assert_eq!(out[0], "Bye World|Bye");
+    }
+
+    /// Case is ignored unless the call asks for it.
+    #[test]
+    fn replace_text_takes_case_into_account_when_asked() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateArtisticText(0, 0, 'hello Hello', 'Arial', 12);\n\
+             print(ActivePage.ReplaceText('Hello', 'Bye'));",
+        )
+        .map(|out| assert_eq!(out[0], "1", "one object, both spellings"))
+        .unwrap();
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Text);").unwrap();
+        assert_eq!(out[0], "Bye Bye", "case ignored by default");
+
+        // The same call asking for the case replaces only the spelling it
+        // was given.
+        let mut b = app();
+        run(
+            &mut b,
+            "ActiveLayer.CreateArtisticText(0, 0, 'hello Hello', 'Arial', 12);\n\
+             ActivePage.ReplaceText('Hello', 'Bye', {matchCase:true});",
+        )
+        .unwrap();
+        let out = run(&mut b, "print(ActiveLayer.Shapes.Item(1).Text);").unwrap();
+        assert_eq!(out[0], "hello Bye");
+    }
+
+    /// A whole word is a run of letters or digits, so `cat` does not touch
+    /// `scatter`.
+    #[test]
+    fn replace_text_can_keep_to_whole_words() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateArtisticText(0, 0, 'a cat scatters', 'Arial', 12);\n\
+             ActivePage.ReplaceText('cat', 'dog', {wholeWord:true});",
+        )
+        .unwrap();
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Text);").unwrap();
+        assert_eq!(out[0], "a dog scatters");
+    }
+
+    /// Text inside a group is reached, as the interface's Find and Replace
+    /// reaches it.
+    #[test]
+    fn replace_text_reaches_into_groups() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const a = ActiveLayer.CreateArtisticText(0, 0, 'one', 'Arial', 12);\n\
+             const b = ActiveLayer.CreateArtisticText(0, 40, 'two', 'Arial', 12);\n\
+             new ShapeRange([a.id, b.id]).Group();\n\
+             print(ActivePage.ReplaceText('one', 'um'));",
+        )
+        .map(|out| assert_eq!(out[0], "1"))
+        .unwrap();
+        // Read the group's children from the drawing itself: the object
+        // model has no way into a group's contents.
+        let shapes = &a.doc().pages[0].layers[0].shapes;
+        assert_eq!(shapes.len(), 1, "the group is one object");
+        let ShapeKind::Group { children } = &shapes[0].kind else {
+            panic!("not a group: {:?}", shapes[0].kind);
+        };
+        let texts: Vec<String> = children
+            .iter()
+            .filter_map(|c| match &c.kind {
+                ShapeKind::Text { spans, .. } => {
+                    Some(spans.iter().map(|x| x.text.as_str()).collect::<String>())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, vec!["um".to_string(), "two".to_string()]);
+    }
+
+    /// A range replaces only what it holds.
+    #[test]
+    fn replace_text_stays_inside_the_range_it_is_given() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateArtisticText(0, 0, 'x', 'Arial', 12);\n\
+             ActiveLayer.CreateArtisticText(0, 40, 'x', 'Arial', 12);\n\
+             const only = new ShapeRange([ActiveLayer.Shapes.Item(2).id]);\n\
+             print(only.ReplaceText('x', 'y'));",
+        )
+        .map(|out| assert_eq!(out[0], "1", "one of the two"))
+        .unwrap();
+        let out = run(
+            &mut a,
+            "print(ActivePage.Shapes.All.Shapes.map(s => s.Text).join('|'));",
+        )
+        .unwrap();
+        assert_eq!(out[0], "x|y");
+    }
+
+    /// Nothing to find is an error rather than a silent nothing, and a
+    /// script's replacement is one undo step.
+    #[test]
+    fn replace_text_refuses_an_empty_search_and_undoes_in_one_step() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateArtisticText(0, 0, 'aaa', 'Arial', 12);",
+        )
+        .unwrap();
+        assert!(
+            run(&mut a, "ActivePage.ReplaceText('', 'b');").is_err(),
+            "an empty search changes nothing and says so"
+        );
+        run(&mut a, "ActivePage.ReplaceText('a', 'b');").unwrap();
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Text);").unwrap();
+        assert_eq!(out[0], "bbb");
+        a.undo();
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Text);").unwrap();
+        assert_eq!(out[0], "aaa", "one undo puts it back");
     }
 }
