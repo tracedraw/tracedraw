@@ -59,6 +59,8 @@ full, row-by-row status.
 
 - Transparency: the outline of an object with a transparency no longer stays partly opaque, which on a rounded rectangle made part of the outline seem to vanish: the mask, drawn over the object's box, now goes on past the box as it is at its edge. The target (Apply to: Fill, Outline, All) is drawn on screen and in SVG and PDF exports: Outline fades the outline alone, Fill the fill alone, the other part as it is; an outline set behind the fill stays behind it.
 
+- Generate with AI: a service that is busy for a moment (error 503, 500, 502 or 529, or a rate limit that asks for a short wait) is asked again by itself, up to four tries with growing waits, in Draw with words, Create image, Remix, Create vectors, Remove Background and the model lists. The panel says which attempt is running and Cancel stops it; a service that stays busy ends in a message that says so, with what to do and the service's own words, instead of a bare error (#2037).
+
 - Drop Shadow tool on an object with an envelope, a perspective or a distortion: the shadow is measured on the outline the object shows, as it is drawn. A drag from the middle of the bent object gives a flat shadow and one from next to an edge stands the shadow on that edge, the handles sit on the object, and the shadow is picked where it lies; before, the tool went by the outline without the envelope, so a press on the object could stand a perspective shadow on a far edge and the handles sat away from it (#2217).
 
 - Opening `.cdr` files of versions 14 and later: tables open as tables, with their rows and columns, cell fills, borders and text, ready for the Table tool. A drawing with a table opened without it, and each empty cell was counted as an object that could not be read (#2170).

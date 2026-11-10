@@ -415,9 +415,10 @@ pub enum AiStatus {
     Failed(String),
 }
 
-/// A request on its way.
+/// A request on its way, with its further tries while the service is
+/// busy (`ai_retry.rs`).
 struct Pending {
-    rx: std::sync::mpsc::Receiver<HttpResult>,
+    call: crate::ai_retry::Call,
     job: Job,
 }
 
@@ -456,12 +457,24 @@ pub struct AiSession {
     pub fake: Option<fn(&HttpRequest) -> HttpResult>,
     /// Tests: the requests sent, newest last.
     pub sent: Vec<HttpRequest>,
+    /// Tests: the wait before a request is sent again, in place of the
+    /// real waits (none: every try at once).
+    pub fake_wait: std::time::Duration,
 }
 
 impl AiSession {
     /// A request is on its way.
     pub fn busy(&self) -> bool {
         self.pending.is_some()
+    }
+
+    /// What to show while waiting: the reply is awaited, or the service
+    /// was busy and the request is about to be sent again (#2037).
+    pub fn waiting_text(&self) -> String {
+        match self.pending.as_ref().and_then(|p| p.call.retrying()) {
+            Some(retrying) => crate::ai_retry::note(retrying),
+            None => tr("ai.waiting"),
+        }
     }
 }
 
@@ -604,7 +617,7 @@ pub fn build_models_request(prefs: &AiPrefs, key: &str) -> HttpRequest {
 /// The service's own words in an error reply: `error.message` (also in
 /// a list, as some services send it, or `error` as plain text), else the
 /// start of the body.
-fn service_words(r: &HttpResponse, v: Option<&Value>) -> String {
+pub(crate) fn service_words(r: &HttpResponse, v: Option<&Value>) -> String {
     let said = v.and_then(|v| {
         ["/error/message", "/0/error/message", "/error", "/message"]
             .iter()
@@ -826,9 +839,15 @@ pub fn extract_script(reply: &str) -> Option<String> {
     (!code.is_empty()).then_some(code)
 }
 
-/// Send `req` and deliver the answer on `tx` (up to 8 MB of answer).
-fn spawn(req: HttpRequest, tx: std::sync::mpsc::Sender<HttpResult>) {
-    crate::net::spawn(req, 8 * 1024 * 1024, tx);
+/// The most bytes of an answer read.
+const MAX_REPLY: u64 = 8 * 1024 * 1024;
+
+/// Keep `sent` (the requests sent, for tests) to its newest eight.
+fn remember_sent(sent: &mut Vec<HttpRequest>, http: HttpRequest) {
+    sent.push(http);
+    if sent.len() > 8 {
+        sent.remove(0);
+    }
 }
 
 impl App {
@@ -899,20 +918,12 @@ impl App {
         self.ai_start(http, Job::Models);
     }
 
-    /// Send `http` for `job`.
+    /// Send `http` for `job`. A service that is busy for the moment is
+    /// asked again by itself, a few times (`ai_retry.rs`, #2037).
     fn ai_start(&mut self, http: HttpRequest, job: Job) {
-        let (tx, rx) = std::sync::mpsc::channel();
-        match self.ai.fake {
-            Some(fake) => {
-                let _ = tx.send(fake(&http));
-            }
-            None => spawn(http.clone(), tx),
-        }
-        self.ai.sent.push(http);
-        if self.ai.sent.len() > 8 {
-            self.ai.sent.remove(0);
-        }
-        self.ai.pending = Some(Pending { rx, job });
+        remember_sent(&mut self.ai.sent, http.clone());
+        let call = crate::ai_retry::Call::start(http, MAX_REPLY, self.ai.fake);
+        self.ai.pending = Some(Pending { call, job });
         if self.ai.fake.is_some() {
             self.poll_ai();
         }
@@ -964,13 +975,25 @@ impl App {
     /// Take in a reply that arrived. True while a request is still on its
     /// way (the frame loop then looks again shortly).
     pub fn poll_ai(&mut self) -> bool {
-        let Some(p) = &self.ai.pending else {
+        use crate::ai_retry::Polled;
+        let (fake, fake_wait) = (self.ai.fake, self.ai.fake_wait);
+        let Some(p) = self.ai.pending.as_mut() else {
             return false;
         };
-        let result = match p.rx.try_recv() {
-            Ok(r) => r.map_err(network_error),
-            Err(std::sync::mpsc::TryRecvError::Empty) => return true,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => Err(tr("ai.connection_lost")),
+        let mut again = Vec::new();
+        let polled = p.call.poll(fake, fake_wait, &mut again);
+        for http in again {
+            remember_sent(&mut self.ai.sent, http);
+        }
+        let result = match polled {
+            Polled::Pending => return true,
+            Polled::Lost => Err(tr("ai.connection_lost")),
+            Polled::Done(Err(e), _) => Err(network_error(e)),
+            // Still busy after every try: said as such.
+            Polled::Done(Ok(r), tries) => match crate::ai_retry::gave_up(&r, tries) {
+                Some(e) => Err(e),
+                None => Ok(r),
+            },
         };
         let Some(p) = self.ai.pending.take() else {
             return false;
@@ -1441,6 +1464,121 @@ mod tests {
         app.ai_draw();
         assert_eq!(app.ai.status, AiStatus::Failed(tr("ai.need_model")));
         assert!(app.ai.sent.is_empty());
+    }
+
+    thread_local! {
+        /// How many more requests the test service answers "busy".
+        static BUSY: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+
+    /// The overloaded reply of an OpenAI-compatible service, as the
+    /// Gemini preset sends it: a list holding the error.
+    fn overloaded() -> HttpResult {
+        Ok(HttpResponse {
+            retry_after: None,
+            status: 503,
+            body: r#"[{"error":{"code":503,"message":"The model is overloaded. Please try again later.","status":"UNAVAILABLE"}}]"#.into(),
+        })
+    }
+
+    fn busy_then_draws(_: &HttpRequest) -> HttpResult {
+        let left = BUSY.with(|b| b.get());
+        if left > 0 {
+            BUSY.with(|b| b.set(left - 1));
+            return overloaded();
+        }
+        anthropic_reply("```javascript\nActiveLayer.CreateRectangle(10, 10, 60, 40);\n```")
+    }
+
+    /// A service that is busy for a moment (503, #2037) is asked again
+    /// by itself: the drawing comes without the user seeing an error or
+    /// pressing Draw again.
+    #[test]
+    fn a_busy_service_is_asked_again_until_it_draws() {
+        let mut app = app();
+        let before = shapes(&app);
+        BUSY.with(|b| b.set(2));
+        app.ai.fake = Some(busy_then_draws);
+        app.ai.request = "a rectangle".into();
+        app.ai_draw();
+        assert_eq!(app.ai.sent.len(), 3, "the request, and twice more");
+        assert_eq!(app.ai.sent[0], app.ai.sent[2], "the same request again");
+        assert_eq!(app.ai.status, AiStatus::Done(1), "{:?}", app.ai.status);
+        assert_eq!(shapes(&app), before + 1);
+        assert!(!app.ai.busy());
+    }
+
+    /// A service that stays busy gets four tries, then the message says
+    /// so plainly: the status, how often it was tried, what to do, and
+    /// the service's own words (#2037: a bare 503 before).
+    #[test]
+    fn a_service_that_stays_busy_ends_in_a_clear_message() {
+        let mut app = app();
+        BUSY.with(|b| b.set(100));
+        app.ai.fake = Some(busy_then_draws);
+        app.ai.request = "a rectangle".into();
+        app.ai_draw();
+        assert_eq!(app.ai.sent.len(), 4);
+        let AiStatus::Failed(e) = &app.ai.status else {
+            panic!("{:?}", app.ai.status);
+        };
+        assert!(
+            e.starts_with(&trf(
+                "ai.error_busy_retried",
+                &[("status", "503"), ("n", "4")]
+            )),
+            "{e}"
+        );
+        assert!(e.contains("another model"), "{e}");
+        assert!(e.contains("The model is overloaded"), "{e}");
+        assert!(!app.ai.busy());
+        // The model list is fetched the same way.
+        BUSY.with(|b| b.set(1));
+        app.ai.sent.clear();
+        app.ai.fake = Some(|_| {
+            let left = BUSY.with(|b| b.get());
+            if left > 0 {
+                BUSY.with(|b| b.set(left - 1));
+                return overloaded();
+            }
+            Ok(HttpResponse {
+                retry_after: None,
+                status: 200,
+                body: r#"{"data":[{"id":"model-a"}]}"#.into(),
+            })
+        });
+        app.ai_fetch_models();
+        assert_eq!(app.ai.sent.len(), 2);
+        assert_eq!(app.ai.status, AiStatus::Listed(1));
+    }
+
+    /// While the service is busy the request waits its turn: nothing is
+    /// sent meanwhile, the panel says which try comes next, and Cancel
+    /// ends it.
+    #[test]
+    fn a_request_waits_between_its_tries_and_can_be_cancelled() {
+        let mut app = app();
+        BUSY.with(|b| b.set(100));
+        app.ai.fake = Some(busy_then_draws);
+        app.ai.fake_wait = std::time::Duration::from_secs(600);
+        app.ai.request = "a rectangle".into();
+        app.ai_draw();
+        assert_eq!(app.ai.sent.len(), 1);
+        assert!(app.ai.busy());
+        assert_eq!(app.ai.status, AiStatus::Waiting);
+        assert_eq!(
+            app.ai.waiting_text(),
+            trf(
+                "ai.busy_retrying",
+                &[("status", "503"), ("n", "2"), ("max", "4")]
+            )
+        );
+        assert!(app.poll_ai(), "still waiting");
+        assert_eq!(app.ai.sent.len(), 1);
+        app.ai_cancel();
+        assert!(!app.ai.busy() && !app.poll_ai());
+        assert_eq!(app.ai.sent.len(), 1, "nothing more goes after Cancel");
+        assert_eq!(app.ai.waiting_text(), tr("ai.waiting"));
     }
 
     #[test]

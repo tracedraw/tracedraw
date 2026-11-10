@@ -29,7 +29,7 @@ pub fn visible(app: &App) -> bool {
 fn state(app: &App) -> Option<(String, egui::Color32)> {
     match &app.ai.status {
         AiStatus::Idle => None,
-        AiStatus::Waiting => Some((tr("ai.waiting"), Tokens::text_dim())),
+        AiStatus::Waiting => Some((app.ai.waiting_text(), Tokens::text_dim())),
         AiStatus::Retrying => Some((tr("ai.retrying"), Tokens::text_dim())),
         AiStatus::Done(n) => Some((trf("ai.done", &[("n", &n.to_string())]), Tokens::text_dim())),
         AiStatus::Listed(n) => Some((

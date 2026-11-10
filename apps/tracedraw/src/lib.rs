@@ -17,6 +17,7 @@
 
 mod ai;
 mod ai_image;
+mod ai_retry;
 mod anchors;
 #[cfg(target_os = "android")]
 mod android;

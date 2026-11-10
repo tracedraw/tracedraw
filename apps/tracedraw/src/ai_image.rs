@@ -819,8 +819,10 @@ enum Job {
     Models,
 }
 
+/// A request on its way, with its further tries while the service is
+/// busy (`ai_retry.rs`).
 struct Pending {
-    rx: std::sync::mpsc::Receiver<HttpResult>,
+    call: crate::ai_retry::Call,
     job: Job,
 }
 
@@ -855,6 +857,9 @@ pub struct ImageSession {
     pub fake: Option<fn(&HttpRequest) -> HttpResult>,
     /// Tests: the requests sent, newest last.
     pub sent: Vec<HttpRequest>,
+    /// Tests: the wait before a request is sent again, in place of the
+    /// real waits (none: every try at once).
+    pub fake_wait: std::time::Duration,
 }
 
 impl Default for ImageSession {
@@ -882,6 +887,7 @@ impl Default for ImageSession {
             errors: Vec::new(),
             fake: None,
             sent: Vec::new(),
+            fake_wait: std::time::Duration::ZERO,
         }
     }
 }
@@ -889,6 +895,23 @@ impl Default for ImageSession {
 impl ImageSession {
     pub fn busy(&self) -> bool {
         !self.pending.is_empty()
+    }
+
+    /// The note to show while a request waits to be sent again because
+    /// the service was busy (#2037); none while every request is out.
+    pub fn retry_note(&self) -> Option<String> {
+        self.pending
+            .iter()
+            .find_map(|p| p.call.retrying())
+            .map(crate::ai_retry::note)
+    }
+
+    /// Keep `sent` to its newest eight.
+    fn remember_sent(&mut self, http: HttpRequest) {
+        self.sent.push(http);
+        if self.sent.len() > 8 {
+            self.sent.remove(0);
+        }
     }
 }
 
@@ -975,19 +998,12 @@ impl App {
         }
     }
 
+    /// Send `http` for `job`. A service that is busy for the moment is
+    /// asked again by itself, a few times (`ai_retry.rs`, #2037).
     fn ai_image_send(&mut self, http: HttpRequest, job: Job) {
-        let (tx, rx) = std::sync::mpsc::channel();
-        match self.ai_image.fake {
-            Some(fake) => {
-                let _ = tx.send(fake(&http));
-            }
-            None => crate::net::spawn(http.clone(), MAX_REPLY, tx),
-        }
-        self.ai_image.sent.push(http);
-        if self.ai_image.sent.len() > 8 {
-            self.ai_image.sent.remove(0);
-        }
-        self.ai_image.pending.push(Pending { rx, job });
+        self.ai_image.remember_sent(http.clone());
+        let call = crate::ai_retry::Call::start(http, MAX_REPLY, self.ai_image.fake);
+        self.ai_image.pending.push(Pending { call, job });
     }
 
     fn ai_image_begin(&mut self, total: usize) {
@@ -1293,14 +1309,26 @@ impl App {
     /// Take in answers that arrived. True while some are still on their
     /// way.
     pub fn poll_ai_image(&mut self) -> bool {
+        use crate::ai_retry::Polled;
+        let (fake, fake_wait) = (self.ai_image.fake, self.ai_image.fake_wait);
         let mut i = 0;
         while i < self.ai_image.pending.len() {
-            let got = match self.ai_image.pending[i].rx.try_recv() {
-                Ok(r) => Some(r.map_err(crate::ai::network_error)),
-                Err(std::sync::mpsc::TryRecvError::Empty) => None,
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    Some(Err(tr("ai.connection_lost")))
-                }
+            let mut again = Vec::new();
+            let polled = self.ai_image.pending[i]
+                .call
+                .poll(fake, fake_wait, &mut again);
+            for http in again {
+                self.ai_image.remember_sent(http);
+            }
+            let got = match polled {
+                Polled::Pending => None,
+                Polled::Lost => Some(Err(tr("ai.connection_lost"))),
+                Polled::Done(Err(e), _) => Some(Err(crate::ai::network_error(e))),
+                // Still busy after every try: said as such.
+                Polled::Done(Ok(r), tries) => Some(match crate::ai_retry::gave_up(&r, tries) {
+                    Some(e) => Err(e),
+                    None => Ok(r),
+                }),
             };
             match got {
                 Some(result) => {
@@ -2052,6 +2080,52 @@ mod tests {
             assert_ne!(crate::i18n::tr(key), key);
             assert!(words.contains("Keep its subject"));
         }
+    }
+
+    thread_local! {
+        /// How many more requests the test service answers "busy".
+        static BUSY: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+
+    /// A busy image service (503, #2037) is asked again by itself, and
+    /// the picture comes.
+    #[test]
+    fn a_busy_image_service_is_asked_again() {
+        let mut app = ready_app(ImageProvider::Gemini);
+        BUSY.with(|b| b.set(2));
+        app.ai_image.fake = Some(|_| {
+            let left = BUSY.with(|b| b.get());
+            if left > 0 {
+                BUSY.with(|b| b.set(left - 1));
+                return Ok(HttpResponse {
+                    retry_after: None,
+                    status: 503,
+                    body: json!({"error": {"code": 503, "message": "The model is overloaded.", "status": "UNAVAILABLE"}}).to_string(),
+                });
+            }
+            gemini_reply(&png(8, 8, |_, _| [200, 30, 30, 255]))
+        });
+        app.ai_image.prompt = "a red square".into();
+        app.ai_create(false);
+        assert_eq!(app.ai_image.sent.len(), 3);
+        assert_eq!(app.ai_image.status, ImageStatus::Done(1));
+        assert_eq!(count_bitmaps(&app), 1);
+        // One that stays busy: every try, then the plain message.
+        BUSY.with(|b| b.set(100));
+        app.ai_image.sent.clear();
+        app.ai_create(false);
+        assert_eq!(app.ai_image.sent.len(), 4);
+        match &app.ai_image.status {
+            ImageStatus::Failed(e) => assert!(
+                e.starts_with(&trf(
+                    "ai.error_busy_retried",
+                    &[("status", "503"), ("n", "4")]
+                )) && e.contains("The model is overloaded"),
+                "{e}"
+            ),
+            s => panic!("{s:?}"),
+        }
+        assert!(!app.ai_image.busy());
     }
 
     #[test]

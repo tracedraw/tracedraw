@@ -88,6 +88,20 @@ apply).
   the program printed, and keeps the program under Script, where Open in
   Scripts copies it to the Scripts panel for editing and running again.
 - New conversation forgets the earlier requests.
+- A service that is busy for the moment is asked again by itself
+  (`ai_retry.rs`, #2037; before, the error showed at once and the only
+  way on was Draw again or another model): after 500, 502, 503 or 529
+  the same request goes again after 2, 4 and 8 seconds, or after the
+  wait the service's `Retry-After` asks for when that is 30 seconds or
+  less, four tries in all; after 429 only when the service names such a
+  wait (without one it is most often a used up quota, which seconds do
+  not bring back). Meanwhile the panel and the prompt bar say "The
+  service is busy at the moment (503). Trying again, attempt 2 of 4...",
+  and Cancel stops it. The waiting happens between frames, so the window
+  stays live, the same on the desktop and in a browser. A service still
+  busy after the last try is said as such, with what to do (wait a
+  little, or choose another model) and its own message. AI Generate,
+  Remove Background and the model lists are sent the same way.
 - Errors shown, said plainly and followed by the service's own message
   (`ai::http_error`, also for AI Generate and Remove Background): 429 as
   a used up quota or credit or too many requests, with the wait the
@@ -138,6 +152,14 @@ allow the page's origin (for example `OLLAMA_ORIGINS`).
   service and an unknown model (`ai::tests::error_replies_say_what_went_wrong`,
   `requests_that_fail_say_why`); every model set up stays in the lists
   (`ai::tests::model_lists_hold_every_model_set_up`).
+- A busy service is asked again with growing waits, the service's own
+  wait is followed when short, and other answers are never sent again
+  (`ai_retry::tests`); a drawing comes after two busy answers, a service
+  that stays busy gets four tries and a plain message, also for the model
+  list and for pictures
+  (`ai::tests::a_busy_service_is_asked_again_until_it_draws`,
+  `a_service_that_stays_busy_ends_in_a_clear_message`,
+  `ai_image::tests::a_busy_image_service_is_asked_again`).
 - The desktop transport posts to a server on the same computer and reads
   its error replies (`ai::tests::the_desktop_transport_posts_and_reads_error_replies`);
   the real Messages API refuses a made-up key with 401

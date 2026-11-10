@@ -520,6 +520,10 @@ fn footer(app: &mut App, ui: &mut Ui, mode: Mode, ready: bool) {
                 app.ai_image_cancel();
             }
         });
+        // The service was busy: the request is about to go again.
+        if let Some(note) = app.ai_image.retry_note() {
+            ui.label(RichText::new(note).color(Tokens::text_dim()).size(11.0));
+        }
     } else {
         let has_source = app.ai_image.source.is_some() || app.ai_source_bitmap().is_some();
         let can = ready

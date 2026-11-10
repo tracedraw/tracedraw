@@ -70,7 +70,7 @@ pub fn ai_drawing(app: &mut App, ui: &mut Ui) {
     });
     match &app.ai.status {
         AiStatus::Idle => {}
-        AiStatus::Waiting => dim(ui, tr("ai.waiting")),
+        AiStatus::Waiting => dim(ui, app.ai.waiting_text()),
         AiStatus::Retrying => dim(ui, tr("ai.retrying")),
         AiStatus::Done(n) => {
             ui.label(trf("ai.done", &[("n", &n.to_string())]));
