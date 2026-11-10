@@ -1036,6 +1036,9 @@ pub struct App {
     /// `App::patch_selection_stroke_live`).
     pub live_stroke: Option<(u64, Option<Color>)>,
     pub file: Option<PathBuf>,
+    /// The open drawings' files, kept from being deleted or renamed by
+    /// another program while they are open (Windows, see `file_hold.rs`).
+    pub file_holds: crate::file_hold::Holds,
     /// The file the drawing was read from, in any format (canonical), until
     /// it is saved under a name of its own: opening that file again shows
     /// this drawing instead of a second copy (#645).
@@ -2662,6 +2665,7 @@ impl App {
             live_fill: None,
             live_stroke: None,
             file: None,
+            file_holds: Default::default(),
             opened_from: None,
             remote: None,
             vector_fx_base: Default::default(),
@@ -7500,6 +7504,8 @@ impl App {
             Ok(()) => {
                 self.engine.mark_saved();
                 self.file = Some(path.clone());
+                // A file that was not there to be held is now.
+                self.file_holds.written(&path);
                 // The drawing is the saved file's now, not the one it was
                 // read from.
                 self.opened_from = None;
