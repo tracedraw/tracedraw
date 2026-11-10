@@ -85,6 +85,7 @@ pub(crate) const KNOWN_CHUNKS: &[[u8; 4]] = &[
     *b"loda", *b"lobj", *b"trfd", *b"txsm", *b"flgs", *b"bbox", *b"spnd", *b"usdn", *b"ppdt",
     *b"vrsn", *b"mcfg", *b"fild", *b"fill", *b"outl", *b"stlt", *b"bmp ", *b"bmpf", *b"arrw",
     *b"arrx", *b"font", *b"ftbl", *b"ole2", *b"olel", *b"vpat", *b"imhd", *b"envd", *b"guid",
+    *b"ppid",
 ];
 
 /// The `loda` argument types this reader interprets, in any version.
@@ -237,8 +238,17 @@ pub(crate) const OBJ_BITMAP: u32 = 0x05;
 pub(crate) const OBJ_PARAGRAPH_TEXT: u32 = 0x06;
 const OBJ_POLYGON: u32 = 0x14;
 const OBJ_PATH: u32 = 0x25;
-/// A straight connector line whose ends are in its `ppdt` record.
+/// A straight connector line whose ends are in its `ppdt` record. The
+/// type also marks the groups of a table (the table and each of its
+/// cells), whose records are in their `LIST npps` too.
 const OBJ_CONNECTOR: u32 = 0x26;
+/// The `ppid` naming a table's layout record (a `ppdt` starting with 1,
+/// the row count and the column count) in the table group's `LIST npps`.
+const PPID_TABLE: [u8; 16] = [
+    0xf8, 0xc3, 0x15, 0x2b, 0x26, 0x21, 0xa5, 0x40, 0x85, 0x15, 0x71, 0xea, 0x17, 0x43, 0xcd, 0x20,
+];
+/// The most rows or columns a table read from a file has.
+const TABLE_MAX_LINES: usize = 1000;
 /// An object embedded from another program (seen in version 12 files):
 /// its name argument names the storage of an `ole2` chunk, its coordinates
 /// hold its size and two opposite corners.
@@ -2612,6 +2622,302 @@ impl<'a> Ctx<'a> {
         })
     }
 
+    /// The record named `id` in a list's own `LIST npps`: the `ppdt`
+    /// that follows that `ppid`.
+    fn own_property<'c>(&self, list: &'c Chunk, id: &[u8; 16]) -> Option<&'c Chunk> {
+        let npps = list
+            .children
+            .iter()
+            .find(|k| k.list_type == Some(*b"npps"))?;
+        let at = npps
+            .children
+            .iter()
+            .position(|k| k.is(b"ppid") && self.data(k).get(..16) == Some(&id[..]))?;
+        npps.children.get(at + 1).filter(|k| k.is(b"ppdt"))
+    }
+
+    /// The matrices of a group's own `trfd` (in its `lgob`, not those of
+    /// its objects).
+    fn own_matrices(&mut self, list: &Chunk) -> Affine {
+        let trfd = list
+            .children
+            .iter()
+            .find(|k| k.list_type == Some(*b"lgob"))
+            .and_then(|lgob| transform_chunks(lgob).0);
+        match trfd {
+            Some(t) => self.read_transform(t),
+            None => Affine::IDENTITY,
+        }
+    }
+
+    /// A table (versions 14 on, #2170): a group whose own `loda` is of
+    /// type 0x26 and whose `LIST npps` holds the table's layout record.
+    /// Each cell is a group of the same type inside it: its `loda`'s
+    /// coordinates are the cell's outline (a rectangle from its top left
+    /// corner, as a curve), its `trfd` places that corner, its fill and
+    /// outline ids are the cell's, and its one object is the cell's
+    /// paragraph text. The grid comes from the cells' rectangles taken
+    /// back through the table's own matrices, so a cell over several
+    /// columns or rows spans them.
+    fn read_table(
+        &mut self,
+        gc: &Chunk,
+        ids: &mut tracedraw_core::id::IdSource,
+        page_size: Size,
+    ) -> Option<Shape> {
+        self.own_property(gc, &PPID_TABLE)?;
+        let own = self.own_loda(gc)?;
+        let own_data = self.data(own);
+        let own_table = self.read_loda(own_data)?;
+        if own_table.kind != OBJ_CONNECTOR {
+            return None;
+        }
+        let name = own_table
+            .args
+            .iter()
+            .find(|a| a.ty == ARG_NAME)
+            .and_then(|a| own_data.get(a.off..a.end))
+            .map(|b| self.read_name(b))
+            .filter(|n| !n.is_empty());
+        let place = self.own_matrices(gc);
+        if !(place.determinant().is_finite() && place.determinant().abs() > 1e-12) {
+            return None;
+        }
+        let back = place.inverse();
+
+        struct CellRead {
+            rect: Rect,
+            fill: Option<Fill>,
+            border: Option<Stroke>,
+            text: Vec<TextSpan>,
+            align: TextAlign,
+            /// From the cell's edge to its text, left and top.
+            inset: Option<(f64, f64)>,
+        }
+        let mut read: Vec<CellRead> = Vec::new();
+        for c in gc.children.iter().filter(|c| c.is(b"grp ")) {
+            let Some(loda) = self.own_loda(c) else {
+                continue;
+            };
+            let d = self.data(loda);
+            let Some(l) = self.read_loda(d) else {
+                continue;
+            };
+            let Some(coords) = l.args.iter().find(|a| a.ty == ARG_COORDS).copied() else {
+                continue;
+            };
+            if l.kind != OBJ_CONNECTOR {
+                continue;
+            }
+            let outline = self.read_geometry(OBJ_CURVE, d, coords, None);
+            self.pending_node_types.clear();
+            let Some(ShapeKind::Path { path, .. }) = outline else {
+                continue;
+            };
+            let cell_place = self.own_matrices(c);
+            let rect = {
+                use tracedraw_core::geometry::Shape as _;
+                (back * cell_place * path).bounding_box()
+            };
+            let sound = [rect.x0, rect.y0, rect.x1, rect.y1]
+                .iter()
+                .all(|v| v.is_finite());
+            if !sound || rect.width() <= 0.0 || rect.height() <= 0.0 {
+                continue;
+            }
+            let id_of = |ty: u32| {
+                let a = l.args.iter().find(|a| a.ty == ty)?;
+                Some(u32::from_le_bytes(
+                    d.get(a.off..a.off.checked_add(4)?)?.try_into().ok()?,
+                ))
+            };
+            let fill = id_of(ARG_FILL)
+                .and_then(|f| self.fills.get(&f))
+                .map(|f| f.fill.clone())
+                .filter(|f| !matches!(f, Fill::None));
+            let border = id_of(ARG_OUTLINE)
+                .and_then(|o| self.outlines.get(&o))
+                .and_then(|o| o.stroke.clone());
+            // The cell's text: an empty cell holds a text of no letters,
+            // which is not a text left out.
+            let mut text = Vec::new();
+            let mut align = TextAlign::Left;
+            let mut inset = None;
+            if let Some(oc) = c.children.iter().find(|k| k.is(b"obj ")) {
+                let warned = self.report.warnings.len();
+                let shape = self.read_object(oc, ids.shape(), page_size);
+                self.pending_clip = None;
+                self.pending_crop = None;
+                self.pending_on_path = None;
+                self.last_was_guide = false;
+                // Where the text's frame starts in the cell.
+                let frame = oc
+                    .children
+                    .iter()
+                    .find(|k| k.list_type == Some(*b"lgob"))
+                    .and_then(|g| transform_chunks(g).0);
+                if let Some(t) = frame {
+                    let p = back * self.read_transform(t) * Point::ZERO;
+                    let (dx, dy) = (p.x - rect.x0, rect.y1 - p.y);
+                    if (0.0..=rect.width() / 2.0).contains(&dx)
+                        && (0.0..=rect.height() / 2.0).contains(&dy)
+                    {
+                        inset = Some((dx, dy));
+                    }
+                }
+                match shape {
+                    Some(Shape {
+                        kind:
+                            ShapeKind::Text {
+                                spans, align: a, ..
+                            },
+                        ..
+                    }) => {
+                        // (A text of no letters can come as an empty run.)
+                        if spans.iter().any(|s| !s.text.is_empty()) {
+                            text = spans;
+                        }
+                        align = a;
+                    }
+                    Some(_) => {}
+                    None => {
+                        let empty = "text object with no content; skipped";
+                        if self.report.warnings.len() > warned
+                            && self.report.warnings.last().map(String::as_str) == Some(empty)
+                        {
+                            self.report.warnings.pop();
+                        }
+                    }
+                }
+            }
+            read.push(CellRead {
+                rect,
+                fill,
+                border,
+                text,
+                align,
+                inset,
+            });
+        }
+        if read.is_empty() {
+            return None;
+        }
+
+        // The grid lines: every edge of a cell, those closer than a
+        // hundredth of a millimetre taken as one.
+        const SAME: f64 = 0.01;
+        let lines = |mut v: Vec<f64>| {
+            v.sort_by(f64::total_cmp);
+            v.dedup_by(|b, a| (*b - *a).abs() < SAME);
+            v
+        };
+        let xs = lines(read.iter().flat_map(|c| [c.rect.x0, c.rect.x1]).collect());
+        // Rows count down from the top edge.
+        let mut ys = lines(read.iter().flat_map(|c| [c.rect.y0, c.rect.y1]).collect());
+        ys.reverse();
+        if xs.len() < 2 || ys.len() < 2 || xs.len() > TABLE_MAX_LINES || ys.len() > TABLE_MAX_LINES
+        {
+            return None;
+        }
+        let line = |v: &[f64], x: f64| v.iter().position(|l| (*l - x).abs() < SAME);
+        let (cols, rows) = (xs.len() - 1, ys.len() - 1);
+
+        // The border most cells have is the table's; the others keep
+        // their own on all four sides.
+        let mut border: Option<Stroke> = None;
+        let mut most = 0;
+        for c in &read {
+            let n = read.iter().filter(|o| o.border == c.border).count();
+            if n > most {
+                most = n;
+                border = c.border.clone();
+            }
+        }
+        let inset = read.iter().find_map(|c| c.inset);
+
+        let mut taken = vec![false; rows * cols];
+        let mut cells: Vec<tracedraw_core::document::TableCell> = Vec::new();
+        for c in read {
+            let (Some(col), Some(col_end), Some(row), Some(row_end)) = (
+                line(&xs, c.rect.x0),
+                line(&xs, c.rect.x1),
+                line(&ys, c.rect.y1),
+                line(&ys, c.rect.y0),
+            ) else {
+                continue;
+            };
+            let Some(place) = taken.get_mut(row * cols + col) else {
+                continue;
+            };
+            if col_end <= col || row_end <= row || *place {
+                continue;
+            }
+            *place = true;
+            let mut cell = tracedraw_core::table::blank_cell(row as u32, col as u32);
+            cell.row_span = (row_end - row) as u32;
+            cell.col_span = (col_end - col) as u32;
+            cell.text = c.text;
+            cell.align = c.align;
+            cell.fill = c.fill;
+            if c.border != border {
+                let side = match c.border {
+                    Some(s) => tracedraw_core::table::EdgeBorder::Stroke(Box::new(s)),
+                    None => tracedraw_core::table::EdgeBorder::None,
+                };
+                cell.borders = tracedraw_core::table::CellBorders {
+                    top: side.clone(),
+                    right: side.clone(),
+                    bottom: side.clone(),
+                    left: side,
+                };
+            }
+            cells.push(cell);
+        }
+        if cells.is_empty() {
+            return None;
+        }
+        // Every place of the grid has a cell, those under a wider or
+        // taller cell too.
+        for (at, taken) in taken.iter().enumerate() {
+            if !taken {
+                cells.push(tracedraw_core::table::blank_cell(
+                    (at / cols) as u32,
+                    (at % cols) as u32,
+                ));
+            }
+        }
+        cells.sort_by_key(|c| (c.row, c.col));
+
+        let (Some(left), Some(right), Some(top), Some(bottom)) =
+            (xs.first(), xs.last(), ys.first(), ys.last())
+        else {
+            return None;
+        };
+        let rect = Rect::new(*left, *bottom, *right, *top);
+        let mut table = tracedraw_core::document::Table::new(rect, 1, 1, border);
+        table.col_widths = xs.windows(2).map(|w| w[1] - w[0]).collect();
+        table.row_heights = ys.windows(2).map(|w| w[0] - w[1]).collect();
+        table.cells = cells;
+        if let Some((left, top)) = inset {
+            table.padding = left;
+            if (left - top).abs() > SAME {
+                table.margins = Some(tracedraw_core::table::CellMargins {
+                    left,
+                    right: left,
+                    top,
+                    bottom: top,
+                });
+            }
+        }
+        let recenter = Affine::translate((page_size.width / 2.0, page_size.height / 2.0));
+        let mut shape = Shape::new(ids.shape(), ShapeKind::Table(table));
+        shape.transform = recenter * self.outer_transform * place;
+        shape.fill = Fill::None;
+        shape.stroke = None;
+        shape.name = name;
+        Some(shape)
+    }
+
     /// An embedded object drawn as its picture: coordinates are the size
     /// (two coordinates) and two opposite corners.
     fn read_embedded(
@@ -3987,6 +4293,12 @@ impl<'a> Ctx<'a> {
                     None => self.report.skipped_objects += 1,
                 }
             } else if c.is(b"grp ") {
+                // A table (versions 14 on) is a group of cell groups.
+                if let Some(table) = self.read_table(c, ids, page_size) {
+                    self.note_static_id(c, table.id);
+                    out.push(table);
+                    continue;
+                }
                 // Version 3: the group's own `lobj` holds a matrix that
                 // places all its objects; later versions store whole
                 // transforms.
@@ -11331,6 +11643,189 @@ pub(crate) mod tests {
             "{:?}",
             rep.warnings
         );
+    }
+
+    /// The groups of a table as files of versions 14 to 21 hold them
+    /// (#2170): the table's group with its layout record, and a group a
+    /// cell with the cell's outline, place, fill, outline and text.
+    /// `cells`: left, top (down from the table's top left corner, in
+    /// coordinate units), width, height, fill id, text.
+    fn table_group(v: u16, at: (f64, f64), cells: &[(i32, i32, i32, i32, u32, &str)]) -> Vec<u8> {
+        let table_id = [
+            0xf8, 0xc3, 0x15, 0x2b, 0x26, 0x21, 0xa5, 0x40, 0x85, 0x15, 0x71, 0xea, 0x17, 0x43,
+            0xcd, 0x20,
+        ];
+        let own = |loda: Vec<u8>, m: [f64; 6]| {
+            list(
+                b"lgob",
+                &[
+                    chunk(b"loda", &loda),
+                    list(b"trfl", &chunk(b"trfd", &trfd(v, m))),
+                ]
+                .concat(),
+            )
+        };
+        let mut body = [
+            own(
+                loda(0x26, &[(ARG_FILL, u32s(&[0])), (ARG_OUTLINE, u32s(&[7]))]),
+                [1.0, 0.0, at.0, 0.0, 1.0, at.1],
+            ),
+            list(
+                b"npps",
+                &[chunk(b"ppid", &table_id), chunk(b"ppdt", &u32s(&[1, 2, 2]))].concat(),
+            ),
+        ]
+        .concat();
+        for (n, &(x, y, w, h, fill, text)) in cells.iter().enumerate() {
+            // The outline: a rectangle from the cell's top left corner.
+            let mut outline = u32s(&[5]);
+            outline.extend_from_slice(&i32s(&[0, 0, w, 0, w, -h, 0, -h, 0, 0]));
+            outline.extend_from_slice(&[0x0c, 0x44, 0x44, 0x44, 0x48]);
+            let (cx, cy) = (at.0 + x as f64, at.1 - y as f64);
+            let style = Style7 {
+                chars: text.chars().count() as u16,
+                font: None,
+                flags: None,
+                size_units: None,
+                fill: None,
+            };
+            let styles: &[Style7] = if text.is_empty() { &[] } else { &[style] };
+            let mut frame = vec![0u8; 4];
+            frame.extend_from_slice(&i32s(&[w, h]));
+            // The text's frame starts 2 mm inside the cell.
+            let text_object = list(
+                b"obj ",
+                &[
+                    own(
+                        loda(OBJ_PARAGRAPH_TEXT, &[(ARG_COORDS, frame)]),
+                        [1.0, 0.0, cx + 20_000.0, 0.0, 1.0, cy - 20_000.0],
+                    ),
+                    chunk(b"txsm", &txsm7(v, true, styles, text)),
+                ]
+                .concat(),
+            );
+            let cell = [
+                chunk(b"usdn", &u32s(&[100 + n as u32])),
+                own(
+                    loda(
+                        0x26,
+                        &[
+                            (ARG_COORDS, outline),
+                            (ARG_FILL, u32s(&[fill])),
+                            (ARG_OUTLINE, u32s(&[7])),
+                        ],
+                    ),
+                    [1.0, 0.0, cx, 0.0, 1.0, cy],
+                ),
+                text_object,
+            ]
+            .concat();
+            body.extend_from_slice(&list(b"grp ", &cell));
+        }
+        list(b"grp ", &body)
+    }
+
+    /// A table of a version 14 file opens as a table (#2170): it opened
+    /// as nothing, its twelve empty cells counted as texts left out.
+    #[test]
+    fn tables_of_version_14_open_as_tables() {
+        let v = 14;
+        // Two columns (30 and 20 mm) and two rows (10 and 15 mm); the
+        // second row is one cell over both columns.
+        let cells = [
+            (0, 0, 300_000, 100_000, 0, "Hi"),
+            (300_000, 0, 200_000, 100_000, 9, ""),
+            (0, 100_000, 500_000, 150_000, 0, ""),
+        ];
+        let body = [
+            chunk(b"mcfg", &mcfg(v, 2_100_000, 2_970_000)),
+            chunk(b"fild", &solid_fild_v13(9, (255, 0, 0))),
+            chunk(b"outl", &outl_v13(7, 0, 0)),
+            chunk(b"font", &font_chunk(0, "Arial")),
+            list(
+                b"page",
+                &list(b"layr", &table_group(v, (-500_000.0, 400_000.0), &cells)),
+            ),
+        ]
+        .concat();
+        let (doc, rep) = parse(&riff(b"CDRE", &body), v);
+        assert_eq!(rep.skipped_objects, 0, "{:?}", rep.warnings);
+        assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+        assert_eq!(rep.shapes, 1);
+        let shape = first_shape(&doc);
+        let ShapeKind::Table(t) = &shape.kind else {
+            panic!("{:?}", shape.kind);
+        };
+        let near = |a: f64, b: f64| (a - b).abs() < 1e-6;
+        assert!(near(t.col_widths[0], 30.0) && near(t.col_widths[1], 20.0));
+        assert!(near(t.row_heights[0], 10.0) && near(t.row_heights[1], 15.0));
+        assert_eq!((t.rows(), t.cols()), (2, 2));
+        // The table's top left corner on the page: 50 mm left of and
+        // 40 mm above the centre of an A4 page.
+        let corner = shape.transform * Point::new(t.rect.x0, t.rect.y1);
+        assert!(near(corner.x, 55.0) && near(corner.y, 188.5), "{corner:?}");
+        assert_eq!(t.cells.len(), 4);
+        let cell = |r, c| &t.cells[t.cell_index(r, c).expect("a cell")];
+        let text: String = cell(0, 0).text.iter().map(|s| s.text.as_str()).collect();
+        assert_eq!(text, "Hi");
+        assert!(cell(0, 1).text.is_empty());
+        assert!(matches!(cell(0, 1).fill, Some(Fill::Solid(_))));
+        assert!(cell(0, 0).fill.is_none());
+        assert_eq!((cell(1, 0).row_span, cell(1, 0).col_span), (1, 2));
+        assert!(t.covered(1, 1));
+        // The cells' outline is the table's border; their text stands
+        // 2 mm inside them.
+        assert!(t.border.is_some());
+        assert!(cell(0, 0).borders.is_default());
+        assert!(near(t.padding, 2.0), "{}", t.padding);
+
+        // A table of empty cells: the same grid, margin included.
+        let cells = [
+            (0, 0, 300_000, 100_000, 0, ""),
+            (300_000, 0, 200_000, 100_000, 0, ""),
+        ];
+        let body = [
+            chunk(b"mcfg", &mcfg(v, 2_100_000, 2_970_000)),
+            list(b"page", &list(b"layr", &table_group(v, (0.0, 0.0), &cells))),
+        ]
+        .concat();
+        let (doc, rep) = parse(&riff(b"CDRE", &body), v);
+        assert_eq!(rep.skipped_objects, 0, "{:?}", rep.warnings);
+        assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+        let ShapeKind::Table(t) = &first_shape(&doc).kind else {
+            panic!("not a table");
+        };
+        assert_eq!((t.rows(), t.cols()), (1, 2));
+        assert!(t.cells.iter().all(|c| c.text.is_empty()));
+        assert!(near(t.padding, 2.0), "{}", t.padding);
+    }
+
+    /// A group that is not a table (no layout record) stays a group, and
+    /// a table whose cells cannot be read is not made up.
+    #[test]
+    fn groups_without_a_table_record_stay_groups() {
+        let v = 14;
+        let cells = [
+            (0, 0, 300_000, 100_000, 0, "One"),
+            (300_000, 0, 200_000, 100_000, 0, "Two"),
+        ];
+        let table = table_group(v, (0.0, 0.0), &cells);
+        // The same bytes with another record id.
+        let mut other = table.clone();
+        let at = other
+            .windows(4)
+            .position(|w| w == b"ppid")
+            .expect("the record id");
+        other[at + 8] ^= 0xff;
+        let body = [
+            chunk(b"mcfg", &mcfg(v, 2_100_000, 2_970_000)),
+            chunk(b"font", &font_chunk(0, "Arial")),
+            list(b"page", &list(b"layr", &other)),
+        ]
+        .concat();
+        let (doc, rep) = parse(&riff(b"CDRE", &body), v);
+        assert_eq!(rep.skipped_objects, 0, "{:?}", rep.warnings);
+        assert!(matches!(first_shape(&doc).kind, ShapeKind::Group { .. }));
     }
 
     #[test]

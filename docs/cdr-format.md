@@ -501,6 +501,60 @@ reader uses as well, so both see the same arguments.
    (file)" with the file name. Add the finding, its source and the date
    to `CLEANROOM.md`.
 
+## Tables (version 14 on)
+
+Confirmed on the files of issue #2170 (2026-11-10): one drawing holding a
+table of three rows and four columns with empty cells, saved in each
+version from 7 to 21 by the program that reads these files. The files
+of versions 7 to 13 open as one object and were not looked into. From 14
+on (the same in 14 and 21, with style strings from 16):
+
+- The table is a `LIST grp ` whose own `loda` has object type 0x26 and no
+  coordinates. Its `LIST npps` (after its `lgob`) holds one record: a
+  `ppid` (16 bytes: f8 c3 15 2b 26 21 a5 40 85 15 71 ea 17 43 cd 20) and
+  the `ppdt` after it, the layout: u32 1, the row count, the column
+  count, 32 zero bytes, then 24 bytes a column (its right edge from the
+  table's left as an i32, a zero and a 16-byte id) and 24 bytes a row
+  (its lower edge from the table's top and its height, both negative
+  i32, and a 16-byte id); more follows that is not read (563 bytes in
+  all for the 3 by 4 table).
+- Each cell is a `LIST grp ` inside it, of object type 0x26 too. Its
+  `loda` holds the cell's outline in the coordinates argument, a closed
+  curve of five nodes from the cell's top left corner at (0, 0): (w, 0),
+  (w, -h), (0, -h); a fill id (20), an outline id (10) and argument
+  40030 (u32 1, u32 4, four outline ids, the same as argument 10 in the
+  sample: taken to be the four sides, their order not known). Its `trfd`
+  places the top left corner on the page; the table's own `trfd` places
+  the table's.
+- The cell's `LIST npps` holds three records: `c2 74 92 66 ff f9 12 41
+  a8 e3 46 4d 92 25 f2 de` with the outline again in page coordinates,
+  `2d d9 cf 6d e4 23 1e 4f a8 4c 4a c9 5a 95 0c 28` with a 16-byte id
+  that the cell's text object carries under the same `ppid`, and `36 f7
+  a3 74 b4 fa 16 4c 88 c0 56 11 d2 c3 1c 3a` with the cell's name in
+  UTF-16, the word for "cell" in the program's language and the row and
+  column from 1 ("(1, 2)").
+- The cell's text is the one `LIST obj ` of its group: a paragraph text
+  (type 0x06) whose `txsm` holds a paragraph of no letters while the cell
+  is empty. Its `trfd` starts the frame 2 mm inside the cell (20000
+  units right and down of the cell's corner) and scales the cell's size
+  down to the frame's.
+
+Reading (`Ctx::read_table`): a group with that layout record becomes a
+table. The grid is taken from the cells themselves: each cell's outline
+through its own matrices and back through the table's gives its
+rectangle in the table's space, the edges of all the rectangles are the
+grid lines, and a cell reaching over several lines spans those columns
+or rows (assumed: the sample has no merged cells). The layout record's
+counts and edges are not used. A cell's fill is its fill id's (none
+stays the table's), the outline most cells
+name is the table's border and a cell naming another has it on its four
+sides, its text and alignment are its text object's, and the margin is
+where the first text frame starts in its cell. An empty cell's text is
+not counted as a text left out. Not read: the four ids of argument
+40030 one by one, the scale of the text's `trfd` (whether it changes
+the size of the letters is not known: the sample's cells are empty),
+and tables are still written as groups.
+
 ## Version 8 text frames
 
 Version 8 files come in two layouts the version number does not tell apart: the usual one (800) with paragraph text frames of 32 bytes after the matrix and path flag, and the bidirectional one (801) with 34. The reader tries 32, and when the counts that follow are implausible, 34; the style table is read both without and with the set11 table, and the reading that ends where the table ends without complaint wins (2026-10-19, from version 8 samples a user attached to a bug report; 2026-10-29: the version 8 files of both variants saved by the program that reads these files hold set11, so TraceDraw writes it in version 8 and the reader no longer settles for the first reading without complaint, which a table with set11 could pass by chance).
