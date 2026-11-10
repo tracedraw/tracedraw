@@ -367,6 +367,13 @@ pub const NEW_IN_THIS_VERSION: &[&str] = &[
     // View > Navigator, with the key N, a command like any other.
     "menu.view",
     "menu.view.navigator",
+    // Keys for commands that had none (#2201): Ctrl+Shift+I, Ctrl+;
+    // and Ctrl+'.
+    "menu.edit",
+    "menu.edit.invert_selection",
+    "menu.view.guidelines",
+    "menu.view.grid",
+    "menu.view.document_grid",
 ];
 
 thread_local! {
