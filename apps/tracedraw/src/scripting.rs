@@ -346,10 +346,16 @@ const Application = {
   get Name() { return 'TraceDraw'; },
   CreateColor: Color,
 };
-const ActiveDocument = Application.ActiveDocument;
-const ActivePage = Application.ActivePage;
-const ActiveLayer = Application.ActiveLayer;
-const ActiveSelection = Application.ActiveSelection;
+// The active document, page and layer are read when a script uses them, not
+// bound once: a script that activates another page would otherwise go on
+// adding objects to the first one's layer. A getter on the global object is
+// the only way to keep them live while leaving the names the scripts use
+// unchanged.
+for (const name of ['ActiveDocument', 'ActivePage', 'ActiveLayer', 'ActiveSelection']) {
+  Object.defineProperty(globalThis, name, {
+    get: () => Application[name], configurable: true,
+  });
+}
 "#;
 
 /// Run a script against the app; returns the printed lines.
