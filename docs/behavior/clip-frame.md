@@ -135,7 +135,10 @@ no tool during the move (`App::frame_under_pointer`, `drop_frame`,
 
 ## Picking
 
-A click selects the clip frame (anywhere in its box). Ctrl+click on a
+A click selects the clip frame (anywhere in its box). A double click
+brings it into focus mode with the content under the pointer selected;
+there a click picks a content and a double click on a text edits it in
+place (#2157, see `focus-mode.md`). Ctrl+click on a
 clip frame lying on a layer starts Edit Contents: the contents come out
 of the frame with the object under the pointer selected (every content
 when the click is off them, inside the frame's box), and while they are

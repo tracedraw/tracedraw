@@ -6164,6 +6164,81 @@ fn ctrl_click_on_a_clip_frame_edits_its_contents() {
     assert_eq!(app.selection, vec![a]);
 }
 
+/// A double click on a clip frame brings it into focus with the content
+/// under the pointer selected; there a click picks a content and a
+/// double click on a text edits it in place, inside the frame (#2157).
+/// A click in a focused clip frame took the clip frame itself, so the
+/// double click left nothing selected and nothing inside could be
+/// picked or edited: a text in a clip frame could not be reached that
+/// way at all.
+#[test]
+fn a_focused_clip_frame_picks_and_edits_its_contents() {
+    let (ctx, mut app, first) = setup();
+    app.select(vec![first]);
+    app.delete_selection();
+    app.settings.autocorrect.enabled = false;
+    let (rect, text) = text_and_frame(&mut app, true, false);
+    app.place_inside(vec![text], rect);
+    let clip = app.doc().top_level_of(text).expect("clip frame");
+    // On the text, off the selection's middle (where the centre of
+    // rotation is).
+    let on_text = app
+        .view
+        .to_screen(text_middle(&app, text) + Vec2::new(12.0, 1.0));
+    app.select(Vec::new());
+    double_click_at(&ctx, &mut app, on_text);
+    assert_eq!(app.focus, vec![clip], "in focus");
+    assert_eq!(app.selection, vec![text], "the content under the pointer");
+    // A click picks the content, not the clip frame.
+    app.select(Vec::new());
+    click_at(&ctx, &mut app, on_text, Modifiers::NONE);
+    assert_eq!(app.selection, vec![text]);
+    // Off the contents, inside the frame: nothing.
+    let off = app.view.to_screen(Point::new(12.0, 12.0));
+    click_at(&ctx, &mut app, off, Modifiers::NONE);
+    assert!(app.selection.is_empty(), "{:?}", app.selection);
+    // A double click on the text edits it where it is.
+    double_click_at(&ctx, &mut app, on_text);
+    assert!(app.editing_text());
+    assert_eq!(app.edit_text(), "Invitation");
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Text("s".into())],
+        Modifiers::NONE,
+    );
+    app.finish_text();
+    assert_eq!(app.doc().top_level_of(text), Some(clip), "still inside");
+    let typed = match &app.doc().find_shape(text).expect("text").kind {
+        ShapeKind::Text { spans, .. } => spans.iter().map(|s| s.text.as_str()).collect::<String>(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(typed, "Invitations");
+    // A group in focus takes the member under the pointer too.
+    app.set_tool(Tool::Pick);
+    app.exit_focus();
+    let r = |app: &mut App, x: f64| {
+        app.new_shape(ShapeKind::Rect {
+            rect: Rect::new(x, 100.0, x + 20.0, 120.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect")
+    };
+    let (a, b) = (r(&mut app, 100.0), r(&mut app, 130.0));
+    app.select(vec![a, b]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        0, 0, 200,
+    )));
+    app.group_selection();
+    let group = app.selection[0];
+    app.select(Vec::new());
+    let on_b = app.view.to_screen(Point::new(145.0, 113.0));
+    double_click_at(&ctx, &mut app, on_b);
+    assert_eq!(app.focus, vec![group]);
+    assert_eq!(app.selection, vec![b]);
+}
+
 #[test]
 fn clipped_away_contents_are_not_hit() {
     use tracedraw_core::TextSpan;

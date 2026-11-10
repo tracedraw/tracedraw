@@ -58,6 +58,7 @@ full, row-by-row status.
 - `.cdr` files: text in the vertical form of an East Asian font (its name starting with `@`) opens as vertical text in that font, its ideographs upright, instead of a missing font and sideways letters; TraceDraw writes vertical text back the same way. A picture's graded transparency in a version 16 or later file runs where the file places it (a photo faded over the middle instead of its top) (#1544).
 
 - An ellipse made an arc (its node dragged outward with the Shape tool, or Arc on the property bar) is an open curve everywhere: with the document's Fill open curves off it shows no fill in SVG, PDF and the other vector exports and is picked on its outline only, as on screen; a pie keeps its fill. With Fill open curves on, a click inside an open curve's fill picks it.
+- Clip frames: after a double click on a clip frame the object under the pointer is selected, a click picks any object inside and a double click on a text inside edits it in place. A click there selected the whole clip frame again and a double click on its text only deselected it (#2157).
 
 - Transparency: the outline of an object with a transparency no longer stays partly opaque, which on a rounded rectangle made part of the outline seem to vanish: the mask, drawn over the object's box, now goes on past the box as it is at its edge. The target (Apply to: Fill, Outline, All) is drawn on screen and in SVG and PDF exports: Outline fades the outline alone, Fill the fill alone, the other part as it is; an outline set behind the fill stays behind it.
 
