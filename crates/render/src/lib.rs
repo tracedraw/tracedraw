@@ -986,9 +986,13 @@ impl Renderer<'_> {
             return;
         };
         if self.flags.wireframe {
-            // Wireframe: every object as its bare path, a hairline in its
-            // outline's colour (black without one) whatever its width,
-            // fill, opacity or effects; bitmaps as grey boxes.
+            // Wireframe: every object as its bare path, the same black
+            // hairline whatever its outline's colour or width, its fill,
+            // opacity or effects; bitmaps as grey boxes. The hairline
+            // took the outline's colour, so an object with a pale outline
+            // stood out from the others in a colour of its own, and one
+            // with a white outline did not show on the page at all
+            // (#2041).
             if matches!(shape.kind, ShapeKind::Bitmap { .. }) {
                 let mut paint = Paint::default();
                 paint.anti_alias = self.flags.anti_alias;
@@ -996,12 +1000,7 @@ impl Renderer<'_> {
                 self.pixmap
                     .fill_path(&sk, &paint, FillRule::Winding, Transform::identity(), None);
             }
-            let color = shape
-                .stroke
-                .as_ref()
-                .map(|s| s.color)
-                .unwrap_or(tracedraw_core::Color::BLACK);
-            self.hairline(&sk, color);
+            self.hairline(&sk, tracedraw_core::Color::BLACK);
             return;
         }
         let opacity = shape.opacity.clamp(0.0, 1.0) as f32;
@@ -5174,15 +5173,21 @@ mod tests {
         assert_eq!(px(&pm, 16, 50), (255, 255, 255), "no outline width outside");
         let edge = (18..23).map(|x| px(&pm, x, 50).0).min().unwrap();
         assert!(edge < 200, "a dark hairline on the edge, darkest {edge}");
-        // The hairline takes the outline's colour.
-        let mut s = rect(1, Rect::new(20.0, 20.0, 80.0, 80.0), Color::WHITE);
-        s.stroke = Some(Stroke::new(Color::rgb8(0, 0, 255), 10.0));
-        let (doc, page) = doc_with(vec![s]);
-        let pm = render_page_image_with(&doc, page, 25.4, &opts).unwrap();
-        let blue = (18..23)
-            .map(|x| px(&pm, x, 50))
-            .find(|p| p.2 > 200 && p.0 < 160);
-        assert!(blue.is_some(), "a blue hairline");
+        // The hairline is black whatever the outline's colour (#2041): a
+        // blue outline gives no blue line, and a white one still shows.
+        for colour in [Color::rgb8(0, 0, 255), Color::WHITE] {
+            let mut s = rect(1, Rect::new(20.0, 20.0, 80.0, 80.0), Color::WHITE);
+            s.stroke = Some(Stroke::new(colour, 10.0));
+            let (doc, page) = doc_with(vec![s]);
+            let pm = render_page_image_with(&doc, page, 25.4, &opts).unwrap();
+            let line: Vec<_> = (18..23).map(|x| px(&pm, x, 50)).collect();
+            assert!(
+                line.iter().all(|p| p.0 == p.1 && p.1 == p.2),
+                "a grey to black line, no colour: {line:?}"
+            );
+            let darkest = line.iter().map(|p| p.0).min().unwrap();
+            assert!(darkest < 200, "a dark hairline, darkest {darkest}");
+        }
     }
 
     #[test]
