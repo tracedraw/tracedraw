@@ -43,6 +43,8 @@ full, row-by-row status.
 
 - Smudge: the nib carries the outline under it along, so a stroke draws the outline out into a smooth tongue about half as wide as the nib, the same whether the stroke is quick or slow. Before, a quick stroke left a thin spike and a slow one hardly moved the outline: a 10 mm nib dragged 30 mm out of a square's side moved it 11 mm (#2228).
 
+- Android, Options > Display > Screen margins: a margin goes from 0 to 32 dp (it took up to 200 dp, and a large one squeezed the interface until the Options dialog itself was cut off), the corner radius up to 64 dp, and on a small window the margins of two facing sides together take at most a fifth of its width or height. Larger values in a settings file are read as the limit (#2174).
+
 - Image > Convert to Bitmap: the picture takes the place in the stack of the topmost object it was made of. Before, it went to the top of the layer, so the shadow of a converted object covered the objects that had been above it (#2220).
 
 - Text in older fonts made for the symbol encoding (the SR-Tamil fonts among them): the letter the font keeps at code 0xAD now draws. Those fonts set ஷ there and their keyboard layout sends that code for its key, which arrives as the soft hyphen, a character that is left out of every font as one nobody sees, so the letter stayed blank while all the others showed. In a font with only a symbol character map the code is drawn like the others; in every other font the soft hyphen stays invisible (#1937).
