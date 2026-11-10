@@ -15135,6 +15135,222 @@ fn frame_times_of_a_zoom_burst() {
     }
 }
 
+/// A dark design zoomed in, then zoomed out by the wheel (#2048): the
+/// picture covers the canvas only, so until the new one is ready the old
+/// one shows scaled into place over a small part of the page. The rest of
+/// the page showed as blank white paper meanwhile, a flash at every
+/// step; it shows the whole page drawn small, kept from when the view
+/// rested. At rest the backdrop is not painted at all.
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn zooming_out_shows_the_whole_page_small_where_the_picture_does_not_reach() {
+    let (ctx, mut app, _) = setup();
+    let size = app.page_size();
+    let id = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(0.0, 0.0, size.width, size.height),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![id]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        0, 0, 0,
+    )));
+    app.select(Vec::new());
+    app.zoom_to_page();
+    until_the_page_is_drawn(&ctx, &mut app);
+    let fitted = app.view.zoom;
+    let at = app.canvas_rect.center();
+    app.view.zoom_at(at, 8.0);
+    // One frame at the real time; what it painted with `texture`, as
+    // (clip, rectangle) pairs.
+    let start = std::time::Instant::now();
+    let painted = |app: &mut App, texture: Option<egui::TextureId>| {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                Pos2::ZERO,
+                egui::vec2(1600.0, 1000.0),
+            )),
+            time: Some(start.elapsed().as_secs_f64()),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+        out.textures_delta.clear();
+        out.shapes
+            .iter()
+            .filter(|c| texture.is_some() && Some(c.shape.texture_id()) == texture)
+            .map(|c| c.clip_rect.intersect(c.shape.visual_bounding_rect()))
+            .collect::<Vec<_>>()
+    };
+    let revision = app.engine.revision();
+    let mut ready = false;
+    for _ in 0..600 {
+        painted(&mut app, None);
+        if app.raster.borrow().has_backdrop(revision) && !app.raster.borrow().drawing() {
+            ready = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(ready, "the backdrop came once the view rested");
+    let back = app.raster.borrow().backdrop_texture();
+    assert!(back.is_some());
+    // At rest the picture covers the canvas: no backdrop painted.
+    assert!(painted(&mut app, back).is_empty());
+    // A wheel step out: the page now shows whole, the old picture on a
+    // small part of it.
+    assert!(
+        (app.view.zoom / fitted - 8.0).abs() < 0.01,
+        "still zoomed in"
+    );
+    let renders = app.raster.borrow().render_count();
+    app.view.zoom_at(at, 1.0 / 8.0);
+    let parts = painted(&mut app, back);
+    assert!(
+        app.raster.borrow().drawing(),
+        "the new picture is on its way"
+    );
+    assert_eq!(app.raster.borrow().render_count(), renders + 1);
+    let paper = app
+        .view
+        .rect_to_screen(app.page_rect())
+        .intersect(app.canvas_rect);
+    let covered: f32 = parts.iter().map(|r| r.intersect(paper).area()).sum();
+    let old = app
+        .view
+        .rect_to_screen(app.raster.borrow().shown_part().expect("picture"))
+        .intersect(paper);
+    assert!(old.area() < paper.area() / 10.0, "{old:?} of {paper:?}");
+    assert!(
+        covered + old.area() > paper.area() * 0.98,
+        "the backdrop covers {covered} and the old picture {} of {}",
+        old.area(),
+        paper.area()
+    );
+    // The two never overlap (see-through objects would show twice).
+    for r in &parts {
+        assert!(
+            r.intersect(old.shrink(1.0)).area() < 1.0,
+            "{r:?} over {old:?}"
+        );
+    }
+}
+
+/// Frame times while the whole page is drawn small for the backdrop
+/// (#2048), on a page of `FRAME_N` objects (5000 at first) zoomed in:
+/// the frame that starts it (the drawing is copied for its thread), the
+/// pointer moving over the page while it draws on its one thread, and
+/// the same once it is there. Run with
+/// `cargo test --release -p tracedraw -- --ignored frame_times_while_the_backdrop_draws --nocapture`.
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+#[ignore]
+fn frame_times_while_the_backdrop_draws() {
+    let (ctx, mut app, _) = setup();
+    let mut s = 7u64;
+    let mut r = || {
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((s >> 33) as f64) / (1u64 << 31) as f64
+    };
+    let n: usize = std::env::var("FRAME_N")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5000);
+    for _ in 0..n {
+        let (x, y) = (r() * 200.0, r() * 280.0);
+        let mut p = tracedraw_core::geometry::BezPath::new();
+        p.move_to((x, y));
+        for _ in 0..6 {
+            p.curve_to(
+                (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+                (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+                (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+            );
+        }
+        p.close_path();
+        app.new_shape(ShapeKind::Path {
+            path: p,
+            closed: true,
+        });
+    }
+    app.select(Vec::new());
+    app.zoom_to_page();
+    until_the_page_is_drawn(&ctx, &mut app);
+    let at = app.canvas_rect.center();
+    app.view.zoom_at(at, 4.0);
+    until_the_page_is_drawn(&ctx, &mut app);
+    let revision = app.engine.revision();
+    let tick = std::time::Duration::from_secs_f64(1.0 / 60.0);
+    // Still frames until the backdrop starts; the one that starts it.
+    let (mut rest, mut rest_frames, mut start) =
+        (std::time::Duration::ZERO, 0u32, std::time::Duration::ZERO);
+    for _ in 0..600 {
+        let t = std::time::Instant::now();
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        let d = t.elapsed();
+        if app.raster.borrow().backdrop_drawing() {
+            start = d;
+            break;
+        }
+        rest += d;
+        rest_frames += 1;
+    }
+    assert!(
+        app.raster.borrow().backdrop_drawing(),
+        "the backdrop started"
+    );
+    let began = std::time::Instant::now();
+    // The pointer moving at 60 frames a second, timed while `until`.
+    let mut x = 500.0f32;
+    let mut hover = |app: &mut App, until: &dyn Fn(&App) -> bool| {
+        let (mut sum, mut worst, mut frames) =
+            (std::time::Duration::ZERO, std::time::Duration::ZERO, 0u32);
+        while frames < 600 && until(app) {
+            x = if x > 1100.0 { 500.0 } else { x + 5.0 };
+            let t = std::time::Instant::now();
+            frame(
+                &ctx,
+                app,
+                vec![Event::PointerMoved(egui::pos2(x, 420.0))],
+                Modifiers::NONE,
+            );
+            let d = t.elapsed();
+            sum += d;
+            worst = worst.max(d);
+            frames += 1;
+            std::thread::sleep(tick.saturating_sub(d));
+        }
+        (sum / frames.max(1), worst, frames)
+    };
+    let during = hover(&mut app, &|app: &App| {
+        app.raster.borrow().backdrop_drawing()
+    });
+    let drawn = began.elapsed();
+    assert!(
+        app.raster.borrow().has_backdrop(revision),
+        "the backdrop came"
+    );
+    let count = std::cell::Cell::new(0);
+    let after = hover(&mut app, &|_: &App| {
+        count.set(count.get() + 1);
+        count.get() <= 60
+    });
+    eprintln!(
+        "backdrop, {n} objects: still frames {:?} each, the one starting it {start:?}; \
+         drawn in {drawn:?}; pointer moving while it draws {:?} per frame, worst {:?} \
+         ({} frames), once it is there {:?} per frame, worst {:?}",
+        rest / rest_frames.max(1),
+        during.0,
+        during.1,
+        during.2,
+        after.0,
+        after.1
+    );
+}
+
 /// Frame times of a zoom in the Multipage View (#903): nine pages of
 /// many objects each, zoomed out step by step until they all show, then
 /// left to rest. Run with

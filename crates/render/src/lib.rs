@@ -233,6 +233,21 @@ pub fn render_page(doc: &Document, page: PageId, opts: &RenderOptions) -> Option
     render_page_whole(doc, page, opts)
 }
 
+/// [`render_page`] on the calling thread alone, never in bands on all
+/// the cores: for a picture nobody is waiting for (the whole page drawn
+/// small behind the canvas's picture, #2048), so that the other cores
+/// stay free for the frames meanwhile.
+pub fn render_page_on_one_thread(
+    doc: &Document,
+    page: PageId,
+    opts: &RenderOptions,
+) -> Option<Pixmap> {
+    if (opts.width.max(1) as u64) * (opts.height.max(1) as u64) > MAX_PIXELS {
+        return None;
+    }
+    render_page_whole(doc, page, opts)
+}
+
 /// Rows `y0..y1` of the image `opts` describes, the same as those rows of
 /// the whole image drawn at once: drawn with rows of margin above and
 /// below as far as shadow blurs reach (every row when the page has a
@@ -8633,6 +8648,36 @@ mod band_tests {
         assert_eq!(green(770), Some(200));
         render_page_in_bands(&doc, page, &opts).unwrap();
         assert_eq!(image_cache::decodes_of(&png), 1);
+    }
+
+    /// A page drawn on one thread is the page drawn whole (large enough
+    /// here for [`render_page`] to draw it in bands), and an image too
+    /// large is refused as [`render_page`] refuses it.
+    #[test]
+    fn one_thread_draws_the_whole_page() {
+        let (doc, page) = heavy(60);
+        let opts = RenderOptions {
+            width: 900,
+            height: 700,
+            view: ViewTransform {
+                zoom: 3.0,
+                origin_x: 20.0,
+                origin_y: 650.0,
+            },
+            anti_alias: true,
+            ..RenderOptions::default()
+        };
+        let one = render_page_on_one_thread(&doc, page, &opts).expect("drawn");
+        let whole = render_page_whole(&doc, page, &opts).expect("drawn");
+        assert_eq!((one.width(), one.height()), (900, 700));
+        assert!(one.data() == whole.data());
+        assert!(one.data().iter().any(|v| *v != 0), "something is drawn");
+        let huge = RenderOptions {
+            width: 1 << 20,
+            height: 1 << 20,
+            ..opts
+        };
+        assert!(render_page_on_one_thread(&doc, page, &huge).is_none());
     }
 
     /// A page drawn in bands on several threads matches the page drawn
