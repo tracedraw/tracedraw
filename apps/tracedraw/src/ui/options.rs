@@ -493,7 +493,15 @@ pub fn options_dialog(app: &mut App, ctx: &Context, close: &mut bool) {
                             .show(ui, |ui| {
                                 ui.spacing_mut().item_spacing.y = 7.0;
                                 let from = shapes_drawn(ui);
+                                #[cfg(test)]
+                                let room = ui.max_rect().right();
                                 draw_page(app, ui);
+                                #[cfg(test)]
+                                {
+                                    let over = ui.min_rect().right() - room;
+                                    ui.ctx()
+                                        .data_mut(|d| d.insert_temp(page_overflow_id(), over));
+                                }
                                 highlight_setting(app, ui, from);
                             });
                     });
@@ -554,6 +562,13 @@ pub fn options_dialog(app: &mut App, ctx: &Context, close: &mut bool) {
         }
         *close = true;
     }
+}
+
+/// How far the page drawn last reached past the right edge of its
+/// panel (for tests).
+#[cfg(test)]
+fn page_overflow_id() -> egui::Id {
+    egui::Id::new("options_page_overflow")
 }
 
 /// Height of the tab row over the page list.
@@ -1388,11 +1403,25 @@ fn edit_page(app: &mut App, ui: &mut Ui) {
     crate::ui::chrome::section(ui, &tr("options.focus_inactive"));
     ui.horizontal(|ui| {
         let mut v = app.settings.focus_visibility as f32;
+        // The slider takes the rest of the row but for the Reset button
+        // after it, which stood past the panel's edge (#2199).
+        let reset = egui::WidgetText::from(tr("dialog.reset"))
+            .into_galley(
+                ui,
+                Some(egui::TextWrapMode::Extend),
+                f32::INFINITY,
+                egui::TextStyle::Button,
+            )
+            .size()
+            .x
+            + 2.0 * ui.spacing().button_padding.x
+            + ui.spacing().item_spacing.x;
         if ui
             .add(
                 crate::ui::Slider::new(&mut v, 0.0..=100.0)
                     .suffix(" %")
-                    .integer(),
+                    .integer()
+                    .reserve(reset),
             )
             .rich_tip(crate::ui::tips::pair(
                 "options.focus_inactive",
@@ -6304,6 +6333,58 @@ mod tests {
         // Drawing a page never changes what it shows (fields clamp the
         // values they hold to their ranges).
         assert_eq!(app.star_sharpness, 0.5);
+    }
+
+    /// #2199: the window stays where it is from one page to the next
+    /// and from frame to frame (its first frame aside, which sizes it),
+    /// on a large screen and on one smaller than the dialog; and no page
+    /// is wider than its panel (the Edit page's slider row was, by 32
+    /// points, which made the window wider while it showed).
+    #[test]
+    fn the_window_keeps_its_place_from_page_to_page() {
+        for screen in [egui::vec2(1600.0, 1000.0), egui::vec2(1280.0, 680.0)] {
+            let ctx = crate::theme::ui_context();
+            let mut app = App::headless();
+            let mut first: Option<(OptionsPage, egui::Rect)> = None;
+            let mut frames = 0;
+            let mut wide: Vec<String> = Vec::new();
+            for set in OptionsSet::ALL {
+                for p in set.pages() {
+                    app.options_page = *p;
+                    for _ in 0..3 {
+                        let input = egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen)),
+                            ..Default::default()
+                        };
+                        let mut out = ctx.run_ui(input, |ui| {
+                            let mut close = false;
+                            options_dialog(&mut app, ui.ctx(), &mut close);
+                        });
+                        out.textures_delta.clear();
+                        frames += 1;
+                        if frames == 1 {
+                            continue;
+                        }
+                        let rect = ctx
+                            .memory(|m| m.area_rect(egui::Id::new("options_dialog")))
+                            .expect("the dialog is drawn");
+                        let (at, was) = *first.get_or_insert((*p, rect));
+                        assert!(
+                            (rect.min - was.min).length() < 0.01
+                                && (rect.max - was.max).length() < 0.01,
+                            "{p:?} at {rect:?}, {at:?} at {was:?} (screen {screen:?})"
+                        );
+                        let over: f32 = ctx
+                            .data(|d| d.get_temp(page_overflow_id()))
+                            .expect("a page is drawn");
+                        if over >= 0.5 && !wide.contains(&format!("{p:?} by {over}")) {
+                            wide.push(format!("{p:?} by {over}"));
+                        }
+                    }
+                }
+            }
+            assert!(wide.is_empty(), "wider than the panel: {wide:?}");
+        }
     }
 
     /// A frame of the whole window with `events` as its input.

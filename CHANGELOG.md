@@ -55,6 +55,8 @@ full, row-by-row status.
 
 - Help > Search Commands (Ctrl+Shift+P) finds settings too: every setting of the Options and of Document Setup by its label or the words of its tip, and each options page by its name, listed after the menu commands with the page they are on. Choosing one opens the Options or Document Setup at that page with the setting framed for a moment, scrolled into view; "fill open" finds Fill open curves (live test of 0.41).
 
+- Options and Document Setup: the window stays where it is when another page is chosen. It moved sideways a little with each page, and by 15 pixels on the Edit page, whose Reset button stood past the edge of the page (#2199).
+
 - Align and Distribute, Distribute To > Set spacing: a slider under the spacing box, and the wheel over the box, change the spacing live: once a Distribute button has spread the selection, it spreads again at each new value as you adjust. Letting go of the slider or moving away from the box keeps the result as one undo step; Esc puts the spacing and the objects back. Before, a new spacing took a click on the button again.
 
 - Palette bars dock beside other bars: dragged over the toolbox, the default palette, the document palette row, a column of panels or another palette bar, a palette bar goes just outside it (let go on its half towards the window's edge) or just inside it (the other half), with a blue line showing where. Several palette bars stand side by side in the order they were put, such as a second row next to the default palette or a column next to the toolbox; the place is kept in the preferences and in workspace files. Before, a palette bar docked only at the window's edges (live test of 0.41).
