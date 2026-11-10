@@ -112,8 +112,8 @@ pub fn tool_list() -> Vec<Value> {
         ),
         tool(
             "export",
-            "Export the first page (or page_index) to a path; the extension picks the format: svg, pdf, eps, ps, prn, dxf, emf, wmf, plt, psd, html, png. dpi applies to png and psd (default 96).",
-            json!({"path": {"type": "string"}, "page_index": {"type": "integer"}, "dpi": {"type": "number"}}),
+            "Export to a path; the extension picks the format: svg, pdf, eps, ps, prn, dxf, emf, wmf, plt, psd, html, png. dpi applies to png and psd (default 96). page_index picks the page. With selection true, exports only the selected objects, on a page the size of what they cover, as File > Export does.",
+            json!({"path": {"type": "string"}, "page_index": {"type": "integer"}, "dpi": {"type": "number"}, "selection": {"type": "boolean"}}),
             &["path"],
         ),
         tool(
@@ -221,7 +221,19 @@ pub fn call_tool(app: &mut App, name: &str, args: &Value) -> Result<String, Stri
             let path = std::path::PathBuf::from(str_arg(args, "path")?);
             let page_index = args.get("page_index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
             let dpi = args.get("dpi").and_then(|v| v.as_f64()).unwrap_or(96.0);
-            export_to(app, &path, page_index, dpi)?;
+            let selection = args
+                .get("selection")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if selection {
+                if app.selection.is_empty() {
+                    return Err("selection is empty: nothing to export".to_string());
+                }
+                let (doc, _) = crate::export::selection_document(app);
+                export_document_to(&doc, &path, 0, dpi)?;
+            } else {
+                export_to(app, &path, page_index, dpi)?;
+            }
             Ok(format!("exported {}", path.display()))
         }
         "run_script" => {
@@ -247,7 +259,18 @@ pub fn call_tool(app: &mut App, name: &str, args: &Value) -> Result<String, Stri
 }
 
 fn export_to(app: &App, path: &std::path::Path, page_index: usize, dpi: f64) -> Result<(), String> {
-    let doc = app.engine.document();
+    export_document_to(app.engine.document(), path, page_index, dpi)
+}
+
+/// Write `doc` to `path`; the extension picks the format. The document is
+/// whatever is to be written: the drawing, or the selection as its own
+/// document (`export::selection_document`).
+fn export_document_to(
+    doc: &tracedraw_core::Document,
+    path: &std::path::Path,
+    page_index: usize,
+    dpi: f64,
+) -> Result<(), String> {
     if page_index >= doc.pages.len() {
         return Err(format!("page_index {page_index} out of range"));
     }
@@ -401,6 +424,73 @@ mod tests {
         assert_eq!(bad["result"]["isError"], true);
         let nm = call(&mut app, 8, "resources/list", json!({}));
         assert_eq!(nm["error"]["code"], -32601);
+    }
+
+    /// `export` with `selection` writes only the selected objects, on a
+    /// page the size of what they cover; the drawing itself is untouched.
+    #[test]
+    fn export_with_selection_writes_only_the_selection() {
+        let mut app = App::headless();
+        let dir = std::env::temp_dir().join(format!("tracedraw-mcp-sel-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Two objects far apart, so a whole-page export is much bigger than
+        // a selection of one of them.
+        call(
+            &mut app,
+            1,
+            "tools/call",
+            json!({"name": "run_script", "arguments": {"source":
+                "ActiveLayer.CreateRectangle(10, 10, 20, 20);\n\
+                 const b = ActiveLayer.CreateRectangle(150, 250, 20, 20);\n\
+                 b.CreateSelection();"}}),
+        );
+        let whole = dir.join("whole.svg");
+        let one = dir.join("one.svg");
+        let r = call(
+            &mut app,
+            2,
+            "tools/call",
+            json!({"name": "export", "arguments": {"path": whole.display().to_string()}}),
+        );
+        assert_eq!(r["result"]["isError"], false, "{r}");
+        let r = call(
+            &mut app,
+            3,
+            "tools/call",
+            json!({"name": "export", "arguments": {
+                "path": one.display().to_string(), "selection": true}}),
+        );
+        assert_eq!(r["result"]["isError"], false, "selection export: {r}");
+
+        let whole = std::fs::read_to_string(&whole).unwrap_or_default();
+        let one = std::fs::read_to_string(&one).unwrap_or_default();
+        assert!(whole.contains("<svg") && one.contains("<svg"));
+        // The page's size is the drawing's; the selection's is its own box
+        // (20 by 20 mm), so the two files differ and the small one is the
+        // smaller.
+        assert_ne!(whole, one, "the selection does not write the whole page");
+        assert!(
+            one.len() < whole.len(),
+            "the selection's file is the smaller: {} vs {}",
+            one.len(),
+            whole.len()
+        );
+        // Nothing selected: an error, not a whole-page export by accident.
+        call(
+            &mut app,
+            4,
+            "tools/call",
+            json!({"name": "run_script", "arguments": {"source": "ActiveDocument.ClearSelection();"}}),
+        );
+        let r = call(
+            &mut app,
+            5,
+            "tools/call",
+            json!({"name": "export", "arguments": {
+                "path": dir.join("none.svg").display().to_string(), "selection": true}}),
+        );
+        assert_eq!(r["result"]["isError"], true, "nothing selected: {r}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
