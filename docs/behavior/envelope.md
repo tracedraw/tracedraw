@@ -138,6 +138,15 @@ nothing selected, how to start.
 - The mapping list and Keep Lines show the first selected envelope's;
   changing them changes the selected envelopes (one undo step) and what
   new envelopes take.
+- The mapping list's tip names the mapping in use and says what it does
+  with the object ("Mapping: Putty", then a sentence), and each row of
+  the open list has the sentence of its mapping (`envelope.mapping_*_hint`);
+  the same list in the Envelope panel. The tip said only "How the object
+  fills the envelope" whichever mapping was chosen, and the names alone
+  (Putty, Original) do not tell them apart (#2212,
+  `ui::envelope_ui::tests::the_mapping_list_says_what_the_mapping_in_use_does`).
+  The mode buttons' tips say what each mode does to the sides of a moved
+  node.
 - Copy Envelope Properties (also Object > Copy Effect > Envelope From):
   the next click picks the object to copy from; the selected objects take
   its last envelope, stretched from its box to theirs, with its mapping
