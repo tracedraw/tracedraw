@@ -19765,6 +19765,11 @@ fn a_pen_that_only_sends_moving_touches_sets_the_width() {
 /// patched winit's translation (`winit_tablet_tool`), and what it sends is
 /// turned into egui events as egui-winit does: the pointer's place, the
 /// buttons, and the pressure's moving touch.
+///
+/// The tablet tool translation is built for the platforms the patched
+/// winit reports a pen on (#850), where the tests here can reach it: the
+/// module is left out on Windows, so the tests driven through it are too.
+#[cfg(unix)]
 fn wayland_pen_drag(
     ctx: &egui::Context,
     app: &mut App,
@@ -19827,6 +19832,7 @@ fn wayland_pen_drag(
 /// pressure sets the width of a Freehand line as on X11, and egui never
 /// takes the pen for a touch screen. A pen whose pressure stays at 0
 /// draws an even outline.
+#[cfg(unix)]
 #[test]
 fn a_pen_on_wayland_sets_the_width() {
     let (ctx, mut app, _) = setup();
