@@ -1735,7 +1735,11 @@ impl App {
                             begun: false,
                         };
                     } else if let Some(id) = self.shadow_drag_target(press) {
-                        self.select(vec![id]);
+                        // A press on one of several selected objects
+                        // keeps them all: each takes the shadow (#2218).
+                        if !self.selection.contains(&id) {
+                            self.select(vec![id]);
+                        }
                         self.drag = Drag::Shadow {
                             shape: id,
                             start: press,

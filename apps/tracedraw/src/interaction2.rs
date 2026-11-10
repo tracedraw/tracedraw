@@ -206,7 +206,11 @@ impl App {
                         .map(|o| self.view.to_page(o))
                         .unwrap_or(p);
                     if let Some(id) = self.shadow_drag_target(press) {
-                        self.select(vec![id]);
+                        // A press on one of several selected objects
+                        // keeps them all: each takes the shadow (#2218).
+                        if !self.selection.contains(&id) {
+                            self.select(vec![id]);
+                        }
                         self.drag = Drag::ContourDrag { start: press };
                     }
                 }

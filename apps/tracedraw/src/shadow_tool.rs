@@ -248,7 +248,10 @@ impl App {
         } else {
             sh.offset = p - start;
         }
-        self.select(vec![shape]);
+        // The other selected objects take the same shadow (#2218).
+        if !self.selection.contains(&shape) {
+            self.select(vec![shape]);
+        }
         self.set_shadow(Some(sh), true);
     }
 

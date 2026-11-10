@@ -43,7 +43,10 @@ written (the blend goes out alone, with a warning in the log).
   (the top and bottom edges first, then left and right) makes a
   perspective shadow standing on that edge: the edge stays where it is
   and the opposite side of the object falls on the pointer.
-- One drag is one undo step.
+- One drag is one undo step. A drag that starts on one of several
+  selected objects keeps the selection: each of them takes the shadow,
+  a perspective one standing on its own edge (#2218). A drag on an
+  object that is not selected takes that object alone.
 - The drag starts on the object picked at the press, or else on the
   topmost object whose outline as drawn goes round the press: the hole
   of a ring whose inner outline runs the other way round (as the

@@ -1134,7 +1134,11 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
                 above.extend(bevel(&main, e));
             }
             Effect::BlockShadow { offset, color, gap } => {
-                below.extend(block_shadow(&main, area_rule(shape), *offset, *color, *gap));
+                // Cast by all the object draws, and beneath all of it
+                // (#2218).
+                let cast = cast_area(&main, area_rule(shape), below.iter().chain(&above));
+                let shadow = block_shadow(&main, cast, *offset, *color, *gap);
+                below.splice(0..0, shadow);
             }
             // Mirrored last, whatever its place in the list: the copies
             // carry every other effect of the object (#2121).
@@ -2029,17 +2033,94 @@ fn area_rule(shape: &Shape) -> crate::shaping::FillRule {
     }
 }
 
-/// The solid the object makes slid along `offset` (page space), each of
-/// its contours swept within itself, its own area included, less the
-/// object grown by `gap`.
-fn block_shadow(
+/// The outlines `shape` covers the page with, each with the rule it is
+/// read by: its own (`rule` when given), or those of the objects of a
+/// group, `parent` taking them to the page.
+fn cast_parts(
+    shape: &Shape,
+    parent: Affine,
+    rule: Option<crate::shaping::FillRule>,
+    depth: usize,
+    out: &mut Vec<(BezPath, crate::shaping::FillRule)>,
+) {
+    if !shape.visible || depth > 64 {
+        return;
+    }
+    if let ShapeKind::Group { children } = &shape.kind {
+        for c in children {
+            cast_parts(c, parent * shape.transform, None, depth + 1, out);
+        }
+        return;
+    }
+    let path = parent * shape.page_path();
+    if !path.elements().is_empty() {
+        out.push((path, rule.unwrap_or_else(|| area_rule(shape))));
+    }
+}
+
+/// The area [`cast_area`] joined last, with the object, its rule and the
+/// objects it was joined from. A drag of the shadow changes the offset in
+/// every frame and nothing of the area, and joining it costs as much as
+/// sweeping it.
+type CastKept = (Shape, crate::shaping::FillRule, Vec<Shape>, BezPath);
+static CAST: std::sync::Mutex<Option<CastKept>> = std::sync::Mutex::new(None);
+
+/// What a block shadow is cast from, with the rule to read it by: the
+/// object's own outline, or, for a group and for an object whose effects
+/// have drawn objects of their own (`drawn`: the body of an extrusion,
+/// the steps of a contour), the area all of them cover together. Each
+/// outline is made clean contours first, so that together they fill,
+/// with the nonzero rule, what any of them covers: read as one outline
+/// with the even-odd rule, two objects of a group were a hole where they
+/// overlap, and the body of an extruded object cast nothing (#2218).
+fn cast_area<'a>(
     shape: &Shape,
     rule: crate::shaping::FillRule,
+    drawn: impl Iterator<Item = &'a Shape>,
+) -> (BezPath, crate::shaping::FillRule) {
+    use crate::shaping::{overlay_with, FillRule, Op};
+    let drawn: Vec<Shape> = drawn.filter(|d| d.fill != Fill::None).cloned().collect();
+    let mut parts = Vec::new();
+    cast_parts(shape, Affine::IDENTITY, Some(rule), 0, &mut parts);
+    for d in &drawn {
+        cast_parts(d, Affine::IDENTITY, None, 0, &mut parts);
+    }
+    if parts.len() == 1 {
+        if let Some(only) = parts.pop() {
+            return only;
+        }
+    }
+    // The shadow's own settings are not part of what casts it.
+    let mut from = shape.clone();
+    from.effects.clear();
+    if let Ok(kept) = CAST.lock() {
+        if let Some((s, r, d, area)) = kept.as_ref() {
+            if *s == from && *r == rule && *d == drawn {
+                return (area.clone(), FillRule::NonZero);
+            }
+        }
+    }
+    let empty = BezPath::new();
+    let mut all = BezPath::new();
+    for (path, rule) in &parts {
+        all.extend(overlay_with(path, &empty, Op::Weld, *rule));
+    }
+    if let Ok(mut kept) = CAST.lock() {
+        *kept = Some((from, rule, drawn, all.clone()));
+    }
+    (all, FillRule::NonZero)
+}
+
+/// The solid the area `front` (read by `rule`) makes slid along `offset`
+/// (page space), each of its contours swept within itself, its own area
+/// included, less the area grown by `gap`. `shape` gives the rest.
+fn block_shadow(
+    shape: &Shape,
+    (front, rule): (BezPath, crate::shaping::FillRule),
     offset: Vec2,
     color: Color,
     gap: f64,
 ) -> Vec<Shape> {
-    let front = shape.page_path();
     let mut solid = crate::shaping::sweep(&front, offset, rule);
     if solid.elements().is_empty() {
         return Vec::new();
@@ -2749,6 +2830,83 @@ mod tests {
             }) => assert_eq!((level, emboss_color), (1, None)),
             other => panic!("{other:?}"),
         }
+    }
+
+    /// #2218: a block shadow is cast by the whole object. A group casts
+    /// it from what its objects cover together (read as one outline, two
+    /// of them were a hole where they overlap), and an object with an
+    /// extrusion from itself and its body, beneath the body (it was the
+    /// object's alone, drawn over the body's faces).
+    #[test]
+    fn block_shadow_is_cast_by_the_whole_object() {
+        let shadow = Effect::BlockShadow {
+            offset: Vec2::new(4.0, -4.0),
+            color: Color::BLACK,
+            gap: 0.0,
+        };
+        let square = |id: u64, x: f64| {
+            let mut s = Shape::new(
+                crate::ShapeId(id),
+                ShapeKind::Rect {
+                    rect: Rect::new(x, 0.0, x + 10.0, 10.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            s.fill = Fill::Solid(Color::WHITE);
+            s
+        };
+        // Two squares 6 mm apart, overlapping by 4 mm.
+        let mut group = Shape::new(
+            crate::ShapeId(1),
+            ShapeKind::Group {
+                children: vec![square(2, 0.0), square(3, 6.0)],
+            },
+        );
+        group.transform = Affine::translate((100.0, 50.0));
+        group.effects.push(shadow.clone());
+        let ev = evaluate(&group);
+        assert_eq!(ev.below.len(), 1);
+        let cast = ev.below[0].page_path();
+        // The 16 x 10 box they cover, slid by (4, -4).
+        let expected = 160.0 + 16.0 * 4.0 + 10.0 * 4.0;
+        assert!(
+            (cast.area().abs() - expected).abs() < 1e-3,
+            "{}",
+            cast.area()
+        );
+        assert!(cast.contains(Point::new(108.0, 55.0)), "where they overlap");
+        // A square with a body 10 mm up and to the right.
+        let mut s = rect_shape();
+        s.effects = vec![
+            Effect::Extrude {
+                depth: Vec2::new(10.0, 10.0),
+                vanishing: None,
+                amount: 0.0,
+                shade_from: None,
+                shade_to: None,
+                light_angle: 135.0,
+                light_intensity: 50.0,
+                bevel: 0.0,
+                kind: None,
+                on_object: false,
+                solid: None,
+                space: Default::default(),
+            },
+            shadow,
+        ];
+        let ev = evaluate(&s);
+        // Beneath the far face and the sides.
+        assert_eq!(ev.below.len(), 4);
+        assert_eq!(ev.below[0].fill, Fill::Solid(Color::BLACK));
+        let cast = ev.below[0].page_path();
+        // The body's far corner, slid: past the square's own shadow.
+        assert!(cast.contains(Point::new(33.0, 25.0)), "the body's shadow");
+        assert!(cast.contains(Point::new(23.0, -3.0)), "the object's shadow");
+        assert!(!cast.contains(Point::new(35.0, 2.0)));
+        // The square (400), its body (a hexagon of 800 with it) and
+        // their slide: 800 + 4 * (30 + 30).
+        assert!((cast.area().abs() - 1040.0).abs() < 1e-3, "{}", cast.area());
     }
 
     #[test]

@@ -24468,3 +24468,68 @@ fn shadow_drags_start_anywhere_inside_an_object() {
     }
     assert_eq!(shadows(&app), before);
 }
+
+/// #2218: a drag with the Drop Shadow or the Block Shadow tool that
+/// starts on one of several selected objects gives the shadow to all of
+/// them, in one undo step; it used to drop the selection and shadow the
+/// pressed object alone. A drag on an object that is not selected still
+/// takes that object alone.
+#[test]
+fn a_shadow_drag_on_a_selection_shadows_every_selected_object() {
+    use tracedraw_core::live::Effect;
+    let (ctx, mut app, first) = setup();
+    let second = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(80.0, 60.0, 140.0, 120.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    let third = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(80.0, 150.0, 140.0, 200.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let shadow = |app: &App, id: ShapeId| app.doc().find_shape(id).and_then(|s| s.shadow);
+    let block = |app: &App, id: ShapeId| {
+        app.doc().find_shape(id).and_then(|s| {
+            s.effects.iter().find_map(|e| match e {
+                Effect::BlockShadow { offset, .. } => Some(*offset),
+                _ => None,
+            })
+        })
+    };
+    let from = app.view.to_screen(Point::new(35.0, 25.0));
+    let by = egui::vec2(30.0, 20.0);
+    app.set_tool(Tool::DropShadow);
+    app.select(vec![first, second]);
+    drag(&ctx, &mut app, from, from + by, Modifiers::NONE, Vec::new());
+    let (a, b) = (shadow(&app, first), shadow(&app, second));
+    assert!(a.is_some() && a == b, "{a:?} {b:?}");
+    assert!(shadow(&app, third).is_none());
+    assert_eq!(app.selection, vec![first, second]);
+    app.undo();
+    assert!(shadow(&app, first).is_none() && shadow(&app, second).is_none());
+    app.set_tool(Tool::BlockShadow);
+    app.select(vec![first, second]);
+    drag(&ctx, &mut app, from, from + by, Modifiers::NONE, Vec::new());
+    let (a, b) = (block(&app, first), block(&app, second));
+    assert!(a.is_some() && a == b, "{a:?} {b:?}");
+    assert!(block(&app, third).is_none());
+    assert_eq!(app.selection, vec![first, second]);
+    // On an object outside the selection: that object alone.
+    let other = app.view.to_screen(Point::new(110.0, 175.0));
+    drag(
+        &ctx,
+        &mut app,
+        other,
+        other + by,
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    assert!(block(&app, third).is_some());
+    assert_eq!(app.selection, vec![third]);
+}
