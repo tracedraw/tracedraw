@@ -273,6 +273,11 @@ mod winit_tablet_tool;
 #[allow(dead_code)]
 #[path = "../../../vendor/winit/src/frame_input.rs"]
 mod winit_frame_input;
+// A mouse's buttons, wheel and hover on Android, of the same copy
+// (#2152, #2161).
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "../../../vendor/winit/src/android_mouse.rs"]
+mod winit_android_mouse;
 mod workspace_file;
 
 /// The desktop program: the window, with the command line's files and

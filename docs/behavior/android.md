@@ -49,6 +49,41 @@ the owner does to publish it and what to test on a tablet first.
 | Errors | a message box and the log file | the system log only: `adb logcat -s tracedraw` |
 | Configuration changes (rotation, window size, keyboard, dark mode, language, font size) | the window follows them | the same: the activity declares them (`android:configChanges`), so the system does not relaunch it. A relaunch the manifest cannot prevent (a new screen density, a change of the system's resource overlays: wallpaper colours, icon shapes, display cutout) ends the process once the drawings are backed up, and the system starts the app again in a new process, which offers them (see "Relaunches" below) |
 
+## Mouse
+
+A Bluetooth or USB mouse, or a touchpad, works as a mouse (#2152,
+#2161): the left, right and middle buttons (the right one opens the
+menus a right click opens on the desktop), the wheel (it zooms and
+scrolls as on the desktop, with Ctrl and Shift from a keyboard too) and
+the pointer hovering over the buttons. winit's Android backend turned
+every pointer of a motion event into a touch and dropped the actions it
+had no touch for, so every button clicked like a finger, the wheel did
+nothing and nothing was hovered. The patched copy of winit
+(`vendor/winit/src/android_mouse.rs`, `vendor/README.md`) now takes the
+motion events whose source is a mouse (`SOURCE_MOUSE`) or whose pointer's
+tool is one (`TOOL_TYPE_MOUSE`) and tells the window what a desktop's
+mouse would:
+
+- every event puts the pointer at its place (`CursorMoved`), hover
+  events included, and a hover that ends with no press after it means
+  the pointer left the window;
+- the buttons come from the event's button state (`getButtonState`:
+  primary, secondary, tertiary, back, forward), compared with the one
+  told last, so each button goes down and up once whichever of
+  `ACTION_DOWN`, `ACTION_BUTTON_PRESS`, `ACTION_MOVE`,
+  `ACTION_BUTTON_RELEASE` and `ACTION_UP` the system sends; a press that
+  names no button is the left one;
+- `ACTION_SCROLL` turns the wheel by lines: `AXIS_VSCROLL` up and down,
+  `AXIS_HSCROLL` sideways.
+
+A finger and a pen are not touched by this, and palm rejection does not
+look at the mouse. Checks: `winit_android_mouse::tests` (fake motion
+events: a left and a right click as Android 6 and later and as older
+versions send them, a second button during a drag, the wheel, the hover
+and its end); the patched copy is type-checked for
+`aarch64-linux-android`. Not checked on a device or on the emulator (its
+check sends no mouse events).
+
 ## Palm rejection
 
 A hand resting on a tablet while a pen draws touches the screen too, and
