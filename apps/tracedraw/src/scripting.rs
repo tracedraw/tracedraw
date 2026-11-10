@@ -138,6 +138,7 @@ class Shape {
   Delete() { __call('delete', {id:this.id}); }
   Duplicate(dx, dy) { return new Shape(__call('duplicate', {id:this.id, dx:dx||0, dy:dy||0}).id); }
   ConvertToCurves() { __call('convert_to_curves', {id:this.id}); return this; }
+  Ungroup() { __call('ungroup', {id:this.id}); }
   AddToSelection() { __call('select', {ids:[this.id], add:true}); }
   CreateSelection() { __call('select', {ids:[this.id], add:false}); }
   OrderToFront() { __call('order', {id:this.id, op:'front'}); }
@@ -207,6 +208,7 @@ class ShapeRange {
   Delete() { this.ids.forEach(id => __call('delete', {id:id})); }
   Move(dx, dy) { this.ids.forEach(id => __call('move', {id:id, dx:dx, dy:dy})); }
   Group() { return new Shape(__call('group', {ids:this.ids}).id); }
+  Ungroup() { this.ids.forEach(id => __call('ungroup', {id:id})); }
   AlignLeft() { __call('align', {ids:this.ids, how:'left'}); }
   AlignRight() { __call('align', {ids:this.ids, how:'right'}); }
   AlignTop() { __call('align', {ids:this.ids, how:'top'}); }
@@ -230,6 +232,9 @@ class Layer {
   set Name(n) { __call('set_layer_name', {layer:this.id, name:n}); }
   get Visible() { return __call('layer_info', {layer:this.id}).visible; }
   set Visible(v) { __call('set_layer_visible', {layer:this.id, visible:v}); }
+  get Locked() { return __call('layer_info', {layer:this.id}).locked; }
+  set Locked(v) { __call('set_layer_locked', {layer:this.id, locked:v}); }
+  Delete() { __call('delete_layer', {layer:this.id}); }
   Activate() { __call('activate_layer', {layer:this.id}); }
   CreateRectangle(x, y, w, h, radius) { return new Shape(__call('create_rect', {layer:this.id, x:x, y:y, w:w, h:h, radius:radius||0}).id); }
   CreateEllipse(x, y, w, h) { return new Shape(__call('create_ellipse', {layer:this.id, x:x, y:y, w:w, h:h}).id); }
@@ -254,9 +259,12 @@ class Layers {
 class Page {
   constructor(id) { this.id = id; this.Layers = new Layers(id); }
   get Name() { return __call('page_info', {page:this.id}).name; }
+  set Name(n) { __call('rename_page', {page:this.id, name:n}); }
   get SizeWidth() { return __call('page_info', {page:this.id}).w; }
   get SizeHeight() { return __call('page_info', {page:this.id}).h; }
   SetSize(w, h) { __call('set_page_size', {page:this.id, w:w, h:h}); }
+  Delete() { __call('delete_page', {page:this.id}); }
+  Duplicate(before) { return new Page(__call('duplicate_page', {page:this.id, before:!!before}).id); }
   get ActiveLayer() { return new Layer(__call('active_layer', {page:this.id}).id); }
   get Shapes() { const page = this.id; return { get All() { return new ShapeRange(__call('page_shapes', {page:page}).ids); }, get Count() { return __call('page_shapes', {page:page}).ids.length; } }; }
   CreateLayer(name) { return new Layer(__call('create_layer', {page:this.id, name:name}).id); }
@@ -978,6 +986,18 @@ impl HostInner {
             .ok_or_else(|| format!("no shape {id}"))
     }
 
+    /// Drop from the selection the objects a command took away, so a later
+    /// call does not name one of them.
+    fn drop_missing_selection(&mut self) {
+        let alive: Vec<ShapeId> = self
+            .selection
+            .iter()
+            .copied()
+            .filter(|id| self.doc.find_shape(*id).is_some())
+            .collect();
+        self.selection = alive;
+    }
+
     fn layer_for(&self, a: &Value) -> Result<LayerId, String> {
         if let Some(l) = a.get("layer").and_then(|v| v.as_u64()) {
             return Ok(LayerId(l));
@@ -1045,6 +1065,47 @@ impl HostInner {
                 })?;
                 json!({})
             }
+            "delete_page" => {
+                let page = PageId(id_arg(a, "page")?);
+                self.run(Command::DeletePage { page })?;
+                // The page the script worked on may be the one taken out:
+                // the script goes on the first page left rather than on an
+                // id that no longer names anything.
+                if self.page == page {
+                    if let Some(first) = self.doc.pages.first() {
+                        self.page = first.id;
+                    }
+                }
+                self.drop_missing_selection();
+                json!({})
+            }
+            "rename_page" => {
+                let page = PageId(id_arg(a, "page")?);
+                let name = a
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                self.run(Command::RenamePage { page, name })?;
+                json!({})
+            }
+            "duplicate_page" => {
+                let page = PageId(id_arg(a, "page")?);
+                let before: Vec<PageId> = self.doc.pages.iter().map(|p| p.id).collect();
+                self.run(Command::DuplicatePage {
+                    page,
+                    before: a.get("before").and_then(|v| v.as_bool()).unwrap_or(false),
+                    contents: a.get("contents").and_then(|v| v.as_bool()).unwrap_or(true),
+                })?;
+                let new = self
+                    .doc
+                    .pages
+                    .iter()
+                    .map(|p| p.id)
+                    .find(|id| !before.contains(id))
+                    .ok_or("the page was not copied")?;
+                json!({"id": new.raw()})
+            }
             "layers" => {
                 let p = self
                     .doc
@@ -1073,6 +1134,25 @@ impl HostInner {
                 let layer = LayerId(id_arg(a, "layer")?);
                 let visible = a.get("visible").and_then(|v| v.as_bool()).unwrap_or(true);
                 self.run(Command::SetLayerVisible { layer, visible })?;
+                json!({})
+            }
+            "set_layer_locked" => {
+                let layer = LayerId(id_arg(a, "layer")?);
+                let locked = a.get("locked").and_then(|v| v.as_bool()).unwrap_or(false);
+                self.run(Command::SetLayerLocked { layer, locked })?;
+                json!({})
+            }
+            "delete_layer" => {
+                let layer = LayerId(id_arg(a, "layer")?);
+                let page = self.doc.page(self.page).ok().map(|p| p.id);
+                self.run(Command::DeleteLayer { layer })?;
+                // The layer the script worked in may be the one taken out.
+                if self.layer == Some(layer) {
+                    self.layer = page
+                        .and_then(|p| self.doc.page(p).ok())
+                        .and_then(|p| p.layers.last().map(|l| l.id));
+                }
+                self.drop_missing_selection();
                 json!({})
             }
             "activate_layer" => {
@@ -1551,6 +1631,18 @@ impl HostInner {
                 }
                 let gid = self.group_shapes(&ids)?;
                 json!({"id": gid.raw()})
+            }
+            "ungroup" => {
+                let id = ShapeId(id_arg(a, "id")?);
+                let kind = self.shape(id_arg(a, "id")?).map(|s| s.kind)?;
+                if !matches!(kind, ShapeKind::Group { .. }) {
+                    return Err("ungroup needs a group".into());
+                }
+                self.run(Command::Ungroup { group: id })?;
+                // The group is gone and its objects took its place; the
+                // selection that named it names nothing now.
+                self.drop_missing_selection();
+                json!({})
             }
             "align" => {
                 let ids: Vec<ShapeId> = a
@@ -2096,5 +2188,111 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out[0], "1 Ellipse");
+    }
+
+    #[test]
+    fn a_group_is_ungrouped_from_a_script() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const a = ActiveLayer.CreateRectangle(0,0,10,10);\n\
+             const b = ActiveLayer.CreateRectangle(20,0,10,10);\n\
+             new ShapeRange([a.id, b.id]).Group();",
+        )
+        .unwrap();
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Count);").unwrap();
+        assert_eq!(out[0], "1", "the group is one object");
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Type);").unwrap();
+        assert_eq!(out[0], "Group");
+
+        run(&mut a, "ActiveLayer.Shapes.Item(1).Ungroup();").unwrap();
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Count);").unwrap();
+        assert_eq!(out[0], "2", "the objects are back");
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Type);").unwrap();
+        assert_eq!(out[0], "Rectangle");
+    }
+
+    #[test]
+    fn ungrouping_something_that_is_not_a_group_is_refused() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const r = ActiveLayer.CreateRectangle(0,0,10,10); r.Ungroup();",
+        )
+        .unwrap_err();
+    }
+
+    #[test]
+    fn a_page_is_renamed_copied_and_deleted_from_a_script() {
+        let mut a = app();
+        run(&mut a, "ActivePage.Name = 'Cover';").unwrap();
+        let out = run(&mut a, "print(ActivePage.Name);").unwrap();
+        assert_eq!(out[0], "Cover");
+
+        let out = run(&mut a, "print(ActiveDocument.Pages.Count);").unwrap();
+        assert_eq!(out[0], "1");
+        run(&mut a, "ActiveDocument.AddPages(1);").unwrap();
+        let out = run(&mut a, "print(ActiveDocument.Pages.Count);").unwrap();
+        assert_eq!(out[0], "2");
+
+        run(&mut a, "ActiveDocument.Pages.Item(1).Duplicate();").unwrap();
+        let out = run(&mut a, "print(ActiveDocument.Pages.Count);").unwrap();
+        assert_eq!(out[0], "3", "the copy sits beside the page");
+
+        run(&mut a, "ActiveDocument.Pages.Item(3).Delete();").unwrap();
+        let out = run(&mut a, "print(ActiveDocument.Pages.Count);").unwrap();
+        assert_eq!(out[0], "2");
+    }
+
+    #[test]
+    fn the_last_page_and_the_last_layer_stay() {
+        let mut a = app();
+        assert!(
+            run(&mut a, "ActivePage.Delete();").is_err(),
+            "the last page stays"
+        );
+        assert!(
+            run(&mut a, "ActiveLayer.Delete();").is_err(),
+            "the last layer stays"
+        );
+        let out = run(&mut a, "print(ActiveDocument.Pages.Count);").unwrap();
+        assert_eq!(out[0], "1");
+        let out = run(&mut a, "print(ActivePage.Layers.Count);").unwrap();
+        assert_eq!(out[0], "1");
+    }
+
+    #[test]
+    fn a_layer_is_locked_and_deleted_from_a_script() {
+        let mut a = app();
+        run(&mut a, "ActivePage.CreateLayer('Guide');").unwrap();
+        let out = run(&mut a, "print(ActivePage.Layers.Count);").unwrap();
+        assert_eq!(out[0], "2");
+
+        run(&mut a, "ActivePage.Layers.Item(2).Locked = true;").unwrap();
+        let out = run(&mut a, "print(ActivePage.Layers.Item(2).Locked);").unwrap();
+        assert_eq!(out[0], "true");
+
+        run(&mut a, "ActivePage.Layers.Item(2).Delete();").unwrap();
+        let out = run(&mut a, "print(ActivePage.Layers.Count);").unwrap();
+        assert_eq!(out[0], "1");
+    }
+
+    /// What a script does to a page or a layer is one undo step, as a
+    /// drawing change is.
+    #[test]
+    fn page_and_layer_changes_are_one_undo_step() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActivePage.Name = 'One';\n\
+             ActiveDocument.AddPages(1);\n\
+             ActiveDocument.Pages.Item(2).Delete();",
+        )
+        .unwrap();
+        let out = run(&mut a, "print(ActivePage.Name);").unwrap();
+        assert_eq!(out[0], "One");
+        a.undo();
+        let out = run(&mut a, "print(ActivePage.Name);").unwrap();
+        assert_eq!(out[0], "Página 1", "the name came back");
     }
 }
