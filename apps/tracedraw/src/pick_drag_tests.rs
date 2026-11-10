@@ -1721,7 +1721,9 @@ fn alt_drag_selects_also_when_it_starts_over_an_object() {
 /// object, so a small shape ordered behind a larger, selected one can
 /// be taken by an Alt+drag over it (that drag moved the front shape, so
 /// the hidden one could not be selected by touching; #1350), with the
-/// Pick and the Freehand Pick tools. Shift keeps the front shape too.
+/// Pick and the Freehand Pick tools. The hidden shape is taken alone:
+/// the front one, which the frame merely lies in, is left out (#1503).
+/// Shift keeps the selection, so the front shape stays in it.
 #[test]
 fn alt_drag_over_the_selected_front_object_selects_the_one_behind() {
     for tool in [Tool::Pick, Tool::FreeformPick] {
@@ -1759,7 +1761,7 @@ fn alt_drag_over_the_selected_front_object_selects_the_one_behind() {
                 Point::new(5.0, 16.0),
             ]
         };
-        for (mods, front_toggled_out) in [
+        for (mods, front_kept) in [
             (Modifiers::ALT, false),
             (Modifiers::ALT | Modifiers::SHIFT, true),
         ] {
@@ -1799,11 +1801,13 @@ fn alt_drag_over_the_selected_front_object_selects_the_one_behind() {
                 "{tool:?} {mods:?}: the hidden one, {:?}",
                 app.selection
             );
-            // Shift turns the front one over: it stays out of a selection
-            // it was in; a plain Alt frame inside its fill touches it.
+            // A plain Alt frame inside the front one's fill that crosses
+            // the hidden one's edge takes the hidden one alone (#1503);
+            // with Shift the front one, selected before and not taken by
+            // the frame, stays selected.
             assert_eq!(
                 app.selection.contains(&front),
-                !front_toggled_out,
+                front_kept,
                 "{tool:?} {mods:?}: {:?}",
                 app.selection
             );
@@ -2096,6 +2100,52 @@ fn the_touching_option_swaps_what_alt_does() {
     app.select(Vec::new());
     drag(&ctx, &mut app, from, to, Modifiers::ALT, Vec::new());
     assert!(app.selection.is_empty());
+}
+
+/// An Alt frame drawn round a small object that lies on a larger filled
+/// one, or hidden behind it, takes the small object alone: the large one
+/// the frame merely lies in is left out (#1503). It was selected too.
+#[test]
+fn an_alt_marquee_round_a_small_object_leaves_out_the_large_one_it_lies_in() {
+    let (ctx, mut app, _first) = setup();
+    let red = tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(200, 30, 30));
+    let mk = |app: &mut App, r: Rect| {
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: r,
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        app.apply_fill(red.clone());
+        id
+    };
+    let large = mk(&mut app, Rect::new(80.0, 80.0, 180.0, 180.0));
+    let small = mk(&mut app, Rect::new(120.0, 120.0, 130.0, 130.0));
+    let from = app.view.to_screen(Point::new(115.0, 115.0));
+    let to = app.view.to_screen(Point::new(135.0, 135.0));
+    for hidden in [false, true] {
+        if hidden {
+            // The small one behind the large one.
+            let (layer, _) = app.doc().locate(small).expect("small");
+            app.run(tracedraw_core::Command::Reorder {
+                shape: small,
+                layer,
+                index: 0,
+            });
+        }
+        app.select(Vec::new());
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        drag(&ctx, &mut app, from, to, Modifiers::ALT, Vec::new());
+        assert_eq!(app.selection, vec![small], "hidden: {hidden}");
+    }
+    // In the large one's fill, touching nothing else: the large one.
+    app.select(Vec::new());
+    let from = app.view.to_screen(Point::new(150.0, 150.0));
+    let to = app.view.to_screen(Point::new(170.0, 170.0));
+    drag(&ctx, &mut app, from, to, Modifiers::ALT, Vec::new());
+    assert_eq!(app.selection, vec![large]);
 }
 
 /// The screen points of a lasso through `pts` (page), in small steps as a

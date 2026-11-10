@@ -75,6 +75,7 @@ full, row-by-row status.
 - Objects docker: dragging an object's row now also moves objects between layers: let go on an object of another layer (of any page or of the master page) it goes in front of or behind that object in its layer, and let go on a layer's row it goes on the top of that layer. A selected row carries the rest of the selection along, the whole move is one undo step, and the objects stay selected with their layer active. Rows inside groups no longer start a drag that failed, locked objects stay and a locked layer takes nothing (live test of 0.41).
 
 - View > Navigator, with the key N, in the shortcut table like any menu command, so it can be changed or removed in Options > Customization > Commands and is found by Help > Search Commands. N held shows the Navigator as before; the menu row opens it until a click: a click on the picture goes there, a click elsewhere or Esc closes it (live test of 0.41).
+- Pick tool: an Alt frame (or a Freehand Pick loop with Alt) drawn round a small object that lies on a larger filled one, or hidden behind it, selects the small object alone. The larger one the frame merely lies in was selected with it (#1503).
 
 - Opening `.cdr` files: objects that only carry a name and a style and cover nothing (drawings that hold an imported picture keep some) are no longer counted as objects that could not be read. A ten-page drawing whose every curve, text and picture opened said 22 objects were missing (#2022).
 

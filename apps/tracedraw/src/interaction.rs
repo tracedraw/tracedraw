@@ -911,10 +911,10 @@ impl App {
                 _ => candidates.push(s.clone()),
             }
         }
-        for s in &candidates {
-            if !crate::select_region::takes(region, s, touching, &fill_counts) {
+        for i in crate::select_region::taken(region, &candidates, touching, &fill_counts) {
+            let Some(s) = candidates.get(i) else {
                 continue;
-            }
+            };
             if !before.contains(&s.id) {
                 if !ids.contains(&s.id) {
                     ids.push(s.id);
