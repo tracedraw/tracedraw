@@ -73,6 +73,8 @@ full, row-by-row status.
 
 - Envelope: the Mapping list of the property bar and of the Envelope panel says in its tip which mapping is in use and what it does with the object, and each row of the open list explains its mapping (Putty, Original, Horizontal, Vertical). The tip was the same sentence for all four (#2212).
 
+- Drop shadow of an object with an extrusion, a contour or another effect that draws objects of its own: the shadow is cast by the object and what its effects draw together, once, beneath all of it. Before, it was the object's alone and was drawn over the body behind the object, a dark patch across the sides of an extruded text, and a body turned in space cast no shadow at all. The shadow of a group takes in the bodies of its extruded objects, and the shadow's picture (Break Drop Shadow Apart, PDF and `.cdr` output) is of the object as drawn, its envelope included (#2215).
+
 - Text > Insert Placeholder Text is also in the right-click menu of a paragraph frame and in the right-click menu shown while typing in one. A frame being edited, an empty one just drawn too, is filled and stays edited with the caret after the sample text; editing used to end.
 
 - Drop shadows: a click on an object that has a shadow of its own picks it, also where another object's shadow falls over it; picking one shadowed object after another used to jump to the neighbour whose shadow lay there. A double click on a shadow with the Pick tool chooses the Drop Shadow tool for its object, and Edit Shadow in the object's right-click menu and in the new Drop Shadow section of the Properties docker does the same. The Drop Shadow tool's handles and property bar follow the first selected object that has a shadow.

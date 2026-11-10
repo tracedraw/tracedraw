@@ -61,6 +61,23 @@ written (the blend goes out alone, with a warning in the log).
   of a bent object could stand a perspective shadow on a far edge and
   the handles sat away from the object (#2217,
   `shadow_tool::tests::the_shadow_of_an_enveloped_object_goes_by_what_is_drawn`).
+- An object whose live effects draw objects of their own (the body of
+  an extrusion, the steps of a contour or a blend, a block shadow, the
+  copies of a symmetry) casts the shadow of all of it, drawn once
+  beneath all of it. The shadow is measured on the box of the object's
+  own outline as drawn (of its plain outline when the effects draw the
+  object among their objects, as a body turned in space does), and its
+  layer reaches round everything the effects add. Before, the shadow
+  was the object's alone and was drawn after what the effects put
+  behind the object, so it lay over the body of an extrusion; a body
+  turned in space cast none (#2215). A group's shadow takes in what
+  the effects of its objects draw, and the shadow's picture (Break
+  Drop Shadow Apart, PDF, `.cdr`) is the same silhouette, an envelope
+  or another warp taken in
+  (`tracedraw_render`
+  `tests::an_extruded_object_casts_the_shadow_of_its_body_beneath_it`,
+  `tests::the_shadow_picture_of_an_enveloped_object_is_of_what_is_drawn`).
+  A picture with effects keeps the shadow of what its pixels show.
 
 ## Perspective geometry
 

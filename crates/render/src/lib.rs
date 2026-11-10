@@ -752,9 +752,22 @@ impl Renderer<'_> {
         // the pixel effects (lens, non-uniform transparency).
         if !shape.effects.is_empty() {
             let ev = tracedraw_core::live::evaluate(shape);
+            // An object whose effects draw objects of their own (the body
+            // of an extrusion, a contour's steps) casts the shadow of all
+            // of it, beneath all of it. The shadow was the object's
+            // alone, drawn over what its effects put behind it (#2215).
+            let whole = casts_whole(&ev);
+            if whole && !self.flags.wireframe && shape.opacity > 0.0 {
+                if let Some(sh) = shape.shadow.as_ref().filter(|sh| sh.opacity > 0.0) {
+                    self.draw_group_shadow(sh, shape, parent);
+                }
+            }
             for b in &ev.below {
                 let mut b = b.clone();
                 b.effects.clear();
+                if whole {
+                    b.shadow = None;
+                }
                 self.draw_shape(&b, parent);
             }
             let lens = shape.effects.iter().find_map(|e| match e {
@@ -771,6 +784,9 @@ impl Renderer<'_> {
             });
             let mut main = ev.main.clone();
             main.effects.clear();
+            if whole {
+                main.shadow = None;
+            }
             let was_text = self.flags.text_outline;
             self.flags.text_outline |= matches!(shape.kind, ShapeKind::Text { .. });
             if !self.flags.complex_effects || self.flags.wireframe {
@@ -806,6 +822,9 @@ impl Renderer<'_> {
                             | tracedraw_core::live::Effect::Transparency { .. }
                     )
                 });
+                if whole {
+                    a.shadow = None;
+                }
                 self.draw_shape(&a, parent);
             }
             return;
@@ -1546,8 +1565,18 @@ impl Renderer<'_> {
         sh: &tracedraw_core::Shadow,
         b: Rect,
     ) -> Option<((i32, i32), Pixmap, Affine)> {
+        self.shadow_target_over(sh, b, b)
+    }
+
+    /// [`Self::shadow_target`] for a silhouette that covers `extent`.
+    fn shadow_target_over(
+        &self,
+        sh: &tracedraw_core::Shadow,
+        b: Rect,
+        extent: Rect,
+    ) -> Option<((i32, i32), Pixmap, Affine)> {
         let (w, h) = (self.pixmap.width(), self.pixmap.height());
-        let (x, y, lw, lh) = shadow_pixels(sh, b, self.screen, self.zoom, w, h)?;
+        let (x, y, lw, lh) = shadow_pixels_over(sh, b, extent, self.screen, self.zoom, w, h)?;
         let layer = Pixmap::new(lw, lh)?;
         let screen = Affine::translate((-f64::from(x), -f64::from(y))) * self.screen;
         Some(((x, y), layer, screen))
@@ -1558,10 +1587,10 @@ impl Renderer<'_> {
     /// returned before their own shadow was drawn, so a shadow given to a
     /// clip frame or a group never showed (#873).
     fn draw_group_shadow(&mut self, sh: &tracedraw_core::Shadow, shape: &Shape, parent: Affine) {
-        let Some(b) = group_shadow_box(shape, parent) else {
+        let Some((b, extent)) = cast_boxes(shape, parent) else {
             return;
         };
-        let Some((layer_at, mut layer, screen)) = self.shadow_target(sh, b) else {
+        let Some((layer_at, mut layer, screen)) = self.shadow_target_over(sh, b, extent) else {
             return;
         };
         group_shadow_layer(
@@ -2749,8 +2778,37 @@ fn group_shadow_layer(
 /// The box the shadow of a group or a clip frame drawn inside `parent`
 /// is measured on; `None` when it is not finite.
 fn group_shadow_box(shape: &Shape, parent: Affine) -> Option<Rect> {
-    let b = (parent * shape.page_path()).bounding_box();
-    (b.width().is_finite() && b.height().is_finite()).then_some(b)
+    cast_boxes(shape, parent).map(|(b, _)| b)
+}
+
+/// The effects of an object draw objects of their own: its drop shadow
+/// is cast by all of them together (a picture keeps the shadow of what
+/// its pixels show).
+fn casts_whole(ev: &tracedraw_core::live::Evaluated) -> bool {
+    !(ev.below.is_empty() && ev.above.is_empty())
+        && !matches!(ev.main.kind, ShapeKind::Bitmap { .. })
+}
+
+/// The box the drop shadow of `shape`, drawn inside `parent`, is measured
+/// on, and the box all it casts the shadow from lies in. The first is the
+/// box of its outline as drawn, an envelope or another warp taken in (of
+/// its plain outline when its effects draw it among their own objects,
+/// as a body turned in space does); the second reaches round what its
+/// effects add. `None` when they are not finite.
+fn cast_boxes(shape: &Shape, parent: Affine) -> Option<(Rect, Rect)> {
+    let plain = || (parent * shape.page_path()).bounding_box();
+    let (b, extent) = if shape.has_live_effects() {
+        let drawn = (!shape.effects.is_empty())
+            .then(|| tracedraw_core::live::evaluate(shape).main.page_path())
+            .filter(|p| !p.elements().is_empty());
+        let b = drawn.map_or_else(plain, |p| (parent * p).bounding_box());
+        let all = parent.transform_rect_bbox(shape.visual_bounds());
+        (b, if all.is_finite() { b.union(all) } else { b })
+    } else {
+        let b = plain();
+        (b, b)
+    };
+    (b.width().is_finite() && b.height().is_finite()).then_some((b, extent))
 }
 
 /// The pixels of a `w` x `h` target that the shadow `sh` of an object
@@ -2761,6 +2819,7 @@ fn group_shadow_box(shape: &Shape, parent: Affine) -> Option<Rect> {
 /// on a layer of only these is the same as on one the size of the target
 /// (a blur clamps at the target's own edges, which this keeps). `None`
 /// when it covers no pixel of the target.
+#[cfg(test)]
 fn shadow_pixels(
     sh: &tracedraw_core::Shadow,
     b: Rect,
@@ -2769,8 +2828,22 @@ fn shadow_pixels(
     w: u32,
     h: u32,
 ) -> Option<(i32, i32, u32, u32)> {
+    shadow_pixels_over(sh, b, b, screen, zoom, w, h)
+}
+
+/// [`shadow_pixels`] for a silhouette that covers `extent`, which the
+/// shadow measured on `b` moves or shears.
+fn shadow_pixels_over(
+    sh: &tracedraw_core::Shadow,
+    b: Rect,
+    extent: Rect,
+    screen: Affine,
+    zoom: f64,
+    w: u32,
+    h: u32,
+) -> Option<(i32, i32, u32, u32)> {
     let (w, h) = (f64::from(w), f64::from(h));
-    let flat = tracedraw_core::Shadow { blur: 0.0, ..*sh }.bounds(b);
+    let flat = sh.silhouette_transform(b).transform_rect_bbox(extent);
     let corners = [
         Point::new(flat.x0, flat.y0),
         Point::new(flat.x1, flat.y0),
@@ -2813,7 +2886,9 @@ fn shadow_pixels(
 /// layer by `to_screen`, inside `clip` when given: the objects of a group
 /// each, a clip frame's filled frame and its contents only where its
 /// frame is (nested frames cut further), hidden objects not at all.
-/// Each is filled by its own fill rule, holes left open (#2216).
+/// Each is filled by its own fill rule, holes left open (#2216). An
+/// object with live effects covers what they draw: its outline as they
+/// warp it and the objects they add (#2215).
 fn fill_silhouette(
     layer: &mut Pixmap,
     shape: &Shape,
@@ -2821,14 +2896,37 @@ fn fill_silhouette(
     clip: Option<&tiny_skia::Mask>,
     anti_alias: bool,
 ) {
+    silhouette(layer, shape, to_screen, clip, anti_alias, false)
+}
+
+/// [`fill_silhouette`]; `text` when `shape` is drawn from a text, whose
+/// warped outline fills as text does.
+fn silhouette(
+    layer: &mut Pixmap,
+    shape: &Shape,
+    to_screen: Affine,
+    clip: Option<&tiny_skia::Mask>,
+    anti_alias: bool,
+    text: bool,
+) {
     if !shape.visible {
+        return;
+    }
+    if !shape.effects.is_empty() {
+        let ev = tracedraw_core::live::evaluate(shape);
+        let text = text || matches!(shape.kind, ShapeKind::Text { .. });
+        for part in ev.below.iter().chain([&ev.main]).chain(&ev.above) {
+            let mut part = part.clone();
+            part.effects.clear();
+            silhouette(layer, &part, to_screen, clip, anti_alias, text);
+        }
         return;
     }
     let inner = to_screen * shape.transform;
     match &shape.kind {
         ShapeKind::Group { children } => {
             for c in children {
-                fill_silhouette(layer, c, inner, clip, anti_alias);
+                silhouette(layer, c, inner, clip, anti_alias, text);
             }
         }
         ShapeKind::ClipFrame { frame, contents } => {
@@ -2887,7 +2985,7 @@ fn fill_silhouette(
             let mut paint = Paint::default();
             paint.anti_alias = anti_alias;
             paint.set_color_rgba8(255, 255, 255, 255);
-            let rule = shape_fill_rule(shape, false);
+            let rule = shape_fill_rule(shape, text);
             layer.fill_path(&sk, &paint, rule, Transform::identity(), clip);
         }
     }
@@ -2956,7 +3054,18 @@ pub fn render_shadow_image(shape: &Shape, dpi: f64) -> Option<(Rect, Pixmap)> {
     if path.elements().is_empty() || !(dpi.is_finite() && dpi > 0.0) {
         return None;
     }
-    let area = sh.bounds(path.bounding_box());
+    // Measured on the outline as drawn and reaching round all the
+    // object's effects draw, as on the page (#2215, #2217).
+    let (b, extent) = cast_boxes(shape, Affine::IDENTITY)?;
+    let pad = if sh.blur.is_finite() {
+        sh.blur.max(0.0) * 3.0
+    } else {
+        0.0
+    };
+    let area = sh
+        .silhouette_transform(b)
+        .transform_rect_bbox(extent)
+        .inflate(pad, pad);
     let zoom = dpi / 25.4;
     let w = (area.width() * zoom).ceil();
     let h = (area.height() * zoom).ceil();
@@ -2966,7 +3075,10 @@ pub fn render_shadow_image(shape: &Shape, dpi: f64) -> Option<(Rect, Pixmap)> {
     let mut pm = Pixmap::new(w as u32, h as u32)?;
     // Page (y up) to the image (y down), the area's top left at 0, 0.
     let screen = Affine::new([zoom, 0.0, 0.0, -zoom, -area.x0 * zoom, area.y1 * zoom]);
-    let drawn = if matches!(
+    let drawn = if !shape.effects.is_empty() {
+        group_shadow_layer(&mut pm, sh, shape, Affine::IDENTITY, b, screen, zoom, true);
+        true
+    } else if matches!(
         shape.kind,
         ShapeKind::Group { .. } | ShapeKind::ClipFrame { .. }
     ) {
@@ -7376,6 +7488,132 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A blue square at 20 to 40 mm with a body running 10 mm up and to
+    /// the right and a flat, sharp black shadow.
+    fn extruded_square(offset: (f64, f64), turn: [f64; 3]) -> Shape {
+        let mut s = Shape::new(
+            tracedraw_core::ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(20.0, 20.0, 40.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        s.fill = Fill::Solid(Color::rgb8(0, 0, 255));
+        s.stroke = None;
+        s.effects = vec![tracedraw_core::live::Effect::Extrude {
+            depth: tracedraw_core::geometry::Vec2::new(10.0, 10.0),
+            vanishing: None,
+            amount: 0.0,
+            shade_from: None,
+            shade_to: None,
+            light_angle: 135.0,
+            light_intensity: 50.0,
+            bevel: 0.0,
+            kind: None,
+            on_object: false,
+            solid: None,
+            space: tracedraw_core::extrude3d::Solid {
+                rotation: turn,
+                ..Default::default()
+            },
+        }];
+        s.shadow = Some(tracedraw_core::Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(offset.0, offset.1),
+            opacity: 1.0,
+            blur: 0.0,
+            color: Color::BLACK,
+            merge: tracedraw_core::live::MergeMode::Normal,
+            ..Default::default()
+        });
+        s
+    }
+
+    /// #2215: an extruded object casts the shadow of the object and its
+    /// body together, beneath both. The shadow was the object's alone and
+    /// was drawn over the body behind it, a dark patch on the body's
+    /// faces; a body turned in space cast none.
+    #[test]
+    fn an_extruded_object_casts_the_shadow_of_its_body_beneath_it() {
+        let black = (0, 0, 0);
+        // The shadow 4 mm to the right: the square's own would cover the
+        // body's right face up to x = 44.
+        let s = extruded_square((4.0, 0.0), [0.0; 3]);
+        let (doc, page) = doc_with(vec![s.clone()]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        // Image rows run down: page y = 100 - row.
+        let (r, g, b) = px(&pm, 42, 68);
+        assert!(b > 60 && r < 40 && g < 40, "the body's face: {r} {g} {b}");
+        assert_eq!(px(&pm, 30, 70), (0, 0, 255), "the object");
+        // Beyond the body (it ends at x = 50) lies the body's shadow.
+        assert_eq!(px(&pm, 52, 60), black, "the body's shadow");
+        assert_eq!(px(&pm, 56, 60), (255, 255, 255));
+        // The picture of the shadow has the body in it.
+        let (area, alone) = render_shadow_image(&s, 25.4).expect("picture");
+        assert!(
+            (area.x1 - 54.0).abs() < 1.5 && (area.y1 - 50.0).abs() < 1.5,
+            "{area:?}"
+        );
+        assert!(
+            (area.x0 - 24.0).abs() < 1.5 && (area.y0 - 20.0).abs() < 1.5,
+            "{area:?}"
+        );
+        let at = |x: f64, y: f64| {
+            alone
+                .pixel((x - area.x0) as u32, (area.y1 - y) as u32)
+                .map_or(0, |p| p.alpha())
+        };
+        assert_eq!(at(52.5, 45.5), 255, "the body's far corner");
+        assert_eq!(at(26.5, 45.5), 0, "above the object, left of the body");
+        // In a group that has the shadow the body casts it too.
+        let mut child = s.clone();
+        let shadow = child.shadow.take();
+        let mut group = Shape::new(
+            tracedraw_core::ShapeId(2),
+            ShapeKind::Group {
+                children: vec![child],
+            },
+        );
+        group.shadow = shadow;
+        let (doc, page) = doc_with(vec![group]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        assert_eq!(px(&pm, 52, 60), black, "a group's shadow");
+        // Turned in space the body casts a shadow at all.
+        let turned = extruded_square((40.0, 0.0), [0.0, 30.0, 0.0]);
+        let (doc, page) = doc_with(vec![turned]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        assert_eq!(px(&pm, 70, 70), black, "a turned body's shadow");
+    }
+
+    /// The picture of the shadow of an enveloped object (Break Drop
+    /// Shadow Apart, PDF and `.cdr` output) is of the outline the envelope
+    /// draws, where the page shows the shadow; it was of the outline
+    /// without the envelope (#2217).
+    #[test]
+    fn the_shadow_picture_of_an_enveloped_object_is_of_what_is_drawn() {
+        let mut s = extruded_square((40.0, 0.0), [0.0; 3]);
+        // The envelope stretches the square to twice its height.
+        s.effects = vec![tracedraw_core::live::Effect::envelope_around(
+            Rect::new(20.0, 20.0, 40.0, 60.0),
+            false,
+        )];
+        let (area, pm) = render_shadow_image(&s, 25.4).expect("picture");
+        assert!(
+            (area.x0 - 60.0).abs() < 1.5 && (area.x1 - 80.0).abs() < 1.5,
+            "{area:?}"
+        );
+        assert!(
+            (area.y0 - 20.0).abs() < 1.5 && (area.y1 - 60.0).abs() < 1.5,
+            "{area:?}"
+        );
+        assert_eq!(pm.pixel(10, 3).map(|p| p.alpha()), Some(255));
+        // The page shows it there: beside the drawn top, page y = 55.
+        let (doc, page) = doc_with(vec![s]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        assert_eq!(px(&pm, 70, 45), (0, 0, 0));
+        assert_eq!(px(&pm, 30, 45), (0, 0, 255));
     }
 
     /// A ring as a user makes one, with a flat black shadow 30 mm to the
