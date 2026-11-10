@@ -23612,6 +23612,94 @@ fn shift_click_on_a_character_node_adds_it() {
     assert_eq!(app.node_selection, vec![(id, 0), (id, 1), (id, 2)]);
 }
 
+/// #2201: keys for commands that had none. Ctrl+Shift+I inverts the
+/// selection, Ctrl+; shows and hides the guidelines and Ctrl+' the
+/// document grid (the three are menu commands, listed with those keys);
+/// Ctrl+] and Ctrl+[ move the selection one step up and down the stack,
+/// with Shift to the front and the back of its layer, beside the keys
+/// Order has; and Alt+Backspace undoes, as Ctrl+Z does.
+#[test]
+fn more_commands_have_keys() {
+    let (ctx, mut app, first) = setup();
+    let add = |app: &mut App, x: f64| {
+        app.new_shape(ShapeKind::Rect {
+            rect: Rect::new(x, 60.0, x + 20.0, 80.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect")
+    };
+    let second = add(&mut app, 10.0);
+    let third = add(&mut app, 40.0);
+    let press = |ctx: &egui::Context, app: &mut App, k: egui::Key, mods: Modifiers| {
+        frame(ctx, app, vec![key(k, mods), key_up(k, mods)], mods);
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    let stack = |app: &App| -> Vec<ShapeId> {
+        let layer = app.active_layer().expect("layer");
+        app.doc()
+            .layer(layer)
+            .expect("layer")
+            .shapes
+            .iter()
+            .map(|s| s.id)
+            .collect()
+    };
+    let ctrl = Modifiers::COMMAND;
+    let ctrl_shift = Modifiers::COMMAND | Modifiers::SHIFT;
+
+    // Invert Selection.
+    app.select(vec![first]);
+    press(&ctx, &mut app, egui::Key::I, ctrl_shift);
+    let mut picked = app.selection.clone();
+    picked.sort();
+    let mut others = vec![second, third];
+    others.sort();
+    assert_eq!(picked, others, "Ctrl+Shift+I");
+
+    // Guidelines and the document grid.
+    let (guides, grid) = (app.show_guides, app.show_grid);
+    press(&ctx, &mut app, egui::Key::Semicolon, ctrl);
+    assert_eq!(app.show_guides, !guides, "Ctrl+;");
+    assert_eq!(app.show_grid, grid);
+    press(&ctx, &mut app, egui::Key::Quote, ctrl);
+    assert_eq!(app.show_grid, !grid, "Ctrl+'");
+    assert_eq!(app.show_guides, !guides);
+
+    // Order with the bracket keys.
+    assert_eq!(stack(&app), [first, second, third]);
+    app.select(vec![first]);
+    press(&ctx, &mut app, egui::Key::CloseBracket, ctrl);
+    assert_eq!(stack(&app), [second, first, third], "Ctrl+]");
+    press(&ctx, &mut app, egui::Key::OpenBracket, ctrl);
+    assert_eq!(stack(&app), [first, second, third], "Ctrl+[");
+    press(&ctx, &mut app, egui::Key::CloseBracket, ctrl_shift);
+    assert_eq!(stack(&app), [second, third, first], "Ctrl+Shift+]");
+    press(&ctx, &mut app, egui::Key::OpenBracket, ctrl_shift);
+    assert_eq!(stack(&app), [first, second, third], "Ctrl+Shift+[");
+
+    // Alt+Backspace undoes the last of them and deletes nothing.
+    press(&ctx, &mut app, egui::Key::Backspace, Modifiers::ALT);
+    assert_eq!(stack(&app), [second, third, first], "Alt+Backspace");
+
+    // The menus and the Commands page show the three menu keys.
+    let mut entries = Vec::new();
+    let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+        entries = crate::ui::menus::commands(&mut app, ui.ctx());
+    });
+    out.textures_delta.clear();
+    for (id, keys) in [
+        ("menu.edit.invert_selection", "Ctrl+Shift+I"),
+        ("menu.view.guidelines", "Ctrl+;"),
+        ("menu.view.document_grid", "Ctrl+'"),
+    ] {
+        let e = entries.iter().find(|e| e.key == id).expect(id);
+        assert_eq!(e.shortcut, keys, "{id}");
+        let (mods, k) = crate::shortcuts::parse(keys).expect(keys);
+        assert_eq!(crate::shortcuts::format(mods, k), keys);
+    }
+}
+
 /// The Shape tool's node commands have keys of their own while nodes
 /// are chosen (#2001): Shift+U makes the segment ending at the chosen
 /// node a curve and Shift+L a line again, Shift+C, Shift+M and Shift+Y

@@ -2741,7 +2741,12 @@ fn edit_menu(app: &mut App, ui: &mut Ui) {
         }
     });
     // Selection commands, each one undo step (#2002).
-    if item(ui, "menu.edit.invert_selection", "", app.has_document()) {
+    if item(
+        ui,
+        "menu.edit.invert_selection",
+        "Ctrl+Shift+I",
+        app.has_document(),
+    ) {
         app.invert_selection();
     }
     sub(ui, "menu.edit.select_similar", |ui| {
@@ -2870,7 +2875,7 @@ fn view_menu(app: &mut App, ui: &mut Ui) {
         }
     });
     sub(ui, "menu.view.grid", |ui| {
-        if check(ui, "menu.view.document_grid", "", app.show_grid) {
+        if check(ui, "menu.view.document_grid", "Ctrl+'", app.show_grid) {
             app.show_grid = !app.show_grid;
         }
         if check(ui, "menu.view.pixel_grid", "", app.show_pixel_grid) {
@@ -2887,7 +2892,7 @@ fn view_menu(app: &mut App, ui: &mut Ui) {
         app.settings.show_scrollbars = !app.settings.show_scrollbars;
         app.settings.save();
     }
-    if check(ui, "menu.view.guidelines", "", app.show_guides) {
+    if check(ui, "menu.view.guidelines", "Ctrl+;", app.show_guides) {
         app.show_guides = !app.show_guides;
     }
     if check(

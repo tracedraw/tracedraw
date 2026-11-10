@@ -59,6 +59,8 @@ full, row-by-row status.
 
 - Align and Distribute, Distribute To > Set spacing: a slider under the spacing box, and the wheel over the box, change the spacing live: once a Distribute button has spread the selection, it spreads again at each new value as you adjust. Letting go of the slider or moving away from the box keeps the result as one undo step; Esc puts the spacing and the objects back. Before, a new spacing took a click on the button again.
 
+- Keyboard: keys for commands that had none. Ctrl+Shift+I inverts the selection, Ctrl+; shows and hides the guidelines and Ctrl+' the document grid (the menus show them and Options > Customization > Commands changes them); Ctrl+] and Ctrl+[ move the selection one step up and down the stack, with Shift to the front and the back of its layer, and Alt+Backspace undoes (#2201).
+
 - Palette bars dock beside other bars: dragged over the toolbox, the default palette, the document palette row, a column of panels or another palette bar, a palette bar goes just outside it (let go on its half towards the window's edge) or just inside it (the other half), with a blue line showing where. Several palette bars stand side by side in the order they were put, such as a second row next to the default palette or a column next to the toolbox; the place is kept in the preferences and in workspace files. Before, a palette bar docked only at the window's edges (live test of 0.41).
 
 - Paragraph text: linking a frame of text to an empty frame flows the text that does not fit into the empty one, whichever of the two was picked first. Picked empty frame first, the whole text went into it and the frame it came from was left empty, so the text seemed to vanish when going back to that frame.

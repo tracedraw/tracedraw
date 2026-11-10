@@ -4041,7 +4041,8 @@ impl App {
             return;
         }
 
-        if pressed(Key::Z, cmd) {
+        // Alt+Backspace undoes too, the older key for it (#2201).
+        if pressed(Key::Z, cmd) || pressed(Key::Backspace, Modifiers::ALT) {
             self.undo();
         }
         if pressed(Key::Z, cmd | Modifiers::SHIFT) {
@@ -4286,6 +4287,20 @@ impl App {
         if pressed(Key::PageDown, cmd) {
             self.order(2);
         }
+        // The bracket keys order too (#2201): Ctrl+] and Ctrl+[ one step,
+        // with Shift to the front and the back of the layer.
+        if pressed(Key::CloseBracket, cmd) {
+            self.order(1);
+        }
+        if pressed(Key::OpenBracket, cmd) {
+            self.order(2);
+        }
+        if pressed(Key::CloseBracket, cmd | Modifiers::SHIFT) {
+            self.order(0);
+        }
+        if pressed(Key::OpenBracket, cmd | Modifiers::SHIFT) {
+            self.order(3);
+        }
         // The rest of the menu shortcuts.
         if pressed(Key::P, cmd) {
             self.print();
@@ -4351,6 +4366,17 @@ impl App {
         }
         if pressed(Key::R, Modifiers::ALT | Modifiers::SHIFT) {
             self.show_rulers = !self.show_rulers;
+        }
+        // View > Guidelines and View > Grid > Document Grid (#2201).
+        if pressed(Key::Semicolon, cmd) {
+            self.show_guides = !self.show_guides;
+        }
+        if pressed(Key::Quote, cmd) {
+            self.show_grid = !self.show_grid;
+        }
+        // Edit > Invert Selection (#2201).
+        if pressed(Key::I, cmd | Modifiers::SHIFT) {
+            self.invert_selection();
         }
         // Ctrl+8 and Ctrl+2: selected text one keyboard text increment
         // larger or smaller (Options > Text).
