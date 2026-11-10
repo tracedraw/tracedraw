@@ -327,6 +327,13 @@ class Document {
   ReplaceText(needle, replacement, options) {
     return this.ActivePage.ReplaceText(needle, replacement, options);
   }
+  FindByProperties(query) { return __call('find_by_properties', query).ids.map(i => new Shape(i)); }
+  ReplaceByProperties(query) { return __call('replace_by_properties', query).replaced; }
+  SelectByProperties(query) {
+    const s = this.FindByProperties(query);
+    if (s.length) new ShapeRange(s.map(x => x.id)).CreateSelection();
+    return s.length;
+  }
   AddPages(n) { for (let i = 0; i < (n||1); i++) __call('add_page', {}); return this.Pages.Item(this.Pages.Count); }
   CreateRectangle(x, y, w, h, r) { return this.ActiveLayer.CreateRectangle(x, y, w, h, r); }
   CreateEllipse(x, y, w, h) { return this.ActiveLayer.CreateEllipse(x, y, w, h); }
@@ -1005,6 +1012,85 @@ fn color_from(v: &Value) -> Option<Color> {
     serde_json::from_value(v.clone()).ok()
 }
 
+/// The type named by a script's `type`, in the words the object model uses
+/// for `Shape.Type`, so a script writes the same name it reads.
+fn object_type_from(name: &str) -> Result<tracedraw_core::find::ObjectType, String> {
+    use tracedraw_core::find::ObjectType as T;
+    Ok(match name.to_ascii_lowercase().as_str() {
+        "rectangle" => T::Rectangle,
+        "ellipse" => T::Ellipse,
+        "polygon" | "star" | "complexstar" => T::Polygon,
+        "curve" => T::Curve,
+        "text" | "artistictext" => T::ArtisticText,
+        "paragraphtext" => T::ParagraphText,
+        "group" => T::Group,
+        "bitmap" => T::Bitmap,
+        "clipframe" => T::ClipFrame,
+        "table" => T::Table,
+        "symbol" => T::Symbol,
+        other => return Err(format!("no object type {other:?}")),
+    })
+}
+
+/// A colour criterion from a script: `null` for "no paint", a colour
+/// object for a colour, and nothing at all for "do not look at this".
+///
+/// A script's `Color` keeps its value under `v` (`new Color(...)` in the
+/// prelude), while the host takes a colour as `{model, ...}`; both are
+/// accepted so `{fill: Color.RGB(255,0,0)}` and a `Color` kept in a
+/// variable work the same.
+fn color_query_from(v: Option<&Value>) -> Result<Option<tracedraw_core::find::ColorQuery>, String> {
+    use tracedraw_core::find::ColorQuery;
+    let Some(v) = v else { return Ok(None) };
+    if v.is_null() {
+        return Ok(Some(ColorQuery::Nothing));
+    }
+    let inner = v.get("v").unwrap_or(v);
+    let c = color_from(inner).ok_or("not a colour")?;
+    Ok(Some(ColorQuery::Color(c)))
+}
+
+/// The criteria a script gives, in the words `find_by_properties` and
+/// `replace_by_properties` take.
+fn query_from_json(a: &Value) -> Result<tracedraw_core::find::ObjectQuery, String> {
+    let mut q = tracedraw_core::find::ObjectQuery::default();
+    if let Some(t) = a.get("type").and_then(|v| v.as_str()) {
+        q.object_type = Some(object_type_from(t)?);
+    }
+    q.fill = color_query_from(a.get("fill"))?;
+    q.outline = color_query_from(a.get("outline"))?;
+    if let Some(w) = a.get("outlineWidth").and_then(|v| v.as_f64()) {
+        q.outline_width = Some(w);
+    }
+    if let Some(f) = a.get("font").and_then(|v| v.as_str()) {
+        if !f.trim().is_empty() {
+            q.font = Some(f.trim().to_string());
+        }
+    }
+    Ok(q)
+}
+
+/// What to put in place of what was found. The colours take the same two
+/// shapes `color_query_from` takes.
+fn replacement_from_json(a: &Value) -> Result<tracedraw_core::find::Replacement, String> {
+    let mut r = tracedraw_core::find::Replacement::default();
+    if let Some(v) = a.get("new_fill") {
+        r.fill = color_from(v.get("v").unwrap_or(v));
+    }
+    if let Some(v) = a.get("new_outline") {
+        r.outline = color_from(v.get("v").unwrap_or(v));
+    }
+    if let Some(w) = a.get("new_outline_width").and_then(|v| v.as_f64()) {
+        r.outline_width = Some(w);
+    }
+    if let Some(f) = a.get("new_font").and_then(|v| v.as_str()) {
+        if !f.trim().is_empty() {
+            r.font = Some(f.trim().to_string());
+        }
+    }
+    Ok(r)
+}
+
 impl HostInner {
     fn run(&mut self, cmd: Command) -> Result<(), String> {
         if self.trust == Trust::Untrusted && self.commands.len() >= UNTRUSTED_MAX_CHANGES {
@@ -1049,7 +1135,23 @@ impl HostInner {
         if let Some(l) = a.get("layer").and_then(|v| v.as_u64()) {
             return Ok(LayerId(l));
         }
-        self.layer.ok_or_else(|| "no active layer".to_string())
+        // The layer the script last chose, but only while it is on the page
+        // the script is on: after `Page.Activate()` the old page's layer
+        // would take the new objects to a page nobody asked for.
+        if let Some(l) = self.layer {
+            if self
+                .doc
+                .page(self.page)
+                .is_ok_and(|p| p.layers.iter().any(|x| x.id == l))
+            {
+                return Ok(l);
+            }
+        }
+        self.doc
+            .page(self.page)
+            .ok()
+            .and_then(|p| p.layers.last().map(|l| l.id))
+            .ok_or_else(|| "no active layer".to_string())
     }
 
     fn add(&mut self, layer: LayerId, mut shape: Shape) -> Result<Value, String> {
@@ -1293,6 +1395,65 @@ impl HostInner {
                     .flat_map(|l| l.shapes.iter().map(|s| s.id))
                     .collect();
                 json!({})
+            }
+            "find_by_properties" => {
+                let q = query_from_json(a)?;
+                if q.is_empty() {
+                    return Err("no criterion: name a type, a fill, an outline, \
+                                an outline width or a font"
+                        .into());
+                }
+                let whole = a
+                    .get("whole_drawing")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let scope = if whole {
+                    tracedraw_core::find::Scope::Document
+                } else {
+                    tracedraw_core::find::Scope::Page
+                };
+                let hits = tracedraw_core::find::find(&self.doc, &q, scope, {
+                    self.doc
+                        .pages
+                        .iter()
+                        .position(|p| p.id == self.page)
+                        .unwrap_or(0)
+                });
+                json!({"ids": hits.iter().map(|h| h.id.raw()).collect::<Vec<_>>()})
+            }
+            "replace_by_properties" => {
+                let q = query_from_json(a)?;
+                if q.is_empty() {
+                    return Err("no criterion: name what to look for".into());
+                }
+                let r = replacement_from_json(a)?;
+                if r.is_empty() {
+                    return Err("no replacement: name a fill, an outline, \
+                                an outline width or a font"
+                        .into());
+                }
+                let whole = a
+                    .get("whole_drawing")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let scope = if whole {
+                    tracedraw_core::find::Scope::Document
+                } else {
+                    tracedraw_core::find::Scope::Page
+                };
+                let page = self
+                    .doc
+                    .pages
+                    .iter()
+                    .position(|p| p.id == self.page)
+                    .unwrap_or(0);
+                let hits = tracedraw_core::find::find(&self.doc, &q, scope, page);
+                let cmds = tracedraw_core::find::replace_commands(&self.doc, &hits, &q, &r);
+                let changed = hits.len();
+                for c in cmds {
+                    self.run(c)?;
+                }
+                json!({"replaced": changed})
             }
             "shape_info" => {
                 let s = self.shape(id_arg(a, "id")?)?;
@@ -3203,5 +3364,187 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out[0], "sim");
+    }
+
+    /// FindByProperties finds by type, by fill, and by "no fill", the ways
+    /// the interface's Find and Replace by properties does.
+    #[test]
+    fn find_by_properties_finds_by_type_and_colour() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const r = ActiveLayer.CreateRectangle(0, 0, 10, 10);\n\
+             r.Fill.ApplyUniformFill(Color.RGB(255, 0, 0));\n\
+             const e = ActiveLayer.CreateEllipse(20, 0, 10, 10);\n\
+             e.Fill.ApplyUniformFill(Color.RGB(255, 0, 0));\n\
+             ActiveLayer.CreateRectangle(40, 0, 10, 10);",
+        )
+        .unwrap();
+        let out = run(
+            &mut a,
+            "print(ActiveDocument.FindByProperties({type:'Rectangle'}).length);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "2", "two rectangles");
+        let out = run(
+            &mut a,
+            "print(ActiveDocument.FindByProperties({fill: Color.RGB(255,0,0)}).length);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "2", "two red objects");
+        let out = run(
+            &mut a,
+            "print(ActiveDocument.FindByProperties({fill: null}).length);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "1", "one with no fill");
+        let out = run(
+            &mut a,
+            "print(ActiveDocument.FindByProperties({type:'Ellipse', fill: Color.RGB(255,0,0)}).length);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "1", "the criteria are taken together");
+    }
+
+    /// ReplaceByProperties swaps one colour for another, and the count is
+    /// how many it changed.
+    #[test]
+    fn replace_by_properties_swaps_the_colour() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const r = ActiveLayer.CreateRectangle(0, 0, 10, 10);\n\
+             r.Fill.ApplyUniformFill(Color.RGB(255, 0, 0));\n\
+             const e = ActiveLayer.CreateEllipse(20, 0, 10, 10);\n\
+             e.Fill.ApplyUniformFill(Color.RGB(255, 0, 0));",
+        )
+        .unwrap();
+        let out = run(
+            &mut a,
+            "print(ActiveDocument.ReplaceByProperties({fill: Color.RGB(255,0,0), new_fill: Color.RGB(0,0,255)}));",
+        )
+        .unwrap();
+        assert_eq!(out[0], "2", "both changed");
+        let out = run(
+            &mut a,
+            "print(ActiveDocument.FindByProperties({fill: Color.RGB(255,0,0)}).length);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "0", "no red left");
+        let out = run(
+            &mut a,
+            "print(ActiveDocument.FindByProperties({fill: Color.RGB(0,0,255)}).length);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "2", "both blue now");
+    }
+
+    /// SelectByProperties puts what it found in the selection, so the
+    /// calls that work on a selection use it.
+    #[test]
+    fn select_by_properties_selects_what_it_found() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateRectangle(0, 0, 10, 10);\n\
+             ActiveLayer.CreateEllipse(20, 0, 10, 10);\n\
+             print(ActiveDocument.SelectByProperties({type:'Rectangle'}));",
+        )
+        .map(|out| assert_eq!(out[0], "1"))
+        .unwrap();
+        let out = run(&mut a, "print(ActiveSelection.Count);").unwrap();
+        assert_eq!(out[0], "1", "one object selected");
+        let out = run(&mut a, "print(ActiveSelection.Item(1).Type);").unwrap();
+        assert_eq!(out[0], "Rectangle");
+    }
+
+    /// The whole drawing or just the page. `AddPages` adds a page but does
+    /// not go to it, so the script says which page it means.
+    #[test]
+    fn find_by_properties_scopes_and_undoes() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateRectangle(0, 0, 10, 10);\n\
+             ActiveDocument.AddPages(1);\n\
+             ActiveDocument.Pages.Item(2).Activate();\n\
+             ActiveLayer.CreateRectangle(20, 20, 10, 10);",
+        )
+        .unwrap();
+        let out = run(
+            &mut a,
+            "print(ActiveDocument.FindByProperties({type:'Rectangle'}).length);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "1", "the page the script is on");
+        let out = run(
+            &mut a,
+            "print(ActiveDocument.FindByProperties({type:'Rectangle', whole_drawing:true}).length);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "2", "both pages");
+
+        // Back to the first page for the rest.
+        run(&mut a, "ActiveDocument.Pages.Item(1).Activate();").unwrap();
+        run(
+            &mut a,
+            "ActiveDocument.ReplaceByProperties({type:'Rectangle', new_outline_width: 2});",
+        )
+        .unwrap();
+        let antes = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Outline.Width);").unwrap();
+        assert_eq!(antes[0], "2");
+        a.undo();
+        let depois = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Outline.Width);").unwrap();
+        assert_ne!(depois[0], "2", "one undo puts the width back");
+    }
+
+    /// A query with no criterion, or a replacement with nothing to put,
+    /// is an error rather than a search that matches everything.
+    #[test]
+    fn properties_queries_that_cannot_work_are_refused() {
+        let mut a = app();
+        run(&mut a, "ActiveLayer.CreateRectangle(0, 0, 10, 10);").unwrap();
+        assert!(
+            run(&mut a, "ActiveDocument.FindByProperties({});").is_err(),
+            "no criterion"
+        );
+        assert!(
+            run(
+                &mut a,
+                "ActiveDocument.FindByProperties({type:'nonsense'});"
+            )
+            .is_err(),
+            "no such type"
+        );
+        assert!(
+            run(
+                &mut a,
+                "ActiveDocument.ReplaceByProperties({type:'Rectangle'});"
+            )
+            .is_err(),
+            "nothing to put in place"
+        );
+    }
+
+    /// After `Page.Activate()` a script draws on the page it chose, not on
+    /// the one it started from.
+    #[test]
+    fn page_and_layer_follow_activation() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateRectangle(0, 0, 10, 10);\n\
+             ActiveDocument.AddPages(1);\n\
+             ActiveDocument.Pages.Item(2).Activate();\n\
+             ActiveLayer.CreateRectangle(20, 20, 10, 10);",
+        )
+        .unwrap();
+        let out = run(
+            &mut a,
+            "print(ActiveDocument.Pages.Item(1).Shapes.Count + ',' + \
+                    ActiveDocument.Pages.Item(2).Shapes.Count);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "1,1", "one object on each page");
     }
 }
