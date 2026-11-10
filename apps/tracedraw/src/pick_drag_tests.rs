@@ -10680,7 +10680,8 @@ fn mask_outside_page_covers_the_desktop_and_keeps_objects_editable() {
         )),
         ..Default::default()
     };
-    let out = ctx.run_ui(input, |ui| crate::ui::root(&mut app, ui));
+    let mut out = ctx.run_ui(input, |ui| crate::ui::root(&mut app, ui));
+    out.textures_delta.clear();
     let mut outline = false;
     let mut after_mask = false;
     let mut seen_mask = false;
@@ -16690,7 +16691,10 @@ fn the_pen_preview_is_a_blue_line_on_a_white_one() {
         events: vec![Event::PointerMoved(b)],
         ..Default::default()
     };
-    let out = ctx.run_ui(input, |ui| crate::ui::root(&mut app, ui));
+    let mut out = ctx.run_ui(input, |ui| crate::ui::root(&mut app, ui));
+    // Textures the frame uploads (new glyphs, say) are not drawn here,
+    // and dropping them unhandled panics, as the other frames here know.
+    out.textures_delta.clear();
     fn flat(s: &egui::Shape, f: &mut dyn FnMut(&egui::Shape)) {
         match s {
             egui::Shape::Vec(v) => v.iter().for_each(|s| flat(s, f)),
@@ -17227,7 +17231,8 @@ fn a_recent_document_comes_off_the_list_by_itself() {
         )),
         ..Default::default()
     };
-    let out = ctx.run_ui(input, |ui| crate::ui::root(&mut app, ui));
+    let mut out = ctx.run_ui(input, |ui| crate::ui::root(&mut app, ui));
+    out.textures_delta.clear();
     let label = crate::i18n::tr("welcome.remove_recent");
     let at = out
         .shapes
