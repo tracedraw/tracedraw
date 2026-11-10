@@ -1459,30 +1459,39 @@ fn curved_fillet_of(
             b = -turn_out * r_out / speed_out;
             met = true;
         }
-        for _ in 0..40 {
+        // From where the tangents meet, then from nearer the arc: an
+        // arc of nearly half a turn has its tangents meet far off, and
+        // the sides cross long before (#2211).
+        for nearer in [1.0, 0.5, 0.25, 0.1, 0.03] {
             if met {
                 break;
             }
-            let ((pa, ja), (pb, jb)) = (carried(s_in, a, carry_in), carried(s_out, b, carry_out));
-            let f = pa - pb;
-            if f.hypot() < 1e-10 * (1.0 + radius) {
-                met = true;
-                break;
-            }
-            let det = jb.cross(ja);
-            if det.abs() < 1e-14 || !det.is_finite() {
-                return None;
-            }
-            a += f.cross(jb) / det;
-            b += f.cross(ja) / det;
-            // Far past the ends the sides say nothing.
-            if !(a.is_finite() && b.is_finite())
-                || a > 200.0
-                || b < -200.0
-                || carry_in.past(a - 1.0, speed_in)
-                || carry_out.past(b, speed_out)
-            {
-                return None;
+            (a, b) = (1.0 + nearer * reach / speed_in, -nearer * reach / speed_out);
+            for _ in 0..40 {
+                let ((pa, ja), (pb, jb)) =
+                    (carried(s_in, a, carry_in), carried(s_out, b, carry_out));
+                let f = pa - pb;
+                if f.hypot() < 1e-10 * (1.0 + radius) {
+                    met = a > 1.0 + 1e-9 && b < -1e-9;
+                    break;
+                }
+                let det = jb.cross(ja);
+                if det.abs() < 1e-14 || !det.is_finite() {
+                    break;
+                }
+                a += f.cross(jb) / det;
+                b += f.cross(ja) / det;
+                // Far past the ends the sides say nothing. A side cut
+                // down to a thousandth of itself, by the largest
+                // rounding it takes, still tells where it ran.
+                if !(a.is_finite() && b.is_finite())
+                    || a > 5000.0
+                    || b < -5000.0
+                    || carry_in.past(a - 1.0, speed_in)
+                    || carry_out.past(b, speed_out)
+                {
+                    break;
+                }
             }
         }
         if !met || a <= 1.0 + 1e-9 || b >= -1e-9 {

@@ -257,6 +257,12 @@ round their corners with their own handles either way.
   and taking the rounding off draws it as an arc beside the side
   (#2224,
   `corner_cut::tests::a_fillet_runs_on_through_the_smooth_nodes_of_a_side`).
+  The crossing of the sides is looked for from where the arc's
+  tangents meet and then from nearer the arc, up to 5000 times a
+  side's own length past its end, so a corner rounded as far as it
+  goes (the arc nearly half a turn, or a side cut down to a
+  thousandth of itself) keeps its widget (#2211,
+  `corner_widgets::tests::a_corner_rounded_as_far_as_it_goes_keeps_its_ring`).
   Its widget
   sits 18 px off the
   middle of the arc, along the middle of the corner. Dragging it takes

@@ -30,6 +30,7 @@ full, row-by-row status.
 - TraceCut, CutContour: the swatch it adds goes by its ink's name, CutContour, in the document palette, the Palette Manager, the status bar and any palette it is added to, instead of its ink number ("Spot 1"), so the name cutting RIPs look for shows, as it is in the PDF's Separation colour space. Every spot colour's swatch is named by its ink the same way (#2186).
 
 - TraceCut: an object with an envelope, a perspective or a distortion is cut, measured and nested by the outline it draws. Shape Nesting and Rectangle Nesting placed it by the outline it had before the effect, so a neighbour could land on the part the envelope had pulled out; Plotter Output cut the outline from before the effect too (#2227).
+- Shape tool, corner rounding rings: a corner between a curve and a line, or two curves, lost its rounding ring when its ring was dragged as far as the corner rounds, so it could not be dragged back. At the largest rounding the arc turns nearly half a turn, or a side is cut down to a thousandth of itself, and the sharp corner behind the arc was no longer found; it is now, and the ring stays (#2211).
 
 - File > Import of PNG and JPEG files: a photo whose Exif orientation says the camera was turned comes in upright, with its width, height and resolution turned with it, a CMYK JPEG's inks too; before, it came in on its side. Every common kind of PNG (8 and 16 bits, grey, alpha, palette) and JPEG (baseline, progressive, grey, CMYK) is checked to import (#2167).
 

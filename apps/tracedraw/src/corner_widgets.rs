@@ -1077,4 +1077,105 @@ mod tests {
             bitten.area()
         );
     }
+
+    /// A ring dragged as far as its corner rounds stays (#2211): the
+    /// corner keeps its ring at the largest rounding it takes, and the
+    /// ring dragged back out makes it sharp again.
+    #[test]
+    fn a_corner_rounded_as_far_as_it_goes_keeps_its_ring() {
+        use tracedraw_core::shaping::{overlay, Op};
+        let mut all = shapes();
+        let a = disc(60.0, 60.0, 30.0);
+        let b = disc(95.0, 65.0, 30.0);
+        let c = disc(72.0, 27.0, 30.0);
+        all.push(("lens of two discs", overlay(&a, &b, Op::Intersect)));
+        all.push(("disc with a bite", overlay(&a, &b, Op::Trim)));
+        all.push((
+            "disc with two bites",
+            overlay(&overlay(&a, &b, Op::Trim), &c, Op::Trim),
+        ));
+        all.push(("two discs welded", overlay(&a, &b, Op::Weld)));
+        let mut failures = Vec::new();
+        for (name, path) in all {
+            let sharp = corners(&path);
+            for i in 0..sharp.len() {
+                let mut app = App::headless();
+                let id = app
+                    .new_shape(ShapeKind::Path {
+                        path: path.clone(),
+                        closed: true,
+                    })
+                    .expect("a curve");
+                app.select(vec![id]);
+                app.tool = Tool::Shape;
+                app.settings.nodes.corner_widgets = true;
+                let path_of = |app: &App| match &app.doc().find_shape(id).expect("curve").kind {
+                    ShapeKind::Path { path, .. } => path.clone(),
+                    _ => panic!("a curve"),
+                };
+                let at = sharp[i].at;
+                let pull = |app: &mut App, by: f64| -> bool {
+                    let Some(w) = app
+                        .corner_widgets()
+                        .into_iter()
+                        // A side cut down to next to nothing reads its
+                        // corner back less exactly.
+                        .filter(|w| (w.corner.at - at).hypot() < 5.0)
+                        .min_by(|a, b| {
+                            (a.corner.at - at)
+                                .hypot()
+                                .total_cmp(&(b.corner.at - at).hypot())
+                        })
+                    else {
+                        return false;
+                    };
+                    let p = app.view.to_page(w.at);
+                    if !app.start_corner_drag(w, p, false) {
+                        return false;
+                    }
+                    let Drag::CornerWidget(d) = app.drag.clone() else {
+                        return false;
+                    };
+                    app.corner_drag_to(*d, p + w.corner.inside * by);
+                    app.drag = Drag::None;
+                    true
+                };
+                if app.corner_widgets().len() != sharp.len() {
+                    failures.push(format!("{name} corner {i}: rings before"));
+                    continue;
+                }
+                // Far past what it takes: the largest rounding.
+                if !pull(&mut app, 1000.0) {
+                    failures.push(format!("{name} corner {i}: no ring to drag"));
+                    continue;
+                }
+                let rounded = fillets(&path_of(&app));
+                if rounded.len() != 1 {
+                    failures.push(format!(
+                        "{name} corner {i}: {} rounded corners at the largest rounding",
+                        rounded.len()
+                    ));
+                    continue;
+                }
+                if app.corner_widgets().len() != sharp.len() {
+                    failures.push(format!(
+                        "{name} corner {i}: {} rings of {} at the largest rounding",
+                        app.corner_widgets().len(),
+                        sharp.len()
+                    ));
+                    continue;
+                }
+                // And back out: sharp again.
+                if !pull(&mut app, -2000.0) {
+                    failures.push(format!("{name} corner {i}: no ring to drag back"));
+                    continue;
+                }
+                let back = path_of(&app);
+                if !fillets(&back).is_empty() || corners(&back).len() != sharp.len() {
+                    failures.push(format!("{name} corner {i}: not sharp again"));
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
 }
