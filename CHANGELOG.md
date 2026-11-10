@@ -95,6 +95,7 @@ full, row-by-row status.
 - Symmetry: a fountain fill and a gradient transparency are mirrored on the copies, so a fade running toward the mirror line runs toward it from the other side too; the copies' gradients ran the same way as the object's (#2121).
 
 - Envelope: the Mapping list of the property bar and of the Envelope panel says in its tip which mapping is in use and what it does with the object, and each row of the open list explains its mapping (Putty, Original, Horizontal, Vertical). The tip was the same sentence for all four (#2212).
+- View > Wireframe: the contents of a clip frame are cut to the frame, as in the other views (they were drawn whole and showed all round the frame), and a picture is a grey box crossed corner to corner instead of a plain grey box (#2146).
 
 - Drop shadow of an object with an extrusion, a contour or another effect that draws objects of its own: the shadow is cast by the object and what its effects draw together, once, beneath all of it. Before, it was the object's alone and was drawn over the body behind the object, a dark patch across the sides of an extruded text, and a body turned in space cast no shadow at all. The shadow of a group takes in the bodies of its extruded objects, and the shadow's picture (Break Drop Shadow Apart, PDF and `.cdr` output) is of the object as drawn, its envelope included (#2215).
 

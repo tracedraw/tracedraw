@@ -883,12 +883,11 @@ impl Renderer<'_> {
         if let (true, ShapeKind::ClipFrame { frame, contents }) =
             (self.flags.wireframe, &shape.kind)
         {
-            // Wireframe: the frame and everything inside it, unclipped.
+            // Wireframe: the frame, and of the contents what lies inside
+            // it, as the other views cut them (#2146). They were drawn
+            // whole, so the parts the frame hides showed all round it.
+            self.draw_wireframe_contents(frame, contents, transform);
             self.draw_shape(frame, transform);
-            for c in contents {
-                let t = self.child_transform(c, transform);
-                self.draw_shape(c, t);
-            }
             return;
         }
         if let (ShapeKind::ClipFrame { frame, contents }, Some(om)) =
@@ -993,12 +992,22 @@ impl Renderer<'_> {
             // stood out from the others in a colour of its own, and one
             // with a white outline did not show on the page at all
             // (#2041).
-            if matches!(shape.kind, ShapeKind::Bitmap { .. }) {
+            if let ShapeKind::Bitmap { rect, .. } = &shape.kind {
                 let mut paint = Paint::default();
                 paint.anti_alias = self.flags.anti_alias;
                 paint.set_color_rgba8(208, 208, 208, 255);
                 self.pixmap
                     .fill_path(&sk, &paint, FillRule::Winding, Transform::identity(), None);
+                // Corner to corner, the mark of a picture left out
+                // (#2146): a grey box alone read as an empty frame.
+                let mut cross = tracedraw_core::BezPath::new();
+                cross.move_to((rect.x0, rect.y0));
+                cross.line_to((rect.x1, rect.y1));
+                cross.move_to((rect.x0, rect.y1));
+                cross.line_to((rect.x1, rect.y0));
+                if let Some(cross) = to_sk_path(&(self.screen * (transform * cross))) {
+                    self.hairline(&cross, tracedraw_core::Color::BLACK);
+                }
             }
             self.hairline(&sk, tracedraw_core::Color::BLACK);
             return;
@@ -1609,6 +1618,55 @@ impl Renderer<'_> {
     /// target, with what lies beneath.
     fn merge_shadow(&mut self, sh: &tracedraw_core::Shadow, layer: &Pixmap, at: (i32, i32)) {
         composite_layer(self.pixmap, layer, at, sh.merge);
+    }
+
+    /// The contents of a clip frame in the Wireframe view: their
+    /// hairlines on a layer the size of the frame, cut to the frame.
+    /// A frame with no area to cut to shows them whole.
+    fn draw_wireframe_contents(&mut self, frame: &Shape, contents: &[Shape], parent: Affine) {
+        if contents.is_empty() {
+            return;
+        }
+        let (x, y, w, h) = self.layer_area(frame, parent);
+        let to_layer = Affine::translate((-f64::from(x), -f64::from(y))) * self.screen;
+        let cut = to_sk_path(&(to_layer * (parent * frame.page_path()))).and_then(|sk| {
+            let mut mask = tiny_skia::Mask::new(w, h)?;
+            mask.fill_path(
+                &sk,
+                shape_fill_rule(frame, false),
+                self.flags.anti_alias,
+                Transform::identity(),
+            );
+            Some(mask)
+        });
+        let (Some(mask), Some(mut layer)) = (cut, Pixmap::new(w, h)) else {
+            // Nothing of the frame in sight, or no outline to cut to.
+            if w > 0 && h > 0 {
+                for c in contents {
+                    let t = self.child_transform(c, parent);
+                    self.draw_shape(c, t);
+                }
+            }
+            return;
+        };
+        {
+            let mut sub = self.sub(&mut layer);
+            sub.screen = to_layer;
+            sub.origin = (self.origin.0 + x as i32, self.origin.1 + y as i32);
+            for c in contents {
+                let t = sub.child_transform(c, parent);
+                sub.draw_shape(c, t);
+            }
+        }
+        layer.apply_mask(&mask);
+        self.pixmap.draw_pixmap(
+            x as i32,
+            y as i32,
+            layer.as_ref(),
+            &tiny_skia::PixmapPaint::default(),
+            Transform::identity(),
+            None,
+        );
     }
 
     /// A one pixel line along `sk` (the Wireframe view).
@@ -5187,6 +5245,80 @@ mod tests {
             );
             let darkest = line.iter().map(|p| p.0).min().unwrap();
             assert!(darkest < 200, "a dark hairline, darkest {darkest}");
+        }
+    }
+
+    /// The Wireframe view cuts a clip frame's contents to the frame, as
+    /// the other views do (#2146): a content reaching past the frame
+    /// shows its line inside the frame only. It was drawn whole.
+    #[test]
+    fn wireframe_cuts_clip_frame_contents_to_the_frame() {
+        let frame = rect(1, Rect::new(20.0, 20.0, 60.0, 60.0), Color::WHITE);
+        // From inside the frame to far outside it at the right.
+        let content = rect(2, Rect::new(40.0, 30.0, 90.0, 50.0), Color::rgb8(255, 0, 0));
+        let clip = Shape::new(
+            ShapeId(3),
+            ShapeKind::ClipFrame {
+                frame: Box::new(frame),
+                contents: vec![content],
+            },
+        );
+        let (doc, page) = doc_with(vec![clip]);
+        let opts = RenderOptions {
+            wireframe: true,
+            ..RenderOptions::default()
+        };
+        let pm = render_page_image_with(&doc, page, 25.4, &opts).unwrap();
+        let dark = |x0: u32, x1: u32, y: u32| (x0..x1).any(|x| px(&pm, x, y).0 < 200);
+        // Page y 50 is row 50 of the 100 px picture; the content's top and
+        // bottom sides run along rows 50 and 70 (page y 50 and 30).
+        assert!(
+            dark(38, 43, 60),
+            "the content's left side, inside the frame"
+        );
+        assert!(dark(58, 63, 60), "the frame's right side");
+        assert!(!dark(64, 95, 60), "nothing of the content's far side");
+        let row = |y: u32| (66..88).any(|x| px(&pm, x, y).0 < 200);
+        assert!(
+            !(45..75).any(row),
+            "no content lines to the right of the frame"
+        );
+        assert_eq!(px(&pm, 50, 60), (255, 255, 255), "no fill");
+    }
+
+    /// A picture in the Wireframe view is a grey box crossed corner to
+    /// corner, the mark of a picture left out, not a plain box (#2146).
+    #[test]
+    fn wireframe_marks_pictures_with_a_cross() {
+        let mut photo = Pixmap::new(2, 2).unwrap();
+        photo.fill(tiny_skia::Color::from_rgba8(255, 0, 0, 255));
+        let png = photo.encode_png().unwrap();
+        let bmp = Shape::new(
+            ShapeId(1),
+            ShapeKind::Bitmap {
+                rect: Rect::new(20.0, 20.0, 80.0, 80.0),
+                width_px: 2,
+                height_px: 2,
+                png: png.into(),
+                fx: None,
+            },
+        );
+        let (doc, page) = doc_with(vec![bmp]);
+        let opts = RenderOptions {
+            wireframe: true,
+            ..RenderOptions::default()
+        };
+        let pm = render_page_image_with(&doc, page, 25.4, &opts).unwrap();
+        // Off the diagonals: the grey of the box.
+        assert_eq!(px(&pm, 50, 30), (208, 208, 208));
+        // On them, at a quarter and at the middle: a dark line.
+        for (x, y) in [(35, 35), (65, 35), (50, 50)] {
+            let darkest = (x - 1..=x + 1)
+                .flat_map(|i| (y - 1..=y + 1).map(move |j| (i, j)))
+                .map(|(i, j)| px(&pm, i, j).0)
+                .min()
+                .unwrap();
+            assert!(darkest < 120, "a diagonal at {x}, {y}: {darkest}");
         }
     }
 
