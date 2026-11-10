@@ -204,13 +204,26 @@ pub fn toggled(t: Theme) -> Theme {
     }
 }
 
+/// The theme in use, as an index into [`Theme::ALL`]. Tests run on
+/// threads of their own and each keeps its own theme (Light until it sets
+/// another), as with the button sizes: a test that switches the theme
+/// never changes the colours, or the pointer bitmaps kept by theme,
+/// another test is checking.
+#[cfg(not(test))]
 static CURRENT: AtomicU8 = AtomicU8::new(0);
+#[cfg(test)]
+thread_local! {
+    static CURRENT: AtomicU8 = const { AtomicU8::new(0) };
+}
 
 /// Use `theme` for the interface from now on (the tokens and
 /// [`visuals`]).
 pub fn set_theme(theme: Theme) {
     let i = Theme::ALL.iter().position(|t| *t == theme).unwrap_or(0);
+    #[cfg(not(test))]
     CURRENT.store(i as u8, Ordering::Relaxed);
+    #[cfg(test)]
+    CURRENT.with(|c| c.store(i as u8, Ordering::Relaxed));
 }
 
 static SHADOWS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
@@ -236,10 +249,11 @@ pub fn shadow(s: egui::epaint::Shadow) -> egui::epaint::Shadow {
 
 /// The theme in use.
 pub fn theme() -> Theme {
-    Theme::ALL
-        .get(CURRENT.load(Ordering::Relaxed) as usize)
-        .copied()
-        .unwrap_or(Theme::Light)
+    #[cfg(not(test))]
+    let i = CURRENT.load(Ordering::Relaxed);
+    #[cfg(test)]
+    let i = CURRENT.with(|c| c.load(Ordering::Relaxed));
+    Theme::ALL.get(i as usize).copied().unwrap_or(Theme::Light)
 }
 
 const fn rgb(v: u32) -> Color32 {
@@ -1098,6 +1112,23 @@ fn fallback_fonts(defs: &mut egui::FontDefinitions) -> Vec<String> {
 #[cfg(test)]
 mod theme_tests {
     use super::*;
+
+    /// A test that switches the theme leaves the theme of the tests
+    /// running alongside alone: the pointer bitmaps are kept by theme, and
+    /// a switch between drawing one and asking for it again drew it anew.
+    #[test]
+    fn a_theme_switched_in_another_test_is_not_this_ones() {
+        assert_eq!(theme(), Theme::Light);
+        std::thread::spawn(|| {
+            for t in Theme::ALL {
+                set_theme(t);
+                assert_eq!(theme(), t);
+            }
+        })
+        .join()
+        .expect("the other test");
+        assert_eq!(theme(), Theme::Light);
+    }
 
     /// Names typed in Hebrew show in the interface (the file name field,
     /// the recent files, the tabs) when the system has a font for it.
