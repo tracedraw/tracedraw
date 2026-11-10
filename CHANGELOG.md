@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Extrude: a body turned in space with a vanishing point (the small and large types) no longer throws faces far past the object when the vanishing point sits near it or on it. A point takes its share of the way to the vanishing point from its own depth in the body, no longer from where the turn puts it (#2207).
+
 - Extrude: with a long offset and the body turned in space, side faces farther away were drawn over nearer ones, which showed as dark slivers across the letters of extruded text. The faces of a parallel extrusion are now ordered by how near they are where they overlap (#2206).
 
 - Extrude, Bevel: a bevel wider than the narrowest part of the outline (a letter's stem, the wall between an outline and its hole) is narrowed to the widest one that fits, so the near face of bevelled text no longer folds over itself into stray shapes (#2205).
