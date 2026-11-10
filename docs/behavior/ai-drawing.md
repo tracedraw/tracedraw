@@ -42,7 +42,16 @@ address) the connection also has an Image model row; for one that makes
 drawings only, a line says so.
 
 The Connection section is open until a key is entered for a service that
-needs one.
+needs one. Its rows follow the room there is (#2040,
+`ui::ai_docker::Rows`): the labels stand in a column as wide as the
+longest of them and each field takes what is left, from 110 points up to
+360 (so a long address shows in Tools > Options > AI and the fields of a
+narrow docker are not cut off, as the fixed 170 points were); in a panel
+too narrow for a label and a field of 110 points side by side, each
+label goes above its field, which is then as wide as the panel. The
+Preset and Service lists cut a name that does not fit with an ellipsis.
+Under the request, Draw and New conversation wrap onto two lines in a
+narrow panel.
 
 | Field | Default | Notes |
 |---|---|---|

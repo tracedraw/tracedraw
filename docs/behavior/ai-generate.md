@@ -67,6 +67,23 @@ bottom: Images (1 to 4), Insert into drawing (on), how many requests go
 to which service, and Generate (while waiting, a greyed "Generation in progress..." button,
 the progress when several pictures come, a spinner and Cancel), then the outcome.
 
+The panel follows its size (#2040), from a docker narrowed to about
+180 points to a wide floating one, and in a low window:
+
+- The footer is as high as its lines need (they wrap in a narrow panel;
+  a fixed 118 points cut its last line off) and stays at the bottom
+  while at least 140 points of settings fit above it; in a lower panel
+  it scrolls with the settings, so nothing reaches past the bottom.
+- The Style and Color palette tiles go as many to a row as fit (two at
+  least, three and four at most), each as wide as the row allows up to
+  84 points.
+- Lists (Model, Aspect ratio) cut a name that does not fit with an
+  ellipsis instead of growing past the panel; the full names are in the
+  open list. Rows of several controls (Make with, Images and Insert into
+  drawing, the working button with Cancel) wrap.
+- The banner shown while the service is not set up scrolls with the
+  settings.
+
 Every mode has:
 
 - Model: the service's models (the usual ones until Test Connection lists
@@ -174,6 +191,12 @@ text).
   shapes and undo (`ai_image::tests::svg_vectors_come_from_the_drawing_service_as_shapes`).
 - The docker draws in every mode and state
   (`ui::ai_generate_docker::tests::the_docker_draws_in_every_mode_and_state`).
+- At widths from 180 to 560 points and heights down to 180, in every
+  mode, set up or not, in English, German and Russian, nothing reaches
+  past the panel's right edge or its bottom
+  (`ui::ai_generate_docker::tests::the_panel_fits_its_width_and_height`);
+  the connection's rows follow the room
+  (`ui::ai_docker::tests::the_connection_rows_follow_the_room`).
 
 ## AI Art Styles
 
