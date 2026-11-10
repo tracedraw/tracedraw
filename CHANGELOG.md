@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Extrude: with a long offset and the body turned in space, side faces farther away were drawn over nearer ones, which showed as dark slivers across the letters of extruded text. The faces of a parallel extrusion are now ordered by how near they are where they overlap (#2206).
+
 - Extrude, Bevel: a bevel wider than the narrowest part of the outline (a letter's stem, the wall between an outline and its hole) is narrowed to the widest one that fits, so the near face of bevelled text no longer folds over itself into stray shapes (#2205).
 
 - Saving `.cdr`: a picture scaled on the page (a picture fitted into a frame, for one) is written with an image resolution that matches its box, the scaling left to its transform as the files hold it, and with its picture's own pixel size; the box and the image disagreed before, one candidate for the reading program closing when such a picture was clicked. `tracedraw-cli check` reports both differences (#1222).

@@ -317,6 +317,36 @@ fn fitting_bevel(subs: &[(Vec<Point>, bool, bool)], b: f64) -> f64 {
     lo
 }
 
+/// What orders the faces of a parallel body: its run in space, across the
+/// page (x and y, each over the run's length across squared) and in depth.
+type Run = Option<(f64, f64, f64)>;
+
+/// The run of a parallel `body` turned by `m`: none for a body with a
+/// vanishing point and for one that runs straight at the viewer.
+fn run_of(body: &Body, m: &[[f64; 3]; 3], dir: f64, len: f64) -> Run {
+    if !body.kind.parallel() {
+        return None;
+    }
+    let r = apply(m, V3::new(body.vector.x, body.vector.y, dir * len));
+    let across = r.x * r.x + r.y * r.y;
+    (across > 1e-9).then_some((r.x / across, r.y / across, r.z))
+}
+
+/// How near the point `q` of a face is, for the order the faces are drawn
+/// in (larger is nearer). Two points drawn at one place of the page lie
+/// on two lines that run as the body does, so a point's depth is taken
+/// back along its line to where the line crosses the page's origin: the
+/// key is the same along the whole run of a wall, and for two points
+/// drawn at one place it differs by what their depths differ by. The
+/// plain z of a wall differs by the body's depth from one end to the
+/// other, so its mean put long walls in the wrong order (#2206).
+fn depth_key(run: Run, q: V3) -> f64 {
+    match run {
+        Some((ax, ay, rz)) => q.z - (q.x * ax + q.y * ay) * rz,
+        None => q.z,
+    }
+}
+
 /// A face that shows: its z key, flat key, shape and drawn corners.
 type ShownFace = (f64, f64, Shape, [Point; 4]);
 
@@ -457,6 +487,7 @@ pub(crate) fn faces(body: &Body, shape: &Shape, subs: &[(Vec<Point>, bool, bool)
         len,
         dir,
     };
+    let run = run_of(body, &ctx.m, dir, len);
     let half_min = ((hi.x - lo.x).min(hi.y - lo.y) / 2.0).max(0.0);
     let bevel = if body.bevel.is_finite() {
         body.bevel.clamp(0.0, (0.9 * len).min(0.9 * half_min))
@@ -619,7 +650,7 @@ pub(crate) fn faces(body: &Body, shape: &Shape, subs: &[(Vec<Point>, bool, bool)
                 };
                 s.fill = fill;
                 s.stroke = Some(crate::Stroke::hairline(edge));
-                let z = (quad[0].z + quad[1].z + quad[2].z + quad[3].z) / 4.0;
+                let z = quad.iter().map(|q| depth_key(run, *q)).sum::<f64>() / 4.0;
                 let mid = proj[0].midpoint(proj[2]);
                 shown.push(Some((z, flat_key(mid), s, proj)));
             }
@@ -742,7 +773,14 @@ pub(crate) fn faces(body: &Body, shape: &Shape, subs: &[(Vec<Point>, bool, bool)
             closed: true,
         };
         far.fill = Fill::Solid(to);
-        drawn.push((far_z / cnt, f64::INFINITY, far));
+        // A parallel body's far cap is behind every wall that shows or,
+        // facing the viewer, in front of them all.
+        let far_key = match run {
+            Some(_) if far_area > 1e-12 => f64::INFINITY,
+            Some(_) => f64::NEG_INFINITY,
+            None => far_z / cnt,
+        };
+        drawn.push((far_key, f64::INFINITY, far));
     }
     let near_shows = !any_closed || near_area > 1e-12 || !turned;
     let mut near = shape.clone();
@@ -957,6 +995,136 @@ mod tests {
         assert!(w > 1.9 && w < 2.0, "{w}");
         // An open outline has no bevel to narrow.
         assert_eq!(fitting_bevel(&[(k, false, false)], 3.0), 3.0);
+    }
+
+    /// #2206: with a long offset and a turn, walls were drawn in the order
+    /// of their mean z, which differs by the body's depth along a wall, so
+    /// far walls came out over near ones.
+    #[test]
+    fn walls_of_a_turned_parallel_body_are_ordered_where_they_overlap() {
+        fn inside(q: &[Point; 4], p: Point) -> bool {
+            let (mut pos, mut neg) = (0, 0);
+            for i in 0..4 {
+                let s = side(q[i], q[(i + 1) % 4], p);
+                if s > 1e-9 {
+                    pos += 1;
+                } else if s < -1e-9 {
+                    neg += 1;
+                }
+            }
+            pos == 4 || neg == 4
+        }
+        // z of the quad's plane at `p`, unless it is seen edge-on.
+        fn z_at(q: &[V3; 4], p: Point) -> Option<f64> {
+            let n = q[1].sub(q[0]).cross(q[3].sub(q[0]));
+            (n.z.abs() > 1e-9).then(|| q[0].z - (n.x * (p.x - q[0].x) + n.y * (p.y - q[0].y)) / n.z)
+        }
+        // A letter K 34 high, its offset and turn as in the report.
+        let k: Vec<Point> = [
+            (0.0, 0.0),
+            (4.0, 0.0),
+            (4.0, 8.0),
+            (10.0, 0.0),
+            (15.0, 0.0),
+            (7.5, 10.5),
+            (15.0, 20.0),
+            (10.0, 20.0),
+            (4.0, 12.5),
+            (4.0, 20.0),
+            (0.0, 20.0),
+        ]
+        .iter()
+        .map(|(x, y)| Point::new(x * 1.7, y * 1.7))
+        .collect();
+        let rot = [-17.0, 10.0, -8.0];
+        // Both offsets of the report; the walls of a K overlap on the page
+        // in a few pairs at each, and the mean z misorders all of them.
+        let (mut pairs, mut by_z, mut by_key) = (0, 0, 0);
+        for v in [Vec2::new(16.384, 10.656), Vec2::new(10.776, 37.191)] {
+            let solid = Solid {
+                rotation: rot,
+                ..Default::default()
+            };
+            let mut b = body(ExtrudeKind::BackParallel, solid, 0.0);
+            b.vector = v;
+            let len = b.vector.hypot();
+            let ctx = Ctx {
+                body: &b,
+                m: rotation(rot),
+                pivot: V3::new(
+                    12.75 + b.vector.x / 2.0,
+                    17.0 + b.vector.y / 2.0,
+                    -len / 2.0,
+                ),
+                len,
+                dir: -1.0,
+            };
+            let run = run_of(&b, &ctx.m, -1.0, len);
+            assert!(run.is_some());
+            // The walls that show: mean z, key, corners in space and drawn.
+            let mut walls: Vec<(f64, f64, [V3; 4], [Point; 4])> = Vec::new();
+            for i in 0..k.len() {
+                let j = (i + 1) % k.len();
+                let quad = [
+                    ctx.turn(k[i], 0.0),
+                    ctx.turn(k[i], len),
+                    ctx.turn(k[j], len),
+                    ctx.turn(k[j], 0.0),
+                ];
+                let proj = [
+                    ctx.project(quad[0]),
+                    ctx.project(quad[1]),
+                    ctx.project(quad[2]),
+                    ctx.project(quad[3]),
+                ];
+                if projected_area(&proj) <= 1e-12 {
+                    continue;
+                }
+                let z = quad.iter().map(|q| q.z).sum::<f64>() / 4.0;
+                let key = quad.iter().map(|q| depth_key(run, *q)).sum::<f64>() / 4.0;
+                walls.push((z, key, quad, proj));
+            }
+            // Pairs that overlap on the page and are drawn with the farther
+            // one over the nearer, by the mean z and by the key.
+            for (ia, a) in walls.iter().enumerate() {
+                for c in walls.iter().skip(ia + 1) {
+                    // How much nearer `a` is than `c` where both are drawn.
+                    let mut nearer: Option<(f64, f64)> = None;
+                    for (src, other) in [(&a.3, &c.3), (&c.3, &a.3)] {
+                        for s in 1..12 {
+                            for t in 1..12 {
+                                let (s, t) = (s as f64 / 12.0, t as f64 / 12.0);
+                                let p = src[0].lerp(src[1], s).lerp(src[3].lerp(src[2], s), t);
+                                if !inside(other, p) {
+                                    continue;
+                                }
+                                if let (Some(za), Some(zc)) = (z_at(&a.2, p), z_at(&c.2, p)) {
+                                    let (lo, hi) = nearer.unwrap_or((za - zc, za - zc));
+                                    nearer = Some((lo.min(za - zc), hi.max(za - zc)));
+                                }
+                            }
+                        }
+                    }
+                    let Some((lo, hi)) = nearer else {
+                        continue;
+                    };
+                    pairs += 1;
+                    // `a` nearer by more than 0.05 somewhere, yet drawn first
+                    // (the smaller key), or the other way round.
+                    let wrong =
+                        |ka: f64, kc: f64| (hi > 0.05 && ka < kc) || (lo < -0.05 && ka > kc);
+                    by_z += usize::from(wrong(a.0, c.0));
+                    by_key += usize::from(wrong(a.1, c.1));
+                }
+            }
+        }
+        assert!(pairs >= 5, "{pairs} pairs overlap");
+        assert!(by_z >= 3, "the mean z misorders {by_z} of {pairs}");
+        assert_eq!(by_key, 0, "of {pairs} pairs");
+        // A body with a vanishing point keeps z.
+        let small = body(ExtrudeKind::SmallBack, Solid::default(), 0.0);
+        assert!(run_of(&small, &rotation(rot), -1.0, 20.0).is_none());
+        assert_eq!(depth_key(None, V3::new(3.0, 4.0, 5.0)), 5.0);
     }
 
     #[test]
