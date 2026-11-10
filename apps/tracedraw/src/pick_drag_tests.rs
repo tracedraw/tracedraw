@@ -424,6 +424,88 @@ fn esc_cancels_a_drag() {
     assert!(matches!(app.drag, Drag::None));
 }
 
+/// Shift and the align letters distribute the selection (#2147): Shift+E
+/// spaces the centres evenly across, Shift+C down, Shift+P and Shift+A
+/// make the gaps equal, the outermost objects staying put. The
+/// Distribute commands had no keys, so Shift+E and Shift+C did nothing.
+#[test]
+fn shift_and_the_align_letters_distribute_the_selection() {
+    let (ctx, mut app, first) = setup();
+    app.select(vec![first]);
+    app.delete_selection();
+    let mut mk = |x: f64, y: f64, w: f64, h: f64| {
+        app.new_shape(ShapeKind::Rect {
+            rect: Rect::new(x, y, x + w, y + h),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect")
+    };
+    // Three objects of different sizes, unevenly placed.
+    let a = mk(10.0, 10.0, 10.0, 10.0);
+    let b = mk(30.0, 50.0, 30.0, 20.0);
+    let c = mk(100.0, 110.0, 20.0, 30.0);
+    let press = |app: &mut App, k: egui::Key| {
+        app.select(vec![a, b, c]);
+        frame(&ctx, app, vec![key(k, Modifiers::SHIFT)], Modifiers::SHIFT);
+        frame(
+            &ctx,
+            app,
+            vec![key_up(k, Modifiers::SHIFT)],
+            Modifiers::NONE,
+        );
+    };
+    let cx = |app: &App, id: ShapeId| bounds(app, id).center().x;
+    let cy = |app: &App, id: ShapeId| bounds(app, id).center().y;
+    // Shift+E: the middle one's centre halfway between the outer two.
+    press(&mut app, egui::Key::E);
+    assert!(close(cx(&app, a), 15.0) && close(cx(&app, c), 110.0));
+    assert!(close(cx(&app, b), 62.5), "{}", cx(&app, b));
+    assert!(close(cy(&app, b), 60.0), "not moved up or down");
+    // Shift+C: the same down the page.
+    press(&mut app, egui::Key::C);
+    assert!(close(cy(&app, a), 15.0) && close(cy(&app, c), 125.0));
+    assert!(close(cy(&app, b), 70.0), "{}", cy(&app, b));
+    // Shift+P: equal gaps across, between the outer objects.
+    press(&mut app, egui::Key::P);
+    let (ba, bb, bc) = (bounds(&app, a), bounds(&app, b), bounds(&app, c));
+    assert!(close(ba.x0, 10.0) && close(bc.x1, 120.0));
+    assert!(close(bb.x0 - ba.x1, bc.x0 - bb.x1), "{ba:?} {bb:?} {bc:?}");
+    // Shift+A: equal gaps down.
+    press(&mut app, egui::Key::A);
+    let (ba, bb, bc) = (bounds(&app, a), bounds(&app, b), bounds(&app, c));
+    assert!(close(bb.y0 - ba.y1, bc.y0 - bb.y1), "{ba:?} {bb:?} {bc:?}");
+    // The plain letter still aligns: E puts the centres on one line.
+    app.select(vec![a, b, c]);
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::E, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert!(close(cy(&app, a), cy(&app, b)) && close(cy(&app, b), cy(&app, c)));
+    // With the Shape tool and nodes chosen Shift+C stays the node
+    // command: nothing is distributed.
+    let before = [bounds(&app, a), bounds(&app, b), bounds(&app, c)];
+    app.select(vec![a]);
+    app.convert_to_curves();
+    app.set_tool(Tool::Shape);
+    app.node_selection = vec![(a, 0)];
+    app.select(vec![a, b, c]);
+    app.node_selection = vec![(a, 0)];
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::C, Modifiers::SHIFT)],
+        Modifiers::SHIFT,
+    );
+    assert_eq!(
+        [bounds(&app, a), bounds(&app, b), bounds(&app, c)],
+        before,
+        "a node command, not Distribute"
+    );
+}
+
 #[test]
 fn space_while_moving_drops_a_copy() {
     let (ctx, mut app, id) = setup();

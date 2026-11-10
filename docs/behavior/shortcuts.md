@@ -142,10 +142,24 @@ commands. Shortcut text writes the punctuation keys as they are typed
 Looked at and left without a key, because the usual key is taken:
 Redo's Ctrl+Y (Snap to Document Grid; Redo is Ctrl+Shift+Z), Paste
 Special's Ctrl+Alt+V (the windowing layer turns every Ctrl+V into a
-paste), the Shift and letter keys for Distribute (Shift+L, Shift+B and
-Shift+C are node commands), Text > Convert's Ctrl+F8 and Spell Check's
+paste), Text > Convert's Ctrl+F8 and Spell Check's
 Ctrl+F12 (the Blend and Fonts panels, #1779) and Bullets' Ctrl+M (Merge
 Cells).
+
+## Distribute keys
+
+With a selection, Shift and a letter distributes it between its
+outermost objects (three objects or more): Shift+L, Shift+R, Shift+T and
+Shift+B the left, right, top and bottom edges, Shift+E the centres
+across, Shift+C the centres down, Shift+P equal gaps across and Shift+A
+equal gaps down (#2147, `App::DISTRIBUTE_KEYS`,
+`pick_drag_tests::shift_and_the_align_letters_distribute_the_selection`).
+Shift+L, Shift+B and Shift+C are also node commands (To Line, Break
+Curve, Cusp): with the Shape tool and nodes chosen they stay node
+commands, as E is the Roughen tool without a selection; the Distribute
+commands were left without keys for that reason until #2147
+(`options::tests::no_two_default_commands_share_a_shortcut` lists the
+split).
 
 ## Align keys and tool keys
 

@@ -332,6 +332,22 @@ pub(crate) fn outline_reach(s: &tracedraw_core::Shape, to_page: Affine) -> f64 {
 }
 
 impl App {
+    /// The Distribute keys, each pressed with Shift: the letters of the
+    /// Align keys for the same edge or centre, P and A for the gaps.
+    pub const DISTRIBUTE_KEYS: [(Key, crate::ops::Distribute); 8] = {
+        use crate::ops::Distribute;
+        [
+            (Key::L, Distribute::Left),
+            (Key::E, Distribute::CentersH),
+            (Key::P, Distribute::SpacingH),
+            (Key::R, Distribute::Right),
+            (Key::T, Distribute::Top),
+            (Key::C, Distribute::CentersV),
+            (Key::A, Distribute::SpacingV),
+            (Key::B, Distribute::Bottom),
+        ]
+    };
+
     pub fn hit_test(&self, p: Point) -> Option<ShapeId> {
         self.hit_test_where(p, |_| false)
     }
@@ -4619,6 +4635,16 @@ impl App {
             ] {
                 if pressed(k, Modifiers::NONE) {
                     self.align(a);
+                    return;
+                }
+            }
+            // Distribute: Shift and the letter that aligns the same way,
+            // Shift+P and Shift+A for equal gaps across and down (#2147).
+            // The Distribute commands had no keys at all, so Shift+E and
+            // Shift+C did nothing.
+            for (k, d) in App::DISTRIBUTE_KEYS {
+                if pressed(k, Modifiers::SHIFT) {
+                    self.distribute(d);
                     return;
                 }
             }

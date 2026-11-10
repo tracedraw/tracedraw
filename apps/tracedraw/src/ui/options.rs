@@ -5609,9 +5609,11 @@ mod tests {
     /// their own (#1779). The
     /// documented splits are E, Align Centers Horizontally with a
     /// selection and the Roughen tool without one (`shortcuts.md`, Align
-    /// keys and tool keys) (#1595), and the clip frame's Edit Contents
+    /// keys and tool keys) (#1595), the clip frame's Edit Contents
     /// and Finish Editing, never offered together: one key goes in and
-    /// out (#1273).
+    /// out (#1273), and Shift+L, Shift+B and Shift+C, node commands with
+    /// the Shape tool and nodes chosen and Distribute keys otherwise
+    /// (`shortcuts.md`, Distribute keys) (#2147).
     #[test]
     fn no_two_default_commands_share_a_shortcut() {
         let app = app_with_commands();
@@ -5668,8 +5670,32 @@ mod tests {
             ids.retain(|id| !opens_panel(id, tab));
             ids.push(format!("panel {tab:?}"));
         }
+        // Shift+L, Shift+B and Shift+C: a node command with the Shape
+        // tool and nodes chosen, Distribute otherwise (#2147).
+        let node_or_distribute = |keys: &str, ids: &[String]| {
+            [
+                (
+                    "Shift+B",
+                    "menu.object.distribute_bottom",
+                    "menu.object.node_break",
+                ),
+                (
+                    "Shift+C",
+                    "menu.object.distribute_centers_v",
+                    "menu.object.node_cusp",
+                ),
+                (
+                    "Shift+L",
+                    "menu.object.distribute_left",
+                    "menu.object.node_to_line",
+                ),
+            ]
+            .iter()
+            .any(|(k, distribute, node)| keys == *k && ids == [*distribute, *node])
+        };
         let documented_split = |keys: &str, ids: &[String]| {
             (keys == "E" && ids == ["menu.object.align_centers_h", "roughen"])
+                || node_or_distribute(keys, ids)
                 || (keys == crate::ui::menus::CLIP_EDIT_KEY
                     && ids
                         == [
