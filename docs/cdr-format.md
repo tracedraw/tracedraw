@@ -136,6 +136,7 @@ show. Values are little-endian; lengths in thousandths of an inch.
 | `lobj` has the same layout as `loda` | confirmed (public spec) | |
 | `bbox`: four coords (two corners); `obbx`: eight coords (four corners) | confirmed (public spec) | Not used; we compute bounds. |
 | `spnd`: u32 (u16 before 6); `usdn`: u32 static object id | confirmed (public spec) | Not used. |
+| Object type 0x1f (version 26): no coordinates argument; argument 40004 holds a note in UTF-16 (u32 size of the rest, u32 0x541, u32 0, u32 byte length, the text with a closing NUL, then u32 0x541, 7, 0), next to a style (201), an id (100), a fill (20) and an outline (10); its `bbox` is the empty box (-2, 2, 2, -2) that the master page has from version 14 | confirmed (file: the version 26 drawing of #2022, 2026-11-10: its 22 objects of this type, direct children of layers, hold `xmlns:xodm="..."` or `data-name="Layer 2"`, the attributes of an imported picture's elements, and all have that box, while the curves, texts and groups that follow them in their layers have boxes of their own) | Draws nothing: an object of a type that is not read, without a coordinates argument and with the empty box, is left out without being counted as an object that could not be read. With any other box it is counted and named in a warning, as before. |
 
 ## `loda` argument table
 

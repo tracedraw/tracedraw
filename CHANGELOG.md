@@ -63,6 +63,8 @@ full, row-by-row status.
 
 - View > Navigator, with the key N, in the shortcut table like any menu command, so it can be changed or removed in Options > Customization > Commands and is found by Help > Search Commands. N held shows the Navigator as before; the menu row opens it until a click: a click on the picture goes there, a click elsewhere or Esc closes it (live test of 0.41).
 
+- Opening `.cdr` files: objects that only carry a name and a style and cover nothing (drawings that hold an imported picture keep some) are no longer counted as objects that could not be read. A ten-page drawing whose every curve, text and picture opened said 22 objects were missing (#2022).
+
 - Help > Search Commands (Ctrl+Shift+P) finds settings too: every setting of the Options and of Document Setup by its label or the words of its tip, and each options page by its name, listed after the menu commands with the page they are on. Choosing one opens the Options or Document Setup at that page with the setting framed for a moment, scrolled into view; "fill open" finds Fill open curves (live test of 0.41).
 
 - Options and Document Setup: the window stays where it is when another page is chosen. It moved sideways a little with each page, and by 15 pixels on the Edit page, whose Reset button stood past the edge of the page (#2199).

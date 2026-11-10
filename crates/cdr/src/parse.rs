@@ -464,6 +464,9 @@ struct Ctx<'a> {
     guides: Vec<tracedraw_core::document::Guide>,
     /// The last object read was a guideline, not a skipped object.
     last_was_guide: bool,
+    /// The object just read draws nothing (see [`Ctx::draws_nothing`]):
+    /// not an object left out.
+    last_drew_nothing: bool,
     /// The transform of the linked groups (`LIST lnkg`) being read, which
     /// their objects are drawn through.
     outer_transform: Affine,
@@ -537,6 +540,7 @@ impl<'a> Ctx<'a> {
             pending_clip: None,
             guides: Vec::new(),
             last_was_guide: false,
+            last_drew_nothing: false,
             outer_transform: Affine::IDENTITY,
             library_inks: Default::default(),
             v3_fonts: Vec::new(),
@@ -2740,6 +2744,18 @@ impl<'a> Ctx<'a> {
         (b.x0.is_finite() && b.y0.is_finite() && b.width() > 0.0 && b.height() > 0.0).then_some(b)
     }
 
+    /// The object's box is the empty one, (-2, 2, 2, -2) in coordinate
+    /// units, which files from version 14 give what covers nothing (the
+    /// master page, and objects that only carry a name and a style,
+    /// #2022).
+    fn draws_nothing(&self, oc: &Chunk) -> bool {
+        let Some(c) = oc.find(b"bbox") else {
+            return false;
+        };
+        let mut r = Reader::at(self.data(c), 0, false);
+        [-2, 2, 2, -2].iter().all(|v| r.i32() == Some(*v))
+    }
+
     /// A paragraph frame from the object's box and style, for paragraph
     /// text (type 0x06) whose coordinates hold no frame size: the box
     /// taken back through the object's transform gives the frame's place
@@ -3572,6 +3588,10 @@ impl<'a> Ctx<'a> {
                 // (A bitmap whose picture is missing has said so already.)
                 match kind_code {
                     OBJ_ARTISTIC_TEXT | OBJ_PARAGRAPH_TEXT | OBJ_EMBEDDED | OBJ_BITMAP => {}
+                    other if coords.is_none() && self.draws_nothing(oc) => {
+                        log::debug!("object type 0x{other:02x} with the empty box: draws nothing");
+                        self.last_drew_nothing = true;
+                    }
                     other => self
                         .report
                         .warn(format!("object type 0x{other:02x} not modelled yet")),
@@ -3961,6 +3981,7 @@ impl<'a> Ctx<'a> {
                         out.push(shape);
                     }
                     None if std::mem::take(&mut self.last_was_guide) => {}
+                    None if std::mem::take(&mut self.last_drew_nothing) => {}
                     None => self.report.skipped_objects += 1,
                 }
             } else if c.is(b"grp ") {
@@ -11183,6 +11204,61 @@ pub(crate) mod tests {
             other => panic!("{other:?}"),
         }
         assert!(ctx.report.warnings.is_empty(), "{:?}", ctx.report.warnings);
+    }
+
+    /// An object of a kind that is not read, with no outline of its own
+    /// and the empty box (#2022: the 22 objects of type 0x1f a drawing
+    /// kept from an imported picture, each a name and a style), draws
+    /// nothing, so it is not counted as left out; one with a real box is.
+    #[test]
+    fn objects_that_draw_nothing_are_not_counted_as_skipped() {
+        // Argument 40004 of such an object: a name in UTF-16.
+        let mut note = u32s(&[0x40, 0x541, 0, 0x28]);
+        note.extend_from_slice(&utf16("data-name=\"Layer 2\""));
+        note.extend_from_slice(&u32s(&[0x541, 7, 0]));
+        let object = |bbox: [i32; 4]| {
+            list(
+                b"obj ",
+                &[
+                    chunk(b"bbox", &i32s(&bbox)),
+                    list(
+                        b"lgob",
+                        &chunk(
+                            b"loda",
+                            &loda(0x1f, &[(40004, note.clone()), (12000, u32s(&[0]))]),
+                        ),
+                    ),
+                ]
+                .concat(),
+            )
+        };
+        let file = |bbox: [i32; 4]| {
+            let body = [
+                chunk(b"mcfg", &mcfg(14, 2_540_000, 2_540_000)),
+                list(b"page", &list(b"layr", &object(bbox))),
+            ]
+            .concat();
+            riff(b"CDRE", &body)
+        };
+        let (doc, rep) = parse(&file([-2, 2, 2, -2]), 14);
+        assert_eq!(rep.skipped_objects, 0, "{:?}", rep.warnings);
+        assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+        assert_eq!(
+            doc.pages[0]
+                .layers
+                .iter()
+                .map(|l| l.shapes.len())
+                .sum::<usize>(),
+            0
+        );
+        // The same record over a part of the page is an object left out.
+        let (_, rep) = parse(&file([0, 100_000, 100_000, 0]), 14);
+        assert_eq!(rep.skipped_objects, 1);
+        assert!(
+            rep.warnings.iter().any(|w| w.contains("0x1f")),
+            "{:?}",
+            rep.warnings
+        );
     }
 
     #[test]
