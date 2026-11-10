@@ -172,6 +172,7 @@ mod shelf;
 mod shortcuts;
 mod snap;
 mod snap_points;
+mod soft_canvas;
 mod soft_keyboard;
 mod spell;
 #[cfg(windows)]

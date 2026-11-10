@@ -8040,6 +8040,109 @@ fn frame_times_on_a_heavy_page() {
     app.end_live_fill();
 }
 
+/// Frame times of the pointer moving over the page with each tool, on a
+/// page of `FRAME_N` objects, and of making a pointer's bitmap (#2136).
+/// The frames cost about the same with every tool: a painted pointer
+/// trails the hand by the frames it takes to reach the screen, not by
+/// what a frame costs. Run with
+/// `cargo test --release -p tracedraw -- --ignored frame_times_of_a_hover_with_each_tool --nocapture`.
+#[test]
+#[ignore]
+fn frame_times_of_a_hover_with_each_tool() {
+    let (ctx, mut app, _) = setup();
+    let mut s = 7u64;
+    let mut r = || {
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((s >> 33) as f64) / (1u64 << 31) as f64
+    };
+    let n: usize = std::env::var("FRAME_N")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(200);
+    for _ in 0..n {
+        let (x, y) = (r() * 200.0, r() * 280.0);
+        let mut p = tracedraw_core::geometry::BezPath::new();
+        p.move_to((x, y));
+        for _ in 0..6 {
+            p.curve_to(
+                (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+                (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+                (x + r() * 20.0 - 10.0, y + r() * 20.0 - 10.0),
+            );
+        }
+        p.close_path();
+        app.new_shape(ShapeKind::Path {
+            path: p,
+            closed: true,
+        });
+    }
+    app.select(Vec::new());
+    until_the_page_is_drawn(&ctx, &mut app);
+    // Painted pointers and pointers handed to the system as bitmaps (as
+    // on Windows), in turn for each tool.
+    let mut sums = [std::time::Duration::ZERO; 2];
+    let mut frames = 0u32;
+    for tool in Tool::ALL {
+        app.set_tool(tool);
+        for (k, bitmaps) in [false, true, true, false].into_iter().enumerate() {
+            crate::ui::cursors::set_test_bitmap_pointers(bitmaps);
+            for _ in 0..3 {
+                frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+            }
+            let mut x = 500.0f32;
+            let mut worst = std::time::Duration::ZERO;
+            let t = std::time::Instant::now();
+            for _ in 0..40 {
+                x += 5.0;
+                let t1 = std::time::Instant::now();
+                frame(
+                    &ctx,
+                    &mut app,
+                    vec![Event::PointerMoved(egui::pos2(x, 420.0))],
+                    Modifiers::NONE,
+                );
+                worst = worst.max(t1.elapsed());
+            }
+            sums[usize::from(bitmaps)] += t.elapsed();
+            if k == 0 {
+                frames += 80;
+            }
+            if k < 2 {
+                eprintln!(
+                    "{tool:?} (bitmaps {bitmaps}): {:?} per frame, worst {worst:?}",
+                    t.elapsed() / 40
+                );
+            }
+        }
+    }
+    eprintln!(
+        "every tool: painted pointers {:?} per frame, bitmap pointers {:?}",
+        sums[0] / frames,
+        sums[1] / frames
+    );
+    crate::ui::cursors::set_test_bitmap_pointers(false);
+    // The bitmap of a drawn pointer (the system shows it as the pointer
+    // on Windows): drawn once for each pointer, then looked up.
+    use crate::ui::cursors::{bitmap, ToolCursor};
+    let t = std::time::Instant::now();
+    let first = bitmap(ToolCursor::Badge(Tool::Rectangle), 1.25).map(|i| i.size);
+    let first_time = t.elapsed();
+    let t = std::time::Instant::now();
+    let next = bitmap(ToolCursor::Badge(Tool::Ellipse), 1.25).map(|i| i.size);
+    let next_time = t.elapsed();
+    let t = std::time::Instant::now();
+    for _ in 0..1000 {
+        bitmap(ToolCursor::Badge(Tool::Rectangle), 1.25);
+    }
+    eprintln!(
+        "pointer bitmap: the first {first:?} in {first_time:?} (with its context), \
+         the next {next:?} in {next_time:?}, kept ones in {:?}",
+        t.elapsed() / 1000
+    );
+}
+
 /// A symmetry made from one object, edited: a click on the object shows
 /// its own box, not the box of its copies, and a rectangle drawn with the
 /// tool joins the symmetry (the two become its group).
