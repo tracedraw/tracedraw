@@ -224,6 +224,15 @@ class ShapeRange {
   AlignBottom() { __call('align', {ids:this.ids, how:'bottom'}); }
   AlignCentersHorizontally() { __call('align', {ids:this.ids, how:'center_h'}); }
   AlignCentersVertically() { __call('align', {ids:this.ids, how:'center_v'}); }
+  Distribute(how, to) { __call('distribute', {ids:this.ids, how:how, to:to || 'selection'}); }
+  DistributeLeft() { this.Distribute('left'); }
+  DistributeRight() { this.Distribute('right'); }
+  DistributeTop() { this.Distribute('top'); }
+  DistributeBottom() { this.Distribute('bottom'); }
+  DistributeCentersHorizontally() { this.Distribute('center_h'); }
+  DistributeCentersVertically() { this.Distribute('center_v'); }
+  DistributeSpacingHorizontally() { this.Distribute('spacing_h'); }
+  DistributeSpacingVertically() { this.Distribute('spacing_v'); }
   CreateSelection() { __call('select', {ids:this.ids, add:false}); }
 }
 class Shapes {
@@ -1748,6 +1757,115 @@ impl HostInner {
                 }
                 json!({})
             }
+            "distribute" => {
+                let ids: Vec<ShapeId> = a
+                    .get("ids")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_u64()).map(ShapeId).collect())
+                    .unwrap_or_default();
+                let how = a.get("how").and_then(|h| h.as_str()).unwrap_or("left");
+                let to = a.get("to").and_then(|t| t.as_str()).unwrap_or("selection");
+                // 0: the low edges (left, bottom), 1: the centres, 2: the
+                // high edges (right, top), 3: the gaps between the boxes.
+                // y grows upwards, so bottom is the low edge.
+                let (horizontal, kind) = match how {
+                    "left" => (true, 0),
+                    "center_h" => (true, 1),
+                    "right" => (true, 2),
+                    "spacing_h" => (true, 3),
+                    "bottom" => (false, 0),
+                    "center_v" => (false, 1),
+                    "top" => (false, 2),
+                    "spacing_v" => (false, 3),
+                    other => return Err(format!("no distribution {other:?}")),
+                };
+                let mut boxes: Vec<(Shape, Rect)> = ids
+                    .iter()
+                    .filter_map(|id| self.doc.find_shape(*id).cloned())
+                    .map(|s| {
+                        let b = s.bounds();
+                        (s, b)
+                    })
+                    .collect();
+                // Between the outermost objects three are needed to have
+                // something to spread; across the page, two.
+                let need = if to == "page" { 2 } else { 3 };
+                if boxes.len() < need {
+                    return Err(format!(
+                        "distribute needs {need} objects to {to}, {} given",
+                        boxes.len()
+                    ));
+                }
+                let lo = |b: &Rect| if horizontal { b.x0 } else { b.y0 };
+                let hi = |b: &Rect| if horizontal { b.x1 } else { b.y1 };
+                let key = |b: &Rect| match kind {
+                    0 => lo(b),
+                    2 => hi(b),
+                    _ => (lo(b) + hi(b)) / 2.0,
+                };
+                boxes.sort_by(|x, y| {
+                    key(&x.1)
+                        .partial_cmp(&key(&y.1))
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+                let n = boxes.len();
+                let (e0, e1) = if to == "page" {
+                    let size = self
+                        .doc
+                        .page(self.page)
+                        .map(|p| p.size)
+                        .map_err(|e| e.to_string())?;
+                    if horizontal {
+                        (0.0, size.width)
+                    } else {
+                        (0.0, size.height)
+                    }
+                } else {
+                    (lo(&boxes[0].1), hi(&boxes[n - 1].1))
+                };
+                let mut shifts: Vec<(ShapeId, f64)> = Vec::with_capacity(n);
+                let len = |b: &Rect| hi(b) - lo(b);
+                if kind == 3 {
+                    // The gaps between the boxes, equal for all of them.
+                    let total: f64 = boxes.iter().map(|(_, b)| len(b)).sum();
+                    let gap = (e1 - e0 - total) / (n - 1) as f64;
+                    let mut cursor = e0;
+                    for (s, b) in &boxes {
+                        shifts.push((s.id, cursor - lo(b)));
+                        cursor += len(b) + gap;
+                    }
+                } else {
+                    // The keys evenly spaced from the first to the last.
+                    // Across the page the first and last boxes go flush
+                    // with its edges, each by the length of its own key.
+                    let (k0, k1) = if to == "page" {
+                        match kind {
+                            0 => (e0, e1 - len(&boxes[n - 1].1)),
+                            1 => (e0 + len(&boxes[0].1) / 2.0, e1 - len(&boxes[n - 1].1) / 2.0),
+                            _ => (e0 + len(&boxes[0].1), e1),
+                        }
+                    } else {
+                        (key(&boxes[0].1), key(&boxes[n - 1].1))
+                    };
+                    let step = (k1 - k0) / (n - 1) as f64;
+                    for (i, (s, b)) in boxes.iter().enumerate() {
+                        shifts.push((s.id, k0 + step * i as f64 - key(b)));
+                    }
+                }
+                for (id, d) in shifts {
+                    if d.abs() > 1e-9 {
+                        self.run(Command::TransformShapes {
+                            shapes: vec![id],
+                            transform: Affine::translate(if horizontal {
+                                (d, 0.0)
+                            } else {
+                                (0.0, d)
+                            }),
+                        })?;
+                    }
+                }
+                json!({})
+            }
             "fill_type" => {
                 let s = self.shape(id_arg(a, "id")?)?;
                 json!({"type": match s.fill { Fill::None => "none", Fill::Solid(_) => "uniform", Fill::Fountain(_) => "fountain", Fill::Pattern(_) => "pattern", Fill::Texture(_) => "texture", Fill::Mesh(_) => "mesh", Fill::Procedural(_) => "procedural" }})
@@ -2461,5 +2579,133 @@ mod tests {
         run(&mut a, "ActiveLayer.Shapes.Item(2).FontSize = 0;").unwrap();
         let out = run(&mut a, "print(ActiveLayer.Shapes.Item(2).FontSize);").unwrap();
         assert_eq!(out[0], "12", "the size it had");
+    }
+
+    /// Three rectangles whose left edges are at 0, 10 and 100 end with
+    /// theirs at 0, 50 and 100: the outermost stay where they were.
+    #[test]
+    fn distribute_spreads_left_edges_evenly() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateRectangle(0, 0, 10, 10);\n\
+             ActiveLayer.CreateRectangle(10, 0, 10, 10);\n\
+             ActiveLayer.CreateRectangle(100, 0, 10, 10);\n\
+             ActivePage.Shapes.All.DistributeLeft();",
+        )
+        .unwrap();
+        let out = run(
+            &mut a,
+            "print(ActiveLayer.Shapes.All.Shapes.map(s => s.PositionX).join(' '));",
+        )
+        .unwrap();
+        assert_eq!(out[0], "0 50 100");
+    }
+
+    /// The gaps come out equal: boxes 10 wide at 0, 20 and 100 leave 40
+    /// between them, the outermost staying where they were.
+    #[test]
+    fn distribute_spacing_makes_the_gaps_equal() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateRectangle(0, 0, 10, 10);\n\
+             ActiveLayer.CreateRectangle(20, 0, 10, 10);\n\
+             ActiveLayer.CreateRectangle(100, 0, 10, 10);\n\
+             ActivePage.Shapes.All.DistributeSpacingHorizontally();",
+        )
+        .unwrap();
+        let out = run(
+            &mut a,
+            "print(ActiveLayer.Shapes.All.Shapes.map(s => s.PositionX).join(' '));",
+        )
+        .unwrap();
+        assert_eq!(out[0], "0 50 100");
+    }
+
+    /// Along y the boxes go by their top edges, y growing upwards.
+    #[test]
+    fn distribute_along_y_uses_the_top_edges() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateRectangle(0, 0, 10, 10);\n\
+             ActiveLayer.CreateRectangle(0, 20, 10, 10);\n\
+             ActiveLayer.CreateRectangle(0, 90, 10, 10);\n\
+             ActivePage.Shapes.All.DistributeTop();",
+        )
+        .unwrap();
+        // Top edges 10, 30 and 100 end at 10, 55 and 100, so the bottom
+        // edges are 0, 45 and 90.
+        let out = run(
+            &mut a,
+            "print(ActiveLayer.Shapes.All.Shapes.map(s => s.PositionY).join(' '));",
+        )
+        .unwrap();
+        assert_eq!(out[0], "0 45 90");
+    }
+
+    /// Across the page the outermost boxes reach its edges, each flush by
+    /// its own size.
+    #[test]
+    fn distribute_to_the_page_reaches_its_edges() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateRectangle(10, 100, 10, 10);\n\
+             ActiveLayer.CreateRectangle(50, 100, 10, 10);\n\
+             ActivePage.Shapes.All.Distribute('left', 'page');",
+        )
+        .unwrap();
+        let out = run(
+            &mut a,
+            "print(ActiveLayer.Shapes.All.Shapes.map(s => s.PositionX).join(' '));",
+        )
+        .unwrap();
+        // The page is 210 wide: the first left edge goes to 0, the last to
+        // 200, flush with the right edge.
+        assert_eq!(out[0], "0 200");
+    }
+
+    /// The refusals: too few objects, and a distribution that does not
+    /// exist.
+    #[test]
+    fn distribute_refuses_what_it_cannot_spread() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateRectangle(0, 0, 10, 10);\n\
+             ActiveLayer.CreateRectangle(50, 0, 10, 10);",
+        )
+        .unwrap();
+        assert!(
+            run(&mut a, "ActivePage.Shapes.All.DistributeLeft();").is_err(),
+            "two objects have nothing to spread between"
+        );
+        // Two are enough across the page.
+        run(&mut a, "ActivePage.Shapes.All.Distribute('left', 'page');").unwrap();
+        assert!(
+            run(&mut a, "ActivePage.Shapes.All.Distribute('diagonal');").is_err(),
+            "no such distribution"
+        );
+    }
+
+    /// The whole distribution is one undo step, as an align is.
+    #[test]
+    fn a_distribution_is_one_undo_step() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateRectangle(0, 0, 10, 10);\n\
+             ActiveLayer.CreateRectangle(10, 0, 10, 10);\n\
+             ActiveLayer.CreateRectangle(100, 0, 10, 10);",
+        )
+        .unwrap();
+        let ler = "print(ActiveLayer.Shapes.All.Shapes.map(s => s.PositionX).join(' '));";
+        assert_eq!(run(&mut a, ler).unwrap()[0], "0 10 100");
+        run(&mut a, "ActivePage.Shapes.All.DistributeLeft();").unwrap();
+        assert_eq!(run(&mut a, ler).unwrap()[0], "0 50 100");
+        a.undo();
+        assert_eq!(run(&mut a, ler).unwrap()[0], "0 10 100", "one undo");
     }
 }
