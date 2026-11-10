@@ -44,6 +44,17 @@ parallel, or Small back when they have a vanishing point.
   when the object has none. A square's body is its two sides, a
   circle's its one curved side: each side breaks apart and takes a
   colour or a fill as one part, not as a row of slats (#1281).
+- The flattened edges only decide which sides show, where they are cut
+  and how they are lit. What is drawn keeps the outline's curves: the
+  copy is the outline moved (parallel) or scaled about the vanishing
+  point, node for node, and a side runs along the outline's own curves
+  from where it starts to where it ends, then back along the copy's, so
+  a circle's side has a handful of nodes and breaks apart into curves,
+  not into a node for each flattened edge (#2208). A body turned in
+  space keeps the curves in its two caps (each lies at one depth, where
+  the turn and the view only move and scale the outline); its walls are
+  drawn face by face, and the near cap of a bevelled body is the
+  outline drawn in, kept as flattened.
 - Surfaces are drawn farthest first: along the offset for parallel
   bodies, by distance from the vanishing point for the others (nearer
   is farther for Small back and Big front, the other way for Big back

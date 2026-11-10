@@ -77,6 +77,8 @@ full, row-by-row status.
 
 - Roughen works out the whole stroke from the outline it began with, so going back over the same place or holding the button adds no more spikes: a long stroke piled up nodes by the million.
 
+- Extrude: the body keeps the curves of the outline. The far (or near) face is the outline itself moved or scaled, node for node, and each side runs along the outline's own curves, so the parts of an extrusion broken apart have about as many nodes as the object; before, every part was a polygon with a node for each tiny straight piece the outline had been cut into (a circle's far face had 36 nodes, the parts of a letter's body hundreds). A body turned in space keeps the curves in its front and back faces (#2208).
+
 - TraceCut, Find Crossings: On OK has Move them apart, which moves objects that cross each other apart in one undo step, each the shortest way that leaves the spacing (2 mm at first) to the others; the lowest of each set of crossing objects stays, and so do locked ones. Finding crossings offered no way to resolve them by moving the objects.
 
 ## 0.43.0 (2026-11-08)
