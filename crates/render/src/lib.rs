@@ -1300,7 +1300,8 @@ impl Renderer<'_> {
             _ => false,
         };
         if !drawn {
-            self.draw_drop_shadow(sh, page_path);
+            let rule = shape_fill_rule(shape, self.flags.text_outline);
+            self.draw_drop_shadow(sh, page_path, rule);
         }
     }
 
@@ -1455,8 +1456,14 @@ impl Renderer<'_> {
     /// A drop shadow beneath an object whose page-space path is
     /// `page_path`: its silhouette moved (flat) or sheared (perspective),
     /// filled with the shadow colour, feathered, faded along a
-    /// perspective shadow and merged with what is beneath.
-    fn draw_drop_shadow(&mut self, sh: &tracedraw_core::Shadow, page_path: &BezPath) {
+    /// perspective shadow and merged with what is beneath. `rule` is the
+    /// rule the object is filled by, so its holes are the shadow's.
+    fn draw_drop_shadow(
+        &mut self,
+        sh: &tracedraw_core::Shadow,
+        page_path: &BezPath,
+        rule: FillRule,
+    ) {
         let b = page_path.bounding_box();
         let Some((layer_at, mut layer, screen)) = self.shadow_target(sh, b) else {
             return;
@@ -1465,6 +1472,7 @@ impl Renderer<'_> {
             &mut layer,
             sh,
             page_path,
+            rule,
             screen,
             self.zoom,
             self.flags.anti_alias,
@@ -2692,11 +2700,14 @@ impl Renderer<'_> {
 /// Paint the drop shadow `sh` of an object with page path `page_path` into
 /// the empty `layer` (pixels = `screen` times page millimetres, `zoom`
 /// pixels per millimetre), with its opacity and fade but not its merge
-/// mode. False when nothing was painted.
+/// mode. The silhouette is filled by `rule`, the rule the object is
+/// filled by, so a hole of the object is a hole of its shadow (#2216).
+/// False when nothing was painted.
 fn shadow_layer(
     layer: &mut Pixmap,
     sh: &tracedraw_core::Shadow,
     page_path: &BezPath,
+    rule: FillRule,
     screen: Affine,
     zoom: f64,
     anti_alias: bool,
@@ -2709,13 +2720,7 @@ fn shadow_layer(
     let mut paint = Paint::default();
     paint.anti_alias = anti_alias;
     paint.set_color_rgba8(255, 255, 255, 255);
-    layer.fill_path(
-        &sk_sh,
-        &paint,
-        FillRule::Winding,
-        Transform::identity(),
-        None,
-    );
+    layer.fill_path(&sk_sh, &paint, rule, Transform::identity(), None);
     shade_shadow(layer, sh, b, screen, zoom);
     true
 }
@@ -2808,6 +2813,7 @@ fn shadow_pixels(
 /// layer by `to_screen`, inside `clip` when given: the objects of a group
 /// each, a clip frame's filled frame and its contents only where its
 /// frame is (nested frames cut further), hidden objects not at all.
+/// Each is filled by its own fill rule, holes left open (#2216).
 fn fill_silhouette(
     layer: &mut Pixmap,
     shape: &Shape,
@@ -2840,7 +2846,7 @@ fn fill_silhouette(
                 layer.fill_path(
                     &sk_frame,
                     &paint,
-                    FillRule::Winding,
+                    shape_fill_rule(frame, false),
                     Transform::identity(),
                     clip,
                 );
@@ -2881,7 +2887,8 @@ fn fill_silhouette(
             let mut paint = Paint::default();
             paint.anti_alias = anti_alias;
             paint.set_color_rgba8(255, 255, 255, 255);
-            layer.fill_path(&sk, &paint, FillRule::Winding, Transform::identity(), clip);
+            let rule = shape_fill_rule(shape, false);
+            layer.fill_path(&sk, &paint, rule, Transform::identity(), clip);
         }
     }
 }
@@ -2971,7 +2978,8 @@ pub fn render_shadow_image(shape: &Shape, dpi: f64) -> Option<(Rect, Pixmap)> {
             None => false,
         }
     } else {
-        shadow_layer(&mut pm, sh, &path, screen, zoom, true)
+        let rule = shape_fill_rule(shape, false);
+        shadow_layer(&mut pm, sh, &path, rule, screen, zoom, true)
     };
     if !drawn {
         return None;
@@ -7112,7 +7120,15 @@ mod tests {
                     );
                 } else {
                     let path = shadowed.page_path();
-                    assert!(shadow_layer(&mut full, &sh, &path, screen, zoom, true));
+                    assert!(shadow_layer(
+                        &mut full,
+                        &sh,
+                        &path,
+                        shape_fill_rule(&shadowed, false),
+                        screen,
+                        zoom,
+                        true
+                    ));
                 }
                 let pp = tiny_skia::PixmapPaint {
                     blend_mode: merge_blend(sh.merge),
@@ -7360,6 +7376,122 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A ring as a user makes one, with a flat black shadow 30 mm to the
+    /// right: two circles combined, or one curve whose inner circle runs
+    /// the same way round as the outer one (`reversed` false) or the
+    /// other way, filled by `rule`.
+    fn shadowed_ring(
+        combined: bool,
+        reversed: bool,
+        rule: tracedraw_core::shaping::FillRule,
+    ) -> Shape {
+        let circle = |r: f64| tracedraw_core::geometry::Circle::new((30.0, 50.0), r).to_path(0.01);
+        let mut ring = if combined {
+            let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(100.0, 100.0));
+            let layer = doc.pages[0].layers[0].id;
+            let mut ids = Vec::new();
+            for r in [20.0, 10.0] {
+                let mut s = Shape::new(
+                    doc.ids_mut().shape(),
+                    ShapeKind::Ellipse {
+                        rect: Rect::new(30.0 - r, 50.0 - r, 30.0 + r, 50.0 + r),
+                        arc: None,
+                    },
+                );
+                s.fill = Fill::Solid(Color::rgb8(0, 0, 255));
+                ids.push(s.id);
+                tracedraw_core::Command::AddShape { layer, shape: s }
+                    .apply(&mut doc)
+                    .unwrap();
+            }
+            tracedraw_core::Command::Combine { shapes: ids }
+                .apply(&mut doc)
+                .unwrap();
+            doc.layer(layer).unwrap().shapes[0].clone()
+        } else {
+            let mut path = circle(20.0);
+            let inner = circle(10.0);
+            path.extend(if reversed {
+                inner.reverse_subpaths()
+            } else {
+                inner
+            });
+            Shape::new(ShapeId(1), ShapeKind::Path { path, closed: true })
+        };
+        ring.fill = Fill::Solid(Color::rgb8(0, 0, 255));
+        ring.stroke = None;
+        ring.fill_rule = rule;
+        ring.shadow = Some(tracedraw_core::Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(30.0, 0.0),
+            opacity: 1.0,
+            blur: 0.0,
+            color: Color::BLACK,
+            ..Default::default()
+        });
+        ring
+    }
+
+    /// The drop shadow of an object with a hole has the hole too (#2216:
+    /// it was filled by the nonzero rule whatever the object's own, so
+    /// a ring of two circles combined cast a solid disc). It is open
+    /// wherever the object is: on the page, alone as a picture (Break
+    /// Drop Shadow Apart, PDF and `.cdr` output) and as part of a
+    /// group's shadow. A curve set to the nonzero rule whose inner
+    /// circle runs the same way round has no hole, and neither has its
+    /// shadow.
+    #[test]
+    fn a_drop_shadow_keeps_the_holes_of_its_object() {
+        use tracedraw_core::shaping::FillRule as Rule;
+        let white = (255, 255, 255);
+        let cases = [
+            ("combined", true, false, Rule::EvenOdd),
+            ("same way, even-odd", false, false, Rule::EvenOdd),
+            ("reversed, even-odd", false, true, Rule::EvenOdd),
+            ("reversed, nonzero", false, true, Rule::NonZero),
+            ("same way, nonzero", false, false, Rule::NonZero),
+        ];
+        let mut failed = Vec::new();
+        for (name, combined, reversed, rule) in cases {
+            let ring = shadowed_ring(combined, reversed, rule);
+            let (doc, page) = doc_with(vec![ring.clone()]);
+            let pm = render_page_image(&doc, page, 25.4).expect("page");
+            // The object itself says whether it has a hole.
+            let hole = px(&pm, 30, 50) == white;
+            assert_eq!(hole, !(rule == Rule::NonZero && !reversed), "{name}");
+            assert_eq!(px(&pm, 15, 50), (0, 0, 255), "{name}: the ring");
+            assert_eq!(px(&pm, 75, 50), (0, 0, 0), "{name}: the shadow's ring");
+            // On the page: the shadow's middle, 30 mm right of the hole.
+            if (px(&pm, 60, 50) == white) != hole {
+                failed.push(format!("{name}: on the page"));
+            }
+            // Alone as a picture.
+            let (area, alone) = render_shadow_image(&ring, 25.4).expect("picture");
+            let at = |x: f64| (x - area.x0).floor() as u32;
+            let y = (area.y1 - 50.0).floor() as u32;
+            assert_eq!(alone.pixel(at(75.0), y).unwrap().alpha(), 255, "{name}");
+            if (alone.pixel(at(60.0), y).unwrap().alpha() == 0) != hole {
+                failed.push(format!("{name}: as a picture"));
+            }
+            // In a group that has the shadow.
+            let mut child = ring.clone();
+            let shadow = child.shadow.take();
+            let mut group = Shape::new(
+                ShapeId(9),
+                ShapeKind::Group {
+                    children: vec![child],
+                },
+            );
+            group.shadow = shadow;
+            let (doc, page) = doc_with(vec![group]);
+            let pm = render_page_image(&doc, page, 25.4).expect("page");
+            assert_eq!(px(&pm, 75, 50), (0, 0, 0), "{name}: the group's shadow");
+            if (px(&pm, 60, 50) == white) != hole {
+                failed.push(format!("{name}: in a group"));
+            }
+        }
+        assert!(failed.is_empty(), "shadow and object differ: {failed:#?}");
     }
 
     /// A 40 x 40 mm page with a red square under a blue square that has

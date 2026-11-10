@@ -125,6 +125,14 @@ own outline, the same as after Convert to Curves, on every platform
 (`shadow_tool::tests::native_shapes_pick_their_shadow_by_the_outline`,
 `tracedraw_render` `tests::native_shapes_cast_the_shadow_of_their_outline`).
 
+The silhouette is filled by the object's own fill rule, so a hole of the
+object (a ring of two circles combined, the middle of a crossing star) is
+a hole of its shadow, on the page, in a group's shadow and in the
+shadow's picture; text, and a curve set to the nonzero rule, stay solid
+where their contours overlap (#2216,
+`tracedraw_render` `tests::a_drop_shadow_keeps_the_holes_of_its_object`,
+`tracedraw_cdr` `shadow_image::tests::the_shadow_of_a_ring_has_its_hole`).
+
 ## Picking a shadow
 
 A shadow is picked with its object, where it lies above what is beneath
