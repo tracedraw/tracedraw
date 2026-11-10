@@ -4540,10 +4540,11 @@ impl App {
                 };
             }
         }
-        // The Shape tool with nodes chosen: C turns cusp nodes smooth and
-        // the others cusp, S symmetrical nodes smooth and the others
-        // symmetrical, Y makes them symmetrical (before the alignment and
-        // tool letters).
+        // The Shape tool with nodes chosen: C makes them cusp, S smooth
+        // and Y symmetrical (before the alignment and tool letters).
+        // Each key names one type: C used to turn a cusp node smooth
+        // and S to make nodes symmetrical, so neither key gave the type
+        // it stands for on the node it was pressed on (#2210).
         let nodes_chosen = self.tool == Tool::Shape && !self.node_selection.is_empty();
         if nodes_chosen {
             // The node commands' own keys (Object > Nodes, Shift and a
@@ -4558,18 +4559,16 @@ impl App {
                 return;
             }
             use tracedraw_core::nodes::NodeType;
-            let now = self.current_node_type();
-            let toggled = |key: Key, pair: NodeType| {
-                let ty = if now == Some(pair) {
-                    NodeType::Smooth
-                } else {
-                    pair
-                };
-                (key, ty)
+            // A B-spline's control point has two states, so C still
+            // switches a fixed one back to floating (#1758).
+            let cusp = if self.chosen_spline_points() == Some(true) {
+                NodeType::Smooth
+            } else {
+                NodeType::Cusp
             };
             for (k, ty) in [
-                toggled(Key::C, NodeType::Cusp),
-                toggled(Key::S, NodeType::Symmetrical),
+                (Key::C, cusp),
+                (Key::S, NodeType::Smooth),
                 (Key::Y, NodeType::Symmetrical),
             ] {
                 if pressed(k, Modifiers::NONE) {

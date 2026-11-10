@@ -3208,16 +3208,20 @@ fn node_keys_in_the_shape_tool() {
     let ty = |app: &App| app.node_type_of(c, hit.index);
     use tracedraw_core::nodes::NodeType;
     assert_eq!(ty(&app), NodeType::Cusp);
-    // C switches cusp and smooth, S symmetrical and smooth (a cusp node
-    // becomes symmetrical), Y makes it symmetrical. The type is kept with
-    // the curve, so the way back shows although the handles stay aligned.
+    // Each key names one type (#2210): S makes the node smooth, C cusp,
+    // Y symmetrical, whatever it was, and a second press changes nothing.
+    // C used to turn this cusp node smooth and S to make it symmetrical.
+    // The type is kept with the curve, so the way back to cusp shows
+    // although the handles stay aligned.
     for (k, want) in [
-        (egui::Key::C, NodeType::Smooth),
         (egui::Key::C, NodeType::Cusp),
-        (egui::Key::S, NodeType::Symmetrical),
         (egui::Key::S, NodeType::Smooth),
-        (egui::Key::S, NodeType::Symmetrical),
+        (egui::Key::S, NodeType::Smooth),
         (egui::Key::C, NodeType::Cusp),
+        (egui::Key::C, NodeType::Cusp),
+        (egui::Key::Y, NodeType::Symmetrical),
+        (egui::Key::Y, NodeType::Symmetrical),
+        (egui::Key::S, NodeType::Smooth),
         (egui::Key::Y, NodeType::Symmetrical),
     ] {
         frame(

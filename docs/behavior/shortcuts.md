@@ -165,8 +165,8 @@ bar have keys of their own (#2001), Shift and a letter so that they
 never take an align or tool key: Shift+L To Line, Shift+U To Curve,
 Shift+C Cusp, Shift+M Smooth, Shift+Y Symmetrical, Shift+B Break Curve,
 Shift+J Join Nodes, and + Add Node (- deletes the chosen nodes). The
-plain C, S and Y still switch the node type as before (see
-`shape-tool.md`). The commands are Object > Nodes, so Options >
+plain C, S and Y make the chosen nodes cusp, smooth and symmetrical
+(#2210, see `shape-tool.md`). The commands are Object > Nodes, so Options >
 Customization > Commands lists them under Object and gives them other
 keys (`pick_drag_tests::node_commands_have_keys_of_their_own`).
 
