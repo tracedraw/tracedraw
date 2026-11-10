@@ -987,4 +987,94 @@ mod tests {
         assert_eq!(corners(&back).len(), 3);
         assert!((back.area() - cut.area()).abs() < 1e-6);
     }
+
+    /// A corner with a smooth node close beside it shows its ring and
+    /// rounds as far as its sides go (#2224, #2225, #2226): a disc with
+    /// a bite taken out one degree past its top node has half a
+    /// millimetre of curve between the corner and the node. The corner
+    /// counted as too short to round and had no ring to grab; its
+    /// rounding stopped at the node, half a millimetre, and left a
+    /// sliver of a segment before it.
+    #[test]
+    fn a_corner_beside_a_smooth_node_shows_its_ring_and_rounds() {
+        use tracedraw_core::shaping::{overlay, Op};
+        let turn = 89f64.to_radians();
+        let at = Point::new(60.0 + 30.0 * turn.cos(), 60.0 + 30.0 * turn.sin());
+        let bitten = overlay(
+            &disc(60.0, 60.0, 30.0),
+            &disc(at.x + 30.0, at.y, 30.0),
+            Op::Trim,
+        );
+        let sharp = corners(&bitten);
+        assert_eq!(sharp.len(), 2, "{sharp:?}");
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Path {
+                path: bitten.clone(),
+                closed: true,
+            })
+            .expect("a curve");
+        app.select(vec![id]);
+        app.tool = Tool::Shape;
+        app.settings.nodes.corner_widgets = true;
+        // Seen at 4 px to the millimetre, about the whole page.
+        app.view.zoom = 4.0;
+        let path_of = |app: &App| match &app.doc().find_shape(id).expect("curve").kind {
+            ShapeKind::Path { path, .. } => path.clone(),
+            _ => panic!("a curve"),
+        };
+        let ring = |app: &App| {
+            app.corner_widgets()
+                .into_iter()
+                .find(|w| (w.corner.at - at).hypot() < 1e-3)
+        };
+        assert_eq!(app.corner_widgets().len(), 2);
+        let w = ring(&app).expect("the ring of the corner beside the node");
+        // Dragged 2 mm into the corner: a rounding of millimetres, not
+        // of the half millimetre before the node.
+        let p = app.view.to_page(w.at);
+        assert!(app.start_corner_drag(w, p, false));
+        let Drag::CornerWidget(d) = app.drag.clone() else {
+            panic!("no drag");
+        };
+        assert!(d.max > 5.0, "{}", d.max);
+        app.corner_drag_to(*d, p + w.corner.inside * 2.0);
+        app.drag = Drag::None;
+        let now = path_of(&app);
+        let rounded = fillets(&now);
+        assert_eq!(rounded.len(), 1, "{rounded:?}");
+        assert!(rounded[0].radius > 2.0, "{rounded:?}");
+        assert!((rounded[0].corner - at).hypot() < 0.05, "{rounded:?}");
+        // No sliver of a segment is left beside the arc.
+        let shortest = now
+            .segments()
+            .map(|s| tracedraw_core::geometry::ParamCurveArclen::arclen(&s, 1e-6))
+            .fold(f64::INFINITY, f64::min);
+        assert!(shortest > 0.05, "{shortest}");
+        // The ring stays, and dragged back out the corner is sharp
+        // again, where it was.
+        assert_eq!(app.corner_widgets().len(), 2);
+        let w = ring(&app).unwrap_or_else(|| {
+            app.corner_widgets()
+                .into_iter()
+                .find(|w| (w.corner.at - at).hypot() < 0.05)
+                .expect("the rounded corner's ring")
+        });
+        let p = app.view.to_page(w.at);
+        assert!(app.start_corner_drag(w, p, false));
+        let Drag::CornerWidget(d) = app.drag.clone() else {
+            panic!("no drag");
+        };
+        app.corner_drag_to(*d, p - w.corner.inside * 20.0);
+        app.drag = Drag::None;
+        let back = path_of(&app);
+        assert!(fillets(&back).is_empty());
+        assert_eq!(corners(&back).len(), 2);
+        assert!(
+            (back.area() - bitten.area()).abs() < 0.05,
+            "{} {}",
+            back.area(),
+            bitten.area()
+        );
+    }
 }

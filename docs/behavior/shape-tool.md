@@ -194,6 +194,11 @@ round their corners with their own handles either way.
   widget that a drag would leave unchanged; zoomed in far enough, it
   shows (`tracedraw_core::corner_cut::corner_reach`,
   `tools2::tests::corner_widgets_show_only_where_they_round_something`).
+  A side is measured through the smooth nodes of the curve, as far as
+  the next corner (at most 8 segments): a corner with a smooth node
+  close beside it, as the shaping commands leave where two circles
+  cross near a node of one, has its widget (#2225,
+  `corner_widgets::tests::a_corner_beside_a_smooth_node_shows_its_ring_and_rounds`).
 - Options > Nodes and Handles > Round one corner at a time (on at first,
   under the rings option): a Ctrl+click (Cmd on macOS) on a widget
   chooses its corner, a second Ctrl+click takes it out, so one corner or
@@ -212,7 +217,14 @@ round their corners with their own handles either way.
   side the arc is the circle of that radius tangent to both sides (see
   `corners-and-joins.md`), so its middle lies nearer the corner or
   further than the pointer, and the largest radius is the largest
-  circle that touches both sides within them (#2223).
+  circle that touches both sides within them (#2223). A side runs on
+  through the smooth nodes of the curve to the next corner, and the
+  arc with it: the segments it passes are taken whole, so the rounding
+  does not stop at a node and leaves no sliver of a segment before one
+  (#2224, #2226). Between sides that bend away from each other (the
+  notch where two welded circles meet) every circle touches both,
+  flatter the larger it is; there the largest radius is the one whose
+  arc still turns a quarter of what the corner turns.
 - Open curves round their inner corners the same way.
 - The drag is one undo step, "Fillet". The rounded corners become arcs
   of the curve (nodes and segments, as the Corners panel makes them); the
@@ -236,6 +248,15 @@ round their corners with their own handles either way.
   at its ends than its radius says; #2222,
   `corner_cut::tests::pieces_of_round_shapes_are_not_rounded_corners`,
   `corner_widgets::tests::a_shape_cut_out_of_discs_keeps_one_ring_per_rounded_corner`).
+  A side that
+  is an arc of a circle (it turns 14 degrees or more, alone or with the
+  segments it runs on through, and keeps to the circle within a
+  thousandth of its radius) may have lost whole segments to the
+  rounding; where its own cubic carried on and the circle part by more
+  than a hundredth of the way to the corner, the circle is the side,
+  and taking the rounding off draws it as an arc beside the side
+  (#2224,
+  `corner_cut::tests::a_fillet_runs_on_through_the_smooth_nodes_of_a_side`).
   Its widget
   sits 18 px off the
   middle of the arc, along the middle of the corner. Dragging it takes

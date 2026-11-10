@@ -32,6 +32,17 @@ Fillets, scallops or chamfers the corners of the selected objects.
   `corner_cut::tests::fillets_between_curved_sides_are_found_and_taken_back_off`,
   `corner_cut::tests::the_largest_fillet_between_curved_sides_is_the_circle_that_fits`).
   Arcs are cubic Beziers, one per quarter turn.
+- A side of a corner runs on through the smooth nodes of the curve, as
+  far as the next corner (at most 8 segments). A fillet whose circle
+  does not touch both segments at the corner is looked for further
+  along the sides, the Newton steps going on from one segment to the
+  next, and the segments between the corner and the arc are taken
+  whole. A corner beside a smooth node (where the shaping commands cut
+  a circle near one of its nodes) therefore rounds as far as its sides
+  go, not only to the node (#2224,
+  `corner_cut::tests::a_fillet_runs_on_through_the_smooth_nodes_of_a_side`,
+  `corner_cut::tests::corners_of_shapes_cut_out_of_circles_round_and_are_found_again`).
+  Scallops and chamfers still keep to the two segments at the corner.
 - Scallops and chamfers measure their sizes along the sides, curved or
   straight.
 - Corners are cut on the page: on a stretched or skewed object a fillet
