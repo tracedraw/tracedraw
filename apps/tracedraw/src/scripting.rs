@@ -127,6 +127,14 @@ class Shape {
   get SizeHeight() { return __call('shape_info', {id:this.id}).h; }
   get CenterX() { const i = __call('shape_info', {id:this.id}); return i.x + i.w/2; }
   get CenterY() { const i = __call('shape_info', {id:this.id}); return i.y + i.h/2; }
+  // The bounding box in one reading, for scripts that measure rather than
+  // place: one call instead of four, and the edges come named.
+  get Bounds() {
+    const i = __call('shape_info', {id:this.id});
+    return { x: i.x, y: i.y, width: i.w, height: i.h,
+             left: i.x, bottom: i.y, right: i.x + i.w, top: i.y + i.h,
+             centerX: i.x + i.w/2, centerY: i.y + i.h/2 };
+  }
   get Text() { return __call('shape_info', {id:this.id}).text; }
   set Text(t) { __call('set_text', {id:this.id, text:t}); }
   get Font() { return __call('shape_info', {id:this.id}).font; }
@@ -3118,5 +3126,76 @@ mod tests {
         assert_eq!(out[0], "0", "a rectangle has no subpaths to split");
         let out = run(&mut a, "print(ActiveLayer.Shapes.Count);").unwrap();
         assert_eq!(out[0], "1", "and the object is still there");
+    }
+
+    /// Bounds gives the box in one reading, with the edges named the way a
+    /// script measuring a layout wants them.
+    #[test]
+    fn bounds_reads_the_box_in_one_call() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const r = ActiveLayer.CreateRectangle(10, 20, 30, 40, 0);\n\
+             const b = r.Bounds;\n\
+             print(b.left + ',' + b.bottom + ',' + b.right + ',' + b.top);",
+        )
+        .map(|out| assert_eq!(out[0], "10,20,40,60"))
+        .unwrap();
+        let out = run(
+            &mut a,
+            "const b = ActiveLayer.Shapes.Item(1).Bounds;\n\
+             print(b.x + ',' + b.y + ',' + b.width + ',' + b.height);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "10,20,30,40");
+        let out = run(
+            &mut a,
+            "const b = ActiveLayer.Shapes.Item(1).Bounds;\n\
+             print(b.centerX + ',' + b.centerY);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "25,40", "the centre of the box");
+    }
+
+    /// Bounds and the four properties it is made of agree, so a script can
+    /// use either without getting two answers.
+    #[test]
+    fn bounds_agrees_with_the_single_properties() {
+        let mut a = app();
+        run(
+            &mut a,
+            "ActiveLayer.CreateEllipse(5, 15, 25, 35);\n\
+             const s = ActiveLayer.Shapes.Item(1);\n\
+             const b = s.Bounds;\n\
+             const iguais = b.x === s.PositionX && b.y === s.PositionY &&\n\
+               b.width === s.SizeWidth && b.height === s.SizeHeight &&\n\
+               b.centerX === s.CenterX && b.centerY === s.CenterY;\n\
+             print(iguais ? 'sim' : 'nao');",
+        )
+        .map(|out| assert_eq!(out[0], "sim"))
+        .unwrap();
+    }
+
+    /// A text object's box is its drawn box, not its frame: the box is
+    /// settled by the layout, so Bounds reads it back the same way the
+    /// single properties do.
+    #[test]
+    fn bounds_of_text_is_the_drawn_box() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const t = ActiveLayer.CreateArtisticText(20, 100, 'Hello', 'Arial', 12);\n\
+             const b = t.Bounds;\n\
+             print(b.width > 0 && b.height > 0 ? 'sim' : 'nao');",
+        )
+        .map(|out| assert_eq!(out[0], "sim"))
+        .unwrap();
+        let out = run(
+            &mut a,
+            "const t = ActiveLayer.Shapes.Item(1);\n\
+             print(t.Bounds.width === t.SizeWidth ? 'sim' : 'nao');",
+        )
+        .unwrap();
+        assert_eq!(out[0], "sim");
     }
 }
