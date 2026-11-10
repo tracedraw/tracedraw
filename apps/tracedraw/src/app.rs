@@ -5989,7 +5989,9 @@ impl App {
             })
             .collect();
         let connectors = self.connector_copies(&originals, &copies);
-        for shape in copies.into_iter().chain(connectors) {
+        let mut copies: Vec<Shape> = copies.into_iter().chain(connectors).collect();
+        self.bring_into_edited_frame(&mut copies);
+        for shape in copies {
             cmds.push(Command::AddShape { layer, shape });
         }
         if let Err(e) = self.engine.run_batch("Paste", &cmds) {
@@ -6001,6 +6003,38 @@ impl App {
         self.select(ids.clone());
         if self.symmetry_edit.is_some() {
             self.join_symmetry(&ids);
+        }
+    }
+
+    /// Objects about to be pasted while a clip frame's contents are
+    /// edited go where the frame shows them (#2044): pasted where they
+    /// were copied, away from the frame, they became contents the frame
+    /// cut away whole, so the paste seemed to land outside the frame and
+    /// showed nothing once the edit was finished. Objects that would lie
+    /// wholly outside the frame's box are centred on it, together;
+    /// objects reaching into the frame stay where they were copied.
+    fn bring_into_edited_frame(&self, pasted: &mut [Shape]) {
+        if !self.editing_clip_contents() {
+            return;
+        }
+        let Some(frame) = self
+            .clip_frame_edit
+            .as_ref()
+            .and_then(|(frame, _)| self.doc().find_shape(*frame))
+            .map(|f| f.bounds())
+        else {
+            return;
+        };
+        let Some(all) = pasted.iter().map(|s| s.bounds()).reduce(|a, b| a.union(b)) else {
+            return;
+        };
+        let finite = |r: Rect| [r.x0, r.y0, r.x1, r.y1].iter().all(|v| v.is_finite());
+        if !finite(frame) || !finite(all) || all.intersect(frame).area() > 0.0 {
+            return;
+        }
+        let d = frame.center() - all.center();
+        for s in pasted {
+            s.transform_by(Affine::translate(d));
         }
     }
 

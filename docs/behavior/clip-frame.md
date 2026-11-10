@@ -61,7 +61,10 @@ frame is edited node by node, and the clip frame stays one
   contents are every object on the page that was not there besides the
   frame when editing began (`App::clip_edit_contents`): a group inside
   ungrouped stays in as its members, drawn in full, and objects drawn or
-  pasted while editing go in too; the members of an ungrouped group were
+  pasted while editing go in too (a paste that would land wholly outside
+  the frame's box is centred on the frame, so it shows in it, #2044,
+  `pick_drag_tests::a_paste_while_editing_a_clip_frame_lands_inside_the_frame`);
+  the members of an ungrouped group were
   left out and faded, and Finish emptied the frame (#537,
   `a_group_inside_a_clip_frame_being_edited_drags_and_ungroups`).
   While editing, only the contents can be picked: the faded objects and

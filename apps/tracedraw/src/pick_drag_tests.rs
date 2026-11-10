@@ -8522,6 +8522,79 @@ fn clip_frame_edit_keeps_to_its_contents_and_its_own_undo() {
     assert_eq!(app.selection, vec![frame_id]);
 }
 
+/// Ctrl+V while a clip frame's contents are edited puts the copy where
+/// the frame shows it (#2044). An object copied elsewhere on the page was
+/// pasted where it was copied, outside the frame: it counted as contents,
+/// so Finish put it in the frame, which cut it away whole. It is centred
+/// on the frame instead; a copy that reaches into the frame where it was
+/// copied stays there, and outside an edit a paste lands where it was
+/// copied, as ever.
+#[test]
+fn a_paste_while_editing_a_clip_frame_lands_inside_the_frame() {
+    let (ctx, mut app, frame_id) = setup();
+    let mk = |app: &mut App, r: Rect| {
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: r,
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+            0, 0, 200,
+        )));
+        id
+    };
+    let inside = mk(&mut app, Rect::new(15.0, 15.0, 30.0, 30.0));
+    let far = mk(&mut app, Rect::new(100.0, 100.0, 120.0, 120.0));
+    let frame_box = bounds(&app, frame_id);
+    app.place_inside(vec![inside], frame_id);
+    // Outside an edit: where it was copied.
+    app.select(vec![far]);
+    app.copy();
+    app.paste();
+    let plain = app.selection[0];
+    assert!(close(bounds(&app, plain).x0, 100.0));
+    app.run(tracedraw_core::Command::DeleteShapes {
+        shapes: vec![plain],
+    });
+    // While editing: centred on the frame, among the contents.
+    app.select(vec![frame_id]);
+    app.edit_clip_frame();
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let steps = app.engine.history_labels().0.len();
+    app.paste();
+    assert_eq!(app.engine.history_labels().0.len(), steps + 1, "one step");
+    let pasted = app.selection[0];
+    let pb = bounds(&app, pasted);
+    assert!(
+        close(pb.center().x, frame_box.center().x) && close(pb.center().y, frame_box.center().y),
+        "centred on the frame: {pb:?} {frame_box:?}"
+    );
+    assert!(close(pb.width(), 20.0) && close(pb.height(), 20.0));
+    assert!(app.clip_edit_contents().contains(&pasted));
+    // A copy of a content, which reaches into the frame, stays in place.
+    app.select(vec![inside]);
+    app.copy();
+    app.paste();
+    let twin = app.selection[0];
+    assert!(close(bounds(&app, twin).x0, 15.0) && close(bounds(&app, twin).y0, 15.0));
+    // Finished: all three are in the frame, the pasted one where it shows.
+    app.finish_clip_frame_edit();
+    match &app.doc().find_shape(frame_id).expect("frame").kind {
+        ShapeKind::ClipFrame { contents, .. } => {
+            let ids: Vec<ShapeId> = contents.iter().map(|c| c.id).collect();
+            assert_eq!(ids, vec![inside, pasted, twin]);
+            let shown = contents[1].bounds().intersect(frame_box);
+            assert!(shown.area() > 399.0, "the pasted object shows: {shown:?}");
+        }
+        other => panic!("not a clip frame: {other:?}"),
+    }
+}
+
 /// Finish on the symmetry bar ends the editing: the bar and the mirror
 /// lines go, the symmetry stays selected whole, a click takes it whole
 /// and a drag moves it whole.
