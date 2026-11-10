@@ -40,6 +40,21 @@ the OpenAI Images API at the same base with the image model entered.
   in `imageConfig`. One picture per request: asking for 3 sends 3
   requests. Pictures come back in `inlineData`; a refusal
   (`promptFeedback.blockReason`) or text without a picture is shown.
+  Parts marked `thought` (the notes and draft pictures a thinking model
+  such as `gemini-3-pro-image-preview` sends before its final picture)
+  are left out, so one picture is placed, and traced for Create vectors,
+  not each draft too; a reply with drafts only gives its last one
+  (#2042).
+- An image model that cannot be used is said plainly, with what to do
+  and then the service's own words (`ai_image::image_model_error`,
+  #2042; the usual messages of `ai-drawing.md` for everything else): a
+  429 whose message names a limit of 0 means the plan of the key gives
+  that model no quota at all, which is how Google's free keys answer for
+  the image models ("... Choose another image model, turn on billing for
+  the key, or have the vectors made as an SVG drawing instead"); a 400
+  or 404 that says the model takes no image output or does not answer
+  `generateContent` means it is not an image model ("... Choose an image
+  model in Tools > Options > AI > Service").
 - OpenAI: `POST {address}/images/generations` (JSON: model, prompt, `n`
   up to 4, size 1024 x 1024, 1536 x 1024 or 1024 x 1536; 1792 x 1024 or
   1024 x 1792 for `dall-e-3`, which also gets `response_format
@@ -161,6 +176,12 @@ text).
   (`ai_image::tests::remix_and_remove_background_work_on_the_selected_bitmap`);
   service and network errors are shown
   (`ai_image::tests::errors_of_the_service_are_shown_and_nothing_is_placed`).
+- Create vectors with Picture + trace through a thinking image model
+  places and traces the final picture only
+  (`ai_image::tests::the_pictures_a_model_thought_with_are_not_placed`);
+  a key with no quota for the image model and a model that makes no
+  pictures are said plainly
+  (`ai_image::tests::an_image_model_that_cannot_be_used_is_said_plainly`).
 - Aspect ratios match the reference picture; unreadable files are
   refused (`ai_image::tests::aspect_ratios_match_the_reference_picture`).
 - An example image goes with the prompt to Gemini and is edited by the
