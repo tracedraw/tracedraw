@@ -31,6 +31,8 @@ full, row-by-row status.
 
 - File > Import of a CMYK JPEG shows its colours as the drawing shows the same CMYK colours, through the colour management, and keeps the file's inks (a CMYK picture, as a CMYK TIFF comes in): an object exported as a CMYK JPEG and imported again no longer comes back brighter than it was, such as a bright blue for a muted purple. The four channels are read as stored: inverted under an Adobe marker (as the CMYK export and most programs write them), YCCK, or as they are without the marker (#2163).
 
+- Smudge: the nib carries the outline under it along, so a stroke draws the outline out into a smooth tongue about half as wide as the nib, the same whether the stroke is quick or slow. Before, a quick stroke left a thin spike and a slow one hardly moved the outline: a 10 mm nib dragged 30 mm out of a square's side moved it 11 mm (#2228).
+
 - Image > Convert to Bitmap: the picture takes the place in the stack of the topmost object it was made of. Before, it went to the top of the layer, so the shadow of a converted object covered the objects that had been above it (#2220).
 - Windows: the window is drawn through Direct3D 12 when the graphics card offers it, rather than Vulkan, whose swap chain made the window blink after switching from another program or opening a dialog on Intel and NVIDIA drivers; the card chosen in Options, or the fastest, stays the same (#1579).
 
