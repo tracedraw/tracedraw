@@ -48,8 +48,10 @@ the OpenAI Images API at the same base with the image model entered.
   Background). Pictures come back as `b64_json`; a reply with links only
   asks for another model.
 - Test Connection (Tools > Options > AI > Service) also lists the service's image models (`GET
-  {address}/models`, names with "image" or starting with "dall-e"); they
-  then fill the model lists.
+  {address}/models`, names with "image" or starting with "dall-e"; of
+  Gemini's, only those the service says answer `generateContent`, the
+  call pictures are asked with, so the Imagen models, which take
+  `predict`, stay out, #2039); they then fill the model lists.
 - Replies up to 64 MB are read; PNG, JPEG and WebP pictures are taken
   and stored as PNG.
 

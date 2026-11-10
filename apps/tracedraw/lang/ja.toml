@@ -36,6 +36,7 @@ ai.provider = "サービス:"
 ai.provider_anthropic = "Anthropic (Messages API)"
 ai.provider_openai_compatible = "OpenAI 互換 (chat completions)"
 ai.refresh_models = "サービスのモデル一覧を取得"
+ai.show_all_models = "サービスが一覧に出すモデルをすべて表示" # mt
 ai.remember_key = "このコンピューターにキーを保存する"
 ai.request = "描くもの・変更する内容:"
 ai.request_hint = "青い車輪の赤い自転車"

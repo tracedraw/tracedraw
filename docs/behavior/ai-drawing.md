@@ -56,6 +56,25 @@ needs one.
 Choosing another service clears the address and model (their defaults
 apply).
 
+The Model list (the arrow beside the field, and the list on the prompt
+bar) offers the usual models of the service until "Fetch the service's
+models" asks for its own list. That list holds every model the service
+has, and most services list models that cannot draw: embedding, audio
+and speech, live, robotics, research, question answering, music, video
+and image models, which only fail when picked. The list therefore
+offers the models that can draw (#2039, `ai::drawing_models`): a model
+stays out when a whole word of its name says what else it is for
+(`embedding`, `audio`, `tts`, `live`, `realtime`, `robotics`, `aqa`,
+`lyria`, `veo`, `imagen`, `image`, `whisper`, `moderation` and the like,
+or `deep-research` and `computer-use`), since the services say no more
+about a model than its name; the finished models come before the ones
+on trial (`preview`, `exp`, `beta`), each group in the service's order.
+The model set up always stays in the list, first when the list would
+leave it out. "Show every model the service lists", a box in the list
+shown when something was left out, brings them all back until TraceDraw
+closes. A list whose names tell nothing apart (a server with names of
+its own) is offered whole.
+
 ## Drawing
 
 - Write the request and press Draw (or Ctrl+Enter in the request).
@@ -120,6 +139,11 @@ allow the page's origin (for example `OLLAMA_ORIGINS`).
 - A request to a test transport draws a red circle as one undo step,
   the page goes along, and the next request carries the earlier one
   without its page (`ai::tests::a_request_draws_through_the_service_as_one_undo_step`).
+- The model lists offer the models that can draw, the finished ones
+  first, keep the model set up, and show every model on request; names
+  decide, by whole words
+  (`ai::tests::the_model_list_offers_the_models_that_can_draw`,
+  `every_model_can_be_shown_and_names_decide_which_draw`).
 - A program that draws then fails is sent back with its error, and only
   the corrected drawing stays; a program that fails twice draws nothing
   (`ai::tests::a_failing_script_is_sent_back_once_and_nothing_half_drawn_stays`).

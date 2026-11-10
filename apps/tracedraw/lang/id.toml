@@ -36,6 +36,7 @@ ai.provider = "Layanan:"
 ai.provider_anthropic = "Anthropic (Messages API)"
 ai.provider_openai_compatible = "Kompatibel OpenAI (chat completions)"
 ai.refresh_models = "Ambil daftar model layanan"
+ai.show_all_models = "Tampilkan semua model yang didaftar layanan" # mt
 ai.remember_key = "Ingat kunci di komputer ini"
 ai.request = "Apa yang digambar atau diubah:"
 ai.request_hint = "Sepeda merah dengan roda biru"

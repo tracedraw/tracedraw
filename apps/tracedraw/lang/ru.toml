@@ -36,6 +36,7 @@ ai.provider = "Сервис:"
 ai.provider_anthropic = "Anthropic (Messages API)"
 ai.provider_openai_compatible = "Совместимый с OpenAI (chat completions)"
 ai.refresh_models = "Загрузить список моделей сервиса"
+ai.show_all_models = "Показывать все модели, которые перечисляет сервис" # mt
 ai.remember_key = "Запомнить ключ на этом компьютере"
 ai.request = "Что нарисовать или изменить:"
 ai.request_hint = "Красный велосипед с синими колёсами"

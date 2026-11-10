@@ -110,6 +110,7 @@ pub fn connection(app: &mut App, ui: &mut Ui) {
     // The models to pick from: the service's own once listed, else the
     // usual ones of its kind.
     let choices = app.ai_model_choices();
+    let hidden = app.ai_models_hidden();
     let mut fetch = false;
     let prefs = &mut app.settings.ai;
     grid("ai_connection_grid").show(ui, |ui| {
@@ -188,6 +189,10 @@ pub fn connection(app: &mut App, ui: &mut Ui) {
                 }
                 if !choices.is_empty() {
                     ui.separator();
+                }
+                // The models that cannot draw stay out unless asked for.
+                if hidden {
+                    ui.checkbox(&mut app.ai.show_all_models, tr("ai.show_all_models"));
                 }
                 if ui.button(tr("ai.refresh_models")).clicked() {
                     fetch = true;

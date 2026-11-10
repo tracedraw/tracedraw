@@ -36,6 +36,7 @@ ai.provider = "পরিষেবা:"
 ai.provider_anthropic = "Anthropic (Messages API)"
 ai.provider_openai_compatible = "OpenAI-সামঞ্জস্যপূর্ণ (chat completions)"
 ai.refresh_models = "পরিষেবার মডেলগুলো আনুন"
+ai.show_all_models = "পরিষেবার তালিকার সব মডেল দেখান" # mt
 ai.remember_key = "এই কম্পিউটারে কী মনে রাখুন"
 ai.request = "কী আঁকবেন বা বদলাবেন:"
 ai.request_hint = "নীল চাকার একটি লাল সাইকেল"

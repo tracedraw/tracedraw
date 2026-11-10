@@ -36,6 +36,7 @@ ai.provider = "Hizmet:"
 ai.provider_anthropic = "Anthropic (Messages API)"
 ai.provider_openai_compatible = "OpenAI uyumlu (chat completions)"
 ai.refresh_models = "Hizmetin modellerini getir"
+ai.show_all_models = "Hizmetin listelediği tüm modelleri göster" # mt
 ai.remember_key = "Anahtarı bu bilgisayarda hatırla"
 ai.request = "Çizilecek veya değiştirilecek şey:"
 ai.request_hint = "Mavi tekerlekli kırmızı bir bisiklet"

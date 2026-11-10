@@ -451,6 +451,9 @@ pub struct AiSession {
     pub history: Vec<Turn>,
     /// The models the service listed (empty until asked).
     pub models: Vec<String>,
+    /// The model lists show every model the service listed, also those
+    /// whose names say they cannot draw (#2039).
+    pub show_all_models: bool,
     pending: Option<Pending>,
     /// Tests: answers requests at once instead of the network.
     pub fake: Option<fn(&HttpRequest) -> HttpResult>,
@@ -715,6 +718,82 @@ pub fn model_choices(configured: &[String], listed: &[String], usual: &[&str]) -
     own
 }
 
+/// Words in a model's name that say it does not write text: models for
+/// embeddings, speech and sound, live sessions, robots, question
+/// answering over sources, music, video, pictures, moderation, ranking,
+/// and the text completion models of old that take no conversation.
+const NOT_FOR_DRAWING: [&str; 26] = [
+    "embedding",
+    "embeddings",
+    "embed",
+    "audio",
+    "tts",
+    "speech",
+    "whisper",
+    "transcribe",
+    "live",
+    "realtime",
+    "robotics",
+    "aqa",
+    "lyria",
+    "music",
+    "veo",
+    "sora",
+    "video",
+    "imagen",
+    "image",
+    "images",
+    "dall",
+    "banana",
+    "moderation",
+    "rerank",
+    "babbage",
+    "davinci",
+];
+
+/// Words in a model's name that mark it as still on trial.
+const ON_TRIAL: [&str; 5] = ["preview", "exp", "experimental", "beta", "alpha"];
+
+/// The words of a model's name: its letters and digits between dashes,
+/// dots, slashes and the like, in lower case.
+fn name_words(id: &str) -> Vec<String> {
+    id.to_ascii_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Whether a model can be asked for a drawing, told by its name (#2039):
+/// a service's list holds every model it has, and its embedding, audio,
+/// live, robotics, research, music, video and image models only fail
+/// when picked for Draw with words. The services' lists say no more than
+/// the name, so whole words of it decide (`live` in `gemini-live-2.5`,
+/// not in `olive-7b`); a name that says nothing counts as one that draws.
+pub fn writes_drawings(id: &str) -> bool {
+    let name = id.trim().to_ascii_lowercase();
+    if name.contains("deep-research") || name.contains("computer-use") {
+        return false;
+    }
+    !name_words(&name)
+        .iter()
+        .any(|w| NOT_FOR_DRAWING.contains(&w.as_str()))
+}
+
+/// The models of a service's list to offer for drawings (#2039): those
+/// that can draw ([`writes_drawings`]), the finished ones before the
+/// ones on trial (preview, experimental), each group in the service's
+/// order. A list whose names tell none apart (a server of the user's
+/// with names of its own) is offered whole rather than empty.
+pub fn drawing_models(listed: &[String]) -> Vec<String> {
+    let mut fit: Vec<&String> = listed.iter().filter(|m| writes_drawings(m)).collect();
+    if fit.is_empty() {
+        return listed.to_vec();
+    }
+    fit.sort_by_key(|m| name_words(m).iter().any(|w| ON_TRIAL.contains(&w.as_str())));
+    fit.into_iter().cloned().collect()
+}
+
 /// The models a service listed (`data[].id` in both kinds of service,
 /// without the `models/` some services put before each name), or why
 /// there are none.
@@ -933,15 +1012,27 @@ impl App {
         }
     }
 
-    /// The models to choose from: the service's list once fetched, else
-    /// the usual ones, with the model in use first when it is in neither
-    /// (see [`model_choices`]).
+    /// The models to choose from: those of the service's list that can
+    /// draw once it is fetched (all of it with "show every model" on,
+    /// see [`drawing_models`]), else the usual ones, with the model in
+    /// use first when it is in neither (see [`model_choices`]).
     pub fn ai_model_choices(&self) -> Vec<String> {
+        let listed = if self.ai.show_all_models {
+            self.ai.models.clone()
+        } else {
+            drawing_models(&self.ai.models)
+        };
         model_choices(
             &[self.settings.ai.model()],
-            &self.ai.models,
+            &listed,
             self.settings.ai.provider.preset_models(),
         )
+    }
+
+    /// The service listed models the model lists leave out (the "show
+    /// every model" box is offered then).
+    pub fn ai_models_hidden(&self) -> bool {
+        drawing_models(&self.ai.models).len() != self.ai.models.len()
     }
 
     /// Stop waiting for the reply (it is dropped when it comes).
@@ -1684,6 +1775,144 @@ mod tests {
         assert!(build_models_request(&anthropic, "k")
             .url
             .ends_with("/models?limit=1000"));
+    }
+
+    /// The model list offers the models that can draw (#2039): what the
+    /// Gemini service lists holds embedding, audio, live, robotics,
+    /// research, question answering, music, video and image models, which
+    /// only fail when picked. They stay out of the list (finished models
+    /// before previews), the model set up stays first, and "show every
+    /// model" brings them all back.
+    #[test]
+    fn the_model_list_offers_the_models_that_can_draw() {
+        let s = |v: &[&str]| v.iter().map(|m| m.to_string()).collect::<Vec<String>>();
+        let mut app = app();
+        let (_, kind, endpoint) = PRESETS[2];
+        app.settings.ai.provider = kind;
+        app.settings.ai.endpoint = endpoint.to_string();
+        app.ai.fake = Some(|_| {
+            Ok(HttpResponse {
+                retry_after: None,
+                status: 200,
+                body: json!({"object": "list", "data": [
+                    {"id": "models/gemini-embedding-001"},
+                    {"id": "models/gemini-3-pro-preview"},
+                    {"id": "models/gemini-2.5-flash"},
+                    {"id": "models/gemini-2.5-pro"},
+                    {"id": "models/gemini-2.5-flash-image"},
+                    {"id": "models/gemini-3-pro-image-preview"},
+                    {"id": "models/gemini-2.5-flash-preview-tts"},
+                    {"id": "models/gemini-2.5-flash-native-audio-latest"},
+                    {"id": "models/gemini-live-2.5-flash-preview"},
+                    {"id": "models/gemini-robotics-er-1.5-preview"},
+                    {"id": "models/deep-research-pro-preview-12-2025"},
+                    {"id": "models/gemini-2.5-computer-use-preview-10-2025"},
+                    {"id": "models/aqa"},
+                    {"id": "models/lyria-realtime-exp"},
+                    {"id": "models/veo-3.0-generate-001"},
+                    {"id": "models/imagen-4.0-generate-001"},
+                    {"id": "models/gemma-3-27b-it"},
+                    {"id": "models/gemini-3.8-flash"},
+                ]})
+                .to_string(),
+            })
+        });
+        app.ai_fetch_models();
+        assert_eq!(
+            app.ai.status,
+            AiStatus::Listed(18),
+            "every model is counted"
+        );
+        assert_eq!(
+            app.ai_model_choices(),
+            s(&[
+                "gemini-2.5-flash",
+                "gemini-2.5-pro",
+                "gemma-3-27b-it",
+                "gemini-3.8-flash",
+                "gemini-3-pro-preview",
+            ])
+        );
+        // The model set up stays, first, even one the list leaves out.
+        app.settings.ai.model = "gemini-2.5-flash-image".into();
+        let choices = app.ai_model_choices();
+        assert_eq!(choices[0], "gemini-2.5-flash-image");
+        assert_eq!(choices.len(), 6);
+        // A server whose models tell nothing by their names offers all.
+        app.settings.ai.model.clear();
+        app.ai.models = s(&["nomic-embed-text", "whisper-large"]);
+        assert_eq!(
+            app.ai_model_choices(),
+            s(&["nomic-embed-text", "whisper-large"])
+        );
+        // The image list holds what makes pictures through the call
+        // TraceDraw uses: a model the service says cannot answer
+        // `generateContent` stays out.
+        let listed = HttpResponse {
+            retry_after: None,
+            status: 200,
+            body: json!({"models": [
+                {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent"]},
+                {"name": "models/gemini-2.5-flash-image", "supportedGenerationMethods": ["generateContent", "countTokens"]},
+                {"name": "models/imagen-4.0-generate-001", "supportedGenerationMethods": ["predict"]},
+                {"name": "models/gemini-3-pro-image-preview", "supportedGenerationMethods": ["generateContent"]},
+            ]})
+            .to_string(),
+        };
+        assert_eq!(
+            crate::ai_image::parse_models(crate::ai_image::ImageProvider::Gemini, &listed)
+                .expect("models"),
+            s(&["gemini-2.5-flash-image", "gemini-3-pro-image-preview"])
+        );
+    }
+
+    /// "Show every model the service lists" brings back the models the
+    /// list leaves out (#2039), and names alone decide which those are,
+    /// by whole words: other services and local servers keep their chat
+    /// models.
+    #[test]
+    fn every_model_can_be_shown_and_names_decide_which_draw() {
+        let s = |v: &[&str]| v.iter().map(|m| m.to_string()).collect::<Vec<String>>();
+        let mut app = app();
+        app.settings.ai.provider = Provider::OpenAiCompatible;
+        app.ai.models = s(&["text-embedding-3-small", "gpt-5.1", "gpt-image-1"]);
+        assert!(app.ai_models_hidden());
+        assert_eq!(app.ai_model_choices(), s(&["gpt-5.1"]));
+        app.ai.show_all_models = true;
+        assert_eq!(
+            app.ai_model_choices(),
+            s(&["text-embedding-3-small", "gpt-5.1", "gpt-image-1"])
+        );
+        app.ai.models = s(&["gpt-5.1"]);
+        assert!(!app.ai_models_hidden(), "nothing to bring back");
+        assert_eq!(
+            drawing_models(&s(&["b-preview", "a", "c-exp", "d"])),
+            s(&["a", "d", "b-preview", "c-exp"])
+        );
+        for (id, draws) in [
+            ("gpt-5.1", true),
+            ("gpt-4o-mini", true),
+            ("o4-mini", true),
+            ("claude-sonnet-5-5", true),
+            ("llama3.2", true),
+            ("olive-7b", true),
+            ("mistral-7b-instruct", true),
+            ("text-embedding-3-small", false),
+            ("gpt-4o-audio-preview", false),
+            ("gpt-4o-realtime-preview", false),
+            ("gpt-4o-transcribe", false),
+            ("gpt-image-1", false),
+            ("dall-e-3", false),
+            ("tts-1", false),
+            ("whisper-1", false),
+            ("omni-moderation-latest", false),
+            ("sora-2", false),
+            ("computer-use-preview", false),
+            ("nomic-embed-text", false),
+            ("babbage-002", false),
+        ] {
+            assert_eq!(writes_drawings(id), draws, "{id}");
+        }
     }
 
     /// The desktop transport against a server on this computer: the

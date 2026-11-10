@@ -36,6 +36,7 @@ ai.provider = "服務："
 ai.provider_anthropic = "Anthropic (Messages API)"
 ai.provider_openai_compatible = "OpenAI 相容 (chat completions)"
 ai.refresh_models = "擷取該服務的模型"
+ai.show_all_models = "顯示服務列出的所有模型" # mt
 ai.remember_key = "在這台電腦上記住金鑰"
 ai.request = "要繪製或變更的內容："
 ai.request_hint = "一台有藍色車輪的紅色腳踏車"

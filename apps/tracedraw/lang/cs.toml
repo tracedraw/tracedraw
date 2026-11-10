@@ -36,6 +36,7 @@ ai.provider = "Služba:"
 ai.provider_anthropic = "Anthropic (Messages API)"
 ai.provider_openai_compatible = "Kompatibilní s OpenAI (chat completions)"
 ai.refresh_models = "Načíst modely služby"
+ai.show_all_models = "Zobrazit všechny modely, které služba uvádí" # mt
 ai.remember_key = "Zapamatovat si klíč na tomto počítači"
 ai.request = "Co nakreslit nebo změnit:"
 ai.request_hint = "Červené jízdní kolo s modrými koly"

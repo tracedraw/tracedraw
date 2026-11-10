@@ -36,6 +36,7 @@ ai.provider = "सेवा:"
 ai.provider_anthropic = "Anthropic (Messages API)"
 ai.provider_openai_compatible = "OpenAI-संगत (chat completions)"
 ai.refresh_models = "सेवा के मॉडल लाएँ"
+ai.show_all_models = "सेवा के सभी मॉडल दिखाएँ" # mt
 ai.remember_key = "इस कंप्यूटर पर कुंजी याद रखें"
 ai.request = "क्या बनाना या बदलना है:"
 ai.request_hint = "नीले पहियों वाली एक लाल साइकिल"

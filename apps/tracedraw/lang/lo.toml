@@ -36,6 +36,7 @@ ai.provider = "ບໍລິການ:"
 ai.provider_anthropic = "Anthropic (Messages API)"
 ai.provider_openai_compatible = "ຮອງຮັບ OpenAI (chat completions)"
 ai.refresh_models = "ດຶງຂໍ້ມູນໂມເດວຂອງບໍລິການ"
+ai.show_all_models = "ສະແດງທຸກໂມເດວທີ່ບໍລິການລາຍການໄວ້" # mt
 ai.remember_key = "ຈື່ຄີໄວ້ໃນຄອມພິວເຕີນີ້"
 ai.request = "ສິ່ງທີ່ຕ້ອງການແຕ້ມ ຫຼື ປ່ຽນແປງ:"
 ai.request_hint = "ລົດຖີບສີແດງທີ່ມີລໍ້ສີຟ້າ"

@@ -36,6 +36,7 @@ ai.provider = "الخدمة:"
 ai.provider_anthropic = "Anthropic (Messages API)"
 ai.provider_openai_compatible = "متوافق مع OpenAI (chat completions)"
 ai.refresh_models = "جلب نماذج الخدمة"
+ai.show_all_models = "إظهار كل النماذج التي تسردها الخدمة" # mt
 ai.remember_key = "تذكّر المفتاح على هذا الحاسوب"
 ai.request = "ما الذي تريد رسمه أو تغييره:"
 ai.request_hint = "دراجة حمراء بعجلات زرقاء"

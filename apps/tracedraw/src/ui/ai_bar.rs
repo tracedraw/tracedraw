@@ -93,6 +93,7 @@ pub fn ai_bar(app: &mut App, ui: &mut Ui) {
 fn model_list(app: &mut App, ui: &mut Ui) {
     let current = app.settings.ai.model();
     let choices = app.ai_model_choices();
+    let hidden = app.ai_models_hidden();
     let mut fetch = false;
     crate::ui::keynav::ComboBox::from_id_salt("ai_bar_model")
         .selected_text(RichText::new(current.clone()).size(12.0))
@@ -104,6 +105,10 @@ fn model_list(app: &mut App, ui: &mut Ui) {
                 }
             }
             ui.separator();
+            // The models that cannot draw stay out unless asked for.
+            if hidden {
+                ui.checkbox(&mut app.ai.show_all_models, tr("ai.show_all_models"));
+            }
             if ui.button(tr("ai.refresh_models")).clicked() {
                 fetch = true;
             }

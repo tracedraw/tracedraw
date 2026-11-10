@@ -609,6 +609,21 @@ pub fn parse_models(provider: ImageProvider, r: &HttpResponse) -> Result<Vec<Str
             .and_then(|m| m.as_array())
             .map(|l| {
                 l.iter()
+                    // Pictures are asked for with `generateContent`: a
+                    // model the service says does not answer it (the
+                    // Imagen models, which take `predict`) only fails
+                    // when picked (#2039).
+                    .filter(|m| {
+                        match m
+                            .get("supportedGenerationMethods")
+                            .and_then(|s| s.as_array())
+                        {
+                            Some(methods) => methods
+                                .iter()
+                                .any(|x| x.as_str() == Some("generateContent")),
+                            None => true,
+                        }
+                    })
                     .filter_map(|m| m.get("name").and_then(|n| n.as_str()))
                     .map(|n| n.trim_start_matches("models/").to_string())
                     .collect()
