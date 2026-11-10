@@ -24394,3 +24394,73 @@ fn roughen_adds_detail_up_to_a_cap_per_stroke() {
         "{one_pass} nodes after one pass, {after} after many"
     );
 }
+
+/// #2219: a drag with the Drop Shadow or the Block Shadow tool starts
+/// anywhere inside an object, also where nothing of it is drawn: in the
+/// hole of a ring. From the middle the drop shadow is a flat one.
+/// Before, a press there started nothing.
+#[test]
+fn shadow_drags_start_anywhere_inside_an_object() {
+    use tracedraw_core::live::Effect;
+    let (ctx, mut app, _) = setup();
+    // A ring as Trim leaves it: its hole runs the other way round than
+    // its outside, so no press in the hole picks it.
+    let path = tracedraw_core::shaping::overlay(
+        &tracedraw_core::geometry::ellipse_path(Rect::new(80.0, 60.0, 140.0, 120.0)),
+        &tracedraw_core::geometry::ellipse_path(Rect::new(95.0, 75.0, 125.0, 105.0)),
+        tracedraw_core::shaping::Op::Trim,
+    );
+    let ring = app
+        .new_shape(ShapeKind::Path { path, closed: true })
+        .expect("ring");
+    app.select(vec![ring]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::BLACK));
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let by = egui::vec2(30.0, 20.0);
+    for (id, mid) in [(ring, Point::new(110.0, 90.0))] {
+        assert_eq!(app.hit_test(mid), None, "nothing is drawn at {mid:?}");
+        let from = app.view.to_screen(mid);
+        app.set_tool(Tool::DropShadow);
+        app.select(Vec::new());
+        drag(&ctx, &mut app, from, from + by, Modifiers::NONE, Vec::new());
+        let sh = app.doc().find_shape(id).and_then(|s| s.shadow);
+        let sh = sh.expect("a drop shadow from the middle");
+        assert!(sh.perspective.is_none(), "flat from the middle");
+        assert!(sh.offset.x > 1.0 && sh.offset.y < -1.0, "{:?}", sh.offset);
+        assert_eq!(app.selection, vec![id]);
+        app.set_tool(Tool::BlockShadow);
+        app.select(Vec::new());
+        drag(&ctx, &mut app, from, from + by, Modifiers::NONE, Vec::new());
+        let s = app.doc().find_shape(id).expect("shape");
+        let offset = s.effects.iter().find_map(|e| match e {
+            Effect::BlockShadow { offset, .. } => Some(*offset),
+            _ => None,
+        });
+        let offset = offset.expect("a block shadow from the middle");
+        assert!(offset.x > 1.0 && offset.y < -1.0, "{offset:?}");
+        assert_eq!(app.selection, vec![id]);
+    }
+    // Away from every object a drag still starts nothing.
+    let shadows = |app: &App| {
+        app.page_layers()
+            .into_iter()
+            .flat_map(|l| l.shapes.iter())
+            .filter(|s| s.shadow.is_some() || !s.effects.is_empty())
+            .count()
+    };
+    let before = shadows(&app);
+    let empty = app.view.to_screen(Point::new(180.0, 250.0));
+    for tool in [Tool::DropShadow, Tool::BlockShadow] {
+        app.set_tool(tool);
+        app.select(Vec::new());
+        drag(
+            &ctx,
+            &mut app,
+            empty,
+            empty + by,
+            Modifiers::NONE,
+            Vec::new(),
+        );
+    }
+    assert_eq!(shadows(&app), before);
+}

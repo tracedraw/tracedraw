@@ -35,6 +35,13 @@ the object: a solid extrusion of the outline along `offset`.
 - Drag from an object: the object is selected and the shadow offset
   follows the pointer from the press point; every move replaces the
   previous block shadow.
+- The object is the one picked at the press point (where the button
+  went down, not where the drag was noticed), or else the topmost one
+  whose outline as drawn goes round it, so a drag also starts in the
+  hole of a ring (#2219, as the Drop Shadow tool,
+  `pick_drag_tests::shadow_drags_start_anywhere_inside_an_object`).
+- Text takes a block shadow as it is, with no need to convert it to
+  curves, an envelope on it included, and so does a group.
 
 ## Checks
 

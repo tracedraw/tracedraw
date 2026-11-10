@@ -44,6 +44,14 @@ written (the blend goes out alone, with a warning in the log).
   perspective shadow standing on that edge: the edge stays where it is
   and the opposite side of the object falls on the pointer.
 - One drag is one undo step.
+- The drag starts on the object picked at the press, or else on the
+  topmost object whose outline as drawn goes round the press: the hole
+  of a ring whose inner outline runs the other way round (as the
+  shaping operations leave it) picks nothing, and a press there started
+  no shadow, so a ring took one only from its band. From the hole, as
+  from anywhere in the middle, the shadow is flat (#2219,
+  `App::shadow_drag_target`,
+  `pick_drag_tests::shadow_drags_start_anywhere_inside_an_object`).
 - A group or a clip frame takes a shadow of its own, drawn beneath
   everything it holds. Its silhouette is what it shows: each object of
   a group, and a clip frame's filled frame with its contents cut to the

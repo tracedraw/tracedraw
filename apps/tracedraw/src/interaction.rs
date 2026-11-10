@@ -1734,7 +1734,7 @@ impl App {
                             grab,
                             begun: false,
                         };
-                    } else if let Some(id) = self.hit_test(press) {
+                    } else if let Some(id) = self.shadow_drag_target(press) {
                         self.select(vec![id]);
                         self.drag = Drag::Shadow {
                             shape: id,

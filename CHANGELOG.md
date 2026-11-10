@@ -71,6 +71,8 @@ full, row-by-row status.
 
 - Palette bars dock beside other bars: dragged over the toolbox, the default palette, the document palette row, a column of panels or another palette bar, a palette bar goes just outside it (let go on its half towards the window's edge) or just inside it (the other half), with a blue line showing where. Several palette bars stand side by side in the order they were put, such as a second row next to the default palette or a column next to the toolbox; the place is kept in the preferences and in workspace files. Before, a palette bar docked only at the window's edges (live test of 0.41).
 
+- Drop Shadow and Block Shadow tools: a drag also starts in the hole of a ring and anywhere else an object's outline goes round, not only where the object is picked. A ring made with Trim or another shaping operation picks nothing in its hole, so a drag from its middle started no shadow; it now gives the ring a flat drop shadow, or its block shadow. The Block Shadow tool measures its drag from where the button went down (#2219).
+
 - Paragraph text: linking a frame of text to an empty frame flows the text that does not fit into the empty one, whichever of the two was picked first. Picked empty frame first, the whole text went into it and the frame it came from was left empty, so the text seemed to vanish when going back to that frame.
 
 - Envelope: the Mapping list of the property bar and of the Envelope panel says in its tip which mapping is in use and what it does with the object, and each row of the open list explains its mapping (Putty, Original, Horizontal, Vertical). The tip was the same sentence for all four (#2212).

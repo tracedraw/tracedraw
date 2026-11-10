@@ -199,9 +199,15 @@ impl App {
             }
             Tool::BlockShadow => {
                 if response.drag_started_by(PointerButton::Primary) {
-                    if let Some(id) = self.hit_test(p) {
+                    // The press point, not where the drag was noticed.
+                    let press = response
+                        .ctx
+                        .input(|i| i.pointer.press_origin())
+                        .map(|o| self.view.to_page(o))
+                        .unwrap_or(p);
+                    if let Some(id) = self.shadow_drag_target(press) {
                         self.select(vec![id]);
-                        self.drag = Drag::ContourDrag { start: p };
+                        self.drag = Drag::ContourDrag { start: press };
                     }
                 }
                 if response.dragged_by(PointerButton::Primary) {

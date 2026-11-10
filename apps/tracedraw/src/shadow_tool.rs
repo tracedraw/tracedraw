@@ -86,7 +86,45 @@ pub fn shadow_covers(s: &Shape, p: Point) -> bool {
     }
 }
 
+/// The outline of `s` as it is drawn goes round `p`: one of its parts
+/// alone holds it, so the hole of a ring and the inside of an unfilled
+/// shape count.
+fn outline_goes_round(s: &Shape, p: Point) -> bool {
+    use tracedraw_core::geometry::Shape as _;
+    let drawn = if s.effects.is_empty() {
+        s.page_path()
+    } else {
+        tracedraw_core::live::evaluate(s).main.page_path()
+    };
+    tracedraw_core::effects::subpaths(&drawn)
+        .iter()
+        .any(|(part, _)| part.contains(p))
+}
+
 impl App {
+    /// The object a drag with the Drop Shadow or the Block Shadow tool
+    /// starts on at `p`: the one picked there, else the topmost one whose
+    /// outline goes round `p`. A press in the hole of a ring, or in the
+    /// middle of a shape without a fill, started nothing, so such an
+    /// object took a shadow only from a press on its outline or its
+    /// narrow filled part (#2219).
+    pub fn shadow_drag_target(&self, p: Point) -> Option<ShapeId> {
+        if let Some(id) = self.hit_test(p) {
+            return Some(id);
+        }
+        if self.focus_shape_on_page().is_some() {
+            return None;
+        }
+        self.page_layers()
+            .into_iter()
+            .rev()
+            .filter(|l| l.visible && !l.locked)
+            .flat_map(|l| l.shapes.iter().rev())
+            .filter(|s| !s.locked && s.visible && !self.outside_clip_edit(s.id))
+            .find(|s| self.visual_bounds(s).contains(p) && outline_goes_round(s, p))
+            .map(|s| s.id)
+    }
+
     /// The shadow the Drop Shadow tool edits: the first selected object
     /// that has one, with its id and box. Its handles show and the
     /// property bar shows its settings, also with objects of no shadow
