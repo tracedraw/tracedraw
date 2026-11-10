@@ -72,6 +72,8 @@ full, row-by-row status.
 
 - Opening `.cdr` files of versions 14 and later: tables open as tables, with their rows and columns, cell fills, borders and text, ready for the Table tool. A drawing with a table opened without it, and each empty cell was counted as an object that could not be read (#2170).
 
+- Shape tool: Smooth and Symmetrical on the start node of a closed curve, or on the node before it, make the closing line a curve too, so a rectangle, polygon or star converted to curves rounds on both sides at the point where its two ends meet instead of keeping one side straight (#1618).
+
 - Weld, Combine and the other shaping operations keep a mesh fill: the result takes the mesh in its place on the page when the mesh covers it, else the mesh's mean colour; Combine left the mesh in the wrong place and a result reaching past the mesh showed no colour there.
 - Windows: a file opened from the Explorer while TraceDraw is running brings its window to the front, restored when it was minimized. The window stayed minimized or behind the others: Windows lets only the program just started bring a window to the foreground, so the start made for the file now passes that right to the running window, and the window comes up before it reads the file, also while a question is showing (#2129).
 

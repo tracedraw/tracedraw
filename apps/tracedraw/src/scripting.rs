@@ -1410,8 +1410,19 @@ impl HostInner {
                             "symmetrical" => tracedraw_core::nodes::NodeType::Symmetrical,
                             other => return Err(format!("no node type {other:?}")),
                         };
+                        let out = tracedraw_core::nodes::set_node_type(path, index, ty);
+                        // A closing line made a curve moves the elements
+                        // after it up by one, their types with them (#1618).
+                        if let Some(at) =
+                            tracedraw_core::nodes::curve_put_in_before_close(path, &out)
+                        {
+                            types = types
+                                .into_iter()
+                                .map(|(k, t)| (if k >= at { k + 1 } else { k }, t))
+                                .collect();
+                        }
                         types.insert(index, ty);
-                        tracedraw_core::nodes::set_node_type(path, index, ty)
+                        out
                     }
                     "node_delete" => tracedraw_core::nodes::delete_node(path, index),
                     _ => tracedraw_core::nodes::add_node(

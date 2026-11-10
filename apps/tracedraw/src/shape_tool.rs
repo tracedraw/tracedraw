@@ -1438,8 +1438,25 @@ impl App {
                 .shape(id)
                 .map(|(_, s)| s.node_types.clone())
                 .unwrap_or_default();
+            // Highest index first: a closing line made a curve puts an
+            // element in before its close (#1618), which moves only the
+            // elements after it, so the nodes still to do keep their
+            // indices; the types and chosen nodes past it move up by one.
+            let mut idxs = idxs;
+            idxs.sort_unstable_by(|a, b| b.cmp(a));
+            idxs.dedup();
             for i in idxs {
+                let before = path.clone();
                 path = nodes::set_node_type(&path, i, ty);
+                if let Some(at) = nodes::curve_put_in_before_close(&before, &path) {
+                    let up = |k: usize| if k >= at { k + 1 } else { k };
+                    types = types.into_iter().map(|(k, t)| (up(k), t)).collect();
+                    for (sid, k) in self.node_selection.iter_mut() {
+                        if *sid == id {
+                            *k = up(*k);
+                        }
+                    }
+                }
                 types.insert(i, ty);
             }
             cmds.push(Command::SetShapeKind {
@@ -2352,6 +2369,58 @@ mod bitmap_node_tests {
         app.node_selection = vec![(id, z)];
         app.selected_segments_to_curve();
         assert_eq!(curves(&path_of(&app)), 1);
+    }
+
+    /// Smooth on every node of two rectangles converted to curves and
+    /// combined rounds every corner on both sides, the start nodes and the
+    /// nodes before them too, where the closing lines meet them; the types
+    /// kept and the chosen nodes stay on the nodes although the closing
+    /// lines made curves move the second rectangle's elements (#1618).
+    #[test]
+    fn smooth_rounds_both_sides_where_the_closing_lines_meet() {
+        let mut app = App::headless();
+        let mut ids = Vec::new();
+        for x in [0.0, 60.0] {
+            ids.push(
+                app.new_shape(ShapeKind::Rect {
+                    rect: Rect::new(x, 0.0, x + 40.0, 40.0),
+                    radius: 0.0,
+                    corners: None,
+                })
+                .expect("rect"),
+            );
+        }
+        app.select(ids);
+        app.convert_to_curves();
+        app.combine();
+        let id = app.selection[0];
+        let path_of = |app: &App| match &app.doc().find_shape(id).expect("curve").kind {
+            ShapeKind::Path { path, .. } => path.clone(),
+            other => panic!("not a curve: {other:?}"),
+        };
+        let before = nodes::nodes(&path_of(&app));
+        assert_eq!(before.len(), 8);
+        app.node_selection = before.iter().map(|n| (id, n.index)).collect();
+        app.set_selected_node_type(NodeType::Smooth);
+        let path = path_of(&app);
+        let after = nodes::nodes(&path);
+        assert_eq!(after.len(), 8, "{path:?}");
+        for (a, b) in before.iter().zip(&after) {
+            assert!((a.pos - b.pos).hypot() < 1e-9, "{path:?}");
+            assert!(
+                b.ctrl_in.is_some() && b.ctrl_out.is_some(),
+                "node {} kept a straight side: {path:?}",
+                b.index
+            );
+            assert_ne!(nodes::node_type(&path, b.index), NodeType::Cusp);
+        }
+        let indices: Vec<usize> = after.iter().map(|n| n.index).collect();
+        let s = app.doc().find_shape(id).expect("curve");
+        assert_eq!(s.node_types.keys().copied().collect::<Vec<_>>(), indices);
+        assert!(s.node_types.values().all(|t| *t == NodeType::Smooth));
+        let mut chosen: Vec<usize> = app.node_selection.iter().map(|(_, i)| *i).collect();
+        chosen.sort_unstable();
+        assert_eq!(chosen, indices);
     }
 
     /// #1491: a picture with a gradient transparency, cut down by moving
