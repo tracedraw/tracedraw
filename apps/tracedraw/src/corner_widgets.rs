@@ -3,8 +3,9 @@
 //! it, live, with the arc's middle under the pointer. With nodes chosen
 //! only their corners show a widget and round; with none, every corner
 //! rounds together. Open curves round their inner corners too. A corner
-//! already rounded (an arc tangent to two straight sides) keeps a widget
-//! on its arc, so its radius can change again (#872). Corners round on
+//! already rounded (an arc tangent to its two sides, straight or curved,
+//! #2223) keeps a widget on its arc, so its radius can change again
+//! (#872). Corners round on
 //! the page, so on a stretched curve a new rounding is round; a corner
 //! rounded before the stretch keeps its stretched arc and its widget,
 //! and rounds in the curve's own space until it is sharp again (#1000).
@@ -56,8 +57,12 @@ struct Spot {
     stretched: bool,
     corner: Corner,
     /// How far the rounded corner's arc lies into the corner (0 when
-    /// sharp).
+    /// sharp), as its radius puts it between straight sides: what a drag
+    /// starts from.
     depth: f64,
+    /// Where the arc's middle is, along the corner's middle: where the
+    /// widget shows. Curved sides put it nearer or further (#2223).
+    shown: f64,
     /// The nodes that choose it: the corner's, or every node of the arc.
     nodes: Vec<usize>,
     /// How far into the corner (mm on the page) the most rounding it
@@ -172,7 +177,7 @@ impl App {
                 let c = &spot.corner;
                 let to_page = *t * spot.space.inverse();
                 // A rounded corner's widget sits off the middle of its arc.
-                let mid = c.at + c.inside * spot.depth;
+                let mid = c.at + c.inside * spot.shown;
                 let node = self.view.to_screen(to_page * mid);
                 let toward = self.view.to_screen(to_page * (mid + c.inside));
                 let d = toward - node;
@@ -238,6 +243,7 @@ impl App {
                             stretched: false,
                             corner: c,
                             depth: 0.0,
+                            shown: 0.0,
                             nodes: vec![c.node],
                             reach: reach.get(i).copied().unwrap_or(f64::INFINITY),
                         })
@@ -260,6 +266,7 @@ impl App {
                                 theta: f.theta,
                             },
                             depth,
+                            shown: f.middle,
                             nodes: f.nodes,
                             reach: f64::INFINITY,
                         })
@@ -767,5 +774,120 @@ pub fn draw(app: &App, painter: &egui::Painter, color: egui::Color32) {
             color
         };
         painter.circle_filled(w.at, 1.5, dot);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tracedraw_core::geometry::Shape as _;
+
+    fn shapes() -> Vec<(&'static str, BezPath)> {
+        let mut out = Vec::new();
+        let mut lens = BezPath::new();
+        lens.move_to((20.0, 40.0));
+        lens.curve_to((30.0, 52.0), (50.0, 52.0), (60.0, 40.0));
+        lens.curve_to((50.0, 28.0), (30.0, 28.0), (20.0, 40.0));
+        lens.close_path();
+        out.push(("lens", lens));
+        let mut heart = BezPath::new();
+        heart.move_to((40.0, 20.0));
+        heart.curve_to((10.0, 40.0), (25.0, 65.0), (40.0, 50.0));
+        heart.curve_to((55.0, 65.0), (70.0, 40.0), (40.0, 20.0));
+        heart.close_path();
+        out.push(("heart", heart));
+        let mut half = BezPath::new();
+        half.move_to((20.0, 20.0));
+        half.line_to((60.0, 20.0));
+        half.curve_to((60.0, 46.0), (20.0, 46.0), (20.0, 20.0));
+        half.close_path();
+        out.push(("half disc", half));
+        let mut drop = BezPath::new();
+        drop.move_to((20.0, 20.0));
+        drop.curve_to((28.0, 30.0), (32.0, 40.0), (35.0, 60.0));
+        drop.curve_to((38.0, 40.0), (42.0, 30.0), (50.0, 20.0));
+        drop.line_to((20.0, 20.0));
+        drop.close_path();
+        out.push(("drop", drop));
+        out
+    }
+
+    /// A corner between curved sides rounds, keeps its widget once it is
+    /// rounded, rounds further from the radius it has and goes back to
+    /// sharp, as a corner between straight sides does (#2223). Before,
+    /// its widget was gone after the first drag, however short, and the
+    /// corner could not be rounded any more.
+    #[test]
+    fn corners_between_curves_keep_their_widgets_and_round_again() {
+        for (name, path) in shapes() {
+            let sharp = corners(&path);
+            for i in 0..sharp.len() {
+                let mut app = App::headless();
+                let id = app
+                    .new_shape(ShapeKind::Path {
+                        path: path.clone(),
+                        closed: true,
+                    })
+                    .expect("a curve");
+                app.select(vec![id]);
+                app.tool = Tool::Shape;
+                app.settings.nodes.corner_widgets = true;
+                let path_of = |app: &App| match &app.doc().find_shape(id).expect("curve").kind {
+                    ShapeKind::Path { path, .. } => path.clone(),
+                    _ => panic!("a curve"),
+                };
+                let widgets = app.corner_widgets();
+                assert_eq!(widgets.len(), sharp.len(), "{name}");
+                let w = widgets[i];
+                let at = w.corner.at;
+                // The widget of the corner at `at`, dragged `by` mm into
+                // it; the radius the drag gave.
+                let pull = |app: &mut App, by: f64| -> f64 {
+                    let w = app
+                        .corner_widgets()
+                        .into_iter()
+                        .find(|w| (w.corner.at - at).hypot() < 1e-6)
+                        .unwrap_or_else(|| panic!("{name} corner {i}: no widget"));
+                    let p = app.view.to_page(w.at);
+                    assert!(app.start_corner_drag(w, p, false), "{name} corner {i}");
+                    let Drag::CornerWidget(d) = app.drag.clone() else {
+                        panic!("{name} corner {i}: no drag");
+                    };
+                    app.corner_drag_to(*d, p + w.corner.inside * by);
+                    app.drag = Drag::None;
+                    fillets(&path_of(app))
+                        .iter()
+                        .find(|f| (f.corner - at).hypot() < 1e-6)
+                        .map_or(0.0, |f| f.radius)
+                };
+                // A short drag: a small rounding, and the widget stays.
+                let first = pull(&mut app, 0.2);
+                assert!(first > 0.01, "{name} corner {i}: {first}");
+                assert_eq!(app.corner_widgets().len(), sharp.len(), "{name} corner {i}");
+                assert_eq!(corners(&path_of(&app)).len(), sharp.len() - 1, "{name}");
+                // Dragged again, it rounds further from there.
+                let second = pull(&mut app, 0.2);
+                assert!(second > first * 1.5, "{name} corner {i}: {first} {second}");
+                assert_eq!(app.corner_widgets().len(), sharp.len(), "{name} corner {i}");
+                // The property bar's field reads it and sets it.
+                app.node_selection.clear();
+                assert!(app.set_corner_rounding(first), "{name} corner {i}");
+                let radii: Vec<f64> = fillets(&path_of(&app)).iter().map(|f| f.radius).collect();
+                assert_eq!(radii.len(), sharp.len(), "{name} corner {i}: {radii:?}");
+                assert!(
+                    radii.iter().all(|r| (r - first).abs() < 1e-6),
+                    "{name} corner {i}: {first} {radii:?}"
+                );
+                // Clear Rounding gives the sharp curve back.
+                assert!(app.set_corner_rounding(0.0), "{name} corner {i}");
+                let back = path_of(&app);
+                assert_eq!(corners(&back).len(), sharp.len(), "{name} corner {i}");
+                assert!(fillets(&back).is_empty(), "{name} corner {i}");
+                assert!(
+                    (back.area() - path.area()).abs() < 1e-6,
+                    "{name} corner {i}"
+                );
+            }
+        }
     }
 }

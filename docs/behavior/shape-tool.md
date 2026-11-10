@@ -208,7 +208,11 @@ round their corners with their own handles either way.
   (`r = d / (1 / sin(theta / 2) - 1)` for a corner of angle `theta`), at
   most the largest radius every rounded corner still fits (a side two
   rounded corners share is split between them). Dragging back takes the
-  rounding back off. The status bar shows the radius.
+  rounding back off. The status bar shows the radius. With a curved
+  side the arc is the circle of that radius tangent to both sides (see
+  `corners-and-joins.md`), so its middle lies nearer the corner or
+  further than the pointer, and the largest radius is the largest
+  circle that touches both sides within them (#2223).
 - Open curves round their inner corners the same way.
 - The drag is one undo step, "Fillet". The rounded corners become arcs
   of the curve (nodes and segments, as the Corners panel makes them); the
@@ -217,14 +221,21 @@ round their corners with their own handles either way.
   later (#872). A rounded corner is a circular arc (one cubic or more,
   smooth where they join) between two straight sides, tangent to both,
   whose sides, run on, meet as far from both ends of the arc; the
-  radius is read back from the arc. Its widget sits 18 px off the
+  radius is read back from the arc. A corner rounded between curved
+  sides, or a curve and a line, is one too (#2223,
+  `corner_widgets::tests::corners_between_curves_keep_their_widgets_and_round_again`):
+  an arc of up to six cubics tangent to both sides, whose sides carried
+  on along their own curves (the same cubic past its end) cross at the
+  sharp corner; an arc whose neighbour bends as it does (a quarter of a
+  circle) is part of a round shape, not a rounded corner. Its widget
+  sits 18 px off the
   middle of the arc, along the middle of the corner. Dragging it takes
   the corner back to the sharp corner its sides meet at and rounds that
   again, starting from the radius it had: that corner alone, the chosen
   nodes' corners when it is one of them, or with Shift every corner of
   the curve (sharp or rounded) takes the new radius (a rounded corner is
-  chosen by any node of its arc). Dragging back past the corner makes it sharp. Arcs between
-  curved sides, scallops and chamfers are not found again.
+  chosen by any node of its arc). Dragging back past the corner makes it sharp. Scallops
+  and chamfers are not found again.
 - On a stretched or skewed curve corners round on the page, so a new
   rounding is round, also on a curve stretched after other corners were
   rounded. A corner rounded before the stretch keeps its stretched arc

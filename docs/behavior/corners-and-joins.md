@@ -20,10 +20,20 @@ Fillets, scallops or chamfers the corners of the selected objects.
 - Corners are cut in the order the path is drawn. A corner whose sides
   are not long enough for the cut, counting the cuts already made on
   them, is skipped; the next corner may still fit.
-- For a corner of angle `theta` a fillet of radius `r` starts
-  `r / tan(theta / 2)` from the corner on each side; on curved sides the
-  distance is measured along the curve and the arc leaves along the
-  curve's direction. Arcs are cubic Beziers, one per quarter turn.
+- For a corner of angle `theta` between straight sides a fillet of
+  radius `r` starts `r / tan(theta / 2)` from the corner on each side.
+  With a curved side the arc is the circle of radius `r` tangent to both
+  sides: its centre is where the two sides, each moved `r` towards the
+  inside of the corner, meet (found by Newton steps from where straight
+  sides would be touched), and each side is cut where the circle touches
+  it. A radius larger than a side's own bend there, or whose circle
+  touches a side beyond its end or beyond a cut already made, does not
+  fit and the corner is skipped (#2223,
+  `corner_cut::tests::fillets_between_curved_sides_are_found_and_taken_back_off`,
+  `corner_cut::tests::the_largest_fillet_between_curved_sides_is_the_circle_that_fits`).
+  Arcs are cubic Beziers, one per quarter turn.
+- Scallops and chamfers measure their sizes along the sides, curved or
+  straight.
 - Corners are cut on the page: on a stretched or skewed object a fillet
   or scallop is round and the sizes are page millimetres, and the curve
   keeps its transform (#1002,
