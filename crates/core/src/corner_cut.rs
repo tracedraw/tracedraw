@@ -920,10 +920,26 @@ fn curved_fillet_of(
                 return None;
             }
         }
+        // Each piece bends as its circle does: two curves that bend
+        // against each other and barely turn between them lie near a
+        // very large circle without being an arc of it (#2224).
+        if (side * curvature(s, 0.5) * radius - 1.0).abs() > 0.05 {
+            return None;
+        }
     }
-    // A side that bends as the arc does carries the same circle on.
-    let same = |k: f64| (side * k * radius - 1.0).abs() < 0.02;
-    if same(curvature(s_in, 1.0)) || same(curvature(s_out, 0.0)) {
+    // A side that bends as the arc does and keeps near its circle
+    // carries the same circle on: a round shape cut into pieces, as the
+    // shaping commands leave a circle, is no rounded corner. A quarter
+    // circle drawn as one cubic bends 2.1% less at its ends than its
+    // radius says, so a piece of one reads a radius that much off
+    // (#2224).
+    let same = |s: &PathSeg, at: f64| {
+        (side * curvature(s, at) * radius - 1.0).abs() < 0.1
+            && [0.0, 0.25, 0.5, 0.75, 1.0]
+                .iter()
+                .all(|t| ((s.eval(*t) - center).hypot() - radius).abs() <= 0.04 * radius)
+    };
+    if same(s_in, 1.0) || same(s_out, 0.0) {
         return None;
     }
     // The sides carried on cross at the sharp corner: from where their
@@ -1762,5 +1778,64 @@ mod tests {
                 .area()
         };
         assert!((area(c[0].node) - area(c[1].node)).abs() < 1e-6);
+    }
+
+    fn disc(x: f64, y: f64, r: f64) -> BezPath {
+        crate::geometry::ellipse_path(Rect::new(x - r, y - r, x + r, y + r))
+    }
+
+    /// Shapes cut out of circles as the shaping commands leave them:
+    /// pieces of circles joined at the circles' own smooth nodes, with
+    /// corners where two circles cross, pointing in and out.
+    fn disc_shapes() -> Vec<(String, BezPath)> {
+        use crate::shaping::{overlay, Op};
+        let mut seed: u64 = 12345;
+        let mut next = move || {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((seed >> 33) as f64) / ((1u64 << 31) as f64)
+        };
+        let mut out = Vec::new();
+        for round in 0..60 {
+            let a = disc(0.0, 0.0, 30.0);
+            let b = disc(
+                10.0 + 40.0 * next(),
+                -20.0 + 40.0 * next(),
+                15.0 + 25.0 * next(),
+            );
+            let c = disc(
+                -20.0 + 40.0 * next(),
+                10.0 + 40.0 * next(),
+                15.0 + 25.0 * next(),
+            );
+            let trimmed = overlay(&a, &b, Op::Trim);
+            out.push((format!("{round} intersect"), overlay(&a, &b, Op::Intersect)));
+            out.push((
+                format!("{round} trim twice"),
+                overlay(&trimmed, &c, Op::Trim),
+            ));
+            out.push((format!("{round} trim"), trimmed));
+            out.push((format!("{round} weld"), overlay(&a, &b, Op::Weld)));
+        }
+        out
+    }
+
+    /// A piece of a circle between two other pieces of it is no rounded
+    /// corner (#2224): a circle cut by the shaping commands keeps its
+    /// own nodes, and a quarter circle drawn as one cubic bends 2.1%
+    /// less at its ends than its radius says, which the first test of a
+    /// round shape (the bend within 2%) let through. Such a shape then
+    /// showed rings where it has no corner.
+    #[test]
+    fn pieces_of_round_shapes_are_not_rounded_corners() {
+        let mut found = Vec::new();
+        for (name, path) in disc_shapes() {
+            let f = fillets(&path);
+            if !f.is_empty() {
+                found.push(format!("{name}: {}", f.len()));
+            }
+        }
+        assert!(found.is_empty(), "{}", found.join("\n"));
     }
 }

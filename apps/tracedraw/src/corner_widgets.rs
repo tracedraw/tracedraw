@@ -890,4 +890,101 @@ mod tests {
             }
         }
     }
+
+    fn disc(x: f64, y: f64, r: f64) -> BezPath {
+        tracedraw_core::geometry::ellipse_path(tracedraw_core::geometry::Rect::new(
+            x - r,
+            y - r,
+            x + r,
+            y + r,
+        ))
+    }
+
+    /// The Shape tool on a shape cut out of three discs whose corners the
+    /// Corners panel rounded (#2222): every rounded corner has its ring,
+    /// and only they do. The shaping commands leave a disc its own
+    /// nodes, and a piece of a disc between two of them read as a
+    /// rounded corner, so the shape showed rings along its round sides,
+    /// with a rounding radius of the disc's. Each ring rounds its corner
+    /// further,
+    /// and Clear Rounding gives the sharp shape back.
+    #[test]
+    fn a_shape_cut_out_of_discs_keeps_one_ring_per_rounded_corner() {
+        use tracedraw_core::shaping::{overlay, Op};
+        let a = disc(60.0, 60.0, 30.0);
+        let b = disc(95.0, 65.0, 30.0);
+        let c = disc(72.0, 27.0, 30.0);
+        let cut = overlay(&overlay(&a, &b, Op::Trim), &c, Op::Trim);
+        let sharp = corners(&cut);
+        assert_eq!(sharp.len(), 3, "{sharp:?}");
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Path {
+                path: cut.clone(),
+                closed: true,
+            })
+            .expect("a curve");
+        app.select(vec![id]);
+        app.settings.nodes.corner_widgets = true;
+        let path_of = |app: &App| match &app.doc().find_shape(id).expect("curve").kind {
+            ShapeKind::Path { path, .. } => path.clone(),
+            _ => panic!("a curve"),
+        };
+        // Sharp: a ring in each corner, none along the round sides.
+        app.tool = Tool::Shape;
+        assert!(fillets(&cut).is_empty(), "{:?}", fillets(&cut));
+        assert_eq!(app.corner_widgets().len(), 3);
+        assert_eq!(app.corner_rounding(), Some((0.0, false)));
+        // The Corners panel rounds them.
+        app.tool = Tool::Pick;
+        app.corners.radius = 3.0;
+        assert_eq!(app.apply_corners(), 3);
+        // Back in the Shape tool: the three rounded corners, each with
+        // its ring, read at the radius they were given.
+        app.tool = Tool::Shape;
+        let rounded = fillets(&path_of(&app));
+        assert_eq!(rounded.len(), 3, "{rounded:?}");
+        for f in &rounded {
+            assert!((f.radius - 3.0).abs() < 1e-6, "{rounded:?}");
+            assert!(
+                sharp.iter().any(|c| (c.at - f.corner).hypot() < 1e-6),
+                "{rounded:?}"
+            );
+        }
+        let widgets = app.corner_widgets();
+        assert_eq!(widgets.len(), 3);
+        let radius = app.corner_rounding().expect("corners");
+        assert!((radius.0 - 3.0).abs() < 1e-6 && !radius.1, "{radius:?}");
+        // Each ring rounds its corner further.
+        for w in widgets {
+            let at = w.corner.at;
+            let w = app
+                .corner_widgets()
+                .into_iter()
+                .find(|w| (w.corner.at - at).hypot() < 1e-6)
+                .expect("the corner's ring");
+            let p = app.view.to_page(w.at);
+            assert!(app.start_corner_drag(w, p, false));
+            let Drag::CornerWidget(d) = app.drag.clone() else {
+                panic!("no drag");
+            };
+            app.corner_drag_to(*d, p + w.corner.inside * 0.5);
+            app.drag = Drag::None;
+            let now = fillets(&path_of(&app));
+            assert_eq!(now.len(), 3, "{now:?}");
+            let r = now
+                .iter()
+                .find(|f| (f.corner - at).hypot() < 1e-6)
+                .map_or(0.0, |f| f.radius);
+            assert!(r > 3.2, "{r}");
+            assert_eq!(app.corner_widgets().len(), 3);
+        }
+        // Clear Rounding: the sharp shape again.
+        app.node_selection.clear();
+        assert!(app.set_corner_rounding(0.0));
+        let back = path_of(&app);
+        assert!(fillets(&back).is_empty());
+        assert_eq!(corners(&back).len(), 3);
+        assert!((back.area() - cut.area()).abs() < 1e-6);
+    }
 }

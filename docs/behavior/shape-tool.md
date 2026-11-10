@@ -227,7 +227,16 @@ round their corners with their own handles either way.
   an arc of up to six cubics tangent to both sides, whose sides carried
   on along their own curves (the same cubic past its end) cross at the
   sharp corner; an arc whose neighbour bends as it does (a quarter of a
-  circle) is part of a round shape, not a rounded corner. Its widget
+  circle) is part of a round shape, not a rounded corner: the
+  neighbour bends within a tenth of what the arc's radius says where
+  they join and keeps within 4% of that radius of the arc's circle all
+  along, and every piece of the arc bends within a twentieth of it. A
+  circle cut by the shaping commands keeps its own nodes, and its
+  pieces are none (a quarter circle drawn as one cubic bends 2.1% less
+  at its ends than its radius says; #2222,
+  `corner_cut::tests::pieces_of_round_shapes_are_not_rounded_corners`,
+  `corner_widgets::tests::a_shape_cut_out_of_discs_keeps_one_ring_per_rounded_corner`).
+  Its widget
   sits 18 px off the
   middle of the arc, along the middle of the corner. Dragging it takes
   the corner back to the sharp corner its sides meet at and rounds that

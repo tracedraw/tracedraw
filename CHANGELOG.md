@@ -18,6 +18,8 @@ full, row-by-row status.
 
 - Edit > Select Similar: the objects inside groups are compared too, each on its own, and a selected group stands for the objects in it. Before, a yellow square in a group was never found, and a group (which has no fill of its own) was taken with the objects without a fill (#2203).
 
+- Shape tool, corner rounding rings: a shape cut out of circles by the shaping commands (Trim, Intersect, Weld) showed rounding rings along its round sides, where it has no corner, once corners between curves kept their rings: a piece of a circle between two of the circle's own nodes was read as a rounded corner of the circle's radius. Only the corners that were rounded have a ring now, so a shape whose corners the Corners panel rounded shows one ring per corner in the Shape tool, each of which rounds its corner further or back to sharp (#2222).
+
 - Saving `.cdr` (version 12 and later): curly apostrophes and quotes, dashes, the euro sign and the other letters past U+00FF are written as two-byte letters, no longer as single Windows-1252 bytes, which the program that reads the files showed as unknown characters (version 18) or dropped (version 21) (#2124).
 - Colour panel, Spot inks: an ink's name is a field, typed over to rename the ink (Enter or leaving the field gives it, one undo step; an empty name or another ink's is refused). Its swatches, the objects painted with it and its separation in PDF and PostScript take the new name, so a spot colour can be given the name a printer or cutter expects. The Palette Editor already renames the colours of your own palettes (#2187).
 
