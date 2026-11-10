@@ -148,6 +148,7 @@ class Shape {
   Duplicate(dx, dy) { return new Shape(__call('duplicate', {id:this.id, dx:dx||0, dy:dy||0}).id); }
   ConvertToCurves() { __call('convert_to_curves', {id:this.id}); return this; }
   Ungroup() { __call('ungroup', {id:this.id}); }
+  BreakApart() { return __call('break_apart', {id:this.id}).ids.map(i => new Shape(i)); }
   AddToSelection() { __call('select', {ids:[this.id], add:true}); }
   CreateSelection() { __call('select', {ids:[this.id], add:false}); }
   OrderToFront() { __call('order', {id:this.id, op:'front'}); }
@@ -218,6 +219,7 @@ class ShapeRange {
   Move(dx, dy) { this.ids.forEach(id => __call('move', {id:id, dx:dx, dy:dy})); }
   Group() { return new Shape(__call('group', {ids:this.ids}).id); }
   Ungroup() { this.ids.forEach(id => __call('ungroup', {id:id})); }
+  Combine() { __call('combine', {ids:this.ids}); }
   AlignLeft() { __call('align', {ids:this.ids, how:'left'}); }
   AlignRight() { __call('align', {ids:this.ids, how:'right'}); }
   AlignTop() { __call('align', {ids:this.ids, how:'top'}); }
@@ -1843,6 +1845,64 @@ impl HostInner {
                 self.drop_missing_selection();
                 json!({})
             }
+            "combine" => {
+                let ids: Vec<ShapeId> = a
+                    .get("ids")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_u64()).map(ShapeId).collect())
+                    .unwrap_or_default();
+                if ids.len() < 2 {
+                    return Err("combine needs two objects".into());
+                }
+                self.run(Command::Combine {
+                    shapes: ids.clone(),
+                })?;
+                // The objects became one: the result keeps the id of the
+                // topmost, and the others name nothing now.
+                self.selection
+                    .retain(|s| !ids.contains(s) || self.doc.find_shape(*s).is_some());
+                json!({})
+            }
+            "break_apart" => {
+                let id = ShapeId(id_arg(a, "id")?);
+                let page_shapes = |h: &Self| -> Vec<ShapeId> {
+                    h.doc
+                        .page(h.page)
+                        .map(|p| {
+                            p.layers
+                                .iter()
+                                .flat_map(|l| l.shapes.iter().map(|s| s.id))
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                };
+                let before = page_shapes(self);
+                self.run(Command::BreakApart { shape: id })?;
+                let after = page_shapes(self);
+                // The first piece keeps the broken object's id, so what is
+                // new is only part of the answer. The split happened when
+                // new ids appeared: with nothing new, the command left the
+                // object as it was (a rectangle has no subpaths) and there
+                // are no pieces to hand back.
+                let mut pieces: Vec<u64> = if after.iter().any(|s| !before.contains(s)) {
+                    after
+                        .iter()
+                        .filter(|s| !before.contains(s) || **s == id)
+                        .map(|s| s.raw())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                // On the page's order, so a script reading them gets them
+                // in drawing order.
+                pieces.sort_by_key(|p| {
+                    after
+                        .iter()
+                        .position(|s| s.raw() == *p)
+                        .unwrap_or(usize::MAX)
+                });
+                json!({"ids": pieces})
+            }
             "align" => {
                 let ids: Vec<ShapeId> = a
                     .get("ids")
@@ -2963,5 +3023,100 @@ mod tests {
         a.undo();
         let out = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Text);").unwrap();
         assert_eq!(out[0], "aaa", "one undo puts it back");
+    }
+
+    /// Combine turns several objects into one curve, as the interface's
+    /// Combine does.
+    #[test]
+    fn combine_merges_the_objects_into_one() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const a = ActiveLayer.CreateRectangle(0, 0, 20, 20);\n\
+             const b = ActiveLayer.CreateRectangle(30, 0, 20, 20);\n\
+             new ShapeRange([a.id, b.id]).Combine();",
+        )
+        .unwrap();
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Count);").unwrap();
+        assert_eq!(out[0], "1", "one object left");
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Item(1).Type);").unwrap();
+        assert_eq!(out[0], "Curve", "combined into a curve");
+    }
+
+    /// BreakApart hands back the objects the subpaths became, so a script
+    /// can keep working on them without searching the page again.
+    #[test]
+    fn break_apart_hands_back_what_it_made() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const a = ActiveLayer.CreateRectangle(0, 0, 20, 20);\n\
+             const b = ActiveLayer.CreateRectangle(30, 0, 20, 20);\n\
+             new ShapeRange([a.id, b.id]).Combine();\n\
+             const parts = ActiveLayer.Shapes.Item(1).BreakApart();\n\
+             print(parts.length);\n\
+             parts[0].Name = 'first';",
+        )
+        .map(|out| assert_eq!(out[0], "2", "two subpaths, two objects"))
+        .unwrap();
+        // The returned objects name real ones: naming one worked, and the
+        // page has them.
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Count);").unwrap();
+        assert_eq!(out[0], "2");
+        let out = run(
+            &mut a,
+            "print(ActiveLayer.Shapes.FindShape('first') ? 'sim' : 'nao');",
+        )
+        .unwrap();
+        assert_eq!(out[0], "sim", "the handle names a real object");
+    }
+
+    /// Combine and BreakApart are each one undo step, as from the menus.
+    #[test]
+    fn combine_and_break_apart_are_one_undo_step_each() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const a = ActiveLayer.CreateRectangle(0, 0, 20, 20);\n\
+             const b = ActiveLayer.CreateRectangle(30, 0, 20, 20);",
+        )
+        .unwrap();
+        let ler = "print(ActiveLayer.Shapes.Count);";
+        assert_eq!(run(&mut a, ler).unwrap()[0], "2");
+        run(&mut a, "ActivePage.Shapes.All.Combine();").unwrap();
+        assert_eq!(run(&mut a, ler).unwrap()[0], "1");
+        a.undo();
+        assert_eq!(
+            run(&mut a, ler).unwrap()[0],
+            "2",
+            "one undo brings both back"
+        );
+    }
+
+    /// The refusals: combine needs two objects, and break apart needs an
+    /// object that carries an id.
+    #[test]
+    fn combine_and_break_apart_refuse_what_they_cannot_do() {
+        let mut a = app();
+        run(
+            &mut a,
+            "const r = ActiveLayer.CreateRectangle(0, 0, 20, 20);",
+        )
+        .unwrap();
+        assert!(
+            run(&mut a, "ActivePage.Shapes.All.Combine();").is_err(),
+            "one object has nothing to combine with"
+        );
+        // A plain rectangle is not a curve, so breaking it apart has
+        // nothing to split: no pieces come back and the object stays as it
+        // is, which is what the command does from the menus too.
+        let out = run(
+            &mut a,
+            "print(ActiveLayer.Shapes.Item(1).BreakApart().length);",
+        )
+        .unwrap();
+        assert_eq!(out[0], "0", "a rectangle has no subpaths to split");
+        let out = run(&mut a, "print(ActiveLayer.Shapes.Count);").unwrap();
+        assert_eq!(out[0], "1", "and the object is still there");
     }
 }
