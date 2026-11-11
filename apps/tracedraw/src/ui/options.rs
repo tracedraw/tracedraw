@@ -533,17 +533,12 @@ pub fn options_dialog(app: &mut App, ctx: &Context, close: &mut bool) {
                         app.status = tr("status.settings_saved");
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if chrome::button(ui, &tr("dialog.cancel"))
-                            .rich_tip(crate::ui::tips::keyed("dialog.cancel"))
-                            .clicked()
-                        {
+                        // The buttons bring their own tips (#2367).
+                        if chrome::button(ui, &tr("dialog.cancel")).clicked() {
                             cancel = true;
                         }
                         ui.add_space(5.0);
-                        if chrome::button(ui, &tr("dialog.ok"))
-                            .rich_tip(crate::ui::tips::keyed("dialog.ok"))
-                            .clicked()
-                        {
+                        if chrome::button(ui, &tr("dialog.ok")).clicked() {
                             ok = true;
                         }
                     });
@@ -1548,10 +1543,7 @@ fn nodes_page(app: &mut App, ui: &mut Ui) {
 
         ui.end_row();
         ui.label("");
-        if chrome::button(ui, &tr("options.reset"))
-            .rich_tip(crate::ui::tips::pair("options.reset", "dialog.reset_desc"))
-            .clicked()
-        {
+        if chrome::button(ui, &tr("options.reset")).clicked() {
             let d = crate::settings::NodePrefs::default();
             n.cusp = d.cusp;
             n.smooth = d.smooth;

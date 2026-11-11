@@ -9,6 +9,7 @@ full, row-by-row status.
 - Scripts panel: a script reaches more of what the menus do. Pages can be renamed, copied and deleted, layers locked and deleted, groups ungrouped (`Page.Name`, `Page.Delete`, `Page.Duplicate`, `Layer.Locked`, `Layer.Delete`, `Ungroup`); a text object's font, size, weight and slant are read and set (`Font`, `FontSize`, `Bold`, `Italic`, `SetTextStyle`); `Distribute` and its eight shorthands space a range; `ReplaceText` replaces text across a page or a range; `Combine` and `BreakApart`, which hands the pieces back; `Shape.Bounds` reads the box with its edges named; `FindByProperties`, `SelectByProperties` and `ReplaceByProperties` find and change objects by type, fill, outline or font. `ActivePage` and `ActiveLayer` follow a page the script activates. `docs/behavior/scripting.md` describes the object model (#2242).
 - MCP server: `export` takes `selection: true` to write only the selected objects, and its description names PS and PRN, which it always wrote.
 - The editor's tests build on Windows again.
+- Options: the OK, Cancel and Reset buttons show their tip once. The tip was drawn twice, one box under the other, when the pointer rested on one of them (#2367).
 
 ## 0.44.0 (2026-11-10)
 
