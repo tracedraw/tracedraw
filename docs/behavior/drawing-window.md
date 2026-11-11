@@ -90,6 +90,13 @@ From the left, after the ruler's width:
    (`ui::window_bars::tests::the_page_tab_menu_has_six_rows_in_order_each_with_a_picture`,
    `the_page_tab_menu_has_no_separators`,
    `the_page_tab_menu_inserts_duplicates_turns_and_deletes_pages`).
+   A page nobody named is called after its place: when pages are
+   inserted in between, moved or deleted, the default names ("Page 3",
+   in the interface's language or in English) are given again from the
+   first page on, in the same undo step, so the tabs always read Page 1,
+   Page 2, Page 3 from left to right. A page with a name of its own
+   (and a copy, "Page 2 (copy)") keeps it wherever it goes (#2374,
+   #2355, `page_names::tests`).
 3. A dotted splitter: dragging it shares the row between the page tabs and
    the horizontal scrollbar (45 % for the tabs by default).
 4. The horizontal scrollbar.

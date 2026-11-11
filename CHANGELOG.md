@@ -10,6 +10,7 @@ full, row-by-row status.
 - MCP server: `export` takes `selection: true` to write only the selected objects, and its description names PS and PRN, which it always wrote.
 - The editor's tests build on Windows again.
 - Options: the OK, Cancel and Reset buttons show their tip once. The tip was drawn twice, one box under the other, when the pointer rested on one of them (#2367).
+- Page tabs: the default page names follow the order of the pages. After a page was moved, inserted before another or deleted, the tabs kept the names the pages were made with (Page 2, Page 1, Page 3, or Page 6 down to Page 1 for pages inserted in front); the names are now given again from the first page on, in the same undo step. A page with a name of its own keeps it (#2374, #2355).
 
 ## 0.44.0 (2026-11-10)
 

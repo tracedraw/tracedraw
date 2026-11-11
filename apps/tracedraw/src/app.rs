@@ -5127,6 +5127,10 @@ impl App {
                 self.status = e.to_string();
             }
         }
+        // Default page names follow the pages' order (#2374).
+        if crate::page_names::changes_page_order(&cmd) {
+            self.renumber_default_pages();
+        }
         self.sync_effect_clones_for(&cmd);
         self.sync_object_clones();
         if let (Command::TransformShapes { transform, .. }, Some(before)) = (&cmd, before) {
@@ -9196,6 +9200,7 @@ impl App {
             self.status = e.to_string();
             return;
         }
+        self.renumber_default_pages();
         let next = ids
             .get(b + 1)
             .or_else(|| a.checked_sub(1).and_then(|i| ids.get(i)));

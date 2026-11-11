@@ -137,6 +137,7 @@ mod ops;
 mod ops2;
 mod package;
 mod page_drop;
+mod page_names;
 mod painterly_tool;
 mod palette;
 mod palm;
