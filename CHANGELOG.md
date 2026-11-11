@@ -4,6 +4,12 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Scripts panel: a script reaches more of what the menus do. Pages can be renamed, copied and deleted, layers locked and deleted, groups ungrouped (`Page.Name`, `Page.Delete`, `Page.Duplicate`, `Layer.Locked`, `Layer.Delete`, `Ungroup`); a text object's font, size, weight and slant are read and set (`Font`, `FontSize`, `Bold`, `Italic`, `SetTextStyle`); `Distribute` and its eight shorthands space a range; `ReplaceText` replaces text across a page or a range; `Combine` and `BreakApart`, which hands the pieces back; `Shape.Bounds` reads the box with its edges named; `FindByProperties`, `SelectByProperties` and `ReplaceByProperties` find and change objects by type, fill, outline or font. `ActivePage` and `ActiveLayer` follow a page the script activates. `docs/behavior/scripting.md` describes the object model (#2242).
+- MCP server: `export` takes `selection: true` to write only the selected objects, and its description names PS and PRN, which it always wrote.
+- The editor's tests build on Windows again.
+
 ## 0.44.0 (2026-11-10)
 
 - Extrude: a body turned in space with a vanishing point (the small and large types) no longer throws faces far past the object when the vanishing point sits near it or on it. A point takes its share of the way to the vanishing point from its own depth in the body, no longer from where the turn puts it (#2207).

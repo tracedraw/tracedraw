@@ -2825,6 +2825,9 @@ mod tests {
     #[test]
     fn page_and_layer_changes_are_one_undo_step() {
         let mut a = app();
+        // The first page's name follows the interface language, so the
+        // test reads it rather than naming it.
+        let first = run(&mut a, "print(ActivePage.Name);").unwrap()[0].clone();
         run(
             &mut a,
             "ActivePage.Name = 'One';\n\
@@ -2836,7 +2839,7 @@ mod tests {
         assert_eq!(out[0], "One");
         a.undo();
         let out = run(&mut a, "print(ActivePage.Name);").unwrap();
-        assert_eq!(out[0], "Página 1", "the name came back");
+        assert_eq!(out[0], first, "the name came back");
     }
 
     #[test]
