@@ -531,10 +531,10 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         (app.view_mode == crate::app::ViewMode::Pixels).then(|| app.document_dpi()),
     );
     let main_rendered = app.raster.borrow().render_count() != renders_before;
-    // The whole page drawn small, for where the picture does not reach
-    // while the view moves (#2048). Not while something is previewed or
-    // only part of the drawing shows: the backdrop is the drawing as it
-    // stands.
+    // The whole page drawn small, with what is drawn beside it (#2354),
+    // for where the picture does not reach while the view moves (#2048).
+    // Not while something is previewed or only part of the drawing
+    // shows: the backdrop is the drawing as it stands.
     #[cfg(not(target_arch = "wasm32"))]
     let backdrop = if preview.is_none()
         && app.render_focus().is_none()
@@ -544,7 +544,7 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
             painter.ctx(),
             doc,
             app.page,
-            app.page_rect(),
+            app.backdrop_area(revision),
             view,
             rect,
             revision,

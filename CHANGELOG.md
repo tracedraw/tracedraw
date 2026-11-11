@@ -16,6 +16,7 @@ full, row-by-row status.
 - Image > Convert to Bitmap: the bitmap takes the whole drop shadow of the objects converted. It was cut at the objects' box, so the part of the shadow reaching past it ended in a straight edge (#2351).
 - Edit > Repeat after a turn about a moved centre of rotation turns about that centre again. A copy turned about a point off the object and repeated went off sideways instead of round the point, so a ring of copies could not be built; copies now take the centre of rotation of their original, and several objects keep theirs where a turn put it (#2353).
 - Rotate mode: the centre of rotation snaps to the centre, the corners and the middles of the sides of the selection, and to the nodes, centres and quadrants of the objects near it, also with Snap to Objects off, and names the point it took (#2352).
+- Zooming out: what is drawn beside the page shows at once from the drawing drawn small behind the view, instead of coming back piece by piece with the desktop bare around the page (#2354).
 
 ## 0.44.0 (2026-11-10)
 

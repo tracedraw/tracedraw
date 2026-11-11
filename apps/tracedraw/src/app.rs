@@ -1506,6 +1506,9 @@ pub struct App {
     /// The drawing at a revision, shared by the other pages' renders on
     /// their threads (one copy a change, not one a page) (#903).
     pub page_snapshot: std::cell::RefCell<Option<(u64, std::sync::Arc<tracedraw_core::Document>)>>,
+    /// What the backdrop covers (see [`Self::backdrop_area`]), with the
+    /// revision, page and page box it was worked out for.
+    backdrop_area: std::cell::Cell<Option<(u64, PageId, Rect, Rect)>>,
     pub view_mode: ViewMode,
     pub proof_colors: bool,
     pub show_page_border: bool,
@@ -2399,6 +2402,11 @@ pub struct RepeatEntry {
 /// Most actions one Repeat replays.
 const REPEAT_GROUP_MAX: usize = 16;
 
+/// How far beside the page, in page sizes, what is drawn there still
+/// shows in the backdrop (see [`App::backdrop_area`]): farther, the page
+/// would take too few of the backdrop's pixels.
+pub const BACKDROP_REACH: f64 = 2.0;
+
 /// Where a docker lies: the default column (the right side of the
 /// window; the left in a right-to-left language), the column at the
 /// other side, the second column on either side (between the column at
@@ -2876,6 +2884,7 @@ impl App {
             vo: Default::default(),
             page_rasters: Default::default(),
             page_snapshot: Default::default(),
+            backdrop_area: Default::default(),
             view_mode: ViewMode::Enhanced,
             proof_colors: false,
             show_page_border: true,
@@ -4827,6 +4836,42 @@ impl App {
 
     pub fn page_rect(&self) -> Rect {
         Rect::from_origin_size((0.0, 0.0), self.page_size())
+    }
+
+    /// What the drawing drawn small behind the view covers while it
+    /// moves (#2048): the page and what is drawn beside it, up to
+    /// [`BACKDROP_REACH`] page sizes away. With the page alone, a
+    /// drawing laid out around a small page came back piece by piece at
+    /// every zoom out, the desktop bare around the page meanwhile
+    /// (#2354). Worked out once a change of the drawing, at `revision`.
+    pub fn backdrop_area(&self, revision: u64) -> Rect {
+        let page = self.page_rect();
+        if let Some((r, p, b, area)) = self.backdrop_area.get() {
+            if r == revision && p == self.page && b == page {
+                return area;
+            }
+        }
+        let reach = page.inflate(
+            page.width() * BACKDROP_REACH,
+            page.height() * BACKDROP_REACH,
+        );
+        let area = self
+            .drawing_bounds()
+            .map(|b| {
+                Rect::new(
+                    b.x0.max(reach.x0),
+                    b.y0.max(reach.y0),
+                    b.x1.min(reach.x1),
+                    b.y1.min(reach.y1),
+                )
+            })
+            .filter(|b| {
+                [b.x0, b.y0, b.x1, b.y1].iter().all(|v| v.is_finite()) && b.x1 > b.x0 && b.y1 > b.y0
+            })
+            .map_or(page, |b| page.union(b));
+        self.backdrop_area
+            .set(Some((revision, self.page, page, area)));
+        area
     }
 
     /// The layer new objects go to: the one made active in the Objects

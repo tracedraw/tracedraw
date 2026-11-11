@@ -15344,6 +15344,85 @@ fn zooming_out_shows_the_whole_page_small_where_the_picture_does_not_reach() {
     }
 }
 
+/// A drawing laid out beside a small page (#2354): zoomed out, what is
+/// drawn off the page shows from the backdrop at once, not only once the
+/// new picture comes piece by piece.
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn zooming_out_shows_what_is_drawn_beside_the_page_at_once() {
+    let (ctx, mut app, _) = setup();
+    let size = app.page_size();
+    let beside = Rect::new(size.width * 1.2, 0.0, size.width * 1.8, size.height);
+    let id = app
+        .new_shape(ShapeKind::Rect {
+            rect: beside,
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![id]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        0, 0, 0,
+    )));
+    app.select(Vec::new());
+    // The backdrop reaches what is drawn beside the page, and no farther
+    // than its reach.
+    let revision = app.engine.revision();
+    let area = app.backdrop_area(revision);
+    assert!(
+        area.contains(beside.origin()) && area.x1 >= beside.x1 - 1e-6,
+        "{area:?}"
+    );
+    app.zoom_to_page();
+    app.view.zoom_at(app.canvas_rect.center(), 0.5);
+    until_the_page_is_drawn(&ctx, &mut app);
+    let at = app.canvas_rect.center();
+    app.view.zoom_at(at, 8.0);
+    let start = std::time::Instant::now();
+    let painted = |app: &mut App, texture: Option<egui::TextureId>| {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                Pos2::ZERO,
+                egui::vec2(1600.0, 1000.0),
+            )),
+            time: Some(start.elapsed().as_secs_f64()),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+        out.textures_delta.clear();
+        out.shapes
+            .iter()
+            .filter(|c| texture.is_some() && Some(c.shape.texture_id()) == texture)
+            .map(|c| c.clip_rect.intersect(c.shape.visual_bounding_rect()))
+            .collect::<Vec<_>>()
+    };
+    let mut ready = false;
+    for _ in 0..600 {
+        painted(&mut app, None);
+        if app.raster.borrow().has_backdrop(revision) && !app.raster.borrow().drawing() {
+            ready = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(ready, "the backdrop came once the view rested");
+    let back = app.raster.borrow().backdrop_texture();
+    app.view.zoom_at(at, 1.0 / 8.0);
+    let parts = painted(&mut app, back);
+    assert!(
+        app.raster.borrow().drawing(),
+        "the new picture is on its way"
+    );
+    let off_page = app.view.rect_to_screen(beside).intersect(app.canvas_rect);
+    assert!(off_page.area() > 100.0, "{off_page:?} on screen");
+    let covered: f32 = parts.iter().map(|r| r.intersect(off_page).area()).sum();
+    assert!(
+        covered > off_page.area() * 0.98,
+        "the backdrop covers {covered} of {} beside the page",
+        off_page.area()
+    );
+}
+
 /// Frame times while the whole page is drawn small for the backdrop
 /// (#2048), on a page of `FRAME_N` objects (5000 at first) zoomed in:
 /// the frame that starts it (the drawing is copied for its thread), the
