@@ -13,6 +13,9 @@ full, row-by-row status.
 - The editor's tests build on Windows again.
 - Options: the OK, Cancel and Reset buttons show their tip once. The tip was drawn twice, one box under the other, when the pointer rested on one of them (#2367).
 - Page tabs: the default page names follow the order of the pages. After a page was moved, inserted before another or deleted, the tabs kept the names the pages were made with (Page 2, Page 1, Page 3, or Page 6 down to Page 1 for pages inserted in front); the names are now given again from the first page on, in the same undo step. A page with a name of its own keeps it (#2374, #2355).
+- Image > Convert to Bitmap: the bitmap takes the whole drop shadow of the objects converted. It was cut at the objects' box, so the part of the shadow reaching past it ended in a straight edge (#2351).
+- Edit > Repeat after a turn about a moved centre of rotation turns about that centre again. A copy turned about a point off the object and repeated went off sideways instead of round the point, so a ring of copies could not be built; copies now take the centre of rotation of their original, and several objects keep theirs where a turn put it (#2353).
+- Rotate mode: the centre of rotation snaps to the centre, the corners and the middles of the sides of the selection, and to the nodes, centres and quadrants of the objects near it, also with Snap to Objects off, and names the point it took (#2352).
 
 ## 0.44.0 (2026-11-10)
 

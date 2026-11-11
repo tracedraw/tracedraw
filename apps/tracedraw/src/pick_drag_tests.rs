@@ -20185,6 +20185,92 @@ fn repeat_turns_and_resizes_in_place() {
     );
 }
 
+/// Repeat after a copy turned about a centre of rotation moved off the
+/// object turns the next copy about that same point: the copies go
+/// round the point in a circle instead of marching off sideways (#2353).
+/// A turn of the object itself, and of several objects, repeats about
+/// the point as well.
+#[test]
+fn repeat_turns_copies_about_the_moved_centre_of_rotation() {
+    let (_ctx, mut app, id) = setup();
+    let pivot = Point::new(35.0, -40.0);
+    app.set_pivot(pivot);
+    assert_eq!(app.rotation_center(), Some(pivot));
+    let turn = |deg: f64| {
+        Affine::translate(pivot.to_vec2())
+            * Affine::rotate(deg.to_radians())
+            * Affine::translate(-pivot.to_vec2())
+    };
+    let centre = |app: &App, id: ShapeId| bounds(app, id).center();
+    let start = centre(&app, id);
+    let radius = (start - pivot).hypot();
+    app.copy_selection_by(turn(30.0));
+    let mut ids = vec![id, app.selection[0]];
+    assert_eq!(
+        app.rotation_center(),
+        Some(pivot),
+        "the copy keeps the centre"
+    );
+    for _ in 0..4 {
+        app.repeat_last();
+        ids.push(app.selection[0]);
+    }
+    assert_eq!(shape_count(&app), 6);
+    for (i, s) in ids.iter().enumerate() {
+        let want = turn(30.0 * i as f64) * start;
+        let got = centre(&app, *s);
+        assert!(
+            (got - want).hypot() < 0.05,
+            "copy {i} at {got:?}, wanted {want:?} ({radius} mm round the centre)"
+        );
+    }
+    // The object itself turned about the point, then Repeat.
+    let one = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(100.0, 100.0, 130.0, 110.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![one]);
+    let p2 = Point::new(150.0, 60.0);
+    app.set_pivot(p2);
+    let turn2 = Affine::translate(p2.to_vec2())
+        * Affine::rotate(40f64.to_radians())
+        * Affine::translate(-p2.to_vec2());
+    let c0 = centre(&app, one);
+    app.transform_selection(turn2);
+    app.repeat_last();
+    let want = turn2 * (turn2 * c0);
+    assert!(
+        (centre(&app, one) - want).hypot() < 0.05,
+        "turned twice about the point: {:?} {want:?}",
+        centre(&app, one)
+    );
+    // Two objects together keep the point they turn round.
+    app.select(vec![ids[0], ids[1]]);
+    let p3 = Point::new(-20.0, 0.0);
+    app.set_pivot(p3);
+    let turn3 = Affine::translate(p3.to_vec2())
+        * Affine::rotate(25f64.to_radians())
+        * Affine::translate(-p3.to_vec2());
+    let (a0, b0) = (centre(&app, ids[0]), centre(&app, ids[1]));
+    app.transform_selection(turn3);
+    assert_eq!(
+        app.rotation_center().map(|c| (c - p3).hypot() < 1e-6),
+        Some(true)
+    );
+    app.repeat_last();
+    for (s, c) in [(ids[0], a0), (ids[1], b0)] {
+        let want = turn3 * (turn3 * c);
+        assert!(
+            (centre(&app, s) - want).hypot() < 0.05,
+            "{:?} {want:?}",
+            centre(&app, s)
+        );
+    }
+}
+
 /// #1258: Tab in a dialog puts the focus on its first input box, not on
 /// the File menu; tabbing on, the focus stays in the dialog and comes
 /// round to that box again; Shift+Tab from it goes to the last box.

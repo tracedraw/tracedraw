@@ -4620,11 +4620,18 @@ impl App {
             return;
         };
         let originals = self.selection.clone();
+        let pivot = self.moved_rotation_center();
         // One step: the copies and their move (#471).
         let mark = self.engine.begin_group();
         self.duplicate_in_place();
         self.transform_selection(t);
         self.engine.end_group(mark, "Duplicate");
+        // The copies turn about the centre of rotation the originals had,
+        // carried with them, so a turned copy and its Repeat go on round
+        // the same point (#2353).
+        if let Some(p) = pivot {
+            self.set_pivot(t * p);
+        }
         self.note_repeatable_from(
             Repeatable::Copy {
                 transform: t,
@@ -4670,21 +4677,25 @@ impl App {
         let cmd = match action {
             Repeatable::Command(cmd) => *cmd,
             Repeatable::Copy { transform, before } => {
-                let Some(now) = self.selection_bounds() else {
+                let Some(t) = self.repeat_transform_now(transform, before) else {
                     return;
                 };
-                self.copy_selection_by(repeated_transform(transform, before, now));
+                self.copy_selection_by(t);
                 return;
             }
             Repeatable::Transform { transform, before } => {
-                let Some(now) = self.selection_bounds() else {
+                let Some(t) = self.repeat_transform_now(transform, before) else {
                     return;
                 };
+                let pivot = self.moved_rotation_center();
                 let shapes = self.selection.clone();
                 self.run(Command::TransformShapes {
                     shapes,
-                    transform: repeated_transform(transform, before, now),
+                    transform: t,
                 });
+                if let Some(p) = pivot {
+                    self.set_pivot(t * p);
+                }
                 return;
             }
             Repeatable::Group(actions) => {
@@ -4715,6 +4726,23 @@ impl App {
             other => other,
         };
         self.run(cmd);
+    }
+
+    /// The move, turn or resize `t` of a box `before` as a Repeat does
+    /// it to the selection now: a turn goes about the centre of rotation
+    /// the selection has (moved in rotate mode, or carried to a turned
+    /// copy), so a copy turned about a point and repeated goes on round
+    /// that point (#2353); anything else, and a turn of a selection whose
+    /// centre was not moved, about the same place of the selection's box
+    /// (#1289).
+    fn repeat_transform_now(&self, t: Affine, before: Rect) -> Option<Affine> {
+        let now = self.selection_bounds()?;
+        if let Some(c) = self.moved_rotation_center() {
+            if let Some(turn) = rotation_about(t, c) {
+                return Some(turn);
+            }
+        }
+        Some(repeated_transform(t, before, now))
     }
 
     /// Edit > Paste in View: paste centred on the visible area.
@@ -6752,6 +6780,7 @@ impl App {
             return;
         }
         let shapes = self.selection.clone();
+        let pivot = self.moved_rotation_center();
         // Paragraph text takes a scale as a new frame (see text_frames.rs).
         if !self.transform_with_frames(&shapes, t) {
             self.run(Command::TransformShapes {
@@ -6762,6 +6791,13 @@ impl App {
         self.compensate_unlocked_clip_frames(&shapes, t);
         self.apply_hinting(&shapes);
         self.reflow_chains_of(&shapes);
+        // A centre of rotation that was moved goes where the transform
+        // takes it: several objects kept it as a place in their box, which
+        // a turn about it moved away from the point they turned round
+        // (#2353).
+        if let Some(p) = pivot {
+            self.set_pivot(t * p);
+        }
     }
 
     /// Move the selection by `d`; with no object selected, the selected
@@ -9662,6 +9698,23 @@ fn three_point_arc(a: Point, b: Point, c: Point) -> Option<tracedraw_core::BezPa
 /// `a` and `b` name the same objects, in any order (and some).
 fn same_objects(a: &[ShapeId], b: &[ShapeId]) -> bool {
     !a.is_empty() && a.len() == b.len() && a.iter().all(|id| b.contains(id))
+}
+
+/// The turn `t` makes (its linear part, a rotation with no resize, slant
+/// or mirror), about `c` instead of its own centre. `None` when `t` is not
+/// such a turn.
+pub(crate) fn rotation_about(t: Affine, c: Point) -> Option<Affine> {
+    let [a, b, cc, d, _, _] = t.as_coeffs();
+    let tol = 1e-9;
+    let is_turn = (a - d).abs() < tol
+        && (b + cc).abs() < tol
+        && (a * a + b * b - 1.0).abs() < tol
+        && (b.abs() > 1e-12 || a < 0.0);
+    if !is_turn || !(c.x.is_finite() && c.y.is_finite()) {
+        return None;
+    }
+    let linear = Affine::new([a, b, cc, d, 0.0, 0.0]);
+    Some(Affine::translate(c.to_vec2()) * linear * Affine::translate(-c.to_vec2()))
 }
 
 /// `t`, done to objects whose box was `before`, redone about the same
