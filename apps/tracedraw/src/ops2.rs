@@ -2145,11 +2145,24 @@ impl App {
         transparent: bool,
         anti_alias: bool,
     ) -> Option<(Vec<u8>, u32, u32, Rect)> {
+        let bounds = self.selection_bounds()?;
+        self.render_selection_area_png(dpi, transparent, anti_alias, bounds)
+    }
+
+    /// The area `bounds` (page space) of the selection drawn alone into a
+    /// PNG at `dpi`: [`App::render_selection_png_with`] for an area that
+    /// may be larger than the selection's box.
+    fn render_selection_area_png(
+        &self,
+        dpi: f64,
+        transparent: bool,
+        anti_alias: bool,
+        bounds: Rect,
+    ) -> Option<(Vec<u8>, u32, u32, Rect)> {
         let shapes = self.selected_shapes();
         if shapes.is_empty() {
             return None;
         }
-        let bounds = self.selection_bounds()?;
         // Render only the selection: a temporary document with those shapes.
         let mut tmp = tracedraw_core::Document::new(
             "tmp",
@@ -2226,8 +2239,18 @@ impl App {
         } else {
             300.0
         };
+        // The whole of what the selection draws: a drop shadow reaches
+        // past the objects' box and was cut off at it (#2351).
+        let Some(area) = self.selection_bounds().map(|b| {
+            shapes
+                .iter()
+                .filter_map(|s| shadow_reach(s, Affine::IDENTITY))
+                .fold(b, |a, r| a.union(r))
+        }) else {
+            return;
+        };
         let Some((png, w, h, bounds)) =
-            self.render_selection_png_with(dpi, o.transparent, o.anti_alias)
+            self.render_selection_area_png(dpi, o.transparent, o.anti_alias, area)
         else {
             return;
         };
@@ -4807,6 +4830,34 @@ pub use crate::fit_path::{
     FitRotation, FitSpacing, FitSpin,
 };
 
+/// The area the drop shadows of `s` (inside `parent`) and of the objects
+/// in it cover, in page space: the shadow's box grown by its feathering.
+/// `None` when nothing in it casts a shadow.
+fn shadow_reach(s: &Shape, parent: Affine) -> Option<Rect> {
+    if !s.visible {
+        return None;
+    }
+    let to_page = parent * s.transform;
+    let own = s.shadow.filter(|sh| sh.opacity > 0.0).and_then(|sh| {
+        let mut placed = s.clone();
+        placed.transform = to_page;
+        let r = sh.bounds(placed.bounds());
+        (r.x0.is_finite() && r.y0.is_finite() && r.x1.is_finite() && r.y1.is_finite()).then_some(r)
+    });
+    let inner = match &s.kind {
+        ShapeKind::Group { children } => children
+            .iter()
+            .filter_map(|c| shadow_reach(c, to_page))
+            .reduce(|a, b| a.union(b)),
+        ShapeKind::ClipFrame { frame, .. } => shadow_reach(frame, to_page),
+        _ => None,
+    };
+    match (own, inner) {
+        (Some(a), Some(b)) => Some(a.union(b)),
+        (a, b) => a.or(b),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5553,6 +5604,78 @@ mod tests {
         // One undo step gives the objects back in their places.
         app.undo();
         assert_eq!(order(&app), vec![below, pic, middle, above]);
+    }
+
+    /// Convert to Bitmap of an object with a drop shadow takes the whole
+    /// shadow: the picture was cut at the object's box, so the shadow's
+    /// part beyond it ended in a straight edge (#2351).
+    #[test]
+    fn convert_to_bitmap_keeps_the_whole_drop_shadow() {
+        let mut app = App::headless();
+        for id in app.selectable_ids() {
+            app.select(vec![id]);
+            app.delete_selection();
+        }
+        let circle = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: Rect::new(0.0, 0.0, 40.0, 40.0),
+                arc: None,
+            })
+            .expect("circle");
+        app.run(Command::SetFill {
+            shapes: vec![circle],
+            fill: Fill::Solid(Color::rgb8(220, 0, 30)),
+        });
+        let shadow = tracedraw_core::Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(6.0, -6.0),
+            opacity: 0.8,
+            blur: 2.0,
+            ..Default::default()
+        };
+        app.run(Command::SetShadow {
+            shapes: vec![circle],
+            shadow: Some(shadow),
+        });
+        let object = app.doc().find_shape(circle).expect("circle").bounds();
+        let reach = shadow.bounds(object);
+        app.select(vec![circle]);
+        app.convert_to_bitmap(150.0, true);
+        let pic = app.selection[0];
+        let s = app.doc().find_shape(pic).expect("picture");
+        let ShapeKind::Bitmap {
+            rect,
+            width_px,
+            height_px,
+            png,
+            ..
+        } = &s.kind
+        else {
+            panic!("a bitmap");
+        };
+        let want = object.union(reach);
+        assert!(
+            (rect.x0 - want.x0).abs() < 1e-6
+                && (rect.y0 - want.y0).abs() < 1e-6
+                && (rect.x1 - want.x1).abs() < 1e-6
+                && (rect.y1 - want.y1).abs() < 1e-6,
+            "the picture covers {rect:?}, the object and its shadow {want:?}"
+        );
+        // The shadow shows past the object's box: below and right of it
+        // (y up), half way across the shadow's offset, there is ink.
+        let img = crate::bitmap_fx::decode(png).expect("png");
+        assert_eq!((img.width(), img.height()), (*width_px, *height_px));
+        let px = |x: f64, y: f64| {
+            let u = ((x - rect.x0) / rect.width() * *width_px as f64) as u32;
+            let v = ((rect.y1 - y) / rect.height() * *height_px as f64) as u32;
+            img.get_pixel(u.min(width_px - 1), v.min(height_px - 1))[3]
+        };
+        assert!(px(41.5, 20.0) > 40, "shadow right of the box");
+        assert!(px(20.0, -1.5) > 40, "shadow below the box");
+        assert_eq!(
+            px(rect.x0 + 0.1, rect.y1 - 0.1),
+            0,
+            "nothing in the far corner"
+        );
     }
 
     #[test]
