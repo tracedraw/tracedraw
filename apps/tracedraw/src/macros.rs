@@ -1755,6 +1755,87 @@ mod tests {
         }
     }
 
+    /// A form that downloads its picture with URLDownloadToCacheFile and
+    /// shows it with LoadPicture (QRCodeInserter of #2165 stopped with
+    /// error 445 on the Windows function): the file comes into a file of
+    /// the app's own, its path back into the macro's buffer, and the
+    /// image control shows it.
+    #[test]
+    fn a_form_downloads_its_picture_and_shows_it() {
+        let dir = std::env::temp_dir().join(format!("td-download-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("qr code.png");
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            3,
+            3,
+            image::Rgba([0, 0, 0, 255]),
+        ))
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .unwrap();
+        std::fs::write(&src, &png).unwrap();
+        let url = format!(
+            "file://{}",
+            src.to_string_lossy().replace('\\', "/").replace(' ', "%20")
+        );
+        let mut qr = vp::Form {
+            name: "QR".into(),
+            caption: "QR".into(),
+            width: 200.0,
+            height: 100.0,
+            enabled: true,
+            ..Default::default()
+        };
+        qr.controls = vec![vp::Control::new(vp::ControlKind::Image, "imgQR")];
+        let code = "Private Declare PtrSafe Function URLDownloadToCacheFile Lib \"urlmon\" Alias \"URLDownloadToCacheFileA\" (ByVal lpUnkcaller As Long, ByVal szURL As String, ByVal szFileName As String, ByVal dwBufLength As Long, ByVal dwReserved As Long, ByVal IBindStatusCallback As Long) As Long\r\n\
+             Public Function DownloadFile(URL As String) As String\r\n\
+             Dim szFileName As String\r\n\
+             szFileName = Space$(300)\r\n\
+             If URLDownloadToCacheFile(0, URL, szFileName, Len(szFileName), 0, 0) = 0 Then\r\n\
+             DownloadFile = Trim(szFileName)\r\n\
+             End If\r\n\
+             End Function\r\n\
+             Sub Go()\r\n\
+             Debug.Print \"missing [\" & DownloadFile(\"file:///no/such/file.png\") & \"]\"\r\n\
+             QR.Show\r\n\
+             End Sub\r\n";
+        let mut p = project("Forms", code, vec![qr]);
+        p.modules[1].source = format!(
+            "Private Sub UserForm_Initialize()\r\n\
+             Dim f As String\r\n\
+             f = Main.DownloadFile(\"{url}\")\r\n\
+             Debug.Print \"got \" & (Dir(f) <> \"\")\r\n\
+             imgQR.Picture = LoadPicture(f)\r\n\
+             End Sub\r\n"
+        );
+        let mut app = app_with(p);
+        app.run_macro(0, "Main", "Go");
+        let mut shown = None;
+        drive(&mut app, |app| {
+            let Some(run) = &app.macros.run else { return };
+            let open: Vec<(u32, Option<Vec<u8>>)> = run
+                .forms
+                .lock()
+                .unwrap()
+                .list
+                .iter()
+                .filter(|f| f.visible)
+                .map(|f| (f.id, f.control("imgQR").and_then(|c| c.picture.clone())))
+                .collect();
+            for (id, pic) in open {
+                shown = pic;
+                app.macro_form_event(id, "", "QueryClose", vec![serde_json::json!(0)]);
+            }
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(app.macros.error.is_none(), "{:?}", app.macros.error);
+        let out = &app.scripts_output;
+        for want in ["missing []", "got True"] {
+            assert!(out.iter().any(|l| l == want), "{want}: {out:?}");
+        }
+        assert_eq!(shown.as_deref(), Some(&png[..]));
+    }
+
     #[test]
     fn errors_name_the_line_and_stop_ends_a_loop() {
         let code = "Sub Bad()\r\nDim a As Long\r\na = 1 / 0\r\nEnd Sub\r\nSub Forever()\r\nDim i As Long\r\nDo\r\ni = i + 1\r\nLoop\r\nEnd Sub\r\n";

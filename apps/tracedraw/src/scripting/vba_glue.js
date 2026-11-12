@@ -26,6 +26,7 @@ G.__host_inputbox = function (prompt, title, def) {
 
 // ShellExecute of a web or mail address: the app opens it (#2165).
 G.__host_open = function (url) { return __open(String(url)); };
+G.__host_download = function (url, path) { return __download(String(url), String(path)); };
 
 // GetSetting and SaveSetting: kept by the app with the macros.
 G.__host_dir = function (path) { return __dir(String(path)); };
@@ -67,6 +68,7 @@ function plain(v) {
     }
     return items.map(plain);
   }
+  if (typeof v === "object" && typeof v.__picture === "string") return { picture: v.__picture };
   try { return __v.cstr(v); } catch (e) { return String(v); }
 }
 

@@ -361,6 +361,17 @@ fn ole(c: Option<(u8, u8, u8)>, default: (u8, u8, u8)) -> Value {
     json!(r as i64 | (g as i64) << 8 | (b as i64) << 16)
 }
 
+/// The picture a control's Picture gets: the file of a
+/// `LoadPicture(path)`, when it reads; nothing for `Nothing` or a file
+/// that does not.
+fn picture_of(v: &Value) -> Option<Vec<u8>> {
+    let path = v.get("picture")?.as_str()?;
+    if crate::files::WEB {
+        return None;
+    }
+    std::fs::read(path).ok().filter(|b| !b.is_empty())
+}
+
 fn text_of(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -690,10 +701,12 @@ impl Forms {
                 c.list_index = -1;
             }
             "seltext" => c.text = text_of(v),
+            // LoadPicture(path) (the glue sends its path), or none.
+            "picture" => c.picture = picture_of(v),
             // Accepted and not drawn.
             "specialeffect" | "borderstyle" | "textalign" | "autosize" | "wordwrap" | "tabstop"
             | "selstart" | "sellength" | "boundcolumn" | "textcolumn" | "columnwidths"
-            | "columnheads" | "matchentry" | "showdropbuttonwhen" | "picture" | "mousepointer"
+            | "columnheads" | "matchentry" | "showdropbuttonwhen" | "mousepointer"
             | "listwidth" | "listrows" | "dropbuttonstyle" => {}
             _ => return Err(format!("{} has no property {prop}", c.name)),
         }

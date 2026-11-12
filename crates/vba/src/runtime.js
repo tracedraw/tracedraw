@@ -61,6 +61,25 @@ V.shellexecute = function (args) {
   return G.__host_open(file.trim()) ? 42 : 2;
 };
 
+// URLDownloadToFile(caller, url, file, reserved, callback) and
+// URLDownloadToCacheFile(caller, url, buffer, length, reserved, callback)
+// of declared Windows API functions (#2165): the host (`__host_download`)
+// fetches the address, into the file the macro names or into a file of
+// its own whose path goes back into the macro's buffer. They return 0
+// when the file was written and INET_E_DOWNLOAD_FAILURE when not, as
+// a host without the hook does.
+V.urldownload = function (args, cache) {
+  const failed = -2146697200;
+  const url = args.length > 1 ? V.cstr(V.deref(args[1])).trim() : "";
+  if (!url || typeof G.__host_download !== "function") return failed;
+  const target = cache ? "" : (args.length > 2 ? V.cstr(V.deref(args[2])) : "");
+  if (!cache && !target) return failed;
+  const path = String(G.__host_download(url, target));
+  if (!path) return failed;
+  if (cache && args.length > 2) V.wb(args[2], path);
+  return 0;
+};
+
 V.toVbError = function (e) {
   if (e instanceof VbError) return e;
   if (e === V.END) return e;
@@ -1596,6 +1615,9 @@ B.dir = (path) => {
   if (typeof G.__host_dir !== "function") V.unsupported("Dir");
   return String(G.__host_dir(V.cstr(path)));
 };
+// LoadPicture(path): a picture for a control's Picture (the file is read
+// when the control gets it); without a path, no picture.
+B.loadpicture = (path) => (miss(path) || V.cstr(path) === "" ? null : { __picture: V.cstr(path) });
 B.doevents = () => 0;
 B.environ = () => "";
 B.eof = () => V.unsupported("EOF");

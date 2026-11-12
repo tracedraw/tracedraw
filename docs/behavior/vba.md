@@ -484,6 +484,7 @@ model is documented with scripting.
 | `form.__event(control, event, args)` | the host fires `Control_Event` handlers |
 | `__host_setting(op, app, section, key, value)` | GetSetting, SaveSetting, DeleteSetting, GetAllSettings; without it settings last for the run |
 | `__host_open(url)` | ShellExecute of a web or mail address; true when it was opened (without it, ShellExecute returns 2) |
+| `__host_download(url, path)` | URLDownloadToFile (into `path`) and URLDownloadToCacheFile (`path` empty): the file written, or "" (without it, they fail) |
 
 ### Supported
 
@@ -527,7 +528,14 @@ These compile and fail at run time with error 445
   or mail address (`http://`, `https://`, `mailto:`) opens with the
   system, as macros do to show their maker's page, and it returns 42;
   anything else (a program, a file) is not opened and it returns 2,
-  without an error (#2165).
+  without an error (#2165). URLDownloadToFile and URLDownloadToCacheFile
+  (`Alias "URLDownloadToFileA"`, `"URLDownloadToCacheFileA"` and the W
+  forms) are also there: the app fetches the `http://`, `https://` or
+  `file:` address (up to 64 MB, one minute), into the file the macro
+  names or into a file of its own in the system's temporary folder
+  whose path goes back into the buffer the macro passed, and they
+  return 0; when nothing comes they return INET_E_DOWNLOAD_FAILURE
+  (-2146697200), without an error (#2165).
 - File statements: Open, Close, Print #, Write #, Input #, Line Input,
   Get, Put, Kill, Name, MkDir, RmDir, ChDir, FileCopy, Dir.
 - COM objects other than `Scripting.Dictionary` (FileSystemObject,
@@ -792,7 +800,7 @@ the desktop version, with OK and a button to the desktop downloads.
   controls, as in VBA (#2165). Code in `UserForm_Initialize` that names
   its own form (`CropForm.ctrlUnits.AddItem`, `CropForm.ctrlLength = 5`
   for its default property) reaches the instance being made. Drop-down
-  lists take `ListWidth`, `ListRows` and `DropButtonStyle` (not drawn). The close box asks the macro through
+  lists take `ListWidth`, `ListRows` and `DropButtonStyle` (not drawn). An image control's `Picture` takes `LoadPicture(path)` and shows that file (PNG, JPEG, GIF, BMP); `LoadPicture("")` clears it. The close box asks the macro through
   `UserForm_QueryClose` (CloseMode vbFormControlMenu); setting Cancel
   keeps the form, otherwise it unloads.
 - Forms still open when a run ends or is stopped are closed.

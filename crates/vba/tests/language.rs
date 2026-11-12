@@ -577,6 +577,64 @@ End Sub
     assert_eq!(out, vec!["2", "2"]);
 }
 
+/// URLDownloadToCacheFile and URLDownloadToFile (#2165): the host
+/// fetches the address; the cache variant writes the file's path into
+/// the buffer the macro passed by value, as Windows does. Without the
+/// host hook they fail with INET_E_DOWNLOAD_FAILURE instead of raising.
+#[test]
+fn url_downloads_go_to_the_host() {
+    let src = r##"
+Private Declare PtrSafe Function URLDownloadToCacheFile Lib "urlmon" Alias "URLDownloadToCacheFileA" (ByVal lpUnkcaller As Long, ByVal szURL As String, ByVal szFileName As String, ByVal dwBufLength As Long, ByVal dwReserved As Long, ByVal IBindStatusCallback As Long) As Long
+Private Declare PtrSafe Function URLDownloadToFile Lib "urlmon" Alias "URLDownloadToFileA" (ByVal pCaller As Long, ByVal szURL As String, ByVal szFileName As String, ByVal dwReserved As Long, ByVal lpfnCB As Long) As Long
+Function DownloadFile(URL As String) As String
+    Dim szFileName As String
+    szFileName = Space$(300)
+    If URLDownloadToCacheFile(0, URL, szFileName, Len(szFileName), 0, 0) = 0 Then
+        DownloadFile = Trim(szFileName)
+    End If
+End Function
+Sub Main()
+    Debug.Print DownloadFile("http://example.com/qr?format=png")
+    Debug.Print "[" & DownloadFile("http://example.com/missing") & "]"
+    Debug.Print URLDownloadToFile(0, "http://example.com/a.png", "/tmp/a.png", 0, 0)
+    Dim p As Picture
+    Debug.Print LoadPicture("") Is Nothing
+End Sub
+"##;
+    let hooks = r##"
+function __host_download(url, path) {
+  __lines.push("get:" + url + "|" + path);
+  return url.indexOf("missing") >= 0 ? "" : (path || "/cache/qr.png");
+}
+"##;
+    let r = run_modules(
+        &[Module::new("Module1", ModuleKind::Standard, src)],
+        "Module1",
+        "Main",
+        hooks,
+    );
+    r.result.unwrap();
+    assert_eq!(
+        r.lines,
+        vec![
+            "get:http://example.com/qr?format=png|",
+            "/cache/qr.png",
+            "get:http://example.com/missing|",
+            "[]",
+            "get:http://example.com/a.png|/tmp/a.png",
+            "0",
+            "True",
+        ]
+    );
+    let none = run(r##"
+Private Declare PtrSafe Function URLDownloadToFile Lib "urlmon" Alias "URLDownloadToFileA" (ByVal pCaller As Long, ByVal szURL As String, ByVal szFileName As String, ByVal dwReserved As Long, ByVal lpfnCB As Long) As Long
+Sub Main()
+    Debug.Print URLDownloadToFile(0, "http://example.com/a.png", "/tmp/a.png", 0, 0)
+End Sub
+"##);
+    assert_eq!(none, vec!["-2146697200"]);
+}
+
 #[test]
 fn msgbox_and_inputbox_use_the_host_hooks() {
     let src = r##"
