@@ -63,9 +63,6 @@ const BLEND_DEFAULT_STEPS: u32 = 20;
 /// (#980).
 const FILE_BLEND_STEPS: u32 = 100_000;
 
-/// Farther than this from (0, 0), the coordinates of artistic text are
-/// not a place (see `build_text`).
-const MAX_TEXT_ORIGIN_MM: f64 = 10_000.0;
 /// Longest page side read, mm: large format work (banners, wraps) has
 /// pages of 20 m and more, and a larger value means a misread record. The
 /// CMX reader takes the same bound.
@@ -2078,16 +2075,17 @@ impl<'a> Ctx<'a> {
                     frame = Some(Size::new(w.abs(), h.abs()));
                     origin = Point::new(0.0, -h.abs());
                 }
-            } else if self.v >= 16 {
-                let o = Point::new(r.coord()?, r.coord()?);
-                if o.x.abs() <= MAX_TEXT_ORIGIN_MM && o.y.abs() <= MAX_TEXT_ORIGIN_MM {
-                    origin = o;
-                }
             }
-            // Before version 16 the argument holds record ids, not a
+            // Artistic text starts at the origin and the transform places
+            // it. Before version 16 the argument holds record ids, not a
             // place (files of versions 7 to 12; in 13 to 15 (0, 0) or
-            // (0, a record id), read as a point 9 to 40 m away): the text
-            // starts at the origin and the transform places it.
+            // (0, a record id), read as a point 9 to 40 m away). From 16
+            // it holds a point a few hundredths of a millimetre from
+            // (0, 0), growing by 0.0002 mm from one object to the next,
+            // that the program which writes the files does not draw the
+            // text at: its 108 texts of a version 18 file sit where its
+            // transform alone puts them, and taken as a place they rose
+            // by up to 0.046 mm and were saved there (#2359).
         }
         let mut txsm = None;
         oc.walk(&mut |c, _| {
@@ -11326,6 +11324,69 @@ pub(crate) mod tests {
                 }
                 other => panic!("{base:?}: {other:?}"),
             }
+        }
+    }
+
+    /// From version 16 the coordinates of artistic text hold a point a
+    /// few hundredths of a millimetre from (0, 0) that does not move the
+    /// text: it starts where its transform puts it (#2359: read as a
+    /// place, 108 texts of a version 18 file rose by up to 0.046 mm and
+    /// were saved there).
+    #[test]
+    fn artistic_text_coordinates_do_not_move_the_text() {
+        let v = 18u16;
+        let mut t = u32s(&[0xffff_ffff]);
+        t.extend_from_slice(&[0; 32]);
+        t.extend_from_slice(&u16s(&[1700]));
+        t.extend_from_slice(&[0; 3]);
+        t.extend_from_slice(&u32s(&[1, 1]));
+        t.extend_from_slice(&[0; 48]);
+        t.extend_from_slice(&u32s(&[0]));
+        t.extend_from_slice(&[0; 8]);
+        t.extend_from_slice(&u32s(&[1]));
+        t.extend_from_slice(&u32s(&[0]));
+        t.push(0);
+        t.push(0);
+        t.extend_from_slice(&style_string(
+            v,
+            r#"{"character":{"latin":{"font":"Arial","size":"128819","weight":"400","italic":"0"}}}"#,
+        ));
+        t.extend_from_slice(&u32s(&[0]));
+        t.extend_from_slice(&u32s(&[2]));
+        for _ in 0..2 {
+            t.extend_from_slice(&u16s(&[0]));
+            t.push(0xfe);
+            t.extend_from_slice(&[0; 5]);
+        }
+        t.extend_from_slice(&u32s(&[2]));
+        t.extend_from_slice(b"Hi");
+        t.push(0);
+        // As the version 18 file of #2359 holds it: (0, 0.046 mm).
+        let obj = list(
+            b"obj ",
+            &[
+                chunk(b"bbox", &i32s(&[0, 100_000, 100_000, 0])),
+                chunk(
+                    b"loda",
+                    &loda(OBJ_ARTISTIC_TEXT, &[(ARG_COORDS, i32s(&[0, 460]))]),
+                ),
+                chunk(b"trfd", &trfd(v, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0])),
+                chunk(b"txsm", &t),
+            ]
+            .concat(),
+        );
+        let body = [
+            chunk(b"mcfg", &mcfg(v, 2_540_000, 2_540_000)),
+            list(b"page", &list(b"layr", &obj)),
+        ]
+        .concat();
+        let (doc, rep) = parse(&riff(b"CDRI", &body), v);
+        assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+        match &first_shape(&doc).kind {
+            ShapeKind::Text { origin, .. } => {
+                assert!(origin.x.abs() < 1e-9 && origin.y.abs() < 1e-9, "{origin:?}")
+            }
+            other => panic!("{other:?}"),
         }
     }
 
