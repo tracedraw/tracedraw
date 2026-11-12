@@ -65,6 +65,9 @@ struct Actions {
     /// that takes objects, for a row dragged along the list (live test
     /// of 0.41).
     object_rows: Vec<(ShapeId, Rect)>,
+    /// Every object row of the list, top to bottom (laid out or not), for
+    /// Shift+click's range (#2483).
+    row_order: Vec<ShapeId>,
     layer_drop_rows: Vec<(LayerId, Rect)>,
     collapse: Option<LayerId>,
     expand_group: Option<ShapeId>,
@@ -1055,6 +1058,7 @@ fn grid_row(app: &App, ui: &mut Ui, act: &mut Actions) {
 /// open group.
 fn object_rows(app: &App, ui: &mut Ui, s: &Shape, depth: usize, act: &mut Actions) {
     let selected = app.selection.contains(&s.id);
+    act.row_order.push(s.id);
     let height = (act.thumb_size + 6.0).max(ROW_H);
     let (rect, resp) = row_of(ui, Look::Object { selected }, height);
     if act.scroll_to == Some(s.id) {
@@ -2006,23 +2010,110 @@ fn apply(app: &mut App, ui: &Ui, act: Actions) {
         master_to_page(app, layer);
     }
     if let Some(id) = act.select {
-        if ui.input(|i| i.modifiers.shift) {
-            // A locked object stays out of the selection (#2347).
-            if !app.selection.contains(&id) && !app.locked_ids().contains(&id) {
-                app.selection.push(id);
-            }
-        } else {
-            app.select(vec![id]);
-        }
+        let (shift, ctrl) = ui.input(|i| (i.modifiers.shift, i.modifiers.command));
+        let key = egui::Id::new("objects_docker_anchor");
+        let anchor: Option<ShapeId> = ui.data(|d| d.get_temp(key));
+        let anchor = select_row(app, id, &act.row_order, anchor, shift, ctrl);
+        ui.data_mut(|d| d.insert_temp(key, anchor));
         if let Some(layer) = layer_holding(app, id) {
             app.picked_layer = Some(layer);
         }
     }
 }
 
+/// A click on the row of `id` in the list whose rows are `rows` (top to
+/// bottom), as in a file list (#2483): alone it selects that object;
+/// Shift selects every row from the row last clicked (`anchor`) to this
+/// one, Ctrl+Shift adds that range; Ctrl adds the object or takes it out.
+/// A locked object stays out of the selection (#2347). Gives the row a
+/// next Shift+click counts from.
+fn select_row(
+    app: &mut App,
+    id: ShapeId,
+    rows: &[ShapeId],
+    anchor: Option<ShapeId>,
+    shift: bool,
+    ctrl: bool,
+) -> ShapeId {
+    let locked = app.locked_ids();
+    let free = |i: &ShapeId| !locked.contains(i);
+    if shift {
+        let from = anchor.and_then(|a| rows.iter().position(|r| *r == a));
+        let to = rows.iter().position(|r| *r == id);
+        let range: Vec<ShapeId> = match (from, to) {
+            (Some(a), Some(b)) => rows[a.min(b)..=a.max(b)].to_vec(),
+            _ => vec![id],
+        };
+        let mut picked = if ctrl {
+            app.selection.clone()
+        } else {
+            Vec::new()
+        };
+        for r in range.into_iter().filter(free) {
+            if !picked.contains(&r) {
+                picked.push(r);
+            }
+        }
+        app.select(picked);
+        // The range keeps counting from where it started.
+        return anchor.filter(|a| rows.contains(a)).unwrap_or(id);
+    }
+    if ctrl {
+        let mut picked = app.selection.clone();
+        if let Some(i) = picked.iter().position(|r| *r == id) {
+            picked.remove(i);
+        } else if free(&id) {
+            picked.push(id);
+        }
+        app.select(picked);
+    } else {
+        app.select(vec![id]);
+    }
+    id
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    /// #2483: in the Objects docker Shift+click selects every row from the
+    /// row clicked before to this one, as in a file list, and Ctrl+click
+    /// adds or takes out one object. Shift+click added the one object
+    /// only, leaving the rows between unselected.
+    #[test]
+    fn shift_click_selects_a_range_of_rows_and_ctrl_click_one_more() {
+        let mut app = App::headless();
+        let ids: Vec<ShapeId> = (0..5)
+            .map(|_| app.new_shape(rect_kind()).expect("shape"))
+            .collect();
+        // The list shows the top object first.
+        let rows: Vec<ShapeId> = ids.iter().rev().copied().collect();
+        let a = select_row(&mut app, rows[1], &rows, None, false, false);
+        assert_eq!(app.selection, vec![rows[1]]);
+        // Shift on the fourth row: the second to the fourth.
+        let a = select_row(&mut app, rows[3], &rows, Some(a), true, false);
+        assert_eq!(app.selection, rows[1..=3].to_vec());
+        assert_eq!(a, rows[1], "the range counts from its first row");
+        // Shift upwards from the same start: the first two.
+        select_row(&mut app, rows[0], &rows, Some(a), true, false);
+        assert_eq!(app.selection, rows[0..=1].to_vec());
+        // Ctrl adds the last row alone, and takes it out again.
+        let a = select_row(&mut app, rows[4], &rows, Some(a), false, true);
+        assert_eq!(app.selection, vec![rows[0], rows[1], rows[4]]);
+        select_row(&mut app, rows[4], &rows, Some(a), false, true);
+        assert_eq!(app.selection, vec![rows[0], rows[1]]);
+        // A locked object in the range stays out of it (#2347).
+        app.run(Command::SetLocked {
+            shapes: vec![rows[2]],
+            locked: true,
+        });
+        let a = select_row(&mut app, rows[1], &rows, None, false, false);
+        select_row(&mut app, rows[3], &rows, Some(a), true, false);
+        assert_eq!(app.selection, vec![rows[1], rows[3]]);
+        // No row clicked before: Shift selects the one row.
+        select_row(&mut app, rows[4], &rows, None, true, false);
+        assert_eq!(app.selection, vec![rows[4]]);
+    }
 
     /// A new drawing without its desktop layer, for the tests of the
     /// numbered master layers.
