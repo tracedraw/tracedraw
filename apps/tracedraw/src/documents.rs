@@ -654,6 +654,28 @@ impl App {
             &[("n", &self.untitled_counter.to_string())],
         )
     }
+
+    /// The page tab menu's Duplicate Page to New Document (#2510): a new,
+    /// untitled drawing in its own tab holding a copy of the current page
+    /// with all its layers and objects, its size and settings, and the
+    /// drawing's master layers, styles, symbols, palette and colours. The
+    /// other pages, their comments and the work time stay behind.
+    pub fn duplicate_page_to_new_document(&mut self) {
+        let page = self.page;
+        let mut doc = self.doc().clone();
+        if !doc.pages.iter().any(|p| p.id == page) {
+            return;
+        }
+        doc.pages.retain(|p| p.id == page);
+        doc.comments.retain(|c| c.page == page);
+        doc.page_guides_hidden.retain(|p| *p == page);
+        doc.selection_groups.clear();
+        doc.saved_view = None;
+        doc.time_tracker = Default::default();
+        doc.title = self.next_untitled_name();
+        self.open_document(doc, None);
+        self.status.clear();
+    }
 }
 
 #[cfg(test)]

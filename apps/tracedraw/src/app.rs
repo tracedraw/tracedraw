@@ -9664,7 +9664,10 @@ pub fn fill_description(fill: &Fill) -> String {
             tracedraw_core::FountainKind::Shaped => tr("fill.shaped_fountain"),
         },
         Fill::Pattern(tracedraw_core::Pattern::TwoColor { tile, .. }) => {
-            trf("fill.two_color_pattern", &[("t", tile.name())])
+            trf(
+                "fill.two_color_pattern",
+                &[("t", &crate::ui::dockers::pattern_tile_name(*tile))],
+            )
         }
         Fill::Pattern(tracedraw_core::Pattern::Bitmap { .. }) => tr("fill.bitmap_pattern"),
         Fill::Pattern(tracedraw_core::Pattern::Vector { .. }) => tr("fill.vector_pattern"),
