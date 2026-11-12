@@ -629,7 +629,8 @@ impl App {
     /// stretched from `source`'s box to each object's, one undo step. A
     /// source with no envelope gives the shape of its outline, so text
     /// can be fitted into a drawn shape (#993): as in CorelDRAW, each
-    /// object then goes into that shape where it lies, filling it (#2344).
+    /// object takes that shape at its size, centred where the object is
+    /// (#2178).
     pub fn copy_envelope_from(&mut self, source: ShapeId) {
         let Some(src) = self.doc().find_shape(source).cloned() else {
             return;
@@ -683,14 +684,18 @@ impl App {
                 }
             };
             let to = box_at(s, at);
-            // The frame of an outline is laid on the outline itself: from
-            // the page into the object's own space.
-            let into_object = (self.doc().parent_transform(id).unwrap_or(Affine::IDENTITY)
-                * s.transform)
-                .inverse();
+            // The frame of an outline keeps the outline's size and shape,
+            // centred where the object is: from the page into the
+            // object's own space. As in CorelDRAW (#2178, and the video
+            // of #2344, where the object was moved into the shape by
+            // hand afterwards), the object stays where it is; it was
+            // moved into the outline.
+            let to_page = self.doc().parent_transform(id).unwrap_or(Affine::IDENTITY) * s.transform;
+            let into_object = to_page.inverse();
             let finite = into_object.as_coeffs().iter().all(|c| c.is_finite());
             let m = if on_page && finite {
-                into_object
+                let shift = to_page * to.center() - from.center();
+                into_object * Affine::translate(shift)
             } else {
                 Affine::translate(to.origin().to_vec2())
                     * Affine::scale_non_uniform(
@@ -1011,12 +1016,14 @@ mod tests {
         }
     }
 
-    /// Copy Envelope Properties from a band with no envelope (#2344): as
-    /// in CorelDRAW the object goes into the band where it lies, its
-    /// corners at the band's four corners, and fills it; a moved object
-    /// lands there all the same.
+    /// Copy Envelope Properties from a band with no envelope: as in
+    /// CorelDRAW each object takes the band's shape at the band's size,
+    /// its corners at the band's four corners (#2344), centred where the
+    /// object was, a moved and turned one too. It was moved into the band
+    /// (#2178: text above an arched band went down onto it, where in
+    /// CorelDRAW it stays above it, arched like it).
     #[test]
-    fn an_object_taking_a_shapes_outline_goes_into_that_shape() {
+    fn an_object_taking_a_shapes_outline_keeps_its_place() {
         let mut app = App::headless();
         let mut band = tracedraw_core::BezPath::new();
         band.move_to((110.0, 100.0));
@@ -1038,11 +1045,13 @@ mod tests {
                 transform: Affine::translate((50.0, 200.0)) * Affine::rotate(0.3),
             })
             .expect("moved");
+        let centres = [bounds(&app, a).center(), bounds(&app, b).center()];
         app.select(vec![a, b]);
         app.copy_envelope_from(src);
         use tracedraw_core::geometry::Shape as _;
-        let want = band.bounding_box();
-        for id in [a, b] {
+        let bb = band.bounding_box();
+        for (id, c) in [a, b].into_iter().zip(centres) {
+            let want = bb + (c - bb.center());
             let got = bounds(&app, id);
             assert!(
                 (got.x0 - want.x0).abs() < 0.05
