@@ -230,6 +230,8 @@ mod variable_outline;
 mod vector_mosaic;
 mod view;
 mod view_motion;
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+mod wayland_copy;
 #[cfg(target_arch = "wasm32")]
 mod web;
 #[cfg(any(target_arch = "wasm32", test))]
