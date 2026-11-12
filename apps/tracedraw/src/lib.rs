@@ -892,8 +892,11 @@ impl eframe::App for Shell {
         if let Some(app) = self.app.as_ref() {
             ui::screen_margins::apply(ctx, &app.settings, raw_input);
         }
-        // Shift, Ctrl and Alt held from the toolbar by a finger (#1499).
-        if let Some(app) = self.app.as_ref() {
+        // Shift, Ctrl and Alt held from the keys on the drawing by a
+        // finger, tapped (#1499) or held down while another finger draws
+        // (#2362).
+        if let Some(app) = self.app.as_mut() {
+            touch_modifiers::fingers_on_keys(app, raw_input);
             app.touch_mods.apply(ctx, raw_input);
         }
     }

@@ -1902,6 +1902,7 @@ mod tests {
                 time: Some(clock.get()),
                 ..Default::default()
             };
+            crate::touch_modifiers::fingers_on_keys(app, &mut input);
             app.touch_mods.apply(&ctx, &mut input);
             let mut out = ctx.run_ui(input, |ui| root(app, ui));
             out.textures_delta.clear();
@@ -2062,6 +2063,204 @@ mod tests {
         app.settings.touch_keys = false;
         timed(&mut app, Vec::new());
         assert!(app.touch_keys_shown.is_empty());
+    }
+
+    /// Ctrl held from the keys on the drawing keeps the Pen tool's lines
+    /// and handles to the constrain angle, as the keyboard's Ctrl held
+    /// down does (#2362).
+    #[test]
+    fn ctrl_from_the_keys_on_the_drawing_keeps_the_pen_to_the_constrain_angle() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.settings.autocorrect.enabled = false;
+        app.show_welcome = false;
+        app.set_workspace(crate::app::Workspace::Touch);
+        let clock = std::cell::Cell::new(0.0);
+        let timed = |app: &mut App, events: Vec<egui::Event>| {
+            clock.set(clock.get() + 0.05);
+            let mut input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1600.0, 1000.0),
+                )),
+                events,
+                time: Some(clock.get()),
+                ..Default::default()
+            };
+            crate::touch_modifiers::fingers_on_keys(app, &mut input);
+            app.touch_mods.apply(&ctx, &mut input);
+            let mut out = ctx.run_ui(input, |ui| root(app, ui));
+            out.textures_delta.clear();
+        };
+        let touch = |phase, pos| egui::Event::Touch {
+            device_id: egui::TouchDeviceId(1),
+            id: egui::TouchId(3),
+            phase,
+            pos,
+            force: None,
+        };
+        let tap = |app: &mut App, at: egui::Pos2| {
+            timed(
+                app,
+                vec![
+                    touch(egui::TouchPhase::Start, at),
+                    egui::Event::PointerMoved(at),
+                    button(at, true, egui::PointerButton::Primary),
+                ],
+            );
+            timed(
+                app,
+                vec![
+                    touch(egui::TouchPhase::End, at),
+                    button(at, false, egui::PointerButton::Primary),
+                    egui::Event::PointerGone,
+                ],
+            );
+            timed(app, Vec::new());
+        };
+        // A finger's drag, a frame for each step.
+        let pull = |app: &mut App, from: egui::Pos2, to: egui::Pos2| {
+            timed(
+                app,
+                vec![
+                    touch(egui::TouchPhase::Start, from),
+                    egui::Event::PointerMoved(from),
+                    button(from, true, egui::PointerButton::Primary),
+                ],
+            );
+            for k in 1..=8 {
+                let at = from + (to - from) * (k as f32 / 8.0);
+                timed(
+                    app,
+                    vec![
+                        touch(egui::TouchPhase::Move, at),
+                        egui::Event::PointerMoved(at),
+                    ],
+                );
+            }
+            timed(
+                app,
+                vec![
+                    touch(egui::TouchPhase::End, to),
+                    button(to, false, egui::PointerButton::Primary),
+                    egui::Event::PointerGone,
+                ],
+            );
+            timed(app, Vec::new());
+        };
+        for _ in 0..5 {
+            timed(&mut app, Vec::new());
+        }
+        app.zoom_to_page();
+        timed(&mut app, Vec::new());
+        // A first tap off the page makes the touch screen known.
+        {
+            let at = app.view.to_screen(Point::new(150.0, 200.0));
+            tap(&mut app, at);
+        }
+        app.set_tool(crate::tools::Tool::Pen);
+        timed(&mut app, Vec::new());
+        let ctrl = app
+            .touch_keys_shown
+            .iter()
+            .find(|(k, _)| *k == "ctrl")
+            .map(|(_, r)| r.center())
+            .expect("the Ctrl key is on the drawing");
+        tap(&mut app, ctrl);
+        assert!(app.touch_mods.ctrl);
+        assert!(ctx.input(|i| app.constrain_held(&i.modifiers)));
+        // Two taps a little off the level: a level line.
+        {
+            let at = app.view.to_screen(Point::new(50.0, 50.0));
+            tap(&mut app, at);
+        }
+        {
+            let at = app.view.to_screen(Point::new(110.0, 53.0));
+            tap(&mut app, at);
+        }
+        let nodes: Vec<Point> = app
+            .curve
+            .as_ref()
+            .expect("a line being drawn")
+            .nodes
+            .iter()
+            .map(|n| n.0)
+            .collect();
+        assert_eq!(nodes.len(), 2, "{nodes:?}");
+        assert!((nodes[0].y - nodes[1].y).abs() < 1e-6, "level: {nodes:?}");
+        // A handle pulled a little off the level: level too.
+        let from = app.view.to_screen(Point::new(160.0, 50.0));
+        let to = app.view.to_screen(Point::new(190.0, 53.0));
+        pull(&mut app, from, to);
+        let c = app.curve.as_ref().expect("a curve being drawn");
+        let (node, handle) = c.nodes.last().copied().expect("the node pulled");
+        let handle = handle.expect("a handle pulled from the node");
+        assert!(
+            (handle.y - node.y).abs() < 1e-6,
+            "level handle: {node:?} {handle:?}"
+        );
+        // Let go.
+        tap(&mut app, ctrl);
+        assert!(!app.touch_mods.any());
+        app.finish_curve();
+        assert!(app.curve.is_none());
+        // Ctrl held down by one finger while another taps: held as a key
+        // is, not a pan of two fingers, and let go with the finger.
+        let finger = |id: u64, phase, pos| egui::Event::Touch {
+            device_id: egui::TouchDeviceId(1),
+            id: egui::TouchId(id),
+            phase,
+            pos,
+            force: None,
+        };
+        let view = app.view;
+        timed(
+            &mut app,
+            vec![
+                finger(7, egui::TouchPhase::Start, ctrl),
+                egui::Event::PointerMoved(ctrl),
+                button(ctrl, true, egui::PointerButton::Primary),
+            ],
+        );
+        assert!(app.touch_mods.held(crate::touch_modifiers::ModKey::Ctrl));
+        assert!(!app.touch_mods.ctrl, "held, not tapped on");
+        // The second finger: touch events only, the pointer follows the
+        // first one.
+        for at in [Point::new(50.0, 150.0), Point::new(110.0, 154.0)] {
+            let at = app.view.to_screen(at);
+            timed(&mut app, vec![finger(8, egui::TouchPhase::Start, at)]);
+            timed(&mut app, vec![finger(8, egui::TouchPhase::End, at)]);
+            timed(&mut app, Vec::new());
+        }
+        assert_eq!(app.view.zoom, view.zoom, "no pinch");
+        assert_eq!(app.view.origin, view.origin, "no pan");
+        let nodes: Vec<Point> = app
+            .curve
+            .as_ref()
+            .expect("a line drawn by the second finger")
+            .nodes
+            .iter()
+            .map(|n| n.0)
+            .collect();
+        assert_eq!(nodes.len(), 2, "{nodes:?}");
+        assert!((nodes[0].y - nodes[1].y).abs() < 1e-6, "level: {nodes:?}");
+        // The first finger lifts: Ctrl is let go, not left on.
+        timed(
+            &mut app,
+            vec![
+                finger(7, egui::TouchPhase::End, ctrl),
+                button(ctrl, false, egui::PointerButton::Primary),
+                egui::Event::PointerGone,
+            ],
+        );
+        timed(&mut app, Vec::new());
+        assert!(!app.touch_mods.any(), "{:?}", app.touch_mods);
+        assert!(!ctx.input(|i| i.modifiers.ctrl));
+        // A plain tap on the key still holds it until the next tap.
+        tap(&mut app, ctrl);
+        assert!(app.touch_mods.ctrl);
+        tap(&mut app, ctrl);
+        assert!(!app.touch_mods.any());
     }
 
     /// Without a touch screen the keys on the drawing are not drawn: the

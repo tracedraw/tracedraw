@@ -1104,6 +1104,9 @@ pub struct App {
     /// The keys on the drawing as drawn this frame: each one's id and
     /// place (empty when they are not shown).
     pub touch_keys_shown: Vec<(&'static str, egui::Rect)>,
+    /// A finger held down on one of those keys, and the finger drawing
+    /// meanwhile (#2362, touch_modifiers.rs).
+    pub key_fingers: crate::touch_modifiers::KeyFingers,
     /// The fingers on the drawing, for the taps of two and three fingers
     /// that undo and redo (touch_taps.rs).
     pub touch_tap: crate::touch_taps::TapGesture,
@@ -2732,6 +2735,7 @@ impl App {
             show_dockers: true,
             touch_mods: Default::default(),
             touch_keys_shown: Vec::new(),
+            key_fingers: Default::default(),
             touch_tap: Default::default(),
             docker_tab: DockerTab::Hints,
             flyout_open: None,
