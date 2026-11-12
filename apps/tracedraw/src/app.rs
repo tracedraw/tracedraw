@@ -6699,10 +6699,14 @@ impl App {
             }
             return;
         }
-        // With the Mesh Fill or Shape tool, a colour goes to the selected
-        // mesh node.
+        // With the Mesh Fill, Shape or Interactive Fill tool, a colour goes
+        // to the chosen mesh nodes (#2506).
         if let Fill::Solid(c) = &fill {
-            if matches!(self.tool, Tool::MeshFill | Tool::Shape) && self.color_mesh_node(*c) {
+            if matches!(
+                self.tool,
+                Tool::MeshFill | Tool::Shape | Tool::InteractiveFill
+            ) && self.color_mesh_node(*c)
+            {
                 return;
             }
         }
@@ -6725,7 +6729,17 @@ impl App {
                 _ => None,
             };
             let before = self.engine.revision();
-            self.run(Command::SetFill { shapes, fill });
+            // A new mesh fill lies over each object's own box, where its
+            // grid and nodes are drawn and edited (#2506).
+            let fitted = match &fill {
+                Fill::Mesh(m) => crate::copy_props::new_mesh_commands(m, &self.selected_shapes()),
+                _ => Vec::new(),
+            };
+            if fitted.is_empty() {
+                self.run(Command::SetFill { shapes, fill });
+            } else if let Err(e) = self.run_batch_keeping_lines("Fill", &fitted) {
+                self.status = e.to_string();
+            }
             if let Some(c) = used.filter(|_| remember && self.engine.revision() != before) {
                 self.add_ink_for(c);
                 self.remember_color(c);

@@ -15019,6 +15019,129 @@ fn several_mesh_nodes_take_a_colour_and_move_together() {
     assert_eq!(more, vec![0, 1, 2, 4]);
 }
 
+/// #2506: a mesh fill made with the Interactive Fill tool's bar (over
+/// the object's box on the page) or with the Properties docker (over a
+/// box of its own) lies over the object, also a moved one, its nodes
+/// drawn and picked there; with the Interactive Fill and Shape tools a
+/// node is picked, several with Shift+click or a marquee, and a palette
+/// colour goes to those nodes, the fill staying a mesh.
+#[test]
+fn a_new_mesh_fill_lies_over_its_object_and_keeps_its_node_colours() {
+    use crate::mesh_tool::MESH_NODE_BASE;
+    use tracedraw_core::patch::FillField;
+    use tracedraw_core::{Color, Fill, Mesh};
+    let (ctx, mut app, id) = setup();
+    // Moved after it was drawn: its own space is no longer the page's.
+    app.run(tracedraw_core::Command::TransformShapes {
+        shapes: vec![id],
+        transform: Affine::translate(Vec2::new(30.0, 25.0)),
+    });
+    let page_box = bounds(&app, id);
+    let mesh_of = |app: &App| match &app.doc().find_shape(id).expect("shape").fill {
+        Fill::Mesh(m) => m.clone(),
+        other => panic!("{other:?}"),
+    };
+    // Every node on the page lies on the object's box, the corners on
+    // its corners.
+    let on_object = |app: &App| {
+        let s = app.doc().find_shape(id).expect("shape");
+        let m = mesh_of(app);
+        let pts: Vec<Point> = m.nodes.iter().map(|n| s.transform * n.pos).collect();
+        let b = s.bounds();
+        for p in &pts {
+            assert!(
+                p.x >= b.x0 - 1e-6
+                    && p.x <= b.x1 + 1e-6
+                    && p.y >= b.y0 - 1e-6
+                    && p.y <= b.y1 + 1e-6,
+                "node {p:?} off the object {b:?}"
+            );
+        }
+        let has = |c: Point| pts.iter().any(|p| (*p - c).hypot() < 1e-6);
+        assert!(
+            has(Point::new(b.x0, b.y0)) && has(Point::new(b.x1, b.y1)),
+            "{pts:?} {b:?}"
+        );
+    };
+    let old = app.doc().find_shape(id).expect("shape").fill.clone();
+    let red = Color::rgb8(200, 30, 30);
+    // As the Interactive Fill bar builds it: over the box on the page.
+    app.set_tool(Tool::InteractiveFill);
+    app.patch_selection_fill(
+        &old,
+        &Fill::Mesh(Mesh::new(page_box, 2, 2, red)),
+        &[FillField::All],
+    );
+    on_object(&app);
+    assert_eq!(mesh_of(&app).nodes.len(), 9);
+    // As the Properties docker builds it: over a box of its own.
+    app.apply_fill(Fill::Solid(red));
+    app.apply_fill(Fill::Mesh(Mesh::new(
+        Rect::new(0.0, 0.0, 100.0, 100.0),
+        2,
+        2,
+        red,
+    )));
+    on_object(&app);
+    // One undo step puts the plain fill back.
+    app.undo();
+    assert_eq!(
+        app.doc().find_shape(id).expect("shape").fill,
+        Fill::Solid(red)
+    );
+    app.redo();
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let node = |app: &App, i: usize| {
+        let s = app.doc().find_shape(id).expect("shape");
+        app.view
+            .to_screen(crate::interaction2::effect_point(s, MESH_NODE_BASE + i).expect("node"))
+    };
+    let chosen = |app: &App| {
+        let mut v = app
+            .selected_mesh_nodes()
+            .map(|(_, v)| v)
+            .unwrap_or_default();
+        v.sort();
+        v
+    };
+    // Interactive Fill tool: a click picks the centre node, Shift+click
+    // the one right of it; a palette colour goes to both, still a mesh.
+    let at = node(&app, 4);
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert_eq!(chosen(&app), vec![4]);
+    let at = node(&app, 5);
+    click_at(&ctx, &mut app, at, Modifiers::SHIFT);
+    assert_eq!(chosen(&app), vec![4, 5]);
+    let blue = Color::rgb8(0, 0, 255);
+    app.apply_fill(Fill::Solid(blue));
+    let m = mesh_of(&app);
+    assert_eq!((m.nodes[4].color, m.nodes[5].color), (blue, blue));
+    assert_eq!(m.nodes[3].color, red);
+    // Shape tool: a marquee round the top row picks its three nodes, and
+    // a colour goes to them.
+    app.set_tool(Tool::Shape);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let (a, b) = (node(&app, 0), node(&app, 2));
+    drag(
+        &ctx,
+        &mut app,
+        Pos2::new(a.x - 25.0, a.y - 25.0),
+        Pos2::new(b.x + 25.0, b.y + 25.0),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    assert_eq!(chosen(&app), vec![0, 1, 2]);
+    let green = Color::rgb8(0, 160, 0);
+    app.apply_fill(Fill::Solid(green));
+    let m = mesh_of(&app);
+    for i in [0, 1, 2] {
+        assert_eq!(m.nodes[i].color, green, "node {i}");
+    }
+    assert_eq!(m.nodes[4].color, blue);
+}
+
 /// The property bar's grip dragged onto the standard toolbar's row puts
 /// the two side by side in one row, the drawing window taking the band
 /// the property bar left; dragged to the line under that row it gets a

@@ -3361,6 +3361,12 @@ impl App {
     }
 
     fn fill_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
+        // A mesh fill's nodes are picked and dragged here too, as with the
+        // Mesh Fill and Shape tools; a palette colour then goes to the
+        // chosen nodes, the fill staying a mesh (#2506).
+        if self.selected_mesh().is_some() && self.effect_node_input(response, p) {
+            return;
+        }
         // A double click on a colour node removes it; on the line, it adds
         // one there.
         if response.double_clicked_by(PointerButton::Primary) {

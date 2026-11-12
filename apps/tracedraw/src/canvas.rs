@@ -3426,7 +3426,9 @@ fn draw_snap_glyph_halo(painter: &Painter, c: Pos2, mode: crate::snap_points::Sn
 pub fn draw_effect_nodes(app: &App, painter: &Painter) {
     if !matches!(
         app.tool,
-        crate::tools::Tool::Shape | crate::tools::Tool::MeshFill
+        crate::tools::Tool::Shape
+            | crate::tools::Tool::MeshFill
+            | crate::tools::Tool::InteractiveFill
     ) {
         return;
     }
