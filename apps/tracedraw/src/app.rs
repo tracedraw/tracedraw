@@ -5302,13 +5302,56 @@ impl App {
         }
     }
 
-    pub fn select(&mut self, ids: Vec<ShapeId>) {
+    pub fn select(&mut self, mut ids: Vec<ShapeId>) {
+        // A locked object (or one inside a locked group) is never
+        // selected: neither by a click nor by the Objects docker nor when
+        // a file is imported. Imported objects locked in a .cdr came in
+        // selected and could then be moved and edited (#2347).
+        if !ids.is_empty() {
+            let locked = self.locked_ids();
+            if !locked.is_empty() {
+                ids.retain(|id| !locked.contains(id));
+            }
+        }
         self.selection = ids;
         self.marquee_selection = None;
         self.rotate_mode = false;
         self.node_selection.clear();
         self.segment_spot = None;
         self.rect_corners_selected.clear();
+    }
+
+    /// The locked objects of the drawing and every object inside them.
+    pub fn locked_ids(&self) -> std::collections::HashSet<ShapeId> {
+        fn all(s: &Shape, out: &mut std::collections::HashSet<ShapeId>) {
+            out.insert(s.id);
+            match &s.kind {
+                ShapeKind::Group { children } => children.iter().for_each(|c| all(c, out)),
+                ShapeKind::ClipFrame { frame, contents } => {
+                    all(frame, out);
+                    contents.iter().for_each(|c| all(c, out));
+                }
+                _ => {}
+            }
+        }
+        fn walk(s: &Shape, out: &mut std::collections::HashSet<ShapeId>) {
+            if s.locked {
+                return all(s, out);
+            }
+            match &s.kind {
+                ShapeKind::Group { children } => children.iter().for_each(|c| walk(c, out)),
+                ShapeKind::ClipFrame { frame, contents } => {
+                    walk(frame, out);
+                    contents.iter().for_each(|c| walk(c, out));
+                }
+                _ => {}
+            }
+        }
+        let mut out = std::collections::HashSet::new();
+        for s in self.doc().all_layers().flat_map(|l| &l.shapes) {
+            walk(s, &mut out);
+        }
+        out
     }
 
     // ----- object creation ---------------------------------------------------
@@ -9855,6 +9898,75 @@ pub(crate) fn repeated_transform(t: Affine, before: Rect, now: Rect) -> Affine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Objects locked in a file stay out of the selection (#2347): the
+    /// objects imported from a .cdr came in selected, the locked ones
+    /// too, and a drag or a nudge then moved them as if they were free.
+    /// The Objects docker's rows select them no more than a click on the
+    /// page does, and an object inside a locked group neither.
+    #[test]
+    fn locked_objects_imported_or_picked_in_the_list_are_never_selected() {
+        let rect = |ids: &mut tracedraw_core::id::IdSource, x: f64, locked: bool| {
+            let mut s = Shape::new(
+                ids.shape(),
+                ShapeKind::Rect {
+                    rect: Rect::new(x, 10.0, x + 20.0, 30.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            s.locked = locked;
+            s
+        };
+        let mut src = tracedraw_core::Document::new("locked", Size::new(200.0, 100.0));
+        let mut ids = src.ids().clone();
+        let free = rect(&mut ids, 10.0, false);
+        let locked = rect(&mut ids, 40.0, true);
+        let inner = rect(&mut ids, 70.0, false);
+        let mut group = Shape::new(
+            ids.shape(),
+            ShapeKind::Group {
+                children: vec![inner],
+            },
+        );
+        group.locked = true;
+        src.pages[0].layers[0].shapes = vec![free, locked, group];
+        src.set_ids(ids);
+
+        let mut app = App::headless();
+        app.import_document(Ok(src));
+        let layer = &app.doc().pages[0].layers[0].shapes;
+        let (free, locked, group) = (layer[0].id, layer[1].id, layer[2].id);
+        let ShapeKind::Group { children } = &layer[2].kind else {
+            panic!("group");
+        };
+        let inner = children[0].id;
+        assert!(app.doc().find_shape(locked).expect("locked").locked);
+        assert_eq!(
+            app.selection,
+            vec![free],
+            "only the free object is selected"
+        );
+        // A move moves the free object alone.
+        let before = app.doc().find_shape(locked).expect("locked").bounds();
+        app.transform_selection(Affine::translate((5.0, 0.0)));
+        assert_eq!(
+            app.doc().find_shape(locked).expect("locked").bounds(),
+            before
+        );
+        // Picked in the Objects docker or by id: nothing selected.
+        for id in [locked, group, inner] {
+            app.select(vec![id]);
+            assert!(app.selection.is_empty(), "{id:?} selected");
+        }
+        // Unlocked, it is picked as before.
+        app.run(Command::SetLocked {
+            shapes: vec![locked],
+            locked: false,
+        });
+        app.select(vec![locked]);
+        assert_eq!(app.selection, vec![locked]);
+    }
 
     /// A PDF's spot inks come with it: opened, the drawing has them;
     /// imported, an ink of a name the drawing has is that ink and the

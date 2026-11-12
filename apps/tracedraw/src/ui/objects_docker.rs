@@ -2007,7 +2007,8 @@ fn apply(app: &mut App, ui: &Ui, act: Actions) {
     }
     if let Some(id) = act.select {
         if ui.input(|i| i.modifiers.shift) {
-            if !app.selection.contains(&id) {
+            // A locked object stays out of the selection (#2347).
+            if !app.selection.contains(&id) && !app.locked_ids().contains(&id) {
                 app.selection.push(id);
             }
         } else {
