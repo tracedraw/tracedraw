@@ -21,6 +21,7 @@ full, row-by-row status.
 - Convert to Bitmap: a thick outline is kept whole. The bitmap was cut at the object's own box, so the outer half of a 10 pt outline was gone; it now takes in the outlines as they are drawn, their mitred corners and arrowheads too (#2369).
 - Convert to Bitmap in CMYK keeps the CMYK values: a red of C0 M100 Y100 K0 read back C2 M99 Y96, the inks taken back from the screen pixels. The bitmap now keeps the inks the objects print with, and the Color Eyedropper reads them (#2381).
 - Image > Mode > Grayscale (8-bit) converts the bitmap: it is stored as a grayscale picture, the status bar names it Grayscale and the Mode menu ticks Grayscale. The pixels only turned grey and the bitmap stayed RGB or CMYK (#2330).
+- Extrude: an object with a mesh fill keeps its mesh on the face that looks like it when it is moved or resized. On a front extrusion, and on an extrusion turned in space or bevelled, that face kept the mesh where the object was first drawn, so the colours slid off it (#2337).
 
 ## 0.44.1 (2026-11-12)
 
