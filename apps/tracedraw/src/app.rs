@@ -1038,6 +1038,9 @@ pub struct App {
     /// step it made and its new colour (see
     /// `App::patch_selection_stroke_live`).
     pub live_stroke: Option<(u64, Option<Color>)>,
+    /// A colour is being dragged in a picker: the colours it passes over
+    /// do not join the document palette (see `App::remember_colors_of`).
+    pub palette_hold: bool,
     pub file: Option<PathBuf>,
     /// The open drawings' files, kept from being deleted or renamed by
     /// another program while they are open (Windows, see `file_hold.rs`).
@@ -2685,6 +2688,7 @@ impl App {
             alt_composed: None,
             current_colors: (Color::BLACK, Color::WHITE),
             live_fill: None,
+            palette_hold: false,
             live_stroke: None,
             file: None,
             file_holds: Default::default(),
@@ -5217,6 +5221,7 @@ impl App {
                 self.status = e.to_string();
             }
         }
+        self.remember_colors_of(std::slice::from_ref(&cmd));
         // Default page names follow the pages' order (#2374).
         if crate::page_names::changes_page_order(&cmd) {
             self.renumber_default_pages();
@@ -6542,7 +6547,9 @@ impl App {
             }
         }
         let before = self.engine.revision();
+        self.palette_hold = true;
         self.apply_fill_as(fill, false);
+        self.palette_hold = false;
         let after = self.engine.revision();
         self.live_fill = (after != before).then_some((after, color));
     }
@@ -6677,6 +6684,62 @@ impl App {
         colors.push(c);
         self.run(Command::SetDocumentPalette { colors });
         self.doc_palette_current = self.doc().palette.iter().position(|x| *x == c);
+    }
+
+    /// The uniform colours that `cmds` give fills and outlines join the
+    /// document palette (see [`App::remember_color`]), in the step that
+    /// gave them: whatever applied them, the Object Properties docker, the
+    /// property bar, the Interactive Fill tool or an eyedropper. Only the
+    /// palette and the colour panel added theirs, so the palette missed
+    /// most of the colours used (#2378).
+    pub fn remember_colors_of(&mut self, cmds: &[Command]) {
+        use tracedraw_core::patch::{FillField, StrokeField};
+        let mut colors = Vec::new();
+        for cmd in cmds {
+            match cmd {
+                Command::SetFill {
+                    fill: Fill::Solid(c),
+                    ..
+                } => colors.push(*c),
+                Command::PatchFill {
+                    fill: Fill::Solid(c),
+                    fields,
+                    ..
+                } if fields.iter().any(|f| {
+                    matches!(
+                        f,
+                        FillField::All | FillField::StartColor | FillField::EndColor
+                    )
+                }) =>
+                {
+                    colors.push(*c)
+                }
+                Command::SetStroke {
+                    stroke: Some(st), ..
+                } => colors.push(st.color),
+                Command::PatchStroke { stroke, fields, .. }
+                    if fields.contains(&StrokeField::Paint) =>
+                {
+                    colors.push(stroke.color)
+                }
+                _ => {}
+            }
+        }
+        if colors.is_empty() || self.palette_hold {
+            return;
+        }
+        // The swatch framed as the last used stays the one the caller
+        // chose when every colour was there already.
+        let current = self.doc_palette_current;
+        let mut added = false;
+        for c in colors {
+            let len = self.doc().palette.len();
+            self.remember_color(c);
+            added |= self.doc().palette.len() > len;
+        }
+        if !added {
+            self.doc_palette_current = current;
+        }
     }
 
     /// The document palette collects the colours applied to objects; the addition joins the step that applied it.
@@ -6831,6 +6894,7 @@ impl App {
         if let Some(k) = keep {
             self.engine.amend(&k)?;
         }
+        self.remember_colors_of(cmds);
         Ok(())
     }
 
