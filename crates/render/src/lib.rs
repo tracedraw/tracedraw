@@ -225,14 +225,39 @@ pub const MAX_PIXELS: u64 = 1 << 30;
 /// Render the objects of one page onto a transparent pixmap, `None` for
 /// an image of more than [`MAX_PIXELS`].
 pub fn render_page(doc: &Document, page: PageId, opts: &RenderOptions) -> Option<Pixmap> {
+    render_page_until(doc, page, opts, None)
+}
+
+/// [`render_page`] that gives up once `cancel` is set (checked before
+/// each object): `None` then, as soon as the object being drawn is
+/// done. The canvas sets it when the view has zoomed on before the
+/// picture was ready, so the picture for the new zoom starts at once
+/// instead of after a whole picture nobody will see.
+pub fn render_page_cancellable(
+    doc: &Document,
+    page: PageId,
+    opts: &RenderOptions,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Option<Pixmap> {
+    render_page_until(doc, page, opts, Some(cancel))
+}
+
+fn render_page_until(
+    doc: &Document,
+    page: PageId,
+    opts: &RenderOptions,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> Option<Pixmap> {
     if (opts.width.max(1) as u64) * (opts.height.max(1) as u64) > MAX_PIXELS {
         return None;
     }
+    let cancelled = || cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed));
     #[cfg(not(target_arch = "wasm32"))]
-    if let Some(p) = render_page_in_bands(doc, page, opts) {
-        return Some(p);
+    if let Some(p) = render_page_in_bands(doc, page, opts, cancel) {
+        return (!cancelled()).then_some(p);
     }
-    render_page_whole(doc, page, opts)
+    let p = render_page_whole(doc, page, opts, cancel)?;
+    (!cancelled()).then_some(p)
 }
 
 /// [`render_page`] on the calling thread alone, never in bands on all
@@ -247,7 +272,7 @@ pub fn render_page_on_one_thread(
     if (opts.width.max(1) as u64) * (opts.height.max(1) as u64) > MAX_PIXELS {
         return None;
     }
-    render_page_whole(doc, page, opts)
+    render_page_whole(doc, page, opts, None)
 }
 
 /// Rows `y0..y1` of the image `opts` describes, the same as those rows of
@@ -336,39 +361,43 @@ fn snap_upright(m: [f64; 6], w: u32, h: u32) -> Option<([f64; 6], Option<tiny_sk
     Some(([a, 0.0, 0.0, d, e, f], area))
 }
 
+/// What `s` reaches past its own pixels: sets `lens` when it or an
+/// object in it has a lens, and grows `blur` to its widest drop shadow
+/// blur (mm).
+fn reach_walk(s: &Shape, lens: &mut bool, blur: &mut f64) {
+    if let Some(sh) = &s.shadow {
+        *blur = blur.max(sh.blur.abs());
+    }
+    if s.effects
+        .iter()
+        .any(|e| matches!(e, tracedraw_core::live::Effect::Lens(_)))
+    {
+        *lens = true;
+    }
+    match &s.kind {
+        ShapeKind::Group { children } => {
+            for c in children {
+                reach_walk(c, lens, blur);
+            }
+        }
+        ShapeKind::ClipFrame { frame, contents } => {
+            reach_walk(frame, lens, blur);
+            for c in contents {
+                reach_walk(c, lens, blur);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// What on the page reaches past its own pixels: a lens (it samples what
 /// lies around it) and the widest drop shadow blur, mm.
 fn page_reach(doc: &Document, page: PageId) -> (bool, f64) {
-    fn walk(s: &Shape, lens: &mut bool, blur: &mut f64) {
-        if let Some(sh) = &s.shadow {
-            *blur = blur.max(sh.blur.abs());
-        }
-        if s.effects
-            .iter()
-            .any(|e| matches!(e, tracedraw_core::live::Effect::Lens(_)))
-        {
-            *lens = true;
-        }
-        match &s.kind {
-            ShapeKind::Group { children } => {
-                for c in children {
-                    walk(c, lens, blur);
-                }
-            }
-            ShapeKind::ClipFrame { frame, contents } => {
-                walk(frame, lens, blur);
-                for c in contents {
-                    walk(c, lens, blur);
-                }
-            }
-            _ => {}
-        }
-    }
     let (mut lens, mut blur) = (false, 0.0f64);
     if let Ok(layers) = doc.layers_drawn_for_page(page) {
         for l in layers {
             for s in &l.shapes {
-                walk(s, &mut lens, &mut blur);
+                reach_walk(s, &mut lens, &mut blur);
             }
         }
     }
@@ -383,7 +412,12 @@ fn page_reach(doc: &Document, page: PageId) -> (bool, f64) {
 /// procedural fills does. `None` (draw it whole) for a small image, a
 /// single core, a lens on the page, or blurs too wide for the bands.
 #[cfg(not(target_arch = "wasm32"))]
-fn render_page_in_bands(doc: &Document, page: PageId, opts: &RenderOptions) -> Option<Pixmap> {
+fn render_page_in_bands(
+    doc: &Document,
+    page: PageId,
+    opts: &RenderOptions,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> Option<Pixmap> {
     let (w, h) = (opts.width.max(1), opts.height.max(1));
     let cores = std::thread::available_parallelism()
         .map(|n| n.get())
@@ -404,7 +438,7 @@ fn render_page_in_bands(doc: &Document, page: PageId, opts: &RenderOptions) -> O
                 let mut o = opts.clone();
                 o.height = ry1 - ry0;
                 o.view.origin_y = opts.view.origin_y - ry0 as f64;
-                sc.spawn(move || render_page_whole(doc, page, &o))
+                sc.spawn(move || render_page_whole(doc, page, &o, cancel))
             })
             .collect();
         handles
@@ -478,7 +512,12 @@ fn band_layout(h: u32, cores: u32, margin: u32) -> Option<Vec<(u32, u32, u32, u3
     )
 }
 
-fn render_page_whole(doc: &Document, page: PageId, opts: &RenderOptions) -> Option<Pixmap> {
+fn render_page_whole(
+    doc: &Document,
+    page: PageId,
+    opts: &RenderOptions,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> Option<Pixmap> {
     let mut pixmap = Pixmap::new(opts.width.max(1), opts.height.max(1))?;
     let page = doc.page(page).ok()?;
     let screen = opts.view.affine();
@@ -492,6 +531,7 @@ fn render_page_whole(doc: &Document, page: PageId, opts: &RenderOptions) -> Opti
         symbols: &doc.symbols,
         preview: opts.preview.as_ref(),
         origin: (0, 0),
+        cancel,
     };
     // Focus at 0 % visibility hides everything but the objects in focus:
     // the page and its layers are not drawn at all, as their faded
@@ -594,6 +634,9 @@ struct Renderer<'a> {
     /// semi-transparent object's layer covers only what it reaches, and
     /// pattern tiles stay where they fall on the target (#1335).
     origin: (i32, i32),
+    /// Set when the picture is no longer wanted (the view zoomed on
+    /// before it was ready): every object from then on is skipped.
+    cancel: Option<&'a std::sync::atomic::AtomicBool>,
 }
 
 impl Renderer<'_> {
@@ -610,6 +653,7 @@ impl Renderer<'_> {
             symbols: self.symbols,
             preview: self.preview,
             origin: self.origin,
+            cancel: self.cancel,
         }
     }
 
@@ -767,6 +811,12 @@ impl Renderer<'_> {
     }
 
     fn draw_shape(&mut self, shape: &Shape, parent: Affine) {
+        if self
+            .cancel
+            .is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+        {
+            return;
+        }
         // Bitmap effects on a vector object: its picture in its place.
         if let Some(pic) = shape.drawn_as().filter(|_| !self.flags.wireframe) {
             return self.draw_shape(&pic, parent);
@@ -1410,14 +1460,53 @@ impl Renderer<'_> {
     ) {
         let (w, h) = (self.pixmap.width(), self.pixmap.height());
         let frame_path = self.screen * (parent * fill_only.page_path());
-        let mask = to_sk_path(&frame_path).and_then(|sk| {
-            let mut mask = tiny_skia::Mask::new(w, h)?;
-            let rule = shape_fill_rule(fill_only, false);
-            mask.fill_path(&sk, rule, true, Transform::identity());
-            Some((sk.bounds(), mask))
-        });
-        let Some((b, mask)) = mask else {
+        let Some(sk) = to_sk_path(&frame_path) else {
             // No frame to cut to: its fill alone, as it is.
+            self.draw_shape(fill_only, parent);
+            return;
+        };
+        let b = sk.bounds();
+        let x0 = (b.left().floor().max(0.0) as usize).min(w as usize);
+        let x1 = (b.right().ceil().max(0.0) as usize).min(w as usize);
+        let y0 = (b.top().floor().max(0.0) as usize).min(h as usize);
+        let y1 = (b.bottom().ceil().max(0.0) as usize).min(h as usize);
+        // The contents are put together on a layer covering only the
+        // frame's box (with room for their shadows' blur), not the whole
+        // canvas: a canvas-sized copy and mask for every clip frame made
+        // a large drawing of many of them slow to draw at every zoom
+        // (#2522), and the contents outside the box are then left out as
+        // off screen. A lens samples what lies anywhere around it, so
+        // with one inside the layer stays the whole canvas.
+        let (mut lens, mut blur) = (false, 0.0f64);
+        for c in contents {
+            reach_walk(c, &mut lens, &mut blur);
+        }
+        let (lx0, ly0, lx1, ly1) = if lens {
+            (0, 0, w as usize, h as usize)
+        } else {
+            let m = blur_margin(blur, self.zoom) as usize;
+            let align = BAND_ALIGN as usize;
+            (
+                x0.saturating_sub(m) / align * align,
+                y0.saturating_sub(m) / align * align,
+                x1.saturating_add(m).min(w as usize),
+                y1.saturating_add(m).min(h as usize),
+            )
+        };
+        let (rw, rh) = (lx1.saturating_sub(lx0), ly1.saturating_sub(ly0));
+        let mask = (|| {
+            let mut mask = tiny_skia::Mask::new(rw as u32, rh as u32)?;
+            let rule = shape_fill_rule(fill_only, false);
+            mask.fill_path(
+                &sk,
+                rule,
+                true,
+                Transform::from_translate(-(lx0 as f32), -(ly0 as f32)),
+            );
+            Some(mask)
+        })();
+        let Some(mask) = mask else {
+            // Nothing of the frame on the canvas: its fill alone, as it is.
             self.draw_shape(fill_only, parent);
             return;
         };
@@ -1430,10 +1519,6 @@ impl Renderer<'_> {
             sub.draw_shape(fill_only, parent);
             px
         });
-        let x0 = (b.left().floor().max(0.0) as usize).min(w as usize);
-        let x1 = (b.right().ceil().max(0.0) as usize).min(w as usize);
-        let y0 = (b.top().floor().max(0.0) as usize).min(h as usize);
-        let y1 = (b.bottom().ceil().max(0.0) as usize).min(h as usize);
         let (bw, w) = (x1.saturating_sub(x0), w as usize);
         // What lies beneath inside the frame's box, before the fill.
         let mut beneath = Vec::with_capacity(bw * (y1.saturating_sub(y0)) * 4);
@@ -1462,8 +1547,23 @@ impl Renderer<'_> {
         // outside a frame; inside the frame the copy then takes the place
         // of the page (#13). Inside the frame the copy holds the fill
         // without its soft edge (the frame's coverage gives the edge
-        // once, at the end).
-        let mut layer = self.pixmap.clone();
+        // once, at the end). The copy is of the layer's box only.
+        let Some(mut layer) = Pixmap::new(rw as u32, rh as u32) else {
+            return;
+        };
+        {
+            let src = self.pixmap.data();
+            let dst = layer.data_mut();
+            for y in ly0..ly1 {
+                let (s0, d0) = ((y * w + lx0) * 4, (y - ly0) * rw * 4);
+                if let (Some(s), Some(d)) = (src.get(s0..s0 + rw * 4), dst.get_mut(d0..d0 + rw * 4))
+                {
+                    d.copy_from_slice(s);
+                }
+            }
+        }
+        // Index of canvas pixel (x, y) in the layer and its mask.
+        let at = |x: usize, y: usize| (y - ly0) * rw + (x - lx0);
         let m = mask.data();
         let mut under = beneath.clone();
         {
@@ -1471,7 +1571,7 @@ impl Renderer<'_> {
             let dst = layer.data_mut();
             for y in y0..y1 {
                 for x in x0..x1 {
-                    let i = y * w + x;
+                    let i = at(x, y);
                     let k = m.get(i).copied().unwrap_or(0);
                     if k == 0 {
                         continue;
@@ -1510,7 +1610,13 @@ impl Renderer<'_> {
         }
         {
             let mut sub = self.sub(&mut layer);
+            sub.screen = Affine::translate((-(lx0 as f64), -(ly0 as f64))) * self.screen;
+            sub.origin = (self.origin.0 + lx0 as i32, self.origin.1 + ly0 as i32);
+            let sight = sub.sight();
             for c in contents {
+                if sight.is_some_and(|v| sub.out_of_sight_in(c, parent, &v)) {
+                    continue;
+                }
                 let t = sub.child_transform(c, parent);
                 sub.draw_shape(c, t);
             }
@@ -1521,13 +1627,14 @@ impl Renderer<'_> {
         for y in y0..y1 {
             for x in x0..x1 {
                 let i = y * w + x;
-                let k = m.get(i).copied().unwrap_or(0) as f32 / 255.0;
+                let li = at(x, y);
+                let k = m.get(li).copied().unwrap_or(0) as f32 / 255.0;
                 if k <= 0.0 {
                     continue;
                 }
                 let j = ((y - y0) * bw + (x - x0)) * 4;
                 for c in 0..4 {
-                    let (Some(s), Some(d)) = (src.get(i * 4 + c), dst.get_mut(i * 4 + c)) else {
+                    let (Some(s), Some(d)) = (src.get(li * 4 + c), dst.get_mut(i * 4 + c)) else {
                         continue;
                     };
                     let u = under[j + c] as f32;
@@ -2796,6 +2903,7 @@ impl Renderer<'_> {
                 symbols: self.symbols,
                 preview: None,
                 origin: (0, 0),
+                cancel: None,
             };
             for s in shapes {
                 sub.draw_shape(s, Affine::IDENTITY);
@@ -4256,6 +4364,7 @@ pub fn render_fill_image(fill: &Fill, bounds: Rect, dpi: f64) -> Option<Pixmap> 
         symbols: &[],
         preview: None,
         origin: (0, 0),
+        cancel: None,
     };
     r.draw_fill(fill, &page_path, &sk, FillRule::Winding);
     Some(pixmap)
@@ -4297,6 +4406,7 @@ pub fn render_fill_image_in(fill: &Fill, path: &BezPath, dpi: f64) -> Option<Pix
         symbols: &[],
         preview: None,
         origin: (0, 0),
+        cancel: None,
     };
     r.fill_shaped(f, &mask, &rect, FillRule::EvenOdd);
     Some(pixmap)
@@ -4338,6 +4448,7 @@ pub fn render_pattern_cell(p: &tracedraw_core::Pattern, dpi: f64) -> Option<(Pix
         symbols: &[],
         preview: None,
         origin: (0, 0),
+        cancel: None,
     };
     let (pm, px_to_unit) =
         r.pattern_cell(p, &placement, tile, Affine::scale(zoom) * unit_to_page)?;
@@ -4805,6 +4916,7 @@ mod tests {
                     symbols: &[],
                     preview: None,
                     origin: (0, 0),
+                    cancel: None,
                 };
                 r.draw_shape(&top, Affine::IDENTITY);
             }
@@ -4824,6 +4936,7 @@ mod tests {
                 symbols: &[],
                 preview: None,
                 origin: (0, 0),
+                cancel: None,
             }
             .layer_area(&top, Affine::IDENTITY);
             let (doc, page) = doc_with(vec![under.clone(), top]);
@@ -6797,16 +6910,16 @@ mod tests {
             ..Default::default()
         };
         // Drawn whole, on one thread, so the times compare.
-        let exact = render_page_whole(&doc, page, &opts(false)).unwrap();
+        let exact = render_page_whole(&doc, page, &opts(false), None).unwrap();
         let t = std::time::Instant::now();
-        let draft = render_page_whole(&doc, page, &opts(true)).unwrap();
+        let draft = render_page_whole(&doc, page, &opts(true), None).unwrap();
         let first = t.elapsed();
         // The best of three, with room for other tests loading the cores.
         let mut cached = std::time::Duration::MAX;
         let mut again = None;
         for _ in 0..3 {
             let t = std::time::Instant::now();
-            again = render_page_whole(&doc, page, &opts(true));
+            again = render_page_whole(&doc, page, &opts(true), None);
             cached = cached.min(t.elapsed());
         }
         assert_eq!(
@@ -7882,6 +7995,72 @@ mod tests {
         assert!(differ < 8, "{differ} pixels differ");
     }
 
+    /// #2505: a square with no fill and a thick black outline, given a
+    /// soft drop shadow (opacity 63 %, feathering 1.5 mm, offset 2 mm
+    /// right and 2 mm down, Multiply): the shadow follows the outline and
+    /// the inside stays clear. A filled square beside it shadows its
+    /// whole inside.
+    #[test]
+    fn an_unfilled_square_shadows_only_its_outline() {
+        let sh = tracedraw_core::Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(2.0, -2.0),
+            opacity: 0.63,
+            blur: 1.5,
+            color: Color::BLACK,
+            merge: tracedraw_core::live::MergeMode::Multiply,
+            ..Default::default()
+        };
+        let square = |id: u64, x: f64, fill: Fill| {
+            let mut s = Shape::new(
+                tracedraw_core::ShapeId(id),
+                ShapeKind::Rect {
+                    rect: Rect::new(x, 20.0, x + 40.0, 60.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            s.fill = fill;
+            s.stroke = Some(tracedraw_core::Stroke::new(Color::BLACK, 2.0));
+            s.shadow = Some(sh);
+            s
+        };
+        let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(140.0, 80.0));
+        let layer = doc.pages[0].layers[0].id;
+        let shapes = &mut doc.layer_mut(layer).unwrap().shapes;
+        shapes.push(square(1, 10.0, Fill::None));
+        shapes.push(square(2, 80.0, Fill::Solid(Color::rgb8(190, 225, 245))));
+        let page = doc.pages[0].id;
+        // Two pixels a millimetre, y down from the page's top.
+        let pm = render_page_image(&doc, page, 50.8).unwrap();
+        let red = |x: f64, y: f64| {
+            pm.pixel((x * 2.0) as u32, ((80.0 - y) * 2.0) as u32)
+                .unwrap()
+                .red()
+        };
+        // Inside the unfilled square, where its shadow's inside falls:
+        // the white page.
+        assert!(
+            red(32.0, 38.0) > 245,
+            "shadow over the inside: {}",
+            red(32.0, 38.0)
+        );
+        // Its shadow beside the outline, right of the right side and
+        // below the bottom.
+        assert!(
+            red(51.8, 30.0) < 200,
+            "no shadow by the outline: {}",
+            red(51.8, 30.0)
+        );
+        assert!(
+            red(35.0, 18.2) < 200,
+            "no shadow below: {}",
+            red(35.0, 18.2)
+        );
+        // The filled square's shadow is under all of it, seen past its
+        // right side.
+        assert!(red(121.8, 30.0) < 200, "the filled square's shadow");
+    }
+
     /// A blue square at 20 to 40 mm with a body running 10 mm up and to
     /// the right and a flat, sharp black shadow.
     fn extruded_square(offset: (f64, f64), turn: [f64; 3]) -> Shape {
@@ -8345,7 +8524,7 @@ mod culling_tests {
         };
         let drawn = |doc: &Document, page| {
             PATHS_DRAWN.with(|n| n.set(0));
-            let pm = render_page_whole(doc, page, &opts).expect("render");
+            let pm = render_page_whole(doc, page, &opts, None).expect("render");
             (pm, PATHS_DRAWN.with(|n| n.get()))
         };
         let (doc, page) = doc_of(vec![group(1.0)]);
@@ -8372,8 +8551,137 @@ mod culling_tests {
         };
         PATHS_DRAWN.with(|n| n.set(0));
         let (doc, page) = doc_of(vec![group(1.0)]);
-        render_page_whole(&doc, page, &whole).expect("render");
+        render_page_whole(&doc, page, &whole, None).expect("render");
         assert_eq!(PATHS_DRAWN.with(|n| n.get()), 400);
+    }
+
+    /// A clip frame's contents are put together on a layer the size of
+    /// the frame's box, not of the whole canvas (#2522): the contents
+    /// outside the box are left out as off screen, and the picture is
+    /// the one the contents inside the frame give.
+    #[test]
+    fn a_clip_frame_puts_its_contents_together_on_its_own_box() {
+        let contents: Vec<Shape> = (0..400u64)
+            .map(|i| {
+                let (x, y) = ((i % 20) as f64 * 5.0, (i / 20) as f64 * 5.0);
+                let mut r = rect_shape(10 + i, Rect::new(x, y, x + 4.0, y + 4.0));
+                r.fill = tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+                    (i * 7 % 256) as u8,
+                    90,
+                    (i * 13 % 256) as u8,
+                ));
+                r.stroke = Some(tracedraw_core::Stroke::new(
+                    tracedraw_core::Color::BLACK,
+                    0.3,
+                ));
+                r
+            })
+            .collect();
+        let clip = |contents: Vec<Shape>| {
+            // A round frame over page x 2..13, y 2..13, filled pale.
+            let mut frame = Shape::new(
+                tracedraw_core::ShapeId(2),
+                ShapeKind::Ellipse {
+                    rect: Rect::new(2.0, 2.0, 13.0, 13.0),
+                    arc: None,
+                },
+            );
+            frame.fill = tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(250, 240, 200));
+            frame.stroke = None;
+            Shape::new(
+                tracedraw_core::ShapeId(1),
+                ShapeKind::ClipFrame {
+                    frame: Box::new(frame),
+                    contents,
+                },
+            )
+        };
+        let mut under = rect_shape(3, Rect::new(0.0, 0.0, 40.0, 40.0));
+        under.fill = tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(30, 160, 60));
+        // The whole page on a 200 x 200 window, 2 px per mm.
+        let opts = RenderOptions {
+            width: 200,
+            height: 200,
+            view: ViewTransform {
+                zoom: 2.0,
+                origin_x: 0.0,
+                origin_y: 200.0,
+            },
+            ..RenderOptions::default()
+        };
+        let render = |contents: Vec<Shape>| {
+            let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(100.0, 100.0));
+            let page = doc.pages[0].id;
+            doc.pages[0].layers[0].shapes = vec![under.clone(), clip(contents)];
+            PATHS_DRAWN.with(|n| n.set(0));
+            let pm = render_page_whole(&doc, page, &opts, None).expect("render");
+            (pm, PATHS_DRAWN.with(|n| n.get()))
+        };
+        let (all, n) = render(contents.clone());
+        // The frame's box (with a few pixels round it) takes in the
+        // members at the page's corner: far fewer than the 400 (each a
+        // fill and an outline), which were all drawn on a canvas-sized
+        // layer.
+        assert!(
+            n <= 100,
+            "{n} paths drawn for a frame over 9 of 400 members"
+        );
+        // Only the members over the frame: the same picture.
+        let near: Vec<Shape> = contents
+            .iter()
+            .filter(|s| {
+                let b = s.bounds();
+                b.x0 < 15.0 && b.y0 < 15.0
+            })
+            .cloned()
+            .collect();
+        let (few, _) = render(near);
+        assert!(all.data() == few.data(), "the picture changed");
+        // Inside the frame the members show; outside, what lies beneath.
+        let px = |pm: &Pixmap, x: f64, y: f64| {
+            let p = pm
+                .pixel((x * 2.0) as u32, (200.0 - y * 2.0) as u32)
+                .expect("pixel");
+            (p.red(), p.green(), p.blue())
+        };
+        assert_eq!(px(&all, 30.0, 30.0), (30, 160, 60));
+        assert_eq!(
+            px(&all, 2.5, 12.5),
+            (30, 160, 60),
+            "outside the round frame"
+        );
+        assert_ne!(
+            px(&all, 7.0, 7.0),
+            (30, 160, 60),
+            "a member inside the frame"
+        );
+    }
+
+    /// A render told to give up (the view zoomed on, #2522) gives no
+    /// picture; one never told gives the picture of `render_page`.
+    #[test]
+    fn a_cancelled_render_gives_no_picture() {
+        let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(100.0, 100.0));
+        let page = doc.pages[0].id;
+        doc.pages[0].layers[0].shapes = (0..50u64)
+            .map(|i| rect_shape(i + 1, Rect::new(i as f64, 10.0, i as f64 + 1.0, 90.0)))
+            .collect();
+        let opts = RenderOptions {
+            width: 600,
+            height: 600,
+            view: ViewTransform {
+                zoom: 6.0,
+                origin_x: 0.0,
+                origin_y: 600.0,
+            },
+            ..RenderOptions::default()
+        };
+        let go = std::sync::atomic::AtomicBool::new(false);
+        let drawn = render_page_cancellable(&doc, page, &opts, &go).expect("drawn");
+        let plain = render_page(&doc, page, &opts).expect("drawn");
+        assert!(drawn.data() == plain.data());
+        let stop = std::sync::atomic::AtomicBool::new(true);
+        assert!(render_page_cancellable(&doc, page, &opts, &stop).is_none());
     }
 
     /// Objects wholly outside the part of the page on screen are not
@@ -8406,6 +8714,7 @@ mod culling_tests {
             symbols: &[],
             preview: None,
             origin: (0, 0),
+            cancel: None,
         };
         let inside = rect_shape(1, Rect::new(120.0, 120.0, 130.0, 130.0));
         let far = rect_shape(2, Rect::new(0.0, 0.0, 10.0, 10.0));
@@ -8639,6 +8948,7 @@ mod band_tests {
             symbols: &doc.symbols,
             preview: None,
             origin: (0, 0),
+            cancel: None,
         };
         let drawn = &doc.pages[0].layers[0].shapes;
         assert!(r.out_of_sight(&drawn[0], &visible), "the bottom card");
@@ -8869,7 +9179,7 @@ mod band_tests {
                 anti_alias: true,
                 ..RenderOptions::default()
             };
-            let out = render_page_whole(&doc, page, &opts).unwrap();
+            let out = render_page_whole(&doc, page, &opts, None).unwrap();
             let y = (299.6 - 20.0 * zoom) as u32;
             let x0 = (12.0 * zoom) as u32;
             let x1 = (48.0 * zoom) as u32;
@@ -8912,7 +9222,7 @@ mod band_tests {
             anti_alias: true,
             ..RenderOptions::default()
         };
-        let out = render_page_whole(&doc, page, &opts).unwrap();
+        let out = render_page_whole(&doc, page, &opts, None).unwrap();
         for y in 2..35 {
             for x in 2..35 {
                 let r = out.pixel(x, y).unwrap().red();
@@ -8958,14 +9268,14 @@ mod band_tests {
             },
             ..RenderOptions::default()
         };
-        let Some(first) = render_page_in_bands(&doc, page, &opts) else {
+        let Some(first) = render_page_in_bands(&doc, page, &opts, None) else {
             // One core: no bands.
             return;
         };
         let green = |y| first.pixel(400, y).map(|p| p.green());
         assert_eq!(green(30), Some(200));
         assert_eq!(green(770), Some(200));
-        render_page_in_bands(&doc, page, &opts).unwrap();
+        render_page_in_bands(&doc, page, &opts, None).unwrap();
         assert_eq!(image_cache::decodes_of(&png), 1);
     }
 
@@ -8987,7 +9297,7 @@ mod band_tests {
             ..RenderOptions::default()
         };
         let one = render_page_on_one_thread(&doc, page, &opts).expect("drawn");
-        let whole = render_page_whole(&doc, page, &opts).expect("drawn");
+        let whole = render_page_whole(&doc, page, &opts, None).expect("drawn");
         assert_eq!((one.width(), one.height()), (900, 700));
         assert!(one.data() == whole.data());
         assert!(one.data().iter().any(|v| *v != 0), "something is drawn");
@@ -9024,8 +9334,8 @@ mod band_tests {
             anti_alias: true,
             ..RenderOptions::default()
         };
-        let (a, b) = match render_page_in_bands(&doc, page, &opts) {
-            Some(a) => (a, render_page_whole(&doc, page, &opts).unwrap()),
+        let (a, b) = match render_page_in_bands(&doc, page, &opts, None) {
+            Some(a) => (a, render_page_whole(&doc, page, &opts, None).unwrap()),
             // One core: nothing to compare.
             None => return,
         };
