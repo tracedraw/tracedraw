@@ -247,6 +247,11 @@ mod x11_copy;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "../../../vendor/winit/src/pen_pressure.rs"]
 mod winit_pen_pressure;
+// The size bounds of the patched winit copy on Windows, with their tests
+// (vendor/README.md, #2487).
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "../../../vendor/winit/src/size_bounds.rs"]
+mod winit_size_bounds;
 // The pen pressure of the patched eframe's web layer, with its tests
 // (vendor/README.md, #1410), so that the gate runs them.
 #[cfg(test)]
