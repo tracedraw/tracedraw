@@ -86,6 +86,7 @@ full, row-by-row status.
 - Transparency merge mode Subtract adds the object and what is beneath, less white: white leaves what is beneath as it is and darker colours darken it, so the shading of a photo set to Subtract shows over the artwork. It was drawn as Difference, which turned the artwork into its negative under white (#2512).
 - Guidelines: in a new drawing, guidelines dragged from the rulers go to "Guides (all pages)" and show on every page; clicking a page's own "Guides" row in the Objects docker makes the next ones that page's only. They went to the current page alone. The eye of each Guides row now hides only that row's guidelines, and the drawing keeps the choice; it hid all guidelines at once (#1775).
 - Envelope From... on a deep arch band (two arcs over a wide angle) takes the band's own four corners: the letters at the ends of a text fitted into it were folded over and cut along the top, a Y losing its arms (#2178).
+- Fonts named only in a Chinese, Japanese or Korean code page (older Chinese fonts such as "方正黑体_GBK", whose every name record is in GBK with no Unicode or English one) are found: the font database left such a font out as having no name, so it was missing from the font list and a drawing set in it reported it as not installed. Fonts in the system font folders and fonts added to TraceDraw are read (#1238).
 
 ## 0.44.2 (2026-11-12)
 
