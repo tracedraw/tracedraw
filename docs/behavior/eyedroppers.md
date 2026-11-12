@@ -36,6 +36,11 @@ sampled colour or attributes never changes a locked object.
     a picture that keeps CMYK ink channels fitting its pixels (one read
     from a CMYK file, or converted to a CMYK bitmap) gives the inks it
     keeps, averaged the same way, as CMYK (#2381);
+  - an object with bitmap effects (Hue/Saturation/Lightness and the
+    others) gives the colour it shows with them, read from its picture
+    over the sample box, its painted pixels only; it gave the fill the
+    effects change (#2380,
+    `eyedropper::tests::the_colour_of_an_object_with_a_bitmap_effect_is_read_as_shown`);
   - a solid fill gives its colour; a gradient fill gives its first
     stop; otherwise the outline colour;
   - Shift+click reads the outline colour first.
