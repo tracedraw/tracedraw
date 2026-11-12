@@ -3268,11 +3268,94 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
         app.set_fountain_node(i, c, o, p, false);
     }
     vsep(ui);
+    // Copy Fill: the next click picks the object whose fill the
+    // selection takes (#2471).
+    let copy = ui
+        .add_enabled(
+            !shapes.is_empty(),
+            egui::Button::new(tr("toolbar.copy_fill")).selected(app.pending_copy_fill),
+        )
+        .rich_tip(crate::ui::tips::keyed("toolbar.copy_fill"));
+    if copy.clicked() {
+        app.start_copy_fill();
+    }
+    // The selection's fill, to drag onto another object (#2523).
+    fill_drag_swatch(app, ui, base.as_ref().filter(|_| !shapes.is_empty()));
+    vsep(ui);
     ui.label(
         egui::RichText::new(tr("toolbar.fill_hint"))
             .color(Tokens::text_dim())
             .size(11.0),
     );
+}
+
+/// The Interactive Fill bar's swatch of the selected object's fill:
+/// dragged onto another object, that object takes the whole fill (a
+/// colour, a gradient with its stops, angle and transparency, a pattern),
+/// one undo step; the pointer says whether letting go changes anything
+/// and the object that would take it is framed (#2523).
+fn fill_drag_swatch(app: &mut App, ui: &mut Ui, src: Option<&tracedraw_core::document::Shape>) {
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(28.0, 18.0), egui::Sense::click_and_drag());
+    let color = src.and_then(|s| crate::app::fill_preview_color(&crate::copy_props::shown_fill(s)));
+    crate::ui::status::draw_swatch(ui.painter(), rect, color);
+    let resp = resp.rich_tip(crate::ui::tips::keyed("toolbar.drag_fill"));
+    let Some(src) = src else {
+        app.fill_swatch_drag = None;
+        return;
+    };
+    if resp.drag_started_by(egui::PointerButton::Primary) {
+        app.fill_swatch_drag = Some(src.clone());
+    }
+    if app.fill_swatch_drag.is_some() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        app.fill_swatch_drag = None;
+    }
+    let pos = ui.ctx().pointer_latest_pos();
+    if resp.dragged() {
+        if let (Some(from), Some(pos)) = (app.fill_swatch_drag.as_ref().map(|s| s.id), pos) {
+            let ctx = ui.ctx();
+            let target = app.fill_swatch_target(pos, from);
+            ctx.set_cursor_icon(if target.is_some() {
+                egui::CursorIcon::Copy
+            } else {
+                egui::CursorIcon::NoDrop
+            });
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Tooltip,
+                egui::Id::new("fill_swatch_drag"),
+            ));
+            if let Some(b) = target
+                .and_then(|id| app.doc().find_shape(id))
+                .map(|s| s.bounds())
+            {
+                let a = app
+                    .view
+                    .to_screen(tracedraw_core::geometry::Point::new(b.x0, b.y0));
+                let c = app
+                    .view
+                    .to_screen(tracedraw_core::geometry::Point::new(b.x1, b.y1));
+                painter.rect_stroke(
+                    egui::Rect::from_two_pos(a, c).expand(2.0),
+                    0.0,
+                    egui::Stroke::new(1.5, crate::ui::icons::accent()),
+                    egui::StrokeKind::Outside,
+                );
+            }
+            let r =
+                egui::Rect::from_min_size(pos + egui::vec2(12.0, 12.0), egui::Vec2::splat(16.0));
+            painter.rect_filled(r.expand(1.0), 0.0, egui::Color32::WHITE);
+            crate::ui::status::draw_swatch(&painter, r, color);
+            ctx.request_repaint();
+        }
+    }
+    if resp.drag_stopped() {
+        let dragged = app.fill_swatch_drag.take();
+        if let (Some(s), Some(p)) = (dragged, pos) {
+            if !rect.contains(p) {
+                app.drop_swatch_fill(&s, p);
+            }
+        }
+    }
 }
 
 /// The Common Shapes tool's bar: the shape picked from a grid of

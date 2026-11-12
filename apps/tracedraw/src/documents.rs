@@ -275,6 +275,8 @@ impl App {
         self.pending_merge_frame = false;
         self.pending_copy_effect = None;
         self.pending_copy_envelope = false;
+        self.pending_copy_fill = false;
+        self.fill_swatch_drag = None;
         self.envelope_drag = None;
         self.pending_clone_effect = None;
         self.pending_blend_path = false;

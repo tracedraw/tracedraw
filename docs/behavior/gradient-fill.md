@@ -107,7 +107,20 @@ Pattern, Texture, Mesh), then the type's fields: the colour for a
 uniform fill; for a gradient the kind (Linear, Radial, Conical, Square),
 the start and end colours, the angle and the edge pad. With a selection
 the fields edit it; with nothing selected they set the default fill for
-the next object.
+the next object. After the fields, Copy Fill: clicked, it waits for a
+click on another object, and the selected objects take that object's
+whole fill (a colour, a gradient with its stops, angle and transparency,
+a pattern, a texture, a mesh fitted to each object), their outlines
+untouched, one undo step; inside a group the object clicked gives it,
+and a right click cancels (#2471,
+`pick_drag_tests::copy_fill_gives_the_selection_the_fill_of_the_object_clicked`).
+Beside it, a swatch of the selected object's fill: dragged onto another
+object and let go, that object takes the whole fill the same way, the
+selection staying as it was. While it is dragged the pointer shows
+whether letting go changes anything and the object that would take the
+fill is framed; let go over nothing or over the object it came from, it
+changes nothing, and Esc drops it (#2523,
+`pick_drag_tests::a_fill_dragged_from_the_bar_swatch_goes_to_the_object_under_it`).
 
 Handles on the canvas (Interactive Fill, gradient-filled selection):
 three nodes placed freely. The

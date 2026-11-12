@@ -26636,3 +26636,92 @@ fn dragging_a_polygon_edge_bends_it() {
         "the edge is a curve now"
     );
 }
+
+/// #2471: Copy Fill on the Interactive Fill bar waits for a click; the
+/// object clicked gives its whole fill (a gradient with its stops and
+/// angle) to the selected objects, its outline untouched, one undo step.
+/// A right click cancels.
+#[test]
+fn copy_fill_gives_the_selection_the_fill_of_the_object_clicked() {
+    use tracedraw_core::{Color, Fill, Stroke};
+    let (ctx, mut app, id) = setup();
+    let source = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(100.0, 10.0, 150.0, 40.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    let gradient = Fill::linear(Color::rgb8(255, 200, 0), Color::rgb8(0, 0, 160), 30.0);
+    let pen = Stroke {
+        color: Color::rgb8(0, 160, 0),
+        width: 2.0,
+        ..Stroke::default()
+    };
+    app.run(tracedraw_core::Command::SetFill {
+        shapes: vec![source],
+        fill: gradient.clone(),
+    });
+    app.run(tracedraw_core::Command::SetStroke {
+        shapes: vec![source],
+        stroke: Some(pen),
+    });
+    let own_stroke = app.doc().find_shape(id).expect("target").stroke.clone();
+    app.select(vec![id]);
+    app.start_copy_fill();
+    assert!(app.pending_copy_fill);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let on_source = app.view.to_screen(Point::new(125.0, 25.0));
+    click_at(&ctx, &mut app, on_source, Modifiers::NONE);
+    assert!(!app.pending_copy_fill);
+    let target = app.doc().find_shape(id).expect("target").clone();
+    assert_eq!(target.fill, gradient);
+    assert_eq!(target.stroke, own_stroke, "the outline stays");
+    assert_eq!(app.selection, vec![id]);
+    app.undo();
+    assert_ne!(app.doc().find_shape(id).expect("target").fill, gradient);
+    // Nothing selected: nothing waits.
+    app.select(vec![]);
+    app.start_copy_fill();
+    assert!(!app.pending_copy_fill);
+}
+
+/// #2523: the fill of the selected object, dragged from the Interactive
+/// Fill bar's swatch and let go over another object, goes to that object
+/// whole, one undo step, the selection as it was; let go over the object
+/// it came from or over nothing, it changes nothing.
+#[test]
+fn a_fill_dragged_from_the_bar_swatch_goes_to_the_object_under_it() {
+    use tracedraw_core::{Color, Fill};
+    let (ctx, mut app, id) = setup();
+    let other = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(100.0, 10.0, 150.0, 40.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    let gradient = Fill::linear(Color::rgb8(255, 0, 0), Color::rgb8(0, 0, 255), 45.0);
+    app.run(tracedraw_core::Command::SetFill {
+        shapes: vec![id],
+        fill: gradient.clone(),
+    });
+    app.select(vec![id]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let src = app.doc().find_shape(id).expect("source").clone();
+    let before = app.doc().find_shape(other).expect("other").fill.clone();
+    let on_other = app.view.to_screen(Point::new(125.0, 25.0));
+    assert_eq!(app.fill_swatch_target(on_other, id), Some(other));
+    assert!(app.drop_swatch_fill(&src, on_other));
+    assert_eq!(app.doc().find_shape(other).expect("other").fill, gradient);
+    assert_eq!(app.selection, vec![id]);
+    app.undo();
+    assert_eq!(app.doc().find_shape(other).expect("other").fill, before);
+    let b = src.bounds();
+    let on_itself = app
+        .view
+        .to_screen(Point::new((b.x0 + b.x1) / 2.0, (b.y0 + b.y1) / 2.0));
+    assert!(!app.drop_swatch_fill(&src, on_itself));
+    let nowhere = app.view.to_screen(Point::new(400.0, 400.0));
+    assert!(!app.drop_swatch_fill(&src, nowhere));
+}

@@ -1617,6 +1617,71 @@ impl App {
         }
     }
 
+    /// Copy Fill on the Interactive Fill bar (#2471): the next click
+    /// picks the object whose fill the selected objects take.
+    pub fn start_copy_fill(&mut self) {
+        if self.selection.is_empty() {
+            return;
+        }
+        self.pending_copy_fill = true;
+        self.status = tr("status.click_fill_source");
+    }
+
+    /// The selected objects, other than `source` and `src`, take the fill
+    /// `src` shows (a colour, a gradient with its stops and angle, a
+    /// pattern, a texture, a mesh fitted to each object), one undo step
+    /// (#2471). `src` is the object clicked, inside the group or clip
+    /// frame `source` or `source` itself.
+    pub fn copy_fill_from_shape(&mut self, source: ShapeId, src: &Shape) {
+        let targets: Vec<Shape> = self
+            .selected_shapes()
+            .into_iter()
+            .filter(|s| s.id != source && s.id != src.id)
+            .collect();
+        self.give_fill(src, &targets);
+    }
+
+    /// `targets` take the fill `src` shows, one undo step "Copy Fill".
+    fn give_fill(&mut self, src: &Shape, targets: &[Shape]) {
+        if targets.is_empty() {
+            return;
+        }
+        let fill = crate::copy_props::shown_fill(src);
+        let cmds = crate::copy_props::fill_commands(&fill, src, targets);
+        if cmds.is_empty() {
+            return;
+        }
+        if let Err(e) = self.engine.run_batch("Copy Fill", &cmds) {
+            self.status = e.to_string();
+        }
+    }
+
+    /// The object a fill dragged from the Interactive Fill bar's swatch
+    /// would go to at `at` (screen): the one under the pointer, inside it
+    /// or on its outline, other than the object it came from (#2523).
+    pub fn fill_swatch_target(&self, at: egui::Pos2, from: ShapeId) -> Option<ShapeId> {
+        use crate::color_drop::ColorTarget;
+        match self.color_target(at) {
+            ColorTarget::Fill(id) | ColorTarget::Outline(id) if id != from => Some(id),
+            _ => None,
+        }
+    }
+
+    /// Drop the fill of `src`, dragged from the Interactive Fill bar's
+    /// swatch, on the object at `at` (screen): it takes the whole fill,
+    /// one undo step, and the selection stays as it was (#2523). False
+    /// when nothing took it.
+    pub fn drop_swatch_fill(&mut self, src: &Shape, at: egui::Pos2) -> bool {
+        let Some(id) = self.fill_swatch_target(at, src.id) else {
+            return false;
+        };
+        let Some(target) = self.doc().find_shape(id).cloned() else {
+            return false;
+        };
+        self.give_fill(src, &[target]);
+        true
+    }
+
     /// Copy Properties From: the properties ticked in its dialog
     /// (outline pen, outline colour, fill, text) from `source` to the
     /// other selected objects, one undo step. A group gives the

@@ -1634,6 +1634,12 @@ pub struct App {
     pub pending_copy_effect: Option<crate::copy_effect::CopyKind>,
     /// Copy Envelope Properties waits for the object to copy from.
     pub pending_copy_envelope: bool,
+    /// Copy Fill on the Interactive Fill bar: the next click picks the
+    /// object whose fill the selection takes (#2471).
+    pub pending_copy_fill: bool,
+    /// The object whose fill is being dragged from the Interactive Fill
+    /// bar's swatch onto another object (#2523).
+    pub fill_swatch_drag: Option<tracedraw_core::document::Shape>,
     pub pending_clone_effect: Option<EffectKind>,
     /// Document Setup > Page Size state.
     pub options_labels: bool,
@@ -2991,6 +2997,8 @@ impl App {
             export_by_format: Vec::new(),
             pending_copy_effect: None,
             pending_copy_envelope: false,
+            pending_copy_fill: false,
+            fill_swatch_drag: None,
             pending_clone_effect: None,
             options_labels: false,
             navigator_open: false,

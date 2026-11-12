@@ -23,6 +23,7 @@ impl App {
             || self.pending_merge_frame
             || self.pending_copy_effect.is_some()
             || self.pending_copy_envelope
+            || self.pending_copy_fill
             || self.pending_clone_effect.is_some()
             || self.pending_blend_path
             || self.pending_text_path
@@ -37,6 +38,7 @@ impl App {
             self.pending_merge_frame = false;
             self.pending_copy_effect = None;
             self.pending_copy_envelope = false;
+            self.pending_copy_fill = false;
             self.pending_clone_effect = None;
             self.pending_blend_path = false;
             self.pending_text_path = false;
@@ -94,6 +96,22 @@ impl App {
         } else if let Some(kind) = self.pending_copy_effect.take() {
             if let Some(t) = target {
                 self.copy_effect_from(t, kind);
+            }
+        } else if self.pending_copy_fill {
+            self.pending_copy_fill = false;
+            if let Some(t) = target {
+                // The fill the object clicked shows, inside a group or
+                // clip frame too, as Copy Properties From reads it.
+                let src = match self.leaf_of(t, p) {
+                    Some(leaf) => Some(leaf),
+                    None => self
+                        .doc()
+                        .find_shape(t)
+                        .map(crate::copy_props::properties_source),
+                };
+                if let Some(src) = src {
+                    self.copy_fill_from_shape(t, &src);
+                }
             }
         } else if self.pending_copy_envelope {
             self.pending_copy_envelope = false;
