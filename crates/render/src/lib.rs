@@ -2821,10 +2821,18 @@ impl Renderer<'_> {
         // hairline) rather than faded until it disappears, as previews of
         // such files show it.
         let width_px = if hair || true_px < 1.0 { 0.0 } else { true_px };
-        let dash = if stroke.dash.is_empty() || hair {
+        // A dashed hairline keeps its dashes, a pixel per unit of the
+        // pattern at least, as a thin outline's do. It was drawn solid, so
+        // dashed seams of a `.cdr` drawing opened as plain lines (#2463).
+        let dash = if stroke.dash.is_empty() {
             None
         } else {
-            let unit = true_px.max(1.0);
+            let unit = if hair {
+                (Stroke::HAIRLINE * object_scale * self.zoom) as f32
+            } else {
+                true_px
+            }
+            .max(1.0);
             let arr: Vec<f32> = stroke
                 .dash
                 .iter()
@@ -2944,10 +2952,16 @@ fn paint_shown(
         } else {
             (stroke.width * object_scale * px_per_mm) as f32
         };
-        let dash = if stroke.dash.is_empty() || hair {
+        let dash = if stroke.dash.is_empty() {
             None
         } else {
-            let unit = true_px.max(1.0);
+            // A dashed hairline keeps its dashes, as on the page (#2463).
+            let unit = if hair {
+                (Stroke::HAIRLINE * object_scale * px_per_mm) as f32
+            } else {
+                true_px
+            }
+            .max(1.0);
             let mut arr: Vec<f32> = stroke
                 .dash
                 .iter()
@@ -3339,18 +3353,17 @@ pub fn render_shadow_image(shape: &Shape, dpi: f64) -> Option<(Rect, Pixmap)> {
     Some((exact, pm))
 }
 
-/// The blend mode a merge mode draws with. Texturize and Lightness have
-/// no blend of their own and get the nearest; [`composite_layer`] draws
-/// them exactly.
+/// The blend mode a merge mode draws with. Subtract, Texturize and
+/// Lightness have no blend of their own and get the nearest;
+/// [`composite_layer`] draws them exactly.
 pub fn merge_blend(merge: tracedraw_core::live::MergeMode) -> tiny_skia::BlendMode {
     use tiny_skia::BlendMode as B;
     use tracedraw_core::live::MergeMode as M;
     match merge {
         M::Normal | M::Red | M::Green | M::Blue => B::SourceOver,
         M::Add => B::Plus,
-        M::Subtract => B::Difference,
+        M::Subtract | M::Multiply | M::Texturize => B::Multiply,
         M::Difference => B::Difference,
-        M::Multiply | M::Texturize => B::Multiply,
         M::Divide => B::Screen,
         M::IfLighter => B::Lighten,
         M::IfDarker => B::Darken,
@@ -3372,10 +3385,12 @@ pub fn merge_blend(merge: tracedraw_core::live::MergeMode) -> tiny_skia::BlendMo
 }
 
 /// Draw the premultiplied `layer`, its top left at `at`, over `target`
-/// with `merge`: the blend of [`merge_blend`], except Texturize (the
-/// backdrop multiplied by the source's lightness) and Lightness (the
-/// source's HSL lightness with the backdrop's hue and saturation), which
-/// are mixed pixel by pixel here.
+/// with `merge`: the blend of [`merge_blend`], except Subtract (the
+/// backdrop and the source added, less white: `b + s - 1`, so white
+/// leaves the backdrop as it is and darker source colours darken it,
+/// #2512), Texturize (the backdrop multiplied by the source's lightness)
+/// and Lightness (the source's HSL lightness with the backdrop's hue and
+/// saturation), which are mixed pixel by pixel here.
 pub fn composite_layer(
     target: &mut Pixmap,
     layer: &Pixmap,
@@ -3384,6 +3399,13 @@ pub fn composite_layer(
 ) {
     use tracedraw_core::live::MergeMode as M;
     let mix: fn([f32; 3], [f32; 3]) -> [f32; 3] = match merge {
+        M::Subtract => |cb, cs| {
+            [
+                (cb[0] + cs[0] - 1.0).max(0.0),
+                (cb[1] + cs[1] - 1.0).max(0.0),
+                (cb[2] + cs[2] - 1.0).max(0.0),
+            ]
+        },
         M::Texturize => |cb, cs| {
             let l = 0.2126 * cs[0] + 0.7152 * cs[1] + 0.0722 * cs[2];
             [cb[0] * l, cb[1] * l, cb[2] * l]
@@ -5715,6 +5737,8 @@ mod tests {
             (M::ColorBurn, per_channel(&burn)),
             (M::Exclusion, per_channel(&|b, s| b + s - 2.0 * b * s)),
             (M::Texturize, [cb[0] * lum, cb[1] * lum, cb[2] * lum]),
+            // Backdrop and source added, less white (#2512).
+            (M::Subtract, per_channel(&|b, s| (b + s - 1.0).max(0.0))),
             // Hue 30 degrees and saturation 0.5 of the backdrop at the
             // source's lightness (0.8 + 0.25) / 2.
             (M::Lightness, [0.7625, 0.525, 0.2875]),
@@ -5755,6 +5779,28 @@ mod tests {
         }
     }
 
+    /// Subtract over coloured artwork (#2512): a white source leaves the
+    /// artwork as it is and a grey one darkens it, as Multiply does; it
+    /// no longer turns the artwork into its negative.
+    #[test]
+    fn subtract_darkens_the_backdrop_by_the_source() {
+        let mut target = Pixmap::new(2, 1).unwrap();
+        let mut layer = Pixmap::new(2, 1).unwrap();
+        for p in target.pixels_mut() {
+            *p = tiny_skia::ColorU8::from_rgba(40, 120, 220, 255).premultiply();
+        }
+        layer.pixels_mut()[0] = tiny_skia::ColorU8::from_rgba(255, 255, 255, 255).premultiply();
+        layer.pixels_mut()[1] = tiny_skia::ColorU8::from_rgba(200, 200, 200, 255).premultiply();
+        composite_layer(
+            &mut target,
+            &layer,
+            (0, 0),
+            tracedraw_core::live::MergeMode::Subtract,
+        );
+        assert_eq!(px(&target, 0, 0), (40, 120, 220));
+        assert_eq!(px(&target, 1, 0), (0, 65, 165));
+    }
+
     /// Behind shows the source only where the backdrop is clear.
     #[test]
     fn behind_draws_only_where_the_backdrop_is_clear() {
@@ -5782,13 +5828,14 @@ mod tests {
         assert_eq!(px(&target, 2, 0), (0, 0, 255));
     }
 
-    /// Texturize and Lightness, drawn pixel by pixel, keep the alpha
-    /// compositing of the blend modes: a half-clear source over a clear
-    /// backdrop is the source at half alpha, over an opaque one the mix.
+    /// Subtract, Texturize and Lightness, drawn pixel by pixel, keep the
+    /// alpha compositing of the blend modes: a half-clear source over a
+    /// clear backdrop is the source at half alpha, over an opaque one the
+    /// mix.
     #[test]
     fn pixel_merges_composite_alpha_like_blend_modes() {
         use tracedraw_core::live::MergeMode as M;
-        for merge in [M::Texturize, M::Lightness] {
+        for merge in [M::Subtract, M::Texturize, M::Lightness] {
             let mut target = Pixmap::new(2, 1).unwrap();
             let mut layer = Pixmap::new(2, 1).unwrap();
             target.pixels_mut()[1] = tiny_skia::ColorU8::from_rgba(200, 100, 50, 255).premultiply();
@@ -5801,11 +5848,12 @@ mod tests {
             assert_eq!(px(&target, 0, 0), (255, 255, 255), "{merge:?}");
             let over = target.pixel(1, 0).unwrap();
             assert_eq!(over.alpha(), 255, "{merge:?}");
-            // White at half strength: Texturize leaves the backdrop (its
-            // lightness is 1), Lightness lifts it half way to white.
+            // White at half strength: Subtract and Texturize leave the
+            // backdrop (white adds 1 and takes 1 away; its lightness is
+            // 1), Lightness lifts it half way to white.
             let got = px(&target, 1, 0);
             let want = match merge {
-                M::Texturize => (200, 100, 50),
+                M::Subtract | M::Texturize => (200, 100, 50),
                 _ => (228, 178, 153),
             };
             for (g, w) in [got.0, got.1, got.2]
@@ -8255,6 +8303,47 @@ mod tests {
         assert!(img.pixel(7, 20).unwrap().red() < 60);
         assert!(img.pixel(11, 20).unwrap().blue() > 200);
         assert_eq!(img.pixel(5, 20).unwrap().red(), 255);
+    }
+
+    /// A dashed hairline is drawn dashed (#2463): along a hairline with
+    /// the pattern 4 on, 4 off, some pixels are dark and some stay white.
+    /// It was drawn solid.
+    #[test]
+    fn a_dashed_hairline_keeps_its_gaps() {
+        let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(50.0, 50.0));
+        let layer = doc.pages[0].layers[0].id;
+        let id = doc.ids_mut().shape();
+        let mut s = Shape::new(
+            id,
+            ShapeKind::Path {
+                path: {
+                    let mut p = BezPath::new();
+                    p.move_to((5.0, 25.0));
+                    p.line_to((45.0, 25.0));
+                    p
+                },
+                closed: false,
+            },
+        );
+        let mut st = Stroke::new(Color::BLACK, Stroke::HAIRLINE);
+        st.dash = vec![4.0, 4.0];
+        s.stroke = Some(st);
+        doc.layer_mut(layer).unwrap().shapes.push(s);
+        let page = doc.pages[0].id;
+        // 4 pixels a millimetre: the hairline is one pixel wide and a unit
+        // of the pattern one pixel.
+        let img = render_page_image(&doc, page, 101.6).unwrap();
+        let row: Vec<u8> = (30..170)
+            .map(|x| {
+                (99..102)
+                    .map(|y| img.pixel(x, y).unwrap().red())
+                    .min()
+                    .unwrap()
+            })
+            .collect();
+        let dark = row.iter().filter(|r| **r < 128).count();
+        let white = row.iter().filter(|r| **r > 230).count();
+        assert!(dark > 30 && white > 30, "{dark} dark, {white} white: {row:?}");
     }
 
     #[test]
