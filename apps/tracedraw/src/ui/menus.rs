@@ -2674,6 +2674,14 @@ fn edit_menu(app: &mut App, ui: &mut Ui) {
     ) {
         app.repeat_last();
     }
+    sub(ui, "menu.edit.repeat_on_similar", |ui| {
+        let can = app.last_repeatable().is_some();
+        for how in crate::select_similar::Similar::ALL {
+            if item(ui, how.repeat_key(), "", can) {
+                app.repeat_on_similar(how);
+            }
+        }
+    });
     sep(ui);
     // Guidelines selected (no objects) are cut and copied too.
     let guides_picked = !app.selected_guides.is_empty();
@@ -4288,6 +4296,9 @@ fn tools_menu(app: &mut App, ui: &mut Ui) {
     }
     if item(ui, "menu.tools.convert_colors", "", true) {
         app.convert_colors_dialog();
+    }
+    if item(ui, "menu.tools.recolor", "", !app.selection.is_empty()) {
+        app.recolor_dialog();
     }
     sep(ui);
     sub(ui, "menu.tools.scripts", |ui| {

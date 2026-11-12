@@ -1308,6 +1308,8 @@ pub struct App {
     /// The Outline Pen dialog's outline is shown on the selection as an
     /// engine preview (#741).
     pub outline_preview: bool,
+    /// The Recolor dialog shows its change on the drawing.
+    pub recolor_preview: bool,
     /// A bitmap effect dialog's effect shown on the selection while it is
     /// open, made off the interface thread (see `fx::preview`).
     pub fx_preview: crate::fx::preview::FxPreview,
@@ -1695,6 +1697,9 @@ pub struct App {
     /// in effect (an undone action is never repeated, #366), with the
     /// actions done right before it to the same selection (#1566).
     pub repeatables: Vec<(u64, RepeatEntry)>,
+    /// The objects the command being run changes, as they were before it,
+    /// taken by the next repeatable action noted ([`RepeatEntry::refs`]).
+    pub repeat_refs: Vec<Shape>,
     pub show_non_printing: bool,
     pub text_hyphenation: bool,
     /// Macro recording in progress: the commands run since Record started.
@@ -2413,6 +2418,11 @@ pub struct RepeatEntry {
     pub action: Repeatable,
     pub before: Vec<ShapeId>,
     pub after: Vec<ShapeId>,
+    /// The objects it was done to as they were before it (their fill,
+    /// outline, text and kind), for Edit > Repeat on Similar to find the
+    /// objects like them; empty when the action did not change them (a
+    /// copy), and the objects as they are now stand for themselves.
+    pub refs: Vec<Shape>,
 }
 
 /// Most actions one Repeat replays.
@@ -2817,6 +2827,7 @@ impl App {
             visual_cache: std::cell::RefCell::new((u64::MAX, Default::default())),
             fill_preview: false,
             outline_preview: false,
+            recolor_preview: false,
             fx_preview: Default::default(),
             selected_cache: std::cell::RefCell::new(None),
             outline_cache: std::cell::RefCell::new(None),
@@ -2992,6 +3003,7 @@ impl App {
             anchor_sel: None,
             pending_order: None,
             repeatables: Vec::new(),
+            repeat_refs: Vec::new(),
             show_non_printing: false,
             text_hyphenation: false,
             recording: None,
@@ -4575,6 +4587,15 @@ impl App {
     /// no change of selection in between (a move and a fill change of
     /// the same objects, #1566).
     pub fn repeat_group(&self) -> Vec<Repeatable> {
+        self.repeat_group_entries()
+            .into_iter()
+            .map(|e| e.action.clone())
+            .collect()
+    }
+
+    /// [`repeat_group`](Self::repeat_group) as the entries noted, oldest
+    /// first.
+    pub fn repeat_group_entries(&self) -> Vec<&RepeatEntry> {
         let find = |id: u64| self.repeatables.iter().rev().find(|(i, _)| *i == id);
         let Some((mut id, mut entry)) = self
             .repeatables
@@ -4585,7 +4606,7 @@ impl App {
         else {
             return Vec::new();
         };
-        let mut group = vec![entry.action.clone()];
+        let mut group = vec![entry];
         // A Repeat of a group holds the actions before it already.
         while group.len() < REPEAT_GROUP_MAX && !matches!(entry.action, Repeatable::Group(_)) {
             let Some((below, prev)) = self.engine.step_below(id).and_then(find) else {
@@ -4604,7 +4625,7 @@ impl App {
             {
                 break;
             }
-            group.push(prev.action.clone());
+            group.push(prev);
             (id, entry) = (*below, prev);
         }
         group.reverse();
@@ -4627,6 +4648,7 @@ impl App {
             action: r,
             before,
             after: self.selection.clone(),
+            refs: std::mem::take(&mut self.repeat_refs),
         };
         self.repeatables.retain(|(i, _)| *i != id);
         self.repeatables.push((id, entry));
@@ -4702,6 +4724,12 @@ impl App {
         }
     }
 
+    /// One repeatable action again, on the current selection (Repeat on
+    /// Similar).
+    pub(crate) fn replay(&mut self, action: Repeatable) {
+        self.repeat_action(action);
+    }
+
     /// One repeatable action again, on the current selection.
     fn repeat_action(&mut self, action: Repeatable) {
         let cmd = match action {
@@ -4753,6 +4781,7 @@ impl App {
                 fields,
             },
             Command::SetOpacity { opacity, .. } => Command::SetOpacity { shapes, opacity },
+            Command::Recolor { recolor, .. } => Command::Recolor { shapes, recolor },
             other => other,
         };
         self.run(cmd);
@@ -5199,10 +5228,25 @@ impl App {
                 .reduce(|a, b| a.union(b)),
             _ => None,
         };
+        // The objects as they were, for Repeat on Similar.
+        self.repeat_refs = match &cmd {
+            Command::TransformShapes { shapes, .. }
+            | Command::SetFill { shapes, .. }
+            | Command::SetStroke { shapes, .. }
+            | Command::PatchStroke { shapes, .. }
+            | Command::PatchFill { shapes, .. }
+            | Command::SetOpacity { shapes, .. }
+            | Command::Recolor { shapes, .. } => shapes
+                .iter()
+                .filter_map(|id| self.doc().find_shape(*id).cloned())
+                .collect(),
+            _ => Vec::new(),
+        };
         self.break_clone_links_for(&cmd);
         let keep = self.edited_lines_kept(std::slice::from_ref(&cmd));
         if let Err(e) = self.engine.run(&cmd) {
             self.status = format!("{}: {e}", cmd.label());
+            self.repeat_refs.clear();
             return;
         }
         if let Some(k) = keep {
@@ -5230,9 +5274,11 @@ impl App {
                 | Command::PatchStroke { .. }
                 | Command::PatchFill { .. }
                 | Command::SetOpacity { .. }
+                | Command::Recolor { .. }
         ) {
             self.note_repeatable(Repeatable::Command(Box::new(cmd.clone())));
         }
+        self.repeat_refs.clear();
         if let Some(rec) = &mut self.recording {
             rec.push(cmd);
         }

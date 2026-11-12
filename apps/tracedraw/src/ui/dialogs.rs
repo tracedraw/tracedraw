@@ -1254,6 +1254,8 @@ pub enum Dialog {
     ColorManagement(Box<crate::ui::color_management::ColorManagementState>),
     /// Tools > Convert Colors (#972).
     ConvertColors(crate::ui::convert_colors::ConvertColorsState),
+    /// Tools > Recolor.
+    Recolor(crate::ui::recolor::RecolorState),
     FontManager(FontManagerState),
     /// Launch > TraceCut, Tools > TraceCut.
     TraceCut(Box<crate::tracecut::TraceCutState>),
@@ -1737,6 +1739,10 @@ pub fn show(app: &mut App, ctx: &Context) {
     // from it takes the preview back, which comes again on the return.
     if app.outline_preview && !matches!(app.dialog, Dialog::OutlinePen(_)) {
         app.end_outline_pen_preview();
+    }
+    // And for the Recolor dialog's.
+    if app.recolor_preview && !matches!(app.dialog, Dialog::Recolor(_)) {
+        app.end_recolor_preview();
     }
     // The Trace dialog's live preview goes with the dialog.
     if !matches!(app.dialog, Dialog::Trace(_)) && app.trace_live.is_active() {
@@ -3016,6 +3022,7 @@ pub fn show(app: &mut App, ctx: &Context) {
         Dialog::Encode(st) => encode_dialog(app, ctx, st, &mut close),
         Dialog::BorderGrommet(st) => border_grommet_dialog(app, ctx, st, &mut close),
         Dialog::ConvertColors(st) => crate::ui::convert_colors::dialog(app, ctx, st, &mut close),
+        Dialog::Recolor(st) => crate::ui::recolor::dialog(app, ctx, st, &mut close),
         Dialog::ColorManagement(st) => {
             crate::ui::color_management::dialog(app, ctx, st, &mut close)
         }
@@ -3166,6 +3173,7 @@ pub fn show(app: &mut App, ctx: &Context) {
     if close {
         app.end_edit_fill_preview();
         app.end_outline_pen_preview();
+        app.end_recolor_preview();
     }
     // A closing dialog may have opened the next one (the next unsaved
     // drawing's question); keep that.

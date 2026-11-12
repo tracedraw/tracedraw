@@ -21,6 +21,7 @@ Counts: works 192, partial 8 (`.cdr` content coverage; `.cdr` tables; CMX import
 | Freehand Pick (lasso, Alt for touching, also started over any object, selected or not, Ctrl for a rectangle, the Pick tool's handles; Alt+drag with the Pick tool starts its touching frame over objects too, #1341, #1350) | works |
 | Selection groups 0 to 9: Ctrl+number stores the selection, the number selects it again (twice: and zooms to it), Alt+number adds to it; saved with the drawing (see `behavior/pick-tool.md`) | works |
 | Edit > Invert Selection, Edit > Select Similar (Fill, Outline, Text Formatting: font and size, Object Type), each one step of Undo and Redo while the drawing is unchanged (#2002, see `behavior/pick-tool.md`) | works |
+| Edit > Repeat on Similar (Fill, Outline, Text Formatting, Object Type): the last repeatable action done again to every object like the ones it was done to, as they were before it; moves, turns and copies on each object on its own; one undo step (see `behavior/shortcuts.md`, Repeat on Similar) | works |
 | Free Transform (rotation, angle reflection, scale, skew modes, Apply to Duplicate; one drag is one undo step, a skew never mirrors) | works |
 | Zoom tool, zoom levels, zoom to page/fit/selected, marquee zoom, Shift+F4; the view scrolls when a drag reaches the window edge (#2051) | works |
 | Pan, mouse wheel, Ctrl and Shift wheel; the wheel zoom glides, shorter for faster wheel turns, with Smooth zoom (on) and the zoom per notch (15 %) in Options > Tools > Zoom/Pan (#1648, #895); Pan inertia there (off): a flicked pan slides on and eases out (#831) | works (see `behavior/zoom-and-pan.md`) |
@@ -180,6 +181,7 @@ Counts: works 192, partial 8 (`.cdr` content coverage; `.cdr` tables; CMX import
 | CMYK shown through a built-in press model of coated stock when no profile is loaded (default palette within 2.5 Delta E); RGB to CMYK with black-only greys and pure black | works |
 | ICC colour management (v2/v4 profiles, matrix/TRC and LUT, four intents, black point compensation, gamut check); PDF/X output intent embedding | works |
 | Convert Colors (Tools menu): every colour of the selection or of the whole drawing (fills, gradient stops, mesh, outlines, text, effects and shadows) to CMYK or RGB through the colour management profiles, spot colours kept unless asked, bitmaps taking the colour mode (to CMYK their pixels as the inks print them, #1254), one undo step (#972) | works (see `behavior/colour-management.md`) |
+| Recolor (Tools menu): every colour of the selection turned by hue, saturation and lightness or tinted with one colour, each keeping its lightness next to the others so highlights and shadows stay (CIE LCh), colour models kept, spot colours on request, live on the drawing while the dialog is open, one undo step; repeatable with Edit > Repeat and Repeat on Similar | works (see `behavior/recolor.md`) |
 | A drawing's own CMYK profile (the one a `.cdr` file carries, saved in `.tdraw`): its CMYK colours shown through it while it is the active drawing | works (see `cdr-format.md`) |
 | Separations | works (PDF separations export) |
 
