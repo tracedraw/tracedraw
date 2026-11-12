@@ -6403,11 +6403,32 @@ impl App {
         if let Err(e) = self.engine.run_batch("Duplicate", &cmds) {
             self.status = e.to_string();
         }
+        self.carry_pivots(&pairs);
         self.select(ids.clone());
         self.last_duplicate = pairs;
         self.forgotten_duplicate = None;
         if self.symmetry_edit.is_some() {
             self.join_symmetry(&ids);
+        }
+    }
+
+    /// Copies take the centre of rotation moved for their originals, at
+    /// the same place of each copy (or of the copies' box): a copy made
+    /// with Duplicate and turned, then repeated, goes on round the point
+    /// the original was turned about, as in CorelDRAW. The copies turned
+    /// about the middle of their box (#2375, #2376).
+    fn carry_pivots(&mut self, pairs: &[(ShapeId, ShapeId)]) {
+        for (orig, copy) in pairs {
+            if let Some(local) = self.pivots.single.get(orig).copied() {
+                self.pivots.single.insert(*copy, local);
+            }
+        }
+        let mut originals: Vec<ShapeId> = pairs.iter().map(|(o, _)| *o).collect();
+        originals.sort();
+        if let Some(uv) = self.pivots.several.get(&originals).copied() {
+            let mut copies: Vec<ShapeId> = pairs.iter().map(|(_, c)| *c).collect();
+            copies.sort();
+            self.pivots.several.insert(copies, uv);
         }
     }
 

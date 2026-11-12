@@ -20913,6 +20913,55 @@ fn repeat_turns_copies_about_the_moved_centre_of_rotation() {
     }
 }
 
+/// A copy made with Duplicate (Ctrl+D) keeps the centre of rotation
+/// moved for its original, carried with it; turned about it and
+/// repeated with Ctrl+R, the copy goes on round that point, as in
+/// CorelDRAW. The copy's centre went back to its middle, so the turn
+/// and its Repeat went round the copy itself (#2375, #2376).
+#[test]
+fn duplicate_keeps_the_moved_centre_of_rotation() {
+    let (_ctx, mut app, id) = setup();
+    let pivot = Point::new(35.0, -40.0);
+    app.set_pivot(pivot);
+    app.duplicate();
+    let copy = app.selection[0];
+    assert_ne!(copy, id);
+    let moved = Affine::translate(app.duplicate_offset) * pivot;
+    let got = app.rotation_center().expect("centre");
+    assert!(
+        (got - moved).hypot() < 1e-6,
+        "the copy's centre {got:?}, wanted {moved:?}"
+    );
+    let turn = Affine::translate(moved.to_vec2())
+        * Affine::rotate(30f64.to_radians())
+        * Affine::translate(-moved.to_vec2());
+    let c0 = bounds(&app, copy).center();
+    app.transform_selection(turn);
+    app.repeat_last();
+    let want = turn * (turn * c0);
+    let now = bounds(&app, copy).center();
+    assert!(
+        (now - want).hypot() < 0.05,
+        "turned twice about the point: {now:?} {want:?}"
+    );
+    // Several objects: the copies keep the place of the centre in their box.
+    let other = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(100.0, 100.0, 130.0, 110.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![id, other]);
+    let p2 = Point::new(-20.0, 0.0);
+    app.set_pivot(p2);
+    app.duplicate();
+    assert_eq!(app.selection.len(), 2);
+    let want2 = Affine::translate(app.duplicate_offset) * p2;
+    let got2 = app.rotation_center().expect("centre");
+    assert!((got2 - want2).hypot() < 1e-6, "{got2:?} {want2:?}");
+}
+
 /// #1258: Tab in a dialog puts the focus on its first input box, not on
 /// the File menu; tabbing on, the focus stays in the dialog and comes
 /// round to that box again; Shift+Tab from it goes to the last box.
