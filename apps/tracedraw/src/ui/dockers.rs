@@ -955,26 +955,7 @@ fn fill_winding_row(app: &mut App, ui: &mut Ui) {
 /// outline: `Some(true)` all of them, `Some(false)` none, `None` mixed or
 /// nothing selected.
 pub fn overprint_state(app: &App, fill: bool) -> Option<bool> {
-    let targets = app.paint_targets();
-    let on = targets
-        .iter()
-        .filter(|s| {
-            if fill {
-                s.overprint_fill
-            } else {
-                s.overprint_outline
-            }
-        })
-        .count();
-    if targets.is_empty() {
-        None
-    } else if on == targets.len() {
-        Some(true)
-    } else if on == 0 {
-        Some(false)
-    } else {
-        None
-    }
+    app.selection_overprint(fill)
 }
 
 /// The Overprint fill or Overprint outline checkbox of the docker (#1200),
