@@ -3802,7 +3802,30 @@ fn bitmaps_menu(app: &mut App, ui: &mut Ui) {
         if item(ui, "menu.bitmaps.mode_bw", "", has_bitmap) {
             app.dialog = Dialog::BitmapBw(Default::default());
         }
-        if item(ui, "menu.bitmaps.mode_grayscale", "", has_bitmap) {
+        // Grayscale, RGB and CMYK are the bitmaps' colour mode: the mode
+        // of every selected bitmap is ticked (#1254); a grayscale PNG is
+        // a grayscale bitmap (#2330), as the status bar names it.
+        let modes: Vec<crate::bitmap_fx::ColorMode> = app
+            .selected_rc()
+            .iter()
+            .filter_map(|s| match &s.kind {
+                ShapeKind::Bitmap { png, .. } => {
+                    Some(crate::bitmap_fx::mode_of(s.cmyk_bitmap, png))
+                }
+                _ => None,
+            })
+            .collect();
+        let all = |m| has_bitmap && modes.iter().all(|x| *x == m);
+        let all_gray = all(crate::bitmap_fx::ColorMode::Grayscale);
+        let all_rgb = all(crate::bitmap_fx::ColorMode::Rgb);
+        let all_cmyk = all(crate::bitmap_fx::ColorMode::Cmyk);
+        if mark_item_if(
+            ui,
+            "menu.bitmaps.mode_grayscale",
+            "",
+            Mark::Check(all_gray),
+            has_bitmap,
+        ) {
             app.set_bitmap_mode(crate::bitmap_fx::ColorMode::Grayscale);
         }
         if item(ui, "menu.bitmaps.mode_duotone", "", has_bitmap) {
@@ -3811,16 +3834,6 @@ fn bitmaps_menu(app: &mut App, ui: &mut Ui) {
         if item(ui, "menu.bitmaps.mode_paletted", "", has_bitmap) {
             app.dialog = Dialog::BitmapPaletted(Default::default());
         }
-        // RGB and CMYK are the bitmaps' colour mode: the mode of every
-        // selected bitmap is ticked (#1254).
-        let modes: Vec<bool> = app
-            .selected_rc()
-            .iter()
-            .filter(|s| matches!(s.kind, ShapeKind::Bitmap { .. }))
-            .map(|s| s.cmyk_bitmap)
-            .collect();
-        let all_rgb = has_bitmap && modes.iter().all(|c| !c);
-        let all_cmyk = has_bitmap && modes.iter().all(|c| *c);
         if mark_item_if(
             ui,
             "menu.bitmaps.mode_rgb",

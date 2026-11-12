@@ -7,6 +7,9 @@ full, row-by-row status.
 ## Unreleased
 
 - Saving: `.tdraw` files are several times smaller. They were written with every coordinate on a line of its own, indented further for each group inside a group, so a curve node took half a kilobyte or more and a drawing with many nodes in nested groups grew to tens or hundreds of megabytes, far past the same drawing saved as `.cdr`. The file is now written without line breaks or indents, 3 to 8 times smaller, and earlier versions open it as before (#2345).
+- Convert to Bitmap: a thick outline is kept whole. The bitmap was cut at the object's own box, so the outer half of a 10 pt outline was gone; it now takes in the outlines as they are drawn, their mitred corners and arrowheads too (#2369).
+- Convert to Bitmap in CMYK keeps the CMYK values: a red of C0 M100 Y100 K0 read back C2 M99 Y96, the inks taken back from the screen pixels. The bitmap now keeps the inks the objects print with, and the Color Eyedropper reads them (#2381).
+- Image > Mode > Grayscale (8-bit) converts the bitmap: it is stored as a grayscale picture, the status bar names it Grayscale and the Mode menu ticks Grayscale. The pixels only turned grey and the bitmap stayed RGB or CMYK (#2330).
 
 ## 0.44.1 (2026-11-12)
 

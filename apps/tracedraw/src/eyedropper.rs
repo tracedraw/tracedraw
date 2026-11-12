@@ -22,6 +22,47 @@ use tracedraw_core::{
 /// A decoded picture, shared with the readout's cache.
 type Picture = std::sync::Arc<image::RgbaImage>;
 
+/// The CMYK inks of the pixels around (`fx`, `fy`) of a `w` x `h` picture
+/// in `planes` (its cyan, magenta, yellow and black channels one under
+/// the other, 255 full ink), averaged over a box of `n` x `n` pixels.
+/// `None` when the planes do not fit the picture.
+fn ink_average(
+    planes: &image::RgbaImage,
+    w: u32,
+    h: u32,
+    fx: f64,
+    fy: f64,
+    n: u32,
+) -> Option<Color> {
+    if planes.width() != w || planes.height() != h.checked_mul(4)? {
+        return None;
+    }
+    let n = i64::from(n.max(1));
+    let half = (n - 1) / 2;
+    let mut sum = [0u64; 4];
+    let mut cnt = 0u64;
+    for dy in -half..(n - half) {
+        for dx in -half..(n - half) {
+            let x = fx.floor() as i64 + dx;
+            let y = fy.floor() as i64 + dy;
+            if x < 0 || y < 0 || x >= i64::from(w) || y >= i64::from(h) {
+                continue;
+            }
+            for (k, v) in sum.iter_mut().enumerate() {
+                *v += u64::from(planes.get_pixel(x as u32, y as u32 + k as u32 * h)[0]);
+            }
+            cnt += 1;
+        }
+    }
+    let ink = |k: usize| Some(sum[k].checked_div(cnt)? as f32 / 255.0);
+    Some(Color::Cmyk {
+        c: ink(0)?,
+        m: ink(1)?,
+        y: ink(2)?,
+        k: ink(3)?,
+    })
+}
+
 /// What the colour eyedroppers show beside the pointer while it hovers
 /// (#990): the colour under it, the palette or ink name it has, and its
 /// values in the drawing's colour model. Worked out again only when the
@@ -283,10 +324,38 @@ impl App {
         {
             let lp = s.transform.inverse() * p;
             if rect.contains(lp) && rect.width() > 0.0 && rect.height() > 0.0 {
+                // A picture with the CMYK inks it was made or read with
+                // gives them, not the screen pixels converted back: a red
+                // of C0 M100 Y100 converted to a CMYK bitmap read C2 M99
+                // Y96 (#2381).
+                let fx = (lp.x - rect.x0) / rect.width() * *width_px as f64;
+                let fy = (rect.y1 - lp.y) / rect.height() * *height_px as f64;
+                if let Some(c) = s
+                    .picture_inks
+                    .as_deref()
+                    .filter(|i| {
+                        i.fits(png.as_slice())
+                            && i.inks
+                                == (0..4)
+                                    .map(tracedraw_core::picture_inks::PictureInk::Process)
+                                    .collect::<Vec<_>>()
+                    })
+                    .and_then(|i| decode(&i.png))
+                    .and_then(|planes| {
+                        ink_average(
+                            &planes,
+                            *width_px,
+                            *height_px,
+                            fx,
+                            fy,
+                            self.eyedropper_sample,
+                        )
+                    })
+                {
+                    return Some(c);
+                }
                 // Pictures keep the bytes they came with: PNG, JPEG and others.
                 if let Some(img) = decode(png) {
-                    let fx = (lp.x - rect.x0) / rect.width() * *width_px as f64;
-                    let fy = (rect.y1 - lp.y) / rect.height() * *height_px as f64;
                     let n = self.eyedropper_sample.max(1) as i64;
                     let half = (n - 1) / 2;
                     let (mut r, mut g, mut b, mut cnt) = (0u64, 0u64, 0u64, 0u64);
