@@ -403,8 +403,8 @@ mod tests {
             run(&mut app, vec![egui::Event::PointerMoved(at)]);
             run(&mut app, vec![button(true)]);
             run(&mut app, vec![button(false)]);
-            let started = app.installer.get() != InstallState::Idle
-                || matches!(app.dialog, Dialog::Updates);
+            let started =
+                app.installer.get() != InstallState::Idle || matches!(app.dialog, Dialog::Updates);
             assert!(started, "welcome={welcome}: the click reached Update now");
         }
     }
