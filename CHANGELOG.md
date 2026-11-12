@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- .cdr: objects locked in the file stay locked when it is opened or imported, and objects locked in TraceDraw are saved locked. They came in unlocked (#2347).
 - Pick tool: a group, clip frame or symbol lying on top is picked only where one of its objects is (a clip frame on its frame and where its contents show), no longer anywhere in its box. A click in the empty part of a group that covers other objects now takes the object inside or behind it, as it shows (#885).
 - Multipage View: an object moved onto another page's paper becomes that page's, where it was let go, and that page becomes current with it selected, in one undo step. It stayed the first page's, off its paper (#2055).
 - Saving: `.tdraw` files are several times smaller. They were written with every coordinate on a line of its own, indented further for each group inside a group, so a curve node took half a kilobyte or more and a drawing with many nodes in nested groups grew to tens or hundreds of megabytes, far past the same drawing saved as `.cdr`. The file is now written without line breaks or indents, 3 to 8 times smaller, and earlier versions open it as before (#2345).

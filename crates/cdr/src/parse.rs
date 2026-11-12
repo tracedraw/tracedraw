@@ -141,6 +141,8 @@ const ARG_PAGE_SIZE: u32 = 19130;
 const ARG_PAGE_BACKGROUND: u32 = 17000;
 /// Object argument 16016: 1 hides the object (version 21).
 const ARG_HIDDEN: u32 = 16016;
+/// Byte 0 of an object's `flgs`: the object is locked (#2347).
+pub(crate) const OBJECT_LOCKED: u8 = 0x10;
 
 /// Family and size used when neither the run nor its style names one.
 const DEFAULT_FAMILY: &str = "Arial";
@@ -920,6 +922,13 @@ impl<'a> Ctx<'a> {
         let d = self.data(f);
         let s = d.get(0..4)?;
         Some([s[0], s[1], s[2], s[3]])
+    }
+
+    /// An object locked in the program that saved the file: bit 0x10 of
+    /// byte 0 of its `flgs` ([0x10, 2, 0, 8] for a locked text of a
+    /// version 21 file, [0, 2, 0, 8] for the object beside it, #2347).
+    fn object_locked(&self, oc: &Chunk) -> bool {
+        matches!(self.flags(oc), Some(f) if f[3] & 0xf8 == 0x08 && f[0] & OBJECT_LOCKED != 0)
     }
 
     fn page_is_master(&self, pc: &Chunk) -> bool {
@@ -4300,6 +4309,10 @@ impl<'a> Ctx<'a> {
                         }
                         if let Some(clip) = self.pending_clip.take() {
                             shape = self.with_clip_contents(shape, clip, ids, page_size, depth);
+                        }
+                        // Locked in the file: locked here (#2347).
+                        if self.object_locked(c) {
+                            shape.locked = true;
                         }
                         self.note_static_id(c, shape.id);
                         out.push(shape);
