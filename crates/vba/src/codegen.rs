@@ -150,7 +150,9 @@ enum Res {
     Enum(String),
     EnumType(usize, usize),
     Module(usize),
-    Declared(String),
+    /// A declared Windows API procedure: its name and, lowercase, the
+    /// library's name for it (its alias, or its name).
+    Declared(String, String),
     BuiltinFn(String),
     BuiltinConst(String),
     Err,
@@ -696,12 +698,12 @@ impl<'a> Gen<'a> {
                     Res::StdProp(m, key.to_string())
                 });
             }
-            if let Some((n, _)) = a
+            if let Some((n, _, alias)) = a
                 .declares
                 .iter()
-                .find(|(n, p)| low(n) == key && (own || *p))
+                .find(|(n, p, _)| low(n) == key && (own || *p))
             {
-                return Some(Res::Declared(n.clone()));
+                return Some(Res::Declared(n.clone(), low(alias.as_deref().unwrap_or(n))));
             }
         }
         for e in &a.enums {
@@ -1820,10 +1822,7 @@ impl<'a> Gen<'a> {
                     return self.err(cx, format!("Expected a value, not the module {n}"));
                 }
             }
-            Res::Declared(name) => format!(
-                "__v.unsupported({})",
-                js_string(&format!("Windows API function {name}"))
-            ),
+            Res::Declared(name, api) => declared_call(&name, &api, ""),
             Res::BuiltinFn(f) => format!("__b.{f}()"),
             Res::BuiltinConst(c) => format!("__b.{c}"),
             Res::Err => "__v.Err".into(),
@@ -1922,10 +1921,10 @@ impl<'a> Gen<'a> {
                             Ok(format!("__v.callf(__b.{f},[{pos}],{named})"))
                         }
                     }
-                    Res::Declared(name) => Ok(format!(
-                        "__v.unsupported({})",
-                        js_string(&format!("Windows API function {name}"))
-                    )),
+                    Res::Declared(name, api) => {
+                        let a = self.plain_args(cx, args)?;
+                        Ok(declared_call(&name, &api, &a))
+                    }
                     Res::Unknown => {
                         let h = self.host(cx, n);
                         let (pos, named) = self.dyn_args(cx, args)?;
@@ -2180,4 +2179,20 @@ fn check_jumps(
     }
     inner.pop();
     Ok(())
+}
+
+/// A call of a declared Windows API procedure (`api` the library's name
+/// for it, lowercase) with the arguments `args`: ShellExecute opens a web
+/// address with the system (`__v.shellexecute`, #2165), as macros do to
+/// show their makers' pages; the others are not supported here.
+fn declared_call(name: &str, api: &str, args: &str) -> String {
+    match api {
+        "shellexecute" | "shellexecutea" | "shellexecutew" => {
+            format!("__v.shellexecute([{args}])")
+        }
+        _ => format!(
+            "__v.unsupported({})",
+            js_string(&format!("Windows API function {name}"))
+        ),
+    }
 }

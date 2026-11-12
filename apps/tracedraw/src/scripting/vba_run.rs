@@ -61,6 +61,8 @@ pub enum Request {
         title: String,
         default: String,
     },
+    /// Open a web or mail address with the system (ShellExecute, #2165).
+    Open(String),
 }
 
 /// A control's (or the form's) event, from the app to the macro.
@@ -433,6 +435,23 @@ fn native_setting(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsRes
     Ok(JsValue::null())
 }
 
+/// `__open(url)`: a web or mail address the macro opens (ShellExecute,
+/// #2165); the app opens it. True when it was handed over.
+fn native_open(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let url = arg_str(args, 0, ctx)?;
+    let lower = url.to_ascii_lowercase();
+    if !(lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("mailto:"))
+    {
+        return Ok(JsValue::from(false));
+    }
+    let sent = ctx
+        .get_data::<RunState>()
+        .is_some_and(|st| st.requests.send(Request::Open(url)).is_ok());
+    Ok(JsValue::from(sent))
+}
+
 /// `__folder()`: the macros folder (with a separator at the end), for
 /// the paths macros ask the host for.
 fn native_folder(_this: &JsValue, _args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
@@ -728,7 +747,8 @@ fn run_thread(
             &str,
             usize,
             boa_engine::native_function::NativeFunctionPointer,
-        ); 15] = [
+        ); 16] = [
+            ("__open", 1, native_open),
             ("__setting", 5, native_setting),
             ("__dir", 1, native_dir),
             ("__folder", 0, native_folder),

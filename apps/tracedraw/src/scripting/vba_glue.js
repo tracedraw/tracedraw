@@ -24,6 +24,9 @@ G.__host_inputbox = function (prompt, title, def) {
   return r;
 };
 
+// ShellExecute of a web or mail address: the app opens it (#2165).
+G.__host_open = function (url) { return __open(String(url)); };
+
 // GetSetting and SaveSetting: kept by the app with the macros.
 G.__host_dir = function (path) { return __dir(String(path)); };
 G.__host_setting = function (op, app, section, key, value) {
@@ -161,7 +164,7 @@ const PROPS = ["Caption", "Value", "Text", "Enabled", "Visible", "Locked", "Tag"
   "PasswordChar", "Default", "Cancel", "TabIndex", "TabStop", "BackColor", "ForeColor", "SelText",
   "SelStart", "SelLength", "SpecialEffect", "BorderStyle", "TextAlign", "AutoSize", "WordWrap",
   "BoundColumn", "TextColumn", "ColumnWidths", "ColumnHeads", "MatchEntry", "ShowDropButtonWhen",
-  "Picture", "MousePointer", "Name"];
+  "Picture", "MousePointer", "Name", "ListWidth", "ListRows", "DropButtonStyle"];
 for (const p of PROPS) {
   Object.defineProperty(Ctl.prototype, p, {
     get() { return parse(__fget(this.__f.__id, this.__n, p)); },

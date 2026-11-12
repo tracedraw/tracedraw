@@ -562,6 +562,21 @@ End Sub
     assert!(out[0].contains("Windows API function Sleep"), "{}", out[0]);
 }
 
+/// ShellExecute declared under another name (#2165): a host without the
+/// hook to open pages returns 2 (file not found) and raises nothing, as
+/// for a program or file it does not open.
+#[test]
+fn shell_execute_returns_without_raising() {
+    let out = run(r##"
+Private Declare PtrSafe Function OpenIt Lib "shell32.dll" Alias "ShellExecuteA" (ByVal hwnd As LongPtr, ByVal op As String, ByVal file As String, ByVal params As String, ByVal dir As String, ByVal show As Long) As LongPtr
+Sub Main()
+    Debug.Print OpenIt(0, vbNullString, "http://example.com", "", "", 1)
+    Debug.Print OpenIt(0, "open", "notepad.exe", "", "", 1)
+End Sub
+"##);
+    assert_eq!(out, vec!["2", "2"]);
+}
+
 #[test]
 fn msgbox_and_inputbox_use_the_host_hooks() {
     let src = r##"
