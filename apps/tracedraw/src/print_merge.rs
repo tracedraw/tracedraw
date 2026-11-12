@@ -7,7 +7,7 @@ use crate::app::App;
 use crate::i18n::trf;
 use crate::ui::dialogs::PrintMergeState;
 use tracedraw_core::geometry::{Rect, Shape as _};
-use tracedraw_core::{Color, Command, Fill, LayerId, Shape, ShapeKind, TextSpan};
+use tracedraw_core::{Color, Command, Fill, LayerId, QrCode, QrKind, Shape, ShapeKind, TextSpan};
 
 /// What a field holds.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -1199,8 +1199,10 @@ fn merged_barcode(
 /// for a picture field the picture goes inside it (a clip frame's old
 /// contents, such as the placeholder picture, give way), placed by its
 /// Align and scale; for a QR field the object becomes the code, as large
-/// as its box allows. For a picture that does not load the frame is
-/// emptied, or with `keep` keeps what it holds.
+/// as its box allows.  When the placeholder is a real QR code group (made
+/// by Insert Field), only the payload is replaced — colours, size and any
+/// other visual settings the user chose are kept.  For a picture that does
+/// not load the frame is emptied, or with `keep` keeps what it holds.
 #[allow(clippy::too_many_arguments)]
 fn named_placeholder(
     st: &PrintMergeState,
@@ -1252,20 +1254,55 @@ fn named_placeholder(
                 frame: s.id,
             });
         }
-        FieldKind::Qr => match replacement(&FieldKind::Qr, value, local_box(s), &[], false) {
-            Some((kind, fill)) => {
-                cmds.push(Command::SetShapeKind { shape: s.id, kind });
-                cmds.push(Command::SetFill {
-                    shapes: vec![s.id],
-                    fill,
-                });
-                cmds.push(Command::SetStroke {
-                    shapes: vec![s.id],
-                    stroke: None,
-                });
+        FieldKind::Qr => {
+            if value.trim().is_empty() {
+                cmds.push(Command::DeleteShapes { shapes: vec![s.id] });
+                return;
             }
-            None => cmds.push(Command::DeleteShapes { shapes: vec![s.id] }),
-        },
+            // A QR code group (made by Insert Field): keep all visual
+            // settings and regenerate only the payload.
+            if let Some(qr) = s.qr.as_deref().cloned() {
+                let new_qr = QrCode {
+                    kind: QrKind::Url,
+                    fields: vec![value.to_string()],
+                    ..qr
+                };
+                let anchor = crate::qr::top_left(s).unwrap_or_else(|| {
+                    let b = s.bounds();
+                    tracedraw_core::geometry::Point::new(b.x0, b.y1)
+                });
+                match crate::qr::children_with_id(&new_qr, anchor, new_id) {
+                    Ok(kids) => {
+                        cmds.push(Command::SetShapeKind {
+                            shape: s.id,
+                            kind: ShapeKind::Group { children: kids },
+                        });
+                        cmds.push(Command::SetQrCode {
+                            shape: s.id,
+                            qr: Some(Box::new(new_qr)),
+                        });
+                    }
+                    Err(_) => cmds.push(Command::DeleteShapes { shapes: vec![s.id] }),
+                }
+                return;
+            }
+            // Old-style Rect placeholder (kept for backward compatibility):
+            // becomes a plain path in CMYK black.
+            match replacement(&FieldKind::Qr, value, local_box(s), &[], false) {
+                Some((kind, fill)) => {
+                    cmds.push(Command::SetShapeKind { shape: s.id, kind });
+                    cmds.push(Command::SetFill {
+                        shapes: vec![s.id],
+                        fill,
+                    });
+                    cmds.push(Command::SetStroke {
+                        shapes: vec![s.id],
+                        stroke: None,
+                    });
+                }
+                None => cmds.push(Command::DeleteShapes { shapes: vec![s.id] }),
+            }
+        }
         _ => {}
     }
 }

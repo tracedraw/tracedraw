@@ -116,8 +116,8 @@ impl App {
     /// Insert Field: `<column>` at the caret of the text being edited, else
     /// a new text holding it in the middle of the view; for an image a
     /// frame named `<column>` (with the placeholder picture inside, when
-    /// one is chosen) keeping the Align and scale; for a QR code a square
-    /// named `<column>`.
+    /// one is chosen) keeping the Align and scale; for a QR code a real QR
+    /// code object named `<column>` (scannable, customisable in Properties).
     pub fn insert_merge_field(&mut self) {
         let Some(name) = self
             .merge_state
@@ -167,7 +167,46 @@ impl App {
             return;
         };
         let d = self.merge_docker.clone();
-        let picture = (d.kind == 1 && !d.placeholder.trim().is_empty())
+        // A QR code field: insert a real, scannable QR code object so the
+        // user can see and customise it (colours, size).  The object is
+        // named `<column>` so the merge can find it.  At merge time only
+        // the payload is replaced; all visual settings are kept.
+        if d.kind == 2 {
+            let qr = tracedraw_core::QrCode::default();
+            let Ok((n, _)) = crate::qr::modules(&qr.payload()) else {
+                return;
+            };
+            let side = crate::qr::side_mm(n, &qr);
+            let top_left =
+                tracedraw_core::geometry::Point::new(at.x - side / 2.0, at.y + side / 2.0);
+            let mut new_id = || self.engine.new_shape_id();
+            let Ok(kids) = crate::qr::children_with_id(&qr, top_left, &mut new_id) else {
+                return;
+            };
+            let id = self.engine.new_shape_id();
+            let mut group = Shape::new(id, ShapeKind::Group { children: kids });
+            group.fill = Fill::None;
+            group.stroke = None;
+            group.name = Some(field);
+            group.qr = Some(Box::new(qr));
+            match self.engine.run_batch(
+                "Insert Print Merge Field",
+                &[Command::AddShape { layer, shape: group }],
+            ) {
+                Ok(()) => {
+                    self.select(vec![id]);
+                    set_kind(&mut self.merge_state, d.column, crate::print_merge::FieldKind::Qr);
+                    if d.all_pages {
+                        self.copy_to_other_pages(id);
+                    }
+                }
+                Err(e) => self.status = e.to_string(),
+            }
+            return;
+        }
+        // Image field: a clip frame named `<column>` (with the placeholder
+        // picture inside, when one is chosen) keeping the Align and scale.
+        let picture = (!d.placeholder.trim().is_empty())
             .then(|| crate::print_merge::picture(&d.placeholder, None))
             .flatten();
         let (w, h) = match &picture {
@@ -194,9 +233,7 @@ impl App {
         );
         frame.name = Some(field);
         frame.fill = Fill::None;
-        if d.kind == 1 {
-            frame.data = placement_data(d.scale, d.anchor);
-        }
+        frame.data = placement_data(d.scale, d.anchor);
         let mut cmds = vec![Command::AddShape {
             layer,
             shape: frame,
@@ -224,6 +261,11 @@ impl App {
         match self.engine.run_batch("Insert Print Merge Field", &cmds) {
             Ok(()) => {
                 self.select(vec![id]);
+                set_kind(
+                    &mut self.merge_state,
+                    d.column,
+                    crate::print_merge::FieldKind::Image,
+                );
                 if d.all_pages {
                     self.copy_to_other_pages(id);
                 }
@@ -726,6 +768,23 @@ fn frame_data(s: &Shape, d: &MergeDocker) -> Vec<(String, String)> {
         .collect();
     data.extend(placement_data(d.scale, d.anchor));
     data
+}
+
+/// Update the merge state's column kind when Insert Field is used, so the
+/// merge recognises the placeholder (whole_field only matches Image / Qr).
+fn set_kind(
+    merge_state: &mut Option<crate::ui::dialogs::PrintMergeState>,
+    col: usize,
+    kind: crate::print_merge::FieldKind,
+) {
+    if let Some(st) = merge_state.as_mut() {
+        if col < st.headers.len() {
+            while st.kinds.len() <= col {
+                st.kinds.push(crate::print_merge::FieldKind::default());
+            }
+            st.kinds[col] = kind;
+        }
+    }
 }
 
 /// Align and scale as object data.
@@ -1579,6 +1638,44 @@ mod tests {
         app.switch_document(0);
         assert_eq!(app.doc(), &before);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Insert Field with the QR type sets the column kind in the merge state
+    /// so the merge produces a QR code even when the column was not configured
+    /// as QR beforehand (e.g. a column named "Link" loaded from a CSV is
+    /// guessed as Text, not Qr).
+    #[test]
+    fn insert_field_qr_sets_the_column_kind_and_merges() {
+        use crate::print_merge::{kind_of, FieldKind};
+        let mut app = App::headless();
+        app.merge_state = Some(PrintMergeState {
+            headers: vec!["Name".into(), "Link".into()],
+            rows: vec![vec!["Ana".into(), "https://a.example".into()]],
+            kinds: vec![FieldKind::Text, FieldKind::Text],
+            ..Default::default()
+        });
+        app.merge_docker.kind = 2;
+        app.merge_docker.column = 1;
+        app.insert_merge_field();
+        // Insert Field must update the column kind to Qr.
+        assert_eq!(
+            kind_of(app.merge_state.as_ref().unwrap(), 1),
+            FieldKind::Qr,
+            "insert_merge_field did not set column kind to Qr"
+        );
+        // The merge must produce a Path (the QR code), not leave a blank Rect.
+        app.create_merged_document(false);
+        let doc = app.doc().clone();
+        assert_eq!(doc.pages.len(), 1);
+        let shapes: Vec<&Shape> = doc.pages[0]
+            .layers
+            .iter()
+            .flat_map(|l| l.shapes.iter())
+            .collect();
+        assert!(
+            shapes.iter().any(|s| matches!(s.kind, ShapeKind::Path { .. })),
+            "the QR code path was not generated in the merged document"
+        );
     }
 
     /// Place Inside Frame makes the user's own shapes the picture's frame,
