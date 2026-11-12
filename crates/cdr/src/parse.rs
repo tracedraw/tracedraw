@@ -1025,6 +1025,49 @@ impl<'a> Ctx<'a> {
         (!name.is_empty()).then_some(name)
     }
 
+    /// A group's vector pattern transparency (a version 27 file): the
+    /// group's own `loda` holds argument 8000, a record tagged 1300 of
+    /// 117 bytes whose body starts with the byte 5 and the record's
+    /// number, with the type (u16 10, a vector pattern) at byte 37 and a
+    /// fill id at byte 105 that names a vector pattern fill. The
+    /// pattern's drawing is the mask (luminance the opacity) over all the
+    /// group holds, one tile over the group's box. `None` for other
+    /// records and for a fill that is no vector pattern.
+    fn group_pattern_transparency(&mut self, gc: &Chunk) -> Option<Fill> {
+        if self.v < 16 {
+            return None;
+        }
+        let lgob = gc.children.iter().find(|k| k.is(b"lgob"))?;
+        let loda = lgob.children.iter().find(|k| k.is(b"loda"))?;
+        let d = self.data(loda);
+        let l = self.read_loda(d)?;
+        let arg = l.args.iter().find(|a| a.ty == ARG_OPACITY)?;
+        if arg.end.checked_sub(arg.off)? < 8 + 117 {
+            return None;
+        }
+        let data = d.get(..arg.end)?;
+        let mut r = self.reader_at(data, arg.off);
+        if r.u32()? != 0x514 || r.u32()? != 117 || r.u8()? != 5 {
+            return None;
+        }
+        let body = r.pos - 1;
+        if self.reader_at(data, body + 37).u16()? != 10 {
+            return None;
+        }
+        let fill_id = self.reader_at(data, body + 105).u32()?;
+        match self.fills.get(&fill_id).map(|f| &f.fill) {
+            Some(mask @ Fill::Pattern(tracedraw_core::style::Pattern::Vector { .. })) => {
+                Some(mask.clone())
+            }
+            _ => {
+                self.report.warn(format!(
+                    "group transparency names fill {fill_id}, not a vector pattern; group drawn opaque"
+                ));
+                None
+            }
+        }
+    }
+
     /// A symbol's name (#2177): in argument 19201 of its `sytr` group's
     /// `loda`, a UTF-16 string ending in a zero at byte 548 of the
     /// argument, after an identifier (one version 15 file seen; its
@@ -1284,6 +1327,13 @@ impl<'a> Ctx<'a> {
     /// 8 bytes, that box again and the id of the `vpat` that holds the
     /// drawing as a CMX file. The tile is that part of the drawing
     /// stretched to the tile's size.
+    ///
+    /// A version 27 file holds another layout: the 1600 record is all
+    /// zeros, and the 1300 record holds the tile's width and height, 8
+    /// zero bytes, a u16 (4), the box (four i32, as above) and the id of
+    /// the `vpat`, two bytes past the record's stated length of 36. The
+    /// layout whose id names a `vpat` of the file is taken, and the 1300
+    /// record's box where the 1600 record gives none.
     fn read_vector_pattern_fill(&mut self, body: &'a [u8]) -> Option<Fill> {
         let mut r = self.reader(body);
         let mut part: Option<[i32; 4]> = None;
@@ -1293,12 +1343,31 @@ impl<'a> Ctx<'a> {
             let len = r.u32()? as usize;
             let start = r.pos;
             match tag {
-                1600 if len >= 16 => part = Some([r.i32()?, r.i32()?, r.i32()?, r.i32()?]),
+                1600 if len >= 16 => {
+                    let b = [r.i32()?, r.i32()?, r.i32()?, r.i32()?];
+                    if b[0] != b[2] && b[1] != b[3] {
+                        part = Some(b);
+                    }
+                }
                 1300 if len >= 36 => {
                     let w = r.u32()?;
                     let h = r.u32()?;
-                    let id = self.reader_at(body, start + 32).u32()?;
+                    // (the box's place, the id's place) in the record.
+                    let layout = [(16, 32), (18, 34)].into_iter().find(|&(_, at)| {
+                        self.reader_at(body, start + at)
+                            .u32()
+                            .is_some_and(|id| self.vector_patterns.contains_key(&id))
+                    });
+                    let (box_at, id_at) = layout.unwrap_or((16, 32));
+                    let id = self.reader_at(body, start + id_at).u32()?;
                     tile = Some((w, h, id));
+                    if part.is_none() {
+                        let mut b = self.reader_at(body, start + box_at);
+                        let own = [b.i32()?, b.i32()?, b.i32()?, b.i32()?];
+                        if own[0] != own[2] && own[1] != own[3] {
+                            part = Some(own);
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -4550,13 +4619,19 @@ impl<'a> Ctx<'a> {
                     }
                 }
                 self.outer_transform = saved;
+                // A vector pattern transparency over the group: a mask
+                // over all it holds, so the group stays a group.
+                let mask = self.group_pattern_transparency(c);
                 match children.len() {
                     0 => {}
-                    1 => out.extend(children),
+                    1 if mask.is_none() => out.extend(children),
                     _ => {
                         let mut g = Shape::new(ids.shape(), ShapeKind::Group { children });
                         g.fill = Fill::None;
                         g.stroke = None;
+                        if let Some(mask) = mask {
+                            g.effects.push(pattern_mask_over(&g, mask));
+                        }
                         // The group's own name (argument 1000 of its
                         // `loda`), as objects carry theirs.
                         g.name = self.group_name(c);
@@ -7139,6 +7214,23 @@ fn paragraph_spacing(style: &text::RunStyle, base: &ParagraphStyle) -> Paragraph
 
 /// A transparency mask and the part of the object it applies to.
 type Mask = (Fill, u8);
+
+/// A vector pattern as a transparency mask over `shape`: one tile over
+/// the shape's box on the page.
+fn pattern_mask_over(shape: &Shape, mut mask: Fill) -> tracedraw_core::live::Effect {
+    let b = shape.bounds();
+    if let Fill::Pattern(tracedraw_core::style::Pattern::Vector { placement, .. }) = &mut mask {
+        placement.offset_x = b.x0;
+        placement.offset_y = b.y0;
+        placement.size = Some(Size::new(b.width(), b.height()));
+        placement.transform_with_object = true;
+    }
+    tracedraw_core::live::Effect::Transparency {
+        mask,
+        merge: tracedraw_core::live::MergeMode::Normal,
+        target: 2,
+    }
+}
 
 /// A fountain of greys whose luminance is the opacity: a graded
 /// transparency's fill (versions 11 and 15: 255 opaque, 0 see-through).
@@ -13179,6 +13271,217 @@ pub(crate) mod tests {
             "{:?}",
             rep.warnings
         );
+    }
+
+    /// A vector pattern fill laid out as a version 27 file holds it: the
+    /// 1600 record all zeros, and in the 1300 record the tile's size, 8
+    /// zero bytes, a u16 (4), the box and the `vpat` id (two bytes past
+    /// the record's stated 36), then 6 zero bytes.
+    fn vector_pattern_fild_v27(id: u32, tile: (u32, u32), part: [i32; 4], vpat: u32) -> Vec<u8> {
+        let mut fild = u32s(&[id, 1300, 2 + 8 + 16 + 8 + 44]);
+        fild.extend_from_slice(&u16s(&[10]));
+        fild.extend_from_slice(&u32s(&[1600, 16, 0, 0, 0, 0]));
+        fild.extend_from_slice(&u32s(&[1300, 36, tile.0, tile.1, 0, 0]));
+        fild.extend_from_slice(&u16s(&[4]));
+        fild.extend_from_slice(&i32s(&part));
+        fild.extend_from_slice(&u32s(&[vpat]));
+        fild.extend_from_slice(&[0; 6]);
+        fild
+    }
+
+    /// A 100 mm square pattern drawing with a 20 x 10 mm rectangle at its
+    /// centre, as a `vpat` chunk's data.
+    fn vpat_with_a_rectangle(id: u32) -> Vec<u8> {
+        use crate::cmx::tests as cmx;
+        let drawing = cmx::file(&[cmx::page(&[
+            cmx::begin_page(1_000_000, 1_000_000),
+            cmx::begin_layer("L", None),
+            cmx::rect(&cmx::attrs(1, 0), 0, 0, 200_000, 100_000, 0, 0),
+            cmx::instr(14, &[]),
+            cmx::instr(12, &[]),
+            cmx::instr(10, &[]),
+        ])]);
+        [u32s(&[id]), drawing].concat()
+    }
+
+    #[test]
+    fn version_27_vector_pattern_fill_layout() {
+        let vpat = vpat_with_a_rectangle(19);
+        let fild = vector_pattern_fild_v27(
+            5,
+            (200_000, 100_000),
+            [-200_000, 200_000, 200_000, -200_000],
+            19,
+        );
+        let main = riff(b"CDRU", &chunk(b"fild", &fild));
+        let tree = crate::riff::parse(&main).unwrap();
+        let mut ctx = Ctx::new(&main, &tree, 27);
+        ctx.vector_patterns.insert(19, &vpat[4..]);
+        ctx.read_fill(tree.root.find(b"fild").unwrap());
+        assert!(ctx.report.warnings.is_empty(), "{:?}", ctx.report.warnings);
+        let Fill::Pattern(tracedraw_core::style::Pattern::Vector { shapes, tile, .. }) =
+            &ctx.fills[&5].fill
+        else {
+            panic!("{:?}", ctx.fills[&5].fill)
+        };
+        assert!((tile.width - 20.0).abs() < 1e-6 && (tile.height - 10.0).abs() < 1e-6);
+        // The 40 mm square around the centre, stretched to the tile: the
+        // rectangle half the tile wide and a quarter of it high.
+        let b = shapes[0].bounds();
+        assert!(
+            (b.width() - 10.0).abs() < 1e-6 && (b.height() - 2.5).abs() < 1e-6,
+            "{b:?}"
+        );
+        // A record cut short, or a box of no size: no fill, with a warning.
+        for bad in [
+            fild[..fild.len() - 12].to_vec(),
+            vector_pattern_fild_v27(5, (200_000, 100_000), [0; 4], 19),
+        ] {
+            let main = riff(b"CDRU", &chunk(b"fild", &bad));
+            let tree = crate::riff::parse(&main).unwrap();
+            let mut ctx = Ctx::new(&main, &tree, 27);
+            ctx.vector_patterns.insert(19, &vpat[4..]);
+            ctx.read_fill(tree.root.find(b"fild").unwrap());
+            assert_eq!(ctx.fills[&5].fill, Fill::None);
+            assert!(ctx
+                .report
+                .warnings
+                .iter()
+                .any(|w| w.contains("vector pattern")));
+        }
+    }
+
+    /// A group's vector pattern transparency (a version 27 file): the
+    /// group's own `loda` holds argument 8000, a 117-byte record whose
+    /// type at byte 37 is 10 and whose fill id at byte 105 names a vector
+    /// pattern fill; the pattern is a mask over all the group holds.
+    #[test]
+    fn version_27_group_with_a_vector_pattern_transparency() {
+        use tracedraw_core::live::Effect;
+        let v = 27u16;
+        let record = |kind: u16, fill: u32, len: usize| {
+            let mut b = vec![5u8];
+            b.extend_from_slice(&u32s(&[2]));
+            b.resize(13, 0);
+            b.extend_from_slice(&i32s(&[-127_000, 127_000, 127_000, -127_000]));
+            b.resize(37, 0);
+            b.extend_from_slice(&u16s(&[kind]));
+            b.resize(69, 0);
+            b.extend_from_slice(&f64s(&[100.0]));
+            b.resize(81, 0);
+            b.extend_from_slice(&u32s(&[2]));
+            b.resize(105, 0);
+            b.extend_from_slice(&u32s(&[fill]));
+            b.resize(len, 0);
+            [u32s(&[0x514, 117]), b].concat()
+        };
+        let json = r#"{"transparency":{},"fill":{"type":"1","primaryColor":"RGB255,USER,102,97,143,100,00000000-0000-0000-0000-000000000000"}}"#;
+        let style = [u32s(&[1, json.len() as u32]), json.as_bytes().to_vec()].concat();
+        let square = list(
+            b"obj ",
+            &chunk(
+                b"loda",
+                &loda(
+                    OBJ_RECT,
+                    &[
+                        (ARG_STYLE_STRING, style),
+                        (ARG_COORDS, f64s(&[254_000.0, 254_000.0, 1.0, 1.0])),
+                    ],
+                ),
+            ),
+        );
+        let solid = {
+            let mut props = vec![0x01u8];
+            props.extend_from_slice(&12u32.to_le_bytes());
+            props.extend_from_slice(&color_bgr(10, 20, 30));
+            props.push(0x00);
+            let mut body = u32s(&[1300, props.len() as u32]);
+            body.extend_from_slice(&props);
+            let mut fild = u32s(&[6, 1300, (body.len() + 2) as u32]);
+            fild.extend_from_slice(&u16s(&[1]));
+            fild.extend_from_slice(&body);
+            fild
+        };
+        let read = |op: Option<Vec<u8>>| {
+            let mut args = vec![
+                (12000, u32s(&[0])),
+                (ARG_STYLE_STRING, [u32s(&[1, 2]), b"{}".to_vec()].concat()),
+                (100, u32s(&[8])),
+            ];
+            if let Some(op) = op {
+                args.insert(1, (ARG_OPACITY, op));
+            }
+            let grp = list(
+                b"grp ",
+                &[
+                    list(b"lgob", &chunk(b"loda", &loda(0, &args))),
+                    square.clone(),
+                ]
+                .concat(),
+            );
+            let pattern = vector_pattern_fild_v27(
+                5,
+                (254_000, 254_000),
+                [-200_000, 200_000, 200_000, -200_000],
+                19,
+            );
+            let body = [
+                chunk(b"mcfg", &mcfg(v, 2_540_000, 2_540_000)),
+                chunk(b"vpat", &vpat_with_a_rectangle(19)),
+                chunk(b"fild", &pattern),
+                chunk(b"fild", &solid),
+                list(b"page", &list(b"layr", &grp)),
+            ]
+            .concat();
+            let (doc, rep) = parse(&riff(b"CDRU", &body), v);
+            (first_shape(&doc).clone(), rep)
+        };
+        // The group stays a group, though it holds one object, and carries
+        // the mask: one tile over its box, moving with it.
+        let (g, rep) = read(Some(record(10, 5, 117)));
+        assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+        let ShapeKind::Group { children } = &g.kind else {
+            panic!("not a group: {:?}", g.kind);
+        };
+        assert_eq!(children.len(), 1);
+        assert!(children[0].effects.is_empty());
+        let [Effect::Transparency {
+            mask: Fill::Pattern(tracedraw_core::style::Pattern::Vector { placement, .. }),
+            merge: tracedraw_core::live::MergeMode::Normal,
+            target: 2,
+        }] = g.effects.as_slice()
+        else {
+            panic!("{:?}", g.effects);
+        };
+        let b = g.bounds();
+        assert!(b.width() > 1.0 && b.height() > 1.0, "{b:?}");
+        assert!(
+            (placement.offset_x - b.x0).abs() < 1e-9 && (placement.offset_y - b.y0).abs() < 1e-9
+        );
+        assert_eq!(placement.size, Some(Size::new(b.width(), b.height())));
+        assert!(placement.transform_with_object);
+        // Without the record, with one of another type or one cut short:
+        // the object alone, opaque, as before.
+        for op in [None, Some(record(1, 5, 117)), Some(record(10, 5, 60))] {
+            let (s, rep) = read(op);
+            assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+            assert!(!matches!(s.kind, ShapeKind::Group { .. }), "{:?}", s.kind);
+            assert!(s.effects.is_empty() && s.opacity == 1.0);
+        }
+        // A fill that is no vector pattern, or none at all: opaque, with a
+        // warning.
+        for fill in [6, 77] {
+            let (s, rep) = read(Some(record(10, fill, 117)));
+            assert!(!matches!(s.kind, ShapeKind::Group { .. }), "{:?}", s.kind);
+            assert!(s.effects.is_empty());
+            assert!(
+                rep.warnings
+                    .iter()
+                    .any(|w| w.contains("not a vector pattern")),
+                "{:?}",
+                rep.warnings
+            );
+        }
     }
 
     // Arrowheads.

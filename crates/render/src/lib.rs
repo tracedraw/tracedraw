@@ -2040,7 +2040,15 @@ impl Renderer<'_> {
                         sub.fill_shaped(f, &shape_sk, &sk, rule);
                     }
                 }
-                _ => sub.draw_fill(mask_fill, &rect_path, &sk, FillRule::Winding),
+                // A pattern mask set to transform with its object follows it.
+                _ => sub.draw_fill_of(
+                    mask_fill,
+                    &rect_path,
+                    &sk,
+                    FillRule::Winding,
+                    tiny_skia::BlendMode::SourceOver,
+                    transform,
+                ),
             }
         }
         let lum = |p: &tiny_skia::PremultipliedColorU8| {
@@ -6720,6 +6728,59 @@ mod tests {
         assert_eq!(px(&along, 7, 17), (255, 0, 0));
         assert_eq!(px(&along, 12, 17), (255, 255, 255));
         assert_eq!(px(&along, 17, 17), (255, 0, 0));
+    }
+
+    /// A pattern as a transparency mask (a group's vector pattern
+    /// transparency read from a `.cdr`): set to transform with its
+    /// object, the mask moves with the object; it stayed on the page.
+    #[test]
+    fn a_pattern_mask_set_to_transform_with_its_object_follows_it() {
+        use tracedraw_core::live::{Effect, MergeMode};
+        use tracedraw_core::style::PatternPlacement;
+        use tracedraw_core::{Command, Engine};
+        let make = |with_object: bool| {
+            // The mask: white (opaque) over the left half of the tile,
+            // black (clear) over the right half; one tile over the object.
+            let white = rect(7, Rect::new(0.0, 0.0, 10.0, 20.0), Color::WHITE);
+            let black = rect(8, Rect::new(10.0, 0.0, 20.0, 20.0), Color::BLACK);
+            let mut s = rect(1, Rect::new(0.0, 0.0, 20.0, 20.0), Color::rgb8(255, 0, 0));
+            s.effects.push(Effect::Transparency {
+                mask: Fill::Pattern(Pattern::Vector {
+                    shapes: vec![white, black],
+                    tile: tracedraw_core::geometry::Size::new(20.0, 20.0),
+                    placement: PatternPlacement {
+                        transform_with_object: with_object,
+                        ..PatternPlacement::default()
+                    },
+                }),
+                merge: MergeMode::Normal,
+                target: 2,
+            });
+            let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(30.0, 20.0));
+            let page = doc.pages[0].id;
+            let layer = doc.pages[0].layers[0].id;
+            doc.layer_mut(layer).unwrap().shapes.push(s);
+            let mut e = Engine::new(doc);
+            e.run(&Command::TransformShapes {
+                shapes: vec![tracedraw_core::ShapeId(1)],
+                transform: Affine::translate((5.0, 0.0)),
+            })
+            .unwrap();
+            render_page_image(e.document(), page, 25.4).unwrap()
+        };
+        // The object covers x 5..25. With the object, its left half
+        // (x 5..15) is opaque and its right half clear.
+        let along = make(true);
+        assert_eq!(px(&along, 7, 10), (255, 0, 0));
+        assert_eq!(px(&along, 12, 10), (255, 0, 0));
+        assert_eq!(px(&along, 17, 10), (255, 255, 255));
+        assert_eq!(px(&along, 22, 10), (255, 255, 255));
+        // Anchored to the page, the tiles stay where they were: opaque
+        // over x 0..10 and 20..30.
+        let anchored = make(false);
+        assert_eq!(px(&anchored, 7, 10), (255, 0, 0));
+        assert_eq!(px(&anchored, 12, 10), (255, 255, 255));
+        assert_eq!(px(&anchored, 22, 10), (255, 0, 0));
     }
 
     /// Mirrored and shifted bitmap tiles: the picture's block is built
