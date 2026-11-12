@@ -1015,6 +1015,11 @@ impl App {
         if r.width() < 0.05 && r.height() < 0.05 {
             return;
         }
+        // The Mesh Fill tool's box chooses mesh nodes (discussion #2387).
+        if self.tool == crate::tools::Tool::MeshFill {
+            self.choose_mesh_nodes_in(r, keeps);
+            return;
+        }
         let before = (
             self.node_selection.clone(),
             self.rect_corners_selected.clone(),

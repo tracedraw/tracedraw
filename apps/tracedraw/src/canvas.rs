@@ -3494,6 +3494,12 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
                 }
             }
         }
+        // Every chosen mesh node shows filled (discussion #2387).
+        let chosen: Vec<usize> = app
+            .selected_mesh_nodes()
+            .filter(|(id, _)| *id == s.id)
+            .map(|(_, v)| v)
+            .unwrap_or_default();
         for (i, p) in nodes {
             let sp = app.view.to_screen(p);
             let r = egui::Rect::from_center_size(sp, egui::vec2(7.0, 7.0));
@@ -3501,7 +3507,8 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
                 .effect_node_drag
                 .map(|(id, k)| id == s.id && k == i)
                 .unwrap_or(false)
-                || app.selected_effect_node == Some((s.id, i));
+                || app.selected_effect_node == Some((s.id, i))
+                || crate::mesh_tool::mesh_node_of(i).is_some_and(|k| chosen.contains(&k));
             painter.rect_filled(r, 0.0, if selected { blue } else { egui::Color32::WHITE });
             painter.rect_stroke(
                 r,

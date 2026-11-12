@@ -2011,6 +2011,14 @@ pub struct App {
     pub smoothing_mark: Option<crate::node_edit::SmoothingMark>,
     /// Last clicked effect/mesh node (palette clicks colour a mesh node).
     pub selected_effect_node: Option<(ShapeId, usize)>,
+    /// More mesh nodes chosen with the one in `selected_effect_node`
+    /// (Shift+click, a marquee; discussion #2387): the node they go with
+    /// and their numbers in its mesh. They count only while that node is
+    /// still the one chosen.
+    pub mesh_more_nodes: Option<((ShapeId, usize), Vec<usize>)>,
+    /// The Mesh Fill bar's eyedropper is on: the next click samples a
+    /// colour for the chosen mesh nodes (discussion #2387).
+    pub mesh_eyedropper: bool,
     /// Open drawings, one tab each (see `documents.rs`); the active one's
     /// state lives in the fields above.
     pub docs: Vec<crate::documents::DocSlot>,
@@ -3150,6 +3158,8 @@ impl App {
             smoothing: None,
             smoothing_mark: None,
             selected_effect_node: None,
+            mesh_more_nodes: None,
+            mesh_eyedropper: false,
             docs: Vec::new(),
             active_doc: 0,
             untitled_counter: 0,

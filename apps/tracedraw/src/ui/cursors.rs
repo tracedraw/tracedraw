@@ -397,6 +397,8 @@ pub fn for_tool_with_ctrl(
             ToolCursor::Bucket
         }
         Tool::ColorEyedropper | Tool::AttributesEyedropper => ToolCursor::Pipette,
+        // The Mesh Fill bar's eyedropper waits for its click (#2387).
+        Tool::MeshFill if app.mesh_eyedropper => ToolCursor::Pipette,
         Tool::AreaFill => ToolCursor::Bucket,
         // The I-beam where a click edits text, else the cross hair with the
         // tool's sign (a click starts a new text, a drag a frame).

@@ -282,6 +282,8 @@ impl App {
         self.anchor_sel = None;
         self.effect_node_drag = None;
         self.selected_effect_node = None;
+        self.mesh_more_nodes = None;
+        self.mesh_eyedropper = false;
         self.lens_synced_to = None;
         self.bevel_synced_to = None;
         self.extrude_drag = None;

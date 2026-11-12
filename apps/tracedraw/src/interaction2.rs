@@ -546,9 +546,18 @@ impl App {
     pub fn effect_node_input(&mut self, response: &Response, p: Point) -> bool {
         if response.clicked_by(PointerButton::Primary) {
             if let Some(hit) = self.effect_node_at(p) {
-                // A handle keeps its node selected.
+                // A handle keeps its node selected. Shift+click on a
+                // mesh node adds it to (or takes it out of) the chosen
+                // nodes, as in CorelDRAW (discussion #2387).
                 if !crate::mesh_tool::is_mesh_handle(hit.1) {
-                    self.selected_effect_node = Some(hit);
+                    let shift = response.ctx.input(|i| i.modifiers.shift);
+                    match crate::mesh_tool::mesh_node_of(hit.1) {
+                        Some(k) if shift => self.toggle_mesh_node(hit.0, k),
+                        _ => {
+                            self.selected_effect_node = Some(hit);
+                            self.mesh_more_nodes = None;
+                        }
+                    }
                 }
                 return true;
             }
@@ -599,7 +608,24 @@ impl App {
                 self.effect_node_grab = at - from;
                 self.effect_node_drag = Some((id, index));
                 if !crate::mesh_tool::is_mesh_handle(index) {
-                    self.selected_effect_node = Some((id, index));
+                    // A drag on one of several chosen mesh nodes moves
+                    // them all; on another node, that node alone.
+                    let group = crate::mesh_tool::mesh_node_of(index).and_then(|k| {
+                        self.selected_mesh_nodes()
+                            .filter(|(sid, nodes)| *sid == id && nodes.contains(&k))
+                            .map(|(_, nodes)| (k, nodes))
+                    });
+                    match group {
+                        Some((k, mut nodes)) => {
+                            nodes.retain(|&n| n != k);
+                            nodes.insert(0, k);
+                            self.choose_mesh_nodes(id, &nodes);
+                        }
+                        None => {
+                            self.selected_effect_node = Some((id, index));
+                            self.mesh_more_nodes = None;
+                        }
+                    }
                 }
                 self.effect_node_stepped = false;
                 self.drag = Drag::Node { last: from };
@@ -644,6 +670,21 @@ impl App {
             let mut effects = s.effects.clone();
             let mut fill = s.fill.clone();
             move_effect_node(&mut effects, &mut fill, index, ld);
+            // The other chosen mesh nodes go along (discussion #2387).
+            if let Some(k) = crate::mesh_tool::mesh_node_of(index) {
+                if let Some((sid, nodes)) = self.selected_mesh_nodes() {
+                    if sid == id && nodes.first() == Some(&k) {
+                        for &n in &nodes[1..] {
+                            move_effect_node(
+                                &mut effects,
+                                &mut fill,
+                                crate::mesh_tool::MESH_NODE_BASE + n,
+                                ld,
+                            );
+                        }
+                    }
+                }
+            }
             let mut cmds = Vec::new();
             if effects != s.effects {
                 cmds.push(Command::SetEffects { shape: id, effects });

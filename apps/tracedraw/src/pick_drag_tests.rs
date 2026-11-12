@@ -14901,6 +14901,121 @@ fn mesh_nodes_land_where_they_are_clicked_and_dragged() {
     assert!((mesh(&app).nodes[i].pos - at).hypot() <= tol);
 }
 
+/// Discussion #2387, Mesh Fill as in CorelDRAW: Shift+click adds mesh
+/// nodes to the chosen ones (and takes a chosen one out), a marquee
+/// chooses the nodes inside it, a palette colour, the transparency and
+/// the mesh eyedropper act on every chosen node, and a drag moves them
+/// all together.
+#[test]
+fn several_mesh_nodes_take_a_colour_and_move_together() {
+    use crate::mesh_tool::MESH_NODE_BASE;
+    use tracedraw_core::{Color, Fill};
+    let (ctx, mut app, id) = setup();
+    // A blue square beside the rectangle, for the eyedropper.
+    let blue = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(80.0, 10.0, 100.0, 30.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![blue]);
+    app.apply_fill(Fill::Solid(Color::rgb8(0, 0, 255)));
+    app.select(vec![id]);
+    app.mesh_rows = 2;
+    app.mesh_cols = 2;
+    app.set_tool(Tool::MeshFill);
+    click_page(&ctx, &mut app, Point::new(30.0, 20.0));
+    let mesh = |app: &App| match &app.doc().find_shape(id).expect("shape").fill {
+        Fill::Mesh(m) => m.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(mesh(&app).nodes.len(), 9);
+    let node = |app: &App, i: usize| {
+        let s = app.doc().find_shape(id).expect("shape");
+        app.view
+            .to_screen(crate::interaction2::effect_point(s, MESH_NODE_BASE + i).expect("node"))
+    };
+    let chosen = |app: &App| {
+        app.selected_mesh_nodes()
+            .map(|(_, v)| v)
+            .unwrap_or_default()
+    };
+    // A click takes one node; Shift+click adds two more, and takes one out.
+    let at = node(&app, 4);
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert_eq!(chosen(&app), vec![4]);
+    let at = node(&app, 5);
+    click_at(&ctx, &mut app, at, Modifiers::SHIFT);
+    let at = node(&app, 1);
+    click_at(&ctx, &mut app, at, Modifiers::SHIFT);
+    assert_eq!(chosen(&app), vec![4, 5, 1]);
+    let at = node(&app, 1);
+    click_at(&ctx, &mut app, at, Modifiers::SHIFT);
+    assert_eq!(chosen(&app), vec![4, 5]);
+    // A palette colour and the transparency go to both.
+    let red = Color::rgb8(255, 0, 0);
+    app.apply_fill(Fill::Solid(red));
+    app.set_mesh_node_alpha(0.5);
+    let m = mesh(&app);
+    for i in [4, 5] {
+        assert_eq!((m.nodes[i].color, m.nodes[i].alpha), (red, 0.5), "node {i}");
+    }
+    assert_ne!(m.nodes[3].color, red);
+    // The mesh eyedropper: a click on the blue square colours both blue.
+    app.mesh_eyedropper = true;
+    click_page(&ctx, &mut app, Point::new(90.0, 20.0));
+    let m = mesh(&app);
+    for i in [4, 5] {
+        assert_eq!(m.nodes[i].color, Color::rgb8(0, 0, 255), "node {i}");
+    }
+    assert_ne!(m.nodes[3].color, Color::rgb8(0, 0, 255));
+    assert!(!app.mesh_eyedropper);
+    assert_eq!(app.selection, vec![id]);
+    // A drag on one chosen node moves both by the same distance.
+    let before = mesh(&app);
+    let from = node(&app, 4);
+    let to = from + egui::vec2(30.0, 0.0);
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    let m = mesh(&app);
+    let d4 = m.nodes[4].pos - before.nodes[4].pos;
+    let d5 = m.nodes[5].pos - before.nodes[5].pos;
+    assert!(d4.x > 1.0 && (d4 - d5).hypot() < 1e-6, "{d4:?} {d5:?}");
+    assert_eq!(m.nodes[3].pos, before.nodes[3].pos);
+    assert_eq!(chosen(&app), vec![4, 5]);
+    // A plain click on another node takes it alone.
+    let at = node(&app, 0);
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert_eq!(chosen(&app), vec![0]);
+    // A marquee round the top row's nodes chooses those three.
+    let (a, b) = (node(&app, 0), node(&app, 2));
+    drag(
+        &ctx,
+        &mut app,
+        Pos2::new(a.x - 25.0, a.y - 25.0),
+        Pos2::new(b.x + 25.0, b.y + 25.0),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    let mut top = chosen(&app);
+    top.sort();
+    assert_eq!(top, vec![0, 1, 2]);
+    assert_eq!(app.selection, vec![id]);
+    // With Shift, a box round the centre node adds it.
+    let c = node(&app, 4);
+    drag(
+        &ctx,
+        &mut app,
+        Pos2::new(c.x - 25.0, c.y - 25.0),
+        Pos2::new(c.x + 25.0, c.y + 25.0),
+        Modifiers::SHIFT,
+        Vec::new(),
+    );
+    let mut more = chosen(&app);
+    more.sort();
+    assert_eq!(more, vec![0, 1, 2, 4]);
+}
+
 /// The property bar's grip dragged onto the standard toolbar's row puts
 /// the two side by side in one row, the drawing window taking the band
 /// the property bar left; dragged to the line under that row it gets a
