@@ -4083,6 +4083,12 @@ impl FontSystem {
         let mut col = 0usize;
         let mut y = 0.0f64; // top of the frame or baseline of artistic text
         let mut prev_para: Option<usize> = None;
+        // A drop cap taller than its paragraph (#1995): the right edge of
+        // its letter (from the column's left), the baseline of the last
+        // line it spans and its column. The next paragraphs' lines beside
+        // it are narrowed as its own are, and a paragraph with a drop cap
+        // of its own starts below it, so the letters do not overlap.
+        let mut cap_below: Option<(f64, f64, usize)> = None;
         'paragraphs: for (pi, glyphs) in paragraphs.iter().enumerate() {
             let (_, ps) = style_of(pi);
             let m_para = glyphs
@@ -4140,6 +4146,14 @@ impl FontSystem {
                 pi,
                 para_start,
             );
+            if cap_below.is_some_and(|(_, _, c)| c != col) {
+                cap_below = None;
+            }
+            if let (Some(_), Some((_, last, _))) = (cap, cap_below) {
+                // Its first line goes on the line after the cap above.
+                y = y.min(last);
+                cap_below = None;
+            }
             let mut row = 0usize;
             // How far a line moves down from the one before it.
             let advance_of = |m: &Metrics, first: bool, prev: Option<usize>| -> f64 {
@@ -4158,8 +4172,18 @@ impl FontSystem {
             loop {
                 let first = br.first;
                 let indent = if first { indent_first } else { indent_rest };
-                let cap_w = match cap {
-                    Some(c) if row < c.lines => c.width,
+                let cap_w = match (cap, cap_below) {
+                    (Some(c), _) if row < c.lines => c.width,
+                    (None, Some((right, last, c))) if c == col => {
+                        let m_est = br.peek().map(|g| metrics[g.span]).unwrap_or(m_para);
+                        let next = y - advance_of(&m_est, first, prev_para);
+                        if next >= last - 1e-6 {
+                            (right - indent).max(0.0)
+                        } else {
+                            cap_below = None;
+                            0.0
+                        }
+                    }
                     _ => 0.0,
                 };
                 // The first line gives the letter it drops back.
@@ -4306,6 +4330,12 @@ impl FontSystem {
                         }
                     }
                     lines.push(line);
+                }
+                if let (Some(c), 0, Some(l)) = (cap, row, lines.last()) {
+                    // The baseline of the cap's last line, in case the
+                    // paragraph ends before it.
+                    let step = ps.line_step(m_para.line_height, m_para.size);
+                    cap_below = Some((indent + c.width, l.y - (c.lines as f64 - 1.0) * step, col));
                 }
                 row += 1;
                 // The rest does not show: no need to break it into lines.
@@ -6093,6 +6123,59 @@ mod tests {
             let right = l.edges.last().copied().unwrap_or(0.0);
             assert!(right <= 40.0 + 0.01, "line ends at {right}");
         }
+    }
+
+    /// A drop cap taller than its paragraph (#1995): the next paragraph
+    /// with a drop cap of its own starts below the letter instead of
+    /// putting its letter over it, and one without a drop cap has its
+    /// lines beside the letter narrowed as the paragraph's own are.
+    #[test]
+    fn a_drop_cap_taller_than_its_paragraph_keeps_the_next_one_clear() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        let long = "Words in a paragraph long enough to wrap over several lines, \
+                    so the drop cap has room to span three of them.";
+        let text = format!("Short one.\n{long}");
+        let para = ParagraphStyle {
+            drop_cap_lines: 3,
+            ..Default::default()
+        };
+        let lay = |spans: &[TextSpan]| {
+            f.layout(&TextRequest {
+                spans,
+                frame: Some(Size::new(40.0, 100.0)),
+                align: TextAlign::Left,
+                para: &para,
+                on_path: None,
+            })
+        };
+        // Both with a drop cap: the second's first line comes after the
+        // three lines the first letter spans.
+        let both = lay(&[span(&text)]);
+        let first_of_second = both
+            .lines
+            .iter()
+            .position(|l| l.start_char >= 11)
+            .expect("second paragraph");
+        assert_eq!(first_of_second, 1);
+        let step = both.lines[1].baseline - both.lines[2].baseline;
+        let gap = both.lines[0].baseline - both.lines[1].baseline;
+        assert!(gap > 2.5 * step, "{gap} {step}");
+        // The second without one: its lines beside the letter start where
+        // the first paragraph's text does, the next ones at the margin.
+        let mut plain = span(long);
+        plain.paragraph = Some(Box::new(tracedraw_core::paragraphs::ParagraphFormat::of(
+            TextAlign::Left,
+            &ParagraphStyle::default(),
+        )));
+        let mixed = lay(&[span("Short one.\n"), plain]);
+        let left = |i: usize| mixed.lines[i].edges[0];
+        assert!(left(0) > 3.0, "{}", left(0));
+        assert!((left(1) - left(0)).abs() < 0.01, "{} {}", left(1), left(0));
+        assert!((left(2) - left(0)).abs() < 0.01, "{} {}", left(2), left(0));
+        assert!(left(3) < 0.5, "{}", left(3));
     }
 
     #[test]

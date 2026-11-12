@@ -4042,6 +4042,16 @@ impl<'a> Ctx<'a> {
             s.miter_limit = a;
         }
 
+        // A merge mode the reader does not know yet (#1666) is named, so
+        // a report can say which code the file uses.
+        if let Some(code) = style_string
+            .as_deref()
+            .and_then(text::object_transparency_merge_code)
+        {
+            self.report.warn(format!(
+                "transparency merge mode {code} not read; object merged as Normal"
+            ));
+        }
         // Version 16+: a graded transparency in the object's style string
         // becomes a mask; otherwise its uniform transparency an opacity.
         let mut mask = v11_mask.or_else(|| {
@@ -12928,6 +12938,29 @@ pub(crate) mod tests {
             .concat(),
         );
         assert!(got[0] == 1.0 && (got[1] - 0.8).abs() < 1e-9, "{got:?}");
+        // A merge mode the reader does not know is named in a warning
+        // (#1666); the object is still read, merged as Normal.
+        let merged = style_of(r#"{"transparency":{"fill":{"type":"1"},"mode":"4"}}"#);
+        let grp = list(
+            b"grp ",
+            &[
+                chunk(b"loda", &group_loda),
+                square_styled(&merged, 1, Some(0.0)),
+            ]
+            .concat(),
+        );
+        let body = [
+            chunk(b"mcfg", &mcfg(v, 2_540_000, 2_540_000)),
+            list(b"page", &list(b"layr", &grp)),
+        ]
+        .concat();
+        let (_, rep) = parse(&riff(b"CDRO", &body), v);
+        assert_eq!(rep.shapes, 1);
+        assert!(
+            rep.warnings.iter().any(|w| w.contains("merge mode 4")),
+            "{:?}",
+            rep.warnings
+        );
     }
 
     // Arrowheads.
