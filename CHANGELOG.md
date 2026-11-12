@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Locked objects: objects locked in a `.cdr` file and imported come in with the others but are not selected, and a row of a locked object in the Objects docker no longer selects it, so they cannot be moved or edited until unlocked. Imported objects came in all selected, the locked ones too, and a drag, a nudge or a colour then changed them as if they were free (#2347).
+- Zooming in on a large drawing: the objects of a group that lie off screen are no longer drawn. Zoomed in on a design kept as one big group, as `.cdr` files often keep it, every object of the group was drawn at the zoom's detail, so each zoom in took far longer than the page fitted in the window and the picture stayed blurry, coming back slowly (discussion #2389).
 - Hardware acceleration: when it is off in Options, the window is drawn on the CPU and working on the drawing is slow while this computer has a graphics card, TraceDraw says so once, names the card and offers to turn acceleration on (from the next start) or to open Options. "Do not show this message again" turns the hint off; Options > Global > Warnings turns it on again.
 - Opening .cdr files: a transparency whose merge mode the reader does not know yet is named in the open report ("transparency merge mode N not read"), so a file whose pictures should multiply into the colours under them, and show white boxes instead, says which mode it asks for (#1666).
 - Text: a drop cap taller than its paragraph no longer covers the next paragraph. A next paragraph with a drop cap starts below the letter, and one without has its lines beside the letter narrowed; the second letter was drawn over the first and the lines ran under it (#1995).
