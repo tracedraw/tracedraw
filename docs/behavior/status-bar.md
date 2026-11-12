@@ -55,6 +55,14 @@ with no colour is a white box crossed by a red line. Double-clicking the
 fill part opens the Edit Fill dialog box (as F11); the outline part, the
 Outline Pen dialog box (as F12) (#465).
 
+The swatches carry the marks of palette swatches (#2455): a spot colour's
+fill or outline has a small dot in the lower right corner of its swatch,
+and a fill or outline that overprints (every painted object of the
+selection does) a small ring in the lower left corner, each black on a
+light colour and white on a dark one. A mixed selection, a fill that is
+not one colour and no colour carry no mark. Test
+`ui::status::tests::the_status_swatches_carry_the_spot_and_overprint_marks`.
+
 With no drawing open the bar shows the placeholders Tool Hints, Object
 Information, Fill Color and Outline Color.
 

@@ -419,6 +419,20 @@ pub fn status_bar(app: &mut App, ui: &mut Ui) {
     let several = shapes.len() > 1;
     let fill_mixed = several && !app.selection_fill_mix().is_empty();
     let stroke_mixed = several && !app.selection_stroke_mix().is_empty();
+    // The colours behind the swatches and whether each overprints, for the
+    // spot colour and overprint marks (#2455); a mixed selection has none.
+    let fill_marks = match &fill {
+        tracedraw_core::Fill::Solid(c) if doc && !fill_mixed => {
+            Some((*c, app.selection_overprint(true) == Some(true)))
+        }
+        _ => None,
+    };
+    let outline_marks = match &stroke {
+        Some(s) if doc && !stroke_mixed => {
+            Some((s.color, app.selection_overprint(false) == Some(true)))
+        }
+        _ => None,
+    };
     let (fill_text, fill_swatch, outline_label, outline_swatch) = if doc {
         (
             if fill_mixed {
@@ -585,6 +599,7 @@ pub fn status_bar(app: &mut App, ui: &mut Ui) {
         id: "status_fill",
         icon: Tool::InteractiveFill,
         swatch: fill_swatch,
+        marks: fill_marks,
         text: &fill_text,
         tip: &tr("status.swatch_fill"),
     }
@@ -602,6 +617,7 @@ pub fn status_bar(app: &mut App, ui: &mut Ui) {
         id: "status_outline",
         icon: Tool::OutlinePen,
         swatch: outline_swatch,
+        marks: outline_marks,
         text: &outline_label,
         tip: &tr("status.swatch_outline"),
     }
@@ -669,6 +685,8 @@ struct Indicator<'a> {
     id: &'a str,
     icon: Tool,
     swatch: Option<Color32>,
+    /// The swatch's colour and whether it overprints, for its marks.
+    marks: Option<(tracedraw_core::Color, bool)>,
     text: &'a str,
     tip: &'a str,
 }
@@ -687,6 +705,9 @@ impl Indicator<'_> {
             Vec2::new(26.0, 25.0),
         );
         draw_swatch(painter, sw, self.swatch);
+        if let Some((c, overprint)) = self.marks {
+            crate::ui::palette::swatch_marks(painter, sw, c, overprint);
+        }
         let clip = Rect::from_min_max(Pos2::new(sw.max.x + 5.0, part.min.y), part.max);
         let g = elided(painter, self.text.to_owned(), part.max.x - sw.max.x - 5.0);
         painter.with_clip_rect(clip).galley(
@@ -948,6 +969,56 @@ mod tests {
         assert_eq!(app.status, "Opened");
         run(&mut app, 200.0 + 2.0 * STATUS_SECS + 1.0);
         assert!(app.status.is_empty());
+    }
+
+    /// The status bar's fill and outline swatches carry the spot colour's
+    /// dot and, while the selection overprints, the ring (#2455).
+    #[test]
+    fn the_status_swatches_carry_the_spot_and_overprint_marks() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        let circles = |app: &mut App| {
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1600.0, 60.0))),
+                    ..Default::default()
+                },
+                |ui| status_bar(app, ui),
+            );
+            out.textures_delta.clear();
+            out.shapes
+                .iter()
+                .filter(|s| matches!(s.shape, egui::Shape::Circle(_)))
+                .count()
+        };
+        let id = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: PRect::new(0.0, 0.0, 20.0, 20.0),
+                arc: None,
+            })
+            .expect("ellipse");
+        app.select(vec![id]);
+        app.apply_fill(tracedraw_core::Fill::Solid(
+            tracedraw_core::Color::cmyk_pct(0.0, 100.0, 100.0, 0.0),
+        ));
+        let plain = circles(&mut app);
+        // A spot fill: its dot.
+        let gold = crate::palette::spot_color(
+            "Gold 871",
+            tracedraw_core::Color::cmyk_pct(0.0, 20.0, 80.0, 10.0),
+        );
+        app.apply_fill(tracedraw_core::Fill::Solid(gold));
+        assert_eq!(circles(&mut app), plain + 1, "the dot");
+        // Overprinting too: the ring of two circles beside the dot.
+        app.set_overprint(true, true);
+        assert_eq!(circles(&mut app), plain + 3, "the dot and the ring");
+        // The outline overprints as well, adding its own ring.
+        app.set_overprint(false, true);
+        assert_eq!(circles(&mut app), plain + 5, "both rings");
+        // Nothing selected: the defaults' swatches, with no marks.
+        app.select(Vec::new());
+        assert_eq!(circles(&mut app), plain);
     }
 
     #[test]

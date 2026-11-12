@@ -345,7 +345,9 @@ a spot colour, an ink of the drawing, keeps its value and its ink; Save
 as writes the colours to a palette file without changing the drawing.
 Spot colours have a small dot in the corner of their swatch, in the
 editor and on the palette bars, black on a light ink and white on a dark
-one.
+one. The fill and outline swatches of the status bar and the Colour panel carry
+the dot too, and a ring in the other corner while the selection overprints
+(see `spot-colors.md`, Swatch marks, #2455).
 
 - Selection as in a list: a click selects one swatch, Ctrl+click adds or
   removes one, Shift+click selects the run from the last swatch clicked
