@@ -637,6 +637,8 @@ impl App {
                 self.eyedropper_apply = true;
                 self.status = crate::i18n::tr("status.sampled_attrs");
             }
+        } else if self.mask.picking {
+            self.pick_mask_color_at(p);
         } else {
             let apply = self.eyedropper_apply && self.eyedropper_color.is_some() && !resample;
             if apply {
@@ -659,6 +661,43 @@ impl App {
         self.eyedropper_color = None;
         self.eyedropper_attrs = None;
         self.eyedropper_apply = false;
+        self.mask.picking = false;
+    }
+
+    /// The eyedropper of Image > Color Mask: the next click on the
+    /// drawing picks the colour for the slot chosen in the docker.
+    pub fn start_mask_color_pick(&mut self) {
+        self.mask.picking = true;
+        self.set_tool(crate::tools::Tool::ColorEyedropper);
+    }
+
+    /// A click of the Color Mask's eyedropper (#2479): the colour under
+    /// `p` (a picture's pixel) goes into the chosen slot, which is turned
+    /// on, and the tool used before comes back, the picture still
+    /// selected for Apply, as CorelDRAW's Bitmap Color Mask does. Each
+    /// pick samples: the second one applied the first colour to the
+    /// picture as a fill instead, the Colour Eyedropper being in its
+    /// Apply mode, so only one colour of an imported picture could be
+    /// picked. A click on nothing keeps the eyedropper waiting.
+    fn pick_mask_color_at(&mut self, p: Point) {
+        use crate::bitmap_fx::MASK_SLOTS;
+        let Some(c) = self.sample_color_at(p, false) else {
+            return;
+        };
+        let i = self.mask.picked.min(MASK_SLOTS - 1);
+        self.mask.slots[i].color = c;
+        self.mask.slots[i].on = true;
+        self.mask.seen = Some(c);
+        self.mask.picking = false;
+        self.status = crate::i18n::trf(
+            "status.sampled_color",
+            &[("c", &crate::app::color_description(c))],
+        );
+        let back = match self.previous_tool {
+            crate::tools::Tool::ColorEyedropper => crate::tools::Tool::Pick,
+            t => t,
+        };
+        self.set_tool(back);
     }
 }
 
@@ -783,6 +822,56 @@ mod tests {
             Some(Fill::Solid(Color::rgb8(10, 200, 10)))
         );
         assert!(app.eyedropper_apply);
+    }
+
+    /// Image > Color Mask's eyedropper picks a colour of an imported
+    /// picture for each slot, one click each, and never paints the
+    /// picture: the second pick applied the first colour to it as a fill
+    /// (#2479). After a pick the tool used before comes back with the
+    /// picture still selected; another tool or Esc ends a pick.
+    #[test]
+    fn color_mask_eyedropper_picks_each_colour_of_a_picture() {
+        let mut app = App::headless();
+        let img = image::RgbaImage::from_fn(40, 20, |x, _| {
+            if x < 20 {
+                image::Rgba([30, 160, 40, 255])
+            } else {
+                image::Rgba([200, 20, 30, 255])
+            }
+        });
+        app.paste_as_bitmap(img);
+        let pic = app.selection[0];
+        let before = app.doc().find_shape(pic).expect("picture").clone();
+        let b = before.bounds();
+        let left = Point::new(b.x0 + b.width() * 0.25, b.center().y);
+        let right = Point::new(b.x0 + b.width() * 0.75, b.center().y);
+        for (slot, at, want) in [(0, left, [30, 160, 40]), (1, right, [200, 20, 30])] {
+            app.mask.picked = slot;
+            app.start_mask_color_pick();
+            assert_eq!(app.tool, crate::tools::Tool::ColorEyedropper);
+            app.eyedropper_click(at, false, false, false);
+            assert!(app.mask.slots[slot].on, "slot {slot} on");
+            assert_eq!(app.mask.slots[slot].color.to_rgb8(), want, "slot {slot}");
+            assert_eq!(app.tool, crate::tools::Tool::Pick, "back to Pick");
+            assert_eq!(app.selection, vec![pic], "the picture stays selected");
+        }
+        let after = app.doc().find_shape(pic).expect("picture");
+        assert_eq!(after.fill, before.fill, "the picture was not painted");
+        // The Colour Eyedropper chosen later samples and applies as usual.
+        app.set_tool(crate::tools::Tool::ColorEyedropper);
+        app.eyedropper_click(right, false, false, false);
+        assert_eq!(
+            app.eyedropper_color.map(|c| c.to_rgb8()),
+            Some([200, 20, 30])
+        );
+        assert!(!app.mask.slots[2].on, "no slot taken");
+        // Another tool, or Esc, ends a pick not made.
+        app.start_mask_color_pick();
+        app.set_tool(crate::tools::Tool::Rectangle);
+        assert!(!app.mask.picking);
+        app.start_mask_color_pick();
+        app.eyedropper_reset();
+        assert!(!app.mask.picking);
     }
 
     /// Both eyedroppers read from a locked object (and from an object on

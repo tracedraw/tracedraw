@@ -2312,26 +2312,14 @@ fn bitmap_mask(app: &mut App, ui: &mut Ui) {
         .selected_shapes()
         .iter()
         .any(|s| matches!(s.kind, ShapeKind::Bitmap { .. }));
-    // A colour sampled with the eyedropper goes into the picked slot.
-    if app.mask.picking {
-        if let Some(c) = app.eyedropper_color {
-            if app.mask.seen != Some(c) {
-                let i = app.mask.picked.min(MASK_SLOTS - 1);
-                app.mask.slots[i].color = c;
-                app.mask.slots[i].on = true;
-                app.mask.seen = Some(c);
-            }
-        }
-    }
     ui.horizontal(|ui| {
         if icon_btn(ui, true, &tr("docker.mask_eyedropper"), |p, r, c| {
             crate::ui::icons::draw(p, r, crate::tools::Tool::ColorEyedropper, c)
         })
         .clicked()
         {
-            app.mask.picking = true;
-            app.mask.seen = app.eyedropper_color;
-            app.set_tool(crate::tools::Tool::ColorEyedropper);
+            // The next click on the drawing picks the slot's colour.
+            app.start_mask_color_pick();
         }
         if icon_btn(ui, has_bitmap, &tr("docker.mask_from_bitmap"), |p, r, c| {
             // A bitmap with a grid of samples.

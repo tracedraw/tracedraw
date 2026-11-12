@@ -5325,6 +5325,10 @@ impl App {
             self.dimension_points.clear();
             self.previous_tool = self.tool;
             self.tool = tool;
+            // Another tool ends a pick of Image > Color Mask (#2479).
+            if tool != Tool::ColorEyedropper {
+                self.mask.picking = false;
+            }
             self.rotate_mode = false;
             self.flyout_open = None;
             if let Some(gi) = crate::tools::GROUPS
