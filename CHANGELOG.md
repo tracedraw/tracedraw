@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Windows: a file double-clicked while TraceDraw runs minimized brings the window up. A minimized window runs no ui, so the files handed over waited there, the window down, until it was restored from the taskbar; they are now taken, and the window restored and brought forward, from the app's logic, which runs while the window is minimized too (#2129). Not yet tried on a Windows machine.
+- Dark theme: the property bar's greyed buttons, such as the Shape tool's node buttons with no node chosen, are plain to see. They were drawn in the panels' line colour, darker than the bar; they now take the theme's colour for icons that cannot run now (#2065).
 - Transparency tool: a gradient transparency made Radial (or Conical or Square) is clear at the centre and opaque at the edge, its centre node black and its end node white. It came out the other way round, the centre opaque. A transparency whose nodes were changed keeps them (#2377).
 - Transparency and Interactive Fill tools: dragging the end node of a radial, conical or square gradient keeps its shape, so a circle stays a circle; the skew node alone makes it an ellipse. It turned a circle into an ellipse. Ctrl or Shift held while dragging the end node turns the line in 15 degree steps (the constrain angle), and Shift now does the same as Ctrl while a new line is dragged (#2373).
 - Shape tool: Break Curve at a node of a closed curve opens the curve there, as one open curve whose two ends sit on the node. A node in the middle of a side was broken into two pieces and the curve's first node, a corner of a rectangle, came apart as well (#2314).
