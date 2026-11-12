@@ -19,6 +19,17 @@ its row does not show as well. Window > Toolbars > Color Palette hides or shows 
 default palette. The rows described below are the same along a column,
 turned downwards.
 
+## Dragging the fill from the status bar
+
+The fill part of the status bar (its swatch and description) can be
+dragged onto an object in the drawing: the object, inside it or on its
+outline, takes that whole fill, whether it is a solid colour, a fountain,
+a pattern or no fill (#2448). The object need not be selected and the
+selection stays as it was; it is one undo step. A small chip of the fill
+follows the pointer, with a copy cursor over an object and a no-drop
+cursor elsewhere. Esc cancels, and letting go back on the status bar does
+nothing. A click still selects and a double click still opens Edit Fill.
+
 ## Palette bars
 
 Each further palette is a bar of its own (#1164 gave each a strip next

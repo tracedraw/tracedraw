@@ -1811,6 +1811,8 @@ pub struct App {
     pub export_assets: crate::export_assets::ExportAssets,
     /// A colour dragged from a palette (`Some(None)`: No Color).
     pub palette_drag: Option<Option<Color>>,
+    /// The fill being dragged from the status bar onto an object.
+    pub fill_drag: Option<Fill>,
     /// Where the document palette is this frame (a drop target).
     pub doc_palette_rect: Option<egui::Rect>,
     /// Where the bars of the user's own palettes were last drawn, by
@@ -2964,6 +2966,7 @@ impl App {
             shelf: Default::default(),
             export_assets: crate::export_assets::ExportAssets::new(),
             palette_drag: None,
+            fill_drag: None,
             doc_palette_rect: None,
             palette_drop_rects: Vec::new(),
             palette_strip_rects: Vec::new(),
