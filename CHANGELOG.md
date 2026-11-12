@@ -4,6 +4,10 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Opening .cdr files: a transparency set on a clip frame keeps its amount, and a graded one fades the frame with what it holds. The amount was read and then left on the frame inside, where it is not drawn, so a picture inside a see-through frame opened opaque, the property bar said "No transparency" and a mockup's shading layers hid the artwork under them. The merge mode of a transparency (Screen, Subtract and the others) is still not read: it opens as Normal and the open report names its code (#2515, #1666).
+
 ## 0.45.0 (2026-11-12)
 
 - Roughen: going over an outline again no longer leaves white slivers over the object. A stroke over spikes an earlier one made pushed new spikes sideways across the outline, and where the outline crossed itself the fill left the overlaps empty, so white arcs and gaps appeared inside the shape; the spikes now stand out from the object and an outline that still crosses itself is filled everywhere it goes round (#2229).

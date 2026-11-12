@@ -4376,9 +4376,16 @@ impl<'a> Ctx<'a> {
     /// A clip container: `shape` with the objects of the `clpt` group
     /// numbered `clip` drawn inside it (the container's fill under them,
     /// its outline over them). A number naming no group leaves the shape.
+    ///
+    /// A transparency read on the container is the whole container's
+    /// (#2515): the clip frame takes its amount and its mask, so the
+    /// contents fade with the frame and the property bar shows it. Left
+    /// on the frame inside, the amount was not drawn at all (a clip frame
+    /// is drawn at its own opacity) and a mask faded the frame's fill
+    /// alone: a picture in a see-through container opened opaque.
     fn with_clip_contents(
         &mut self,
-        shape: Shape,
+        mut shape: Shape,
         clip: u32,
         ids: &mut tracedraw_core::id::IdSource,
         page_size: Size,
@@ -4416,6 +4423,14 @@ impl<'a> Ctx<'a> {
         outer.name = shape.name.clone();
         outer.fill = Fill::None;
         outer.stroke = None;
+        // The frame keeps the amount as well, as a frame made in the
+        // application does, so Extract Contents gives it back.
+        outer.opacity = shape.opacity;
+        let (faded, kept) = std::mem::take(&mut shape.effects)
+            .into_iter()
+            .partition(|e| matches!(e, tracedraw_core::live::Effect::Transparency { .. }));
+        outer.effects = faded;
+        shape.effects = kept;
         outer.kind = ShapeKind::ClipFrame {
             frame: Box::new(shape),
             contents,
@@ -13704,6 +13719,92 @@ pub(crate) mod tests {
             "{:?}",
             rep.warnings
         );
+    }
+
+    /// #2515: a transparency set on a clip container is the whole
+    /// container's. The clip frame read from it takes the amount and the
+    /// mask; they stayed on the frame inside, where the amount is not
+    /// drawn, so a picture in a see-through container opened opaque.
+    #[test]
+    fn a_clip_containers_transparency_is_the_clip_frames() {
+        use tracedraw_core::live::Effect;
+        let v = 24u16;
+        let style_of =
+            |json: &str| [u32s(&[1, json.len() as u32]), json.as_bytes().to_vec()].concat();
+        let square = |side: f64, extra: Vec<(u32, Vec<u8>)>| {
+            let mut args = extra;
+            args.push((ARG_COORDS, f64s(&[side, side, 1.0, 1.0])));
+            list(b"obj ", &chunk(b"loda", &loda(OBJ_RECT, &args)))
+        };
+        let read = |container_args: Vec<(u32, Vec<u8>)>| {
+            let group = list(
+                b"grp ",
+                &[
+                    chunk(b"spnd", &u32s(&[0x55])),
+                    square(100_000.0, Vec::new()),
+                ]
+                .concat(),
+            );
+            let mut args = container_args;
+            args.push((ARG_CLIP_CONTENTS, u32s(&[0x55, 1, 0, 1])));
+            let body = [
+                chunk(b"mcfg", &mcfg(v, 2_540_000, 2_540_000)),
+                list(b"clpt", &group),
+                list(b"page", &list(b"layr", &square(300_000.0, args))),
+            ]
+            .concat();
+            let (doc, rep) = parse(&riff(b"CDRO", &body), v);
+            assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+            first_shape(&doc).clone()
+        };
+        let masks = |s: &Shape| {
+            s.effects
+                .iter()
+                .filter(|e| matches!(e, Effect::Transparency { .. }))
+                .count()
+        };
+
+        // A uniform transparency of 90 in the container's style string.
+        let uniform = style_of(
+            r#"{"transparency":{"fill":{"type":"1"},"uniformTransparency":"0.9"},"fill":{"type":"1","primaryColor":"RGB255,USER,255,255,255,100,00000000-0000-0000-0000-000000000000"}}"#,
+        );
+        let clip = read(vec![(ARG_STYLE_STRING, uniform.clone())]);
+        let ShapeKind::ClipFrame { frame, contents } = &clip.kind else {
+            panic!("not a clip frame: {:?}", clip.kind);
+        };
+        assert!((clip.opacity - 0.1).abs() < 1e-9, "{}", clip.opacity);
+        // The frame keeps it too (Extract Contents gives it back); the
+        // contents hold none of their own.
+        assert!((frame.opacity - 0.1).abs() < 1e-9, "{}", frame.opacity);
+        assert_eq!(contents.len(), 1);
+        assert_eq!(contents[0].opacity, 1.0);
+
+        // The amount held in the record of argument 8000 (#1706).
+        let bare = style_of(r#"{"transparency":{"fill":{"type":"1"}}}"#);
+        let body = uniform_transparency_record_v24(1, 55.0);
+        let record = [u32s(&[0x514, body.len() as u32]), body].concat();
+        let clip = read(vec![(ARG_OPACITY, record), (ARG_STYLE_STRING, bare)]);
+        assert!(matches!(clip.kind, ShapeKind::ClipFrame { .. }));
+        assert!((clip.opacity - 0.45).abs() < 1e-9, "{}", clip.opacity);
+
+        // A graded transparency: the mask fades the clip frame whole, not
+        // the fill of the frame inside alone.
+        let graded = style_of(
+            r#"{"transparency":{"appliesTo":"2","fill":{"angle":"90","fountainType":"1","primaryColor":"GRAY255,USER,255,100,00000000-0000-0000-0000-000000000000","secondaryColor":"GRAY255,USER,0,100,00000000-0000-0000-0000-000000000000","type":"2","xCenterOffset":"0","xScale":"1","yCenterOffset":"0","yScale":"1"}}}"#,
+        );
+        let clip = read(vec![(ARG_STYLE_STRING, graded)]);
+        let ShapeKind::ClipFrame { frame, .. } = &clip.kind else {
+            panic!("not a clip frame: {:?}", clip.kind);
+        };
+        assert_eq!(masks(&clip), 1, "{:?}", clip.effects);
+        assert_eq!(masks(frame), 0, "{:?}", frame.effects);
+
+        // A container with no transparency stays opaque.
+        let plain = style_of(r#"{"fill":{"type":"0"}}"#);
+        let clip = read(vec![(ARG_STYLE_STRING, plain)]);
+        assert!(matches!(clip.kind, ShapeKind::ClipFrame { .. }));
+        assert_eq!(clip.opacity, 1.0);
+        assert_eq!(masks(&clip), 0);
     }
 
     #[test]
