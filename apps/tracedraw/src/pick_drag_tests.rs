@@ -26725,3 +26725,58 @@ fn a_fill_dragged_from_the_bar_swatch_goes_to_the_object_under_it() {
     let nowhere = app.view.to_screen(Point::new(400.0, 400.0));
     assert!(!app.drop_swatch_fill(&src, nowhere));
 }
+
+/// #2545: a click with the Pick tool on an object's drop shadow, away
+/// from the object, chooses the shadow alone: it has a box of its own
+/// out to its feathered edge and no object handles, Delete takes the
+/// shadow away and leaves the object, and a click on the object chooses
+/// the object again.
+#[test]
+fn a_drop_shadow_is_chosen_apart_from_its_object() {
+    let (ctx, mut app, id) = setup();
+    app.set_shadow(
+        Some(tracedraw_core::Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(30.0, -30.0),
+            ..tracedraw_core::Shadow::default()
+        }),
+        false,
+    );
+    app.select(Vec::new());
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    // The rectangle is 10..60 by 10..40; its shadow 40..90 by -20..10.
+    let on_shadow = app.view.to_screen(Point::new(80.0, 0.0));
+    click_at(&ctx, &mut app, on_shadow, Modifiers::NONE);
+    assert_eq!(app.selection, vec![id]);
+    assert_eq!(app.picked_shadow(), Some(id));
+    let b = app.picked_shadow_bounds().expect("the shadow's box");
+    assert!(b.x1 > 89.0 && b.y0 < -19.0, "{b:?}");
+    assert!(b.contains(Point::new(80.0, 0.0)));
+    // No object handle answers while the shadow is chosen.
+    let object = app.selection_bounds().expect("selection");
+    for (_, p) in app.handle_positions(object) {
+        assert!(app.handle_at(p).is_none());
+    }
+    // Delete: the shadow goes, the object stays, selected.
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Delete, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    let s = app.doc().find_shape(id).expect("the object stays");
+    assert!(s.shadow.is_none());
+    assert_eq!(app.selection, vec![id]);
+    assert_eq!(app.picked_shadow(), None);
+    // Undo brings the shadow back; a click on the object chooses it.
+    app.undo();
+    assert!(app.doc().find_shape(id).is_some_and(|s| s.shadow.is_some()));
+    click_at(&ctx, &mut app, on_shadow, Modifiers::NONE);
+    assert_eq!(app.picked_shadow(), Some(id));
+    let on_object = app.view.to_screen(Point::new(20.0, 30.0));
+    click_at(&ctx, &mut app, on_object, Modifiers::NONE);
+    assert_eq!(app.selection, vec![id]);
+    assert_eq!(app.picked_shadow(), None);
+    assert!(!app.rotate_mode);
+}

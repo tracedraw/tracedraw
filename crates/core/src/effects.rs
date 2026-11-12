@@ -1031,6 +1031,9 @@ const SMUDGE_CORE: f64 = 0.5;
 /// an eighth of the radius shifts neighbouring points by at most three
 /// eighths of their distance: the outline never folds over itself.
 const SMUDGE_STEP: f64 = 0.125;
+/// How far behind the nib's centre, as a share of its radius, Smudge's
+/// push eases out (#2546).
+const SMUDGE_BEHIND: f64 = 0.1;
 /// How many small moves one call makes at most (a move longer than
 /// that many steps is made in longer ones).
 const SMUDGE_MAX_STEPS: usize = 2048;
@@ -1080,11 +1083,27 @@ pub fn smudge(path: &BezPath, from: Point, to: Point, radius: f64, pressure: f64
             u * u * (3.0 - 2.0 * u)
         }
     };
+    // The nib pushes what lies before it: the outline behind its centre
+    // stays where it is, easing in over a tenth of the radius, so a stroke
+    // from inside a shape draws its edge out and one from outside dents
+    // it, and the rest of the object is not dragged along (#2546).
+    let dir = delta / len;
+    let ahead = |along: f64| -> f64 {
+        let fade = radius * SMUDGE_BEHIND;
+        if along >= 0.0 {
+            1.0
+        } else if along <= -fade {
+            0.0
+        } else {
+            let u = (along + fade) / fade;
+            u * u * (3.0 - 2.0 * u)
+        }
+    };
     // The stretch the nib passes over: a circle round the middle of the
     // move that holds the nib at both ends.
     let middle = from.midpoint(to);
     brush_runs(path, middle, radius + len / 2.0, |run, closed| {
-        let mut pts = densify(run, max_len);
+        let mut pts = sampled(run, max_len);
         for k in 0..steps {
             // The sides of the tongue stretch as its end goes on: keep
             // their points close, every few moves.
@@ -1092,34 +1111,151 @@ pub fn smudge(path: &BezPath, from: Point, to: Point, radius: f64, pressure: f64
                 pts = spaced(&pts, max_len);
             }
             let c = from + step * k as f64;
+            // The front that pushes goes as far as the pressure lets the
+            // outline follow.
+            let front = from + step * (k as f64 * pressure);
             let reach = kurbo::Rect::from_points(c, c).inflate(radius, radius);
             for q in &mut pts {
-                if reach.contains(*q) {
-                    let w = carried((*q - c).hypot());
+                if reach.contains(q.at) {
+                    let w = carried((q.at - c).hypot()) * ahead((q.at - front).dot(dir));
                     if w > 0.0 {
-                        *q += step * (w * pressure);
+                        q.at += step * (w * pressure);
+                        q.moved = true;
                     }
                 }
             }
         }
-        fewer_curves(&crate::geometry::smooth_path(&pts, closed))
+        rebuild_moved(run, &pts, closed)
     })
 }
 
+/// A point of a stretch Smudge works on: where it is, where it lay on
+/// the stretch (segment and parameter, for the points sampled from it),
+/// and whether the nib moved it.
+#[derive(Clone, Copy)]
+struct Carried {
+    at: Point,
+    on: Option<(usize, f64)>,
+    moved: bool,
+}
+
+/// Points along `run`'s segments no more than about `max_len` apart,
+/// each with the segment and parameter it lies at, the end included.
+fn sampled(run: &BezPath, max_len: f64) -> Vec<Carried> {
+    use kurbo::{ParamCurve as _, ParamCurveArclen as _};
+    let segs: Vec<kurbo::PathSeg> = run.segments().collect();
+    let mut out = Vec::new();
+    for (i, seg) in segs.iter().enumerate() {
+        let len = seg.arclen(0.01);
+        let n = if len.is_finite() {
+            ((len / max_len.max(0.05)).ceil() as usize).clamp(1, 4096)
+        } else {
+            1
+        };
+        for k in 0..n {
+            let t = k as f64 / n as f64;
+            out.push(Carried {
+                at: seg.eval(t),
+                on: Some((i, t)),
+                moved: false,
+            });
+        }
+    }
+    if let Some(last) = segs.last() {
+        out.push(Carried {
+            at: last.end(),
+            on: Some((segs.len() - 1, 1.0)),
+            moved: false,
+        });
+    }
+    out
+}
+
+/// `run` with only the stretch of `pts` the nib moved drawn again as
+/// smooth curves: the outline before the first point it moved and after
+/// the last stays exactly as it was. Smoothing and refitting the whole
+/// stretch at every pointer event let the outline beside the nib creep
+/// and wobble, the more the slower the stroke (#2546).
+fn rebuild_moved(run: &BezPath, pts: &[Carried], closed: bool) -> BezPath {
+    use kurbo::ParamCurve as _;
+    let all = |pts: &[Carried]| pts.iter().map(|q| q.at).collect::<Vec<_>>();
+    let (Some(first), Some(last)) = (
+        pts.iter().position(|q| q.moved),
+        pts.iter().rposition(|q| q.moved),
+    ) else {
+        return run.clone();
+    };
+    // The points the curve is held at: the last sampled point before the
+    // moved stretch and the first after it.
+    let a = (0..first)
+        .rev()
+        .find(|&i| pts.get(i).is_some_and(|q| q.on.is_some()));
+    let b = (last + 1..pts.len()).find(|&i| pts.get(i).is_some_and(|q| q.on.is_some()));
+    let (Some(a), Some(b)) = (a, b) else {
+        // The nib moved an end of the stretch: it is all drawn again.
+        return fewer_curves(&crate::geometry::smooth_path(&all(pts), closed));
+    };
+    let segs: Vec<kurbo::PathSeg> = run.segments().collect();
+    let (Some((ia, ta)), Some((ib, tb))) =
+        (pts.get(a).and_then(|q| q.on), pts.get(b).and_then(|q| q.on))
+    else {
+        return run.clone();
+    };
+    let mut out = BezPath::new();
+    let Some(start) = segs.first().map(|s| s.start()) else {
+        return run.clone();
+    };
+    out.move_to(start);
+    for seg in segs.iter().take(ia) {
+        out.push(seg.as_path_el());
+    }
+    if ta > 0.0 {
+        if let Some(seg) = segs.get(ia) {
+            out.push(seg.subsegment(0.0..ta).as_path_el());
+        }
+    }
+    let middle = fewer_curves(&crate::geometry::smooth_path(&all(&pts[a..=b]), false));
+    out.extend(
+        middle
+            .elements()
+            .iter()
+            .filter(|e| !matches!(e, PathEl::MoveTo(_)))
+            .copied(),
+    );
+    if tb < 1.0 {
+        if let Some(seg) = segs.get(ib) {
+            out.push(seg.subsegment(tb..1.0).as_path_el());
+        }
+    }
+    for seg in segs.iter().skip(ib + 1) {
+        out.push(seg.as_path_el());
+    }
+    if closed {
+        out.close_path();
+    }
+    out
+}
+
 /// `pts` with points put in so that no two neighbours are more than
-/// `max_len` apart.
-fn spaced(pts: &[Point], max_len: f64) -> Vec<Point> {
+/// `max_len` apart (the new ones lie on no segment of the stretch and
+/// count as moved when either neighbour was).
+fn spaced(pts: &[Carried], max_len: f64) -> Vec<Carried> {
     let max_len = max_len.max(0.05);
     let mut out = Vec::with_capacity(pts.len());
     for w in pts.windows(2) {
-        let len = (w[1] - w[0]).hypot();
+        let len = (w[1].at - w[0].at).hypot();
         let n = if len.is_finite() {
             ((len / max_len).ceil() as usize).clamp(1, 4096)
         } else {
             1
         };
-        for k in 0..n {
-            out.push(w[0].lerp(w[1], k as f64 / n as f64));
+        out.push(w[0]);
+        for k in 1..n {
+            out.push(Carried {
+                at: w[0].at.lerp(w[1].at, k as f64 / n as f64),
+                on: None,
+                moved: w[0].moved || w[1].moved,
+            });
         }
     }
     if let Some(l) = pts.last() {
@@ -2641,6 +2777,56 @@ mod tests {
         let lo = pts.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
         let hi = pts.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max);
         (lo, hi)
+    }
+
+    /// #2546: a Smudge stroke from inside a rounded rectangle out across
+    /// its top changes the outline only under the nib. Everything farther
+    /// from the stroke than the nib's radius stays where it was,
+    /// at any speed (a slow stroke refitted the stretch beside the nib at
+    /// every event, so the edge crept and wobbled), and a nib wide enough
+    /// to cover the bottom edge where the stroke starts does not drag that
+    /// edge along behind it.
+    #[test]
+    fn smudge_leaves_the_outline_away_from_the_nib() {
+        use kurbo::ParamCurveNearest as _;
+        let shape = crate::geometry::rect_path(Rect::new(0.0, 0.0, 60.0, 40.0), 8.0);
+        let on_shape = |p: Point| {
+            shape
+                .segments()
+                .map(|s| s.nearest(p, 1e-9).distance_sq)
+                .fold(f64::INFINITY, f64::min)
+                .sqrt()
+        };
+        let (a, b) = (Point::new(30.0, 20.0), Point::new(30.0, 55.0));
+        let off_stroke = |p: Point| {
+            let ab = b - a;
+            let t = ((p - a).dot(ab) / ab.hypot2()).clamp(0.0, 1.0);
+            (p - (a + ab * t)).hypot()
+        };
+        for (step, radius) in [(0.5, 10.0), (1.0, 10.0), (4.0, 10.0), (1.0, 25.0)] {
+            let out = smudge_stroke(&shape, a, b, step, radius);
+            for p in densify(&out, 0.2) {
+                if off_stroke(p) > radius * 1.01 {
+                    assert!(
+                        on_shape(p) < 0.06,
+                        "step {step}, nib {radius}: {p:?} moved {}",
+                        on_shape(p)
+                    );
+                }
+            }
+            // The outline is drawn out with the nib.
+            assert!(out.bounding_box().y1 > 50.0, "step {step}, nib {radius}");
+            // Behind where the stroke began, the outline is untouched,
+            // even inside the wide nib.
+            for p in densify(&out, 0.2) {
+                if p.y < 15.0 {
+                    assert!(
+                        on_shape(p) < 0.06,
+                        "nib {radius}: {p:?} behind the stroke moved"
+                    );
+                }
+            }
+        }
     }
 
     /// #2228: Smudge draws the outline out along the stroke into a

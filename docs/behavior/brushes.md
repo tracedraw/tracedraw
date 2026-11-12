@@ -87,6 +87,18 @@ moves or in one (#2228,
 Dragging along a thin part (a ring's wall narrower than the nib's core)
 carries both of its edges, as a finger through wet paint does.
 
+The nib pushes what lies before it: the outline behind its centre (the
+pushing front goes as far as the pressure lets the outline follow)
+stays where it is, easing in over a tenth of the radius. A stroke from
+inside a shape draws its edge out, one from outside dents it, and a nib
+wide enough to cover the far edge where the stroke starts no longer
+drags that edge along behind it. Only the stretch of points the nib
+moved is fitted back into curves; the outline before and after it
+keeps its segments exactly. Refitting the whole stretch in reach at
+every pointer event let the edge beside the nib creep and wobble, the
+more the slower the stroke (#2546,
+`tracedraw_core::effects::tests::smudge_leaves_the_outline_away_from_the_nib`).
+
 A step measures the stretch in reach into points an eighth of the
 radius apart and fits it back, as a Smear step does. On a stroke that
 winds a ring's wall three times round it takes 0.4 ms a step in a

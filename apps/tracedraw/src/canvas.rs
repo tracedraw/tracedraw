@@ -1968,6 +1968,28 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
         app.tool,
         Tool::Pick | Tool::FreeformPick | Tool::InteractiveFill | Tool::Text
     );
+    // A drop shadow chosen on its own: its box, to its feathered edge,
+    // with hollow handles, and not the object's (#2545).
+    if let Some(shadow) = app.picked_shadow_bounds().filter(|_| pick) {
+        let r = view.rect_to_screen(shadow);
+        painter.rect_stroke(
+            r,
+            0.0,
+            EStroke::new(1.0, Color32::from_rgb(0, 120, 215)),
+            epaint::StrokeKind::Middle,
+        );
+        let size = app.handle_size();
+        for (_, p) in app.handle_positions(shadow) {
+            painter.rect(
+                ERect::from_center_size(p, egui::vec2(size, size)),
+                0.0,
+                Color32::WHITE,
+                EStroke::new(1.0, Color32::BLACK),
+                epaint::StrokeKind::Outside,
+            );
+        }
+        return;
+    }
     if app.rotate_mode && pick {
         // Rotation arrows at corners, skew arrows at edges, the centre of
         // rotation (it can be moved).

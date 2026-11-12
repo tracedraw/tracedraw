@@ -2026,6 +2026,10 @@ pub struct App {
     pub smoothing_mark: Option<crate::node_edit::SmoothingMark>,
     /// Last clicked effect/mesh node (palette clicks colour a mesh node).
     pub selected_effect_node: Option<(ShapeId, usize)>,
+    /// The object whose drop shadow was clicked with the Pick tool: the
+    /// shadow is chosen on its own (#2545). It counts only while that
+    /// object alone is selected; see [`App::picked_shadow`].
+    pub shadow_picked: Option<ShapeId>,
     /// More mesh nodes chosen with the one in `selected_effect_node`
     /// (Shift+click, a marquee; discussion #2387): the node they go with
     /// and their numbers in its mesh. They count only while that node is
@@ -3177,6 +3181,7 @@ impl App {
             smoothing: None,
             smoothing_mark: None,
             selected_effect_node: None,
+            shadow_picked: None,
             mesh_more_nodes: None,
             mesh_eyedropper: false,
             docs: Vec::new(),
@@ -5387,6 +5392,7 @@ impl App {
             }
         }
         self.selection = ids;
+        self.shadow_picked = None;
         self.marquee_selection = None;
         self.rotate_mode = false;
         self.node_selection.clear();

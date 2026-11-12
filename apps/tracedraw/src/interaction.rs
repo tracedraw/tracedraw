@@ -1497,6 +1497,11 @@ impl App {
     }
 
     pub(crate) fn handle_at(&self, screen: egui::Pos2) -> Option<Handle> {
+        // A drop shadow chosen on its own shows its box, not the object's
+        // handles (#2545).
+        if self.picked_shadow().is_some() {
+            return None;
+        }
         let b = self.selection_bounds()?;
         let reach = if self.rotate_mode {
             ROTATE_HANDLE_PX
@@ -2255,8 +2260,16 @@ impl App {
                         self.select_add(id);
                     }
                 }
+                Some(id) if !mods.ctrl && self.hit_test(p) != Some(id) => {
+                    // On the drop shadow, away from the object: the shadow
+                    // alone (#2545).
+                    self.pick_shadow(id);
+                }
                 Some(id) => {
-                    if self.selection.contains(&id) {
+                    if self.picked_shadow() == Some(id) {
+                        // The object of the chosen shadow: the object.
+                        self.select(vec![id]);
+                    } else if self.selection.contains(&id) {
                         // A click on what is selected: toggle the rotate and
                         // skew handles.
                         self.toggle_rotate_mode();
@@ -4653,6 +4666,8 @@ impl App {
                 // The width node went, the object stays.
             } else if self.tool == Tool::AnchorEditing && self.delete_selected_anchor() {
                 // The anchor went, the object stays.
+            } else if self.delete_picked_shadow() {
+                // The chosen drop shadow went, its object stays (#2545).
             } else if !self.selected_guides.is_empty() {
                 if !self.delete_selected_guides() {
                     self.status = crate::i18n::tr("status.guideline_locked");
