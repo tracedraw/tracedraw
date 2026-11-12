@@ -2198,6 +2198,7 @@ fn outline_width_box(
                     .desired_width(72.0),
             )
             .rich_tip(tr("toolbar.outline_width"));
+        crate::ui::field::select_all_when_focused(ui, &resp, stored.is_none(), &buf);
         if resp.has_focus() {
             ui.data_mut(|d| d.insert_temp(id, buf.clone()));
         } else if stored.is_some() || resp.lost_focus() {

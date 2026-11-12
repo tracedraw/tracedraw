@@ -194,9 +194,9 @@ pub(crate) fn zoom_box_pub(app: &mut App, ui: &mut Ui, id: &str, width: f32) {
 
 fn zoom_box(app: &mut App, ui: &mut Ui, id: &str, width: f32) {
     let edit_id = egui::Id::new((id, "text"));
-    let mut text = ui
-        .data(|d| d.get_temp::<String>(edit_id))
-        .unwrap_or_else(|| format!("{:.0}%", app.zoom_percent()));
+    let stored = ui.data(|d| d.get_temp::<String>(edit_id));
+    let fresh = stored.is_none();
+    let mut text = stored.unwrap_or_else(|| format!("{:.0}%", app.zoom_percent()));
     let field = egui::Frame::new()
         .fill(crate::theme::Tokens::field())
         .stroke(egui::Stroke::new(1.0, Tokens::control_border()))
@@ -209,10 +209,13 @@ fn zoom_box(app: &mut App, ui: &mut Ui, id: &str, width: f32) {
                 let r = ui.add_sized(
                     [width - 22.0, 24.0],
                     egui::TextEdit::singleline(&mut text)
+                        .id(edit_id)
                         .frame(egui::Frame::NONE)
                         .vertical_align(egui::Align::Center)
                         .margin(egui::Margin::symmetric(4, 2)),
                 );
+                // Typed over, not into: "64" in "58%" was "5864%" (#1329).
+                crate::ui::field::select_all_when_focused(ui, &r, fresh, &text);
                 if r.has_focus() {
                     ui.data_mut(|d| d.insert_temp(edit_id, text.clone()));
                 } else {

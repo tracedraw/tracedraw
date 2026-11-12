@@ -26290,3 +26290,47 @@ fn the_text_tool_types_into_the_table_cell_clicked() {
     assert!(app.table_edit.is_none());
     assert!(app.text_edit.is_some());
 }
+
+/// A number typed into the outline width and the zoom boxes takes the
+/// place of the value shown, as in every other box of the bars (#1329):
+/// a click put the caret where it landed, so "2" typed into "0.57 pt"
+/// made it "0.572 pt", Enter seemed to apply nothing, and "64" typed into
+/// "58%" zoomed to 5864%.
+#[test]
+fn outline_width_and_zoom_boxes_take_the_typed_value() {
+    for leave in [Leave::Enter, Leave::Tab, Leave::ClickCanvas] {
+        let (ctx, mut app, id) = setup();
+        for _ in 0..3 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        let held = app
+            .doc()
+            .find_shape(id)
+            .and_then(|s| s.stroke.as_ref())
+            .map(|s| s.width);
+        let shown = crate::ui::propbar::outline_text(&app, held);
+        assert_eq!(shown, "0.57 pt");
+        type_in_bar(&ctx, &mut app, &shown, "2", leave);
+        let w = app
+            .doc()
+            .find_shape(id)
+            .and_then(|s| s.stroke.as_ref())
+            .map(|s| s.width);
+        let want = 2.0 * 25.4 / 72.0;
+        assert!(
+            w.is_some_and(|w| (w - want).abs() < 1e-6),
+            "{leave:?}: outline {w:?}, want {want}"
+        );
+    }
+    let (ctx, mut app, _) = setup();
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let shown = format!("{:.0}%", app.zoom_percent());
+    type_in_bar(&ctx, &mut app, &shown, "200", Leave::Enter);
+    assert!(
+        (app.zoom_percent() - 200.0).abs() < 0.5,
+        "zoom {}% after 200 typed over {shown}",
+        app.zoom_percent()
+    );
+}
