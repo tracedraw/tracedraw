@@ -6185,6 +6185,7 @@ docker.object_row_desc = "单击选中。双击重命名。"
 docker.thumb_size = "缩略图大小（在此处滚动滚轮，或在列表上按住 Ctrl 滚动）" # mt
 docker.guides_row_desc = "页面的辅助线。它们永远不会打印。"
 docker.guides_all_pages = "辅助线（所有页面）"
+docker.desktop_layer = "桌面"
 docker.guides_master_row_desc = "主页面的辅助线：每个页面都会显示。单击即可编辑；新的辅助线会添加到这里。辅助线从不打印。"
 docker.grid_row_desc = "文档网格。它永远不会打印，也无法编辑。"
 docker.section_desc = "单击打开或关闭此部分。"

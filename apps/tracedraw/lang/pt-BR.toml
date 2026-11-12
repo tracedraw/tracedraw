@@ -6185,6 +6185,7 @@ docker.object_row_desc = "Clique para selecioná-lo. Clique duas vezes para reno
 docker.thumb_size = "Tamanho das miniaturas (a roda aqui, ou Ctrl+roda sobre a lista)" # mt
 docker.guides_row_desc = "As linhas-guia da página. Nunca são impressas."
 docker.guides_all_pages = "Guias (todas as páginas)"
+docker.desktop_layer = "Área de trabalho"
 docker.guides_master_row_desc = "As guias da página mestre: todas as páginas as mostram. Clique para editá-las; as novas guias vão para cá. Nunca são impressas."
 docker.grid_row_desc = "A grade do documento. Nunca é impressa e não pode ser editada."
 docker.section_desc = "Clique para abrir ou fechar esta seção."

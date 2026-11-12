@@ -23706,7 +23706,9 @@ fn the_objects_docker_chooses_master_or_page_guidelines() {
         );
         frame(ctx, app, Vec::new(), Modifiers::NONE);
     };
-    assert!(!app.edit_master_guides);
+    // Shared guidelines at first (#1775); the page's own row chosen first.
+    assert!(app.edit_master_guides);
+    app.choose_master_guides(false);
     click(&ctx, &mut app, &crate::i18n::tr("docker.guides_all_pages"));
     assert!(app.edit_master_guides);
     app.add_guide(Guide::vertical(30.0));

@@ -6185,6 +6185,7 @@ docker.object_row_desc = "Kliknutím jej vyberete. Poklepáním jej přejmenujet
 docker.thumb_size = "Velikost náhledů (kolečko zde nebo Ctrl+kolečko nad seznamem)" # mt
 docker.guides_row_desc = "Vodítka stránky. Nikdy se netisknou."
 docker.guides_all_pages = "Vodítka (všechny stránky)"
+docker.desktop_layer = "Pracovní plocha"
 docker.guides_master_row_desc = "Vodítka stránky předlohy: zobrazuje je každá stránka. Klepnutím je upravíte; nová vodítka se přidají sem. Nikdy se netisknou."
 docker.grid_row_desc = "Mřížka dokumentu. Nikdy se netiskne a nelze ji upravit."
 docker.section_desc = "Kliknutím tuto část otevřete nebo zavřete."

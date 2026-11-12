@@ -6185,6 +6185,7 @@ docker.object_row_desc = "Klik om het te selecteren. Dubbelklik om de naam te wi
 docker.thumb_size = "Grootte van de miniaturen (het wiel hier, of Ctrl+wiel boven de lijst)" # mt
 docker.guides_row_desc = "De hulplijnen van de pagina. Ze worden nooit afgedrukt."
 docker.guides_all_pages = "Hulplijnen (alle pagina's)"
+docker.desktop_layer = "Bureaublad"
 docker.guides_master_row_desc = "De hulplijnen van de basispagina: elke pagina toont ze. Klik om ze te bewerken; nieuwe hulplijnen komen hier. Ze worden nooit afgedrukt."
 docker.grid_row_desc = "Het documentraster. Het wordt nooit afgedrukt en kan niet worden bewerkt."
 docker.section_desc = "Klik om deze sectie te openen of te sluiten."

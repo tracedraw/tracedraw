@@ -6185,6 +6185,7 @@ docker.object_row_desc = "Seçmek için tıklayın. Yeniden adlandırmak için �
 docker.thumb_size = "Küçük resim boyutu (burada tekerlek veya listenin üzerinde Ctrl+tekerlek)" # mt
 docker.guides_row_desc = "Sayfanın kılavuz çizgileri. Asla yazdırılmazlar."
 docker.guides_all_pages = "Kılavuzlar (tüm sayfalar)"
+docker.desktop_layer = "Masaüstü"
 docker.guides_master_row_desc = "Ana sayfanın kılavuzları: her sayfa bunları gösterir. Düzenlemek için tıklayın; yeni kılavuzlar buraya eklenir. Asla yazdırılmazlar."
 docker.grid_row_desc = "Belge ızgarası. Asla yazdırılmaz ve düzenlenemez."
 docker.section_desc = "Bu bölümü açmak veya kapatmak için tıklayın."

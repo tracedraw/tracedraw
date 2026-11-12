@@ -6185,6 +6185,7 @@ docker.object_row_desc = "Fare clic per selezionarlo. Doppio clic per rinominarl
 docker.thumb_size = "Dimensione delle miniature (la rotella qui, o Ctrl+rotella sulla lista)" # mt
 docker.guides_row_desc = "Le linee guida della pagina. Non vengono mai stampate."
 docker.guides_all_pages = "Guide (tutte le pagine)"
+docker.desktop_layer = "Scrivania"
 docker.guides_master_row_desc = "Le guide della pagina master: ogni pagina le mostra. Fare clic per modificarle; le nuove guide vanno qui. Non vengono mai stampate."
 docker.grid_row_desc = "La griglia del documento. Non viene mai stampata e non si può modificare."
 docker.section_desc = "Fare clic per aprire o chiudere questa sezione."

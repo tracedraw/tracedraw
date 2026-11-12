@@ -6185,6 +6185,7 @@ docker.object_row_desc = "クリックで選択、ダブルクリックで名前
 docker.thumb_size = "サムネールのサイズ（ここでホイール、またはリスト上で Ctrl+ホイール）" # mt
 docker.guides_row_desc = "ページのガイドライン。印刷されることはありません。"
 docker.guides_all_pages = "ガイド（全ページ）"
+docker.desktop_layer = "デスクトップ"
 docker.guides_master_row_desc = "マスターページのガイドライン：すべてのページに表示されます。クリックすると編集でき、新しいガイドラインはここに追加されます。印刷されることはありません。"
 docker.grid_row_desc = "ドキュメントのグリッド。印刷されず、編集もできません。"
 docker.section_desc = "クリックでこのセクションを開閉します。"

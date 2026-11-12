@@ -6185,6 +6185,7 @@ docker.object_row_desc = "انقر لتحديده. انقر مرتين لإعا�
 docker.thumb_size = "حجم الصور المصغرة (العجلة هنا، أو Ctrl+العجلة فوق القائمة)" # mt
 docker.guides_row_desc = "خطوط الإرشاد في الصفحة. لا تُطبع أبدًا."
 docker.guides_all_pages = "الأدلة (كل الصفحات)"
+docker.desktop_layer = "سطح المكتب"
 docker.guides_master_row_desc = "أدلة الصفحة الرئيسية: تعرضها كل الصفحات. انقر لتحريرها؛ تضاف الأدلة الجديدة هنا. لا تُطبع أبدًا."
 docker.grid_row_desc = "شبكة المستند. لا تُطبع أبدًا ولا يمكن تحريرها."
 docker.section_desc = "انقر لفتح هذا القسم أو إغلاقه."

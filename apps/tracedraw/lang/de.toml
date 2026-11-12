@@ -6185,6 +6185,7 @@ docker.object_row_desc = "Klicken wählt es aus. Doppelklick benennt es um."
 docker.thumb_size = "Größe der Miniaturen (Mausrad hier oder Strg+Mausrad über der Liste)" # mt
 docker.guides_row_desc = "Die Hilfslinien der Seite. Sie werden nie gedruckt."
 docker.guides_all_pages = "Hilfslinien (alle Seiten)"
+docker.desktop_layer = "Desktop"
 docker.guides_master_row_desc = "Die Hilfslinien der Masterseite: jede Seite zeigt sie. Klicken, um sie zu bearbeiten; neue Hilfslinien kommen hierher. Sie werden nie gedruckt."
 docker.grid_row_desc = "Das Dokumentraster. Es wird nie gedruckt und lässt sich nicht bearbeiten."
 docker.section_desc = "Klicken öffnet oder schließt diesen Abschnitt."

@@ -6185,6 +6185,7 @@ docker.object_row_desc = "Klik untuk memilihnya. Klik dua kali untuk mengganti n
 docker.thumb_size = "Ukuran gambar mini (roda di sini, atau Ctrl+roda di atas daftar)" # mt
 docker.guides_row_desc = "Garis panduan halaman. Tidak pernah dicetak."
 docker.guides_all_pages = "Panduan (semua halaman)"
+docker.desktop_layer = "Desktop"
 docker.guides_master_row_desc = "Panduan halaman induk: setiap halaman menampilkannya. Klik untuk menyuntingnya; panduan baru masuk ke sini. Tidak pernah dicetak."
 docker.grid_row_desc = "Kisi dokumen. Tidak pernah dicetak dan tidak dapat diedit."
 docker.section_desc = "Klik untuk membuka atau menutup bagian ini."

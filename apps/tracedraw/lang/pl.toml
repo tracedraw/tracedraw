@@ -6185,6 +6185,7 @@ docker.object_row_desc = "Kliknij, aby zaznaczyć. Kliknij dwukrotnie, aby zmien
 docker.thumb_size = "Rozmiar miniatur (kółko tutaj lub Ctrl+kółko nad listą)" # mt
 docker.guides_row_desc = "Prowadnice strony. Nigdy nie są drukowane."
 docker.guides_all_pages = "Linie pomocnicze (wszystkie strony)"
+docker.desktop_layer = "Pulpit"
 docker.guides_master_row_desc = "Linie pomocnicze strony wzorcowej: pokazuje je każda strona. Kliknij, aby je edytować; nowe linie pomocnicze trafiają tutaj. Nigdy nie są drukowane."
 docker.grid_row_desc = "Siatka dokumentu. Nigdy nie jest drukowana i nie można jej edytować."
 docker.section_desc = "Kliknij, aby otworzyć lub zamknąć tę sekcję."

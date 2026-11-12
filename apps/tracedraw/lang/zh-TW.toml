@@ -6185,6 +6185,7 @@ docker.object_row_desc = "按一下選取。按兩下重新命名。"
 docker.thumb_size = "縮圖大小（在此處捲動滾輪，或在清單上按住 Ctrl 捲動）" # mt
 docker.guides_row_desc = "頁面的參考線。它們永遠不會列印。"
 docker.guides_all_pages = "參考線（所有頁面）"
+docker.desktop_layer = "桌面"
 docker.guides_master_row_desc = "主頁面的參考線：每個頁面都會顯示。按一下即可編輯；新的參考線會加到這裡。參考線從不列印。"
 docker.grid_row_desc = "文件格線。它永遠不會列印，也無法編輯。"
 docker.section_desc = "按一下可開啟或關閉此區段。"

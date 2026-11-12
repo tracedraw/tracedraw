@@ -2951,12 +2951,23 @@ pub fn draw_guides(app: &App, painter: &Painter, rect: ERect) {
     }
     // The guidelines not being edited (the master page's, which every
     // page shows, or the page's own, #1928), as they are.
-    for g in app.other_guides_on_page() {
+    let others = if app.other_guides_shown() {
+        app.other_guides_on_page()
+    } else {
+        Vec::new()
+    };
+    for g in others {
         let color = to_color32(app.guide_color(&g));
         draw_guide_line(app, painter, rect, g.line, color, g.style.pattern());
     }
     let moving = app.guide_drag_moves();
-    for (i, g) in app.page_guides().iter().enumerate() {
+    // Each set of guidelines has its own eye in the Objects docker (#1775).
+    let edited = if app.edited_guides_shown() {
+        app.page_guides()
+    } else {
+        Vec::new()
+    };
+    for (i, g) in edited.iter().enumerate() {
         let moved = moving.iter().find(|(k, _)| *k == i).map(|(_, g)| g);
         let g = match &app.drag {
             Drag::RotateGuide { index, guide, .. } if *index == i => guide,

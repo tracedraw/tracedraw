@@ -1456,7 +1456,10 @@ pub struct App {
     pub selected_guides: Vec<usize>,
     /// The guidelines being edited are the master page's, which every
     /// page shows (#1928), not the active page's own: chosen in the
-    /// Objects docker. New guidelines go there too.
+    /// Objects docker. New guidelines go there too. True at first, so
+    /// guidelines dragged from the rulers are shared by every page; a
+    /// page's own Guides row in the Objects docker makes them its own
+    /// (#1775).
     pub edit_master_guides: bool,
     /// The guideline showing rotation handles (second click on it).
     pub guide_rotate: Option<usize>,
@@ -2870,7 +2873,7 @@ impl App {
             symmetry_doc: Default::default(),
             show_guides: true,
             selected_guides: Vec::new(),
-            edit_master_guides: false,
+            edit_master_guides: true,
             guide_rotate: None,
             guide_pivot: Point::ZERO,
             guide_form: Default::default(),
