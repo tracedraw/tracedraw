@@ -193,6 +193,29 @@ fn ctrl_keeps_a_move_straight() {
     assert!(bounds(&app, id).y0 > b.y0 + 5.0);
 }
 
+/// Shift keeps a move horizontal or vertical as Ctrl does, and so does
+/// Cmd on macOS (#2480: a Shift drag went its own way, snapping to
+/// objects).
+#[test]
+fn shift_and_cmd_keep_a_move_straight() {
+    for mods in [Modifiers::SHIFT, Modifiers::MAC_CMD | Modifiers::COMMAND] {
+        let (ctx, mut app, id) = setup();
+        let from = app.view.to_screen(Point::new(35.0, 25.0));
+        drag(
+            &ctx,
+            &mut app,
+            from,
+            from + egui::vec2(35.0, 120.0),
+            mods,
+            Vec::new(),
+        );
+        let b = bounds(&app, id);
+        assert!(b.y0 > 15.0 || b.y0 < 5.0, "moved up or down: {b:?} {mods:?}");
+        assert!(close(b.x0, 10.0), "kept its place across: {b:?} {mods:?}");
+        assert_eq!(app.selection, vec![id], "{mods:?}");
+    }
+}
+
 #[test]
 fn a_right_click_while_dragging_leaves_the_original() {
     let (ctx, mut app, id) = setup();

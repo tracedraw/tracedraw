@@ -2411,10 +2411,14 @@ impl App {
                 start_geometry,
                 ..
             } => {
-                // The pointer's way since the press, snapped; Ctrl
-                // keeps it horizontal or vertical, whichever is longer.
+                // The pointer's way since the press, snapped; Ctrl (Cmd
+                // on macOS) or Shift keeps it horizontal or vertical,
+                // whichever is longer (#2480: Shift snapped it to objects
+                // instead). Alt+Shift copies an outline on the drop, so
+                // Shift with Alt does not.
                 let mut d = p - *start;
-                let axis = mods.ctrl.then_some(d.x.abs() >= d.y.abs());
+                let straight = mods.ctrl || mods.command || (mods.shift && !mods.alt);
+                let axis = straight.then_some(d.x.abs() >= d.y.abs());
                 match axis {
                     Some(true) => d.y = 0.0,
                     Some(false) => d.x = 0.0,
