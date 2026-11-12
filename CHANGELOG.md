@@ -4,12 +4,9 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
-
-- Opening .cdr files: a transparency set on a clip frame keeps its amount, and a graded one fades the frame with what it holds. The amount was read and then left on the frame inside, where it is not drawn, so a picture inside a see-through frame opened opaque, the property bar said "No transparency" and a mockup's shading layers hid the artwork under them. The merge mode of a transparency (Screen, Subtract and the others) is still not read: it opens as Normal and the open report names its code (#2515, #1666).
-
 ## 0.45.0 (2026-11-12)
 
+- Opening .cdr files: a transparency set on a clip frame keeps its amount, and a graded one fades the frame with what it holds. The amount was read and then left on the frame inside, where it is not drawn, so a picture inside a see-through frame opened opaque, the property bar said "No transparency" and a mockup's shading layers hid the artwork under them. The merge mode of a transparency (Screen, Subtract and the others) is still not read: it opens as Normal and the open report names its code (#2515, #1666).
 - Edit > Find and Replace > Properties: the Font to look for is now a list of every font the drawing's text uses, not only the font of the object clicked, and the Font to put in its place is picked from the font list instead of typed by hand (#2485).
 - F9 opens View > Full-Screen Preview, as the menu says, and F9 closes it; before, only the menu opened it (#2195).
 - Updates: the update card shows on the Welcome Screen, on an empty workspace and over the page sorter, not only over an open drawing. TraceDraw starts on the Welcome Screen, where the card (Update now, then Restart Now once the file is ready) was never drawn: it only appeared after a drawing was opened or a dialog closed, and was gone again when the Welcome Screen came back.
