@@ -2664,6 +2664,40 @@ pub fn simplify(path: &BezPath) -> BezPath {
     recover_curves(&from_shapes(result), &[path])
 }
 
+/// The area inside the outer edge of one path read with the nonzero rule:
+/// like [`simplify`], but gaps the outline closes round (loops of it that
+/// enclose nothing) are filled too. For an outline that has crossed over
+/// itself (Roughen, #2229), where such gaps showed as white slivers.
+/// Separate bits smaller than `min_area` (specks pinched off where the
+/// outline touches itself) are left out.
+pub fn outer_cover(path: &BezPath, min_area: f64) -> BezPath {
+    let subj = contours(path);
+    let empty: Vec<Vec<[f64; 2]>> = Vec::new();
+    let result = subj.overlay(&empty, OverlayRule::Subject, IFill::NonZero);
+    let area = |c: &[[f64; 2]]| -> f64 {
+        let n = c.len();
+        (0..n)
+            .map(|i| {
+                let (a, b) = (c[i], c[(i + 1) % n]);
+                a[0] * b[1] - b[0] * a[1]
+            })
+            .sum::<f64>()
+            .abs()
+            / 2.0
+    };
+    let mut outers: Vec<Vec<Vec<[f64; 2]>>> = result
+        .into_iter()
+        .filter_map(|shape| shape.into_iter().next().map(|outer| vec![outer]))
+        .collect();
+    // Never everything: the biggest bit stays whatever its size.
+    let biggest = outers.iter().map(|s| area(&s[0])).fold(0.0, f64::max);
+    outers.retain(|s| {
+        let a = area(&s[0]);
+        a >= min_area || a >= biggest
+    });
+    recover_curves(&from_shapes(outers), &[path])
+}
+
 /// The area a path covers under the nonzero rule (how text is filled), as
 /// a path that covers the same under the even-odd rule (how curves are
 /// filled). Only contours whose boxes overlap one turning the same way

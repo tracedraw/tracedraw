@@ -1381,20 +1381,37 @@ pub fn roughen_stroke(
             seg.eval((t + 1e-4).min(1.0)) - seg.eval((t - 1e-4).max(0.0))
         }
     };
-    let mut out = BezPath::new();
+    // The subpaths in their order, each with whether the stroke made it
+    // jagged (closed ones only).
+    let mut pieces: Vec<(BezPath, bool)> = Vec::new();
     for (sub, closed) in subpaths(base) {
-        if !meets(sub.bounding_box()) {
-            out.extend(sub.elements().iter().copied());
+        // A closed piece no bigger than the spikes (the bits a crossed
+        // outline leaves when it is cleaned up, below) is left as it is:
+        // spikes as tall as itself only shattered it into more such bits
+        // every stroke.
+        let b = sub.bounding_box();
+        let tiny = closed && b.width().max(b.height()) < amount.abs();
+        if tiny || !meets(b) {
+            pieces.push((sub, false));
             continue;
         }
         let Some(start) = sub.elements().iter().find_map(|e| match e {
             PathEl::MoveTo(p) => Some(*p),
             _ => None,
         }) else {
-            out.extend(sub.elements().iter().copied());
+            pieces.push((sub, false));
             continue;
         };
         let mut els: Vec<PathEl> = vec![PathEl::MoveTo(start)];
+        // The way the outline runs at a place, taken between the places
+        // before and after it that lie `span` away in a straight line
+        // rather than at the place itself: on an outline a stroke has
+        // already made jagged, the local direction swings with every
+        // spike, and pushes along those swung normals crossed the outline
+        // over itself, which the fill then showed as white slivers over
+        // the object (#2229).
+        let span = spacing.max(amount.abs()) * 2.0;
+        let way = Polyline::of(&sub, closed);
         // Arc length from the subpath's start: where the segment starts
         // and where the next point falls.
         let mut s0 = 0.0;
@@ -1409,7 +1426,9 @@ pub fn roughen_stroke(
                     let t = seg.inv_arclen(next - s0, 0.01).clamp(0.0, 1.0);
                     let p = seg.eval(t);
                     let w = weight(p);
-                    let tan = tangent(&seg, t);
+                    let tan = way
+                        .direction(next, span)
+                        .unwrap_or_else(|| tangent(&seg, t));
                     let l = tan.hypot();
                     if w > 0.0 && l > 1e-12 {
                         let normal = Vec2::new(-tan.y / l, tan.x / l);
@@ -1465,9 +1484,274 @@ pub fn roughen_stroke(
             }
             els.push(PathEl::ClosePath);
         }
-        out.extend(els);
+        let made = BezPath::from_vec(els);
+        let jagged = closed && made != sub;
+        pieces.push((made, jagged));
+    }
+    // Spikes pushed in on a tight bend, or a stroke over an outline an
+    // earlier one made jagged, can still cross the outline over itself
+    // or over another of its subpaths; the even-odd fill showed each
+    // overlap, and each gap the crossed outline closed round, as a hole:
+    // the white slivers of #2229. Then each subpath that crosses itself
+    // is replaced by everything inside its outer edge, and the subpaths
+    // are put together by the even-odd rule as before, so every spike
+    // stays filled and holes made of other subpaths stay holes. The
+    // closed subpaths the jagged ones may run into (their boxes meet)
+    // are put together with them.
+    let rough_box = pieces
+        .iter()
+        .filter(|(_, jagged)| *jagged)
+        .map(|(p, _)| p.bounding_box())
+        .reduce(|a, b| a.union(b));
+    let in_group = |p: &BezPath, jagged: bool| -> bool {
+        if jagged {
+            return true;
+        }
+        let Some(r) = rough_box else {
+            return false;
+        };
+        let closed = p.elements().last() == Some(&PathEl::ClosePath);
+        let b = p.bounding_box();
+        closed && b.x0 <= r.x1 && r.x0 <= b.x1 && b.y0 <= r.y1 && r.y0 <= b.y1
+    };
+    let group: Vec<usize> = (0..pieces.len())
+        .filter(|&i| in_group(&pieces[i].0, pieces[i].1))
+        .collect();
+    let tangled = rough_box.is_some() && {
+        let all: Vec<PathEl> = group
+            .iter()
+            .flat_map(|&i| pieces[i].0.elements().iter().copied())
+            .collect();
+        crosses_itself(&BezPath::from_vec(all))
+    };
+    let mut out = BezPath::new();
+    if tangled {
+        let mut areas = BezPath::new();
+        for &i in &group {
+            let r = &pieces[i].0;
+            let area = if crosses_itself(r) {
+                crate::shaping::outer_cover(r, spacing * spacing)
+            } else {
+                r.clone()
+            };
+            areas.extend(area.elements().iter().copied());
+        }
+        let joined = crate::shaping::overlay_with(
+            &areas,
+            &BezPath::new(),
+            crate::shaping::Op::Weld,
+            crate::shaping::FillRule::EvenOdd,
+        );
+        // In the place of the first of them.
+        for (i, (p, _)) in pieces.iter().enumerate() {
+            if Some(&i) == group.first() {
+                out.extend(joined.elements().iter().copied());
+            } else if !group.contains(&i) {
+                out.extend(p.elements().iter().copied());
+            }
+        }
+    } else {
+        for (p, _) in &pieces {
+            out.extend(p.elements().iter().copied());
+        }
     }
     out
+}
+
+/// Whether the outlines of a path cross: any of its pieces, flattened,
+/// meet anywhere but where one runs into the next.
+fn crosses_itself(path: &BezPath) -> bool {
+    // The flattened pieces, each with the next and previous of its own
+    // subpath.
+    let mut segs: Vec<(Point, Point)> = Vec::new();
+    let mut chain: Vec<(usize, usize)> = Vec::new(); // (first, last) piece of each subpath
+    let mut pts: Vec<Point> = Vec::new();
+    let mut flush = |pts: &mut Vec<Point>, segs: &mut Vec<(Point, Point)>| {
+        pts.dedup_by(|a, b| (*a - *b).hypot() < 1e-9);
+        if pts.len() >= 2 {
+            let first = segs.len();
+            for w in pts.windows(2) {
+                segs.push((w[0], w[1]));
+            }
+            chain.push((first, segs.len() - 1));
+        }
+        pts.clear();
+    };
+    kurbo::flatten(path.elements().iter().copied(), 0.01, &mut |el| match el {
+        PathEl::MoveTo(p) => {
+            flush(&mut pts, &mut segs);
+            pts.push(p);
+        }
+        PathEl::LineTo(p) => pts.push(p),
+        PathEl::ClosePath => {
+            if let Some(a) = pts.first().copied() {
+                pts.push(a);
+            }
+            flush(&mut pts, &mut segs);
+        }
+        _ => {}
+    });
+    flush(&mut pts, &mut segs);
+    let mut sub_of = vec![0usize; segs.len()];
+    for (k, (f, l)) in chain.iter().enumerate() {
+        for s in sub_of.iter_mut().take(l + 1).skip(*f) {
+            *s = k;
+        }
+    }
+    let next_to = |i: usize, j: usize| -> bool {
+        if sub_of[i] != sub_of[j] {
+            return false;
+        }
+        let (f, l) = chain[sub_of[i]];
+        let ring = (segs[f].0 - segs[l].1).hypot() < 1e-9;
+        i.abs_diff(j) == 1 || (ring && i.min(j) == f && i.max(j) == l)
+    };
+    let side = |p: Point, q: Point, r: Point| (q - p).cross(r - p);
+    // Pieces in order of their left edge; each is checked against those
+    // still open at that edge.
+    let x0 = |i: usize| segs[i].0.x.min(segs[i].1.x);
+    let x1 = |i: usize| segs[i].0.x.max(segs[i].1.x);
+    let mut order: Vec<usize> = (0..segs.len()).collect();
+    order.sort_by(|a, b| x0(*a).total_cmp(&x0(*b)));
+    let mut open: Vec<usize> = Vec::new();
+    for &i in &order {
+        open.retain(|&j| x1(j) >= x0(i));
+        let (a, b) = segs[i];
+        for &j in &open {
+            let (c, d) = segs[j];
+            if next_to(i, j) || a.y.max(b.y) < c.y.min(d.y) || c.y.max(d.y) < a.y.min(b.y) {
+                continue;
+            }
+            // Strictly through each other: pieces that only touch (at a
+            // node the overlay put in for both, up to rounding) don't
+            // count.
+            const EPS: f64 = 1e-9;
+            let (d1, d2) = (side(a, b, c), side(a, b, d));
+            let (d3, d4) = (side(c, d, a), side(c, d, b));
+            let apart = |x: f64, y: f64| (x > EPS && y < -EPS) || (x < -EPS && y > EPS);
+            if apart(d1, d2) && apart(d3, d4) {
+                return true;
+            }
+        }
+        open.push(i);
+    }
+    false
+}
+
+/// A subpath flattened into points with the arc length up to each, so
+/// a place a given length along it is quick to find.
+struct Polyline {
+    pts: Vec<Point>,
+    at: Vec<f64>,
+    closed: bool,
+}
+
+impl Polyline {
+    fn of(sub: &BezPath, closed: bool) -> Self {
+        let mut pts: Vec<Point> = Vec::new();
+        kurbo::flatten(sub.elements().iter().copied(), 0.01, &mut |el| match el {
+            PathEl::MoveTo(p) | PathEl::LineTo(p) => pts.push(p),
+            _ => {}
+        });
+        if closed {
+            if let (Some(a), Some(b)) = (pts.first().copied(), pts.last().copied()) {
+                if (a - b).hypot() > 1e-12 {
+                    pts.push(a);
+                }
+            }
+        }
+        let mut at = Vec::with_capacity(pts.len());
+        let mut s = 0.0;
+        for (i, p) in pts.iter().enumerate() {
+            if i > 0 {
+                s += (*p - pts[i - 1]).hypot();
+            }
+            at.push(s);
+        }
+        Polyline { pts, at, closed }
+    }
+
+    fn len(&self) -> f64 {
+        self.at.last().copied().unwrap_or(0.0)
+    }
+
+    /// The place `s` along (wrapped round on a closed subpath, held to
+    /// the ends on an open one).
+    fn point(&self, s: f64) -> Option<Point> {
+        let len = self.len();
+        if self.pts.len() < 2 || len <= 1e-12 {
+            return None;
+        }
+        let s = if self.closed {
+            s.rem_euclid(len)
+        } else {
+            s.clamp(0.0, len)
+        };
+        let i = self
+            .at
+            .partition_point(|a| *a <= s)
+            .clamp(1, self.pts.len() - 1);
+        let (a, b) = (self.at[i - 1], self.at[i]);
+        let f = if b - a > 1e-12 {
+            (s - a) / (b - a)
+        } else {
+            0.0
+        };
+        Some(self.pts[i - 1].lerp(self.pts[i], f))
+    }
+
+    /// The way the subpath runs at `s`: from the last place before it to
+    /// the first place after it that lie `reach` away from it in a
+    /// straight line (on a jagged stretch the length along the outline
+    /// says little about how far it has got). `None` where the subpath
+    /// never gets that far, or that gives no direction.
+    fn direction(&self, s: f64, reach: f64) -> Option<Vec2> {
+        let p = self.point(s)?;
+        let len = self.len();
+        let n = self.pts.len();
+        let i = self
+            .at
+            .partition_point(|a| *a <= s.clamp(0.0, len))
+            .clamp(1, n - 1);
+        let far = |q: &Point| (*q - p).hypot() >= reach;
+        let step = |k: usize, fwd: bool| -> Option<usize> {
+            if fwd {
+                if k + 1 < n {
+                    Some(k + 1)
+                } else if self.closed {
+                    Some(1)
+                } else {
+                    None
+                }
+            } else if k > 0 {
+                Some(k - 1)
+            } else if self.closed {
+                Some(n - 2)
+            } else {
+                None
+            }
+        };
+        let mut ahead = None;
+        let mut k = i;
+        for _ in 0..n {
+            if far(&self.pts[k]) {
+                ahead = Some(self.pts[k]);
+                break;
+            }
+            k = step(k, true)?;
+        }
+        let mut behind = None;
+        let mut k = i - 1;
+        for _ in 0..n {
+            if far(&self.pts[k]) {
+                behind = Some(self.pts[k]);
+                break;
+            }
+            k = step(k, false)?;
+        }
+        let v = ahead? - behind?;
+        (v.hypot() > 1e-9).then_some(v)
+    }
 }
 
 /// Flatten and insert points so no segment is longer than `max_len`.
@@ -1693,6 +1977,90 @@ mod tests {
             roughen_stroke(&sq, &[Point::new(f64::NAN, 0.0)], 5.0, 1.5, 1.0),
             sq
         );
+    }
+
+    /// Strokes over an outline an earlier stroke made jagged pushed
+    /// spikes across the outline, and the even-odd fill showed each
+    /// overlap as a white sliver over the object (#2229). Now, however
+    /// often a place is gone over, every place the outline goes round is
+    /// filled (even-odd agrees with nonzero), and a hole made of a second
+    /// subpath stays a hole.
+    #[test]
+    fn roughen_leaves_no_white_slivers() {
+        use kurbo::Circle;
+        // Places in the box where the even-odd fill leaves out what the
+        // outline goes round (nonzero), skipping `skip`.
+        let slivers = |p: &BezPath, skip: &dyn Fn(Point) -> bool| -> Vec<Point> {
+            let b = p.bounding_box();
+            let mut bad = Vec::new();
+            let mut y = b.y0 + 0.013;
+            while y < b.y1 {
+                let mut x = b.x0 + 0.017;
+                while x < b.x1 {
+                    let q = Point::new(x, y);
+                    let w = p.winding(q);
+                    if !skip(q) && w != 0 && w % 2 == 0 {
+                        bad.push(q);
+                    }
+                    x += 0.37;
+                }
+                y += 0.37;
+            }
+            bad
+        };
+        let nodes = |p: &BezPath| -> Vec<Point> {
+            p.elements()
+                .iter()
+                .filter_map(|e| match e {
+                    PathEl::MoveTo(p) | PathEl::LineTo(p) | PathEl::CurveTo(_, _, p) => Some(*p),
+                    _ => None,
+                })
+                .collect()
+        };
+        for base in [
+            Circle::new((0.0, 0.0), 20.0).to_path(0.01),
+            Circle::new((0.0, 0.0), 5.0).to_path(0.01),
+            Rect::new(0.0, 0.0, 40.0, 40.0).to_path(0.01),
+        ] {
+            let pts = nodes(&base);
+            let mut way = Vec::new();
+            for w in pts.windows(2) {
+                way.extend((0..10).map(|k| w[0].lerp(w[1], k as f64 / 10.0)));
+            }
+            for (amount, spacing) in [(2.0, 1.0), (5.0, 1.0)] {
+                let mut p = base.clone();
+                for pass in 1..=3 {
+                    p = roughen_stroke(&p, &way, 8.0, amount, spacing);
+                    let bad = slivers(&p, &|_| false);
+                    assert!(
+                        bad.is_empty(),
+                        "{amount}/{spacing} pass {pass}: white at {:?}",
+                        &bad[..bad.len().min(5)]
+                    );
+                }
+                // Still a jagged version of the same object.
+                assert!(p.contains(base.bounding_box().center()));
+            }
+        }
+        // A ring: the outer edge made jagged, the hole kept.
+        let mut donut = Circle::new((0.0, 0.0), 20.0).to_path(0.01);
+        donut.extend(Circle::new((0.0, 0.0), 10.0).to_path(0.01));
+        let way: Vec<Point> = (0..=40)
+            .map(|k| Point::new(-20.0 + k as f64, 20.0))
+            .collect();
+        let mut p = donut;
+        for pass in 1..=3 {
+            p = roughen_stroke(&p, &way, 8.0, 5.0, 1.0);
+            let bad = slivers(&p, &|q: Point| q.to_vec2().hypot() < 10.5);
+            assert!(
+                bad.is_empty(),
+                "ring pass {pass}: white at {:?}",
+                &bad[..bad.len().min(5)]
+            );
+        }
+        let even_odd_in = |q: Point| p.winding(q) % 2 != 0;
+        assert!(!even_odd_in(Point::new(0.0, 0.0)), "the hole filled in");
+        assert!(even_odd_in(Point::new(0.0, -15.0)));
     }
 
     /// The nodes of a path's elements (end points).
