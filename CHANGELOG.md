@@ -17,6 +17,7 @@ full, row-by-row status.
 - Dockers: the tab of the docker in front is marked in the colour of the document tab in front, light blue on the light themes. It was a grey hardly apart from the other tabs (#2316).
 - Palette Editor: the document palette is in the palette list, first, and Edit Palette... on its bar opens it there. Its colours are edited as any palette's and OK or Apply gives them to the drawing as one undo step; it was not offered, so the document palette could not be edited there. Spot colours have a small dot in the corner of their swatch, in the editor and on the palette bars, so they stand out from the process colours (#2321).
 - `.cdr` files: a text fitted to a path that the file starts at its offset opens there, as in the program that wrote it. It was centred on that point, so a text starting near the path's start had its first letters piled up on one another before it (#2431).
+- Rectangle, Ellipse, Polygon, Star and the other shape tools: right after an object is drawn, a drag from one of its selection handles resizes it, the pointer showing the resize arrows there, and the tool stays chosen. The press started a new object, so resizing it took switching to the Pick tool first.
 
 ## 0.44.2 (2026-11-12)
 

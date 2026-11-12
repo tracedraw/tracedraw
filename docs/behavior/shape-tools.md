@@ -24,6 +24,16 @@ Crop keeps a plain rectangle. After the release the new
 object is selected and shows the eight handles and the centre marker
 whatever tool is active.
 
+With the Rectangle, Ellipse, Polygon, Star (and Complex star), Graph
+paper, Action Lines, 3-point rectangle, 3-point ellipse, Spiral and
+Common shapes tools still chosen, the pointer over one of those handles
+shows the resize arrows and a drag from it resizes the selection as the
+Pick tool's handles do (Shift from the centre, Ctrl in steps, Alt
+freely, a right click for a copy), the tool staying chosen. A click on
+a handle leaves the selection as it is; a press anywhere else draws a
+new object as before
+(`pick_drag_tests::a_drawing_tool_resizes_by_the_handles`).
+
 ## Drag modifiers (every box tool)
 
 - Ctrl constrains the box to a square (circle, regular polygon).

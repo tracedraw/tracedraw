@@ -3955,6 +3955,70 @@ fn drawing_a_new_shape_lets_the_selection_go_at_once() {
     assert_ne!(app.selection[0], id);
 }
 
+/// With a drawing tool still chosen after a shape is drawn, the pointer
+/// over a handle of the selection shows the resize arrows and a drag
+/// from it resizes the shape, as with the Pick tool, instead of drawing
+/// a new one; a click on a handle keeps the selection.
+#[test]
+fn a_drawing_tool_resizes_by_the_handles() {
+    for tool in [
+        Tool::Rectangle,
+        Tool::Ellipse,
+        Tool::Polygon,
+        Tool::Star,
+        Tool::Spiral,
+        Tool::CommonShapes,
+        Tool::ThreePointRectangle,
+        Tool::ThreePointEllipse,
+    ] {
+        let (ctx, mut app, id) = setup();
+        app.set_tool(tool);
+        let count = shape_count(&app);
+        let none = Modifiers::NONE;
+        for h in [Handle::E, Handle::SE, Handle::N] {
+            assert_eq!(
+                for_tool(&app, false, false, false, Some(handle(&app, h))),
+                ToolCursor::System(resize_icon(h)),
+                "{tool:?} {h:?}"
+            );
+        }
+        // Away from the handles the tool's own pointer.
+        let empty = app.view.to_screen(Point::new(150.0, 250.0));
+        assert_ne!(
+            for_tool(&app, false, false, false, Some(empty)),
+            ToolCursor::System(resize_icon(Handle::E)),
+            "{tool:?}"
+        );
+        // The right side goes 20 mm further right.
+        let from = handle(&app, Handle::E);
+        let to = from
+            + (app.view.to_screen(Point::new(80.0, 25.0))
+                - app.view.to_screen(Point::new(60.0, 25.0)));
+        drag(&ctx, &mut app, from, to, none, Vec::new());
+        assert_eq!(shape_count(&app), count, "{tool:?}: a new shape was drawn");
+        assert_eq!(app.selection, vec![id], "{tool:?}");
+        assert_eq!(app.tool, tool);
+        let b = bounds(&app, id);
+        assert!(
+            close(b.x0, 10.0) && (b.x1 - 80.0).abs() < 0.5,
+            "{tool:?} {b:?}"
+        );
+        assert!(close(b.y0, 10.0) && close(b.y1, 40.0), "{tool:?} {b:?}");
+        // A click on a handle neither picks nor lets the selection go.
+        let nw = handle(&app, Handle::NW);
+        click_at(&ctx, &mut app, nw, none);
+        assert_eq!(app.selection, vec![id], "{tool:?}");
+        assert_eq!(shape_count(&app), count, "{tool:?}");
+        // Away from the handles a drag still draws (the box tools).
+        if tool.is_box_tool() {
+            let a = app.view.to_screen(Point::new(100.0, 150.0));
+            let z = app.view.to_screen(Point::new(140.0, 120.0));
+            drag(&ctx, &mut app, a, z, none, Vec::new());
+            assert_eq!(shape_count(&app), count + 1, "{tool:?}");
+        }
+    }
+}
+
 /// The middle button pans while a new rectangle is dragged: the shape
 /// follows the pointer on, and letting the left button go makes it
 /// (#1923).

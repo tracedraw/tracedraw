@@ -354,8 +354,9 @@ pub fn for_tool_with_ctrl(
     // A frame's flow tab takes a press with any tool (#1986); the Pick
     // tool's handles come first, as they do for the press.
     if let Some(at) = pos.filter(|_| !primary_down && matches!(app.drag, Drag::None)) {
-        let handle =
-            matches!(app.tool, Tool::Pick | Tool::FreeformPick) && app.handle_at(at).is_some();
+        let handle = (matches!(app.tool, Tool::Pick | Tool::FreeformPick)
+            || app.tool.resizes_by_handles())
+            && app.handle_at(at).is_some();
         if !handle && app.any_flow_tab_at(at).is_some() {
             return ToolCursor::FlowText;
         }
@@ -363,6 +364,18 @@ pub fn for_tool_with_ctrl(
     if matches!(app.tool, Tool::Pick | Tool::FreeformPick) {
         if let Some(c) = pick_cursor(app, pos) {
             return c;
+        }
+    }
+    // A drawing tool over a handle of the selection resizes it.
+    if app.tool.resizes_by_handles() && !app.rotate_mode {
+        if let Drag::Scale { handle, .. } = &app.drag {
+            return ToolCursor::System(resize_icon(*handle));
+        }
+        if let Some(h) = pos
+            .filter(|_| matches!(app.drag, Drag::None) && app.three_point_base.is_none())
+            .and_then(|at| app.handle_at(at))
+        {
+            return ToolCursor::System(resize_icon(h));
         }
     }
     match app.tool {

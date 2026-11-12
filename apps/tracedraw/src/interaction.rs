@@ -1277,6 +1277,7 @@ impl App {
                 | Drag::Skew { .. }
                 | Drag::MoveGuide { .. }
         ) && matches!(self.tool, Tool::Pick | Tool::FreeformPick)
+            || (matches!(self.drag, Drag::Scale { .. }) && self.tool.resizes_by_handles())
     }
 
     /// The end of a move, scale, rotation or skew: on the selection, or on
@@ -1465,6 +1466,33 @@ impl App {
             self.view.pan(step);
             response.ctx.request_repaint();
         }
+    }
+
+    /// A scale of the selection by handle `h` of its box `b`, pressed at
+    /// `p`: the opposite side or corner stays put.
+    fn start_handle_scale(&mut self, h: Handle, b: Rect, p: Point, mods: Modifiers) {
+        // The point of the box the handle stands for, and how far the
+        // pointer is from it.
+        let grab = p - handle_point(b, h);
+        let anchor = match h {
+            Handle::N => Point::new(b.center().x, b.y0),
+            Handle::S => Point::new(b.center().x, b.y1),
+            Handle::E => Point::new(b.x0, b.center().y),
+            Handle::W => Point::new(b.x1, b.center().y),
+            Handle::NE => Point::new(b.x0, b.y0),
+            Handle::NW => Point::new(b.x1, b.y0),
+            Handle::SE => Point::new(b.x0, b.y1),
+            Handle::SW => Point::new(b.x1, b.y1),
+        };
+        self.drag = Drag::Scale {
+            handle: h,
+            anchor,
+            start_bounds: b,
+            current: p - grab,
+            grab,
+            mods: crate::app::HandleMods::of(mods),
+            snapped: (false, false),
+        };
     }
 
     pub(crate) fn handle_at(&self, screen: egui::Pos2) -> Option<Handle> {
@@ -1701,6 +1729,30 @@ impl App {
                 self.pending_clip_frame = false;
             }
             return;
+        }
+        // Right after a shape is drawn its handles show with the drawing
+        // tool still chosen: a drag from one resizes the selection, as
+        // with the Pick tool, and a click on one leaves it as it is,
+        // instead of starting a new shape or picking.
+        if self.tool.resizes_by_handles()
+            && matches!(self.drag, Drag::None)
+            && self.three_point_base.is_none()
+            && !self.rotate_mode
+        {
+            if let Some(h) = self.handle_at(screen) {
+                if response.drag_started_by(PointerButton::Primary) {
+                    let b = self.selection_bounds().unwrap_or(Rect::ZERO);
+                    self.drag_copy = false;
+                    self.start_handle_scale(h, b, p, mods);
+                    if let Some(now) = self.pointer_page {
+                        self.pick_drag_to(now, mods);
+                    }
+                    return;
+                }
+                if response.clicked_by(PointerButton::Primary) {
+                    return;
+                }
+            }
         }
         // A frame's flow tab takes a press with any tool, as with the Pick
         // and Text tools (which look for it themselves, after their
@@ -2050,28 +2102,7 @@ impl App {
                         };
                     }
                 } else {
-                    // The point of the box the handle stands for, and how
-                    // far the pointer is from it.
-                    let grab = p - handle_point(b, h);
-                    let anchor = match h {
-                        Handle::N => Point::new(b.center().x, b.y0),
-                        Handle::S => Point::new(b.center().x, b.y1),
-                        Handle::E => Point::new(b.x0, b.center().y),
-                        Handle::W => Point::new(b.x1, b.center().y),
-                        Handle::NE => Point::new(b.x0, b.y0),
-                        Handle::NW => Point::new(b.x1, b.y0),
-                        Handle::SE => Point::new(b.x0, b.y1),
-                        Handle::SW => Point::new(b.x1, b.y1),
-                    };
-                    self.drag = Drag::Scale {
-                        handle: h,
-                        anchor,
-                        start_bounds: b,
-                        current: p - grab,
-                        grab,
-                        mods: crate::app::HandleMods::of(mods),
-                        snapped: (false, false),
-                    };
+                    self.start_handle_scale(h, b, p, mods);
                 }
                 // The drag starts once the pointer has gone a few pixels
                 // from the press: the handle catches up with it now, not
