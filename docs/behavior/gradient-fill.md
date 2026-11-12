@@ -91,10 +91,13 @@ history and the saved state as they were (`App::preview_edit_fill`,
 Dragging with Interactive Fill on an object (anywhere inside it, filled
 or not) puts the start node at the press point and the end node at the
 release point, keeping the kind and colours of a gradient the object
-already has (a linear black to white one otherwise); the skew handle
-goes square to the line, as far from the start as the end. A click on
-an object with a gradient picks it (its nodes show); on one without, it
-gives the default fill; Ctrl constrains the angle to steps of the
+already has (otherwise a linear one from the object's solid colour, or
+the default colour when it has none, to white: a red circle gives red
+to white, #2498); the skew handle goes square to the line, as far from
+the start as the end. A click on an object with a fill picks it and
+keeps the fill (a gradient's nodes show); only an object without a fill
+takes the default fill (#2498,
+`fill_tool::tests::interactive_fill_starts_from_the_objects_colour`); Ctrl constrains the angle to steps of the
 constrain angle (15 degrees at first, #1661);
 dragging a palette colour onto a stop recolours it; dragging a colour
 onto the fill line adds a stop.

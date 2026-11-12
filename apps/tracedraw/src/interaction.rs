@@ -50,7 +50,7 @@ use egui::{Key, Modifiers, PointerButton, Response};
 use tracedraw_core::{
     document::ShapeKind,
     geometry::{Affine, Point, Rect, Shape as _, Vec2},
-    Color, Command, Fill, ShapeId,
+    Command, Fill, ShapeId,
 };
 
 /// How far out of the selection box the rotate and skew arrows' centres
@@ -3418,24 +3418,7 @@ impl App {
                 return;
             }
             if let Some(id) = self.hit_test_inside(p) {
-                // An object with a gradient already is only picked, its
-                // nodes shown.
-                let has_fountain = self
-                    .doc()
-                    .find_shape(id)
-                    .is_some_and(|s| matches!(s.fill, Fill::Fountain(_)));
-                self.select(vec![id]);
-                if has_fountain {
-                    return;
-                }
-                let fill = match self.default_fill() {
-                    Fill::None => Fill::Solid(Color::cmyk_pct(0.0, 0.0, 0.0, 20.0)),
-                    f => f,
-                };
-                self.run(Command::SetFill {
-                    shapes: vec![id],
-                    fill,
-                });
+                self.fill_tool_click(id);
             }
         }
     }

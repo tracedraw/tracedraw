@@ -612,7 +612,8 @@ impl App {
     /// A drag across the object with the Interactive Fill tool: the fill
     /// runs from where the drag began to where it ended (its kind and
     /// colours kept when it is a fountain already; else a linear one from
-    /// the default colour to white), the skew handle square to the axis.
+    /// the object's colour, or the default one when it has none, to
+    /// white, #2498), the skew handle square to the axis.
     pub fn fill_from_drag(&mut self, id: ShapeId, from: Point, to: Point) {
         use tracedraw_core::geometry::Shape as _;
         let Some(s) = self.doc().shape_on_page(id) else {
@@ -621,9 +622,9 @@ impl App {
         let b = s.page_path().bounding_box();
         let mut f = match &s.fill {
             Fill::Fountain(f) if f.kind != FountainKind::Shaped => f.clone(),
-            _ => {
-                let first = match &self.default_fill() {
-                    Fill::Solid(c) => *c,
+            other => {
+                let first = match (other, &self.default_fill()) {
+                    (Fill::Solid(c), _) | (_, Fill::Solid(c)) => *c,
                     _ => tracedraw_core::Color::cmyk_pct(0.0, 0.0, 0.0, 100.0),
                 };
                 Fountain::two(
@@ -648,6 +649,30 @@ impl App {
         self.run(Command::SetFill {
             shapes: vec![id],
             fill: Fill::Fountain(f),
+        });
+    }
+
+    /// A click on object `id` with the Interactive Fill tool: it is
+    /// picked. An object with a fill keeps it, its nodes shown for a
+    /// gradient, a solid colour kept for the gradient a drag makes
+    /// (#2498); only an object without a fill takes the default one (a
+    /// light grey when that is none too).
+    pub fn fill_tool_click(&mut self, id: ShapeId) {
+        let filled = self
+            .doc()
+            .find_shape(id)
+            .is_some_and(|s| !matches!(s.fill, Fill::None));
+        self.select(vec![id]);
+        if filled {
+            return;
+        }
+        let fill = match self.default_fill() {
+            Fill::None => Fill::Solid(tracedraw_core::Color::cmyk_pct(0.0, 0.0, 0.0, 20.0)),
+            f => f,
+        };
+        self.run(Command::SetFill {
+            shapes: vec![id],
+            fill,
         });
     }
 
@@ -976,6 +1001,27 @@ mod tests {
         let hs = fountain_handles(&f, b);
         assert!(near(hs[0].1, Point::new(5.0, 5.0)) && near(hs[1].1, Point::new(15.0, 5.0)));
         assert!(near(hs[2].1, Point::new(5.0, 15.0)), "{hs:?}");
+    }
+
+    /// #2498: Interactive Fill on an object filled red keeps the red: a
+    /// click leaves the fill as it is (it turned to the default black),
+    /// and a drag starts the gradient at red, not at the default colour.
+    #[test]
+    fn interactive_fill_starts_from_the_objects_colour() {
+        let red = Color::rgb8(255, 0, 0);
+        let mut app = App::headless();
+        let id = square(&mut app);
+        app.apply_fill(Fill::Solid(red));
+        app.fill_tool_click(id);
+        let fill = |app: &App| app.doc().find_shape(id).map(|s| s.fill.clone());
+        assert_eq!(fill(&app), Some(Fill::Solid(red)));
+        app.fill_from_drag(id, Point::new(5.0, 5.0), Point::new(35.0, 5.0));
+        let (_, f, _) = app.selected_fountain().expect("fountain");
+        assert_eq!(f.first_color(), red);
+        // An object without a fill takes the default one on a click.
+        app.apply_fill(Fill::None);
+        app.fill_tool_click(id);
+        assert!(!matches!(fill(&app), Some(Fill::None)));
     }
 
     #[test]
