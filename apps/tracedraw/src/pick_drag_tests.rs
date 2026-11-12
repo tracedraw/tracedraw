@@ -210,7 +210,10 @@ fn shift_and_cmd_keep_a_move_straight() {
             Vec::new(),
         );
         let b = bounds(&app, id);
-        assert!(b.y0 > 15.0 || b.y0 < 5.0, "moved up or down: {b:?} {mods:?}");
+        assert!(
+            b.y0 > 15.0 || b.y0 < 5.0,
+            "moved up or down: {b:?} {mods:?}"
+        );
         assert!(close(b.x0, 10.0), "kept its place across: {b:?} {mods:?}");
         assert_eq!(app.selection, vec![id], "{mods:?}");
     }
