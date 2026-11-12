@@ -1901,10 +1901,13 @@ fn rotation_field(app: &mut App, ui: &mut Ui, refp: Point) -> egui::Response {
             .suffix(" \u{00B0}"),
     );
     if r.changed() && (a - angle).abs() > 1e-9 {
+        // About the centre of rotation moved on the canvas, as a drag of
+        // the rotation handles turns, else the reference point (#2478).
+        let c = app.moved_rotation_center().unwrap_or(refp);
         app.transform_selection(
-            Affine::translate(refp.to_vec2())
+            Affine::translate(c.to_vec2())
                 * Affine::rotate((a - angle).to_radians())
-                * Affine::translate(-refp.to_vec2()),
+                * Affine::translate(-c.to_vec2()),
         );
     }
     r
@@ -3614,6 +3617,96 @@ mod tests {
         // One undo step a click.
         app.undo();
         assert!((selection_angle(&app) - 3.0).abs() < 1e-6);
+    }
+
+    /// #2478: an angle typed in the rotation box turns the selection
+    /// about the centre of rotation moved on the canvas, as a drag of the
+    /// rotation handles does. It turned about the middle of the selection
+    /// whatever the centre was, so a moved centre counted for a drag only.
+    #[test]
+    fn a_typed_angle_turns_about_the_moved_centre_of_rotation() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: R::new(10.0, 10.0, 60.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        // The centre of rotation moved to the rectangle's lower left
+        // corner.
+        let corner = Point::new(10.0, 10.0);
+        app.set_pivot(corner);
+        assert!(app
+            .moved_rotation_center()
+            .is_some_and(|p| (p - corner).hypot() < 1e-9));
+        let origin = egui::pos2(100.0, 100.0);
+        let run = |app: &mut App, events: Vec<egui::Event>| -> egui::Rect {
+            let mut rect = egui::Rect::NOTHING;
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(600.0, 400.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    egui::Area::new(egui::Id::new("rotation"))
+                        .fixed_pos(origin)
+                        .show(ui.ctx(), |ui| {
+                            // The reference point the bar passes: the
+                            // middle of the selection.
+                            rect = rotation_field(app, ui, Point::new(35.0, 25.0)).rect;
+                        });
+                },
+            );
+            out.textures_delta.clear();
+            rect
+        };
+        run(&mut app, Vec::new());
+        let field = run(&mut app, Vec::new());
+        run(&mut app, vec![egui::Event::PointerMoved(field.center())]);
+        for pressed in [true, false] {
+            run(
+                &mut app,
+                vec![egui::Event::PointerButton {
+                    pos: field.center(),
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+        }
+        let key = |k: egui::Key| egui::Event::Key {
+            key: k,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        run(&mut app, vec![key(egui::Key::A), key(egui::Key::Backspace)]);
+        run(&mut app, vec![egui::Event::Text("90".into())]);
+        run(&mut app, vec![key(egui::Key::Enter)]);
+        run(&mut app, Vec::new());
+        assert!(
+            (selection_angle(&app) - 90.0).abs() < 1e-6,
+            "{}",
+            selection_angle(&app)
+        );
+        // Turned a quarter about the corner, the rectangle stands to its
+        // left: x from -20 to 10, y from 10 to 60.
+        let b = app.selection_bounds().expect("bounds");
+        for (got, want) in [(b.x0, -20.0), (b.x1, 10.0), (b.y0, 10.0), (b.y1, 60.0)] {
+            assert!((got - want).abs() < 1e-6, "{b:?}");
+        }
+        // The centre stays on the corner.
+        assert!(app
+            .moved_rotation_center()
+            .is_some_and(|p| (p - corner).hypot() < 1e-6));
     }
 
     /// #1331: the sharpness box takes a negative value, which inverts the
