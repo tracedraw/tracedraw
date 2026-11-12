@@ -2555,6 +2555,13 @@ impl App {
         self.shape_tool_input(response, p, mods);
     }
 
+    /// The table under page point `p`, if any.
+    fn table_at(&self, p: Point) -> Option<ShapeId> {
+        let id = self.hit_test(p)?;
+        let (_, s) = self.doc().shape(id).ok()?;
+        matches!(s.kind, ShapeKind::Table(_)).then_some(id)
+    }
+
     fn text_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
         // A frame's flow tabs link frames with the Text tool as with the
         // Pick tool: a click on one, then a click where the text flows,
@@ -2576,6 +2583,32 @@ impl App {
         let acts = response.drag_started_by(PointerButton::Primary)
             || response.clicked_by(PointerButton::Primary)
             || response.double_clicked_by(PointerButton::Primary);
+        // On a table the Text tool edits the text of the cell under the
+        // pointer, as the Table tool does (#2438).
+        if acts && !response.double_clicked_by(PointerButton::Primary) {
+            if let Some(id) = self.table_at(p) {
+                if self.text_edit.is_some() {
+                    self.finish_text();
+                }
+                let tf = self
+                    .doc()
+                    .shape(id)
+                    .map(|(_, s)| s.transform)
+                    .unwrap_or(Affine::IDENTITY);
+                let local = tf.inverse() * p;
+                let extend = mods.shift && self.table_edit.as_ref().is_some_and(|e| e.shape == id);
+                if extend {
+                    self.table_range_to(id, local);
+                } else {
+                    self.table_click(id, local, false);
+                }
+                self.select(vec![id]);
+                self.drag = Drag::None;
+                return;
+            }
+            // Anywhere else the cell being edited lets go.
+            self.table_edit = None;
+        }
         let on_edited = acts
             && self
                 .text_edit
@@ -3994,7 +4027,7 @@ impl App {
         if !dialog_open
             && !ctx.egui_wants_keyboard_input()
             && self.table_edit.is_some()
-            && self.tool == Tool::Table
+            && matches!(self.tool, Tool::Table | Tool::Text)
             && self.table_keyboard(ctx)
         {
             return;

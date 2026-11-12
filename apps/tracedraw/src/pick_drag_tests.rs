@@ -26225,3 +26225,45 @@ fn bold_italic_and_alignment_of_a_text_do_not_go_to_new_text() {
         (true, false, tracedraw_core::TextAlign::Right)
     );
 }
+
+/// A click with the Text tool on a table's cell edits the cell's text, as
+/// the Table tool does, and makes no new text over it; a click off the
+/// table lets the cell go (#2438).
+#[test]
+fn the_text_tool_types_into_the_table_cell_clicked() {
+    let (ctx, mut app, _) = setup();
+    app.settings.autocorrect.enabled = false;
+    let t = tracedraw_core::Table::new(
+        Rect::new(20.0, 100.0, 140.0, 130.0),
+        3,
+        4,
+        Some(tracedraw_core::Stroke::hairline(
+            tracedraw_core::Color::BLACK,
+        )),
+    );
+    let id = app.new_shape(ShapeKind::Table(t)).expect("table");
+    app.select(Vec::new());
+    app.set_tool(Tool::Text);
+    let shapes = shape_count(&app);
+    // Cell (1, 2): x 80..110, y 110..120.
+    let at = app.view.to_screen(Point::new(95.0, 115.0));
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert_eq!(app.tool, Tool::Text);
+    assert!(app.text_edit.is_none(), "no new text");
+    let e = app.table_edit.as_ref().expect("a cell is edited");
+    assert_eq!((e.shape, e.cells.clone()), (id, vec![(1, 2)]));
+    assert_eq!(app.selection, vec![id]);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Text("cell".into())],
+        Modifiers::NONE,
+    );
+    assert_eq!(app.cell_text(), "cell");
+    assert_eq!(shape_count(&app), shapes, "nothing new on the page");
+    // Elsewhere the cell lets go and a click starts a text as before.
+    let away = app.view.to_screen(Point::new(100.0, 200.0));
+    click_at(&ctx, &mut app, away, Modifiers::NONE);
+    assert!(app.table_edit.is_none());
+    assert!(app.text_edit.is_some());
+}
