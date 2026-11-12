@@ -73,7 +73,13 @@ length with width nodes.
   split at
   the nodes; corners get round joins on their outer side, the arc in
   steps of `2 acos(1 - 0.005 / r)` for a reach `r` (at most 256), so it
-  stays within 0.005 mm of the circle; ends are butt. The inner side of
+  stays within 0.005 mm of the circle. The ends of an open path take the
+  outline's line cap (Outline Pen, Caps): butt ends stop at the end, a
+  round cap is a half circle across the reach there (left plus right, so
+  an uneven reach gets a cap spanning both sides), a square cap a box as
+  deep as half that reach; a closed path has no ends and no caps. The
+  band used to end square whatever the cap (#2390,
+  `shaping::tests::a_variable_outline_keeps_the_line_caps`). The inner side of
   a corner is covered by the pieces either side: a round join there, as
   wide as the reach at the corner, stood out where the reach falls away
   after the corner and left a notch where it met the band (#776,
@@ -118,7 +124,7 @@ length with width nodes.
 - The outline's colour, or its gradient, pattern or texture fill, paints
   the band. Convert Outline to Object (Ctrl+Shift+Q) gives the band as an
   object: built from the path flattened to 0.005 mm and fitted to a few
-  curves, its butt ends straight lines (#627,
+  curves, its butt ends straight lines and its round caps kept (#627,
   `tools2::tests::a_variable_outline_becomes_a_band_of_few_curves`). SVG and PDF exports write the band as a filled path; `.cdr`
   files are written with the plain width.
 - A reach on the inner side of a bend that comes near the bend's radius

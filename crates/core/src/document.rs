@@ -3245,7 +3245,7 @@ impl Shape {
                     right: n.right * scale,
                 })
                 .collect();
-            crate::shaping::variable_band_within(&page, st.width * scale, &nodes, 0.005)
+            crate::shaping::variable_band_within(&page, st.width * scale, &nodes, 0.005, st.cap)
         };
         let band = crate::fit::fit_path(&band, 0.01);
         // The contours come outer first, then its holes, which wind the
