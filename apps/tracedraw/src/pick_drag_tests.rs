@@ -6848,6 +6848,85 @@ fn the_snap_tip_shows_while_placing_and_pulling_with_the_pen() {
     );
 }
 
+/// Freehand by clicks, as in CorelDRAW (#2339): a double-click instead of
+/// the second click makes a corner and the line goes on; a single click
+/// ends it once the double-click time has passed; Space ends it at once.
+#[test]
+fn freehand_double_clicks_make_corners_and_a_click_ends_the_line() {
+    let (ctx, mut app, _id) = setup();
+    app.set_tool(Tool::Freehand);
+    let pts_of = |app: &App| -> Vec<Point> {
+        last_path(app)
+            .elements()
+            .iter()
+            .filter_map(|e| match e {
+                tracedraw_core::geometry::PathEl::MoveTo(p)
+                | tracedraw_core::geometry::PathEl::LineTo(p) => Some(*p),
+                _ => None,
+            })
+            .collect()
+    };
+    let double_click_at = |app: &mut App, at: Pos2| {
+        frame(&ctx, app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+        for _ in 0..2 {
+            for down in [true, false] {
+                frame(
+                    &ctx,
+                    app,
+                    vec![button(at, down, PointerButton::Primary, Modifiers::NONE)],
+                    Modifiers::NONE,
+                );
+            }
+        }
+        for _ in 0..20 {
+            frame(&ctx, app, Vec::new(), Modifiers::NONE);
+        }
+    };
+    let view = app.view.clone();
+    let at = |x: f64, y: f64| view.to_screen(Point::new(x, y));
+    let (a, b, c, d) = (
+        at(100.0, 100.0),
+        at(160.0, 100.0),
+        at(160.0, 160.0),
+        at(100.0, 160.0),
+    );
+    let before = shape_count(&app);
+    click_at(&ctx, &mut app, a, Modifiers::NONE);
+    double_click_at(&mut app, b);
+    assert_eq!(
+        shape_count(&app),
+        before,
+        "the line goes on after a double-click"
+    );
+    assert_eq!(app.curve.as_ref().map(|c| c.nodes.len()), Some(2));
+    double_click_at(&mut app, c);
+    click_at(&ctx, &mut app, d, Modifiers::NONE);
+    assert!(app.curve.is_none(), "a single click ends the line");
+    assert_eq!(shape_count(&app), before + 1, "one line");
+    let pts = pts_of(&app);
+    assert_eq!(pts.len(), 4, "{pts:?}");
+    assert!((pts[1] - Point::new(160.0, 100.0)).hypot() < 0.5, "{pts:?}");
+    assert!((pts[2] - Point::new(160.0, 160.0)).hypot() < 0.5, "{pts:?}");
+    // Two single clicks still make one straight segment.
+    click_at(&ctx, &mut app, at(30.0, 30.0), Modifiers::NONE);
+    click_at(&ctx, &mut app, at(60.0, 30.0), Modifiers::NONE);
+    assert_eq!(shape_count(&app), before + 2);
+    assert_eq!(pts_of(&app).len(), 2);
+    // Space ends a line of clicks at once, with the nodes placed (as
+    // Enter and Esc do), and switches to the Pick tool.
+    click_at(&ctx, &mut app, at(30.0, 200.0), Modifiers::NONE);
+    double_click_at(&mut app, at(60.0, 200.0));
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Space, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert!(app.curve.is_none());
+    assert_eq!(shape_count(&app), before + 3);
+    assert_eq!(pts_of(&app).len(), 2);
+}
+
 #[test]
 fn the_snap_mark_shows_before_the_first_node_of_a_freehand_line() {
     // #1538: the point the line would start at was snapped but not marked.

@@ -998,6 +998,9 @@ pub struct App {
     /// down (see `interaction::paste_without_text`).
     pub paste_seen: bool,
     pub curve: Option<CurveInProgress>,
+    /// Freehand by clicks: the input time at which the line ends unless
+    /// a double-click made the last click a corner first (#2339).
+    pub freehand_ends_at: Option<f64>,
     /// Undo and redo steps of `curve`, node by node.
     pub curve_steps: CurveSteps,
     /// The steps that made or changed a curve drawn with the Pen or
@@ -2662,6 +2665,7 @@ impl App {
             pen_editing: false,
             paste_seen: false,
             curve: None,
+            freehand_ends_at: None,
             text_edit: None,
             ime_preedit: String::new(),
             text_clip: None,

@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Freehand tool: a double-click at each corner draws a line of several straight segments, as in CorelDRAW; a single click ends it, and Space, Enter or Esc end it at the last corner. Clicks made only one segment, and the line stopped there (#2339).
 - Table tool: a font size typed into the property bar while a cell's text is selected sizes that text. The digits went into the cell as well and replaced its selected text with the number; a field of the bar or a docker that has the keyboard now keeps what is typed in it while a cell is active, as it already did while a text was edited (#2328).
 - Shape tool: holding Delete down on chosen nodes takes those nodes only. The key's repeats ran on and deleted the whole curve once the nodes were gone; whole objects now go only on a press of their own, never on the repeats of a held Delete or Backspace (#1982).
 - Windows: a file dragged over the window and taken away again without a drop no longer leaves the blue "Drop to import" frame over the window until TraceDraw is closed. The frame shows only while a mouse button holds the drag (#2350).

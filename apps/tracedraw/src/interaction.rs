@@ -1414,6 +1414,7 @@ impl App {
     }
 
     pub fn canvas_input(&mut self, response: &Response, mods: Modifiers) {
+        self.freehand_end_tick(&response.ctx);
         self.snap_mark.set(None);
         self.clear_live_guides();
         self.pointer_screen = response.ctx.pointer_latest_pos();
@@ -2700,6 +2701,27 @@ impl App {
         }
     }
 
+    /// A Freehand line of clicks ends once the double-click time after
+    /// its last click has passed with no double-click (which makes that
+    /// node a corner and goes on) and no button held (#2339). It is
+    /// dropped when the line or the tool went another way meanwhile.
+    fn freehand_end_tick(&mut self, ctx: &egui::Context) {
+        let Some(at) = self.freehand_ends_at else {
+            return;
+        };
+        if self.curve.is_none() || self.tool != Tool::Freehand {
+            self.freehand_ends_at = None;
+            return;
+        }
+        let (now, held) = ctx.input(|i| (i.time, i.pointer.primary_down()));
+        if now >= at && !held {
+            self.freehand_ends_at = None;
+            self.finish_curve();
+        } else {
+            ctx.request_repaint_after_secs((at - now).max(0.0) as f32 + 0.01);
+        }
+    }
+
     fn freehand_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
         // Resting before the first click: the pointer shows the point the
         // line would start at, as it does for the next node once the line
@@ -2713,7 +2735,25 @@ impl App {
         }
         // A click, then another: a straight line between them (Ctrl keeps
         // it to steps of the constrain angle); Esc drops the first click.
+        // As in CorelDRAW, a double-click instead of the second click
+        // makes a corner and the line goes on to the next click; a single
+        // click ends it (#2339). The line ends once the double-click time
+        // has passed (see `freehand_end_tick`).
+        // (egui counts the pair as a triple click when the click before
+        // it came less than two double-click times earlier.)
+        let double = response.double_clicked_by(PointerButton::Primary)
+            || response.triple_clicked_by(PointerButton::Primary);
+        if double && self.tool == Tool::Freehand {
+            // The first click of the pair placed the node: it stays.
+            self.freehand_ends_at = None;
+            return;
+        }
         if response.clicked_by(PointerButton::Primary) && self.tool == Tool::Freehand {
+            // A click while the line waits to end: it ends, and this
+            // click starts the next one.
+            if self.freehand_ends_at.take().is_some() {
+                self.finish_curve();
+            }
             let p = self.curve_point(self.snap_point(p), self.constrain_held(&mods));
             let c = self.curve.get_or_insert_with(|| CurveInProgress {
                 nodes: Vec::new(),
@@ -2724,11 +2764,20 @@ impl App {
             });
             c.nodes.push((p, None));
             if c.nodes.len() >= 2 {
-                self.finish_curve();
+                let now = response.ctx.input(|i| i.time);
+                let delay = response
+                    .ctx
+                    .options(|o| o.input_options.max_double_click_delay);
+                self.freehand_ends_at = Some(now + delay);
+                response.ctx.request_repaint_after_secs(delay as f32);
             }
             return;
         }
         if response.drag_started_by(PointerButton::Primary) {
+            // A line of clicks still waiting to end ends before the drag.
+            if self.freehand_ends_at.take().is_some() {
+                self.finish_curve();
+            }
             self.curve = None;
             self.drag = Drag::Freehand { points: vec![p] };
             self.pen_stroke = crate::pen::PenStroke::start(self.pen_pressure);
@@ -4513,9 +4562,11 @@ impl App {
             }
             self.finish_curve();
         }
-        // Space finishes a Bezier curve too (then, as the Pick tool's
-        // key, it switches to Pick).
-        if pressed(Key::Space, Modifiers::NONE) && self.tool == Tool::Bezier {
+        // Space finishes a Bezier curve, or a Freehand line of clicks
+        // (#2339), too (then, as the Pick tool's key, it switches to Pick).
+        if pressed(Key::Space, Modifiers::NONE)
+            && matches!(self.tool, Tool::Bezier | Tool::Freehand)
+        {
             self.finish_curve();
         }
         // Esc with a menu or a list open only closes it.
