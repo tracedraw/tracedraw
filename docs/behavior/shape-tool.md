@@ -275,7 +275,7 @@ round their corners with their own handles either way.
   nodes' corners when it is one of them, or with Shift every corner of
   the curve (sharp or rounded) takes the new radius (a rounded corner is
   chosen by any node of its arc). Dragging back past the corner makes it sharp. Scallops
-  and chamfers are not found again.
+  and chamfers are found again only right after they were cut (below).
 - On a stretched or skewed curve corners round on the page, so a new
   rounding is round, also on a curve stretched after other corners were
   rounded. A corner rounded before the stretch keeps its stretched arc
@@ -306,9 +306,19 @@ round their corners with their own handles either way.
   the Corners docker does (`corner_cut::cut_corners`), the value being
   the distance along each side; a distance some corner cannot take is
   cut down by tenths until every one of them takes it. One undo step
-  ("Scallop", "Chamfer"); a cut corner is no longer a corner of its
-  own, so it leaves the chosen corners and shows no ring. Clear
-  Rounding takes back round corners only.
+  ("Scallop", "Chamfer"). The curve as it was before the cut is kept
+  while the curve stays as the cut made it (#2336,
+  `corner_widgets::tests::scalloped_and_chamfered_corners_stay_editable`):
+  the field then shows the distance, a new distance (typed or scrolled)
+  or the other kind cuts that curve again at the same corners, so the
+  nodes of one cut stay (before, each try cut the cuts and a rectangle
+  grew to 120 and more nodes), 0 or Clear Rounding gives that curve
+  back, and each corner cut keeps one ring in the middle of its cut
+  (the corners the cut made have none). Dragging a ring makes the
+  bar's kind of corner: round, or scalloped or chamfered with the cut's
+  middle under the pointer, cut down as the field cuts it. Any other
+  change of the curve ends this: its cut corners are then corners like
+  any other.
 - Checked by `pick_drag_tests::corner_widgets_round_every_corner_or_the_chosen_ones`,
   `pick_drag_tests::corner_widgets_follow_their_preference_off_by_default`,
   `pick_drag_tests::rounded_corners_keep_their_widgets_and_round_again`,

@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Shape tool: scalloped and chamfered corners stay editable. A new distance in the property bar's corner field, typed or scrolled, cut the corners of the last cut, so a rectangle turned into a curve grew to 120 and more nodes; it now cuts the curve as it was before the cut, the field shows the distance, choosing the other kind cuts the same corners the new way, and Clear Rounding gives the curve back. Dragging a corner's ring makes the kind chosen on the bar (it always rounded), and each corner cut keeps its ring (#2336).
 - .cdr: objects locked in the file stay locked when it is opened or imported, and objects locked in TraceDraw are saved locked. They came in unlocked (#2347).
 - Pick tool: a group, clip frame or symbol lying on top is picked only where one of its objects is (a clip frame on its frame and where its contents show), no longer anywhere in its box. A click in the empty part of a group that covers other objects now takes the object inside or behind it, as it shows (#885).
 - Multipage View: an object moved onto another page's paper becomes that page's, where it was let go, and that page becomes current with it selected, in one undo step. It stayed the first page's, off its paper (#2055).

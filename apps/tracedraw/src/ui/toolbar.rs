@@ -2949,7 +2949,7 @@ fn shape_tool_bar(app: &mut App, ui: &mut Ui) {
             ),
         ] {
             if pic_button(ui, pic, &tr(key), true, app.corner_bar_op == op).clicked() {
-                app.corner_bar_op = op;
+                app.set_corner_op(op);
             }
         }
         let mut set = None;
