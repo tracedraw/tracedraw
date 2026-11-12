@@ -251,6 +251,14 @@ same function (`export::print_sheets`).
   `print_preview::tests::plates_split_the_sheet_by_ink`). Pictures follow
   the ticked inks pixel by pixel (#1659,
   `print_preview::tests::plates_split_pictures_by_ink`).
+  The arrows (and Page Up / Page Down) then page through each plate of
+  the sheet after it, one page per ticked ink as File > Print sends them,
+  the plate's name beside the sheet number: the sheet with the ticked
+  inks together, then Cyan, Magenta, Yellow, Black and each spot ink, in
+  grey or, with "Show one ink in its color", in the ink's colour; an
+  unticked ink has no page (#2379,
+  `print_preview::tests::separations_preview_a_page_per_plate`). Before,
+  the preview showed only the inks together, never a page per plate.
 - A plate shows the ink's coverage in grey, black = full ink, as the
   separations print; registration colour shows on every plate. So cyan
   ink ticked alone shows a pure cyan square black, which reads as black
