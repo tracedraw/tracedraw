@@ -771,6 +771,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         egui::CentralPanel::default()
             .frame(Frame::new().fill(Tokens::panel()))
             .show(ui, |ui| welcome::welcome_screen(app, ui));
+        update_card::show(app, &ctx);
         command_search::show(app, &ctx);
         dialogs::show(app, &ctx);
         return;
@@ -780,6 +781,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         egui::CentralPanel::default()
             .frame(Frame::new().fill(Tokens::panel()))
             .show(ui, |_| {});
+        update_card::show(app, &ctx);
         command_search::show(app, &ctx);
         dialogs::show(app, &ctx);
         return;
@@ -788,6 +790,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         egui::CentralPanel::default()
             .frame(Frame::new().fill(Tokens::panel()))
             .show(ui, |ui| preview::page_sorter(app, ui));
+        update_card::show(app, &ctx);
         command_search::show(app, &ctx);
         dialogs::show(app, &ctx);
         return;

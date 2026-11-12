@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Updates: the update card shows on the Welcome Screen, on an empty workspace and over the page sorter, not only over an open drawing. TraceDraw starts on the Welcome Screen, where the card (Update now, then Restart Now once the file is ready) was never drawn: it only appeared after a drawing was opened or a dialog closed, and was gone again when the Welcome Screen came back.
 - Paste: what another program copied pastes from the page's right-click menu, the Paste button and Edit > Paste in View too, as with Ctrl+V. Those were greyed out until something was copied in TraceDraw, and Paste in View pasted only a copy made here.
 - Locked objects: objects locked in a `.cdr` file and imported come in with the others but are not selected, and a row of a locked object in the Objects docker no longer selects it, so they cannot be moved or edited until unlocked. Imported objects came in all selected, the locked ones too, and a drag, a nudge or a colour then changed them as if they were free (#2347).
 - Zooming in on a large drawing: the objects of a group that lie off screen are no longer drawn. Zoomed in on a design kept as one big group, as `.cdr` files often keep it, every object of the group was drawn at the zoom's detail, so each zoom in took far longer than the page fitted in the window and the picture stayed blurry, coming back slowly (discussion #2389).
