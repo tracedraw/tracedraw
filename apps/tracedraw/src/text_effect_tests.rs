@@ -883,8 +883,9 @@ fn the_blend_tool_s_end_squares_move_and_pick_the_end_objects() {
 }
 
 /// Copy Envelope Properties from a shape with no envelope fits the text
-/// into that shape (#993): text taking a circle's outline fills the
-/// ellipse inside its own box and leaves the box's corners empty.
+/// into that shape (#993): text taking a circle's outline goes into the
+/// circle, as in CorelDRAW (#2344), fills it and leaves the corners of
+/// its box empty.
 #[test]
 fn text_takes_the_shape_of_an_object_as_its_envelope() {
     let mut app = App::headless();
@@ -896,21 +897,19 @@ fn text_takes_the_shape_of_an_object_as_its_envelope() {
         })
         .expect("circle");
     app.select(vec![id]);
-    let before = tracedraw_core::live::evaluate(app.doc().find_shape(id).expect("text"))
-        .main
-        .bounds();
     app.start_copy_envelope();
     app.copy_envelope_from(circle);
     assert!(app.envelope_of(id).is_some(), "{}", app.status);
     let s = app.doc().find_shape(id).expect("text").clone();
     let drawn = s.transform * tracedraw_core::live::evaluate(&s).main.local_path();
     let b = drawn.bounding_box();
-    // The text keeps its place and size.
+    // The text lies in the circle: its place and size (it was at x 20).
     assert!(
-        (b.center() - before.center()).hypot() < 0.5,
-        "{b:?} {before:?}"
+        (b.center() - Point::new(170.0, 70.0)).hypot() < 0.5,
+        "{b:?}"
     );
-    assert!((b.width() - before.width()).abs() < 0.5, "{b:?} {before:?}");
+    assert!((b.width() - 40.0).abs() < 0.5, "{b:?}");
+    assert!((b.height() - 40.0).abs() < 0.5, "{b:?}");
     // Every point drawn lies in the ellipse of the box.
     let (c, rx, ry) = (b.center(), b.width() / 2.0, b.height() / 2.0);
     let mut worst = 0.0f64;
