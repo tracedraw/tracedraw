@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Paste: what another program copied pastes from the page's right-click menu, the Paste button and Edit > Paste in View too, as with Ctrl+V. Those were greyed out until something was copied in TraceDraw, and Paste in View pasted only a copy made here.
 - Locked objects: objects locked in a `.cdr` file and imported come in with the others but are not selected, and a row of a locked object in the Objects docker no longer selects it, so they cannot be moved or edited until unlocked. Imported objects came in all selected, the locked ones too, and a drag, a nudge or a colour then changed them as if they were free (#2347).
 - Zooming in on a large drawing: the objects of a group that lie off screen are no longer drawn. Zoomed in on a design kept as one big group, as `.cdr` files often keep it, every object of the group was drawn at the zoom's detail, so each zoom in took far longer than the page fitted in the window and the picture stayed blurry, coming back slowly (discussion #2389).
 - Hardware acceleration: when it is off in Options, the window is drawn on the CPU and working on the drawing is slow while this computer has a graphics card, TraceDraw says so once, names the card and offers to turn acceleration on (from the next start) or to open Options. "Do not show this message again" turns the hint off; Options > Global > Warnings turns it on again.

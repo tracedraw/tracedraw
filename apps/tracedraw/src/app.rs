@@ -4775,22 +4775,11 @@ impl App {
         Some(repeated_transform(t, before, now))
     }
 
-    /// Edit > Paste in View: paste centred on the visible area.
+    /// Edit > Paste in View: what Edit > Paste pastes (the copy here or
+    /// what another program copied), centred on the visible area.
     pub fn paste_in_view(&mut self) {
-        let before: Vec<_> = self.selection.clone();
-        self.paste();
-        if self.selection == before {
-            return;
-        }
-        if let Some(b) = self.selection_bounds() {
-            let view_rect = self.view.visible_page_rect(self.canvas_rect);
-            let d = view_rect.center() - b.center();
-            let shapes = self.selection.clone();
-            self.run(Command::TransformShapes {
-                shapes,
-                transform: Affine::translate(d),
-            });
-        }
+        let at = self.view_center();
+        self.paste_any_at(Some(at));
     }
 
     pub fn select_all_of(&mut self, pred: impl Fn(&Shape) -> bool) {

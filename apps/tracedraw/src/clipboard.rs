@@ -871,6 +871,16 @@ impl App {
         );
     }
 
+    /// [`App::paste_in_view`] with `content` on the system clipboard (the
+    /// tests' clipboard).
+    #[cfg(test)]
+    pub fn paste_in_view_from(&mut self, content: ClipboardContent) {
+        let before = self.selection.clone();
+        let at = self.view_center();
+        self.paste_from(content);
+        self.move_pasted_to(&before, Some(at));
+    }
+
     /// What the system clipboard offers, or the copy here when it offers
     /// nothing.
     fn paste_from_unmarked(&mut self, content: ClipboardContent) {
@@ -1332,6 +1342,22 @@ mod tests {
             app.selected_shapes().first().map(|s| &s.kind),
             Some(ShapeKind::Text { .. })
         ));
+    }
+
+    /// Paste in View with nothing copied here pastes what another program
+    /// copied (a picture), centred on the visible area, as Edit > Paste
+    /// does; before, it pasted only a copy made here.
+    #[test]
+    fn paste_in_view_pastes_what_another_program_copied() {
+        let mut app = App::headless();
+        app.canvas_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        assert!(app.clipboard.is_none());
+        app.paste_in_view_from(picture());
+        assert_eq!(shape_count(&app), 1);
+        assert!(is_bitmap(&app), "the picture from the other program");
+        let b = app.selection_bounds().expect("pasted");
+        let c = app.view_center();
+        assert!((b.center() - c).hypot() < 1e-6, "{:?} at {c:?}", b.center());
     }
 
     fn png_file(name: &str) -> PastedFile {
