@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Blend with Loop: the steps turn and twist as in the `.cdr` files' blends, with an object acceleration too. The blend now turns as a whole about the middle of its two objects, each step a step of the straight blend turned by its share; each step turned about its own centre, so the outlines between a square and a circle ran in smooth bands where the files show them folding into the circle, and with an object acceleration the steps packed by the start hardly turned (#1576).
 - Full-screen preview (F9): the drawing is shown whole, its objects off the page too, with the page among them. Only the page was shown, so a drawing made beside or larger than its page was previewed as an empty white sheet (#2317).
 - Color Eyedropper: an object with bitmap effects, such as Hue/Saturation/Lightness, gives the colour it shows. It gave the colour of its fill, as it was before the effect changed it (#2380).
 - Text: bold, italic or an alignment given to a text change that text only. They stayed on the property bar and every new text took them; a new text now starts plain and left aligned (or with the bold, italic and alignment set with nothing selected, made the default of new text), and Bold or Italic clicked with nothing selected asks first, as the font and size do (#2346).
