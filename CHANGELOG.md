@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Hardware acceleration: when it is off in Options, the window is drawn on the CPU and working on the drawing is slow while this computer has a graphics card, TraceDraw says so once, names the card and offers to turn acceleration on (from the next start) or to open Options. "Do not show this message again" turns the hint off; Options > Global > Warnings turns it on again.
 - Opening .cdr files: a transparency whose merge mode the reader does not know yet is named in the open report ("transparency merge mode N not read"), so a file whose pictures should multiply into the colours under them, and show white boxes instead, says which mode it asks for (#1666).
 - Text: a drop cap taller than its paragraph no longer covers the next paragraph. A next paragraph with a drop cap starts below the letter, and one without has its lines beside the letter narrowed; the second letter was drawn over the first and the lines ran under it (#1995).
 - Drop Shadow tool: the slider on the line between the shadow's handles is larger and comes in two halves, one on each side of the line: one sets the opacity and the other the feathering, each by how far along the line it is dragged, with its value shown while it is under the pointer or held. A shadow standing on an edge (from the bottom, top, left or right) can also be started by a press on the edge or just outside it, and the edge a drag would stand on is marked while the pointer is over the object; before, only a press inside the outer fifth of the object did it.
