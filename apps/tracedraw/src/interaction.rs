@@ -3826,8 +3826,11 @@ impl App {
         }
         let dialog_open = !matches!(self.dialog, crate::ui::dialogs::Dialog::None);
         // Table cell typing has priority while a cell is active (not
-        // behind a dialog, which owns the keyboard).
+        // behind a dialog, which owns the keyboard, nor while a field has
+        // the keyboard: a font size typed into the property bar went into
+        // the cell, in place of its selected text, #2328).
         if !dialog_open
+            && !ctx.egui_wants_keyboard_input()
             && self.table_edit.is_some()
             && self.tool == Tool::Table
             && self.table_keyboard(ctx)

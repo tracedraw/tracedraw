@@ -5016,6 +5016,85 @@ fn typing_in_a_focused_field_leaves_the_edited_text_alone() {
     assert_eq!(app.edit_text(), "abe");
 }
 
+/// A font size typed into the Table tool's property bar, with a cell's
+/// text selected, sizes that text; it went into the cell instead and
+/// replaced its text with the number (#2328).
+#[test]
+fn a_font_size_typed_for_a_table_cell_sizes_its_text() {
+    let (ctx, mut app, _) = setup();
+    app.settings.autocorrect.enabled = false;
+    let t = tracedraw_core::Table::new(
+        Rect::new(20.0, 100.0, 140.0, 130.0),
+        3,
+        4,
+        Some(tracedraw_core::Stroke::hairline(
+            tracedraw_core::Color::BLACK,
+        )),
+    );
+    let id = app.new_shape(ShapeKind::Table(t)).expect("table");
+    app.select(vec![id]);
+    app.set_tool(Tool::Table);
+    app.table_click(id, Point::new(35.0, 125.0), false);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Text("text 1".into())],
+        Modifiers::NONE,
+    );
+    assert_eq!(app.cell_text(), "text 1");
+    app.table_select_all();
+    assert_eq!(app.cell_selected_text(), "text 1");
+    // The size field of the bar, found by what it shows.
+    let before = app.text_size_pt;
+    let texts = texts_drawn(&ctx, &mut app, Vec::new());
+    let at = texts
+        .iter()
+        .find(|(t, _)| {
+            t.strip_suffix(" pt")
+                .and_then(|n| n.trim().parse::<f64>().ok())
+                .is_some_and(|n| (n - before).abs() < 1e-6)
+        })
+        .map(|(_, r)| r.center())
+        .unwrap_or_else(|| panic!("no size field for {before} in {texts:?}"));
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert!(
+        ctx.egui_wants_keyboard_input(),
+        "the field has the keyboard"
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Text("15".into())],
+        Modifiers::NONE,
+    );
+    assert_eq!(app.cell_text(), "text 1", "the number stays in the field");
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert_eq!(app.cell_text(), "text 1");
+    assert!(
+        (app.text_size_pt - 15.0).abs() < 1e-6,
+        "{}",
+        app.text_size_pt
+    );
+    let spans = app.cell_spans().expect("cell");
+    assert!(
+        spans.iter().all(|s| (s.size_pt - 15.0).abs() < 1e-6),
+        "{:?}",
+        spans.iter().map(|s| s.size_pt).collect::<Vec<_>>()
+    );
+}
+
 /// The caret of text being edited is black on a white edge, whatever the
 /// interface theme (its text colour is light in the dark themes and the
 /// caret was lost on the white page, #632).
