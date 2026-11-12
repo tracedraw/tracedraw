@@ -5460,8 +5460,9 @@ fn a_three_point_curve_continues_and_closes_the_selected_curve() {
 }
 
 /// Ctrl keeps the chord of a 3-point curve (and the base of a 3-point
-/// rectangle or ellipse) to steps of the constrain angle, so a bow drawn
-/// with Ctrl stands level; Ctrl did nothing there (#934).
+/// rectangle) to steps of the constrain angle, so a bow drawn with Ctrl
+/// stands level; Ctrl did nothing there (#934). (With the 3-point
+/// ellipse Ctrl draws a circle round the press point, #2550.)
 #[test]
 fn ctrl_keeps_the_three_point_base_to_the_constrain_angle() {
     let (ctx, mut app, first) = setup();
@@ -5544,6 +5545,49 @@ fn a_three_point_ellipse_grows_from_its_centre_line_to_both_sides() {
     let id = *app.selection.first().expect("the rectangle");
     let r = bounds(&app, id);
     assert!(close(r.y0, 220.0) && close(r.y1, 240.0), "{r:?}");
+}
+
+/// With Ctrl held while the first line of the 3-Point Ellipse is
+/// dragged, the press point is the centre of a circle and the line its
+/// radius: the circle is drawn when the button is let go, with no third
+/// click; Ctrl did nothing there (#2550). Without Ctrl the line still
+/// waits for the third click.
+#[test]
+fn ctrl_draws_a_three_point_circle_round_the_press_point() {
+    let (ctx, mut app, first) = setup();
+    app.select(vec![first]);
+    app.delete_selection();
+    app.set_tool(Tool::ThreePointEllipse);
+    let before = shape_count(&app);
+    // Off the page's centre lines, which the points would snap to; the
+    // line 4 degrees off the level.
+    let (c, e) = (Point::new(100.0, 150.0), Point::new(130.0, 152.0));
+    let r = (e - c).hypot();
+    let (sc, se) = (app.view.to_screen(c), app.view.to_screen(e));
+    drag(&ctx, &mut app, sc, se, Modifiers::CTRL, Vec::new());
+    assert!(app.three_point_base.is_none(), "no third click waited for");
+    assert!(!app.three_point_circle);
+    assert_eq!(shape_count(&app), before + 1);
+    let id = *app.selection.first().expect("the circle");
+    assert!(matches!(
+        app.doc().find_shape(id).map(|s| &s.kind),
+        Some(ShapeKind::Ellipse { .. })
+    ));
+    let b = bounds(&app, id);
+    for (got, want) in [
+        (b.x0, c.x - r),
+        (b.x1, c.x + r),
+        (b.y0, c.y - r),
+        (b.y1, c.y + r),
+    ] {
+        assert!((got - want).abs() < 0.05, "round {c:?}, radius {r}: {b:?}");
+    }
+    // Without Ctrl: the line waits for the third click, as before.
+    let (d, f) = (Point::new(100.0, 230.0), Point::new(140.0, 230.0));
+    let (sd, sf) = (app.view.to_screen(d), app.view.to_screen(f));
+    drag(&ctx, &mut app, sd, sf, Modifiers::NONE, Vec::new());
+    assert!(app.three_point_base.is_some());
+    assert_eq!(shape_count(&app), before + 1);
 }
 
 /// Ctrl held at the third click of a 3-point curve draws a bow: the arc

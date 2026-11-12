@@ -214,6 +214,15 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
                 false,
                 Color32::BLACK,
             );
+            // With Ctrl, the circle the line is the radius of (#2550).
+            if app.three_point_circle && app.tool == Tool::ThreePointEllipse {
+                let r = (*current - *start).hypot() * view.zoom as f64;
+                painter.circle_stroke(
+                    view.to_screen(*start),
+                    r as f32,
+                    EStroke::new(1.0, Color32::BLACK),
+                );
+            }
         }
         Drag::Connector {
             from,

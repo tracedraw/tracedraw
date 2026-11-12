@@ -2826,14 +2826,28 @@ impl App {
                 start: p,
                 current: p,
             };
+            self.three_point_circle = false;
         }
         if response.dragged_by(PointerButton::Primary) {
+            // With Ctrl the 3-Point Ellipse draws a circle round the
+            // press point, the line dragged its radius, and its turn in
+            // steps of the constrain angle (#2550).
+            let circle = self.tool == Tool::ThreePointEllipse && constrain;
             if let Drag::ThreePointBase { start, current } = &mut self.drag {
-                *current = if constrain {
+                *current = if circle {
+                    let dir = constrain_from(*start, p, step) - *start;
+                    let len = dir.hypot();
+                    if len > 1e-9 {
+                        *start + dir * ((p - *start).hypot() / len)
+                    } else {
+                        p
+                    }
+                } else if constrain {
                     constrain_from(*start, p, step)
                 } else {
                     p
                 };
+                self.three_point_circle = circle;
             }
         }
     }
@@ -3559,7 +3573,11 @@ impl App {
             }
             Drag::Freehand { points } if self.tool == Tool::Sketch => self.finish_sketch(points),
             Drag::ThreePointBase { start, current } => {
-                if (current - start).hypot() > 0.05 {
+                if std::mem::take(&mut self.three_point_circle)
+                    && self.tool == Tool::ThreePointEllipse
+                {
+                    self.finish_three_point_circle(start, current);
+                } else if (current - start).hypot() > 0.05 {
                     self.three_point_base = Some((start, current));
                 }
             }

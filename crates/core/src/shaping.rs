@@ -1812,10 +1812,12 @@ pub fn variable_band_within(
         // `EASE_TOL` of the eased edge however far the reach changes: a
         // smoothstep from `0` to `dw` over a span bends at most
         // `6 dw / span^2`, and a piece `h` long strays `h^2 / 8` of that
-        // (#776).
+        // (#776). The monotone cubic through a run of nodes may leave a
+        // node at up to three times the span's mean slope, bending at
+        // most four times as much (#2547).
         const EASE_TOL: f64 = 0.005;
         let dw = (la - lb).abs().max((ra - rb).abs());
-        let steps = ((6.0 * dw / (8.0 * EASE_TOL)).sqrt().ceil() as usize).clamp(48, 512);
+        let steps = ((24.0 * dw / (8.0 * EASE_TOL)).sqrt().ceil() as usize).clamp(48, 512);
         eased.extend((1..steps).map(|i| a + (b - a) * i as f64 / steps as f64));
     }
     marks.extend(eased);

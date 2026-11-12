@@ -1206,6 +1206,10 @@ pub struct App {
     pub action_lines_radial: bool,
     /// 3-point tools: the base segment already dragged, waiting for the third click.
     pub three_point_base: Option<(Point, Point)>,
+    /// The first line of the 3-Point Ellipse is being dragged with Ctrl
+    /// held: it is the radius of a circle round the press point, drawn
+    /// when the button is let go (#2550).
+    pub three_point_circle: bool,
     pub media_width: f64,
     pub media_angle: f64,
     pub dimension_points: Vec<Point>,
@@ -2796,6 +2800,7 @@ impl App {
             action_lines_count: 12,
             action_lines_radial: false,
             three_point_base: None,
+            three_point_circle: false,
             media_width: 3.0,
             media_angle: 45.0,
             dimension_points: Vec::new(),
@@ -5602,6 +5607,22 @@ impl App {
             });
             self.select(vec![id]);
         }
+    }
+
+    /// [`Self::finish_three_point`] for a circle round `center` through
+    /// `edge`: the first line of the 3-Point Ellipse dragged with Ctrl
+    /// held is the circle's radius, and the circle is drawn at once,
+    /// with no third click (#2550).
+    pub fn finish_three_point_circle(&mut self, center: Point, edge: Point) {
+        let radius = edge - center;
+        let r = radius.hypot();
+        if r < 0.05 {
+            return;
+        }
+        // The circle as a 3-point ellipse: its centre line a diameter
+        // through the edge point, and as high as it is long.
+        let normal = Vec2::new(-radius.y, radius.x);
+        self.finish_three_point(center - radius, edge, center + normal, false);
     }
 
     /// 3-point tools: the base segment `a -> b` was dragged, `c` is the third
