@@ -297,8 +297,12 @@ objects, a picture with others) does what it did before.
 Open Palette... (files of `.tdpal`, `.xml`, `.gpl`, `.ase`, `.aco` and
 `.json`, the filter naming each extension; an XML palette is read as
 the document palette of a `.cdr` file, its CMYK, RGB, grey, Lab and the
-other colour models with their names, spot colours skipped, and a file
-with no colour that can be read says so in the status bar, #882,
+other colour models with their names; a spot colour library (a Pantone
+palette: the inks named in `<colorspaces>`, the page's colours naming an
+ink as their colour space) gives each colour once, named, as the spot
+colour of its ink with the ink's CMYK look as its stand-in
+(`palette::tests::spot_libraries_in_xml_open_as_named_spot_colours`);
+a file with no colour that can be read says so in the status bar, #882,
 `palette::tests::xml_palettes_open_with_names_and_values`; the palette
 opened gets a strip of its own next to the default palette, which stays
 first, and the same file opened again replaces the copy already open

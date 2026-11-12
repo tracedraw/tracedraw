@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Palettes: a CorelDRAW spot colour library in XML (a Pantone palette) opens as its spot colours, each once and named after its ink. Every colour came in twice, the second time without a name and in process inks, and none was a spot colour: the inks' looks listed at the top of the file were read as colours of their own (#882).
 - B-spline: the curve drawn so far no longer jumps when the pointer moves away after a click. The two stretches before the pointer changed shape at once, by about a tenth of the distance between the points, because the ends of an open B-spline were made differently from its middle. The ends are now made like the middle (the end point counted three times), so a new point only reshapes the last stretches as it moves. B-splines drawn before keep their shape until one of their points is moved, and then hug their end points a little more closely (#2184).
 - Export with Selected only: the file takes the whole outline of the selected objects. Its size was the objects' box without their outlines, so an SVG, PDF or PNG of a selected rectangle had half its outline cut off at every edge (#2290).
 - Envelope: Copy Envelope Properties from an object with no envelope puts the selected objects into that object's shape and fills it, as in CorelDRAW; they stayed where they were. A shape with sharp corners of its own, such as a band of two arcs wider at the top, keeps them as the envelope's corners: the corners fell in the middle of its slanted sides and bent the object there (#2344).
