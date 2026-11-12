@@ -469,6 +469,10 @@ pub enum Drag {
         from: Point,
         begun: bool,
     },
+    /// A press on an edge of a polygon or star (Shape tool): the first
+    /// move turns it into a curve and bends the edge grabbed (page point
+    /// the press began at); a plain click converts nothing.
+    PolygonEdge { shape: ShapeId, from: Point },
     /// Dragging a node transform handle (Shape tool).
     NodeTransform {
         handle: Handle,

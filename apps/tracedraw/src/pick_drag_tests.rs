@@ -26575,3 +26575,64 @@ fn outline_width_and_zoom_boxes_take_the_typed_value() {
         app.zoom_percent()
     );
 }
+
+/// Draws a regular pentagon with the Polygon tool, selects it with the
+/// Shape tool and returns the screen point of the point on its first edge, clear of the nodes.
+fn pentagon_edge_point(ctx: &egui::Context, app: &mut App) -> Pos2 {
+    app.select(Vec::new());
+    app.set_tool(Tool::Polygon);
+    app.polygon_points = 5;
+    let from = app.view.to_screen(Point::new(100.0, 150.0));
+    drag(
+        ctx,
+        app,
+        from,
+        from + egui::vec2(80.0, 80.0),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    app.set_tool(Tool::Shape);
+    let s = app.selected_shapes()[0].clone();
+    let pts: Vec<Point> = tracedraw_core::nodes::nodes(&s.page_path())
+        .into_iter()
+        .map(|n| n.pos)
+        .collect();
+    app.view.to_screen(pts[0].lerp(pts[1], 0.2))
+}
+
+/// #2451: a double-click on an edge of a polygon or star with the Shape
+/// tool puts a node there, turning it into a curve, instead of needing
+/// Convert to Curves first.
+#[test]
+fn double_click_on_a_polygon_edge_adds_a_node() {
+    let (ctx, mut app, _id) = setup();
+    let at = pentagon_edge_point(&ctx, &mut app);
+    double_click_at(&ctx, &mut app, at);
+    let s = app.selected_shapes()[0].clone();
+    assert!(matches!(s.kind, ShapeKind::Path { .. }), "{:?}", s.kind);
+    assert_eq!(tracedraw_core::nodes::nodes(&s.page_path()).len(), 6);
+}
+
+/// #2451: dragging an edge of a polygon bends it into a curve; a plain
+/// click on the edge leaves the polygon as it is.
+#[test]
+fn dragging_a_polygon_edge_bends_it() {
+    let (ctx, mut app, _id) = setup();
+    let at = pentagon_edge_point(&ctx, &mut app);
+    drag(&ctx, &mut app, at, at, Modifiers::NONE, Vec::new());
+    assert!(
+        matches!(app.selected_shapes()[0].kind, ShapeKind::Polygon { .. }),
+        "a click converts nothing"
+    );
+    drag_between(&ctx, &mut app, at, at + egui::vec2(0.0, -40.0));
+    let s = app.selected_shapes()[0].clone();
+    let ShapeKind::Path { path, .. } = &s.kind else {
+        panic!("{:?}", s.kind);
+    };
+    assert!(
+        path.elements()
+            .iter()
+            .any(|e| matches!(e, kurbo::PathEl::CurveTo(..))),
+        "the edge is a curve now"
+    );
+}

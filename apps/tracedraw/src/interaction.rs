@@ -1438,6 +1438,7 @@ impl App {
                 | Drag::KindNode { .. }
                 | Drag::NodeMove { .. }
                 | Drag::SegmentBend { .. }
+                | Drag::PolygonEdge { .. }
                 | Drag::NodeLasso { .. }
                 | Drag::NodeMarquee { .. }
                 | Drag::Connector { .. }
@@ -3758,6 +3759,7 @@ impl App {
             Drag::NodeMove { .. }
             | Drag::NodeTransform { .. }
             | Drag::SegmentBend { .. }
+            | Drag::PolygonEdge { .. }
             | Drag::TextChars { .. }
             | Drag::TextSpacing { .. } => {}
             Drag::NewGuide { .. } => self.finish_guide_drag(),
