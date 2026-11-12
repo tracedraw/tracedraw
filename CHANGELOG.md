@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Blend: the steps of a blend from a front object to one behind it stay behind the front object after the two are grouped, recoloured as a group or placed inside a frame. At the next change of the drawing they jumped in front of it, so a grouped blend of two texts suddenly looked all in the colour of the text behind; the order of the two objects is now read inside groups and frames too (#2023, #2120).
 - VBA macros: `Page.Paper` reads the page's paper size by name ("A4", "" for a size of its own) and sets a paper by name, and `OutlineStyles`, `ArrowHeads` and the full `Outline.SetProperties` (style, line caps and joins, behind fill, scale with object, nib) are there. A published tiling macro stopped with run-time error 438 on `Paper` and then on `OutlineStyles`; it now runs to the end and fills the page with copies (#1255, #2165).
 - Freehand tool: a double-click at each corner draws a line of several straight segments, as in CorelDRAW; a single click ends it, and Space, Enter or Esc end it at the last corner. Clicks made only one segment, and the line stopped there (#2339).
 - Linux (X11): objects copied in TraceDraw paste into other programs as a picture. The copy was offered as SVG text alone, so a presentation or word processor pasted the SVG source as text; it is now offered also as an SVG image and as a PNG picture with a transparent background, drawn only when a program asks for it, and still as text (#2288).
