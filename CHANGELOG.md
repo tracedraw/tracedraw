@@ -43,6 +43,7 @@ full, row-by-row status.
 - Rectangle, Ellipse, Polygon, Star and the other shape tools: right after an object is drawn, a drag from one of its selection handles resizes it, the pointer showing the resize arrows there, and the tool stays chosen. The press started a new object, so resizing it took switching to the Pick tool first.
 - Objects docker: every new drawing has a Desktop layer on the master page. Objects moved onto it, beside the pages or on them, show and can be picked from every page; objects left beside a page were only reachable from that page (#1161, #1775).
 - Guidelines: in a new drawing, guidelines dragged from the rulers go to "Guides (all pages)" and show on every page; clicking a page's own "Guides" row in the Objects docker makes the next ones that page's only. They went to the current page alone. The eye of each Guides row now hides only that row's guidelines, and the drawing keeps the choice; it hid all guidelines at once (#1775).
+- Opening .cdr files: a group with a vector pattern transparency (a drawing used as the transparency of all the group holds, as a background that fades out) opens with it; the group opened opaque, so a faded background came out as one flat colour. Vector pattern fills laid out as version 27 files hold them are read; they opened as no fill.
 
 ## 0.44.2 (2026-11-12)
 
