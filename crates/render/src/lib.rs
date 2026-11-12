@@ -573,6 +573,12 @@ fn visible_page_rect(opts: &RenderOptions) -> Rect {
 /// nodes of a variable width are counted on their own).
 const OUTLINE_REACH: f64 = 12.0;
 
+/// Paths drawn on this thread, for tests.
+#[cfg(test)]
+thread_local! {
+    static PATHS_DRAWN: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 struct Renderer<'a> {
     pixmap: &'a mut Pixmap,
     screen: Affine,
@@ -651,6 +657,27 @@ impl Renderer<'_> {
             return false;
         };
         b.x1 < visible.x0 || b.x0 > visible.x1 || b.y1 < visible.y0 || b.y0 > visible.y1
+    }
+
+    /// The part of the page (mm) this renderer's pixmap shows, `None`
+    /// when its transform cannot be undone (nothing is left out then).
+    fn sight(&self) -> Option<Rect> {
+        let c = self.screen.as_coeffs();
+        let det = c[0] * c[3] - c[1] * c[2];
+        if !det.is_finite() || det.abs() < 1e-12 {
+            return None;
+        }
+        let px = Rect::new(
+            0.0,
+            0.0,
+            self.pixmap.width() as f64,
+            self.pixmap.height() as f64,
+        );
+        let r = self.screen.inverse().transform_rect_bbox(px);
+        [r.x0, r.y0, r.x1, r.y1]
+            .iter()
+            .all(|v| v.is_finite())
+            .then_some(r)
     }
 
     /// Where a plain object (no group or clip frame) inside `parent` can
@@ -872,7 +899,11 @@ impl Renderer<'_> {
                 if shape.opacity <= 0.0 {
                     return;
                 }
+                let sight = self.sight();
                 for c in children {
+                    if sight.is_some_and(|v| self.out_of_sight_in(c, transform, &v)) {
+                        continue;
+                    }
                     let mut c = c.clone();
                     c.absorb_opacity(shape.opacity);
                     let t = self.child_transform(&c, transform);
@@ -880,7 +911,16 @@ impl Renderer<'_> {
                 }
                 return;
             }
+            // Only the members that can show in this picture: zoomed in on
+            // a large group (a whole design grouped, as files often keep
+            // it), every member off screen was drawn all the same, at the
+            // zoom's detail, so each zoom in took far longer to draw than
+            // the page fitted in the window (discussion #2389).
+            let sight = self.sight();
             for c in children {
+                if sight.is_some_and(|v| self.out_of_sight_in(c, transform, &v)) {
+                    continue;
+                }
                 let t = self.child_transform(c, transform);
                 self.draw_shape(c, t);
             }
@@ -995,6 +1035,8 @@ impl Renderer<'_> {
         if local.elements().is_empty() {
             return;
         }
+        #[cfg(test)]
+        PATHS_DRAWN.with(|n| n.set(n.get() + 1));
         let page_path = transform * local;
         let Some(sk) = to_sk_path(&(self.screen * page_path.clone())) else {
             return;
@@ -8055,6 +8097,85 @@ mod culling_tests {
         );
         s.fill = tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(10, 20, 30));
         s
+    }
+
+    /// Zoomed in on a large group, only its members that show are drawn
+    /// (discussion #2389): every member was drawn at the zoom's detail,
+    /// so a zoom in on a grouped design drew far slower than the page
+    /// fitted in the window. The picture is the same as with every
+    /// member drawn, and a semi-transparent group leaves them out too.
+    #[test]
+    fn a_zoom_into_a_group_draws_only_the_members_that_show() {
+        let members: Vec<Shape> = (0..400u64)
+            .map(|i| {
+                let (x, y) = ((i % 20) as f64 * 5.0, (i / 20) as f64 * 5.0);
+                let mut r = rect_shape(10 + i, Rect::new(x, y, x + 4.0, y + 4.0));
+                r.stroke = Some(tracedraw_core::Stroke::new(
+                    tracedraw_core::Color::BLACK,
+                    0.2,
+                ));
+                r
+            })
+            .collect();
+        let group = |opacity: f64| {
+            let mut g = Shape::new(
+                tracedraw_core::ShapeId(1),
+                ShapeKind::Group {
+                    children: members.clone(),
+                },
+            );
+            g.opacity = opacity;
+            g
+        };
+        // 40 px per mm on a 200 x 200 window: page x 0..5, y 95..100,
+        // about four members of the 400.
+        let opts = RenderOptions {
+            width: 200,
+            height: 200,
+            view: ViewTransform {
+                zoom: 40.0,
+                origin_x: 0.0,
+                origin_y: 100.0 * 40.0,
+            },
+            ..RenderOptions::default()
+        };
+        let doc_of = |shapes: Vec<Shape>| {
+            let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(100.0, 100.0));
+            let page = doc.pages[0].id;
+            doc.pages[0].layers[0].shapes = shapes;
+            (doc, page)
+        };
+        let drawn = |doc: &Document, page| {
+            PATHS_DRAWN.with(|n| n.set(0));
+            let pm = render_page_whole(doc, page, &opts).expect("render");
+            (pm, PATHS_DRAWN.with(|n| n.get()))
+        };
+        let (doc, page) = doc_of(vec![group(1.0)]);
+        let (grouped, n) = drawn(&doc, page);
+        assert!(n > 0 && n <= 16, "{n} members drawn of 400");
+        // The same members loose on the layer: the same picture.
+        let (loose_doc, page) = doc_of(members.clone());
+        let (loose, _) = drawn(&loose_doc, page);
+        assert!(grouped.data() == loose.data(), "the picture changed");
+        let (doc, page) = doc_of(vec![group(0.5)]);
+        let (_, n) = drawn(&doc, page);
+        assert!(
+            n > 0 && n <= 16,
+            "{n} members drawn of 400, half transparent"
+        );
+        // The whole group in sight: every member drawn.
+        let whole = RenderOptions {
+            view: ViewTransform {
+                zoom: 2.0,
+                origin_x: 0.0,
+                origin_y: 200.0,
+            },
+            ..opts.clone()
+        };
+        PATHS_DRAWN.with(|n| n.set(0));
+        let (doc, page) = doc_of(vec![group(1.0)]);
+        render_page_whole(&doc, page, &whole).expect("render");
+        assert_eq!(PATHS_DRAWN.with(|n| n.get()), 400);
     }
 
     /// Objects wholly outside the part of the page on screen are not
