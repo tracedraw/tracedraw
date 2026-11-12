@@ -97,7 +97,10 @@ to white, #2498); the skew handle goes square to the line, as far from
 the start as the end. A click on an object with a fill picks it and
 keeps the fill (a gradient's nodes show); only an object without a fill
 takes the default fill (#2498,
-`fill_tool::tests::interactive_fill_starts_from_the_objects_colour`); Ctrl constrains the angle to steps of the
+`fill_tool::tests::interactive_fill_starts_from_the_objects_colour`); a
+click on the selected fill's line keeps that fill picked, unless another
+object lies on top there, which is picked instead (#2508,
+`ui::tests::interactive_fill_click_picks_the_object_over_the_selected_fill_line`); Ctrl constrains the angle to steps of the
 constrain angle (15 degrees at first, #1661);
 dragging a palette colour onto a stop recolours it; dragging a colour
 onto the fill line adds a stop.
@@ -155,9 +158,13 @@ pos_i)`.
   0.001 inside its neighbours.
 - Drag a midpoint slider: sets `mid` (0.01 to 0.99) of the blend.
 - Click a node (the start and the end too): picks it. The node bar
-  opens under it with the node's colour (the swatch opens the colour
-  picker) and its transparency (0 % opaque to 100 % clear); the
-  property bar shows the node's colour, transparency and position
+  opens under it, compact (a slider groove of 70 points), with the
+  node's colour (the swatch opens the colour picker) and the object's
+  uniform transparency (0 % opaque to 100 % clear, the value of the
+  Properties docker's Transparency; a run of slider changes is one undo
+  step, #2507,
+  `ui::tests::the_node_bar_is_compact_and_sets_the_objects_transparency`);
+  the property bar shows the node's colour, transparency and position
   (the position only for nodes between the ends). A palette colour
   clicked while a node is picked goes to the node. The node bar's
   dotted grip (at its left) and the colour picker's (along its top)

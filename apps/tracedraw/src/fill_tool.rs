@@ -16,7 +16,8 @@
 //! double click on the line adds one, on a node removes it, and a drag
 //! moves it between its neighbours. A bar across the line between two
 //! nodes is the midpoint slider of their blend. A click picks a node; the
-//! node bar under it edits its colour and transparency (see `node_bar`).
+//! node bar under it edits its colour and the object's transparency (see
+//! `node_bar`).
 
 use crate::app::App;
 use tracedraw_core::{
@@ -652,6 +653,17 @@ impl App {
         });
     }
 
+    /// The node bar's transparency: uniform transparency of `amount` %
+    /// on the selection, as the Properties docker's Transparency amount
+    /// sets it (a run of changes is one undo step, #2507).
+    pub fn set_object_transparency(&mut self, amount: f64) {
+        let settings = crate::effects_ui::TransparencySettings {
+            amount: amount.clamp(0.0, 100.0),
+            ..Default::default()
+        };
+        self.patch_transparency(&settings, &[crate::mixed::TransparencyField::Amount]);
+    }
+
     /// A click on object `id` with the Interactive Fill tool: it is
     /// picked. An object with a fill keeps it, its nodes shown for a
     /// gradient, a solid colour kept for the gradient a drag makes
@@ -724,9 +736,14 @@ impl App {
     }
 }
 
+/// The groove of the node bar's transparency slider, points.
+const NODE_BAR_RAIL: f32 = 70.0;
+
 /// The node bar: under the picked colour node of the selected fill, as
 /// the reference program shows it, the node's colour (a swatch that opens
-/// the colour picker) and its transparency (0 % opaque, 100 % clear).
+/// the colour picker) and the object's uniform transparency (0 % opaque,
+/// 100 % clear; the same value as the Properties docker's, #2507), in a
+/// compact bar. A node's own transparency is on the property bar.
 /// Hidden while a node is dragged. An edit made while the pointer stays
 /// down (a picker or slider drag) is one undo step. The dotted grip at its
 /// left drags it off the object; it keeps that offset from its node.
@@ -735,7 +752,7 @@ pub fn node_bar(app: &mut App, ui: &mut egui::Ui) {
     if app.tool != Tool::InteractiveFill || !matches!(app.drag, crate::app::Drag::None) {
         return;
     }
-    let Some((_, f, b)) = app.selected_fountain() else {
+    let Some((shape, f, b)) = app.selected_fountain() else {
         return;
     };
     let Some(i) = app.fill_node.filter(|i| *i < f.stops.len()) else {
@@ -750,7 +767,15 @@ pub fn node_bar(app: &mut App, ui: &mut egui::Ui) {
     let down = ui.input(|inp| inp.pointer.any_down());
     let begun = down && ui.data(|d| d.get_temp::<bool>(id).unwrap_or(false));
     let mut color = f.stops[i].color;
-    let mut transparency = ((1.0 - f.stops[i].opacity) * 100.0).round();
+    // The object's uniform transparency, as the Properties docker shows
+    // it (#2507); a mask transparency reads 0 here.
+    let mut transparency = app
+        .doc()
+        .find_shape(shape)
+        .map(crate::mixed::ShapeTransparency::of)
+        .filter(|t| t.kind <= 1)
+        .map(|t| t.amount.round())
+        .unwrap_or(0.0);
     let mut changed_color = false;
     let mut changed_opacity = false;
     let offset_id = id.with("offset");
@@ -773,21 +798,22 @@ pub fn node_bar(app: &mut App, ui: &mut egui::Ui) {
                             .add(
                                 crate::ui::Slider::new(&mut transparency, 0.0..=100.0)
                                     .suffix(" %")
-                                    .fixed_decimals(0),
+                                    .fixed_decimals(0)
+                                    // Compact, as the other handles on
+                                    // the drawing: in a floating area it
+                                    // took the whole 600 points (#2507).
+                                    .width(NODE_BAR_RAIL),
                             )
                             .changed();
                     });
                 });
         });
     ui.data_mut(|d| d.insert_temp(offset_id, offset));
-    if changed_color || changed_opacity {
-        app.set_fountain_node(
-            i,
-            changed_color.then_some(color),
-            changed_opacity.then_some(1.0 - transparency / 100.0),
-            None,
-            begun,
-        );
+    if changed_color {
+        app.set_fountain_node(i, Some(color), None, None, begun);
+        ui.data_mut(|d| d.insert_temp(id, down));
+    } else if changed_opacity {
+        app.set_object_transparency(transparency);
         ui.data_mut(|d| d.insert_temp(id, down));
     } else if !down {
         ui.data_mut(|d| d.insert_temp(id, false));

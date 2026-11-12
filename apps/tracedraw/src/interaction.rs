@@ -3421,10 +3421,14 @@ impl App {
                 return;
             }
             self.fill_node = None;
-            if self.fountain_line_at(p).is_some() {
+            let under = self.hit_test_inside(p);
+            // A click on the selected fill's line keeps it, unless another
+            // object lies on top there: that one is picked (#2508).
+            let other = under.is_some_and(|id| !self.selection.contains(&id));
+            if self.fountain_line_at(p).is_some() && !other {
                 return;
             }
-            if let Some(id) = self.hit_test_inside(p) {
+            if let Some(id) = under {
                 self.fill_tool_click(id);
             }
         }

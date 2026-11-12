@@ -2729,6 +2729,102 @@ mod tests {
         );
     }
 
+    /// #2507: the node bar of Interactive Fill is compact, and its
+    /// transparency is the object's uniform transparency (the value of
+    /// the Properties docker): dragging it makes the object see-through.
+    /// It was as wide as the window allowed and changed the node only.
+    #[test]
+    fn the_node_bar_is_compact_and_sets_the_objects_transparency() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 60.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        app.apply_fill(tracedraw_core::Fill::linear(
+            tracedraw_core::Color::BLACK,
+            tracedraw_core::Color::WHITE,
+            0.0,
+        ));
+        app.tool = crate::tools::Tool::InteractiveFill;
+        app.fill_node = Some(0);
+        frame(&ctx, &mut app);
+        frame(&ctx, &mut app);
+        let bar = egui::Id::new("fill_node_bar");
+        let r = ctx.memory(|m| m.area_rect(bar)).expect("node bar");
+        assert!(r.width() < 320.0, "compact: {r:?}");
+        // Along the slider's groove, left of its number box.
+        let groove_end = r.right() - 4.0 - crate::ui::field::DEFAULT_WIDTH - 6.0;
+        let y = r.top() + 9.0;
+        drag(
+            &ctx,
+            &mut app,
+            egui::pos2(groove_end - 66.0, y),
+            egui::pos2(groove_end - 20.0, y),
+        );
+        let s = app.doc().find_shape(id).expect("rect");
+        let t = crate::mixed::ShapeTransparency::of(s);
+        assert_eq!(t.kind, 1, "uniform transparency: {t:?}");
+        assert!(t.amount > 30.0, "{}", t.amount);
+        // The node itself and the fill stay as they were.
+        let (_, f, _) = app.selected_fountain().expect("fountain");
+        assert_eq!(f.stops[0].opacity, 1.0);
+        assert_eq!(app.engine.undo_label(), Some("Transparency"));
+    }
+
+    /// #2508: with Interactive Fill a click on an object picks it and
+    /// shows its fill at once, also where the line of the fill selected
+    /// before runs over it (the click was taken by that line and nothing
+    /// happened).
+    #[test]
+    fn interactive_fill_click_picks_the_object_over_the_selected_fill_line() {
+        use tracedraw_core::{Color, Command, Fill};
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        let mk = |app: &mut App, r: Rect, fill: Fill| {
+            let id = app
+                .new_shape(ShapeKind::Rect {
+                    rect: r,
+                    radius: 0.0,
+                    corners: None,
+                })
+                .expect("rect");
+            app.run(Command::SetFill {
+                shapes: vec![id],
+                fill,
+            });
+            id
+        };
+        let a = mk(
+            &mut app,
+            Rect::new(10.0, 10.0, 110.0, 40.0),
+            Fill::linear(Color::BLACK, Color::WHITE, 0.0),
+        );
+        // On top of the middle of the first, across its fill's line.
+        let b = mk(
+            &mut app,
+            Rect::new(75.0, 15.0, 95.0, 35.0),
+            Fill::radial(Color::rgb8(255, 0, 0), Color::WHITE),
+        );
+        app.set_tool(crate::tools::Tool::InteractiveFill);
+        app.select(vec![a]);
+        frame(&ctx, &mut app);
+        // On the line, away from its nodes and its midpoint slider.
+        let on_line = tracedraw_core::geometry::Point::new(85.0, 25.0);
+        assert!(app.fountain_line_at(on_line).is_some());
+        assert!(app.fountain_handle_at(on_line).is_none());
+        let at = app.view.to_screen(on_line);
+        click(&ctx, &mut app, at, egui::PointerButton::Primary);
+        assert_eq!(app.selection, vec![b]);
+        assert_eq!(app.selected_fountain().map(|f| f.0), Some(b));
+    }
+
     /// The window draws with the toolbox at every button size and with
     /// captions, docked on a side, along the top and floating; the
     /// measured captions widen the toolbox column.
