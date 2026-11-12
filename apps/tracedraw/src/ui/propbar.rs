@@ -3204,7 +3204,7 @@ pub fn arrange_part(app: &mut App, ui: &mut Ui) -> bool {
         ),
     ] {
         let on = if need_many {
-            op.ready(shapes.len())
+            app.shaping_ready(op)
         } else {
             !shapes.is_empty()
         };

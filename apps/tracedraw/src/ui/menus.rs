@@ -3546,11 +3546,7 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
             ),
             ("menu.object.boundary", Shaping::Boundary, false),
         ] {
-            let on = if need_two {
-                op.ready(app.selection.len())
-            } else {
-                has
-            };
+            let on = if need_two { app.shaping_ready(op) } else { has };
             if item(ui, key, "", on) {
                 app.shaping(op);
             }
