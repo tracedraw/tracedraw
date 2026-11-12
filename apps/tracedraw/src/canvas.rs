@@ -2037,6 +2037,25 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
             }
         }
     }
+    // The first node of each selected object's subpaths, a small hollow
+    // square, as the reference program marks a selection with the Pick
+    // tool: it shows where each outline starts and that the object is
+    // picked (#1145).
+    if matches!(app.tool, Tool::Pick | Tool::FreeformPick) {
+        for p in pick_node_marks(&shapes) {
+            let p = view.to_screen(match preview {
+                Some(t) => t * p,
+                None => p,
+            });
+            painter.rect(
+                ERect::from_center_size(p, egui::vec2(5.0, 5.0)),
+                0.0,
+                Color32::WHITE,
+                EStroke::new(1.0, Tokens::HANDLE),
+                epaint::StrokeKind::Inside,
+            );
+        }
+    }
     // Hint "x" in the centre: the move marker (rotate mode shows the
     // centre of rotation instead).
     if app.rotate_mode && pick {
@@ -2051,6 +2070,36 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
         [c - egui::vec2(4.0, -4.0), c + egui::vec2(4.0, -4.0)],
         EStroke::new(1.0, Tokens::HANDLE),
     );
+}
+
+/// The most marks the Pick tool shows on a selection: past that they
+/// would cover the drawing (and take long to draw), so none show.
+const PICK_NODE_MARKS_MAX: usize = 1000;
+
+/// Where the Pick tool marks the selected `shapes` (#1145), in page
+/// space: the first node of each subpath of a curve, and the first node
+/// of a rectangle (its first corner), an ellipse (its start), a polygon
+/// or a B-spline. Groups, texts, pictures and other objects show none;
+/// nor does a selection of more than [`PICK_NODE_MARKS_MAX`] subpaths.
+pub(crate) fn pick_node_marks(shapes: &[tracedraw_core::Shape]) -> Vec<Point> {
+    let mut out = Vec::new();
+    for s in shapes {
+        match &s.kind {
+            ShapeKind::Path { path, .. } if s.spline.is_none() => {
+                out.extend(
+                    tracedraw_core::nodes::nodes(path)
+                        .into_iter()
+                        .filter(|n| n.is_start)
+                        .map(|n| s.transform * n.pos),
+                );
+            }
+            _ => out.extend(crate::kind_nodes::nodes(s).first().map(|(_, p)| *p)),
+        }
+        if out.len() > PICK_NODE_MARKS_MAX {
+            return Vec::new();
+        }
+    }
+    out
 }
 
 /// A rotate mode handle at `p`: a curved double arrow around each
@@ -3556,6 +3605,55 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #1145: with the Pick tool a selected object marks the first node
+    /// of each of its subpaths (the outer and inner ring of a letter O
+    /// each), as the reference program does; an ellipse its start, a
+    /// rectangle its first corner; a group nothing.
+    #[test]
+    fn the_pick_tool_marks_where_the_selected_outlines_start() {
+        use tracedraw_core::ShapeKind;
+        let mut app = App::headless();
+        let mut path = BezPath::new();
+        path.move_to(Point::new(0.0, 0.0));
+        path.line_to(Point::new(50.0, 0.0));
+        path.line_to(Point::new(50.0, 30.0));
+        path.close_path();
+        path.move_to(Point::new(10.0, 5.0));
+        path.line_to(Point::new(40.0, 5.0));
+        path.line_to(Point::new(40.0, 20.0));
+        path.close_path();
+        let curve = app
+            .new_shape(ShapeKind::Path { path, closed: true })
+            .expect("curve");
+        let ring = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: Rect::new(100.0, 0.0, 140.0, 40.0),
+                arc: None,
+            })
+            .expect("ellipse");
+        let rect = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(200.0, 0.0, 240.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        let marks = |app: &App, id| {
+            let s = app.doc().find_shape(id).expect("shape").clone();
+            pick_node_marks(&[s])
+        };
+        assert_eq!(
+            marks(&app, curve),
+            vec![Point::new(0.0, 0.0), Point::new(10.0, 5.0)]
+        );
+        assert_eq!(marks(&app, ring).len(), 1);
+        assert_eq!(marks(&app, rect).len(), 1);
+        app.select(vec![curve, ring]);
+        app.group_selection();
+        let group = app.selection[0];
+        assert!(marks(&app, group).is_empty());
+    }
 
     /// #1906: View > Page > Page Border and Page Shadow are two options:
     /// each draws its part of the page's edge alone, and both are kept
