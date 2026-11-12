@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## 0.45.0 (2026-11-12)
 
+- Edit > Find and Replace > Properties: the Font to look for is now a list of every font the drawing's text uses, not only the font of the object clicked, and the Font to put in its place is picked from the font list instead of typed by hand (#2485).
+- F9 opens View > Full-Screen Preview, as the menu says, and F9 closes it; before, only the menu opened it (#2195).
 - Updates: the update card shows on the Welcome Screen, on an empty workspace and over the page sorter, not only over an open drawing. TraceDraw starts on the Welcome Screen, where the card (Update now, then Restart Now once the file is ready) was never drawn: it only appeared after a drawing was opened or a dialog closed, and was gone again when the Welcome Screen came back.
 - Roughen: going over an outline again no longer leaves white slivers over the object. A stroke over spikes an earlier one made pushed new spikes sideways across the outline, and where the outline crossed itself the fill left the overlaps empty, so white arcs and gaps appeared inside the shape; the spikes now stand out from the object and an outline that still crosses itself is filled everywhere it goes round (#2229).
 - Tools > Recolor: every colour of the selected objects (fills, gradient stops, mesh, outlines, text, effects and shadows, inside groups too) turned round the hue circle, made more or less saturated, lighter or darker, or tinted with one colour. Each colour keeps how light it is next to the others, so a drawing's highlights and shadows stay in its new colours. The change shows on the drawing while the dialog is open; OK makes it one undo step, and Edit > Repeat repeats it.

@@ -4546,6 +4546,13 @@ impl App {
         if pressed(Key::F12, Modifiers::ALT) {
             self.align_chars_to_baseline();
         }
+        // F9: View > Full-Screen Preview (#2195). The press is taken so
+        // that the preview, drawn later this frame, does not see it as
+        // its own F9 and close at once; while it shows, its F9 closes it.
+        if !self.fullscreen_preview && first_pressed(Key::F9, Modifiers::NONE) {
+            ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F9));
+            self.fullscreen_preview = true;
+        }
         // F11: the Edit Fill dialog. F3: zoom out.
         if pressed(Key::F11, Modifiers::NONE) {
             self.open_edit_fill();

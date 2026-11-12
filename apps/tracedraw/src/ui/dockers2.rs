@@ -972,8 +972,30 @@ fn find_properties(app: &mut App, ui: &mut Ui, st: &mut crate::ui::dialogs::Find
 
             ui.checkbox(&mut pf.use_font, tr("find.font"))
                 .rich_tip(crate::ui::tips::keyed("find.font"));
+            // Every font the drawing's text uses, not only the clicked
+            // word's (#2485).
             ui.add_enabled_ui(pf.use_font, |ui| {
-                ui.add(egui::TextEdit::singleline(&mut pf.font).desired_width(120.0))
+                let used = app.doc().font_families_used();
+                let shown = if pf.font.trim().is_empty() {
+                    tr("find.pick_font")
+                } else {
+                    pf.font.clone()
+                };
+                crate::ui::keynav::ComboBox::from_id_salt("find_props_font")
+                    .selected_text(shown)
+                    .width(160.0)
+                    .show_ui(ui, |ui| {
+                        if used.is_empty() {
+                            ui.weak(tr("find.no_fonts_used"));
+                        }
+                        for f in &used {
+                            if ui.selectable_label(pf.font == *f, f).clicked() {
+                                pf.font = f.clone();
+                            }
+                        }
+                    })
+                    .response
+                    .rich_tip(crate::ui::tips::pair("find.font", "find.font_used_desc"));
             });
             ui.end_row();
         });
@@ -1034,8 +1056,18 @@ fn find_properties(app: &mut App, ui: &mut Ui, st: &mut crate::ui::dialogs::Find
             ui.end_row();
             ui.checkbox(&mut pf.set_font, tr("find.font"))
                 .rich_tip(crate::ui::tips::pair("find.font", "find.set_font_desc"));
+            // The font list, to browse for the new font (#2485).
             ui.add_enabled_ui(pf.set_font, |ui| {
-                ui.add(egui::TextEdit::singleline(&mut pf.new_font).desired_width(120.0))
+                let (pick, _) = crate::ui::font_list::font_list_live(
+                    app,
+                    ui,
+                    "find_replace_font",
+                    &pf.new_font,
+                    160.0,
+                );
+                if let Some(p) = pick {
+                    pf.new_font = p.family;
+                }
             });
             ui.end_row();
         });
