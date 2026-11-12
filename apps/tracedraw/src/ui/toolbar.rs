@@ -2413,7 +2413,7 @@ fn transparency_controls(app: &mut App, ui: &mut Ui, stacked: bool) {
                                 .selectable_label(kind_shown && f.kind == k, tr(n))
                                 .clicked()
                             {
-                                f.kind = k;
+                                crate::mixed::set_mask_kind(f, k);
                                 field = Some(F::MaskKind);
                             }
                         }

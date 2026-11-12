@@ -1916,7 +1916,7 @@ impl App {
                     }
                 }
                 if response.dragged_by(PointerButton::Primary) {
-                    if self.fountain_drag_to(p, mods.ctrl || mods.command) {
+                    if self.fountain_drag_to(p, mods.ctrl || mods.command || mods.shift) {
                         return;
                     }
                     self.fill_gradient_drag_to(p, mods);
@@ -3331,7 +3331,7 @@ impl App {
             }
         }
         if response.dragged_by(PointerButton::Primary) {
-            if self.fountain_drag_to(p, mods.ctrl || mods.command) {
+            if self.fountain_drag_to(p, mods.ctrl || mods.command || mods.shift) {
                 return;
             }
             self.fill_gradient_drag_to(p, mods);
@@ -3372,13 +3372,14 @@ impl App {
     }
 
     /// The gradient line of an Interactive Fill or Transparency drag
-    /// follows the pointer to `p`; with Ctrl (Cmd) it turns in steps of
-    /// the constrain angle about where the drag began (#1661).
+    /// follows the pointer to `p`; with Ctrl (Cmd) or Shift it turns in
+    /// steps of the constrain angle about where the drag began (#1661,
+    /// #2373).
     fn fill_gradient_drag_to(&mut self, p: Point, mods: Modifiers) {
         let step = self.settings.constrain_angle;
         // The end of the new fill's line snaps as the pointer does
-        // (#2004); kept to the constrain angle with Ctrl, it does not.
-        let constrained = mods.ctrl || mods.command;
+        // (#2004); kept to the constrain angle, it does not.
+        let constrained = mods.ctrl || mods.command || mods.shift;
         let q = if constrained || !matches!(self.drag, Drag::FillGradient { .. }) {
             p
         } else {
