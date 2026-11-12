@@ -12135,13 +12135,29 @@ fn export_asks_for_the_file_then_shows_the_options_of_its_format() {
     assert!(test_save::asked().is_empty(), "asked twice");
     assert!(dir.join("poster.pdf").exists(), "{}", app.status);
     assert!(!dir.join("poster.png").exists());
-    // The next export offers PDF first.
+    // The next export offers PDF first, in the folder exported to.
     test_save::answer(None);
     app.export();
     let asked = test_save::asked();
     assert_eq!(asked[0].filters()[0].1, vec!["pdf".to_string()]);
     assert_eq!(asked[0].directory(), Some(dir.as_path()));
     assert!(matches!(app.dialog, Dialog::None), "Save dialog cancelled");
+    // Exporting again shows the options again (#1817: after the export
+    // folder was remembered, a second export was written straight after
+    // the Save dialog, without the format's options or presets).
+    test_save::answer(Some(dir.join("again.webp")));
+    app.export();
+    assert_eq!(test_save::asked().len(), 1, "one Save dialog");
+    let Dialog::Export(st) = &app.dialog else {
+        panic!("no options on the second export: {:?}", app.dialog);
+    };
+    assert_eq!(EXPORT_FORMATS[st.format].1, "webp");
+    assert_eq!(st.target.as_deref(), Some(dir.join("again.webp").as_path()));
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(
+        !dir.join("again.webp").exists(),
+        "nothing written before OK"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
