@@ -25902,6 +25902,42 @@ fn a_group_on_top_is_picked_only_where_its_objects_are() {
 }
 
 #[test]
+fn the_gap_between_grouped_unfilled_circles_picks_nothing() {
+    // #2329: two unfilled circles side by side, grouped; a click in the
+    // gap between them took the group.
+    let mut app = App::headless();
+    app.view.zoom = 1.0;
+    let circle = |app: &mut App, x: f64| {
+        app.new_shape(ShapeKind::Ellipse {
+            rect: Rect::new(x, 100.0, x + 40.0, 140.0),
+            arc: None,
+        })
+        .expect("circle")
+    };
+    let a = circle(&mut app, 100.0);
+    let b = circle(&mut app, 160.0);
+    app.select(vec![a, b]);
+    app.group_selection();
+    let group = app.selection[0];
+    app.select(Vec::new());
+    let gap = Point::new(150.0, 120.0);
+    for filled in [false, true] {
+        app.settings.treat_all_filled = filled;
+        assert_eq!(app.hit_test(gap), None, "filled {filled}");
+        assert_eq!(app.press_target(gap, false), None, "filled {filled}");
+        // Either circle's outline still takes the whole group.
+        assert_eq!(app.hit_test(Point::new(140.0, 120.0)), Some(group));
+        assert_eq!(app.hit_test(Point::new(160.0, 120.0)), Some(group));
+    }
+    // An unfilled circle's inside counts only with Treat all objects as
+    // filled.
+    app.settings.treat_all_filled = false;
+    assert_eq!(app.hit_test(Point::new(120.0, 120.0)), None);
+    app.settings.treat_all_filled = true;
+    assert_eq!(app.hit_test(Point::new(120.0, 120.0)), Some(group));
+}
+
+#[test]
 fn a_clip_frame_is_picked_on_its_frame_and_its_contents_only() {
     // #885: an unfilled clip frame lying on top let nothing inside it be
     // clicked where its contents left it empty.
@@ -26000,4 +26036,45 @@ fn an_object_dropped_on_another_page_of_the_multipage_view_becomes_that_page_s()
     // One undo step puts it back on the first page.
     app.undo();
     assert_eq!(page_of(&app, id), Some(first));
+}
+
+#[test]
+fn break_curve_opens_a_closed_curve_at_the_chosen_nodes() {
+    // #2314: a rectangle as a curve with a node in the middle of its
+    // bottom side, broken there, came apart at that node and at its first
+    // corner too.
+    let mut app = App::headless();
+    let mut path = tracedraw_core::BezPath::new();
+    path.move_to((0.0, 0.0));
+    path.line_to((100.0, 0.0));
+    path.line_to((100.0, 50.0));
+    path.line_to((50.0, 50.0));
+    path.line_to((0.0, 50.0));
+    path.close_path();
+    let c = app
+        .new_shape(ShapeKind::Path { path, closed: true })
+        .expect("curve");
+    app.select(vec![c]);
+    app.set_tool(Tool::Shape);
+    let subpaths = |app: &App| {
+        last_path(app)
+            .elements()
+            .iter()
+            .filter(|e| matches!(e, tracedraw_core::geometry::PathEl::MoveTo(_)))
+            .count()
+    };
+    app.node_selection = vec![(c, 3)];
+    app.break_selected_nodes();
+    assert_eq!(app.engine.undo_label(), Some("Break Curve"));
+    assert_eq!(subpaths(&app), 1, "{:?}", last_path(&app));
+    let ns = tracedraw_core::nodes::nodes(&last_path(&app));
+    assert_eq!(ns.len(), 6);
+    assert_eq!(ns[0].pos, Point::new(50.0, 50.0));
+    assert_eq!(ns[5].pos, Point::new(50.0, 50.0));
+    // Two nodes of the closed curve at once: two pieces, all of its sides.
+    app.undo();
+    app.node_selection = vec![(c, 1), (c, 3)];
+    app.break_selected_nodes();
+    assert_eq!(subpaths(&app), 2, "{:?}", last_path(&app));
+    assert_eq!(last_path(&app).segments().count(), 5);
 }
