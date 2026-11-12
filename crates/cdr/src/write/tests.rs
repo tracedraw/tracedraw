@@ -6487,13 +6487,19 @@ fn fnv1a(bytes: &[u8]) -> u64 {
 /// does (#98, #1139), and the interoperability drawing has named groups.
 /// Without the names the stream is what #1139 pinned (0x7e7f333076ad70a3
 /// for 14, 0x88ab5fb328ef43e3 for 15).
+///
+/// And again: the bold and the italic run of the drawing's text carry
+/// their style flags (flag 0x02 of their records), as the runs of a file
+/// that program saves do, and no longer lose their weight and slant
+/// there (#1139). Before: 0x6f15b56f9563faf2 for 14, 0x0128bfeccf21449c
+/// for 15.
 #[test]
 fn versions_14_and_15_are_written_as_before() {
     use std::io::Read as _;
     let doc = interop_document();
     for (v, want) in [
-        (14u16, 0x6f15_b56f_9563_faf2u64),
-        (15, 0x0128_bfec_cf21_449c),
+        (14u16, 0x4580_a816_71c9_8638u64),
+        (15, 0xad05_770f_3873_d5db),
     ] {
         let bytes = document_to_cdr_version(&doc, v);
         let mut z = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).expect("zip");
@@ -6730,6 +6736,9 @@ fn txsm_first_paragraph(d: &[u8], v: u16) -> (Vec<(u16, u8)>, Vec<u8>) {
     for _ in 0..n {
         let (count, flags) = (u16_at(at), d[at + 2]);
         at += 3 + usize::from(v >= 8);
+        if flags & 0x02 != 0 {
+            at += 4;
+        }
         if flags & 0x04 != 0 {
             at += 4;
         }
@@ -6745,14 +6754,17 @@ fn txsm_first_paragraph(d: &[u8], v: u16) -> (Vec<(u16, u8)>, Vec<u8>) {
     (records, numbers)
 }
 
-/// Before version 14 a paragraph's records list its distinct looks (size
-/// and fill), the paragraph's own first with the paragraph end counted,
-/// and every letter numbers its record in its description (the 4-byte
-/// descriptions of versions 7 to 11 too), as the files of those versions
-/// saved by the program that reads them have it: "Runs: bold red and
-/// italic" is two records, 17 (18 here, with the end) and 8 letters, the
-/// red ones numbered 1. Versions 14 and 15 keep one record per run, which
-/// opens there.
+/// Before version 14 a paragraph's records list its distinct looks (size,
+/// fill and style flags), the paragraph's own first with the paragraph end
+/// counted, and every letter numbers its record in its description (the
+/// 4-byte descriptions of versions 7 to 11 too), as the files of those
+/// versions saved by the program that reads them have it: "Runs: bold red
+/// and italic" saved there in version 7 is three records, 12 letters with
+/// the end, 6 italic (flag 0x02, code 0x80) and 8 bold (0x02, code 0x1000)
+/// and red (0x40) (#1139; the bold and italic records were left out and
+/// the runs lost their weight and slant). Versions 14 and 15 keep one
+/// record per run, which opens there, the bold and italic runs with their
+/// style flags.
 #[test]
 fn text_records_before_14_list_the_looks_and_number_the_letters() {
     let mut ids = tracedraw_core::id::IdSource::default();
@@ -6783,14 +6795,15 @@ fn text_records_before_14_list_the_looks_and_number_the_letters() {
         let (records, numbers) = txsm_first_paragraph(&rec.expect("a text record"), v);
         let repeat = |n: u8, k: usize| std::iter::repeat_n(n, k);
         if v < 14 {
-            assert_eq!(records, [(18, 0x00), (8, 0x40)], "{v}");
+            assert_eq!(records, [(12, 0x00), (8, 0x42), (6, 0x02)], "{v}");
             let want: Vec<u8> = repeat(0, 6)
                 .chain(repeat(1, 8))
-                .chain(repeat(0, 11))
+                .chain(repeat(0, 5))
+                .chain(repeat(2, 6))
                 .collect();
             assert_eq!(numbers, want, "{v}");
         } else {
-            assert_eq!(records, [(6, 0x00), (8, 0x40), (5, 0x00), (7, 0x00)], "{v}");
+            assert_eq!(records, [(6, 0x00), (8, 0x42), (5, 0x00), (7, 0x02)], "{v}");
             let want: Vec<u8> = repeat(0, 6)
                 .chain(repeat(1, 8))
                 .chain(repeat(2, 5))
@@ -6810,6 +6823,18 @@ fn text_records_before_14_list_the_looks_and_number_the_letters() {
             .find(|s| s.fill == Some(Fill::Solid(Color::rgb8(204, 0, 0))))
             .unwrap_or_else(|| panic!("{v}: no red run in {spans:?}"));
         assert_eq!(red.text, "bold red", "{v}");
+        assert!(red.bold && !red.italic, "{v}: {spans:?}");
+        let italic = spans
+            .iter()
+            .find(|s| s.text == "italic")
+            .unwrap_or_else(|| panic!("{v}: no italic run in {spans:?}"));
+        assert!(italic.italic && !italic.bold, "{v}: {spans:?}");
+        for plain in spans
+            .iter()
+            .filter(|s| s.text.trim() == "Runs:" || s.text.trim() == "and")
+        {
+            assert!(!plain.bold && !plain.italic, "{v}: {spans:?}");
+        }
     }
 }
 

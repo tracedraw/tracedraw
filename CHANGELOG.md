@@ -25,6 +25,7 @@ full, row-by-row status.
 - Rotate mode: the centre of rotation snaps to the centre, the corners and the middles of the sides of the selection, and to the nodes, centres and quadrants of the objects near it, also with Snap to Objects off, and names the point it took (#2352).
 - Zooming out: what is drawn beside the page shows at once from the drawing drawn small behind the view, instead of coming back piece by piece with the desktop bare around the page (#2354).
 - File > Import: while the chosen file waits for its place, a tag beside the pointer names the file and says what to do (click to place it, drag to size it, Space to centre it on the page, Esc to cancel). Only the status line said so, and a PNG or JPEG that did not come in at once looked like an import that failed (#2167, #2301).
+- .cdr of versions 7 to 15: a bold or italic part of a text stays bold or italic when the file is opened in the program that reads these versions. The parts took the look of the line (#1139).
 
 ## 0.44.0 (2026-11-10)
 
