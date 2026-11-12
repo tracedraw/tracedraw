@@ -25836,3 +25836,157 @@ fn shift_marquee_adds_character_nodes() {
     kept.sort();
     assert_eq!(sorted(&app), kept);
 }
+
+#[test]
+fn a_group_on_top_is_picked_only_where_its_objects_are() {
+    // #885: a group lying on top was picked anywhere in its box, so the
+    // object behind its empty part, or inside it, could not be clicked.
+    let mut app = App::headless();
+    app.view.zoom = 1.0;
+    let solid = |app: &mut App, r: Rect| {
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: r,
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+            30, 30, 200,
+        )));
+        id
+    };
+    let behind = solid(&mut app, Rect::new(120.0, 100.0, 150.0, 120.0));
+    let a = solid(&mut app, Rect::new(100.0, 100.0, 115.0, 120.0));
+    let b = solid(&mut app, Rect::new(155.0, 100.0, 170.0, 120.0));
+    app.select(vec![a, b]);
+    app.group_selection();
+    let group = app.selection[0];
+    // Moved, so its objects' space is not the page's.
+    app.run(tracedraw_core::Command::TransformShapes {
+        shapes: vec![group],
+        transform: Affine::translate((2.0, 0.0)),
+    });
+    app.select(Vec::new());
+    // The empty middle of the group's box: the object behind.
+    assert_eq!(app.hit_test(Point::new(136.0, 110.0)), Some(behind));
+    assert_eq!(
+        app.press_target(Point::new(136.0, 110.0), false),
+        Some(behind)
+    );
+    // On the group's own objects: the group.
+    assert_eq!(app.hit_test(Point::new(108.0, 110.0)), Some(group));
+    assert_eq!(app.hit_test(Point::new(165.0, 110.0)), Some(group));
+    // Where nothing is, nothing.
+    assert_eq!(app.hit_test(Point::new(136.0, 130.0)), None);
+    // The group selected: a press in its empty part still takes what
+    // shows there.
+    app.select(vec![group]);
+    assert_eq!(
+        app.press_target(Point::new(136.0, 110.0), false),
+        Some(behind)
+    );
+    assert_eq!(app.over_selection(Point::new(108.0, 110.0)), Some(true));
+}
+
+#[test]
+fn a_clip_frame_is_picked_on_its_frame_and_its_contents_only() {
+    // #885: an unfilled clip frame lying on top let nothing inside it be
+    // clicked where its contents left it empty.
+    let mut app = App::headless();
+    app.view.zoom = 1.0;
+    app.settings.treat_all_filled = false;
+    let behind = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(50.0, 50.0, 60.0, 60.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![behind]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        200, 30, 30,
+    )));
+    let frame = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(10.0, 10.0, 100.0, 100.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![frame]);
+    app.apply_fill(tracedraw_core::Fill::None);
+    let inside = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(15.0, 15.0, 30.0, 30.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![inside]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        30, 30, 200,
+    )));
+    app.place_inside(vec![inside], frame);
+    let clip = app.doc().top_level_of(inside).expect("clip frame");
+    app.select(Vec::new());
+    // The contents and the frame's outline take the click.
+    assert_eq!(app.hit_test(Point::new(20.0, 20.0)), Some(clip));
+    assert_eq!(app.hit_test(Point::new(10.0, 70.0)), Some(clip));
+    // The empty inside of the unfilled frame: the object behind.
+    assert_eq!(app.hit_test(Point::new(55.0, 55.0)), Some(behind));
+    // Treat all objects as filled: the frame's inside is the frame's.
+    app.settings.treat_all_filled = true;
+    assert_eq!(app.hit_test(Point::new(55.0, 55.0)), Some(clip));
+}
+
+#[test]
+fn an_object_dropped_on_another_page_of_the_multipage_view_becomes_that_page_s() {
+    // #2055: in the Multipage View an object moved onto another page's
+    // paper stayed the current page's, off its paper, and vanished from
+    // there once another page was current.
+    let (ctx, mut app, id) = setup();
+    app.add_page();
+    let first = app.doc().pages[0].id;
+    let second = app.doc().pages[1].id;
+    app.page = first;
+    app.select(vec![id]);
+    app.set_multipage(true);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let r2 = app.multipage_layout()[1].1;
+    let page_of = |app: &App, id: ShapeId| {
+        app.doc()
+            .pages
+            .iter()
+            .find(|p| p.layers.iter().any(|l| l.shapes.iter().any(|s| s.id == id)))
+            .map(|p| p.id)
+    };
+    // Dropped on the desktop between the pages: still the first page's.
+    let from = app.view.to_screen(Point::new(35.0, 25.0));
+    let gap = (app.page_rect().x1 + r2.x0) / 2.0;
+    let to = app.view.to_screen(Point::new(gap, 25.0));
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    assert_eq!(page_of(&app, id), Some(first));
+    assert_eq!(app.page, first);
+    // Dropped on the second page's paper: the second page's, where it
+    // shows, that page current with the object selected.
+    let from = to;
+    let to = app.view.to_screen(Point::new(r2.x0 + 35.0, r2.y0 + 25.0));
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    assert_eq!(page_of(&app, id), Some(second));
+    assert_eq!(app.page, second);
+    assert_eq!(app.selection, vec![id]);
+    let b = bounds(&app, id);
+    assert!(
+        (b.center().x - 35.0).abs() < 3.0 && (b.center().y - 25.0).abs() < 3.0,
+        "{b:?}"
+    );
+    let shown = app.view.to_screen(b.center());
+    assert!((shown - to).length() < 15.0, "{shown:?} {to:?}");
+    // One undo step puts it back on the first page.
+    app.undo();
+    assert_eq!(page_of(&app, id), Some(first));
+}
