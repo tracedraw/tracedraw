@@ -8,6 +8,7 @@ full, row-by-row status.
 
 - Tools > Options and the standard bar's Options button list Document Setup, the Options window's last tab, which only the Page menu had (#2006).
 - Dockers: the tab of the docker in front is marked in the colour of the document tab in front, light blue on the light themes. It was a grey hardly apart from the other tabs (#2316).
+- Palette Editor: the document palette is in the palette list, first, and Edit Palette... on its bar opens it there. Its colours are edited as any palette's and OK or Apply gives them to the drawing as one undo step; it was not offered, so the document palette could not be edited there. Spot colours have a small dot in the corner of their swatch, in the editor and on the palette bars, so they stand out from the process colours (#2321).
 
 ## 0.44.2 (2026-11-12)
 

@@ -315,8 +315,8 @@ Manager, Swatch Size, Rows, Position, Open as Palette Bar, Rename... and
 Close Palette; the document palette's bar has the document palette's
 items instead of the first two. A right click on a row outside the
 swatches, or on a floating bar's title, opens the same menu; a double
-click there opens the Palette Editor on the palette (not on the
-document palette). A swatch's menu starts with Delete Color: that colour
+click there opens the Palette Editor on the palette, the document
+palette's bar included (#2321). A swatch's menu starts with Delete Color: that colour
 leaves the user's palette at once (its file is saved again, the status
 bar names the colour); on a built-in or locked palette the item is
 greyed and its tooltip says why (#2138).
@@ -332,6 +332,17 @@ or Esc drops it. While the copy has changes the palette list is greyed
 drawing's undo; the editor's Undo takes back its last change (a name
 typed, or a colour dragged in the picker, is one step; up to 100), and
 Cancel all of them.
+
+The document palette is first in the editor's palette list while a
+drawing is open, and Edit Palette... in its bar's menu opens it there
+(#2321). It is the drawing's: OK or Apply gives the drawing the colours
+as one step of its undo history (Edit > Undo takes it back). Its colours
+keep no names of their own, so a name is shown and not edited there, and
+a spot colour, an ink of the drawing, keeps its value and its ink; Save
+as writes the colours to a palette file without changing the drawing.
+Spot colours have a small dot in the corner of their swatch, in the
+editor and on the palette bars, black on a light ink and white on a dark
+one.
 
 - Selection as in a list: a click selects one swatch, Ctrl+click adds or
   removes one, Shift+click selects the run from the last swatch clicked
