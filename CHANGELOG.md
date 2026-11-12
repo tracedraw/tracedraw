@@ -12,6 +12,7 @@ full, row-by-row status.
 
 ## 0.44.2 (2026-11-12)
 
+- Clip to Frame: the objects placed inside a frame keep their order, front to back. They went in in the order they were picked, so objects picked front first, one by one, came out turned over inside the frame (#2310).
 - Windows: a file double-clicked while TraceDraw runs minimized brings the window up. A minimized window runs no ui, so the files handed over waited there, the window down, until it was restored from the taskbar; they are now taken, and the window restored and brought forward, from the app's logic, which runs while the window is minimized too (#2129). Not yet tried on a Windows machine.
 - Dark theme: the property bar's greyed buttons, such as the Shape tool's node buttons with no node chosen, are plain to see. They were drawn in the panels' line colour, darker than the bar; they now take the theme's colour for icons that cannot run now (#2065).
 - Transparency tool: a gradient transparency made Radial (or Conical or Square) is clear at the centre and opaque at the edge, its centre node black and its end node white. It came out the other way round, the centre opaque. A transparency whose nodes were changed keeps them (#2377).
