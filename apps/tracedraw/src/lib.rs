@@ -93,6 +93,8 @@ mod fx;
 mod github;
 #[cfg(not(target_arch = "wasm32"))]
 mod gpu;
+#[cfg(not(target_arch = "wasm32"))]
+mod gpu_fx;
 mod gradient_presets;
 mod grammar;
 mod guides;

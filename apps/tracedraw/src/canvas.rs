@@ -517,6 +517,10 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
             }
         }
     }
+    // Shadows blurred on the graphics card when Options asks (the same
+    // pixels as on the CPU, so nothing drawn needs drawing again).
+    #[cfg(not(target_arch = "wasm32"))]
+    crate::gpu_fx::set_enabled(app.settings.gpu_effects);
     let main = app.raster.borrow_mut().texture(
         painter.ctx(),
         doc,

@@ -4,6 +4,7 @@
 //! must match this one.
 
 #![allow(clippy::field_reassign_with_default)]
+pub mod accel;
 mod image_cache;
 
 use tiny_skia::{
@@ -81,8 +82,9 @@ pub struct RenderOptions {
     /// pixel edges.
     pub anti_alias: bool,
     /// On screen: large procedural fills (textures, conical and square
-    /// gradients) may be worked out on a coarser grid. Exports keep every
-    /// pixel.
+    /// gradients) may be worked out on a coarser grid, and drop shadows
+    /// may be blurred on the graphics card ([`accel`], same pixels).
+    /// Exports keep every pixel and draw everything on the CPU.
     pub draft: bool,
     /// Focus mode: these objects drawn as they are and everything else
     /// faded to the given visibility (0 to 1).
@@ -1510,6 +1512,7 @@ impl Renderer<'_> {
         let Some((layer_at, mut layer, screen)) = self.shadow_target(sh, b) else {
             return;
         };
+        let _screen = accel::on_screen(self.flags.draft);
         if !shadow_layer(
             &mut layer,
             sh,
@@ -1573,6 +1576,7 @@ impl Renderer<'_> {
             let a = px.alpha();
             *px = tiny_skia::ColorU8::from_rgba(255, 255, 255, a).premultiply();
         }
+        let _screen = accel::on_screen(self.flags.draft);
         shade_shadow(&mut layer, sh, b, screen, self.zoom);
         self.merge_shadow(sh, &layer, layer_at);
         true
@@ -1616,6 +1620,7 @@ impl Renderer<'_> {
         let Some((layer_at, mut layer, screen)) = self.shadow_target_over(sh, b, extent) else {
             return;
         };
+        let _screen = accel::on_screen(self.flags.draft);
         group_shadow_layer(
             &mut layer,
             sh,
@@ -3081,9 +3086,9 @@ fn shade_shadow(
         match sh.feather_direction {
             // One even pass about as wide as the three passes together.
             FeatherDirection::Average => {
-                box_blur_passes(layer, ((radius as f64) * 1.7).round().min(110.0) as i32, 1)
+                accel::box_blur(layer, ((radius as f64) * 1.7).round().min(110.0) as i32, 1)
             }
-            _ => box_blur(layer, radius.min(64)),
+            _ => accel::box_blur(layer, radius.min(64), 3),
         }
     }
     // The fade of a perspective shadow, in pixels.

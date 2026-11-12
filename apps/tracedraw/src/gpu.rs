@@ -567,6 +567,11 @@ pub fn note_renderer(cc: &eframe::CreationContext<'_>, mode: Mode) {
     crate::startup_log::quiet_panics(false);
     let what = match cc.wgpu_render_state.as_ref() {
         Some(rs) => {
+            // Shadows may be blurred on the card (Options > General), not
+            // on the software adapter, which is the CPU itself.
+            if mode == Mode::Hardware {
+                crate::gpu_fx::install(&rs.device, &rs.queue);
+            }
             let i = rs.adapter.get_info();
             format!("{} ({:?})", i.name, i.backend)
         }
