@@ -238,6 +238,8 @@ mod wayland_copy;
 mod web;
 #[cfg(any(target_arch = "wasm32", test))]
 mod web_page;
+#[cfg(windows)]
+mod win_clipboard;
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 mod x11_clipboard;
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
