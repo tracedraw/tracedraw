@@ -1637,6 +1637,20 @@ pub fn system_font_roots() -> Vec<std::path::PathBuf> {
     ROOTS.get_or_init(read_system_font_roots).clone()
 }
 
+/// The folders of `found` that are not the system's font folders (or
+/// inside them), except those added to the font libraries (`library`):
+/// the filter's Folders offer the Font Manager's folders, Installed fonts
+/// already standing for the system's (#867).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+fn without_system_folders(
+    mut found: Vec<std::path::PathBuf>,
+    library: &[std::path::PathBuf],
+    system: &[std::path::PathBuf],
+) -> Vec<std::path::PathBuf> {
+    found.retain(|p| library.contains(p) || !system.iter().any(|s| p.starts_with(s)));
+    found
+}
+
 /// [`system_font_roots`] read from the system now.
 fn read_system_font_roots() -> Vec<std::path::PathBuf> {
     let mut out: Vec<std::path::PathBuf> = Vec::new();
@@ -2040,6 +2054,23 @@ impl FontSystem {
                 return;
             }
         }
+    }
+
+    /// The loaded family whose name is `family` with other spaces,
+    /// hyphens or case: "DejaVuSans" or "dejavu-sans" for DejaVu Sans.
+    fn family_spelt_otherwise(&self, family: &str) -> Option<String> {
+        fn key(s: &str) -> impl Iterator<Item = char> + '_ {
+            s.chars()
+                .filter(|c| c.is_alphanumeric())
+                .flat_map(char::to_lowercase)
+        }
+        key(family).next()?;
+        self.families
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .find(|f| f.as_str() != family && key(f).eq(key(family)))
+            .cloned()
     }
 
     /// Whether a family of exactly this name (or legacy name) is loaded.
@@ -2670,8 +2701,8 @@ impl FontSystem {
 
     /// The folders the installed font files are in, sorted, each once
     /// (a font list's filter offers them, #867): the font libraries'
-    /// folders and the system's, not every subfolder (see
-    /// [`FontSystem::folder_of`]).
+    /// folders, not every subfolder (see [`FontSystem::folder_of`]), and
+    /// not the system's, which Installed fonts already shows.
     pub fn font_folders(&self) -> Vec<std::path::PathBuf> {
         #[cfg(not(target_arch = "wasm32"))]
         let roots = self.folder_roots();
@@ -2688,6 +2719,11 @@ impl FontSystem {
             .collect();
         out.sort();
         out.dedup();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let library = self.roots.read().map(|r| r.clone()).unwrap_or_default();
+            out = without_system_folders(out, &library, &system_font_roots());
+        }
         out
     }
 
@@ -2905,6 +2941,19 @@ impl FontSystem {
                 id
             };
             return Some((id, plain));
+        }
+        // The family under its name spelt without its spaces, as a PDF
+        // names it ("DejaVuSans" for DejaVu Sans, #2323).
+        if let Some(name) = self.family_spelt_otherwise(family) {
+            let q = fontdb::Query {
+                families: &[fontdb::Family::Name(&name)],
+                weight,
+                stretch: fontdb::Stretch::Normal,
+                style,
+            };
+            if let Some(id) = db.query(&q) {
+                return Some((id, plain));
+            }
         }
         let target = target_weight(family, bold);
         let weight = fontdb::Weight(target);
@@ -9524,6 +9573,29 @@ mod font_folders {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The system's font folders are left out of the filter's Folders,
+    /// unless one was added to the font libraries (#867).
+    #[test]
+    fn the_filter_folders_leave_out_the_systems() {
+        use std::path::PathBuf;
+        let p = |s: &str| PathBuf::from(s);
+        let found = vec![
+            p("/home/u/My Fonts"),
+            p("/usr/share/fonts"),
+            p("/usr/share/fonts/truetype/dejavu"),
+            p("/usr/local/share/fonts"),
+        ];
+        let system = [p("/usr/share/fonts"), p("/usr/local/share/fonts")];
+        assert_eq!(
+            without_system_folders(found.clone(), &[p("/home/u/My Fonts")], &system),
+            vec![p("/home/u/My Fonts")]
+        );
+        assert_eq!(
+            without_system_folders(found, &[p("/usr/local/share/fonts")], &system),
+            vec![p("/home/u/My Fonts"), p("/usr/local/share/fonts")]
+        );
+    }
+
     /// The system's font folders are read once: the font list asks for
     /// them with every family it looks at, and reading them parses the
     /// whole fontconfig configuration on Linux (1.4 ms on a small one,
@@ -9649,5 +9721,28 @@ mod font_folders {
             );
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod family_spelling {
+    use super::*;
+
+    /// A family named without its spaces, as PDF files name fonts
+    /// ("RobotoFlex" for Roboto Flex), draws in that family, not in a
+    /// stand-in with other widths (#2323).
+    #[test]
+    fn a_family_spelt_without_spaces_is_found() {
+        const ROBOTO_FLEX: &[u8] = include_bytes!("../testdata/RobotoFlex-subset.ttf");
+        const QUICKSAND: &[u8] = include_bytes!("../testdata/Quicksand-VF.ttf");
+        let mut db = fontdb::Database::new();
+        db.load_font_data(QUICKSAND.to_vec());
+        db.load_font_data(ROBOTO_FLEX.to_vec());
+        let f = FontSystem::from_db(db);
+        let own = f.face_for("Roboto Flex", false, false);
+        assert!(own.is_some());
+        assert_eq!(f.face_for("RobotoFlex", false, false), own);
+        assert_eq!(f.face_for("roboto-flex", false, false), own);
+        assert_ne!(f.face_for("Quicksand", false, false), own);
     }
 }
