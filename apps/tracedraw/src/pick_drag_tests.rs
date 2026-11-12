@@ -4673,15 +4673,26 @@ fn bspline_clicks_place_control_points_of_a_smooth_curve() {
     app.finish_curve();
     let path = last_path(&app);
     let segs: Vec<_> = path.segments().collect();
-    // Four control points: one cubic from the first to the last point,
-    // the middle two as its handles (not four corners joined by lines).
-    assert_eq!(segs.len(), 1, "{segs:?}");
-    let tracedraw_core::geometry::PathSeg::Cubic(c) = segs[0] else {
-        panic!("a cubic: {segs:?}");
-    };
+    use tracedraw_core::geometry::ParamCurve;
+    // Four control points: a smooth run of cubics from the first to the
+    // last point, one a knot span with the ends counted three times
+    // (#2184), not four corners joined by lines.
+    assert_eq!(segs.len(), 5, "{segs:?}");
     let near = |a: Point, b: Point| (a - b).hypot() < 0.5;
-    assert!(near(c.p0, pts[0]) && near(c.p3, pts[3]), "{c:?}");
-    assert!(near(c.p1, pts[1]) && near(c.p2, pts[2]), "{c:?}");
+    assert!(near(segs[0].start(), pts[0]) && near(segs[4].end(), pts[3]));
+    for s in &segs {
+        assert!(
+            matches!(s, tracedraw_core::geometry::PathSeg::Cubic(_)),
+            "{segs:?}"
+        );
+    }
+    // The middle points pull the curve without being on it.
+    let on = |q: Point| {
+        segs.iter()
+            .flat_map(|s| (0..=100).map(move |k| s.eval(k as f64 / 100.0)))
+            .any(|p| near(p, q))
+    };
+    assert!(!on(pts[1]) && !on(pts[2]));
 }
 
 /// The curve the B-Spline tool previews, as the canvas draws it.
