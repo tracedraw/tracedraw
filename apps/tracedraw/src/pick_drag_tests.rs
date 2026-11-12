@@ -23571,6 +23571,69 @@ fn an_import_waits_for_a_click_and_its_corner_goes_there() {
     assert_eq!(shape_count(&app), n, "one undo step");
 }
 
+/// File > Import of a PNG and of a JPEG: while the file waits for its
+/// place, a tag beside the pointer names it and says what a click, a
+/// drag, Space and Esc do (only the status line said so, and the picture
+/// not coming in at once read as an import that failed); the click
+/// brings the picture in, selected, its top left corner there (#2167,
+/// #2301).
+#[test]
+fn an_imported_picture_waits_with_a_tag_and_comes_in_on_the_click() {
+    let (ctx, mut app, _id) = setup();
+    let dir = std::env::temp_dir().join(format!("td-import-pictures-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    let png = dir.join("photo.png");
+    image::RgbaImage::from_pixel(96, 48, image::Rgba([200, 30, 30, 255]))
+        .save(&png)
+        .expect("png");
+    let jpg = dir.join("photo.jpg");
+    image::RgbImage::from_pixel(96, 48, image::Rgb([30, 30, 200]))
+        .save(&jpg)
+        .expect("jpg");
+    for path in [png, jpg] {
+        let n = shape_count(&app);
+        app.import_picked(&path);
+        assert_eq!(shape_count(&app), n, "nothing comes in yet");
+        let at = app.view.to_screen(Point::new(60.0, 220.0));
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(at)],
+            Modifiers::NONE,
+        );
+        let tag = app.import_placement_tag().expect("waiting");
+        let name = path.file_name().and_then(|n| n.to_str()).expect("name");
+        assert!(tag.contains(name), "{tag}");
+        // Beside the pointer (the status line says it too).
+        let beside = |texts: &[(String, egui::Rect)]| {
+            texts.iter().any(|(t, r)| {
+                *t == tag && r.left() > at.x && r.top() > at.y && r.left() < at.x + 40.0
+            })
+        };
+        let texts = texts_drawn(&ctx, &mut app, Vec::new());
+        assert!(beside(&texts), "the tag is drawn: {tag:?} {at:?} {texts:?}");
+        click_at(&ctx, &mut app, at, Modifiers::NONE);
+        assert!(app.import_placing.is_none());
+        assert!(app.import_placement_tag().is_none());
+        assert_eq!(shape_count(&app), n + 1, "{name} came in");
+        let id = *app.selection.first().expect("selected");
+        assert!(matches!(
+            app.doc().find_shape(id).map(|s| &s.kind),
+            Some(ShapeKind::Bitmap { .. })
+        ));
+        let b = app.selection_bounds().expect("bounds");
+        let corner = app.view.to_page(at);
+        assert!((b.x0 - corner.x).abs() < 0.2, "{b:?} {corner:?}");
+        assert!((b.y1 - corner.y).abs() < 0.2, "{b:?} {corner:?}");
+        // 96 x 48 pixels at 96 dpi.
+        assert!((b.width() - 25.4).abs() < 0.2, "{b:?}");
+        assert!((b.height() - 12.7).abs() < 0.2, "{b:?}");
+        let texts = texts_drawn(&ctx, &mut app, Vec::new());
+        assert!(!beside(&texts), "the tag goes with the click");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A drag gives the box the import is fitted in, its proportions kept;
 /// Space centres it on the page; Esc and a right click call it off.
 #[test]

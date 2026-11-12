@@ -17,6 +17,7 @@ full, row-by-row status.
 - Edit > Repeat after a turn about a moved centre of rotation turns about that centre again. A copy turned about a point off the object and repeated went off sideways instead of round the point, so a ring of copies could not be built; copies now take the centre of rotation of their original, and several objects keep theirs where a turn put it (#2353).
 - Rotate mode: the centre of rotation snaps to the centre, the corners and the middles of the sides of the selection, and to the nodes, centres and quadrants of the objects near it, also with Snap to Objects off, and names the point it took (#2352).
 - Zooming out: what is drawn beside the page shows at once from the drawing drawn small behind the view, instead of coming back piece by piece with the desktop bare around the page (#2354).
+- File > Import: while the chosen file waits for its place, a tag beside the pointer names the file and says what to do (click to place it, drag to size it, Space to centre it on the page, Esc to cancel). Only the status line said so, and a PNG or JPEG that did not come in at once looked like an import that failed (#2167, #2301).
 
 ## 0.44.0 (2026-11-10)
 

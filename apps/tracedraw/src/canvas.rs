@@ -162,6 +162,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     if let Some(r) = app.import_placement_box() {
         haloed_rect(painter, view.rect_to_screen(r), Tokens::SELECTION);
     }
+    draw_import_tag(app, painter);
     // Rubber bands and in-progress tools.
     match &app.drag {
         Drag::Box {
@@ -1067,6 +1068,35 @@ fn draw_drop_frame(app: &App, painter: &Painter) {
         painter.galley(egui::pos2(bg.left() + 6.0, y), g, Tokens::text());
         y += h + 2.0;
     }
+}
+
+/// Beside the pointer while File > Import's file waits for its place:
+/// the file's name and what a click, a drag, Space and Esc do. Only the
+/// status line said so, and a picture that did not come in at once read
+/// as an import that failed (#2167, #2301).
+fn draw_import_tag(app: &App, painter: &Painter) {
+    let Some(text) = app.import_placement_tag() else {
+        return;
+    };
+    let Some(p) = app.pointer_page else {
+        return;
+    };
+    let at = app.view.to_screen(p) + egui::vec2(18.0, 24.0);
+    let galley = painter.layout(
+        text,
+        egui::FontId::proportional(12.0),
+        Tokens::text(),
+        280.0,
+    );
+    let bg = ERect::from_min_size(at, galley.size() + egui::vec2(12.0, 8.0));
+    painter.rect(
+        bg,
+        2.0,
+        Tokens::panel(),
+        EStroke::new(1.0, Tokens::border()),
+        egui::StrokeKind::Inside,
+    );
+    painter.galley(bg.min + egui::vec2(6.0, 4.0), galley, Tokens::text());
 }
 
 /// The object a move let go with Alt (Alt+Shift) would copy the fill
