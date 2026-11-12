@@ -2061,6 +2061,7 @@ fn text_properties(app: &mut App, ui: &mut Ui) {
     if !app.has_text_target() && app.live_font.is_none() {
         app.text_font = app.text_default_font.clone();
         app.text_size_pt = app.text_default_size;
+        app.bar_to_new_text_style();
     }
     let mut changed = crate::ui::tips::tip_over(ui, crate::ui::tips::keyed("toolbar.font"), |ui| {
         crate::ui::font_list::text_font_list(app, ui, "propbar_font", 180.0)
@@ -2096,6 +2097,21 @@ fn text_properties(app: &mut App, ui: &mut Ui) {
             .rich_tip(tr(key))
             .clicked()
         {
+            let style = match key {
+                "toolbar.bold" => Some((!app.text_bold, app.text_italic)),
+                "toolbar.italic" => Some((app.text_bold, !app.text_italic)),
+                _ => None,
+            };
+            // With no text to change, bold or italic would be those of
+            // new text: asked first, as for the font and size (#2346).
+            if let Some(style) = style.filter(|_| !app.has_text_target()) {
+                app.dialog = crate::ui::dialogs::Dialog::TextDefaults {
+                    font: None,
+                    style: Some(style),
+                    size: None,
+                };
+                continue;
+            }
             match key {
                 "toolbar.bold" => app.text_bold = !app.text_bold,
                 "toolbar.italic" => app.text_italic = !app.text_italic,
@@ -2108,7 +2124,13 @@ fn text_properties(app: &mut App, ui: &mut Ui) {
     vsep(ui);
     if text_align_list(app, ui) {
         let a = app.text_align;
-        app.apply_text_align(a);
+        if app.has_text_target() {
+            app.apply_text_align(a);
+        } else {
+            // The alignment of new text: set on the bar with nothing to
+            // align (#2346).
+            app.text_default_align = a;
+        }
     }
     // Horizontal or vertical text, offered with a CJK interface language
     // or for text in those scripts (#257).

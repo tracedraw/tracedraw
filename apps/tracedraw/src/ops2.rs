@@ -3194,6 +3194,7 @@ impl App {
             return;
         }
         self.finish_text();
+        self.bar_to_new_text_style();
         let (path, closed) = path_for_text_at(&curve.page_path(), at);
         let (align, offset) = if begin && closed && at.is_some() {
             (tracedraw_core::TextAlign::Left, 0.0)

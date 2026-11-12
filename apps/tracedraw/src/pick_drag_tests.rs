@@ -26078,3 +26078,78 @@ fn break_curve_opens_a_closed_curve_at_the_chosen_nodes() {
     assert_eq!(subpaths(&app), 2, "{:?}", last_path(&app));
     assert_eq!(last_path(&app).segments().count(), 5);
 }
+
+/// Bold, italic and an alignment given to a text change that text only
+/// (#2346): the next text made with the Text tool is plain and left
+/// aligned, as new text was before. Making them the default of new text
+/// (OK to the question asked with nothing selected) still works.
+#[test]
+fn bold_italic_and_alignment_of_a_text_do_not_go_to_new_text() {
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.settings.autocorrect.enabled = false;
+    app.start_text(Point::new(30.0, 50.0), None);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Text("ab".into())],
+        Modifiers::NONE,
+    );
+    app.finish_text();
+    let first = app.selection[0];
+    app.select(vec![first]);
+    app.text_bold = true;
+    app.text_italic = true;
+    app.apply_text_style();
+    app.apply_text_align(tracedraw_core::TextAlign::Center);
+    let style = |app: &App, id| match &app.doc().find_shape(id).expect("text").kind {
+        ShapeKind::Text {
+            spans, align, para, ..
+        } => (
+            spans[0].bold,
+            spans[0].italic,
+            tracedraw_core::paragraphs::paragraph_format(spans, *align, para, 0).align,
+        ),
+        _ => panic!("not text"),
+    };
+    assert_eq!(
+        style(&app, first),
+        (true, true, tracedraw_core::TextAlign::Center)
+    );
+    // A new text, straight after, and after a frame with nothing selected.
+    app.start_text(Point::new(30.0, 150.0), None);
+    let second = app.selection[0];
+    assert_eq!(
+        style(&app, second),
+        (false, false, tracedraw_core::TextAlign::Left)
+    );
+    assert!(
+        !app.text_bold && !app.text_italic,
+        "the bar shows the new text"
+    );
+    app.finish_text();
+    app.select(vec![first]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    app.set_tool(Tool::Text);
+    app.select(Vec::new());
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(!app.text_bold, "the bar shows the style of new text");
+    app.start_text(Point::new(30.0, 250.0), None);
+    let third = app.selection[0];
+    assert_eq!(
+        style(&app, third),
+        (false, false, tracedraw_core::TextAlign::Left)
+    );
+    app.finish_text();
+    // Made the default of new text: new text takes it.
+    app.select(Vec::new());
+    app.set_text_defaults(None, Some((true, false)), None);
+    app.text_default_align = tracedraw_core::TextAlign::Right;
+    app.start_text(Point::new(30.0, 350.0), None);
+    let fourth = app.selection[0];
+    assert_eq!(
+        style(&app, fourth),
+        (true, false, tracedraw_core::TextAlign::Right)
+    );
+}

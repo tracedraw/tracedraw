@@ -7,6 +7,7 @@ full, row-by-row status.
 ## Unreleased
 
 - Full-screen preview (F9): the drawing is shown whole, its objects off the page too, with the page among them. Only the page was shown, so a drawing made beside or larger than its page was previewed as an empty white sheet (#2317).
+- Text: bold, italic or an alignment given to a text change that text only. They stayed on the property bar and every new text took them; a new text now starts plain and left aligned (or with the bold, italic and alignment set with nothing selected, made the default of new text), and Bold or Italic clicked with nothing selected asks first, as the font and size do (#2346).
 - Tools > Options and the standard bar's Options button list Document Setup, the Options window's last tab, which only the Page menu had (#2006).
 - Dockers: the tab of the docker in front is marked in the colour of the document tab in front, light blue on the light themes. It was a grey hardly apart from the other tabs (#2316).
 
