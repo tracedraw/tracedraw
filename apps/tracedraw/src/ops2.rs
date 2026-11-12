@@ -2159,6 +2159,16 @@ impl App {
         anti_alias: bool,
         bounds: Rect,
     ) -> Option<(Vec<u8>, u32, u32, Rect)> {
+        let tmp = self.selection_alone(bounds)?;
+        let (png, w, h) = render_alone_png(&tmp, dpi, transparent, anti_alias)?;
+        Some((png, w, h, bounds))
+    }
+
+    /// The selection alone in a document of its own whose page is the
+    /// area `bounds` (page space), moved so the area's corner is the
+    /// page's: what [`render_alone_png`] draws, also on another thread
+    /// (the picture a copy offers, #2288). `None` with nothing selected.
+    pub fn selection_alone(&self, bounds: Rect) -> Option<tracedraw_core::Document> {
         let shapes = self.selected_shapes();
         if shapes.is_empty() {
             return None;
@@ -2177,44 +2187,7 @@ impl App {
                 layer.shapes.push(c);
             }
         }
-        let page = tmp.pages[0].id;
-        let zoom = dpi / 25.4;
-        let w = (bounds.width() * zoom).ceil().max(1.0) as u32;
-        let h = (bounds.height() * zoom).ceil().max(1.0) as u32;
-        let view = tracedraw_render::ViewTransform {
-            zoom,
-            origin_x: 0.0,
-            origin_y: h as f64,
-        };
-        let mut pm = tracedraw_render::render_page(
-            &tmp,
-            page,
-            &tracedraw_render::RenderOptions {
-                width: w,
-                height: h,
-                view,
-                preview: None,
-                wireframe: false,
-                anti_alias,
-                draft: false,
-                focus: None,
-                ..tracedraw_render::RenderOptions::default()
-            },
-        )?;
-        if !transparent {
-            let mut white = tiny_skia_white(w, h);
-            white.draw_pixmap(
-                0,
-                0,
-                pm.as_ref(),
-                &Default::default(),
-                tiny_skia::Transform::identity(),
-                None,
-            );
-            pm = white;
-        }
-        let png = pm.encode_png().ok()?;
-        Some((png, w, h, bounds))
+        Some(tmp)
     }
 
     #[cfg(test)]
@@ -4256,6 +4229,55 @@ impl App {
         }
         self.selection = new_sel;
     }
+}
+
+/// The first page of `tmp` ([`App::selection_alone`]) drawn into a PNG
+/// at `dpi`: its bytes and pixel size.
+pub fn render_alone_png(
+    tmp: &tracedraw_core::Document,
+    dpi: f64,
+    transparent: bool,
+    anti_alias: bool,
+) -> Option<(Vec<u8>, u32, u32)> {
+    let page = tmp.pages.first()?;
+    let size = page.size;
+    let zoom = dpi / 25.4;
+    let w = (size.width * zoom).ceil().max(1.0) as u32;
+    let h = (size.height * zoom).ceil().max(1.0) as u32;
+    let view = tracedraw_render::ViewTransform {
+        zoom,
+        origin_x: 0.0,
+        origin_y: h as f64,
+    };
+    let mut pm = tracedraw_render::render_page(
+        tmp,
+        page.id,
+        &tracedraw_render::RenderOptions {
+            width: w,
+            height: h,
+            view,
+            preview: None,
+            wireframe: false,
+            anti_alias,
+            draft: false,
+            focus: None,
+            ..tracedraw_render::RenderOptions::default()
+        },
+    )?;
+    if !transparent {
+        let mut white = tiny_skia_white(w, h);
+        white.draw_pixmap(
+            0,
+            0,
+            pm.as_ref(),
+            &Default::default(),
+            tiny_skia::Transform::identity(),
+            None,
+        );
+        pm = white;
+    }
+    let png = pm.encode_png().ok()?;
+    Some((png, w, h))
 }
 
 fn tiny_skia_white(w: u32, h: u32) -> tiny_skia::Pixmap {
