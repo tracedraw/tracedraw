@@ -4,6 +4,10 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Saving: `.tdraw` files are several times smaller. They were written with every coordinate on a line of its own, indented further for each group inside a group, so a curve node took half a kilobyte or more and a drawing with many nodes in nested groups grew to tens or hundreds of megabytes, far past the same drawing saved as `.cdr`. The file is now written without line breaks or indents, 3 to 8 times smaller, and earlier versions open it as before (#2345).
+
 ## 0.44.1 (2026-11-12)
 
 - PDF import: CMYK photos come in as they look. A CMYK JPEG drawn with an inverting Decode array, the usual way such photos are saved in a PDF, came in as a negative, like an X-ray; the photo's inks are now read through its Decode array as for any other picture (#2322).
