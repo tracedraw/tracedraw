@@ -43,6 +43,18 @@ written (the blend goes out alone, with a warning in the log).
   (the top and bottom edges first, then left and right) makes a
   perspective shadow standing on that edge: the edge stays where it is
   and the opposite side of the object falls on the pointer.
+- A press on the edge itself or just outside it (within 11 screen
+  pixels of the object's box, the reach of a handle) starts the same
+  perspective shadow on the edge it is next to; a press there started
+  nothing, so a shadow from the bottom, top, left or right could only be
+  begun from inside the outer fifth
+  (`App::shadow_drag_start`,
+  `shadow_tool::tests::a_drag_from_just_outside_an_edge_stands_the_shadow_on_it`).
+- While the pointer is over an object, or just outside one, with no
+  drag held, the edge a drag from there would stand the shadow on is
+  marked with a thick bar along it; in the middle of the object nothing
+  is marked (a drag there lies the shadow flat), nor over the shadow,
+  its line or its handles (`App::shadow_edge_hint`).
 - One drag is one undo step. A drag that starts on one of several
   selected objects keeps the selection: each of them takes the shadow,
   a perspective one standing on its own edge (#2218). A drag on an
@@ -120,16 +132,33 @@ shadow colour, merged with what lies beneath by the merge mode
 With the Drop Shadow tool the selected object's shadow shows a white
 square at the start (the object's centre, or the edge's midpoint), a
 square in the shadow colour at the end, a dashed line between them and
-a bar on the line at the opacity (start = 0 %, end = 100 %).
+two sliders beside the line, each a tab 24 pixels long standing out from
+the line: on the left of the line looking from the start to the end the
+opacity slider (with a stroke of the shadow colour at the shadow's
+opacity), on the right the feathering slider (with a soft stroke). Where
+the two stand at the same point they make one bar across the line, one
+half each.
 
 - Dragging the end moves the offset, or the angle and stretch.
-- Dragging the bar sets the opacity (whole per cent).
+- Dragging the opacity slider sets the opacity by how far along the
+  line it is (start = 0 %, end = 100 %, whole per cent).
+- Dragging the feathering slider sets the feathering by how far along
+  the line it is, `t`: `50 t^2` mm, to a tenth of a millimetre (start =
+  0, end = 50 mm, the top of the property bar's range; 1.5 mm is at
+  about a sixth, 12.5 mm half way), so the small values most shadows use
+  get most of the line (`shadow_tool::feather_fraction`,
+  `feather_at_fraction`).
+- A slider is taken by a press within 6 pixels of its tab, from its
+  foot on the line to its outer end; the one under the pointer or held
+  is filled in the selection colour and labelled with its value
+  ("Opacity: 50 %", "Feathering: 1.5 mm")
+  (`shadow_tool::tests::the_opacity_and_feathering_sliders_lie_on_either_side_of_the_line`).
 - Dragging the start to another edge stands the shadow on that edge;
   to the middle makes it flat. The end stays where it was. The start
   handle follows the pointer while it is held, flat or standing on any
   edge, and goes back to where the shadow starts when let go.
 - Dragging the dashed line (within the pick distance of Options > Nodes
-  and Handles, away from the squares and the bar) moves the whole
+  and Handles, away from the squares and the sliders) moves the whole
   shadow: its end goes as far as the pointer, as a drag on the shadow
   itself does, and the start stays where it stands on the object (the
   centre or the edge). Ctrl keeps the move horizontal or vertical. The

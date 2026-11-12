@@ -16188,6 +16188,7 @@ fn shadow_handles_are_grabbed_and_dragged_in_every_mode() {
         for which in [
             ShadowHandle::Start,
             ShadowHandle::Opacity,
+            ShadowHandle::Feather,
             ShadowHandle::End,
         ] {
             let (ctx, mut app, id) = setup();
@@ -16224,8 +16225,9 @@ fn shadow_handles_are_grabbed_and_dragged_in_every_mode() {
             let to_page = match which {
                 ShadowHandle::Start if edge.is_none() => Point::new(35.0, 11.0),
                 ShadowHandle::Start => b.center(),
-                // The slider towards the end, past it: full opacity.
-                ShadowHandle::Opacity => {
+                // A slider towards the end, past it: full opacity, or
+                // the most feathering.
+                ShadowHandle::Opacity | ShadowHandle::Feather => {
                     let (a, e) = (at(ShadowHandle::Start), at(ShadowHandle::End));
                     e + (e - a) / (e - a).hypot() * 5.0
                 }
@@ -16274,6 +16276,10 @@ fn shadow_handles_are_grabbed_and_dragged_in_every_mode() {
                 }
                 ShadowHandle::Opacity => {
                     assert_eq!(after.opacity, 1.0, "{edge:?}")
+                }
+                ShadowHandle::Feather => {
+                    assert_eq!(after.blur, crate::shadow_tool::FEATHER_MAX_MM, "{edge:?}");
+                    assert_eq!(after.opacity, 0.3, "{edge:?}: the opacity stays");
                 }
                 ShadowHandle::End => {
                     let e = after.end_point(b);

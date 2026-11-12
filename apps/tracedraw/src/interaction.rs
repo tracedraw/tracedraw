@@ -1821,9 +1821,10 @@ impl App {
                             grab,
                             begun: false,
                         };
-                    } else if let Some(id) = self.shadow_drag_target(press) {
-                        // A press on one of several selected objects
-                        // keeps them all: each takes the shadow (#2218).
+                    } else if let Some((id, _)) = self.shadow_drag_start(press) {
+                        // On an object or just outside its edge. A press
+                        // on one of several selected objects keeps them
+                        // all: each takes the shadow (#2218).
                         if !self.selection.contains(&id) {
                             self.select(vec![id]);
                         }
