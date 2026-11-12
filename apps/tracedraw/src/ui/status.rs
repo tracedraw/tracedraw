@@ -576,7 +576,7 @@ pub fn status_bar(app: &mut App, ui: &mut Ui) {
         Pos2::new(fill_x, row.min.y),
         Pos2::new(outline_x - 8.0, row.max.y),
     );
-    let fill_hit = Indicator {
+    let (fill_hit, fill_resp) = Indicator {
         id: "status_fill",
         icon: Tool::InteractiveFill,
         swatch: fill_swatch,
@@ -589,11 +589,16 @@ pub fn status_bar(app: &mut App, ui: &mut Ui) {
     if fill_hit && doc {
         app.open_edit_fill();
     }
+    // Dragging the fill onto an object copies it there, whatever it is:
+    // a colour, a fountain, a pattern. See docs/behavior/color-palettes.md.
+    if doc {
+        drag_fill(app, ui, &fill_resp, &fill, fill_swatch);
+    }
     let outline_part = Rect::from_min_max(
         Pos2::new(outline_x, row.min.y),
         Pos2::new(theme_btn.min.x - 8.0, row.max.y),
     );
-    let outline_hit = Indicator {
+    let (outline_hit, _) = Indicator {
         id: "status_outline",
         icon: Tool::OutlinePen,
         swatch: outline_swatch,
@@ -659,6 +664,55 @@ pub fn status_bar(app: &mut App, ui: &mut Ui) {
     }
 }
 
+/// Drag the fill shown in the bar onto an object (`App::drop_fill`).
+fn drag_fill(
+    app: &mut App,
+    ui: &Ui,
+    resp: &egui::Response,
+    fill: &tracedraw_core::Fill,
+    swatch: Option<Color32>,
+) {
+    if resp.drag_started_by(egui::PointerButton::Primary) {
+        app.fill_drag = Some(fill.clone());
+    }
+    if app.fill_drag.is_some() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        app.fill_drag = None;
+    }
+    let pos = ui.ctx().pointer_latest_pos();
+    if resp.dragged() {
+        if let (Some(_), Some(pos)) = (&app.fill_drag, pos) {
+            let ctx = ui.ctx();
+            let ok = app.fill_target(pos).is_some();
+            ctx.set_cursor_icon(if ok {
+                egui::CursorIcon::Copy
+            } else {
+                egui::CursorIcon::NoDrop
+            });
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Tooltip,
+                egui::Id::new("status_fill_drag_chip"),
+            ));
+            let r = Rect::from_min_size(pos + Vec2::new(12.0, 12.0), Vec2::splat(16.0));
+            painter.rect_filled(r.expand(1.0), 0.0, Color32::WHITE);
+            draw_swatch(&painter, r, swatch);
+            painter.rect_stroke(
+                r,
+                0.0,
+                egui::Stroke::new(1.0, Color32::from_gray(0x5A)),
+                egui::StrokeKind::Outside,
+            );
+            ctx.request_repaint();
+        }
+    }
+    if resp.drag_stopped() {
+        let dragged = app.fill_drag.take();
+        let on_part = pos.is_some_and(|p| resp.rect.contains(p));
+        if let (Some(f), Some(p), false) = (dragged, pos, on_part) {
+            app.drop_fill(f, p);
+        }
+    }
+}
+
 /// The fill or outline part: tool icon, swatch, description.
 struct Indicator<'a> {
     id: &'a str,
@@ -670,9 +724,9 @@ struct Indicator<'a> {
 
 impl Indicator<'_> {
     /// Draw it; true when double-clicked.
-    fn show(&self, ui: &mut Ui, painter: &egui::Painter, part: Rect) -> bool {
+    fn show(&self, ui: &mut Ui, painter: &egui::Painter, part: Rect) -> (bool, egui::Response) {
         let resp = ui
-            .interact(part, egui::Id::new(self.id), Sense::click())
+            .interact(part, egui::Id::new(self.id), Sense::click_and_drag())
             .rich_tip(self.tip);
         let cy = part.center().y;
         let icon_r = Rect::from_center_size(Pos2::new(part.min.x + 11.0, cy), Vec2::splat(20.0));
@@ -689,7 +743,7 @@ impl Indicator<'_> {
             g,
             Tokens::text(),
         );
-        resp.double_clicked()
+        (resp.double_clicked(), resp)
     }
 
     /// The width of the part without its text: icon, swatch and gaps.
