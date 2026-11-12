@@ -25722,3 +25722,117 @@ fn holding_delete_with_the_pick_tool_deletes_the_selection() {
     );
     assert!(app.doc().find_shape(id).is_none());
 }
+
+/// With the Shape tool on a text of several lines, a marquee over the
+/// first line chooses its characters and a Shift+marquee over the second
+/// line adds that line's: both lines stay chosen, as Shift+click adds a
+/// character (#2331, after #1933). The Shift+marquee used to replace the
+/// first line's characters. The freehand marquee adds with Shift too.
+#[test]
+fn shift_marquee_adds_character_nodes() {
+    let ctx = crate::theme::ui_context();
+    let mut app = App::headless();
+    app.show_welcome = false;
+    tracedraw_text::install();
+    let id = app
+        .new_shape(ShapeKind::Text {
+            spans: vec![tracedraw_core::TextSpan::new(
+                "some\nthing\nspecial",
+                "DejaVu Sans",
+                36.0,
+            )],
+            origin: Point::new(40.0, 100.0),
+            frame: None,
+            align: tracedraw_core::TextAlign::Left,
+            para: Default::default(),
+            on_path: None,
+        })
+        .expect("text");
+    app.select(vec![id]);
+    app.set_tool(Tool::Shape);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    app.zoom_to_page();
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let s = app.doc().find_shape(id).cloned().expect("text");
+    let nodes = crate::text_nodes::char_nodes(&s);
+    // The characters of each line: "some" 0..4, "thing" 5..10,
+    // "special" 11..18 (the newlines have no node).
+    let line = |r: std::ops::Range<usize>| -> Vec<(ShapeId, usize)> {
+        r.filter(|c| nodes.iter().any(|n| n.0 == *c))
+            .map(|c| (id, c))
+            .collect()
+    };
+    let (one, two, three) = (line(0..4), line(5..10), line(11..18));
+    assert_eq!((one.len(), two.len(), three.len()), (4, 5, 7));
+    // A box around the nodes of `chars`, in screen space, a few pixels out.
+    let around = |app: &App, chars: &[(ShapeId, usize)]| -> (Pos2, Pos2) {
+        let pts: Vec<Pos2> = chars
+            .iter()
+            .map(|k| {
+                app.view
+                    .to_screen(nodes.iter().find(|n| n.0 == k.1).unwrap().1)
+            })
+            .collect();
+        let min = pts.iter().fold(pts[0], |a, b| a.min(*b));
+        let max = pts.iter().fold(pts[0], |a, b| a.max(*b));
+        (min - egui::vec2(6.0, 4.0), max + egui::vec2(6.0, 4.0))
+    };
+    let sorted = |app: &App| {
+        let mut v = app.node_selection.clone();
+        v.sort();
+        v
+    };
+    let (a, b) = around(&app, &one);
+    drag(&ctx, &mut app, a, b, Modifiers::NONE, Vec::new());
+    assert_eq!(app.selection, vec![id]);
+    assert_eq!(sorted(&app), one);
+
+    // Shift+marquee over the second line: the first stays chosen.
+    let (a, b) = around(&app, &two);
+    drag(&ctx, &mut app, a, b, Modifiers::SHIFT, Vec::new());
+    assert_eq!(app.selection, vec![id]);
+    let mut both = one.clone();
+    both.extend(two.iter().copied());
+    assert_eq!(sorted(&app), both);
+
+    // A marquee without Shift chooses only what it holds.
+    let (a, b) = around(&app, &three);
+    drag(&ctx, &mut app, a, b, Modifiers::NONE, Vec::new());
+    assert_eq!(sorted(&app), three);
+
+    // The freehand marquee (the bar's mode): Shift adds as well.
+    app.node_lasso = true;
+    let (a, b) = around(&app, &one);
+    let freehand = |ctx: &egui::Context, app: &mut App, a: Pos2, b: Pos2, mods: Modifiers| {
+        let corners = [a, Pos2::new(b.x, a.y), b, Pos2::new(a.x, b.y), a];
+        frame(ctx, app, vec![Event::PointerMoved(a)], mods);
+        frame(
+            ctx,
+            app,
+            vec![button(a, true, PointerButton::Primary, mods)],
+            mods,
+        );
+        for w in corners.windows(2) {
+            for i in 1..=4 {
+                let p = w[0] + (w[1] - w[0]) * (i as f32 / 4.0);
+                frame(ctx, app, vec![Event::PointerMoved(p)], mods);
+            }
+        }
+        frame(
+            ctx,
+            app,
+            vec![button(a, false, PointerButton::Primary, mods)],
+            mods,
+        );
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    freehand(&ctx, &mut app, a, b, Modifiers::SHIFT);
+    let mut kept = three.clone();
+    kept.extend(one.iter().copied());
+    kept.sort();
+    assert_eq!(sorted(&app), kept);
+}

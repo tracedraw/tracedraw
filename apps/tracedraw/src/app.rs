@@ -1968,8 +1968,9 @@ pub struct App {
     pub reflect_nodes: (bool, bool),
     /// Shape tool: the freehand marquee for nodes (else rectangular).
     pub node_lasso: bool,
-    /// The Shape tool's freehand marquee started with Alt+Shift adds to
-    /// the nodes chosen already (#1341).
+    /// The Shape tool's marquee (rectangular or freehand) with Shift
+    /// held adds to the nodes, corners and characters chosen already
+    /// (#1341, #2331).
     pub node_lasso_keeps: bool,
     /// Shape tool: the last run of nodes Shift+click selected.
     pub node_run: Option<crate::node_edit::NodeRun>,

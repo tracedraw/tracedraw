@@ -1334,6 +1334,12 @@ impl App {
                 self.marquee_moved_from = Some(p);
             } else if held {
                 self.marquee_moved_from = None;
+                // Shift pressed during a node marquee adds too (#2331).
+                if mods.shift
+                    && matches!(self.drag, Drag::NodeMarquee { .. } | Drag::NodeLasso { .. })
+                {
+                    self.node_lasso_keeps = true;
+                }
                 let step = 0.2 / self.view.zoom as f64;
                 match &mut self.drag {
                     Drag::NodeMarquee { current, .. } => *current = p,
