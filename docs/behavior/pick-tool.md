@@ -260,6 +260,16 @@ for what is selected, not for the object in front; with no selected
 object under the pointer, the topmost object there is selected first
 (#1684, `pick_drag_tests::a_right_click_on_a_covered_selected_object_keeps_the_selection`).
 
+Keys held as the right button is let go over another object skip the
+menu, as in CorelDRAW: Shift gives that object the outline of the first
+selected object (Copy Outline Here), Alt its fill (Copy Fill Here) and
+Ctrl (Cmd on macOS) its fill, outline and transparency (Copy All
+Properties). While the keys are held the object that would take them is
+outlined in the selection colour and the pointer's note names the copy;
+the selection stays where it was. Not over an object, the menu opens as
+without keys, and Ctrl keeps the drag horizontal or vertical (discussion
+#2066, `drop_menu::tests::right_drop_with_shift_alt_or_ctrl_copies_without_the_menu`).
+
 The same copies without the menu, with the left button: start moving
 the selection without a key (Alt as the drag starts makes a selection
 box, #1341), then hold Alt and let go over another object, and that object

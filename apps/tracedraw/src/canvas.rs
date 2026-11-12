@@ -1119,6 +1119,18 @@ fn draw_drop_colour(app: &App, painter: &Painter) {
     if action == DropAction::CopyFill && app.drop_frame.is_some() {
         return;
     }
+    draw_drop_style(app, painter, action, target);
+}
+
+/// Object `target` outlined in the selection colour and, under the
+/// pointer, what a drop there copies onto it (a left-button move with
+/// Alt, a right-button drag with Shift, Alt or Ctrl; discussion #2066).
+pub(crate) fn draw_drop_style(
+    app: &App,
+    painter: &Painter,
+    action: crate::drop_menu::DropAction,
+    target: tracedraw_core::ShapeId,
+) {
     let Some(s) = app.doc().find_shape(target) else {
         return;
     };
