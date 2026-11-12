@@ -1348,6 +1348,12 @@ stand-in next to each missing family: "Arial (Liberation Sans)".
   the path, upside down; mirror horizontally reads the text from the
   path's end, letters mirrored; both together turn the text half round
   onto the other side, reading the other way (the older single mirror).
+- Text on path, editing it: with the Text tool the caret stands on the
+  path, at the place of the letter it is before, as tall as the line and
+  turned to the path's direction there; the selection is one band per
+  selected letter, each turned with its letter; and a click or drag picks
+  the letter nearest along the path to the point clicked (#2423,
+  `text_path::tests::the_caret_of_a_text_on_a_path_stands_on_the_path`).
 - Fit text to frame: scale size so the paragraph fills the frame height.
 - Underline and strike lines: thin `= size / 14`, thick `= size / 7`;
   a double line is two thin lines a thin line apart; the underline hangs

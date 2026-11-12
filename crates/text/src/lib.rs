@@ -1458,9 +1458,58 @@ pub struct TextLayout {
     /// up (`baselines` and `lines` grow from 0) and the columns run right
     /// from the frame's left edge, the letters keeping their orientation.
     pub columns_left_to_right: bool,
+    /// Text on a path: how the straight line of `lines` is laid along the
+    /// path, so carets, selections and clicks follow the letters (#2423).
+    pub on_path: Option<PathPlacement>,
+}
+
+/// How the one line of a text on a path is laid along its baseline: a
+/// point of the straight line (x along it, y up from its baseline) goes
+/// where [`place_on_path`] puts the letters standing there.
+#[derive(Debug, Clone)]
+pub struct PathPlacement {
+    baseline: tracedraw_core::document::Baseline,
+    /// Arc length where the line's left end lands.
+    start: f64,
+    /// The line's left end, x, and its baseline, y, in the straight layout.
+    line_x0: f64,
+    line_y: f64,
+    lift: f64,
+    flip: bool,
+    orientation: PathTextOrientation,
+}
+
+impl PathPlacement {
+    /// The point of the straight layout `p` as placed along the path.
+    pub fn place(&self, p: Point) -> Option<Point> {
+        let (at, dir) = self.baseline.at(self.start + p.x - self.line_x0)?;
+        let flip = if self.flip { -1.0 } else { 1.0 };
+        let local = Point::new(0.0, flip * (p.y - self.line_y + self.lift));
+        Some(Affine::translate(at.to_vec2()) * letter_frame(self.orientation, dir) * local)
+    }
+
+    /// The point of the straight layout placed nearest the point `p`
+    /// beside the path: along it for x, away from it for y.
+    pub fn unplace(&self, p: Point) -> Option<Point> {
+        let (s, d) = self.baseline.nearest(p)?;
+        let d = if self.flip { -d } else { d };
+        Some(Point::new(
+            self.line_x0 + s - self.start,
+            self.line_y + d - self.lift,
+        ))
+    }
 }
 
 impl TextLayout {
+    /// A point of the space of `lines` and `baselines` where it is drawn:
+    /// along the path for text on a path, else where it is.
+    pub fn placed(&self, p: Point) -> Point {
+        self.on_path
+            .as_ref()
+            .and_then(|pp| pp.place(p))
+            .unwrap_or(p)
+    }
+
     /// From the space of `lines` and `baselines` to the space of `path`:
     /// the identity, or the quarter turn of vertical text.
     pub fn line_frame(&self) -> Affine {
@@ -3946,6 +3995,7 @@ impl FontSystem {
                 glyph_layout: GlyphLayout::default(),
                 vertical: false,
                 columns_left_to_right: false,
+                on_path: None,
             };
         }
         let para = req.para;
@@ -4700,7 +4750,15 @@ impl FontSystem {
         // 4. Text on a path: re-place the glyphs of artistic text along the curve.
         if let (Some(tp), true) = (req.on_path, artistic) {
             let mut on_path = GlyphLayout::default();
-            let placed = place_on_path(&lines, tp, style_of(0).0, spans, collect, &mut on_path);
+            let (placed, placement) =
+                place_on_path(&lines, tp, style_of(0).0, spans, collect, &mut on_path);
+            let placement = placement.map(|mut pp| {
+                if let Some(l) = line_boxes.first() {
+                    pp.line_x0 = l.x_range().0;
+                    pp.line_y = l.baseline;
+                }
+                pp
+            });
             return TextLayout {
                 path: placed,
                 bounds,
@@ -4712,6 +4770,7 @@ impl FontSystem {
                 glyph_layout: on_path,
                 vertical: false,
                 columns_left_to_right: false,
+                on_path: placement,
             };
         }
 
@@ -4726,6 +4785,7 @@ impl FontSystem {
             glyph_layout: glyphs_out,
             vertical,
             columns_left_to_right: mirror,
+            on_path: None,
         }
     }
 }
@@ -5251,15 +5311,15 @@ fn place_on_path(
     spans: &[TextSpan],
     collect: bool,
     glyphs: &mut GlyphLayout,
-) -> BezPath {
+) -> (BezPath, Option<PathPlacement>) {
     let mut out = BezPath::new();
     let Some(line) = lines.first() else {
-        return out;
+        return (out, None);
     };
     let baseline = tp.baseline();
     let total = baseline.length();
     if total <= 0.0 {
-        return out;
+        return (out, None);
     }
     let text_w: f64 = line.glyphs.iter().map(|g| g.advance).sum();
     let start = tp.offset
@@ -5306,7 +5366,16 @@ fn place_on_path(
         let gp = place * g.path.as_ref().clone();
         out.extend(gp.elements().iter().copied());
     }
-    out
+    let placement = PathPlacement {
+        baseline,
+        start,
+        line_x0: 0.0,
+        line_y: 0.0,
+        lift,
+        flip: tp.flipped(),
+        orientation: tp.orientation,
+    };
+    (out, Some(placement))
 }
 
 /// Add glyph `g`, placed by `a`, to the glyph layout when glyphs are
