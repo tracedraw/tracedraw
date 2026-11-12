@@ -136,6 +136,12 @@ new object as before
 
 - Property bar: ellipse, pie or arc, with start and end angles (degrees,
   counter-clockwise from +x) and a direction toggle. Default: ellipse.
+  Pie or Arc first picked starts at 0 to 270 degrees, on the property bar
+  as in the Options dialog. The bar started from 90 to 90 degrees, a
+  whole turn: a "pie" that looked like an ellipse with a line from its
+  centre to the top, kept for every new ellipse after. A saved tool
+  setting whose angles meet is read back as a plain ellipse
+  (`app::tests::a_whole_turn_pie_saved_by_the_old_bar_draws_an_ellipse`).
 
 ## Polygon (Y) and Star
 

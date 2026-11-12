@@ -4937,6 +4937,7 @@ vo.clear_hint = "Volta o contorno à mesma largura em todo o comprimento"
 hinttitle.variable_outline = "Variar a largura do contorno"
 tooldesc.variable_outline = "Deixa um contorno mais grosso ou mais fino ao longo do comprimento com nós de largura."
 status_hint.variable_outline = "Arraste sobre o contorno para adicionar um nó de largura e definir sua largura · Alt+arrastar altera um lado · Delete remove o nó escolhido" # mt
+status_hint.variable_outline_fold = "O lado de dentro do contorno está passando do centro da curva, por isso as bordas se encontram numa ponta. É a geometria da forma, não um erro: arraste de volta para arredondar."
 docker.export = "Exportar"
 export_docker.add_pages = "Adicionar páginas"
 export_docker.add_pages_tip = "Adiciona cada página do desenho como um recurso"

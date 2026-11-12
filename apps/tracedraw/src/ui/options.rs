@@ -4361,11 +4361,7 @@ fn ellipse_page(app: &mut App, ui: &mut Ui) {
         .rich_tip(crate::ui::tips::pair("options.pie", "options.pie_tip"));
     ui.radio_value(&mut kind, 2, tr("options.arc"))
         .rich_tip(crate::ui::tips::pair("options.arc", "options.arc_tip"));
-    let mut arc = app.ellipse_arc.unwrap_or(tracedraw_core::EllipseArc {
-        start_deg: 0.0,
-        end_deg: 270.0,
-        pie: true,
-    });
+    let mut arc = app.ellipse_arc.unwrap_or(crate::app::DEFAULT_ELLIPSE_ARC);
     if kind != before {
         app.ellipse_arc = match kind {
             0 => None,

@@ -4937,6 +4937,7 @@ vo.clear_hint = "Give the outline the same width everywhere again"
 hinttitle.variable_outline = "Vary outline width"
 tooldesc.variable_outline = "Make an outline thicker or thinner along its length with width nodes."
 status_hint.variable_outline = "Glisser sur le contour pour ajouter un nœud d'épaisseur et fixer son épaisseur · Alt+glisser modifie un côté · Suppr supprime le nœud choisi" # mt
+status_hint.variable_outline_fold = "L'intérieur du contour dépasse le centre de la courbe, ses bords se rejoignent donc en pointe. C'est la géométrie de la forme, pas une erreur : revenez en arrière pour l'arrondir."
 docker.export = "Export"
 export_docker.add_pages = "Add Pages"
 export_docker.add_pages_tip = "Add every page of the drawing as an asset"

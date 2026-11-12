@@ -193,7 +193,19 @@ own outline, the same as after Convert to Curves, on every platform
 (`shadow_tool::tests::native_shapes_pick_their_shadow_by_the_outline`,
 `tracedraw_render` `tests::native_shapes_cast_the_shadow_of_their_outline`).
 
-The silhouette is filled by the object's own fill rule, so a hole of the
+The silhouette is what the object shows: its fill, and its outline as
+drawn (the band of a variable, calligraphic or placed outline, the
+stroked line otherwise, with its dashes and arrowheads; a hairline one
+pixel wide). An object with no fill casts the shadow of its outline
+alone, so a ring drawn with the Variable Outline tool on a native ellipse
+casts a ring, the same as after Convert to Curves; an object with
+neither fill nor outline casts its filled outline. The shadow's layer
+reaches round all the outline covers, so a wide outline's shadow is not
+cut at the object's box. The shadow is still measured, and placed, on
+the object's path
+(`tracedraw_render` `tests::an_unfilled_object_casts_the_shadow_of_its_outline`).
+
+The fill part is filled by the object's own fill rule, so a hole of the
 object (a ring of two circles combined, the middle of a crossing star) is
 a hole of its shadow, on the page, in a group's shadow and in the
 shadow's picture; text, and a curve set to the nonzero rule, stay solid

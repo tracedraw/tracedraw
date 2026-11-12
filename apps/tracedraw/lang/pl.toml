@@ -4937,6 +4937,7 @@ vo.clear_hint = "Give the outline the same width everywhere again"
 hinttitle.variable_outline = "Vary outline width"
 tooldesc.variable_outline = "Make an outline thicker or thinner along its length with width nodes."
 status_hint.variable_outline = "Przeciągnij przez kontur, aby dodać węzeł szerokości i ustawić jego szerokość · Alt+przeciągnięcie zmienia jedną stronę · Delete usuwa wybrany węzeł" # mt
+status_hint.variable_outline_fold = "Wewnętrzna strona konturu sięga za środek krzywej, więc jej krawędzie stykają się w szpicu. To geometria kształtu, a nie błąd: przeciągnij z powrotem, aby go zaokrąglić."
 docker.export = "Export"
 export_docker.add_pages = "Add Pages"
 export_docker.add_pages_tip = "Add every page of the drawing as an asset"

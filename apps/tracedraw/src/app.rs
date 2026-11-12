@@ -3725,7 +3725,7 @@ impl App {
             .clamp(1, complex_star_max_sharpness(self.complex_points));
         self.rect_corners = t.rect_corners;
         self.corners_together = t.corners_together;
-        self.ellipse_arc = t.ellipse_arc;
+        self.ellipse_arc = t.ellipse_arc.filter(|a| !is_whole_turn(a));
         self.spiral_revolutions = t.spiral_revolutions.clamp(1, 100);
         self.spiral_logarithmic = t.spiral_logarithmic;
         self.table_rows = t.table_rows.clamp(1, 1000);
@@ -9852,6 +9852,25 @@ pub(crate) fn repeated_transform(t: Affine, before: Rect, now: Rect) -> Affine {
     Affine::translate(p.to_vec2()) * linear * Affine::translate(-p.to_vec2())
 }
 
+/// The pie the Pie and Arc buttons of the Ellipse tool start from, as in
+/// the Options dialog: 0 to 270 degrees. The property bar started from 90
+/// to 90 degrees, a whole turn, so a pie looked like a plain ellipse with
+/// a line from its centre to the top, and the setting was kept from then
+/// on.
+pub const DEFAULT_ELLIPSE_ARC: tracedraw_core::EllipseArc = tracedraw_core::EllipseArc {
+    start_deg: 0.0,
+    end_deg: 270.0,
+    pie: true,
+};
+
+/// A pie or arc whose ends meet: a whole turn, the plain ellipse with a
+/// line to its centre. Saved by the property bar's old default; the
+/// Ellipse tool reads it back as a plain ellipse.
+pub(crate) fn is_whole_turn(a: &tracedraw_core::EllipseArc) -> bool {
+    let sweep = (a.end_deg - a.start_deg).rem_euclid(360.0);
+    sweep.min(360.0 - sweep) < 1e-9
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -10914,6 +10933,38 @@ mod tests {
         assert_eq!(app.hit_test(Point::new(10.5, 35.0)), Some(id));
         app.settings.treat_all_filled = true;
         assert_eq!(app.hit_test(inside), Some(id));
+    }
+
+    /// The property bar's Pie started from 90 to 90 degrees, a whole turn:
+    /// every new ellipse came out with a line from its centre to the top,
+    /// and the setting was saved. Saved so, it is read back as a plain
+    /// ellipse; a real pie is kept; Pie now starts from 0 to 270 degrees.
+    #[test]
+    fn a_whole_turn_pie_saved_by_the_old_bar_draws_an_ellipse() {
+        let mut app = App::headless();
+        let old = tracedraw_core::EllipseArc {
+            start_deg: 90.0,
+            end_deg: 90.0,
+            pie: true,
+        };
+        app.ellipse_arc = Some(old);
+        let prefs = app.tool_prefs();
+        let mut back = App::headless();
+        back.apply_tool_prefs(&prefs);
+        assert_eq!(back.ellipse_arc, None);
+        for whole in [(0.0, 360.0), (-90.0, 270.0), (45.0, 405.0)] {
+            assert!(is_whole_turn(&tracedraw_core::EllipseArc {
+                start_deg: whole.0,
+                end_deg: whole.1,
+                pie: false,
+            }));
+        }
+        app.ellipse_arc = Some(DEFAULT_ELLIPSE_ARC);
+        let prefs = app.tool_prefs();
+        back.apply_tool_prefs(&prefs);
+        assert_eq!(back.ellipse_arc, Some(DEFAULT_ELLIPSE_ARC));
+        let sweep = (DEFAULT_ELLIPSE_ARC.end_deg - DEFAULT_ELLIPSE_ARC.start_deg).rem_euclid(360.0);
+        assert!(sweep > 1.0 && sweep < 359.0, "a pie that shows as one");
     }
 
     #[test]

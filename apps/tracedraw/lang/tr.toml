@@ -4937,6 +4937,7 @@ vo.clear_hint = "Give the outline the same width everywhere again"
 hinttitle.variable_outline = "Vary outline width"
 tooldesc.variable_outline = "Make an outline thicker or thinner along its length with width nodes."
 status_hint.variable_outline = "Genişlik düğümü ekleyip genişliğini belirlemek için anahat üzerinde sürükleyin · Alt+sürükleme bir yanı değiştirir · Delete seçili düğümü kaldırır" # mt
+status_hint.variable_outline_fold = "Konturun iç tarafı eğrinin merkezini geçiyor, bu yüzden kenarları bir uçta birleşiyor. Bu bir hata değil, şeklin geometrisi: yuvarlatmak için geri sürükleyin."
 docker.export = "Export"
 export_docker.add_pages = "Add Pages"
 export_docker.add_pages_tip = "Add every page of the drawing as an asset"

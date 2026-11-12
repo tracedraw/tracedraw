@@ -4937,6 +4937,7 @@ vo.clear_hint = "Give the outline the same width everywhere again"
 hinttitle.variable_outline = "Vary outline width"
 tooldesc.variable_outline = "Make an outline thicker or thinner along its length with width nodes."
 status_hint.variable_outline = "Перетащите по контуру, чтобы добавить узел ширины и задать его ширину · Alt+перетаскивание меняет одну сторону · Delete удаляет выбранный узел" # mt
+status_hint.variable_outline_fold = "Внутренняя сторона контура заходит за центр кривой, поэтому её края сходятся в острие. Это геометрия формы, а не ошибка: потяните обратно, чтобы скруглить."
 docker.export = "Export"
 export_docker.add_pages = "Add Pages"
 export_docker.add_pages_tip = "Add every page of the drawing as an asset"

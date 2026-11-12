@@ -4937,6 +4937,7 @@ vo.clear_hint = "Give the outline the same width everywhere again"
 hinttitle.variable_outline = "Vary outline width"
 tooldesc.variable_outline = "Make an outline thicker or thinner along its length with width nodes."
 status_hint.variable_outline = "Trascina sul contorno per aggiungere un nodo di spessore e impostarne lo spessore · Alt+trascina cambia un lato · Canc elimina il nodo scelto" # mt
+status_hint.variable_outline_fold = "Il lato interno del contorno supera il centro della curva, quindi i bordi si incontrano in una punta. È la geometria della forma, non un errore: trascina indietro per arrotondarla."
 docker.export = "Export"
 export_docker.add_pages = "Add Pages"
 export_docker.add_pages_tip = "Add every page of the drawing as an asset"

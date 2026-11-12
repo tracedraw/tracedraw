@@ -4937,6 +4937,7 @@ vo.clear_hint = "Give the outline the same width everywhere again"
 hinttitle.variable_outline = "Vary outline width"
 tooldesc.variable_outline = "Make an outline thicker or thinner along its length with width nodes."
 status_hint.variable_outline = "Sleep over de omtrek om een breedteknooppunt toe te voegen en de breedte in te stellen · Alt+slepen wijzigt één zijde · Delete verwijdert het gekozen knooppunt" # mt
+status_hint.variable_outline_fold = "De binnenkant van de omtrek reikt voorbij het middelpunt van de kromme, daarom komen de randen in een punt samen. Dat is de vorm zelf, geen fout: sleep terug om hem af te ronden."
 docker.export = "Export"
 export_docker.add_pages = "Add Pages"
 export_docker.add_pages_tip = "Add every page of the drawing as an asset"

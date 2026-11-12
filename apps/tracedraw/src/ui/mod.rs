@@ -1220,6 +1220,17 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                 cursors::paint_color_readout(ui.ctx(), at, r);
             }
         }
+        // Variable Outline: an inner side reaching past the centre of a
+        // bend comes to a point; the tool says it is the shape, not a fault.
+        if let (crate::tools::Tool::VariableOutline, Some(at)) = (app.tool, pos) {
+            if app.variable_outline_folds() {
+                cursors::paint_pointer_note(
+                    ui.ctx(),
+                    at,
+                    &crate::i18n::tr("status_hint.variable_outline_fold"),
+                );
+            }
+        }
         // A scale, turn or slant that leaves the original (after a right
         // click): the plus a move's pointer carries, beside the pointer.
         if app.drag_copy && app.transforming() && !matches!(app.drag, crate::app::Drag::Move { .. })

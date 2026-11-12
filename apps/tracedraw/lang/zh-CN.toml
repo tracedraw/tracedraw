@@ -4937,6 +4937,7 @@ vo.clear_hint = "Give the outline the same width everywhere again"
 hinttitle.variable_outline = "Vary outline width"
 tooldesc.variable_outline = "Make an outline thicker or thinner along its length with width nodes."
 status_hint.variable_outline = "沿轮廓拖动添加宽度节点并设定宽度 · Alt+拖动更改一侧 · Delete 删除所选节点" # mt
+status_hint.variable_outline_fold = "轮廓的内侧超过了曲线的中心，所以两条边在一点相交形成尖角。这是形状的几何特性，不是错误：往回拖动即可变圆。"
 docker.export = "Export"
 export_docker.add_pages = "Add Pages"
 export_docker.add_pages_tip = "Add every page of the drawing as an asset"

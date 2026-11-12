@@ -1477,6 +1477,42 @@ pub fn paint_color_readout(ctx: &egui::Context, p: Pos2, r: &crate::eyedropper::
     }
 }
 
+/// A short note beside the pointer at `p`, as the colour readout sits
+/// (below and right of it, on the other side where the window ends),
+/// wrapped to a narrow box: the Variable Outline tool's word on why the
+/// outline comes to a point.
+pub fn paint_pointer_note(ctx: &egui::Context, p: Pos2, note: &str) {
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Tooltip,
+        egui::Id::new("pointer_note"),
+    ));
+    let text = crate::theme::Tokens::text();
+    let galley = painter.layout(
+        note.to_owned(),
+        egui::FontId::proportional(11.0),
+        text,
+        260.0,
+    );
+    const PAD: f32 = 6.0;
+    let size = galley.size() + Vec2::splat(PAD * 2.0);
+    let screen = ctx.content_rect();
+    let mut at = p + Vec2::new(18.0, 20.0);
+    if at.x + size.x > screen.right() {
+        at.x = p.x - 8.0 - size.x;
+    }
+    if at.y + size.y > screen.bottom() {
+        at.y = p.y - 8.0 - size.y;
+    }
+    painter.rect(
+        Rect::from_min_size(at, size),
+        CornerRadius::same(3),
+        crate::theme::Tokens::panel(),
+        Stroke::new(1.0, crate::theme::Tokens::control_border()),
+        egui::StrokeKind::Inside,
+    );
+    painter.galley(at + Vec2::splat(PAD), galley, text);
+}
+
 /// A 9-point square with a plus, its top left at `at`.
 fn copy_plus(painter: &Painter, at: Pos2) {
     let s = Rect::from_min_size(at, Vec2::splat(9.0));

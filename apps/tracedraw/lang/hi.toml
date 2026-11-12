@@ -4937,6 +4937,7 @@ vo.clear_hint = "Give the outline the same width everywhere again"
 hinttitle.variable_outline = "Vary outline width"
 tooldesc.variable_outline = "Make an outline thicker or thinner along its length with width nodes."
 status_hint.variable_outline = "चौड़ाई नोड जोड़ने और उसकी चौड़ाई तय करने के लिए आउटलाइन के आर-पार खींचें · Alt+खींचना एक ओर बदलता है · Delete चुना नोड हटाता है" # mt
+status_hint.variable_outline_fold = "आउटलाइन का भीतरी हिस्सा वक्र के केंद्र से आगे जा रहा है, इसलिए उसके किनारे एक नोक पर मिलते हैं। यह आकृति की ज्यामिति है, कोई गलती नहीं: गोल करने के लिए वापस खींचें।"
 docker.export = "Export"
 export_docker.add_pages = "Add Pages"
 export_docker.add_pages_tip = "Add every page of the drawing as an asset"

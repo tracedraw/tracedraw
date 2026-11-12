@@ -4937,6 +4937,7 @@ vo.clear_hint = "Give the outline the same width everywhere again"
 hinttitle.variable_outline = "Vary outline width"
 tooldesc.variable_outline = "Make an outline thicker or thinner along its length with width nodes."
 status_hint.variable_outline = "Über die Kontur ziehen, um einen Breitenknoten zu setzen und seine Breite festzulegen · Alt+Ziehen ändert eine Seite · Entf löscht den gewählten Knoten" # mt
+status_hint.variable_outline_fold = "Die Innenseite der Kontur reicht über den Mittelpunkt der Kurve hinaus, daher treffen sich ihre Ränder in einer Spitze. Das ist die Geometrie der Form, kein Fehler: zurückziehen, um sie abzurunden."
 docker.export = "Export"
 export_docker.add_pages = "Add Pages"
 export_docker.add_pages_tip = "Add every page of the drawing as an asset"

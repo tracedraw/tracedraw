@@ -4937,6 +4937,7 @@ vo.clear_hint = "Give the outline the same width everywhere again"
 hinttitle.variable_outline = "Vary outline width"
 tooldesc.variable_outline = "Make an outline thicker or thinner along its length with width nodes."
 status_hint.variable_outline = "اسحب عبر المحيط لإضافة عقدة عرض وتحديد عرضها · Alt+سحب يغيّر جانبًا واحدًا · Delete يحذف العقدة المختارة" # mt
+status_hint.variable_outline_fold = "يتجاوز الجانب الداخلي للمخطط مركز المنحنى، لذلك تلتقي حوافه في رأس مدبب. هذه هندسة الشكل وليست خطأ: اسحب للخلف لتدويره."
 docker.export = "Export"
 export_docker.add_pages = "Add Pages"
 export_docker.add_pages_tip = "Add every page of the drawing as an asset"

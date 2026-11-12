@@ -4937,6 +4937,7 @@ vo.clear_hint = "Devuelve al contorno el mismo ancho en toda su longitud"
 hinttitle.variable_outline = "Variar el ancho del contorno"
 tooldesc.variable_outline = "Hace un contorno más grueso o más fino a lo largo con nodos de ancho."
 status_hint.variable_outline = "Arrastre sobre el contorno para añadir un nodo de grosor y fijar su grosor · Alt+arrastrar cambia un lado · Supr elimina el nodo elegido" # mt
+status_hint.variable_outline_fold = "El lado interior del contorno pasa del centro de la curva, por eso sus bordes se juntan en una punta. Es la geometría de la forma, no un error: arrastre hacia atrás para redondearla."
 docker.export = "Exportar"
 export_docker.add_pages = "Añadir páginas"
 export_docker.add_pages_tip = "Añade cada página del dibujo como un recurso"
