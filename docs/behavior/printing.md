@@ -292,6 +292,12 @@ same function (`export::print_sheets`).
   a drag inside moves it; the stretch shows as x and y percentages
   there, typed or reset to 100 % (#595). The handles come before the
   margin lines, which come before moving.
+- Rotation (left panel, 0 at first, under Transform) turns every page
+  on the sheet about its middle by any angle from -360 to 360 degrees
+  counter-clockwise; the 90, 180 and 270 buttons add that turn. The
+  page's clip and marks follow it, the marks standing round the box that
+  holds the turned page, and Print prints it so
+  (`imposition::tests::pages_turn_about_their_middle`).
 - Stretch to fill (a fixed sheet): the pages stretch on each axis on
   their own to fill the room inside the paper margins (#591,
   `imposition::tests::pages_stretch_to_fill_and_follow_the_preview_transform`).

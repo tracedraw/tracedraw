@@ -443,6 +443,9 @@ pub struct PrintState {
     /// Every page stretched on the sheet about its middle (x, y; 1 for
     /// none) by Print Preview's Transform (#595).
     pub art_stretch: (f64, f64),
+    /// Every page turned on the sheet about its middle, degrees
+    /// counter-clockwise (0 for none), by Print Preview's Rotation.
+    pub art_rotation: f64,
     /// The pages stretch to fill the sheet inside the margins (#591).
     pub stretch_fit: bool,
     /// The Custom sheet's size, mm (#591).
@@ -768,6 +771,7 @@ impl Default for PrintState {
             art_offset: (0.0, 0.0),
             margins: [0.0; 4],
             art_stretch: (1.0, 1.0),
+            art_rotation: 0.0,
             stretch_fit: false,
             custom_sheet: Size::new(210.0, 297.0),
             sheet_name_typed: String::new(),
@@ -6053,6 +6057,7 @@ pub(crate) fn print_tab_layout(app: &App, ui: &mut Ui, st: &mut PrintState) {
                 if !st.fit_to_page {
                     st.art_offset = (0.0, 0.0);
                     st.art_stretch = (1.0, 1.0);
+                    st.art_rotation = 0.0;
                 }
                 st.fit_to_page = true;
             }

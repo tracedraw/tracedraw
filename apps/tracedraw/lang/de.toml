@@ -3421,6 +3421,7 @@ print.stretch_fit = "Strecken zum Füllen" # mt
 print.stretch_fit_tip = "Streckt die Seite auf jeder Achse einzeln, sodass sie das Blatt innerhalb der Ränder füllt." # mt
 print.transform = "Transformieren" # mt
 print.transform_tip = "Zeigt Griffe um das Motiv: Griff ziehen zum Strecken, innen ziehen zum Verschieben." # mt
+print.rotation = "Rotation" # mt
 print.margin_left = "Linker Rand" # mt
 print.margin_right = "Rechter Rand" # mt
 print.margin_top = "Oberer Rand" # mt

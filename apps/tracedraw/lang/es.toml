@@ -3421,6 +3421,7 @@ print.stretch_fit = "Estirar para rellenar" # mt
 print.stretch_fit_tip = "Estira la página en cada eje por separado para que llene la hoja dentro de los márgenes." # mt
 print.transform = "Transformar" # mt
 print.transform_tip = "Muestra tiradores alrededor del diseño: arrastra uno para estirarlo, arrastra dentro para moverlo." # mt
+print.rotation = "Rotation" # mt
 print.margin_left = "Margen izquierdo" # mt
 print.margin_right = "Margen derecho" # mt
 print.margin_top = "Margen superior" # mt

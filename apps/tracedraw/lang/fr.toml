@@ -3421,6 +3421,7 @@ print.stretch_fit = "Étirer pour remplir" # mt
 print.stretch_fit_tip = "Étire la page sur chaque axe séparément pour qu'elle remplisse la feuille dans les marges." # mt
 print.transform = "Transformer" # mt
 print.transform_tip = "Affiche des poignées autour de l'illustration : faites glisser une poignée pour l'étirer, à l'intérieur pour la déplacer." # mt
+print.rotation = "Rotation" # mt
 print.margin_left = "Marge gauche" # mt
 print.margin_right = "Marge droite" # mt
 print.margin_top = "Marge haute" # mt

@@ -3421,6 +3421,7 @@ print.stretch_fit = "Regangkan untuk mengisi" # mt
 print.stretch_fit_tip = "Stretch the page on each axis on its own so it fills the sheet inside the margins." # mt
 print.transform = "Transformasi" # mt
 print.transform_tip = "Show handles around the artwork: drag a handle to stretch it, drag inside to move it." # mt
+print.rotation = "Rotation" # mt
 print.margin_left = "Margin kiri" # mt
 print.margin_right = "Margin kanan" # mt
 print.margin_top = "Margin atas" # mt

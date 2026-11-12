@@ -506,6 +506,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                                 // sheet, fitted (#1577).
                                 st.art_offset = (0.0, 0.0);
                                 st.art_stretch = (1.0, 1.0);
+                                st.art_rotation = 0.0;
                             }
                             if !st.fit_to_page {
                                 ui.add(
@@ -632,6 +633,32 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                         .clicked()
                     {
                         st.art_stretch = (1.0, 1.0);
+                    }
+                });
+                // Rotation: the page turned about its middle, by a quick
+                // 90/180/270 or any angle.
+                ui.horizontal(|ui| {
+                    ui.label(tr("print.rotation"));
+                    ui.add(
+                        crate::ui::field::NumField::new(&mut st.art_rotation)
+                            .range(-360.0..=360.0)
+                            .speed(0.5)
+                            .suffix(" \u{b0}")
+                            .width(70.0),
+                    );
+                    for q in [90.0, 180.0, 270.0] {
+                        if ui.small_button(format!("{q}\u{b0}")).clicked() {
+                            st.art_rotation = (st.art_rotation + q).rem_euclid(360.0);
+                        }
+                    }
+                    if ui
+                        .add_enabled(
+                            st.art_rotation != 0.0,
+                            egui::Button::new(tr("print.art_reset")).small(),
+                        )
+                        .clicked()
+                    {
+                        st.art_rotation = 0.0;
                     }
                 });
                 // Where the artwork sits on its page: a drag on the sheet
