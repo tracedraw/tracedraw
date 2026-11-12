@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- VBA macros: `Page.Paper` reads the page's paper size by name ("A4", "" for a size of its own) and sets a paper by name, and `OutlineStyles`, `ArrowHeads` and the full `Outline.SetProperties` (style, line caps and joins, behind fill, scale with object, nib) are there. A published tiling macro stopped with run-time error 438 on `Paper` and then on `OutlineStyles`; it now runs to the end and fills the page with copies (#1255, #2165).
 - Freehand tool: a double-click at each corner draws a line of several straight segments, as in CorelDRAW; a single click ends it, and Space, Enter or Esc end it at the last corner. Clicks made only one segment, and the line stopped there (#2339).
 - Table tool: a font size typed into the property bar while a cell's text is selected sizes that text. The digits went into the cell as well and replaced its selected text with the number; a field of the bar or a docker that has the keyboard now keeps what is typed in it while a cell is active, as it already did while a text was edited (#2328).
 - Shape tool: holding Delete down on chosen nodes takes those nodes only. The key's repeats ran on and deleted the whole curve once the nodes were gone; whole objects now go only on a press of their own, never on the repeats of a held Delete or Backspace (#1982).
