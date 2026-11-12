@@ -9060,3 +9060,133 @@ fn vertical_text_round_trips_through_the_at_face() {
         "{spans:?}"
     );
 }
+
+/// Every face a saved file names is a face it describes and embeds:
+/// each `font` record has a font table entry of the same number and
+/// flags, each run style's font, weight and slant is one of the records,
+/// and each embedded member's face block names its table entry's family
+/// and face. The five reports of embedded fonts asked for by the program
+/// that reads the files (#1009, #1055, #1455, #1467, #1484) were each a
+/// name of one of these kinds left without its match (a plain record for
+/// a face neither used nor embedded, an italic record for an upright
+/// file, a weight the font table did not list). Checked for each mix of
+/// bold, italic and underline, with the family's regular and bold files
+/// installed and with its bold file alone, as the reporter had Khand.
+#[test]
+fn every_face_a_saved_file_names_is_described_and_embedded() {
+    use std::io::Read;
+    const REGULAR: &[u8] =
+        include_bytes!("../../../../apps/tracedraw/assets/fonts/Selawik-Regular.ttf");
+    const BOLD: &[u8] = include_bytes!("../../../../apps/tracedraw/assets/fonts/Selawik-Bold.ttf");
+    let u32_at = |b: &[u8], at: usize| u32::from_le_bytes(b[at..at + 4].try_into().expect("u32"));
+    let u16_at = |b: &[u8], at: usize| u16::from_le_bytes(b[at..at + 2].try_into().expect("u16"));
+    for bold_only in [false, true] {
+        for (bold, italic, underline) in (0..8).map(|k| (k & 1 != 0, k & 2 != 0, k & 4 != 0)) {
+            let case = format!("bold only {bold_only}, b{bold} i{italic} u{underline}");
+            let mut ids = tracedraw_core::id::IdSource::default();
+            let mut span = TextSpan::new("Text", "Selawik", 20.0);
+            span.bold = bold;
+            span.italic = italic;
+            if underline {
+                span.underline = tracedraw_core::document::LineStyle::SingleThin;
+            }
+            let doc = doc_with(vec![text_shape(&mut ids, vec![span], TextAlign::Left)]);
+            // The file that draws the face, as the app finds it: the bold
+            // file for every style when it is the only one installed.
+            let file = if bold || bold_only { BOLD } else { REGULAR };
+            let previews = Previews {
+                fonts: vec![FontFace {
+                    family: "Selawik".into(),
+                    bold,
+                    italic,
+                    data: Some(std::sync::Arc::new(file.to_vec())),
+                }],
+                embed_fonts: true,
+                ..Default::default()
+            };
+            let bytes = document_to_cdr_version_with(&doc, NEWEST_VERSION, &previews);
+            let (_, tree, riff) = chunk_ids(&bytes);
+            let mut records = Vec::new();
+            tree.root.walk(&mut |ch, _| {
+                if ch.id_str() == "font" {
+                    let d = tree.data(&riff, ch);
+                    records.push((u16_at(d, 0), u32_at(d, 4)));
+                }
+            });
+            let mut z = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).expect("zip");
+            let mut read = |name: &str| {
+                let mut out = Vec::new();
+                z.by_name(name)
+                    .expect(name)
+                    .read_to_end(&mut out)
+                    .expect("read");
+                out
+            };
+            // The font table: number, flags, family and embedded flag.
+            let table = read("font/fontTable.dat");
+            let mut entries = Vec::new();
+            let mut at = 12;
+            for _ in 0..u32_at(&table, 8) {
+                let size = u32_at(&table, at + 4) as usize;
+                let e = &table[at + 8..at + 8 + size];
+                let len = u32_at(e, 18) as usize;
+                let family = String::from_utf16_lossy(
+                    &(0..len.saturating_sub(1))
+                        .map(|k| u16_at(e, 22 + 2 * k))
+                        .collect::<Vec<_>>(),
+                );
+                let mut q = 22 + 2 * len + 1;
+                q += 4 + 2 * u32_at(e, q) as usize;
+                entries.push((u16_at(e, 0), u32_at(e, 4), family, u32_at(e, q) == 1));
+                at += 8 + size;
+            }
+            for (id, flags) in &records {
+                assert!(
+                    entries.iter().any(|(n, f, _, _)| n == id && f == flags),
+                    "{case}: record {id} {flags:#x} has no table entry: {entries:?}"
+                );
+            }
+            // Each embedded member names its entry's family and face.
+            let embedded: Vec<_> = entries.iter().filter(|e| e.3).collect();
+            assert_eq!(embedded.len(), 1, "{case}: {entries:?}");
+            let member = read("embed/embedding0");
+            let family = String::from_utf16_lossy(
+                &(0..32)
+                    .map(|k| u16_at(&member, 2067 + 2 * k))
+                    .take_while(|&c| c != 0)
+                    .collect::<Vec<_>>(),
+            );
+            assert_eq!(family, embedded[0].2, "{case}");
+            assert_eq!(u32_at(&member, 2163), embedded[0].1 & 0x3ffff, "{case}");
+            // The face block is the face the file holds.
+            let own = if file == BOLD { 0x1000 } else { 0x40 };
+            assert_eq!(u32_at(&member, 2163), own, "{case}");
+            // Every run style names one of the records.
+            let page = String::from_utf8_lossy(&read("content/data/page1.dat")).into_owned();
+            let mut styles = 0;
+            for part in page.split("\"latin\":{").skip(1) {
+                let body = &part[..part.find('}').unwrap_or(part.len())];
+                let member = |key: &str| {
+                    let k = format!("\"{key}\":\"");
+                    body.find(&k).map(|i| {
+                        let rest = &body[i + k.len()..];
+                        rest[..rest.find('"').unwrap_or(0)].to_string()
+                    })
+                };
+                let weight: u32 = member("weight")
+                    .and_then(|w| w.parse().ok())
+                    .expect("weight");
+                let slant = member("italic").as_deref() == Some("1");
+                let lines = member("underline").as_deref().is_some_and(|u| u != "0");
+                let code =
+                    if slant { weight << 1 } else { weight } | if lines { 0x40000 } else { 0 };
+                assert!(
+                    records.iter().any(|(_, f)| *f == code),
+                    "{case}: a run names {code:#x}, records {records:x?}"
+                );
+                styles += 1;
+            }
+            assert!(styles > 0, "{case}: no run style in {page}");
+        }
+    }
+}
