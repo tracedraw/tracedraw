@@ -241,6 +241,39 @@ impl App {
                     }
                 }
             }
+            Tool::InnerShadow => {
+                // As the Block Shadow tool: a drag from an object sets
+                // how far its inner shadow is cast (#2473).
+                if response.drag_started_by(PointerButton::Primary) {
+                    let press = response
+                        .ctx
+                        .input(|i| i.pointer.press_origin())
+                        .map(|o| self.view.to_page(o))
+                        .unwrap_or(p);
+                    if let Some(id) = self.shadow_drag_target(press) {
+                        if !self.selection.contains(&id) {
+                            self.select(vec![id]);
+                        }
+                        self.drag = Drag::ContourDrag { start: press };
+                    }
+                }
+                if response.dragged_by(PointerButton::Primary) {
+                    if let Drag::ContourDrag { start } = self.drag {
+                        let offset = p - start;
+                        let st = self.selected_inner_shadow().unwrap_or(self.inner_shadow);
+                        self.push_effect(
+                            Effect::InnerShadow {
+                                offset,
+                                color: st.color,
+                                opacity: st.opacity,
+                                blur: st.blur,
+                                merge: st.merge,
+                            },
+                            true,
+                        );
+                    }
+                }
+            }
             Tool::Envelope => self.envelope_tool_input(response, p),
             Tool::Extrude => self.extrude_input(response, p),
             Tool::Distort => self.distort_input(response, p),

@@ -906,6 +906,32 @@ impl Renderer<'_> {
                 self.draw_shape(&main, parent);
             }
             self.flags.text_outline = was_text;
+            // An inner shadow, over the object and cut to its shape
+            // (#2473).
+            if self.flags.complex_effects && !self.flags.wireframe && main.opacity > 0.0 {
+                for e in &shape.effects {
+                    if let tracedraw_core::live::Effect::InnerShadow {
+                        offset,
+                        color,
+                        opacity,
+                        blur,
+                        merge,
+                    } = e
+                    {
+                        self.draw_inner_shadow(
+                            &main,
+                            parent,
+                            InnerShadow {
+                                offset: *offset,
+                                color: *color,
+                                opacity: *opacity,
+                                blur: *blur,
+                                merge: *merge,
+                            },
+                        );
+                    }
+                }
+            }
             for a in &ev.above {
                 let mut a = a.clone();
                 // A mirrored copy keeps its transparency or lens (#2121).
@@ -1792,6 +1818,96 @@ impl Renderer<'_> {
             self.flags.anti_alias,
         );
         self.merge_shadow(sh, &layer, layer_at);
+    }
+
+    /// The inner shadow `ish` of `shape` drawn inside `parent`: what lies
+    /// outside the object, moved by the shadow's offset, blurred by its
+    /// feathering and kept where the object covers, in the shadow's
+    /// colour and opacity, merged over what the object drew (#2473).
+    fn draw_inner_shadow(&mut self, shape: &Shape, parent: Affine, ish: InnerShadow) {
+        let opacity = if ish.opacity.is_finite() {
+            ish.opacity.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        if opacity <= 0.0 {
+            return;
+        }
+        let page_path = parent * shape.page_path();
+        let Some(object) = to_sk_path(&(self.screen * page_path.clone())) else {
+            return;
+        };
+        let (w, h) = (self.pixmap.width(), self.pixmap.height());
+        let b = object.bounds();
+        let clamp = |v: f32, max: u32| (v.max(0.0).min(max as f32)) as u32;
+        let (x0, y0) = (
+            clamp(b.left().floor() - 1.0, w),
+            clamp(b.top().floor() - 1.0, h),
+        );
+        let (x1, y1) = (
+            clamp(b.right().ceil() + 1.0, w),
+            clamp(b.bottom().ceil() + 1.0, h),
+        );
+        if x1 <= x0 || y1 <= y0 {
+            return;
+        }
+        let blur = if ish.blur.is_finite() {
+            ish.blur.max(0.0)
+        } else {
+            0.0
+        };
+        let radius = (blur * self.zoom).round().min(64.0) as i32;
+        // Room round the object for the blur to draw on what lies outside.
+        let pad = radius.max(0) as u32 * 3 + 2;
+        let (lw, lh) = (x1 - x0 + 2 * pad, y1 - y0 + 2 * pad);
+        let Some(mut layer) = Pixmap::new(lw, lh) else {
+            return;
+        };
+        let to_layer = Affine::translate((
+            f64::from(pad) - f64::from(x0),
+            f64::from(pad) - f64::from(y0),
+        ));
+        let rule = shape_fill_rule(shape, self.flags.text_outline);
+        // Everything outside the object, moved by the offset, casts.
+        layer.fill(tiny_skia::Color::WHITE);
+        let moved = to_layer
+            * self.screen
+            * (Affine::translate((ish.offset.x, ish.offset.y)) * page_path.clone());
+        if let Some(sk) = to_sk_path(&moved) {
+            let mut clear = Paint::default();
+            clear.anti_alias = self.flags.anti_alias;
+            clear.blend_mode = tiny_skia::BlendMode::Clear;
+            layer.fill_path(&sk, &clear, rule, Transform::identity(), None);
+        }
+        if radius > 0 {
+            accel::box_blur(&mut layer, radius, 3);
+        }
+        // Kept where the object covers.
+        let Some(mut mask) = tiny_skia::Mask::new(lw, lh) else {
+            return;
+        };
+        if let Some(sk) = to_sk_path(&(to_layer * (self.screen * page_path))) {
+            mask.fill_path(&sk, rule, self.flags.anti_alias, Transform::identity());
+        }
+        let [cr, cg, cb] = ish.color.to_rgb8();
+        for (px, m) in layer.pixels_mut().iter_mut().zip(mask.data()) {
+            let a = px.alpha() as f64 / 255.0 * f64::from(*m) / 255.0 * opacity;
+            *px =
+                tiny_skia::ColorU8::from_rgba(cr, cg, cb, (a * 255.0).round() as u8).premultiply();
+        }
+        // Back to the picture's size and place.
+        let Some(mut out) = Pixmap::new(x1 - x0, y1 - y0) else {
+            return;
+        };
+        out.draw_pixmap(
+            -(pad as i32),
+            -(pad as i32),
+            layer.as_ref(),
+            &tiny_skia::PixmapPaint::default(),
+            Transform::identity(),
+            None,
+        );
+        composite_layer(self.pixmap, &out, (x0 as i32, y0 as i32), ish.merge);
     }
 
     /// Merge a finished shadow layer, its top left at `at` on the
@@ -3011,6 +3127,16 @@ fn shadow_layer(
     );
     shade_shadow(layer, sh, b, screen, zoom);
     true
+}
+
+/// An inner shadow's settings (see `Effect::InnerShadow`).
+#[derive(Debug, Clone, Copy)]
+struct InnerShadow {
+    offset: tracedraw_core::geometry::Vec2,
+    color: tracedraw_core::Color,
+    opacity: f64,
+    blur: f64,
+    merge: tracedraw_core::live::MergeMode,
 }
 
 /// An object as its shadow sees it: `shape`, its outline `path` on the
@@ -5774,6 +5900,43 @@ mod tests {
             original.abs_diff(copy) <= 2,
             "the copy as the object: {original} against {copy}"
         );
+    }
+
+    /// An inner shadow darkens the inside of its object along the edges
+    /// facing away from its offset, and nothing outside it (#2473).
+    #[test]
+    fn an_inner_shadow_darkens_the_inside_away_from_its_offset() {
+        let mut s = rect(1, Rect::new(20.0, 20.0, 80.0, 80.0), Color::WHITE);
+        s.effects.push(tracedraw_core::live::Effect::InnerShadow {
+            offset: tracedraw_core::geometry::Vec2::new(6.0, -6.0),
+            color: Color::BLACK,
+            opacity: 1.0,
+            blur: 0.0,
+            merge: tracedraw_core::live::MergeMode::Normal,
+        });
+        let (doc, page) = doc_with(vec![s]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        // Page y grows upwards; the picture's rows grow downwards.
+        assert!(px(&pm, 23, 50).0 < 30, "left inside is dark");
+        assert!(px(&pm, 50, 23).0 < 30, "top inside is dark");
+        assert_eq!(px(&pm, 76, 50), (255, 255, 255), "right inside is lit");
+        assert_eq!(px(&pm, 50, 76), (255, 255, 255), "bottom inside is lit");
+        assert_eq!(px(&pm, 50, 50), (255, 255, 255), "middle is lit");
+        assert_eq!(px(&pm, 15, 50), (255, 255, 255), "outside is untouched");
+        // Feathered, the edge fades into the middle.
+        let mut f = rect(1, Rect::new(20.0, 20.0, 80.0, 80.0), Color::WHITE);
+        f.effects.push(tracedraw_core::live::Effect::InnerShadow {
+            offset: tracedraw_core::geometry::Vec2::new(6.0, -6.0),
+            color: Color::BLACK,
+            opacity: 1.0,
+            blur: 4.0,
+            merge: tracedraw_core::live::MergeMode::Normal,
+        });
+        let (doc, page) = doc_with(vec![f]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        let (edge, mid) = (px(&pm, 22, 50).0, px(&pm, 30, 50).0);
+        assert!(edge < mid && mid < 255, "fades from {edge} to {mid}");
+        assert_eq!(px(&pm, 15, 50), (255, 255, 255), "outside is untouched");
     }
 
     #[test]

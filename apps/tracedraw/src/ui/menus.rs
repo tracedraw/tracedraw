@@ -418,6 +418,60 @@ pub const OUTLINE_TRACES: [(&str, crate::trace::Preset); 7] = [
     ),
 ];
 
+thread_local! {
+    /// The menu row right-clicked this frame, whose properties open
+    /// next (#2504).
+    static PROPERTIES_OF: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+    /// Each drawn row's place, for the tests.
+    #[cfg(test)]
+    pub(crate) static ROWS: std::cell::RefCell<Vec<(String, egui::Rect)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// A right-click on the menu row `id`, greyed or not, closes the menu and
+/// asks for the row's properties: Options > Customization > Commands at
+/// that command, on its Shortcut Keys tab, as CorelDRAW's Customize >
+/// Menu Item Properties does (#2504).
+fn row_properties(ui: &mut Ui, r: &egui::Response, id: &str, enabled: bool) {
+    #[cfg(test)]
+    ROWS.with(|rows| rows.borrow_mut().push((id.to_string(), r.rect)));
+    let right = if enabled {
+        r.secondary_clicked()
+    } else {
+        // A greyed row only senses the hover (a widget that takes clicks
+        // would be lit by the arrow keys).
+        r.contains_pointer()
+            && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Secondary))
+    };
+    if right {
+        PROPERTIES_OF.with(|p| *p.borrow_mut() = Some(id.to_string()));
+        ui.close();
+    }
+}
+
+/// Opens the properties a right-click on a menu row asked for.
+pub(crate) fn open_requested_properties(app: &mut App) {
+    if let Some(id) = PROPERTIES_OF.with(|p| p.borrow_mut().take()) {
+        open_command_properties(app, &id);
+    }
+}
+
+/// Options > Customization > Commands with the command `id` (a menu key
+/// or a row's label) picked, on its Shortcut Keys tab, where a key is
+/// given to it (#2504).
+pub(crate) fn open_command_properties(app: &mut App, id: &str) {
+    let ed = &mut app.shortcut_editor;
+    ed.category = None;
+    ed.filter.clear();
+    ed.selected = Some(id.to_string());
+    ed.keys_tab = true;
+    ed.capture = None;
+    ed.note = None;
+    ed.confirm_reset_all = false;
+    app.open_options_page(crate::ui::dialogs::OptionsPage::Commands);
+}
+
 pub fn set_highlight_new(on: bool) {
     HIGHLIGHT_NEW.with(|h| h.set(on));
 }
@@ -459,6 +513,7 @@ fn item_text_tip(
     }
     let shortcut = invoke::shown_shortcut(id, shortcut);
     let (r, _) = menu_row(ui, label, &shortcut, enabled, Mark::None);
+    row_properties(ui, &r, id, enabled);
     let r = match tip {
         Some(t) if !enabled => r.rich_tip(t),
         _ => r,
@@ -509,6 +564,7 @@ fn item_picture(
     }
     let shortcut = invoke::shown_shortcut(label, shortcut);
     let (r, _) = menu_row(ui, label, &shortcut, enabled, Mark::None);
+    row_properties(ui, &r, label, enabled);
     #[cfg(test)]
     if replay::hit(label, enabled) {
         return true;
@@ -2197,6 +2253,7 @@ fn menu_bar_style(style: &mut egui::Style) {
 
 pub fn menu_bar(app: &mut App, ui: &mut Ui) {
     set_highlight_new(app.highlight_whats_new);
+    open_requested_properties(app);
     // Alt and a letter the user gave a command keeps running that command
     // instead of opening a menu; while Options waits for a shortcut's keys
     // no menu opens either.

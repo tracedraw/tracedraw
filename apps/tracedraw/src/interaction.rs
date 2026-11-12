@@ -1815,6 +1815,7 @@ impl App {
             | Tool::RoundedConnector
             | Tool::AnchorEditing
             | Tool::BlockShadow
+            | Tool::InnerShadow
             | Tool::Envelope
             | Tool::Extrude
             | Tool::Distort

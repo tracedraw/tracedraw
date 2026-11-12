@@ -604,6 +604,38 @@ impl App {
         self.effect_edit_step = Some((self.engine.revision(), key.1, key.2));
     }
 
+    /// The first selected object's inner shadow: its offset and its
+    /// style (#2473).
+    pub fn selected_inner_shadow_at(
+        &self,
+    ) -> Option<(tracedraw_core::geometry::Vec2, crate::app::InnerShadowStyle)> {
+        self.selected_shapes().first().and_then(|s| {
+            s.effects.iter().find_map(|e| match e {
+                Effect::InnerShadow {
+                    offset,
+                    color,
+                    opacity,
+                    blur,
+                    merge,
+                } => Some((
+                    *offset,
+                    crate::app::InnerShadowStyle {
+                        color: *color,
+                        opacity: *opacity,
+                        blur: *blur,
+                        merge: *merge,
+                    },
+                )),
+                _ => None,
+            })
+        })
+    }
+
+    /// The style of the first selected object's inner shadow.
+    pub fn selected_inner_shadow(&self) -> Option<crate::app::InnerShadowStyle> {
+        self.selected_inner_shadow_at().map(|(_, s)| s)
+    }
+
     pub fn remove_effects_of_kind(&mut self, like: &Effect) {
         let shapes = self.selected_shapes();
         let mut cmds = Vec::new();

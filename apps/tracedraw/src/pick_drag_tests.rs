@@ -26873,3 +26873,119 @@ fn a_drop_shadow_is_chosen_apart_from_its_object() {
     assert_eq!(app.picked_shadow(), None);
     assert!(!app.rotate_mode);
 }
+
+/// The Inner Shadow tool, in the Shadow tool's group: a drag from an
+/// object gives it an inner shadow cast as far as the drag, in the
+/// tool's style (#2473); a second drag moves it, one shadow still.
+#[test]
+fn a_drag_with_the_inner_shadow_tool_casts_a_shadow_inside_the_object() {
+    use tracedraw_core::live::Effect;
+    let (ctx, mut app, id) = setup();
+    assert!(crate::tools::GROUPS
+        .iter()
+        .any(|g| g.tools.contains(&Tool::DropShadow) && g.tools.contains(&Tool::InnerShadow)));
+    let inner = |app: &App| {
+        let s = app.doc().find_shape(id).expect("shape");
+        let all: Vec<_> = s
+            .effects
+            .iter()
+            .filter_map(|e| match e {
+                Effect::InnerShadow {
+                    offset,
+                    opacity,
+                    merge,
+                    ..
+                } => Some((*offset, *opacity, *merge)),
+                _ => None,
+            })
+            .collect();
+        all
+    };
+    app.set_tool(Tool::InnerShadow);
+    app.select(Vec::new());
+    let from = app.view.to_screen(Point::new(35.0, 25.0));
+    drag(
+        &ctx,
+        &mut app,
+        from,
+        from + egui::vec2(30.0, 20.0),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    let got = inner(&app);
+    assert_eq!(got.len(), 1, "{got:?}");
+    let (offset, opacity, merge) = got[0];
+    assert!(offset.x > 1.0 && offset.y < -1.0, "{offset:?}");
+    assert_eq!(opacity, app.inner_shadow.opacity);
+    assert_eq!(merge, tracedraw_core::live::MergeMode::Multiply);
+    assert_eq!(app.selection, vec![id]);
+    drag(
+        &ctx,
+        &mut app,
+        from,
+        from + egui::vec2(-30.0, 0.0),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    let got = inner(&app);
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert!(got[0].0.x < -1.0, "{:?}", got[0].0);
+    app.remove_effects_of_kind(&Effect::InnerShadow {
+        offset: tracedraw_core::geometry::Vec2::ZERO,
+        color: tracedraw_core::Color::BLACK,
+        opacity: 0.0,
+        blur: 0.0,
+        merge: tracedraw_core::live::MergeMode::Normal,
+    });
+    assert!(inner(&app).is_empty());
+}
+
+/// A right-click on a menu row, greyed or not, opens Options >
+/// Customization > Commands at that command, on its Shortcut Keys tab,
+/// to give it a key, as CorelDRAW's Customize > Menu Item Properties
+/// (#2504).
+#[test]
+fn a_right_click_on_a_menu_row_opens_its_shortcut_keys() {
+    use crate::ui::dialogs::Dialog;
+    use crate::ui::options::OptionsPage;
+    let (ctx, mut app, _) = setup();
+    for (menu, row) in [("File", "menu.file.new"), ("Edit", "menu.edit.redo")] {
+        app.dialog = Dialog::None;
+        let texts = texts_drawn(&ctx, &mut app, Vec::new());
+        let title = text_at(&texts, menu).expect("the menu's title");
+        click_at(&ctx, &mut app, title, Modifiers::NONE);
+        crate::ui::menus::ROWS.with(|r| r.borrow_mut().clear());
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        let rect = crate::ui::menus::ROWS
+            .with(|r| r.borrow().iter().find(|(id, _)| id == row).map(|(_, r)| *r))
+            .expect("the row drawn");
+        let at = rect.center();
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(at)],
+            Modifiers::NONE,
+        );
+        frame(
+            &ctx,
+            &mut app,
+            vec![button(at, true, PointerButton::Secondary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(
+            &ctx,
+            &mut app,
+            vec![button(at, false, PointerButton::Secondary, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        for _ in 0..3 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        assert_eq!(app.dialog, Dialog::Options, "{row}");
+        assert_eq!(app.options_page, OptionsPage::Commands);
+        // The command stays picked once the page lists the commands.
+        assert_eq!(app.shortcut_editor.selected.as_deref(), Some(row));
+        assert!(app.shortcut_editor.keys_tab);
+        assert!(app.shortcut_editor.capture.is_none());
+    }
+}

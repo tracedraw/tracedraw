@@ -1810,6 +1810,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                     );
                 }
             }
+            Tool::InnerShadow => inner_shadow_bar(app, ui),
             Tool::InteractiveFill => interactive_fill_bar(app, ui, &shapes),
             Tool::ShapeRecognition | Tool::Sketch => crate::ui::drawing_bars::drawing_bar(app, ui),
             Tool::AreaFill => crate::ui::fill_tool_bars::smart_fill_bar(app, ui),
@@ -3655,6 +3656,131 @@ fn path_thumbnail(
     });
     flush(&mut run, false);
     resp
+}
+
+/// The Inner Shadow tool's property bar (#2473): offset, colour, opacity,
+/// feathering and merge mode of the selected object's inner shadow, else
+/// of the next one dragged, and a button that removes it.
+fn inner_shadow_bar(app: &mut App, ui: &mut Ui) {
+    use tracedraw_core::{geometry::Vec2 as CVec2, live::Effect};
+    let current = app.selected_inner_shadow_at();
+    let has_selection = !app.selection.is_empty();
+    let (mut offset, mut st) = current.unwrap_or((CVec2::new(2.0, -2.0), app.inner_shadow));
+    let mut changed = false;
+    let mut dx = offset.x;
+    let mut dy = offset.y;
+    changed |= dim_labelled_as(
+        ui,
+        "docker.offset",
+        "toolbar.inner_shadow_offset_desc",
+        |ui| {
+            ui.add(
+                crate::ui::field::NumField::new(&mut dx)
+                    .speed(0.1)
+                    .range(-500.0..=500.0)
+                    .fixed_decimals(2)
+                    .suffix(" mm"),
+            )
+        },
+    )
+    .changed();
+    changed |= ui
+        .add(
+            crate::ui::field::NumField::new(&mut dy)
+                .speed(0.1)
+                .range(-500.0..=500.0)
+                .fixed_decimals(2)
+                .suffix(" mm"),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "docker.offset",
+            "toolbar.inner_shadow_offset_desc",
+        ))
+        .changed();
+    offset = CVec2::new(dx, dy);
+    if crate::ui::color_picker::color_button(ui, &mut st.color) {
+        changed = true;
+    }
+    let mut opacity = (st.opacity * 100.0).round();
+    if dim_labelled_as(ui, "toolbar.opacity", "toolbar.shadow_opacity_desc", |ui| {
+        ui.add(
+            crate::ui::field::NumField::new(&mut opacity)
+                .range(0.0..=100.0)
+                .suffix(" %"),
+        )
+    })
+    .changed()
+    {
+        st.opacity = opacity / 100.0;
+        changed = true;
+    }
+    if dim_labelled(ui, "toolbar.feathering", |ui| {
+        ui.add(
+            crate::ui::field::NumField::new(&mut st.blur)
+                .speed(0.1)
+                .range(0.0..=50.0)
+                .suffix(" mm"),
+        )
+    })
+    .changed()
+    {
+        changed = true;
+    }
+    dim_labelled(ui, "transparency.merge_mode", |ui| {
+        crate::ui::keynav::ComboBox::from_id_salt("inner_shadow_merge")
+            .selected_text(st.merge.name())
+            .width(90.0)
+            .show_ui(ui, |ui| {
+                for m in tracedraw_core::live::MergeMode::ALL {
+                    if ui.selectable_label(st.merge == m, m.name()).clicked() {
+                        st.merge = m;
+                        changed = true;
+                    }
+                }
+            })
+    });
+    let effect = Effect::InnerShadow {
+        offset,
+        color: st.color,
+        opacity: st.opacity,
+        blur: st.blur,
+        merge: st.merge,
+    };
+    if changed {
+        app.inner_shadow = st;
+        if current.is_some() {
+            app.push_effect(effect.clone(), true);
+        }
+    }
+    vsep(ui);
+    if current.is_none()
+        && ui
+            .add_enabled(
+                has_selection,
+                egui::Button::new(tr("toolbar.apply_inner_shadow")),
+            )
+            .rich_tip(crate::ui::tips::keyed("toolbar.apply_inner_shadow"))
+            .clicked()
+    {
+        app.push_effect(effect.clone(), true);
+    }
+    if ui
+        .add_enabled(
+            current.is_some(),
+            egui::Button::new(tr("toolbar.clear_inner_shadow")),
+        )
+        .rich_tip(crate::ui::tips::keyed("toolbar.clear_inner_shadow"))
+        .clicked()
+    {
+        app.remove_effects_of_kind(&effect);
+    }
+    if current.is_none() {
+        ui.label(
+            egui::RichText::new(tr("hint.bar_inner_shadow"))
+                .color(Tokens::text_dim())
+                .size(11.0),
+        );
+    }
 }
 
 /// The Drop Shadow tool's property bar: presets, opacity, feathering and

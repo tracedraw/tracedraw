@@ -295,6 +295,7 @@ pub fn tool_topic(t: Tool) -> &'static str {
         Tool::Envelope => "effects/envelope",
         Tool::Extrude => "effects/extrude",
         Tool::BlockShadow => "effects/block-shadow",
+        Tool::InnerShadow => "effects/drop-shadow",
         Tool::Transparency => "color/transparency",
         Tool::ColorEyedropper => "color/eyedroppers#color-eyedropper",
         Tool::AttributesEyedropper => "color/eyedroppers#attributes-eyedropper",

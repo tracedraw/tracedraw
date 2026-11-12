@@ -578,6 +578,12 @@ pub fn draw_on(painter: &Painter, r: Rect, tool: Tool, color: Color32, bg: Color
             pen.line("M15 9l6-6", acc);
             pen.solid(&rrect(3.0, 9.0, 12.0, 12.0, 1.0));
         }
+        Tool::InnerShadow => {
+            // A square box with its shadow inside, along its top and
+            // left edges, in the accent.
+            pen.solid(&rrect(4.0, 4.0, 16.0, 16.0, 0.0));
+            pen.fill("M4 4h16v4h-12v12h-4z", Pen::alpha(acc, 0.6), false);
+        }
         Tool::BlockShadow => {
             // A circle with a solid accent block cast behind it.
             pen.stroke("M9.5 9.5L15 15", 12.0, acc);

@@ -124,6 +124,30 @@ pub fn drawing_scale() -> f64 {
     DRAWING_SCALE.with(|c| c.get())
 }
 
+/// The inner shadow the Inner Shadow tool gives the next object dragged
+/// on (#2473), as CorelDRAW's Inner Shadow tool starts: black, half
+/// opaque, feathered and multiplied with the object.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InnerShadowStyle {
+    pub color: Color,
+    /// 0..1
+    pub opacity: f64,
+    /// Feathering, millimetres.
+    pub blur: f64,
+    pub merge: tracedraw_core::live::MergeMode,
+}
+
+impl Default for InnerShadowStyle {
+    fn default() -> Self {
+        Self {
+            color: Color::BLACK,
+            opacity: 0.5,
+            blur: 2.0,
+            merge: tracedraw_core::live::MergeMode::Multiply,
+        }
+    }
+}
+
 /// Units of measure, in the order the Units list shows them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Units {
@@ -1199,6 +1223,9 @@ pub struct App {
     /// Block shadow colour and gap for the next drag.
     pub block_shadow_color: Color,
     pub block_shadow_gap: f64,
+    /// Inner shadow colour, opacity (0..1), feathering (mm) and merge
+    /// mode for the next drag (#2473).
+    pub inner_shadow: InnerShadowStyle,
     pub table_border: Option<Stroke>,
     pub graph_rows: u32,
     pub graph_cols: u32,
@@ -2798,6 +2825,7 @@ impl App {
             table_fill: Fill::None,
             block_shadow_color: Color::cmyk_pct(0.0, 0.0, 0.0, 60.0),
             block_shadow_gap: 0.0,
+            inner_shadow: InnerShadowStyle::default(),
             table_border: Some(Stroke::hairline(Color::BLACK)),
             graph_rows: 4,
             graph_cols: 3,
