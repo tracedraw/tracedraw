@@ -4,7 +4,7 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.45.0 (2026-11-12)
 
 - Roughen: going over an outline again no longer leaves white slivers over the object. A stroke over spikes an earlier one made pushed new spikes sideways across the outline, and where the outline crossed itself the fill left the overlaps empty, so white arcs and gaps appeared inside the shape; the spikes now stand out from the object and an outline that still crosses itself is filled everywhere it goes round (#2229).
 - Tools > Recolor: every colour of the selected objects (fills, gradient stops, mesh, outlines, text, effects and shadows, inside groups too) turned round the hue circle, made more or less saturated, lighter or darker, or tinted with one colour. Each colour keeps how light it is next to the others, so a drawing's highlights and shadows stay in its new colours. The change shows on the drawing while the dialog is open; OK makes it one undo step, and Edit > Repeat repeats it.

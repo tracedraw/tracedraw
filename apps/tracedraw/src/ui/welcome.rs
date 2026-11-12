@@ -27,6 +27,12 @@ pub(crate) const HISTORY_LEN: usize = 10;
 /// version being built.
 pub(crate) const RELEASES: &[Release] = &[
     Release {
+        version: "0.45.0",
+        date: "2026-11-12",
+        title: "welcome.news.v0_45_0_title",
+        body: "welcome.news.v0_45_0_body",
+    },
+    Release {
         version: "0.44.2",
         date: "2026-11-12",
         title: "welcome.news.v0_44_2_title",
@@ -79,12 +85,6 @@ pub(crate) const RELEASES: &[Release] = &[
         date: "2026-11-04",
         title: "welcome.news.v0_39_title",
         body: "welcome.news.v0_39_body",
-    },
-    Release {
-        version: "0.38.0",
-        date: "2026-11-03",
-        title: "welcome.news.v0_38_title",
-        body: "welcome.news.v0_38_body",
     },
 ];
 
