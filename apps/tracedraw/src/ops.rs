@@ -973,6 +973,47 @@ fn shaping_area(s: &Shape) -> tracedraw_core::BezPath {
     overlay_with(&all, &empty, Op::Weld, FillRule::NonZero)
 }
 
+/// The area an object gives Create Boundary, and whether open curves
+/// were part of it: an open curve covers no area of its own, so it gives
+/// the band its outline draws (with the outline's width; a hairline or
+/// no outline as a thin line), and a group gives what its objects give.
+/// Open curves read as areas came out as a broken object that would not
+/// fill (#2548).
+fn boundary_area(s: &Shape) -> (tracedraw_core::BezPath, bool) {
+    use tracedraw_core::shaping::{overlay, Op};
+    let open = |s: &Shape| matches!(s.kind, ShapeKind::Path { closed: false, .. });
+    let mut leaves = group_leaves(s);
+    if leaves.is_empty() {
+        leaves.push(s.clone());
+    }
+    if !leaves.iter().any(open) {
+        return (shaping_area(s), false);
+    }
+    let empty = tracedraw_core::BezPath::new();
+    let mut all = tracedraw_core::BezPath::new();
+    for leaf in &leaves {
+        let area = if open(leaf) {
+            let mut lined = leaf.clone();
+            if lined.stroke.is_none() {
+                lined.stroke = Some(tracedraw_core::Stroke::default());
+            }
+            crate::tools2::outline_object_path(&lined).unwrap_or_default()
+        } else {
+            shaping_area(leaf)
+        };
+        if area.elements().is_empty() {
+            continue;
+        }
+        let clean = overlay(&area, &empty, Op::Weld);
+        all = if all.elements().is_empty() {
+            clean
+        } else {
+            overlay(&all, &clean, Op::Weld)
+        };
+    }
+    (all, true)
+}
+
 /// What a picture target shows, for a shaping result to hold: the picture
 /// itself, or what a cropped picture (a clip frame holding one) holds,
 /// placed on the page. `None` for other objects.
@@ -1223,10 +1264,34 @@ impl App {
             r
         } else {
             match op {
-                Shaping::Weld | Shaping::Boundary => paths
+                Shaping::Weld => paths
                     .iter()
                     .skip(1)
                     .fold(paths[0].clone(), |acc, p| overlay(&acc, p, Op::Weld)),
+                // The outer edge of everything selected, open curves by
+                // the band their outline draws; where open curves close
+                // round an area, it is filled: one solid object (#2548).
+                Shaping::Boundary => {
+                    let areas: Vec<(tracedraw_core::BezPath, bool)> =
+                        ordered.iter().map(boundary_area).collect();
+                    let any_open = areas.iter().any(|(_, o)| *o);
+                    let welded = areas
+                        .iter()
+                        .map(|(p, _)| p)
+                        .filter(|p| !p.elements().is_empty())
+                        .fold(tracedraw_core::BezPath::new(), |acc, p| {
+                            if acc.elements().is_empty() {
+                                overlay(p, &tracedraw_core::BezPath::new(), Op::Weld)
+                            } else {
+                                overlay(&acc, p, Op::Weld)
+                            }
+                        });
+                    if any_open && !welded.elements().is_empty() {
+                        tracedraw_core::shaping::outer_cover(&welded, 0.0)
+                    } else {
+                        welded
+                    }
+                }
                 Shaping::Intersect => paths
                     .iter()
                     .skip(1)
