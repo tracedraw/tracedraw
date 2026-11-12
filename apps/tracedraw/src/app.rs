@@ -7548,6 +7548,22 @@ impl App {
                     });
                 }
                 doc2.set_ids(ids);
+                // The paragraph frames the file's text continues in are
+                // linked (#2323).
+                let links = {
+                    let shapes: Vec<&Shape> = doc2
+                        .pages
+                        .iter()
+                        .flat_map(|p| &p.layers)
+                        .flat_map(|l| &l.shapes)
+                        .collect();
+                    crate::textflow::imported_flow_links(&shapes)
+                };
+                for (id, data) in links {
+                    if let Some(s) = doc2.find_shape_mut(id) {
+                        s.data = data;
+                    }
+                }
                 (
                     doc2,
                     crate::i18n::trf(

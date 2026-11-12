@@ -524,6 +524,10 @@ pub struct Settings {
     /// The font lists' fonts used last, newest first.
     #[serde(default)]
     pub recent_fonts: Vec<String>,
+    /// The font lists' filter choices show beside the list: left open,
+    /// they show again the next time a font list opens (#867).
+    #[serde(default)]
+    pub font_filter_open: bool,
     /// Options > Text > Fonts: the fonts used last shown at the top of
     /// the font lists, and how many (1 to 20).
     #[serde(default = "default_true")]
@@ -2004,6 +2008,7 @@ impl Default for Settings {
             shown_bars: None,
             dockers: None,
             recent_fonts: Vec::new(),
+            font_filter_open: false,
             show_recent_fonts: true,
             recent_font_count: default_recent_font_count(),
             properties_closed: Vec::new(),

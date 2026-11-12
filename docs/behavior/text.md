@@ -139,9 +139,35 @@ Text and Glyphs dockers and Options (default font):
   in the same popup (only one menu is open at a time, so a menu opened
   from the list closed it): a click there filters at once and leaves the
   list open (`ui::font_list::live_tests::the_filter_opens_inside_the_font_list`).
+  Left open, the choices show again the next time any font list opens,
+  also after a restart (`font_filter_open` in the settings). They scroll
+  beside the list in the height the list takes, so the popup has no
+  empty space under the list (until 0.45.0 they made it taller, #867).
   The choices, Clear filter at the top, in sections that fold:
   - Fonts shown: all fonts, installed fonts, the fonts in this drawing,
     or, in the browser, the fonts to download.
+  - Folders, right after Fonts shown: the folders added to the Font
+    Manager's libraries, once each, whatever subfolder a file lies in;
+    not the operating system's font folders, which Installed fonts
+    already stands for (`font_folders::the_filter_folders_leave_out_the_systems`,
+    a system folder added to the libraries is listed; until 0.45.0 they
+    were listed and came last, #867). Each shows the folder's
+    name, its path as the tip (`FontSystem::folder_of`, the deepest
+    library or system folder a file lies under, else its own folder;
+    `font_folders::fonts_count_as_in_their_library_folder`). Until
+    0.27.0 every subfolder was listed on its own (#867). The system's
+    folders left out (`system_font_roots`) are the ones the font database reads
+    at startup: on Windows `Fonts` under `SYSTEMROOT` and the user's
+    local and roaming `Microsoft\Windows\Fonts`; on macOS
+    `/Library/Fonts`, `/System/Library/Fonts`, each
+    `com_apple_MobileAsset_Font*` folder of the fonts downloaded on
+    demand under `/System/Library/AssetsV2` (one subfolder per font
+    inside), `/Network/Library/Fonts` and `~/Library/Fonts`; on Linux
+    the folders fontconfig lists (`FONTCONFIG_FILE`, else the user's
+    `fontconfig/fonts.conf`, else `/etc/fonts/local.conf`, and
+    `/etc/fonts/fonts.conf`), else `/usr/share/fonts`,
+    `/usr/local/share/fonts`, `~/.fonts` and `~/.local/share/fonts`
+    (`font_folders::system_folders_are_the_ones_the_database_reads`).
   - Style: Serif, Sans serif, Script, Decorative, Monospaced, Symbol.
   - Weight: Light (below 350), Regular (350 to 599), Bold (600 and up),
     from each face's OS/2 `usWeightClass`; a variable font counts for
@@ -164,25 +190,6 @@ Text and Glyphs dockers and Options (default font):
   - Embedding rights: Installable, Editable, Preview and print,
     Restricted, Bitmap only, from OS/2 `fsType`; a family counts by its
     most restrictive face.
-  - Folders: the folders the fonts are in, as the Font Manager has them:
-    each folder added to the libraries, and the operating system's font
-    folders, once each, whatever subfolder a file lies in (the folder's
-    name, its path as the tip; `FontSystem::folder_of`, the deepest
-    library or system folder a file lies under, else its own folder;
-    `font_folders::fonts_count_as_in_their_library_folder`). Until
-    0.27.0 every subfolder was listed on its own (#867). The system's
-    folders (`system_font_roots`) are the ones the font database reads
-    at startup: on Windows `Fonts` under `SYSTEMROOT` and the user's
-    local and roaming `Microsoft\Windows\Fonts`; on macOS
-    `/Library/Fonts`, `/System/Library/Fonts`, each
-    `com_apple_MobileAsset_Font*` folder of the fonts downloaded on
-    demand under `/System/Library/AssetsV2` (one subfolder per font
-    inside), `/Network/Library/Fonts` and `~/Library/Fonts`; on Linux
-    the folders fontconfig lists (`FONTCONFIG_FILE`, else the user's
-    `fontconfig/fonts.conf`, else `/etc/fonts/local.conf`, and
-    `/etc/fonts/fonts.conf`), else `/usr/share/fonts`,
-    `/usr/local/share/fonts`, `~/.fonts` and `~/.local/share/fonts`
-    (`font_folders::system_folders_are_the_ones_the_database_reads`).
 
   In each section a family needs one of the choices ticked; of the
   OpenType features it needs every one ticked; it needs what every
