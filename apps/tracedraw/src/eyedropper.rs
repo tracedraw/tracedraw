@@ -287,6 +287,21 @@ pub fn rotation_of(t: Affine) -> f64 {
     c[1].atan2(c[0])
 }
 
+/// The colour a lens lays over what lies beneath, for the lenses that
+/// have one; `None` for the others (Invert, Magnify and the like show
+/// what is beneath in their own way).
+fn lens_color(l: &tracedraw_core::live::Lens) -> Option<Color> {
+    use tracedraw_core::live::Lens;
+    match l {
+        Lens::Transparency { color, .. }
+        | Lens::ColorAdd { color, .. }
+        | Lens::ColorLimit { color, .. }
+        | Lens::TintedGrayscale { color } => Some(*color),
+        Lens::Wireframe { fill, .. } => Some(*fill),
+        _ => None,
+    }
+}
+
 impl App {
     /// The usual hit test, else the topmost unfilled closed object whose
     /// interior contains `p`: what the paint bucket fills, and what a
@@ -436,6 +451,15 @@ impl App {
                     return Some(c);
                 }
             }
+        }
+        // A lens draws its own colour over what lies beneath, not its fill
+        // (an unfilled closed shape with a Transparency lens shows only
+        // there): the colour read is the lens's (#2549).
+        if let Some(c) = s.effects.iter().find_map(|e| match e {
+            tracedraw_core::live::Effect::Lens(l) => lens_color(l),
+            _ => None,
+        }) {
+            return Some(c);
         }
         match &s.fill {
             Fill::Solid(c) => Some(*c),
@@ -652,6 +676,16 @@ impl App {
                     "status.sampled_color",
                     &[("c", &crate::app::color_description(c))],
                 );
+                // With objects selected the colour goes straight onto them,
+                // as a palette swatch would: the fill, or the outline with
+                // Shift, in one undo step (#2551).
+                if !self.selection.is_empty() {
+                    if shift {
+                        self.apply_outline_color(Some(c));
+                    } else {
+                        self.apply_fill(Fill::Solid(c));
+                    }
+                }
             }
         }
     }
@@ -1226,5 +1260,113 @@ mod tests {
     fn rotation_of_reads_the_transform_angle() {
         let t = Affine::rotate(0.3);
         assert!((rotation_of(t) - 0.3).abs() < 1e-9);
+    }
+
+    /// A closed shape with a Transparency lens over other objects gives
+    /// the lens's colour, filled or not, and is picked inside (#2549): an
+    /// unfilled one gave the colour of the object beneath, a filled one
+    /// its fill, which the lens does not draw.
+    #[test]
+    fn a_shape_with_a_transparency_lens_over_others_gives_its_colour() {
+        use tracedraw_core::live::{Effect, Lens};
+        let mut app = App::headless();
+        let under = rect(&mut app, Rect::new(0.0, 0.0, 100.0, 100.0));
+        app.run(Command::SetFill {
+            shapes: vec![under],
+            fill: Fill::Solid(Color::rgb8(200, 0, 0)),
+        });
+        let blue = Color::rgb8(0, 0, 200);
+        let lens = Effect::Lens(Lens::Transparency {
+            rate: 50.0,
+            color: blue,
+        });
+        let unfilled = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: Rect::new(10.0, 10.0, 40.0, 40.0),
+                arc: None,
+            })
+            .expect("ellipse");
+        app.run(Command::SetFill {
+            shapes: vec![unfilled],
+            fill: Fill::None,
+        });
+        app.run(Command::SetEffects {
+            shape: unfilled,
+            effects: vec![lens.clone()],
+        });
+        let filled = rect(&mut app, Rect::new(60.0, 10.0, 90.0, 40.0));
+        app.run(Command::SetFill {
+            shapes: vec![filled],
+            fill: Fill::Solid(Color::rgb8(0, 200, 0)),
+        });
+        app.run(Command::SetEffects {
+            shape: filled,
+            effects: vec![lens],
+        });
+        app.select(Vec::new());
+        for (at, id) in [
+            (Point::new(25.0, 25.0), unfilled),
+            (Point::new(75.0, 25.0), filled),
+        ] {
+            assert_eq!(app.hit_test_to_read(at), Some(id));
+            assert_eq!(app.sample_color_at(at, false), Some(blue));
+        }
+        // Outside the lens the object beneath is read as before.
+        assert_eq!(
+            app.sample_color_at(Point::new(50.0, 70.0), false),
+            Some(Color::rgb8(200, 0, 0))
+        );
+    }
+
+    /// With objects selected, the colour sampled goes straight onto them
+    /// (#2551): the fill, or the outline with Shift, in one undo step.
+    #[test]
+    fn a_sampled_colour_is_applied_to_the_selection() {
+        let mut app = App::headless();
+        let a = rect(&mut app, Rect::new(0.0, 0.0, 10.0, 10.0));
+        let b = rect(&mut app, Rect::new(20.0, 0.0, 30.0, 10.0));
+        let c = rect(&mut app, Rect::new(40.0, 0.0, 50.0, 10.0));
+        let red = Color::rgb8(200, 10, 10);
+        app.run(Command::SetFill {
+            shapes: vec![a],
+            fill: Fill::Solid(red),
+        });
+        app.run(Command::SetFill {
+            shapes: vec![b, c],
+            fill: Fill::Solid(Color::rgb8(0, 0, 200)),
+        });
+        app.select(vec![b, c]);
+        app.eyedropper_click(Point::new(5.0, 5.0), false, false, false);
+        assert_eq!(app.eyedropper_color, Some(red));
+        for id in [b, c] {
+            assert_eq!(
+                app.doc().find_shape(id).expect("shape").fill,
+                Fill::Solid(red)
+            );
+        }
+        assert_eq!(app.doc().find_shape(a).expect("a").fill, Fill::Solid(red));
+        // One undo puts both back.
+        app.engine.undo().expect("undo");
+        for id in [b, c] {
+            assert_eq!(
+                app.doc().find_shape(id).expect("shape").fill,
+                Fill::Solid(Color::rgb8(0, 0, 200))
+            );
+        }
+        // Shift samples the outline colour and puts it on the outlines.
+        let green = Color::rgb8(0, 150, 0);
+        app.run(Command::SetStroke {
+            shapes: vec![a],
+            stroke: Some(tracedraw_core::Stroke {
+                color: green,
+                ..Default::default()
+            }),
+        });
+        app.select(vec![b]);
+        app.eyedropper_reset();
+        app.eyedropper_click(Point::new(5.0, 5.0), false, true, false);
+        let sb = app.doc().find_shape(b).expect("b");
+        assert_eq!(sb.stroke.as_ref().map(|s| s.color), Some(green));
+        assert_eq!(sb.fill, Fill::Solid(Color::rgb8(0, 0, 200)));
     }
 }

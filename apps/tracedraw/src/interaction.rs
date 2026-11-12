@@ -605,6 +605,17 @@ impl App {
             // What the object draws: its warped outline and the objects
             // its effects add.
             let ev = tracedraw_core::live::evaluate(s);
+            // A lens shows over its whole inside, filled or not: a closed
+            // shape with a Transparency lens lying over other objects is
+            // picked (and its colour read) there, not the objects beneath
+            // (#2549).
+            if s.effects
+                .iter()
+                .any(|e| matches!(e, tracedraw_core::live::Effect::Lens(_)))
+                && tracedraw_core::command::close_subpaths(&ev.main.page_path()).contains(p)
+            {
+                return true;
+            }
             return std::iter::once(ev.main)
                 .chain(ev.below)
                 .chain(ev.above)
