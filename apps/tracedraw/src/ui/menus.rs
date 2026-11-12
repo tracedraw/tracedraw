@@ -4678,4 +4678,49 @@ pub(crate) fn options_items(app: &mut App, ui: &mut Ui) {
         app.dialog = Dialog::Options;
         app.options_page = crate::ui::dialogs::OptionsPage::AiGeneral;
     }
+    // The dialog's last tab, the open drawing's own options: listed here
+    // as well as on the Layout menu, so every tab of the dialog has its
+    // entry (#2006).
+    if item(ui, "menu.layout.document_options", "", app.has_document()) {
+        app.dialog = Dialog::Options;
+        app.options_page = crate::ui::dialogs::OptionsPage::DocumentGeneral;
+    }
+}
+
+#[cfg(test)]
+mod options_items_tests {
+    use super::*;
+
+    /// Run `key` from the Options list alone (Tools > Options and the
+    /// standard bar's Options button): whether its item was there,
+    /// enabled, and fired.
+    fn run_in_options(app: &mut App, key: &str) -> bool {
+        let ctx = crate::theme::ui_context();
+        let _guard = invoke::Guard;
+        invoke::start_trigger(key);
+        let mut out = ctx.run_ui(Default::default(), |ui| options_items(app, ui));
+        out.textures_delta.clear();
+        invoke::finish().1
+    }
+
+    /// Tools > Options and the Options button list Document Setup, the
+    /// dialog's last tab, which only the Layout menu had (#2006).
+    #[test]
+    fn the_options_list_has_document_setup() {
+        let mut app = App::headless();
+        assert!(app.has_document());
+        assert!(run_in_options(&mut app, "menu.layout.document_options"));
+        assert!(matches!(app.dialog, Dialog::Options));
+        assert_eq!(
+            app.options_page,
+            crate::ui::dialogs::OptionsPage::DocumentGeneral
+        );
+        // With no drawing open there is no document to set up: greyed.
+        app.dialog = Dialog::None;
+        while app.has_document() {
+            app.docs.remove(0);
+        }
+        assert!(!run_in_options(&mut app, "menu.layout.document_options"));
+        assert!(matches!(app.dialog, Dialog::None));
+    }
 }

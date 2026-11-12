@@ -4,6 +4,11 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Tools > Options and the standard bar's Options button list Document Setup, the Options window's last tab, which only the Page menu had (#2006).
+- Dockers: the tab of the docker in front is marked in the colour of the document tab in front, light blue on the light themes. It was a grey hardly apart from the other tabs (#2316).
+
 ## 0.44.2 (2026-11-12)
 
 - Windows: a file double-clicked while TraceDraw runs minimized brings the window up. A minimized window runs no ui, so the files handed over waited there, the window down, until it was restored from the taskbar; they are now taken, and the window restored and brought forward, from the app's logic, which runs while the window is minimized too (#2129). Not yet tried on a Windows machine.
