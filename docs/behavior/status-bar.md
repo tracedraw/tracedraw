@@ -17,7 +17,13 @@ It sits at the bottom of the window, or at the top below the menu bar
    - Tool Hints: the active tool's hint (`status_hint.<tool id>` in the
      language files; every tool has one). The Pick tool's hint changes
      when something is selected. A message from the last command comes
-     first when there is one.
+     first when there is one, for 12 seconds (the same message set again
+     shows again); then the hint has the field to itself, so a message
+     with a long file path ("Saved ...") no longer pushes it off the bar
+     for good. The message that links to Options stays. A hint cut off
+     at the right shows whole on hover (#1126,
+     `ui::status::tests::a_status_message_goes_after_a_while`,
+     `ui::status::tests::a_cut_off_hint_shows_whole_on_hover`).
      Hints are short and share one style: the parts are joined by " · ",
      keys and modifiers are named as they are pressed (Ctrl+drag,
      Shift+click, Alt+click), and a hint says what the pointer does

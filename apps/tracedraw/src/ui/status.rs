@@ -488,6 +488,11 @@ pub fn status_bar(app: &mut App, ui: &mut Ui) {
             .status_opens_options
             .as_ref()
             .is_some_and(|(s, _)| *s == app.status);
+    // A message (a file opened or saved, with its path) gives the tool
+    // hint its place back after a while (#1126).
+    if doc && !linked {
+        expire_status(app, ui.ctx());
+    }
     // Left field and object information.
     let (left, info) = if !doc {
         (tr("status.tool_hints"), tr("status.object_information"))
@@ -709,6 +714,38 @@ impl Indicator<'_> {
     }
 }
 
+/// How long a status message stays before the tool hint has the field
+/// to itself again, seconds.
+pub const STATUS_SECS: f64 = 12.0;
+
+/// Clear the status message once it has been shown for [`STATUS_SECS`]:
+/// a message such as "Saved" with a long file path stayed until the next
+/// one and squeezed the tool hint after it off the bar (#1126). A new
+/// message starts its own time, and so does the same text set again
+/// after it went.
+fn expire_status(app: &mut App, ctx: &egui::Context) {
+    let id = egui::Id::new("status_message_since");
+    let now = ctx.input(|i| i.time);
+    if app.status.is_empty() {
+        ctx.data_mut(|d| d.remove::<(String, f64)>(id));
+        return;
+    }
+    let since = ctx.data_mut(|d| {
+        let kept = d.get_temp_mut_or_insert_with(id, || (app.status.clone(), now));
+        if kept.0 != app.status || now < kept.1 {
+            *kept = (app.status.clone(), now);
+        }
+        kept.1
+    });
+    let left = STATUS_SECS - (now - since);
+    if left <= 0.0 {
+        app.status.clear();
+        ctx.data_mut(|d| d.remove::<(String, f64)>(id));
+    } else {
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+    }
+}
+
 /// Where the fill and outline parts of bar `row` start: at about 70 %
 /// and 82 % of it, or further left when the part (`fill_w`, `outline_w`
 /// wide with its text) would not fit before the next one or before
@@ -871,6 +908,46 @@ mod tests {
         app.status = "Saved".into();
         has_tip(&mut app, 3000.0);
         assert!(!has_tip(&mut app, 3000.0));
+    }
+
+    /// A status message, such as "Saved" with a long file path, gives the
+    /// tool hint its place back after a while instead of staying until the
+    /// next message (#1126). The same message set again shows again.
+    #[test]
+    fn a_status_message_goes_after_a_while() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.settings.status_info = StatusInfo::ToolHints;
+        let run = |app: &mut App, time: f64| {
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 60.0))),
+                    time: Some(time),
+                    ..Default::default()
+                },
+                |ui| status_bar(app, ui),
+            );
+            out.textures_delta.clear();
+        };
+        let saved = "Saved /home/someone/a/long/folder/drawing.tdraw".to_string();
+        app.status = saved.clone();
+        run(&mut app, 100.0);
+        run(&mut app, 100.0 + STATUS_SECS - 1.0);
+        assert_eq!(app.status, saved, "still shown");
+        run(&mut app, 100.0 + STATUS_SECS + 0.5);
+        assert!(app.status.is_empty(), "gone after a while");
+        // Saved again: shown again, for its own while.
+        app.status = saved.clone();
+        run(&mut app, 200.0);
+        run(&mut app, 200.0 + STATUS_SECS - 1.0);
+        assert_eq!(app.status, saved);
+        // A new message starts its own time.
+        app.status = "Opened".into();
+        run(&mut app, 200.0 + STATUS_SECS + 0.5);
+        assert_eq!(app.status, "Opened");
+        run(&mut app, 200.0 + 2.0 * STATUS_SECS + 1.0);
+        assert!(app.status.is_empty());
     }
 
     #[test]
