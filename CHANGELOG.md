@@ -4,7 +4,7 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.45.2 (2026-11-13)
 
 - Opening .cdr: a book laid out on facing pages opens in spreads, each page's objects on its own page. Pages showed one by one, and a page whose objects reach across the spine took the wrong side, mixing it with the page beside it (#1660).
 - Tables: the Pick tool chooses a cell with Ctrl+click, and with a cell chosen Shift+click adds another; the Shape tool chooses the cell clicked, with Ctrl one more or less and with Shift the block from the active cell. The table bar then acts on the chosen cells (borders, fill, merge, split), as after choosing them with the Table tool. Before, cells could be chosen with the Table and Text tools only. Typing into a cell still takes the Table or the Text tool (#2434, #2436).
