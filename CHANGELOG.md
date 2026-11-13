@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Opening .cdr: a book laid out on facing pages opens in spreads, each page's objects on its own page. Pages showed one by one, and a page whose objects reach across the spine took the wrong side, mixing it with the page beside it (#1660).
 - Tables: the Pick tool chooses a cell with Ctrl+click, and with a cell chosen Shift+click adds another; the Shape tool chooses the cell clicked, with Ctrl one more or less and with Shift the block from the active cell. The table bar then acts on the chosen cells (borders, fill, merge, split), as after choosing them with the Table tool. Before, cells could be chosen with the Table and Text tools only. Typing into a cell still takes the Table or the Text tool (#2434, #2436).
 - Text: Ctrl+Shift+> moves the letters of the selected text further apart and Ctrl+Shift+< closer, a step of 5 % of a space's width each press, also for a text fitted to a path and while a text is edited. The spacing could be set in the Text docker only, so opening up the letters round a stamp's circle took a trip to the docker for every try (#193).
 - Pen tool: the nib pointer has its tip at the upper left and its body running down and to the right, as an arrow pointer has, with the dot of the tip still exactly on the point clicked. It leaned up and to the right from a tip at the lower left, upside down beside the other tools' pointers. The close, join, add and delete signs sit above and to the right of the tip (#362).

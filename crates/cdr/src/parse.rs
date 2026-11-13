@@ -817,14 +817,6 @@ pub(crate) fn parse_document_kept(
             }
             page.layers.push(layer);
         }
-        // Facing pages measure objects from the spine of the spread, half
-        // a page to the left or right of the page's centre; which way is
-        // not worked out yet, so the side holding more of the page's
-        // objects wins (version 21 files: the first page's objects lie
-        // right of the spine, later pages' mostly left of it).
-        if ctx.facing_pages && !is_master {
-            shift_onto_page(&mut page.layers, size.width);
-        }
         // Files list a page's layers front to back, as they list objects
         // (a version 21 file: the layer of the lettering first, then the
         // layer whose full-page background its preview shows under it).
@@ -879,6 +871,42 @@ pub(crate) fn parse_document_kept(
         if p.name.is_empty() {
             p.name = format!("Page {}", i + 1);
         }
+    }
+    // Facing pages measure objects from the spine of their spread, half a
+    // page to the left or right of the page's centre: pages take turns on
+    // the right and left of the spine, from the first page alone on the
+    // right (or on the left starting a spread). Which of the two the
+    // file starts with is the one that puts more of the objects on their
+    // pages, and every page then goes by its place in the spreads. Each
+    // page took the side holding more of its own objects before, and a
+    // page with objects reaching across the spine took the wrong one,
+    // mixing it with the page beside it; the pages showed one by one,
+    // not in spreads (#1660).
+    if ctx.facing_pages {
+        let side = |i: usize, starts_right: bool| i.is_multiple_of(2) == starts_right;
+        let on_pages = |starts_right: bool| -> usize {
+            doc.pages
+                .iter()
+                .enumerate()
+                .map(|(i, p)| {
+                    let dx = spine_shift(p.size.width, side(i, starts_right));
+                    centres_on_page(&p.layers, p.size.width, dx)
+                })
+                .sum()
+        };
+        let starts_right = on_pages(true) >= on_pages(false);
+        for (i, p) in doc.pages.iter_mut().enumerate() {
+            let dx = spine_shift(p.size.width, side(i, starts_right));
+            for s in p.layers.iter_mut().flat_map(|l| l.shapes.iter_mut()) {
+                s.transform = Affine::translate((dx, 0.0)) * s.transform;
+            }
+        }
+        doc.metadata.facing_pages = doc.pages.len() > 1;
+        doc.metadata.facing_start = if starts_right {
+            tracedraw_core::spreads::PageSide::Right
+        } else {
+            tracedraw_core::spreads::PageSide::Left
+        };
     }
     if doc.pages.is_empty() {
         let pid = doc.ids_mut().page();
@@ -7121,31 +7149,27 @@ fn file_corners(radii: &[f64], w: f64, h: f64) -> Corners {
     c
 }
 
-/// Move a facing page's objects half a page left or right, whichever puts
-/// more of their centres on the page (`width` across).
-fn shift_onto_page(layers: &mut [Layer], width: f64) {
-    let centres: Vec<f64> = layers
+/// How far a facing page's objects move from the spine of its spread
+/// onto the page (`width` across): half a page left for a page on the
+/// `right` of the spine, right for one on its left.
+fn spine_shift(width: f64, right: bool) -> f64 {
+    if right {
+        -width / 2.0
+    } else {
+        width / 2.0
+    }
+}
+
+/// How many of the objects' centres moved `dx` across land on a page
+/// `width` across.
+fn centres_on_page(layers: &[Layer], width: f64, dx: f64) -> usize {
+    layers
         .iter()
         .flat_map(|l| l.shapes.iter())
         .map(|s| s.bounds())
         .filter(|b| b.x0.is_finite() && b.x1.is_finite())
-        .map(|b| (b.x0 + b.x1) / 2.0)
-        .collect();
-    let on_page = |dx: f64| {
-        centres
-            .iter()
-            .filter(|c| (0.0..=width).contains(&(**c + dx)))
-            .count()
-    };
-    let half = width / 2.0;
-    let dx = if on_page(half) > on_page(-half) {
-        half
-    } else {
-        -half
-    };
-    for s in layers.iter_mut().flat_map(|l| l.shapes.iter_mut()) {
-        s.transform = Affine::translate((dx, 0.0)) * s.transform;
-    }
+        .filter(|b| (0.0..=width).contains(&((b.x0 + b.x1) / 2.0 + dx)))
+        .count()
 }
 
 /// A paragraph's line spacing, space before and after and indents from
@@ -9009,34 +9033,60 @@ pub(crate) mod tests {
         }
     }
 
+    /// A book on facing pages (version 21, `mcfg` byte 26) opens in
+    /// spreads, each page's objects moved from the spine by the page's
+    /// place in them: the first page alone on the right, then left and
+    /// right. An object at the spine on the left page 2 stays at the
+    /// spine; the side holding more of its objects took it to the page's
+    /// far edge (#1660).
     #[test]
-    fn facing_page_objects_move_to_the_side_holding_most_of_them() {
-        let rect = |x: f64| {
-            let mut s = Shape::new(
-                tracedraw_core::ShapeId(1),
-                ShapeKind::Rect {
-                    rect: Rect::new(x, 10.0, x + 20.0, 30.0),
-                    radius: 0.0,
-                    corners: None,
-                },
-            );
-            s.transform = Affine::IDENTITY;
-            s
+    fn a_book_on_facing_pages_opens_in_spreads() {
+        let rect = || {
+            let mut c = f64s(&[254000.0, 127000.0]);
+            c.extend_from_slice(&f64s(&[1.0, 1.0]));
+            c.push(0);
+            c.extend_from_slice(&[0; 7]);
+            for gap in [16usize, 16, 16, 0] {
+                c.extend_from_slice(&f64s(&[0.0]));
+                c.extend_from_slice(&vec![0u8; gap]);
+            }
+            list(
+                b"page",
+                &list(
+                    b"layr",
+                    &list(
+                        b"obj ",
+                        &chunk(b"loda", &loda(OBJ_RECT, &[(ARG_COORDS, c)])),
+                    ),
+                ),
+            )
         };
-        let centre_x = |l: &[Layer]| {
-            let b = l[0].shapes[0].bounds();
-            (b.x0 + b.x1) / 2.0
+        let open = |facing: u8| {
+            // 100 x 150 mm pages.
+            let mut m = mcfg(21, 1_000_000, 1_500_000);
+            m.resize(32, 0);
+            m[26] = facing;
+            let body = [chunk(b"mcfg", &m), rect(), rect(), rect()].concat();
+            let (doc, rep) = parse(&riff(b"CDRL", &body), 21);
+            assert_eq!(rep.shapes, 3, "{:?}", rep.warnings);
+            doc
         };
-        // Measured from the spine with the page to its right: half a page
-        // too far right when placed from the page centre.
-        let mut layers = vec![Layer::new(tracedraw_core::LayerId(1), "L")];
-        layers[0].shapes = vec![rect(150.0), rect(250.0), rect(280.0)];
-        shift_onto_page(&mut layers, 210.0);
-        assert!((centre_x(&layers) - 55.0).abs() < 1e-9);
-        // To its left: half a page too far left.
-        layers[0].shapes = vec![rect(-100.0), rect(-60.0), rect(150.0)];
-        shift_onto_page(&mut layers, 210.0);
-        assert!((centre_x(&layers) - 15.0).abs() < 1e-9);
+        let doc = open(1);
+        assert!(doc.metadata.facing_pages);
+        assert!(doc.metadata.facing_start.is_right());
+        assert_eq!(doc.pages.len(), 3);
+        let left_of = |i: usize| doc.pages[i].layers[0].shapes[0].bounds().x0;
+        // Page 1 on the right of the spine: the rectangle at its left edge.
+        assert!(left_of(0).abs() < 1e-6, "{}", left_of(0));
+        // Page 2 on the left: at its right edge, the spine, reaching over.
+        assert!((left_of(1) - 100.0).abs() < 1e-6, "{}", left_of(1));
+        // Page 3 on the right again.
+        assert!(left_of(2).abs() < 1e-6, "{}", left_of(2));
+        // Without facing pages: single pages, objects from their centres.
+        let doc = open(0);
+        assert!(!doc.metadata.facing_pages);
+        let x0 = doc.pages[1].layers[0].shapes[0].bounds().x0;
+        assert!((x0 - 50.0).abs() < 1e-6, "{x0}");
     }
 
     #[test]
