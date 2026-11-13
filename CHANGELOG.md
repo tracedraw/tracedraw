@@ -4,7 +4,7 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.45.1 (2026-11-13)
 
 - TraceDraw starts again on graphics cards without compute shaders, such as older integrated cards drawn through OpenGL on Linux. Version 0.45.0 prepared the shadow blur of the graphics card on every card at the start, and a card that takes no storage buffers in a compute shader answered with an error that stopped the program before its window opened ("Too many bindings of type StorageBuffers"). The card's limits are now read first; on such a card shadows are blurred on the processor, as before 0.45.0, and Options says the blur on the graphics card is not available (#2568).
 
