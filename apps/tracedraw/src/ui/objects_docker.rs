@@ -43,6 +43,39 @@ const MASTER_TOP: Color32 = Color32::from_rgb(0xE0, 0x9A, 0x2E);
 const GUIDE_BLUE: Color32 = Color32::from_rgb(0x1E, 0x6F, 0xD9);
 const PLUS_GREEN: Color32 = Color32::from_rgb(0x1E, 0x9E, 0x3C);
 
+/// A command of an object row's right-click menu: what the page's own
+/// menu and the Object menu do, for the selected rows (#2189).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ObjectDo {
+    Cut,
+    Copy,
+    Paste,
+    Group,
+    Combine,
+    ToCurves,
+    Hide,
+    Lock,
+    OverprintFill,
+    OverprintOutline,
+}
+
+/// Do `what` to the objects `ids` (they become the selection first).
+pub(crate) fn object_do(app: &mut App, ids: Vec<ShapeId>, what: ObjectDo) {
+    app.select(ids);
+    match what {
+        ObjectDo::Cut => app.cut(),
+        ObjectDo::Copy => app.copy(),
+        ObjectDo::Paste => app.paste(),
+        ObjectDo::Group => app.group_selection(),
+        ObjectDo::Combine => app.combine(),
+        ObjectDo::ToCurves => app.convert_to_curves(),
+        ObjectDo::Hide => app.set_visible(false),
+        ObjectDo::Lock => app.set_locked(true),
+        ObjectDo::OverprintFill => app.toggle_overprint(true),
+        ObjectDo::OverprintOutline => app.toggle_overprint(false),
+    }
+}
+
 /// What the docker asks for after drawing.
 #[derive(Default)]
 struct Actions {
@@ -85,6 +118,8 @@ struct Actions {
     new_layer: bool,
     new_master: Option<MasterScope>,
     delete_object: Option<Vec<ShapeId>>,
+    /// A command of an object row's menu for the objects it is for (#2189).
+    object_do: Option<(Vec<ShapeId>, ObjectDo)>,
     layer_to_master: Option<LayerId>,
     master_to_page: Option<LayerId>,
     /// Not an action: the page whose rows are being drawn (None for the
@@ -937,6 +972,65 @@ fn object_menu(app: &App, ui: &mut Ui, s: &Shape, label: &str, act: &mut Actions
         }
     });
     act.targets = targets;
+    // What the page's own menu has for the objects: the clipboard, then
+    // grouping and shape, hiding and locking, overprint (#2189).
+    let shapes: Vec<&Shape> = ids
+        .iter()
+        .filter_map(|id| app.doc().find_shape(*id))
+        .collect();
+    let many = ids.len() > 1;
+    let mut picked = None;
+    ui.separator();
+    for (what, key, on) in [
+        (ObjectDo::Cut, "menu.edit.cut", true),
+        (ObjectDo::Copy, "menu.edit.copy", true),
+        (ObjectDo::Paste, "menu.edit.paste", true),
+    ] {
+        if ui.add_enabled(on, egui::Button::new(tr(key))).clicked() {
+            picked = Some(what);
+        }
+    }
+    ui.separator();
+    for (what, key, on) in [
+        (ObjectDo::Group, "menu.object.group", many),
+        (ObjectDo::Combine, "menu.object.combine", many),
+        (ObjectDo::ToCurves, "menu.object.convert_to_curves", true),
+    ] {
+        if ui.add_enabled(on, egui::Button::new(tr(key))).clicked() {
+            picked = Some(what);
+        }
+    }
+    ui.separator();
+    for (what, key) in [
+        (ObjectDo::Hide, "menu.object.hide_object"),
+        (ObjectDo::Lock, "menu.object.lock_object"),
+    ] {
+        if ui.button(tr(key)).clicked() {
+            picked = Some(what);
+        }
+    }
+    ui.separator();
+    for (what, key, mut on) in [
+        (
+            ObjectDo::OverprintFill,
+            "menu.object.overprint_fill",
+            shapes.iter().any(|s| s.overprint_fill),
+        ),
+        (
+            ObjectDo::OverprintOutline,
+            "menu.object.overprint_outline",
+            shapes.iter().any(|s| s.overprint_outline),
+        ),
+    ] {
+        if ui.checkbox(&mut on, tr(key)).clicked() {
+            picked = Some(what);
+        }
+    }
+    if let Some(what) = picked {
+        act.object_do = Some((ids.clone(), what));
+        ui.close();
+    }
+    ui.separator();
     if ui.button(tr("menu.edit.delete")).clicked() {
         act.delete_object = Some(ids);
         ui.close();
@@ -1177,7 +1271,7 @@ fn object_row(
     resp.context_menu(|ui| {
         act.row_page = row_page;
         object_menu(app, ui, s, &label, act);
-        if act.move_to_layer.is_some() || act.delete_object.is_some() {
+        if act.move_to_layer.is_some() || act.delete_object.is_some() || act.object_do.is_some() {
             act.goto = act.goto.or(row_page.filter(|p| *p != app.page));
         }
     });
@@ -1998,6 +2092,9 @@ fn apply(app: &mut App, ui: &Ui, act: Actions) {
     }
     if let Some((ids, layer)) = act.move_to_layer {
         move_to_layer(app, &ids, layer);
+    }
+    if let Some((ids, what)) = act.object_do {
+        object_do(app, ids, what);
     }
     if let Some(ids) = act.delete_object {
         app.select(ids);
@@ -3002,5 +3099,38 @@ mod drag_tests {
         assert!(drop_commands(&app, &ids, on(a)).is_empty());
         assert!(drop_commands(&app, &ids, on(d)).is_empty());
         assert_eq!(drop_commands(&app, &ids, on(c)).len(), 1);
+    }
+
+    /// An object row's menu does what the page's menu does for the rows
+    /// it is for: overprint of fill and outline on and off, grouping,
+    /// hiding and locking, each one undo step (#2189).
+    #[test]
+    fn an_object_rows_menu_sets_overprint_groups_hides_and_locks() {
+        let mut app = App::headless();
+        let a = app.new_shape(rect_kind()).expect("a");
+        let b = app.new_shape(rect_kind()).expect("b");
+        let get = |app: &App, id: ShapeId| app.doc().find_shape(id).cloned().expect("shape");
+        object_do(&mut app, vec![a, b], ObjectDo::OverprintFill);
+        assert!(get(&app, a).overprint_fill && get(&app, b).overprint_fill);
+        assert!(!get(&app, a).overprint_outline);
+        object_do(&mut app, vec![a], ObjectDo::OverprintOutline);
+        assert!(get(&app, a).overprint_outline && !get(&app, b).overprint_outline);
+        object_do(&mut app, vec![a, b], ObjectDo::OverprintFill);
+        assert!(!get(&app, a).overprint_fill && !get(&app, b).overprint_fill);
+        app.undo();
+        assert!(get(&app, a).overprint_fill);
+        object_do(&mut app, vec![b], ObjectDo::Hide);
+        assert!(!get(&app, b).visible && get(&app, a).visible);
+        app.undo();
+        object_do(&mut app, vec![b], ObjectDo::Lock);
+        assert!(get(&app, b).locked && !get(&app, a).locked);
+        app.undo();
+        object_do(&mut app, vec![a, b], ObjectDo::Group);
+        assert_eq!(app.selection.len(), 1);
+        let g = app.selection[0];
+        assert!(matches!(
+            get(&app, g).kind,
+            tracedraw_core::ShapeKind::Group { ref children } if children.len() == 2
+        ));
     }
 }
