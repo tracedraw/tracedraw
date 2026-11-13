@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Shape tool: with a text selected, the property bar has the text fields (font, size, bold, italic, underline, strikethrough, alignment and the others the Text tool's bar has) before the character offsets and angle. They act on the characters whose nodes are chosen, or on the whole text when none is. The bar had the offsets alone, so the font could not be set from it with this tool (#2365).
 - Paragraph text: an empty text frame shows a grey hint in its middle, "Click here with the Text tool to add paragraph text", so a frame left empty can be seen for what it is. The hint is on screen only, as the frame's dashed line is: it is not printed or exported, it goes as soon as the frame holds text or is being edited, and a frame too small for it shows none. Insert Placeholder Text in the right-click menu works as before (#2524).
 - Page size: a page is resized about its centre. A new size from the property bar's list or its width and height fields, the Page Size dialog, Document Setup or Switch Page Orientation moves the page's objects by half of what the page grew or shrank, so a drawing centred on the page stays centred; the page grew from its bottom-left corner and left the drawing off centre. One undo step brings back the size and the objects. Fit Page to Drawing and the label sheets keep their own placing. Guidelines stay where they are (#2356).
 

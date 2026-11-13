@@ -1047,6 +1047,12 @@ alternates (`salt`), Swash (`swsh`); then Superscript and Subscript.
 
 ## Shape tool on text
 
+- The property bar has the text fields the Text tool's bar has (font,
+  size, bold, italic, underline, strikethrough, alignment and the
+  rest), then the character offsets and angle. They act on the
+  characters whose nodes are chosen, else on the whole text
+  (`text_path_bar::tests::the_shape_tool_shows_the_text_fields_on_a_text`,
+  #2365).
 - A node at the lower left of every character (of its own glyph, in right-to-left text too, each under its letter in reading order, #474,
   `text_nodes::tests::right_to_left_characters_have_their_nodes_under_their_glyphs`), on its (shifted)
   baseline; newlines have none. Click chooses one, Ctrl+click adds or
