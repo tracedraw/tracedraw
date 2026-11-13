@@ -25,6 +25,16 @@ object under the pointer, a locked one or one on a locked layer too
 (reading leaves it as it is; `App::hit_test_to_read`, #365). Applying a
 sampled colour or attributes never changes a locked object.
 
+## Sample again after applying
+
+Both tools' property bars have "Sample again after applying"
+(`settings.eyedropper_sample_after_apply`, off at first, kept between
+sessions). With it on, a click that applies puts the tool back in
+Select mode, so the next click samples: pick, apply, pick, apply with
+no key held and no press of Select Color, for a pen or a touch screen
+(`eyedropper::tests::the_eyedropper_samples_again_after_applying_when_asked`,
+#2380). Off, the tool stays in Apply mode as described above.
+
 ## Colour Eyedropper
 
 - Property bar: Select Color, Apply Color, sample size (1x1, 2x2, 5x5

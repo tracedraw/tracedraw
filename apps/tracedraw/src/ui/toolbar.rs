@@ -1634,6 +1634,11 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 {
                     app.eyedropper_apply = true;
                 }
+                ui.checkbox(
+                    &mut app.settings.eyedropper_sample_after_apply,
+                    tr("toolbar.sample_after_apply"),
+                )
+                .rich_tip(crate::ui::tips::keyed("toolbar.sample_after_apply"));
                 vsep(ui);
                 dim_labelled(ui, "toolbar.sample_size", |ui| {
                     for n in [1u32, 2, 5] {
@@ -1691,6 +1696,11 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 {
                     app.eyedropper_apply = true;
                 }
+                ui.checkbox(
+                    &mut app.settings.eyedropper_sample_after_apply,
+                    tr("toolbar.sample_after_apply"),
+                )
+                .rich_tip(crate::ui::tips::keyed("toolbar.sample_after_apply"));
                 vsep(ui);
                 let g = &mut app.eyedropper_groups;
                 ui.menu_button(tr("toolbar.attr_properties"), |ui| {

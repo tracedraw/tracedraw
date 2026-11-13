@@ -647,6 +647,10 @@ pub struct Settings {
     /// lines (else only the selected ones).
     #[serde(default = "default_true")]
     pub show_text_frames: bool,
+    /// The eyedroppers go back to sampling after each object they are
+    /// applied to ("Sample again after applying" on their bars, #2380).
+    #[serde(default)]
+    pub eyedropper_sample_after_apply: bool,
     /// Text fitted to a path: a drag off the path moves the text away
     /// from it in steps of `path_tick_mm` (tick snapping).
     #[serde(default)]
@@ -2042,6 +2046,7 @@ impl Default for Settings {
             warnings: Default::default(),
             curves: Default::default(),
             show_text_frames: true,
+            eyedropper_sample_after_apply: false,
             path_tick_snap: false,
             path_tick_mm: default_path_tick(),
             screen_margins: crate::ui::screen_margins::ScreenMargins::default(),

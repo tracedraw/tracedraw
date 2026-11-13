@@ -656,6 +656,11 @@ impl App {
                     let g = self.eyedropper_groups;
                     self.apply_attrs_at(p, &a, g);
                 }
+                // Back to sampling by itself, where the bar asks for it:
+                // no key has to be held (#2380).
+                if self.settings.eyedropper_sample_after_apply {
+                    self.eyedropper_apply = false;
+                }
             } else if let Some(a) = self.sample_attrs_at(p) {
                 self.eyedropper_attrs = Some(a);
                 self.eyedropper_apply = true;
@@ -668,6 +673,9 @@ impl App {
             if apply {
                 if let Some(c) = self.eyedropper_color {
                     self.apply_color_at(p, c, shift);
+                }
+                if self.settings.eyedropper_sample_after_apply {
+                    self.eyedropper_apply = false;
                 }
             } else if let Some(c) = self.sample_color_at(p, shift) {
                 self.eyedropper_color = Some(c);
@@ -802,6 +810,52 @@ mod tests {
             sb.stroke.as_ref().map(|s| s.color),
             Some(Color::rgb8(200, 10, 10))
         );
+    }
+
+    /// With "Sample again after applying" on, each eyedropper goes back
+    /// to sampling after the object it was applied to, so the next click
+    /// picks up a colour without a key held; off, it stays in Apply mode
+    /// as before (#2380).
+    #[test]
+    fn the_eyedropper_samples_again_after_applying_when_asked() {
+        let mut app = App::headless();
+        let a = rect(&mut app, Rect::new(0.0, 0.0, 10.0, 10.0));
+        let b = rect(&mut app, Rect::new(20.0, 0.0, 30.0, 10.0));
+        let target = rect(&mut app, Rect::new(40.0, 0.0, 50.0, 10.0));
+        let (red, green) = (Color::rgb8(200, 10, 10), Color::rgb8(10, 200, 10));
+        app.run(Command::SetFill {
+            shapes: vec![a],
+            fill: Fill::Solid(red),
+        });
+        app.run(Command::SetFill {
+            shapes: vec![b],
+            fill: Fill::Solid(green),
+        });
+        app.select(Vec::new());
+        let fill = |app: &App, id| app.doc().find_shape(id).expect("shape").fill.clone();
+        // Off: sample, apply, and the next click applies again.
+        app.eyedropper_click(Point::new(5.0, 5.0), false, false, false);
+        app.eyedropper_click(Point::new(45.0, 5.0), false, false, false);
+        assert_eq!(fill(&app, target), Fill::Solid(red));
+        assert!(app.eyedropper_apply, "stays in Apply mode");
+        // On: after applying, the next click samples.
+        app.eyedropper_reset();
+        app.settings.eyedropper_sample_after_apply = true;
+        app.eyedropper_click(Point::new(25.0, 5.0), false, false, false);
+        assert!(app.eyedropper_apply);
+        app.eyedropper_click(Point::new(45.0, 5.0), false, false, false);
+        assert_eq!(fill(&app, target), Fill::Solid(green));
+        assert!(!app.eyedropper_apply, "back to sampling");
+        app.eyedropper_click(Point::new(5.0, 5.0), false, false, false);
+        assert_eq!(app.eyedropper_color, Some(red));
+        assert_eq!(fill(&app, a), Fill::Solid(red), "sampling changes nothing");
+        // The attributes eyedropper too.
+        app.eyedropper_reset();
+        app.eyedropper_click(Point::new(5.0, 5.0), true, false, false);
+        assert!(app.eyedropper_apply);
+        app.eyedropper_click(Point::new(25.0, 5.0), true, false, false);
+        assert_eq!(fill(&app, b), Fill::Solid(red));
+        assert!(!app.eyedropper_apply);
     }
 
     /// Ctrl+click in Apply mode samples again, with either eyedropper,
