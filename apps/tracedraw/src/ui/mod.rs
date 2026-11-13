@@ -273,6 +273,24 @@ impl egui::Widget for Rail<'_> {
     }
 }
 
+/// The drawing's name for the window title: the tab's title with the
+/// file's whole path in place of its bare name, so where the drawing is
+/// kept can be read there and the status bar need not say it (#1126).
+/// What the tab adds to the name stays (the star of unsaved changes, the
+/// number of a second window). A drawing not saved yet keeps its name.
+pub(crate) fn titled_with_path(tab_title: &str, file: Option<&std::path::Path>) -> String {
+    let Some(path) = file else {
+        return tab_title.to_string();
+    };
+    let Some(stem) = path.file_stem().map(|s| s.to_string_lossy().to_string()) else {
+        return tab_title.to_string();
+    };
+    match tab_title.strip_prefix(stem.as_str()) {
+        Some(rest) if !stem.is_empty() => format!("{}{rest}", path.display()),
+        _ => tab_title.to_string(),
+    }
+}
+
 /// Set the window title (the page title in a browser) when it changes.
 fn set_window_title(ctx: &egui::Context, title: String) {
     let id = egui::Id::new("tracedraw_window_title");
@@ -414,7 +432,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     }
 
     let doc_name = if app.has_document() && !app.show_welcome {
-        app.document_tab_title(app.active_doc)
+        titled_with_path(&app.document_tab_title(app.active_doc), app.file.as_deref())
     } else {
         tr("welcome.title")
     };
@@ -3011,5 +3029,33 @@ mod tests {
             font_axes_button_rect(&ctx, "docker").is_some(),
             "in the Text docker"
         );
+    }
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::titled_with_path;
+    use std::path::Path;
+
+    /// The window title names the drawing by its file's whole path and
+    /// keeps what the tab adds to the name; a drawing with no file, or a
+    /// tab title that is not the file's name, stays as it is (#1126).
+    #[test]
+    fn the_window_title_shows_the_files_whole_path() {
+        let file = Path::new("/home/ana/work/poster.tdraw");
+        assert_eq!(
+            titled_with_path("poster", Some(file)),
+            "/home/ana/work/poster.tdraw"
+        );
+        assert_eq!(
+            titled_with_path("poster*", Some(file)),
+            "/home/ana/work/poster.tdraw*"
+        );
+        assert_eq!(
+            titled_with_path("poster:2*", Some(file)),
+            "/home/ana/work/poster.tdraw:2*"
+        );
+        assert_eq!(titled_with_path("Untitled-1", None), "Untitled-1");
+        assert_eq!(titled_with_path("Other", Some(file)), "Other");
     }
 }
