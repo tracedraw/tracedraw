@@ -723,6 +723,9 @@ pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
     let k = r.width() / 16.0;
     let s = Stroke::new(1.25 * k, color);
     let thin = Stroke::new(0.9 * k, color);
+    // Labels and pages in front of ink: the panel's colour, as the tool
+    // icons' opaque bodies, so they read on dark themes too (#2591).
+    let paper = Tokens::panel();
     let enabled = color == Tokens::icon();
     // A page with a folded top-right corner.
     let page = |painter: &Painter, x0: f32, y0: f32, x1: f32, y1: f32| {
@@ -804,7 +807,7 @@ pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
             painter.line_segment([p(r, 1.5, 3.0), p(r, 1.5, 14.0)], s);
         }
         Action::Save => {
-            // A solid floppy disk with a white label and shutter.
+            // A solid floppy disk with a panel coloured label and shutter.
             painter.add(epaint::PathShape::convex_polygon(
                 vec![
                     p(r, 1.5, 1.5),
@@ -819,7 +822,7 @@ pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
             painter.rect_filled(
                 Rect::from_min_max(p(r, 4.0, 1.5), p(r, 11.0, 5.5)),
                 0.0,
-                Color32::WHITE,
+                paper,
             );
             painter.rect_filled(
                 Rect::from_min_max(p(r, 8.5, 2.2), p(r, 10.0, 4.8)),
@@ -829,7 +832,7 @@ pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
             painter.rect_filled(
                 Rect::from_min_max(p(r, 4.0, 9.0), p(r, 12.0, 14.5)),
                 0.0,
-                Color32::WHITE,
+                paper,
             );
         }
         Action::Print => {
@@ -890,7 +893,7 @@ pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
                     painter.rect_filled(
                         Rect::from_min_max(p(r, 6.0, 5.5), p(r, 14.5, 15.0)),
                         0.0,
-                        Color32::WHITE,
+                        paper,
                     );
                     page(painter, 6.0, 5.5, 14.5, 15.0);
                     lines(painter, 8.0, 9.0, 12.5);
@@ -904,7 +907,7 @@ pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
                     painter.rect_filled(
                         Rect::from_min_max(p(r, 7.0, 6.0), p(r, 14.5, 15.0)),
                         0.0,
-                        Color32::WHITE,
+                        paper,
                     );
                     page(painter, 7.0, 6.0, 14.5, 15.0);
                     lines(painter, 9.0, 9.0, 12.5);

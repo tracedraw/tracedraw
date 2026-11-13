@@ -60,6 +60,10 @@ on a wire.
 - `icons::draw(painter, rect, tool, color)` draws with `color` as the
   ink on the panel; `draw_on` takes the surface's colour too (white on
   the cursor badge and in the Hints pictures).
+- `icons::draw_action(painter, rect, action, color)` draws the standard
+  toolbar and menu icons with `color` as the ink on the panel; the parts
+  in front of the ink (the Save disk's label and shutter, the page in
+  front on Copy and Paste) take the panel's colour (#2591).
 - The accent is the brand blue at full strength only: a dimmed icon
   (the theme's disabled icon colour, or a translucent ink) stays
   monochrome, and the High Contrast theme keeps its one icon colour
