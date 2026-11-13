@@ -739,7 +739,6 @@ pub(crate) fn page_tab_menu(app: &App, ui: &mut Ui) -> Option<PageTabAction> {
 /// Carry out a page tab menu command on the current page.
 pub(crate) fn apply_page_tab_action(app: &mut App, action: PageTabAction) {
     use crate::ui::dialogs::Dialog;
-    use tracedraw_core::Command;
     match action {
         PageTabAction::Rename => {
             let name = app
@@ -761,10 +760,8 @@ pub(crate) fn apply_page_tab_action(app: &mut App, action: PageTabAction) {
         PageTabAction::SwitchOrientation => {
             let s = app.page_size();
             let page = app.page;
-            app.run(Command::ResizePage {
-                page,
-                size: tracedraw_core::geometry::Size::new(s.height, s.width),
-            });
+            let size = tracedraw_core::geometry::Size::new(s.height, s.width);
+            app.resize_pages_about_centre(&[page], size, "Switch Page Orientation");
             app.fit_pending = true;
         }
     }

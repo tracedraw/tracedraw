@@ -8,7 +8,6 @@ use crate::ui::dialogs::Dialog;
 use crate::ui::tips::RichTip;
 use egui::Ui;
 use tracedraw_core::document::ShapeKind;
-use tracedraw_core::Command;
 
 const MENU_WIDTH: f32 = 250.0;
 /// Menu rows: 26 px tall, a 30 px grey gutter
@@ -3069,10 +3068,8 @@ pub(crate) fn layout_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.layout.switch_orientation", "", true) {
         let s = app.page_size();
         let page = app.page;
-        app.run(Command::ResizePage {
-            page,
-            size: tracedraw_core::geometry::Size::new(s.height, s.width),
-        });
+        let size = tracedraw_core::geometry::Size::new(s.height, s.width);
+        app.resize_pages_about_centre(&[page], size, "Switch Page Orientation");
         app.fit_pending = true;
     }
     sep(ui);

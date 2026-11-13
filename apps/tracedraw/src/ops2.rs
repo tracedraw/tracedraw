@@ -254,6 +254,60 @@ impl App {
         self.fit_pages_to(&fits, "Fit Page to Drawing");
     }
 
+    /// The commands that give `page` the size `size` about its centre:
+    /// the new size, and the page's objects moved by half of what the
+    /// page grew or shrank, so what sat in the middle of the page stays
+    /// in the middle (#2356). Nothing when the page already has the size.
+    pub fn resize_page_cmds(
+        &self,
+        page: tracedraw_core::PageId,
+        size: tracedraw_core::geometry::Size,
+    ) -> Vec<Command> {
+        use tracedraw_core::geometry::{Affine, Vec2};
+        let Ok(p) = self.doc().page(page) else {
+            return Vec::new();
+        };
+        let shift = Vec2::new(
+            (size.width - p.size.width) / 2.0,
+            (size.height - p.size.height) / 2.0,
+        );
+        if !shift.x.is_finite() || !shift.y.is_finite() || shift.hypot() < 1e-9 {
+            return Vec::new();
+        }
+        let shapes: Vec<ShapeId> = p
+            .layers
+            .iter()
+            .flat_map(|l| l.shapes.iter().map(|s| s.id))
+            .collect();
+        let mut cmds = vec![Command::ResizePage { page, size }];
+        if !shapes.is_empty() {
+            cmds.push(Command::TransformShapes {
+                shapes,
+                transform: Affine::translate(shift),
+            });
+        }
+        cmds
+    }
+
+    /// Resize `pages` to `size`, each about its centre, as one undo step.
+    pub fn resize_pages_about_centre(
+        &mut self,
+        pages: &[tracedraw_core::PageId],
+        size: tracedraw_core::geometry::Size,
+        label: &'static str,
+    ) {
+        let cmds: Vec<Command> = pages
+            .iter()
+            .flat_map(|&page| self.resize_page_cmds(page, size))
+            .collect();
+        if cmds.is_empty() {
+            return;
+        }
+        if let Err(e) = self.engine.run_batch(label, &cmds) {
+            self.status = e.to_string();
+        }
+    }
+
     /// Size each page to its rectangle and move the page's objects so the
     /// rectangle's bottom-left corner is the page's; one undo step for
     /// all of them. A page whose rectangle is empty or not a number keeps
@@ -5256,6 +5310,43 @@ mod tests {
             ShapeKind::SymbolInstance { index } => index,
             ref k => panic!("{k:?}"),
         }
+    }
+
+    /// A page is resized about its centre: an object in the middle of
+    /// the page stays in the middle, on every page resized, and one undo
+    /// brings back both the size and the place (#2356).
+    #[test]
+    fn a_page_is_resized_about_its_centre() {
+        use tracedraw_core::geometry::Size;
+        let mut app = App::headless();
+        let first = app.page;
+        let old = app.page_size();
+        let (cx, cy) = (old.width / 2.0, old.height / 2.0);
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(cx - 10.0, cy - 5.0, cx + 10.0, cy + 5.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.insert_page(true);
+        let second = app.page;
+        let size = Size::new(old.width + 100.0, old.height - 40.0);
+        app.resize_pages_about_centre(&[first, second], size, "Page Size");
+        assert_eq!(app.doc().page(first).expect("page").size, size);
+        assert_eq!(app.doc().page(second).expect("page").size, size);
+        app.select(vec![id]);
+        let c = app.selection_bounds().expect("bounds").center();
+        assert!((c.x - size.width / 2.0).abs() < 1e-6, "{c:?}");
+        assert!((c.y - size.height / 2.0).abs() < 1e-6, "{c:?}");
+        // One step back: the size and the object as they were.
+        app.undo();
+        assert_eq!(app.doc().page(first).expect("page").size, old);
+        app.select(vec![id]);
+        let c = app.selection_bounds().expect("bounds").center();
+        assert!((c.x - cx).abs() < 1e-6 && (c.y - cy).abs() < 1e-6, "{c:?}");
+        // The same size again changes nothing and makes no undo step.
+        assert!(app.resize_page_cmds(first, old).is_empty());
     }
 
     /// The Repeat Copies values stay as typed: after an Apply (its copies

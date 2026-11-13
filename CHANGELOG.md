@@ -4,6 +4,9 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Page size: a page is resized about its centre. A new size from the property bar's list or its width and height fields, the Page Size dialog, Document Setup or Switch Page Orientation moves the page's objects by half of what the page grew or shrank, so a drawing centred on the page stays centred; the page grew from its bottom-left corner and left the drawing off centre. One undo step brings back the size and the objects. Fit Page to Drawing and the label sheets keep their own placing. Guidelines stay where they are (#2356).
 ## 0.45.1 (2026-11-13)
 
 - TraceDraw starts again on graphics cards without compute shaders, such as older integrated cards drawn through OpenGL on Linux. Version 0.45.0 prepared the shadow blur of the graphics card on every card at the start, and a card that takes no storage buffers in a compute shader answered with an error that stopped the program before its window opened ("Too many bindings of type StorageBuffers"). The card's limits are now read first; on such a card shadows are blurred on the processor, as before 0.45.0, and Options says the blur on the graphics card is not available (#2568).

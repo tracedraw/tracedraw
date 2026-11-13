@@ -1803,13 +1803,7 @@ pub fn resize_pages(app: &mut App, size: Size) {
     } else {
         vec![app.page]
     };
-    let cmds: Vec<Command> = pages
-        .into_iter()
-        .map(|page| Command::ResizePage { page, size })
-        .collect();
-    if let Err(e) = app.engine.run_batch("Page Size", &cmds) {
-        app.status = e.to_string();
-    }
+    app.resize_pages_about_centre(&pages, size, "Page Size");
 }
 
 // ----- the object bar ---------------------------------------------------

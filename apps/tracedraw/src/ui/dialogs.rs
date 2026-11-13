@@ -2082,11 +2082,7 @@ pub fn show(app: &mut App, ctx: &Context) {
                     } else {
                         vec![app.page]
                     };
-                    let cmds: Vec<Command> = pages
-                        .into_iter()
-                        .map(|page| Command::ResizePage { page, size })
-                        .collect();
-                    let _ = app.engine.run_batch("Page Size", &cmds);
+                    app.resize_pages_about_centre(&pages, size, "Page Size");
                     app.fit_pending = true;
                 }
             });
@@ -3884,11 +3880,7 @@ pub(crate) fn page_size_page(app: &mut App, ui: &mut Ui) {
         } else {
             app.doc().pages.iter().map(|p| p.id).collect()
         };
-        let cmds: Vec<Command> = pages
-            .into_iter()
-            .map(|page| Command::ResizePage { page, size })
-            .collect();
-        let _ = app.engine.run_batch("Page Size", &cmds);
+        app.resize_pages_about_centre(&pages, size, "Page Size");
         app.fit_pending = true;
     }
     ui.add_space(10.0);
