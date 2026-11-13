@@ -2655,6 +2655,24 @@ fn draw_spacing_arrow(painter: &Painter, c: Pos2, horizontal: bool, color: Color
     ));
 }
 
+/// The outline of a rectangle, ellipse or polygon the Shape tool edits,
+/// on screen: one line of points for each of its outlines, a closed one
+/// ending where it starts. Drawn dashed in the node colour (#670).
+pub(crate) fn kind_outline(s: &tracedraw_core::Shape, view: &View) -> Vec<Vec<Pos2>> {
+    flatten(&s.page_path(), view)
+        .into_iter()
+        .map(|(mut pts, closed)| {
+            if closed {
+                if let Some(first) = pts.first().copied() {
+                    pts.push(first);
+                }
+            }
+            pts
+        })
+        .filter(|pts| pts.len() >= 2)
+        .collect()
+}
+
 /// Shape tool overlay, as Options > Nodes and Handles sets it: nodes
 /// shaped by type (cusp, smooth, symmetrical), the selected ones filled
 /// with the main colour, the others white or hollow, the first node of a
@@ -2798,6 +2816,18 @@ fn draw_nodes(app: &App, painter: &Painter) {
                     EStroke::new(1.0, Tokens::SELECTION),
                     epaint::StrokeKind::Outside,
                 );
+            }
+            // Its outline dashed in the node colour, under the nodes, so
+            // the shape being edited reads on any fill (#670).
+            if !own.is_empty() {
+                for pts in kind_outline(&s, view) {
+                    painter.extend(egui::Shape::dashed_line(
+                        &pts,
+                        EStroke::new(1.0, outline_of(s.id)),
+                        4.0,
+                        3.0,
+                    ));
+                }
             }
             for (node, p) in own {
                 let chosen = matches!(
@@ -3807,5 +3837,46 @@ mod tests {
         m.grid.baseline_start = 0.0;
         app.run(tracedraw_core::Command::SetMetadata { metadata: m });
         assert!((app.baseline_ys()[0] - page.y1).abs() < 1e-9);
+    }
+}
+
+#[cfg(test)]
+mod kind_outline_tests {
+    use super::*;
+
+    /// The Shape tool's dashed outline of a rectangle goes round its four
+    /// corners and closes; an ellipse gives one closed line too; an open
+    /// curve is not closed (#670).
+    #[test]
+    fn the_outline_of_a_rectangle_goes_round_and_closes() {
+        use tracedraw_core::geometry::{Point, Rect};
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 50.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        let s = app.doc().find_shape(id).cloned().expect("shape");
+        let lines = kind_outline(&s, &app.view);
+        assert_eq!(lines.len(), 1);
+        let pts = &lines[0];
+        assert_eq!(pts.first(), pts.last());
+        for corner in [(10.0, 10.0), (50.0, 10.0), (50.0, 30.0), (10.0, 30.0)] {
+            let c = app.view.to_screen(Point::new(corner.0, corner.1));
+            assert!(pts.iter().any(|p| p.distance(c) < 0.01), "{corner:?}");
+        }
+        let e = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: Rect::new(60.0, 10.0, 100.0, 30.0),
+                arc: None,
+            })
+            .expect("ellipse");
+        let s = app.doc().find_shape(e).cloned().expect("shape");
+        let lines = kind_outline(&s, &app.view);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].first(), lines[0].last());
+        assert!(lines[0].len() > 8, "a curve in many steps");
     }
 }
