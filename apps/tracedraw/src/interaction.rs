@@ -2052,6 +2052,24 @@ impl App {
     }
 
     fn pick_input(&mut self, response: &Response, p: Point, screen: egui::Pos2, mods: Modifiers) {
+        // Ctrl+click on a table chooses the cell under the pointer, and
+        // with a cell chosen Shift+click adds another; any other click
+        // lets the cells go (#2434).
+        if response.clicked_by(PointerButton::Primary) {
+            use crate::table_tool::CellPick;
+            let chosen = self.table_edit.is_some();
+            let how = if mods.command || mods.ctrl {
+                Some(CellPick::One)
+            } else if mods.shift && chosen {
+                Some(CellPick::Toggle)
+            } else {
+                None
+            };
+            if how.is_some_and(|h| self.handle_at(screen).is_none() && self.pick_table_cell(p, h)) {
+                return;
+            }
+            self.table_edit = None;
+        }
         // A press on a frame's flow tab: where its text flows on is the
         // next click (#371).
         if response.clicked_by(PointerButton::Primary)
@@ -2582,6 +2600,25 @@ impl App {
     }
 
     fn shape_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
+        // On a table a click chooses the cell under the pointer, with
+        // Ctrl one more or less and with Shift the block from the active
+        // cell, as the Table tool chooses them (which edits the text on
+        // a plain click); a click anywhere else lets the cells go
+        // (#2436).
+        if response.clicked_by(PointerButton::Primary) {
+            use crate::table_tool::CellPick;
+            let how = if mods.command || mods.ctrl {
+                CellPick::Toggle
+            } else if mods.shift {
+                CellPick::Range
+            } else {
+                CellPick::One
+            };
+            if self.pick_table_cell(p, how) {
+                return;
+            }
+            self.table_edit = None;
+        }
         self.shape_tool_input(response, p, mods);
     }
 
