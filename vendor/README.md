@@ -357,6 +357,19 @@ change marked `TraceDraw:` in a comment.
   crate; TraceDraw's tests include and run it
   (`winit_size_bounds::tests`). Not run on Windows here: the copy is
   checked to build for `x86_64-pc-windows-gnu`.
+- Change: on Windows 11 a window whose scaling changed takes the
+  rectangle Windows suggests (#2487, as winit 0.31 does). Dragged from
+  one monitor to another of a different scaling, `WM_DPICHANGED` placed
+  the window with winit's own rectangle, made for Windows 10: it kept
+  the pointer's place across the title bar only and then moved the
+  window step by step onto the monitor of the new scaling, so the
+  window stopped following the pointer, jumped, and went back and forth
+  between the monitors (two monitors one above the other the worst).
+  `platform_impl/windows/event_loop.rs` now takes the suggested
+  rectangle as it is on Windows 11 and later (build 22000 on, read with
+  `RtlGetVersion` by `dark_mode.rs`); Windows 10 keeps winit's
+  rectangle. The decision is `size_bounds::takes_suggested_rect`,
+  tested with the file. Not run on Windows here.
 - Change: Android reports a mouse as a mouse (#2152, #2161). winit's
   Android backend turned every pointer of a `MotionEvent` into a `Touch`
   and dropped hover, scroll and button actions ("TODO mouse events"), so a

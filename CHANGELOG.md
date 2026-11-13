@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Windows 11, two monitors with different scaling: a window dragged from one to the other stays under the pointer and keeps the size it should have there. It jumped away from the pointer, came out small, and went back and forth between the monitors (#2487).
 - Shape tool: a rectangle, ellipse or polygon being edited shows its outline as a dashed line in the node colour, under its nodes, so the shape reads on any fill, as a curve's outline does. Only the nodes showed (#670).
 - Bitmaps > Crop to Frame frees a picture from a frame of any shape: the piece of a picture cut with the Knife, a picture in an oval or any other outline becomes a picture of its own, with the pixels outside the outline made see-through. Only a rectangular frame let its picture go; any other kept the picture inside it (#1913).
 - Blend tool: a colour dragged from a palette and dropped on the square at the start or the end of the blend in hand becomes the fill of that end's object, and the steps between follow. A drop on the square of a text went nowhere when the middle of the text lay between its letters (#965).
