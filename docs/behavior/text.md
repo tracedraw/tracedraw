@@ -498,6 +498,13 @@ rings as curves).
   into the next frame of a linked chain. Options > Text > Show Text Frames (on by default, kept between
   sessions) shows every frame; off, only the selected and edited ones
   show.
+- An empty frame that is shown, with no text flowing into it and not
+  being edited, has a grey hint in its middle ("Click here with the Text
+  tool to add paragraph text", `canvas.empty_text_frame_hint`). It is
+  on screen only, like the frame line, and is left out where the frame
+  is too small on screen to hold it
+  (`text_frames::tests::an_empty_frame_shows_a_hint_until_it_has_text`,
+  #2524).
 - Scaling a paragraph text with the Pick tool's handles, or with the
   property bar's size and scale fields, changes its frame and the text
   flows anew in it; the letters keep their size and the text's transform

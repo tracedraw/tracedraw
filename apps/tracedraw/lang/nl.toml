@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "Hoeveel de tekengrootte verandert bij elk
 options.default_font_tip = "Het lettertype van nieuwe tekst."
 menu.text.show_non_printing_tip = "Toont spaties, tabs en regeleinden als tekens."
 menu.text.show_text_frames_tip = "Toont de kaders van alineatekst."
+canvas.empty_text_frame_hint = "Klik hier met het gereedschap Tekst om alineatekst toe te voegen" # mt
 menu.text.use_hyphenation_tip = "Breekt lange woorden aan het regeleinde af met een streepje."
 options.show_recent_fonts_tip = "Zet de laatst gebruikte lettertypen bovenaan de lettertypelijsten."
 writing.ignore_digits_tip = "Controleert geen woorden met cijfers."

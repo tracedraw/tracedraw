@@ -2267,6 +2267,30 @@ fn draw_pending_text_link(app: &App, painter: &Painter, pointer: Option<Pos2>) {
     painter.circle_filled(from, 2.5, Tokens::SELECTION);
 }
 
+/// The hint an empty paragraph text frame shows on screen, in grey in
+/// the middle of the frame: what to do with it. Only where the frame is
+/// large enough on screen to hold it; never printed or exported, as the
+/// frame's dashed line is not (#2524).
+fn draw_empty_frame_hint(painter: &Painter, pts: &[Pos2]) {
+    let rect = ERect::from_points(pts).shrink(4.0);
+    if !rect.is_finite() || rect.width() < 60.0 || rect.height() < 14.0 {
+        return;
+    }
+    let galley = painter.layout(
+        crate::i18n::tr("canvas.empty_text_frame_hint"),
+        egui::FontId::proportional(12.0),
+        Color32::from_gray(140),
+        rect.width(),
+    );
+    if galley.size().y > rect.height() {
+        return;
+    }
+    let at = rect.center() - galley.size() / 2.0;
+    painter
+        .with_clip_rect(rect.intersect(painter.clip_rect()))
+        .galley(at, galley, Color32::from_gray(140));
+}
+
 /// Paragraph text frames: dashed lines in the colour `text_frame_color`
 /// gives.
 fn draw_text_frames(app: &App, painter: &Painter, preview: Option<Affine>) {
@@ -2283,6 +2307,9 @@ fn draw_text_frames(app: &App, painter: &Painter, preview: Option<Affine>) {
             4.0,
             3.0,
         ));
+        if f.empty_hint {
+            draw_empty_frame_hint(painter, &pts);
+        }
         // The flow tab under the bottom edge's middle: a down arrow when
         // the text does not fit, two links when it flows on, empty on a
         // picked frame; a click on it says where the text flows on.

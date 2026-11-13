@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "مقدار تغيّر حجم الخط م�
 options.default_font_tip = "خط النص الجديد."
 menu.text.show_non_printing_tip = "عرض المسافات وعلامات الجدولة ونهايات الأسطر كعلامات."
 menu.text.show_text_frames_tip = "إظهار إطارات نص الفقرة."
+canvas.empty_text_frame_hint = "انقر هنا بأداة النص لإضافة نص فقرة" # mt
 menu.text.use_hyphenation_tip = "تقسيم الكلمات الطويلة في نهاية الأسطر بواصلة."
 options.show_recent_fonts_tip = "عرض الخطوط المستخدمة أخيرًا أعلى قوائم الخطوط."
 writing.ignore_digits_tip = "عدم تدقيق الكلمات التي تحتوي على أرقام."

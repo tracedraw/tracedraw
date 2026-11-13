@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "Boyut kısayoluna her basışta yazı tip
 options.default_font_tip = "Yeni metnin yazı tipi."
 menu.text.show_non_printing_tip = "Boşlukları, sekmeleri ve satır sonlarını işaret olarak gösterir."
 menu.text.show_text_frames_tip = "Paragraf metninin çerçevelerini gösterir."
+canvas.empty_text_frame_hint = "Paragraf metni eklemek için Metin aracıyla buraya tıklayın" # mt
 menu.text.use_hyphenation_tip = "Satır sonunda uzun sözcükleri tireyle böler."
 options.show_recent_fonts_tip = "Son kullanılan yazı tiplerini listelerin başında gösterir."
 writing.ignore_digits_tip = "Rakam içeren sözcükleri denetlemez."

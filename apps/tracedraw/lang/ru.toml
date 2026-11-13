@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "На сколько меняется ра
 options.default_font_tip = "Шрифт нового текста."
 menu.text.show_non_printing_tip = "Показывать пробелы, табуляции и концы строк значками."
 menu.text.show_text_frames_tip = "Показывать рамки простого текста."
+canvas.empty_text_frame_hint = "Щёлкните здесь инструментом «Текст», чтобы добавить простой текст" # mt
 menu.text.use_hyphenation_tip = "Переносить длинные слова в конце строк через дефис."
 options.show_recent_fonts_tip = "Показывать последние шрифты вверху списков."
 writing.ignore_digits_tip = "Не проверять слова с цифрами."

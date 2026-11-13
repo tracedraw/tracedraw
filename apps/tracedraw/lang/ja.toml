@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "サイズのショートカットを押�
 options.default_font_tip = "新しい文字のフォント。"
 menu.text.show_non_printing_tip = "スペース、タブ、行末を記号で表示します。"
 menu.text.show_text_frames_tip = "段落テキストの枠を表示します。"
+canvas.empty_text_frame_hint = "テキスト ツールでここをクリックして段落テキストを追加" # mt
 menu.text.use_hyphenation_tip = "行末で長い単語をハイフンで区切ります。"
 options.show_recent_fonts_tip = "最近使ったフォントをフォント一覧の先頭に表示します。"
 writing.ignore_digits_tip = "数字を含む単語はチェックしません。"

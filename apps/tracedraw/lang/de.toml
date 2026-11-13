@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "Um wie viel sich die Schriftgröße bei j
 options.default_font_tip = "Die Schrift neuen Textes."
 menu.text.show_non_printing_tip = "Zeigt Leerzeichen, Tabulatoren und Zeilenenden als Zeichen."
 menu.text.show_text_frames_tip = "Zeigt die Rahmen von Mengentext."
+canvas.empty_text_frame_hint = "Hier mit dem Textwerkzeug klicken, um Mengentext hinzuzufügen" # mt
 menu.text.use_hyphenation_tip = "Trennt lange Wörter am Zeilenende mit Bindestrich."
 options.show_recent_fonts_tip = "Listet die zuletzt verwendeten Schriften oben in den Schriftlisten."
 writing.ignore_digits_tip = "Prüft keine Wörter mit Ziffern."

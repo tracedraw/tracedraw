@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "O ile zmienia się rozmiar czcionki przy 
 options.default_font_tip = "Czcionka nowego tekstu."
 menu.text.show_non_printing_tip = "Pokaż spacje, tabulatory i końce wierszy jako znaki."
 menu.text.show_text_frames_tip = "Pokaż ramki tekstu akapitowego."
+canvas.empty_text_frame_hint = "Kliknij tutaj narzędziem Tekst, aby dodać tekst akapitowy" # mt
 menu.text.use_hyphenation_tip = "Dziel długie słowa na końcu wiersza łącznikiem."
 options.show_recent_fonts_tip = "Pokaż ostatnio używane czcionki na górze list."
 writing.ignore_digits_tip = "Nie sprawdzaj słów zawierających cyfry."

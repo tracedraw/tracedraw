@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "O kolik se změní velikost písma při k
 options.default_font_tip = "Písmo nového textu."
 menu.text.show_non_printing_tip = "Zobrazí mezery, tabulátory a konce řádků jako značky."
 menu.text.show_text_frames_tip = "Zobrazí rámečky odstavcového textu."
+canvas.empty_text_frame_hint = "Klikněte sem nástrojem Text a přidejte odstavcový text" # mt
 menu.text.use_hyphenation_tip = "Dělí dlouhá slova na konci řádků spojovníkem."
 options.show_recent_fonts_tip = "Zobrazí naposledy použitá písma nahoře v seznamech."
 writing.ignore_digits_tip = "Nekontroluje slova s číslicemi."

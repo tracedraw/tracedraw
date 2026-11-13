@@ -7159,6 +7159,7 @@ options.keyboard_text_increment_tip = "ລະດັບການປ່ຽນແ�
 options.default_font_tip = "ຟອນເລີ່ມຕົ້ນຂອງຂໍ້ຄວາມໃໝ່."
 menu.text.show_non_printing_tip = "ສະແດງຍະຫວ່າງ, ແທັບ ແລະ ຈຸດສິ້ນສຸດແຖວ ເປັນເຄື່ອງໝາຍສັນຍະລັກ."
 menu.text.show_text_frames_tip = "ສະແດງກອບຂອງຂໍ້ຄວາມແບບວັກຕອນ."
+canvas.empty_text_frame_hint = "ຄລິກບ່ອນນີ້ດ້ວຍເຄື່ອງມືຂໍ້ຄວາມເພື່ອເພີ່ມຂໍ້ຄວາມຫຍໍ້ໜ້າ" # mt
 menu.text.use_hyphenation_tip = "ຕັດຄຳສັບທີ່ຍາວຢູ່ທ້າຍແຖວດ້ວຍເຄື່ອງໝາຍຂີດຕໍ່."
 options.show_recent_fonts_tip = "ສະແດງຟອນທີ່ໃຊ້ຫຼ້າສຸດໄວ້ເທິງສຸດຂອງລາຍການຟອນ."
 writing.ignore_digits_tip = "ບໍ່ກວດສອບຄຳສັບທີ່ມີຕົວເລກປົນຢູ່."

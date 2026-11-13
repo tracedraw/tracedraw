@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "Quanto o tamanho da fonte muda a cada toq
 options.default_font_tip = "A fonte do texto novo."
 menu.text.show_non_printing_tip = "Mostra espaços, tabulações e fins de linha como marcas."
 menu.text.show_text_frames_tip = "Mostra os quadros do texto de parágrafo."
+canvas.empty_text_frame_hint = "Clique aqui com a ferramenta Texto para adicionar texto de parágrafo" # mt
 menu.text.use_hyphenation_tip = "Quebra palavras longas no fim das linhas com hífen."
 options.show_recent_fonts_tip = "Lista as fontes usadas por último no alto das listas."
 writing.ignore_digits_tip = "Não verifica palavras que contêm dígitos."

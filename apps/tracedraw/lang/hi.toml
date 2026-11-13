@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "आकार शॉर्टकट हर
 options.default_font_tip = "नए पाठ का फ़ॉन्ट।"
 menu.text.show_non_printing_tip = "रिक्त स्थान, टैब और पंक्ति अंत को चिह्नों से दिखाएँ।"
 menu.text.show_text_frames_tip = "पैराग्राफ़ पाठ के फ़्रेम दिखाएँ।"
+canvas.empty_text_frame_hint = "पैराग्राफ़ टेक्स्ट जोड़ने के लिए टेक्स्ट टूल से यहाँ क्लिक करें" # mt
 menu.text.use_hyphenation_tip = "पंक्ति के अंत में लंबे शब्दों को हाइफ़न से तोड़ें।"
 options.show_recent_fonts_tip = "हाल में उपयोग किए फ़ॉन्ट फ़ॉन्ट सूचियों में ऊपर दिखाएँ।"
 writing.ignore_digits_tip = "अंकों वाले शब्दों की जाँच न करें।"

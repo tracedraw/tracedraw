@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "Seberapa besar ukuran font berubah setiap
 options.default_font_tip = "Font teks baru."
 menu.text.show_non_printing_tip = "Tampilkan spasi, tab, dan akhir baris sebagai tanda."
 menu.text.show_text_frames_tip = "Tampilkan bingkai teks paragraf."
+canvas.empty_text_frame_hint = "Klik di sini dengan alat Teks untuk menambahkan teks paragraf" # mt
 menu.text.use_hyphenation_tip = "Penggal kata panjang di akhir baris dengan tanda hubung."
 options.show_recent_fonts_tip = "Tampilkan font yang terakhir dipakai di atas daftar font."
 writing.ignore_digits_tip = "Jangan periksa kata yang memuat angka."

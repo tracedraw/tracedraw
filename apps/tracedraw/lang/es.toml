@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "Cuánto cambia el tamaño de fuente con c
 options.default_font_tip = "La fuente del texto nuevo."
 menu.text.show_non_printing_tip = "Muestra espacios, tabulaciones y finales de línea como marcas."
 menu.text.show_text_frames_tip = "Muestra los marcos del texto de párrafo."
+canvas.empty_text_frame_hint = "Haga clic aquí con la herramienta Texto para añadir texto de párrafo" # mt
 menu.text.use_hyphenation_tip = "Corta las palabras largas al final de línea con un guion."
 options.show_recent_fonts_tip = "Muestra las fuentes usadas últimamente arriba en las listas."
 writing.ignore_digits_tip = "No revisa las palabras que contienen dígitos."

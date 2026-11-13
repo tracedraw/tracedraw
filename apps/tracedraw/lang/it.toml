@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "Di quanto cambia la dimensione del caratt
 options.default_font_tip = "Il carattere del nuovo testo."
 menu.text.show_non_printing_tip = "Mostra spazi, tabulazioni e fine riga come segni."
 menu.text.show_text_frames_tip = "Mostra le cornici del testo in paragrafo."
+canvas.empty_text_frame_hint = "Fare clic qui con lo strumento Testo per aggiungere testo paragrafo" # mt
 menu.text.use_hyphenation_tip = "Divide le parole lunghe a fine riga con un trattino."
 options.show_recent_fonts_tip = "Elenca in cima agli elenchi i caratteri usati per ultimi."
 writing.ignore_digits_tip = "Non controlla le parole che contengono cifre."

@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "De combien la taille de police change à 
 options.default_font_tip = "La police du nouveau texte."
 menu.text.show_non_printing_tip = "Affiche les espaces, tabulations et fins de ligne sous forme de marques."
 menu.text.show_text_frames_tip = "Affiche les cadres du texte courant."
+canvas.empty_text_frame_hint = "Cliquez ici avec l'outil Texte pour ajouter du texte courant" # mt
 menu.text.use_hyphenation_tip = "Coupe les mots longs en fin de ligne avec un trait d'union."
 options.show_recent_fonts_tip = "Liste les dernières polices utilisées en haut des listes de polices."
 writing.ignore_digits_tip = "Ne vérifie pas les mots contenant des chiffres."

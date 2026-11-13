@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "每按一次字級快速鍵時字級的�
 options.default_font_tip = "新文字的字型。"
 menu.text.show_non_printing_tip = "以標記顯示空格、定位字元和行尾。"
 menu.text.show_text_frames_tip = "顯示段落文字的框。"
+canvas.empty_text_frame_hint = "使用文字工具按一下這裡以新增段落文字" # mt
 menu.text.use_hyphenation_tip = "在行尾以連字號斷開長單字。"
 options.show_recent_fonts_tip = "在字型清單頂端列出最近使用的字型。"
 writing.ignore_digits_tip = "不檢查包含數字的單字。"

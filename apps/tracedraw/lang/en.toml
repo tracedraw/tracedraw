@@ -7159,6 +7159,7 @@ options.keyboard_text_increment_tip = "How much the font size changes with each 
 options.default_font_tip = "The font of new text."
 menu.text.show_non_printing_tip = "Show spaces, tabs and line ends as marks."
 menu.text.show_text_frames_tip = "Show the frames of paragraph text."
+canvas.empty_text_frame_hint = "Click here with the Text tool to add paragraph text"
 menu.text.use_hyphenation_tip = "Break long words at the end of lines with a hyphen."
 options.show_recent_fonts_tip = "List the fonts used last at the top of the font lists."
 writing.ignore_digits_tip = "Do not check words that contain digits."

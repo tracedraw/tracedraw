@@ -7149,6 +7149,7 @@ options.keyboard_text_increment_tip = "আকারের শর্টকাট 
 options.default_font_tip = "নতুন লেখার ফন্ট।"
 menu.text.show_non_printing_tip = "স্পেস, ট্যাব ও লাইনের শেষ চিহ্ন হিসেবে দেখান।"
 menu.text.show_text_frames_tip = "অনুচ্ছেদ লেখার ফ্রেম দেখান।"
+canvas.empty_text_frame_hint = "অনুচ্ছেদ টেক্সট যোগ করতে টেক্সট টুল দিয়ে এখানে ক্লিক করুন" # mt
 menu.text.use_hyphenation_tip = "লাইনের শেষে লম্বা শব্দ হাইফেন দিয়ে ভাঙুন।"
 options.show_recent_fonts_tip = "সর্বশেষ ব্যবহৃত ফন্ট তালিকার উপরে দেখান।"
 writing.ignore_digits_tip = "অঙ্কযুক্ত শব্দ পরীক্ষা করবেন না।"
