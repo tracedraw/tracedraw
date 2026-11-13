@@ -4,6 +4,9 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Blend tool: a colour dragged from a palette and dropped on the square at the start or the end of the blend in hand becomes the fill of that end's object, and the steps between follow. A drop on the square of a text went nowhere when the middle of the text lay between its letters (#965).
 ## 0.45.2 (2026-11-13)
 
 - Opening .cdr: a book laid out on facing pages opens in spreads, each page's objects on its own page. Pages showed one by one, and a page whose objects reach across the spine took the wrong side, mixing it with the page beside it (#1660).

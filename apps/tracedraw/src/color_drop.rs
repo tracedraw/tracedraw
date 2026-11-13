@@ -56,6 +56,12 @@ impl App {
                 return ColorTarget::Shadow(id);
             }
         }
+        // A square at an end of the blend in hand (Blend tool): the fill
+        // of that end's object, wherever the square lies on it, as the
+        // middle of a letter may be outside its outline (#965).
+        if let Some(id) = self.blend_end_object_at(p) {
+            return ColorTarget::Fill(id);
+        }
         // Inside a closed object counts even when it has no fill yet.
         let Some(id) = self.hit_test_inside(p) else {
             return ColorTarget::Nothing;
