@@ -4667,6 +4667,14 @@ impl App {
             if pressed(Key::Num2, cmd) {
                 self.step_text_size(false);
             }
+            // Ctrl+Shift+> and Ctrl+Shift+<: the letters further apart
+            // or closer (#193).
+            if pressed(Key::Period, cmd | Modifiers::SHIFT) {
+                self.step_char_spacing(true);
+            }
+            if pressed(Key::Comma, cmd | Modifiers::SHIFT) {
+                self.step_char_spacing(false);
+            }
         }
         if pressed(Key::Plus, cmd) || pressed(Key::Equals, cmd) {
             self.zoom_step(true);

@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Text: Ctrl+Shift+> moves the letters of the selected text further apart and Ctrl+Shift+< closer, a step of 5 % of a space's width each press, also for a text fitted to a path and while a text is edited. The spacing could be set in the Text docker only, so opening up the letters round a stamp's circle took a trip to the docker for every try (#193).
 - Pen tool: the nib pointer has its tip at the upper left and its body running down and to the right, as an arrow pointer has, with the dot of the tip still exactly on the point clicked. It leaned up and to the right from a tip at the lower left, upside down beside the other tools' pointers. The close, join, add and delete signs sit above and to the right of the tip (#362).
 - The window title shows the whole path of the drawing's file ("TraceDraw - C:\work\poster.tdraw"), with the star of unsaved changes after it; it showed the file's name alone. A drawing not saved yet shows its name as before. With the path there and status messages going after a while, the status bar's tool hints have the room (#1126).
 - Color Eyedropper and Attributes Eyedropper: "Sample again after applying" on their property bars. With it on, the tool goes back to sampling after each object it is applied to, so pick, apply, pick, apply needs no key held and no tap on Select Color in between, which a pen or a touch screen could not do without the keyboard. Off, as before, the tool stays in Apply mode and Ctrl+click samples again. The choice is kept between sessions (#2380).
