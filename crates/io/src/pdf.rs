@@ -1005,6 +1005,7 @@ impl PageWriter<'_> {
             // The transparency's opacity and its target (the fill, the
             // outline or the whole object, live test of 0.41).
             let mut fade: Option<(f64, u8)> = None;
+            let mut mask_fill: Option<Fill> = None;
             for e in &shape.effects {
                 match e {
                     tracedraw_core::live::Effect::Transparency {
@@ -1013,6 +1014,7 @@ impl PageWriter<'_> {
                         target,
                     } => {
                         fade = Some((crate::svg::average_luminance(mask) as f64, *target));
+                        mask_fill = Some(mask.clone());
                         blend = pdf_blend_mode(*merge);
                     }
                     tracedraw_core::live::Effect::Lens(
@@ -1033,6 +1035,21 @@ impl PageWriter<'_> {
                 if !faded {
                     self.shape(&part, parent);
                     continue;
+                }
+                // A mask that varies (a fountain, a pattern) goes in as a
+                // luminosity soft mask painted with the mask's own fill,
+                // as the drawing window applies it: white keeps the
+                // object, black clears it (#2615: the PDF took one
+                // average opacity for the whole object).
+                if self.pdf.allow_alpha {
+                    if let Some(mask) = mask_fill.as_ref().filter(|m| varies(m)) {
+                        if let Some(name) = self.soft_mask(&part, parent, mask, blend) {
+                            let _ = writeln!(self.content, "q\n/{name} gs");
+                            self.shape(&part, parent);
+                            self.content.push_str("Q\n");
+                            continue;
+                        }
+                    }
                 }
                 if let Some((opacity, _)) = fade {
                     part.opacity *= opacity;
@@ -1320,6 +1337,75 @@ impl PageWriter<'_> {
             self.outline(shape, s, parent, transform, &path, bounds);
         }
         self.content.push_str("Q\n");
+    }
+
+    /// A graphics state whose luminosity soft mask is `mask` painted over
+    /// `part`'s box (page space, as the drawing window spreads it), merged
+    /// by `blend`. Past the box the mask goes on as at its edge (the
+    /// shadings extend), so the outer half of an outline fades with the
+    /// object. `None` when the part has no area.
+    fn soft_mask(
+        &mut self,
+        part: &Shape,
+        parent: Affine,
+        mask: &Fill,
+        blend: &str,
+    ) -> Option<String> {
+        use tracedraw_core::geometry::Shape as _;
+        let transform = parent * part.transform;
+        let page_path = transform * part.local_path();
+        let bounds = if page_path.elements().is_empty() {
+            let mut placed = part.clone();
+            placed.transform = transform;
+            placed.bounds()
+        } else {
+            page_path.bounding_box()
+        };
+        if !(bounds.width() > 0.0 || bounds.height() > 0.0) || !bounds.area().is_finite() {
+            return None;
+        }
+        let grow = bounds.width().max(bounds.height()).max(1.0);
+        let area = bounds.inflate(grow, grow);
+        let saved = std::mem::take(&mut self.content);
+        // A shaped fountain follows the object's own outline.
+        let shaped = matches!(mask, Fill::Fountain(ft) if ft.kind == FountainKind::Shaped)
+            && !page_path.elements().is_empty();
+        let path = if shaped {
+            page_path
+        } else {
+            tracedraw_core::geometry::rect_path(area, 0.0)
+        };
+        self.paint_area(mask, &path, bounds, true, transform);
+        let body = std::mem::replace(&mut self.content, saved);
+        let res = resource_dict(
+            &self.shadings,
+            &self.patterns,
+            &self.spaces,
+            &[],
+            &[],
+            &self.images,
+        );
+        let dict = format!(
+            "/Type /XObject /Subtype /Form /BBox [{} {} {} {}] /Group << /S /Transparency /CS {} >> /Resources {res}",
+            f(area.x0 * MM_PT),
+            f(area.y0 * MM_PT),
+            f(area.x1 * MM_PT),
+            f(area.y1 * MM_PT),
+            self.pdf.color_space()
+        );
+        let form = if self.pdf.images.compress_content {
+            let data = flate(body.as_bytes());
+            self.pdf
+                .stream(&format!("{dict} /Filter /FlateDecode"), &data)
+        } else {
+            self.pdf.stream(&dict, body.as_bytes())
+        };
+        let name = format!("GS{}", self.gstates.len());
+        let id = self.pdf.add_str(format!(
+            "<< /Type /ExtGState /SMask << /S /Luminosity /G {form} 0 R >> /BM /{blend} >>"
+        ));
+        self.gstates.push((name.clone(), id));
+        Some(name)
     }
 
     /// Set the outline's colour, width, caps, joins and dashes.
@@ -1753,6 +1839,50 @@ impl PageWriter<'_> {
         if let Some((_, pen)) = run.as_mut() {
             *pen = x + sh.width_em;
         }
+    }
+}
+
+/// A resource dictionary naming these objects.
+fn resource_dict(
+    shadings: &[(String, usize)],
+    patterns: &[(String, usize)],
+    spaces: &[(String, usize)],
+    gstates: &[(String, usize)],
+    fonts: &[(String, usize)],
+    images: &[(String, usize)],
+) -> String {
+    let mut res = String::from("<< ");
+    for (key, list) in [
+        ("Shading", shadings),
+        ("Pattern", patterns),
+        ("ColorSpace", spaces),
+        ("ExtGState", gstates),
+        ("Font", fonts),
+        ("XObject", images),
+    ] {
+        if list.is_empty() {
+            continue;
+        }
+        let _ = write!(res, "/{key} << ");
+        for (n, id) in list {
+            let _ = write!(res, "/{n} {id} 0 R ");
+        }
+        res.push_str(">> ");
+    }
+    res.push_str(">>");
+    res
+}
+
+/// A transparency mask that is not one level all over (a fountain with
+/// stops of different greys, a pattern, a texture...).
+fn varies(mask: &Fill) -> bool {
+    match mask {
+        Fill::None | Fill::Solid(_) => false,
+        Fill::Fountain(ft) => {
+            let first = ft.stops.first().map(|s| s.color.luminance());
+            ft.stops.iter().any(|s| Some(s.color.luminance()) != first)
+        }
+        _ => true,
     }
 }
 
@@ -2328,50 +2458,7 @@ pub fn document_to_pdf_report(doc: &Document, opts: &PdfOptions) -> (Vec<u8>, Pd
         } else {
             pdf.stream("", content.as_bytes())
         };
-        let mut res = String::from("<< ");
-        if !shadings.is_empty() {
-            res.push_str("/Shading << ");
-            for (n, id) in &shadings {
-                let _ = write!(res, "/{n} {id} 0 R ");
-            }
-            res.push_str(">> ");
-        }
-        if !patterns.is_empty() {
-            res.push_str("/Pattern << ");
-            for (n, id) in &patterns {
-                let _ = write!(res, "/{n} {id} 0 R ");
-            }
-            res.push_str(">> ");
-        }
-        if !spaces.is_empty() {
-            res.push_str("/ColorSpace << ");
-            for (n, id) in &spaces {
-                let _ = write!(res, "/{n} {id} 0 R ");
-            }
-            res.push_str(">> ");
-        }
-        if !gstates.is_empty() {
-            res.push_str("/ExtGState << ");
-            for (n, id) in &gstates {
-                let _ = write!(res, "/{n} {id} 0 R ");
-            }
-            res.push_str(">> ");
-        }
-        if !fonts.is_empty() {
-            res.push_str("/Font << ");
-            for (n, id) in &fonts {
-                let _ = write!(res, "/{n} {id} 0 R ");
-            }
-            res.push_str(">> ");
-        }
-        if !images.is_empty() {
-            res.push_str("/XObject << ");
-            for (n, id) in &images {
-                let _ = write!(res, "/{n} {id} 0 R ");
-            }
-            res.push_str(">> ");
-        }
-        res.push_str(">>");
+        let res = resource_dict(&shadings, &patterns, &spaces, &gstates, &fonts, &images);
         let (mw, mh) = (
             (page.size.width + 2.0 * edge) * MM_PT,
             (page.size.height + 2.0 * edge) * MM_PT,
@@ -3368,6 +3455,50 @@ mod tests {
                 assert!(red < gs && gs < blue, "{content}");
             }
         }
+    }
+
+    /// #2615: a fountain transparency went into the PDF as one average
+    /// opacity, so the object faded evenly instead of from solid to
+    /// clear. It goes in as a luminosity soft mask whose form paints the
+    /// mask's fountain, and the object is drawn under it.
+    #[test]
+    fn a_fountain_transparency_goes_in_as_a_soft_mask() {
+        let mut doc = crate::svg::tests::doc_with_targeted_transparency(2);
+        let layer = doc.pages[0].layers[0].id;
+        let s = &mut doc.layer_mut(layer).unwrap().shapes[0];
+        s.effects = vec![tracedraw_core::live::Effect::Transparency {
+            mask: Fill::Fountain(tracedraw_core::Fountain::two(
+                FountainKind::Linear,
+                Color::WHITE,
+                Color::BLACK,
+                0.0,
+            )),
+            merge: tracedraw_core::live::MergeMode::Normal,
+            target: 2,
+        }];
+        let bytes = document_to_pdf(&doc);
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(
+            text.contains("/SMask << /S /Luminosity /G "),
+            "a luminosity soft mask: {text}"
+        );
+        assert!(
+            text.contains("/Subtype /Form") && text.contains("/Group << /S /Transparency"),
+            "its transparency group: {text}"
+        );
+        let content = page_content(&bytes);
+        // The mask's form shades the fountain; the page sets the mask's
+        // state and paints the red fill and blue outline under it, with
+        // no average opacity of its own.
+        assert!(content.contains(" sh\n"), "{content}");
+        let gs = content.find(" gs\n").expect("the soft mask's state");
+        let red = content.find("1 0 0 rg").expect("the fill");
+        assert!(gs < red, "{content}");
+        assert!(!text.contains("/ca 0.5"), "{text}");
+        // A plain grey mask stays one opacity.
+        let flat = crate::svg::tests::doc_with_targeted_transparency(2);
+        let text = String::from_utf8_lossy(&document_to_pdf(&flat)).into_owned();
+        assert!(!text.contains("/SMask << /S /Luminosity"), "{text}");
     }
 
     /// The page's content streams, inflated.
