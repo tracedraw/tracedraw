@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Bitmaps > Crop to Frame frees a picture from a frame of any shape: the piece of a picture cut with the Knife, a picture in an oval or any other outline becomes a picture of its own, with the pixels outside the outline made see-through. Only a rectangular frame let its picture go; any other kept the picture inside it (#1913).
 - Blend tool: a colour dragged from a palette and dropped on the square at the start or the end of the blend in hand becomes the fill of that end's object, and the steps between follow. A drop on the square of a text went nowhere when the middle of the text lay between its letters (#965).
 ## 0.45.2 (2026-11-13)
 
