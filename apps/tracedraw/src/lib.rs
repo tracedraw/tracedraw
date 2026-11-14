@@ -401,11 +401,15 @@ pub fn run() -> eframe::Result<()> {
     // system's (docs/behavior/language.md).
     i18n::set_language(i18n::startup_language_here(&settings.language));
     // Options > General > "Use the desktop's title bar": through XWayland
-    // when the Wayland compositor draws no title bars (#2070).
+    // when the Wayland compositor draws no title bars (#2070), on by
+    // default so that file drops arrive there (#2486). `--wayland` keeps
+    // the native Wayland window for one start.
+    #[cfg(target_os = "linux")]
+    let wayland_asked = args.iter().any(|a| a == "--wayland");
     #[cfg(target_os = "linux")]
     let x11 = x11_asked
         || title_bar::through_x11(
-            settings.system_title_bar,
+            settings.system_title_bar && !wayland_asked,
             title_bar::env_set("WAYLAND_DISPLAY"),
             title_bar::env_set("DISPLAY"),
             title_bar::compositor_offers_title_bars,

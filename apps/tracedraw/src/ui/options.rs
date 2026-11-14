@@ -1066,7 +1066,8 @@ fn general_page(app: &mut App, ui: &mut Ui) {
             hardware_acceleration(app, ui);
         }
         // Linux: the desktop's title bar on a Wayland desktop that leaves
-        // it to the application, from the next start (#2070).
+        // it to the application, from the next start (#2070); on by
+        // default, as only that window takes file drops there (#2486).
         #[cfg(target_os = "linux")]
         ui.checkbox(
             &mut app.settings.system_title_bar,
@@ -5467,13 +5468,14 @@ mod tests {
         }
     }
 
-    /// On Linux the General page offers the desktop's title bar, and its
-    /// box turns the setting on (#2070).
+    /// On Linux the General page offers the desktop's title bar, on by
+    /// default (#2486), and its box turns it off for the native Wayland
+    /// window (#2070).
     #[cfg(target_os = "linux")]
     #[test]
     fn linux_offers_the_desktops_title_bar() {
         let mut app = App::headless();
-        assert!(!app.settings.system_title_bar);
+        assert!(app.settings.system_title_bar);
         let ctx = crate::theme::ui_context();
         let label = tr("options.system_title_bar");
         let mut at = None;
@@ -5503,7 +5505,7 @@ mod tests {
             let mut out = ctx.run_ui(input, |ui| general_page(&mut app, ui));
             out.textures_delta.clear();
         }
-        assert!(app.settings.system_title_bar);
+        assert!(!app.settings.system_title_bar);
     }
 
     /// #1148: every command can take a shortcut. A bar button that runs

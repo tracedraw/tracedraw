@@ -302,9 +302,10 @@ pub struct Settings {
     pub working_renderer: String,
     /// Options > General, Linux: on a Wayland desktop that leaves the
     /// title bar to the application, open the window through XWayland so
-    /// that the desktop draws its own, from the next start (#2070,
-    /// `title_bar.rs`).
-    #[serde(default)]
+    /// that the desktop draws its own and file drops arrive, from the
+    /// next start (#2070, #2486, `title_bar.rs`). On by default; off keeps
+    /// the native Wayland window.
+    #[serde(default = "default_true")]
     pub system_title_bar: bool,
     /// Customization > Appearance: dialogs open in the middle of the
     /// window and stay there; off, they move by their title bar and open
@@ -757,7 +758,7 @@ fn default_desktop() -> [u8; 3] {
 }
 
 /// How many one-time upgrades `Settings::upgrade` knows.
-const UPGRADES: u32 = 7;
+const UPGRADES: u32 = 8;
 
 fn default_outline_units() -> String {
     "pt".into()
@@ -2009,7 +2010,7 @@ impl Default for Settings {
             gpu_adapter: String::new(),
             gpu_effects: false,
             working_renderer: String::new(),
-            system_title_bar: false,
+            system_title_bar: true,
             center_dialogs: true,
             ui_shadows: true,
             colored_icons: false,
@@ -2138,7 +2139,8 @@ impl Settings {
     ///    guides start off; 4. the last export's settings are remembered;
     /// 5. Duplicate's old default offset (6.35 mm) becomes none; 6. the
     ///    Crop tool cuts a picture's pixels; 7. File > Export shows its
-    ///    options again.
+    ///    options again; 8. the window goes through XWayland on a
+    ///    Wayland desktop without title bars for programs (#2486).
     pub fn upgrade(mut self) -> Settings {
         self.autocorrect.upgrade();
         if self.upgrades < 1 {
@@ -2188,6 +2190,14 @@ impl Settings {
         // Global > File Formats) stays.
         if self.upgrades < 7 {
             self.formats.skip_export_dialog = false;
+        }
+        // On a Wayland desktop that draws no title bars for programs
+        // (GNOME), the native window took no file drops from the file
+        // manager (#2486). The window goes there through XWayland by
+        // default now, as "Use the desktop's title bar" did; on once,
+        // switched off afterwards (native Wayland) it stays off.
+        if self.upgrades < 8 {
+            self.system_title_bar = true;
         }
         self.upgrades = self.upgrades.max(UPGRADES);
         self.migrate_ai();

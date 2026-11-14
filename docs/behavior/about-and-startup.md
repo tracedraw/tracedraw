@@ -135,16 +135,20 @@ the version on the right).
   (GNOME's) leaves the title bar to the program, and the windowing
   layer draws a plain one; it answers a finger and a pen as it does the
   mouse (vendor/README.md). Options > General > Use the desktop's title
-  bar (off by default) opens the window through XWayland on such a
-  desktop from the next start, where the desktop draws its own title
-  bar; on a desktop that offers title bars, on X11 or without
-  `DISPLAY` it changes nothing. Before the window is made, one
-  connection to the compositor asks whether it offers title bars
-  (`title_bar::compositor_offers_title_bars`); the log says
+  bar (on by default since #2486) opens the window through XWayland on
+  such a desktop from the next start, where the desktop draws its own
+  title bar and files dropped from the file manager arrive (the native
+  Wayland window took none there); on a desktop that offers title bars,
+  on X11 or without `DISPLAY` it changes nothing. Turned off, or with
+  `--wayland` for one start, the window stays native Wayland. Before
+  the window is made, one connection to the compositor asks whether it
+  offers title bars (`title_bar::compositor_offers_title_bars`); the log says
   `opening the window through X11 for the desktop's title bar` when it
   goes through XWayland (`title_bar::tests`). Through XWayland a monitor
-  scaled by a fraction shows the window slightly blurred, which is why
-  the option is off unless chosen.
+  scaled by a fraction shows the window slightly blurred, which is what
+  turning the option off is for. Preferences saved before 0.47 get it
+  on once (`Settings::upgrade`, step 8); turned off afterwards it stays
+  off.
 - The browser build has no splash: the page shows its own loader.
 
 ## One window for every start (#646)
