@@ -527,6 +527,14 @@ pub struct ExportPreset {
     /// JPEG and TIFF colour mode (0 RGB, 1 CMYK, 2 Grayscale; #1763);
     /// presets saved before have none and stay RGB.
     pub color_mode: usize,
+    /// PLT's choices (#2652): scale, origin at the page's middle,
+    /// units per inch, HPGL/2, one pen, curve resolution (mm).
+    pub plt_scale: f64,
+    pub plt_centre: bool,
+    pub plt_units: f64,
+    pub plt_hpgl2: bool,
+    pub plt_one_pen: bool,
+    pub plt_resolution: f64,
 }
 
 impl Default for ExportPreset {
@@ -567,6 +575,12 @@ impl ExportPreset {
             size_unit: st.size_unit,
             scale: st.scale,
             color_mode: st.color_mode,
+            plt_scale: st.plt_scale,
+            plt_centre: st.plt_centre,
+            plt_units: st.plt_units,
+            plt_hpgl2: st.plt_hpgl2,
+            plt_one_pen: st.plt_one_pen,
+            plt_resolution: st.plt_resolution,
         }
     }
 
@@ -600,8 +614,26 @@ impl ExportPreset {
         if self.color_mode < EXPORT_COLOR_MODES.len() {
             st.color_mode = self.color_mode;
         }
+        self.apply_plt(st);
         self.apply_size(st);
         st.preset = self.name.clone();
+    }
+
+    /// PLT's choices into the dialog, each brought into its range.
+    fn apply_plt(&self, st: &mut ExportState) {
+        let o = tracedraw_io::plt::PltOptions {
+            scale: self.plt_scale,
+            units_per_inch: self.plt_units,
+            curve_resolution: self.plt_resolution,
+            ..Default::default()
+        }
+        .sane();
+        st.plt_scale = o.scale;
+        st.plt_units = o.units_per_inch;
+        st.plt_resolution = o.curve_resolution;
+        st.plt_centre = self.plt_centre;
+        st.plt_hpgl2 = self.plt_hpgl2;
+        st.plt_one_pen = self.plt_one_pen;
     }
 
     /// The bitmap size's unit and scale into the dialog, when usable.

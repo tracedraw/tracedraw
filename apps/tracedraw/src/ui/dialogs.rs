@@ -101,6 +101,17 @@ pub struct ExportState {
     /// becomes Options > Global > File Formats' setting on OK only, so
     /// Cancel leaves the setting as it was.
     pub dont_show: bool,
+    /// PLT: the drawing's size in the file against the page's (1 =
+    /// 100 %), the plotter's origin at the page's middle (else its
+    /// bottom left corner), plotter units per inch, HPGL/2 pen colours
+    /// and widths (else plain HP-GL), one pen for every outline and how
+    /// closely curves are followed, mm (#2652).
+    pub plt_scale: f64,
+    pub plt_centre: bool,
+    pub plt_units: f64,
+    pub plt_hpgl2: bool,
+    pub plt_one_pen: bool,
+    pub plt_resolution: f64,
 }
 
 impl Default for ExportState {
@@ -134,6 +145,12 @@ impl Default for ExportState {
             color_mode: 0,
             target: None,
             dont_show: false,
+            plt_scale: 1.0,
+            plt_centre: false,
+            plt_units: 1016.0,
+            plt_hpgl2: true,
+            plt_one_pen: false,
+            plt_resolution: 0.02,
         }
     }
 }
@@ -274,6 +291,23 @@ impl ExportState {
     /// others write one file per page (#1382).
     pub fn one_file_for_all_pages(ext: &str) -> bool {
         matches!(ext, "pdf" | "ai" | "ps" | "prn" | "html")
+    }
+
+    /// The PLT export's choices (#2652), each within its range.
+    pub fn plt_options(&self) -> tracedraw_io::plt::PltOptions {
+        tracedraw_io::plt::PltOptions {
+            scale: self.plt_scale,
+            origin: if self.plt_centre {
+                tracedraw_io::plt::PltOrigin::PageCentre
+            } else {
+                tracedraw_io::plt::PltOrigin::BottomLeft
+            },
+            units_per_inch: self.plt_units,
+            hpgl2: self.plt_hpgl2,
+            one_pen: self.plt_one_pen,
+            curve_resolution: self.plt_resolution,
+        }
+        .sane()
     }
 
     /// The AI export writes the classic version 8 file (PostScript, one
@@ -3979,6 +4013,7 @@ fn export_preview_key(app: &App, st: &ExportState) -> u64 {
     st.scale_or_one().to_bits().hash(&mut h);
     st.webp_lossless.hash(&mut h);
     st.color_mode.hash(&mut h);
+    format!("{:?}", st.plt_options()).hash(&mut h);
     if st.selection_only {
         for id in &app.selection {
             id.raw().hash(&mut h);
@@ -4757,6 +4792,9 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                             ));
                     });
                 }
+                if !scripted && EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)].1 == "plt" {
+                    plt_export_fields(ui, st);
+                }
                 ui.checkbox(&mut st.selection_only, tr("dialog.selected_only"))
                     .rich_tip(crate::ui::tips::pair(
                         "dialog.selected_only",
@@ -4808,6 +4846,70 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
             export_dialog_ok(app, st);
         }
     });
+}
+
+/// The PLT export's choices in the Export dialog (#2652): the scale,
+/// the plotter's origin, its units, how closely curves are followed,
+/// HPGL/2 pen colours and widths, one pen for every outline.
+fn plt_export_fields(ui: &mut Ui, st: &mut ExportState) {
+    egui::Grid::new("exp_plt").num_columns(2).show(ui, |ui| {
+        ui.label(tr("dialog.plt_scale"));
+        let mut pct = st.plt_scale * 100.0;
+        if ui
+            .add(
+                crate::ui::field::NumField::new(&mut pct)
+                    .range(1.0..=10_000.0)
+                    .speed(1.0)
+                    .suffix(" %"),
+            )
+            .rich_tip(crate::ui::tips::keyed("dialog.plt_scale"))
+            .changed()
+        {
+            st.plt_scale = pct / 100.0;
+        }
+        ui.end_row();
+        ui.label(tr("dialog.plt_origin"));
+        let shown = if st.plt_centre {
+            tr("dialog.plt_origin_centre")
+        } else {
+            tr("dialog.plt_origin_corner")
+        };
+        crate::ui::keynav::ComboBox::from_id_salt("exp_plt_origin")
+            .selected_text(shown)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut st.plt_centre, false, tr("dialog.plt_origin_corner"));
+                ui.selectable_value(&mut st.plt_centre, true, tr("dialog.plt_origin_centre"));
+            })
+            .response
+            .rich_tip(crate::ui::tips::keyed("dialog.plt_origin"));
+        ui.end_row();
+        ui.label(tr("dialog.plt_units"));
+        ui.horizontal(|ui| {
+            ui.add(
+                crate::ui::field::NumField::new(&mut st.plt_units)
+                    .range(100.0..=100_000.0)
+                    .max_decimals(0)
+                    .speed(1.0),
+            )
+            .rich_tip(crate::ui::tips::keyed("dialog.plt_units"));
+            ui.label(tr("dialog.plt_per_inch"));
+        });
+        ui.end_row();
+        ui.label(tr("dialog.plt_resolution"));
+        ui.add(
+            crate::ui::field::NumField::new(&mut st.plt_resolution)
+                .range(0.001..=5.0)
+                .max_decimals(3)
+                .speed(0.01)
+                .suffix(" mm"),
+        )
+        .rich_tip(crate::ui::tips::keyed("dialog.plt_resolution"));
+        ui.end_row();
+    });
+    ui.checkbox(&mut st.plt_hpgl2, tr("dialog.plt_hpgl2"))
+        .rich_tip(crate::ui::tips::keyed("dialog.plt_hpgl2"));
+    ui.checkbox(&mut st.plt_one_pen, tr("dialog.plt_one_pen"))
+        .rich_tip(crate::ui::tips::keyed("dialog.plt_one_pen"));
 }
 
 /// OK in the Export dialog: "Do not show this dialog again" becomes the

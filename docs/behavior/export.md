@@ -106,7 +106,8 @@ Preferences saved before are brought back to off once (upgrade 7,
 | BMP, PSD | resolution |
 | PDF | Export all text as curves (off at first: every text becomes filled outlines, so the file needs no fonts and cannot be searched; #1382, `export::tests::export_pdf_text_as_curves_holds_no_font`), standard (PDF 1.4, PDF/X-1a, PDF/X-3, PDF/X-4), bleed, output condition for PDF/X; the author, subject and keywords come from the drawing's properties (File > Export as PDF has bookmarks and protection, see `publish-to-pdf.md`) |
 | AI | Compatibility: PDF-compatible (the default) or Illustrator 8 (EPS-based); see "AI files" below (#1728) |
-| SVG, EPS, DXF, HTML, EMF, WMF, PLT | none |
+| PLT | Scale (100 %), Plotter origin (bottom left of page or centre of page), Plotter units per inch (1016), Curve resolution (0.02 mm), HPGL/2 pen colours and widths (on), One pen for every outline (off); see `plt.md`, "Export choices" (#2652) |
+| SVG, EPS, DXF, HTML, EMF, WMF | none |
 | PostScript (`.ps`), PRN (`.prn`) | none; every exported page in one file (All pages, else the current page), each page setting its size with `setpagedevice` and ending with `showpage` (Document Structuring Conventions 3.0); a `.prn` print file is the same PostScript, to send to a PostScript printer |
 
 - Bitmap formats show Size: a width and a height and their unit (px,

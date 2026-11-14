@@ -247,7 +247,7 @@ fn page_file(
         "dxf" => tracedraw_io::dxf::page_to_dxf(doc, k).into_bytes(),
         "emf" => tracedraw_io::emf::page_to_emf(doc, k),
         "wmf" => tracedraw_io::emf::page_to_wmf(doc, k),
-        "plt" => tracedraw_io::plt::page_to_plt(doc, k).into_bytes(),
+        "plt" => tracedraw_io::plt::page_to_plt_with(doc, k, &st.plt_options()).into_bytes(),
         "psd" => tracedraw_io::psd::page_to_psd(doc, k, st.render_dpi()).ok_or("render failed")?,
         _ => {
             let pid = doc.pages.get(k).ok_or("no page")?.id;
