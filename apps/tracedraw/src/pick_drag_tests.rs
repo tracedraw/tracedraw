@@ -7072,6 +7072,39 @@ fn freehand_double_clicks_make_corners_and_a_click_ends_the_line() {
     assert_eq!(pts_of(&app).len(), 2);
 }
 
+/// Space ends the curve being drawn with any of the line tools, as a
+/// right click or Enter does, with the nodes placed so far (d#2595).
+#[test]
+fn space_ends_the_curve_of_every_line_tool() {
+    for tool in [
+        Tool::Bezier,
+        Tool::Freehand,
+        Tool::Pen,
+        Tool::Polyline,
+        Tool::BSpline,
+    ] {
+        let (ctx, mut app, _id) = setup();
+        app.set_tool(tool);
+        let view = app.view.clone();
+        let at = |x: f64, y: f64| view.to_screen(Point::new(x, y));
+        let before = shape_count(&app);
+        for p in [at(100.0, 100.0), at(160.0, 100.0), at(160.0, 160.0)] {
+            click_at(&ctx, &mut app, p, Modifiers::NONE);
+            for _ in 0..20 {
+                frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+            }
+        }
+        frame(
+            &ctx,
+            &mut app,
+            vec![key(egui::Key::Space, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        assert!(app.curve.is_none(), "{tool:?}: the curve ended");
+        assert!(shape_count(&app) > before, "{tool:?}: a line was made");
+    }
+}
+
 #[test]
 fn the_snap_mark_shows_before_the_first_node_of_a_freehand_line() {
     // #1538: the point the line would start at was snapped but not marked.

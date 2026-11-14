@@ -694,6 +694,8 @@ fn menu_pic(key: &str) -> Option<crate::ui::propbar::Pic> {
         "menu.object.tf_scale" => Pic::ScaleMirror,
         "menu.object.tf_size" => Pic::SizeBox,
         "menu.object.tf_skew" => Pic::SkewBox,
+        "menu.object.mirror_h" => Pic::MirrorH,
+        "menu.object.mirror_v" => Pic::MirrorV,
         "menu.object.align_distribute_docker" => Pic::AlignDistribute,
         "menu.object.convert_to_bitmap" => Pic::ConvertToBitmap,
         "menu.object.copy_envelope_from" => Pic::EnvelopeCopy,
@@ -1782,6 +1784,62 @@ mod tests {
         assert_eq!(app.active_doc, 1);
         assert!(app.document_tab_title(0).ends_with(":1"));
         assert!(app.document_tab_title(1).ends_with(":2"));
+    }
+
+    /// Mirror Horizontally and Mirror Vertically are commands of Object >
+    /// Transformations, so a shortcut of the user's runs them (#2622).
+    #[test]
+    fn the_mirror_buttons_take_a_shortcut() {
+        use egui::{Key, Modifiers};
+        let ctx = crate::theme::ui_context();
+        let mut app = mixed_app();
+        app.show_welcome = false;
+        let first = app.doc().pages[0].layers[0].shapes[0].id;
+        let coeffs = |app: &App| {
+            app.doc().pages[0].layers[0]
+                .shapes
+                .iter()
+                .find(|s| s.id == first)
+                .map(|s| s.transform.as_coeffs())
+                .unwrap_or_default()
+        };
+        app.select(vec![first]);
+        let c0 = coeffs(&app);
+        app.settings
+            .shortcuts
+            .push(("menu.object.mirror_h".into(), "Alt+Shift+H".into()));
+        app.settings
+            .shortcuts
+            .push(("menu.object.mirror_v".into(), "Alt+Shift+V".into()));
+        root_frame(
+            &ctx,
+            &mut app,
+            vec![key(Key::H, Modifiers::ALT | Modifiers::SHIFT)],
+        );
+        root_frame(&ctx, &mut app, vec![]);
+        let c1 = coeffs(&app);
+        assert!((c1[0] + c0[0]).abs() < 1e-9, "{c0:?} {c1:?} {}", app.status);
+        assert!((c1[3] - c0[3]).abs() < 1e-9, "{c0:?} {c1:?}");
+        root_frame(
+            &ctx,
+            &mut app,
+            vec![key(Key::V, Modifiers::ALT | Modifiers::SHIFT)],
+        );
+        root_frame(&ctx, &mut app, vec![]);
+        let c2 = coeffs(&app);
+        assert!((c2[3] + c0[3]).abs() < 1e-9, "{c0:?} {c2:?} {}", app.status);
+        // The menu rows are there and show their keys.
+        assert_eq!(
+            invoke::shown_shortcut("menu.object.mirror_h", ""),
+            "Alt+Shift+H"
+        );
+        let mut ran = false;
+        app.select(vec![first]);
+        run_frame(&ctx, |ui| {
+            ran = run_command(&mut app, ui.ctx(), "menu.object.mirror_h")
+        });
+        assert!(ran);
+        assert!((coeffs(&app)[0] - c0[0]).abs() < 1e-9);
     }
 
     /// A shortcut of the user's runs its menu command, takes over a
@@ -3425,6 +3483,15 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
             if item(ui, key, shortcut, true) {
                 crate::ui::transform_docker::open(app, tab, false);
             }
+        }
+        // The property bar's two mirror buttons as commands, so a
+        // shortcut can be given to them (#2622).
+        sep(ui);
+        if item(ui, "menu.object.mirror_h", "", has) {
+            app.mirror(true);
+        }
+        if item(ui, "menu.object.mirror_v", "", has) {
+            app.mirror(false);
         }
     });
     if item(ui, "menu.object.clear_transformations", "", has) {
