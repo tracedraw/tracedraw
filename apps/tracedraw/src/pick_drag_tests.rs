@@ -22263,11 +22263,31 @@ fn a_blend_s_start_object_shows_its_own_box_and_handles() {
     let got = app.selection_bounds().expect("box");
     assert!(same(got, bounds(&app, b)), "{got:?}");
 
-    // A step picks the start object, shown with the same box.
+    // A step picks the whole blend, its start and end objects (#2692);
+    // a drag from a step then moves both.
     click(&mut app, Point::new(110.0, 125.0));
+    assert_eq!(app.selection, vec![a, b]);
+    let (a0, b0) = (bounds(&app, a), bounds(&app, b));
+    let step = app.view.to_screen(Point::new(110.0, 125.0));
+    let down = app.view.to_screen(Point::new(110.0, 145.0));
+    let right = app.view.to_screen(Point::new(130.0, 125.0));
+    drag(&ctx, &mut app, step, down, Modifiers::NONE, Vec::new());
+    let (a1, b1) = (bounds(&app, a), bounds(&app, b));
+    // Both move by the same amount (snapping may round the 20 mm).
+    assert!(a1.y0 - a0.y0 > 10.0, "{a0:?} -> {a1:?}");
+    assert!(close(b1.y0 - b0.y0, a1.y0 - a0.y0), "{b0:?} -> {b1:?}");
+    app.undo();
+    // Pressed on a step with nothing selected, a drag moves the whole
+    // blend too.
+    app.select(Vec::new());
+    drag(&ctx, &mut app, step, right, Modifiers::NONE, Vec::new());
+    let moved = bounds(&app, a).x0 - a0.x0;
+    assert!(moved > 10.0, "{moved}");
+    assert!(close(bounds(&app, b).x0 - b0.x0, moved));
+    app.undo();
+    // The start object, clicked on itself, alone again.
+    click(&mut app, Point::new(35.0, 125.0));
     assert_eq!(app.selection, vec![a]);
-    let got = app.selection_bounds().expect("box");
-    assert!(same(got, own), "{got:?}");
 
     // The right handle widens the start object; its left side stays and
     // the end object does not move.
@@ -22930,7 +22950,7 @@ fn tab_goes_from_object_to_object_press_after_press() {
 /// A blend of two texts whose start is in front: a click on the end
 /// text, where the start's steps lie over it, picks the end text, and a
 /// colour from the palette goes to it, not to the start text 60 mm away.
-/// A click on the steps away from both texts still picks the start, and
+/// A click on the steps away from both texts picks the whole blend, and
 /// the Text tool edits the text clicked (#1739).
 #[test]
 fn a_click_on_a_blend_s_end_text_under_its_steps_picks_the_end() {
@@ -23026,11 +23046,11 @@ fn a_click_on_a_blend_s_end_text_under_its_steps_picks_the_end() {
     app.refresh_blends();
     assert_eq!(fill(&app, end), Fill::Solid(red), "the colour goes to it");
     assert_eq!(fill(&app, start), start_fill, "not to the other end");
-    // The steps between the texts, away from both: the start.
+    // The steps between the texts, away from both: the whole blend.
     let between = Point::new((eb.x1 + sb.x0) / 2.0, eb.center().y);
     assert!(!eb.contains(between) && !sb.contains(between));
     click(&mut app, between);
-    assert_eq!(app.selection, vec![start]);
+    assert_eq!(app.selection, vec![start, end], "the whole blend (#2692)");
     // The start text itself: the start.
     click(&mut app, sb.center());
     assert_eq!(app.selection, vec![start]);

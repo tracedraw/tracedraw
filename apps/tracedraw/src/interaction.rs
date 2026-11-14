@@ -934,6 +934,67 @@ impl App {
             .any(|id| self.selection.contains(id))
     }
 
+    /// What a Pick click or press at `p` on the top-level object `id`
+    /// selects: `id` and its blend's end object when `id` starts a blend
+    /// and `p` is on the steps between them, away from both objects, so
+    /// the whole blend is selected and dragged as one (#2692); otherwise
+    /// `id` alone, so a click on the start or end object still picks it
+    /// by itself for editing.
+    pub fn whole_blend_at(&self, id: ShapeId, p: Point) -> Vec<ShapeId> {
+        let alone = vec![id];
+        let Some(s) = self
+            .page_layers()
+            .into_iter()
+            .flat_map(|l| l.shapes.iter())
+            .find(|s| s.id == id)
+        else {
+            return alone;
+        };
+        let Some(end) = s.effects.iter().find_map(|e| match e {
+            tracedraw_core::live::Effect::Blend {
+                end_id: Some(end), ..
+            } => Some(*end),
+            _ => None,
+        }) else {
+            return alone;
+        };
+        let tol = self.object_pick_tol();
+        let mut own = s.clone();
+        own.effects
+            .retain(|e| !matches!(e, tracedraw_core::live::Effect::Blend { .. }));
+        if self.shape_hit(&own, p, tol) {
+            return alone;
+        }
+        let end_shape = self
+            .page_layers()
+            .into_iter()
+            .filter(|l| l.visible && !l.locked)
+            .flat_map(|l| l.shapes.iter())
+            .find(|e| e.id == end && e.visible && !e.locked)
+            .cloned();
+        match end_shape {
+            Some(e) if !self.shape_hit(&e, p, tol) => vec![id, end],
+            _ => alone,
+        }
+    }
+
+    /// The selection is one blend, its start and end objects and nothing
+    /// else, as a click on its steps selects it (#2692): a click on one
+    /// of the two then picks that object alone for editing.
+    fn selection_is_whole_blend(&self) -> bool {
+        let [x, y] = self.selection[..] else {
+            return false;
+        };
+        let ends = |a: ShapeId, b: ShapeId| {
+            self.doc().find_shape(a).is_some_and(|s| {
+                s.effects.iter().any(|e| {
+                    matches!(e, tracedraw_core::live::Effect::Blend { end_id: Some(end), .. } if *end == b)
+                })
+            })
+        };
+        ends(x, y) || ends(y, x)
+    }
+
     /// What a Pick press at `p` takes: a selected object under `p` (an
     /// object chosen inside a group stays chosen, so a drag moves it alone,
     /// #849), else with `ctrl` the object one group level in, else the
@@ -2208,7 +2269,14 @@ impl App {
                             self.select_add(id);
                         }
                     } else if !self.selection.contains(&id) {
-                        self.select(vec![id]);
+                        // A press on a blend's steps drags the whole
+                        // blend (#2692).
+                        let whole = if mods.ctrl {
+                            vec![id]
+                        } else {
+                            self.whole_blend_at(id, p)
+                        };
+                        self.select(whole);
                     }
                     self.start_move(p);
                 }
@@ -2316,15 +2384,23 @@ impl App {
                     self.pick_shadow(id);
                 }
                 Some(id) => {
+                    // On a blend's steps: the whole blend (#2692).
+                    let whole = if mods.ctrl {
+                        vec![id]
+                    } else {
+                        self.whole_blend_at(id, p)
+                    };
                     if self.picked_shadow() == Some(id) {
                         // The object of the chosen shadow: the object.
-                        self.select(vec![id]);
-                    } else if self.selection.contains(&id) {
+                        self.select(whole);
+                    } else if whole.iter().all(|w| self.selection.contains(w))
+                        && !(whole.len() == 1 && self.selection_is_whole_blend())
+                    {
                         // A click on what is selected: toggle the rotate and
                         // skew handles.
                         self.toggle_rotate_mode();
                     } else {
-                        self.select(vec![id]);
+                        self.select(whole);
                     }
                 }
                 None => self.select(Vec::new()),
