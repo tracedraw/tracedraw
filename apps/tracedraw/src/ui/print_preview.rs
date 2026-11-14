@@ -1577,10 +1577,11 @@ pub fn sheet_cells(
                 .iter()
                 .filter_map(|s| match &s.kind {
                     tracedraw_core::ShapeKind::ClipFrame { frame, .. } => match &frame.kind {
-                        tracedraw_core::ShapeKind::Rect { rect, .. } => Some((
-                            crate::imposition::cell_of(s).unwrap_or(0),
-                            s.transform.transform_rect_bbox(*rect),
-                        )),
+                        // Only the pages' places: a tile's frame is none.
+                        tracedraw_core::ShapeKind::Rect { rect, .. } => {
+                            crate::imposition::cell_of(s)
+                                .map(|n| (n, s.transform.transform_rect_bbox(*rect)))
+                        }
                         _ => None,
                     },
                     _ => None,
@@ -1724,15 +1725,18 @@ fn strip_panel(app: &App, ui: &mut Ui, pv: &mut PrintPreview) {
                     ui.separator();
                 }
                 let shown = pv.sheet;
-                let cells = sheets(app, pv)
+                let tiled = pv.st.tile;
+                let (cells, name) = sheets(app, pv)
                     .pages
                     .get(shown)
-                    .map(|p| sheet_cells(p).len())
-                    .unwrap_or(0);
-                ui.label(dim(trf(
-                    "print.status_pages_on_sheet",
-                    &[("n", &cells.to_string())],
-                )));
+                    .map(|p| (sheet_cells(p).len(), p.name.clone()))
+                    .unwrap_or_default();
+                // Tiled, the tile's name (sheet and tile: "1 A2").
+                ui.label(dim(if tiled {
+                    format!("{}: {name}", tr("print.tile"))
+                } else {
+                    trf("print.status_pages_on_sheet", &[("n", &cells.to_string())])
+                }));
                 ui.separator();
                 ui.label(dim(if pv.st.separations {
                     let n = pv.inks.iter().filter(|on| **on).count();

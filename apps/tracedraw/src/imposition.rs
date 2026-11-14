@@ -1036,6 +1036,210 @@ pub fn impose(doc: &Document, o: &Options) -> Document {
     out
 }
 
+/// How a sheet larger than the paper is printed in tiles (a poster): the
+/// paper, its margins (left, right, top, bottom, mm) the printer cannot
+/// print on, how much each tile overlaps its neighbours, and whether
+/// trim marks and each tile's name ("A1": row letter, column number) go
+/// in the margins.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Tiling {
+    pub paper: Size,
+    pub margins: [f64; 4],
+    pub overlap: f64,
+    pub marks: bool,
+}
+
+impl Tiling {
+    /// The part of the paper printed on (mm, y up).
+    pub fn area(&self) -> Rect {
+        let [l, r, t, b] = self.margins.map(|v| v.max(0.0));
+        let w = (self.paper.width - l - r).max(1.0);
+        let h = (self.paper.height - t - b).max(1.0);
+        Rect::new(l, b, l + w, b + h)
+    }
+
+    /// The overlap, kept below half the printed part so that every tile
+    /// moves the poster on.
+    fn overlap_for(&self, area: Rect) -> f64 {
+        self.overlap
+            .max(0.0)
+            .min(area.width().min(area.height()) / 2.0)
+    }
+
+    /// How many tiles across and down a sheet of `size` takes.
+    pub fn count(&self, size: Size) -> (usize, usize) {
+        let a = self.area();
+        let o = self.overlap_for(a);
+        let n = |len: f64, step: f64| {
+            if len <= step + o + 1e-6 {
+                1
+            } else {
+                ((len - o) / step - 1e-9).ceil().max(1.0) as usize
+            }
+        };
+        (n(size.width, a.width() - o), n(size.height, a.height() - o))
+    }
+}
+
+/// The name of a tile: its row as letters (A, B, ... Z, AA) and its
+/// column as a number from 1.
+pub fn tile_name(row: usize, col: usize) -> String {
+    let mut letters = String::new();
+    let mut n = row + 1;
+    while n > 0 {
+        let d = (n - 1) % 26;
+        letters.insert(0, char::from(b'A' + d as u8));
+        n = (n - 1) / 26;
+    }
+    format!("{letters}{}", col + 1)
+}
+
+/// Every sheet of `doc` split into tiles of the paper, left to right
+/// and top to bottom: each tile shows its part of the sheet inside the
+/// paper's margins, overlapping its neighbours, the tiles' grid centred
+/// on the sheet. With marks, short lines in the margins show where to
+/// trim the overlap (its middle) and each tile carries its name. A
+/// sheet that fits the paper's printed part is one tile.
+pub fn tile_sheets(doc: &Document, t: &Tiling) -> Document {
+    let area = t.area();
+    let o = t.overlap_for(area);
+    let (step_x, step_y) = (area.width() - o, area.height() - o);
+    let mut out = doc.clone();
+    out.pages.clear();
+    let mut ids = out.ids().clone();
+    for (n, sheet) in doc.pages.iter().enumerate() {
+        let (nx, ny) = t.count(sheet.size);
+        // The grid's extent over the sheet, centred on it.
+        let gw = nx as f64 * step_x + o;
+        let gh = ny as f64 * step_y + o;
+        let left = (sheet.size.width - gw) / 2.0;
+        let top = sheet.size.height + (gh - sheet.size.height) / 2.0;
+        let contents: Vec<Shape> = sheet
+            .layers
+            .iter()
+            .filter(|l| l.visible)
+            .flat_map(|l| l.shapes.iter().cloned())
+            .collect();
+        for row in 0..ny {
+            for col in 0..nx {
+                let x0 = left + col as f64 * step_x;
+                let y1 = top - row as f64 * step_y;
+                let part = Rect::new(x0, y1 - area.height(), x0 + area.width(), y1);
+                let mut layer = Layer::new(ids.layer(), "Tile");
+                let frame = mark_shape(
+                    ShapeKind::Rect {
+                        rect: part,
+                        radius: 0.0,
+                        corners: None,
+                    },
+                    Fill::None,
+                    None,
+                );
+                let mut clip = mark_shape(
+                    ShapeKind::ClipFrame {
+                        frame: Box::new(frame),
+                        contents: contents.clone(),
+                    },
+                    Fill::None,
+                    None,
+                );
+                clip.transform = Affine::translate((area.x0 - part.x0, area.y0 - part.y0));
+                clip.name = Some(TILE_NAME.to_string());
+                layer.shapes.push(clip);
+                if t.marks {
+                    let near = [col > 0, col + 1 < nx, row + 1 < ny, row > 0];
+                    layer
+                        .shapes
+                        .extend(tile_marks(t, area, o, near, &tile_name(row, col)));
+                }
+                for s in layer.shapes.iter_mut() {
+                    renumber(s, &mut ids);
+                }
+                out.pages.push(Page {
+                    id: ids.page(),
+                    name: format!("{} {}", n + 1, tile_name(row, col)),
+                    size: t.paper,
+                    layers: vec![layer],
+                    guides: Vec::new(),
+                    background: None,
+                });
+            }
+        }
+    }
+    out.set_ids(ids);
+    out
+}
+
+/// The name of a tile's clip frame on its paper.
+pub const TILE_NAME: &str = "tile";
+
+/// A tile's marks: where to trim each overlap shared with a neighbour
+/// (`near`: left, right, below, above), as short lines in the margin
+/// (inside the printed edge when there is no margin), and its name.
+fn tile_marks(t: &Tiling, a: Rect, o: f64, near: [bool; 4], name: &str) -> Vec<Shape> {
+    let [ml, mr, mt, mb] = t.margins.map(|v| v.max(0.0));
+    let tick = |room: f64| {
+        if room >= 2.0 {
+            (room - 1.0).min(5.0)
+        } else {
+            -3.0
+        }
+    };
+    let mut p = BezPath::new();
+    let mut vline = |x: f64| {
+        let (up, down) = (tick(mt), tick(mb));
+        p.move_to((x, a.y1 + up.min(0.0)));
+        p.line_to((x, a.y1 + up.max(0.0)));
+        p.move_to((x, a.y0 - down.min(0.0)));
+        p.line_to((x, a.y0 - down.max(0.0)));
+    };
+    if near[0] {
+        vline(a.x0 + o / 2.0);
+    }
+    if near[1] {
+        vline(a.x1 - o / 2.0);
+    }
+    let mut hline = |y: f64, p: &mut BezPath| {
+        let (l, r) = (tick(ml), tick(mr));
+        p.move_to((a.x0 - l.min(0.0), y));
+        p.line_to((a.x0 - l.max(0.0), y));
+        p.move_to((a.x1 + r.min(0.0), y));
+        p.line_to((a.x1 + r.max(0.0), y));
+    };
+    if near[2] {
+        hline(a.y0 + o / 2.0, &mut p);
+    }
+    if near[3] {
+        hline(a.y1 - o / 2.0, &mut p);
+    }
+    let mut out = Vec::new();
+    if !p.elements().is_empty() {
+        out.push(mark_shape(
+            ShapeKind::Path {
+                path: p,
+                closed: false,
+            },
+            Fill::None,
+            Some(Stroke::new(Color::Registration, 0.2)),
+        ));
+    }
+    // The name in the bottom margin, else just inside the corner.
+    let y = if mb >= 3.0 { a.y0 - 2.5 } else { a.y0 + 1.0 };
+    out.push(mark_shape(
+        ShapeKind::Text {
+            spans: vec![TextSpan::new(name.to_string(), "DejaVu Sans", 6.0)],
+            origin: Point::new(a.x0 + 1.0, y),
+            frame: None,
+            align: tracedraw_core::document::TextAlign::Left,
+            para: Default::default(),
+            on_path: None,
+        },
+        Fill::Solid(Color::Registration),
+        None,
+    ));
+    out
+}
+
 fn renumber(s: &mut Shape, ids: &mut tracedraw_core::id::IdSource) {
     s.id = ids.shape();
     match &mut s.kind {
@@ -1918,5 +2122,72 @@ mod tests {
             (p1.y0 - p4.y0).abs() < 1e-9 && p4.x0 >= p1.x1 - 1e-9,
             "4 beside 1"
         );
+    }
+
+    /// A sheet larger than the paper prints in tiles: 400 x 300 mm on A4
+    /// with 5 mm margins and 10 mm overlap takes 3 x 2 tiles, each the
+    /// paper's size, overlapping by 10 mm, the grid centred on the sheet,
+    /// named A1 to B3, with trim marks where a neighbour is.
+    #[test]
+    fn a_large_sheet_prints_in_overlapping_tiles() {
+        let mut doc = Document::new("poster", Size::new(400.0, 300.0));
+        let mut ids = doc.ids().clone();
+        let mut r = Shape::new(
+            ids.shape(),
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 400.0, 300.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        r.fill = Fill::Solid(Color::BLACK);
+        doc.set_ids(ids);
+        doc.pages[0].layers[0].shapes.push(r);
+        let t = Tiling {
+            paper: Size::new(210.0, 297.0),
+            margins: [5.0; 4],
+            overlap: 10.0,
+            marks: true,
+        };
+        assert_eq!(t.count(Size::new(400.0, 300.0)), (3, 2));
+        assert_eq!(t.count(Size::new(200.0, 287.0)), (1, 1), "fits: one tile");
+        let tiles = tile_sheets(&doc, &t);
+        assert_eq!(tiles.pages.len(), 6);
+        let names: Vec<&str> = tiles.pages.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["1 A1", "1 A2", "1 A3", "1 B1", "1 B2", "1 B3"]);
+        // Each tile's part of the sheet, through its clip frame.
+        let part = |i: usize| {
+            let s = &tiles.pages[i].layers[0].shapes[0];
+            assert_eq!(s.name.as_deref(), Some(TILE_NAME));
+            let ShapeKind::ClipFrame { frame, contents } = &s.kind else {
+                panic!("a clip frame");
+            };
+            assert_eq!(contents.len(), 1);
+            let ShapeKind::Rect { rect, .. } = frame.kind else {
+                panic!("a frame");
+            };
+            // Shown inside the margins.
+            let on_paper = s.transform.transform_rect_bbox(rect);
+            assert!((on_paper.x0 - 5.0).abs() < 1e-9 && (on_paper.y0 - 5.0).abs() < 1e-9);
+            rect
+        };
+        let (a1, a2, a3, b1) = (part(0), part(1), part(2), part(3));
+        assert!((a1.width() - 200.0).abs() < 1e-9 && (a1.height() - 287.0).abs() < 1e-9);
+        assert!((a1.x1 - a2.x0 - 10.0).abs() < 1e-9, "overlap across");
+        assert!((b1.y1 - a1.y0 - 10.0).abs() < 1e-9, "overlap down");
+        // Centred: as much of the grid past the left edge as the right.
+        assert!(((0.0 - a1.x0) - (a3.x1 - 400.0)).abs() < 1e-9);
+        assert!(tiles.pages.iter().all(|p| p.size == t.paper));
+        // A1 has neighbours right and below: its trim marks and its name.
+        let marks = &tiles.pages[0].layers[0].shapes;
+        assert!(marks
+            .iter()
+            .any(|s| matches!(s.kind, ShapeKind::Path { .. })));
+        assert!(marks.iter().any(|s| matches!(
+            &s.kind,
+            ShapeKind::Text { spans, .. } if spans[0].text == "A1"
+        )));
+        assert_eq!(tile_name(25, 0), "Z1");
+        assert_eq!(tile_name(26, 9), "AA10");
     }
 }

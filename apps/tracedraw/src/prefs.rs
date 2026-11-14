@@ -353,6 +353,126 @@ pub struct LayoutPreset {
     pub densitometer: bool,
     pub page_info: bool,
     pub page_numbers: bool,
+    /// The rest of the print settings, so that a preset is a whole print
+    /// style; presets and files saved before have none and leave those
+    /// settings as they are.
+    #[serde(default)]
+    pub style: Option<PrintStyle>,
+}
+
+/// The print settings a preset keeps besides the layout: the artwork's
+/// size and place on the sheet, the copies, the colour output and the
+/// file's PostScript level.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PrintStyle {
+    pub fit_to_page: bool,
+    /// Percent.
+    pub scale: f64,
+    pub art_offset: (f64, f64),
+    pub art_stretch: (f64, f64),
+    pub art_rotation: f64,
+    pub cell_rotation: Vec<f64>,
+    pub info_offset: (f64, f64),
+    pub copies: u32,
+    pub collate: bool,
+    pub reverse_order: bool,
+    pub separations: bool,
+    pub grayscale: bool,
+    pub mirror: bool,
+    pub invert: bool,
+    pub spot_to_cmyk: bool,
+    pub text_black: bool,
+    pub overprint_black: bool,
+    pub page_background: bool,
+    pub as_bitmap: bool,
+    pub bitmap_dpi: f64,
+    pub ps_level: u8,
+    pub tile: bool,
+    pub tile_overlap: f64,
+    pub tile_marks: bool,
+}
+
+impl Default for PrintStyle {
+    fn default() -> Self {
+        PrintStyle::from_state(&PrintState::default())
+    }
+}
+
+impl PrintStyle {
+    /// These settings of `st`.
+    pub fn from_state(st: &PrintState) -> Self {
+        PrintStyle {
+            fit_to_page: st.fit_to_page,
+            scale: st.scale,
+            art_offset: st.art_offset,
+            art_stretch: st.art_stretch,
+            art_rotation: st.art_rotation,
+            cell_rotation: st.cell_rotation.clone(),
+            info_offset: st.info_offset,
+            copies: st.copies,
+            collate: st.collate,
+            reverse_order: st.reverse_order,
+            separations: st.separations,
+            grayscale: st.grayscale,
+            mirror: st.mirror,
+            invert: st.invert,
+            spot_to_cmyk: st.spot_to_cmyk,
+            text_black: st.text_black,
+            overprint_black: st.overprint_black,
+            page_background: st.page_background,
+            as_bitmap: st.as_bitmap,
+            bitmap_dpi: st.bitmap_dpi,
+            ps_level: st.ps_level,
+            tile: st.tile,
+            tile_overlap: st.tile_overlap,
+            tile_marks: st.tile_marks,
+        }
+    }
+
+    /// Put these settings into `st`, each number kept in its field's
+    /// range.
+    pub fn apply(&self, st: &mut PrintState) {
+        let d = PrintState::default();
+        let num = |v: f64, lo: f64, hi: f64, d: f64| {
+            if v.is_finite() {
+                v.clamp(lo, hi)
+            } else {
+                d
+            }
+        };
+        let pair =
+            |v: (f64, f64), lo: f64, hi: f64, d: f64| (num(v.0, lo, hi, d), num(v.1, lo, hi, d));
+        st.fit_to_page = self.fit_to_page;
+        st.scale = num(self.scale, 1.0, 1000.0, d.scale);
+        st.art_offset = pair(self.art_offset, -5000.0, 5000.0, 0.0);
+        st.art_stretch = pair(self.art_stretch, 0.01, 10.0, 1.0);
+        st.art_rotation = num(self.art_rotation, -360.0, 360.0, 0.0);
+        st.cell_rotation = self
+            .cell_rotation
+            .iter()
+            .take(9999)
+            .map(|v| num(*v, -360.0, 360.0, 0.0))
+            .collect();
+        st.info_offset = pair(self.info_offset, -5000.0, 5000.0, 0.0);
+        st.copies = self.copies.clamp(1, 999);
+        st.collate = self.collate;
+        st.reverse_order = self.reverse_order;
+        st.separations = self.separations;
+        st.grayscale = self.grayscale;
+        st.mirror = self.mirror;
+        st.invert = self.invert;
+        st.spot_to_cmyk = self.spot_to_cmyk;
+        st.text_black = self.text_black;
+        st.overprint_black = self.overprint_black;
+        st.page_background = self.page_background;
+        st.as_bitmap = self.as_bitmap;
+        st.bitmap_dpi = num(self.bitmap_dpi, 36.0, 1200.0, d.bitmap_dpi);
+        st.ps_level = self.ps_level.clamp(2, 3);
+        st.tile = self.tile;
+        st.tile_overlap = num(self.tile_overlap, 0.0, 100.0, d.tile_overlap);
+        st.tile_marks = self.tile_marks;
+    }
 }
 
 impl Default for LayoutPreset {
@@ -410,6 +530,7 @@ impl LayoutPreset {
             densitometer: st.densitometer,
             page_info: st.page_info,
             page_numbers: st.page_numbers,
+            style: Some(PrintStyle::from_state(st)),
         }
     }
 
@@ -472,6 +593,9 @@ impl LayoutPreset {
         st.densitometer = self.densitometer;
         st.page_info = self.page_info;
         st.page_numbers = self.page_numbers;
+        if let Some(style) = &self.style {
+            style.apply(st);
+        }
         st.layout_preset = self.name.clone();
     }
 
@@ -492,13 +616,23 @@ impl LayoutPreset {
         (file.format == LAYOUT_FILE_FORMAT).then_some(file.layout)
     }
 
-    /// The same layout as `other`, the names aside.
+    /// The same layout as `other`, the names aside; a preset saved
+    /// before presets kept the whole style matches on its layout alone.
     pub fn same_layout(&self, other: &LayoutPreset) -> bool {
+        let style = |p: &LayoutPreset| {
+            if self.style.is_some() {
+                p.style.clone()
+            } else {
+                None
+            }
+        };
         LayoutPreset {
             name: String::new(),
+            style: style(self),
             ..self.clone()
         } == LayoutPreset {
             name: String::new(),
+            style: style(other),
             ..other.clone()
         }
     }
@@ -1523,6 +1657,69 @@ mod tests {
         assert_eq!(p.state().custom_sheet, PrintState::default().custom_sheet);
     }
 
+    /// A preset keeps every print setting: the artwork's size and place,
+    /// the copies and the colour output come back with the layout.
+    #[test]
+    fn a_preset_keeps_the_whole_print_style() {
+        let st = PrintState {
+            separations: true,
+            mirror: true,
+            invert: true,
+            grayscale: true,
+            copies: 4,
+            collate: false,
+            fit_to_page: false,
+            scale: 150.0,
+            art_offset: (12.0, -3.0),
+            art_stretch: (1.5, 0.5),
+            art_rotation: 90.0,
+            cell_rotation: vec![0.0, 180.0],
+            as_bitmap: true,
+            bitmap_dpi: 600.0,
+            ps_level: 3,
+            ..PrintState::default()
+        };
+        let p = LayoutPreset::from_state("Film", &st);
+        let back = LayoutPreset::from_file(&p.to_file()).expect("read back");
+        assert_eq!(back, p);
+        let mut fresh = PrintState::default();
+        back.apply(&mut fresh);
+        assert_eq!(PrintStyle::from_state(&fresh), PrintStyle::from_state(&st));
+        assert!(back.same_layout(&LayoutPreset::from_state("", &fresh)));
+        // A setting changed afterwards: the preset is no longer the one.
+        fresh.copies = 5;
+        assert!(!back.same_layout(&LayoutPreset::from_state("", &fresh)));
+        // Out of range values come back into range.
+        let wild = r#"{"format":"tracedraw-print-layout","version":1,"layout":{
+            "name":"w","style":{"scale":0.0,"copies":0,"bitmap_dpi":1e9,
+            "ps_level":9,"art_stretch":[0.0,99.0],"art_rotation":1000.0}}}"#;
+        let p = LayoutPreset::from_file(wild).expect("a layout");
+        let mut st = PrintState::default();
+        p.apply(&mut st);
+        assert_eq!(st.scale, 1.0);
+        assert_eq!(st.copies, 1);
+        assert_eq!(st.bitmap_dpi, 1200.0);
+        assert_eq!(st.ps_level, 3);
+        assert_eq!(st.art_stretch, (0.01, 10.0));
+        assert_eq!(st.art_rotation, 360.0);
+        // A preset from before keeps its layout only: the colour settings
+        // stay, and it still shows chosen.
+        let old = r#"{"format":"tracedraw-print-layout","version":1,"layout":{
+            "name":"old","cols":2}}"#;
+        let p = LayoutPreset::from_file(old).expect("a layout");
+        assert!(p.style.is_none());
+        let mut st = PrintState {
+            separations: true,
+            copies: 3,
+            ..PrintState::default()
+        };
+        p.apply(&mut st);
+        assert!(st.separations);
+        assert_eq!(st.copies, 3);
+        assert_eq!(st.cols, 2);
+        assert!(p.same_layout(&LayoutPreset::from_state("", &st)));
+    }
+
     /// #1796: a layout saved as a preset or a file and loaded again puts
     /// back the imposition, the sheet, the gaps, the margins and the
     /// marks; another file is refused; values out of range are kept in
@@ -1563,7 +1760,8 @@ mod tests {
             LayoutPreset::from_file("{\"format\":\"other\",\"version\":1,\"layout\":{}}").is_none()
         );
         assert!(LayoutPreset::from_file("not json").is_none());
-        // Out of range, and a Custom size.
+        // Out of range, and a Custom size; a file from before presets
+        // kept the whole style leaves the other settings alone.
         let wild = r#"{"format":"tracedraw-print-layout","version":1,"layout":{
             "name":"x","layout_kind":9,"cols":0,"rows":500,"page_order":7,
             "sheet":"custom","sheet_size":{"width":300.0,"height":400.0},

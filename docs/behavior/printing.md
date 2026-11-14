@@ -390,7 +390,16 @@ same function (`export::print_sheets`).
   order, sheet (by its name, or the Custom size) and orientation,
   Stretch to fill, Keep page size, Back side, both gaps, the paper
   margins, the booklet's binding, signature sheets, creep and gap, Bleed
-  with its limit and every printers' mark. "+" asks for a name and OK
+  with its limit and every printers' mark, and with them the rest of the
+  print style (`prefs::PrintStyle`): Fit to page and the scale, the
+  artwork's offset, stretch and rotation (and each place's turn), the
+  page information's place, copies, collate and reverse order,
+  separations, grayscale, mirror, invert, spots as CMYK, text in black,
+  overprint black, page background, print as bitmap with its resolution
+  and the PostScript level. A preset or file saved before it kept the
+  style (no `style` field) sets the layout alone and leaves those
+  settings as they are (`prefs::tests::a_preset_keeps_the_whole_print_style`).
+  "+" asks for a name and OK
   (or Enter) keeps the layout under it, replacing a preset of that name;
   "-" deletes the chosen preset after a Yes. A preset whose settings are
   changed afterwards is shown unchosen. Presets are kept in the
@@ -405,6 +414,25 @@ same function (`export::print_sheets`).
   `ui::dialogs::layout_preset_tests`). File access goes through the
   app's file dialogs, so it works on the desktop, in the browser and on
   Android.
+- Tile (a poster): under the sheet in the layout fields (Print dialog
+  and Print Preview), "Print in tiles" prints each sheet in tiles of the
+  paper chosen under Sheet (A4 when the sheet fits the pages), in its
+  orientation. The sheet then fits the pages at the print scale and the
+  paper margins go to the tiles: each tile prints its part of the sheet
+  inside them, overlapping its neighbours by Overlap (10 mm at first,
+  kept under half the printed part), the grid of tiles centred on the
+  sheet, left to right and top to bottom. Tiles across shows how many
+  tiles wide the first page prints and, typed, sets the scale (Fit to
+  page off) so that it prints that many; beside it the count across and
+  down. Trim marks and tile names (on at first) put short registration
+  lines in the margins at the middle of each overlap shared with a
+  neighbour (inside the printed edge when the margin is under 2 mm) and
+  each tile's name (row letter, column number: A1, A2, ... B1) in its
+  bottom margin. Mirror, invert and grayscale apply to the whole sheet
+  before it is cut, so the tiles go together as the sheet would print;
+  each tile is a sheet in the strip, the status line and the count of
+  pages to print (`imposition::tile_sheets`, `PrintState::tiling`;
+  `imposition::tests::a_large_sheet_prints_in_overlapping_tiles`).
 - A booklet's page count is rounded up to a multiple of four with blank
   pages at the back. The Layout fields (Print dialog and Print Preview)
   choose its binding by two pictures (#788, #947,

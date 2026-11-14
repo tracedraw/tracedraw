@@ -1508,6 +1508,11 @@ pub fn print_sheets(app: &App, st: &PrintState) -> Document {
     if st.grayscale && !st.separations {
         grayscale_doc(&mut doc);
     }
+    // Tile: each sheet (fitted to the pages, mirrored or inverted as a
+    // whole) cut into tiles of the paper, a poster.
+    if st.tile {
+        doc = crate::imposition::tile_sheets(&doc, &st.tiling());
+    }
     // Reverse order (#1394, #1571): the last sheet first, so a stack
     // printed face up, or the backs of printed sheets, come out in order.
     if st.reverse_order {
@@ -1868,7 +1873,13 @@ pub fn print_layout(app: &App, st: &PrintState, doc: &Document) -> crate::imposi
     let tz = crate::time_tracker::local_zone();
     crate::imposition::Options {
         layout: st.layout(),
-        sheet: st.sheet_size_for(first),
+        // Tiled, the sheet fits the pages and the paper's size and
+        // margins go to the tiles.
+        sheet: if st.tile {
+            None
+        } else {
+            st.sheet_size_for(first)
+        },
         gutter: st.gutter.max(0.0),
         gutter_y: Some(st.gutter_y.max(0.0)),
         order: crate::imposition::PageOrder::from_index(st.page_order),
@@ -1881,7 +1892,7 @@ pub fn print_layout(app: &App, st: &PrintState, doc: &Document) -> crate::imposi
         back_side: st.back_side,
         keep_size: st.keep_size,
         info_offset: st.info_offset,
-        paper_margins: st.margins,
+        paper_margins: if st.tile { [0.0; 4] } else { st.margins },
         // Moved and stretched in Print Preview, the whole page with its
         // clip, clear of the printer's margins (#536, #595).
         page_offset: st.art_offset,

@@ -629,6 +629,13 @@ pub struct PrintState {
     pub page_numbers: bool,
     /// PostScript language level of a PostScript file (2 or 3).
     pub ps_level: u8,
+    /// Each sheet printed in tiles of the chosen paper, a poster: the
+    /// sheet fits the pages and the paper is the Sheet field's size.
+    pub tile: bool,
+    /// How much each tile overlaps its neighbours, mm.
+    pub tile_overlap: f64,
+    /// Trim marks and each tile's name in the paper's margins.
+    pub tile_marks: bool,
 }
 
 /// The sheets the Print dialog offers: fitted to the pages, then paper
@@ -770,6 +777,36 @@ impl PrintState {
         })
     }
 
+    /// The tiles' paper with Tile on: the Sheet field's size, or A4 when
+    /// the sheet fits the pages; and the margins and overlap.
+    pub fn tiling(&self) -> crate::imposition::Tiling {
+        let paper = self
+            .sheet_size_for(Size::new(210.0, 297.0))
+            .unwrap_or_else(|| {
+                let a4 = Size::new(210.0, 297.0);
+                let landscape = match self.orientation {
+                    1 => false,
+                    2 => true,
+                    _ => self.landscape,
+                };
+                if landscape {
+                    Size::new(a4.height, a4.width)
+                } else {
+                    a4
+                }
+            });
+        crate::imposition::Tiling {
+            paper,
+            margins: self.margins,
+            overlap: if self.tile_overlap.is_finite() {
+                self.tile_overlap.clamp(0.0, 100.0)
+            } else {
+                0.0
+            },
+            marks: self.tile_marks,
+        }
+    }
+
     /// The indexes of the pages to print among `count` pages, the current
     /// one being `current`.
     pub fn page_indexes(&self, count: usize, current: usize) -> Vec<usize> {
@@ -906,6 +943,9 @@ impl Default for PrintState {
             info_text: String::new(),
             page_numbers: false,
             ps_level: 2,
+            tile: false,
+            tile_overlap: 10.0,
+            tile_marks: true,
         }
     }
 }
@@ -5415,6 +5455,72 @@ pub(crate) fn margin_fields(ui: &mut Ui, margins: &mut [f64; 4]) {
     });
 }
 
+/// Tile (a poster): the sheet printed in tiles of the Sheet field's
+/// paper, their overlap, the tiles across (which sets the scale) and the
+/// trim marks with each tile's name.
+fn tile_rows(app: &App, ui: &mut Ui, st: &mut PrintState) {
+    ui.label(tr("print.tile"))
+        .rich_tip(crate::ui::tips::keyed("print.tile"));
+    ui.checkbox(&mut st.tile, tr("print.tile_on"))
+        .rich_tip(crate::ui::tips::keyed("print.tile"));
+    ui.end_row();
+    if !st.tile {
+        return;
+    }
+    let t = st.tiling();
+    // The first page printed at the print scale, for the tiles' count.
+    let page = app
+        .doc()
+        .pages
+        .first()
+        .map(|p| p.size)
+        .unwrap_or(Size::new(210.0, 297.0));
+    let k = if st.fit_to_page {
+        1.0
+    } else {
+        st.scale / 100.0
+    };
+    let size = Size::new(page.width * k, page.height * k);
+    let (nx, ny) = t.count(size);
+    ui.label("");
+    ui.horizontal(|ui| {
+        ui.label(tr("print.tile_overlap"));
+        ui.add(
+            crate::ui::field::NumField::new(&mut st.tile_overlap)
+                .range(0.0..=100.0)
+                .suffix(" mm")
+                .width(60.0),
+        )
+        .rich_tip(crate::ui::tips::keyed("print.tile_overlap"));
+    });
+    ui.end_row();
+    ui.label("");
+    ui.horizontal(|ui| {
+        ui.label(tr("print.tile_across"));
+        let mut across = nx as u32;
+        let r = ui
+            .add(crate::ui::field::NumField::new(&mut across).range(1..=50))
+            .rich_tip(crate::ui::tips::keyed("print.tile_across"));
+        if r.changed() && across as usize != nx {
+            // The scale that makes the page that many tiles wide.
+            let a = t.area();
+            let o = t.overlap.min(a.width().min(a.height()) / 2.0);
+            let want = f64::from(across) * (a.width() - o) + o - 0.5;
+            st.fit_to_page = false;
+            st.scale = (want / page.width.max(1e-6) * 100.0).clamp(1.0, 1000.0);
+        }
+        ui.label(trf(
+            "print.tile_count",
+            &[("x", &nx.to_string()), ("y", &ny.to_string())],
+        ));
+    });
+    ui.end_row();
+    ui.label("");
+    ui.checkbox(&mut st.tile_marks, tr("print.tile_marks"))
+        .rich_tip(crate::ui::tips::keyed("print.tile_marks"));
+    ui.end_row();
+}
+
 pub(crate) fn print_layout_fields(app: &App, ui: &mut Ui, st: &mut PrintState) {
     ui.strong(tr("print.layout"));
     ui.vertical(|ui| {
@@ -5505,6 +5611,7 @@ pub(crate) fn print_layout_fields(app: &App, ui: &mut Ui, st: &mut PrintState) {
                         );
                     });
                     ui.end_row();
+                    tile_rows(app, ui, st);
                     // The Custom size, and saving it under a name (#591).
                     if st.sheet >= CUSTOM_SHEET {
                         ui.label("");
