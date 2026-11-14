@@ -1239,6 +1239,8 @@ pub enum Dialog {
         layer: tracedraw_core::LayerId,
         name: String,
     },
+    /// A layer's Properties from its menu in the Objects docker (#1477).
+    LayerProperties(crate::ui::objects_docker::LayerProps),
     RenameObject {
         shape: tracedraw_core::ShapeId,
         name: String,
@@ -2178,6 +2180,19 @@ pub fn show(app: &mut App, ctx: &Context) {
                         layer: *layer,
                         name: name.clone(),
                     });
+                }
+            });
+        }
+        Dialog::LayerProperties(st) => {
+            window(ctx, tr("docker.layer_properties")).show(ctx, |ui| {
+                crate::ui::objects_docker::layer_properties_fields(ui, st);
+                if ok_cancel(ui, &mut close) {
+                    let cmds = st.commands(app);
+                    if !cmds.is_empty() {
+                        if let Err(e) = app.engine.run_batch("Layer Properties", &cmds) {
+                            app.status = e.to_string();
+                        }
+                    }
                 }
             });
         }
@@ -8093,6 +8108,16 @@ pub(crate) mod tests {
                 layer,
                 name: "Layer".into(),
             },
+            Dialog::LayerProperties(crate::ui::objects_docker::LayerProps {
+                layer,
+                name: "Layer".into(),
+                visible: true,
+                printable: true,
+                locked: false,
+                master: true,
+                scope: tracedraw_core::MasterScope::All,
+                in_front: false,
+            }),
             Dialog::DocumentProperties(Box::default()),
             Dialog::OldCdrVersion { version: 9 },
             Dialog::ConfirmClose,

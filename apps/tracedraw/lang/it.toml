@@ -8531,3 +8531,6 @@ dialog.bg_backdrop_top = "Sopra" # mt
 dialog.bg_backdrop_top_desc = "Il colore in alto nello sfondo." # mt
 dialog.bg_backdrop_bottom = "Sotto" # mt
 dialog.bg_backdrop_bottom_desc = "Il colore in basso; lo stesso di sopra per un colore unico." # mt
+docker.move_to_page = "Sposta nella pagina" # mt
+docker.layer_properties = "Proprietà..." # mt
+docker.guide_row_desc = "Una guida: il suo occhio nasconde solo lei, il lucchetto la blocca. Fai clic per selezionarla nella pagina." # mt

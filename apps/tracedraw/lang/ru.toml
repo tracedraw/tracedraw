@@ -8531,3 +8531,6 @@ dialog.bg_backdrop_top = "Сверху" # mt
 dialog.bg_backdrop_top_desc = "Цвет вверху фона." # mt
 dialog.bg_backdrop_bottom = "Снизу" # mt
 dialog.bg_backdrop_bottom_desc = "Цвет внизу; тот же, что сверху, для сплошного цвета." # mt
+docker.move_to_page = "Переместить на страницу" # mt
+docker.layer_properties = "Свойства..." # mt
+docker.guide_row_desc = "Одна направляющая: глаз скрывает только её, замок её блокирует. Щёлкните, чтобы выделить её на странице." # mt

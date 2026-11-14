@@ -168,7 +168,7 @@ impl App {
         let tol = PICK_PX / self.view.zoom.max(1e-6) as f64;
         self.page_guides()
             .iter()
-            .rposition(|g| g.distance(p).abs() <= tol)
+            .rposition(|g| !g.hidden && g.distance(p).abs() <= tol)
     }
 
     /// The guideline under `p` to pick: one of the guidelines being edited,
@@ -187,7 +187,7 @@ impl App {
         let i = self
             .other_guides_on_page()
             .iter()
-            .rposition(|g| g.distance(p).abs() <= tol)?;
+            .rposition(|g| !g.hidden && g.distance(p).abs() <= tol)?;
         self.choose_master_guides(!self.edit_master_guides);
         Some(i)
     }
@@ -521,6 +521,33 @@ impl App {
         self.select(Vec::new());
         self.selected_guides = (0..self.page_guides().len()).collect();
         self.guide_rotate = None;
+    }
+
+    /// Show or hide one guideline of the set being edited by its own eye
+    /// (#1775): one undo step; a hidden one leaves the selection.
+    pub fn set_guide_hidden(&mut self, index: usize, hidden: bool) {
+        let mut guides = self.page_guides();
+        let Some(g) = guides.get_mut(index) else {
+            return;
+        };
+        if g.hidden == hidden {
+            return;
+        }
+        g.hidden = hidden;
+        if hidden {
+            self.selected_guides.retain(|i| *i != index);
+            if self.guide_rotate == Some(index) {
+                self.guide_rotate = None;
+            }
+        }
+        self.set_guides(
+            guides,
+            if hidden {
+                "Hide Guideline"
+            } else {
+                "Show Guideline"
+            },
+        );
     }
 
     /// Lock or unlock the given guidelines.

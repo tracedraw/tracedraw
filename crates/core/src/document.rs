@@ -4996,6 +4996,10 @@ pub struct Guide {
     /// Locked guidelines can be selected but not moved or deleted.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub locked: bool,
+    /// Hidden by its own eye in the Objects docker: not drawn, picked
+    /// or snapped to, while the others of its set show (#1775).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
 }
 
 impl From<GuideLine> for Guide {
@@ -5005,6 +5009,7 @@ impl From<GuideLine> for Guide {
             color: None,
             style: GuideStyle::default(),
             locked: false,
+            hidden: false,
         }
     }
 }
@@ -5695,7 +5700,13 @@ impl Document {
         } else {
             &[]
         };
-        Ok(master.iter().chain(own.iter()).copied().collect())
+        // A guideline hidden by its own eye is left out (#1775).
+        Ok(master
+            .iter()
+            .chain(own.iter())
+            .filter(|g| !g.hidden)
+            .copied()
+            .collect())
     }
 
     /// Whether the guidelines of the master page (`page` `None`) or of
@@ -7212,6 +7223,7 @@ mod tests {
             color: Some(crate::Color::rgb8(255, 0, 0)),
             style: GuideStyle::Dotted,
             locked: true,
+            hidden: true,
         };
         let json = serde_json::to_string(&g).unwrap();
         assert!(json.contains("\"dir\":\"vertical\""));

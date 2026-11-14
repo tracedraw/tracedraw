@@ -8531,3 +8531,6 @@ dialog.bg_backdrop_top = "ऊपर" # mt
 dialog.bg_backdrop_top_desc = "बैकग्राउंड के ऊपर का रंग।" # mt
 dialog.bg_backdrop_bottom = "नीचे" # mt
 dialog.bg_backdrop_bottom_desc = "नीचे का रंग; एक रंग के लिए ऊपर जैसा ही।" # mt
+docker.move_to_page = "पेज पर ले जाएँ" # mt
+docker.layer_properties = "गुण..." # mt
+docker.guide_row_desc = "एक गाइडलाइन: उसकी आँख केवल उसे छिपाती है, ताला उसे लॉक करता है। पेज पर चुनने के लिए क्लिक करें।" # mt
