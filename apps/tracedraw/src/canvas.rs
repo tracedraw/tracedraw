@@ -2859,28 +2859,30 @@ fn draw_nodes(app: &App, painter: &Painter) {
         }
         let all = nodes::nodes(path);
         if prefs.show_direction {
-            // A small arrow head just after the first node, along the
-            // first segment.
-            if let Some(n0) = all.iter().find(|n| n.is_start) {
-                let toward = n0
-                    .ctrl_out
-                    .or_else(|| all.iter().find(|n| !n.is_start).map(|n| n.pos));
-                if let Some(t) = toward {
-                    let a = view.to_screen(s.transform * n0.pos);
-                    let bpt = view.to_screen(s.transform * t);
-                    let d = bpt - a;
-                    if d.length() > 1.0 {
-                        let d = d.normalized();
-                        let n = egui::vec2(-d.y, d.x);
-                        let tip = a + d * (size + 9.0);
-                        let base = a + d * (size + 3.0);
-                        painter.add(epaint::PathShape::convex_polygon(
-                            vec![tip, base + n * 3.5, base - n * 3.5],
-                            secondary,
-                            EStroke::NONE,
-                        ));
-                    }
+            // A small arrow head just after the first node of every
+            // subpath, along the way the curve leaves it, and one just
+            // past the last node of an open subpath, along the way it
+            // arrives: after Break Curve each part shows its direction at
+            // both ends, as the reference program does (#2578).
+            for (at, dir, start) in nodes::direction_marks(path) {
+                let a = view.to_screen(s.transform * at);
+                let ahead = view.to_screen(s.transform * (at + dir));
+                let d = ahead - a;
+                if d.length() <= 1e-6 {
+                    continue;
                 }
+                let d = d.normalized();
+                let n = egui::vec2(-d.y, d.x);
+                let (tip, base) = if start {
+                    (a + d * (size + 9.0), a + d * (size + 3.0))
+                } else {
+                    (a + d * (size + 7.0), a + d * (size + 1.0))
+                };
+                painter.add(epaint::PathShape::convex_polygon(
+                    vec![tip, base + n * 3.5, base - n * 3.5],
+                    secondary,
+                    EStroke::NONE,
+                ));
             }
         }
         for n in all {

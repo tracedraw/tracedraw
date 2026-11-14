@@ -3248,6 +3248,29 @@ impl App {
                 }
                 return;
             }
+            // 2-point line: a drag ends the line where it is let go. It
+            // waited for another press before, so on a touch screen,
+            // with no pointer to follow after the finger left, the
+            // second node landed wherever the next tap was (#2594).
+            if self.tool == Tool::TwoPointLine
+                && self
+                    .curve
+                    .as_ref()
+                    .is_some_and(|c| c.dragging_handle && c.nodes.len() == 1)
+            {
+                let far = self
+                    .curve
+                    .as_ref()
+                    .and_then(|c| c.nodes.first())
+                    .is_some_and(|n| (n.0 - p).hypot() * self.view.zoom as f64 > 1.0);
+                if far {
+                    if let Some(c) = &mut self.curve {
+                        c.nodes.push((p, None));
+                    }
+                    self.finish_curve();
+                    return;
+                }
+            }
             if let Some(c) = &mut self.curve {
                 c.dragging_handle = false;
                 c.alt_from = None;

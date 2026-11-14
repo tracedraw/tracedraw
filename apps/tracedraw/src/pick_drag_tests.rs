@@ -27043,3 +27043,34 @@ fn a_right_click_on_a_menu_row_opens_its_shortcut_keys() {
         assert!(app.shortcut_editor.capture.is_none());
     }
 }
+
+/// #2594: the 2-point line ends where the drag is let go, so the second
+/// node is where the finger left it (it waited for another tap).
+#[test]
+fn a_two_point_line_drag_ends_at_the_release() {
+    let (ctx, mut app, _) = setup();
+    app.set_tool(Tool::TwoPointLine);
+    let before = shape_count(&app);
+    let a = app.view.to_screen(Point::new(100.0, 100.0));
+    let b = app.view.to_screen(Point::new(100.0, 160.0));
+    drag(&ctx, &mut app, a, b, Modifiers::NONE, Vec::new());
+    assert!(app.curve.is_none(), "the line is finished at the release");
+    assert_eq!(shape_count(&app), before + 1);
+    let id = app.selection[0];
+    let (_, s) = app.doc().shape(id).expect("line");
+    let path = s.page_path();
+    let ends: Vec<Point> = path
+        .elements()
+        .iter()
+        .filter_map(|e| e.end_point())
+        .collect();
+    assert_eq!(ends.len(), 2);
+    assert!(
+        (ends[0] - Point::new(100.0, 100.0)).hypot() < 0.5,
+        "{ends:?}"
+    );
+    assert!(
+        (ends[1] - Point::new(100.0, 160.0)).hypot() < 0.5,
+        "{ends:?}"
+    );
+}
