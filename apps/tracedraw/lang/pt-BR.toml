@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "Abrir em uma aba própria" # mt
 hint.drop_frame_add = "Segure W ou Alt para adicionar ao frame" # mt
 hint.drop_frame_place = "Soltar aqui, fora do frame" # mt
 hint.drop_frame_replace = "Segure K para substituir o conteúdo do frame" # mt
+hint.drop_frame_into = "Solte aqui para colocar dentro do frame" # mt
 hint.drop_import = "Solte para importar no desenho" # mt
 hint.drop_open = "Solte para abrir" # mt
 hint.forward = "Avançar"

@@ -5409,6 +5409,13 @@ impl App {
     /// becomes the active one and the Hints panel shows its page, even
     /// when it was already active (#1321).
     pub fn choose_tool(&mut self, tool: Tool) {
+        // An eyedropper chosen again (toolbox, its key, Space back to it)
+        // starts out sampling, with the pipette: it stayed in Apply mode
+        // with the colour taken last, so a new colour needed Ctrl+click
+        // (#2701). The colour is kept for the Color docker's Use.
+        if self.tool != tool && matches!(tool, Tool::ColorEyedropper | Tool::AttributesEyedropper) {
+            self.eyedropper_apply = false;
+        }
         self.set_tool(tool);
         self.tool_chosen = self.tool_chosen.wrapping_add(1);
     }

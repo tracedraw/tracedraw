@@ -2112,6 +2112,7 @@ hint.drop_ask_open = "ເປີດໃນແທັບໃໝ່ສະເພາະ�
 hint.drop_frame_add = "ກົດ W ຫຼື Alt ຄ້າງໄວ້ເພື່ອເພີ່ມໃສ່ກອບຕັດ"
 hint.drop_frame_place = "ວາງຢູ່ນີ້, ດ້ານນອກກອບຕັດ"
 hint.drop_frame_replace = "ກົດ K ຄ້າງໄວ້ເພື່ອປ່ຽນແທນເນື້ອຫາໃນກອບ"
+hint.drop_frame_into = "ປ່ອຍທີ່ນີ້ເພື່ອໃສ່ໃນກອບ"
 hint.drop_import = "ວາງລົງເພື່ອນຳເຂົ້າໃສ່ຮູບແຕ້ມ"
 hint.drop_open = "ວາງລົງເພື່ອເປີດ"
 hint.forward = "ຕໍ່ໄປ"

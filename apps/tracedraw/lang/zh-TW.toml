@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "在獨立的分頁中開啟" # mt
 hint.drop_frame_add = "按住 W 或 Alt 加入圖框" # mt
 hint.drop_frame_place = "放在這裡（圖框之外）" # mt
 hint.drop_frame_replace = "按住 K 取代圖框內容" # mt
+hint.drop_frame_into = "在此放開即可放入圖框" # mt
 hint.drop_import = "放開以匯入至繪圖" # mt
 hint.drop_open = "放開以開啟" # mt
 hint.forward = "下一頁"

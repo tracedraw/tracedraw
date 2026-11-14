@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "अपने टैब में खोलें" # mt
 hint.drop_frame_add = "फ़्रेम में जोड़ने के लिए W या Alt दबाए रखें" # mt
 hint.drop_frame_place = "यहाँ छोड़ें, फ़्रेम के बाहर" # mt
 hint.drop_frame_replace = "फ़्रेम की सामग्री बदलने के लिए K दबाए रखें" # mt
+hint.drop_frame_into = "फ़्रेम में रखने के लिए यहाँ छोड़ें" # mt
 hint.drop_import = "ड्रॉइंग में आयात करने के लिए छोड़ें" # mt
 hint.drop_open = "खोलने के लिए छोड़ें" # mt
 hint.forward = "आगे"

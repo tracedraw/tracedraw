@@ -1055,12 +1055,7 @@ fn draw_drop_frame(app: &App, painter: &Painter) {
         return;
     };
     let at = app.view.to_screen(p) + egui::vec2(18.0, 24.0);
-    let (w, k) = app.drop_keys;
-    let lines = [
-        ("hint.drop_frame_place", !w && !k),
-        ("hint.drop_frame_add", w && !k),
-        ("hint.drop_frame_replace", k),
-    ];
+    let lines = drop_frame_hints(app.drop_keys, app.clip_frame_is_empty(frame));
     let font = egui::FontId::proportional(12.0);
     let galleys: Vec<_> = lines
         .iter()
@@ -1093,6 +1088,22 @@ fn draw_drop_frame(app: &App, painter: &Painter) {
         painter.galley(egui::pos2(bg.left() + 6.0, y), g, Tokens::text());
         y += h + 2.0;
     }
+}
+
+/// The lines under the pointer while the selection is over a clip frame,
+/// each with whether it is what a release does now (W, K held). An empty
+/// frame takes the objects as they are, and has no contents for K to
+/// replace, so it offers just that (#2703).
+pub(crate) fn drop_frame_hints(keys: (bool, bool), empty: bool) -> Vec<(&'static str, bool)> {
+    if empty {
+        return vec![("hint.drop_frame_into", true)];
+    }
+    let (w, k) = keys;
+    vec![
+        ("hint.drop_frame_place", !w && !k),
+        ("hint.drop_frame_add", w && !k),
+        ("hint.drop_frame_replace", k),
+    ]
 }
 
 /// Beside the pointer while File > Import's file waits for its place:
@@ -2386,12 +2397,99 @@ fn draw_empty_clip_frames(app: &App, painter: &Painter) {
     {
         if let ShapeKind::ClipFrame { contents, .. } = &s.kind {
             if contents.is_empty() && s.visible {
-                let r = app.view.rect_to_screen(s.bounds());
-                painter.line_segment([r.left_top(), r.right_bottom()], stroke);
-                painter.line_segment([r.right_top(), r.left_bottom()], stroke);
+                for (a, b) in
+                    empty_frame_marks(&s.page_path(), 0.25 / app.view.zoom.max(0.05) as f64)
+                {
+                    painter.line_segment([app.view.to_screen(a), app.view.to_screen(b)], stroke);
+                }
             }
         }
     }
+}
+
+/// The two diagonals of an empty clip frame's box, kept to the parts that
+/// lie inside its outline (page space, `tol` the flattening tolerance in
+/// mm): drawn corner to corner, they ran out of an ellipse, a star or a
+/// curve and made the frame look bigger than it is (#2702).
+pub(crate) fn empty_frame_marks(path: &BezPath, tol: f64) -> Vec<(Point, Point)> {
+    use kurbo::Shape as _;
+    let r = path.bounding_box();
+    if !(r.width() > 0.0 && r.height() > 0.0) {
+        return Vec::new();
+    }
+    // The outline's straight pieces, closed per subpath.
+    let mut segs: Vec<(Point, Point)> = Vec::new();
+    let (mut first, mut last) = (None::<Point>, None::<Point>);
+    let close = |first: &mut Option<Point>, last: &mut Option<Point>, segs: &mut Vec<_>| {
+        if let (Some(f), Some(l)) = (*first, *last) {
+            if f != l {
+                segs.push((l, f));
+            }
+        }
+        *first = None;
+        *last = None;
+    };
+    kurbo::flatten(
+        path.elements().iter().copied(),
+        tol.max(1e-4),
+        &mut |el| match el {
+            PathEl::MoveTo(p) => {
+                close(&mut first, &mut last, &mut segs);
+                first = Some(p);
+                last = Some(p);
+            }
+            PathEl::LineTo(p) => {
+                if let Some(l) = last {
+                    segs.push((l, p));
+                }
+                last = Some(p);
+            }
+            PathEl::ClosePath => close(&mut first, &mut last, &mut segs),
+            _ => {}
+        },
+    );
+    close(&mut first, &mut last, &mut segs);
+    let mut out: Vec<(Point, Point)> = Vec::new();
+    for (a, b) in [
+        (Point::new(r.x0, r.y0), Point::new(r.x1, r.y1)),
+        (Point::new(r.x1, r.y0), Point::new(r.x0, r.y1)),
+    ] {
+        let d = b - a;
+        // Where the diagonal crosses the outline, as fractions of it.
+        let mut ts = vec![0.0, 1.0];
+        for &(p, q) in &segs {
+            let e = q - p;
+            let den = d.x * e.y - d.y * e.x;
+            if den.abs() < 1e-12 {
+                continue;
+            }
+            let w = p - a;
+            let t = (w.x * e.y - w.y * e.x) / den;
+            let u = (w.x * d.y - w.y * d.x) / den;
+            if (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u) {
+                ts.push(t);
+            }
+        }
+        ts.sort_by(f64::total_cmp);
+        ts.dedup_by(|x, y| (*x - *y).abs() < 1e-9);
+        for w in ts.windows(2) {
+            let (t0, t1) = (w[0], w[1]);
+            if t1 - t0 < 1e-9 {
+                continue;
+            }
+            let mid = a + d * ((t0 + t1) / 2.0);
+            // Even-odd, so the hole of a ring or a letter O is left out.
+            if path.winding(mid) % 2 != 0 {
+                let (p, q) = (a + d * t0, a + d * t1);
+                // Pieces that join go on as one line.
+                match out.last_mut() {
+                    Some((_, end)) if (*end - p).hypot() < 1e-9 => *end = q,
+                    _ => out.push((p, q)),
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Document grid line colour (lines) and dot colour (dots).
@@ -3675,6 +3773,50 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An empty clip frame's crossing lines stay inside its outline: an
+    /// ellipse's run corner to corner of its box no more (#2702); a
+    /// rectangle's still go corner to corner.
+    #[test]
+    fn the_empty_frame_lines_stay_inside_the_frame() {
+        let ellipse = tracedraw_core::geometry::ellipse_path(Rect::new(0.0, 0.0, 100.0, 50.0));
+        let marks = empty_frame_marks(&ellipse, 0.01);
+        assert_eq!(marks.len(), 2);
+        for (a, b) in &marks {
+            for p in [a, b] {
+                // On the ellipse (x-50)^2/50^2 + (y-25)^2/25^2 = 1.
+                let e = ((p.x - 50.0) / 50.0).powi(2) + ((p.y - 25.0) / 25.0).powi(2);
+                assert!((e - 1.0).abs() < 0.01, "{p:?} on the outline");
+            }
+        }
+        let rect = tracedraw_core::geometry::rect_path(Rect::new(0.0, 0.0, 100.0, 50.0), 0.0);
+        let marks = empty_frame_marks(&rect, 0.01);
+        assert_eq!(marks.len(), 2);
+        let (a, b) = marks[0];
+        assert!(
+            (a - Point::new(0.0, 0.0)).hypot() < 1e-6
+                && (b - Point::new(100.0, 50.0)).hypot() < 1e-6
+        );
+        // A ring: the hole is left out.
+        let mut ring = rect.clone();
+        ring.extend(tracedraw_core::geometry::rect_path(
+            Rect::new(40.0, 20.0, 60.0, 30.0),
+            0.0,
+        ));
+        let marks = empty_frame_marks(&ring, 0.01);
+        assert_eq!(marks.len(), 4, "each diagonal in two pieces");
+    }
+
+    /// The hint over an empty clip frame offers only putting the objects
+    /// in, which a release does as it is; K is not offered (#2703).
+    #[test]
+    fn an_empty_frame_offers_only_placing_inside() {
+        assert_eq!(
+            drop_frame_hints((false, false), true),
+            vec![("hint.drop_frame_into", true)]
+        );
+        assert_eq!(drop_frame_hints((false, false), false).len(), 3);
+    }
 
     /// #1145: with the Pick tool a selected object marks the first node
     /// of each of its subpaths (the outer and inner ring of a letter O

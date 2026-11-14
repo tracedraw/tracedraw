@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "Kendi sekmesinde aç" # mt
 hint.drop_frame_add = "Çerçeveye eklemek için W veya Alt tuşunu basılı tutun" # mt
 hint.drop_frame_place = "Buraya bırak, çerçevenin dışına" # mt
 hint.drop_frame_replace = "Çerçevenin içeriğini değiştirmek için K'yi basılı tutun" # mt
+hint.drop_frame_into = "Çerçevenin içine koymak için buraya bırakın" # mt
 hint.drop_import = "Çizime içe aktarmak için bırakın" # mt
 hint.drop_open = "Açmak için bırakın" # mt
 hint.forward = "İleri"

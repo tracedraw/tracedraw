@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "Открыть в отдельной вкладке" # mt
 hint.drop_frame_add = "Удерживайте W или Alt, чтобы добавить в рамку" # mt
 hint.drop_frame_place = "Отпустить здесь, вне рамки" # mt
 hint.drop_frame_replace = "Удерживайте K, чтобы заменить содержимое рамки" # mt
+hint.drop_frame_into = "Отпустите здесь, чтобы поместить в рамку" # mt
 hint.drop_import = "Отпустите, чтобы импортировать в рисунок" # mt
 hint.drop_open = "Отпустите, чтобы открыть" # mt
 hint.forward = "Вперёд"

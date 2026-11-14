@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "新しいタブで開く" # mt
 hint.drop_frame_add = "W または Alt を押したままでフレームに追加" # mt
 hint.drop_frame_place = "ここに置く（フレームの外）" # mt
 hint.drop_frame_replace = "K を押したままでフレームの内容を置き換え" # mt
+hint.drop_frame_into = "ここで離すとフレームの中に入ります" # mt
 hint.drop_import = "ドロップして図面に読み込む" # mt
 hint.drop_open = "ドロップして開く" # mt
 hint.forward = "進む"

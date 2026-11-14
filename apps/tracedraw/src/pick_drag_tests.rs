@@ -6466,13 +6466,10 @@ fn the_context_menu_and_a_key_edit_and_extract_clip_frame_contents() {
     let extract = row(&texts, "menu.object.clip_frame_extract").expect("Extract Contents");
     click_at(&ctx, &mut app, extract, none);
     assert_eq!(app.doc().top_level_of(text), Some(text), "a page object");
-    // The frame stays, as its own shape, with nothing inside.
-    let frame_shape = app.doc().shape_on_page(clip).expect("the frame stays");
-    assert!(
-        !matches!(frame_shape.kind, ShapeKind::ClipFrame { .. }),
-        "{:?}",
-        frame_shape.kind
-    );
+    // The frame stays a clip frame, with nothing inside, ready for new
+    // contents (#2703).
+    assert!(app.doc().shape_on_page(clip).is_some(), "the frame stays");
+    assert!(app.clip_frame_is_empty(clip));
     assert!(app.clip_frame_edit.is_none());
     // The undo step brings the contents back in.
     app.undo();
@@ -27397,4 +27394,36 @@ fn a_right_drag_rested_on_a_page_tab_copies_the_fill_onto_that_page() {
     let after = bounds(&app, id);
     assert!((after.x0 - before.x0).abs() < 1e-6 && (after.y0 - before.y0).abs() < 1e-6);
     assert!(app.right_drag_style.is_none());
+}
+
+/// An object let go over an empty clip frame goes into it with no key
+/// held: the frame was shown as the target, yet the object stayed over
+/// it (#2703).
+#[test]
+fn an_object_dropped_on_an_empty_clip_frame_goes_inside() {
+    let (ctx, mut app, first) = setup();
+    app.select(vec![first]);
+    app.delete_selection();
+    let (rect, text) = text_and_frame(&mut app, true, false);
+    app.place_inside(vec![text], rect);
+    let clip = app.doc().top_level_of(text).expect("clip frame");
+    app.select(vec![clip]);
+    app.extract_clip_contents();
+    app.select(vec![text]);
+    app.delete_selection();
+    assert!(app.clip_frame_is_empty(clip));
+    app.settings.clip_frame.auto_center = crate::settings::AutoCenter::Never;
+    let square = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(200.0, 20.0, 220.0, 40.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("square");
+    app.select(vec![square]);
+    let from = app.view.to_screen(Point::new(210.0, 30.0));
+    let to = app.view.to_screen(Point::new(60.0, 45.0));
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    assert_eq!(app.doc().top_level_of(square), Some(clip), "in the frame");
+    assert!(app.drop_frame.is_none());
 }

@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "فتح في علامة تبويب خاصة" # mt
 hint.drop_frame_add = "اضغط W أو Alt باستمرار للإضافة إلى الإطار" # mt
 hint.drop_frame_place = "إفلات هنا، خارج الإطار" # mt
 hint.drop_frame_replace = "اضغط K باستمرار لاستبدال محتوى الإطار" # mt
+hint.drop_frame_into = "أفلت هنا لوضعه داخل الإطار" # mt
 hint.drop_import = "أفلت للاستيراد إلى الرسم" # mt
 hint.drop_open = "أفلت للفتح" # mt
 hint.forward = "تقدم"

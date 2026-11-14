@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "Buka di tab tersendiri" # mt
 hint.drop_frame_add = "Tahan W atau Alt untuk menambahkan ke bingkai" # mt
 hint.drop_frame_place = "Lepaskan di sini, di luar bingkai" # mt
 hint.drop_frame_replace = "Tahan K untuk mengganti isi bingkai" # mt
+hint.drop_frame_into = "Lepaskan di sini untuk memasukkannya ke bingkai" # mt
 hint.drop_import = "Lepaskan untuk mengimpor ke gambar" # mt
 hint.drop_open = "Lepaskan untuk membuka" # mt
 hint.forward = "Maju"

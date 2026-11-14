@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "নিজস্ব ট্যাবে খুলুন" # m
 hint.drop_frame_add = "ফ্রেমে যোগ করতে W বা Alt চেপে ধরুন" # mt
 hint.drop_frame_place = "এখানে ছাড়ুন, ফ্রেমের বাইরে" # mt
 hint.drop_frame_replace = "ফ্রেমের বিষয়বস্তু বদলাতে K চেপে ধরুন" # mt
+hint.drop_frame_into = "ফ্রেমের ভেতরে রাখতে এখানে ছাড়ুন" # mt
 hint.drop_import = "অঙ্কনে আমদানি করতে ছেড়ে দিন" # mt
 hint.drop_open = "খুলতে ছেড়ে দিন" # mt
 hint.forward = "সামনে"

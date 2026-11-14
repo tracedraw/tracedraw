@@ -902,6 +902,36 @@ mod tests {
         assert!(!app.eyedropper_apply);
     }
 
+    /// An eyedropper chosen again (after the Pick tool, by Space or the
+    /// toolbox) starts out sampling, not in Apply mode with the old
+    /// colour (#2701); the colour stays for the Color docker.
+    #[test]
+    fn choosing_an_eyedropper_again_starts_sampling() {
+        use crate::tools::Tool;
+        let mut app = App::headless();
+        let a = rect(&mut app, Rect::new(0.0, 0.0, 10.0, 10.0));
+        let red = Color::rgb8(200, 10, 10);
+        app.run(Command::SetFill {
+            shapes: vec![a],
+            fill: Fill::Solid(red),
+        });
+        app.select(Vec::new());
+        for tool in [Tool::ColorEyedropper, Tool::AttributesEyedropper] {
+            app.choose_tool(tool);
+            app.eyedropper_click(
+                Point::new(5.0, 5.0),
+                tool == Tool::AttributesEyedropper,
+                false,
+                false,
+            );
+            assert!(app.eyedropper_apply, "{tool:?}: the bucket, after picking");
+            app.choose_tool(Tool::Pick);
+            app.choose_tool(tool);
+            assert!(!app.eyedropper_apply, "{tool:?}: sampling again");
+        }
+        assert_eq!(app.eyedropper_color, Some(red), "the colour is kept");
+    }
+
     /// Ctrl+click in Apply mode samples again, with either eyedropper,
     /// and changes nothing on the drawing; the colour eyedropper's
     /// Ctrl+Shift+click reads the outline first (#1302).

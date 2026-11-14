@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "Abrir en su propia pestaña" # mt
 hint.drop_frame_add = "Mantén W o Alt para añadir al marco" # mt
 hint.drop_frame_place = "Soltar aquí, fuera del marco" # mt
 hint.drop_frame_replace = "Mantén K para sustituir el contenido del marco" # mt
+hint.drop_frame_into = "Suelta aquí para meterlo en el marco" # mt
 hint.drop_import = "Suelte para importar en el dibujo" # mt
 hint.drop_open = "Suelte para abrir" # mt
 hint.forward = "Adelante"

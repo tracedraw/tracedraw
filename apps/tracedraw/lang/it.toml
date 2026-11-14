@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "Apri in una scheda propria" # mt
 hint.drop_frame_add = "Tieni premuto W o Alt per aggiungere alla cornice" # mt
 hint.drop_frame_place = "Rilascia qui, fuori dalla cornice" # mt
 hint.drop_frame_replace = "Tieni premuto K per sostituire il contenuto della cornice" # mt
+hint.drop_frame_into = "Rilascia qui per metterlo nella cornice" # mt
 hint.drop_import = "Rilascia per importare nel disegno" # mt
 hint.drop_open = "Rilascia per aprire" # mt
 hint.forward = "Avanti"

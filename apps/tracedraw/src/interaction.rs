@@ -3858,10 +3858,14 @@ impl App {
                 }
                 // Dropped on a clip frame with W: into it; with K: in
                 // place of its contents. Without a key the objects just
-                // land there, over the frame.
+                // land there, over the frame, unless the frame holds
+                // nothing: an empty frame takes them as it is (it was
+                // shown as the target and offered K, yet a plain release
+                // left the objects over it, #2703).
                 let (w, k) = self.drop_keys;
                 if let Some(frame) = self.drop_frame.take() {
                     let moved = self.selection.clone();
+                    let w = w || self.clip_frame_is_empty(frame);
                     if k && !moved.is_empty() {
                         self.replace_clip_contents(moved, frame);
                     } else if w && !moved.is_empty() {

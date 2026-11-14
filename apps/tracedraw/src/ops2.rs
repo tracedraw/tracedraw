@@ -1475,7 +1475,30 @@ impl App {
             .map(|s| s.id)
             .collect();
         for clip in clips {
-            self.run(Command::ExtractContents { clip });
+            self.extract_keeping_frame(clip);
+        }
+    }
+
+    /// Extract Contents of one clip frame: its contents come out and the
+    /// frame stays a clip frame, empty and ready for new contents, in one
+    /// undo step. The bare command gives back the plain object the frame
+    /// was made from, so an extracted frame took no drop any more (#2703).
+    pub fn extract_keeping_frame(&mut self, clip: ShapeId) {
+        if !matches!(
+            self.doc().find_shape(clip).map(|s| &s.kind),
+            Some(ShapeKind::ClipFrame { .. })
+        ) {
+            return;
+        }
+        let cmds = [
+            Command::ExtractContents { clip },
+            Command::PlaceInside {
+                contents: Vec::new(),
+                frame: clip,
+            },
+        ];
+        if let Err(e) = self.engine.run_batch("Extract Contents", &cmds) {
+            self.status = e.to_string();
         }
     }
 
@@ -1648,6 +1671,14 @@ impl App {
             Some(ShapeKind::ClipFrame { .. })
         )
         .then_some(top)
+    }
+
+    /// `id` is a clip frame that holds nothing.
+    pub fn clip_frame_is_empty(&self, id: ShapeId) -> bool {
+        matches!(
+            self.doc().find_shape(id).map(|s| &s.kind),
+            Some(ShapeKind::ClipFrame { contents, .. }) if contents.is_empty()
+        )
     }
 
     /// The selection dropped on a clip frame with K held: the frame's
@@ -4417,16 +4448,17 @@ impl App {
         }
     }
 
+    /// Every colour of `shapes` (fills, outlines, groups and clip frames
+    /// inside), each once, after those already in `out`.
     pub(crate) fn colors_of(shapes: &[Shape], out: &mut Vec<Color>) {
         for s in shapes {
-            if let Some(c) = s.fill.preview_color() {
-                if !out.contains(&c) {
-                    out.push(c);
-                }
-            }
+            Self::fill_colors(&s.fill, out);
             if let Some(st) = &s.stroke {
                 if !out.contains(&st.color) {
                     out.push(st.color);
+                }
+                if let Some(f) = &st.fill {
+                    Self::fill_colors(f, out);
                 }
             }
             match &s.kind {
@@ -4436,6 +4468,43 @@ impl App {
                     Self::colors_of(contents, out);
                 }
                 _ => {}
+            }
+        }
+    }
+
+    /// The colours of one fill, each once: every stop of a gradient, both
+    /// colours of a two-colour pattern or a texture, every node of a mesh;
+    /// only the first one came along, so a gradient's colours never reached
+    /// the document palette (#2698).
+    fn fill_colors(fill: &Fill, out: &mut Vec<Color>) {
+        use tracedraw_core::style::Pattern;
+        fn add(out: &mut Vec<Color>, c: Color) {
+            if !out.contains(&c) {
+                out.push(c);
+            }
+        }
+        match fill {
+            Fill::Fountain(f) => f.stops.iter().for_each(|s| add(out, s.color)),
+            Fill::Pattern(Pattern::TwoColor { front, back, .. }) => {
+                add(out, *front);
+                add(out, *back);
+            }
+            Fill::Pattern(Pattern::Vector { shapes, .. }) => Self::colors_of(shapes, out),
+            Fill::Texture(t) => {
+                add(out, t.color_a);
+                add(out, t.color_b);
+            }
+            Fill::Mesh(m) => m.nodes.iter().for_each(|n| add(out, n.color)),
+            Fill::Procedural(p) => {
+                add(out, p.foreground);
+                if let Some(b) = p.background {
+                    add(out, b);
+                }
+            }
+            other => {
+                if let Some(c) = other.preview_color() {
+                    add(out, c);
+                }
             }
         }
     }
@@ -5528,6 +5597,77 @@ mod tests {
             .expect("rect");
         app.select(vec![id, other]);
         assert_eq!(app.scale_shown(), (100.0, 100.0));
+    }
+
+    /// Adding the selection's colours to the document palette takes every
+    /// stop of a gradient, not only the first one, each colour once
+    /// (#2698).
+    #[test]
+    fn a_gradients_stops_all_go_into_the_document_palette() {
+        use tracedraw_core::style::Stop;
+        let mut app = App::headless();
+        let (red, green, blue) = (
+            Color::rgb8(200, 10, 10),
+            Color::rgb8(10, 200, 10),
+            Color::rgb8(10, 10, 200),
+        );
+        let mut grad = Fill::linear(red, blue, 0.0);
+        if let Fill::Fountain(f) = &mut grad {
+            f.stops.insert(1, Stop::new(0.5, green));
+        }
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(x, 0.0, x + 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let g = rect(&mut app, 0.0);
+        let u = rect(&mut app, 20.0);
+        app.run(Command::SetFill {
+            shapes: vec![g],
+            fill: grad,
+        });
+        app.run(Command::SetFill {
+            shapes: vec![u],
+            fill: Fill::Solid(green),
+        });
+        app.run(Command::SetStroke {
+            shapes: vec![g, u],
+            stroke: None,
+        });
+        app.run(Command::SetDocumentPalette { colors: Vec::new() });
+        app.select(vec![g, u]);
+        app.palette_from_selection();
+        assert_eq!(app.doc().palette, vec![red, green, blue]);
+    }
+
+    /// Extract Contents keeps the frame a clip frame, empty, in one undo
+    /// step: it gave back the plain object, so the frame took no more
+    /// drops (#2703).
+    #[test]
+    fn extracting_the_contents_leaves_an_empty_clip_frame() {
+        let mut app = App::headless();
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(x, 0.0, x + 30.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let frame = rect(&mut app, 0.0);
+        let inner = rect(&mut app, 5.0);
+        app.place_inside(vec![inner], frame);
+        let clip = app.doc().top_level_of(inner).expect("clip");
+        assert!(!app.clip_frame_is_empty(clip));
+        let steps = app.engine.history_labels().0.len();
+        app.select(vec![clip]);
+        app.extract_clip_contents();
+        assert!(app.clip_frame_is_empty(clip), "still a clip frame, empty");
+        assert_eq!(app.doc().top_level_of(inner), Some(inner), "out");
+        assert_eq!(app.engine.history_labels().0.len(), steps + 1);
     }
 
     /// A page is resized about its centre: an object in the middle of

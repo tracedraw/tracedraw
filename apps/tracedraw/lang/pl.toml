@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "Otwórz w osobnej karcie" # mt
 hint.drop_frame_add = "Przytrzymaj W lub Alt, aby dodać do ramki" # mt
 hint.drop_frame_place = "Upuść tutaj, poza ramką" # mt
 hint.drop_frame_replace = "Przytrzymaj K, aby zastąpić zawartość ramki" # mt
+hint.drop_frame_into = "Upuść tutaj, aby umieścić w ramce" # mt
 hint.drop_import = "Upuść, aby zaimportować do rysunku" # mt
 hint.drop_open = "Upuść, aby otworzyć" # mt
 hint.forward = "Dalej"

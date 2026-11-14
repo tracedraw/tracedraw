@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "In eigenem Tab öffnen" # mt
 hint.drop_frame_add = "W oder Alt halten, um in den Rahmen zu legen" # mt
 hint.drop_frame_place = "Hier ablegen, außerhalb des Rahmens" # mt
 hint.drop_frame_replace = "K halten, um den Inhalt des Rahmens zu ersetzen" # mt
+hint.drop_frame_into = "Hier loslassen, um es in den Rahmen zu legen" # mt
 hint.drop_import = "Loslassen, um in die Zeichnung zu importieren" # mt
 hint.drop_open = "Loslassen zum Öffnen" # mt
 hint.forward = "Vorwärts"

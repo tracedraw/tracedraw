@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "Openen in een eigen tabblad" # mt
 hint.drop_frame_add = "Houd W of Alt vast om aan het kader toe te voegen" # mt
 hint.drop_frame_place = "Hier neerzetten, buiten het kader" # mt
 hint.drop_frame_replace = "Houd K vast om de inhoud van het kader te vervangen" # mt
+hint.drop_frame_into = "Hier loslaten om het in het kader te plaatsen" # mt
 hint.drop_import = "Loslaten om in de tekening te importeren" # mt
 hint.drop_open = "Loslaten om te openen" # mt
 hint.forward = "Vooruit"

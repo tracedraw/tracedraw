@@ -2110,6 +2110,7 @@ hint.drop_ask_open = "Ouvrir dans son propre onglet" # mt
 hint.drop_frame_add = "Maintenir W ou Alt pour ajouter au cadre" # mt
 hint.drop_frame_place = "Déposer ici, hors du cadre" # mt
 hint.drop_frame_replace = "Maintenir K pour remplacer le contenu du cadre" # mt
+hint.drop_frame_into = "Relâcher ici pour le placer dans le cadre" # mt
 hint.drop_import = "Déposez pour importer dans le dessin" # mt
 hint.drop_open = "Déposez pour ouvrir" # mt
 hint.forward = "Suivant"
