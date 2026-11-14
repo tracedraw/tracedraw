@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Mesh fill: with nodes chosen, Ctrl+click on a palette colour mixes a tenth of it into each chosen node, one undo step a click, as it mixes into a uniform fill. It did nothing on a mesh (discussion #2616).
+- Objects docker: with several objects selected, the eye of one of them hides them all, or shows them all when it is hidden, in one undo step, and they stay selected. Only the clicked object changed (#2571).
 - Guidelines: a guideline whose centre of rotation was moved keeps it once it is deselected. Selected again, the Transformations docker's Rotate page turns it about that centre, and a second click shows the rotation handles there. The centre went back to the page's middle, so copies turned about the wrong point (#2335).
 - Colour Eyedropper: the readout gives a colour set in HSB, HSL, Lab, YIQ or grayscale in that model (H, S, B; H, S, L; L, a, b; Y, I, Q; the grey level), as CMYK and RGB colours already were. They all read as CMYK, or RGB in an RGB drawing (#2612).
 - Dark, Medium Dark and High Contrast themes: the Save, Copy and Paste icons on the bars and in the menus read again. Their label, shutter and pages were cut out in white, which on the light icons of those themes left a pale blot; they now take the bar's colour (#2591).

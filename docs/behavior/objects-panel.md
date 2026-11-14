@@ -31,6 +31,12 @@ the right.
   one object or takes it out, as in a file list; locked objects stay out
   (#2483,
   `ui::objects_docker::tests::shift_click_selects_a_range_of_rows_and_ctrl_click_one_more`).
+- With several objects selected, the eye of one of them hides them all
+  when it is visible and shows them all when it is hidden, whatever each
+  was; they stay selected, and one undo step brings each back as it
+  was. The eye of an object outside the selection hides or shows only
+  it (#2571,
+  `ui::objects_docker::tests::the_eye_of_a_selected_object_hides_and_shows_the_whole_selection`).
 - When the selection changes (picked on the page, Select All, an undo),
   the list scrolls just enough to show the first selected object's row,
   if its layer and groups are open; a selection that stays the same
