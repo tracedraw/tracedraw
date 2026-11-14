@@ -7805,7 +7805,7 @@ fn group(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui)) {
 
 /// One of the placement buttons: a page with its corners (0), or its
 /// top (1), bottom (2), left (3) or right (4) edge marked; pressed when on.
-fn placement_button(ui: &mut Ui, which: usize, on: bool) -> egui::Response {
+pub(crate) fn placement_button(ui: &mut Ui, which: usize, on: bool) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(26.0, 26.0), egui::Sense::click());
     let p = ui.painter();
     let fill = if on {

@@ -374,6 +374,31 @@ pub fn settings(ui: &mut Ui, units: Units, st: &mut TraceCutState, has_selection
                 "tracecut.eyelet_along",
             )
         });
+        if s.along == Along::Box {
+            // Which corners and sides get eyelets, with the buttons of
+            // Banner Hems and Eyelets (#2759).
+            row(ui, &tr("border_grommet.placement"), |ui| {
+                ui.horizontal(|ui| {
+                    for (i, (on, key)) in [
+                        (&mut s.corners, "border_grommet.place_corners"),
+                        (&mut s.top, "border_grommet.place_top"),
+                        (&mut s.bottom, "border_grommet.place_bottom"),
+                        (&mut s.left, "border_grommet.place_left"),
+                        (&mut s.right, "border_grommet.place_right"),
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    {
+                        if crate::ui::dialogs::placement_button(ui, i, *on)
+                            .rich_tip_always(crate::ui::tips::keyed(key))
+                            .clicked()
+                        {
+                            *on = !*on;
+                        }
+                    }
+                });
+            });
+        }
         row(ui, &tr("tracecut.eyelet_diameter"), |ui| {
             length(
                 ui,

@@ -43,7 +43,11 @@ impl App {
             "tracecut.eyelets_found",
             &[("n", &centres.len().to_string())],
         );
-        out.preview = paths.clone();
+        // Shown as grommets on the dashed line they follow, worked out
+        // again as the settings change (#2759).
+        let d = spec.clamped().diameter;
+        out.rings = centres.iter().map(|c| (*c, d)).collect();
+        out.guides = eyelets::guides(&outlines, spec);
         out.changes = vec![Change::AddGroup {
             name: "tracecut.eyelets_group",
             paths,
@@ -188,7 +192,11 @@ mod tests {
             ..Default::default()
         };
         let c = app.tracecut_eyelets(&spec);
-        assert_eq!(c.preview.len(), 12);
+        // The preview shows them as grommets on their dashed guide.
+        assert_eq!(c.rings.len(), 12);
+        assert!(c.rings.iter().all(|(_, d)| (*d - 8.0).abs() < 1e-9));
+        assert_eq!(c.guides.len(), 1);
+        assert!(c.preview.is_empty());
         let before = app.engine.history_labels().0.len();
         assert!(app.tracecut_apply_changes(&c));
         assert_eq!(app.engine.history_labels().0.len(), before + 1);
@@ -221,7 +229,7 @@ mod tests {
             along: Along::Curve,
             ..spec
         });
-        assert_eq!(along.preview.len(), 12);
+        assert_eq!(along.rings.len(), 12);
         app.undo();
         assert!(app.doc().find_shape(g.id).is_none());
     }

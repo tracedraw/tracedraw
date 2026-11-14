@@ -433,6 +433,9 @@ first), added as a group named Eyelets. The geometry is
   from the edge to an eyelet's centre); an eyelet in each of its four
   corners and more along its sides. An inset deeper than half the box
   puts the eyelets on its middle line.
+  The **placement** buttons (as in Banner Hems and Eyelets) choose the
+  corners and each side: bottom, top, left, right; a side takes its two
+  ends too. All are on at first (#2759).
 - **Along each closed curve**: every closed outline of the selection is
   offset inward by the distance from the edge (the offset Contour
   uses); an eyelet goes on every corner of the result (a turn sharper
@@ -446,7 +449,11 @@ first), added as a group named Eyelets. The geometry is
   corners, `count` in all). They are spread evenly by length, and
   eyelets closer than 0.001 mm are one.
 
-The preview shows the circles; the status line counts them.
+The preview is live, as for the Measure tools: it changes as soon as a
+setting or the selection changes, without Apply. Each eyelet is drawn
+as a grommet at its size (a metal ring round the hole) on a dashed blue
+line, the box or curve the centres follow (#2759); the status line
+counts them. OK adds the hairline circles of the holes.
 
 ### Box Maker
 

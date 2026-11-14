@@ -193,6 +193,11 @@ pub struct Changes {
     pub points: Vec<Point>,
     /// Moves with the knife up, for the preview.
     pub moves: Vec<(Point, Point)>,
+    /// Eyelets for the preview: centre and hole diameter, drawn as
+    /// grommet rings (#2759).
+    pub rings: Vec<(Point, f64)>,
+    /// Guide lines drawn dashed in the preview (where the eyelets go).
+    pub guides: Vec<BezPath>,
     pub summary: String,
     /// The preview shows the result in place of the objects (nesting).
     pub hide_objects: bool,

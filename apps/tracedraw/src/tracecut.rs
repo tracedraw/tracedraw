@@ -144,7 +144,7 @@ impl ToolId {
     /// Whether the window works the result out as the settings change,
     /// without Apply (the Measure tools and Folded Tray, all cheap).
     pub fn live(self) -> bool {
-        self.group() == Group::Measure || self == ToolId::FoldedTray
+        self.group() == Group::Measure || matches!(self, ToolId::FoldedTray | ToolId::Eyelets)
     }
 
     /// The i18n key of the tool's name; `<key>_desc` describes it.
@@ -624,6 +624,10 @@ pub struct Scene {
     pub moves: Vec<(Point, Point)>,
     /// Lines grooved or scored, not cut through.
     pub scored: Vec<BezPath>,
+    /// Eyelets: centre and hole diameter, drawn as grommet rings.
+    pub rings: Vec<(Point, f64)>,
+    /// Guide lines, drawn dashed.
+    pub guides: Vec<BezPath>,
     pub extent: Option<Rect>,
 }
 
@@ -962,6 +966,8 @@ impl App {
                     scene.scored = c.scored.clone();
                     scene.points = c.points.clone();
                     scene.moves = c.moves.clone();
+                    scene.rings = c.rings.clone();
+                    scene.guides = c.guides.clone();
                 }
             }
         }
