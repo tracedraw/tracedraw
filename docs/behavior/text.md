@@ -1369,6 +1369,13 @@ stand-in next to each missing family: "Arial (Liberation Sans)".
   the path, upside down; mirror horizontally reads the text from the
   path's end, letters mirrored; both together turn the text half round
   onto the other side, reading the other way (the older single mirror).
+- Text on path, the letters' turn: a letter stands turned to the
+  path's direction at its middle. Along a curve (pieces of the
+  flattened path turning less than 20 degrees from one to the next)
+  the direction turns smoothly from piece to piece, so letters round a
+  circle follow it within a fraction of a degree; at a sharper corner
+  each piece keeps its own direction (#2715,
+  `document::tests::text_baselines_turn_smoothly_round_a_curve_and_keep_corners`).
 - Text on path, editing it: with the Text tool the caret stands on the
   path, at the place of the letter it is before, as tall as the line and
   turned to the path's direction there; the selection is one band per

@@ -2251,6 +2251,9 @@ impl Baseline {
     /// Longest corner extension when moving a polyline sideways, as a
     /// multiple of the distance.
     const MITER_LIMIT: f64 = 4.0;
+    /// The most two chords may turn, degrees, for the direction to turn
+    /// smoothly between them; more is a corner.
+    const SMOOTH_TURN: f64 = 20.0;
 
     /// The first subpath of `path` as a polyline, reversed when asked,
     /// then moved `distance` to its left (corners mitred).
@@ -2415,7 +2418,53 @@ impl Baseline {
             return None;
         }
         let t = ((s - start) / len).clamp(0.0, 1.0);
-        Some((a + v * t, v / len))
+        let dir = v / len;
+        // Along a curve the direction turns smoothly: from the mean of
+        // this chord's and the one before's at its start to the mean
+        // with the one after at its end, so letters on a flattened curve
+        // turn with it instead of in steps of a chord's angle (#2715:
+        // round a circle letters stood visibly tilted). At a corner (the
+        // chords turn more than `SMOOTH_TURN`) the chord's own direction
+        // holds.
+        let segs = self.points.len() - 1;
+        let chord = |k: usize| -> Option<Vec2> {
+            let (p, q) = (*self.points.get(k)?, *self.points.get(k + 1)?);
+            let w = q - p;
+            let l = w.hypot();
+            (l > 0.0).then(|| w / l)
+        };
+        let before = match i {
+            0 if self.closed => chord(segs - 1),
+            0 => None,
+            _ => chord(i - 1),
+        };
+        let after = if i + 1 < segs {
+            chord(i + 1)
+        } else if self.closed {
+            chord(0)
+        } else {
+            None
+        };
+        let cos_limit = Self::SMOOTH_TURN.to_radians().cos();
+        let joint = |other: Option<Vec2>| -> Vec2 {
+            match other {
+                Some(o) if o.dot(dir) >= cos_limit => {
+                    let m = o + dir;
+                    let l = m.hypot();
+                    if l > 1e-12 {
+                        m / l
+                    } else {
+                        dir
+                    }
+                }
+                _ => dir,
+            }
+        };
+        let (d0, d1) = (joint(before), joint(after));
+        let d = d0 * (1.0 - t) + d1 * t;
+        let l = d.hypot();
+        let d = if l > 1e-12 { d / l } else { dir };
+        Some((a + v * t, d))
     }
 
     /// The shortest distance from `p` to the baseline.
@@ -7038,6 +7087,38 @@ mod tests {
         let (top, dir) = back.at(0.0).expect("point");
         assert!((top - Point::new(0.0, 8.0)).hypot() < 0.01, "{top:?}");
         assert!(dir.x < -0.99, "{dir:?}");
+    }
+
+    /// #2715: letters round a circle took each the direction of the
+    /// chord of the flattened circle they stood on, so they turned in
+    /// steps of a chord's angle (about 5 degrees on a 50 mm radius) and
+    /// some stood visibly tilted. The direction now follows the curve
+    /// within a fraction of a degree, and a corner stays sharp.
+    #[test]
+    fn text_baselines_turn_smoothly_round_a_curve_and_keep_corners() {
+        let r = 50.0;
+        let circle = clockwise_circle(r);
+        let b = Baseline::new(&circle, 0.0, false);
+        let total = b.length();
+        let mut worst: f64 = 0.0;
+        for k in 0..997 {
+            let s = total * k as f64 / 997.0;
+            let (p, d) = b.at(s).expect("point");
+            // Clockwise round the origin: the tangent is (y, -x) / r.
+            let want = Vec2::new(p.y, -p.x).normalize();
+            worst = worst.max(d.cross(want).abs().asin().to_degrees());
+        }
+        assert!(worst < 1.0, "off the curve by {worst} degrees");
+        // A corner: the chord's own direction right up to it.
+        let mut l = BezPath::new();
+        l.move_to((0.0, 0.0));
+        l.line_to((10.0, 0.0));
+        l.line_to((10.0, 10.0));
+        let corner = Baseline::new(&l, 0.0, false);
+        let (_, d) = corner.at(9.99).expect("point");
+        assert!((d - Vec2::new(1.0, 0.0)).hypot() < 1e-9, "{d:?}");
+        let (_, d) = corner.at(10.01).expect("point");
+        assert!((d - Vec2::new(0.0, 1.0)).hypot() < 1e-9, "{d:?}");
     }
 
     #[test]
