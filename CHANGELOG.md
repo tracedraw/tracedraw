@@ -4,7 +4,7 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.46.0 (2026-11-14)
 
 - Properties panel: with one closed object selected (a rectangle, ellipse, polygon or closed curve) the header gives its area under the position and size, holes taken out, in the drawing unit squared (#2599).
 - Repeat Copies: the horizontal and vertical settings each have a tick box, so copies are made across only or up and down only, and a choice of the way they go: right or left, down or up. A distance had to be set to 0 for one axis, and a negative one typed to go left or up (#2572).
