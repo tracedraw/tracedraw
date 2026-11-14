@@ -4859,6 +4859,8 @@ fn global_general_page(app: &mut App, ui: &mut Ui) {
                 if ui.selectable_label(follows, label).clicked() {
                     crate::i18n::set_language(system);
                     app.settings.language = crate::i18n::SYSTEM.to_string();
+                    #[cfg(not(target_arch = "wasm32"))]
+                    crate::theme::language_changed(ui.ctx(), &current, system);
                 }
                 ui.separator();
                 for (code, n) in crate::i18n::LANGUAGES {
@@ -4866,6 +4868,8 @@ fn global_general_page(app: &mut App, ui: &mut Ui) {
                     if ui.selectable_label(picked, n).clicked() {
                         crate::i18n::set_language(code);
                         app.settings.language = code.to_string();
+                        #[cfg(not(target_arch = "wasm32"))]
+                        crate::theme::language_changed(ui.ctx(), &current, code);
                     }
                 }
             })

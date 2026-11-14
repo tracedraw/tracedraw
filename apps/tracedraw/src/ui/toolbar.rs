@@ -2586,6 +2586,8 @@ pub(crate) fn text_size_list(app: &mut App, ui: &mut Ui) -> bool {
         .open_memory(None)
         .width(anchor.width())
         .show(|ui| {
+            // A size and its unit on one row (#2651).
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
             egui::ScrollArea::vertical()
                 .max_height(320.0)
                 .show(ui, |ui| {

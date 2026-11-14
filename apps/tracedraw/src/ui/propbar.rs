@@ -2194,6 +2194,38 @@ fn set_no_outline(app: &mut App) {
     }
 }
 
+/// The rows of the outline width list: None, Hairline and the usual
+/// widths; returns the one clicked. A width and its unit stay on one row
+/// and the list grows wider than the box when they need it ("0.75 pt"
+/// broke in two in a narrow list, #2651).
+fn outline_width_rows(
+    app: &App,
+    ui: &mut Ui,
+    width: Option<f64>,
+    mixed: bool,
+) -> Option<Option<f64>> {
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+    let mut picked = None;
+    if ui
+        .selectable_label(!mixed && width.is_none(), tr("toolbar.none"))
+        .clicked()
+    {
+        picked = Some(None);
+    }
+    if ui.selectable_label(false, tr("toolbar.hairline")).clicked() {
+        picked = Some(Some(tracedraw_core::Stroke::HAIRLINE));
+    }
+    for w in outline_width_presets(app.outline_units()) {
+        if ui
+            .selectable_label(false, outline_text(app, Some(w)))
+            .clicked()
+        {
+            picked = Some(Some(w));
+        }
+    }
+    picked
+}
+
 /// The outline width: a box typed into (Enter or leaving it applies, Esc
 /// puts it back) and an arrow dropping the usual widths; with `wheel`,
 /// the mouse wheel over it steps through those widths. Returns the width
@@ -2303,22 +2335,8 @@ fn outline_width_box(
             egui::ScrollArea::vertical()
                 .max_height(400.0)
                 .show(ui, |ui| {
-                    if ui
-                        .selectable_label(!mixed && width.is_none(), tr("toolbar.none"))
-                        .clicked()
-                    {
-                        picked = Some(None);
-                    }
-                    if ui.selectable_label(false, tr("toolbar.hairline")).clicked() {
-                        picked = Some(Some(tracedraw_core::Stroke::HAIRLINE));
-                    }
-                    for w in outline_width_presets(app.outline_units()) {
-                        if ui
-                            .selectable_label(false, outline_text(app, Some(w)))
-                            .clicked()
-                        {
-                            picked = Some(Some(w));
-                        }
+                    if let Some(p) = outline_width_rows(app, ui, width, mixed) {
+                        picked = Some(p);
                     }
                     crate::ui::keynav::scroll_into_view(ui);
                 });
@@ -4059,6 +4077,41 @@ mod tests {
                 );
             }
             assert_eq!(width(&app), Some(p[6 - k]), "notch {k}");
+        }
+    }
+
+    /// The outline width list keeps each width and its unit on one row,
+    /// however narrow the list (#2651: with short words for None and
+    /// Hairline, as in Chinese, "0.75 pt" broke in two).
+    #[test]
+    fn the_outline_width_list_keeps_a_width_on_one_row() {
+        let ctx = crate::theme::ui_context();
+        App::setup_context(&ctx);
+        for u in OUTLINE_UNITS {
+            let mut app = App::headless();
+            app.settings.outline_units = u.id().to_string();
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                ui.allocate_ui(egui::vec2(20.0, 600.0), |ui| {
+                    ui.set_max_width(20.0);
+                    outline_width_rows(&app, ui, None, false);
+                });
+            });
+            out.textures_delta.clear();
+            let rows: Vec<(String, usize)> = out
+                .shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => {
+                        Some((t.galley.text().to_string(), t.galley.rows.len()))
+                    }
+                    _ => None,
+                })
+                .collect();
+            for w in outline_width_presets(u) {
+                let label = outline_text(&app, Some(w));
+                let row = rows.iter().find(|(t, _)| *t == label);
+                assert_eq!(row.map(|r| r.1), Some(1), "{u:?} {label}: {rows:?}");
+            }
         }
     }
 
