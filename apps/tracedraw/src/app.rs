@@ -1453,6 +1453,8 @@ pub struct App {
     pub dialog_return: Option<Box<crate::ui::dialogs::Dialog>>,
     /// The Import PDF question was answered for the file about to be read.
     pub pdf_text_chosen: bool,
+    /// The PDF about to be opened comes in as pictures (#2570).
+    pub pdf_open_picture: Option<crate::ui::pdf_import_dialog::PdfOpenPicture>,
     /// The pictures of the PDF just opened that came in smaller than the
     /// file holds them, for the message after opening (#1835).
     pub pdf_shrunk: Vec<tracedraw_io::pdf_import::ShrunkPicture>,
@@ -2946,6 +2948,7 @@ impl App {
             pending_text_link: None,
             dialog_return: None,
             pdf_text_chosen: false,
+            pdf_open_picture: None,
             pdf_shrunk: Vec::new(),
             text_link_drag: None,
             text_link_incoming: false,
@@ -7372,6 +7375,8 @@ impl App {
         // Objects of a `.cdr` file left out because they could not be read.
         let mut unread = 0usize;
         let mut shrunk = Vec::new();
+        // A PDF opened as pictures, at this resolution (#2570).
+        let mut pictures: Option<f64> = None;
         // The version of an opened `.cdr` file: saving keeps it.
         let mut cdr_version = None;
         let mut opened_version = None;
@@ -7596,7 +7601,13 @@ impl App {
             if self.ask_pdf_text(&path, false) {
                 return;
             }
-            let options = self.pdf_options();
+            // Each page as one picture, as the Import PDF dialog said
+            // (#2570): its text drawn from the fonts the file embeds.
+            let as_picture = self.pdf_open_picture.take();
+            let mut options = self.pdf_options();
+            if as_picture.is_some() {
+                options.text_as_curves = true;
+            }
             let parsed = crate::files::read(&path)
                 .map_err(|e| ImportError::Failed(e.to_string()))
                 .and_then(|bytes| {
@@ -7610,6 +7621,7 @@ impl App {
             if matches!(parsed, Err(ImportError::NeedsPassword)) {
                 // The answer stands for the password's retry.
                 self.pdf_text_chosen = true;
+                self.pdf_open_picture = as_picture;
                 self.ask_pdf_password(path, false, !password.is_empty());
                 return;
             }
@@ -7625,6 +7637,10 @@ impl App {
                     log::warn!("pdf: {w}");
                 }
                 shrunk = std::mem::take(&mut imported.shrunk_pictures);
+                if let Some(pic) = &as_picture {
+                    crate::ui::pdf_import_dialog::pages_for_pictures(&mut imported.pages, pic);
+                    pictures = Some(pic.dpi);
+                }
                 let pages = imported.pages.len();
                 let n: usize = imported.pages.iter().map(|p| p.shapes.len()).sum();
                 let title = imported.title.clone().unwrap_or(title);
@@ -7753,6 +7769,9 @@ impl App {
         match result {
             Ok((doc, msg)) => {
                 self.open_document(doc, None);
+                if let Some(dpi) = pictures {
+                    self.opened_pages_to_pictures(dpi);
+                }
                 self.opened_from = (!crate::files::WEB && !is_template_path(&path))
                     .then(|| crate::files::canonical(&path));
                 self.cdr_version = cdr_version;
