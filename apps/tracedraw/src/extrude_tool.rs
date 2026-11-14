@@ -354,7 +354,23 @@ impl App {
             let Some((local, parent)) = self.extrude_frames(s.id) else {
                 continue;
             };
-            let effects = with_extrusion(&s.effects, Some(self.extrude.effect(local, parent)));
+            // A body without a vanishing point (parallel) given one: the
+            // settings hold none of its own (0,0 or another object's), so
+            // it starts beside the object (#2699).
+            let mut settings = self.extrude;
+            let had_point = s.effects.iter().any(|e| {
+                matches!(
+                    e,
+                    Effect::Extrude {
+                        vanishing: Some(_),
+                        ..
+                    }
+                )
+            });
+            if !settings.kind.parallel() && !had_point {
+                settings.vanishing = self.vanishing_beside(&s);
+            }
+            let effects = with_extrusion(&s.effects, Some(settings.effect(local, parent)));
             if effects == s.effects {
                 continue;
             }
@@ -398,8 +414,7 @@ impl App {
             };
             let mut settings = self.extrude.clamped();
             if !settings.kind.parallel() && settings.vanishing == Point::ZERO {
-                let b = self.visual_bounds(&s);
-                settings.vanishing = Point::new(b.x1 + b.width(), b.y1 + b.height());
+                settings.vanishing = self.vanishing_beside(&s);
             }
             cmds.push(Command::SetEffects {
                 shape: s.id,
@@ -412,6 +427,18 @@ impl App {
         if let Err(e) = self.engine.run_batch("Extrude", &cmds) {
             self.status = e.to_string();
         }
+    }
+
+    /// Where a new vanishing point starts: up and to the right of the
+    /// object, one object's size away (page space; the object alone,
+    /// not a body it already has).
+    fn vanishing_beside(&self, s: &tracedraw_core::Shape) -> Point {
+        let b = self
+            .doc()
+            .shape_on_page(s.id)
+            .map(|p| p.bounds())
+            .unwrap_or_else(|| self.visual_bounds(s));
+        Point::new(b.x1 + b.width(), b.y1 + b.height())
     }
 
     /// Clear Extrude.
@@ -860,6 +887,54 @@ mod tests {
         assert!(ev.below.is_empty() && !ev.above.is_empty());
         app.clear_extrusion();
         assert!(extrusion(&app, id).is_none());
+    }
+
+    /// #2699: a parallel body turned into one with a vanishing point
+    /// gets its point beside the object, not at the page's 0,0 corner
+    /// (the settings kept no point, or another object's), and the
+    /// handle then moves and scales with the object.
+    #[test]
+    fn a_parallel_body_turned_to_a_vanishing_point_stays_by_the_object() {
+        let mut app = App::headless();
+        let id = square(&mut app);
+        app.run(Command::TransformShapes {
+            shapes: vec![id],
+            transform: Affine::translate((100.0, 100.0)),
+        });
+        app.select(vec![id]);
+        app.extrude.kind = ExtrudeKind::BackParallel;
+        // Another object's point left in the settings.
+        app.extrude.vanishing = Point::new(-500.0, 3.0);
+        app.add_extrusion();
+        app.sync_extrude_settings();
+        app.extrude.kind = ExtrudeKind::SmallBack;
+        app.apply_extrude_settings();
+        app.sync_extrude_settings();
+        let h = app.extrusion_handles();
+        assert_eq!(h.len(), 1);
+        assert!((h[0].1 - Point::new(140.0, 140.0)).hypot() < 1e-9, "{h:?}");
+        // Moved and scaled, the handle goes along.
+        app.run(Command::TransformShapes {
+            shapes: vec![id],
+            transform: Affine::translate((30.0, -10.0)),
+        });
+        let h = app.extrusion_handles();
+        assert!((h[0].1 - Point::new(170.0, 130.0)).hypot() < 1e-9, "{h:?}");
+        let c = Point::new(140.0, 100.0);
+        app.run(Command::TransformShapes {
+            shapes: vec![id],
+            transform: Affine::translate(c.to_vec2())
+                * Affine::scale(0.5)
+                * Affine::translate(-c.to_vec2()),
+        });
+        let h = app.extrusion_handles();
+        assert!((h[0].1 - Point::new(155.0, 115.0)).hypot() < 1e-9, "{h:?}");
+        // A type change keeps the point where it is.
+        app.sync_extrude_settings();
+        app.extrude.kind = ExtrudeKind::BigBack;
+        app.apply_extrude_settings();
+        let h = app.extrusion_handles();
+        assert!((h[0].1 - Point::new(155.0, 115.0)).hypot() < 1e-9, "{h:?}");
     }
 
     #[test]

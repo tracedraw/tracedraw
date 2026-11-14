@@ -1079,6 +1079,7 @@ pub fn draw(app: &App, painter: &egui::Painter, color: egui::Color32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracedraw_core::geometry::PathEl;
     use tracedraw_core::geometry::Shape as _;
 
     fn shapes() -> Vec<(&'static str, BezPath)> {
@@ -1408,6 +1409,68 @@ mod tests {
         assert!(fillets(&back).is_empty());
         assert_eq!(corners(&back).len(), 3);
         assert!((back.area() - cut.area()).abs() < 1e-6);
+    }
+
+    /// #2700: dragging the ring of a corner with a node a little way
+    /// along one side rounds up to that node and stops there; the
+    /// rounding never runs on past it and never takes the node away.
+    #[test]
+    fn a_corner_rounds_up_to_the_node_beside_it_and_keeps_it() {
+        let mut p = BezPath::new();
+        p.move_to((60.0, 60.0));
+        p.line_to((65.0, 60.0));
+        p.line_to((80.0, 60.0));
+        p.line_to((80.0, 80.0));
+        p.line_to((60.0, 80.0));
+        p.close_path();
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Path {
+                path: p,
+                closed: true,
+            })
+            .expect("a curve");
+        app.select(vec![id]);
+        app.tool = Tool::Shape;
+        app.settings.nodes.corner_widgets = true;
+        app.view.zoom = 4.0;
+        let at = Point::new(60.0, 60.0);
+        let w = app
+            .corner_widgets()
+            .into_iter()
+            .find(|w| (w.corner.at - at).hypot() < 1e-3)
+            .expect("the corner's ring");
+        let p = app.view.to_page(w.at);
+        assert!(app.start_corner_drag(w, p, false));
+        let Drag::CornerWidget(d) = app.drag.clone() else {
+            panic!("no drag");
+        };
+        assert!(d.max <= 5.0 + 1e-6, "{}", d.max);
+        // Dragged far into the corner.
+        app.corner_drag_to(*d, p + w.corner.inside * 30.0);
+        app.drag = Drag::None;
+        let now = match &app.doc().find_shape(id).expect("curve").kind {
+            ShapeKind::Path { path, .. } => path.clone(),
+            _ => panic!("a curve"),
+        };
+        let rounded = fillets(&now);
+        assert_eq!(rounded.len(), 1, "{rounded:?}");
+        assert!(rounded[0].radius <= 5.0 + 1e-6, "{rounded:?}");
+        // The node beside the corner is still there.
+        let ends: Vec<Point> = now
+            .elements()
+            .iter()
+            .filter_map(|e| match *e {
+                PathEl::MoveTo(q) | PathEl::LineTo(q) | PathEl::QuadTo(_, q) => Some(q),
+                PathEl::CurveTo(_, _, q) => Some(q),
+                PathEl::ClosePath => None,
+            })
+            .collect();
+        assert!(
+            ends.iter()
+                .any(|q| (*q - Point::new(65.0, 60.0)).hypot() < 1e-6),
+            "the node at 65,60 is gone: {ends:?}"
+        );
     }
 
     /// A corner with a smooth node close beside it shows its ring and
