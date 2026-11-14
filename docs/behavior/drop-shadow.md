@@ -293,7 +293,13 @@ Lighten, Darken, Hue, Saturation, Color, Luminosity for Lightness,
 Exclusion for Invert, Overlay, SoftLight, HardLight, ColorDodge,
 ColorBurn; the others draw normally). The object stays vector on top.
 The colour image downsampling asked for applies to the shadow's picture
-too. PDF/X-1a and X-3 keep no transparency: an object with a shadow is
+too. A picture casts the shadow of what its pixels cover, as on the
+page: a picture with a transparent background cast the shadow of its
+whole box (d#2596,
+`render::tests::the_shadow_picture_of_a_picture_follows_its_pixels`). An
+object whose effects draw objects of their own (an extrusion's body, a
+contour's steps) casts one shadow of all of it beneath all of it, as on
+the page (`pdf::tests::an_extruded_object_casts_one_shadow_beneath_its_body`). PDF/X-1a and X-3 keep no transparency: an object with a shadow is
 flattened with what lies beneath it, over the shadow's area (#1029).
 
 ## Checks

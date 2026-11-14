@@ -1733,35 +1733,16 @@ impl Renderer<'_> {
         let Some((layer_at, mut layer, screen)) = self.shadow_target(sh, b) else {
             return true;
         };
-        let (w0, h0) = (width_px.max(1) as f64, height_px.max(1) as f64);
-        let img_to_page = transform
-            * Affine::new([
-                rect.width() / w0,
-                0.0,
-                0.0,
-                -rect.height() / h0,
-                rect.x0,
-                rect.y1,
-            ]);
-        let m = (screen * sh.silhouette_transform(b) * img_to_page).as_coeffs();
-        let t = Transform::from_row(
-            m[0] as f32,
-            m[1] as f32,
-            m[2] as f32,
-            m[3] as f32,
-            m[4] as f32,
-            m[5] as f32,
+        bitmap_silhouette(
+            &mut layer,
+            sh,
+            b,
+            screen,
+            transform,
+            rect,
+            (width_px, height_px),
+            &img,
         );
-        let pp = tiny_skia::PixmapPaint {
-            quality: tiny_skia::FilterQuality::Bilinear,
-            ..Default::default()
-        };
-        layer.draw_pixmap(0, 0, Pixmap::as_ref(&img), &pp, t, None);
-        // The silhouette in white, the picture's alpha as its coverage.
-        for px in layer.pixels_mut().iter_mut() {
-            let a = px.alpha();
-            *px = tiny_skia::ColorU8::from_rgba(255, 255, 255, a).premultiply();
-        }
         let _screen = accel::on_screen(self.flags.draft);
         shade_shadow(&mut layer, sh, b, screen, self.zoom);
         self.merge_shadow(sh, &layer, layer_at);
@@ -3096,6 +3077,53 @@ impl Renderer<'_> {
     }
 }
 
+/// The silhouette of a picture on `layer`: its alpha as the coverage, in
+/// white, placed as the picture is (`transform`, its `rect` of
+/// `width_px` by `height_px` pixels) and moved as the shadow `sh`
+/// measured on box `b` asks, so a transparent background casts no shadow
+/// (#2027).
+#[allow(clippy::too_many_arguments)]
+fn bitmap_silhouette(
+    layer: &mut Pixmap,
+    sh: &tracedraw_core::Shadow,
+    b: Rect,
+    screen: Affine,
+    transform: Affine,
+    rect: Rect,
+    (width_px, height_px): (u32, u32),
+    img: &Pixmap,
+) {
+    let (w0, h0) = (width_px.max(1) as f64, height_px.max(1) as f64);
+    let img_to_page = transform
+        * Affine::new([
+            rect.width() / w0,
+            0.0,
+            0.0,
+            -rect.height() / h0,
+            rect.x0,
+            rect.y1,
+        ]);
+    let m = (screen * sh.silhouette_transform(b) * img_to_page).as_coeffs();
+    let t = Transform::from_row(
+        m[0] as f32,
+        m[1] as f32,
+        m[2] as f32,
+        m[3] as f32,
+        m[4] as f32,
+        m[5] as f32,
+    );
+    let pp = tiny_skia::PixmapPaint {
+        quality: tiny_skia::FilterQuality::Bilinear,
+        ..Default::default()
+    };
+    layer.draw_pixmap(0, 0, Pixmap::as_ref(img), &pp, t, None);
+    // The silhouette in white, the picture's alpha as its coverage.
+    for px in layer.pixels_mut().iter_mut() {
+        let a = px.alpha();
+        *px = tiny_skia::ColorU8::from_rgba(255, 255, 255, a).premultiply();
+    }
+}
+
 /// Paint the drop shadow `sh` of an object with page path `page_path` into
 /// the empty `layer` (pixels = `screen` times page millimetres, `zoom`
 /// pixels per millimetre), with its opacity and fade but not its merge
@@ -3579,6 +3607,33 @@ pub fn render_shadow_image(shape: &Shape, dpi: f64) -> Option<(Rect, Pixmap)> {
             }
             None => false,
         }
+    } else if let Some(img) = match &shape.kind {
+        ShapeKind::Bitmap { png, .. } => image_cache::decode_level(png, 0),
+        _ => None,
+    } {
+        // A picture casts the shadow of what its pixels cover, as on the
+        // page (#2027): a picture with a transparent background cast the
+        // shadow of its whole box in PDF output (d#2596).
+        if let ShapeKind::Bitmap {
+            rect,
+            width_px,
+            height_px,
+            ..
+        } = &shape.kind
+        {
+            bitmap_silhouette(
+                &mut pm,
+                sh,
+                b,
+                screen,
+                shape.transform,
+                *rect,
+                (*width_px, *height_px),
+                &img,
+            );
+            shade_shadow(&mut pm, sh, b, screen, zoom);
+        }
+        true
     } else {
         let shown = Shown {
             shape,
@@ -8374,6 +8429,51 @@ mod tests {
         s
     }
 
+    /// d#2596: the picture of a drop shadow for PDF output follows a
+    /// picture's pixels, as on the page (#2027). A picture with a
+    /// transparent background cast the shadow of its whole box, a grey
+    /// slab under a cut-out drawing.
+    #[test]
+    fn the_shadow_picture_of_a_picture_follows_its_pixels() {
+        // 10 by 10 pixels, opaque only in the left half.
+        let mut src = Pixmap::new(10, 10).unwrap();
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(255, 0, 0, 255);
+        src.fill_rect(
+            tiny_skia::Rect::from_xywh(0.0, 0.0, 5.0, 10.0).unwrap(),
+            &paint,
+            Transform::identity(),
+            None,
+        );
+        let mut s = Shape::new(
+            tracedraw_core::ShapeId(1),
+            ShapeKind::Bitmap {
+                rect: Rect::new(0.0, 0.0, 20.0, 20.0),
+                width_px: 10,
+                height_px: 10,
+                png: src.encode_png().unwrap().into(),
+                fx: None,
+            },
+        );
+        s.fill = Fill::None;
+        s.stroke = None;
+        s.shadow = Some(tracedraw_core::Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(0.0, 0.0),
+            opacity: 1.0,
+            blur: 0.0,
+            color: Color::BLACK,
+            merge: tracedraw_core::live::MergeMode::Normal,
+            ..Default::default()
+        });
+        let (area, pm) = render_shadow_image(&s, 25.4).expect("picture");
+        let at = |x: f64, y: f64| {
+            pm.pixel((x - area.x0) as u32, (area.y1 - y) as u32)
+                .map_or(0, |p| p.alpha())
+        };
+        assert_eq!(at(5.0, 10.0), 255, "under the opaque half");
+        assert_eq!(at(15.0, 10.0), 0, "none under the transparent half");
+    }
+
     /// #2215: an extruded object casts the shadow of the object and its
     /// body together, beneath both. The shadow was the object's alone and
     /// was drawn over the body behind it, a dark patch on the body's
@@ -8746,7 +8846,10 @@ mod tests {
             .collect();
         let dark = row.iter().filter(|r| **r < 128).count();
         let white = row.iter().filter(|r| **r > 230).count();
-        assert!(dark > 30 && white > 30, "{dark} dark, {white} white: {row:?}");
+        assert!(
+            dark > 30 && white > 30,
+            "{dark} dark, {white} white: {row:?}"
+        );
     }
 
     #[test]
