@@ -1970,6 +1970,10 @@ pub struct App {
     pub left_inner_dockers: DockerColumn,
     /// Dockers floating over the window, each in a window of its own.
     pub floating_dockers: Vec<FloatingDocker>,
+    /// A second docker shown under the one in front in each column (by
+    /// [`DockerPlace::column_index`]), the two stacked in the column's
+    /// height (#2312).
+    pub docker_stacks: [DockerStack; 4],
     /// A docker being moved by its tab or its title (see ui/dockers.rs).
     pub docker_drag: Option<DockerDrag>,
     /// The default column's front tab and whether it was open, as the
@@ -2580,6 +2584,59 @@ impl DockerPlace {
     pub fn is_inner(self) -> bool {
         matches!(self, DockerPlace::RightInner | DockerPlace::LeftInner)
     }
+
+    /// The column's place in [`App::docker_stacks`] (floating: none).
+    pub fn column_index(self) -> Option<usize> {
+        match self {
+            DockerPlace::Right => Some(0),
+            DockerPlace::Left => Some(1),
+            DockerPlace::RightInner => Some(2),
+            DockerPlace::LeftInner => Some(3),
+            DockerPlace::Floating => None,
+        }
+    }
+
+    /// The four columns, in [`DockerPlace::column_index`] order.
+    pub const COLUMNS: [DockerPlace; 4] = [
+        DockerPlace::Right,
+        DockerPlace::Left,
+        DockerPlace::RightInner,
+        DockerPlace::LeftInner,
+    ];
+}
+
+/// A docker shown in the lower part of a column, under the docker in
+/// front, and the share of the column's height the upper docker takes
+/// (#2312). The lower docker is one of the column's tabs.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DockerStack {
+    pub below: Option<DockerTab>,
+    pub split: f32,
+}
+
+impl DockerStack {
+    /// The upper docker's share at first: 60 %.
+    pub const DEFAULT_SPLIT: f32 = 0.6;
+    /// The least share either docker keeps when the divider is dragged.
+    pub const MIN_SHARE: f32 = 0.15;
+
+    /// `split` kept within reach of both dockers.
+    pub fn clamp_split(split: f32) -> f32 {
+        if split.is_finite() {
+            split.clamp(Self::MIN_SHARE, 1.0 - Self::MIN_SHARE)
+        } else {
+            Self::DEFAULT_SPLIT
+        }
+    }
+}
+
+impl Default for DockerStack {
+    fn default() -> Self {
+        DockerStack {
+            below: None,
+            split: Self::DEFAULT_SPLIT,
+        }
+    }
 }
 
 /// A second docker column on a side: its dockers in order, the one in
@@ -2654,6 +2711,17 @@ pub enum TransformTab {
     Scale,
     Size,
     Skew,
+}
+
+/// A column's name in the saved docker setup.
+fn column_key(place: DockerPlace) -> &'static str {
+    match place {
+        DockerPlace::Right => "right",
+        DockerPlace::Left => "left",
+        DockerPlace::RightInner => "inner",
+        DockerPlace::LeftInner => "left_inner",
+        DockerPlace::Floating => "floating",
+    }
 }
 
 /// The preferences' JSON, into a buffer of `hint` bytes so that it is
@@ -3210,6 +3278,7 @@ impl App {
             inner_dockers: DockerColumn::default(),
             left_inner_dockers: DockerColumn::default(),
             floating_dockers: Vec::new(),
+            docker_stacks: Default::default(),
             docker_drag: None,
             docker_last: (DockerTab::Hints, true),
             free_transform_last: Point::ZERO,
@@ -4088,6 +4157,17 @@ impl App {
             left_inner: keys(&self.left_inner_dockers.tabs),
             left_inner_front: front_key(&self.left_inner_dockers),
             left_inner_shown: self.left_inner_dockers.shown,
+            stacks: DockerPlace::COLUMNS
+                .iter()
+                .zip(&self.docker_stacks)
+                .filter_map(|(place, st)| {
+                    Some(crate::settings::StackSetup {
+                        column: column_key(*place).to_string(),
+                        tab: st.below?.key().to_string(),
+                        split: st.split,
+                    })
+                })
+                .collect(),
             floating: self
                 .floating_dockers
                 .iter()
@@ -4189,8 +4269,99 @@ impl App {
             }
             self.show_left_dockers = setup.left_shown;
         }
+        self.docker_stacks = Default::default();
+        for st in &setup.stacks {
+            let place = DockerPlace::COLUMNS
+                .into_iter()
+                .find(|p| column_key(*p) == st.column);
+            if let (Some(place), Some(tab)) = (place, by_key(&st.tab)) {
+                if let Some(i) = place.column_index() {
+                    self.docker_stacks[i] = DockerStack {
+                        below: Some(tab),
+                        split: DockerStack::clamp_split(st.split),
+                    };
+                }
+            }
+        }
         self.settle_columns();
         self.docker_last = (self.docker_tab, self.show_dockers);
+    }
+
+    /// The docker shown under the one in front of the column at `place`
+    /// (#2312).
+    pub fn docker_below(&self, place: DockerPlace) -> Option<DockerTab> {
+        place
+            .column_index()
+            .and_then(|i| self.docker_stacks[i].below)
+    }
+
+    /// Show `tab` in the lower part of the column at `place`, under the
+    /// docker in front there (#2312). From another place it joins the
+    /// column's tabs after the front one; a column closed or empty takes
+    /// it in front instead, as a move would.
+    pub fn stack_docker(&mut self, tab: DockerTab, place: DockerPlace) {
+        if place == DockerPlace::Floating {
+            self.move_docker(tab, place, None);
+            return;
+        }
+        let (tabs, front, shown) = self.docker_column(place);
+        if tabs.is_empty() || !shown || (front == tab && tabs.len() < 2) {
+            if self.docker_place(tab) != Some(place) {
+                self.move_docker(tab, place, None);
+            }
+            return;
+        }
+        let mut place = place;
+        let mut front = front;
+        if front == tab {
+            // The front docker goes below: the tab next to it comes up.
+            let next = tabs.iter().copied().find(|t| *t != tab);
+            if let Some(n) = next {
+                front = n;
+            }
+        } else if self.docker_place(tab) != Some(place) {
+            self.take_docker(tab);
+            let Some(dest) = self.docker_place(front) else {
+                return;
+            };
+            place = dest;
+            if let Some(tabs) = self.column_tabs_mut(place) {
+                let at = tabs
+                    .iter()
+                    .position(|t| *t == front)
+                    .map_or(tabs.len(), |i| i + 1);
+                tabs.insert(at, tab);
+            }
+        }
+        self.set_docker_column(place, true, Some(front));
+        if let Some(i) = place.column_index() {
+            self.docker_stacks[i].below = Some(tab);
+        }
+    }
+
+    /// Take the lower docker of the column at `place` out of the lower
+    /// part: it stays among the column's tabs (#2312).
+    pub fn unstack_docker(&mut self, place: DockerPlace) {
+        if let Some(i) = place.column_index() {
+            self.docker_stacks[i].below = None;
+        }
+    }
+
+    /// Each column's lower docker is one of its tabs other than the one
+    /// in front; otherwise the column shows one docker again.
+    fn settle_stacks(&mut self) {
+        for place in DockerPlace::COLUMNS {
+            let Some(i) = place.column_index() else {
+                continue;
+            };
+            let Some(below) = self.docker_stacks[i].below else {
+                continue;
+            };
+            let (tabs, front, _) = self.docker_column(place);
+            if front == below || !tabs.contains(&below) {
+                self.docker_stacks[i].below = None;
+            }
+        }
     }
 
     /// A side's second column never stands alone: when the column at the
@@ -4199,6 +4370,7 @@ impl App {
     fn settle_columns(&mut self) {
         if self.open_dockers.is_empty() && !self.inner_dockers.tabs.is_empty() {
             let c = std::mem::take(&mut self.inner_dockers);
+            self.docker_stacks[0] = std::mem::take(&mut self.docker_stacks[2]);
             self.open_dockers = c.tabs;
             self.docker_tab = c.front;
             self.show_dockers = c.shown;
@@ -4206,10 +4378,12 @@ impl App {
         }
         if self.left_dockers.is_empty() && !self.left_inner_dockers.tabs.is_empty() {
             let c = std::mem::take(&mut self.left_inner_dockers);
+            self.docker_stacks[1] = std::mem::take(&mut self.docker_stacks[3]);
             self.left_dockers = c.tabs;
             self.left_tab = c.front;
             self.show_left_dockers = c.shown;
         }
+        self.settle_stacks();
     }
 
     /// The second column at `place` (one of the inner places).
@@ -4246,6 +4420,11 @@ impl App {
 
     /// `tab` is on screen: in front of an open column, or floating.
     pub fn docker_shown(&self, tab: DockerTab) -> bool {
+        if let Some(place) = self.docker_place(tab) {
+            if self.docker_below(place) == Some(tab) {
+                return self.docker_column(place).2;
+            }
+        }
         match self.docker_place(tab) {
             Some(DockerPlace::Right) => self.show_dockers && self.docker_tab == tab,
             Some(DockerPlace::Left) => self.show_left_dockers && self.left_tab == tab,
@@ -4301,11 +4480,19 @@ impl App {
                 self.docker_last = (self.docker_tab, self.show_dockers);
             }
         }
+        self.settle_stacks();
     }
 
     /// Bring `tab` to the front where it lies; a docker open nowhere
     /// joins the default column.
     pub fn open_docker(&mut self, tab: DockerTab) {
+        // Shown under the front docker: its column opens, both stay.
+        if let Some(place) = self.docker_place(tab) {
+            if self.docker_below(place) == Some(tab) {
+                self.set_docker_column(place, true, None);
+                return;
+            }
+        }
         match self.docker_place(tab) {
             Some(DockerPlace::Left) => {
                 self.left_tab = tab;
@@ -4493,6 +4680,7 @@ impl App {
             }
         }
         self.docker_last = (self.docker_tab, self.show_dockers);
+        self.settle_stacks();
     }
 
     /// The tool each toolbox group shows, from tool ids (saved one per
@@ -5413,6 +5601,13 @@ impl App {
     /// Open the docker (or hide the column when it is already the active
     /// tab), as the docker shortcuts do.
     pub fn toggle_docker(&mut self, tab: DockerTab) {
+        // The lower docker of a column leaves the lower part alone.
+        if let Some(place) = self.docker_place(tab) {
+            if self.docker_below(place) == Some(tab) && self.docker_shown(tab) {
+                self.unstack_docker(place);
+                return;
+            }
+        }
         if self.docker_shown(tab) {
             match self.docker_place(tab) {
                 Some(
@@ -11122,6 +11317,68 @@ mod tests {
         app.select(ids[2..12].to_vec());
         assert_eq!(app.selected_rc().len(), 10);
         assert!(!app.selection_nested());
+    }
+
+    #[test]
+    fn two_dockers_stack_in_one_column_and_come_back_so() {
+        // #2312: Objects above, Properties below, in the same column.
+        let mut app = App::headless();
+        app.open_docker(DockerTab::Properties);
+        app.open_docker(DockerTab::Objects);
+        app.stack_docker(DockerTab::Properties, DockerPlace::Right);
+        assert_eq!(app.docker_tab, DockerTab::Objects);
+        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert!(app.docker_shown(DockerTab::Objects) && app.docker_shown(DockerTab::Properties));
+        // Opening the lower one keeps both; its toggle takes it out of
+        // the lower part only.
+        app.open_docker(DockerTab::Properties);
+        assert_eq!(app.docker_tab, DockerTab::Objects);
+        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        app.docker_stacks[0].split = 0.7;
+        // Saved and read back.
+        let setup = app.docker_setup();
+        assert_eq!(setup.stacks.len(), 1);
+        let mut next = App::headless();
+        next.set_docker_setup(&setup);
+        assert_eq!(next.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert!((next.docker_stacks[0].split - 0.7).abs() < 1e-6);
+        app.toggle_docker(DockerTab::Properties);
+        assert_eq!(app.docker_below(DockerPlace::Right), None);
+        assert!(app.show_dockers && app.docker_tab == DockerTab::Objects);
+        assert!(app.open_dockers.contains(&DockerTab::Properties));
+        // Brought to the front, it leaves the lower part.
+        app.stack_docker(DockerTab::Properties, DockerPlace::Right);
+        app.open_docker(DockerTab::Hints);
+        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        app.set_docker_column(DockerPlace::Right, true, Some(DockerTab::Properties));
+        assert_eq!(app.docker_below(DockerPlace::Right), None);
+        // A docker from another column joins this one, under the front.
+        app.move_docker(DockerTab::Undo, DockerPlace::Left, None);
+        app.stack_docker(DockerTab::Undo, DockerPlace::Right);
+        assert_eq!(app.docker_place(DockerTab::Undo), Some(DockerPlace::Right));
+        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Undo));
+        assert_eq!(app.docker_tab, DockerTab::Properties);
+        assert!(app.left_dockers.is_empty());
+        // Closed, the column shows one docker again.
+        app.close_docker(DockerTab::Undo);
+        assert_eq!(app.docker_below(DockerPlace::Right), None);
+        // The front docker itself goes below: the next tab comes up.
+        app.stack_docker(DockerTab::Properties, DockerPlace::Right);
+        assert_ne!(app.docker_tab, DockerTab::Properties);
+        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        // A second column that empties into the edge column keeps its
+        // stack.
+        let mut side = App::headless();
+        side.move_docker(DockerTab::Properties, DockerPlace::RightInner, None);
+        side.move_docker(DockerTab::Undo, DockerPlace::RightInner, None);
+        side.stack_docker(DockerTab::Properties, DockerPlace::RightInner);
+        assert_eq!(side.docker_below(DockerPlace::RightInner), Some(DockerTab::Properties));
+        for t in side.open_dockers.clone() {
+            side.close_docker(t);
+        }
+        assert_eq!(side.docker_tab, DockerTab::Undo);
+        assert_eq!(side.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(side.docker_below(DockerPlace::RightInner), None);
     }
 
     #[test]

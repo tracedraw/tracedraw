@@ -100,7 +100,8 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
         );
         for (tab, galley) in tabs.into_iter().zip(galleys) {
             let name = tr(tab.key());
-            let active = shown && front == tab;
+            let below = app.docker_below(place) == Some(tab);
+            let active = shown && (front == tab || below);
             let w = galley.size().x;
             let gh = galley.size().y;
             let icon_h = if tab_icon(tab).is_some() { 24.0 } else { 0.0 };
@@ -178,6 +179,10 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
                     .is_some_and(|p| close.contains(p));
                 if on_close {
                     app.close_docker(tab);
+                } else if active && below {
+                    // The lower docker of a stacked column: it leaves the
+                    // lower part, the docker in front stays.
+                    app.unstack_docker(place);
                 } else if active {
                     app.set_docker_column(place, false, None);
                 } else {
@@ -190,6 +195,7 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
                 .show(|ui| {
                     crate::ui::menus::body(ui, |ui| {
                         place_menu(app, ui, tab);
+                        stack_item(app, ui, tab);
                         crate::ui::menus::sep(ui);
                         if crate::ui::menus::item(ui, "docker.close_docker", "", true) {
                             app.close_docker(tab);
@@ -366,6 +372,26 @@ fn place_menu(app: &mut App, ui: &mut Ui, tab: DockerTab) {
     }
 }
 
+/// Show Below in a docker's menus: ticked while `tab` is shown under the
+/// front docker of its column; ticking stacks it there, unticking puts it
+/// back among the tabs (#2312). Offered for a docker of a column that
+/// holds another docker.
+fn stack_item(app: &mut App, ui: &mut Ui, tab: DockerTab) {
+    let Some(place) = app.docker_place(tab).filter(|p| *p != DockerPlace::Floating) else {
+        return;
+    };
+    let below = app.docker_below(place) == Some(tab);
+    let enabled = app.docker_column(place).0.len() > 1;
+    crate::ui::menus::sep(ui);
+    if crate::ui::menus::check_if(ui, "docker.stack_below", below, enabled) {
+        if below {
+            app.unstack_docker(place);
+        } else {
+            app.stack_docker(tab, place);
+        }
+    }
+}
+
 /// `tab` can go into the second column at `inner`: the column is there
 /// already, or the column at that side's edge holds a docker other than
 /// `tab` for it to stand beside.
@@ -495,6 +521,48 @@ fn drop_zone(
     }
 }
 
+/// The share of a column's docker part, from its bottom, where a dragged
+/// docker dropped stacks under the docker in front (#2312).
+pub const STACK_ZONE: f32 = 0.35;
+
+/// A docker dragged with the pointer at `p` over the lower part of a
+/// shown column's docker (the lowest [`STACK_ZONE`] of it, drawn this
+/// frame or the last): the column and the band the docker would take.
+/// Not over the column's own front docker alone, nor for the docker
+/// already shown below there.
+fn stack_drop(
+    app: &App,
+    ctx: &egui::Context,
+    p: egui::Pos2,
+    dragged: DockerTab,
+) -> Option<(DockerPlace, egui::Rect)> {
+    if crate::ui::phone::phone() {
+        return None;
+    }
+    let nr = ctx.cumulative_frame_nr();
+    DockerPlace::COLUMNS.into_iter().find_map(|place| {
+        let b = ctx.data(|d| d.get_temp::<ColumnBody>(body_id(place)))?;
+        let (tabs, front, shown) = app.docker_column(place);
+        if b.frame + 1 < nr || !shown || tabs.is_empty() || !b.rect.contains(p) {
+            return None;
+        }
+        let top = b.rect.bottom() - b.rect.height() * STACK_ZONE;
+        if p.y < top
+            || app.docker_below(place) == Some(dragged)
+            || (front == dragged && tabs.len() < 2)
+        {
+            return None;
+        }
+        let split = place
+            .column_index()
+            .map_or(crate::app::DockerStack::DEFAULT_SPLIT, |i| {
+                app.docker_stacks[i].split
+            });
+        let (_, _, lower) = stack_rects(b.rect, split);
+        Some((place, lower))
+    })
+}
+
 /// A docker being moved: the band or window it would take shows under the
 /// pointer, and the release puts it there (also when the pointer has left
 /// the window: the last place it was seen counts).
@@ -527,6 +595,16 @@ pub fn drag_overlay(app: &mut App, ctx: &egui::Context, menu_h: f32) {
         if !down {
             app.docker_drag = None;
             app.insert_docker(drag.tab, place, index);
+        }
+        return;
+    }
+    // Over the lower part of a column's docker: the dragged docker goes
+    // under the one in front there, the two stacked (#2312).
+    if let Some((place, zone)) = stack_drop(app, ctx, p, drag.tab) {
+        painter.rect(zone, 2.0, fill, edge, egui::StrokeKind::Inside);
+        if !down {
+            app.docker_drag = None;
+            app.stack_docker(drag.tab, place);
         }
         return;
     }
@@ -905,11 +983,97 @@ fn letters(p: &egui::Painter, r: egui::Rect, text: &str, size: f32) {
     );
 }
 
+/// How tall the bar between two stacked dockers is, which drags to share
+/// the column's height between them (#2312).
+pub const DIVIDER_H: f32 = 6.0;
+
+/// Where the docker part of each column lay last frame (under its tab
+/// strip's title row), for the drop that stacks a dragged docker under
+/// the one in front (#2312).
+#[derive(Clone)]
+struct ColumnBody {
+    frame: u64,
+    rect: egui::Rect,
+}
+
+fn body_id(place: DockerPlace) -> egui::Id {
+    egui::Id::new(("docker_column_body", place as u8))
+}
+
+/// The upper and lower docker's rectangles in a column's docker part
+/// `full`, the upper one taking `split` of the height, with the divider
+/// between them.
+pub fn stack_rects(full: egui::Rect, split: f32) -> (egui::Rect, egui::Rect, egui::Rect) {
+    let split = crate::app::DockerStack::clamp_split(split);
+    let room = (full.height() - DIVIDER_H).max(0.0);
+    let y = full.top() + (room * split).round();
+    let upper = egui::Rect::from_min_max(full.min, egui::pos2(full.right(), y));
+    let divider = egui::Rect::from_min_max(
+        egui::pos2(full.left(), y),
+        egui::pos2(full.right(), y + DIVIDER_H),
+    );
+    let lower = egui::Rect::from_min_max(egui::pos2(full.left(), y + DIVIDER_H), full.max);
+    (upper, divider, lower)
+}
+
 /// The docker column at `place`: the title bar of the docker in front,
-/// then its page in the width the column has.
+/// then its page in the width the column has. With a docker stacked
+/// under it, the two share the column's height, a bar between them that
+/// drags to change their shares (#2312).
 pub fn dockers(app: &mut App, ui: &mut Ui, place: DockerPlace) {
     let full = ui.max_rect();
+    let nr = ui.ctx().cumulative_frame_nr();
+    ui.ctx()
+        .data_mut(|d| d.insert_temp(body_id(place), ColumnBody { frame: nr, rect: full }));
     let (_, front, _) = app.docker_column(place);
+    let stacked = app
+        .docker_below(place)
+        .filter(|_| !crate::ui::phone::phone());
+    let (Some(below), Some(i)) = (stacked, place.column_index()) else {
+        docker_part(app, ui, front, place);
+        return;
+    };
+    let (upper, divider, lower) = stack_rects(full, app.docker_stacks[i].split);
+    let mut up = ui.new_child(egui::UiBuilder::new().max_rect(upper));
+    up.set_clip_rect(upper.intersect(ui.clip_rect()));
+    docker_part(app, &mut up, front, place);
+    let resp = ui
+        .interact(
+            divider,
+            egui::Id::new(("docker_stack_divider", place as u8)),
+            egui::Sense::drag(),
+        )
+        .on_hover_cursor(egui::CursorIcon::ResizeVertical)
+        .rich_tip(tr("docker.stack_divider"));
+    let line = if resp.hovered() || resp.dragged() {
+        Tokens::text_dim()
+    } else {
+        crate::theme::Tokens::window_border()
+    };
+    ui.painter()
+        .rect_filled(divider, 0.0, crate::theme::Tokens::tab_strip());
+    ui.painter().hline(
+        divider.x_range(),
+        divider.center().y,
+        egui::Stroke::new(1.0, line),
+    );
+    if resp.dragged() {
+        if let Some(p) = resp.interact_pointer_pos() {
+            let room = (full.height() - DIVIDER_H).max(1.0);
+            let split = (p.y - DIVIDER_H / 2.0 - full.top()) / room;
+            app.docker_stacks[i].split = crate::app::DockerStack::clamp_split(split);
+        }
+    }
+    let mut low = ui.new_child(egui::UiBuilder::new().max_rect(lower));
+    low.set_clip_rect(lower.intersect(ui.clip_rect()));
+    docker_part(app, &mut low, below, place);
+    ui.advance_cursor_after_rect(full);
+}
+
+/// One docker of a column in the room `ui` gives it: its title bar, then
+/// its page.
+fn docker_part(app: &mut App, ui: &mut Ui, front: DockerTab, place: DockerPlace) {
+    let full = ui.max_rect();
     docker_title(app, ui, front, place);
     let content = egui::Rect::from_min_max(egui::pos2(full.left(), full.top() + TITLE_H), full.max);
     ui.painter()
@@ -978,6 +1142,7 @@ fn docker_title(app: &mut App, ui: &mut Ui, tab: DockerTab, place: DockerPlace) 
         .show(|ui| {
             crate::ui::menus::body(ui, |ui| {
                 place_menu(app, ui, tab);
+                stack_item(app, ui, tab);
                 crate::ui::menus::sep(ui);
                 if crate::ui::menus::item(ui, "docker.close_docker", "", true) {
                     app.close_docker(tab);
@@ -1016,13 +1181,23 @@ fn docker_title(app: &mut App, ui: &mut Ui, tab: DockerTab, place: DockerPlace) 
         egui::pos2(bar.right() - 36.0, bar.center().y),
         egui::vec2(20.0, 20.0),
     );
+    // The lower docker of a stacked column folds back into its tab alone.
+    let lower = app.docker_below(place) == Some(tab);
     let resp = ui
         .interact(
             fold,
-            egui::Id::new(("docker_fold", place as u8)),
+            if lower {
+                egui::Id::new(("docker_fold_lower", place as u8))
+            } else {
+                egui::Id::new(("docker_fold", place as u8))
+            },
             egui::Sense::click(),
         )
-        .rich_tip(tr("docker.collapse"));
+        .rich_tip(tr(if lower {
+            "docker.unstack"
+        } else {
+            "docker.collapse"
+        }));
     let col = if resp.hovered() { Tokens::text() } else { grey };
     for points in fold_arrows(fold, strip_at_left(place)) {
         ui.painter().add(egui::epaint::PathShape::convex_polygon(
@@ -1032,7 +1207,11 @@ fn docker_title(app: &mut App, ui: &mut Ui, tab: DockerTab, place: DockerPlace) 
         ));
     }
     if resp.clicked() {
-        app.set_docker_column(place, false, None);
+        if lower {
+            app.unstack_docker(place);
+        } else {
+            app.set_docker_column(place, false, None);
+        }
     }
 }
 
@@ -4232,6 +4411,22 @@ fn undo_docker(app: &mut App, ui: &mut Ui) {
 pub(crate) mod tests {
     use super::*;
 
+    #[test]
+    fn stacked_dockers_share_the_column_height() {
+        let full = egui::Rect::from_min_size(egui::pos2(0.0, 100.0), egui::vec2(300.0, 606.0));
+        let (up, div, low) = stack_rects(full, 0.6);
+        assert_eq!(up.top(), 100.0);
+        assert_eq!(up.height(), 360.0);
+        assert_eq!(div.height(), DIVIDER_H);
+        assert_eq!(low.bottom(), full.bottom());
+        assert_eq!(low.top(), div.bottom());
+        // A divider dragged to an end still leaves room for both.
+        let (up, _, low) = stack_rects(full, 0.0);
+        assert!(up.height() >= 0.15 * 600.0 - 1.0 && low.height() > up.height());
+        let (up, _, _) = stack_rects(full, f32::NAN);
+        assert_eq!(up.height(), 360.0);
+    }
+
     /// The built-in two-colour pattern names follow the interface
     /// language (#2509): every language has each of them, and in
     /// Portuguese none stays in English.
@@ -4325,6 +4520,70 @@ pub(crate) mod tests {
             DockerPlace::LeftInner,
             DockerTab::Objects
         ));
+    }
+
+    /// #2312: a docker dropped on the lower part of a column's docker
+    /// goes under the one in front there; both draw, and the bar between
+    /// them drags to share the height.
+    #[test]
+    fn a_docker_dropped_low_in_a_column_stacks_under_the_front_one() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.open_docker(DockerTab::Objects);
+        app.move_docker(DockerTab::Properties, DockerPlace::Left, None);
+        let run = |app: &mut App, events: Vec<egui::Event>| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 900.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+            out.textures_delta.clear();
+        };
+        run(&mut app, Vec::new());
+        let body = ctx
+            .data(|d| d.get_temp::<ColumnBody>(body_id(DockerPlace::Right)))
+            .expect("the default column's docker part")
+            .rect;
+        let press = |at: egui::Pos2, pressed: bool| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        // Over the upper part the docker joins the column in front.
+        assert!(stack_drop(&app, &ctx, body.center() - egui::vec2(0.0, 100.0), DockerTab::Properties).is_none());
+        app.docker_drag = Some(DockerDrag {
+            tab: DockerTab::Properties,
+            grab: egui::vec2(10.0, 10.0),
+            last: None,
+        });
+        let at = egui::pos2(body.center().x, body.bottom() - 40.0);
+        run(&mut app, vec![egui::Event::PointerMoved(at), press(at, true)]);
+        assert!(app.docker_drag.is_some());
+        run(&mut app, vec![press(at, false)]);
+        assert!(app.docker_drag.is_none());
+        assert_eq!(app.docker_place(DockerTab::Properties), Some(DockerPlace::Right));
+        assert_eq!(app.docker_tab, DockerTab::Objects);
+        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        run(&mut app, Vec::new());
+        // The divider dragged up gives the lower docker more room.
+        let (_, div, _) = stack_rects(body, app.docker_stacks[0].split);
+        let from = div.center();
+        let to = from - egui::vec2(0.0, 150.0);
+        run(&mut app, vec![egui::Event::PointerMoved(from), press(from, true)]);
+        run(&mut app, vec![egui::Event::PointerMoved(from - egui::vec2(0.0, 20.0))]);
+        run(&mut app, vec![egui::Event::PointerMoved(to)]);
+        run(&mut app, vec![press(to, false)]);
+        assert!(app.docker_stacks[0].split < crate::app::DockerStack::DEFAULT_SPLIT - 0.1, "{}", app.docker_stacks[0].split);
+        // Its title's fold button puts it back among the tabs.
+        app.unstack_docker(DockerPlace::Right);
+        run(&mut app, Vec::new());
+        assert!(app.docker_shown(DockerTab::Objects) && !app.docker_shown(DockerTab::Properties));
     }
 
     pub(crate) fn draw(ctx: &egui::Context, app: &mut App) {

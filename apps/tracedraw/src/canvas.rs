@@ -3214,8 +3214,8 @@ pub fn draw_guides(app: &App, painter: &Painter, rect: ERect) {
     } else {
         Vec::new()
     };
-    for g in others {
-        let color = to_color32(app.guide_color(&g));
+    for g in others.iter().filter(|g| !g.hidden) {
+        let color = to_color32(app.guide_color(g));
         draw_guide_line(app, painter, rect, g.line, color, g.style.pattern());
     }
     let moving = app.guide_drag_moves();
@@ -3226,6 +3226,10 @@ pub fn draw_guides(app: &App, painter: &Painter, rect: ERect) {
         Vec::new()
     };
     for (i, g) in edited.iter().enumerate() {
+        // Hidden by its own eye in the Objects docker (#1775).
+        if g.hidden {
+            continue;
+        }
         let moved = moving.iter().find(|(k, _)| *k == i).map(|(_, g)| g);
         let g = match &app.drag {
             Drag::RotateGuide { index, guide, .. } if *index == i => guide,

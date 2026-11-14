@@ -707,7 +707,21 @@ pub struct DockerSetup {
     pub left_inner_front: String,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub left_inner_shown: bool,
+    /// The dockers shown under the front one of a column (#2312).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub stacks: Vec<StackSetup>,
     pub floating: Vec<FloatingSetup>,
+}
+
+/// A docker stacked under the front one of a column: the column ("right",
+/// "left", "inner", "left_inner"), the docker's name key and the upper
+/// docker's share of the height.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct StackSetup {
+    pub column: String,
+    pub tab: String,
+    pub split: f32,
 }
 
 /// A floating docker as it was left: its name key, the window's top left

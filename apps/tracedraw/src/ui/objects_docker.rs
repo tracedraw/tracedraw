@@ -24,6 +24,7 @@ use crate::theme::Tokens;
 use crate::ui::dockers::kind_name;
 use crate::ui::tips::RichTip;
 use egui::{Color32, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use tracedraw_core::document::GuideLine;
 use tracedraw_core::{Command, Layer, LayerId, MasterScope, PageId, Shape, ShapeId, ShapeKind};
 
 /// Height of a row.
@@ -96,6 +97,14 @@ struct Actions {
     /// Lock or unlock all the guidelines of a Guides row: the master
     /// page's (true) or the page's own, and locked or not.
     lock_guides: Option<(bool, bool)>,
+    /// One guideline's row: its set (master page or not), its index, and
+    /// what was done: its eye (hide or show), its padlock, or a click
+    /// that selects it (#1775).
+    guide_row: Option<(bool, usize, GuideRowAct)>,
+    /// A layer moved to another page, from its menu (#1477).
+    layer_to_page: Option<(LayerId, PageId)>,
+    /// A layer's Properties, from its menu (#1477).
+    layer_props: Option<LayerId>,
     /// Not an action: the object whose row is scrolled into view.
     scroll_to: Option<ShapeId>,
     /// Not an action: the thumbnail cache, taken from the app while the
@@ -104,6 +113,14 @@ struct Actions {
     thumbs: crate::object_thumbs::ObjectThumbs,
     thumb_size: f32,
     drawing: (u64, u64),
+}
+
+/// What a guideline's own row did (#1775).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum GuideRowAct {
+    Hide(bool),
+    Lock(bool),
+    Select,
 }
 
 /// Where a layer sits: its index in its list (0 at the bottom), how many
@@ -865,6 +882,29 @@ fn layer_rows(
             act.layer_to_master = Some(layer.id);
             ui.close();
         }
+        // To another page, with its objects and look (#1477).
+        let others: Vec<(PageId, String)> = app
+            .doc()
+            .pages
+            .iter()
+            .filter(|p| Some(p.id) != at.page)
+            .map(|p| (p.id, p.name.clone()))
+            .collect();
+        if !others.is_empty() {
+            ui.menu_button(tr("docker.move_to_page"), |ui| {
+                for (page, name) in &others {
+                    if ui.button(name).clicked() {
+                        act.layer_to_page = Some((layer.id, *page));
+                        ui.close();
+                    }
+                }
+            });
+        }
+        ui.separator();
+        if ui.button(tr("docker.layer_properties")).clicked() {
+            act.layer_props = Some(layer.id);
+            ui.close();
+        }
         ui.separator();
         if ui
             .add_enabled(
@@ -1011,6 +1051,18 @@ fn guides_row(
         Some(p) => egui::Id::new(("objects_guides", p.raw())),
         None => egui::Id::new("objects_guides"),
     };
+    // The row opens to list its guidelines one by one, each with its
+    // own eye and padlock (#1775).
+    let open_id = base.with("open");
+    let open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(false);
+    if !guides.is_empty() {
+        let (ar, a) = hot(ui, rect, rect.left() + 3.0 + INDENT, 14.0, base.with("arrow"));
+        let a = a.rich_tip_with(|| crate::ui::tips::keyed("docker.expand_row"));
+        paint_arrow(ui, ar, open);
+        if a.clicked() {
+            ui.data_mut(|d| d.insert_temp(open_id, !open));
+        }
+    }
     let mut x = rect.left() + 3.0 + INDENT + 16.0;
     // Each guidelines row has its own eye (#1775).
     let shown = app.show_guides && app.doc().guides_shown(page);
@@ -1042,6 +1094,71 @@ fn guides_row(
         egui::FontId::proportional(13.0),
         Tokens::text(),
     );
+    if open && !guides.is_empty() {
+        guide_rows(app, ui, guides, page, base, shown, act);
+    }
+}
+
+/// The guidelines of a Guides row, one row each: its eye, its padlock
+/// and where it is; a click selects it on the page (#1775).
+fn guide_rows(
+    app: &App,
+    ui: &mut Ui,
+    guides: &[tracedraw_core::document::Guide],
+    page: Option<PageId>,
+    base: egui::Id,
+    set_shown: bool,
+    act: &mut Actions,
+) {
+    let master = page.is_none();
+    let edited = app.edit_master_guides == master && page.is_none_or(|p| p == app.page);
+    for (i, g) in guides.iter().enumerate() {
+        let selected = edited && app.selected_guides.contains(&i);
+        let (rect, resp) = row(ui, Look::Object { selected });
+        let text = crate::ui::layout_options::guide_text(app, g);
+        let kind = match g.line {
+            GuideLine::Horizontal { .. } => tr("options.horizontal"),
+            GuideLine::Vertical { .. } => tr("options.vertical"),
+            GuideLine::Angled { .. } => tr("options.angled"),
+        };
+        let resp = resp.rich_tip_with(|| format!("{kind} {text}\n{}", tr("docker.guide_row_desc")));
+        let id = base.with(("guide", i));
+        let mut x = rect.left() + 3.0 + LAYER_OBJECT_DEPTH as f32 * INDENT + 16.0;
+        let (er, e) = hot(ui, rect, x, 18.0, id.with("eye"));
+        paint_eye(ui, er, set_shown && !g.hidden);
+        let mut done = None;
+        if e.rich_tip(tr("docker.show_hide")).clicked() {
+            done = Some(GuideRowAct::Hide(!g.hidden));
+        }
+        x += 20.0;
+        let (lr, l) = hot(ui, rect, x, 18.0, id.with("lock"));
+        paint_lock(ui, lr, g.locked);
+        if l.rich_tip(tr("docker.lock_guides")).clicked() {
+            done = Some(GuideRowAct::Lock(!g.locked));
+        }
+        x += 22.0;
+        let color = if g.hidden || !set_shown {
+            Tokens::text_dim()
+        } else {
+            Tokens::text()
+        };
+        ui.painter().text(
+            Pos2::new(x, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            format!("{kind}  {text}"),
+            egui::FontId::proportional(12.0),
+            color,
+        );
+        if done.is_none() && resp.clicked() {
+            done = Some(GuideRowAct::Select);
+        }
+        if let Some(d) = done {
+            act.guide_row = Some((master, i, d));
+            if let Some(p) = page.filter(|p| *p != app.page) {
+                act.goto = Some(p);
+            }
+        }
+    }
 }
 
 /// The Document Grid row of the Master Page: the eye shows or hides the
@@ -1707,6 +1824,174 @@ fn master_to_page(app: &mut App, layer: LayerId) {
     app.objects_closed_pages.remove(&page);
 }
 
+/// A layer, of a page or the master page, becomes a layer on top of
+/// `page` (with its objects, name and look), one undo step, and that
+/// page is shown; a page's last layer stays behind, empty (#1477).
+pub(crate) fn layer_to_page(app: &mut App, layer: LayerId, page: PageId) {
+    let doc = app.doc();
+    if doc.page(page).is_err() {
+        return;
+    }
+    let (from, keep) = match doc.master.iter().find(|l| l.id == layer) {
+        Some(l) => (l.clone(), false),
+        None => {
+            let Some(p) = doc
+                .pages
+                .iter()
+                .find(|p| p.layers.iter().any(|l| l.id == layer))
+            else {
+                return;
+            };
+            if p.id == page {
+                return;
+            }
+            let Some(l) = p.layers.iter().find(|l| l.id == layer).cloned() else {
+                return;
+            };
+            (l, p.layers.len() <= 1)
+        }
+    };
+    if let Err(e) = app.engine.run_with_label(
+        &Command::AddLayer {
+            page,
+            name: from.name.clone(),
+        },
+        "Move Layer",
+    ) {
+        app.status = e.to_string();
+        return;
+    }
+    let Some(to) = app
+        .doc()
+        .page(page)
+        .ok()
+        .and_then(|p| p.layers.last())
+        .map(|l| l.id)
+    else {
+        return;
+    };
+    hand_over(app, &from, to, keep);
+    app.objects_closed_pages.remove(&page);
+    if let Some(i) = app.doc().pages.iter().position(|p| p.id == page) {
+        if page != app.page {
+            app.goto_page(i);
+        }
+    }
+    app.picked_layer = Some(to);
+}
+
+/// The Layer Properties dialog's values (#1477): the name and switches of
+/// the layer, and for a master layer the pages it shows on and whether it
+/// is drawn in front of the pages' own layers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerProps {
+    pub layer: LayerId,
+    pub name: String,
+    pub visible: bool,
+    pub printable: bool,
+    pub locked: bool,
+    pub master: bool,
+    pub scope: MasterScope,
+    pub in_front: bool,
+}
+
+impl LayerProps {
+    /// The values of `layer` as it is.
+    pub fn of(app: &App, layer: LayerId) -> Option<LayerProps> {
+        let doc = app.doc();
+        let master = doc.master.iter().any(|l| l.id == layer);
+        let l = doc.layer(layer).ok()?;
+        Some(LayerProps {
+            layer,
+            name: l.name.clone(),
+            visible: l.visible,
+            printable: l.printable,
+            locked: l.locked,
+            master,
+            scope: l.scope,
+            in_front: l.in_front,
+        })
+    }
+
+    /// What changes the layer to these values, nothing when it has them.
+    pub fn commands(&self, app: &App) -> Vec<Command> {
+        let Some(now) = LayerProps::of(app, self.layer) else {
+            return Vec::new();
+        };
+        let layer = self.layer;
+        let mut cmds = Vec::new();
+        let name = self.name.trim();
+        if !name.is_empty() && name != now.name {
+            cmds.push(Command::RenameLayer {
+                layer,
+                name: name.to_string(),
+            });
+        }
+        if self.visible != now.visible {
+            cmds.push(Command::SetLayerVisible {
+                layer,
+                visible: self.visible,
+            });
+        }
+        if self.printable != now.printable {
+            cmds.push(Command::SetLayerPrintable {
+                layer,
+                printable: self.printable,
+            });
+        }
+        if self.locked != now.locked {
+            cmds.push(Command::SetLayerLocked {
+                layer,
+                locked: self.locked,
+            });
+        }
+        if now.master && self.scope != now.scope {
+            cmds.push(Command::SetLayerScope {
+                layer,
+                scope: self.scope,
+            });
+        }
+        if now.master && self.in_front != now.in_front {
+            cmds.push(Command::SetLayerInFront {
+                layer,
+                in_front: self.in_front,
+            });
+        }
+        cmds
+    }
+}
+
+/// The Layer Properties dialog's fields (#1477).
+pub fn layer_properties_fields(ui: &mut Ui, st: &mut LayerProps) {
+    egui::Grid::new("layer_properties")
+        .num_columns(2)
+        .show(ui, |ui| {
+            ui.label(tr("dialog.layer_name"));
+            ui.text_edit_singleline(&mut st.name)
+                .rich_tip(crate::ui::tips::keyed("dialog.layer_name"));
+            ui.end_row();
+        });
+    ui.checkbox(&mut st.visible, tr("docker.show_hide"))
+        .rich_tip(tr("docker.show_hide"));
+    ui.checkbox(&mut st.printable, tr("docker.print_layer"))
+        .rich_tip(tr("docker.print_layer"));
+    ui.checkbox(&mut st.locked, tr("docker.lock_layer"))
+        .rich_tip(tr("docker.lock_layer"));
+    if st.master {
+        ui.separator();
+        ui.horizontal(|ui| {
+            ui.label(tr("docker.show_on"));
+            for scope in [MasterScope::All, MasterScope::Odd, MasterScope::Even] {
+                let key = scope_key(scope);
+                ui.radio_value(&mut st.scope, scope, tr(key))
+                    .rich_tip_with(|| tr(&format!("{key}_tip")));
+            }
+        });
+        ui.checkbox(&mut st.in_front, tr("docker.master_in_front"))
+            .rich_tip(tr("docker.master_in_front"));
+    }
+}
+
 /// The active layer when Delete can take it: a master layer, or one of
 /// several layers of the page (a page keeps its last layer).
 fn deletable_layer(app: &App) -> Option<LayerId> {
@@ -2091,6 +2376,28 @@ fn apply(app: &mut App, ui: &Ui, act: Actions) {
     if let Some(master) = act.guides_master {
         app.choose_master_guides(master);
     }
+    if let Some((master, i, what)) = act.guide_row {
+        app.choose_master_guides(master);
+        match what {
+            GuideRowAct::Hide(hidden) => app.set_guide_hidden(i, hidden),
+            GuideRowAct::Lock(locked) => app.set_guides_locked(&[i], locked),
+            GuideRowAct::Select => {
+                if app.page_guides().get(i).is_some_and(|g| !g.hidden) {
+                    app.select(Vec::new());
+                    app.selected_guides = vec![i];
+                    app.guide_rotate = None;
+                }
+            }
+        }
+    }
+    if let Some((layer, page)) = act.layer_to_page {
+        layer_to_page(app, layer, page);
+    }
+    if let Some(layer) = act.layer_props {
+        if let Some(st) = LayerProps::of(app, layer) {
+            app.dialog = crate::ui::dialogs::Dialog::LayerProperties(st);
+        }
+    }
     if let Some((master, locked)) = act.lock_guides {
         app.choose_master_guides(master);
         let all: Vec<usize> = (0..app.page_guides().len()).collect();
@@ -2349,6 +2656,174 @@ pub(crate) mod tests {
         assert!(app.doc().find_shape(id).expect("shape").locked);
         app.undo();
         assert!(!app.doc().find_shape(id).expect("shape").locked);
+    }
+
+    /// A Guides row opens to list its guidelines; each has its own eye,
+    /// which hides that guideline alone (not drawn, picked or snapped
+    /// to), and its own padlock; a click on its row selects it. Each is
+    /// one undo step, and a hidden guideline stays hidden when saved
+    /// (#1775).
+    #[test]
+    fn each_guideline_has_its_own_row_eye_and_padlock() {
+        use tracedraw_core::document::Guide;
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.choose_master_guides(true);
+        app.add_guide(Guide::vertical(50.0));
+        app.add_guide(Guide::horizontal(80.0));
+        let run = |app: &mut App, events: Vec<egui::Event>| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(400.0, 800.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| objects_docker(app, ui));
+            out.textures_delta.clear();
+        };
+        let click = |app: &mut App, wid: egui::Id| {
+            run(app, Vec::new());
+            let at = ctx.read_response(wid).expect("drawn").rect.center();
+            run(app, vec![egui::Event::PointerMoved(at)]);
+            let button = |pressed| egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            run(app, vec![button(true)]);
+            run(app, vec![button(false)]);
+        };
+        let base = egui::Id::new("objects_guides");
+        run(&mut app, Vec::new());
+        assert!(
+            ctx.read_response(base.with(("guide", 0)).with("eye")).is_none(),
+            "closed at first"
+        );
+        click(&mut app, base.with("arrow"));
+        click(&mut app, base.with(("guide", 0)).with("eye"));
+        assert!(app.doc().master_guides[0].hidden);
+        assert!(!app.doc().master_guides[1].hidden);
+        let page = app.page;
+        let shown = app.doc().guides_on_page(page).expect("page");
+        assert_eq!(shown.len(), 1, "the hidden one is not snapped to");
+        assert_eq!(
+            app.guide_at(tracedraw_core::geometry::Point::new(50.0, 10.0)),
+            None
+        );
+        // Saved and opened again, it stays hidden.
+        let json = app.doc().to_json().expect("save");
+        let back = tracedraw_core::Document::from_json(&json).expect("open");
+        assert!(back.master_guides[0].hidden);
+        app.undo();
+        assert!(!app.doc().master_guides[0].hidden, "one undo step");
+        click(&mut app, base.with(("guide", 1)).with("lock"));
+        assert!(app.doc().master_guides[1].locked);
+        assert!(!app.doc().master_guides[0].locked);
+        // A click on the row selects that guideline.
+        app.choose_master_guides(false);
+        run(&mut app, Vec::new());
+        let row = ctx
+            .read_response(base.with(("guide", 1)).with("lock"))
+            .expect("drawn")
+            .rect;
+        let pos = egui::pos2(row.right() + 120.0, row.center().y);
+        run(&mut app, vec![egui::Event::PointerMoved(pos)]);
+        for pressed in [true, false] {
+            run(
+                &mut app,
+                vec![egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+        }
+        assert!(app.edit_master_guides);
+        assert_eq!(app.selected_guides, vec![1]);
+    }
+
+    /// A layer's menu moves it to another page with its objects and
+    /// look, in one undo step, and that page is shown; a master layer
+    /// goes the same way. Its Properties change its name and switches in
+    /// one undo step (#1477).
+    #[test]
+    fn a_layer_moves_to_another_page_and_has_properties() {
+        let mut app = without_desktop();
+        let first = app.page;
+        app.run(Command::AddLayer {
+            page: first,
+            name: "Art".into(),
+        });
+        let art = app.doc().pages[0].layers[1].id;
+        app.picked_layer = Some(art);
+        let id = app.new_shape(rect_kind()).expect("shape");
+        assert_eq!(layer_holding(&app, id), Some(art));
+        app.run(Command::SetLayerPrintable {
+            layer: art,
+            printable: false,
+        });
+        app.add_page();
+        let second = app.doc().pages[1].id;
+        app.page = first;
+        layer_to_page(&mut app, art, second);
+        assert_eq!(app.page, second);
+        let doc = app.doc();
+        assert!(doc.pages[0].layers.iter().all(|l| l.id != art));
+        let moved = doc.pages[1].layers.last().expect("layer");
+        assert_eq!(moved.name, "Art");
+        assert!(!moved.printable, "its look goes with it");
+        assert_eq!(layer_holding(&app, id), Some(moved.id));
+        let moved = moved.id;
+        app.undo();
+        assert_eq!(layer_holding(&app, id), Some(art), "one undo step");
+        app.redo();
+        // A master layer to the first page.
+        new_master_layer(&mut app, MasterScope::All);
+        let master = app.doc().master[0].id;
+        app.picked_layer = Some(master);
+        let on_master = app.new_shape(rect_kind()).expect("shape");
+        layer_to_page(&mut app, master, first);
+        assert!(app.doc().master.is_empty());
+        assert_eq!(app.page, first);
+        let there = layer_holding(&app, on_master).expect("layer");
+        assert!(app.doc().pages[0].layers.iter().any(|l| l.id == there));
+        // Properties: name, eye, printer and padlock in one step.
+        let mut st = LayerProps::of(&app, moved).expect("layer");
+        assert!(!st.master);
+        st.name = "Final art".into();
+        st.locked = true;
+        st.printable = true;
+        let cmds = st.commands(&app);
+        assert_eq!(cmds.len(), 3);
+        app.engine
+            .run_batch("Layer Properties", &cmds)
+            .expect("properties");
+        let l = app.doc().layer(moved).expect("layer").clone();
+        assert_eq!(l.name, "Final art");
+        assert!(l.locked && l.printable);
+        app.undo();
+        let l = app.doc().layer(moved).expect("layer").clone();
+        assert_eq!(l.name, "Art");
+        assert!(!l.locked && !l.printable);
+        // Nothing changed, nothing to do; a master layer's pages too.
+        assert!(LayerProps::of(&app, moved)
+            .expect("layer")
+            .commands(&app)
+            .is_empty());
+        new_master_layer(&mut app, MasterScope::All);
+        let m = app.doc().master[0].id;
+        let mut st = LayerProps::of(&app, m).expect("layer");
+        assert!(st.master);
+        st.scope = MasterScope::Even;
+        st.in_front = !st.in_front;
+        app.engine
+            .run_batch("Layer Properties", &st.commands(&app))
+            .expect("properties");
+        assert_eq!(app.doc().master[0].scope, MasterScope::Even);
     }
 
     /// With several objects selected, the eye of one of them hides them

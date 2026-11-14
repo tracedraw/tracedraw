@@ -814,6 +814,11 @@ pub(crate) fn radio(ui: &mut Ui, key: &str, shortcut: &str, on: bool) -> bool {
     mark_item(ui, key, shortcut, Mark::Radio(on))
 }
 
+/// A checkable item that can be unavailable (greyed, not clickable).
+pub(crate) fn check_if(ui: &mut Ui, key: &str, on: bool, enabled: bool) -> bool {
+    mark_item_if(ui, key, "", Mark::Check(on), enabled)
+}
+
 /// An exclusive item that can be unavailable (greyed, not clickable).
 pub(crate) fn radio_if(ui: &mut Ui, key: &str, shortcut: &str, on: bool, enabled: bool) -> bool {
     mark_item_if(ui, key, shortcut, Mark::Radio(on), enabled)

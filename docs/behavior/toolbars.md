@@ -134,6 +134,25 @@ a click lower on the tab brings the panel to the front
   at Right, Dock at Right, Second Column, Dock at Left, Dock at Left,
   Second Column, Floating and Close panel (a Second Column entry is grey
   while the column at that side's edge holds no other panel).
+- Two panels can share a column's height, one above the other (#2312,
+  `App::docker_stacks`, one `DockerStack` per column: the lower panel and
+  the upper panel's share, 60 % at first). Dropping a dragged panel on
+  the lowest 35 % of a shown column's panel (`dockers::STACK_ZONE`; the
+  band shows the lower part it would take) puts it there, under the
+  panel in front (`App::stack_docker`): from elsewhere it joins the
+  column's tabs after the front one; the front panel itself goes below
+  and the next tab comes up. The tab's and the title's menus have Show
+  Below, ticked while the panel is the lower one, to stack it or put it
+  back. Both panels draw with their own title bars, a 6 px bar between
+  them that drags to share the height (each keeps at least 15 %,
+  `dockers::stack_rects`). Both tabs show as open; a click on the lower
+  one's tab, its Window menu toggle or its title's fold button
+  ("Back to its tab", `App::unstack_docker`) leaves the upper panel
+  alone in the column. Bringing the lower panel to the front, closing
+  it or moving it away ends the stack (`App::settle_stacks`); opening
+  it from a menu keeps both. A second column that empties into the edge
+  column takes its stack with it. On a phone the column shows the front
+  panel only.
 - A floating panel is a window with a grey border and a shadow: the
   panel's title bar (its name and close; no collapse) over its page,
   resizable at its edges; where it is and how large are kept.
@@ -148,14 +167,18 @@ a click lower on the tab brings the panel to the front
   `left`, `left_front`, `left_shown`, `inner`, `inner_front`,
   `inner_shown`, `left_inner`, `left_inner_front`, `left_inner_shown`
   (the second columns, written only while they hold a panel),
-  `floating` with each window's corner and size); older preferences
+  `stacks` (each column's lower panel and share, written only while
+  there is one), `floating` with each window's corner and size); older preferences
   with the column alone read as before.
 - Checks: `app::tests::dockers_move_between_the_columns_and_float`,
   `app::tests::a_side_holds_a_second_docker_column`,
   `ui::dockers::tests::a_docker_dropped_beside_a_column_makes_a_second_column`,
   `app::tests::insert_docker_puts_a_tab_among_a_columns_tabs`,
   `ui::dockers::tests::a_docker_tab_dragged_along_its_column_changes_the_order`,
-  `ui::dockers::tests::a_docker_dragged_to_a_side_docks_there_and_the_window_draws_them_all`.
+  `ui::dockers::tests::a_docker_dragged_to_a_side_docks_there_and_the_window_draws_them_all`,
+  `app::tests::two_dockers_stack_in_one_column_and_come_back_so`,
+  `ui::dockers::tests::a_docker_dropped_low_in_a_column_stacks_under_the_front_one`,
+  `ui::dockers::tests::stacked_dockers_share_the_column_height`.
 
 ## Standard toolbar
 
