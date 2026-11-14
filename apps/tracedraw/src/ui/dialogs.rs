@@ -504,6 +504,12 @@ pub struct PrintState {
     pub fit_to_page: bool,
     pub separations: bool,
     pub crop_marks: bool,
+    /// The crop marks' length, gap from the page and width (mm), and
+    /// whether they also go between the pages.
+    pub crop_length: f64,
+    pub crop_offset: f64,
+    pub crop_width: f64,
+    pub crop_between: bool,
     pub registration_marks: bool,
     pub bleed: bool,
     pub mirror: bool,
@@ -946,6 +952,10 @@ impl Default for PrintState {
             tile: false,
             tile_overlap: 10.0,
             tile_marks: true,
+            crop_length: crate::imposition::CropStyle::default().length,
+            crop_offset: crate::imposition::CropStyle::default().offset,
+            crop_width: crate::imposition::CropStyle::default().width,
+            crop_between: false,
         }
     }
 }
@@ -5539,6 +5549,32 @@ pub(crate) fn margin_fields(ui: &mut Ui, margins: &mut [f64; 4]) {
     });
 }
 
+/// The crop marks' length, gap from the page and width, and the marks
+/// between the pages, under Crop marks (Print dialog and Print Preview).
+pub(crate) fn crop_mark_fields(ui: &mut Ui, st: &mut PrintState) {
+    if !st.crop_marks {
+        return;
+    }
+    let field = |ui: &mut Ui, key: &str, v: &mut f64, lo: f64, hi: f64| {
+        ui.label(tr(key));
+        ui.add(
+            crate::ui::field::NumField::new(v)
+                .range(lo..=hi)
+                .speed(0.1)
+                .suffix(" mm")
+                .width(52.0),
+        )
+        .rich_tip(crate::ui::tips::keyed(key));
+    };
+    ui.horizontal_wrapped(|ui| {
+        field(ui, "print.crop_length", &mut st.crop_length, 1.0, 10.0);
+        field(ui, "print.crop_offset", &mut st.crop_offset, 0.0, 6.0);
+        field(ui, "print.crop_width", &mut st.crop_width, 0.02, 1.0);
+    });
+    ui.checkbox(&mut st.crop_between, tr("print.crop_between"))
+        .rich_tip(crate::ui::tips::keyed("print.crop_between"));
+}
+
 /// Tile (a poster): the sheet printed in tiles of the Sheet field's
 /// paper, their overlap, the tiles across (which sets the scale) and the
 /// trim marks with each tile's name.
@@ -6536,6 +6572,7 @@ fn print_tab_prepress(app: &App, ui: &mut Ui, st: &mut PrintState) {
             ui.add_space(6.0);
             print_group(ui, &tr("print.finishing"), |ui| {
                 ui.checkbox(&mut st.crop_marks, tr("print.crop_fold_marks"));
+                crop_mark_fields(ui, st);
             });
         });
         ui.vertical(|ui| {

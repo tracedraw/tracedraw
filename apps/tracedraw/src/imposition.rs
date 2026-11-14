@@ -279,6 +279,49 @@ impl Marks {
     }
 }
 
+/// How the crop marks are drawn (mm): each line's length, the gap
+/// between it and the page's edge (beyond the bleed), its width, and
+/// whether marks also go in the gaps between the pages.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CropStyle {
+    pub length: f64,
+    pub offset: f64,
+    pub width: f64,
+    pub between: bool,
+}
+
+impl Default for CropStyle {
+    fn default() -> Self {
+        CropStyle {
+            length: 5.0,
+            offset: 1.5,
+            width: 0.1,
+            between: false,
+        }
+    }
+}
+
+impl CropStyle {
+    /// Each value kept where the marks fit in the room kept for them.
+    pub fn clamped(self) -> Self {
+        let num = |v: f64, lo: f64, hi: f64, d: f64| {
+            if v.is_finite() {
+                v.clamp(lo, hi)
+            } else {
+                d
+            }
+        };
+        let d = CropStyle::default();
+        let offset = num(self.offset, 0.0, 6.0, d.offset);
+        CropStyle {
+            offset,
+            length: num(self.length, 1.0, MARK_MARGIN - offset, d.length),
+            width: num(self.width, 0.02, 1.0, d.width),
+            between: self.between,
+        }
+    }
+}
+
 /// Everything the layout needs besides the document.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Options {
@@ -329,6 +372,8 @@ pub struct Options {
     /// The binding, creep and gap of the Booklet layout.
     pub booklet: Booklet,
     pub marks: Marks,
+    /// How the crop marks are drawn.
+    pub crop: CropStyle,
     /// The drawing's name and the moment, for the page information.
     pub title: String,
     pub when: String,
@@ -355,6 +400,7 @@ impl Default for Options {
             stretch_fit: false,
             booklet: Booklet::default(),
             marks: Marks::default(),
+            crop: CropStyle::default(),
             title: String::new(),
             when: String::new(),
         }
@@ -637,6 +683,14 @@ fn rect_shape(r: Rect, color: Color) -> Shape {
 /// Crop marks: at every cut line, short lines in the margin outside the
 /// pages (so they never fall on a neighbouring page).
 pub fn crop_marks(cells: &[Cell], bleed: f64) -> BezPath {
+    crop_marks_styled(cells, bleed, CropStyle::default())
+}
+
+/// Crop marks drawn as `style` says: outside the pages, and with
+/// `between` also at each page's corners in the gaps between the pages,
+/// wherever a mark stays clear of every other page and its bleed.
+pub fn crop_marks_styled(cells: &[Cell], bleed: f64, style: CropStyle) -> BezPath {
+    let style = style.clamped();
     let mut p = BezPath::new();
     let trims: Vec<Rect> = cells
         .iter()
@@ -646,8 +700,8 @@ pub fn crop_marks(cells: &[Cell], bleed: f64) -> BezPath {
     let Some(all) = trims.iter().copied().reduce(|a, b| a.union(b)) else {
         return p;
     };
-    let gap = bleed.max(0.0) + 1.5;
-    let len = 5.0;
+    let gap = bleed.max(0.0) + style.offset;
+    let len = style.length;
     let mut xs: Vec<f64> = trims.iter().flat_map(|r| [r.x0, r.x1]).collect();
     let mut ys: Vec<f64> = trims.iter().flat_map(|r| [r.y0, r.y1]).collect();
     for v in [&mut xs, &mut ys] {
@@ -665,6 +719,40 @@ pub fn crop_marks(cells: &[Cell], bleed: f64) -> BezPath {
         p.line_to((all.x0 - gap - len, y));
         p.move_to((all.x1 + gap, y));
         p.line_to((all.x1 + gap + len, y));
+    }
+    if style.between {
+        let clear = |a: Point, b: Point, own: usize| {
+            let seg = Rect::from_points(a, b).inflate(1e-6, 1e-6);
+            trims.iter().enumerate().all(|(i, t)| {
+                let t = t.inflate(bleed.max(0.0), bleed.max(0.0));
+                i == own || seg.intersect(t).area() <= 0.0 && !t.contains(a) && !t.contains(b)
+            })
+        };
+        let mut seg = |a: Point, b: Point, own: usize| {
+            // Not on the sheet's outer marks, nor inside the pages.
+            let outside = |q: Point| {
+                q.x < all.x0 - 1e-6
+                    || q.x > all.x1 + 1e-6
+                    || q.y < all.y0 - 1e-6
+                    || q.y > all.y1 + 1e-6
+            };
+            if !outside(a) && !outside(b) && clear(a, b, own) {
+                p.move_to(a);
+                p.line_to(b);
+            }
+        };
+        for (i, r) in trims.iter().enumerate() {
+            for (x, sx) in [(r.x0, -1.0), (r.x1, 1.0)] {
+                for (y, sy) in [(r.y0, -1.0), (r.y1, 1.0)] {
+                    // The vertical line beyond the corner, then the
+                    // horizontal one.
+                    let y0 = y + sy * gap;
+                    seg(Point::new(x, y0), Point::new(x, y0 + sy * len), i);
+                    let x0 = x + sx * gap;
+                    seg(Point::new(x0, y), Point::new(x0 + sx * len, y), i);
+                }
+            }
+        }
     }
     p
 }
@@ -731,11 +819,11 @@ pub fn marks(
     if m.crop {
         out.push(mark_shape(
             ShapeKind::Path {
-                path: crop_marks(&sheet.cells, bleed),
+                path: crop_marks_styled(&sheet.cells, bleed, o.crop),
                 closed: false,
             },
             Fill::None,
-            hair(0.1),
+            hair(o.crop.clamped().width),
         ));
         // A fold mark at a booklet's spine.
         if o.layout == Layout::Booklet {
@@ -1680,6 +1768,85 @@ mod tests {
             .filter(|e| matches!(e, tracedraw_core::geometry::PathEl::MoveTo(_)))
             .count();
         assert_eq!(segments, (6 + 4) * 2);
+    }
+
+    #[test]
+    fn crop_marks_take_their_style_and_go_between_pages() {
+        let seg = |p: &BezPath| {
+            p.elements()
+                .iter()
+                .filter(|e| matches!(e, tracedraw_core::geometry::PathEl::MoveTo(_)))
+                .count()
+        };
+        let o = |gutter: f64| Options {
+            layout: Layout::Repeat { cols: 3, rows: 2 },
+            gutter,
+            marks: Marks {
+                crop: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let card = Size::new(85.0, 55.0);
+        let wide = plan(&[card], &o(20.0));
+        let style = CropStyle {
+            length: 8.0,
+            offset: 3.0,
+            width: 0.3,
+            between: true,
+        };
+        let marks = crop_marks_styled(&wide[0].cells, 0.0, style);
+        // The outer marks (6 + 4 cut lines, two each) and, in the gaps,
+        // two lines at each corner facing another page: 12 up or down,
+        // 16 left or right.
+        assert_eq!(seg(&marks), 20 + 28);
+        let all = wide[0]
+            .cells
+            .iter()
+            .map(|c| c.trim)
+            .reduce(|a, b| a.union(b))
+            .unwrap();
+        let first = marks.elements()[..2].to_vec();
+        let (
+            tracedraw_core::geometry::PathEl::MoveTo(a),
+            tracedraw_core::geometry::PathEl::LineTo(b),
+        ) = (first[0], first[1])
+        else {
+            panic!("{first:?}");
+        };
+        assert!((a.y - (all.y1 + 3.0)).abs() < 1e-6 && (b.y - a.y - 8.0).abs() < 1e-6);
+        // None of them on a page.
+        for t in wide[0].cells.iter().map(|c| c.trim.inflate(-1e-3, -1e-3)) {
+            for e in marks.elements() {
+                if let tracedraw_core::geometry::PathEl::LineTo(q)
+                | tracedraw_core::geometry::PathEl::MoveTo(q) = e
+                {
+                    assert!(!t.contains(*q), "{q:?} on {t:?}");
+                }
+            }
+        }
+        // A gap too narrow for them keeps the outer marks alone.
+        let narrow = plan(&[card], &o(2.0));
+        assert_eq!(seg(&crop_marks_styled(&narrow[0].cells, 0.0, style)), 20);
+        // The sheet's marks take the width; a style out of range is
+        // brought back where the marks fit.
+        let opts = Options {
+            crop: style,
+            ..o(20.0)
+        };
+        let shapes = super::marks(&wide[0], &opts, 0, 1, &["1".into()]);
+        assert!(shapes.iter().any(|s| s
+            .stroke
+            .as_ref()
+            .is_some_and(|k| (k.width - 0.3).abs() < 1e-9)));
+        let c = CropStyle {
+            length: 50.0,
+            offset: -1.0,
+            width: f64::NAN,
+            between: false,
+        }
+        .clamped();
+        assert_eq!((c.length, c.offset, c.width), (MARK_MARGIN, 0.0, 0.1));
     }
 
     #[test]

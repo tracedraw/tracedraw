@@ -490,7 +490,14 @@ With any mark on, a 12 mm margin (plus the bleed) surrounds the pages.
 
 - Crop marks: 5 mm lines in registration colour, 0.1 mm wide, starting
   1.5 mm beyond the bleed, at every cut line of the grid, outside the
-  pages only. A booklet also gets a dashed fold mark at the spine, half way
+  pages only. Under Crop marks (Print dialog and Print Preview) Length
+  (1 to 10 mm), Offset (0 to 6 mm) and Width (0.02 to
+  1 mm) change them, and Marks between pages adds two lines at each
+  page's corners in the gaps between the pages, each kept only where it
+  stays clear of every other page and its bleed (`imposition::CropStyle`,
+  kept in presets with the print style;
+  `imposition::tests::crop_marks_take_their_style_and_go_between_pages`).
+  A booklet also gets a dashed fold mark at the spine, half way
   between its two pages.
 - Registration marks: a target (circle and cross) centred on each side
   of the pages.

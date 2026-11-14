@@ -1910,6 +1910,12 @@ pub fn print_layout(app: &App, st: &PrintState, doc: &Document) -> crate::imposi
             page_info: st.page_info,
             page_numbers: st.page_numbers,
         },
+        crop: crate::imposition::CropStyle {
+            length: st.crop_length,
+            offset: st.crop_offset,
+            width: st.crop_width,
+            between: st.crop_between,
+        },
         title: if st.info_text.trim().is_empty() {
             app.document_name()
         } else {

@@ -391,6 +391,10 @@ pub struct PrintStyle {
     pub tile: bool,
     pub tile_overlap: f64,
     pub tile_marks: bool,
+    pub crop_length: f64,
+    pub crop_offset: f64,
+    pub crop_width: f64,
+    pub crop_between: bool,
 }
 
 impl Default for PrintStyle {
@@ -427,6 +431,10 @@ impl PrintStyle {
             tile: st.tile,
             tile_overlap: st.tile_overlap,
             tile_marks: st.tile_marks,
+            crop_length: st.crop_length,
+            crop_offset: st.crop_offset,
+            crop_width: st.crop_width,
+            crop_between: st.crop_between,
         }
     }
 
@@ -472,6 +480,17 @@ impl PrintStyle {
         st.tile = self.tile;
         st.tile_overlap = num(self.tile_overlap, 0.0, 100.0, d.tile_overlap);
         st.tile_marks = self.tile_marks;
+        let crop = crate::imposition::CropStyle {
+            length: self.crop_length,
+            offset: self.crop_offset,
+            width: self.crop_width,
+            between: self.crop_between,
+        }
+        .clamped();
+        st.crop_length = crop.length;
+        st.crop_offset = crop.offset;
+        st.crop_width = crop.width;
+        st.crop_between = crop.between;
     }
 }
 

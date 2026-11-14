@@ -779,6 +779,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                             .rich_tip(tr("print.reverse_order_tip"));
                         ui.end_row();
                     });
+                crate::ui::dialogs::crop_mark_fields(ui, st);
                 if st.page_info {
                     ui.checkbox(&mut pv.move_info, tr("print.move_info"));
                 }
