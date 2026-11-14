@@ -2278,6 +2278,13 @@ impl App {
             };
             match hit {
                 Some(id) => {
+                    // A drag on the chosen drop shadow, away from its
+                    // object, moves the shadow: its box has no handles
+                    // to resize it, the shadow itself is what moves
+                    // (#2711).
+                    if !mods.shift && self.start_picked_shadow_move(id, p) {
+                        return;
+                    }
                     if mods.shift {
                         if !self.selection.contains(&id) {
                             self.select_add(id);
@@ -2525,6 +2532,21 @@ impl App {
     }
 
     fn pick_drag_to(&mut self, p: Point, mods: Modifiers) {
+        if let Drag::ShadowHandle {
+            handle,
+            grab,
+            begun,
+        } = self.drag.clone()
+        {
+            // The chosen drop shadow dragged with the Pick tool (#2711).
+            self.drag_shadow_handle(handle, p + grab, begun);
+            self.drag = Drag::ShadowHandle {
+                handle,
+                grab,
+                begun: true,
+            };
+            return;
+        }
         if matches!(self.drag, Drag::SymmetryLines { .. }) {
             self.symmetry_drag_to(p, mods.ctrl || mods.command);
             return;

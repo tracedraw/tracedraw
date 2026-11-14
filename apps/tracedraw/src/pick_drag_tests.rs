@@ -27018,6 +27018,51 @@ fn a_drop_shadow_is_chosen_apart_from_its_object() {
     assert!(!app.rotate_mode);
 }
 
+/// #2711: the chosen drop shadow showed resize handles that did
+/// nothing. A drag on it with the Pick tool moves the shadow (the
+/// object stays where it is), one undo step, and the shadow stays
+/// chosen.
+#[test]
+fn dragging_a_chosen_drop_shadow_moves_it() {
+    let (ctx, mut app, id) = setup();
+    app.set_shadow(
+        Some(tracedraw_core::Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(30.0, -30.0),
+            ..tracedraw_core::Shadow::default()
+        }),
+        false,
+    );
+    app.select(Vec::new());
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let on_shadow = app.view.to_screen(Point::new(80.0, 0.0));
+    click_at(&ctx, &mut app, on_shadow, Modifiers::NONE);
+    assert_eq!(app.picked_shadow(), Some(id));
+    let before = app.doc().find_shape(id).expect("shape").bounds();
+    let to = app.view.to_screen(Point::new(90.0, -10.0));
+    drag(&ctx, &mut app, on_shadow, to, Modifiers::NONE, Vec::new());
+    let s = app.doc().find_shape(id).expect("shape");
+    assert_eq!(s.bounds(), before, "the object moved");
+    let off = s.shadow.expect("shadow").offset;
+    assert!(
+        (off.x - 40.0).abs() < 0.5 && (off.y + 40.0).abs() < 0.5,
+        "{off:?}"
+    );
+    assert_eq!(app.picked_shadow(), Some(id));
+    app.undo();
+    let off = app
+        .doc()
+        .find_shape(id)
+        .and_then(|s| s.shadow)
+        .expect("shadow")
+        .offset;
+    assert!(
+        (off.x - 30.0).abs() < 1e-6 && (off.y + 30.0).abs() < 1e-6,
+        "{off:?}"
+    );
+}
+
 /// The Inner Shadow tool, in the Shadow tool's group: a drag from an
 /// object gives it an inner shadow cast as far as the drag, in the
 /// tool's style (#2473); a second drag moves it, one shadow still.

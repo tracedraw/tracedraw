@@ -99,6 +99,16 @@ every pointer event let the edge beside the nib creep and wobble, the
 more the slower the stroke (#2546,
 `tracedraw_core::effects::tests::smudge_leaves_the_outline_away_from_the_nib`).
 
+On the way back the nib carries the outline on both sides of its
+centre: a move of a stroke that goes against the way the stroke went
+out (from where it began to the farthest place the nib reached, once
+that is more than a quarter of the radius) brings back the outline
+the stroke drew out, so dragging past an edge and back over the same
+path in one stroke returns the edge near where it was. The outline
+behind the nib where a stroke begins still stays (#2710,
+`tracedraw_core::effects::tests::smudge_out_and_back_returns_the_edge`,
+`brushes::tests::smudge_out_and_back_in_one_stroke_returns_the_edge`).
+
 A step measures the stretch in reach into points an eighth of the
 radius apart and fits it back, as a Smear step does. On a stroke that
 winds a ring's wall three times round it takes 0.4 ms a step in a

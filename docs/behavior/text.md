@@ -1382,6 +1382,11 @@ stand-in next to each missing family: "Arial (Liberation Sans)".
   selected letter, each turned with its letter; and a click or drag picks
   the letter nearest along the path to the point clicked (#2423,
   `text_path::tests::the_caret_of_a_text_on_a_path_stands_on_the_path`).
+  Round a closed path the letters that go on past its start (the
+  right half of a text centred on the top of a circle) are clicked
+  where they stand: a point is measured along the line from the side
+  of the gap nearer the text's middle, not a whole round back (#2714,
+  `text_path::tests::every_letter_round_a_circle_can_be_clicked`).
 - Fit text to frame: scale size so the paragraph fills the frame height.
 - Underline and strike lines: thin `= size / 14`, thick `= size / 7`;
   a double line is two thin lines a thin line apart; the underline hangs
