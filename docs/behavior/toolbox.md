@@ -18,8 +18,9 @@
   bars' menu (Customize, button size, the bars), as on the other bars.
 - Buttons with a flyout have a small arrow at the bottom-right. Clicking
   the arrow, dragging, or pressing and holding the button for 0.4 s
-  opens the flyout; a click elsewhere picks the tool the button
-  shows. While a flyout is open, hovering another flyout button opens that
+  opens the flyout; a click on the button's main area picks the tool it
+  shows and closes the open flyout, including after hovering from another
+  group. While a flyout is open, hovering another flyout button opens that
   one instead; moving away from the toolbox or clicking elsewhere closes
   it.
 - A flyout lists its tools vertically: a check mark beside the tool the
