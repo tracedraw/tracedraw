@@ -1153,6 +1153,66 @@ fn fit_contents_to_page(page: &mut tracedraw_core::document::Page, all: bool) {
     }
 }
 
+/// Fit to page on facing pages (#2678): the objects of each spread that
+/// run off it shrink to fit inside it, centred on it, as
+/// [`fit_contents_to_page`] does for a page, with the spread's pages
+/// side by side. An object across the spine but inside the spread stays
+/// as it is, so each page prints its part of it.
+fn fit_contents_to_spreads(doc: &mut Document) {
+    const EPS: f64 = 1e-6;
+    let Some(start) = doc.facing() else {
+        return;
+    };
+    for spread in tracedraw_core::spreads::spreads(doc.pages.len(), start) {
+        let (placed, area) = doc.place_spread(spread);
+        let shows =
+            |b: &Rect| b.x0 <= area.x1 && b.x1 >= area.x0 && b.y0 <= area.y1 && b.y1 >= area.y0;
+        // Each page's objects in the spread's coordinates.
+        let on_spread = |at: tracedraw_core::geometry::Point, b: Rect| b + at.to_vec2();
+        let Some(b) = placed
+            .iter()
+            .filter_map(|(i, at)| doc.pages.get(*i).map(|p| (p, *at)))
+            .flat_map(|(p, at)| {
+                p.layers
+                    .iter()
+                    .flat_map(|l| &l.shapes)
+                    .map(move |s| on_spread(at, s.bounds()))
+            })
+            .filter(|b| b.width().is_finite() && b.height().is_finite() && shows(b))
+            .reduce(|a, b| a.union(b))
+        else {
+            continue;
+        };
+        let inside = b.x0 >= area.x0 - EPS
+            && b.y0 >= area.y0 - EPS
+            && b.x1 <= area.x1 + EPS
+            && b.y1 <= area.y1 + EPS;
+        if inside {
+            continue;
+        }
+        let k = (area.width() / b.width().max(EPS))
+            .min(area.height() / b.height().max(EPS))
+            .min(1.0);
+        let t = Affine::translate(area.center().to_vec2())
+            * Affine::scale(k)
+            * Affine::translate(-b.center().to_vec2());
+        for (i, at) in &placed {
+            let Some(page) = doc.pages.get_mut(*i) else {
+                continue;
+            };
+            // The spread's fit in the page's own coordinates.
+            let local = Affine::translate(-at.to_vec2()) * t * Affine::translate(at.to_vec2());
+            for layer in page.layers.iter_mut() {
+                for s in layer.shapes.iter_mut() {
+                    if shows(&on_spread(*at, s.bounds())) {
+                        s.transform_by(local);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The area `shapes` print on: their outlines (half the outline's width
 /// beyond the path) and live effects included, at least a sliver each
 /// way (a line has no height). `None` for no shapes.
@@ -1309,9 +1369,18 @@ pub fn print_sheets(app: &App, st: &PrintState) -> Document {
     let src = app.engine.document();
     // Facing pages: each page printed with what its facing page holds
     // across the spine and in the bleed beside it (#1972); not for the
-    // selection alone, nor when Fit to page shrinks what runs off.
-    let mut doc = if (st.range == 3 && !app.selection.is_empty()) || st.fit_to_page {
+    // selection alone. With Fit to page what runs off a spread shrinks
+    // to fit the spread first, so an object across the spine stays split
+    // between its two pages: fitted page by page, it shrank onto its own
+    // page and left the facing one empty (#2678).
+    let selection = st.range == 3 && !app.selection.is_empty();
+    let fit_spreads = st.fit_to_page && !selection && src.facing().is_some();
+    let mut doc = if selection || (st.fit_to_page && !fit_spreads) {
         src.clone()
+    } else if fit_spreads {
+        let mut fitted = src.clone();
+        fit_contents_to_spreads(&mut fitted);
+        fitted.with_spread_overhangs(src.metadata.bleed)
     } else {
         src.with_spread_overhangs(src.metadata.bleed)
     };
@@ -1348,7 +1417,7 @@ pub fn print_sheets(app: &App, st: &PrintState) -> Document {
     // Fit to page: objects running off the page (the selection, when
     // that is printed) shrink to fit inside it, centred, rather than
     // being cut at its edge (#534).
-    if st.fit_to_page {
+    if st.fit_to_page && !fit_spreads {
         for page in doc.pages.iter_mut() {
             fit_contents_to_page(page, st.range == 3);
         }
@@ -4602,6 +4671,85 @@ mod tests {
         let before = page.clone();
         fit_contents_to_page(&mut page, false);
         assert_eq!(page, before);
+    }
+
+    /// Fit to page on facing pages (#2678): an object across the spine
+    /// inside its spread prints split between the two pages, as without
+    /// Fit to page; one running off the spread shrinks to fit the spread,
+    /// still split. Fitted page by page, it shrank onto its own page and
+    /// the facing page printed empty.
+    #[test]
+    fn fit_to_page_keeps_an_object_across_the_spine_on_both_pages() {
+        fn shapes(s: &tracedraw_core::Shape, out: &mut Vec<tracedraw_core::Shape>) {
+            match &s.kind {
+                ShapeKind::ClipFrame { contents, .. } => {
+                    for c in contents {
+                        shapes(c, out);
+                    }
+                }
+                _ => out.push(s.clone()),
+            }
+        }
+        let mut app = App::headless();
+        for _ in 0..2 {
+            app.add_page();
+        }
+        app.set_facing_pages(true, tracedraw_core::spreads::PageSide::Right);
+        app.page = app.doc().pages[1].id;
+        let size = app.doc().pages[1].size;
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(size.width - 20.0, 10.0, size.width + 30.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        let st = PrintState {
+            fit_to_page: true,
+            ..PrintState::default()
+        };
+        let on_sheet = |doc: &Document, k: usize| {
+            let mut out = Vec::new();
+            for s in doc.pages[k].layers.iter().flat_map(|l| &l.shapes) {
+                shapes(s, &mut out);
+            }
+            out
+        };
+        let printed = print_sheets(&app, &st);
+        assert_eq!(printed.pages.len(), 3);
+        // Page 2 has it as drawn, 50 mm wide; page 3 its copy.
+        let own = on_sheet(&printed, 1);
+        assert_eq!(own.len(), 1);
+        let w = own[0]
+            .transform
+            .transform_rect_bbox(own[0].bounds())
+            .width();
+        assert!((own[0].bounds().width() - 50.0).abs() < 1e-6, "{w}");
+        assert_eq!(
+            on_sheet(&printed, 2).len(),
+            1,
+            "the facing page has its part"
+        );
+        // Off the spread's right edge: it shrinks to the spread, and the
+        // facing page still has its part.
+        let r = |w: f64| Rect::new(size.width - 20.0, 10.0, size.width + w, 40.0);
+        app.select(vec![id]);
+        let mut doc = app.doc().clone();
+        if let Some(s) = doc.find_shape_mut(id) {
+            s.kind = ShapeKind::Rect {
+                rect: r(size.width * 2.0),
+                radius: 0.0,
+                corners: None,
+            };
+        }
+        let mut fitted = doc.clone();
+        fit_contents_to_spreads(&mut fitted);
+        let b = fitted.find_shape(id).expect("rect").bounds();
+        assert!(b.x1 <= 2.0 * size.width + 1e-6, "{b:?}");
+        assert!(b.x1 > size.width, "still across the spine: {b:?}");
+        assert!(b.width() < size.width * 2.0 + 20.0);
+        // Page 1 stands alone: inside it, untouched.
+        assert_eq!(fitted.pages[0], doc.pages[0]);
     }
 
     /// A blend prints as it is drawn when the print moves or recolours
