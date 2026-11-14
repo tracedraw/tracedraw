@@ -1093,6 +1093,18 @@ fn swatch(
             }
         }
     }
+    // A double click on a colour edits it in the Palette Editor: its
+    // name, value and whether it is a spot ink (#2580). The first click
+    // has applied it, as in the reference program.
+    if resp.double_clicked() && !touch_outline {
+        if let Some(ci) = color_index.filter(|_| entry.is_some()) {
+            if shows_document(app, which) {
+                app.open_palette_editor_at(crate::ui::palette_editor::DOCUMENT, ci);
+            } else if let Some(i) = palette_index_of(app, which) {
+                app.open_palette_editor_at(i, ci);
+            }
+        }
+    }
     let menu_id = egui::Id::new(("palette_swatch_menu", which.key(), index));
     if app.settings.palette.right_click_outline {
         // A right click sets the outline; held for a second it opens the

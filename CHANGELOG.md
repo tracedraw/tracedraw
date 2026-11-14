@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Palettes: a double-click on a colour opens the Palette Editor on that palette with the colour selected, where it is renamed, changed or made a spot colour, as in CorelDRAW (the first click fills the selection as before). Only a double-click beside the colours opened the editor, with nothing selected (#2580).
+- Outline Pen (F12): the dialog opens with the width selected, so a number typed and Enter set the outline at once, as in CorelDRAW (#2597).
 - Image > Mode > Lab Color (24-bit) makes the bitmap a Lab bitmap: the status line names it Lab and the menu ticks the item, and a CMYK bitmap is no longer CMYK. The pixels went through Lab and back and nothing else changed, so the command seemed to do nothing (#2605).
 - Image > Mode > Indexed (8-bit) gives a bitmap with a palette: it is stored as an indexed PNG of up to 256 colours, the status line names it Indexed and the menu ticks the item. The result was an RGB bitmap with the palette's colours. Image > Convert to Bitmap in Indexed (8-bit) gives a paletted bitmap too (#2607).
 - 2-point line: drawn with a drag, the line ends where the drag is let go. It waited for one more press, so on a touch screen (Android, the browser) the second node landed wherever the next tap was and could not be placed by dragging (#2594).

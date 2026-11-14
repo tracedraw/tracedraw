@@ -27074,3 +27074,52 @@ fn a_two_point_line_drag_ends_at_the_release() {
         "{ends:?}"
     );
 }
+
+/// #2580: a double click on a palette colour opens the Palette Editor
+/// on that palette with the colour selected, its spot ink ready to set;
+/// the first click has filled the object with it.
+#[test]
+fn a_double_click_on_a_palette_colour_edits_it() {
+    let (ctx, mut app, id) = setup();
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let (name, color) = app.palette[5].clone();
+    let main = app.visible_palettes[0];
+    let at = app.palettes[main]
+        .colors
+        .iter()
+        .position(|(_, c)| *c == color)
+        .expect("in the default palette");
+    let pos = swatch_of(&ctx, &mut app, &name);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(pos)],
+        Modifiers::NONE,
+    );
+    for _ in 0..2 {
+        for pressed in [true, false] {
+            frame(
+                &ctx,
+                &mut app,
+                vec![button(
+                    pos,
+                    pressed,
+                    PointerButton::Primary,
+                    Modifiers::NONE,
+                )],
+                Modifiers::NONE,
+            );
+        }
+    }
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(filled_with(&app, id, &name));
+    match &app.dialog {
+        crate::ui::dialogs::Dialog::PaletteEditor(st) => {
+            assert_eq!(st.palette, main);
+            assert_eq!(st.selected, vec![at]);
+        }
+        d => panic!("{d:?}"),
+    }
+}

@@ -62,6 +62,9 @@ pub struct PaletteEditorState {
     last_edit: Option<Edit>,
     /// A swatch being dragged to another place.
     pub dragging: Option<usize>,
+    /// The selected colour is scrolled into view once, when the editor
+    /// opens on it.
+    pub reveal: bool,
 }
 
 impl PaletteEditorState {
@@ -69,6 +72,19 @@ impl PaletteEditorState {
     pub fn on(i: usize) -> Self {
         PaletteEditorState {
             palette: i,
+            ..Default::default()
+        }
+    }
+
+    /// The editor on palette `i` with its colour `color` selected, in
+    /// view, its name, value and spot ink ready to edit: a double click
+    /// on a palette swatch, as in the reference program (#2580).
+    pub fn on_color(i: usize, color: usize) -> Self {
+        PaletteEditorState {
+            palette: i,
+            selected: vec![color],
+            anchor: Some(color),
+            reveal: true,
             ..Default::default()
         }
     }
@@ -258,6 +274,24 @@ impl App {
         }
     }
 
+    /// [`Self::open_palette_editor`] with the palette's colour `color`
+    /// selected (#2580).
+    pub fn open_palette_editor_at(&mut self, i: usize, color: usize) {
+        let len = if i == DOCUMENT {
+            self.has_document().then(|| self.doc().palette.len())
+        } else {
+            self.palettes.get(i).map(|p| p.colors.len())
+        };
+        match len {
+            Some(n) if color < n => {
+                self.dialog = crate::ui::dialogs::Dialog::PaletteEditor(
+                    PaletteEditorState::on_color(i, color),
+                );
+            }
+            _ => self.open_palette_editor(i),
+        }
+    }
+
     /// Give the user's palette `i` these colours (OK or Apply in the
     /// editor, Delete Color on a bar): its file is saved again, the
     /// palettes made in TraceDraw are kept, its bar shows them. False for
@@ -413,9 +447,17 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut PaletteEditorState, close: 
         return;
     }
     if st.draft.as_ref().is_none_or(|d| d.of != st.palette) {
+        // Opened on a colour (a double click on a swatch, #2580), the
+        // editor keeps it selected; another palette chosen starts with
+        // none.
+        let opening = st.draft.is_none();
         st.draft = app.palette_draft(st.palette);
-        st.selected.clear();
-        st.anchor = None;
+        let n = st.draft.as_ref().map_or(0, |d| d.colors.len());
+        if !opening || st.selected.iter().any(|&i| i >= n) {
+            st.selected.clear();
+            st.anchor = None;
+            st.reveal = false;
+        }
         st.undo.clear();
         st.last_edit = None;
         st.dragging = None;
@@ -686,6 +728,9 @@ fn swatch_grid(ui: &mut egui::Ui, st: &mut PaletteEditorState, read_only: bool) 
                     crate::ui::palette::spot_mark(ui.painter(), rect, *c);
                 }
                 if st.selected.contains(&i) {
+                    if st.reveal {
+                        ui.scroll_to_rect(rect, Some(egui::Align::Center));
+                    }
                     ui.painter().rect_stroke(
                         rect,
                         2.0,
@@ -712,6 +757,7 @@ fn swatch_grid(ui: &mut egui::Ui, st: &mut PaletteEditorState, read_only: bool) 
                 }
             }
         });
+    st.reveal = false;
     if let Some(i) = clicked {
         click(
             &mut st.selected,
