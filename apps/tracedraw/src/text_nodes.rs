@@ -233,6 +233,11 @@ pub fn spacing_after_drag(s: &Shape, horizontal: bool, word: bool, d: Vec2) -> O
 /// character spacing, in percent of a space's width.
 pub const CHAR_SPACING_STEP: f64 = 5.0;
 
+/// What one press of the letter spacing keys adds to or takes from the
+/// space after chosen letters (their range kerning), in percent of the
+/// font size (#2171).
+pub const LETTER_KERN_STEP: f64 = 2.0;
+
 impl App {
     /// Ctrl+Shift+> and Ctrl+Shift+<: the letters of the text being
     /// edited, else of every selected text (one fitted to a path too),
@@ -240,6 +245,9 @@ impl App {
     /// Paragraphs with a spacing of their own change by the same amount
     /// (#193). False when no text took it.
     pub fn step_char_spacing(&mut self, wider: bool) -> bool {
+        if self.step_letter_kerning(wider) {
+            return true;
+        }
         let delta = if wider {
             CHAR_SPACING_STEP
         } else {
@@ -271,6 +279,60 @@ impl App {
             return false;
         }
         true
+    }
+
+    /// The letter spacing keys on some letters only, as in CorelDRAW
+    /// (#2171): in the text being edited, the selected characters, or
+    /// with no selection the gap at the caret (the space after the
+    /// letter before it; nothing before the first letter); with the
+    /// Shape tool, the chosen characters.
+    /// Each takes one step more or less space after it (its range
+    /// kerning), one undo step. False when no letters are picked out
+    /// that way: the whole text's character spacing changes then.
+    fn step_letter_kerning(&mut self, wider: bool) -> bool {
+        let delta = if wider {
+            LETTER_KERN_STEP
+        } else {
+            -LETTER_KERN_STEP
+        };
+        let kern = move |sp: &mut TextSpan| {
+            sp.tracking_pct = (sp.tracking_pct + delta).clamp(-100.0, 2000.0);
+        };
+        if let Some(te) = self.text_edit.clone() {
+            let Some(mut spans) = self.edit_spans() else {
+                return false;
+            };
+            let (a, b) = if te.has_selection() {
+                te.selection()
+            } else if te.caret > 0 && te.caret <= spans_char_count(&spans) {
+                (te.caret - 1, te.caret)
+            } else {
+                // The caret before the first letter: no gap there.
+                return true;
+            };
+            spans_apply(&mut spans, a, b, kern);
+            self.set_edit_spans_as(spans, "Character Spacing", false);
+            return true;
+        }
+        if !self.chosen_chars_active() {
+            return false;
+        }
+        let cmds: Vec<Command> = self
+            .node_texts()
+            .iter()
+            .filter_map(|s| {
+                let chosen = self.chosen_chars(s.id);
+                if chosen.is_empty() {
+                    return None;
+                }
+                let mut kind = s.kind.clone();
+                if let ShapeKind::Text { spans, .. } = &mut kind {
+                    *spans = apply_to_chars(spans, &chosen, kern);
+                }
+                Some(Command::SetShapeKind { shape: s.id, kind })
+            })
+            .collect();
+        !cmds.is_empty() && self.engine.run_batch("Character Spacing", &cmds).is_ok()
     }
 
     /// Selected text objects the Shape tool edits.
@@ -895,6 +957,66 @@ mod tests {
         assert_eq!(spacing(&app, b), -100.0);
         app.select(Vec::new());
         assert!(!app.step_char_spacing(true));
+    }
+
+    /// The letter spacing keys on one letter, as in CorelDRAW (#2171):
+    /// with the caret in the text being edited, only the gap at the caret
+    /// widens (the letter before it gets range kerning); with letters
+    /// selected, or chosen with the Shape tool, only those. The whole
+    /// text's character spacing stays.
+    #[test]
+    fn the_spacing_keys_space_one_letter_at_the_caret_or_the_chosen_ones() {
+        use crate::text_editing::TextEdit;
+        let (mut app, id) = text_app("abcd");
+        let kerns = |app: &App| -> Vec<f64> {
+            match &app.doc().find_shape(id).expect("text").kind {
+                ShapeKind::Text { spans, para, .. } => {
+                    assert_eq!(para.char_spacing_pct, 0.0, "the whole text's spacing stays");
+                    spans
+                        .iter()
+                        .flat_map(|sp| sp.text.chars().map(move |_| sp.tracking_pct))
+                        .collect()
+                }
+                _ => panic!("text"),
+            }
+        };
+        let edit = |caret: usize, anchor: usize| TextEdit {
+            shape: id,
+            caret,
+            anchor,
+            goal_x: None,
+            step: None,
+            created: None,
+        };
+        // The caret between "b" and "c": the space after "b" only.
+        app.text_edit = Some(edit(2, 2));
+        let steps = app.engine.history_labels().0.len();
+        assert!(app.step_char_spacing(true));
+        assert!(app.step_char_spacing(true));
+        assert_eq!(kerns(&app), vec![0.0, 2.0 * LETTER_KERN_STEP, 0.0, 0.0]);
+        assert_eq!(app.engine.history_labels().0.len(), steps + 2);
+        assert!(app.step_char_spacing(false));
+        assert_eq!(kerns(&app), vec![0.0, LETTER_KERN_STEP, 0.0, 0.0]);
+        // "cd" selected: those two.
+        app.text_edit = Some(edit(2, 4));
+        assert!(app.step_char_spacing(true));
+        assert_eq!(
+            kerns(&app),
+            vec![0.0, LETTER_KERN_STEP, LETTER_KERN_STEP, LETTER_KERN_STEP]
+        );
+        // The Shape tool with "a" chosen.
+        app.text_edit = None;
+        app.node_selection = vec![(id, 0)];
+        assert!(app.step_char_spacing(false));
+        assert_eq!(
+            kerns(&app),
+            vec![
+                -LETTER_KERN_STEP,
+                LETTER_KERN_STEP,
+                LETTER_KERN_STEP,
+                LETTER_KERN_STEP
+            ]
+        );
     }
 
     #[test]

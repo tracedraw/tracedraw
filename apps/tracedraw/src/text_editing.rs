@@ -389,7 +389,12 @@ impl App {
     /// Replace the spans of the text being edited as an undo step named
     /// `label`; with `merge` it takes the place of a step of that name
     /// just before it.
-    fn set_edit_spans_as(&mut self, spans: Vec<TextSpan>, label: &'static str, merge: bool) {
+    pub(crate) fn set_edit_spans_as(
+        &mut self,
+        spans: Vec<TextSpan>,
+        label: &'static str,
+        merge: bool,
+    ) {
         let Some(te) = self.text_edit.clone() else {
             return;
         };

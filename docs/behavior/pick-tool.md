@@ -114,9 +114,13 @@ drawing; objects deleted since drop out. With text selected, Ctrl+8 and
 Ctrl+2 keep changing the text size, and Ctrl+Shift+> and Ctrl+Shift+<
 move its letters further apart or closer, 5 % of a space's width a
 press (the Text docker's Character spacing), for a text fitted to a
-path too and while a text is edited
+path too
 (`text_nodes::tests::the_spacing_keys_step_the_character_spacing_of_selected_texts`,
-#193).
+#193). While a text is edited they space single letters, as in
+CorelDRAW: with the caret, only the gap at the caret (the letter before
+it gets 2 % of the size more or less range kerning a press); with
+characters selected, or chosen with the Shape tool, only those (#2171,
+`text_nodes::tests::the_spacing_keys_space_one_letter_at_the_caret_or_the_chosen_ones`).
 
 ## Invert Selection and Select Similar
 
