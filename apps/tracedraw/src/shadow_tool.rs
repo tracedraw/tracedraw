@@ -647,10 +647,15 @@ impl App {
         let sh = s.shadow?;
         let (rect, pm) = tracedraw_render::render_shadow_image(s, BREAK_APART_DPI)?;
         let (w, h) = (pm.width(), pm.height());
+        // The shadow's one colour in every pixel, its density in the
+        // alpha: a bitmap of a single colour, which a palette colour then
+        // recolours (#2677). Undoing the premultiplied pixels gave faint
+        // ones colours a little off the shadow's, so the bitmap read as
+        // many colours and kept its own.
+        let [r, g, b] = sh.color.to_rgb8();
         let mut rgba = Vec::with_capacity((w * h * 4) as usize);
         for p in pm.pixels() {
-            let c = p.demultiply();
-            rgba.extend_from_slice(&[c.red(), c.green(), c.blue(), c.alpha()]);
+            rgba.extend_from_slice(&[r, g, b, p.alpha()]);
         }
         let img = image::RgbaImage::from_raw(w, h, rgba)?;
         let mut png = Vec::new();
@@ -1138,6 +1143,58 @@ mod tests {
             assert_eq!(sh.perspective, p.perspective, "{key}");
             assert_eq!(sh.merge, p.merge, "{key}");
         }
+    }
+
+    /// #2677: a shadow broken apart is a bitmap of the shadow's one
+    /// colour, and a palette colour (a click, or a right click) recolours
+    /// it, each pixel keeping its density, in one undo step.
+    #[test]
+    fn a_shadow_broken_apart_takes_a_palette_colour() {
+        let (mut app, id) = app_with_rect();
+        app.set_shadow(
+            Some(Shadow {
+                color: Color::rgb8(30, 60, 90),
+                blur: 2.0,
+                ..Shadow::default()
+            }),
+            false,
+        );
+        app.break_apart();
+        assert!(shadow(&app, id).is_none());
+        let bitmap_id = app.selection[0];
+        let pixels = |app: &App| {
+            let Some(ShapeKind::Bitmap { png, .. }) =
+                app.doc().find_shape(bitmap_id).map(|s| s.kind.clone())
+            else {
+                panic!("bitmap");
+            };
+            crate::bitmap_fx::decode(&png).expect("png")
+        };
+        let before = pixels(&app);
+        assert_eq!(
+            crate::bitmap_modes::single_color(&before),
+            Some([30, 60, 90])
+        );
+        assert!(before.pixels().any(|p| p[3] > 0 && p[3] < 255), "feathered");
+        let depth = app.engine.history_labels().0.len();
+        app.apply_fill(Fill::Solid(Color::rgb8(220, 20, 10)));
+        let red = pixels(&app);
+        assert_eq!(app.engine.history_labels().0.len(), depth + 1);
+        for (a, b) in before.pixels().zip(red.pixels()) {
+            assert_eq!(a[3], b[3], "the density is kept");
+            if b[3] > 0 {
+                assert_eq!([b[0], b[1], b[2]], [220, 20, 10]);
+            }
+        }
+        // A right click (the outline colour) recolours it too.
+        app.apply_outline_color(Some(Color::rgb8(0, 128, 0)));
+        let green = pixels(&app);
+        assert!(green
+            .pixels()
+            .filter(|p| p[3] > 0)
+            .all(|p| [p[0], p[1], p[2]] == [0, 128, 0]));
+        // Still the bitmap, still behind the object.
+        assert_eq!(app.selection, vec![bitmap_id]);
     }
 
     #[test]
