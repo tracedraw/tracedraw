@@ -1688,6 +1688,11 @@ pub struct App {
     /// A right-button drag of the selection and the menu where it ended
     /// (see drop_menu.rs).
     pub right_drag: Option<crate::drop_menu::RightDrag>,
+    /// The object a right-button drag started from, kept when the drag
+    /// rested on another page's tab and that page opened: its fill (or
+    /// outline, by the keys held) goes onto the object it is let go
+    /// over there (#2704).
+    pub right_drag_style: Option<tracedraw_core::document::Shape>,
     /// A bar being moved (see ui/bars.rs).
     pub bar_drag: Option<crate::ui::bars::BarDrag>,
     /// The rows of toolbars drawn this frame, for the drops of a dragged
@@ -3063,6 +3068,7 @@ impl App {
             navigator_open: false,
             navigator_pinned: false,
             right_drag: None,
+            right_drag_style: None,
             bar_drag: None,
             bar_rows: Vec::new(),
             palette_bands: Vec::new(),

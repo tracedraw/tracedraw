@@ -60,7 +60,12 @@ column at the right and left for one at the left, mirrored in a
 right-to-left language) over a white page. The tab
 column to its right is 27 px wide: `#EAEAEA` under the title bar and
 below the tabs, a `#B2B2B2` line along the panel, grey `#D8D8D8` tabs
-with an icon and the name running downwards, the open panel's tab
+with an icon and the name running downwards (every panel has its
+picture, the same one its row in the three-dot menu shows; a column too
+short for the tabs with their names but long enough for the pictures
+alone shows the pictures alone, the name in the tab's tip; #2708,
+`ui::dockers::tests::every_docker_tab_has_a_picture`,
+`ui::dockers::tests::a_short_column_shows_the_tab_pictures_alone`), the open panel's tab
 `#B2B2B2`; the three-dot button under the tabs lists every panel in the
 groups of Window > Panels with a box ticked at each one in the column
 (ticking opens the panel in front, unticking closes it). The pointer
@@ -226,6 +231,12 @@ arrows at its right (11 px): a click on one steps the value by a unit
 (or the step the field was given), as does the mouse wheel over the
 field; Shift steps ten times as much, Ctrl a tenth; a whole-number field
 stays whole and the range holds (`ui::field::tests::arrows_and_the_wheel_step_the_value`).
+A decimal field stepping by less than a unit over a range of ten units
+or more (a depth, a length) steps whole units with the plain wheel, its
+own finer step (the decimals) with Ctrl+wheel and ten units with
+Shift+wheel, so typical values need no key held; its arrows keep their
+own step (#2705,
+`ui::field::tests::the_plain_wheel_steps_whole_units_and_ctrl_the_decimals`).
 A drag on the arrows, or on the field's label ("X:", shown with a
 left-right cursor), slides the value: one step every 4 pixels, right or
 up higher, left or down lower, with the same Shift and Ctrl steps,

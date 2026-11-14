@@ -83,20 +83,30 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
         let (tabs, front, shown) = app.docker_column(place);
         let tabs = tabs.to_vec();
         let mut laid = Vec::with_capacity(tabs.len());
-        for tab in tabs {
+        let galleys: Vec<_> = tabs
+            .iter()
+            .map(|tab| {
+                ui.painter().layout_no_wrap(
+                    tr(tab.key()),
+                    egui::FontId::proportional(12.0),
+                    Tokens::text(),
+                )
+            })
+            .collect();
+        let compact = icons_only(
+            &tabs,
+            &galleys.iter().map(|g| g.size().x).collect::<Vec<_>>(),
+            full.height() - TITLE_H - 8.0 - 22.0,
+        );
+        for (tab, galley) in tabs.into_iter().zip(galleys) {
             let name = tr(tab.key());
             let active = shown && front == tab;
-            let galley = ui.painter().layout_no_wrap(
-                name.clone(),
-                egui::FontId::proportional(12.0),
-                Tokens::text(),
-            );
             let w = galley.size().x;
             let gh = galley.size().y;
             let icon_h = if tab_icon(tab).is_some() { 24.0 } else { 0.0 };
             // A slot at the top of the tab for the close cross, shown while
             // the pointer is over the tab.
-            let h = CLOSE_SLOT + 14.0 + icon_h + w;
+            let h = tab_height(icon_h, w, compact);
             let (r, resp) =
                 ui.allocate_exact_size(egui::vec2(full.width(), h), egui::Sense::click_and_drag());
             laid.push((tab, r));
@@ -134,17 +144,19 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
                 );
                 icon(ui.painter(), ir);
             }
-            let text_top = r.min.y + CLOSE_SLOT + 7.0 + icon_h;
-            let mut ts = egui::epaint::TextShape::new(
-                egui::pos2(bg.center().x + gh / 2.0, text_top),
-                galley,
-                Tokens::text(),
-            );
-            if active && crate::theme::theme() == crate::theme::Theme::HighContrast {
-                ts.override_text_color = Some(crate::theme::on_highlight());
+            if !compact {
+                let text_top = r.min.y + CLOSE_SLOT + 7.0 + icon_h;
+                let mut ts = egui::epaint::TextShape::new(
+                    egui::pos2(bg.center().x + gh / 2.0, text_top),
+                    galley,
+                    Tokens::text(),
+                );
+                if active && crate::theme::theme() == crate::theme::Theme::HighContrast {
+                    ts.override_text_color = Some(crate::theme::on_highlight());
+                }
+                ts.angle = std::f32::consts::FRAC_PI_2;
+                ui.painter().add(ts);
             }
-            ts.angle = std::f32::consts::FRAC_PI_2;
-            ui.painter().add(ts);
             // A tab dragged moves its docker; not when a finger slides a
             // long column along its length to reach the tabs below (#1997).
             if resp.drag_started_by(egui::PointerButton::Primary)
@@ -605,6 +617,30 @@ pub fn floating_dockers(app: &mut App, ctx: &egui::Context) {
 
 type TabIcon = fn(&egui::Painter, egui::Rect);
 
+/// A docker tab's height: the close slot, the picture (`icon_h`) and the
+/// name running downwards (`name_w` long), or no name when `compact`.
+fn tab_height(icon_h: f32, name_w: f32, compact: bool) -> f32 {
+    if compact {
+        CLOSE_SLOT + 14.0 + icon_h
+    } else {
+        CLOSE_SLOT + 14.0 + icon_h + name_w
+    }
+}
+
+/// Whether a column's tabs show their pictures alone (the name stays in
+/// the tip): when the tabs with their names (`name_w` long each) are
+/// longer than the column's `room` and with pictures alone they all fit
+/// (#2708). When even those do not fit, the names stay and the column
+/// slides as before (#950).
+fn icons_only(tabs: &[DockerTab], name_w: &[f32], room: f32) -> bool {
+    if tabs.iter().any(|t| tab_icon(*t).is_none()) {
+        return false;
+    }
+    let total =
+        |compact: bool| -> f32 { name_w.iter().map(|w| tab_height(24.0, *w, compact)).sum() };
+    total(false) > room && total(true) <= room
+}
+
 /// The small picture above a docker tab's name.
 fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
     match tab {
@@ -667,8 +703,206 @@ fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
                 ));
             }
         }),
-        _ => None,
+        // Every other panel has its picture too, so a tab is known at a
+        // glance (#2708): the one its menu row or its tool shows where
+        // there is one, else a small drawing of its own.
+        DockerTab::Transformations => {
+            Some(|p, r| tool_pic(p, r, crate::tools::Tool::FreeTransform))
+        }
+        DockerTab::Undo => Some(|p, r| action_pic(p, r, crate::ui::icons::Action::Undo)),
+        DockerTab::AlignDistribute => Some(|p, r| glyph_pic(p, r, Glyph::AlignLeft)),
+        DockerTab::Shaping => Some(|p, r| {
+            // Two overlapping rings, the overlap filled.
+            let c = r.center();
+            let s = egui::Stroke::new(1.2, Tokens::icon());
+            p.circle_filled(c, 2.2, Tokens::icon());
+            p.circle_stroke(c + egui::vec2(-2.5, 0.0), 4.5, s);
+            p.circle_stroke(c + egui::vec2(2.5, 0.0), 4.5, s);
+        }),
+        DockerTab::StepAndRepeat => Some(|p, r| glyph_pic(p, r, Glyph::StepRepeat)),
+        DockerTab::Text => Some(|p, r| tool_pic(p, r, crate::tools::Tool::Text)),
+        DockerTab::Glyphs => Some(|p, r| letters(p, r, "\u{3a9}", 13.0)),
+        DockerTab::Color => Some(|p, r| {
+            // Three colour dots.
+            let c = r.center();
+            for (d, col) in [
+                (
+                    egui::vec2(0.0, -3.0),
+                    egui::Color32::from_rgb(0xD0, 0x2B, 0x2B),
+                ),
+                (
+                    egui::vec2(-3.2, 2.5),
+                    egui::Color32::from_rgb(0x1E, 0x9E, 0x3C),
+                ),
+                (
+                    egui::vec2(3.2, 2.5),
+                    egui::Color32::from_rgb(0x1F, 0x6F, 0xD0),
+                ),
+            ] {
+                p.circle_filled(c + d, 3.2, col);
+            }
+        }),
+        DockerTab::ColorStyles => Some(|p, r| {
+            // A colour swatch with style lines beside it.
+            let c = r.center();
+            let s = egui::Stroke::new(1.2, Tokens::icon());
+            let sw = egui::Rect::from_center_size(c + egui::vec2(-3.5, 0.0), egui::vec2(6.0, 10.0));
+            p.rect_filled(sw, 0.0, egui::Color32::from_rgb(0x1F, 0x6F, 0xD0));
+            for y in [-4.0, 0.0, 4.0] {
+                p.line_segment([c + egui::vec2(1.5, y), c + egui::vec2(7.0, y)], s);
+            }
+        }),
+        DockerTab::ObjectStyles => Some(|p, r| glyph_pic(p, r, Glyph::CopyProperties)),
+        DockerTab::FindReplace => Some(|p, r| glyph_pic(p, r, Glyph::Find)),
+        DockerTab::Scripts => Some(|p, r| glyph_pic(p, r, Glyph::Script)),
+        DockerTab::Palettes => Some(|p, r| {
+            // Four swatches in a square.
+            let c = r.center();
+            let cols = [
+                egui::Color32::from_rgb(0xD0, 0x2B, 0x2B),
+                egui::Color32::from_rgb(0xE8, 0xA3, 0x17),
+                egui::Color32::from_rgb(0x1E, 0x9E, 0x3C),
+                egui::Color32::from_rgb(0x1F, 0x6F, 0xD0),
+            ];
+            for (k, col) in cols.into_iter().enumerate() {
+                let o = egui::vec2(
+                    if k % 2 == 0 { -6.5 } else { 0.5 },
+                    if k < 2 { -6.5 } else { 0.5 },
+                );
+                p.rect_filled(
+                    egui::Rect::from_min_size(c + o, egui::vec2(6.0, 6.0)),
+                    0.0,
+                    col,
+                );
+            }
+        }),
+        DockerTab::Lens => Some(|p, r| glyph_pic(p, r, Glyph::Lens)),
+        DockerTab::Blend => Some(|p, r| glyph_pic(p, r, Glyph::Blend)),
+        DockerTab::Contour => Some(|p, r| glyph_pic(p, r, Glyph::Contour)),
+        DockerTab::Envelope => Some(|p, r| tool_pic(p, r, crate::tools::Tool::Envelope)),
+        DockerTab::Extrude => Some(|p, r| glyph_pic(p, r, Glyph::Extrude)),
+        DockerTab::Bevel => Some(|p, r| glyph_pic(p, r, Glyph::Bevel)),
+        DockerTab::BrushStrokes => Some(|p, r| glyph_pic(p, r, Glyph::BrushStrokes)),
+        DockerTab::BitmapMask => Some(|p, r| tool_pic(p, r, crate::tools::Tool::ColorEyedropper)),
+        DockerTab::ObjectData => Some(|p, r| glyph_pic(p, r, Glyph::DocProperties)),
+        DockerTab::Links => Some(|p, r| {
+            // Two chain links.
+            let c = r.center();
+            let s = egui::Stroke::new(1.3, Tokens::icon());
+            for d in [egui::vec2(-2.8, 2.8), egui::vec2(2.8, -2.8)] {
+                let m = c + d;
+                let pts: Vec<egui::Pos2> = (0..=16)
+                    .map(|k| {
+                        let a = k as f32 / 16.0 * std::f32::consts::TAU;
+                        let (x, y) = (a.cos() * 5.0, a.sin() * 2.6);
+                        // Turned an eighth of a turn.
+                        let h = std::f32::consts::FRAC_1_SQRT_2;
+                        m + egui::vec2((x + y) * h, (y - x) * h)
+                    })
+                    .collect();
+                p.add(egui::Shape::line(pts, s));
+            }
+        }),
+        DockerTab::Symbols => Some(|p, r| glyph_pic(p, r, Glyph::Symbol)),
+        DockerTab::Pages => Some(|p, r| glyph_pic(p, r, Glyph::PageSize)),
+        DockerTab::Guidelines => {
+            Some(|p, r| action_pic(p, r, crate::ui::icons::Action::ShowGuidelines))
+        }
+        DockerTab::Fonts => Some(|p, r| glyph_pic(p, r, Glyph::FontManager)),
+        DockerTab::FontSampler => Some(|p, r| letters(p, r, "Aa", 11.0)),
+        DockerTab::Corners => Some(|p, r| {
+            // A corner rounded off.
+            let c = r.center();
+            let s = egui::Stroke::new(1.4, Tokens::icon());
+            let mut pts = vec![c + egui::vec2(-6.0, 7.0), c + egui::vec2(-6.0, 0.0)];
+            for k in 0..=8 {
+                let a = std::f32::consts::PI + k as f32 / 8.0 * std::f32::consts::FRAC_PI_2;
+                pts.push(c + egui::vec2(0.0, 0.0) + egui::vec2(a.cos() * 6.0, a.sin() * 6.0));
+            }
+            pts.push(c + egui::vec2(7.0, -6.0));
+            p.add(egui::Shape::line(pts, s));
+        }),
+        DockerTab::JoinCurves => Some(|p, r| glyph_pic(p, r, Glyph::JoinCurves)),
+        DockerTab::FitToPath => Some(|p, r| {
+            // Letters standing on an arc.
+            let c = r.center();
+            let s = egui::Stroke::new(1.2, Tokens::icon());
+            let pts: Vec<egui::Pos2> = (0..=12)
+                .map(|k| {
+                    let a = std::f32::consts::PI * (1.15 + 0.7 * k as f32 / 12.0);
+                    c + egui::vec2(0.0, 9.0) + egui::vec2(a.cos() * 9.0, a.sin() * 9.0)
+                })
+                .collect();
+            p.add(egui::Shape::line(pts, s));
+            p.text(
+                c + egui::vec2(0.0, -2.5),
+                egui::Align2::CENTER_CENTER,
+                "T",
+                egui::FontId::proportional(10.0),
+                Tokens::icon(),
+            );
+        }),
+        DockerTab::Coordinates => {
+            Some(|p, r| action_pic(p, r, crate::ui::icons::Action::ShowRulers))
+        }
+        DockerTab::VectorMosaic | DockerTab::PictureMosaic => {
+            Some(|p, r| glyph_pic(p, r, Glyph::Mosaic))
+        }
+        DockerTab::Shelf => Some(|p, r| {
+            // An open tray holding a sheet.
+            let c = r.center();
+            let s = egui::Stroke::new(1.3, Tokens::icon());
+            p.add(egui::Shape::line(
+                vec![
+                    c + egui::vec2(-7.0, -1.0),
+                    c + egui::vec2(-7.0, 6.0),
+                    c + egui::vec2(7.0, 6.0),
+                    c + egui::vec2(7.0, -1.0),
+                ],
+                s,
+            ));
+            p.rect_stroke(
+                egui::Rect::from_min_max(c + egui::vec2(-3.5, -6.0), c + egui::vec2(3.5, 3.0)),
+                0.0,
+                s,
+                egui::StrokeKind::Middle,
+            );
+        }),
+        DockerTab::Export => Some(|p, r| action_pic(p, r, crate::ui::icons::Action::Export)),
+        DockerTab::Comments => Some(|p, r| tool_pic(p, r, crate::tools::Tool::Callout)),
+        DockerTab::AiGenerate => Some(|p, r| glyph_pic(p, r, Glyph::Ai)),
+        DockerTab::Effects => Some(|p, r| letters(p, r, "fx", 12.0)),
+        DockerTab::Macros => Some(|p, r| glyph_pic(p, r, Glyph::Record)),
+        DockerTab::PrintMerge => Some(|p, r| action_pic(p, r, crate::ui::icons::Action::Print)),
     }
+}
+
+use crate::ui::menu_glyphs::Glyph;
+
+/// A tab picture from the menus' glyphs, in the icon colour.
+fn glyph_pic(p: &egui::Painter, r: egui::Rect, g: Glyph) {
+    crate::ui::menu_glyphs::draw(p, r, g, Tokens::icon());
+}
+
+/// A tab picture from a tool's icon.
+fn tool_pic(p: &egui::Painter, r: egui::Rect, tool: crate::tools::Tool) {
+    crate::ui::icons::draw(p, r, tool, Tokens::icon());
+}
+
+/// A tab picture from a command's icon.
+fn action_pic(p: &egui::Painter, r: egui::Rect, a: crate::ui::icons::Action) {
+    crate::ui::icons::draw_action(p, r, a, Tokens::icon());
+}
+
+/// A tab picture of a few letters.
+fn letters(p: &egui::Painter, r: egui::Rect, text: &str, size: f32) {
+    p.text(
+        r.center(),
+        egui::Align2::CENTER_CENTER,
+        text,
+        egui::FontId::proportional(size),
+        Tokens::icon(),
+    );
 }
 
 /// The docker column at `place`: the title bar of the docker in front,
@@ -4177,6 +4411,85 @@ pub(crate) mod tests {
         );
         assert!(applied, "an arrow key step applies");
         assert!(t.scale > 25.0, "{}", t.scale);
+    }
+
+    /// Every panel's tab has a picture, so panels are known at a glance
+    /// (#2708).
+    #[test]
+    fn every_docker_tab_has_a_picture() {
+        let missing: Vec<_> = DockerTab::ALL
+            .iter()
+            .filter(|t| tab_icon(**t).is_none())
+            .collect();
+        assert!(missing.is_empty(), "{missing:?}");
+        // Each draws without trouble.
+        let ctx = crate::theme::ui_context();
+        // The first frame loads the fonts.
+        for draw in [false, true] {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let r = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(16.0, 16.0));
+                for icon in DockerTab::ALL.iter().filter_map(|t| tab_icon(*t)) {
+                    if draw {
+                        icon(ui.painter(), r);
+                    }
+                }
+            });
+            out.textures_delta.clear();
+        }
+    }
+
+    /// A column too short for its tabs with their names but long enough
+    /// for their pictures alone shows the pictures alone (the name in
+    /// the tip); a column too short even for those keeps the names and
+    /// slides (#2708, #950).
+    #[test]
+    fn a_short_column_shows_the_tab_pictures_alone() {
+        let tabs = [DockerTab::Properties, DockerTab::Objects, DockerTab::Blend];
+        let names = [90.0, 60.0, 40.0];
+        let full: f32 = names.iter().map(|w| tab_height(24.0, *w, false)).sum();
+        let small: f32 = names.iter().map(|w| tab_height(24.0, *w, true)).sum();
+        assert!(!icons_only(&tabs, &names, full + 1.0), "names fit");
+        assert!(icons_only(&tabs, &names, full - 1.0), "pictures alone fit");
+        assert!(
+            !icons_only(&tabs, &names, small - 1.0),
+            "nothing fits: names"
+        );
+        // Drawn: five panels in a column 400 px tall.
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        for tab in [
+            DockerTab::Properties,
+            DockerTab::Objects,
+            DockerTab::Transformations,
+            DockerTab::AlignDistribute,
+            DockerTab::Blend,
+        ] {
+            if !app.open_dockers.contains(&tab) {
+                app.move_docker(tab, DockerPlace::Right, None);
+            }
+        }
+        let run = |app: &mut App, height: f32| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(27.0, height),
+                )),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| tab_strip(app, ui, DockerPlace::Right));
+            out.textures_delta.clear();
+            ctx.data(|d| d.get_temp::<StripLayout>(strip_id(DockerPlace::Right)))
+                .expect("laid out")
+                .tabs
+        };
+        let tall = run(&mut app, 2000.0);
+        assert!(tall.iter().all(|(_, r)| r.height() > 60.0), "{tall:?}");
+        let n = tall.len() as f32;
+        let short = run(&mut app, TITLE_H + 30.0 + n * 60.0);
+        assert!(
+            short.iter().all(|(_, r)| (r.height() - 54.0).abs() < 0.5),
+            "{short:?}"
+        );
     }
 
     /// The pointer over a docker tab shows a close cross at its top; a

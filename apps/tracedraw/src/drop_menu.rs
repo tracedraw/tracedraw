@@ -133,6 +133,7 @@ impl App {
                 start: p,
                 current: p,
             });
+            self.right_drag_style = None;
             self.drop_menu = None;
             return true;
         }
@@ -141,6 +142,7 @@ impl App {
         };
         if response.ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.right_drag = None;
+            self.right_drag_style = None;
             return true;
         }
         if response.dragged_by(egui::PointerButton::Secondary) {
@@ -181,6 +183,16 @@ impl App {
     pub fn right_drag_released(&mut self, drag: RightDrag, mods: egui::Modifiers) {
         self.right_drag = None;
         let p = drag.current;
+        // Carried onto another page by its tab (#2704): the object under
+        // the pointer there takes the fill (the outline with Shift, both
+        // with Ctrl); no menu, as the objects dragged are not on this page.
+        if let Some(src) = self.right_drag_style.take() {
+            let action = DropAction::for_right_drop(mods).unwrap_or(DropAction::CopyFill);
+            if let Some(target) = self.hit_test(p) {
+                self.copy_style_from(&src, target, action);
+            }
+            return;
+        }
         if let Some((action, target)) = self.right_drop_style(p, mods) {
             self.copy_style_onto(target, action);
             return;
@@ -203,6 +215,13 @@ impl App {
             return;
         };
         let mods = painter.ctx().input(|i| i.modifiers);
+        if self.right_drag_style.is_some() {
+            let action = DropAction::for_right_drop(mods).unwrap_or(DropAction::CopyFill);
+            if let Some(target) = self.hit_test(drag.current) {
+                crate::canvas::draw_drop_style(self, painter, action, target);
+            }
+            return;
+        }
         if let Some((action, target)) = self.right_drop_style(drag.current, mods) {
             crate::canvas::draw_drop_style(self, painter, action, target);
             return;
@@ -249,16 +268,26 @@ impl App {
     /// menu and a left-button move let go with Alt (Alt+Shift) held do
     /// this (discussion #2066). Other actions do nothing here.
     pub fn copy_style_onto(&mut self, target: ShapeId, action: DropAction) {
-        if !matches!(
-            action,
-            DropAction::CopyFill | DropAction::CopyOutline | DropAction::CopyProperties
-        ) {
-            return;
-        }
         let Some(first) = self.selected_shapes().first().cloned() else {
             return;
         };
-        if first.id == target {
+        self.copy_style_from(&first, target, action);
+    }
+
+    /// `target` takes the fill, the outline or both (with the opacity)
+    /// of `first`, by `action`, as one undo step.
+    pub fn copy_style_from(
+        &mut self,
+        first: &tracedraw_core::document::Shape,
+        target: ShapeId,
+        action: DropAction,
+    ) {
+        if first.id == target
+            || !matches!(
+                action,
+                DropAction::CopyFill | DropAction::CopyOutline | DropAction::CopyProperties
+            )
+        {
             return;
         }
         let mut cmds = Vec::new();

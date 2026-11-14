@@ -140,6 +140,17 @@ to that page (#1346, `page_drop`):
 - The whole drag is one undo step, the move after the page changed
   included.
 
+- A colour or a fill dragged the same way (a palette swatch, the fill
+  swatch of the status bar or of the property bar, or an object dragged
+  with the right mouse button) and rested 0.6 seconds on another page's
+  tab opens that page, so it can be let go on an object there (#2704).
+  A right-button drag carried over keeps the object it started from: let
+  go on an object of the new page, that object takes its fill (with
+  Shift its outline, with Ctrl both and the transparency), with no menu;
+  the dragged objects stay on their page.
+
 Checks: `pick_drag_tests::a_selection_dropped_on_a_page_tab_moves_to_that_page`,
 `pick_drag_tests::ctrl_on_a_page_tab_sends_a_copy`,
-`pick_drag_tests::resting_on_a_page_tab_opens_the_page_and_the_move_goes_on`.
+`pick_drag_tests::resting_on_a_page_tab_opens_the_page_and_the_move_goes_on`,
+`pick_drag_tests::a_palette_colour_rested_on_a_page_tab_opens_the_page_and_fills_there`,
+`pick_drag_tests::a_right_drag_rested_on_a_page_tab_copies_the_fill_onto_that_page`.

@@ -27250,3 +27250,151 @@ fn a_guideline_over_a_picture_is_dragged_and_the_picture_stays() {
     let on = app.view.to_screen(Point::new(pic.center().x, moved));
     assert_eq!(cursor(&app, on), ToolCursor::System(egui::CursorIcon::Move));
 }
+
+/// Two pages: the red rectangle selected on the first, a grey one on
+/// the second (its id), the first page shown, and the second page's
+/// tab on screen.
+fn two_pages_with_a_target() -> (egui::Context, App, ShapeId, ShapeId, Pos2) {
+    let (ctx, mut app, id, _) = two_pages();
+    app.goto_page(1);
+    let target = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(20.0, 20.0, 80.0, 60.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![target]);
+    app.apply_fill(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+        128, 128, 128,
+    )));
+    app.goto_page(0);
+    app.select(vec![id]);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    app.zoom_to_page();
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let tab = app
+        .page_tab_rects
+        .iter()
+        .find(|(i, _)| *i == 1)
+        .map(|(_, r)| r.center())
+        .expect("the second page's tab is drawn");
+    (ctx, app, id, target, tab)
+}
+
+/// A drag with `button` from `from` that rests on the page tab `tab`
+/// long enough to open its page, then goes on to the centre of `target`
+/// on that page and is let go there with `mods` held.
+fn drag_over_tab_onto(
+    ctx: &egui::Context,
+    app: &mut App,
+    from: Pos2,
+    tab: Pos2,
+    target: ShapeId,
+    button_: PointerButton,
+    mods: Modifiers,
+) {
+    let mut t = 10.0;
+    frame_at(
+        ctx,
+        app,
+        vec![Event::PointerMoved(from)],
+        Modifiers::NONE,
+        t,
+    );
+    t += 0.02;
+    frame_at(
+        ctx,
+        app,
+        vec![button(from, true, button_, Modifiers::NONE)],
+        Modifiers::NONE,
+        t,
+    );
+    for i in 1..=4 {
+        t += 0.02;
+        let p = from + (tab - from) * (i as f32 / 4.0);
+        frame_at(ctx, app, vec![Event::PointerMoved(p)], Modifiers::NONE, t);
+    }
+    assert_eq!(app.page_index(), 0, "not before a rest");
+    for _ in 0..10 {
+        t += 0.1;
+        frame_at(ctx, app, vec![Event::PointerMoved(tab)], Modifiers::NONE, t);
+    }
+    assert_eq!(app.page_index(), 1, "the rest opened the page");
+    for _ in 0..4 {
+        t += 0.02;
+        frame_at(ctx, app, Vec::new(), Modifiers::NONE, t);
+    }
+    let to = app.view.to_screen(bounds(app, target).center());
+    for i in 1..=4 {
+        t += 0.02;
+        let p = tab + (to - tab) * (i as f32 / 4.0);
+        frame_at(ctx, app, vec![Event::PointerMoved(p)], mods, t);
+    }
+    t += 0.02;
+    frame_at(ctx, app, vec![button(to, false, button_, mods)], mods, t);
+    frame_at(ctx, app, Vec::new(), Modifiers::NONE, t + 0.02);
+}
+
+/// #2704: a palette colour dragged over another page's tab opens that
+/// page after a rest, and let go on an object there it fills it.
+#[test]
+fn a_palette_colour_rested_on_a_page_tab_opens_the_page_and_fills_there() {
+    let (ctx, mut app, _, target, tab) = two_pages_with_a_target();
+    let main = egui::PanelState::load(&ctx, egui::Id::new("palette"))
+        .map(|s| s.outer_rect)
+        .expect("the default palette");
+    let grey = app.doc().find_shape(target).map(|s| s.fill.clone());
+    // The fourth swatch of the default palette.
+    let from = Pos2::new(main.left() + 77.0 + 21.0 * 3.5, main.top() + 12.0);
+    drag_over_tab_onto(
+        &ctx,
+        &mut app,
+        from,
+        tab,
+        target,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    let now = app.doc().find_shape(target).map(|s| s.fill.clone());
+    assert!(
+        matches!(now, Some(tracedraw_core::Fill::Solid(_))),
+        "{now:?}"
+    );
+    assert_ne!(now, grey, "the object on the other page took the colour");
+}
+
+/// #2704: an object dragged with the right button over another page's
+/// tab opens that page after a rest; let go on an object there, that
+/// object takes the dragged object's fill (no menu), and nothing moves.
+#[test]
+fn a_right_drag_rested_on_a_page_tab_copies_the_fill_onto_that_page() {
+    let (ctx, mut app, id, target, tab) = two_pages_with_a_target();
+    let before = bounds(&app, id);
+    let from = app.view.to_screen(before.center());
+    drag_over_tab_onto(
+        &ctx,
+        &mut app,
+        from,
+        tab,
+        target,
+        PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    assert_eq!(
+        app.doc().find_shape(target).map(|s| s.fill.clone()),
+        Some(tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(
+            200, 30, 30
+        ))),
+        "the red fill went onto the grey object"
+    );
+    assert!(app.drop_menu.is_none(), "no menu");
+    assert_eq!(page_of(&app, id), Some(0), "the red object stays");
+    let after = bounds(&app, id);
+    assert!((after.x0 - before.x0).abs() < 1e-6 && (after.y0 - before.y0).abs() < 1e-6);
+    assert!(app.right_drag_style.is_none());
+}
