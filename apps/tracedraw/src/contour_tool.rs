@@ -21,8 +21,14 @@ use tracedraw_core::{
     geometry::Point, live::Effect, shaping::Join, Color, Command, ShapeId, ShapeKind,
 };
 
-/// How near (screen pixels) a press takes a contour handle.
-pub const HANDLE_PX: f64 = 9.0;
+/// How near (screen pixels) a press takes a contour handle, at least:
+/// the Options pick distance widens it (#2731: the handles were hard to
+/// take, above all by touch).
+pub const HANDLE_PX: f64 = 12.0;
+
+/// Side of the offset handle's square, screen pixels, at least: a larger
+/// node size in Options makes it larger (#2731).
+pub const HANDLE_SIDE_PX: f32 = 11.0;
 
 /// A handle of the selected contour on the canvas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -311,7 +317,7 @@ impl App {
     /// over the offset handle when they meet).
     pub fn contour_handle_at(&self, p: Point) -> Option<ContourHandle> {
         let h = self.contour_handles()?;
-        let tol = HANDLE_PX / f64::from(self.view.zoom.max(1e-6));
+        let tol = (HANDLE_PX / f64::from(self.view.zoom.max(1e-6))).max(self.line_pick_tol());
         if h.steps.is_some_and(|q| (q - p).hypot() <= tol) {
             return Some(ContourHandle::Steps);
         }
@@ -625,6 +631,23 @@ mod tests {
             Some(ContourHandle::Steps)
         );
         assert_eq!(app.contour_handle_at(Point::new(40.0, 40.0)), None);
+        // A press 11 screen pixels off still takes it (#2731), and a
+        // larger pick distance in Options reaches further.
+        let px = 1.0 / f64::from(app.view.zoom.max(1e-6));
+        assert_eq!(
+            app.contour_handle_at(Point::new(26.0, 10.0 + 11.0 * px)),
+            Some(ContourHandle::Offset)
+        );
+        assert_eq!(
+            app.contour_handle_at(Point::new(26.0, 10.0 + 18.0 * px)),
+            None
+        );
+        app.settings.nodes.pick_distance = 20.0;
+        assert_eq!(
+            app.contour_handle_at(Point::new(26.0, 10.0 + 18.0 * px)),
+            Some(ContourHandle::Offset)
+        );
+        app.settings.nodes.pick_distance = 6.0;
         let steps = app.engine.history_labels().0.len();
         // The offset handle to 32 mm: 3 steps of 4 mm, live at each move.
         app.drag_contour_handle(ContourHandle::Offset, Point::new(29.0, 10.0), false);

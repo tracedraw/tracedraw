@@ -3295,12 +3295,29 @@ fn graded_transparency_json(g: (&tracedraw_core::Fountain, u8)) -> Option<String
         _ => 1,
     };
     let scale = 1.0 - 2.0 * f.edge_pad.clamp(0.0, 0.49);
+    let (mut sx, mut sy, mut offset) = (scale, scale, f.offset);
+    // A radial run's scales are its radius in half sizes of the object
+    // (#2735): our own run reaches the box's corners, half its diagonal
+    // (exact for a square box), unless its nodes place it.
+    if f.kind == FountainKind::Radial {
+        match f.handles {
+            Some(h) => {
+                sx = (h.end - h.start).hypot();
+                sy = (h.skew - h.start).hypot();
+                offset = h.start;
+            }
+            None => {
+                sx = scale * std::f64::consts::SQRT_2;
+                sy = sx;
+            }
+        }
+    }
     let nil = "00000000-0000-0000-0000-000000000000";
     Some(format!(
-        r#"{{"mode":"0","fill":{{"type":"2","fountainType":"{kind}","angle":"{}","xCenterOffset":"{}","yCenterOffset":"{}","xScale":"{scale}","yScale":"{scale}","primaryColor":"GRAY255,USER,{},100,{nil}","secondaryColor":"GRAY255,USER,{},100,{nil}","primaryAlpha":"255","secondaryAlpha":"255","spreadMethod":"0","numSteps":"0","mergeMode":"0"}},"appliesTo":"{}","startTransparency":"0","endTransparency":"1"}}"#,
+        r#"{{"mode":"0","fill":{{"type":"2","fountainType":"{kind}","angle":"{}","xCenterOffset":"{}","yCenterOffset":"{}","xScale":"{sx}","yScale":"{sy}","primaryColor":"GRAY255,USER,{},100,{nil}","secondaryColor":"GRAY255,USER,{},100,{nil}","primaryAlpha":"255","secondaryAlpha":"255","spreadMethod":"0","numSteps":"0","mergeMode":"0"}},"appliesTo":"{}","startTransparency":"0","endTransparency":"1"}}"#,
         f.angle,
-        f.offset.x * 100.0,
-        f.offset.y * 100.0,
+        offset.x * 100.0,
+        offset.y * 100.0,
         grey(&first.color),
         grey(&last.color),
         target.min(2),

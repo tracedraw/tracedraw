@@ -50,6 +50,14 @@ the line (`effect_line_tests::the_transparency_line_moves_the_whole_mask`). Edit
 "Transparency" per drag; the fill is left alone
 (`fill_tool::tests::the_transparency_mask_has_nodes_and_a_midpoint`).
 
+A node clicked with the tool opens a small bar under it with the node's
+own transparency (0 % opaque, 100 % clear: the node's grey in the mask),
+a slider and a field; a drag of the slider is one undo step. The
+property bar shows the same value for the picked node (the first one
+until a node is clicked) beside the gradient's kind, for every selected
+object with a gradient mask (#2737,
+`fill_tool::tests::a_mask_node_takes_a_transparency`).
+
 What a drag that sets the line acts on (#1661,
 `pick_drag_tests::the_transparency_tool_drags_on_the_selection_and_ctrl_constrains`):
 
