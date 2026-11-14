@@ -3321,9 +3321,11 @@ pub fn wrap_offset_field(app: &mut App, ui: &mut Ui, offset: f64) {
     });
 }
 
-/// Wrap Paragraph Text, To Front and To Back of the layer and Convert to
-/// Curves, for the selected objects.
-pub fn order_part(app: &mut App, ui: &mut Ui) {
+/// Wrap Paragraph Text and its list of wrap styles, for the selected
+/// objects: on every object's bar, so that paragraph text alone, a
+/// picture alone or any one object shows it, not only a mixed selection
+/// (#2620, discussion #2618).
+pub fn wrap_part(app: &mut App, ui: &mut Ui) {
     let wrap = app.selected_rc().iter().any(|s| s.wrap_text);
     if pic_button(
         ui,
@@ -3341,6 +3343,12 @@ pub fn order_part(app: &mut App, ui: &mut Ui) {
         });
     }
     wrap_style_list(app, ui);
+}
+
+/// Wrap Paragraph Text, To Front and To Back of the layer and Convert to
+/// Curves, for the selected objects.
+pub fn order_part(app: &mut App, ui: &mut Ui) {
+    wrap_part(app, ui);
     if pic_button(ui, Pic::ToFront, &tr("toolbar.to_front"), true, false).clicked() {
         app.order_page(true);
     }

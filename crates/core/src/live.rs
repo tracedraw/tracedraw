@@ -1482,6 +1482,28 @@ const MAX_CONTOUR_STEPS: u32 = 999;
 /// one value can never fill the memory with steps (#980).
 pub const MAX_BLEND_STEPS: u32 = 999;
 
+/// Some subpath of `path` ends away from where it starts.
+fn has_loose_end(path: &BezPath) -> bool {
+    let mut start: Option<Point> = None;
+    let mut last: Option<Point> = None;
+    let mut loose = false;
+    for e in path.elements() {
+        if let PathEl::MoveTo(p) = e {
+            if let (Some(a), Some(b)) = (start, last) {
+                loose |= (a - b).hypot() > 1e-6;
+            }
+            start = Some(*p);
+            last = None;
+        } else if let Some(p) = e.end_point() {
+            last = Some(p);
+        }
+    }
+    if let (Some(a), Some(b)) = (start, last) {
+        loose |= (a - b).hypot() > 1e-6;
+    }
+    loose
+}
+
 /// The contour steps of `shape`: step `i` of `n` is its outline offset by
 /// `n * offset * accelerate(i / n, accel_objects)` (to the centre: by
 /// `i * offset` until nothing is left), coloured `accelerate(i / n,
@@ -1507,8 +1529,27 @@ fn contour(shape: &Shape, rule: crate::shaping::FillRule, p: &ContourParams) -> 
     } else {
         return Vec::new();
     };
+    // An open curve: each step is a closed band round both sides of it,
+    // the two offsets joined across its ends (#2577). Read as a filled
+    // area, the curve was closed by a straight line from end to end and
+    // the contour ran round that line too.
+    // A line whose ends meet (as some files give a closed shape) is read
+    // as the area it closes, as before.
+    let open = matches!(shape.kind, ShapeKind::Path { closed: false, .. })
+        && !base
+            .elements()
+            .iter()
+            .any(|e| matches!(e, PathEl::ClosePath))
+        && has_loose_end(&base);
+    let step_path = |d: f64| {
+        if open {
+            crate::shaping::open_offset_band(&base, d, p.corners)
+        } else {
+            crate::shaping::offset_filled(&base, sign * d, p.corners, rule)
+        }
+    };
     let mut paths = Vec::new();
-    if p.to_center {
+    if p.to_center && !open {
         for i in 1..=MAX_CONTOUR_STEPS {
             let q = crate::shaping::offset_filled(&base, sign * offset * i as f64, p.corners, rule);
             if q.elements().is_empty() {
@@ -1521,7 +1562,7 @@ fn contour(shape: &Shape, rule: crate::shaping::FillRule, p: &ContourParams) -> 
         let total = offset * n as f64;
         for i in 1..=n {
             let d = total * accelerate(i as f64 / n as f64, p.accel_objects);
-            let q = crate::shaping::offset_filled(&base, sign * d, p.corners, rule);
+            let q = step_path(d);
             if q.elements().is_empty() {
                 break;
             }
@@ -3233,6 +3274,57 @@ mod tests {
         moved.transform = Affine::translate((10.0, 0.0)) * moved.transform;
         let dx = evaluate(&moved).below[0].bounds().x0 - evaluate(&s).below[0].bounds().x0;
         assert!((dx - 10.0).abs() < 1e-6, "{dx}");
+    }
+
+    /// #2577: the contour of an open curve is a closed band round both
+    /// sides of it, joined across its ends, not the outline of the area
+    /// between the curve and the straight line from end to end.
+    #[test]
+    fn an_open_curve_contours_into_a_closed_band() {
+        use crate::geometry::Shape as _;
+        let mut path = BezPath::new();
+        path.move_to((0.0, 0.0));
+        path.curve_to((10.0, 20.0), (30.0, 20.0), (40.0, 0.0));
+        let mut s = Shape::new(
+            crate::ShapeId(1),
+            ShapeKind::Path {
+                path,
+                closed: false,
+            },
+        );
+        s.fill = Fill::None;
+        s.effects.push(Effect::Contour {
+            steps: 2,
+            offset: 2.0,
+            outside: true,
+            to_center: false,
+            fill_to: Color::WHITE,
+            outline_to: None,
+            color_blend: 0,
+            corners: Some(crate::shaping::Join::Round),
+            accel_objects: 0.0,
+            accel_colors: 0.0,
+        });
+        let ev = evaluate(&s);
+        assert_eq!(ev.below.len(), 2);
+        // The outer step: 4 mm to each side of the curve, closed.
+        let outer = ev.below[0].local_path();
+        assert!(matches!(
+            ev.below[0].kind,
+            ShapeKind::Path { closed: true, .. }
+        ));
+        let top = Point::new(20.0, 15.0);
+        let winds = |q: Point| outer.winding(q) != 0;
+        assert!(winds(top), "on the curve");
+        assert!(winds(top + Vec2::new(0.0, 3.5)), "above the curve");
+        assert!(winds(top - Vec2::new(0.0, 3.5)), "below the curve");
+        assert!(!winds(top + Vec2::new(0.0, 4.5)));
+        assert!(!winds(top - Vec2::new(0.0, 4.5)));
+        // Not round the chord: its middle stays outside.
+        assert!(!winds(Point::new(20.0, 0.0)));
+        // Cut straight at the ends: nothing past the start along the
+        // curve's way out of it.
+        assert!(!winds(Point::new(-1.5, -3.0)));
     }
 
     #[test]

@@ -1291,6 +1291,8 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                     app.sync_text_defaults_from(id);
                 }
                 text_properties(app, ui);
+                crate::ui::propbar::sep(ui);
+                crate::ui::propbar::wrap_part(app, ui);
                 crate::ui::propbar::arrange_part(app, ui);
             }
             Tool::Pick | Tool::FreeformPick
@@ -1348,6 +1350,8 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 object_properties(app, ui);
                 vsep(ui);
                 bitmap_properties(app, ui);
+                crate::ui::propbar::sep(ui);
+                crate::ui::propbar::wrap_part(app, ui);
                 crate::ui::propbar::arrange_part(app, ui);
             }
             Tool::Pick | Tool::FreeformPick => {
@@ -4281,5 +4285,48 @@ mod tests {
             frame(&ctx, &mut app, Vec::new());
         }
         assert!(matches!(app.dialog, Dialog::FontManager(_)));
+    }
+
+    /// Wrap Paragraph Text is on the bar with paragraph text alone or a
+    /// picture alone selected, not only with text and an object together
+    /// (#2620, discussion #2618).
+    #[test]
+    fn wrap_paragraph_text_shows_for_text_or_a_picture_alone() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        let text = app
+            .new_shape(ShapeKind::Text {
+                spans: vec![tracedraw_core::TextSpan::new("Words", "Arial", 12.0)],
+                origin: tracedraw_core::Point::new(20.0, 20.0),
+                frame: Some(tracedraw_core::geometry::Size::new(100.0, 60.0)),
+                align: tracedraw_core::TextAlign::Left,
+                para: Default::default(),
+                on_path: None,
+            })
+            .expect("text");
+        let picture = app
+            .new_shape(ShapeKind::Bitmap {
+                rect: tracedraw_core::geometry::Rect::new(130.0, 20.0, 150.0, 40.0),
+                width_px: 1,
+                height_px: 1,
+                png: tiny_skia::Pixmap::new(1, 1)
+                    .expect("pixmap")
+                    .encode_png()
+                    .expect("png")
+                    .into(),
+                fx: None,
+            })
+            .expect("picture");
+        let wrap = tr("context.wrap_paragraph_text");
+        for (what, ids) in [("text", vec![text]), ("picture", vec![picture])] {
+            app.set_tool(crate::tools::Tool::Pick);
+            app.select(ids);
+            frame(&ctx, &mut app, Vec::new());
+            crate::ui::tips::start_recording();
+            frame(&ctx, &mut app, Vec::new());
+            let seen = crate::ui::tips::recorded();
+            assert!(seen.contains(&wrap), "{what}: {seen:?}");
+        }
     }
 }

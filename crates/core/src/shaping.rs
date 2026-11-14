@@ -1168,6 +1168,36 @@ pub fn offset_filled(path: &BezPath, d: f64, join: Join, fill: FillRule) -> BezP
     fit_polygon_curves(&offset_polygon_with(path, d, join, fill), fit_tolerance(d))
 }
 
+/// The closed band `d` mm (taken as positive) to each side of an open
+/// path's subpaths, with straight-cut ends, its corners `join`ed: the
+/// contour of an open curve, which runs round both sides of it and is
+/// closed across its ends, as the reference program draws it (#2577).
+/// Empty for a path with nothing to stroke.
+pub fn open_offset_band(path: &BezPath, d: f64, join: Join) -> BezPath {
+    use i_overlay::mesh::float::stroke::offset::StrokeOffset;
+    use i_overlay::mesh::float::style::{LineCap, LineJoin, StrokeStyle};
+    let d = d.abs();
+    if !d.is_finite() || d < 1e-9 {
+        return BezPath::new();
+    }
+    let lines: Vec<Vec<[f64; 2]>> = polylines(path, (d / 50.0).clamp(1e-4, 0.02))
+        .into_iter()
+        .map(|(pts, _)| pts.iter().map(|p| [p.x, p.y]).collect())
+        .collect();
+    if lines.is_empty() {
+        return BezPath::new();
+    }
+    let style = StrokeStyle::new(2.0 * d)
+        .line_join(match join {
+            Join::Miter => LineJoin::Miter(MITER_MIN),
+            Join::Round => LineJoin::Round(0.05),
+            Join::Bevel => LineJoin::Bevel,
+        })
+        .start_cap(LineCap::Butt)
+        .end_cap(LineCap::Butt);
+    fit_polygon_curves(&from_shapes(lines.stroke(style, false)), fit_tolerance(d))
+}
+
 /// How far the curves fitted to an offset by `d` mm may stray from it:
 /// [`FIT_TOL`], and no more than a tenth of the offset. A round corner
 /// of a small offset is an arc of that radius, and with the fixed
