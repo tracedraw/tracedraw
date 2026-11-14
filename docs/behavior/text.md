@@ -946,6 +946,12 @@ Window > Panels > Glyphs. From the top:
 - A search field: a character or characters ("é", "aB") keeps those; a
   code point with a U+ or 0x prefix, or bare hex digits with at least one
   digit ("20AC", "004"), keeps the characters whose code starts with it.
+  A word of three Latin letters or more keeps instead the characters whose
+  Unicode name holds every word typed, in any case ("euro" finds the
+  euro sign, "arrow right" the rightwards arrows; #1328). The names
+  are read once per font, the first time a name is searched in it, and
+  the result is worked out again only when the font, the range or the
+  search changes.
 - An info line: the code point, the character and its range of the glyph
   last under the pointer, and the keystroke that types it when code page
   1252 has it ("Keystroke: Alt+0169" for ©, `keystroke`). While text is

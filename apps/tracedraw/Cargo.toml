@@ -58,6 +58,9 @@ flate2 = "1"
 # File > Package as one zip file where the system's picker says (Android, #1401).
 zip.workspace = true
 web-time = "1"
+# The Unicode names of characters, for the Glyphs docker's search by
+# name (#1328).
+unicode_names2 = "2"
 # Local dates and times (Time Tracker), with the system time zone.
 jiff = "0.2"
 

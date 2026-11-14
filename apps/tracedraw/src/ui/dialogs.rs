@@ -1797,6 +1797,64 @@ pub(crate) fn help_ok_cancel(ui: &mut Ui, close: &mut bool) -> (bool, bool) {
     (ok, help)
 }
 
+/// The keyboard in the Change Case dialog's choices (#2304): the dialog
+/// opens with the chosen one focused, so the arrows pick another at once
+/// (Up and Left the one before, Down and Right the one after, going round
+/// at the ends) and Enter applies it, as a group of options does.
+fn case_radio_keys(
+    ui: &mut Ui,
+    ids: &[egui::Id],
+    mode: &mut crate::ops2::CaseMode,
+    modes: &[crate::ops2::CaseMode],
+) {
+    let seen_id = egui::Id::new("change_case_seen_pass");
+    let pass = ui.ctx().cumulative_pass_nr();
+    let last = ui.data(|d| d.get_temp::<u64>(seen_id));
+    ui.data_mut(|d| d.insert_temp(seen_id, pass));
+    let chosen = modes.iter().position(|m| m == mode).unwrap_or(0);
+    let Some(&chosen_id) = ids.get(chosen) else {
+        return;
+    };
+    // Shown for the first time since it opened: the chosen option takes
+    // the focus, not OK.
+    if last.is_none_or(|l| l + 1 < pass) {
+        ui.memory_mut(|m| m.request_focus(chosen_id));
+        return;
+    }
+    let focused = ui.memory(|m| m.focused());
+    if !ids.iter().any(|id| Some(*id) == focused) {
+        return;
+    }
+    let step = ui.input_mut(|i| {
+        let mut step = 0i32;
+        for (key, d) in [
+            (egui::Key::ArrowUp, -1),
+            (egui::Key::ArrowLeft, -1),
+            (egui::Key::ArrowDown, 1),
+            (egui::Key::ArrowRight, 1),
+        ] {
+            if i.consume_key(egui::Modifiers::NONE, key) {
+                step += d;
+            }
+        }
+        step
+    });
+    if step == 0 {
+        return;
+    }
+    let n = modes.len() as i32;
+    let next = (chosen as i32 + step).rem_euclid(n) as usize;
+    *mode = modes[next];
+    let next_id = ids[next];
+    // The arrows move the focus to the next option only, not on to OK as
+    // egui's own arrow navigation would.
+    ui.memory_mut(|m| {
+        m.request_focus(next_id);
+        m.move_focus(egui::FocusDirection::None);
+    });
+    ui.ctx().request_repaint();
+}
+
 /// Names of the dialogs' multi-line fields, where Enter inserts a line.
 const MULTILINE_NAMES: [&str; 2] = ["dialog_multiline_qr", "dialog_multiline_notes"];
 
@@ -3075,16 +3133,21 @@ pub fn show(app: &mut App, ctx: &Context) {
             let mut apply = false;
             window(ctx, title).show(ctx, |ui| {
                 use crate::ops2::CaseMode;
-                for (key, m) in [
+                let modes = [
                     ("menu.text.case_sentence", CaseMode::Sentence),
                     ("menu.text.case_lower", CaseMode::Lower),
                     ("menu.text.case_upper", CaseMode::Upper),
                     ("menu.text.case_title", CaseMode::Title),
                     ("menu.text.case_toggle", CaseMode::Toggle),
-                ] {
-                    ui.radio_value(mode, m, tr(key))
+                ];
+                let mut ids = Vec::with_capacity(modes.len());
+                for (key, m) in modes {
+                    let r = ui
+                        .radio_value(mode, m, tr(key))
                         .rich_tip_with(|| crate::ui::tips::keyed(key));
+                    ids.push(r.id);
                 }
+                case_radio_keys(ui, &ids, mode, &modes.map(|(_, m)| m));
                 ui.add_space(8.0);
                 apply = ok_cancel(ui, &mut close);
             });
@@ -8357,6 +8420,56 @@ pub(crate) mod tests {
             walk(&c.shape, &mut texts);
         }
         texts
+    }
+
+    /// #2304: Change Case opens with its chosen option focused, not OK;
+    /// the arrows pick the option before or after (going round at the
+    /// ends) and Enter applies the one picked.
+    #[test]
+    fn change_case_opens_on_its_options_and_the_arrows_pick_one() {
+        use crate::ops2::CaseMode;
+        let ctx = Context::default();
+        let mut app = App::headless();
+        app.dialog = Dialog::ChangeCase(CaseMode::Sentence);
+        let mode = |app: &App| match app.dialog {
+            Dialog::ChangeCase(m) => Some(m),
+            _ => None,
+        };
+        let press = |key: egui::Key| {
+            vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }]
+        };
+        for _ in 0..3 {
+            frame_texts(&ctx, &mut app, Vec::new());
+        }
+        let first = ctx
+            .memory(|m| m.focused())
+            .expect("an option has the focus");
+        frame_texts(&ctx, &mut app, press(egui::Key::ArrowDown));
+        frame_texts(&ctx, &mut app, Vec::new());
+        assert_eq!(mode(&app), Some(CaseMode::Lower));
+        let second = ctx
+            .memory(|m| m.focused())
+            .expect("the focus stays on them");
+        assert_ne!(first, second, "the focus moved with the choice");
+        frame_texts(&ctx, &mut app, press(egui::Key::ArrowRight));
+        frame_texts(&ctx, &mut app, Vec::new());
+        assert_eq!(mode(&app), Some(CaseMode::Upper));
+        for _ in 0..3 {
+            frame_texts(&ctx, &mut app, press(egui::Key::ArrowUp));
+            frame_texts(&ctx, &mut app, Vec::new());
+        }
+        assert_eq!(mode(&app), Some(CaseMode::Toggle), "Up goes round");
+        frame_texts(&ctx, &mut app, press(egui::Key::ArrowDown));
+        frame_texts(&ctx, &mut app, Vec::new());
+        assert_eq!(mode(&app), Some(CaseMode::Sentence), "Down goes round");
+        frame_texts(&ctx, &mut app, press(egui::Key::Enter));
+        assert!(mode(&app).is_none(), "Enter applies and closes");
     }
 
     /// Text > Tabs on a paragraph frame just drawn (no text yet, being
