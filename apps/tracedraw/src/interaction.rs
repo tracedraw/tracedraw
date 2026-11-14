@@ -1361,6 +1361,14 @@ impl App {
             .is_some_and(|(r, p)| r.contains(p))
     }
 
+    /// `p` (screen) lies on a palette bar (the document palette among
+    /// them) or a page tab: drop targets beside the drawing window.
+    pub(crate) fn over_drop_bar(&self, p: egui::Pos2) -> bool {
+        self.doc_palette_rect.is_some_and(|r| r.contains(p))
+            || self.palette_strip_rects.iter().any(|(_, r)| r.contains(p))
+            || self.page_tab_at(p).is_some()
+    }
+
     /// A move, scale, rotation or skew of the selection is being dragged.
     pub fn transforming(&self) -> bool {
         matches!(
@@ -1556,6 +1564,12 @@ impl App {
         let Some(p) = self.pointer_screen.filter(|_| held) else {
             return;
         };
+        // Over a palette bar or a page tab the drag is bound for that
+        // drop target, not for more of the drawing: the view stays put
+        // however long the button is held there (#2697).
+        if self.over_drop_bar(p) {
+            return;
+        }
         let step = edge_scroll_step(response.rect, p, dt.clamp(0.0, 0.05));
         if step != egui::Vec2::ZERO {
             self.view.pan(step);

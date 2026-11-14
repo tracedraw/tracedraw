@@ -6824,8 +6824,9 @@ impl App {
                 return;
             }
         }
-        // With the Table tool, a colour fills the selected cells.
-        if self.tool == Tool::Table && self.table_set_cell_fill(Some(fill.clone())) {
+        // With the Table tool, a colour fills the selected cells; so it
+        // does for cells chosen with the Pick or the Shape tool (#2707).
+        if self.palette_goes_to_cells() && self.table_set_cell_fill(Some(fill.clone())) {
             return;
         }
         // Monochrome bitmaps take the colour as their background.
@@ -7007,6 +7008,10 @@ impl App {
                     self.remember_color(c);
                 }
             }
+            return;
+        }
+        // Chosen table cells take it on their borders (#2707).
+        if self.palette_goes_to_cells() && self.table_set_cell_outline_color(color) {
             return;
         }
         // Monochrome bitmaps take the colour as their foreground.

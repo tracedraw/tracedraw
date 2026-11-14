@@ -1252,6 +1252,43 @@ fn objects_dropped_on_the_document_palette_give_their_colours() {
         .contains(&tracedraw_core::Color::rgb8(200, 30, 30)));
 }
 
+/// Objects held over the document palette, below the drawing window, do
+/// not scroll the drawing: the rulers used to run to tens of millions
+/// while the button was held there (#2697).
+#[test]
+fn objects_held_over_the_document_palette_do_not_scroll_the_drawing() {
+    let n = Modifiers::NONE;
+    let left = |p: Pos2, down: bool| button(p, down, PointerButton::Primary, n);
+    let (ctx, mut app, id) = setup();
+    app.settings.palette.show_document = true;
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), n);
+    }
+    let row = app.doc_palette_rect.expect("the document palette shows");
+    let from = app.view.to_screen(Point::new(35.0, 25.0));
+    frame(&ctx, &mut app, vec![Event::PointerMoved(from)], n);
+    frame(&ctx, &mut app, vec![left(from, true)], n);
+    for k in 1..=4 {
+        let t = k as f32 / 4.0;
+        let p = from + (row.center() - from) * t;
+        frame(&ctx, &mut app, vec![Event::PointerMoved(p)], n);
+    }
+    assert!(matches!(app.drag, Drag::Move { .. }), "{:?}", app.drag);
+    let origin = app.view.origin;
+    // The pointer rests on the palette with the button held.
+    for _ in 0..10 {
+        frame(&ctx, &mut app, Vec::new(), n);
+    }
+    assert_eq!(app.view.origin, origin, "the drawing stays put");
+    frame(&ctx, &mut app, vec![left(row.center(), false)], n);
+    frame(&ctx, &mut app, Vec::new(), n);
+    assert!(close(bounds(&app, id).x0, 10.0), "{:?}", bounds(&app, id));
+    assert!(app
+        .doc()
+        .palette
+        .contains(&tracedraw_core::Color::rgb8(200, 30, 30)));
+}
+
 /// #1164: every palette ticked in Window > Color Palettes gets a strip,
 /// not only the first. With three shown, a click on the third one's
 /// strip paints with its colour; closing the second leaves the third.
