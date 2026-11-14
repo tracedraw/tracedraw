@@ -1955,6 +1955,18 @@ mod tests {
             );
             timed(app, Vec::new());
         };
+        // A click of a mouse: no finger.
+        let click = |app: &mut App, at: egui::Pos2| {
+            timed(
+                app,
+                vec![
+                    egui::Event::PointerMoved(at),
+                    button(at, true, egui::PointerButton::Primary),
+                ],
+            );
+            timed(app, vec![button(at, false, egui::PointerButton::Primary)]);
+            timed(app, Vec::new());
+        };
         for _ in 0..5 {
             timed(&mut app, Vec::new());
         }
@@ -1976,10 +1988,17 @@ mod tests {
             assert!(r.width() > 0.0, "{id} has a size");
             r.center()
         };
-        // Shift held: a tap adds, a second tap on the same object takes
-        // it out.
+        // A finger's tap on a key is a key pressed and let go: nothing
+        // stays held (#2362, keys, not switches).
+        for id in ["shift", "ctrl", "alt"] {
+            let key = key_at(&app, id);
+            tap(&mut app, key);
+            assert!(!app.touch_mods.any(), "{id}: {:?}", app.touch_mods);
+        }
+        // Shift clicked on with a mouse: a tap adds, a second tap on the
+        // same object takes it out.
         let key = key_at(&app, "shift");
-        tap(&mut app, key);
+        click(&mut app, key);
         assert!(app.touch_mods.shift);
         tap(&mut app, on_b);
         assert_eq!(
@@ -1991,7 +2010,8 @@ mod tests {
         assert!(app.selection.contains(&a) && app.selection.contains(&b));
         tap(&mut app, on_a);
         assert_eq!(app.selection, vec![b], "Shift held takes out");
-        // Let go: a tap selects one object again.
+        // A finger's tap lets the clicked key go: a tap selects one
+        // object again.
         let key = key_at(&app, "shift");
         tap(&mut app, key);
         assert!(!app.touch_mods.any());
@@ -2000,19 +2020,19 @@ mod tests {
         // Alt held from the toolbar: the bars stay out of their
         // customize mode, so the Alt button lets go on the next tap.
         let key = key_at(&app, "alt");
-        tap(&mut app, key);
+        click(&mut app, key);
         assert!(app.touch_mods.alt);
         assert!(ctx.input(|i| i.modifiers.alt));
         assert!(!crate::ui::bar_items::customizing(&app, &ctx));
         let key = key_at(&app, "alt");
-        tap(&mut app, key);
+        click(&mut app, key);
         assert!(!app.touch_mods.alt);
         // Ctrl is offered as well.
         let key = key_at(&app, "ctrl");
-        tap(&mut app, key);
+        click(&mut app, key);
         assert!(app.touch_mods.ctrl);
         let key = key_at(&app, "ctrl");
-        tap(&mut app, key);
+        click(&mut app, key);
         assert!(!app.touch_mods.any());
         // The keys sit over the drawing's bottom left corner, off the
         // Standard toolbar.
@@ -2188,7 +2208,19 @@ mod tests {
             .find(|(k, _)| *k == "ctrl")
             .map(|(_, r)| r.center())
             .expect("the Ctrl key is on the drawing");
-        tap(&mut app, ctrl);
+        // Held down by a click of a mouse until the next click or tap.
+        timed(
+            &mut app,
+            vec![
+                egui::Event::PointerMoved(ctrl),
+                button(ctrl, true, egui::PointerButton::Primary),
+            ],
+        );
+        timed(
+            &mut app,
+            vec![button(ctrl, false, egui::PointerButton::Primary)],
+        );
+        timed(&mut app, Vec::new());
         assert!(app.touch_mods.ctrl);
         assert!(ctx.input(|i| app.constrain_held(&i.modifiers)));
         // Two taps a little off the level: a level line.
@@ -2278,11 +2310,10 @@ mod tests {
         timed(&mut app, Vec::new());
         assert!(!app.touch_mods.any(), "{:?}", app.touch_mods);
         assert!(!ctx.input(|i| i.modifiers.ctrl));
-        // A plain tap on the key still holds it until the next tap.
+        // A plain tap on the key leaves nothing held: a key, not a
+        // switch.
         tap(&mut app, ctrl);
-        assert!(app.touch_mods.ctrl);
-        tap(&mut app, ctrl);
-        assert!(!app.touch_mods.any());
+        assert!(!app.touch_mods.any(), "{:?}", app.touch_mods);
     }
 
     /// Ctrl held from the keys on the drawing by one finger while another

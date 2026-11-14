@@ -169,9 +169,10 @@ split by thin lines:
    chosen nodes with the Shape tool, the selected guidelines, else the
    selected objects; for a screen with no keyboard, #1611). Then, only
    with a touch screen (Android, or once a finger has touched the
-   window), Shift, Ctrl and Alt, buttons that read the key's name: a tap
-   holds the key down until the next tap on it, the button drawn pressed
-   meanwhile, and every tool reads the held keys as the keyboard's
+   window), Shift, Ctrl and Alt, buttons that read the key's name: a
+   finger holds the key down while it stays on it (a tap is a key pressed
+   and let go, #2362), a mouse click until the next click, the button
+   drawn pressed meanwhile, and every tool reads the held keys as the keyboard's
    (`touch_modifiers.rs`, #1499).
 3. Undo and Redo, each with its list of steps behind the arrow (choosing
    a step undoes or redoes up to it).
