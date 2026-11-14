@@ -242,6 +242,106 @@ pub fn render_page_cancellable(
     render_page_until(doc, page, opts, Some(cancel))
 }
 
+/// [`render_page_cancellable`] that hands over the picture a band of
+/// rows at a time as the bands come done, `band(y0, rows)` with the rows
+/// `y0..y0 + rows.height()` exactly as they are in the whole picture,
+/// the band holding row `first` first and the others outward from it
+/// (#2389). A zoom on a large drawing showed the last picture scaled,
+/// blurry, until the whole new one was ready: the canvas now lays each
+/// band over it as it comes, sharp where it is done, the middle of the
+/// window first, as CorelDRAW fills its window in while it draws. The
+/// bands are a few times as many as the cores, so the first comes in a
+/// fraction of the time; each is drawn with the rows of margin shadow
+/// blurs need. Drawn whole (no bands handed over) where bands cannot be
+/// used: a small image, one core, a lens, blurs too wide.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn render_page_progressive(
+    doc: &Document,
+    page: PageId,
+    opts: &RenderOptions,
+    cancel: &std::sync::atomic::AtomicBool,
+    first: u32,
+    band: &(dyn Fn(u32, &Pixmap) + Sync),
+) -> Option<Pixmap> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let (w, h) = (opts.width.max(1), opts.height.max(1));
+    if (w as u64) * (h as u64) > MAX_PIXELS {
+        return None;
+    }
+    let cancelled = || cancel.load(Ordering::Relaxed);
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .min(16) as u32;
+    let (lens, blur_mm) = page_reach(doc, page);
+    let bands = if cores < 2 || lens || (w as u64) * (h as u64) < 250_000 {
+        None
+    } else {
+        // Bands of at least 64 rows, about three for each core.
+        let count = (cores * PROGRESS_BANDS_PER_CORE).min(h / 64).max(cores);
+        band_layout(h, count, blur_margin(blur_mm, opts.view.zoom))
+    };
+    let Some(mut bands) = bands.filter(|b| b.len() > 1) else {
+        return render_page_cancellable(doc, page, opts, cancel);
+    };
+    let middle = |b: &(u32, u32, u32, u32)| (b.0 + b.1) / 2;
+    bands.sort_by_key(|b| middle(b).abs_diff(first));
+    let next = AtomicUsize::new(0);
+    let done: std::sync::Mutex<Vec<(u32, Pixmap)>> = std::sync::Mutex::new(Vec::new());
+    std::thread::scope(|sc| {
+        for _ in 0..cores.min(bands.len() as u32) {
+            sc.spawn(|| loop {
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                let Some(&(y0, y1, ry0, ry1)) = bands.get(i) else {
+                    return;
+                };
+                if cancelled() {
+                    return;
+                }
+                let mut o = opts.clone();
+                o.height = ry1 - ry0;
+                o.view.origin_y = opts.view.origin_y - ry0 as f64;
+                let Some(part) = render_page_whole(doc, page, &o, Some(cancel)) else {
+                    return;
+                };
+                if cancelled() {
+                    return;
+                }
+                let Some(mut rows) = Pixmap::new(w, y1 - y0) else {
+                    return;
+                };
+                let row = w as usize * 4;
+                let from = (y0 - ry0) as usize * row;
+                let len = (y1 - y0) as usize * row;
+                let Some(src) = part.data().get(from..from + len) else {
+                    return;
+                };
+                rows.data_mut().copy_from_slice(src);
+                band(y0, &rows);
+                if let Ok(mut d) = done.lock() {
+                    d.push((y0, rows));
+                }
+            });
+        }
+    });
+    let done = done.into_inner().ok()?;
+    if cancelled() || done.len() != bands.len() {
+        return None;
+    }
+    let mut out = Pixmap::new(w, h)?;
+    let row = w as usize * 4;
+    for (y0, rows) in done {
+        let d = y0 as usize * row;
+        out.data_mut()[d..d + rows.data().len()].copy_from_slice(rows.data());
+    }
+    Some(out)
+}
+
+/// How many bands for each core a picture handed over a band at a time
+/// is drawn in ([`render_page_progressive`]).
+#[cfg(not(target_arch = "wasm32"))]
+const PROGRESS_BANDS_PER_CORE: u32 = 3;
+
 fn render_page_until(
     doc: &Document,
     page: PageId,
@@ -9693,6 +9793,82 @@ mod band_tests {
         assert_eq!(green(770), Some(200));
         render_page_in_bands(&doc, page, &opts, None).unwrap();
         assert_eq!(image_cache::decodes_of(&png), 1);
+    }
+
+    /// A picture handed over a band at a time (#2389): the bands cover
+    /// every row once, the middle row's comes among the first, the
+    /// picture handed back is the bands put together, and it is the
+    /// picture drawn at once (but for the few edge pixels of curves cut
+    /// by a band's edge, as with [`render_page`]'s own bands). A render
+    /// told to give up hands over no picture.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn a_picture_comes_a_band_at_a_time_from_the_middle() {
+        let (doc, page) = heavy(60);
+        let opts = RenderOptions {
+            width: 900,
+            height: 700,
+            view: ViewTransform {
+                zoom: 3.0,
+                origin_x: 20.0,
+                origin_y: 650.0,
+            },
+            anti_alias: true,
+            ..RenderOptions::default()
+        };
+        let whole = render_page_whole(&doc, page, &opts, None).expect("drawn");
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let got: std::sync::Mutex<Vec<(u32, Pixmap)>> = std::sync::Mutex::new(Vec::new());
+        let band = |y0: u32, rows: &Pixmap| got.lock().unwrap().push((y0, rows.clone()));
+        let picture =
+            render_page_progressive(&doc, page, &opts, &cancel, 350, &band).expect("drawn");
+        let (mut worst, mut off) = (0u8, 0usize);
+        for (x, y) in picture.data().iter().zip(whole.data()) {
+            let d = x.abs_diff(*y);
+            worst = worst.max(d);
+            if d > 2 {
+                off += 1;
+            }
+        }
+        assert!(worst <= 128, "bands differ by {worst}");
+        assert!(off * 2000 < whole.data().len(), "{off} values differ");
+        let got = got.into_inner().unwrap();
+        let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+        if cores < 2 {
+            assert!(got.is_empty(), "one core: drawn whole");
+            return;
+        }
+        assert!(
+            got.len() > cores.min(16),
+            "more bands than cores: {}",
+            got.len()
+        );
+        let row = 900 * 4;
+        let mut covered = vec![0u8; 700];
+        for (y0, rows) in &got {
+            assert_eq!(rows.width(), 900);
+            let (a, b) = (*y0 as usize, *y0 as usize + rows.height() as usize);
+            for c in &mut covered[a..b] {
+                *c += 1;
+            }
+            assert!(
+                rows.data() == &picture.data()[a * row..b * row],
+                "rows {a}..{b}"
+            );
+        }
+        assert!(covered.iter().all(|c| *c == 1), "every row once");
+        // The band done first is the one holding the middle row, or one
+        // drawn beside it at the same time: the first few handed over
+        // include it.
+        let first_few = &got[..cores.min(got.len())];
+        assert!(
+            first_few
+                .iter()
+                .any(|(y0, r)| (*y0..*y0 + r.height()).contains(&350)),
+            "the middle comes among the first"
+        );
+        cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(render_page_progressive(&doc, page, &opts, &cancel, 0, &|_, _| ()).is_none());
     }
 
     /// A page drawn on one thread is the page drawn whole (large enough

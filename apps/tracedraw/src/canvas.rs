@@ -696,6 +696,17 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
             ERect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
             Color32::WHITE,
         );
+        // The bands of the new picture done so far, sharp over the last
+        // one while it is shown scaled after a zoom (#2389).
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some((bands, bands_at)) = app.raster.borrow().incoming(view) {
+            painter.image(
+                bands,
+                bands_at,
+                ERect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                Color32::WHITE,
+            );
+        }
     }
 
     if app.mask_outside_page {
