@@ -32,7 +32,8 @@
 - Tooltips: "<Name> tool (<shortcut>)" in bold, then what the tool does.
   No tooltip shows while a flyout is open.
 - Double-clicking a button: Pick selects all objects, Zoom fits all
-  objects, Rectangle adds a page frame.
+  objects, Rectangle adds a page frame behind every object of the layer
+  (#2640).
 - The "+" at the end lists every flyout with a check box to show or hide
   it (the Outline flyout is hidden by default) and Reset toolbox.
 - The toolbox starts docked on the left. Its grip (the dots above the

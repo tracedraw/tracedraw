@@ -853,15 +853,35 @@ impl App {
     }
 
     /// Double-clicking the Rectangle tool: a rectangle exactly the size of
-    /// the page (a page frame), selected.
+    /// the page (a page frame), behind every object of the layer, as
+    /// CorelDRAW puts it (#2640: it came in front and hid the drawing),
+    /// selected; one undo step.
     pub fn add_page_frame(&mut self) {
         let size = self.page_size();
-        if let Some(id) = self.new_shape(tracedraw_core::ShapeKind::Rect {
-            rect: tracedraw_core::geometry::Rect::new(0.0, 0.0, size.width, size.height),
-            radius: 0.0,
-            corners: None,
-        }) {
-            self.select(vec![id]);
+        let Some(layer) = self.active_layer() else {
+            return;
+        };
+        let id = self.engine.new_shape_id();
+        let mut shape = Shape::new(
+            id,
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, size.width, size.height),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        self.doc().defaults.apply_to(&mut shape);
+        let cmds = [
+            Command::AddShape { layer, shape },
+            Command::Reorder {
+                shape: id,
+                layer,
+                index: 0,
+            },
+        ];
+        match self.engine.run_batch("Create Object", &cmds) {
+            Ok(_) => self.select(vec![id]),
+            Err(e) => self.status = e.to_string(),
         }
     }
 
@@ -2056,6 +2076,33 @@ mod smoke_tests {
         assert!((b.width() - size.width).abs() < 1e-6);
         assert!((b.height() - size.height).abs() < 1e-6);
         assert!(b.x0.abs() < 1e-6 && b.y0.abs() < 1e-6);
+    }
+
+    /// The page frame goes behind every object already on the layer, as
+    /// in CorelDRAW, and one undo takes it away (#2640).
+    #[test]
+    fn page_frame_goes_behind_the_drawing() {
+        let mut app = App::headless();
+        let rect = |x: f64| ShapeKind::Rect {
+            rect: Rect::new(x, 10.0, x + 20.0, 30.0),
+            radius: 0.0,
+            corners: None,
+        };
+        let a = app.new_shape(rect(10.0)).expect("a");
+        let b = app.new_shape(rect(40.0)).expect("b");
+        app.select(Vec::new());
+        app.add_page_frame();
+        let frame = app.selection[0];
+        let doc = app.doc();
+        let (layer, idx) = doc.locate(frame).expect("frame");
+        assert_eq!(idx, 0, "behind everything");
+        let order = &doc.layer(layer).expect("layer").shapes;
+        assert_eq!(order.len(), 3);
+        assert_eq!(doc.locate(a).expect("a").1, 1);
+        assert_eq!(doc.locate(b).expect("b").1, 2);
+        app.undo();
+        assert!(app.doc().find_shape(frame).is_none(), "one undo step");
+        assert!(app.doc().find_shape(a).is_some());
     }
 
     #[test]

@@ -1265,8 +1265,14 @@ fn spaced(pts: &[Carried], max_len: f64) -> Vec<Carried> {
 }
 
 /// Rotate points within `radius` of `at` by up to `angle` (Twirl tool).
+/// The stretch in reach is measured into points a sixth of the nib apart
+/// for a small turn and closer the more it turns, `radius / 6 / (1 +
+/// |angle|)`, so neighbours stay about as far apart once turned: a hold
+/// that twirls the outline round several times (#2640) still comes back
+/// as a smooth spiral, not a few points joined round the centre.
 pub fn twirl(path: &BezPath, at: Point, angle: f64, radius: f64) -> BezPath {
-    brush_each(path, at, radius, radius / 6.0, false, |pts, _| {
+    let spacing = radius / 6.0 / (1.0 + angle.abs().min(TWIRL_MAX_ANGLE));
+    brush_each(path, at, radius, spacing, false, |pts, _| {
         pts.into_iter()
             .map(|p| {
                 let v = p - at;
@@ -1281,6 +1287,10 @@ pub fn twirl(path: &BezPath, at: Point, angle: f64, radius: f64) -> BezPath {
             .collect()
     })
 }
+
+/// The turn (radians) past which [`twirl`] measures its points no
+/// closer: about twelve turns.
+const TWIRL_MAX_ANGLE: f64 = 75.0;
 
 /// Smooth tool: the stretch of the curve within the nib's reach is
 /// measured into close points (half a millimetre apart), each eased
