@@ -1150,6 +1150,9 @@ pub struct App {
     /// they go into the drawing or open in tabs of their own is asked
     /// (#1142).
     pub drop_question: Vec<PathBuf>,
+    /// A file drag over the window, to tell a drop or a leave that never
+    /// reached the program on Windows (#2686).
+    pub file_drag: crate::drop_files::FileDrag,
     pub duplicate_offset: Vec2,
     /// The last Duplicate: each original and its copy. While the copies
     /// are the selection, the next Duplicate repeats what was done to
@@ -2808,6 +2811,7 @@ impl App {
             toolbox_caption_w: 0.0,
             clipboard: None,
             drop_question: Vec::new(),
+            file_drag: Default::default(),
             // Duplicate leaves the copy in place, ready to be moved,
             // scaled or turned; the next one repeats that (#1494).
             duplicate_offset: Vec2::ZERO,
