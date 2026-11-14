@@ -1074,7 +1074,7 @@ fn actions(app: &mut App, ui: &mut Ui, c: Color) {
             )
         });
         if eyedropper_button(app, ui).clicked() {
-            app.set_tool(crate::tools::Tool::ColorEyedropper);
+            app.docker_eyedropper();
         }
         ui.menu_button(MORE_ACTIONS, |ui| more_actions(app, ui, c, has))
             .response

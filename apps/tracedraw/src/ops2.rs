@@ -774,7 +774,55 @@ impl App {
         let mut cmds = Vec::new();
         let mut new_sel = Vec::new();
         let mut grouped = Vec::new();
-        for s in shapes {
+        for mut s in shapes {
+            // The drop shadow becomes a bitmap of its own just behind the
+            // object, as Break Drop Shadow Apart makes it: an object with
+            // a shadow and nothing else flattened to nothing (#2674).
+            if !group_steps && s.shadow.is_some_and(|sh| sh.opacity > 0.0) {
+                if let Ok((layer, _)) = self.doc().shape(s.id) {
+                    let layer = layer.id;
+                    if let Some(bitmap) = self.shadow_bitmap(&s) {
+                        let new_id = bitmap.id;
+                        cmds.extend([
+                            Command::AddShape {
+                                layer,
+                                shape: bitmap,
+                            },
+                            Command::OrderRelative {
+                                shapes: vec![new_id],
+                                reference: s.id,
+                                in_front: false,
+                            },
+                            Command::SetShadow {
+                                shapes: vec![s.id],
+                                shadow: None,
+                            },
+                        ]);
+                        new_sel.push(new_id);
+                        s.shadow = None;
+                    }
+                }
+            }
+            // The objects of a group are flattened inside it, the group
+            // staying a group: their effects and shadows did nothing when
+            // the group was flattened (#2674).
+            if let (false, ShapeKind::Group { children }) = (group_steps, &s.kind) {
+                let mut changed = false;
+                let mut flat = Vec::new();
+                for c in children {
+                    let parts = self.flattened_member(c);
+                    changed |= parts.len() != 1 || parts[0] != *c;
+                    flat.extend(parts);
+                }
+                if changed {
+                    let kind = ShapeKind::Group { children: flat };
+                    cmds.push(Command::SetShapeKind {
+                        shape: s.id,
+                        kind: kind.clone(),
+                    });
+                    s.kind = kind;
+                }
+            }
             // A vector object with bitmap effects becomes the bitmap of its
             // picture, in its place.
             if let Some(pic) = s.picture() {
@@ -890,6 +938,44 @@ impl App {
             }
             self.selection = new_sel;
         }
+    }
+
+    /// An object inside a group as Flatten Effects leaves it, with the
+    /// objects that come out of it, bottom first: its shadow as a bitmap
+    /// behind it, a group's objects flattened in turn, bitmap effects as
+    /// its picture and live effects as plain objects. The object itself
+    /// alone when it has none of these.
+    fn flattened_member(&mut self, c: &Shape) -> Vec<Shape> {
+        let mut out = Vec::new();
+        let mut c = c.clone();
+        if c.shadow.is_some_and(|sh| sh.opacity > 0.0) {
+            if let Some(bitmap) = self.shadow_bitmap(&c) {
+                out.push(bitmap);
+                c.shadow = None;
+            }
+        }
+        if let ShapeKind::Group { children } = &c.kind {
+            let mut flat = Vec::new();
+            for k in children.clone() {
+                flat.extend(self.flattened_member(&k));
+            }
+            c.kind = ShapeKind::Group { children: flat };
+        }
+        if let Some(pic) = c.picture() {
+            out.push(pic);
+            return out;
+        }
+        if let ShapeKind::Bitmap { fx, .. } = &mut c.kind {
+            *fx = None;
+        }
+        if c.effects.is_empty() {
+            out.push(c);
+        } else {
+            out.extend(tracedraw_core::live::break_apart(&c, || {
+                self.engine.new_shape_id()
+            }));
+        }
+        out
     }
 
     /// Object > Symmetry > Create New Symmetry (Alt+S): one vertical mirror

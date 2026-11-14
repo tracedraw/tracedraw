@@ -643,7 +643,7 @@ impl App {
     }
 
     /// The bitmap object that stands for the shadow of `s`.
-    fn shadow_bitmap(&mut self, s: &Shape) -> Option<Shape> {
+    pub(crate) fn shadow_bitmap(&mut self, s: &Shape) -> Option<Shape> {
         let sh = s.shadow?;
         let (rect, pm) = tracedraw_render::render_shadow_image(s, BREAK_APART_DPI)?;
         let (w, h) = (pm.width(), pm.height());
@@ -1195,6 +1195,66 @@ mod tests {
             .all(|p| [p[0], p[1], p[2]] == [0, 128, 0]));
         // Still the bitmap, still behind the object.
         assert_eq!(app.selection, vec![bitmap_id]);
+    }
+
+    /// #2674: Flatten Effects on an object whose only effect is a drop
+    /// shadow makes the shadow a bitmap just behind it, in one step, and
+    /// inside a group the objects with shadows are flattened in place,
+    /// the group staying a group. Both did nothing.
+    #[test]
+    fn flatten_effects_breaks_off_a_shadow_alone_and_in_a_group() {
+        let (mut app, id) = app_with_rect();
+        app.set_shadow(Some(Shadow::default()), false);
+        let depth = app.engine.history_labels().0.len();
+        app.flatten_effects();
+        assert_eq!(app.engine.history_labels().0.len(), depth + 1);
+        assert!(shadow(&app, id).is_none());
+        let (layer, _) = app.doc().shape(id).expect("object");
+        let io = layer
+            .shapes
+            .iter()
+            .position(|s| s.id == id)
+            .expect("in layer");
+        assert!(io > 0);
+        let behind = &layer.shapes[io - 1];
+        assert!(
+            matches!(behind.kind, ShapeKind::Bitmap { .. }),
+            "{behind:?}"
+        );
+        let b = behind.bounds();
+        assert!(b.x1 > 60.0 && b.y0 < 20.0, "the shadow's place: {b:?}");
+        assert!(app.selection.contains(&behind.id) && app.selection.contains(&id));
+        app.undo();
+        assert!(shadow(&app, id).is_some());
+
+        // A group of two rectangles, one with a shadow.
+        let other = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(100.0, 20.0, 140.0, 80.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id, other]);
+        app.group_selection();
+        let group = app.selection[0];
+        app.flatten_effects();
+        let g = app.doc().find_shape(group).expect("still there");
+        let ShapeKind::Group { children } = &g.kind else {
+            panic!("still a group: {g:?}");
+        };
+        assert_eq!(children.len(), 3, "{children:?}");
+        assert!(children.iter().all(|c| c.shadow.is_none()));
+        let ib = children
+            .iter()
+            .position(|c| matches!(c.kind, ShapeKind::Bitmap { .. }))
+            .expect("the shadow's bitmap");
+        let ir = children
+            .iter()
+            .position(|c| c.id == id)
+            .expect("the object");
+        assert_eq!(ib + 1, ir, "just behind its object");
+        assert_eq!(app.selection, vec![group]);
     }
 
     #[test]

@@ -700,6 +700,17 @@ impl App {
         }
     }
 
+    /// The Color docker's eyedropper button: the Color Eyedropper tool,
+    /// sampling. After a colour was picked the tool stays in Apply mode
+    /// (the bucket), and the button only chose the tool again, so it could
+    /// not go back to picking (discussion #2673). The colour picked last
+    /// is kept for the docker's "Use" button.
+    pub fn docker_eyedropper(&mut self) {
+        self.set_tool(crate::tools::Tool::ColorEyedropper);
+        self.eyedropper_apply = false;
+        self.mask.picking = false;
+    }
+
     /// Esc or the Select Color button: back to sampling.
     pub fn eyedropper_reset(&mut self) {
         self.eyedropper_color = None;
@@ -812,6 +823,37 @@ mod tests {
             sb.stroke.as_ref().map(|s| s.color),
             Some(Color::rgb8(200, 10, 10))
         );
+    }
+
+    /// Discussion #2673: after a colour was picked, the Color docker's
+    /// eyedropper button goes back to picking; the next click on the
+    /// drawing samples instead of pouring the colour picked before.
+    #[test]
+    fn the_docker_eyedropper_button_goes_back_to_picking() {
+        let mut app = App::headless();
+        let a = rect(&mut app, Rect::new(0.0, 0.0, 10.0, 10.0));
+        let b = rect(&mut app, Rect::new(20.0, 0.0, 30.0, 10.0));
+        let (red, green) = (Color::rgb8(200, 10, 10), Color::rgb8(10, 200, 10));
+        app.run(Command::SetFill {
+            shapes: vec![a],
+            fill: Fill::Solid(red),
+        });
+        app.run(Command::SetFill {
+            shapes: vec![b],
+            fill: Fill::Solid(green),
+        });
+        app.select(Vec::new());
+        app.docker_eyedropper();
+        assert_eq!(app.tool, crate::tools::Tool::ColorEyedropper);
+        app.eyedropper_click(Point::new(5.0, 5.0), false, false, false);
+        assert!(app.eyedropper_apply, "the bucket, after picking");
+        app.docker_eyedropper();
+        assert!(!app.eyedropper_apply, "picking again");
+        assert_eq!(app.eyedropper_color, Some(red), "the colour is kept");
+        app.eyedropper_click(Point::new(25.0, 5.0), false, false, false);
+        assert_eq!(app.eyedropper_color, Some(green));
+        let fill = |id| app.doc().find_shape(id).expect("shape").fill.clone();
+        assert_eq!(fill(b), Fill::Solid(green), "sampled, not poured over");
     }
 
     /// With "Sample again after applying" on, each eyedropper goes back
