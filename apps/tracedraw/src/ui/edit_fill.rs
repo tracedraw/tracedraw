@@ -377,11 +377,7 @@ fn uniform(ui: &mut Ui, st: &mut EditFillState) {
             if crate::ui::color_docker::sliders(ui, &mut m) {
                 *c = m;
             }
-            ui.label(
-                egui::RichText::new(c.to_hex())
-                    .monospace()
-                    .color(Tokens::text_dim()),
-            );
+            crate::ui::color_docker::hex_row(ui, c);
         });
     });
 }

@@ -37,6 +37,9 @@ struct Open {
     offset: Vec2,
     /// The harmony whose swatches show under the sliders (#1498).
     harmony: crate::palette::Harmony,
+    /// True when the user chose Hex in the Model list; the colour is
+    /// stored as RGB and the sliders are replaced by a single hex field.
+    hex_mode: bool,
 }
 
 /// The harmony a picker shows when it opens.
@@ -201,6 +204,9 @@ pub fn list_model(c: Color) -> &'static str {
     }
 }
 
+/// The label shown in the Model list for the Hex entry.
+const HEX_MODEL: &str = "Hex";
+
 /// `c` after `choice` is picked in the Model list: the colour converted
 /// to that model, or the registration colour.
 pub fn choose_model(c: Color, choice: &str) -> Color {
@@ -209,6 +215,50 @@ pub fn choose_model(c: Color, choice: &str) -> Color {
     } else {
         c.convert_to(choice)
     }
+}
+
+/// The Model list including the Hex option, used in the picker popup.
+/// Sets `hex_mode` when Hex is chosen and clears it for any other model.
+/// True when a choice changed the colour.
+fn model_list_hex(ui: &mut Ui, id: Id, c: &mut Color, hex_mode: &mut bool) -> bool {
+    let shown = if *hex_mode { HEX_MODEL } else { list_model(*c) };
+    let mut changed = false;
+    crate::ui::keynav::ComboBox::from_id_salt(id)
+        .selected_text(if shown == REGISTRATION {
+            tr("docker.registration")
+        } else {
+            shown.to_string()
+        })
+        .width(96.0)
+        .show_ui(ui, |ui| {
+            for m in crate::ui::color_docker::MODELS {
+                let selected = shown == m && !*hex_mode;
+                if ui.selectable_label(selected, m).clicked() && !selected {
+                    *c = choose_model(*c, m);
+                    *hex_mode = false;
+                    changed = true;
+                }
+            }
+            ui.separator();
+            if ui.selectable_label(*hex_mode, HEX_MODEL).clicked() && !*hex_mode {
+                *c = c.convert_to("RGB");
+                *hex_mode = true;
+                changed = true;
+            }
+            ui.separator();
+            let reg = shown == REGISTRATION;
+            if ui
+                .selectable_label(reg, tr("docker.registration"))
+                .rich_tip(tr("docker.registration_tip"))
+                .clicked()
+                && !reg
+            {
+                *c = choose_model(*c, REGISTRATION);
+                *hex_mode = false;
+                changed = true;
+            }
+        });
+    changed
 }
 
 /// The Model list (the docker's models, then the registration colour).
@@ -476,6 +526,7 @@ pub fn open_picker(ctx: &egui::Context, id: Id, c: Color) {
                 size: FIRST_SIZE,
                 offset: Vec2::ZERO,
                 harmony: FIRST_HARMONY,
+                hex_mode: false,
             },
         )
     });
@@ -513,6 +564,7 @@ fn picker_popup(ui: &mut Ui, id: Id, swatch: Rect, c: &mut Color, clicked: bool)
                 size: FIRST_SIZE,
                 offset: Vec2::ZERO,
                 harmony: FIRST_HARMONY,
+                hex_mode: false,
             }),
         };
     }
@@ -541,21 +593,28 @@ fn picker_popup(ui: &mut Ui, id: Id, swatch: Rect, c: &mut Color, clicked: bool)
                     ui.add_space(6.0);
                     // The model the colour is kept in, changed on demand:
                     // the colour converts, and from then on the object
-                    // holds a colour of that model.
+                    // holds a colour of that model.  Hex is a special
+                    // display mode (stored as RGB) with a single text field.
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new(tr("docker.model"))
                                 .color(Tokens::text_dim())
                                 .size(11.0),
                         );
-                        changed |= model_list(ui, id.with("model"), c);
+                        changed |= model_list_hex(ui, id.with("model"), c, &mut st.hex_mode);
                         changed |= eyedropper(ui, id, c);
                     });
-                    let model = edit_model(*c);
-                    let mut m = c.convert_to(model);
-                    if crate::ui::color_docker::sliders(ui, &mut m) {
-                        *c = m;
-                        changed = true;
+                    if st.hex_mode {
+                        if crate::ui::color_docker::hex_row(ui, c) {
+                            changed = true;
+                        }
+                    } else {
+                        let model = edit_model(*c);
+                        let mut m = c.convert_to(model);
+                        if crate::ui::color_docker::sliders(ui, &mut m) {
+                            *c = m;
+                            changed = true;
+                        }
                     }
                     ui.label(
                         egui::RichText::new(crate::app::color_description(*c))
