@@ -18,6 +18,7 @@
 mod ai;
 mod ai_image;
 mod ai_retry;
+mod ai_vectorize;
 mod anchors;
 #[cfg(target_os = "android")]
 mod android;
@@ -1041,6 +1042,11 @@ impl eframe::App for Shell {
         }
         // Pictures from the image service (AI Generate).
         if app.poll_ai_image() {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        // Curves from the vectorization service (Vectorize with AI).
+        if app.poll_ai_vectorize() {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }

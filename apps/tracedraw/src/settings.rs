@@ -601,6 +601,10 @@ pub struct Settings {
     /// set up with the user's key).
     #[serde(default = "ai_enabled_default")]
     pub ai_enabled: bool,
+    /// Tools > Options > AI > Vectorization: the vectorization service
+    /// of Vectorize with AI (#2713).
+    #[serde(default)]
+    pub ai_vectorize: crate::ai_vectorize::VectorizePrefs,
     /// The separate image service older versions saved. Read once and
     /// folded into `ai` (see `migrate_ai`); it stays in the file only
     /// when it holds a remembered key the one service could not take, so
@@ -2043,6 +2047,7 @@ impl Default for Settings {
             formats: Default::default(),
             ai: Default::default(),
             ai_enabled: true,
+            ai_vectorize: Default::default(),
             ai_image: None,
             mcp_window: false,
             check_updates: true,

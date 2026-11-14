@@ -3905,6 +3905,17 @@ fn bitmaps_menu(app: &mut App, ui: &mut Ui) {
     ) {
         app.ai_remove_background();
     }
+    // The bitmap to curves by the vectorization service (#2713).
+    let vtip = app.ai_vectorize_tip();
+    if item_tip(
+        ui,
+        "menu.bitmaps.ai_vectorize",
+        "",
+        app.ai_vectorize_enabled(),
+        vtip.as_deref(),
+    ) {
+        app.ai_vectorize();
+    }
     let styled = app.ai_image_ready() && !app.selection.is_empty() && !app.ai_image.busy();
     sub(ui, "menu.bitmaps.ai_art_styles", |ui| {
         for (i, (key, _)) in crate::ai_image::ART_STYLES.iter().enumerate() {

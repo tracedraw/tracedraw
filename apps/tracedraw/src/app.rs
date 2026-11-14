@@ -887,16 +887,16 @@ pub struct Pivots {
 
 /// The extensions File > Open reads.
 pub const OPEN_EXTENSIONS: &[&str] = &[
-    "cdr", "cdt", "cdrt", "cmx", "tdraw", "svg", "svgz", "pdf", "ai", "eps", "ps", "prn", "dxf",
-    "psd", "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx",
+    "cdr", "cdt", "cdrt", "csl", "cmx", "tdraw", "svg", "svgz", "pdf", "ai", "eps", "ps", "prn",
+    "dxf", "psd", "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx",
 ];
 
 /// The extensions File > Import reads (besides those of installed script
 /// filters).
 pub const IMPORT_EXTENSIONS: &[&str] = &[
-    "cdr", "cdt", "cdrt", "cmx", "tdraw", "svg", "svgz", "pdf", "ai", "eps", "ps", "prn", "dxf",
-    "psd", "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx", "png", "jpg", "jpeg",
-    "bmp", "gif", "webp", "tif", "tiff",
+    "cdr", "cdt", "cdrt", "csl", "cmx", "tdraw", "svg", "svgz", "pdf", "ai", "eps", "ps", "prn",
+    "dxf", "psd", "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx", "png", "jpg",
+    "jpeg", "bmp", "gif", "webp", "tif", "tiff",
 ];
 
 /// The memory the undo steps of one drawing may hold before the oldest
@@ -1796,6 +1796,8 @@ pub struct App {
     pub ai: crate::ai::AiSession,
     /// AI Generate and Remove Background.
     pub ai_image: crate::ai_image::ImageSession,
+    /// Vectorize with AI: the key typed and the request on its way.
+    pub ai_vectorize: crate::ai_vectorize::VectorizeSession,
     /// AI agents editing the open drawing (MCP), while allowed.
     #[cfg(not(target_arch = "wasm32"))]
     pub mcp_link: Option<crate::mcp_link::Link>,
@@ -3122,6 +3124,7 @@ impl App {
             debug_expr: String::new(),
             ai: Default::default(),
             ai_image: Default::default(),
+            ai_vectorize: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
             mcp_link: None,
             find_state: Default::default(),
@@ -3540,6 +3543,11 @@ impl App {
         s.bars.migrate();
         s.migrate_ai();
         self.ai.key = crate::ai::remembered_key(&s.ai);
+        self.ai_vectorize.key = if s.ai_vectorize.remember_key {
+            s.ai_vectorize.key.clone()
+        } else {
+            String::new()
+        };
         crate::i18n::set_language(crate::i18n::startup_language_here(&s.language));
         self.workspace = Workspace::from_id(&s.workspace);
         self.set_workspace(self.workspace);
@@ -7317,6 +7325,7 @@ impl App {
             .add_filter("Windows Metafile (*.emf, *.wmf)", &["emf", "wmf"])
             .add_filter("Photoshop (*.psd, *.psb)", &["psd", "psb"])
             .add_filter(crate::i18n::tr("file.cdr_files"), &["cdr", "cdt", "cdrt"])
+            .add_filter(crate::i18n::tr("file.symbol_library"), &["csl"])
             .add_filter("CMX (*.cmx)", &["cmx"])
             .add_filter("TraceDraw (*.tdraw)", &["tdraw"])
             .pick_file(self, |app, p| app.open_path(p));
@@ -7375,6 +7384,11 @@ impl App {
         // Templates (`.cdt`, and `.cdrt` from recent versions) are
         // drawings of the same format; opened, they are untitled.
         if ext == "cdt" || ext == "cdrt" {
+            return "cdr".into();
+        }
+        // Symbol libraries (#2709) are drawings of the same format that
+        // hold symbols; the reader goes by the file's own header.
+        if ext == "csl" {
             return "cdr".into();
         }
         ext
@@ -7843,6 +7857,10 @@ impl App {
                     .unwrap_or_default();
                 self.pdf_shrunk = shrunk;
                 self.show_open_notes(name, unread);
+                // A symbol library shows its symbols (#2709).
+                if is_symbol_library_path(&path) {
+                    self.open_docker(DockerTab::Symbols);
+                }
             }
             Err(e) => {
                 self.status = crate::i18n::trf(
@@ -8862,6 +8880,7 @@ impl App {
             .add_filter("Text (*.txt, *.rtf, *.docx)", &["txt", "rtf", "docx"])
             .add_filter("TraceDraw (*.tdraw)", &["tdraw"])
             .add_filter(crate::i18n::tr("file.cdr_files"), &["cdr", "cdt", "cdrt"])
+            .add_filter(crate::i18n::tr("file.symbol_library"), &["csl"])
             .add_filter("CMX (*.cmx)", &["cmx"])
             .add_filter("SVG (*.svg, *.svgz)", &["svg", "svgz"])
             .add_filter("PDF, AI (*.pdf, *.ai)", &["pdf", "ai"])
@@ -8995,18 +9014,57 @@ impl App {
             self.import_bitmap(&path);
             return;
         }
-        self.import_document(Self::open_cdr(&path).map(|(doc, _)| doc));
+        let library = is_symbol_library_path(&path);
+        self.import_document_with(Self::open_cdr(&path).map(|(doc, _)| doc), library);
+        if library {
+            self.open_docker(DockerTab::Symbols);
+        }
     }
 
     /// The objects of a drawing read for File > Import (a `.cdr`, `.cmx`
     /// or `.tdraw` file, or the error reading it): those of every page go
     /// into the active layer, selected, as one undo step (#1142).
     fn import_document(&mut self, read: std::result::Result<tracedraw_core::Document, String>) {
+        self.import_document_with(read, false);
+    }
+
+    /// [`App::import_document`]; the symbols the objects show come along
+    /// (#2709), and with `library` (a symbol library, `.csl`) every symbol
+    /// the file defines, used on its pages or not, goes to the Symbols
+    /// docker, in the same undo step.
+    fn import_document_with(
+        &mut self,
+        read: std::result::Result<tracedraw_core::Document, String>,
+        library: bool,
+    ) {
         match read {
             Ok(doc) => {
                 let Some(layer) = self.active_layer() else {
                     return;
                 };
+                // Compared without the objects' identities, which this
+                // drawing gave its own symbols: the same symbol imported
+                // again is found, not added twice.
+                let mut symbols: Vec<tracedraw_core::document::Symbol> = self
+                    .doc()
+                    .symbols
+                    .iter()
+                    .cloned()
+                    .map(symbol_without_uids)
+                    .collect();
+                let from: Vec<tracedraw_core::document::Symbol> = doc
+                    .symbols
+                    .iter()
+                    .cloned()
+                    .map(symbol_without_uids)
+                    .collect();
+                let had_symbols = symbols.len();
+                if library {
+                    for index in 0..from.len() {
+                        let mut probe = Shape::new(ShapeId(0), ShapeKind::SymbolInstance { index });
+                        crate::symbol_paste::bring(&mut probe, &from, &mut symbols);
+                    }
+                }
                 // The imported text keeps its letters; saving the drawing
                 // carries the fonts along.
                 self.add_carried_fonts(&doc.fonts);
@@ -9026,17 +9084,34 @@ impl App {
                         std::slice::from_mut(&mut shape),
                         doc.cmyk_profile.as_ref(),
                     );
+                    crate::symbol_paste::bring(&mut shape, &from, &mut symbols);
                     ids.push(id);
                     copies.push(shape);
                 }
                 // Linked text frames imported together stay a chain.
                 crate::textflow::relink_copies(&originals, &mut copies);
-                let cmds: Vec<Command> = copies
-                    .into_iter()
-                    .map(|shape| Command::AddShape { layer, shape })
+                let added = symbols.len() - had_symbols;
+                // Symbols this drawing lacks come first, for the instances.
+                let mut cmds: Vec<Command> = symbols
+                    .drain(had_symbols..)
+                    .map(|symbol| Command::AddSymbol { symbol })
                     .collect();
+                cmds.extend(
+                    copies
+                        .into_iter()
+                        .map(|shape| Command::AddShape { layer, shape }),
+                );
+                if cmds.is_empty() {
+                    if library {
+                        self.status = crate::i18n::tr("status.no_new_symbols");
+                    }
+                    return;
+                }
                 if let Err(e) = self.engine.run_batch("Import", &cmds) {
                     self.status = e.to_string();
+                } else if library {
+                    self.status =
+                        crate::i18n::trf("status.symbols_imported", &[("n", &added.to_string())]);
                 }
                 self.hyphenate_imported(&ids);
                 self.select(ids);
@@ -9908,10 +9983,37 @@ pub fn color_description(c: Color) -> String {
 /// it makes a new untitled drawing every time.
 pub(crate) fn is_template_path(path: &std::path::Path) -> bool {
     path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-        ["tdt", "cdt", "cdrt"]
+        ["tdt", "cdt", "cdrt", "csl"]
             .iter()
             .any(|t| e.eq_ignore_ascii_case(t))
     })
+}
+
+/// `sym` with no object identities, for comparing symbols of two
+/// drawings (each drawing gives the objects identities of its own).
+fn symbol_without_uids(
+    mut sym: tracedraw_core::document::Symbol,
+) -> tracedraw_core::document::Symbol {
+    fn clear(s: &mut Shape) {
+        s.uid = None;
+        match &mut s.kind {
+            ShapeKind::Group { children } => children.iter_mut().for_each(clear),
+            ShapeKind::ClipFrame { frame, contents } => {
+                clear(frame);
+                contents.iter_mut().for_each(clear);
+            }
+            _ => {}
+        }
+    }
+    clear(&mut sym.shape);
+    sym
+}
+
+/// True for a symbol library, a path ending in `.csl` (any case, #2709).
+pub(crate) fn is_symbol_library_path(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("csl"))
 }
 
 /// True for a path ending in `.cdr` (any case).
@@ -10529,6 +10631,110 @@ mod tests {
         assert_eq!(App::file_kind(Path::new("a/Logo.CDT")), "cdr");
         assert_eq!(App::file_kind(Path::new("menu.cdrt")), "cdr");
         assert_eq!(App::file_kind(Path::new("x.cdr")), "cdr");
+    }
+
+    /// #2709: a symbol library (`.csl`) is listed by File > Open and
+    /// Import, opens untitled with its symbols in the Symbols docker, and
+    /// imports every symbol it defines (used or not) in one undo step,
+    /// without the ones the drawing has already; instances imported with
+    /// a drawing point at its symbols here.
+    #[test]
+    fn symbol_libraries_open_and_import_their_symbols() {
+        use std::path::Path;
+        use tracedraw_core::document::Symbol;
+        crate::i18n::set_language("en");
+        assert_eq!(App::file_kind(Path::new("shapes.CSL")), "cdr");
+        assert!(OPEN_EXTENSIONS.contains(&"csl") && IMPORT_EXTENSIONS.contains(&"csl"));
+        assert!(is_template_path(Path::new("a/lib.csl")));
+        // A library of two symbols, one of them placed on its page.
+        let square = |id: u64, w: f64| {
+            let mut s = Shape::new(
+                ShapeId(id),
+                ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, w, w),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            s.fill = Fill::Solid(Color::rgb8(200, 0, 0));
+            s
+        };
+        let mut lib = tracedraw_core::Document::new("lib", Size::new(210.0, 297.0));
+        lib.symbols.push(Symbol {
+            name: "Star".into(),
+            shape: square(100, 10.0),
+        });
+        lib.symbols.push(Symbol {
+            name: "Arrow".into(),
+            shape: square(101, 20.0),
+        });
+        lib.pages[0].layers[0].shapes.push(Shape::new(
+            ShapeId(1),
+            ShapeKind::SymbolInstance { index: 1 },
+        ));
+        // Opened (the writer saves symbols as their curves, so this file
+        // carries no symbol table; the reader's side of the table is
+        // tested in tracedraw-cdr): untitled, the Symbols docker open.
+        let bytes = tracedraw_cdr::write::document_to_cdr(&lib);
+        let dir = std::env::temp_dir().join(format!("tracedraw-csl-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let path = dir.join("Shapes.csl");
+        std::fs::write(&path, &bytes).expect("write");
+        let mut app = App::headless();
+        app.open_path(path.clone());
+        assert!(app.has_document());
+        assert!(app.file.is_none(), "a library opens untitled");
+        assert!(app.open_dockers.contains(&DockerTab::Symbols));
+        let _ = std::fs::remove_dir_all(&dir);
+        let read = lib.clone();
+        // Imported into a drawing that has one of them already.
+        let mut app = App::headless();
+        let star = read
+            .symbols
+            .iter()
+            .find(|s| s.name == "Star")
+            .cloned()
+            .expect("star");
+        app.run(Command::AddSymbol { symbol: star });
+        let steps = app.engine.history_labels().0.len();
+        app.import_document_with(Ok(read.clone()), true);
+        assert_eq!(
+            app.engine.history_labels().0.len(),
+            steps + 1,
+            "one undo step"
+        );
+        let names: Vec<String> = app.doc().symbols.iter().map(|s| s.name.clone()).collect();
+        assert_eq!(
+            names.iter().filter(|n| *n == "Star").count(),
+            1,
+            "{names:?}"
+        );
+        assert!(names.iter().any(|n| n == "Arrow"), "{names:?}");
+        // The instance imported with it shows the Arrow here.
+        let arrow = app
+            .doc()
+            .symbols
+            .iter()
+            .position(|s| s.name == "Arrow")
+            .expect("arrow");
+        let instances: Vec<usize> = app
+            .doc()
+            .all_layers()
+            .flat_map(|l| &l.shapes)
+            .filter_map(|s| match s.kind {
+                ShapeKind::SymbolInstance { index } => Some(index),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(instances, [arrow]);
+        // Imported again: nothing new to add but the placed instance.
+        app.import_document_with(Ok(read), true);
+        assert_eq!(app.doc().symbols.len(), names.len());
+        // A plain drawing brings only the symbols its objects show.
+        let mut app = App::headless();
+        app.import_document_with(Ok(lib), false);
+        let names: Vec<&str> = app.doc().symbols.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["Arrow"]);
     }
 
     #[test]

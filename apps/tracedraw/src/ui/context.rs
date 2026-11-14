@@ -297,6 +297,16 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
         ) {
             app.ai_remove_background();
         }
+        let vtip = app.ai_vectorize_tip();
+        if ci_tip(
+            ui,
+            close,
+            "menu.bitmaps.ai_vectorize",
+            app.ai_vectorize_enabled(),
+            vtip.as_deref(),
+        ) {
+            app.ai_vectorize();
+        }
         if ci(
             ui,
             close,

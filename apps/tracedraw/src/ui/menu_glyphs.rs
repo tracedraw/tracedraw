@@ -251,6 +251,7 @@ pub fn for_key(key: &str) -> Option<Glyph> {
         "menu.tools.ai_generate"
         | "menu.tools.options_ai"
         | "menu.bitmaps.remove_background"
+        | "menu.bitmaps.ai_vectorize"
         | "context.ai_remix"
         | "menu.object.ai_generate"
         | "menu.object.ai_create_image"
