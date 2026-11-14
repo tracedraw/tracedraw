@@ -43,6 +43,7 @@ full, row-by-row status.
 - Bitmaps > Crop to Frame frees a picture from a frame of any shape: the piece of a picture cut with the Knife, a picture in an oval or any other outline becomes a picture of its own, with the pixels outside the outline made see-through. Only a rectangular frame let its picture go; any other kept the picture inside it (#1913).
 - Blend tool: a colour dragged from a palette and dropped on the square at the start or the end of the blend in hand becomes the fill of that end's object, and the steps between follow. A drop on the square of a text went nowhere when the middle of the text lay between its letters (#965).
 - Object > Transformations: Mirror Horizontally and Mirror Vertically, the property bar's two mirror buttons, are menu commands, so a shortcut can be given to them in Options > Customization > Commands or with a right click on the row (#2622). Ctrl+D duplicates and Space ends a curve drawn with the Bezier, Pen, B-spline, Polyline or Freehand tool, as asked in d#2595; a test now keeps Space doing so for every line tool.
+- Weld, Trim, Intersect, Front Minus Back, Back Minus Front, Boundary and Combine on objects of a group, selected inside it, leave the result in the group where the objects were. The result went on top of the layer, out of the group, and Combine did nothing (#2640).
 
 ## 0.45.2 (2026-11-13)
 

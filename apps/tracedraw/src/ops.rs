@@ -378,11 +378,161 @@ impl App {
             return;
         }
         let shapes = self.selection.clone();
+        // Objects of one group (selected inside it): the curve they make
+        // stays in the group, where the bottom one was (#2640: Combine
+        // did nothing there).
+        if self.shared_group(&shapes).is_some() {
+            self.combine_in_group(shapes);
+            return;
+        }
         // Make everything a curve first so Combine has paths to merge.
         self.convert_to_curves();
         let keep = shapes.last().copied();
         self.run(Command::Combine { shapes });
         self.selection = keep.into_iter().collect();
+    }
+
+    /// [`Self::combine`] on objects of one group: made curves, then one
+    /// curve of them all with the top one's fill and outline, in the
+    /// group where the bottom one was; one undo step.
+    fn combine_in_group(&mut self, ids: Vec<tracedraw_core::ShapeId>) {
+        let mark = self.engine.begin_group();
+        self.convert_to_curves();
+        let Some(group) = self.shared_group(&ids) else {
+            self.engine.end_group(mark, "Combine");
+            return;
+        };
+        let mut parts: Vec<Shape> = ids
+            .iter()
+            .filter_map(|id| self.doc().shape_on_page(*id))
+            .collect();
+        parts.sort_by_key(|s| self.z_key(s.id));
+        let (Some(bottom), Some(top)) = (parts.first().cloned(), parts.last().cloned()) else {
+            self.engine.end_group(mark, "Combine");
+            return;
+        };
+        let open = |s: &Shape| matches!(s.kind, ShapeKind::Path { closed: false, .. });
+        let any_open = parts.iter().any(open);
+        let mut path = tracedraw_core::BezPath::new();
+        for s in &parts {
+            let part = s.page_path();
+            if any_open && !open(s) {
+                path.extend(tracedraw_core::command::close_subpaths(&part));
+            } else {
+                path.extend(part);
+            }
+        }
+        let mut combined = Shape::new(
+            top.id,
+            ShapeKind::Path {
+                path,
+                closed: !any_open,
+            },
+        );
+        combined.fill = top.fill.for_result(top.transform, &combined.page_path());
+        combined.stroke = top.stroke.clone();
+        combined.opacity = top.opacity;
+        let gone: Vec<_> = parts.iter().map(|s| s.id).collect();
+        if let Some(cmd) = self.regroup_command(group, &gone, bottom.id, vec![combined]) {
+            if let Err(e) = self.engine.run(&cmd) {
+                self.status = e.to_string();
+            }
+        }
+        self.engine.end_group(mark, "Combine");
+        self.select(vec![top.id]);
+    }
+
+    /// The group that directly holds every one of `ids`, when they are
+    /// all objects of one group (selected inside it, #2640).
+    pub(crate) fn shared_group(
+        &self,
+        ids: &[tracedraw_core::ShapeId],
+    ) -> Option<tracedraw_core::ShapeId> {
+        let doc = self.doc();
+        let mut shared = None;
+        for id in ids {
+            let parent = *doc.ancestors(*id).last()?;
+            if !matches!(doc.find_shape(parent)?.kind, ShapeKind::Group { .. }) {
+                return None;
+            }
+            match shared {
+                None => shared = Some(parent),
+                Some(p) if p == parent => {}
+                _ => return None,
+            }
+        }
+        shared
+    }
+
+    /// Where `id` lies in the stacking order: the place of the object on
+    /// its layer that holds it, then its own place in the group or clip
+    /// frame holding it, so objects of one group sort as they are
+    /// stacked in it.
+    pub(crate) fn z_key(&self, id: tracedraw_core::ShapeId) -> (usize, usize) {
+        let doc = self.doc();
+        let up = doc.ancestors(id);
+        let outer = up.first().copied().unwrap_or(id);
+        let top = doc.locate(outer).map(|(_, i)| i).unwrap_or(0);
+        let inner = up
+            .last()
+            .and_then(|p| doc.find_shape(*p))
+            .and_then(|p| match &p.kind {
+                ShapeKind::Group { children } => children.iter().position(|c| c.id == id),
+                ShapeKind::ClipFrame { contents, .. } => contents.iter().position(|c| c.id == id),
+                _ => None,
+            })
+            .unwrap_or(0);
+        (top, inner)
+    }
+
+    /// The command that takes objects `gone` out of `group` and puts
+    /// `made` (in page space) in it where `at` is: in its place when it
+    /// goes, else right above it. `None` when the group cannot hold them
+    /// (no such group, or one squashed flat).
+    pub(crate) fn regroup_command(
+        &self,
+        group: tracedraw_core::ShapeId,
+        gone: &[tracedraw_core::ShapeId],
+        at: tracedraw_core::ShapeId,
+        made: Vec<Shape>,
+    ) -> Option<Command> {
+        let doc = self.doc();
+        let g = doc.find_shape(group)?;
+        let ShapeKind::Group { children } = &g.kind else {
+            return None;
+        };
+        // The space the group's objects are drawn in.
+        let space = doc.parent_transform(group)? * g.transform;
+        let det = space.determinant();
+        if !det.is_finite() || det.abs() < 1e-12 {
+            return None;
+        }
+        let back = space.inverse();
+        let index = children
+            .iter()
+            .position(|c| c.id == at)
+            .or_else(|| children.iter().position(|c| gone.contains(&c.id)))?;
+        let mut made = made.into_iter().map(|mut m| {
+            m.transform = back * m.transform;
+            m
+        });
+        let mut out = Vec::with_capacity(children.len() + 1);
+        for (i, c) in children.iter().enumerate() {
+            let stays = !gone.contains(&c.id);
+            if i == index && !stays {
+                out.extend(made.by_ref());
+            }
+            if stays {
+                out.push(c.clone());
+            }
+            if i == index && stays {
+                out.extend(made.by_ref());
+            }
+        }
+        Some(Command::SetShapeKind {
+            shape: group,
+            kind: ShapeKind::Group { children: out },
+        })
     }
 
     /// The menu label of the group Break Apart breaks first when a
@@ -1174,10 +1324,10 @@ impl App {
         {
             return;
         }
-        let doc = self.doc();
-        // Z-order: lowest index first within the layer.
+        // Z-order: lowest index first within the layer, objects of a
+        // group by their place in it (#2640).
         let mut ordered = shapes.clone();
-        ordered.sort_by_key(|s| doc.locate(s.id).map(|(_, i)| i).unwrap_or(0));
+        ordered.sort_by_key(|s| self.z_key(s.id));
         let target = shapes.last().cloned().unwrap_or_else(|| ordered[0].clone());
         // The object that keeps its attributes and is cut: the target, the
         // front one (Front Minus Back) or the back one (Back Minus Front).
@@ -1595,7 +1745,24 @@ impl App {
                 }
             })
             .collect();
-        if !gone.is_empty() {
+        // Objects of one group (selected inside it): what is made stays in
+        // the group where the kept object was, the others of the group
+        // kept, instead of going on top of the layer (#2640).
+        let group = self.shared_group(&used);
+        if let Some(group) = group {
+            let made: Vec<Shape> = cmds
+                .iter()
+                .filter_map(|c| match c {
+                    Command::AddShape { shape, .. } => Some(shape.clone()),
+                    _ => None,
+                })
+                .collect();
+            if let Some(cmd) = self.regroup_command(group, &gone, target.id, made) {
+                cmds = vec![cmd];
+            } else if !gone.is_empty() {
+                cmds.push(Command::DeleteShapes { shapes: gone });
+            }
+        } else if !gone.is_empty() {
             cmds.push(Command::DeleteShapes { shapes: gone });
         }
         let label = match op {
