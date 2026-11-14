@@ -52,6 +52,9 @@ struct HostInner {
     status: Option<String>,
     /// View > Simulate Overprints as a macro set it (`ActiveView.Type`).
     simulate_overprints: Option<bool>,
+    /// What a macro's `Copy` or `Cut` took, for its `Paste`: the macro's
+    /// own, not the system clipboard, which macros do not reach.
+    clip: Vec<Shape>,
 }
 
 /// How far a script is trusted.
@@ -409,6 +412,7 @@ fn host_for(app: &App, trust: Trust) -> HostInner {
         view: vg::AppView::of(app),
         status: None,
         simulate_overprints: None,
+        clip: Vec::new(),
     }
 }
 
@@ -648,6 +652,7 @@ fn blank_host(doc: Document, trust: Trust) -> HostInner {
         view: vg::AppView::default(),
         status: None,
         simulate_overprints: None,
+        clip: Vec::new(),
     }
 }
 

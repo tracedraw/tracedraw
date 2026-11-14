@@ -676,6 +676,43 @@ impl HostInner {
                 }
                 json!({"ids": out})
             }
+            // Copy, Cut and Paste (#2165: a tiling macro copies its crop
+            // marks and pastes them for the other side).
+            "vg_copy" | "vg_cut" => {
+                let list: Vec<ShapeId> = ids(a, "ids")
+                    .into_iter()
+                    .filter(|id| self.doc.shape_on_page(*id).is_some())
+                    .collect();
+                if list.is_empty() {
+                    return Err("nothing to copy".into());
+                }
+                self.clip = list
+                    .iter()
+                    .filter_map(|id| self.doc.shape_on_page(*id))
+                    .collect();
+                if method == "vg_cut" {
+                    self.run(Command::DeleteShapes {
+                        shapes: list.clone(),
+                    })?;
+                    self.selection.retain(|s| !list.contains(s));
+                }
+                json!({})
+            }
+            "vg_paste" => {
+                if self.clip.is_empty() {
+                    return Err("the clipboard is empty".into());
+                }
+                let layer = self.layer_for(a)?;
+                let mut out = Vec::new();
+                for s in self.clip.clone() {
+                    let copy = self.fresh_ids(s);
+                    out.push(copy.id);
+                    self.run(Command::AddShape { layer, shape: copy })?;
+                }
+                // What is pasted is selected, as in CorelDRAW.
+                self.selection = out.clone();
+                json!({"ids": out.iter().map(|i| i.raw()).collect::<Vec<_>>()})
+            }
             "vg_delete" => {
                 let list: Vec<ShapeId> = ids(a, "ids")
                     .into_iter()

@@ -650,7 +650,7 @@ fn documents_pages_layers_and_settings() {
 #[test]
 fn members_without_a_counterpart_raise_named_errors() {
     for (src, member) in [
-        ("ActiveLayer.Paste();", "Layer.Paste"),
+        ("ActiveLayer.PasteSpecial();", "Layer.PasteSpecial"),
         (
             "Application.FrameWork.ShowDocker('x');",
             "Application.FrameWork",

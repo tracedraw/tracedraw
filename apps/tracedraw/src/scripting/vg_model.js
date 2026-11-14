@@ -534,6 +534,8 @@ class Shape extends __Geo {
   set RotationCenterX(v) { __vg.rot.set(this.id, [__mm(v), this._rotCenter()[1]]); }
   set RotationCenterY(v) { __vg.rot.set(this.id, [this._rotCenter()[0], __mm(v)]); }
   Duplicate(OffsetX, OffsetY) { return new Shape(__call('vg_duplicate', { ids: [this.id], dx: __mm(OffsetX || 0), dy: __mm(OffsetY || 0) }).ids[0]); }
+  Copy() { __call('vg_copy', { ids: [this.id] }); }
+  Cut() { __call('vg_cut', { ids: [this.id] }); }
   Clone(OffsetX, OffsetY) { return this.Duplicate(OffsetX, OffsetY); }
   BreakApart() { __call('vg_break_apart', { id: this.id }); }
   BreakApartEx() { return new ShapeRange(__call('vg_break_apart', { id: this.id }).ids); }
@@ -911,6 +913,8 @@ class ShapeRange extends __Geo {
   UngroupEx() { const out = []; this._ids().forEach(id => out.push(...__call('vg_ungroup', { id: id, all: false }).ids)); return new ShapeRange(out); }
   BreakApart() { this._ids().forEach(id => __call('vg_break_apart', { id: id })); }
   Duplicate(OffsetX, OffsetY) { return new ShapeRange(__call('vg_duplicate', { ids: this._ids(), dx: __mm(OffsetX || 0), dy: __mm(OffsetY || 0) }).ids); }
+  Copy() { __call('vg_copy', { ids: this._ids() }); }
+  Cut() { __call('vg_cut', { ids: this._ids() }); }
   Clone(OffsetX, OffsetY) { return this.Duplicate(OffsetX, OffsetY); }
   FindShapes(Name, Type, Recursive, Query) { return new ShapeRange(__find(this._ids(), Name, Type, Recursive === undefined ? true : Recursive, Query)); }
   FindShape(Name, Type, StaticID, Recursive, Query) {
@@ -1000,6 +1004,8 @@ class SelectionShape extends __Geo {
   get Shapes() { return new Shapes(() => __call('selection', {}).ids); }
   get Name() { return ''; }
   Duplicate(OffsetX, OffsetY) { return new ShapeRange(__call('vg_duplicate', { ids: this._ids(), dx: __mm(OffsetX || 0), dy: __mm(OffsetY || 0) }).ids); }
+  Copy() { __call('vg_copy', { ids: this._ids() }); }
+  Cut() { __call('vg_cut', { ids: this._ids() }); }
   Group() { return new Shape(__call('vg_group', { ids: this._ids() }).id); }
   Combine() { return new Shape(__call('vg_combine', { ids: this._ids() }).id); }
   UngroupAll() { this._ids().forEach(id => __call('vg_ungroup', { id: id, all: true })); }
@@ -1120,7 +1126,8 @@ class Layer {
   Import(FileName) { return new Shape(__call('import_bitmap', { layer: this.id, path: String(FileName) }).id); }
   ImportBitmap(FileName) { return this.Import(FileName); }
   CreateBitmap(FileName) { return this.Import(FileName); }
-  Paste() { throw new Error('Paste is not available to macros'); }
+  Paste() { return new ShapeRange(__call('vg_paste', { layer: this.id }).ids); }
+  PasteEx() { return this.Paste(); }
 }
 class Layers {
   constructor(page) { this.page = page; }
@@ -1471,7 +1478,6 @@ __def(Page, 'Guides', function () {
 __def(Layer, 'IsGuidesLayer', function () { return false; });
 __def(Layer, 'IsGridLayer', function () { return false; });
 __def(Layer, 'IsDesktopLayer', function () { return false; });
-Layer.prototype.Paste = function () { return __no('Layer.Paste', 'the clipboard is not open to macros'); };
 Layer.prototype.CreateGuide = function (x1, y1, x2, y2) {
   const ax = __mm(x1), ay = __mm(y1), bx = __mm(x2), by = __mm(y2);
   const angle = Math.atan2(by - ay, bx - ax) * 180 / Math.PI;

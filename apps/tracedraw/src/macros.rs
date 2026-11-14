@@ -1636,6 +1636,41 @@ mod tests {
         assert!(!line.dash.is_empty(), "style 1 is dashed");
     }
 
+    /// Copy and Paste in a macro (#2165): the tiling macro of the same
+    /// collection copies the crop marks of one side, pastes them and
+    /// moves what was pasted (the selection) to the other side. It
+    /// stopped with error 438, "Object doesn't support this property or
+    /// method: Copy". The macro's clipboard is its own.
+    #[test]
+    fn a_macro_copies_and_pastes_shapes() {
+        let code = "Sub Go()\r\n\
+            ActiveDocument.Unit = cdrMillimeter\r\n\
+            Dim a As Shape, b As Shape, g As Shape, r As ShapeRange\r\n\
+            Set a = ActiveLayer.CreateLineSegment(0#, 0#, 5#, 0#)\r\n\
+            Set b = ActiveLayer.CreateLineSegment(0#, 10#, 5#, 10#)\r\n\
+            Set g = ActiveDocument.CreateShapeRangeFromArray(a, b).Group\r\n\
+            g.Copy\r\n\
+            ActiveLayer.Paste\r\n\
+            Set r = ActiveSelectionRange\r\n\
+            Debug.Print \"pasted \" & r.Count & \" \" & (r.Item(1).StaticID <> g.StaticID) & \" \" & r.LeftX\r\n\
+            r.Move -20#, 0#\r\n\
+            Debug.Print \"moved \" & r.LeftX & \" kept \" & g.LeftX\r\n\
+            g.Cut\r\n\
+            Set r = ActiveLayer.Paste\r\n\
+            Debug.Print \"cut \" & ActiveLayer.Shapes.Count & \" \" & r.Count\r\n\
+            End Sub\r\n";
+        let mut app = app_with(project("Clip", code, Vec::new()));
+        app.run_macro(0, "Main", "Go");
+        drive(&mut app, |_| {});
+        assert!(app.macros.error.is_none(), "{:?}", app.macros.error);
+        let out = &app.scripts_output;
+        for want in ["pasted 1 True 0", "moved -20 kept 0", "cut 2 1"] {
+            assert!(out.iter().any(|l| l == want), "{want}: {out:?}");
+        }
+        // The app's clipboard is not touched.
+        assert!(app.clipboard.is_none());
+    }
+
     /// What the macros of a published collection use that stopped them
     /// (#2165): `FontList` (For Each over the installed families),
     /// `ActiveVirtualLayer`, `InsertPagesEx` (its argument named `Page`
