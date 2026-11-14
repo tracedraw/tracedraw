@@ -2549,6 +2549,10 @@ impl<'a> Ctx<'a> {
                 Some(0x08) => {}
                 Some(0x10) if v >= 16 => {
                     match distortion_entry(d, tr.pos) {
+                        Some(_) if chain.projective.is_some() => {
+                            self.report
+                                .warn("a distortion after a perspective is not applied");
+                        }
                         Some(_) if !chain.warps.is_empty() => {
                             self.report
                                 .warn("a distortion after an envelope is not applied");
@@ -2567,7 +2571,28 @@ impl<'a> Ctx<'a> {
                     }
                     continue;
                 }
+                // A perspective (#2691): the box it maps from and the
+                // four corners it maps that box onto.
+                Some(0x02) if v >= 16 => {
+                    match perspective_entry(d, tr.pos) {
+                        Some(_) if !chain.warps.is_empty() || !chain.distortions.is_empty() => {
+                            self.report.warn(
+                                "a perspective with an envelope or a distortion is not applied",
+                            );
+                        }
+                        Some((rect, corners)) => chain.perspective(rect, corners),
+                        None => self
+                            .report
+                            .warn("a perspective could not be read; not applied"),
+                    }
+                    continue;
+                }
                 Some(0x01) if v >= 16 => {
+                    if chain.projective.is_some() {
+                        self.report
+                            .warn("an envelope after a perspective is not applied");
+                        continue;
+                    }
                     if !chain.distortions.is_empty() {
                         self.report
                             .warn("an envelope after a distortion is not applied");
@@ -2643,6 +2668,88 @@ impl<'a> Ctx<'a> {
             return None;
         }
         Some(self.read_transform_chain(trfd?, &envds))
+    }
+
+    /// The `trfd` of a version 16+ group list's own `lgob` when it holds a
+    /// perspective (#2691); None otherwise.
+    fn own_perspective_chain(&mut self, list: &Chunk) -> Option<TransformChain> {
+        if self.v < 16 {
+            return None;
+        }
+        let lgob = list.children.iter().find(|k| k.is(b"lgob"))?;
+        let (trfd, envds) = transform_chunks(lgob);
+        let chain = self.read_transform_chain(trfd?, &envds);
+        chain.projective.is_some().then_some(chain)
+    }
+
+    /// Put `shape` (drawn through `pre` first, in page space) in the
+    /// perspective of a group (#2691): `rest` is the projective map the
+    /// group's perspectives make of the file's space its objects are in
+    /// (from the page centre); the matrices after the last perspective
+    /// become the objects' transform. Each object takes a live
+    /// perspective: the corners of its box (or of the perspective it has
+    /// already) carried through that map.
+    fn perspective_group_object(
+        &mut self,
+        shape: &mut Shape,
+        pre: Affine,
+        rest: &[f64; 9],
+        after: Affine,
+        page_size: Size,
+    ) {
+        use tracedraw_core::geometry::Shape as _;
+        let m = pre * shape.transform;
+        let outer = Affine::translate((page_size.width / 2.0, page_size.height / 2.0))
+            * self.outer_transform;
+        match &mut shape.kind {
+            ShapeKind::Group { children } => {
+                for c in children.iter_mut() {
+                    self.perspective_group_object(c, m, rest, after, page_size);
+                }
+                shape.transform = Affine::IDENTITY;
+                return;
+            }
+            ShapeKind::ClipFrame { frame, contents } => {
+                self.perspective_group_object(frame, m, rest, after, page_size);
+                for c in contents.iter_mut() {
+                    self.perspective_group_object(c, m, rest, after, page_size);
+                }
+                shape.transform = Affine::IDENTITY;
+                return;
+            }
+            _ => {}
+        }
+        let to_file = outer.inverse() * m;
+        let own = shape
+            .effects
+            .iter()
+            .position(|e| matches!(e, tracedraw_core::live::Effect::Perspective { .. }));
+        let start = match own.map(|i| &shape.effects[i]) {
+            Some(tracedraw_core::live::Effect::Perspective { corners }) => *corners,
+            _ => {
+                let b = shape.local_path().bounding_box();
+                if b.width() < 1e-9 || b.height() < 1e-9 {
+                    shape.transform = outer * after * to_file;
+                    return;
+                }
+                [
+                    Point::new(b.x0, b.y0),
+                    Point::new(b.x1, b.y0),
+                    Point::new(b.x1, b.y1),
+                    Point::new(b.x0, b.y1),
+                ]
+            }
+        };
+        let corners = start.map(|p| map3(rest, to_file * p));
+        if !corners.iter().all(|p| p.x.is_finite() && p.y.is_finite()) {
+            return;
+        }
+        let effect = tracedraw_core::live::Effect::Perspective { corners };
+        match own {
+            Some(i) => shape.effects[i] = effect,
+            None => shape.effects.push(effect),
+        }
+        shape.transform = outer * after;
     }
 
     /// Bend `shape` (drawn through `pre` first, in page space) through the
@@ -4195,6 +4302,31 @@ impl<'a> Ctx<'a> {
             }
         }
 
+        // Version 16+ perspectives (#2691) become TraceDraw's live
+        // perspective: the matrices and perspectives up to the last one
+        // make one projective map from the object's own space, which takes
+        // the corners of its box where the file puts them; the matrices
+        // after it stay the object's transform.
+        let mut perspective = None;
+        if let Some(g) = chain.projective {
+            use tracedraw_core::geometry::Shape as _;
+            let b = Shape::new(id, kind.clone()).local_path().bounding_box();
+            if b.width() > 1e-9 && b.height() > 1e-9 {
+                let corners = [
+                    Point::new(b.x0, b.y0),
+                    Point::new(b.x1, b.y0),
+                    Point::new(b.x1, b.y1),
+                    Point::new(b.x0, b.y1),
+                ]
+                .map(|p| map3(&g, p));
+                if corners.iter().all(|p| p.x.is_finite() && p.y.is_finite()) {
+                    perspective = Some(tracedraw_core::live::Effect::Perspective { corners });
+                    fill_axes = Some(transform);
+                    transform = self.outer_transform * chain.after_perspective;
+                }
+            }
+        }
+
         // Version 16+: the outline's mitre limit is in the object's style
         // string (the outline record leaves it out, #384).
         if let (Some(s), Some(a)) = (
@@ -4304,6 +4436,9 @@ impl<'a> Ctx<'a> {
             shape.effects.push(tracedraw_core::live::Effect::Distort(d));
         }
         if let Some(e) = live_envelope {
+            shape.effects.push(e);
+        }
+        if let Some(e) = perspective {
             shape.effects.push(e);
         }
         // A version 15 graded transparency runs between its record's two
@@ -4650,6 +4785,23 @@ impl<'a> Ctx<'a> {
                         }
                     }
                 }
+                // A version 16+ group in perspective (#2691): its objects
+                // carry the matrices before the first perspective; the
+                // perspectives and the matrices after them are the group's.
+                if let Some(chain) = self.own_perspective_chain(c) {
+                    if let Some(g) = chain.projective {
+                        let rest = mul3(&g, &affine3(chain.before.inverse()));
+                        for child in children.iter_mut() {
+                            self.perspective_group_object(
+                                child,
+                                Affine::IDENTITY,
+                                &rest,
+                                chain.after_perspective,
+                                page_size,
+                            );
+                        }
+                    }
+                }
                 self.outer_transform = saved;
                 // A vector pattern transparency over the group: a mask
                 // over all it holds, so the group stays a group.
@@ -4728,10 +4880,29 @@ impl<'a> Ctx<'a> {
                     })
                     .map(|t| self.read_transform(t))
                     .unwrap_or(Affine::IDENTITY);
+                // In perspective (#2691), its objects are drawn through
+                // the perspectives as well, after they are read.
+                let perspective = self.own_perspective_chain(c);
                 let saved = self.outer_transform;
-                self.outer_transform = saved * own;
+                if perspective.is_none() {
+                    self.outer_transform = saved * own;
+                }
                 let before = out.len();
                 self.collect_objects(c, ids, page_size, depth + 1, out);
+                if let Some(g) = perspective.as_ref().and_then(|p| p.projective) {
+                    let after = perspective
+                        .as_ref()
+                        .map_or(Affine::IDENTITY, |p| p.after_perspective);
+                    for child in out[before..].iter_mut() {
+                        self.perspective_group_object(
+                            child,
+                            Affine::IDENTITY,
+                            &g,
+                            after,
+                            page_size,
+                        );
+                    }
+                }
                 self.outer_transform = saved;
                 // A blend keeps no steps of its own: an empty linked group
                 // between its two end objects, its `loda` of object type 7
@@ -6505,6 +6676,16 @@ struct TransformChain {
     /// distorted again over its distortion (#1824); never with
     /// envelopes.
     distortions: Vec<Distortion>,
+    /// The perspectives (version 16+, #2691) with the matrices between
+    /// and before them, as one projective map (a 3 by 3 matrix, rows
+    /// first) from the object's own space to the space the last
+    /// perspective maps into; never with envelopes or distortions.
+    projective: Option<[f64; 9]>,
+    /// The matrices after the last perspective.
+    after_perspective: Affine,
+    /// The matrices after the first perspective, one after the other
+    /// (the perspectives left out).
+    perspective_matrices: Affine,
 }
 
 /// The distortion entry of a version 16+ `trfd` (type 0x10) and the
@@ -6544,6 +6725,11 @@ struct Warp {
 impl TransformChain {
     /// `m` after everything so far.
     fn then(&mut self, m: Affine) {
+        if self.projective.is_some() {
+            self.after_perspective = m * self.after_perspective;
+            self.perspective_matrices = m * self.perspective_matrices;
+            return;
+        }
         if let Some(d) = self.distortions.last_mut() {
             d.after = m * d.after;
             return;
@@ -6557,8 +6743,32 @@ impl TransformChain {
     /// All the matrices one after the other, the envelopes and the
     /// distortions left out.
     fn matrices(&self) -> Affine {
+        if self.projective.is_some() {
+            return self.perspective_matrices * self.before;
+        }
         let m = self.warps.iter().fold(self.before, |m, w| w.after * m);
         self.distortions.iter().fold(m, |m, d| d.after * m)
+    }
+
+    /// A perspective taking `rect` onto `corners` (bottom-left, top-left,
+    /// top-right, bottom-right) after everything so far.
+    fn perspective(&mut self, rect: Rect, corners: [Point; 4]) {
+        let src = [
+            Point::new(rect.x0, rect.y0),
+            Point::new(rect.x0, rect.y1),
+            Point::new(rect.x1, rect.y1),
+            Point::new(rect.x1, rect.y0),
+        ];
+        let Some(h) = tracedraw_core::live::homography(&src, &corners) else {
+            return;
+        };
+        let h = [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1.0];
+        let so_far = match self.projective {
+            Some(p) => mul3(&affine3(self.after_perspective), &p),
+            None => affine3(self.before),
+        };
+        self.projective = Some(mul3(&h, &so_far));
+        self.after_perspective = Affine::IDENTITY;
     }
 
     /// The matrices after the first envelope, one after the other.
@@ -6721,6 +6931,57 @@ fn even_scale(m: Affine) -> Option<f64> {
     let det = a * d - b * c;
     let tol = 1e-9 * (a.abs() + b.abs() + c.abs() + d.abs()).max(1e-12);
     ((a - d).abs() <= tol && (b + c).abs() <= tol && det > 1e-18).then(|| det.sqrt())
+}
+
+/// An affine matrix as a 3 by 3 one, rows first.
+fn affine3(m: Affine) -> [f64; 9] {
+    let [a, b, c, d, e, f] = m.as_coeffs();
+    [a, c, e, b, d, f, 0.0, 0.0, 1.0]
+}
+
+/// `a` after `b`, both 3 by 3 matrices, rows first.
+fn mul3(a: &[f64; 9], b: &[f64; 9]) -> [f64; 9] {
+    let mut out = [0.0; 9];
+    for r in 0..3 {
+        for c in 0..3 {
+            out[r * 3 + c] = (0..3).map(|k| a[r * 3 + k] * b[k * 3 + c]).sum();
+        }
+    }
+    out
+}
+
+/// `p` through the projective map `m` (3 by 3, rows first).
+fn map3(m: &[f64; 9], p: Point) -> Point {
+    let w = m[6] * p.x + m[7] * p.y + m[8];
+    let w = if w.abs() < 1e-12 { 1e-12 } else { w };
+    Point::new(
+        (m[0] * p.x + m[1] * p.y + m[2]) / w,
+        (m[3] * p.x + m[4] * p.y + m[5]) / w,
+    )
+}
+
+/// The perspective entry of a version 16+ `trfd` whose body starts at
+/// `at` (after the entry type): 6 zero bytes, u32 1, the box it maps
+/// from (four i32: left, top, right, bottom, from the page centre, y
+/// upwards), then the four corners that box goes to (i32 pairs:
+/// bottom-left, top-left, top-right, bottom-right; the first again after
+/// them), in millimetres. `None` when it is cut short or flat.
+fn perspective_entry(d: &[u8], at: usize) -> Option<(Rect, [Point; 4])> {
+    let int = |k: usize| {
+        d.get(at + k..at + k + 4)
+            .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    };
+    let mm = |v: i32| v as f64 * UNIT_MM;
+    let (x0, y0, x1, y1) = (mm(int(10)?), mm(int(14)?), mm(int(18)?), mm(int(22)?));
+    let rect = Rect::new(x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1));
+    if rect.width() < 1e-6 || rect.height() < 1e-6 {
+        return None;
+    }
+    let mut corners = [Point::ZERO; 4];
+    for (k, c) in corners.iter_mut().enumerate() {
+        *c = Point::new(mm(int(26 + 8 * k)?), mm(int(30 + 8 * k)?));
+    }
+    Some((rect, corners))
 }
 
 /// The envelope entry of a version 16+ `trfd` whose body starts at `at`
@@ -8899,6 +9160,7 @@ pub(crate) mod tests {
                 after: Affine::IDENTITY,
             }],
             distortions: Vec::new(),
+            ..Default::default()
         };
         let before = Affine::translate((10.0, 20.0)) * Affine::scale_non_uniform(2.0, 0.5);
         let e = text_envelope(&text(None), &chain(before)).expect("a live envelope");
@@ -15307,6 +15569,137 @@ pub(crate) mod tests {
             ] {
                 assert!((got - want).abs() < 0.05, "{b:?}");
             }
+        }
+    }
+
+    /// A perspective entry as the version 22 file of #2691 holds one: 6
+    /// zero bytes, 1, the box (left, top, right, bottom in file units),
+    /// the corners it goes to (bottom-left, top-left, top-right,
+    /// bottom-right, the first again), then 60 bytes not read.
+    fn trfd_perspective(bx: [i32; 4], corners: [(i32, i32); 4]) -> Vec<u8> {
+        let mut b = vec![0u8; 6];
+        b.extend_from_slice(&u32s(&[1]));
+        b.extend_from_slice(&i32s(&bx));
+        for (x, y) in corners.iter().chain(std::iter::once(&corners[0])) {
+            b.extend_from_slice(&i32s(&[*x, *y]));
+        }
+        b.extend_from_slice(&u32s(&[492, 68]));
+        b.resize(b.len() + 52, 0);
+        trfd_entry(2, &b)
+    }
+
+    /// Where the corners of a shape's live perspective land on the page.
+    fn perspective_on_page(s: &Shape) -> [Point; 4] {
+        let corners = s
+            .effects
+            .iter()
+            .find_map(|e| match e {
+                tracedraw_core::live::Effect::Perspective { corners } => Some(*corners),
+                _ => None,
+            })
+            .expect("a live perspective");
+        corners.map(|p| s.transform * p)
+    }
+
+    fn assert_near(got: [Point; 4], want: [(f64, f64); 4]) {
+        for (g, w) in got.iter().zip(want) {
+            assert!(
+                (g.x - w.0).abs() < 1e-6 && (g.y - w.1).abs() < 1e-6,
+                "{got:?} against {want:?}"
+            );
+        }
+    }
+
+    /// Version 16+ perspectives (#2691): an entry of type 2 between the
+    /// matrices takes its box onto four corners. A version 22 file whose
+    /// shop sign is in perspective opened with the sign flat and its
+    /// grouped parts out of place, the perspectives left out.
+    #[test]
+    fn version_16_perspectives_take_their_box_onto_their_corners() {
+        // Stretched to 20 x 10 mm, the top-right corner raised to 20 mm,
+        // then moved 5 mm up.
+        let t = trfd_v16(&[
+            trfd_matrix([2.0, 0.0, 0.0, 0.0, 1.0, 0.0]),
+            trfd_perspective(
+                [0, 100_000, 200_000, 0],
+                [(0, 0), (0, 100_000), (200_000, 200_000), (200_000, 0)],
+            ),
+            trfd_matrix([1.0, 0.0, 0.0, 0.0, 1.0, 50_000.0]),
+        ]);
+        let (doc, rep) = envelope_file(t, &[], false);
+        assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+        assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+        // The page is 254 mm square, its centre the file's origin.
+        let c = 127.0;
+        assert_near(
+            perspective_on_page(first_shape(&doc)),
+            [
+                (c, c + 5.0),
+                (c + 20.0, c + 5.0),
+                (c + 20.0, c + 25.0),
+                (c, c + 15.0),
+            ],
+        );
+
+        // Applied again over the first (the box of the second is where
+        // the first left the object): both apply, in order.
+        let t = trfd_v16(&[
+            trfd_perspective(
+                [0, 100_000, 100_000, 0],
+                [(0, 0), (0, 100_000), (100_000, 100_000), (100_000, 0)],
+            ),
+            trfd_matrix([1.0, 0.0, 100_000.0, 0.0, 1.0, 0.0]),
+            trfd_perspective(
+                [100_000, 100_000, 200_000, 0],
+                [
+                    (100_000, 0),
+                    (100_000, 100_000),
+                    (200_000, 150_000),
+                    (200_000, 0),
+                ],
+            ),
+        ]);
+        let (doc, _) = envelope_file(t, &[], false);
+        assert_near(
+            perspective_on_page(first_shape(&doc)),
+            [
+                (c + 10.0, c),
+                (c + 20.0, c),
+                (c + 20.0, c + 15.0),
+                (c + 10.0, c + 10.0),
+            ],
+        );
+    }
+
+    /// A group in perspective (#2691): the group's own `trfd` holds the
+    /// perspective and its objects only their own matrices; each object
+    /// takes the group's perspective.
+    #[test]
+    fn version_16_group_perspectives_reach_their_objects() {
+        let t = trfd_v16(&[
+            trfd_perspective(
+                [0, 100_000, 100_000, 0],
+                [(0, 0), (0, 100_000), (100_000, 200_000), (100_000, 0)],
+            ),
+            trfd_matrix([1.0, 0.0, 0.0, 0.0, 1.0, 50_000.0]),
+        ]);
+        let (doc, rep) = envelope_file(t, &[], true);
+        assert!(rep.warnings.is_empty(), "{:?}", rep.warnings);
+        let ShapeKind::Group { children } = &first_shape(&doc).kind else {
+            panic!("a group");
+        };
+        assert_eq!(children.len(), 2);
+        let c = 127.0;
+        for s in children {
+            assert_near(
+                perspective_on_page(s),
+                [
+                    (c, c + 5.0),
+                    (c + 10.0, c + 5.0),
+                    (c + 10.0, c + 25.0),
+                    (c, c + 15.0),
+                ],
+            );
         }
     }
 

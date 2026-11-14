@@ -11,6 +11,7 @@ full, row-by-row status.
 - Text: a Character width field (Text panel, Character section, and the Shape tool's property bar) narrows or widens the letters as a percentage of their own width, keeping their height, from 1 to 1000 %. Exports keep the font's letters with the width (#2190).
 - Shape tool on text: the property bar has Superscript and Subscript buttons for the chosen characters (else the whole text); a second click puts them back on the baseline (#2164).
 - Paragraph text and tables: Alt held on a side handle stretches the letters with the frame, so the lines stay as they are: across it sets the character width, up and down the size. Without Alt the frame resizes and the text flows anew, as before (#1553).
+- CorelDRAW files (versions 16 and later): a perspective comes in as a live perspective, on a single object or on a group (its objects each take it, pictures included). It was left out, so a shop sign put in perspective on a photo opened flat, and the grouped parts of the sign stood apart from it, one of them near the bottom of the page (#2691).
 
 ## 0.46.0 (2026-11-14)
 
