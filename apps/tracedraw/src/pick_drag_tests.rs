@@ -27797,3 +27797,83 @@ fn the_text_bar_has_more_settings_and_a_plus_list() {
     text_bar::set_shown(&mut app, "tabs", true);
     assert!(!app.settings.bar_items.contains_key(text_bar::HIDDEN));
 }
+
+/// File > Import of several files at once (discussion #2695): each waits
+/// for its own click in turn, and all of them end up selected together;
+/// Esc calls off the one waiting and those after it.
+#[test]
+fn several_imported_files_are_placed_one_after_another() {
+    let (ctx, mut app, _id) = setup();
+    let files: Vec<_> = ["many-a", "many-b", "many-c"]
+        .iter()
+        .map(|t| import_square_svg(t))
+        .collect();
+    let n = shape_count(&app);
+    app.import_picked_many(files.clone());
+    for (i, x) in [40.0, 100.0, 160.0].into_iter().enumerate() {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        assert!(app.import_placing.is_some(), "file {i} waits");
+        assert_eq!(shape_count(&app), n + i, "file {i} not in yet");
+        let at = app.view.to_screen(Point::new(x, 200.0));
+        frame(
+            &ctx,
+            &mut app,
+            vec![Event::PointerMoved(at)],
+            Modifiers::NONE,
+        );
+        click_at(&ctx, &mut app, at, Modifiers::NONE);
+        assert_eq!(shape_count(&app), n + i + 1, "file {i} came in");
+    }
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(app.import_placing.is_none());
+    assert!(app.import_queue.is_empty());
+    assert_eq!(app.selection.len(), 3, "all three selected together");
+    let b = app.selection_bounds().expect("bounds");
+    assert!(b.width() > 130.0, "{b:?}");
+
+    // Esc on the second: the first stays, the rest never come.
+    let n = shape_count(&app);
+    app.import_picked_many(files.clone());
+    let at = app.view.to_screen(Point::new(60.0, 120.0));
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(at)],
+        Modifiers::NONE,
+    );
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(app.import_placing.is_some(), "the second waits");
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Escape, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    assert!(app.import_placing.is_none());
+    assert_eq!(shape_count(&app), n + 1, "only the first came in");
+    assert_eq!(app.selection.len(), 1);
+}
+
+/// Without the placement cursor, several files picked at once all come
+/// in, selected together (discussion #2695).
+#[test]
+fn several_imported_files_come_in_at_once_without_the_cursor() {
+    let (ctx, mut app, _id) = setup();
+    app.settings.formats.import_with_cursor = false;
+    let files: Vec<_> = ["once-a", "once-b"]
+        .iter()
+        .map(|t| import_square_svg(t))
+        .collect();
+    let n = shape_count(&app);
+    app.import_picked_many(files);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    assert_eq!(shape_count(&app), n + 2);
+    assert_eq!(app.selection.len(), 2);
+    assert!(app.import_batch.is_none());
+}

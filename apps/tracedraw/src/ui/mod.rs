@@ -321,6 +321,8 @@ pub fn root(app: &mut App, ui: &mut Ui) {
     }
     // An import that asked a question first goes where it was placed.
     app.finish_waiting_import_placement();
+    // The next of several files picked with File > Import (#2695).
+    app.advance_import_queue();
     keynav::end_frame(ui.ctx());
     tab_focus::end(ui.ctx());
     // The steps a number field made one after another are one undo step.

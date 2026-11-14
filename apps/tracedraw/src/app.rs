@@ -1691,6 +1691,13 @@ pub struct App {
     pub import_placing: Option<crate::import_place::ImportPlacing>,
     /// A placement waiting for an import that asked a question first.
     pub import_place_waiting: Option<crate::import_place::WaitingPlacement>,
+    /// The other files picked with File > Import at once (discussion
+    /// #2695), brought in one after another once the one before came.
+    pub import_queue: std::collections::VecDeque<std::path::PathBuf>,
+    /// While several files come in: the objects the earlier ones brought
+    /// and the selection before the latest one, so all of them end up
+    /// selected together.
+    pub import_batch: Option<crate::import_place::ImportBatch>,
     /// Weld, Trim or Intersect waiting for a click on the target, with
     /// what it leaves of the source and the target (#562).
     pub pending_shaping: Option<(crate::ops::Shaping, bool, bool)>,
@@ -3152,6 +3159,8 @@ impl App {
             pending_merge_frame: false,
             import_placing: None,
             import_place_waiting: None,
+            import_queue: Default::default(),
+            import_batch: None,
             autofit_preview: None,
             last_export: None,
             last_bg_remove: None,
@@ -9185,7 +9194,7 @@ impl App {
                 crate::i18n::tr("file.images"),
                 &["png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff"],
             )
-            .pick_file(self, |app, path| app.import_picked(&path));
+            .pick_files(self, |app, paths| app.import_picked_many(paths));
     }
 
     /// Import a file into the active layer, by extension.

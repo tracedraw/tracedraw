@@ -184,6 +184,17 @@ password) is placed once the question is answered
 (`import_place.rs`, `pick_drag_tests::an_import_waits_for_a_click_and_its_corner_goes_there`,
 `pick_drag_tests::an_import_is_sized_by_a_drag_centred_by_space_or_called_off`, #1936).
 
+Several files can be picked at once in the Import dialog (discussion
+#2695): they come in one after another, in the order picked. With the
+import cursor each waits for its own click, drag or Space once the one
+before is in (and any question it asked is answered); Esc or a right
+click calls off the one waiting and those after it. Without the cursor
+they all come in straight away. Each file is its own undo step, and
+once the last is in, everything the files brought is selected together
+(`App::import_picked_many`, `App::advance_import_queue`,
+`pick_drag_tests::several_imported_files_are_placed_one_after_another`,
+`pick_drag_tests::several_imported_files_come_in_at_once_without_the_cursor`).
+
 Imported objects go (File > Import with the import cursor off, Ctrl+I):
 where the file has them (the default), or centred in the middle of the
 view; the move is part of the import's undo step. Files dropped or
