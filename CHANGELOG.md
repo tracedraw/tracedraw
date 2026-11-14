@@ -14,6 +14,7 @@ full, row-by-row status.
 - Export dialog: with PDF chosen, PDF Settings... opens the full PDF settings for the same file (picture resolution and compression, printers' marks, passwords). The Prepress tab adds All printers' marks, bleed marks and the densitometer scale (#2197).
 - Shape tool on text: the property bar has Superscript and Subscript buttons for the chosen characters (else the whole text); a second click puts them back on the baseline (#2164).
 - Paragraph text and tables: Alt held on a side handle stretches the letters with the frame, so the lines stay as they are: across it sets the character width, up and down the size. Without Alt the frame resizes and the text flows anew, as before (#1553).
+- B-Spline: C or V held on the click that closes the curve makes its first point a fixed point, so the curve ends there with a corner; with Ctrl held for a straight line, Ctrl+C and Ctrl+V fix the point instead of copying and pasting (#2694).
 
 ## 0.46.0 (2026-11-14)
 

@@ -4955,6 +4955,75 @@ fn bspline_points_placed_with_c_or_v_held_are_fixed() {
     assert_eq!(s.spline.as_deref(), Some(&controls[..]));
 }
 
+/// The B-Spline tool: C or V held on the click that closes the curve on
+/// its first point fixes that point, so the closed curve has a corner
+/// there although the first point was placed floating (#2694).
+#[test]
+fn bspline_closed_with_c_held_fixes_the_first_point() {
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::BSpline);
+    let n = Modifiers::NONE;
+    let pts = [
+        Point::new(100.0, 150.0),
+        Point::new(160.0, 150.0),
+        Point::new(160.0, 210.0),
+        Point::new(100.0, 210.0),
+    ];
+    for p in pts {
+        let at = app.view.to_screen(p);
+        click_at(&ctx, &mut app, at, n);
+    }
+    frame(&ctx, &mut app, vec![key(egui::Key::C, n)], n);
+    let at = app.view.to_screen(pts[0]);
+    click_at(&ctx, &mut app, at, n);
+    frame(&ctx, &mut app, vec![key_up(egui::Key::C, n)], n);
+    assert!(app.curve.is_none(), "closed");
+    let id = app.selection[0];
+    let s = app.doc().find_shape(id).expect("the curve");
+    assert_eq!(s.spline_fixed, vec![true, false, false, false]);
+}
+
+/// The B-Spline tool with Ctrl held for straight lines: Ctrl+C or Ctrl+V,
+/// which the window gives as copy and paste, make the next point fixed
+/// as C and V alone do, and copy or paste nothing (#2694).
+#[test]
+fn bspline_ctrl_c_and_ctrl_v_fix_the_point_instead_of_copying() {
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::BSpline);
+    let n = Modifiers::NONE;
+    let ctrl = Modifiers::COMMAND;
+    let before = shape_count(&app);
+    let pts = [
+        Point::new(100.0, 150.0),
+        Point::new(160.0, 150.0),
+        Point::new(220.0, 150.0),
+        Point::new(280.0, 150.0),
+    ];
+    for (i, p) in pts.iter().enumerate() {
+        let at = app.view.to_screen(*p);
+        match i {
+            1 => {
+                frame(&ctx, &mut app, vec![Event::Copy], ctrl);
+                click_at(&ctx, &mut app, at, ctrl);
+                frame(&ctx, &mut app, vec![], n);
+            }
+            2 => {
+                frame(&ctx, &mut app, vec![Event::Paste("x".into())], ctrl);
+                click_at(&ctx, &mut app, at, ctrl);
+                frame(&ctx, &mut app, vec![], n);
+            }
+            _ => click_at(&ctx, &mut app, at, n),
+        }
+    }
+    let c = app.curve.as_ref().expect("still drawing");
+    assert_eq!(c.spline_fixed_flags(), Some(vec![false, true, true, false]));
+    assert_eq!(shape_count(&app), before, "nothing pasted");
+    frame(&ctx, &mut app, vec![key(egui::Key::Enter, n)], n);
+    assert_eq!(shape_count(&app), before + 1, "only the curve made");
+}
+
 /// A double-click ends a B-spline with the curve previewed under the
 /// pointer before it: the double-clicked point is its last control point,
 /// once (#1506).
