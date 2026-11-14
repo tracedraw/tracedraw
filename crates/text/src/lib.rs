@@ -1731,6 +1731,11 @@ pub struct LineBox {
     /// The right x of each character's own glyph, `end_char - start_char`
     /// entries: with `starts`, the stretch a selection highlights.
     pub ends: Vec<f64>,
+    /// The paragraph's drop cap, on its first line: the right x of the
+    /// letter, the y of its baseline, lines below, and how many
+    /// characters it holds (a letter and its marks). They are the line's
+    /// first characters, clicked anywhere on the letter (#2576).
+    pub cap: Option<(f64, f64, usize)>,
 }
 
 impl LineBox {
@@ -1776,6 +1781,18 @@ impl TextLayout {
                 0.0
             }
         };
+        // On a drop cap, below its first line too: its character.
+        let on_cap = self.lines.iter().find_map(|l| {
+            let (right, base, chars) = l.cap?;
+            let left = l.starts.first().copied().unwrap_or(right);
+            (p.x >= left && p.x <= right && p.y <= l.baseline + l.ascent && p.y >= base)
+                .then_some((l, left, right, chars))
+        });
+        if let Some((l, left, right, chars)) = on_cap {
+            // The caret goes before or after it, by the nearer half.
+            let after = p.x > (left + right) / 2.0;
+            return Some(l.start_char + if after { chars } else { 0 });
+        }
         let in_band = self
             .lines
             .iter()
@@ -4339,8 +4356,10 @@ impl FontSystem {
         // its letter (from the column's left), the baseline of the last
         // line it spans and its column. The next paragraphs' lines beside
         // it are narrowed as its own are, and a paragraph with a drop cap
-        // of its own starts below it, so the letters do not overlap.
-        let mut cap_below: Option<(f64, f64, usize)> = None;
+        // of its own starts below it, so the letters do not overlap. Then
+        // how far its ink reaches below that baseline (a g, y or j hangs
+        // over the next line, #2575).
+        let mut cap_below: Option<(f64, f64, usize, f64)> = None;
         'paragraphs: for (pi, glyphs) in paragraphs.iter().enumerate() {
             let (_, ps) = style_of(pi);
             let m_para = glyphs
@@ -4379,14 +4398,16 @@ impl FontSystem {
             };
             // A drop cap takes the first glyph out of the first line and
             // narrows the lines beside it.
-            let cap = glyphs.first().filter(|_| ps.drop_cap_lines > 1).map(|g| {
+            let cap = glyphs.first().filter(|_| ps.drop_cap_lines > 1).map(|_| {
                 let step = ps.line_step(m_para.line_height, m_para.size);
                 let n = ps.drop_cap_lines as f64;
-                let (scale, _) = drop_cap_placement(&g.path, n, step, 0.0, m_para.ascent);
+                let (outline, advance) = drop_cap_outline(glyphs);
+                let (scale, _) = drop_cap_placement(&outline, n, step, 0.0, m_para.ascent);
                 DropCap {
-                    width: g.advance * scale + 1.0,
+                    width: drop_cap_extent(&outline, advance).1 * scale + 1.0,
+                    depth: drop_cap_depth(&outline) * scale,
                     lines: ps.drop_cap_lines as usize,
-                    glyph_advance: g.advance,
+                    glyph_advance: advance,
                 }
             });
             let mut br = Breaker::new(
@@ -4398,12 +4419,13 @@ impl FontSystem {
                 pi,
                 para_start,
             );
-            if cap_below.is_some_and(|(_, _, c)| c != col) {
+            if cap_below.is_some_and(|(_, _, c, _)| c != col) {
                 cap_below = None;
             }
-            if let (Some(_), Some((_, last, _))) = (cap, cap_below) {
-                // Its first line goes on the line after the cap above.
-                y = y.min(last);
+            if let (Some(_), Some((_, last, _, depth))) = (cap, cap_below) {
+                // Its first line goes on the line after the cap above,
+                // below the ink hanging from it.
+                y = y.min(last - depth);
                 cap_below = None;
             }
             let mut row = 0usize;
@@ -4426,12 +4448,20 @@ impl FontSystem {
             loop {
                 let first = br.first;
                 let indent = if first { indent_first } else { indent_rest };
+                // Whether the next line still stands beside the cap whose
+                // last baseline is `last`: up to that line, and past it
+                // while the line's letters would reach the ink hanging
+                // below it.
+                let beside = |last: f64, depth: f64| {
+                    let m_est = br.peek().map(|g| metrics[g.span]).unwrap_or(m_para);
+                    let next = y - advance_of(&m_est, first, prev_para);
+                    next >= last - 1e-6 || (depth > 0.05 && next + m_est.ascent > last - depth)
+                };
                 let cap_w = match (cap, cap_below) {
                     (Some(c), _) if row < c.lines => c.width,
-                    (None, Some((right, last, c))) if c == col => {
-                        let m_est = br.peek().map(|g| metrics[g.span]).unwrap_or(m_para);
-                        let next = y - advance_of(&m_est, first, prev_para);
-                        if next >= last - 1e-6 {
+                    (Some(c), Some((_, last, _, depth))) if beside(last, depth) => c.width,
+                    (None, Some((right, last, c, depth))) if c == col => {
+                        if beside(last, depth) {
                             (right - indent).max(0.0)
                         } else {
                             cap_below = None;
@@ -4589,7 +4619,8 @@ impl FontSystem {
                     // The baseline of the cap's last line, in case the
                     // paragraph ends before it.
                     let step = ps.line_step(m_para.line_height, m_para.size);
-                    cap_below = Some((indent + c.width, l.y - (c.lines as f64 - 1.0) * step, col));
+                    let last = l.y - (c.lines as f64 - 1.0) * step;
+                    cap_below = Some((indent + c.width, last, col, c.depth));
                 }
                 row += 1;
                 // The rest does not show: no need to break it into lines.
@@ -4666,7 +4697,6 @@ impl FontSystem {
             let m = line.metrics;
             let (align, ps) = style_of(line.para);
             let align = *align;
-            let step = ps.line_step(m.line_height, m.size);
             let y = if mirror {
                 mirrored_baseline(line.y, m.ascent, m.descent)
             } else {
@@ -4684,9 +4714,24 @@ impl FontSystem {
             // baseline of the Nth line.
             let mut glyphs: &[Glyph] = &line.glyphs;
             let x0 = line.x0;
+            // The drop cap's character and where its letter stands: from,
+            // to, left and right x and its baseline.
+            let mut cap_box: Option<(usize, usize, f64, f64, f64)> = None;
             if let (Some(cap_x), Some(g), false) = (line.cap_x, glyphs.first(), artistic) {
                 let n = ps.drop_cap_lines as f64;
-                let (scale, baseline) = drop_cap_placement(&g.path, n, step, line.y, m.ascent);
+                // The letter and the marks of its cluster (an accent, the
+                // vowel sign of a syllable) drop together: a mark left in
+                // the line stood over the text beside the letter (#2575).
+                let count = drop_cap_glyphs(glyphs);
+                let (outline, advance) = drop_cap_outline(glyphs);
+                // Sized by its own paragraph's first letter, as the room
+                // beside it was: a larger word on the first line made the
+                // letter wider than its room (#2575).
+                let mp = metrics.get(g.span).copied().unwrap_or(m);
+                let cap_step = ps.line_step(mp.line_height, mp.size);
+                let (scale, baseline) =
+                    drop_cap_placement(&outline, n, cap_step, line.y, mp.ascent);
+                let (lead, extent) = drop_cap_extent(&outline, advance);
                 // Mirrored: the cap's band runs from the first line's top
                 // to its own descent, its baseline on the band's left.
                 let baseline = if mirror {
@@ -4694,15 +4739,36 @@ impl FontSystem {
                 } else {
                     baseline
                 };
-                let a = Affine::translate((cap_x, baseline)) * Affine::scale(scale);
-                let a = orient(a, g, m.ascent * scale);
-                if span_drawn(g.span) {
-                    place_glyph(collect, a, g, &mut line_glyphs);
-                    let gp = a * g.path.as_ref().clone();
-                    line_path.extend(gp.elements().iter().copied());
+                let to = glyphs
+                    .get(count)
+                    .filter(|n| n.char_idx > g.char_idx)
+                    .map_or_else(
+                        || {
+                            glyphs[..count]
+                                .iter()
+                                .map(|c| c.char_end)
+                                .max()
+                                .unwrap_or(g.char_end)
+                        },
+                        |n| n.char_idx,
+                    )
+                    .max(g.char_idx + 1);
+                cap_box = Some((g.char_idx, to, cap_x, cap_x + extent * scale, baseline));
+                let mut pen_x = 0.0;
+                for c in &glyphs[..count] {
+                    let a = Affine::translate((cap_x + lead * scale, baseline))
+                        * Affine::scale(scale)
+                        * Affine::translate((pen_x + c.x_offset, c.y_offset));
+                    let a = orient(a, c, m.ascent * scale);
+                    if span_drawn(c.span) {
+                        place_glyph(collect, a, c, &mut line_glyphs);
+                        let gp = a * c.path.as_ref().clone();
+                        line_path.extend(gp.elements().iter().copied());
+                    }
+                    pen_x += c.advance;
                 }
-                glyphs = &glyphs[1..];
-                glyph_count += 1;
+                glyphs = &glyphs[count..];
+                glyph_count += count;
             }
             // Bullet.
             if let (Some(bx), false) = (line.bullet_x, artistic) {
@@ -4814,6 +4880,12 @@ impl FontSystem {
                     }
                 }
             };
+            // The drop cap's character covers its letter, so a click or a
+            // drag selects it for its colour or font (#2576); the caret
+            // after it stands where the line's text starts.
+            if let Some((from, to, a, b, _)) = cap_box {
+                record(from, to, a, b, false);
+            }
             // The first pen x of the right-to-left cluster being placed,
             // so the glyphs of one cluster (a letter and its marks) count
             // as one.
@@ -4937,6 +5009,7 @@ impl FontSystem {
                 edges,
                 starts,
                 ends,
+                cap: cap_box.map(|(from, to, _, right, base)| (right, base, to - from)),
             });
             if let Some(h) = &line.hyphen {
                 if line.glyphs.last().is_none_or(|g| span_drawn(g.span)) {
@@ -5173,6 +5246,61 @@ fn drop_cap_placement(
         lines
     };
     (scale.max(1.0), last)
+}
+
+/// How many glyphs at the start of `glyphs` a drop cap takes: the first
+/// and the further glyphs of its cluster (marks, the parts of a syllable
+/// shaped as one cluster).
+fn drop_cap_glyphs(glyphs: &[Glyph]) -> usize {
+    let Some(first) = glyphs.first() else {
+        return 0;
+    };
+    1 + glyphs
+        .iter()
+        .skip(1)
+        .take_while(|g| {
+            g.char_idx >= first.char_idx && g.char_idx < first.char_end.max(first.char_idx + 1)
+        })
+        .count()
+}
+
+/// The outline of a drop cap's glyphs (see [`drop_cap_glyphs`]) at text
+/// size, from the pen origin, and their advance.
+fn drop_cap_outline(glyphs: &[Glyph]) -> (BezPath, f64) {
+    let n = drop_cap_glyphs(glyphs);
+    let mut path = BezPath::new();
+    let mut pen = 0.0;
+    for g in glyphs.iter().take(n) {
+        let gp = Affine::translate((pen + g.x_offset, g.y_offset)) * g.path.as_ref().clone();
+        path.extend(gp.elements().iter().copied());
+        pen += g.advance;
+    }
+    (path, pen)
+}
+
+/// How far a drop cap's ink reaches below its baseline at text size (0
+/// for a letter standing on it).
+fn drop_cap_depth(glyph: &BezPath) -> f64 {
+    let y0 = glyph.bounding_box().y0;
+    if y0.is_finite() {
+        (-y0).max(0.0)
+    } else {
+        0.0
+    }
+}
+
+/// How far a drop cap's letter moves right so its ink starts at its
+/// place, and the width it takes from there, at text size: the advance,
+/// or the ink where it reaches past it (italic letters, a W or a J lean
+/// out of their advance, and scaled up by the cap they ran over the text
+/// beside them, #2575).
+fn drop_cap_extent(glyph: &BezPath, advance: f64) -> (f64, f64) {
+    let ink = glyph.bounding_box();
+    if !(ink.x0.is_finite() && ink.x1.is_finite()) || ink.x1 <= ink.x0 {
+        return (0.0, advance.max(0.0));
+    }
+    let lead = (-ink.x0).max(0.0);
+    (lead, (advance + lead).max(ink.x1 + lead).max(0.0))
 }
 
 /// Width of a line's glyphs with tab expansion, for a line starting
@@ -5594,6 +5722,8 @@ impl<'a> Breaker<'a> {
 struct DropCap {
     /// The indent of the lines beside it, mm.
     width: f64,
+    /// How far its ink reaches below its baseline, mm (a g, y or j).
+    depth: f64,
     /// How many lines it spans.
     lines: usize,
     /// The advance of the letter at text size (it leaves the first line).
@@ -6427,6 +6557,191 @@ mod tests {
         }
     }
 
+    /// The letter of a drop cap is a character to click and select like
+    /// the others, for its colour or font (#2576): its caret edges span
+    /// the letter, and a click anywhere on it, below the first line too,
+    /// lands before or after it.
+    #[test]
+    fn a_drop_cap_letter_can_be_clicked_and_selected() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        let words = "Words in a paragraph long enough to wrap over several lines.";
+        let lay = f.layout(&TextRequest {
+            spans: &[span(words)],
+            frame: Some(Size::new(40.0, 100.0)),
+            align: TextAlign::Left,
+            para: &ParagraphStyle {
+                drop_cap_lines: 3,
+                ..Default::default()
+            },
+            on_path: None,
+        });
+        let first = &lay.lines[0];
+        let (right, base, chars) = first.cap.expect("drop cap on the first line");
+        assert_eq!(chars, 1);
+        let (left, text_x) = (first.starts[0], first.edges[1]);
+        assert!(right - left > 3.0, "letter from {left} to {right}");
+        assert!((first.ends[0] - right).abs() < 1e-6);
+        assert!(
+            text_x >= right - 1e-6,
+            "text at {text_x}, letter to {right}"
+        );
+        assert!(base < lay.lines[1].baseline, "cap baseline {base}");
+        // The second line's band, on the letter's left and right halves.
+        let y = lay.lines[1].baseline + 0.5;
+        assert_eq!(lay.hit_char(Point::new(left + 0.2, y)), Some(0));
+        assert_eq!(lay.hit_char(Point::new(right - 0.2, y)), Some(1));
+        // Beside the letter, the second line's text.
+        assert!(lay.hit_char(Point::new(text_x + 5.0, y)).unwrap_or(0) > 1);
+        // Plain paragraphs keep no cap.
+        let plain = f.layout(&TextRequest {
+            spans: &[span(words)],
+            frame: Some(Size::new(40.0, 100.0)),
+            align: TextAlign::Left,
+            para: &ParagraphStyle::default(),
+            on_path: None,
+        });
+        assert!(plain.lines.iter().all(|l| l.cap.is_none()));
+    }
+
+    /// A drop cap never runs over the text beside it (#2575): an italic
+    /// letter whose ink leans past its advance gets the room of its ink,
+    /// and a larger word on the first line does not make the letter
+    /// larger than the room it was given.
+    #[test]
+    fn a_drop_cap_keeps_clear_of_the_text_beside_it() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        let para = ParagraphStyle {
+            drop_cap_lines: 3,
+            ..Default::default()
+        };
+        let lay = |spans: &[TextSpan]| {
+            f.layout(&TextRequest {
+                spans,
+                frame: Some(Size::new(60.0, 100.0)),
+                align: TextAlign::Left,
+                para: &para,
+                on_path: None,
+            })
+        };
+        let italic = |t: &str| {
+            let mut s = span(t);
+            s.italic = true;
+            s
+        };
+        for letter in ["W", "V", "f", "T"] {
+            // The letter alone: its ink as the cap draws it.
+            let alone = lay(&[italic(letter)]);
+            let ink = alone.path.bounding_box();
+            let with_text = lay(&[italic(&format!(
+                "{letter}ords in a paragraph long enough to wrap over several lines."
+            ))]);
+            let first = &with_text.lines[0];
+            let (right, _, _) = first.cap.expect("cap");
+            assert!(
+                ink.x1 <= right + 1e-6,
+                "{letter}: ink to {} past {right}",
+                ink.x1
+            );
+            assert!(ink.x0 >= -1e-6, "{letter}: ink from {}", ink.x0);
+            for l in &with_text.lines[1..3] {
+                let x = l.starts.first().copied().unwrap_or(0.0);
+                assert!(x > ink.x1, "{letter}: line at {x}, ink to {}", ink.x1);
+            }
+            assert!(
+                first.edges[1] > ink.x1,
+                "{letter}: {} {}",
+                first.edges[1],
+                ink.x1
+            );
+        }
+        // A larger word on the first line: the letter keeps its size.
+        let plain = lay(&[span("Words in a paragraph long enough to wrap over lines.")]);
+        let mut big = span("BIG ");
+        big.size_pt = 20.0;
+        let mixed = lay(&[
+            span("Wo "),
+            big,
+            span("in a paragraph long enough to wrap."),
+        ]);
+        let cap_right = |l: &TextLayout| l.lines[0].cap.expect("cap").0;
+        assert!(
+            (cap_right(&plain) - cap_right(&mixed)).abs() < 1e-6,
+            "{} {}",
+            cap_right(&plain),
+            cap_right(&mixed)
+        );
+        assert!(mixed.lines[0].edges[1] > cap_right(&mixed));
+        // A letter with a combining accent drops whole: the accent is
+        // not left in the line, and both characters are the cap's.
+        let accented = lay(&[span("E\u{301}cole in a paragraph long enough to wrap.")]);
+        let first = &accented.lines[0];
+        let (right, base, chars) = first.cap.expect("cap");
+        assert_eq!(chars, 2);
+        assert!(first.edges[2] > right, "{} {right}", first.edges[2]);
+        let y = accented.lines[1].baseline + 0.5;
+        assert!(y > base);
+        assert_eq!(accented.hit_char(Point::new(right - 0.2, y)), Some(2));
+        let alone = lay(&[span("E\u{301}")]).path.bounding_box();
+        assert!(alone.x1 <= right + 1e-6, "{} {right}", alone.x1);
+    }
+
+    /// A drop cap with a descender (a g, y or j) keeps the lines its ink
+    /// hangs beside narrowed, past the lines it spans, as the video of
+    /// #2575 shows a "g" over the fourth line.
+    #[test]
+    fn a_drop_cap_descender_keeps_the_lines_below_clear() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        let para = ParagraphStyle {
+            drop_cap_lines: 3,
+            ..Default::default()
+        };
+        let lay = |t: &str| {
+            let mut s = span(t);
+            s.bold = true;
+            f.layout(&TextRequest {
+                spans: &[s],
+                frame: Some(Size::new(40.0, 100.0)),
+                align: TextAlign::Left,
+                para: &para,
+                on_path: None,
+            })
+        };
+        for letter in ["g", "y", "j", "u"] {
+            let ink = lay(letter).path.bounding_box();
+            let text = lay(&format!(
+                "{letter}ood gkgd gjkkas gjhgkasd gkgkjad fsdg cfghffg cghf xcgd more words to wrap"
+            ));
+            assert!(text.lines.len() > 5, "{}", text.lines.len());
+            for l in &text.lines[1..] {
+                let left = l.starts.first().copied().unwrap_or(0.0);
+                if l.baseline + l.ascent > ink.y0 + 1e-6 {
+                    assert!(
+                        left > ink.x1,
+                        "{letter}: line at {} beside the ink down to {}, starts {left} < {}",
+                        l.baseline,
+                        ink.y0,
+                        ink.x1
+                    );
+                }
+            }
+            // The lines below the ink go back to the margin.
+            let last = text.lines.last().expect("lines");
+            assert!(
+                last.starts.first().copied().unwrap_or(9.0) < 1.0,
+                "{letter}"
+            );
+        }
+    }
+
     /// A drop cap taller than its paragraph (#1995): the next paragraph
     /// with a drop cap of its own starts below the letter instead of
     /// putting its letter over it, and one without a drop cap has its
@@ -6473,7 +6788,8 @@ mod tests {
             &ParagraphStyle::default(),
         )));
         let mixed = lay(&[span("Short one.\n"), plain]);
-        let left = |i: usize| mixed.lines[i].edges[0];
+        // The first line starts with the letter (#2576): its text after it.
+        let left = |i: usize| mixed.lines[i].edges[usize::from(i == 0)];
         assert!(left(0) > 3.0, "{}", left(0));
         assert!((left(1) - left(0)).abs() < 0.01, "{} {}", left(1), left(0));
         assert!((left(2) - left(0)).abs() < 0.01, "{} {}", left(2), left(0));
