@@ -3256,11 +3256,13 @@ fn fit_to_path(app: &mut App, ui: &mut Ui) {
     let combo = |ui: &mut Ui, key: &str, id: &str, current: &str, add: &mut dyn FnMut(&mut Ui)| {
         ui.horizontal(|ui| {
             ui.label(tr(key));
-            crate::ui::keynav::ComboBox::from_id_salt(id)
+            let r = crate::ui::keynav::ComboBox::from_id_salt(id)
                 .selected_text(current)
                 .show_ui(ui, |ui| add(ui))
-                .response
-                .rich_tip(crate::ui::tips::pair(key, &format!("{key}_desc")));
+                .response;
+            let rect = r.rect;
+            r.rich_tip(crate::ui::tips::pair(key, &format!("{key}_desc")));
+            ui.ctx().data_mut(|d| d.insert_temp(fit_combo_id(id), rect));
         });
     };
     let radio = |ui: &mut Ui, on: bool, key: &str| -> bool {
@@ -3611,17 +3613,25 @@ fn fit_to_path(app: &mut App, ui: &mut Ui) {
         .iter()
         .find(|(o, _)| *o == f.order)
         .map_or(String::new(), |(_, k)| tr(k));
-    combo(
-        ui,
-        "docker.fit_to_path_order",
-        "fit_path_order",
-        &cur,
-        &mut |ui| {
-            for (o, k) in orders {
-                ui.selectable_value(&mut f.order, o, tr(k));
-            }
-        },
-    );
+    // The order sorts the objects fitted: one object (or one group) has
+    // none to change, so the list is greyed and says why (#2740).
+    let sortable = objects >= 2;
+    ui.add_enabled_ui(sortable, |ui| {
+        combo(
+            ui,
+            "docker.fit_to_path_order",
+            "fit_path_order",
+            &cur,
+            &mut |ui| {
+                for (o, k) in orders {
+                    ui.selectable_value(&mut f.order, o, tr(k));
+                }
+            },
+        );
+    });
+    if !sortable {
+        dim(ui, tr("docker.fit_to_path_order_needs_two"));
+    }
     ui.checkbox(&mut f.reverse, tr("docker.fit_to_path_reverse"))
         .rich_tip(crate::ui::tips::keyed("docker.fit_to_path_reverse"));
     if f != app.fit_path {
@@ -3647,6 +3657,12 @@ fn fit_to_path(app: &mut App, ui: &mut Ui) {
         app.fit_objects_to_path();
         app.docker_preview.clear();
     }
+}
+
+/// Where the Fit Objects to Path panel drew its list `id` (such as
+/// "fit_path_order") last frame, kept in the context's data.
+pub(crate) fn fit_combo_id(id: &str) -> egui::Id {
+    egui::Id::new(("fit_path_combo", id))
 }
 
 /// The id of square `i` (0 to 8, left to right from the top row) of the

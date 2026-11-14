@@ -6484,6 +6484,7 @@ docker.fit_to_path_side_desc = "Vzdálenost od cesty k nejbližšímu okraji ka�
 docker.fit_to_path_fixed_desc = "Otočí všechny objekty o stejný úhel bez ohledu na směr cesty." # mt
 docker.fit_to_path_angle_desc = "Stupně proti směru hodinových ručiček; při sledování cesty se přičtou k jejímu směru." # mt
 docker.fit_to_path_order_desc = "Pořadí, ve kterém objekty jdou podél cesty." # mt
+docker.fit_to_path_order_needs_two = "Pořadí řadí dva nebo více objektů. Jeden objekt (nebo jedna skupina) nemá co řadit: vyberte objekty jeden po druhém nebo je oddělte a cestu nakonec." # mt
 docker.fit_to_path_keep_originals_desc = "Ponechá vybrané objekty na místě a na cestu umístí jejich kopie." # mt
 docker.fit_to_path_group_desc = "Umístěné objekty vloží do jedné skupiny." # mt
 docker.fit_to_path_contiguous_desc = "Projde všechny podcesty jednu po druhé jako jednu cestu; když je vypnuto, použije se jen první podcesta." # mt

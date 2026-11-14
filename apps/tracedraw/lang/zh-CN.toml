@@ -6484,6 +6484,7 @@ docker.fit_to_path_side_desc = "从路径到每个对象最近边缘的距离。
 docker.fit_to_path_fixed_desc = "无论路径方向如何，所有对象都旋转相同角度。" # mt
 docker.fit_to_path_angle_desc = "逆时针度数；对象跟随路径时加到路径方向上。" # mt
 docker.fit_to_path_order_desc = "对象沿路径排列的顺序。" # mt
+docker.fit_to_path_order_needs_two = "顺序对两个或更多对象排序。一个对象（或一个群组）没有可排序的内容：请逐个选择对象或取消群组，最后选择路径。" # mt
 docker.fit_to_path_keep_originals_desc = "将选定对象留在原处，把它们的副本放到路径上。" # mt
 docker.fit_to_path_group_desc = "将放置的对象放入一个群组。" # mt
 docker.fit_to_path_contiguous_desc = "依次把路径的所有子路径当作一条路径；关闭时只使用第一个子路径。" # mt

@@ -6484,6 +6484,7 @@ docker.fit_to_path_side_desc = "Der Abstand vom Pfad zur nächsten Kante jedes O
 docker.fit_to_path_fixed_desc = "Dreht alle Objekte um denselben Winkel, unabhängig von der Pfadrichtung." # mt
 docker.fit_to_path_angle_desc = "Grad gegen den Uhrzeigersinn; wird zur Pfadrichtung addiert, wenn die Objekte dem Pfad folgen." # mt
 docker.fit_to_path_order_desc = "Die Reihenfolge, in der die Objekte entlang des Pfads liegen." # mt
+docker.fit_to_path_order_needs_two = "Die Reihenfolge sortiert zwei oder mehr Objekte. Ein Objekt (oder eine Gruppe) hat nichts zu sortieren: Wählen Sie die Objekte einzeln aus oder heben Sie die Gruppierung auf, und den Pfad zuletzt." # mt
 docker.fit_to_path_keep_originals_desc = "Lässt die ausgewählten Objekte an ihrem Platz und setzt Kopien davon auf den Pfad." # mt
 docker.fit_to_path_group_desc = "Fasst die platzierten Objekte in einer Gruppe zusammen." # mt
 docker.fit_to_path_contiguous_desc = "Durchläuft alle Unterpfade nacheinander als einen Pfad; ausgeschaltet wird nur der erste Unterpfad verwendet." # mt

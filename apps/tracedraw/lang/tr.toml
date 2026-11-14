@@ -6484,6 +6484,7 @@ docker.fit_to_path_side_desc = "Yoldan her nesnenin en yakın kenarına olan uza
 docker.fit_to_path_fixed_desc = "Yolun yönü ne olursa olsun tüm nesneleri aynı açıyla döndürür." # mt
 docker.fit_to_path_angle_desc = "Saat yönünün tersine derece; nesneler yolu izlediğinde yolun yönüne eklenir." # mt
 docker.fit_to_path_order_desc = "Nesnelerin yol boyunca dizildiği sıra." # mt
+docker.fit_to_path_order_needs_two = "Sıra, iki veya daha fazla nesneyi sıralar. Tek nesnede (veya tek grupta) sıralanacak bir şey yoktur: nesneleri tek tek seçin ya da grubu çözün, yolu en son seçin." # mt
 docker.fit_to_path_keep_originals_desc = "Seçili nesneleri yerinde bırakır ve kopyalarını yola yerleştirir." # mt
 docker.fit_to_path_group_desc = "Yerleştirilen nesneleri tek bir grupta toplar." # mt
 docker.fit_to_path_contiguous_desc = "Yolun tüm alt yollarını art arda tek bir yol gibi izler; kapalıyken yalnızca ilk alt yol kullanılır." # mt

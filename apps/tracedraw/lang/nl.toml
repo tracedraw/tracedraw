@@ -6484,6 +6484,7 @@ docker.fit_to_path_side_desc = "De afstand van het pad tot de dichtstbijzijnde r
 docker.fit_to_path_fixed_desc = "Draait alle objecten over dezelfde hoek, wat de richting van het pad ook is." # mt
 docker.fit_to_path_angle_desc = "Graden tegen de klok in; opgeteld bij de richting van het pad als de objecten het volgen." # mt
 docker.fit_to_path_order_desc = "De volgorde waarin de objecten langs het pad gaan." # mt
+docker.fit_to_path_order_needs_two = "Volgorde sorteert twee of meer objecten. Eén object (of één groep) heeft niets te sorteren: selecteer de objecten een voor een, of hef de groep op, en het pad als laatste." # mt
 docker.fit_to_path_keep_originals_desc = "Laat de geselecteerde objecten staan en plaatst kopieën ervan op het pad." # mt
 docker.fit_to_path_group_desc = "Zet de geplaatste objecten in één groep." # mt
 docker.fit_to_path_contiguous_desc = "Loopt alle subpaden na elkaar af als één pad; uit gebruikt alleen het eerste subpad." # mt

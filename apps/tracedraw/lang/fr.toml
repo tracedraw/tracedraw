@@ -6484,6 +6484,7 @@ docker.fit_to_path_side_desc = "La distance entre le tracé et le bord le plus p
 docker.fit_to_path_fixed_desc = "Fait pivoter tous les objets du même angle, quel que soit le sens du tracé." # mt
 docker.fit_to_path_angle_desc = "Degrés dans le sens antihoraire ; ajoutés au sens du tracé quand les objets le suivent." # mt
 docker.fit_to_path_order_desc = "L'ordre dans lequel les objets se suivent le long du tracé." # mt
+docker.fit_to_path_order_needs_two = "L’ordre trie deux objets ou plus. Un seul objet (ou un groupe) n’a rien à trier : sélectionnez les objets un par un, ou dissociez-les, et le tracé en dernier." # mt
 docker.fit_to_path_keep_originals_desc = "Laisse les objets sélectionnés à leur place et pose des copies sur le tracé." # mt
 docker.fit_to_path_group_desc = "Met les objets placés dans un seul groupe." # mt
 docker.fit_to_path_contiguous_desc = "Parcourt tous les sous-tracés l'un après l'autre comme un seul tracé ; désactivé, seul le premier sous-tracé sert." # mt

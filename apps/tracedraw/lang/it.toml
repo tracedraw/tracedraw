@@ -6484,6 +6484,7 @@ docker.fit_to_path_side_desc = "La distanza dal tracciato al bordo più vicino d
 docker.fit_to_path_fixed_desc = "Ruota tutti gli oggetti dello stesso angolo, qualunque sia la direzione del tracciato." # mt
 docker.fit_to_path_angle_desc = "Gradi in senso antiorario; si sommano alla direzione del tracciato quando gli oggetti lo seguono." # mt
 docker.fit_to_path_order_desc = "L'ordine in cui gli oggetti si susseguono lungo il tracciato." # mt
+docker.fit_to_path_order_needs_two = "L’ordine ordina due o più oggetti. Un oggetto (o un gruppo) non ha nulla da ordinare: seleziona gli oggetti uno per uno, o separali, e il tracciato per ultimo." # mt
 docker.fit_to_path_keep_originals_desc = "Lascia gli oggetti selezionati dove sono e mette loro copie sul tracciato." # mt
 docker.fit_to_path_group_desc = "Mette gli oggetti posizionati in un unico gruppo." # mt
 docker.fit_to_path_contiguous_desc = "Percorre tutti i sottotracciati uno dopo l'altro come un solo tracciato; spento, si usa solo il primo." # mt

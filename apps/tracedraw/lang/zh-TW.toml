@@ -6484,6 +6484,7 @@ docker.fit_to_path_side_desc = "從路徑到每個物件最近邊緣的距離。
 docker.fit_to_path_fixed_desc = "無論路徑方向如何，所有物件都旋轉相同角度。" # mt
 docker.fit_to_path_angle_desc = "逆時針度數；物件跟隨路徑時加到路徑方向上。" # mt
 docker.fit_to_path_order_desc = "物件沿路徑排列的順序。" # mt
+docker.fit_to_path_order_needs_two = "順序會排序兩個以上的物件。一個物件（或一個群組）沒有可排序的內容：請逐一選取物件或取消群組，最後選取路徑。" # mt
 docker.fit_to_path_keep_originals_desc = "將選取的物件留在原處，把它們的副本放到路徑上。" # mt
 docker.fit_to_path_group_desc = "將放置的物件放入一個群組。" # mt
 docker.fit_to_path_contiguous_desc = "依序把路徑的所有子路徑當作一條路徑；關閉時只使用第一個子路徑。" # mt

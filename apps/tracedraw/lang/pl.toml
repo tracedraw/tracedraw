@@ -6484,6 +6484,7 @@ docker.fit_to_path_side_desc = "Odległość od ścieżki do najbliższej krawę
 docker.fit_to_path_fixed_desc = "Obraca wszystkie obiekty o ten sam kąt, niezależnie od kierunku ścieżki." # mt
 docker.fit_to_path_angle_desc = "Stopnie przeciwnie do ruchu wskazówek zegara; dodawane do kierunku ścieżki, gdy obiekty za nią podążają." # mt
 docker.fit_to_path_order_desc = "Kolejność, w jakiej obiekty idą wzdłuż ścieżki." # mt
+docker.fit_to_path_order_needs_two = "Kolejność sortuje dwa lub więcej obiektów. Jeden obiekt (lub jedna grupa) nie ma czego sortować: zaznacz obiekty po kolei lub rozgrupuj je, a ścieżkę na końcu." # mt
 docker.fit_to_path_keep_originals_desc = "Zostawia zaznaczone obiekty na miejscu i umieszcza na ścieżce ich kopie." # mt
 docker.fit_to_path_group_desc = "Umieszcza wstawione obiekty w jednej grupie." # mt
 docker.fit_to_path_contiguous_desc = "Przechodzi wszystkie ścieżki podrzędne po kolei jako jedną ścieżkę; wyłączone używa tylko pierwszej." # mt

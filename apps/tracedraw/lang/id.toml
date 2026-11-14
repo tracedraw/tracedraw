@@ -6484,6 +6484,7 @@ docker.fit_to_path_side_desc = "Jarak dari jalur ke tepi terdekat setiap objek."
 docker.fit_to_path_fixed_desc = "Putar semua objek dengan sudut yang sama, apa pun arah jalurnya." # mt
 docker.fit_to_path_angle_desc = "Derajat berlawanan arah jarum jam; ditambahkan ke arah jalur saat objek mengikutinya." # mt
 docker.fit_to_path_order_desc = "Urutan objek di sepanjang jalur." # mt
+docker.fit_to_path_order_needs_two = "Urutan mengurutkan dua objek atau lebih. Satu objek (atau satu grup) tidak punya apa pun untuk diurutkan: pilih objek satu per satu, atau pisahkan grupnya, lalu jalur terakhir." # mt
 docker.fit_to_path_keep_originals_desc = "Biarkan objek terpilih di tempatnya dan tempatkan salinannya di jalur." # mt
 docker.fit_to_path_group_desc = "Masukkan objek yang ditempatkan ke dalam satu grup." # mt
 docker.fit_to_path_contiguous_desc = "Telusuri semua subjalur satu demi satu sebagai satu jalur; jika mati, hanya subjalur pertama yang dipakai." # mt

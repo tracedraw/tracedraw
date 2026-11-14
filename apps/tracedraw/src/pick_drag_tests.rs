@@ -27608,3 +27608,82 @@ fn an_object_dropped_on_an_empty_clip_frame_goes_inside() {
     assert_eq!(app.doc().top_level_of(square), Some(clip), "in the frame");
     assert!(app.drop_frame.is_none());
 }
+
+/// The Fit Objects to Path panel's Order list opens on a click and a
+/// row picked in it changes the order the objects go along the path,
+/// which the preview follows; with one object to fit (the path is the
+/// other) there is nothing to sort, so the list is greyed and says why
+/// (#2740).
+#[test]
+fn the_fit_to_path_order_list_picks_an_order() {
+    use crate::fit_path::FitOrder;
+    use crate::ui::dockers2::fit_combo_id;
+    let (ctx, mut app, a) = setup();
+    let mut sel = vec![a];
+    for i in 0..2 {
+        let x = 70.0 + 20.0 * i as f64;
+        sel.push(
+            app.new_shape(ShapeKind::Ellipse {
+                rect: Rect::new(x, 10.0, x + 6.0 + 6.0 * i as f64, 22.0),
+                arc: None,
+            })
+            .expect("ellipse"),
+        );
+    }
+    let mut path = tracedraw_core::BezPath::new();
+    path.move_to((10.0, 100.0));
+    path.line_to((160.0, 100.0));
+    let line = app
+        .new_shape(ShapeKind::Path {
+            path,
+            closed: false,
+        })
+        .expect("path");
+    sel.push(line);
+    let list = |ctx: &egui::Context| {
+        ctx.data(|d| d.get_temp::<egui::Rect>(fit_combo_id("fit_path_order")))
+            .expect("the Order list")
+    };
+    // One object and the path: a click on the list opens nothing.
+    app.select(vec![a, line]);
+    app.open_docker(crate::app::DockerTab::FitToPath);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    click_at(&ctx, &mut app, list(&ctx).center(), Modifiers::NONE);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(!egui::Popup::is_any_open(&ctx), "greyed with one object");
+    // Three objects: the list opens (above the button, at the panel's
+    // foot) and a row changes the order.
+    app.select(sel);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let rect = list(&ctx);
+    click_at(&ctx, &mut app, rect.center(), Modifiers::NONE);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(egui::Popup::is_any_open(&ctx), "the click opens the list");
+    let row = rect.height().max(18.0);
+    click_at(
+        &ctx,
+        &mut app,
+        rect.center() - egui::vec2(0.0, row),
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert_ne!(app.fit_path.order, FitOrder::AsSelected, "a row picked");
+    // The preview follows the order.
+    let boxes = |app: &mut App| -> Vec<(i64, i64)> {
+        app.fit_objects_to_path_preview()
+            .iter()
+            .map(|p| {
+                let b = kurbo::Shape::bounding_box(p);
+                ((b.center().x * 100.0) as i64, (b.width() * 100.0) as i64)
+            })
+            .collect()
+    };
+    app.fit_path.order = FitOrder::Reversed;
+    let reversed = boxes(&mut app);
+    app.fit_path.order = FitOrder::AsSelected;
+    assert_ne!(reversed, boxes(&mut app), "the preview follows the order");
+}

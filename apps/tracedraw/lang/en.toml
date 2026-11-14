@@ -6494,6 +6494,7 @@ docker.fit_to_path_side_desc = "The distance from the path to the nearest edge o
 docker.fit_to_path_fixed_desc = "Turn every object by the same angle, whatever the direction of the path."
 docker.fit_to_path_angle_desc = "Degrees counterclockwise; added to the path's direction when the objects follow it."
 docker.fit_to_path_order_desc = "The order the objects go along the path in."
+docker.fit_to_path_order_needs_two = "Order sorts two or more objects. One object (or one group) has nothing to sort: select the objects one by one, or ungroup them, and the path last."
 docker.fit_to_path_keep_originals_desc = "Leave the selected objects where they are and place copies of them on the path."
 docker.fit_to_path_group_desc = "Put the objects placed into one group."
 docker.fit_to_path_contiguous_desc = "Walk every subpath of the path one after another, as one path; when off, only the first subpath is used."
