@@ -7238,7 +7238,12 @@ fn paragraph_spacing(style: &text::RunStyle, base: &ParagraphStyle) -> Paragraph
     if let Some((left, first, right)) = style.indent_pt {
         const PT_MM: f64 = 25.4 / 72.0;
         p.left_indent = left * PT_MM;
-        p.first_line_indent = first * PT_MM;
+        // The file gives the first line's indent from the frame's edge, as
+        // the left indent is (the left one moves the other lines only),
+        // while TraceDraw's first-line indent counts from the left indent:
+        // read as given, a first line at 1 mm under a left indent of
+        // 1.5 mm sat at 2.5 mm and wrapped a line that fits (#2669).
+        p.first_line_indent = (first - left) * PT_MM;
         p.right_indent = right * PT_MM;
     }
     if let Some(tabs) = &style.tabs {
@@ -7290,6 +7295,31 @@ fn grey_mask(f: &tracedraw_core::Fountain) -> Fill {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    /// The indent record of #2669: left 1.5 mm, first line 1 mm from the
+    /// frame, right 0. The first line starts at 1 mm (left + first-line
+    /// indent in TraceDraw's layout), not 2.5 mm, and a first line at the
+    /// left indent (the usual block indent) is no extra indent.
+    #[test]
+    fn the_first_line_indent_counts_from_the_frame() {
+        const MM_PT: f64 = 72.0 / 25.4;
+        let mut st = text::RunStyle {
+            indent_pt: Some((1.5 * MM_PT, 1.0 * MM_PT, 0.0)),
+            ..Default::default()
+        };
+        let p = paragraph_spacing(&st, &ParagraphStyle::default());
+        assert!((p.left_indent - 1.5).abs() < 1e-9, "{p:?}");
+        assert!((p.first_line_indent + 0.5).abs() < 1e-9, "{p:?}");
+        assert!((p.left_indent + p.first_line_indent - 1.0).abs() < 1e-9);
+        assert_eq!(p.right_indent, 0.0);
+        st.indent_pt = Some((5.0 * MM_PT, 5.0 * MM_PT, 0.0));
+        let p = paragraph_spacing(&st, &ParagraphStyle::default());
+        assert!(p.first_line_indent.abs() < 1e-9, "{p:?}");
+        assert!((p.left_indent - 5.0).abs() < 1e-9);
+        st.indent_pt = Some((0.0, 3.0 * MM_PT, 0.0));
+        let p = paragraph_spacing(&st, &ParagraphStyle::default());
+        assert!((p.first_line_indent - 3.0).abs() < 1e-9, "{p:?}");
+    }
 
     #[test]
     fn paragraph_spacing_before_and_after_come_from_the_style_string() {
@@ -12036,7 +12066,9 @@ pub(crate) mod tests {
                 assert!((para.char_spacing_pct - 5.0).abs() < 1e-9, "{para:?}");
                 assert!((para.leading_pct - 150.0).abs() < 1e-9);
                 assert!((para.left_indent - 25.4).abs() < 1e-9, "{para:?}");
-                assert!((para.first_line_indent - 6.35).abs() < 1e-9);
+                // First line at 18 pt from the frame: 54 pt left of the
+                // other lines (#2669).
+                assert!((para.first_line_indent + 19.05).abs() < 1e-9, "{para:?}");
                 assert!((para.right_indent - 12.7).abs() < 1e-9);
             }
             other => panic!("{other:?}"),
