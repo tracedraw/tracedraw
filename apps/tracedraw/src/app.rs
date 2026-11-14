@@ -1869,6 +1869,9 @@ pub struct App {
     pub fill_drag: Option<Fill>,
     /// Where the document palette is this frame (a drop target).
     pub doc_palette_rect: Option<egui::Rect>,
+    /// Where the Color Styles docker is this frame, for objects let go
+    /// on it (#2625).
+    pub color_styles_rect: Option<egui::Rect>,
     /// Where the bars of the user's own palettes were last drawn, by
     /// palette: a colour dropped there joins that palette (while its bar
     /// is still shown). Kept from frame to frame, since a drop is handled
@@ -3029,6 +3032,7 @@ impl App {
             palette_drag: None,
             fill_drag: None,
             doc_palette_rect: None,
+            color_styles_rect: None,
             palette_drop_rects: Vec::new(),
             palette_strip_rects: Vec::new(),
             palette_new: None,

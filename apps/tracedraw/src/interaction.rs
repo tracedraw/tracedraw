@@ -3676,6 +3676,15 @@ impl App {
                     );
                 }
             }
+            // Objects let go on the Color Styles docker: a window makes
+            // colour styles of their colours, and they stay where they
+            // were (#2625).
+            Drag::Move { .. } if self.color_styles_drop_target() => {
+                self.drag_copy = false;
+                self.drop_frame = None;
+                self.open_color_styles_from_selection();
+                self.end_page_drag_group();
+            }
             // A picture let go on a palette bar: a window offers its
             // colours to that palette, and the picture stays where it was
             // (#2137).

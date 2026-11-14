@@ -4312,7 +4312,7 @@ impl App {
         }
     }
 
-    fn colors_of(shapes: &[Shape], out: &mut Vec<Color>) {
+    pub(crate) fn colors_of(shapes: &[Shape], out: &mut Vec<Color>) {
         for s in shapes {
             if let Some(c) = s.fill.preview_color() {
                 if !out.contains(&c) {

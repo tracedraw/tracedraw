@@ -274,6 +274,29 @@ objects, a picture with others) does what it did before.
   own. **Cancel** or Esc adds nothing. The user's palettes are outside
   the drawing's undo, so the window is the place to back out.
 
+## Colour styles from objects (#2625)
+
+Objects moved with the Pick tool and let go over the Color Styles docker
+(vectors, pictures or both; a frame marks the docker while they are over
+it) are not moved: the same window opens as **Create Color Styles**.
+
+- The colours offered: the fill and outline colours of everything in the
+  selection (in groups and clip frames too, as Document palette >
+  From selection reads them) and the pixels of its pictures. Vectors
+  alone give their own colours exactly (a CMYK or spot colour stays as
+  it is) while there are no more of them than the number asked for;
+  past it, or with a picture, the colours are worked out as above.
+- **Group them into a color harmony** (ticked at first): the new styles
+  form one harmony, named Harmony 1 (Harmony 2 when that name is taken,
+  and so on). Unticked, they are plain styles.
+- **OK** makes a colour style ("Color n") of each colour the drawing has
+  no style of yet, in one undo step; the status bar says how many.
+  Cancel or Esc makes none. With nothing in the selection that has a
+  colour, no window opens and the status bar says so
+  (`ui::picture_colors::tests::objects_dropped_on_the_color_styles_docker_become_a_harmony`,
+  `ui::picture_colors::tests::a_picture_dropped_on_the_color_styles_docker_offers_its_colours`).
+- An empty Color Styles docker says that objects can be dragged onto it.
+
 ## Document palette
 
 - Every colour applied to an object (fill or outline, from a palette, the

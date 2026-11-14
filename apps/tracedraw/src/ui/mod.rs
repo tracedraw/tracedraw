@@ -379,6 +379,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     app.docker_preview.clear();
     app.step_preview_shown = false;
     app.doc_palette_rect = None;
+    app.color_styles_rect = None;
     app.palette_strip_rects.clear();
     app.docker_preview_point = None;
     let ctx = ui.ctx().clone();

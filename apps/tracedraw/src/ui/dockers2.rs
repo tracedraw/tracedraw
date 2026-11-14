@@ -454,7 +454,23 @@ pub(crate) fn add_color_style(app: &mut App, c: Color) {
 }
 
 fn color_styles(app: &mut App, ui: &mut Ui) {
+    // Objects dragged from the drawing and let go here become colour
+    // styles (#2625): where the docker is, and a frame while they are
+    // over it.
+    let area = ui.max_rect().intersect(ui.clip_rect());
+    app.color_styles_rect = Some(area);
+    if app.transforming() && app.color_styles_drop_target() {
+        ui.painter().rect_stroke(
+            area.shrink(1.0),
+            3.0,
+            egui::Stroke::new(2.0, Tokens::SELECTION),
+            egui::StrokeKind::Inside,
+        );
+    }
     let styles = app.doc().color_styles.clone();
+    if styles.is_empty() {
+        dim(ui, tr("docker.cs_drop_hint"));
+    }
     ui.horizontal(|ui| {
         if ui
             .button(tr("docker.new_from_selection"))
