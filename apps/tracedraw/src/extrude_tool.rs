@@ -5,7 +5,10 @@
 //! the others run toward the point the drag ends on (their vanishing
 //! point) by the bar's depth. A drag that starts on the handle of a
 //! selected extrusion (its vanishing point, or the middle of a parallel
-//! body's copy) moves that handle. Each drag is one undo step.
+//! body's copy) moves that handle. A body toward or away from a vanishing
+//! point also has a depth slider on that line, where its far face is: a
+//! drag of it along the line sets the depth (#1280). Each drag is one undo
+//! step.
 //!
 //! The bar and the panel show the selected object's extrusion and edit
 //! the selected extrusions live; the vanishing point is shown and typed
@@ -285,6 +288,38 @@ pub struct ExtrudeDrag {
     /// from there, so the line keeps its length and angle.
     pub line: bool,
     pub press: Point,
+    /// The drag took the depth slider on the line (#1280).
+    pub depth: bool,
+}
+
+/// The depth slider of an extrusion toward or away from a vanishing
+/// point: where its far face's middle is, between the object's middle and
+/// the vanishing point (Small) or beyond the middle (Big).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DepthSlider {
+    pub id: ShapeId,
+    /// The slider, page space.
+    pub at: Point,
+    /// The object's middle and the vanishing point.
+    pub mid: Point,
+    pub vanishing: Point,
+    /// The far face goes away from the vanishing point (Big).
+    pub away: bool,
+}
+
+impl DepthSlider {
+    /// The depth (percent, 1 to 99) for the pointer at `p`: its place
+    /// along the line, measured from the middle.
+    pub fn depth_at(&self, p: Point) -> f64 {
+        let u = self.vanishing - self.mid;
+        let l2 = u.hypot2();
+        if l2 < 1e-12 {
+            return 1.0;
+        }
+        let t = (p - self.mid).dot(u) / l2;
+        let t = if self.away { -t } else { t };
+        fin(t * 100.0, 1.0, 99.0, 1.0)
+    }
 }
 
 fn is_extrude(e: &Effect) -> bool {
@@ -490,13 +525,60 @@ impl App {
         out
     }
 
+    /// The depth slider of each selected extrusion with a vanishing point
+    /// (#1280).
+    pub fn extrusion_depth_sliders(&self) -> Vec<DepthSlider> {
+        let mut out = Vec::new();
+        for (id, vanishing, mid) in self.extrusion_handles() {
+            let Some(e) = self
+                .doc()
+                .find_shape(id)
+                .and_then(|s| s.effects.iter().find(|e| is_extrude(e)).cloned())
+            else {
+                continue;
+            };
+            let Effect::Extrude {
+                kind: Some(kind),
+                amount,
+                vanishing: Some(_),
+                ..
+            } = e
+            else {
+                continue;
+            };
+            if kind.parallel() || (vanishing - mid).hypot() < 1e-9 {
+                continue;
+            }
+            let away = matches!(kind, ExtrudeKind::BigBack | ExtrudeKind::BigFront);
+            let d = amount.clamp(0.01, 0.99);
+            let at = if away {
+                mid + (mid - vanishing) * d
+            } else {
+                mid + (vanishing - mid) * d
+            };
+            out.push(DepthSlider {
+                id,
+                at,
+                mid,
+                vanishing,
+                away,
+            });
+        }
+        out
+    }
+
     /// The selected extrusion whose line (from the object's middle to its
     /// handle) passes within the pick distance of `p`, away from the
     /// handle: its object, handle and middle.
     pub fn extrusion_line_at(&self, p: Point) -> Option<(ShapeId, Point, Point)> {
         let tol = self.line_pick_tol();
         let handles = self.extrusion_handles();
-        if handles.iter().any(|(_, h, _)| (*h - p).hypot() <= tol) {
+        if handles.iter().any(|(_, h, _)| (*h - p).hypot() <= tol)
+            || self
+                .extrusion_depth_sliders()
+                .iter()
+                .any(|d| (d.at - p).hypot() <= tol)
+        {
             return None;
         }
         handles
@@ -510,6 +592,23 @@ impl App {
     /// object pressed. Each drag is one undo step.
     pub fn begin_extrude(&mut self, at: Point) -> bool {
         let tol = self.line_pick_tol();
+        if let Some(d) = self
+            .extrusion_depth_sliders()
+            .into_iter()
+            .find(|d| (d.at - at).hypot() <= tol)
+        {
+            self.effect_edit_step = None;
+            self.extrude_drag = Some(ExtrudeDrag {
+                id: d.id,
+                start: d.at,
+                handle: true,
+                anchor: d.mid,
+                line: false,
+                press: at,
+                depth: true,
+            });
+            return true;
+        }
         if let Some((id, h, anchor)) = self
             .extrusion_handles()
             .into_iter()
@@ -523,6 +622,7 @@ impl App {
                 anchor,
                 line: false,
                 press: at,
+                depth: false,
             });
             return true;
         }
@@ -535,6 +635,7 @@ impl App {
                 anchor,
                 line: true,
                 press: at,
+                depth: false,
             });
             return true;
         }
@@ -556,6 +657,7 @@ impl App {
             anchor: at,
             line: false,
             press: at,
+            depth: false,
         });
         true
     }
@@ -588,7 +690,18 @@ impl App {
         if dd.handle {
             self.sync_extrude_settings();
         }
-        if self.extrude.kind.parallel() {
+        if dd.depth {
+            // Along the line to the vanishing point; the point itself
+            // stays.
+            let Some(slider) = self
+                .extrusion_depth_sliders()
+                .into_iter()
+                .find(|d| d.id == dd.id)
+            else {
+                return;
+            };
+            self.extrude.depth = slider.depth_at(p);
+        } else if self.extrude.kind.parallel() {
             // From where the drag started, or (the handle at the copy's
             // middle) from the object's middle.
             let from = if dd.handle { dd.anchor } else { dd.start };
@@ -842,6 +955,66 @@ mod tests {
         let ev = tracedraw_core::live::evaluate(&s);
         assert_eq!(ev.below.iter().filter(|s| s.fill != Fill::None).count(), 3);
         assert_eq!(ev.below.len(), 3);
+    }
+
+    /// #1280: the depth slider sits where the far face is, on the line
+    /// to the vanishing point (beyond the middle for a Big body), and a
+    /// drag of it sets the depth from the pointer's place along the line
+    /// in one undo step, the vanishing point staying.
+    #[test]
+    fn the_depth_slider_sets_the_depth_along_the_line() {
+        let mut app = App::headless();
+        app.tool = Tool::Extrude;
+        let id = square(&mut app);
+        // Small back toward (60, 10): the middle is (10, 10).
+        assert!(app.begin_extrude(Point::new(10.0, 10.0)));
+        app.drag_extrude(Point::new(60.0, 10.0));
+        app.extrude_drag = None;
+        let sliders = app.extrusion_depth_sliders();
+        assert_eq!(sliders.len(), 1);
+        let d = sliders[0];
+        assert!(!d.away);
+        assert!((d.at - Point::new(20.0, 10.0)).hypot() < 1e-9, "{:?}", d.at);
+        let steps = app.engine.history_labels().0.len();
+        // Pressed on it, dragged to halfway (off the line counts by its
+        // place along it).
+        assert!(app.begin_extrude(d.at));
+        assert!(app.extrude_drag.is_some_and(|x| x.depth));
+        app.drag_extrude(Point::new(30.0, 14.0));
+        app.drag_extrude(Point::new(35.0, 13.0));
+        app.extrude_drag = None;
+        assert_eq!(app.engine.history_labels().0.len(), steps + 1);
+        let Some(Effect::Extrude {
+            amount, vanishing, ..
+        }) = extrusion(&app, id)
+        else {
+            panic!("an extrusion");
+        };
+        assert!((amount - 0.5).abs() < 1e-9, "{amount}");
+        assert_eq!(vanishing, Some(Point::new(60.0, 10.0)));
+        // Past either end it stops at 1 and 99 %.
+        let d = app.extrusion_depth_sliders()[0];
+        assert!(app.begin_extrude(d.at));
+        app.drag_extrude(Point::new(-40.0, 10.0));
+        app.extrude_drag = None;
+        app.sync_extrude_settings();
+        assert!((app.extrude.depth - 1.0).abs() < 1e-9);
+        // A Big body: the slider is on the far side of the middle.
+        app.extrude.kind = ExtrudeKind::BigBack;
+        app.extrude.depth = 30.0;
+        app.apply_extrude_settings();
+        let d = app.extrusion_depth_sliders()[0];
+        assert!(d.away);
+        assert!((d.at - Point::new(-5.0, 10.0)).hypot() < 1e-9, "{:?}", d.at);
+        assert!(app.begin_extrude(d.at));
+        app.drag_extrude(Point::new(-15.0, 10.0));
+        app.extrude_drag = None;
+        app.sync_extrude_settings();
+        assert!((app.extrude.depth - 50.0).abs() < 1e-9);
+        // A parallel body has none.
+        app.extrude.kind = ExtrudeKind::BackParallel;
+        app.apply_extrude_settings();
+        assert!(app.extrusion_depth_sliders().is_empty());
     }
 
     #[test]

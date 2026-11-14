@@ -132,6 +132,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     draw_shadow_handles(app, painter);
     draw_shadow_edge_hint(app, painter);
     draw_contour_handles(app, painter);
+    draw_offset_shadow_handle(app, painter);
     draw_blend_controls(app, painter);
 
     // Fit Text to Path waiting for its path: the text on the one near.
@@ -1545,6 +1546,32 @@ fn draw_contour_handles(app: &App, painter: &Painter) {
     } else {
         Color32::WHITE
     };
+    let rect = ERect::from_center_size(z, egui::vec2(side, side));
+    painter.rect_filled(rect, 0.0, fill);
+    painter.rect_stroke(
+        rect,
+        0.0,
+        EStroke::new(1.0, Tokens::SELECTION),
+        egui::StrokeKind::Outside,
+    );
+}
+
+/// Block Shadow and Inner Shadow tools: the selected shadow's line from
+/// the object's middle and the square at its end (#1280), filled while it
+/// is dragged.
+fn draw_offset_shadow_handle(app: &App, painter: &Painter) {
+    let Some(h) = app.offset_shadow_handle() else {
+        return;
+    };
+    let view = &app.view;
+    let (a, z) = (view.to_screen(h.mid), view.to_screen(h.end));
+    haloed_polyline(painter, &[a, z], false, Tokens::SELECTION);
+    let fill = if matches!(app.drag, Drag::OffsetShadow { .. }) {
+        Tokens::SELECTION
+    } else {
+        Color32::WHITE
+    };
+    let side = crate::shadow_tool::HANDLE_SIDE_PX - 2.0;
     let rect = ERect::from_center_size(z, egui::vec2(side, side));
     painter.rect_filled(rect, 0.0, fill);
     painter.rect_stroke(
