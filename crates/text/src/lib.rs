@@ -1228,14 +1228,17 @@ fn right_to_left(c: char) -> bool {
 }
 
 /// `text` cut into runs of one direction, in the order they are seen,
-/// each with whether it runs right to left: the Unicode bidirectional
-/// algorithm, the text's first strong letter setting its direction. Text
-/// without right-to-left letters is one left-to-right run.
-fn bidi_runs(text: &str) -> Option<Vec<(Range<usize>, u8)>> {
-    if !text.chars().any(right_to_left) {
+/// each with its bidirectional level: the Unicode bidirectional
+/// algorithm, the text's first strong letter setting its direction, or
+/// right to left for a paragraph set to run right to left (`rtl`). Text
+/// without right-to-left letters in a left-to-right paragraph is one
+/// left-to-right run (`None`).
+fn bidi_runs(text: &str, rtl: bool) -> Option<Vec<(Range<usize>, u8)>> {
+    if !rtl && !text.chars().any(right_to_left) {
         return None;
     }
-    let info = unicode_bidi::BidiInfo::new(text, None);
+    let base = rtl.then_some(unicode_bidi::Level::rtl());
+    let info = unicode_bidi::BidiInfo::new(text, base);
     let mut out: Vec<(Range<usize>, u8)> = Vec::new();
     for (i, c) in text.char_indices() {
         let level = info.levels.get(i).map_or(0, |l| l.number());
@@ -3471,7 +3474,7 @@ impl FontSystem {
         // The runs of each direction, in text order, each with its level
         // (#628); text with no right-to-left letter is one run whose
         // direction harfbuzz takes from its script.
-        let runs = bidi_runs(text);
+        let runs = bidi_runs(text, para.direction.is_right_to_left());
         let runs: Vec<(Range<usize>, Option<u8>)> = match runs {
             Some(r) => r.into_iter().map(|(r, l)| (r, Some(l))).collect(),
             None => vec![(0..text.len(), None)],
@@ -4395,6 +4398,19 @@ impl FontSystem {
         let mut cap_below: Option<(f64, f64, usize, f64)> = None;
         'paragraphs: for (pi, glyphs) in paragraphs.iter().enumerate() {
             let (_, ps) = style_of(pi);
+            // A paragraph running right to left (#2670): its indents
+            // change sides, the first line's going to the right edge.
+            let mirrored: ParagraphStyle;
+            let (ps, first_right) = if ps.direction.is_right_to_left() && !vertical {
+                let mut m = ps.clone();
+                m.left_indent = ps.right_indent;
+                m.right_indent = ps.left_indent;
+                m.first_line_indent = 0.0;
+                mirrored = m;
+                (&mirrored, ps.first_line_indent)
+            } else {
+                (ps, 0.0)
+            };
             let m_para = glyphs
                 .first()
                 .map(|g| metrics[g.span])
@@ -4481,6 +4497,7 @@ impl FontSystem {
             loop {
                 let first = br.first;
                 let indent = if first { indent_first } else { indent_rest };
+                let right_indent = ps.right_indent + if first { first_right } else { 0.0 };
                 // Whether the next line still stands beside the cap whose
                 // last baseline is `last`: up to that line, and past it
                 // while the line's letters would reach the ink hanging
@@ -4508,7 +4525,7 @@ impl FontSystem {
                     Some(c) if first => c.glyph_advance,
                     _ => 0.0,
                 };
-                let base = (w - indent - ps.right_indent).max(1.0);
+                let base = (w - indent - right_indent).max(1.0);
                 let room = |seg: f64| (seg + back).max(1.0);
                 let mut row_lines: Vec<Line> = Vec::new();
                 let (row_col, row_y);
@@ -4525,7 +4542,7 @@ impl FontSystem {
                     row_col = c;
                     row_y = ny;
                     row_lines.push(Line {
-                        avail: w - indent - ps.right_indent - cap_w,
+                        avail: w - indent - right_indent - cap_w,
                         ..line
                     });
                 } else {
@@ -4543,7 +4560,7 @@ impl FontSystem {
                     let segs = loop {
                         let col_x = col_x_of(c);
                         let lo = col_x + indent;
-                        let hi = col_x + w - ps.right_indent;
+                        let hi = col_x + w - right_indent;
                         if c >= columns || guard > 20_000 {
                             break vec![(lo + cap_w, hi.max(lo + cap_w + 1.0))];
                         }
@@ -6222,19 +6239,84 @@ mod tests {
         assert_eq!(line.ends[..], line.edges[1..]);
     }
 
+    /// A paragraph set to run right to left (#2670): Latin letters keep
+    /// their order, the full stop goes to the left end, a right-to-left
+    /// word after them to their left, and the indents change
+    /// sides (the first line's going to the right).
+    #[test]
+    fn a_right_to_left_paragraph_runs_from_the_right() {
+        if !has_fonts() {
+            return;
+        }
+        use tracedraw_core::TextDirection;
+        let lay = |text: &str, para: &ParagraphStyle| {
+            fonts().layout(&TextRequest {
+                spans: &[span(text)],
+                frame: Some(Size::new(100.0, 50.0)),
+                align: TextAlign::Right,
+                para,
+                on_path: None,
+            })
+        };
+        let ltr = ParagraphStyle::default();
+        let rtl = ParagraphStyle {
+            direction: TextDirection::RightToLeft,
+            ..ParagraphStyle::default()
+        };
+        let l = lay("abc.", &ltr);
+        if l.glyphs == 0 {
+            return;
+        }
+        let s = &l.lines[0].starts;
+        assert!(s[0] < s[1] && s[1] < s[2] && s[2] < s[3], "{s:?}");
+        let r = lay("abc.", &rtl);
+        let s = &r.lines[0].starts;
+        assert!(s[0] < s[1] && s[1] < s[2], "letters keep their order {s:?}");
+        assert!(s[3] < s[0], "the full stop goes left {s:?}");
+        // Latin words stay in their order between themselves, as the
+        // bidirectional algorithm has them; a Hebrew word after them goes
+        // to their left.
+        let r = lay("ab cd \u{5D0}\u{5D1}", &rtl);
+        let s = &r.lines[0].starts;
+        assert!(s[0] < s[3], "{s:?}");
+        assert!(s[6] < s[0], "{s:?}");
+        // Indents: the left one is kept at the right edge, the first
+        // line's indent too.
+        let ind = ParagraphStyle {
+            left_indent: 10.0,
+            first_line_indent: 5.0,
+            ..rtl.clone()
+        };
+        let r = lay("abc", &ind);
+        let right = r.lines[0].ends.iter().copied().fold(f64::MIN, f64::max);
+        assert!(right <= 85.0 + 1e-6 && right > 80.0, "{right}");
+        let back = ParagraphStyle {
+            direction: TextDirection::LeftToRight,
+            ..ind.clone()
+        };
+        let l = lay("abc", &back);
+        let right = l.lines[0].ends.iter().copied().fold(f64::MIN, f64::max);
+        assert!((right - 100.0).abs() < 1.0, "{right}");
+        // Arabic text in a right-to-left paragraph reads as before.
+        let ar = "\u{645}\u{631}\u{62D}\u{628}\u{627}";
+        let a = lay(ar, &ltr);
+        let b = lay(ar, &rtl);
+        assert_eq!(a.lines[0].starts, b.lines[0].starts);
+    }
+
     /// Text mixing directions is cut into runs of one level, in text
     /// order; the first strong letter sets the text's own direction, and
     /// text with no right-to-left letter is not analysed (#628).
     #[test]
     fn mixed_text_is_cut_into_runs_of_one_direction() {
         let runs = |t: &str| -> Vec<(String, u8)> {
-            bidi_runs(t)
+            bidi_runs(t, false)
                 .unwrap_or_default()
                 .into_iter()
                 .map(|(r, l)| (t[r].to_string(), l))
                 .collect()
         };
-        assert!(bidi_runs("plain text").is_none());
+        assert!(bidi_runs("plain text", false).is_none());
         let ar = "\u{645}\u{631}\u{62D}\u{628}\u{627}";
         assert_eq!(runs(ar), [(ar.into(), 1)]);
         assert_eq!(

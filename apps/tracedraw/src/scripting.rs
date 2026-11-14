@@ -1093,6 +1093,16 @@ fn replacement_from_json(a: &Value) -> Result<tracedraw_core::find::Replacement,
             r.font = Some(f.trim().to_string());
         }
     }
+    // Only the numbers or the letters take the new font (#2585).
+    if let Some(c) = a.get("font_chars").and_then(|v| v.as_str()) {
+        r.font_chars = tracedraw_core::find::CharClass::ALL
+            .into_iter()
+            .find(|k| k.key() == c)
+            .ok_or_else(|| format!("font_chars: unknown value {c}"))?;
+    }
+    if let Some(w) = a.get("western_digits").and_then(|v| v.as_bool()) {
+        r.western_digits = w;
+    }
     Ok(r)
 }
 

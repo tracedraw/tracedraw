@@ -1732,6 +1732,15 @@ pub struct ParagraphStyle {
     /// top left, #1986). Files from before it read as right to left.
     #[serde(skip_serializing_if = "VerticalColumns::is_right_to_left")]
     pub vertical_columns: VerticalColumns,
+    /// The direction the paragraph's text runs in (the Text docker's
+    /// Paragraph section): left to right, or right to left for Arabic,
+    /// Hebrew and the other right-to-left scripts. Right to left starts
+    /// each line at the right (letters and numbers keep their own order
+    /// inside a word), puts the neutral characters such as the full stop
+    /// on the right-to-left side, and swaps the left and right indents,
+    /// the first line's indent going to the right. Not in older files.
+    #[serde(default, skip_serializing_if = "TextDirection::is_left_to_right")]
+    pub direction: TextDirection,
     /// The paragraph frame's background; `None` = transparent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frame_fill: Option<Fill>,
@@ -1954,6 +1963,25 @@ impl VerticalColumns {
     }
 }
 
+/// Which way a paragraph's text runs (see [`ParagraphStyle::direction`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextDirection {
+    #[default]
+    LeftToRight,
+    RightToLeft,
+}
+
+impl TextDirection {
+    pub fn is_left_to_right(&self) -> bool {
+        *self == TextDirection::LeftToRight
+    }
+
+    pub fn is_right_to_left(&self) -> bool {
+        *self == TextDirection::RightToLeft
+    }
+}
+
 /// Where paragraph text sits in its frame (the Text docker's Frame
 /// section): at the top, in the middle or at the bottom of the room its
 /// lines leave. Text that overflows the frame starts at the top.
@@ -1993,6 +2021,7 @@ impl Default for ParagraphStyle {
             vertical_align: VerticalAlign::Top,
             vertical: false,
             vertical_columns: VerticalColumns::RightToLeft,
+            direction: TextDirection::LeftToRight,
             frame_fill: None,
             flow: crate::text_flow::FrameFlow::default(),
         }
@@ -8112,6 +8141,31 @@ mod tests {
             (p.x - 1.0).abs() < 1e-9 && (p.y - -5.0).abs() < 1e-9,
             "{p:?}"
         );
+    }
+
+    /// The text direction of a paragraph (#2670): older files read as
+    /// left to right and do not write it; right to left is saved and read
+    /// back, also as a paragraph's own format.
+    #[test]
+    fn text_direction_defaults_to_left_to_right_and_round_trips() {
+        let old: ParagraphStyle = serde_json::from_str("{}").expect("parses");
+        assert_eq!(old.direction, TextDirection::LeftToRight);
+        let json = serde_json::to_string(&old).expect("writes");
+        assert!(!json.contains("direction"), "{json}");
+        let mut rtl = old.clone();
+        rtl.direction = TextDirection::RightToLeft;
+        let json = serde_json::to_string(&rtl).expect("writes");
+        assert!(json.contains("\"direction\":\"right_to_left\""), "{json}");
+        let back: ParagraphStyle = serde_json::from_str(&json).expect("parses");
+        assert_eq!(back.direction, TextDirection::RightToLeft);
+        let f = crate::ParagraphFormat::of(TextAlign::Right, &rtl);
+        let json = serde_json::to_string(&f).expect("writes");
+        let back: crate::ParagraphFormat = serde_json::from_str(&json).expect("parses");
+        let mut p = ParagraphStyle::default();
+        back.apply_to(&mut p);
+        assert_eq!(p.direction, TextDirection::RightToLeft);
+        let plain = serde_json::to_string(&crate::ParagraphFormat::default()).expect("writes");
+        assert!(!plain.contains("direction"), "{plain}");
     }
 
     /// The column order of vertical text (#1986): older files read as
