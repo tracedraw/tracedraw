@@ -15199,6 +15199,101 @@ fn several_mesh_nodes_take_a_colour_and_move_together() {
     assert_eq!(more, vec![0, 1, 2, 4]);
 }
 
+/// Discussion #2730: the Mesh Fill tool's Selection mode set to
+/// Freehand chooses the mesh nodes inside a loop drawn round them, as
+/// the Shape tool's freehand marquee does; Shift adds to the choice.
+#[test]
+fn a_freehand_loop_chooses_mesh_nodes() {
+    use crate::mesh_tool::MESH_NODE_BASE;
+    let (ctx, mut app, id) = setup();
+    app.mesh_rows = 2;
+    app.mesh_cols = 2;
+    app.set_tool(Tool::MeshFill);
+    click_page(&ctx, &mut app, Point::new(30.0, 20.0));
+    let node = |app: &App, i: usize| {
+        let s = app.doc().find_shape(id).expect("shape");
+        app.view
+            .to_screen(crate::interaction2::effect_point(s, MESH_NODE_BASE + i).expect("node"))
+    };
+    let chosen = |app: &App| {
+        let mut v = app
+            .selected_mesh_nodes()
+            .map(|(_, v)| v)
+            .unwrap_or_default();
+        v.sort();
+        v
+    };
+    // A loop drawn through the given corners, closing where it began.
+    let freehand = |ctx: &egui::Context, app: &mut App, corners: &[Pos2], mods: Modifiers| {
+        let a = corners[0];
+        frame(ctx, app, vec![Event::PointerMoved(a)], mods);
+        frame(
+            ctx,
+            app,
+            vec![button(a, true, PointerButton::Primary, mods)],
+            mods,
+        );
+        let mut path = corners.to_vec();
+        path.push(a);
+        let mut lassoed = false;
+        for w in path.windows(2) {
+            for i in 1..=6 {
+                let p = w[0] + (w[1] - w[0]) * (i as f32 / 6.0);
+                frame(ctx, app, vec![Event::PointerMoved(p)], mods);
+                lassoed |= matches!(app.drag, Drag::NodeLasso { .. });
+            }
+        }
+        frame(
+            ctx,
+            app,
+            vec![button(a, false, PointerButton::Primary, mods)],
+            mods,
+        );
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+        lassoed
+    };
+    // A thin band along the diagonal: the corner nodes and the centre,
+    // which no box could take without the others.
+    app.node_lasso = true;
+    let (n0, n8) = (node(&app, 0), node(&app, 8));
+    let d = (n8 - n0).normalized();
+    let side = egui::vec2(-d.y, d.x) * 10.0;
+    let ext = d * 15.0;
+    let band = [
+        n0 - ext + side,
+        n8 + ext + side,
+        n8 + ext - side,
+        n0 - ext - side,
+    ];
+    assert!(
+        freehand(&ctx, &mut app, &band, Modifiers::NONE),
+        "a loop was drawn"
+    );
+    assert_eq!(chosen(&app), vec![0, 4, 8]);
+    assert_eq!(app.selection, vec![id]);
+    // With Shift, a small loop round another node adds it.
+    let n2 = node(&app, 2);
+    let small = [
+        n2 + egui::vec2(-15.0, -15.0),
+        n2 + egui::vec2(15.0, -15.0),
+        n2 + egui::vec2(15.0, 15.0),
+        n2 + egui::vec2(-15.0, 15.0),
+    ];
+    freehand(&ctx, &mut app, &small, Modifiers::SHIFT);
+    assert_eq!(chosen(&app), vec![0, 2, 4, 8]);
+    // Rectangular again: the drag is a box.
+    app.node_lasso = false;
+    drag(
+        &ctx,
+        &mut app,
+        small[0],
+        small[2],
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    assert_eq!(chosen(&app), vec![2]);
+}
+
 /// #2506: a mesh fill made with the Interactive Fill tool's bar (over
 /// the object's box on the page) or with the Properties docker (over a
 /// box of its own) lies over the object, also a moved one, its nodes

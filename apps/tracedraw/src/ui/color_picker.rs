@@ -193,6 +193,22 @@ pub fn edit_model(c: Color) -> &'static str {
 /// (it prints on every separation), after the models.
 pub const REGISTRATION: &str = "Registration";
 
+/// The Model list's entry that keeps the colour in RGB and shows it by
+/// its hexadecimal code, typed or pasted, without sliders (#2606).
+pub const HEX: &str = "HEX";
+
+/// Where Model list `id` keeps that HEX was chosen.
+fn hex_choice_id(id: Id) -> Id {
+    id.with("hex_view")
+}
+
+/// Whether Model list `id` shows `c` as HEX: chosen there, over an RGB
+/// colour. The sliders give way to the code then (#2606).
+pub fn shows_hex(ctx: &egui::Context, id: Id, c: Color) -> bool {
+    matches!(c, Color::Rgb { .. })
+        && ctx.data(|d| d.get_temp::<bool>(hex_choice_id(id))) == Some(true)
+}
+
 /// The entry the Model list shows as chosen for `c`.
 pub fn list_model(c: Color) -> &'static str {
     match c {
@@ -211,11 +227,16 @@ pub fn choose_model(c: Color, choice: &str) -> Color {
     }
 }
 
-/// The Model list (the docker's models, then the registration colour).
-/// True when a choice changed the colour.
+/// The Model list (the docker's models, HEX, then the registration
+/// colour). True when a choice changed the colour.
 pub fn model_list(ui: &mut Ui, id: Id, c: &mut Color) -> bool {
-    let shown = list_model(*c);
+    let shown = if shows_hex(ui.ctx(), id, *c) {
+        HEX
+    } else {
+        list_model(*c)
+    };
     let mut changed = false;
+    let mut hex_choice = None;
     crate::ui::keynav::ComboBox::from_id_salt(id)
         .selected_text(if shown == REGISTRATION {
             tr("docker.registration")
@@ -227,8 +248,21 @@ pub fn model_list(ui: &mut Ui, id: Id, c: &mut Color) -> bool {
             for m in crate::ui::color_docker::MODELS {
                 if ui.selectable_label(shown == m, m).clicked() && shown != m {
                     *c = choose_model(*c, m);
+                    hex_choice = Some(false);
                     changed = true;
                 }
+            }
+            // HEX: the colour in RGB, read and typed as its code (#2606).
+            if ui
+                .selectable_label(shown == HEX, HEX)
+                .rich_tip(crate::ui::tips::keyed("docker.hex_color"))
+                .clicked()
+                && shown != HEX
+            {
+                let rgb = c.convert_to("RGB");
+                changed = rgb != *c;
+                *c = rgb;
+                hex_choice = Some(true);
             }
             ui.separator();
             let reg = shown == REGISTRATION;
@@ -239,9 +273,13 @@ pub fn model_list(ui: &mut Ui, id: Id, c: &mut Color) -> bool {
                 && !reg
             {
                 *c = choose_model(*c, REGISTRATION);
+                hex_choice = Some(false);
                 changed = true;
             }
         });
+    if let Some(on) = hex_choice {
+        ui.data_mut(|d| d.insert_temp(hex_choice_id(id), on));
+    }
     changed
 }
 
@@ -553,7 +591,10 @@ fn picker_popup(ui: &mut Ui, id: Id, swatch: Rect, c: &mut Color, clicked: bool)
                     });
                     let model = edit_model(*c);
                     let mut m = c.convert_to(model);
-                    if crate::ui::color_docker::sliders(ui, &mut m) {
+                    // HEX shows the code alone, in the field under (#2606).
+                    if !shows_hex(ui.ctx(), id.with("model"), *c)
+                        && crate::ui::color_docker::sliders(ui, &mut m)
+                    {
                         *c = m;
                         changed = true;
                     }
@@ -838,6 +879,22 @@ mod tests {
         // Nonsense from a file does not panic.
         let odd = from_viewer(f32::NAN, f32::NAN, f32::INFINITY, "CMYK");
         assert!(matches!(odd, Color::Cmyk { .. }));
+    }
+
+    /// #2606: HEX in a picker's Model list keeps the colour in RGB and
+    /// shows it by its code; only over an RGB colour, and per list.
+    #[test]
+    fn the_model_list_offers_hex() {
+        let ctx = egui::Context::default();
+        let id = Id::new("hex_test_model");
+        let rgb = Color::rgb8(0x36, 0x4c, 0x9f);
+        assert!(!shows_hex(&ctx, id, rgb));
+        ctx.data_mut(|d| d.insert_temp(hex_choice_id(id), true));
+        assert!(shows_hex(&ctx, id, rgb));
+        assert!(!shows_hex(&ctx, Id::new("another"), rgb));
+        assert!(!shows_hex(&ctx, id, rgb.convert_to("CMYK")));
+        assert!(!crate::ui::color_docker::MODELS.contains(&HEX));
+        assert_eq!(rgb.convert_to("CMYK").convert_to("RGB").model_name(), "RGB");
     }
 
     /// The Model list offers the registration colour after the models, as

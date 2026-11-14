@@ -126,6 +126,13 @@ impl App {
     /// a marquee with the Mesh Fill tool chooses them, with `add` (Shift)
     /// they join those chosen. The first mesh with nodes inside wins.
     pub fn choose_mesh_nodes_in(&mut self, area: tracedraw_core::geometry::Rect, add: bool) {
+        self.choose_mesh_nodes_where(|q| area.contains(q), add);
+    }
+
+    /// Choose the nodes of a selected mesh for which `inside` holds (page
+    /// space): the box's, or the freehand loop's (discussion #2730);
+    /// `add` (Shift) keeps those chosen already.
+    pub fn choose_mesh_nodes_where(&mut self, inside: impl Fn(Point) -> bool, add: bool) {
         let found = self.selected_shapes().iter().find_map(|s| {
             let Fill::Mesh(m) = &s.fill else {
                 return None;
@@ -134,7 +141,7 @@ impl App {
                 .nodes
                 .iter()
                 .enumerate()
-                .filter(|(_, n)| area.contains(s.transform * n.pos))
+                .filter(|(_, n)| inside(s.transform * n.pos))
                 .map(|(k, _)| k)
                 .collect();
             (!inside.is_empty()).then_some((s.id, inside))
@@ -233,7 +240,8 @@ impl App {
         }
         // A drag from outside the nodes of a selected mesh: a marquee
         // that chooses the nodes inside it, Shift adding them (the box
-        // follows the pointer and ends in `finish_node_marquee`).
+        // follows the pointer and ends in `finish_node_marquee`, the
+        // freehand loop in `finish_node_lasso`).
         if response.drag_started_by(PointerButton::Primary) && self.selected_mesh().is_some() {
             let start = response
                 .ctx
@@ -241,7 +249,15 @@ impl App {
                 .map(|o| self.view.to_page(o))
                 .unwrap_or(p);
             self.node_lasso_keeps = response.ctx.input(|i| i.modifiers.shift);
-            self.drag = crate::app::Drag::NodeMarquee { start, current: p };
+            // Freehand on the bar's Selection mode: a loop drawn around
+            // the nodes, as the Shape tool has (discussion #2730).
+            self.drag = if self.node_lasso {
+                crate::app::Drag::NodeLasso {
+                    points: vec![start, p],
+                }
+            } else {
+                crate::app::Drag::NodeMarquee { start, current: p }
+            };
             return;
         }
         if response.clicked_by(PointerButton::Primary) {

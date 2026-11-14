@@ -4041,11 +4041,15 @@ impl App {
     /// Dockers' own choices now (see [`crate::settings::PanelPrefs`]).
     pub fn panel_prefs(&self) -> crate::settings::PanelPrefs {
         crate::settings::PanelPrefs {
-            color_model: crate::ui::color_docker::MODELS
-                .get(self.color_model)
-                .copied()
-                .unwrap_or("CMYK")
-                .into(),
+            color_model: if crate::ui::color_docker::hex_view(self) {
+                crate::ui::color_picker::HEX
+            } else {
+                crate::ui::color_docker::MODELS
+                    .get(self.color_model)
+                    .copied()
+                    .unwrap_or("CMYK")
+            }
+            .into(),
             color_views: self.color_docker.shown,
             align_to: self.align_to.id().into(),
             align_use_outline: self.align_use_outline,
@@ -4057,13 +4061,17 @@ impl App {
     }
 
     pub fn apply_panel_prefs(&mut self, p: &crate::settings::PanelPrefs) {
+        // HEX is RGB shown by its code (#2606).
+        let hex = p.color_model == crate::ui::color_picker::HEX;
+        let model = if hex { "RGB" } else { p.color_model.as_str() };
         if let Some(i) = crate::ui::color_docker::MODELS
             .iter()
-            .position(|m| *m == p.color_model)
+            .position(|m| *m == model)
         {
+            self.color_docker.hex = hex;
             if i != self.color_model {
                 self.color_model = i;
-                self.mixer_color = self.mixer_color.convert_to(&p.color_model);
+                self.mixer_color = self.mixer_color.convert_to(model);
             }
         }
         self.color_docker.shown = p.color_views;

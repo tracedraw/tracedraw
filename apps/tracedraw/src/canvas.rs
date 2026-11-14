@@ -1993,6 +1993,10 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
         draw_nodes(app, painter);
         return;
     }
+    // The Mesh Fill tool's box or freehand loop over mesh nodes.
+    if app.tool == Tool::MeshFill {
+        draw_node_marquees(app, painter);
+    }
     // While text is typed or edited only the text and its cursor show;
     // the handles come back when editing ends.
     if app.text_edit.is_some() {
@@ -2803,6 +2807,31 @@ pub(crate) fn kind_outline(s: &tracedraw_core::Shape, view: &View) -> Vec<Vec<Po
         .collect()
 }
 
+/// The node marquees, rectangular or freehand, of the Shape tool and of
+/// the Mesh Fill tool (discussion #2730). They look like the Pick
+/// tool's: blue dashes on a white line, so they show on blue artwork too
+/// (#1849).
+fn draw_node_marquees(app: &App, painter: &Painter) {
+    let view = &app.view;
+    if let Drag::NodeLasso { points } = &app.drag {
+        let pts: Vec<Pos2> = points.iter().map(|p| view.to_screen(*p)).collect();
+        if pts.len() > 1 {
+            dashed_selection_line(painter, &pts);
+        }
+    }
+    if let Drag::NodeMarquee { start, current } = &app.drag {
+        let r = view.rect_to_screen(Rect::from_points(*start, *current));
+        let pts = [
+            r.left_top(),
+            r.right_top(),
+            r.right_bottom(),
+            r.left_bottom(),
+            r.left_top(),
+        ];
+        dashed_selection_line(painter, &pts);
+    }
+}
+
 /// Shape tool overlay, as Options > Nodes and Handles sets it: nodes
 /// shaped by type (cusp, smooth, symmetrical), the selected ones filled
 /// with the main colour, the others white or hollow, the first node of a
@@ -3095,25 +3124,7 @@ fn draw_nodes(app: &App, painter: &Painter) {
             painter.circle_filled(c, 1.2, Tokens::HANDLE);
         }
     }
-    // The node marquees look like the Pick tool's: blue dashes on a
-    // white line, so they show on blue artwork too (#1849).
-    if let Drag::NodeLasso { points } = &app.drag {
-        let pts: Vec<Pos2> = points.iter().map(|p| view.to_screen(*p)).collect();
-        if pts.len() > 1 {
-            dashed_selection_line(painter, &pts);
-        }
-    }
-    if let Drag::NodeMarquee { start, current } = &app.drag {
-        let r = view.rect_to_screen(Rect::from_points(*start, *current));
-        let pts = [
-            r.left_top(),
-            r.right_top(),
-            r.right_bottom(),
-            r.left_bottom(),
-            r.left_top(),
-        ];
-        dashed_selection_line(painter, &pts);
-    }
+    draw_node_marquees(app, painter);
     crate::corner_widgets::draw(app, painter, main);
 }
 

@@ -2806,27 +2806,7 @@ fn shape_tool_bar(app: &mut App, ui: &mut Ui) {
         .iter()
         .any(|s| matches!(s.kind, ShapeKind::Path { .. }));
     // Selection mode: rectangular or freehand marquee.
-    ui.label(tr("toolbar.selection_mode"));
-    let mode_text = |lasso: bool| {
-        if lasso {
-            tr("toolbar.freehand")
-        } else {
-            tr("toolbar.rectangular")
-        }
-    };
-    crate::ui::keynav::ComboBox::from_id_salt("node_selection_mode")
-        .selected_text(mode_text(app.node_lasso))
-        .width(96.0)
-        .show_ui(ui, |ui| {
-            for lasso in [false, true] {
-                ui.selectable_value(&mut app.node_lasso, lasso, mode_text(lasso));
-            }
-        })
-        .response
-        .rich_tip(crate::ui::tips::pair(
-            "toolbar.selection_mode_tip",
-            "toolbar.selection_mode_desc",
-        ));
+    node_selection_mode(app, ui);
     sep(ui);
     let button = |ui: &mut Ui, pic: Pic, tip: &str, enabled: bool, pressed: bool| -> bool {
         pic_button(ui, pic, &tr(tip), enabled, pressed).clicked()
@@ -4110,6 +4090,33 @@ fn shadow_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::Shape]) {
     if shapes.is_empty() {
         dim(ui, "toolbar.shadow_hint");
     }
+}
+
+/// The Selection mode list: nodes are chosen by a rectangle or by a
+/// freehand loop drawn around them. The Shape tool's bar and the Mesh
+/// Fill tool's share it (discussion #2730).
+pub fn node_selection_mode(app: &mut App, ui: &mut Ui) {
+    ui.label(tr("toolbar.selection_mode"));
+    let mode_text = |lasso: bool| {
+        if lasso {
+            tr("toolbar.freehand")
+        } else {
+            tr("toolbar.rectangular")
+        }
+    };
+    crate::ui::keynav::ComboBox::from_id_salt("node_selection_mode")
+        .selected_text(mode_text(app.node_lasso))
+        .width(96.0)
+        .show_ui(ui, |ui| {
+            for lasso in [false, true] {
+                ui.selectable_value(&mut app.node_lasso, lasso, mode_text(lasso));
+            }
+        })
+        .response
+        .rich_tip(crate::ui::tips::pair(
+            "toolbar.selection_mode_tip",
+            "toolbar.selection_mode_desc",
+        ));
 }
 
 #[cfg(test)]
