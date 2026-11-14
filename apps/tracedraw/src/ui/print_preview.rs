@@ -328,6 +328,25 @@ pub fn drag_transform_handle(
     }
 }
 
+/// Lays out `add` as one block of the top bar's wrapping rows: the block
+/// asks for the width it took the frame before, so it moves whole to the
+/// next row when it does not fit. A slider or a list with its label was
+/// placed piece by piece, and the piece that did not fit ran past the
+/// edge of a phone's screen (#2666).
+fn together<R>(ui: &mut Ui, key: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let id = egui::Id::new(("print_preview_bar_block", key));
+    let width = ui.data(|d| d.get_temp::<f32>(id)).unwrap_or(0.0);
+    let size = egui::vec2(width, ui.spacing().interact_size.y);
+    let layout = egui::Layout::left_to_right(egui::Align::Center);
+    let r = ui.allocate_ui_with_layout(size, layout, add);
+    let took = r.response.rect.width();
+    if (took - width).abs() > 0.5 {
+        ui.data_mut(|d| d.insert_temp(id, took));
+        ui.ctx().request_repaint();
+    }
+    r.inner
+}
+
 /// The id of the options panel at the left of Print Preview.
 const PREVIEW_OPTIONS: &str = "print_preview_options";
 /// The options panel's width at first, its narrowest and the widest its
@@ -357,120 +376,138 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 .inner_margin(egui::Margin::symmetric(8, 4)),
         )
         .show(ui, |ui| {
-            // One row, wrapping onto a second in a narrow window.
-            ui.horizontal_wrapped(|ui| {
-                // Whole labels go to the next row, never half of one.
-                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                if ui.button(tr("dialog.print")).clicked() {
-                    print = true;
-                }
-                ui.separator();
-                // With separations, each plate of a sheet is a page of
-                // its own after the sheet, as it prints (#2379).
-                let separations = pv.st.separations;
-                let inks = pv.inks.clone();
-                let doc = sheets(app, &mut pv);
-                let n = doc.pages.len().max(1);
-                let names = if separations {
-                    plate_names(doc)
-                } else {
-                    Vec::new()
-                };
-                let views = preview_views(doc, &inks, separations);
-                pv.sheet = pv.sheet.min(n - 1);
-                let at = views
-                    .iter()
-                    .position(|v| *v == (pv.sheet, pv.plate))
-                    .or_else(|| views.iter().position(|v| v.0 == pv.sheet))
-                    .unwrap_or(0);
-                (pv.sheet, pv.plate) = views.get(at).copied().unwrap_or((0, 0));
-                let mut go = None;
+            // Close at the bar's right end, where windows keep it (#534),
+            // laid out first so the rest wraps to the left of it: placed
+            // after the rest, it went wherever the rows ended, past a
+            // phone's screen when they ran wider than it (#2666).
+            let row = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
+            let close_first = egui::Layout::right_to_left(egui::Align::Min);
+            ui.allocate_ui_with_layout(row, close_first, |ui| {
                 if ui
-                    .add_enabled(at > 0, egui::Button::new("<"))
-                    .rich_tip(tr("status.previous_page"))
+                    .button(tr("dialog.close"))
+                    .rich_tip(crate::ui::tips::keyed("dialog.close"))
                     .clicked()
                 {
-                    go = Some(at - 1);
+                    close = true;
                 }
-                ui.label(trf(
-                    "print.sheet_of",
-                    &[
-                        ("n", &(pv.sheet + 1).to_string()),
-                        ("total", &n.to_string()),
-                    ],
-                ));
-                if separations {
-                    if let Some(name) = names.get(pv.plate) {
-                        ui.strong(name);
+                // One row, wrapping onto a second in a narrow window.
+                let wrapped = egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true);
+                let row = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
+                ui.allocate_ui_with_layout(row, wrapped, |ui| {
+                    // Whole labels go to the next row, never half of one.
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    if ui.button(tr("dialog.print")).clicked() {
+                        print = true;
                     }
-                }
-                if ui
-                    .add_enabled(at + 1 < views.len(), egui::Button::new(">"))
-                    .rich_tip(tr("status.next_page"))
-                    .clicked()
-                {
-                    go = Some(at + 1);
-                }
-                if let Some(v) = go.and_then(|i| views.get(i)) {
-                    (pv.sheet, pv.plate) = *v;
-                }
-                ui.separator();
-                ui.label(tr("print.zoom"));
-                // The zoom in percent on the slider, a factor in the view.
-                let mut percent = pv.zoom * 100.0;
-                if ui
-                    .add(
-                        crate::ui::Slider::new(&mut percent, 25.0..=400.0)
-                            .logarithmic(true)
-                            .suffix(" %")
-                            .max_decimals(0),
-                    )
-                    .changed()
-                {
-                    pv.zoom = percent / 100.0;
-                }
-                if ui.button(tr("print.fit")).clicked() {
-                    pv.zoom = 1.0;
-                }
-                // The printer with its Properties and status, and the
-                // copies: in the bar, so the left panel keeps its room
-                // for the options (#792, #953).
-                ui.separator();
-                let st = &mut pv.st;
-                ui.label(tr("print.printer"));
-                if let Some(p) = crate::ui::dialogs::destination_row(ui, st, 220.0) {
-                    if let Err(e) = crate::printers::open_properties(&p) {
-                        app.status = e;
-                    }
-                }
-                let chosen = st.printers.iter().find(|p| {
-                    st.destination == 0 && st.printer.as_deref() == Some(p.name.as_str())
-                });
-                if let Some(p) = chosen {
-                    ui.label(
-                        egui::RichText::new(tr(p.state.key()))
-                            .color(Tokens::text_dim())
-                            .size(11.0),
-                    )
-                    .rich_tip(tr("print.status"));
-                }
-                ui.separator();
-                ui.label(tr("print.number_of_copies"));
-                ui.add(crate::ui::field::NumField::new(&mut st.copies).range(1..=999));
-                ui.add_enabled(
-                    st.copies > 1,
-                    egui::Checkbox::new(&mut st.collate, tr("print.collate")),
-                );
-                // Close at the bar's right end, where windows keep it
-                // (#534).
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.separator();
+                    // With separations, each plate of a sheet is a page of
+                    // its own after the sheet, as it prints (#2379).
+                    let separations = pv.st.separations;
+                    let inks = pv.inks.clone();
+                    let doc = sheets(app, &mut pv);
+                    let n = doc.pages.len().max(1);
+                    let names = if separations {
+                        plate_names(doc)
+                    } else {
+                        Vec::new()
+                    };
+                    let views = preview_views(doc, &inks, separations);
+                    pv.sheet = pv.sheet.min(n - 1);
+                    let at = views
+                        .iter()
+                        .position(|v| *v == (pv.sheet, pv.plate))
+                        .or_else(|| views.iter().position(|v| v.0 == pv.sheet))
+                        .unwrap_or(0);
+                    (pv.sheet, pv.plate) = views.get(at).copied().unwrap_or((0, 0));
+                    let mut go = None;
                     if ui
-                        .button(tr("dialog.close"))
-                        .rich_tip(crate::ui::tips::keyed("dialog.close"))
+                        .add_enabled(at > 0, egui::Button::new("<"))
+                        .rich_tip(tr("status.previous_page"))
                         .clicked()
                     {
-                        close = true;
+                        go = Some(at - 1);
                     }
+                    ui.label(trf(
+                        "print.sheet_of",
+                        &[
+                            ("n", &(pv.sheet + 1).to_string()),
+                            ("total", &n.to_string()),
+                        ],
+                    ));
+                    if separations {
+                        if let Some(name) = names.get(pv.plate) {
+                            ui.strong(name);
+                        }
+                    }
+                    if ui
+                        .add_enabled(at + 1 < views.len(), egui::Button::new(">"))
+                        .rich_tip(tr("status.next_page"))
+                        .clicked()
+                    {
+                        go = Some(at + 1);
+                    }
+                    if let Some(v) = go.and_then(|i| views.get(i)) {
+                        (pv.sheet, pv.plate) = *v;
+                    }
+                    ui.separator();
+                    // A shorter slider in a narrow bar, so the block fits
+                    // a phone's screen (#2666).
+                    let room = ui.max_rect().width();
+                    together(ui, "zoom", |ui| {
+                        let rail = (room - 200.0).clamp(80.0, ui.spacing().slider_width.max(80.0));
+                        ui.label(tr("print.zoom"));
+                        // The zoom in percent on the slider, a factor in
+                        // the view.
+                        let mut percent = pv.zoom * 100.0;
+                        if ui
+                            .add(
+                                crate::ui::Slider::new(&mut percent, 25.0..=400.0)
+                                    .width(rail)
+                                    .logarithmic(true)
+                                    .suffix(" %")
+                                    .max_decimals(0),
+                            )
+                            .changed()
+                        {
+                            pv.zoom = percent / 100.0;
+                        }
+                        if ui.button(tr("print.fit")).clicked() {
+                            pv.zoom = 1.0;
+                        }
+                    });
+                    // The printer with its Properties and status, and the
+                    // copies: in the bar, so the left panel keeps its room
+                    // for the options (#792, #953).
+                    ui.separator();
+                    let st = &mut pv.st;
+                    together(ui, "printer", |ui| {
+                        ui.label(tr("print.printer"));
+                        if let Some(p) = crate::ui::dialogs::destination_row(ui, st, 220.0) {
+                            if let Err(e) = crate::printers::open_properties(&p) {
+                                app.status = e;
+                            }
+                        }
+                        let chosen = st.printers.iter().find(|p| {
+                            st.destination == 0 && st.printer.as_deref() == Some(p.name.as_str())
+                        });
+                        if let Some(p) = chosen {
+                            ui.label(
+                                egui::RichText::new(tr(p.state.key()))
+                                    .color(Tokens::text_dim())
+                                    .size(11.0),
+                            )
+                            .rich_tip(tr("print.status"));
+                        }
+                    });
+                    ui.separator();
+                    together(ui, "copies", |ui| {
+                        ui.label(tr("print.number_of_copies"));
+                        ui.add(crate::ui::field::NumField::new(&mut st.copies).range(1..=999));
+                        ui.add_enabled(
+                            st.copies > 1,
+                            egui::Checkbox::new(&mut st.collate, tr("print.collate")),
+                        );
+                    });
                 });
             });
         });
@@ -2039,6 +2076,71 @@ mod tests {
         run(&mut app, Vec::new());
         assert!(width() > start + 80.0, "{start} -> {}", width());
         assert!(app.print_preview.is_some());
+    }
+
+    /// On a phone, upright and on its side, Close shows inside the screen
+    /// with a destination name as long as Android's print service, and
+    /// nothing of the top bar runs past the screen's right edge (#2666:
+    /// the name widened the bar past the screen and Close went with it).
+    #[test]
+    fn close_stays_on_a_phone_screen() {
+        for size in [egui::vec2(360.0, 800.0), egui::vec2(800.0, 360.0)] {
+            let ctx = crate::theme::ui_context();
+            let mut app = App::headless();
+            app.show_welcome = false;
+            app.print_preview(None);
+            if let Some(pv) = app.print_preview.as_mut() {
+                pv.st.looking_for_printers = false;
+                pv.st.destination = 0;
+                pv.st.printer =
+                    Some("System printer (through the Android print service)".to_string());
+            }
+            let mut shapes = Vec::new();
+            for _ in 0..6 {
+                let mut out = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                        ..Default::default()
+                    },
+                    |ui| show(&mut app, ui),
+                );
+                out.textures_delta.clear();
+                shapes = out.shapes;
+            }
+            fn walk(s: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
+                match s {
+                    egui::Shape::Text(t) => {
+                        out.push((t.galley.text().to_string(), t.visual_bounding_rect()))
+                    }
+                    egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+                    _ => {}
+                }
+            }
+            let mut texts = Vec::new();
+            for c in &shapes {
+                walk(&c.shape, &mut texts);
+            }
+            let close = tr("dialog.close");
+            let at = texts
+                .iter()
+                .find(|(t, _)| *t == close)
+                .map(|(_, r)| *r)
+                .expect("Close is drawn");
+            assert!(
+                at.right() <= size.x && at.bottom() <= size.y,
+                "{size:?}: Close at {at:?}"
+            );
+            let bar =
+                egui::containers::panel::PanelState::load(&ctx, egui::Id::new("print_preview_bar"))
+                    .map(|s| s.outer_rect)
+                    .expect("the bar's state");
+            assert!(bar.right() <= size.x + 0.5, "{size:?}: bar {bar:?}");
+            for (text, r) in &texts {
+                if r.top() < bar.bottom() && !text.trim().is_empty() {
+                    assert!(r.right() <= size.x + 1.0, "{size:?}: {text:?} at {r:?}");
+                }
+            }
+        }
     }
 
     /// In every language, at the main window's default size, no label of

@@ -5902,9 +5902,15 @@ pub fn destination_row(ui: &mut Ui, st: &mut PrintState, width: f32) -> Option<S
         _ => tr(dests[st.destination.min(2)]),
     };
     ui.horizontal(|ui| {
+        // A long name (Android's print service) is cut with an ellipsis
+        // so the list keeps its width: it widened Print Preview's bar
+        // past a phone's screen (#2666). The room is the list's width:
+        // in a wrapping row the row's whole width would be offered.
+        ui.set_max_width(width + ui.spacing().item_spacing.x + 24.0);
         crate::ui::keynav::ComboBox::from_id_salt("print_destination")
             .selected_text(selected)
             .width(width)
+            .truncate()
             .show_ui(ui, |ui| {
                 if st.looking_for_printers && st.printers.is_empty() {
                     ui.add_enabled(false, egui::Label::new(tr("print.looking")));

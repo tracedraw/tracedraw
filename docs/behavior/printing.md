@@ -208,6 +208,15 @@ same function (`export::print_sheets`).
 - Top bar: Print (prints these settings and closes), the sheet shown with previous and next (Page Up, Page Down), Zoom from 25 to 400 % of the fitted size
   with Fit, the printer, and Close (Esc) at the right end (#534). The
   bar wraps onto a second row when the window is too narrow for it.
+  Close stays at the top right of the first row and the rest wraps to
+  its left, in blocks that move to the next row whole (the zoom with its
+  slider and Fit, the printer with its list, the copies with Collate);
+  the slider is shorter in a narrow bar and a long printer name is cut
+  with an ellipsis. On a phone, upright or on its side, the bar fits the
+  screen and Close shows; it was laid out last, after a printer name as
+  long as Android's print service had widened the bar past the screen,
+  and went off it (#2666,
+  `print_preview::tests::close_stays_on_a_phone_screen`).
 - The printer sits in the top bar after Fit, as in the Print dialog's
   General tab (the system's printers in name order, the PDF viewer, PDF
   and PostScript files; read off the interface's thread when the preview
