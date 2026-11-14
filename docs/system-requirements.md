@@ -34,7 +34,10 @@ memory, processor and disk lines are measured or estimated, and say so.
 - **macOS:** 11 Big Sur or later (`LSMinimumSystemVersion` in
   `packaging/macos/Info.plist`), with a separate download for Apple
   silicon (arm64) and for Intel (x86_64).
-- **Linux:** x86_64 and arm64, as AppImage, `.deb` or a plain `.tar.gz`.
+- **Linux:** x86_64 and arm64, as AppImage, `.deb` or a plain `.tar.gz`,
+  and x86_64 as a Flatpak bundle. The Flatpak runs on the freedesktop
+  24.08 runtime, which brings its own glibc, so it also starts on the
+  older distributions below once Flatpak is installed (#2054).
   The programs are built on Ubuntu 22.04 and need **glibc 2.35 or later**
   (the newest symbol version in `objdump -T` of the 0.19.8 programs is
   `GLIBC_2.35`; the `.deb` asks for `libc6 (>= 2.35)`). The AppImage does
