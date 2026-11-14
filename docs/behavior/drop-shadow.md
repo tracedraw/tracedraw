@@ -76,10 +76,14 @@ written (the blend goes out alone, with a warning in the log).
 
 - With the Pick tool a click on the drop shadow, away from its object,
   chooses the shadow on its own: it shows a box of its own, out to its
-  feathered edge, with hollow handles instead of the object's, and
-  Delete takes the shadow away and leaves the object selected. A click
-  on the object chooses the object again (#2545,
-  `pick_drag_tests::a_drop_shadow_is_chosen_apart_from_its_object`).
+  feathered edge, without handles (the hollow handles it had did
+  nothing, #2711), and Delete takes the shadow away and leaves the
+  object selected. A drag on the chosen shadow moves it with the
+  pointer, as a drag on it with the Drop Shadow tool does, one undo
+  step, the object staying where it is. A click on the object chooses
+  the object again (#2545,
+  `pick_drag_tests::a_drop_shadow_is_chosen_apart_from_its_object`,
+  `pick_drag_tests::dragging_a_chosen_drop_shadow_moves_it`).
 - An object with an envelope, a perspective or a distortion takes its
   shadow by the outline it shows: the box the tool measures on (which
   edge a press is next to, where the handles sit, where a perspective

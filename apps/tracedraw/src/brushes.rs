@@ -61,6 +61,9 @@ pub struct StrokeBase {
     pub angle: f64,
     /// Roughen: where the nib went in this stroke.
     pub swath: Vec<Point>,
+    /// Smudge: where the stroke began and the farthest the nib went from
+    /// there; a move against that way is the way back (#2710).
+    pub smudge_out: Option<(Point, Point)>,
 }
 
 /// The smallest and the largest nib radius (mm), as the property bar
@@ -254,6 +257,20 @@ impl App {
                 self.brush_stroke.swath.push(p);
             }
         }
+        // Smudge: whether this move goes back against the way the stroke
+        // went out, so the outline it drew out comes back with the nib
+        // (#2710).
+        let smudge_back = if self.tool == Tool::Smudge {
+            let (start, far) = *self.brush_stroke.smudge_out.get_or_insert((last, last));
+            let out = far - start;
+            let back = out.hypot() > radius * 0.25 && delta.dot(out) < 0.0;
+            if (p - start).hypot() > out.hypot() {
+                self.brush_stroke.smudge_out = Some((start, p));
+            }
+            back
+        } else {
+            false
+        };
         let dose = self.brush_stroke.dose;
         let mut cmds = Vec::new();
         for s in self.selected_shapes() {
@@ -284,6 +301,13 @@ impl App {
                     effects::twirl(from, p, self.brush_stroke.angle, radius)
                 }
                 (Tool::AttractRepel, Some(from)) => effects::attract(from, p, radius, dose),
+                (Tool::Smudge, _) if smudge_back => effects::smudge_back(
+                    &page_path,
+                    last,
+                    p,
+                    radius,
+                    BrushSettings::pressure(b.smudge_pressure),
+                ),
                 (Tool::Smudge, _) => effects::smudge(
                     &page_path,
                     last,
@@ -491,6 +515,29 @@ mod tests {
         }
         let half = bounds(&app, id).x1;
         assert!(half > 40.5 && half < full - 0.5, "{half} vs {full}");
+    }
+
+    /// #2710: a Smudge stroke from inside the square out past its top
+    /// edge and back over the same path brings the edge back near where
+    /// it was; the outline it drew out used to stay out.
+    #[test]
+    fn smudge_out_and_back_in_one_stroke_returns_the_edge() {
+        let mut app = App::headless();
+        let id = square(&mut app);
+        app.tool = Tool::Smudge;
+        app.brush.smudge_pressure = 100;
+        app.brush_radius = 8.0;
+        app.brush_begin(Point::new(20.0, 34.0));
+        for k in 1..=20 {
+            app.brush_step(Point::new(20.0, 34.0 + k as f64), false, 0.0);
+        }
+        let out = bounds(&app, id).y1;
+        assert!(out > 50.0, "{out}");
+        for k in 1..=20 {
+            app.brush_step(Point::new(20.0, 54.0 - k as f64), false, 0.0);
+        }
+        let back = bounds(&app, id).y1;
+        assert!(back < 44.0, "the edge stayed out at {back}");
     }
 
     /// Brushes change only the selected objects: a stroke over a

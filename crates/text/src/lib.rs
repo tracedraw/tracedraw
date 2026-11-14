@@ -1661,6 +1661,8 @@ pub struct PathPlacement {
     /// The line's left end, x, and its baseline, y, in the straight layout.
     line_x0: f64,
     line_y: f64,
+    /// The line's length along the path.
+    width: f64,
     lift: f64,
     flip: bool,
     orientation: PathTextOrientation,
@@ -1680,8 +1682,19 @@ impl PathPlacement {
     pub fn unplace(&self, p: Point) -> Option<Point> {
         let (s, d) = self.baseline.nearest(p)?;
         let d = if self.flip { -d } else { d };
+        // Round a closed path the letters go on past its end from its
+        // start: a point there is that far along the line, not a whole
+        // round back (#2714: the letters past the path's start could not
+        // be clicked or selected). Measured from the line's middle, a
+        // point is placed on the nearer side of the gap.
+        let mut along = s - self.start;
+        let total = self.baseline.length();
+        if self.baseline.is_closed() && total > 0.0 {
+            let middle = self.width / 2.0;
+            along = (along - middle + total / 2.0).rem_euclid(total) - total / 2.0 + middle;
+        }
         Some(Point::new(
-            self.line_x0 + s - self.start,
+            self.line_x0 + along,
             self.line_y + d - self.lift,
         ))
     }
@@ -5800,6 +5813,7 @@ fn place_on_path(
         start,
         line_x0: 0.0,
         line_y: 0.0,
+        width: text_w,
         lift,
         flip: tp.flipped(),
         orientation: tp.orientation,

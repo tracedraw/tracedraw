@@ -171,7 +171,12 @@ The panel shows these under the other controls; the bar has them in its
   `0.55 + 0.45 (k (n . l + 1) / 2 + 1 - k)`; each further light adds
   `0.3 k max(0, n . l)`; the result stays within 0.2 to 1. A face's
   normal is worked out as if the body ran straight back, so an untouched
-  body is lit as the flat one.
+  body is lit as the flat one. Along a smooth stretch of the outline
+  (no corner sharper than 20 degrees) each face is shaded from the
+  light where it meets the face before to the light where it meets the
+  next (the mean of the two faces' lights), a fountain across the
+  face, so a round side shades smoothly instead of in flat bands
+  (#2706, `extrude3d::tests::a_bevelled_round_side_shades_smoothly`).
 - Bevel: the front face shrinks by the width (each corner along its
   bisector, at most three widths) and a band slopes from it to the
   outline one width deep; at most 0.9 of the depth and of half the
@@ -198,6 +203,7 @@ The panel shows these under the other controls; the bar has them in its
 - `extrude3d::tests::turning_shows_the_side_turned_toward_the_viewer`
 - `extrude3d::tests::a_half_turn_hides_the_object_and_shows_the_far_cap`
 - `extrude3d::tests::a_bevel_shrinks_the_near_cap_and_adds_a_band`
+- `extrude3d::tests::a_bevelled_round_side_shades_smoothly`
 - `extrude3d::tests::further_lights_brighten_the_faces_they_reach`
 - `extrude3d::tests::broken_values_never_panic`
 - `extrude3d::tests::a_turned_body_stays_by_the_object_with_the_vanishing_point_near`

@@ -215,6 +215,25 @@ impl App {
         }
     }
 
+    /// A Pick tool press at `p` on the chosen drop shadow of `id`, away
+    /// from the object: the drag that follows moves the whole shadow with
+    /// the pointer, one undo step "Drop Shadow" (#2711). False anywhere
+    /// else (the object itself, or no shadow chosen).
+    pub fn start_picked_shadow_move(&mut self, id: ShapeId, p: Point) -> bool {
+        if self.picked_shadow() != Some(id) || self.hit_test(p) == Some(id) {
+            return false;
+        }
+        let Some((_, sh, b)) = self.selected_shadow() else {
+            return false;
+        };
+        self.drag = crate::app::Drag::ShadowHandle {
+            handle: ShadowHandle::End,
+            grab: sh.end_point(b) - p,
+            begun: false,
+        };
+        true
+    }
+
     /// Delete with a shadow chosen on its own: the shadow goes, its
     /// object stays selected. False when no shadow is chosen.
     pub fn delete_picked_shadow(&mut self) -> bool {
