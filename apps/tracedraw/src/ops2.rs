@@ -399,7 +399,11 @@ impl App {
                 PageNumberWhere::Even => tracedraw_core::MasterScope::Even,
                 _ => tracedraw_core::MasterScope::All,
             };
-            let i = (0..pages.len()).find(|i| scope.applies(*i)).unwrap_or(0);
+            let first = self.page_numbers.first_page.max(1) - 1;
+            let i = (first..pages.len())
+                .chain(0..first)
+                .find(|i| scope.applies(*i))
+                .unwrap_or(0);
             let Some(size) = pages
                 .get(i)
                 .and_then(|(_, p)| self.doc().page(*p).ok())
@@ -442,8 +446,13 @@ impl App {
             let i = pages
                 .iter()
                 .position(|(_, p)| *p == active)
-                .filter(|i| scope.applies(*i))
-                .or_else(|| (0..pages.len()).find(|i| scope.applies(*i)))
+                .filter(|i| scope.applies(*i) && self.page_numbers.field().numbers(*i))
+                .or_else(|| {
+                    let first = self.page_numbers.first_page.max(1) - 1;
+                    (first..pages.len())
+                        .chain(0..first)
+                        .find(|i| scope.applies(*i))
+                })
                 .unwrap_or(0);
             let size = pages
                 .get(i)
@@ -462,7 +471,9 @@ impl App {
                 PageNumberWhere::Odd => i % 2 == 0,
                 PageNumberWhere::Even => i % 2 == 1,
             };
-            if !wanted {
+            // Covers and other pages before the first numbered page get
+            // no number (#2127).
+            if !wanted || !self.page_numbers.field().numbers(i) {
                 continue;
             }
             let Ok(page) = self.doc().page(pid) else {
@@ -5897,6 +5908,84 @@ mod tests {
             back.master[0].shapes[0].page_number,
             Some(app.page_numbers.field())
         );
+    }
+
+    /// Numbering that begins on page 3 leaves the two covers without a
+    /// number and shows 1 on page 3, both for a field on a master layer
+    /// and for numbers put on each page; the setting is saved with the
+    /// field (#2127).
+    #[test]
+    fn page_numbering_can_begin_after_the_covers() {
+        let mut app = crate::ui::objects_docker::tests::without_desktop();
+        for _ in 0..3 {
+            app.add_page();
+        }
+        app.page_numbers.first_page = 3;
+        app.insert_page_number(PageNumberWhere::All);
+        let doc = app.doc().clone();
+        let shown: Vec<Option<String>> = doc
+            .pages
+            .iter()
+            .map(|p| {
+                let layers = doc.layers_drawn_for_page(p.id).expect("layers");
+                layers
+                    .iter()
+                    .flat_map(|l| l.shapes.iter())
+                    .find_map(|s| match &s.kind {
+                        ShapeKind::Text { spans, .. } => {
+                            Some(tracedraw_core::document::spans_text(spans))
+                        }
+                        _ => None,
+                    })
+            })
+            .collect();
+        assert_eq!(shown, [None, None, Some("1".into()), Some("2".into())]);
+        let json = doc.to_json().expect("save");
+        let back = tracedraw_core::Document::from_json(&json).expect("open");
+        assert_eq!(
+            back.master[0].shapes[0]
+                .page_number
+                .as_ref()
+                .map(|f| f.first_page),
+            Some(3)
+        );
+
+        // On each page of its own: none on the covers.
+        let mut app = crate::ui::objects_docker::tests::without_desktop();
+        for _ in 0..3 {
+            app.add_page();
+        }
+        app.page_numbers.first_page = 3;
+        app.page_numbers.start_at = 5;
+        app.page = app.doc().pages[0].id;
+        app.insert_page_number(PageNumberWhere::Active);
+        assert!(app.doc().pages[0]
+            .layers
+            .iter()
+            .all(|l| l.shapes.is_empty()));
+        let page = app.doc().pages.len() - 1;
+        app.page = app.doc().pages[page].id;
+        app.insert_page_number(PageNumberWhere::Active);
+        let texts: Vec<String> = app.doc().pages[page]
+            .layers
+            .iter()
+            .flat_map(|l| l.shapes.iter())
+            .filter_map(|s| match &s.kind {
+                ShapeKind::Text { spans, .. } => Some(tracedraw_core::document::spans_text(spans)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, ["6"]);
+    }
+
+    /// A field saved before the first page could be chosen numbers from
+    /// page 1.
+    #[test]
+    fn an_older_page_number_field_numbers_from_page_one() {
+        let f: tracedraw_core::document::PageNumberField =
+            serde_json::from_str(r#"{"start_at":1,"style":0}"#).expect("field");
+        assert_eq!(f.first_page, 1);
+        assert_eq!(f.label(0), "1");
     }
 
     /// Insert Page Number on odd pages with no master layer active makes

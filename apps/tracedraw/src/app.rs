@@ -45,6 +45,9 @@ impl FreeTransformMode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageNumberSettings {
     pub start_at: i64,
+    /// The page (1-based) numbering begins on, showing `start_at`; the
+    /// pages before it get no number (#2127).
+    pub first_page: usize,
     pub prefix: String,
     pub suffix: String,
     /// 0 arabic, 1 upper roman, 2 lower roman, 3 upper alpha, 4 lower alpha.
@@ -58,6 +61,7 @@ impl Default for PageNumberSettings {
     fn default() -> Self {
         PageNumberSettings {
             start_at: 1,
+            first_page: 1,
             prefix: String::new(),
             suffix: String::new(),
             style: 0,
@@ -72,6 +76,7 @@ impl PageNumberSettings {
     pub fn field(&self) -> tracedraw_core::document::PageNumberField {
         tracedraw_core::document::PageNumberField {
             start_at: self.start_at,
+            first_page: self.first_page.max(1),
             style: self.style,
             prefix: self.prefix.clone(),
             suffix: self.suffix.clone(),

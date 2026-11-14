@@ -19634,6 +19634,73 @@ fn the_remove_background_eyedropper_picks_on_the_shared_preview() {
     );
 }
 
+/// The Erase brush paints a stroke across the preview (the drag paints
+/// instead of panning), the Restore brush a dab; each is one stroke of
+/// the settings, Clear strokes takes them away, and Fill background
+/// puts a backdrop in the settings (#1723, #1915).
+#[test]
+fn remove_background_brushes_paint_on_the_preview() {
+    let (ctx, mut app) = bg_three_setup();
+    let press = |ctx: &egui::Context, app: &mut App, name: &str| {
+        click_at(ctx, app, preview_rect(ctx, name).center(), Modifiers::NONE);
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    press(&ctx, &mut app, "bg_brush_erase");
+    let st = bg_state(&app);
+    assert_eq!(st.brush, Some(false));
+    assert!(st.picking);
+    let image = preview_rect(&ctx, "view_image");
+    let at = |fx: f32| egui::pos2(image.left() + image.width() * fx, image.center().y);
+    drag(
+        &ctx,
+        &mut app,
+        at(0.7),
+        at(0.9),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    assert_eq!(
+        preview_rect(&ctx, "view_image"),
+        image,
+        "no pan while painting"
+    );
+    let st = bg_state(&app);
+    assert_eq!(st.settings.strokes.len(), 1);
+    let stroke = &st.settings.strokes[0];
+    assert!(!stroke.restore);
+    assert!(stroke.points.len() >= 2, "{:?}", stroke.points);
+    let first = stroke.points[0];
+    let last = stroke.points[stroke.points.len() - 1];
+    assert!(
+        (first[0] - 0.7).abs() < 0.02 && (last[0] - 0.9).abs() < 0.02,
+        "{first:?} {last:?}"
+    );
+    assert!((first[1] - 0.5).abs() < 0.02);
+    assert!(st.stroke.is_empty());
+    // No colour was picked by the press.
+    assert_eq!(st.settings.colors, vec![crate::bg_remove::BgPick::AUTO]);
+    // Restore: a click is a dab.
+    press(&ctx, &mut app, "bg_brush_restore");
+    assert_eq!(bg_state(&app).brush, Some(true));
+    click_at(&ctx, &mut app, at(0.8), Modifiers::NONE);
+    let st = bg_state(&app);
+    assert_eq!(st.settings.strokes.len(), 2);
+    assert!(st.settings.strokes[1].restore);
+    assert_eq!(st.settings.strokes[1].points.len(), 1);
+    // Clicked again, the brush is off.
+    press(&ctx, &mut app, "bg_brush_restore");
+    let st = bg_state(&app);
+    assert_eq!(st.brush, None);
+    assert!(!st.picking);
+    press(&ctx, &mut app, "bg_brush_clear");
+    assert!(bg_state(&app).settings.strokes.is_empty());
+    press(&ctx, &mut app, "bg_backdrop");
+    assert_eq!(
+        bg_state(&app).settings.backdrop,
+        Some(crate::bg_remove::BgBackdrop::WHITE)
+    );
+}
+
 fn bg_state(app: &App) -> crate::ui::bitmap_dialogs::BgRemoveState {
     match &app.dialog {
         crate::ui::dialogs::Dialog::RemoveBackground(st) => st.clone(),

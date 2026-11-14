@@ -3122,6 +3122,13 @@ pub fn show(app: &mut App, ctx: &Context) {
                             "dialog.pn_start_desc",
                         ));
                         ui.end_row();
+                        ui.label(tr("dialog.pn_first_page"));
+                        ui.add(crate::ui::field::NumField::new(&mut pn.first_page).range(1..=9999))
+                            .rich_tip(crate::ui::tips::pair(
+                                "dialog.pn_first_page",
+                                "dialog.pn_first_page_desc",
+                            ));
+                        ui.end_row();
                         ui.label(tr("dialog.prefix"));
                         ui.text_edit_singleline(&mut pn.prefix)
                             .rich_tip(crate::ui::tips::pair(
@@ -3187,8 +3194,11 @@ pub fn show(app: &mut App, ctx: &Context) {
                         ui.end_row();
                     });
                 ui.label(
-                    egui::RichText::new(format!("{}  {}", pn.label(0), pn.label(1)))
-                        .color(Tokens::text_dim()),
+                    egui::RichText::new({
+                        let f = pn.first_page.max(1) - 1;
+                        format!("{}  {}", pn.label(f), pn.label(f + 1))
+                    })
+                    .color(Tokens::text_dim()),
                 );
                 if crate::ui::chrome::button_row(ui, &[&tr("dialog.close")], false).is_some() {
                     close = true;

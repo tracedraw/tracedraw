@@ -4713,6 +4713,10 @@ impl PrimaryColorMode {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PageNumberField {
     pub start_at: i64,
+    /// The page (1-based) that shows `start_at`; the pages before it,
+    /// such as covers, show no number (#2127).
+    #[serde(default = "first_numbered_page")]
+    pub first_page: usize,
     /// 0 arabic, 1 upper roman, 2 lower roman, 3 upper alpha, 4 lower alpha.
     pub style: u8,
     #[serde(default)]
@@ -4721,10 +4725,24 @@ pub struct PageNumberField {
     pub suffix: String,
 }
 
+fn first_numbered_page() -> usize {
+    1
+}
+
 impl PageNumberField {
-    /// The text for the page at `index` (0-based).
+    /// The page at `index` (0-based) shows a number: it is not one of
+    /// the pages before the first numbered page (#2127).
+    pub fn numbers(&self, index: usize) -> bool {
+        index + 1 >= self.first_page.max(1)
+    }
+
+    /// The text for the page at `index` (0-based): empty on the pages
+    /// before the first numbered page (#2127).
     pub fn label(&self, index: usize) -> String {
-        let n = self.start_at + index as i64;
+        if !self.numbers(index) {
+            return String::new();
+        }
+        let n = self.start_at + index as i64 - (self.first_page.max(1) as i64 - 1);
         let body = match self.style {
             1 => roman(n),
             2 => roman(n).to_lowercase(),
@@ -5699,6 +5717,10 @@ impl Document {
                 let master = self.master.iter().any(|m| m.id == l.id);
                 if master && l.shapes.iter().any(Shape::holds_page_number) {
                     let mut l = l.clone();
+                    // A field on a page before the first numbered page
+                    // is left out (#2127).
+                    l.shapes
+                        .retain(|s| s.page_number.as_ref().is_none_or(|f| f.numbers(idx)));
                     for s in &mut l.shapes {
                         s.show_page_number(idx);
                     }

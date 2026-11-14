@@ -4,6 +4,11 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Page Number Settings: Begin on page chooses the page that shows the first number, so covers and title pages get none; with Begin on page 3 and Start at 1, page 3 shows 1. It works for numbers on a master layer (saved with the field) and for numbers put on each page (#2127).
+- Remove Background: Erase and Restore brushes paint on the preview, with a brush size and Clear strokes, to take away what the colours left or bring back what they took; each stroke is a step of the dialog's undo. Fill background puts a colour, or a gradient from top to bottom, behind the picture instead of transparency (#1723, #1915).
+
 ## 0.46.0 (2026-11-14)
 
 - Properties panel: with one closed object selected (a rectangle, ellipse, polygon or closed curve) the header gives its area under the position and size, holes taken out, in the drawing unit squared (#2599).
