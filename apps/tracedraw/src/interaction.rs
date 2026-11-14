@@ -1756,8 +1756,12 @@ impl App {
             return;
         }
 
-        // The tab ruler over the paragraph frame being edited (#1852).
-        if self.tool == Tool::Text && self.tab_ruler_input(response, screen) {
+        // The tab ruler over the paragraph frame being edited (#1852);
+        // the rulers take it when it is the horizontal ruler (#1912).
+        if self.tool == Tool::Text
+            && !self.tab_ruler_docked()
+            && self.tab_ruler_input(response, screen)
+        {
             return;
         }
         // With the Zoom tool a right click zooms out by default; with the

@@ -1715,7 +1715,7 @@ pub(crate) fn char_height_mm(size_pt: f64) -> f64 {
 /// reference program shows all three (before 100 % is no extra room,
 /// after 0 % none), else a length. A percent typed is kept as one, so the
 /// room follows the text's size; a length typed replaces it (#2613).
-fn space_field(
+pub(crate) fn space_field(
     ui: &mut Ui,
     app: &App,
     p: &mut tracedraw_core::ParagraphStyle,
@@ -1905,7 +1905,7 @@ fn frame(app: &mut App, ui: &mut Ui, first: Option<&tracedraw_core::Shape>) {
 
 /// The small pictures beside the paragraph spacing and indent fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ParaIcon {
+pub(crate) enum ParaIcon {
     Leading,
     LeftIndent,
     RightIndent,
@@ -1917,7 +1917,11 @@ enum ParaIcon {
 /// The lines of a paragraph icon in `r`: lines of text with an arrow or a
 /// bar showing what the field sets. Drawn rather than taken from a font,
 /// whose arrows the interface fonts of some systems lack (#863).
-fn para_icon_shapes(icon: ParaIcon, r: egui::Rect, color: egui::Color32) -> Vec<egui::Shape> {
+pub(crate) fn para_icon_shapes(
+    icon: ParaIcon,
+    r: egui::Rect,
+    color: egui::Color32,
+) -> Vec<egui::Shape> {
     let st = egui::Stroke::new(1.0, color);
     let c = r.center();
     let (l, rt) = (c.x - 7.0, c.x + 7.0);

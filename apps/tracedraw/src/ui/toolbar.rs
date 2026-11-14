@@ -2215,43 +2215,9 @@ fn text_properties(app: &mut App, ui: &mut Ui) {
         }
     }
     vsep(ui);
-    let shapes = app.selected_rc();
-    let is_text = shapes
-        .iter()
-        .any(|s| matches!(s.kind, ShapeKind::Text { .. }));
-    let is_para = shapes
-        .iter()
-        .any(|s| matches!(s.kind, ShapeKind::Text { frame: Some(_), .. }));
-    if pic_button(ui, Pic::Bullets, &tr("menu.text.bullets"), is_para, false).clicked() {
-        app.dialog = crate::ui::dialogs::Dialog::TextBullets;
-    }
-    if pic_button(ui, Pic::DropCap, &tr("menu.text.drop_cap"), is_para, false).clicked() {
-        app.dialog = crate::ui::dialogs::Dialog::TextDropCap;
-    }
-    vsep(ui);
-    let docker_open = app.docker_shown(crate::app::DockerTab::Text);
-    if pic_button(
-        ui,
-        Pic::TextProperties,
-        &crate::shortcuts::shown_in(format!("{} (Ctrl+T)", tr("toolbar.text_properties"))),
-        true,
-        docker_open,
-    )
-    .clicked()
-    {
-        app.toggle_docker(crate::app::DockerTab::Text);
-    }
-    if pic_button(
-        ui,
-        Pic::EditText,
-        &crate::shortcuts::shown_in(format!("{} (Ctrl+Shift+T)", tr("menu.text.edit_text"))),
-        is_text,
-        false,
-    )
-    .clicked()
-    {
-        app.open_edit_text_dialog();
-    }
+    // The docker's character and paragraph settings, the buttons that
+    // open the text dialogs and the "+" that shows or hides each (#1822).
+    crate::ui::text_bar::optional_part(app, ui);
     if changed {
         app.apply_text_style();
     }

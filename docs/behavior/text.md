@@ -790,6 +790,18 @@ every text holds the whole text.
   upturned T (centre stop) and a T with a dot (decimal stop). A
   paragraph with no stops shows the default grid (Default tab spacing,
   12.7 mm unless set) in a lighter colour.
+  - With the rulers shown and the frame upright (its top edge level,
+    not turned or mirrored), the strip is the page's own horizontal
+    ruler over the frame's width, as in the reference program: no strip
+    is drawn on the page; the frame's width shows lighter in the ruler
+    between two lines, the ruler's ticks and numbers stay, and the stops
+    and indent markers stand in it. Everything below works there the
+    same (a stop dragged more than 18 points below the ruler goes, the
+    lines of a drag run down the drawing). A drag from the ruler beside
+    the frame still pulls out a guideline, and a right click there opens
+    the ruler's menu. A turned or mirrored frame, or rulers hidden, keep
+    the strip along the frame's top edge (#1912,
+    `pick_drag_tests::the_tab_ruler_is_the_page_ruler_over_the_frame`).
   - A click on the strip away from a marker adds a left stop there.
   - A drag of a marker (within 6 points) moves it, by 0.1 mm, with a
     line down the frame where it would go; a drag starting away from a

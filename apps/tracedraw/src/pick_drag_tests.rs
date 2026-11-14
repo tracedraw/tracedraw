@@ -27687,3 +27687,113 @@ fn the_fit_to_path_order_list_picks_an_order() {
     app.fit_path.order = FitOrder::AsSelected;
     assert_ne!(reversed, boxes(&mut app), "the preview follows the order");
 }
+
+/// With the rulers shown, the tab ruler of the frame being edited is the
+/// horizontal ruler over the frame's width (#1912): no strip on the page,
+/// a click on the ruler there adds a stop and no guideline comes out of
+/// it; a drag from the ruler beside the frame still makes a guideline.
+/// With the rulers hidden the strip is back on the page.
+#[test]
+fn the_tab_ruler_is_the_page_ruler_over_the_frame() {
+    use tracedraw_core::TabStop;
+    let (ctx, mut app, id) = editing_with_ruler(vec![TabStop::left(20.0)]);
+    let r = app.tab_ruler().expect("ruler");
+    assert!(r.docked, "in the page ruler");
+    assert!((r.a.y - app.canvas_rect.top()).abs() < 0.01);
+    let at = r.on_strip(50.0);
+    assert!(at.y < app.canvas_rect.top() && at.y > app.canvas_rect.top() - 18.0);
+    let guides = app.page_guides().len();
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    let stops = tab_stops_of(&app, id);
+    assert_eq!(stops.len(), 2, "{stops:?}");
+    assert!((stops[1].pos - 50.0).abs() < 0.6, "{stops:?}");
+    // A drag along the ruler over the frame moves the stop, no guideline.
+    let r = app.tab_ruler().expect("ruler");
+    drag(
+        &ctx,
+        &mut app,
+        r.on_strip(stops[1].pos),
+        r.on_strip(70.0),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    let moved = tab_stops_of(&app, id);
+    assert!((moved[1].pos - 70.0).abs() < 0.6, "{moved:?}");
+    assert_eq!(app.page_guides().len(), guides, "no guideline");
+    assert!(app.text_edit.is_some(), "still editing");
+    // Beside the frame the ruler still gives a guideline.
+    let r = app.tab_ruler().expect("ruler");
+    let beside = egui::pos2(
+        (r.a.x - 60.0).max(app.canvas_rect.left() + 30.0),
+        app.canvas_rect.top() - 9.0,
+    );
+    assert!(beside.x < r.a.x - 10.0, "room beside the frame");
+    drag(
+        &ctx,
+        &mut app,
+        beside,
+        beside + egui::vec2(0.0, 200.0),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    assert_eq!(app.page_guides().len(), guides + 1, "a guideline");
+    // Rulers hidden: the strip along the frame's top edge.
+    app.show_rulers = false;
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let r = app.tab_ruler().expect("ruler");
+    assert!(!r.docked);
+    assert!(app.canvas_rect.contains(r.on_strip(10.0)));
+}
+
+/// The Text tool's bar carries the docker's settings and a "+" button
+/// (#1822): every item shows at first, and the "+" list hides an item
+/// and puts the bar back.
+#[test]
+fn the_text_bar_has_more_settings_and_a_plus_list() {
+    use crate::ui::text_bar;
+    let (ctx, mut app, _) = setup();
+    let id = paragraph_frame(&ctx, &mut app, 12);
+    app.set_tool(Tool::Text);
+    app.select(vec![id]);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    assert_eq!(app.selection, vec![id]);
+    for item in text_bar::ITEMS.iter().filter(|i| **i != "sep") {
+        assert!(text_bar::shown(&app, item), "{item} shown at first");
+    }
+    // A window narrower than the whole bar (it slides): a few hidden so
+    // the "+" is in view.
+    for item in ["kerning", "char_width", "word_spacing", "space_before"] {
+        text_bar::set_shown(&mut app, item, false);
+    }
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let plus = text_bar::plus_rect(&ctx).expect("the + button on the bar");
+    assert!(plus.right() < 1600.0, "{plus:?}");
+    click_at(&ctx, &mut app, plus.center(), Modifiers::NONE);
+    let mut texts = Vec::new();
+    for _ in 0..2 {
+        texts = texts_drawn(&ctx, &mut app, Vec::new());
+    }
+    let row = text_at(&texts, &text_bar::name("line_spacing")).expect("the list names the items");
+    assert!(text_at(&texts, &text_bar::name("space_after")).is_some());
+    click_at(&ctx, &mut app, row, Modifiers::NONE);
+    assert!(!text_bar::shown(&app, "line_spacing"), "unticked: hidden");
+    assert!(text_bar::shown(&app, "char_spacing"));
+    text_bar::reset(&mut app);
+    assert!(text_bar::shown(&app, "line_spacing"));
+    assert!(text_bar::shown(&app, "kerning"));
+    assert!(!app.settings.bar_items.contains_key(text_bar::HIDDEN));
+    // Hidden and shown again through set_shown, kept with the settings.
+    text_bar::set_shown(&mut app, "tabs", false);
+    assert_eq!(
+        app.settings.bar_items.get(text_bar::HIDDEN),
+        Some(&vec!["tabs".to_string()])
+    );
+    text_bar::set_shown(&mut app, "tabs", true);
+    assert!(!app.settings.bar_items.contains_key(text_bar::HIDDEN));
+}

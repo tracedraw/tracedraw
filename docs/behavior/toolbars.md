@@ -318,6 +318,23 @@ undo step, as in the number fields. With nothing selected
   Nodes, Reduce Nodes with the Curve smoothness slider); toggles are drawn
   pressed while on. The full list is in `shape-tool.md`.
 
+### Text tool bar
+
+After the font, size, bold, italic, underline, strikethrough and the
+alignment, the Text tool's bar carries the settings of the Text docker
+so it need not be opened (#1822, `ui/text_bar.rs`): range kerning,
+character width, All caps, Change Case; line, character and word
+spacing; left, first line and right indent, space before and after a
+paragraph; Tabs, Columns, Bullets, Drop Cap; the Text docker and Edit
+Text. They change the selected text as the docker does (the characters
+selected while editing, else the whole text; the paragraphs at the
+caret, else every paragraph), and are dimmed with no text to change.
+A "+" button at the bar's end lists them all, each with a box that
+shows or hides it on the bar, and Reset to default puts every one back;
+what is hidden is kept with the bars' settings (`text_hidden`). A bar
+longer than the window slides as below
+(`pick_drag_tests::the_text_bar_has_more_settings_and_a_plus_list`).
+
 ## Bars longer than the window
 
 The standard toolbar, the property bar, the text, zoom, transform and
