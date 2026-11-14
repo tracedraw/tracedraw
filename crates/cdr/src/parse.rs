@@ -243,6 +243,53 @@ pub(crate) const OBJ_BITMAP: u32 = 0x05;
 pub(crate) const OBJ_PARAGRAPH_TEXT: u32 = 0x06;
 const OBJ_POLYGON: u32 = 0x14;
 const OBJ_PATH: u32 = 0x25;
+/// The uniform cubic B-spline steered by `points` as Bezier curves
+/// (#2723): closed, it runs round all of them; open, it starts at the
+/// first point and ends at the last (both ends repeated three times).
+/// Each piece between the knots is the Bezier curve from
+/// (a + 4b + c) / 6 to (b + 4c + d) / 6 with its handles at a third and
+/// two thirds of the way from b to c.
+fn b_spline_path(points: &[Point], closed: bool) -> BezPath {
+    let mut path = BezPath::new();
+    let n = points.len();
+    if n < 3 {
+        if let (Some(a), Some(b)) = (points.first(), points.last()) {
+            path.move_to(*a);
+            path.line_to(*b);
+            if closed {
+                path.close_path();
+            }
+        }
+        return path;
+    }
+    let ctrl: Vec<Point> = if closed {
+        points.to_vec()
+    } else {
+        let mut c = vec![points[0]; 2];
+        c.extend_from_slice(points);
+        c.extend([points[n - 1]; 2]);
+        c
+    };
+    let m = ctrl.len();
+    let at = |i: usize| ctrl[i % m].to_vec2();
+    let pieces = if closed { m } else { m - 3 };
+    for i in 0..pieces {
+        let (a, b, c, e) = (at(i), at(i + 1), at(i + 2), at(i + 3));
+        if i == 0 {
+            path.move_to(((a + b * 4.0 + c) / 6.0).to_point());
+        }
+        path.curve_to(
+            ((b * 2.0 + c) / 3.0).to_point(),
+            ((b + c * 2.0) / 3.0).to_point(),
+            ((b + c * 4.0 + e) / 6.0).to_point(),
+        );
+    }
+    if closed {
+        path.close_path();
+    }
+    path
+}
+
 /// A straight connector line whose ends are in its `ppdt` record. The
 /// type also marks the groups of a table (the table and each of its
 /// cells), whose records are in their `LIST npps` too.
@@ -2857,11 +2904,14 @@ impl<'a> Ctx<'a> {
     /// - a connector line: u32 0, u32 1, then the start and the end point
     ///   (coordinates), then what the ends attach to. The file's preview
     ///   draws each as a straight line between the two points;
-    /// - a list of points: u16 count, u32 1, the points (coordinates), then
-    ///   a u32 for each point (0 or 1), 6 + 12 bytes a point in all. Seen
-    ///   as the outlines of clip frames, closed outlines of some hundred
-    ///   points whose last point lies a step from the first; the preview
-    ///   clips the contents to the outline through the points.
+    /// - a list of points: u16 count, u32 1 (closed; 0 open), the points
+    ///   (coordinates), then a u32 for each point (0 or 1), 6 + 12 bytes a
+    ///   point in all. The points are the control points of a B-spline
+    ///   (the B-spline tool, #2723): the shape is the smooth uniform cubic
+    ///   B-spline they steer, inside the polygon through them, not that
+    ///   polygon. Seen too as the outlines of clip frames, closed outlines
+    ///   of some hundred points close together. The u32 a point is not
+    ///   read.
     fn read_connector(&mut self, oc: &Chunk) -> Option<ShapeKind> {
         let mut found = None;
         oc.walk(&mut |c, _| {
@@ -2871,22 +2921,20 @@ impl<'a> Ctx<'a> {
         });
         let d = self.data(found?);
         let n = u16::from_le_bytes([*d.first()?, *d.get(1)?]) as usize;
-        if n >= 2 && d.len() == 6 + 12 * n && d.get(2..6) == Some(&[1, 0, 0, 0][..]) {
+        let closed = d.get(2..6) == Some(&[1, 0, 0, 0][..]);
+        let open = d.get(2..6) == Some(&[0, 0, 0, 0][..]);
+        if n >= 2 && d.len() == 6 + 12 * n && (closed || open) {
             let mut r = self.reader_at(d, 6);
-            let mut path = BezPath::new();
-            for i in 0..n {
+            let mut points = Vec::with_capacity(n);
+            for _ in 0..n {
                 let p = Point::new(r.coord()?, r.coord()?);
                 if !(p.x.is_finite() && p.y.is_finite()) {
                     return None;
                 }
-                if i == 0 {
-                    path.move_to(p);
-                } else {
-                    path.line_to(p);
-                }
+                points.push(p);
             }
-            path.close_path();
-            return Some(ShapeKind::Path { path, closed: true });
+            let path = b_spline_path(&points, closed);
+            return Some(ShapeKind::Path { path, closed });
         }
         let mut r = self.reader_at(d, 8);
         let a = Point::new(r.coord()?, r.coord()?);
@@ -14724,8 +14772,10 @@ pub(crate) mod tests {
         assert!(rep.warnings.iter().any(|w| w.contains("0x26")));
     }
 
+    /// A point list is the control polygon of a B-spline (#2723): the
+    /// shape is the smooth curve inside it, not the polygon.
     #[test]
-    fn point_lists_are_closed_outlines_through_their_points() {
+    fn point_lists_are_b_splines_steered_by_their_points() {
         // ppdt: u16 count, u32 1, the points, then a u32 for each point.
         let mut ppdt = 4u16.to_le_bytes().to_vec();
         ppdt.extend_from_slice(&u32s(&[1]));
@@ -14753,16 +14803,50 @@ pub(crate) mod tests {
             ShapeKind::Path { path, closed } => {
                 use tracedraw_core::geometry::Shape as _;
                 assert!(closed);
-                // A move, three lines and the close.
-                assert_eq!(path.elements().len(), 5);
+                // A move, four curves and the close.
+                assert_eq!(path.elements().len(), 6);
+                assert!(path
+                    .elements()
+                    .iter()
+                    .all(|e| !matches!(e, tracedraw_core::geometry::PathEl::LineTo(_))));
+                // The closed cubic B-spline round a rectangle's corners
+                // spans eleven twelfths of each side, in the middle.
                 let b = path.bounding_box();
                 assert!(
-                    (b.width() - 25.4).abs() < 1e-9 && (b.height() - 12.7).abs() < 1e-9,
+                    (b.width() - 25.4 * 11.0 / 12.0).abs() < 1e-6
+                        && (b.height() - 12.7 * 11.0 / 12.0).abs() < 1e-6,
                     "{b:?}"
                 );
+                assert!((b.center().x - 12.7).abs() < 1e-6, "{b:?}");
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    /// An open B-spline starts at its first point and ends at its last,
+    /// bending towards the points between (#2723).
+    #[test]
+    fn open_b_splines_run_from_the_first_point_to_the_last() {
+        let pts = [
+            Point::new(0.0, 0.0),
+            Point::new(10.0, 10.0),
+            Point::new(20.0, 0.0),
+        ];
+        let path = b_spline_path(&pts, false);
+        let els = path.elements();
+        assert_eq!(
+            els.first(),
+            Some(&tracedraw_core::geometry::PathEl::MoveTo(pts[0]))
+        );
+        assert!(
+            matches!(els.last(), Some(tracedraw_core::geometry::PathEl::CurveTo(_, _, e)) if *e == pts[2])
+        );
+        use tracedraw_core::geometry::Shape as _;
+        let b = path.bounding_box();
+        assert!(b.height() > 2.0 && b.height() < 10.0, "{b:?}");
+        // Two points are the line between them.
+        let line = b_spline_path(&pts[..2], false);
+        assert_eq!(line.elements().len(), 2);
     }
 
     #[test]
