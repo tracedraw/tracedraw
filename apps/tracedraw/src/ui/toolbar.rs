@@ -3672,11 +3672,36 @@ fn path_thumbnail(
     resp
 }
 
+/// The Drop Shadow and Inner Shadow tools' buttons at the start of both
+/// shadow bars, the one in use pushed in: a click changes tool, as in
+/// CorelDRAW. Users looked for an inner shadow on the Drop Shadow bar and
+/// took its feather direction Inside for it (discussion #2462).
+fn shadow_tool_buttons(app: &mut App, ui: &mut Ui) {
+    for (tool, name, desc) in [
+        (Tool::DropShadow, "tool.drop_shadow", "tooldesc.drop_shadow"),
+        (
+            Tool::InnerShadow,
+            "tool.inner_shadow",
+            "tooldesc.inner_shadow",
+        ),
+    ] {
+        let on = app.tool == tool;
+        if crate::ui::propbar::tool_button(ui, tool, &crate::ui::tips::pair(name, desc), true, on)
+            .clicked()
+            && !on
+        {
+            app.set_tool(tool);
+        }
+    }
+    vsep(ui);
+}
+
 /// The Inner Shadow tool's property bar (#2473): offset, colour, opacity,
 /// feathering and merge mode of the selected object's inner shadow, else
 /// of the next one dragged, and a button that removes it.
 fn inner_shadow_bar(app: &mut App, ui: &mut Ui) {
     use tracedraw_core::{geometry::Vec2 as CVec2, live::Effect};
+    shadow_tool_buttons(app, ui);
     let current = app.selected_inner_shadow_at();
     let has_selection = !app.selection.is_empty();
     let (mut offset, mut st) = current.unwrap_or((CVec2::new(2.0, -2.0), app.inner_shadow));
@@ -3813,6 +3838,7 @@ fn shadow_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::Shape]) {
     let first = app.selected_shadow().map(|(_, sh, _)| sh);
     let mut sh = app.shadow_bar_shadow();
     let mut changed = false;
+    shadow_tool_buttons(app, ui);
     dim(ui, "toolbar.drop_shadow");
     if ui
         .add_enabled(
@@ -4091,6 +4117,71 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    /// Both shadow bars start with the Drop Shadow and Inner Shadow tools'
+    /// buttons, the one in use pushed in; a click on the other changes
+    /// tool (discussion #2462).
+    #[test]
+    fn the_shadow_bars_switch_between_drop_and_inner_shadow() {
+        use crate::tools::Tool;
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        let tips = [
+            crate::ui::tips::pair("tool.drop_shadow", "tooldesc.drop_shadow"),
+            crate::ui::tips::pair("tool.inner_shadow", "tooldesc.inner_shadow"),
+        ];
+        for tool in [Tool::DropShadow, Tool::InnerShadow] {
+            app.set_tool(tool);
+            crate::ui::tips::start_recording();
+            frame(&ctx, &mut app, Vec::new());
+            let seen = crate::ui::tips::recorded();
+            for t in &tips {
+                assert!(seen.contains(t), "{tool:?}: {t}");
+            }
+        }
+        // A click on the second button (Inner Shadow) from the Drop
+        // Shadow tool, then on the first one back.
+        let run = |app: &mut App, events: Vec<egui::Event>| {
+            let mut at = egui::Rect::NOTHING;
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(800.0, 200.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                ui.horizontal(|ui| {
+                    shadow_tool_buttons(app, ui);
+                    at = ui.min_rect();
+                });
+            });
+            out.textures_delta.clear();
+            at
+        };
+        let click = |app: &mut App, pos: egui::Pos2| {
+            let button = |pressed| egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            run(app, vec![egui::Event::PointerMoved(pos)]);
+            run(app, vec![button(true)]);
+            run(app, vec![button(false)]);
+        };
+        app.set_tool(Tool::DropShadow);
+        let row = run(&mut app, Vec::new());
+        let side = row.height();
+        let first = egui::pos2(row.left() + side / 2.0, row.center().y);
+        let second = egui::pos2(row.left() + side * 1.5 + 4.0, row.center().y);
+        click(&mut app, second);
+        assert_eq!(app.tool, Tool::InnerShadow);
+        click(&mut app, first);
+        assert_eq!(app.tool, Tool::DropShadow);
     }
 
     /// The Common Shapes picker has an All tab listing every set at once,

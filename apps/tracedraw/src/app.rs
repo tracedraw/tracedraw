@@ -1814,6 +1814,12 @@ pub struct App {
     pub envelope_mapping: tracedraw_core::envelope::Mapping,
     /// An envelope node or handle being dragged.
     pub envelope_drag: Option<crate::envelope_edit::EnvelopeDrag>,
+    /// The boxes of selected objects with no envelope yet, for the frame
+    /// the Envelope tool shows on them, by document instance and revision
+    /// (see `App::editable_envelope`, #2611).
+    #[allow(clippy::type_complexity)]
+    pub envelope_box_cache:
+        std::cell::RefCell<(u64, u64, std::collections::HashMap<ShapeId, Rect>)>,
     pub bevel: crate::effects_ui::BevelSettings,
     /// The Extrude tool's and panel's values and the tool's drag.
     pub extrude: crate::extrude_tool::ExtrudeSettings,
@@ -3110,6 +3116,7 @@ impl App {
             envelope_mode: Default::default(),
             envelope_mapping: Default::default(),
             envelope_drag: None,
+            envelope_box_cache: std::cell::RefCell::new((u64::MAX, u64::MAX, Default::default())),
             bevel: Default::default(),
             extrude: Default::default(),
             extrude_drag: None,

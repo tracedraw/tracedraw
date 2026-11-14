@@ -16737,6 +16737,60 @@ fn dragging_an_envelope_segment_bends_it() {
     }
 }
 
+/// #2611: a click with the Envelope tool on an object selects it and
+/// shows a frame around it without giving it an envelope; nothing goes on
+/// the undo list. The envelope comes with the first drag of a node, as one
+/// undo step that takes it off again. The Shape tool shows no frame on an
+/// object with no envelope.
+#[test]
+fn an_envelope_tool_click_shows_a_frame_and_only_a_drag_applies_it() {
+    let (ctx, mut app, id) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::Envelope);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let undo_before = app.engine.undo_label().map(str::to_string);
+    let effects_before = app.doc().find_shape(id).expect("shape").effects.clone();
+    let inside = app.view.to_screen(Point::new(35.0, 25.0));
+    click_at(&ctx, &mut app, inside, Modifiers::NONE);
+    assert_eq!(app.selection, vec![id]);
+    assert!(app.envelope_of(id).is_none(), "a click applied an envelope");
+    assert_eq!(
+        app.doc().find_shape(id).expect("shape").effects,
+        effects_before
+    );
+    assert_eq!(app.engine.undo_label().map(str::to_string), undo_before);
+    // The frame shows around the rectangle, its top middle node at (35, 40).
+    let (_, _, f) = app.editable_envelope(id).expect("a frame shows");
+    let top = Point::new(35.0, 40.0);
+    assert!((f.nodes[5] - top).hypot() < 1e-6, "{:?}", f.nodes);
+    // A click on a node chooses it and still applies nothing.
+    let node = app.view.to_screen(top);
+    click_at(&ctx, &mut app, node, Modifiers::NONE);
+    assert_eq!(app.selected_effect_node, Some((id, 5)));
+    assert!(
+        app.envelope_of(id).is_none(),
+        "a node click applied an envelope"
+    );
+    // Dragging the node applies the envelope, moved.
+    let to = app.view.to_screen(Point::new(35.0, 50.0));
+    drag(&ctx, &mut app, node, to, Modifiers::NONE, Vec::new());
+    let (_, moved) = app.envelope_of(id).expect("the drag applies the envelope");
+    let px = 1.5 / app.view.zoom as f64;
+    assert!((moved.nodes[5].y - 50.0).abs() < px, "{:?}", moved.nodes[5]);
+    let drawn = tracedraw_core::live::evaluate(&app.doc().shape_on_page(id).expect("shape"))
+        .main
+        .bounds();
+    assert!(drawn.y1 > 45.0, "{drawn:?}");
+    assert_eq!(app.engine.undo_label(), Some("Edit Envelope"));
+    app.undo();
+    assert!(app.envelope_of(id).is_none());
+    assert_eq!(app.engine.undo_label().map(str::to_string), undo_before);
+    // The Shape tool: no frame on an object with no envelope.
+    app.set_tool(Tool::Shape);
+    app.select(vec![id]);
+    assert!(app.editable_envelope(id).is_none());
+}
+
 /// Dragging an envelope's node (#881): the frame and the enveloped
 /// object follow every move; a line of outlined letters and a plain
 /// rectangle, zoomed in so the frame is large on screen.
