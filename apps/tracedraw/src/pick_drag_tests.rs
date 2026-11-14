@@ -27156,3 +27156,40 @@ fn a_double_click_on_a_palette_colour_edits_it() {
         d => panic!("{d:?}"),
     }
 }
+
+#[test]
+fn a_guideline_over_a_picture_is_dragged_and_the_picture_stays() {
+    // #2640: a guideline across an unselected picture took no press, so a
+    // drag there moved the picture. Guidelines are drawn over pictures,
+    // which usually fill the page behind them; the guideline wins.
+    let (ctx, mut app, _) = setup();
+    let img = app
+        .place_image(
+            image::RgbaImage::from_pixel(200, 200, image::Rgba([20, 120, 200, 255])),
+            None,
+        )
+        .expect("picture");
+    app.select(Vec::new());
+    let pic = page_bounds(&app, img);
+    let y = pic.center().y;
+    app.add_guide(tracedraw_core::document::Guide::horizontal(y));
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let at = app.view.to_screen(Point::new(pic.center().x, y));
+    let cursor = |app: &App, at: Pos2| for_tool(app, false, false, false, Some(at));
+    assert_eq!(
+        cursor(&app, at),
+        ToolCursor::System(egui::CursorIcon::ResizeVertical)
+    );
+    let to = app.view.to_screen(Point::new(pic.center().x, y + 10.0));
+    drag(&ctx, &mut app, at, to, Modifiers::NONE, Vec::new());
+    assert_eq!(page_bounds(&app, img), pic);
+    let moved = match app.page_guides()[0].line {
+        tracedraw_core::document::GuideLine::Horizontal { y } => y,
+        ref other => panic!("guideline turned into {other:?}"),
+    };
+    assert!((moved - (y + 10.0)).abs() < 0.5, "guideline at {moved}");
+    // A selected picture takes the press as before, to move it.
+    app.select(vec![img]);
+    let on = app.view.to_screen(Point::new(pic.center().x, moved));
+    assert_eq!(cursor(&app, on), ToolCursor::System(egui::CursorIcon::Move));
+}

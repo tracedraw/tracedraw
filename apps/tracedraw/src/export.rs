@@ -3603,9 +3603,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The bitmap size in the Export dialog: in pixels it sets the
-    /// resolution as before, in a length it sets the scale; the other side
-    /// follows and nonsense is ignored (#617).
+    /// The bitmap size in the Export dialog: typed in pixels or in a
+    /// length it sets the scale, the resolution staying (#2640: pixels
+    /// set the resolution); the other side follows and nonsense is
+    /// ignored (#617).
     #[test]
     fn the_export_size_is_typed_in_pixels_or_lengths() {
         use crate::ui::dialogs::{export_size_in_unit, set_export_size};
@@ -3629,7 +3630,7 @@ mod tests {
             (2000.0, 1000.0)
         ));
         set_export_size(&mut st, 254.0, 1000.0);
-        assert!((st.dpi - 50.0).abs() < 1e-3 && (st.scale - 2.0).abs() < 1e-9);
+        assert!(st.dpi == 100.0 && (st.scale - 1.0).abs() < 1e-6, "{st:?}");
         assert!(near(
             export_size_in_unit(254.0, 127.0, &st),
             (1000.0, 500.0)
@@ -3646,6 +3647,46 @@ mod tests {
         assert_eq!(st, before);
         st.scale = f64::NAN;
         assert_eq!(st.scale_or_one(), 1.0);
+    }
+
+    /// A resolution typed or picked in the Export dialog leaves the size
+    /// shown: in pixels as many pixels come out, at the new resolution;
+    /// in a length the printed size stays and the pixels follow. A size
+    /// typed leaves the resolution (#2640).
+    #[test]
+    fn the_export_resolution_and_size_change_one_at_a_time() {
+        use crate::ui::dialogs::{export_size_in_unit, set_export_dpi, set_export_size};
+        let mut st = ExportState {
+            dpi: 300.0,
+            size_unit: 0,
+            ..ExportState::default()
+        };
+        // An A4 page: 2481 x 3508 pixels at 300 dpi.
+        let (w, h) = (210.0, 297.0);
+        let before = export_size_in_unit(w, h, &st);
+        assert_eq!(before, (2481.0, 3508.0));
+        set_export_dpi(&mut st, 72.0);
+        assert_eq!(st.dpi, 72.0);
+        assert_eq!(export_size_in_unit(w, h, &st), before, "{st:?}");
+        // A size typed: the resolution stays.
+        set_export_size(&mut st, w, 1000.0);
+        assert_eq!(st.dpi, 72.0);
+        assert_eq!(export_size_in_unit(w, h, &st).0, 1000.0);
+        // In millimetres the printed size stays and the pixels follow.
+        st = ExportState {
+            dpi: 300.0,
+            size_unit: 1,
+            ..ExportState::default()
+        };
+        set_export_dpi(&mut st, 150.0);
+        assert_eq!(export_size_in_unit(w, h, &st), (210.0, 297.0));
+        assert!((st.render_dpi() - 150.0).abs() < 1e-9);
+        // Nonsense changes nothing.
+        let kept = st.clone();
+        for d in [0.0, -1.0, f64::NAN] {
+            set_export_dpi(&mut st, d);
+        }
+        assert_eq!(st, kept);
     }
 
     #[test]

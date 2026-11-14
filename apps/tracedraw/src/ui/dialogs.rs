@@ -206,26 +206,50 @@ pub fn export_size_in_unit(w_mm: f64, h_mm: f64, st: &ExportState) -> (f64, f64)
 }
 
 /// A size typed in a bitmap size field: `typed` (in `st`'s unit) for the
-/// side that is `side_mm` long on the page. In pixels it sets the
-/// resolution, as before; in a length it sets the scale, the resolution
-/// staying. Either way the other side follows (#617).
+/// side that is `side_mm` long on the page. It sets the scale of the
+/// artwork, the resolution staying: in pixels the scale that gives that
+/// many pixels at the resolution, in a length the printed size. The
+/// other side follows (#617). Pixels set the resolution before, so a
+/// size typed changed the resolution (#2640).
 pub fn set_export_size(st: &mut ExportState, side_mm: f64, typed: f64) {
     if !(side_mm > 0.0 && side_mm.is_finite() && typed > 0.0 && typed.is_finite()) {
         return;
     }
     let unit = EXPORT_SIZE_UNITS[st.size_unit.min(EXPORT_SIZE_UNITS.len() - 1)].1;
-    if unit > 0.0 {
-        // Not past what the highest resolution can draw.
-        let most = (2400.0 / st.dpi.max(MIN_EXPORT_DPI)).min(*EXPORT_SCALE_RANGE.end());
-        let least = EXPORT_SCALE_RANGE.start().min(most);
-        st.scale = (typed * unit / side_mm).clamp(least, most);
+    let dpi = st.dpi.max(MIN_EXPORT_DPI);
+    let scale = if unit > 0.0 {
+        typed * unit / side_mm
     } else {
         let px = typed.round().clamp(1.0, 200_000.0) as u32;
-        let scale = st.scale_or_one();
-        if let Some(dpi) = dpi_for_pixels(side_mm * scale, px) {
-            st.dpi = dpi;
-        }
+        let Some(render) = dpi_for_pixels(side_mm, px) else {
+            return;
+        };
+        render / dpi
+    };
+    // Not past what the highest resolution can draw.
+    let most = (2400.0 / dpi).min(*EXPORT_SCALE_RANGE.end());
+    let least = EXPORT_SCALE_RANGE.start().min(most);
+    st.scale = scale.clamp(least, most);
+}
+
+/// A resolution typed or picked in the Export dialog. The size stays as
+/// shown: in pixels the scale makes up for it, so as many pixels come
+/// out, recorded at the new resolution; in a length the printed size
+/// stays and the pixels follow the resolution (#2640: a resolution
+/// changed the pixel size).
+pub fn set_export_dpi(st: &mut ExportState, dpi: f64) {
+    if !(dpi.is_finite() && dpi > 0.0) {
+        return;
     }
+    let dpi = dpi.clamp(MIN_EXPORT_DPI, 2400.0);
+    let unit = EXPORT_SIZE_UNITS[st.size_unit.min(EXPORT_SIZE_UNITS.len() - 1)].1;
+    if unit <= 0.0 {
+        let render = st.render_dpi();
+        let most = (2400.0 / dpi).min(*EXPORT_SCALE_RANGE.end());
+        let least = EXPORT_SCALE_RANGE.start().min(most);
+        st.scale = (render / dpi).clamp(least, most);
+    }
+    st.dpi = dpi;
 }
 
 /// Where a `.cdr` file that does not open right is sent in.
@@ -4552,15 +4576,23 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                 if raster {
                     ui.horizontal(|ui| {
                         ui.label(tr("dialog.resolution"));
-                        ui.add(
-                            crate::ui::field::NumField::new(&mut st.dpi)
-                                .range(MIN_EXPORT_DPI..=2400.0)
-                                .suffix(" dpi"),
-                        )
-                        .rich_tip(crate::ui::tips::pair(
-                            "dialog.resolution",
-                            "dialog.export_dpi_desc",
-                        ));
+                        // The size shown stays when the resolution
+                        // changes (#2640).
+                        let mut dpi = st.dpi;
+                        if ui
+                            .add(
+                                crate::ui::field::NumField::new(&mut dpi)
+                                    .range(MIN_EXPORT_DPI..=2400.0)
+                                    .suffix(" dpi"),
+                            )
+                            .rich_tip(crate::ui::tips::pair(
+                                "dialog.resolution",
+                                "dialog.export_dpi_desc",
+                            ))
+                            .changed()
+                        {
+                            set_export_dpi(st, dpi);
+                        }
                         for d in [72.0, 96.0, 150.0, 300.0] {
                             if ui
                                 .small_button(format!("{d:.0}"))
@@ -4569,7 +4601,7 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                                 })
                                 .clicked()
                             {
-                                st.dpi = d;
+                                set_export_dpi(st, d);
                             }
                         }
                     });
@@ -4616,8 +4648,8 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                         app.page_rect()
                     };
                     // The size in the chosen unit: typing either side sets
-                    // the resolution (pixels) or the scale (lengths) that
-                    // gives it, the other side following (#617).
+                    // the scale that gives it, the resolution staying, the
+                    // other side following (#617, #2640).
                     let (mut w, mut h) = export_size_in_unit(b.width(), b.height(), st);
                     let unit = st.size_unit.min(EXPORT_SIZE_UNITS.len() - 1);
                     let (decimals, step) = if unit == 0 { (0, 1.0) } else { (2, 0.1) };

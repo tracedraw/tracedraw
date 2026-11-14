@@ -256,7 +256,7 @@ vertical, Esc cancels it. On release a menu opens there:
 | Item | Effect |
 |---|---|
 | Move Here | moves the selection by the drag |
-| Copy Here | copies of the selection, moved by the drag, become the selection |
+| Copy Here | copies of the selection, moved by the drag, become the selection; always by the drag, also when the dragged objects are the copies of a Duplicate still selected (#2640, `drop_menu::tests::copy_here_from_copies_still_selected_lands_where_the_drag_ended`) |
 | Copy Fill Here | the object under the pointer takes the fill of the first selected object |
 | Copy Outline Here | ... its outline |
 | Copy All Properties | ... its fill, outline and transparency |

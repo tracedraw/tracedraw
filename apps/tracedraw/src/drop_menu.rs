@@ -292,6 +292,10 @@ impl App {
 
     /// Copies of the selection moved by `offset`, selected.
     pub fn duplicate_by(&mut self, offset: Vec2) {
+        // The copy goes where the drag ended, also when the dragged
+        // objects are the copies of a Duplicate still selected: the step
+        // a repeated Duplicate takes put it far from the drop (#2640).
+        self.last_duplicate.clear();
         let saved = self.duplicate_offset;
         self.duplicate_offset = offset;
         self.duplicate();
@@ -419,6 +423,38 @@ mod tests {
         let before = app.doc().clone();
         app.drop_action(menu, DropAction::Cancel);
         assert_eq!(*app.doc(), before);
+    }
+
+    #[test]
+    fn copy_here_from_copies_still_selected_lands_where_the_drag_ended() {
+        // #2640: a right drag copied from a copy still selected (after
+        // Duplicate or an earlier Copy Here) landed by the earlier step,
+        // not where the drag ended.
+        let mut app = App::headless();
+        let (a, _) = two_boxes(&mut app);
+        app.select(vec![a]);
+        let menu = |dx: f64, dy: f64| DropMenu {
+            screen: egui::Pos2::ZERO,
+            offset: Vec2::new(dx, dy),
+            target: None,
+        };
+        app.drop_action(menu(80.0, 0.0), DropAction::Copy);
+        let first = app.selection[0];
+        assert!((bounds(&app, first).x0 - 80.0).abs() < 1e-6);
+        app.drop_action(menu(5.0, 30.0), DropAction::Copy);
+        let second = app.selection[0];
+        assert_ne!(second, first);
+        let r = bounds(&app, second);
+        assert!((r.x0 - 85.0).abs() < 1e-6, "copy at {r:?}");
+        assert!((r.y0 - (bounds(&app, first).y0 + 30.0)).abs() < 1e-6);
+        // The same after Edit > Duplicate.
+        app.select(vec![a]);
+        app.duplicate();
+        let dup = app.selection[0];
+        let at = bounds(&app, dup);
+        app.drop_action(menu(0.0, 40.0), DropAction::Copy);
+        let r = bounds(&app, app.selection[0]);
+        assert!((r.x0 - at.x0).abs() < 1e-6 && (r.y0 - (at.y0 + 40.0)).abs() < 1e-6);
     }
 
     #[test]
