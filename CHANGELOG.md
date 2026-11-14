@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Colour picker and Edit Fill: the colour's hexadecimal code can be typed or pasted, such as #364C9F, and sets the colour when Enter is pressed. It was only shown (#2606).
+- Pick tool property bar: the Nudge, Super nudge and Micro nudge distances are on the bar with objects selected as well as with nothing selected, so the arrow keys' steps change without opening Document Options. Only Nudge was there, and only with nothing selected (#2608).
 - Macro forms open at the size they were made: every control pushed the window down a little, so a form with many controls came out much taller than in CorelDRAW, with an empty band under its controls (the GRAFISin tiling form, sixty controls, by more than half) (#2165).
 - Mesh fill: with nodes chosen, Ctrl+click on a palette colour mixes a tenth of it into each chosen node, one undo step a click, as it mixes into a uniform fill. It did nothing on a mesh (discussion #2616).
 - Objects docker: with several objects selected, the eye of one of them hides them all, or shows them all when it is hidden, in one undo step, and they stay selected. Only the clicked object changed (#2571).

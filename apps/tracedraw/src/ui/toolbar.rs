@@ -1932,6 +1932,10 @@ fn object_properties(app: &mut App, ui: &mut Ui) {
         return;
     }
     crate::ui::propbar::object_bar(app, ui);
+    // The nudge distances, at hand while objects are moved with the
+    // arrow keys (#2608).
+    vsep(ui);
+    crate::ui::propbar::nudge_part(app, ui);
 }
 
 /// The bitmap part of the Pick tool's property bar: the commands of the
@@ -4131,6 +4135,88 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    /// The Pick tool's bar shows the Nudge, Super nudge and Micro nudge
+    /// distances with nothing selected and with an object selected; a
+    /// value typed there is the one the arrow keys use (#2608).
+    #[test]
+    fn the_pick_bar_shows_and_sets_the_nudge_distances() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.units = crate::app::Units::Millimeters;
+        app.nudge_mm = 1.5;
+        app.settings.super_nudge_mm = 7.25;
+        app.settings.micro_nudge_mm = 0.125;
+        let tips = [
+            crate::ui::tips::keyed("toolbar.nudge_tip"),
+            crate::ui::tips::keyed("toolbar.super_nudge_tip"),
+            crate::ui::tips::keyed("toolbar.micro_nudge_tip"),
+        ];
+        let shows = |texts: &[(String, egui::Rect)], v: &str| {
+            texts
+                .iter()
+                .find(|(t, _)| t.starts_with(v))
+                .map(|(_, r)| *r)
+        };
+        // Nothing selected.
+        crate::ui::tips::start_recording();
+        let texts = frame(&ctx, &mut app, Vec::new());
+        let seen = crate::ui::tips::recorded();
+        for t in &tips {
+            assert!(seen.contains(t), "nothing selected: {t}");
+        }
+        for v in ["1.5", "7.25", "0.125"] {
+            assert!(shows(&texts, v).is_some(), "nothing selected: {v}");
+        }
+        // An object selected.
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(10.0, 10.0, 40.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape");
+        app.select(vec![id]);
+        frame(&ctx, &mut app, Vec::new());
+        crate::ui::tips::start_recording();
+        let texts = frame(&ctx, &mut app, Vec::new());
+        let seen = crate::ui::tips::recorded();
+        for t in &tips {
+            assert!(seen.contains(t), "object selected: {t}");
+        }
+        // The Super nudge typed over: 3 mm.
+        let at = shows(&texts, "7.25").expect("super nudge shown").center();
+        let button = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let key = |k: egui::Key| egui::Event::Key {
+            key: k,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(&ctx, &mut app, vec![egui::Event::PointerMoved(at)]);
+        frame(&ctx, &mut app, vec![button(true)]);
+        frame(&ctx, &mut app, vec![button(false)]);
+        let mut clear = vec![key(egui::Key::End)];
+        clear.extend((0..12).map(|_| key(egui::Key::Backspace)));
+        frame(&ctx, &mut app, clear);
+        frame(&ctx, &mut app, vec![egui::Event::Text("3".into())]);
+        frame(&ctx, &mut app, vec![key(egui::Key::Enter)]);
+        frame(&ctx, &mut app, Vec::new());
+        assert!(
+            (app.settings.super_nudge_mm - 3.0).abs() < 1e-9,
+            "{}",
+            app.settings.super_nudge_mm
+        );
+        assert_eq!(app.nudge_mm, 1.5);
+        assert_eq!(app.settings.micro_nudge_mm, 0.125);
     }
 
     /// Both shadow bars start with the Drop Shadow and Inner Shadow tools'

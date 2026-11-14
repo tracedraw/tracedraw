@@ -39,6 +39,10 @@ pub enum Pic {
     /// Fit page to drawing: a page shrunk onto the object on it.
     FitPage,
     Nudge,
+    /// Super nudge: the nudge arrows with a plus (#2608).
+    SuperNudge,
+    /// Micro nudge: the nudge arrows with a minus (#2608).
+    MicroNudge,
     DupX,
     DupY,
     TreatFilled,
@@ -317,6 +321,14 @@ pub fn draw_pic(painter: &Painter, r: Rect, pic: Pic, color: Color32) {
         Pic::Nudge => {
             arrow_h(8.0, 1.0, 15.0);
             arrow_v(8.0, 1.0, 15.0);
+        }
+        Pic::SuperNudge | Pic::MicroNudge => {
+            arrow_h(6.0, 0.5, 11.5);
+            arrow_v(6.0, 0.5, 11.5);
+            line((11.5, 13.5), (15.5, 13.5), s);
+            if pic == Pic::SuperNudge {
+                line((13.5, 11.5), (13.5, 15.5), s);
+            }
         }
         Pic::DupX | Pic::DupY => {
             outline(&[(1.5, 1.5), (9.0, 1.5), (9.0, 9.0), (1.5, 9.0)], thin);
@@ -1755,13 +1767,7 @@ pub fn page_bar(app: &mut App, ui: &mut Ui) {
         .rich_tip(crate::ui::tips::keyed("toolbar.units"));
     app.units = u;
     sep(ui);
-    tip_row(ui, Pic::Nudge, "toolbar.nudge_tip", |ui| {
-        if let Some(n) = distance(ui, app, app.nudge_mm, 84.0, Some(0.1)) {
-            if n > 0.0 {
-                app.nudge_mm = n;
-            }
-        }
-    });
+    nudge_part(app, ui);
     sep(ui);
     let dup = app.duplicate_offset;
     let mut new_dup = None;
@@ -1792,6 +1798,36 @@ pub fn page_bar(app: &mut App, ui: &mut Ui) {
     .clicked()
     {
         app.settings.treat_all_filled = !filled;
+    }
+}
+
+/// The nudge distances the arrow keys move the selection by: Nudge, then
+/// Super nudge (Shift) over Micro nudge (Ctrl), the values Document
+/// Options > Rulers sets, here with nothing selected and with objects
+/// selected so they change without opening the dialog (#2608).
+pub fn nudge_part(app: &mut App, ui: &mut Ui) {
+    tip_row(ui, Pic::Nudge, "toolbar.nudge_tip", |ui| {
+        if let Some(n) = distance(ui, app, app.nudge_mm, 84.0, Some(0.1)) {
+            if n > 0.0 {
+                app.nudge_mm = n;
+            }
+        }
+    });
+    let (sup, micro) = (app.settings.super_nudge_mm, app.settings.micro_nudge_mm);
+    let (mut new_sup, mut new_micro) = (None, None);
+    stacked(ui, |ui| {
+        tip_row(ui, Pic::SuperNudge, "toolbar.super_nudge_tip", |ui| {
+            new_sup = distance(ui, app, sup, 84.0, Some(0.1));
+        });
+        tip_row(ui, Pic::MicroNudge, "toolbar.micro_nudge_tip", |ui| {
+            new_micro = distance(ui, app, micro, 84.0, Some(0.01));
+        });
+    });
+    if let Some(v) = new_sup.filter(|v| *v > 0.0) {
+        app.settings.super_nudge_mm = v;
+    }
+    if let Some(v) = new_micro.filter(|v| *v > 0.0) {
+        app.settings.micro_nudge_mm = v;
     }
 }
 
