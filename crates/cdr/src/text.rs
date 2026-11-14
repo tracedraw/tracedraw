@@ -259,8 +259,12 @@ pub(crate) struct RunStyle {
     /// Line spacing as a distance between baselines, mm (set instead of
     /// `line_spacing`).
     pub line_spacing_mm: Option<f64>,
-    /// Extra character spacing as a fraction of the em (0 = none).
+    /// Character spacing as a fraction of the width of the space
+    /// character (0 = none).
     pub char_spacing: Option<f64>,
+    /// Word spacing as a fraction of the width of the space character
+    /// (1 = the space as the font has it).
+    pub word_spacing: Option<f64>,
     /// Paragraph indents in points: (left, first line, right).
     pub indent_pt: Option<(f64, f64, f64)>,
     /// The paragraph's tab stops (the style table's tab entries before
@@ -435,6 +439,7 @@ impl RunStyle {
                 base.line_spacing_mm
             },
             char_spacing: self.char_spacing.or(base.char_spacing),
+            word_spacing: self.word_spacing.or(base.word_spacing),
             indent_pt: self.indent_pt.or(base.indent_pt),
             tabs: self.tabs.clone().or_else(|| base.tabs.clone()),
             para_before: self.para_before.or(base.para_before),
@@ -668,8 +673,10 @@ fn read_stlt_set11(
         r.skip(n * size);
         Some(())
     };
-    // Intervals: id, 8 unknown, character spacing i32 (millionths), 8
-    // unknown, line spacing, 20 unknown, the line spacing's unit u32: 0
+    // Intervals: id, 8 unknown, character spacing i32 (millionths), 4
+    // unknown, word spacing i32 (millionths, 1 000 000 the space as it
+    // is; #2586: 1 107 391 beside a character spacing of 107 391 in a
+    // version 18 file), line spacing, 20 unknown, the line spacing's unit u32: 0
     // (and 2) millionths of the character height, 1 a distance in
     // coordinate units (7 pt stored as 24 694 in a version 12 file whose
     // multi-line text otherwise collapses onto one line).
@@ -678,14 +685,15 @@ fn read_stlt_set11(
         return Vec::new();
     };
     let ni = (ni as usize).min(r.remaining() / 52);
-    let mut intervals: std::collections::HashMap<u32, (f64, LineSpacing)> =
+    let mut intervals: std::collections::HashMap<u32, (f64, Option<f64>, LineSpacing)> =
         std::collections::HashMap::with_capacity(ni);
     for _ in 0..ni {
-        let (Some(id), _, Some(ch), _, Some(ln), _, Some(unit)) = (
+        let (Some(id), _, Some(ch), _, Some(word), Some(ln), _, Some(unit)) = (
             r.u32(),
             r.skip(8),
             r.u32(),
-            r.skip(8),
+            r.skip(4),
+            r.u32(),
             r.u32(),
             r.skip(20),
             r.u32(),
@@ -697,7 +705,10 @@ fn read_stlt_set11(
         } else {
             LineSpacing::Factor(ln as i32 as f64 / 1_000_000.0)
         };
-        intervals.insert(id, (ch as i32 as f64 / 1_000_000.0, line));
+        // Zero is taken as not given (files that leave the field empty).
+        let word = word as i32 as f64 / 1_000_000.0;
+        let word = (word > 0.0 && word <= 20.0).then_some(word);
+        intervals.insert(id, (ch as i32 as f64 / 1_000_000.0, word, line));
     }
     if skip_table(&mut r, 152).is_none() {
         return Vec::new();
@@ -796,7 +807,7 @@ fn read_stlt_set11(
             else {
                 break;
             };
-            if let Some((ch, ln)) = intervals.get(&interval_ref) {
+            if let Some((ch, word, ln)) = intervals.get(&interval_ref) {
                 match *ln {
                     LineSpacing::Factor(f) if f > 0.0 && f.is_finite() => {
                         style.line_spacing = Some(f);
@@ -809,6 +820,7 @@ fn read_stlt_set11(
                 if ch.is_finite() && ch.abs() <= 20.0 {
                     style.char_spacing = Some(*ch);
                 }
+                style.word_spacing = *word;
             }
             if has_set11 {
                 r.skip(4);

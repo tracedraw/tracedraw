@@ -1552,6 +1552,10 @@ struct Glyph {
     /// The font glyph behind the outline, for writers that keep text as
     /// text; `None` for markers without an outline.
     src: Option<Arc<GlyphSource>>,
+    /// The paragraph's character spacing in `advance` (mm): the room it
+    /// puts before the next letter, left out at the end of a line when
+    /// the line is centred or set right (#2586).
+    spacing: f64,
 }
 
 /// Where a shaped glyph's outline comes from.
@@ -3935,9 +3939,20 @@ impl FontSystem {
                 // A ring drawn round the glyph goes with it as curves.
                 exact: !synth_bold && !(ring && !ch.is_whitespace()),
             });
+            // Character spacing goes between letters: a space takes the
+            // word spacing alone, and the letter before it gives back its
+            // character spacing, as CorelDRAW lays text out (#2586).
+            let word_break = ch == ' ' || ch == '\u{3000}';
+            let spacing = if word_break { 0.0 } else { char_spacing };
+            if word_break && !rtl {
+                if let Some(prev) = out.last_mut().filter(|g| g.spacing != 0.0 && !g.rtl) {
+                    prev.advance -= prev.spacing;
+                    prev.spacing = 0.0;
+                }
+            }
             out.push(Glyph {
                 path: Arc::new(gp),
-                advance: adv + tracking + char_spacing,
+                advance: adv + tracking + spacing,
                 x_offset: pos.x_offset as f64 * scale,
                 y_offset: pos.y_offset as f64 * scale,
                 ch,
@@ -3948,6 +3963,7 @@ impl FontSystem {
                 span: span_idx,
                 joins,
                 hyphen_after: hyphen_glyph.clone(),
+                spacing,
                 src: Some(src),
             });
         }
@@ -4120,6 +4136,7 @@ impl FontSystem {
                                 joins: false,
                                 hyphen_after: None,
                                 src: None,
+                                spacing: 0.0,
                             })
                         }
                         char_idx += 1;
@@ -4704,6 +4721,21 @@ impl FontSystem {
             let content_w = line_width(glyphs, ps, x0 - col_start, tab_step);
             let hyphen_w = line.hyphen.as_ref().map(|h| h.advance).unwrap_or(0.0);
             let total_w = content_w + hyphen_w;
+            // A centred or right-set line is placed by its letters: the
+            // spaces it ends with and the character spacing after its last
+            // letter take no room, as in CorelDRAW (#2586).
+            let total_w = match align {
+                TextAlign::Center | TextAlign::Right if line.hyphen.is_none() => {
+                    let kept = glyphs
+                        .iter()
+                        .rposition(|g| !matches!(g.ch, ' ' | '\u{3000}' | '\n' | '\r'))
+                        .map_or(0, |i| i + 1);
+                    let trimmed = &glyphs[..kept];
+                    let w = line_width(trimmed, ps, x0 - col_start, tab_step);
+                    w - trimmed.last().map_or(0.0, |g| g.spacing)
+                }
+                _ => total_w,
+            };
             let (dx, extras) = match align {
                 TextAlign::Left | TextAlign::None => (0.0, Vec::new()),
                 TextAlign::Center => (((avail.min(1e9)) - total_w).max(0.0) / 2.0, Vec::new()),
@@ -5838,6 +5870,7 @@ mod tests {
                 joins: false,
                 hyphen_after: None,
                 src: None,
+                spacing: 0.0,
             })
             .collect();
         let metrics = [Metrics::default()];
@@ -6124,6 +6157,7 @@ mod tests {
             span: 0,
             hyphen_after: None,
             src: None,
+            spacing: 0.0,
             joins: false,
         };
         let order = |v: &[(u8, char)]| {
@@ -6285,7 +6319,7 @@ mod tests {
         let f = fonts();
         let measure = |para: &ParagraphStyle| {
             let l = f.layout(&TextRequest {
-                spans: &[span("a b c")],
+                spans: &[span("ab cd")],
                 frame: None,
                 align: TextAlign::Left,
                 para,
@@ -6302,17 +6336,48 @@ mod tests {
             word_spacing_pct: 300.0,
             ..Default::default()
         });
-        // Five characters, each one space wider; two spaces three times as
-        // wide.
+        // Character spacing goes after each letter but the one before
+        // the space (a, c and d: the letters' gaps and the end), never
+        // after the space itself (#2586); the space three times as wide.
         let space = f.measure(&span(" "), " ");
         assert!(
-            (wide - base - 5.0 * space).abs() < 1e-6,
+            (wide - base - 3.0 * space).abs() < 1e-6,
             "{base} {wide} {space}"
         );
         assert!(
-            (words - base - 4.0 * space).abs() < 1e-6,
+            (words - base - 2.0 * space).abs() < 1e-6,
             "{base} {words} {space}"
         );
+    }
+
+    #[test]
+    fn centred_lines_leave_out_the_spaces_they_end_with() {
+        // CorelDRAW centres "AAAAA " on its letters (#2586): the ending
+        // space, and the character spacing after the last letter, take no
+        // room, so every line shares the text's centre.
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        let para = ParagraphStyle {
+            char_spacing_pct: 50.0,
+            ..Default::default()
+        };
+        let ink = |text: &str| {
+            let l = f.layout(&TextRequest {
+                spans: &[span(text)],
+                frame: None,
+                align: TextAlign::Center,
+                para: &para,
+                on_path: None,
+            });
+            l.path.bounding_box()
+        };
+        let plain = ink("HHH");
+        let spaced = ink("HHH  ");
+        assert!((plain.x0 - spaced.x0).abs() < 1e-9, "{plain:?} {spaced:?}");
+        // The letters sit evenly about the origin (H's bearings are equal).
+        assert!((plain.x0 + plain.x1).abs() < 0.05, "{plain:?}");
     }
 
     #[test]
@@ -6684,6 +6749,7 @@ mod tests {
                 joins: false,
                 hyphen_after: None,
                 src: None,
+                spacing: 0.0,
             })
             .collect()
     }

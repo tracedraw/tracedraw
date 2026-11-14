@@ -270,8 +270,6 @@ const MESH_MAX_NODES: usize = 250_000;
 /// records (a 16-byte id), which files saved for older versions carry too.
 const NEWER_RECORD_TAG: u32 = 2400;
 
-/// The width of the space character in ems, for character spacing.
-const SPACE_EM: f64 = 0.25;
 /// A guideline (seen in version 12 files on the guides layer).
 pub(crate) const OBJ_GUIDE: u32 = 0x16;
 /// Argument of a guideline: its line (see [`Ctx::read_guide`]).
@@ -2112,13 +2110,6 @@ impl<'a> Ctx<'a> {
         if let Some(t) = style.strikethrough {
             span.strikethrough = t.into();
         }
-        if let Some(cs) = style.char_spacing {
-            if cs != 0.0 {
-                // The file counts character spacing in widths of the
-                // space character, taken here as a quarter of the em.
-                span.tracking_pct = cs * 100.0 * SPACE_EM;
-            }
-        }
         if let Some(c) = style.char_shift {
             span.angle_deg = c.angle_deg;
             span.offset_x_pct = c.x_pct;
@@ -2269,7 +2260,22 @@ impl<'a> Ctx<'a> {
             } else {
                 None
             });
-            let fmt = paragraph_spacing(&base, &para_fmt);
+            let mut fmt = paragraph_spacing(&base, &para_fmt);
+            // Character and word spacing given on the paragraph's first
+            // run rather than on the paragraph (they are paragraph
+            // settings in CorelDRAW).
+            if let Some(first) = para.runs.first().map(|r| r.style.over(&base)) {
+                if base.char_spacing.is_none() {
+                    if let Some(cs) = first.char_spacing {
+                        fmt.char_spacing_pct = (cs * 100.0).clamp(-100.0, 2000.0);
+                    }
+                }
+                if base.word_spacing.is_none() {
+                    if let Some(ws) = first.word_spacing {
+                        fmt.word_spacing_pct = (ws * 100.0).clamp(0.0, 2000.0);
+                    }
+                }
+            }
             if i == 0 {
                 // The first paragraph sets the object's formatting.
                 para_fmt = fmt.clone();
@@ -7231,6 +7237,15 @@ fn paragraph_spacing(style: &text::RunStyle, base: &ParagraphStyle) -> Paragraph
     if let Some(tabs) = &style.tabs {
         p.tabs = tracedraw_core::normalized_tabs(tabs);
     }
+    // Character and word spacing count in widths of the font's space
+    // character, as the paragraph's spacing does (#2586; they were read
+    // as a quarter of the em, which made text wider than in CorelDRAW).
+    if let Some(cs) = style.char_spacing {
+        p.char_spacing_pct = (cs * 100.0).clamp(-100.0, 2000.0);
+    }
+    if let Some(ws) = style.word_spacing {
+        p.word_spacing_pct = (ws * 100.0).clamp(0.0, 2000.0);
+    }
     p
 }
 
@@ -11935,7 +11950,8 @@ pub(crate) mod tests {
                 spans, align, para, ..
             } => {
                 assert_eq!(*align, TextAlign::Center);
-                assert!((spans[0].tracking_pct + 10.0 * SPACE_EM).abs() < 1e-9);
+                assert!((para.char_spacing_pct + 10.0).abs() < 1e-9, "{para:?}");
+                assert_eq!(spans[0].tracking_pct, 0.0);
                 assert!((para.leading_pct - 150.0).abs() < 1e-6, "{para:?}");
             }
             other => panic!("{other:?}"),
@@ -12005,7 +12021,7 @@ pub(crate) mod tests {
                 assert_eq!(spans[0].font_family, "Verdana");
                 assert!((spans[0].size_pt - 36.0).abs() < 1e-9);
                 assert!(spans[0].italic && !spans[0].bold);
-                assert!((spans[0].tracking_pct - 5.0 * SPACE_EM).abs() < 1e-9);
+                assert!((para.char_spacing_pct - 5.0).abs() < 1e-9, "{para:?}");
                 assert!((para.leading_pct - 150.0).abs() < 1e-9);
                 assert!((para.left_indent - 25.4).abs() < 1e-9, "{para:?}");
                 assert!((para.first_line_indent - 6.35).abs() < 1e-9);
