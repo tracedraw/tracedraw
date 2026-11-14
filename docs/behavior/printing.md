@@ -205,8 +205,11 @@ same function (`export::print_sheets`).
   left edge (`HardMargins::for_sheet`). The browser and Android have
   none.
 
-- Top bar: Print (prints these settings and closes), the sheet shown with previous and next (Page Up, Page Down), Zoom from 25 to 400 % of the fitted size
-  with Fit, the printer, and Close (Esc) at the right end (#534). The
+- Top bar: Print (prints these settings and closes), Print This Sheet
+  (the sheet shown alone, with its plates under separations:
+  `export::print_sheet`, `export::keep_one_sheet`), the sheet shown with
+  previous and next (Page Up, Page Down), the zoom (below), View, the
+  printer, and Close (Esc) at the right end (#534). The
   bar wraps onto a second row when the window is too narrow for it.
   Close stays at the top right of the first row and the rest wraps to
   its left, in blocks that move to the next row whole (the zoom with its
@@ -217,7 +220,37 @@ same function (`export::print_sheets`).
   long as Android's print service had widened the bar past the screen,
   and went off it (#2666,
   `print_preview::tests::close_stays_on_a_phone_screen`).
-- The printer sits in the top bar after Fit, as in the Print dialog's
+- The view works like the drawing window (`print_preview_tests`:
+  `zooms_keep_the_point_under_the_pointer`,
+  `the_wheel_and_the_zoom_tool_zoom_the_sheet`,
+  `the_pan_tool_moves_the_view_not_the_artwork`,
+  `width_fits_the_sheet_s_width`):
+  - Zoom in the bar: minus, the zoom in percent of the sheet's real size
+    (typed too), plus (a step of 1.25), Fit (the whole sheet), Width (the
+    sheet's width, its top in view) and 1:1 (as large as on paper, at the
+    calibrated screen resolution of Options > Display). The zoom goes
+    from a tenth to 64 times the fitted sheet.
+  - The wheel zooms about the pointer by Options > Tools > Zoom/Pan's
+    step (with Ctrl when the wheel is set to scroll, which then pans,
+    Shift sideways); a touchpad pinch zooms.
+  - Tools at the left of the sheet: Pick (the drags below), Zoom (a
+    click zooms in twice about the point, a right click or Shift+click
+    out, a dragged box fills the view) and Pan (a drag moves the view).
+    The middle button, or a drag with Space held, pans with any tool.
+  - The whole sheet is rendered once at about its fitted size, so a zoom
+    or pan only scales it; zoomed in past that, the part in view is
+    rendered sharp once the view rests for 0.15 s.
+  - Rulers in millimetres along the top and left, from the sheet's top
+    left corner, the pointer marked on them.
+  - The sheet strip at the bottom: every sheet small (a few drawn a frame,
+    so a long job never stalls), the one shown outlined, a click shows
+    another; under it the status line: the sheet's size, the pages on it,
+    Composite or separations, the pages to print (sheets times the inks
+    ticked under separations, times the copies; `pages_to_print`) and
+    the pointer's place on the sheet in millimetres.
+  - View in the bar shows or hides the rulers, the sheet strip and the
+    options panel (off, the sheet takes the window).
+- The printer sits in the top bar after the zoom, as in the Print dialog's
   General tab (the system's printers in name order, the PDF viewer, PDF
   and PostScript files; read off the interface's thread when the preview
   opens, the list read last shown meanwhile), with the gear button that
