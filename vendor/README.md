@@ -391,6 +391,19 @@ change marked `TraceDraw:` in a comment.
   (`android_activity::input::MetaState`) gives the held modifiers
   (`modifiers_of`); when they differ from the last ones told, a
   `ModifiersChanged` is sent before the key's `KeyboardInput`.
+- Change: a bitmap cursor on Linux (#2557). TraceDraw hands its drawn
+  tool pointers to the system as bitmaps on Linux too
+  (`apps/tracedraw/src/ui/cursors.rs`), and egui-winit sets the bitmap
+  cursor again every frame. On X11 (`platform_impl/linux/x11/window.rs`,
+  `set_cursor`) the cursor already shown is not sent again. On Wayland
+  (`platform_impl/linux/wayland/window/state.rs`, `set_custom_cursor`,
+  `set_cursor_visible`) the same image (the same `Arc`) makes no new
+  buffer and no new commit of the cursor surface, and showing a cursor
+  already shown does nothing. The Wayland cursor buffer
+  (`platform_impl/linux/wayland/types/cursor.rs`) has sides padded to
+  whole multiples of 12 pixels, transparent beyond the image: without a
+  viewport the cursor surface takes the output's integer buffer scale,
+  and a buffer whose size it does not divide is a protocol error.
 - The published crate's `examples/` and `tests/` stay as downloaded (the
   manifest lists them); they build in no gate.
 - Drop the copy and the `[patch.crates-io]` entry when a winit release
