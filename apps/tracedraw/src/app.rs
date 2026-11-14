@@ -1466,6 +1466,8 @@ pub struct App {
     /// The Print Merge docker's choices.
     pub merge_docker: crate::ui::print_merge_docker::MergeDocker,
     pub show_welcome: bool,
+    /// Object > Outline Offset: the distance last used, mm (#2622).
+    pub outline_offset_mm: f64,
     /// Object > Clip to Frame > Place Inside Frame is waiting for a click on the frame.
     pub pending_clip_frame: bool,
     /// A frame's flow tab was clicked: the next click says where its text
@@ -2977,6 +2979,7 @@ impl App {
             merge_docker: Default::default(),
             page_numbers: PageNumberSettings::default(),
             show_welcome: false,
+            outline_offset_mm: 2.0,
             pending_clip_frame: false,
             pending_text_link: None,
             dialog_return: None,

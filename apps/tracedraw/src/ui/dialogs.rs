@@ -1245,6 +1245,12 @@ pub enum Dialog {
     PageSpacing {
         value: f64,
     },
+    /// Object > Outline Offset (#2622): the distance, in the drawing's
+    /// units, and whether the new outline goes outside or inside.
+    OutlineOffset {
+        distance: f64,
+        outside: bool,
+    },
     /// View > Pages in Multipage View (#1440): every page, or the pages
     /// of `range` ("1-3, 7").
     MultipagePages {
@@ -2053,6 +2059,41 @@ pub fn show(app: &mut App, ctx: &Context) {
                 });
                 if ok_cancel(ui, &mut close) {
                     app.set_page_spacing(u.to_mm(*value));
+                }
+            });
+        }
+        Dialog::OutlineOffset { distance, outside } => {
+            let u = app.units;
+            window(ctx, tr("dialog.outline_offset")).show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(tr("dialog.outline_offset_distance"));
+                    ui.add(
+                        crate::ui::field::NumField::new(distance)
+                            .range(0.0..=u.from_mm(1000.0))
+                            .speed(0.1)
+                            .suffix(format!(" {}", u.short())),
+                    )
+                    .rich_tip(crate::ui::tips::pair(
+                        "dialog.outline_offset_distance",
+                        "dialog.outline_offset_distance_desc",
+                    ));
+                });
+                ui.horizontal(|ui| {
+                    ui.radio_value(outside, true, tr("dialog.outline_offset_outside"))
+                        .rich_tip(crate::ui::tips::pair(
+                            "dialog.outline_offset_outside",
+                            "dialog.outline_offset_outside_desc",
+                        ));
+                    ui.radio_value(outside, false, tr("dialog.outline_offset_inside"))
+                        .rich_tip(crate::ui::tips::pair(
+                            "dialog.outline_offset_inside",
+                            "dialog.outline_offset_inside_desc",
+                        ));
+                });
+                if ok_cancel(ui, &mut close) {
+                    let mm = u.to_mm(*distance);
+                    app.outline_offset_mm = mm;
+                    app.outline_offset(mm, *outside);
                 }
             });
         }
@@ -8244,6 +8285,10 @@ pub(crate) mod tests {
             },
             Dialog::GoToPage { page: 1 },
             Dialog::PageSpacing { value: 30.0 },
+            Dialog::OutlineOffset {
+                distance: 2.0,
+                outside: true,
+            },
             Dialog::MultipagePages {
                 all: false,
                 range: "1-2".into(),
@@ -8700,6 +8745,65 @@ pub(crate) mod tests {
         assert_eq!(app.doc().metadata.page_spacing, Some(15.0));
         app.undo();
         assert_eq!(app.page_spacing(), 30.0);
+    }
+
+    /// Object > Outline Offset (#2622): OK draws a curve the typed distance
+    /// outside (or inside) each selected object, keeping the object, in
+    /// one undo step; the dialog remembers the distance.
+    #[test]
+    fn outline_offset_draws_a_curve_outside_or_inside() {
+        use tracedraw_core::geometry::Shape as _;
+        let mut app = App::headless();
+        app.units = crate::app::Units::Millimeters;
+        let id = app
+            .new_shape(tracedraw_core::ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("square");
+        app.select(vec![id]);
+        let before = app
+            .doc()
+            .all_layers()
+            .map(|l| l.shapes.len())
+            .sum::<usize>();
+        let ctx = crate::theme::ui_context();
+        for (outside, size) in [(true, 14.0), (false, 6.0)] {
+            app.select(vec![id]);
+            app.dialog = Dialog::OutlineOffset {
+                distance: 2.0,
+                outside,
+            };
+            frame(&ctx, &mut app, false);
+            frame(&ctx, &mut app, true);
+            assert!(matches!(app.dialog, Dialog::None));
+            assert_eq!(
+                app.doc()
+                    .all_layers()
+                    .map(|l| l.shapes.len())
+                    .sum::<usize>(),
+                before + 1
+            );
+            let made = app.selection[0];
+            assert_ne!(made, id, "the new curve is selected");
+            let s = app.doc().find_shape(made).expect("the offset curve");
+            let b = (s.transform * s.local_path()).bounding_box();
+            assert!(
+                (b.width() - size).abs() < 0.05 && (b.height() - size).abs() < 0.05,
+                "outside {outside}: {b:?}"
+            );
+            assert!(app.doc().find_shape(id).is_some(), "the object stays");
+            assert_eq!(app.outline_offset_mm, 2.0);
+            app.undo();
+            assert_eq!(
+                app.doc()
+                    .all_layers()
+                    .map(|l| l.shapes.len())
+                    .sum::<usize>(),
+                before
+            );
+        }
     }
 
     /// View > Pages in Multipage View: OK keeps the range in the drawing

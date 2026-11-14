@@ -3709,6 +3709,14 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
     ) {
         app.convert_outline_to_object();
     }
+    // A new outline at a typed distance outside or inside the selected
+    // objects (#2622).
+    if item(ui, "menu.object.outline_offset", "", has) {
+        app.dialog = Dialog::OutlineOffset {
+            distance: app.units.from_mm(app.outline_offset_mm),
+            outside: true,
+        };
+    }
     if item(ui, "menu.object.join_curves", "", true) {
         app.show_dockers = true;
         app.docker_tab = crate::app::DockerTab::JoinCurves;
