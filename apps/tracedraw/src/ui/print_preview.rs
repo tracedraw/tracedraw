@@ -38,6 +38,12 @@ pub struct PrintPreview {
     /// (#595), and the one being dragged (x and y sides, -1, 0 or 1).
     pub transform: bool,
     pub handle_drag: Option<(i8, i8)>,
+    /// The place on the sheet chosen with Transform on: Rotation turns
+    /// only its page, the same place on every sheet (#2587); `None` turns
+    /// them all.
+    pub chosen_cell: Option<usize>,
+    /// The pages on the sheet shown, on screen, with their places.
+    shown_cells: Vec<(usize, egui::Rect)>,
     /// The width the options panel needs for its widest row, as last
     /// laid out (0 until a row did not fit, #862).
     options_need: f32,
@@ -58,11 +64,36 @@ impl PrintPreview {
             margin_drag: None,
             transform: false,
             handle_drag: None,
+            chosen_cell: None,
+            shown_cells: Vec::new(),
             options_need: 0.0,
             built: None,
             texture: None,
         }
     }
+}
+
+/// The turn Rotation sets: every page's, or the page's in the place
+/// chosen on the sheet (#2587).
+fn rotation_of(st: &mut PrintState, chosen: Option<usize>) -> &mut f64 {
+    match chosen {
+        Some(n) => {
+            if st.cell_rotation.len() <= n {
+                st.cell_rotation.resize(n + 1, 0.0);
+            }
+            &mut st.cell_rotation[n]
+        }
+        None => &mut st.art_rotation,
+    }
+}
+
+/// The place on the sheet under a point (mm, y up): the page's clip
+/// frame there, with its box.
+fn cell_at(cells: &[(usize, tracedraw_core::geometry::Rect)], x: f64, y: f64) -> Option<usize> {
+    cells
+        .iter()
+        .find(|(_, r)| x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1)
+        .map(|(n, _)| *n)
 }
 
 /// The bleed limit field's tip: its name, without the label's colon, and
@@ -602,6 +633,8 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 // or by these percentages (#595).
                 ui.checkbox(&mut pv.transform, tr("print.transform"))
                     .rich_tip(tr("print.transform_tip"));
+                let chosen = pv.chosen_cell.filter(|_| pv.transform);
+                let transform = pv.transform;
                 let st = &mut pv.st;
                 ui.horizontal(|ui| {
                     let mut x = st.art_stretch.0 * 100.0;
@@ -636,11 +669,14 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     }
                 });
                 // Rotation: the page turned about its middle, by a quick
-                // 90/180/270 or any angle.
+                // 90/180/270 or any angle; every page, or only the one
+                // chosen on the sheet with Transform on (#2587).
                 ui.horizontal(|ui| {
-                    ui.label(tr("print.rotation"));
+                    ui.label(tr("print.rotation"))
+                        .rich_tip(tr("print.rotation_pick_tip"));
+                    let turn = rotation_of(st, chosen);
                     ui.add(
-                        crate::ui::field::NumField::new(&mut st.art_rotation)
+                        crate::ui::field::NumField::new(turn)
                             .range(-360.0..=360.0)
                             .speed(0.5)
                             .suffix(" \u{b0}")
@@ -648,19 +684,33 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     );
                     for q in [90.0, 180.0, 270.0] {
                         if ui.small_button(format!("{q}\u{b0}")).clicked() {
-                            st.art_rotation = (st.art_rotation + q).rem_euclid(360.0);
+                            let turn = rotation_of(st, chosen);
+                            *turn = (*turn + q).rem_euclid(360.0);
                         }
                     }
+                    let turned = *rotation_of(st, chosen) != 0.0;
                     if ui
-                        .add_enabled(
-                            st.art_rotation != 0.0,
-                            egui::Button::new(tr("print.art_reset")).small(),
-                        )
+                        .add_enabled(turned, egui::Button::new(tr("print.art_reset")).small())
                         .clicked()
                     {
-                        st.art_rotation = 0.0;
+                        *rotation_of(st, chosen) = 0.0;
+                    }
+                    if st.cell_rotation.iter().all(|t| *t == 0.0) {
+                        st.cell_rotation.clear();
                     }
                 });
+                if transform {
+                    ui.label(
+                        egui::RichText::new(match chosen {
+                            Some(n) => trf("print.rotation_one", &[("n", &(n + 1).to_string())]),
+                            None => tr("print.rotation_all"),
+                        })
+                        .small()
+                        .weak(),
+                    )
+                    .rich_tip(tr("print.rotation_pick_tip"));
+                }
+                let st = &mut pv.st;
                 // Where the artwork sits on its page: a drag on the sheet
                 // moves it too (#536).
                 ui.horizontal(|ui| {
@@ -766,7 +816,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 let avail = ui
                     .available_size()
                     .max(size + egui::vec2(2.0 * margin, 2.0 * margin));
-                let (r, resp) = ui.allocate_exact_size(avail, egui::Sense::drag());
+                let (r, resp) = ui.allocate_exact_size(avail, egui::Sense::click_and_drag());
                 let resp = resp.rich_tip(if info {
                     tr("print.info_drag_tip")
                 } else {
@@ -793,17 +843,39 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 };
                 // The page on the sheet (its clip frame), for Transform's
                 // handles: mm, y up, then on screen.
-                let cell = page.layers.first().and_then(|l| {
-                    l.shapes.iter().find_map(|s| match &s.kind {
-                        tracedraw_core::ShapeKind::ClipFrame { frame, .. } => match &frame.kind {
-                            tracedraw_core::ShapeKind::Rect { rect, .. } => {
-                                Some(s.transform.transform_rect_bbox(*rect))
-                            }
-                            _ => None,
-                        },
-                        _ => None,
+                // Every page on the sheet with its place, so that a click
+                // chooses the one Rotation turns (#2587); the handles go
+                // round the chosen one, or the first.
+                let cells: Vec<(usize, tracedraw_core::geometry::Rect)> = page
+                    .layers
+                    .first()
+                    .map(|l| {
+                        l.shapes
+                            .iter()
+                            .filter_map(|s| match &s.kind {
+                                tracedraw_core::ShapeKind::ClipFrame { frame, .. } => {
+                                    match &frame.kind {
+                                        tracedraw_core::ShapeKind::Rect { rect, .. } => Some((
+                                            crate::imposition::cell_of(s).unwrap_or(0),
+                                            s.transform.transform_rect_bbox(*rect),
+                                        )),
+                                        _ => None,
+                                    }
+                                }
+                                _ => None,
+                            })
+                            .collect()
                     })
-                });
+                    .unwrap_or_default();
+                let several = cells.len() > 1;
+                if !several {
+                    pv.chosen_cell = None;
+                }
+                let cell = pv
+                    .chosen_cell
+                    .and_then(|n| cells.iter().find(|(c, _)| *c == n))
+                    .or(cells.first())
+                    .map(|(_, r)| *r);
                 let to_screen = |x: f64, y: f64| {
                     egui::pos2(
                         sheet_rect.left() + (x * zoom) as f32,
@@ -893,6 +965,16 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     pv.margin_drag = None;
                     pv.handle_drag = None;
                 }
+                // With Transform on, a click on a page chooses it for
+                // Rotation, again or off the pages turns them all.
+                if pv.transform && several && resp.clicked() {
+                    if let Some(p) = resp.interact_pointer_pos() {
+                        let x = f64::from(p.x - sheet_rect.left()) / zoom;
+                        let y = f64::from(sheet_rect.bottom() - p.y) / zoom;
+                        let hit = cell_at(&cells, x, y);
+                        pv.chosen_cell = if hit == pv.chosen_cell { None } else { hit };
+                    }
+                }
                 let p = ui.painter();
                 p.rect_filled(
                     sheet_rect.translate(egui::vec2(4.0, 4.0)),
@@ -906,6 +988,26 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                         egui::Color32::WHITE,
                     );
+                }
+                pv.shown_cells = cells
+                    .iter()
+                    .map(|(n, c)| {
+                        let r =
+                            egui::Rect::from_two_pos(to_screen(c.x0, c.y0), to_screen(c.x1, c.y1));
+                        (*n, r)
+                    })
+                    .collect();
+                // The pages a click can choose, outlined faintly.
+                if pv.transform && several {
+                    for (_, r) in &pv.shown_cells {
+                        let r = *r;
+                        p.rect_stroke(
+                            r,
+                            0.0,
+                            egui::Stroke::new(1.0, Tokens::ACCENT.gamma_multiply(0.35)),
+                            egui::StrokeKind::Middle,
+                        );
+                    }
                 }
                 // Transform's frame and handles round the page.
                 if let (true, Some(c)) = (pv.transform, cell) {
@@ -2251,5 +2353,77 @@ mod tests {
         assert_eq!(count(&mut app), 1, "the current page, whatever the parity");
         let st = &app.print_preview.as_ref().expect("preview").st;
         assert!(!st.all_pages, "the current page alone");
+    }
+
+    /// With Transform on and several pages on the sheet, a click on a
+    /// page chooses it and Rotation turns only that place, on every
+    /// sheet; a second click turns them all again (#2587).
+    #[test]
+    fn a_click_chooses_the_page_rotation_turns() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.print_preview(None);
+        if let Some(pv) = app.print_preview.as_mut() {
+            pv.st.looking_for_printers = false;
+            pv.st.layout_kind = 3;
+            pv.st.cols = 2;
+            pv.st.rows = 2;
+            pv.transform = true;
+        }
+        let run = |app: &mut App, events: Vec<egui::Event>| {
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1400.0, 900.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| show(app, ui),
+            );
+            out.textures_delta.clear();
+        };
+        let click = |app: &mut App, at: egui::Pos2| {
+            run(app, vec![egui::Event::PointerMoved(at)]);
+            for pressed in [true, false] {
+                run(
+                    app,
+                    vec![egui::Event::PointerButton {
+                        pos: at,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                );
+            }
+            run(app, Vec::new());
+        };
+        for _ in 0..3 {
+            run(&mut app, Vec::new());
+        }
+        let cells = app.print_preview.as_ref().unwrap().shown_cells.clone();
+        assert_eq!(cells.len(), 4, "{cells:?}");
+        let (second, r) = cells[1];
+        assert_eq!(second, 1);
+        click(&mut app, r.center() + egui::vec2(0.0, r.height() / 4.0));
+        let pv = app.print_preview.as_mut().unwrap();
+        assert_eq!(pv.chosen_cell, Some(1));
+        // What the 180 degree button does with the page chosen.
+        *rotation_of(&mut pv.st, pv.chosen_cell) += 180.0;
+        assert_eq!(pv.st.cell_rotation, vec![0.0, 180.0]);
+        assert_eq!(pv.st.art_rotation, 0.0);
+        click(&mut app, r.center() + egui::vec2(0.0, r.height() / 4.0));
+        let pv = app.print_preview.as_mut().unwrap();
+        assert_eq!(pv.chosen_cell, None);
+        assert_eq!(
+            cell_at(
+                &[(3, tracedraw_core::geometry::Rect::new(0.0, 0.0, 10.0, 10.0))],
+                5.0,
+                5.0
+            ),
+            Some(3)
+        );
     }
 }
