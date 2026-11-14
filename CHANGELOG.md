@@ -4,6 +4,12 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Transparency tool: a click on a node of a gradient transparency opens a small bar under it with that node's transparency, a slider and a field, and the property bar shows the picked node's transparency too, so the opacity of a linear, radial, square or any gradient transparency is set on the object. It could be changed only in the Transparency section of the Properties docker (#2737).
+- Opening .cdr: a radial transparency ends at the object's edge as in CorelDRAW, so a circle that fades out is clear at its rim and one that fades in is solid there. Its end lay at the corners of the object's box, about 1.4 times too far, and the rim stayed part way grey; saving a .cdr writes the radius the same way (#2735).
+- Contour tool: the offset and steps handles are larger and a press reaches them from further away (12 pixels, or the pick distance set in Options > Nodes and Handles), so they are easy to take with a mouse or a finger (#2731).
+
 ## 0.46.0 (2026-11-14)
 
 - Properties panel: with one closed object selected (a rectangle, ellipse, polygon or closed curve) the header gives its area under the position and size, holes taken out, in the drawing unit squared (#2599).

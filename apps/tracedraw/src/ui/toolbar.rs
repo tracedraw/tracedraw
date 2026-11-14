@@ -2335,6 +2335,13 @@ fn transparency_controls(app: &mut App, ui: &mut Ui, stacked: bool) {
         tr("transparency.texture"),
     ];
     let (mut set, current, mixed, has_selection) = transparency_state(app);
+    // The gradient node whose transparency the bar shows: the one picked
+    // on the object with the Transparency tool, else the first (#2737).
+    let picked_node = if app.tool == crate::tools::Tool::Transparency {
+        app.fill_node.unwrap_or(0)
+    } else {
+        0
+    };
     let mut field = None;
     let targets = [
         tr("transparency.target_fill"),
@@ -2464,6 +2471,28 @@ fn transparency_controls(app: &mut App, ui: &mut Ui, stacked: bool) {
                     })
                     .response
                     .rich_tip(crate::ui::tips::keyed("toolbar.transparency_fountain_kind"));
+                // The picked node's transparency (#2737: the gradient's
+                // opacity could only be changed in the docker).
+                let n = f.stops.len();
+                if let Some(stop) = f.stops.get_mut(picked_node.min(n.saturating_sub(1))) {
+                    let mut t =
+                        crate::ui::transparency_docker::gray_transparency(stop.color).round();
+                    let stops_mixed = mixed.contains(&F::MaskStops);
+                    let resp = dim_labelled(ui, "toolbar.node_transparency", |ui| {
+                        ui.add_enabled(
+                            has_selection,
+                            crate::ui::field::NumField::new(&mut t)
+                                .speed(1.0)
+                                .range(0.0..=100.0)
+                                .suffix(" %")
+                                .mixed(stops_mixed),
+                        )
+                    });
+                    if resp.changed() {
+                        stop.color = crate::ui::transparency_docker::transparency_gray(t);
+                        field = Some(F::MaskStops);
+                    }
+                }
             }
         }
     });

@@ -83,7 +83,9 @@ step count, side and end colours, and the steps the file stores go
 
 With the tool and one object selected that has a contour, the canvas
 shows its handles (#1265, `ContourHandles`, `canvas::draw_contour_handles`,
-plain segments and two small rectangles):
+plain segments and two small rectangles, the offset square 11 screen
+pixels wide, or the node size of Options > Nodes and Handles and two
+pixels more when that is larger, #2731):
 
 - A line from the middle of the object's right edge (page bounds, `a`),
   to the right for Outside, to the left for Inside and To centre.
@@ -96,7 +98,8 @@ plain segments and two small rectangles):
   first step's distance without acceleration (none To centre). Dragging
   it to `t` gives `steps = round(steps * offset / t)` (1 to 999) and the
   offset that keeps the last step where it was.
-- A press within 9 screen pixels takes a handle, the steps handle first
+- A press within 12 screen pixels (or the pick distance of Options >
+  Nodes and Handles, when larger, #2731) takes a handle, the steps handle first
   where they meet; the pointer shows a sideways arrow over them. A drag
   from anywhere else draws a new contour as before.
 - The contour is drawn live at every move; the first move of a drag

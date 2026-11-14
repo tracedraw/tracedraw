@@ -1521,6 +1521,9 @@ fn draw_contour_handles(app: &App, painter: &Painter) {
     haloed_polyline(painter, &[a, z], false, Tokens::SELECTION);
     let held =
         |k: crate::contour_tool::ContourHandle| app.contour_handle_drag.map(|(d, _)| d) == Some(k);
+    // Large enough to take by touch, larger with a larger node size
+    // (#2731).
+    let side = crate::contour_tool::HANDLE_SIDE_PX.max(app.settings.nodes.size.px() + 2.0);
     if let Some(q) = h.steps {
         let q = view.to_screen(q);
         let fill = if held(crate::contour_tool::ContourHandle::Steps) {
@@ -1528,7 +1531,7 @@ fn draw_contour_handles(app: &App, painter: &Painter) {
         } else {
             Color32::WHITE
         };
-        let rect = ERect::from_center_size(q, egui::vec2(5.0, 13.0));
+        let rect = ERect::from_center_size(q, egui::vec2(side * 0.6, side + 4.0));
         painter.rect_filled(rect, 1.0, fill);
         painter.rect_stroke(
             rect,
@@ -1542,7 +1545,7 @@ fn draw_contour_handles(app: &App, painter: &Painter) {
     } else {
         Color32::WHITE
     };
-    let rect = ERect::from_center_size(z, egui::vec2(9.0, 9.0));
+    let rect = ERect::from_center_size(z, egui::vec2(side, side));
     painter.rect_filled(rect, 0.0, fill);
     painter.rect_stroke(
         rect,

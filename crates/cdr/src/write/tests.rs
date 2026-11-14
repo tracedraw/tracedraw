@@ -9475,3 +9475,69 @@ fn a_picture_in_a_frame_keeps_its_transparency() {
         assert!(found, "{v}");
     }
 }
+
+#[test]
+fn radial_transparency_keeps_its_reach_through_a_file() {
+    // #2735: a radial transparency's scales are its radius in half sizes
+    // of the object, so the run reaches the same place when read back:
+    // our own run (to the box's corners) and one whose nodes place it.
+    use tracedraw_core::style::FountainHandles;
+    let b = Rect::new(10.0, 20.0, 50.0, 60.0);
+    let mut placed = tracedraw_core::Fountain::two(
+        tracedraw_core::FountainKind::Radial,
+        Color::WHITE,
+        Color::BLACK,
+        0.0,
+    );
+    let own = placed.clone();
+    placed.handles = Some(FountainHandles {
+        start: Point::new(0.0, 0.0),
+        end: Point::new(1.0, 0.0),
+        skew: Point::new(0.0, 1.0),
+    });
+    for mask in [own, placed] {
+        let mut doc = Document::new("w", Size::new(200.0, 100.0));
+        let mut ids = doc.ids().clone();
+        let mut r = Shape::new(
+            ids.shape(),
+            ShapeKind::Rect {
+                rect: b,
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        r.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        r.effects.push(tracedraw_core::live::Effect::Transparency {
+            mask: Fill::Fountain(mask.clone()),
+            merge: tracedraw_core::live::MergeMode::Normal,
+            target: 2,
+        });
+        doc.pages[0].layers[0].shapes = vec![r];
+        doc.set_ids(ids);
+        let bytes = document_to_cdr_version(&doc, 21);
+        let (back, _) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let s = &back.pages[0].layers[0].shapes[0];
+        let f = s
+            .effects
+            .iter()
+            .find_map(|e| match e {
+                tracedraw_core::live::Effect::Transparency {
+                    mask: Fill::Fountain(f),
+                    ..
+                } => Some(f.clone()),
+                _ => None,
+            })
+            .expect("mask");
+        use tracedraw_core::geometry::Shape as _;
+        let pb = (s.transform * s.local_path()).bounding_box();
+        // Where the run ends along the middle row, before and after.
+        let reach = |f: &tracedraw_core::Fountain, b: Rect| {
+            let h = f.handles.unwrap_or_else(|| f.default_handles(b));
+            let s = tracedraw_core::Fountain::rel_to_page(b, h.start);
+            let e = tracedraw_core::Fountain::rel_to_page(b, h.end);
+            (e - s).hypot()
+        };
+        let (want, got) = (reach(&mask, b), reach(&f, pb));
+        assert!((want - got).abs() < 0.01, "{want} vs {got}");
+    }
+}

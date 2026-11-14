@@ -2348,7 +2348,9 @@ pub(crate) fn object_transparency_merge_code(style: &str) -> Option<i64> {
 /// linear, radial, conical and square as in fill records; `angle` is in
 /// degrees, the centre offsets in percent of the object and a `xScale` or
 /// `yScale` under 1 a padded edge, as the doubles of version 16+ fill
-/// records. `None` for other transparencies.
+/// records; a radial run instead reaches `xScale` and `yScale` times half
+/// the object's width and height from its centre. `None` for other
+/// transparencies.
 pub(crate) fn object_transparency_mask(style: &str) -> Option<(tracedraw_core::Fill, u8)> {
     use tracedraw_core::{Color, Fill, Fountain, FountainKind, Stop};
     let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
@@ -2410,6 +2412,25 @@ pub(crate) fn object_transparency_mask(style: &str) -> Option<(tracedraw_core::F
         edge_pad,
         ..Default::default()
     };
+    // A radial run whose scales are 1 ends at the object's edge, half
+    // its width from the centre (#2735: circles whose transparency is
+    // solid at the rim in the reporter's screenshots; read as an edge pad
+    // the run reached the box's corners, half the diagonal, and the rim
+    // stayed part way). The run is placed by nodes in half sizes, the
+    // scales the radius across and down.
+    if kind == FountainKind::Radial {
+        let sx = num(&fill, "xScale").unwrap_or(1.0).abs();
+        let sy = num(&fill, "yScale").unwrap_or(sx).abs();
+        if (1e-3..=1e3).contains(&sx) && (1e-3..=1e3).contains(&sy) {
+            let c = fountain.offset;
+            fountain.edge_pad = 0.0;
+            fountain.handles = Some(tracedraw_core::style::FountainHandles {
+                start: c,
+                end: tracedraw_core::geometry::Point::new(c.x + sx, c.y),
+                skew: tracedraw_core::geometry::Point::new(c.x, c.y + sy),
+            });
+        }
+    }
     crate::mirror_centred_stops(&mut fountain);
     let target = num(&tr, "appliesTo").unwrap_or(2.0).clamp(0.0, 2.0) as u8;
     Some((Fill::Fountain(fountain), target))
@@ -2961,6 +2982,41 @@ mod tests {
         }
         let s = r#"{"transparency":{"fill":{"type":"1"},"mode":"4","uniformTransparency":"0"}}"#;
         assert_eq!(object_transparency_merge_code(s), Some(4));
+    }
+
+    #[test]
+    fn radial_transparency_reaches_the_object_edge() {
+        // #2735: a radial transparency of scale 1 ends at the object's
+        // edge, half its width from the centre, not at its box's corners.
+        use tracedraw_core::geometry::{Point, Rect};
+        use tracedraw_core::{Fill, FountainKind};
+        let style = |scale: &str| {
+            format!(
+                r#"{{"transparency":{{"fill":{{"type":"2","fountainType":"2","angle":"0","xCenterOffset":"0","yCenterOffset":"0","xScale":"{scale}","yScale":"{scale}","primaryColor":"GRAY255,USER,0,100,0","secondaryColor":"GRAY255,USER,255,100,0"}},"appliesTo":"2"}}}}"#
+            )
+        };
+        let b = Rect::new(0.0, 0.0, 40.0, 40.0);
+        for (scale, radius) in [("1", 20.0), ("0.5", 10.0)] {
+            let (mask, _) = object_transparency_mask(&style(scale)).expect("mask");
+            let Fill::Fountain(f) = mask else {
+                panic!("{mask:?}")
+            };
+            assert_eq!(f.kind, FountainKind::Radial);
+            assert_eq!(f.edge_pad, 0.0);
+            // The run's end, at the rim, and its centre.
+            let at = |x: f64| f.param_at(b, Point::new(x, 20.0)).expect("placed");
+            assert!(
+                (at(20.0 + radius) - 1.0).abs() < 1e-9,
+                "{scale}: {}",
+                at(20.0 + radius)
+            );
+            assert!(at(20.0).abs() < 1e-9);
+            // Centre first: the file's first colour, the rim's, is last.
+            assert_eq!(
+                f.stops.last().map(|s| s.color),
+                Some(tracedraw_core::Color::Gray { v: 0.0 })
+            );
+        }
     }
 
     #[test]
