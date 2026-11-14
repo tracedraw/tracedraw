@@ -79,13 +79,19 @@ the right.
   layers (a tick) and Move to the Current Page: it becomes the page's
   top layer with its objects, which then show on that page only; then
   Delete Layer. Each is one undo step (#1477).
-- An object's context menu: Rename; Move to Layer, a list of every
+- An object's context menu is the drawing's own object menu for it,
+  whatever tool is on (#2601): the object is selected first unless it is
+  part of the selection (then the menu is for the whole selection), and a
+  locked object gets the drawing's locked-object menu. Above the drawing's
+  commands come the panel's own: Rename; Move to Layer, a list of every
   page's layers and the master layers under their page's name: the
   object (with the rest of the selection when it is selected) goes to
   the top of that layer, keeping its place on the page, in one undo
   step, and stays selected; a layer of another page makes that page the
   current one. So an object of a master layer is moved onto one page's
-  layer, or a page's object onto the master page (#1477). Delete.
+  layer, or a page's object onto the master page (#1477)
+  (`objects_docker::drag_tests::a_right_click_on_an_object_row_opens_the_drawings_object_menu`,
+  `objects_docker::drag_tests::an_object_rows_menu_is_the_full_object_menu_with_rename_and_move`).
 - A layer's object row dragged along the list (live test of 0.41): while
   the button is held a line marks where it goes; let go on the upper
   half of another object's row it goes in front of that object, on the

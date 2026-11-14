@@ -43,39 +43,6 @@ const MASTER_TOP: Color32 = Color32::from_rgb(0xE0, 0x9A, 0x2E);
 const GUIDE_BLUE: Color32 = Color32::from_rgb(0x1E, 0x6F, 0xD9);
 const PLUS_GREEN: Color32 = Color32::from_rgb(0x1E, 0x9E, 0x3C);
 
-/// A command of an object row's right-click menu: what the page's own
-/// menu and the Object menu do, for the selected rows (#2189).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ObjectDo {
-    Cut,
-    Copy,
-    Paste,
-    Group,
-    Combine,
-    ToCurves,
-    Hide,
-    Lock,
-    OverprintFill,
-    OverprintOutline,
-}
-
-/// Do `what` to the objects `ids` (they become the selection first).
-pub(crate) fn object_do(app: &mut App, ids: Vec<ShapeId>, what: ObjectDo) {
-    app.select(ids);
-    match what {
-        ObjectDo::Cut => app.cut(),
-        ObjectDo::Copy => app.copy(),
-        ObjectDo::Paste => app.paste(),
-        ObjectDo::Group => app.group_selection(),
-        ObjectDo::Combine => app.combine(),
-        ObjectDo::ToCurves => app.convert_to_curves(),
-        ObjectDo::Hide => app.set_visible(false),
-        ObjectDo::Lock => app.set_locked(true),
-        ObjectDo::OverprintFill => app.toggle_overprint(true),
-        ObjectDo::OverprintOutline => app.toggle_overprint(false),
-    }
-}
-
 /// What the docker asks for after drawing.
 #[derive(Default)]
 struct Actions {
@@ -109,24 +76,18 @@ struct Actions {
     /// A row of another page was used: that page becomes the current one
     /// first.
     goto: Option<PageId>,
-    /// Objects (the selection, or the one whose menu was opened) go to
-    /// the top of a layer (#1477).
-    move_to_layer: Option<(Vec<ShapeId>, LayerId)>,
     select_layer: Option<LayerId>,
     /// Cut, copy or paste a whole layer's objects from its menu (#1992).
     layer_clip: Option<(LayerId, LayerClip)>,
     new_layer: bool,
     new_master: Option<MasterScope>,
-    delete_object: Option<Vec<ShapeId>>,
-    /// A command of an object row's menu for the objects it is for (#2189).
-    object_do: Option<(Vec<ShapeId>, ObjectDo)>,
+    /// An object row was right-clicked there: its context menu (#2601).
+    object_menu: Option<(ShapeId, Pos2)>,
     layer_to_master: Option<LayerId>,
     master_to_page: Option<LayerId>,
     /// Not an action: the page whose rows are being drawn (None for the
-    /// master page) and every layer an object can go to (page name or
-    /// none for the master page, layer id and name).
+    /// master page).
     row_page: Option<PageId>,
-    targets: Vec<(Option<String>, LayerId, String)>,
     toggle_guides: Option<(Option<PageId>, bool)>,
     /// A Guides row was clicked: the master page's guidelines (true) or
     /// the page's own (false) are the ones edited from now (#1928).
@@ -579,17 +540,6 @@ pub fn objects(app: &mut App, ui: &mut Ui) {
         let active = app.active_layer();
         ui.spacing_mut().item_spacing.y = 0.0;
         let all = app.settings.objects_all_pages;
-        // Where an object can go: every page's layers, then the master
-        // layers.
-        for page in &doc.pages {
-            for l in page.layers.iter().rev() {
-                act.targets
-                    .push((Some(page.name.clone()), l.id, l.name.clone()));
-            }
-        }
-        for l in doc.master.iter().rev() {
-            act.targets.push((None, l.id, l.name.clone()));
-        }
         for page in doc.pages.iter().filter(|p| all || p.id == app.page) {
             let current = page.id == app.page;
             let page_open = !app.objects_closed_pages.contains(&page.id);
@@ -934,27 +884,69 @@ fn layer_rows(
     }
 }
 
-/// The context menu of an object's row: rename it, move it (with the
-/// rest of the selection when it is selected) to the top of a layer of
-/// any page or of the master page (#1477), or delete it.
-fn object_menu(app: &App, ui: &mut Ui, s: &Shape, label: &str, act: &mut Actions) {
-    let ids: Vec<ShapeId> = if app.selection.contains(&s.id) {
+/// Opens the context menu of the object `id` from its Objects docker
+/// row at `pos`: the menu the drawing shows for it (#2601). A locked
+/// object gets the drawing's locked-object menu; another object is
+/// selected first, unless it is part of the selection already (then the
+/// menu is for the whole selection, as on the drawing).
+pub(crate) fn open_row_menu(app: &mut App, id: ShapeId, pos: Pos2) {
+    let Some(s) = app.doc().find_shape(id) else {
+        return;
+    };
+    let (locked, centre) = (s.locked, s.bounds().center());
+    app.context_locked = None;
+    app.tab_ruler_menu = None;
+    if locked {
+        app.context_locked = Some(id);
+    } else if !app.selection.contains(&id) {
+        app.select(vec![id]);
+    }
+    app.context_docker = Some(id);
+    app.context_menu = Some((pos, centre));
+}
+
+/// Every layer an object can go to: each page's layers, then the master
+/// layers (page name or none for the master page, layer id and name).
+fn layer_targets(app: &App) -> Vec<(Option<String>, LayerId, String)> {
+    let doc = app.doc();
+    let mut out = Vec::new();
+    for page in &doc.pages {
+        for l in page.layers.iter().rev() {
+            out.push((Some(page.name.clone()), l.id, l.name.clone()));
+        }
+    }
+    for l in doc.master.iter().rev() {
+        out.push((None, l.id, l.name.clone()));
+    }
+    out
+}
+
+/// The Objects docker's own commands at the top of an object row's
+/// context menu (#2601): Rename, and Move to Layer for the selection
+/// (or the object when it is not selected).
+pub(crate) fn row_menu_items(app: &mut App, ui: &mut Ui, id: ShapeId, close: &mut bool) {
+    use crate::ui::menus::{item, item_label, sub};
+    let Some(name) = app.doc().find_shape(id).map(object_label) else {
+        return;
+    };
+    let ids: Vec<ShapeId> = if app.selection.contains(&id) {
         app.selection.clone()
     } else {
-        vec![s.id]
+        vec![id]
     };
-    let own = layer_holding(app, s.id);
-    if ui.button(tr("docker.rename")).clicked() {
-        act.rename_object = Some((s.id, s.name.clone().unwrap_or_else(|| label.to_string())));
-        ui.close();
+    if item(ui, "docker.rename", "", true) {
+        *close = true;
+        app.dialog = crate::ui::dialogs::Dialog::RenameObject { shape: id, name };
     }
-    let targets = std::mem::take(&mut act.targets);
-    ui.menu_button(tr("docker.move_to_layer"), |ui| {
+    let own = layer_holding(app, id);
+    let targets = layer_targets(app);
+    let mut to = None;
+    sub(ui, "docker.move_to_layer", |ui| {
         let mut heading: Option<Option<String>> = None;
-        for (page, id, name) in &targets {
+        for (page, layer, name) in &targets {
             if heading.as_ref() != Some(page) {
                 if heading.is_some() {
-                    ui.separator();
+                    crate::ui::menus::sep(ui);
                 }
                 ui.label(
                     egui::RichText::new(page.clone().unwrap_or_else(|| tr("docker.master_page")))
@@ -962,78 +954,14 @@ fn object_menu(app: &App, ui: &mut Ui, s: &Shape, label: &str, act: &mut Actions
                 );
                 heading = Some(page.clone());
             }
-            if ui
-                .add_enabled(own != Some(*id), egui::Button::new(name.as_str()))
-                .clicked()
-            {
-                act.move_to_layer = Some((ids.clone(), *id));
-                ui.close();
+            if item_label(ui, name, "", own != Some(*layer)) {
+                to = Some(*layer);
             }
         }
     });
-    act.targets = targets;
-    // What the page's own menu has for the objects: the clipboard, then
-    // grouping and shape, hiding and locking, overprint (#2189).
-    let shapes: Vec<&Shape> = ids
-        .iter()
-        .filter_map(|id| app.doc().find_shape(*id))
-        .collect();
-    let many = ids.len() > 1;
-    let mut picked = None;
-    ui.separator();
-    for (what, key, on) in [
-        (ObjectDo::Cut, "menu.edit.cut", true),
-        (ObjectDo::Copy, "menu.edit.copy", true),
-        (ObjectDo::Paste, "menu.edit.paste", true),
-    ] {
-        if ui.add_enabled(on, egui::Button::new(tr(key))).clicked() {
-            picked = Some(what);
-        }
-    }
-    ui.separator();
-    for (what, key, on) in [
-        (ObjectDo::Group, "menu.object.group", many),
-        (ObjectDo::Combine, "menu.object.combine", many),
-        (ObjectDo::ToCurves, "menu.object.convert_to_curves", true),
-    ] {
-        if ui.add_enabled(on, egui::Button::new(tr(key))).clicked() {
-            picked = Some(what);
-        }
-    }
-    ui.separator();
-    for (what, key) in [
-        (ObjectDo::Hide, "menu.object.hide_object"),
-        (ObjectDo::Lock, "menu.object.lock_object"),
-    ] {
-        if ui.button(tr(key)).clicked() {
-            picked = Some(what);
-        }
-    }
-    ui.separator();
-    for (what, key, mut on) in [
-        (
-            ObjectDo::OverprintFill,
-            "menu.object.overprint_fill",
-            shapes.iter().any(|s| s.overprint_fill),
-        ),
-        (
-            ObjectDo::OverprintOutline,
-            "menu.object.overprint_outline",
-            shapes.iter().any(|s| s.overprint_outline),
-        ),
-    ] {
-        if ui.checkbox(&mut on, tr(key)).clicked() {
-            picked = Some(what);
-        }
-    }
-    if let Some(what) = picked {
-        act.object_do = Some((ids.clone(), what));
-        ui.close();
-    }
-    ui.separator();
-    if ui.button(tr("menu.edit.delete")).clicked() {
-        act.delete_object = Some(ids);
-        ui.close();
+    if let Some(layer) = to {
+        *close = true;
+        move_to_layer(app, &ids, layer);
     }
 }
 
@@ -1267,14 +1195,13 @@ fn object_row(
         act.goto = act.row_page.filter(|p| *p != app.page);
         act.select = Some(s.id);
     }
-    let row_page = act.row_page;
-    resp.context_menu(|ui| {
-        act.row_page = row_page;
-        object_menu(app, ui, s, &label, act);
-        if act.move_to_layer.is_some() || act.delete_object.is_some() || act.object_do.is_some() {
-            act.goto = act.goto.or(row_page.filter(|p| *p != app.page));
+    // A right click opens the drawing's own object menu for it (#2601).
+    if resp.secondary_clicked() {
+        if let Some(pos) = resp.interact_pointer_pos() {
+            act.goto = act.goto.or(act.row_page.filter(|p| *p != app.page));
+            act.object_menu = Some((s.id, pos));
         }
-    });
+    }
 }
 
 /// The thumbnail of `s` in the square `r`: the object drawn small on a
@@ -2095,15 +2022,8 @@ fn apply(app: &mut App, ui: &Ui, act: Actions) {
             }
         }
     }
-    if let Some((ids, layer)) = act.move_to_layer {
-        move_to_layer(app, &ids, layer);
-    }
-    if let Some((ids, what)) = act.object_do {
-        object_do(app, ids, what);
-    }
-    if let Some(ids) = act.delete_object {
-        app.select(ids);
-        app.delete_selection();
+    if let Some((id, pos)) = act.object_menu {
+        open_row_menu(app, id, pos);
     }
     if let Some(layer) = act.layer_to_master {
         layer_to_master(app, layer);
@@ -3172,36 +3092,91 @@ mod drag_tests {
         assert_eq!(drop_commands(&app, &ids, on(c)).len(), 1);
     }
 
-    /// An object row's menu does what the page's menu does for the rows
-    /// it is for: overprint of fill and outline on and off, grouping,
-    /// hiding and locking, each one undo step (#2189).
+    /// A right click on an object's row opens the drawing's own object
+    /// menu for it: the object is selected first (the whole selection
+    /// stays when it is part of it), a locked object gets the locked-object
+    /// menu, and the menu is the object menu whatever the tool (#2601).
     #[test]
-    fn an_object_rows_menu_sets_overprint_groups_hides_and_locks() {
+    fn a_right_click_on_an_object_row_opens_the_drawings_object_menu() {
         let mut app = App::headless();
         let a = app.new_shape(rect_kind()).expect("a");
         let b = app.new_shape(rect_kind()).expect("b");
-        let get = |app: &App, id: ShapeId| app.doc().find_shape(id).cloned().expect("shape");
-        object_do(&mut app, vec![a, b], ObjectDo::OverprintFill);
-        assert!(get(&app, a).overprint_fill && get(&app, b).overprint_fill);
-        assert!(!get(&app, a).overprint_outline);
-        object_do(&mut app, vec![a], ObjectDo::OverprintOutline);
-        assert!(get(&app, a).overprint_outline && !get(&app, b).overprint_outline);
-        object_do(&mut app, vec![a, b], ObjectDo::OverprintFill);
-        assert!(!get(&app, a).overprint_fill && !get(&app, b).overprint_fill);
-        app.undo();
-        assert!(get(&app, a).overprint_fill);
-        object_do(&mut app, vec![b], ObjectDo::Hide);
-        assert!(!get(&app, b).visible && get(&app, a).visible);
-        app.undo();
-        object_do(&mut app, vec![b], ObjectDo::Lock);
-        assert!(get(&app, b).locked && !get(&app, a).locked);
-        app.undo();
-        object_do(&mut app, vec![a, b], ObjectDo::Group);
-        assert_eq!(app.selection.len(), 1);
-        let g = app.selection[0];
-        assert!(matches!(
-            get(&app, g).kind,
-            tracedraw_core::ShapeKind::Group { ref children } if children.len() == 2
-        ));
+        let pos = Pos2::new(40.0, 50.0);
+        app.select(vec![a]);
+        open_row_menu(&mut app, b, pos);
+        assert_eq!(app.selection, vec![b]);
+        assert_eq!(app.context_docker, Some(b));
+        assert_eq!(app.context_menu.map(|(p, _)| p), Some(pos));
+        assert_eq!(app.context_locked, None);
+        app.select(vec![a, b]);
+        open_row_menu(&mut app, a, pos);
+        assert_eq!(app.selection, vec![a, b]);
+        app.set_locked(true);
+        app.select(Vec::new());
+        open_row_menu(&mut app, a, pos);
+        assert_eq!(app.context_locked, Some(a));
+        assert!(app.selection.is_empty());
+    }
+
+    /// The row's menu holds the docker's Rename and Move to Layer and the
+    /// drawing's object commands, also with the Shape tool on; Move to
+    /// Layer moves the object (#2601).
+    #[test]
+    fn an_object_rows_menu_is_the_full_object_menu_with_rename_and_move() {
+        let ctx = egui::Context::default();
+        let fresh = || {
+            let mut app = App::headless();
+            let a = app.new_shape(rect_kind()).expect("a");
+            new_layer(&mut app);
+            app.tool = crate::tools::Tool::Shape;
+            open_row_menu(&mut app, a, Pos2::new(40.0, 50.0));
+            (app, a)
+        };
+        let frame = |app: &mut App, target: usize| {
+            crate::ui::menus::replay::start(target);
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1400.0, 900.0))),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                let mut close = false;
+                crate::ui::context::menu_items(app, ui, &mut close);
+            });
+            out.textures_delta.clear();
+            crate::ui::menus::replay::finish()
+        };
+        let (mut app, _) = fresh();
+        let (_, rows) = frame(&mut app, usize::MAX);
+        let mut keys = Vec::new();
+        let mut moved = false;
+        for t in 0..rows {
+            let (mut app, a) = fresh();
+            let before = layer_holding(&app, a);
+            let (hit, _) = frame(&mut app, t);
+            let Some(key) = hit else { continue };
+            if layer_holding(&app, a) != before {
+                moved = true;
+            }
+            if key == "docker.rename" {
+                assert!(matches!(
+                    app.dialog,
+                    crate::ui::dialogs::Dialog::RenameObject { shape, .. } if shape == a
+                ));
+            }
+            keys.push(key);
+        }
+        for want in [
+            "docker.rename",
+            "menu.edit.duplicate",
+            "menu.object.to_front_of_page",
+            "menu.object.hide_object",
+            "menu.object.properties",
+        ] {
+            assert!(
+                keys.iter().any(|k| k == want),
+                "{want} missing from {keys:?}"
+            );
+        }
+        assert!(moved, "Move to Layer moved nothing: {keys:?}");
     }
 }

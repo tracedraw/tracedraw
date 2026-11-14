@@ -1770,6 +1770,10 @@ pub struct App {
     /// A locked object right-clicked with a pick tool: the context menu
     /// offers to unlock it (it is not selected, so it cannot be edited).
     pub context_locked: Option<ShapeId>,
+    /// The context menu was opened on this object's row of the Objects
+    /// docker: the canvas object menu, with the docker's Rename and Move
+    /// to Layer on top, whatever the tool (#2601).
+    pub context_docker: Option<ShapeId>,
     pub scripts_output: Vec<String>,
     pub script_source: String,
     /// Scripts panel debugger: the running script, the line it is paused
@@ -3094,6 +3098,7 @@ impl App {
             context_menu: None,
             ruler_menu: None,
             context_locked: None,
+            context_docker: None,
             scripts_output: Vec::new(),
             script_source: String::new(),
             script_debug: None,

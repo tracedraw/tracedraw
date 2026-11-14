@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- A right click on an object in the Objects docker opens the same menu as a right click on it in the drawing (Edit Bitmap, Trace, Order, Hide, Lock, Clip to Frame, Properties and the rest, fitted to the object), with the docker's Rename and Move to Layer on top. It had only Rename, Move to Layer, a few object commands and Delete (#2601).
+- The dimension tools show the length (or the angle, for the angular dimension) beside the pointer while the dimension is placed, in the property bar's units and decimals. Only a thin line followed the pointer and the measure appeared after the last click (#2624).
 - Colour picker and Edit Fill: the colour's hexadecimal code can be typed or pasted, such as #364C9F, and sets the colour when Enter is pressed. It was only shown (#2606).
 - Pick tool property bar: the Nudge, Super nudge and Micro nudge distances are on the bar with objects selected as well as with nothing selected, so the arrow keys' steps change without opening Document Options. Only Nudge was there, and only with nothing selected (#2608).
 - Macro forms open at the size they were made: every control pushed the window down a little, so a form with many controls came out much taller than in CorelDRAW, with an empty band under its controls (the GRAFISin tiling form, sixty controls, by more than half) (#2165).
