@@ -28,6 +28,13 @@ fn std_frame(ui: &Ui, rect: egui::Rect, hovered: bool, pressed: bool) {
     crate::theme::paint_icon_button(ui.painter(), rect, hovered, pressed);
 }
 
+/// The Save button is lit while the drawing has changes to save (or has
+/// never been saved) and pale once it is saved, as in CorelDRAW: it
+/// looked the same whether the drawing was saved or not (#2640).
+pub(crate) fn save_button_lit(app: &App) -> bool {
+    app.engine.is_dirty() || app.file.is_none()
+}
+
 /// A standard toolbar button; `pressed` draws it pushed in (toggles).
 pub(crate) fn std_button(
     ui: &mut Ui,
@@ -435,7 +442,16 @@ pub(crate) fn draw_item(app: &mut App, ui: &mut Ui, bar: &str, id: &str) {
                 });
         }
         "save" => {
-            if std_button(ui, icons::Action::Save, &tip("toolbar.save"), doc, false).clicked() {
+            let to_save = doc && save_button_lit(app);
+            if std_button(
+                ui,
+                icons::Action::Save,
+                &tip("toolbar.save"),
+                to_save,
+                false,
+            )
+            .clicked()
+            {
                 app.save(false);
             }
         }
@@ -4139,6 +4155,31 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    /// The Save button: lit for a drawing never saved and for one with
+    /// changes, pale once it is saved (#2640).
+    #[test]
+    fn the_save_button_is_pale_once_the_drawing_is_saved() {
+        let mut app = App::headless();
+        assert!(save_button_lit(&app), "never saved");
+        let dir = std::env::temp_dir().join(format!("tracedraw-2640-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("saved.tdraw");
+        app.new_shape(tracedraw_core::ShapeKind::Rect {
+            rect: tracedraw_core::geometry::Rect::new(0.0, 0.0, 10.0, 10.0),
+            radius: 0.0,
+            corners: None,
+        });
+        app.save_to(path.clone());
+        assert!(!save_button_lit(&app), "saved: pale");
+        app.new_shape(tracedraw_core::ShapeKind::Rect {
+            rect: tracedraw_core::geometry::Rect::new(20.0, 0.0, 30.0, 10.0),
+            radius: 0.0,
+            corners: None,
+        });
+        assert!(save_button_lit(&app), "changed again: lit");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The Pick tool's bar shows the Nudge, Super nudge and Micro nudge

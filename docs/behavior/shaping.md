@@ -31,7 +31,7 @@ its result are one undo step. Checked by
 | Simplify | 1 | each object without what objects above it cover | the objects, changed in place |
 | Front Minus Back | 2 | the front object without the ones behind (its attributes) | nothing |
 | Back Minus Front | 2 | the back object without the ones in front (its attributes) | nothing |
-| Boundary | 1 | an outline around the selection (the target's attributes) | every object |
+| Boundary | 1 | an outline around the selection, with no fill and the target's outline (a hairline if it has none), as in CorelDRAW (#2640) | every object |
 
 The result goes on top of the active layer and becomes the selection; an
 empty result changes nothing and the status bar says so. Each operation

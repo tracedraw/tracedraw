@@ -7,6 +7,8 @@ full, row-by-row status.
 ## Unreleased
 
 - Page Number Settings: Begin on page chooses the page that shows the first number, so covers and title pages get none; with Begin on page 3 and Start at 1, page 3 shows 1. It works for numbers on a master layer (saved with the field) and for numbers put on each page (#2127).
+- Create Boundary draws an outline around the selection with no fill, with the target's outline (a hairline when it has none), as in CorelDRAW. It took the target's fill and covered what it was drawn around (#2640).
+- The Save button on the standard toolbar is lit while the drawing has changes to save (or was never saved) and pale once it is saved. It looked the same either way (#2640).
 - Remove Background: Erase and Restore brushes paint on the preview, with a brush size and Clear strokes, to take away what the colours left or bring back what they took; each stroke is a step of the dialog's undo. Fill background puts a colour, or a gradient from top to bottom, behind the picture instead of transparency (#1723, #1915).
 - Text: a Character width field (Text panel, Character section, and the Shape tool's property bar) narrows or widens the letters as a percentage of their own width, keeping their height, from 1 to 1000 %. Exports keep the font's letters with the width (#2190).
 - Shape tool on text: the property bar has Superscript and Subscript buttons for the chosen characters (else the whole text); a second click puts them back on the baseline (#2164).

@@ -445,6 +445,44 @@ fn boundary_of_open_lines_is_one_solid_object() {
         .filter(|e| matches!(e, tracedraw_core::geometry::PathEl::MoveTo(_)))
         .count();
     assert_eq!(contours, 1, "one outer edge");
+    // No fill, an outline, as CorelDRAW draws a boundary (#2640).
+    assert!(matches!(s.fill, tracedraw_core::Fill::None), "{:?}", s.fill);
+    assert!(s.stroke.is_some(), "an outline");
+}
+
+/// Create Boundary around filled objects: an outline with no fill, so the
+/// objects stay in sight under it, as in CorelDRAW (#2640: it took the
+/// target's fill and covered them); the target's outline is kept.
+#[test]
+fn boundary_has_no_fill() {
+    let build = |app: &mut App| {
+        let mut ids = Vec::new();
+        for x in [0.0, 30.0] {
+            let id = app
+                .new_shape(ShapeKind::Rect {
+                    rect: tracedraw_core::geometry::Rect::new(x, 0.0, x + 40.0, 40.0),
+                    radius: 0.0,
+                    corners: None,
+                })
+                .expect("square");
+            app.engine
+                .run(&tracedraw_core::Command::SetFill {
+                    shapes: vec![id],
+                    fill: tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(200, 0, 0)),
+                })
+                .expect("fill");
+            ids.push(id);
+        }
+        ids
+    };
+    let (_, made, _) = run(&build, Shaping::Boundary, &as_built).expect("a boundary");
+    assert_eq!(made.len(), 1);
+    assert!(
+        matches!(made[0].fill, tracedraw_core::Fill::None),
+        "{:?}",
+        made[0].fill
+    );
+    assert!(made[0].stroke.is_some(), "an outline");
 }
 
 /// The objects of `group` (one level), in their order.
