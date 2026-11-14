@@ -27167,6 +27167,120 @@ fn outline_width_and_zoom_boxes_take_the_typed_value() {
     );
 }
 
+/// A typed horizontal scale follows a quarter-turned object's own axis.
+#[test]
+fn single_object_scale_field_preserves_a_quarter_turn() {
+    let (ctx, mut app, id) = setup();
+    app.scale_locked = false;
+    app.object_origin = (1, 1);
+    app.transform_selection(Affine::rotate(std::f64::consts::FRAC_PI_2));
+    let original = app.doc().find_shape(id).expect("rectangle").transform;
+    let reference = app.selection_bounds().expect("bounds").center();
+    let depth = app.engine.history_labels().0.len();
+    type_in_bar(&ctx, &mut app, "100.0 %", "200", Leave::Enter);
+    let changed = app.doc().find_shape(id).expect("rectangle").transform;
+    let (x, y) = tracedraw_core::document::axis_scale(changed);
+    assert!((x - 2.0).abs() < 1e-9, "horizontal scale: {x}");
+    assert!((y - 1.0).abs() < 1e-9, "vertical scale: {y}");
+    let [a, b, _, _, _, _] = changed.as_coeffs();
+    assert!((b.atan2(a) - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
+    assert!((changed * original.inverse() * reference - reference).hypot() < 1e-9);
+    assert_eq!(app.engine.history_labels().0.len(), depth + 1);
+    app.undo();
+    assert_eq!(
+        app.doc().find_shape(id).expect("rectangle").transform,
+        original
+    );
+    app.redo();
+    assert_eq!(
+        app.doc().find_shape(id).expect("rectangle").transform,
+        changed
+    );
+}
+
+/// Local scale inputs preserve rotated, skewed and mirrored axes, and
+/// repeating a value is inert while the ratio lock scales both axes.
+#[test]
+fn single_object_scale_fields_keep_rotated_skewed_and_mirrored_axes() {
+    for (skew, mirror) in [(0.0, 1.0), (0.4, 1.0), (0.4, -1.0)] {
+        let (ctx, mut app, id) = setup();
+        app.scale_locked = false;
+        app.object_origin = (1, 1);
+        let original = Affine::rotate(std::f64::consts::FRAC_PI_4)
+            * Affine::skew(skew, 0.0)
+            * Affine::scale_non_uniform(1.5 * mirror, 0.75);
+        app.transform_selection(original);
+        let reference = app.selection_bounds().expect("bounds").center();
+        let [a, b, c, d, _, _] = original.as_coeffs();
+        let (_, original_y) = tracedraw_core::document::axis_scale(original);
+        type_in_bar(&ctx, &mut app, "150.0 %", "200", Leave::Enter);
+        let changed = app.doc().find_shape(id).expect("rectangle").transform;
+        let [na, nb, nc, nd, _, _] = changed.as_coeffs();
+        assert!((na - a * 4.0 / 3.0).abs() < 1e-9);
+        assert!((nb - b * 4.0 / 3.0).abs() < 1e-9);
+        assert!((nc - c).abs() < 1e-9 && (nd - d).abs() < 1e-9);
+        assert_eq!(
+            changed.determinant().signum(),
+            original.determinant().signum()
+        );
+        assert!((changed * original.inverse() * reference - reference).hypot() < 1e-9);
+        let depth = app.engine.history_labels().0.len();
+        type_in_bar(&ctx, &mut app, "200.0 %", "200", Leave::Enter);
+        assert_eq!(
+            app.doc().find_shape(id).expect("rectangle").transform,
+            changed
+        );
+        assert_eq!(app.engine.history_labels().0.len(), depth);
+        app.scale_locked = true;
+        type_in_bar(&ctx, &mut app, "200.0 %", "300", Leave::Enter);
+        let locked = app.doc().find_shape(id).expect("rectangle").transform;
+        let (x, y) = tracedraw_core::document::axis_scale(locked);
+        assert!((x - 3.0).abs() < 1e-9 && (y - original_y * 1.5).abs() < 1e-9);
+        app.scale_locked = false;
+        type_in_bar(
+            &ctx,
+            &mut app,
+            &format!("{:.1} %", y * 100.0),
+            "150",
+            Leave::Enter,
+        );
+        let vertical = app.doc().find_shape(id).expect("rectangle").transform;
+        let (x, y) = tracedraw_core::document::axis_scale(vertical);
+        assert!((x - 3.0).abs() < 1e-9 && (y - 1.5).abs() < 1e-9);
+    }
+}
+
+/// Several objects keep relative, page-axis scaling from fields at 100%.
+#[test]
+fn multiple_object_scale_fields_keep_relative_page_axes() {
+    let (ctx, mut app, id) = setup();
+    app.scale_locked = false;
+    app.object_origin = (1, 1);
+    app.transform_selection(Affine::rotate(std::f64::consts::FRAC_PI_4));
+    let other = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(100.0, 100.0, 130.0, 120.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rectangle");
+    app.select(vec![id, other]);
+    let reference = app.selection_bounds().expect("bounds").center();
+    let before = app.selected_shapes();
+    type_in_bar(&ctx, &mut app, "100.0 %", "200", Leave::Enter);
+    assert_eq!(app.scale_shown(), (100.0, 100.0));
+    let delta = Affine::translate(reference.to_vec2())
+        * Affine::scale_non_uniform(2.0, 1.0)
+        * Affine::translate(-reference.to_vec2());
+    for shape in before {
+        let expected = delta * shape.transform;
+        let actual = app.doc().find_shape(shape.id).expect("rectangle").transform;
+        for (a, b) in actual.as_coeffs().iter().zip(expected.as_coeffs()) {
+            assert!((a - b).abs() < 1e-9);
+        }
+    }
+}
+
 /// Draws a regular pentagon with the Polygon tool, selects it with the
 /// Shape tool and returns the screen point of the point on its first edge, clear of the nodes.
 fn pentagon_edge_point(ctx: &egui::Context, app: &mut App) -> Pos2 {

@@ -1961,6 +1961,48 @@ pub(crate) fn size_scale(now: (f64, f64), to: (f64, f64)) -> Option<(f64, f64)> 
     ((f.0 - 1.0).abs() > 1e-12 || (f.1 - 1.0).abs() > 1e-12).then_some(f)
 }
 
+/// A percentage follows a single object's own axes. Several objects
+/// retain the property bar's relative page-axis scaling.
+fn percentage_scale_transform(app: &App, sx: f64, sy: f64, reference: Point) -> Option<Affine> {
+    if !sx.is_finite()
+        || !sy.is_finite()
+        || sx <= 0.0
+        || sy <= 0.0
+        || !reference.x.is_finite()
+        || !reference.y.is_finite()
+    {
+        return None;
+    }
+    let shapes = app.selected_rc();
+    let scale = Affine::scale_non_uniform(sx, sy);
+    let linear = match shapes.as_slice() {
+        [shape] if sx != sy => {
+            let [a, b, c, d, _, _] = shape.transform.as_coeffs();
+            let basis = Affine::new([a, b, c, d, 0.0, 0.0]);
+            let (x, y) = tracedraw_core::document::axis_scale(basis);
+            let determinant = basis.determinant();
+            if !basis.as_coeffs().iter().all(|v| v.is_finite())
+                || !determinant.is_finite()
+                || determinant.abs() <= 1e-12 * x * y
+            {
+                return None;
+            }
+            basis * scale * basis.inverse()
+        }
+        _ => scale,
+    };
+    let transform =
+        Affine::translate(reference.to_vec2()) * linear * Affine::translate(-reference.to_vec2());
+    (transform.as_coeffs().iter().all(|v| v.is_finite())
+        && shapes.iter().all(|shape| {
+            (transform * shape.transform)
+                .as_coeffs()
+                .iter()
+                .all(|v| v.is_finite())
+        }))
+    .then_some(transform)
+}
+
 pub fn object_bar(app: &mut App, ui: &mut Ui) {
     let Some(b) = app.selection_bounds() else {
         return;
@@ -2006,7 +2048,7 @@ pub fn object_bar(app: &mut App, ui: &mut Ui) {
     // it was drawn or imported at (#2693); several show 100%. A value
     // typed scales the selection from what it shows.
     let shown = app.scale_shown();
-    let mut scale: Option<(f64, f64)> = None;
+    let mut scale: Option<Affine> = None;
     stacked(ui, |ui| {
         for horizontal in [true, false] {
             let key = if horizontal {
@@ -2027,13 +2069,14 @@ pub fn object_bar(app: &mut App, ui: &mut Ui) {
                     );
                     if r.changed() && (pct - now).abs() > 1e-9 && pct > 0.0 && now > 1e-9 {
                         let f = pct / now;
-                        scale = Some(if locked {
+                        let (sx, sy) = if locked {
                             (f, f)
                         } else if horizontal {
                             (f, 1.0)
                         } else {
                             (1.0, f)
-                        });
+                        };
+                        scale = percentage_scale_transform(app, sx, sy, refp);
                     }
                 })
             });
@@ -2068,16 +2111,16 @@ pub fn object_bar(app: &mut App, ui: &mut Ui) {
         }
     });
     if let Some((nw, nh)) = size {
-        if let Some(f) = size_scale((w, h), (nw, nh)) {
-            scale = Some(f);
+        if let Some((sx, sy)) = size_scale((w, h), (nw, nh)) {
+            scale = Some(
+                Affine::translate(refp.to_vec2())
+                    * Affine::scale_non_uniform(sx, sy)
+                    * Affine::translate(-refp.to_vec2()),
+            );
         }
     }
-    if let Some((sx, sy)) = scale {
-        app.transform_selection(
-            Affine::translate(refp.to_vec2())
-                * Affine::scale_non_uniform(sx, sy)
-                * Affine::translate(-refp.to_vec2()),
-        );
+    if let Some(transform) = scale {
+        app.transform_selection(transform);
     }
     sep(ui);
     crate::ui::tips::tip_over(ui, crate::ui::tips::keyed("toolbar.rotation_angle"), |ui| {
@@ -3613,6 +3656,40 @@ mod tests {
         // A side typed as nothing is refused.
         assert_eq!(size_scale((50.0, 20.0), (0.0, 20.0)), None);
         assert_eq!(size_scale((50.0, 20.0), (25.0, 40.0)), Some((0.5, 2.0)));
+    }
+
+    #[test]
+    fn single_object_scale_transform_rejects_invalid_matrices_and_values() {
+        let mut app = App::headless();
+        let kind = ShapeKind::Rect {
+            rect: R::new(0.0, 0.0, 40.0, 20.0),
+            radius: 0.0,
+            corners: None,
+        };
+        let id = app.new_shape(kind.clone()).expect("rectangle");
+        app.select(vec![id]);
+        for (sx, sy) in [
+            (0.0, 1.0),
+            (-1.0, 1.0),
+            (f64::NAN, 1.0),
+            (2.0, f64::INFINITY),
+        ] {
+            assert!(percentage_scale_transform(&app, sx, sy, Point::ZERO).is_none());
+        }
+        assert!(percentage_scale_transform(&app, 2.0, 1.0, Point::new(f64::NAN, 0.0)).is_none());
+        for transform in [
+            Affine::new([1.0, 1.0, 1.0, 1.0, 0.0, 0.0]),
+            Affine::new([f64::NAN, 0.0, 0.0, 1.0, 0.0, 0.0]),
+            Affine::scale_non_uniform(f64::MAX, 1.0),
+        ] {
+            let id = app
+                .new_shape_styled(kind.clone(), |s| s.transform = transform)
+                .expect("rectangle");
+            app.select(vec![id]);
+            let before = app.engine.history_labels().0.len();
+            assert!(percentage_scale_transform(&app, 2.0, 1.0, Point::ZERO).is_none());
+            assert_eq!(app.engine.history_labels().0.len(), before);
+        }
     }
 
     /// A bar button that cannot run now is drawn greyed but plain to see

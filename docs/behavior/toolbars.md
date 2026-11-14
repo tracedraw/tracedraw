@@ -311,6 +311,12 @@ for sliders stepped with the wheel (`step_merge::tests`).
   nudge over Micro nudge), so the arrow keys' steps change without
   opening Document Options (#2608,
   `ui::toolbar::tests::the_pick_bar_shows_and_sets_the_nudge_distances`).
+- A single object's scale percentages describe its transformed local
+  axes. On a rotated, skewed or mirrored object, editing one percentage
+  preserves both axes' directions and fixes the selected origin point.
+  The proportion lock applies the same factor to both axes.
+  With several objects selected, the fields show 100% and scale the
+  selection by the entered factor along the page axes.
 - Then, by the kind of the selected objects: rectangle corners (Round,
   Scalloped and Chamfered Corner buttons; the four corner sizes in two
   stacked columns, top left over bottom left, then top right over bottom
