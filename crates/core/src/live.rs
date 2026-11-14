@@ -1413,6 +1413,12 @@ fn set_path(shape: &mut Shape, path: BezPath) {
         .elements()
         .iter()
         .any(|e| matches!(e, PathEl::ClosePath));
+    // The letters of a text overlap (strokes of one letter, letters set
+    // tight): their outline fills with the nonzero rule, as the text did,
+    // also once it is a curve written to a file or broken apart (#2733).
+    if matches!(shape.kind, ShapeKind::Text { .. }) {
+        shape.fill_rule = crate::shaping::FillRule::NonZero;
+    }
     shape.kind = ShapeKind::Path { path, closed };
     // A warped outline is no longer the B-spline of its control points,
     // and its nodes are new (#647).
@@ -3160,6 +3166,41 @@ mod tests {
         }
         let trimmed = evaluate(&s).below[0].page_path();
         assert!(trimmed.area().abs() < shadow.area().abs() - 1.0);
+    }
+
+    /// A warped text's outline keeps the nonzero rule the text is drawn
+    /// with: saved to `.cdr` it went out as an even-odd curve, and the
+    /// program that opened it showed holes where its letters overlapped
+    /// (#2733).
+    #[test]
+    fn a_warped_texts_outline_fills_with_the_nonzero_rule() {
+        use crate::shaping::FillRule;
+        let mut text = Shape::new(
+            crate::ShapeId(1),
+            ShapeKind::Text {
+                spans: Vec::new(),
+                origin: Point::ZERO,
+                frame: None,
+                align: Default::default(),
+                para: Default::default(),
+                on_path: None,
+            },
+        );
+        text.effects.push(Effect::Perspective {
+            corners: [
+                Point::new(0.0, 0.0),
+                Point::new(10.0, 0.0),
+                Point::new(8.0, 5.0),
+                Point::new(2.0, 5.0),
+            ],
+        });
+        let main = evaluate(&text).main;
+        assert!(matches!(main.kind, ShapeKind::Path { .. }), "{:?}", main.kind);
+        assert_eq!(main.fill_rule, FillRule::NonZero);
+        // A curve keeps its own rule.
+        let mut curve = rect_shape();
+        curve.effects = text.effects.clone();
+        assert_eq!(evaluate(&curve).main.fill_rule, FillRule::EvenOdd);
     }
 
     /// Text and objects set to the nonzero rule are read with it, so the

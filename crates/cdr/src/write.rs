@@ -6037,10 +6037,25 @@ impl<'a> Writer<'a> {
                         curve_coords(&tracedraw_core::shaping::nonzero_as_even_odd(path))
                     }
                     ShapeKind::Path { path, .. } => curve_coords_typed(path, &s.node_types),
+                    // The outline of a text fitted to a path fills nonzero
+                    // as the text does (#2733): before 16 as the area it
+                    // covers, from 16 with the style string's winding.
+                    ShapeKind::Text { .. } if v.0 < 16 => curve_coords(
+                        &tracedraw_core::shaping::nonzero_as_even_odd(&s.local_path()),
+                    ),
                     _ => curve_coords(&s.local_path()),
                 };
                 let Some(mut coords) = coords else {
                     return none();
+                };
+                let nonzero_text;
+                let s = if matches!(s.kind, ShapeKind::Text { .. }) {
+                    let mut t = s.clone();
+                    t.fill_rule = tracedraw_core::shaping::FillRule::NonZero;
+                    nonzero_text = t;
+                    &nonzero_text
+                } else {
+                    s
                 };
                 // The node marks of every version's files. (Version 13 and
                 // 14 files written with them once closed the program that

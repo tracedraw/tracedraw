@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Saving to CorelDRAW (`.cdr`): text fitted to a path, or bent by an envelope, perspective or distortion, goes out as curves that fill with the nonzero rule (Fill winding on), as the text is drawn. They went out even-odd, so CorelDRAW showed holes where letters or their strokes overlapped (#2733).
 - Page Number Settings: Begin on page chooses the page that shows the first number, so covers and title pages get none; with Begin on page 3 and Start at 1, page 3 shows 1. It works for numbers on a master layer (saved with the field) and for numbers put on each page (#2127).
 - Remove Background: Erase and Restore brushes paint on the preview, with a brush size and Clear strokes, to take away what the colours left or bring back what they took; each stroke is a step of the dialog's undo. Fill background puts a colour, or a gradient from top to bottom, behind the picture instead of transparency (#1723, #1915).
 - Text: a Character width field (Text panel, Character section, and the Shape tool's property bar) narrows or widens the letters as a percentage of their own width, keeping their height, from 1 to 1000 %. Exports keep the font's letters with the width (#2190).

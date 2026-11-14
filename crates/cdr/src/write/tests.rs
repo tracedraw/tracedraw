@@ -8884,6 +8884,45 @@ fn a_nonzero_curve_keeps_its_overlaps_filled_through_a_save() {
     }
 }
 
+/// Text fitted to a path goes out as the outline of its letters, and
+/// that outline fills with the nonzero rule as the text does (#2733):
+/// read back from version 16 on it fills nonzero; written as even-odd,
+/// the program that opened the file showed holes where letters overlap.
+#[test]
+fn text_fitted_to_a_path_goes_out_filling_nonzero() {
+    use tracedraw_core::shaping::FillRule;
+    let mut doc = doc_with(Vec::new());
+    let mut ids = doc.ids().clone();
+    let mut t = text_shape(
+        &mut ids,
+        vec![TextSpan::new("Overlap", "Arial", 24.0)],
+        TextAlign::Left,
+    );
+    let mut arc = BezPath::new();
+    arc.move_to((0.0, 0.0));
+    arc.curve_to((20.0, 30.0), (60.0, 30.0), (80.0, 0.0));
+    if let ShapeKind::Text { on_path, .. } = &mut t.kind {
+        *on_path = Some(tracedraw_core::document::TextOnPath {
+            path: arc,
+            ..Default::default()
+        });
+    }
+    assert!(!t.local_path().elements().is_empty(), "letters drawn");
+    doc.pages[0].layers[0].shapes = vec![t];
+    doc.set_ids(ids);
+    for v in versions().filter(|v| *v >= 16) {
+        let (back, rep) =
+            crate::open_bytes(&document_to_cdr_version(&doc, v), "back").expect("reads back");
+        let s = &back.pages[0].layers[0].shapes[0];
+        assert!(
+            matches!(s.kind, ShapeKind::Path { .. }),
+            "{v}: {:?}",
+            rep.warnings
+        );
+        assert_eq!(s.fill_rule, FillRule::NonZero, "{v}");
+    }
+}
+
 /// From version 16 the `font` records are the faces the text uses, and
 /// the style table names the first of them: the file of #1733 that
 /// program saved for bold "Khand" text has one Khand record, the bold
