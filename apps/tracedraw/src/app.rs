@@ -707,6 +707,11 @@ pub struct CurveInProgress {
     /// the curve passes through with a corner (fixed points, #2060); one
     /// flag a node, missing ones floating.
     pub spline_fixed: Vec<bool>,
+    /// B-Spline tool: Ctrl+C or Ctrl+V pressed while Ctrl is held to
+    /// keep a line straight. The window turns those keys into copy and
+    /// paste, never a held C or V, so the press is kept here: the next
+    /// point placed while Ctrl is still held is fixed (#2694).
+    pub spline_fix_key: bool,
     /// Nodes made cusps (clicking the last node again, C while pulling a
     /// handle, a click after a dragged node): their incoming handle as it
     /// was frozen (`None`: the segment arrives straight), no longer the

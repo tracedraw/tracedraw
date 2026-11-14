@@ -3227,6 +3227,13 @@ impl App {
                 // handle (#359).
                 if let Some(mut c) = self.curve.take() {
                     c.closing = None;
+                    // C or V held as the B-spline closes: the first point,
+                    // where it closes, is fixed, so the curve ends there
+                    // with a corner however it began (#2694).
+                    if c.bspline && Self::spline_fix_held(&c, &response.ctx) {
+                        c.spline_fixed.resize(c.nodes.len(), false);
+                        c.spline_fixed[0] = true;
+                    }
                     self.close_curve(c);
                 }
                 return;
@@ -3299,18 +3306,14 @@ impl App {
                 // C or V held: a fixed point, which the curve passes
                 // through with a corner (#2060).
                 if bspline {
-                    let fixed = response
-                        .ctx
-                        .input(|i| i.key_down(egui::Key::C) || i.key_down(egui::Key::V));
+                    let fixed = Self::spline_fix_held(c, &response.ctx);
+                    c.spline_fix_key = false;
                     c.spline_fixed.resize(c.nodes.len() - 1, false);
                     c.spline_fixed.push(fixed);
                 }
             } else if again && bspline {
                 // C or V on the last point again makes it fixed.
-                if response
-                    .ctx
-                    .input(|i| i.key_down(egui::Key::C) || i.key_down(egui::Key::V))
-                {
+                if Self::spline_fix_held(c, &response.ctx) {
                     c.spline_fixed.resize(c.nodes.len(), false);
                     if let Some(f) = c.spline_fixed.last_mut() {
                         *f = true;
@@ -3438,6 +3441,17 @@ impl App {
             c.dragging_handle = false;
             c.alt_from = None;
         }
+    }
+
+    /// B-Spline: C or V held, or pressed with Ctrl still held (which
+    /// the window gives as copy or paste): the point placed is fixed
+    /// (#2060, #2694).
+    fn spline_fix_held(c: &CurveInProgress, ctx: &egui::Context) -> bool {
+        ctx.input(|i| {
+            i.key_down(egui::Key::C)
+                || i.key_down(egui::Key::V)
+                || (c.spline_fix_key && i.modifiers.command)
+        })
     }
 
     /// The curve being drawn, closed onto its first node, becomes a
@@ -4729,13 +4743,33 @@ impl App {
         let paste_event = paste_text.is_some();
         let pasted_without_text = paste_without_text(&input.events, &mut self.paste_seen);
         let shift_held = input.modifiers.shift;
-        if (pressed(Key::C, cmd) || copy_event) && !(segments && self.copy_segments()) {
+        // While a B-spline is drawn with Ctrl held (a straight line),
+        // Ctrl+C and Ctrl+V make the next point fixed, as C and V alone
+        // do, and copy or paste nothing (#2694).
+        let mut spline_key = false;
+        if let Some(c) = self.curve.as_mut().filter(|c| c.bspline) {
+            if !input.modifiers.command {
+                c.spline_fix_key = false;
+            }
+            spline_key = pressed(Key::C, cmd)
+                || pressed(Key::V, cmd)
+                || copy_event
+                || paste_event
+                || pasted_without_text;
+            c.spline_fix_key |= spline_key;
+        }
+        if !spline_key
+            && (pressed(Key::C, cmd) || copy_event)
+            && !(segments && self.copy_segments())
+        {
             self.copy_with_system();
         }
         if (pressed(Key::X, cmd) || cut_event) && !(segments && self.cut_segments()) {
             self.cut();
         }
-        if pressed(Key::V, cmd) || (paste_event && !shift_held) || pasted_without_text {
+        if spline_key {
+            // The press made the next B-spline point fixed.
+        } else if pressed(Key::V, cmd) || (paste_event && !shift_held) || pasted_without_text {
             self.paste_with_event_text(paste_text);
         } else if paste_event && shift_held {
             self.paste_in_view();
@@ -4786,7 +4820,7 @@ impl App {
         if pressed(Key::R, cmd) {
             self.repeat_last();
         }
-        if pressed(Key::V, cmd | Modifiers::SHIFT) && !paste_event {
+        if pressed(Key::V, cmd | Modifiers::SHIFT) && !paste_event && !spline_key {
             self.paste_in_view();
         }
         if pressed(Key::M, cmd) {
