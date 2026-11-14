@@ -176,6 +176,7 @@ pub fn parse_with_options(
     }
     let mut tounicode_fixes = HashMap::new();
     let mut line_widths = HashMap::new();
+    let mut char_xs = HashMap::new();
     for (index, page_id) in pages.iter().enumerate() {
         let mut imp = Importer {
             doc: &doc,
@@ -193,9 +194,11 @@ pub fn parse_with_options(
             shrunk: Vec::new(),
             in_mask: false,
             line_widths: std::mem::take(&mut line_widths),
+            char_xs: std::mem::take(&mut char_xs),
         };
         let page = imp.import_page(*page_id, index);
         line_widths = std::mem::take(&mut imp.line_widths);
+        char_xs = std::mem::take(&mut imp.char_xs);
         out.inks = std::mem::take(&mut imp.inks);
         out.shrunk_pictures.extend(
             imp.shrunk
@@ -207,7 +210,7 @@ pub fn parse_with_options(
     }
     out.warnings.dedup();
     if options.text_as_paragraphs && !options.text_as_curves {
-        crate::pdf_paragraphs::make_paragraphs(&mut out.pages, &line_widths);
+        crate::pdf_paragraphs::make_paragraphs(&mut out.pages, &line_widths, &char_xs);
     }
     Ok(out)
 }
@@ -855,6 +858,11 @@ struct Importer<'a> {
     /// How long each text made of a run is along its baseline, mm, as
     /// the file draws it: for [`crate::pdf_paragraphs`].
     line_widths: HashMap<ShapeId, f64>,
+    /// Where each character of such a text starts along its baseline,
+    /// mm from the text's origin, as the file draws it: for the
+    /// underlines [`crate::pdf_paragraphs`] gives back to the letters
+    /// they are drawn under (#2569).
+    char_xs: HashMap<ShapeId, Vec<f64>>,
 }
 
 /// The text marked content gives its glyphs, shown in place of their own
@@ -894,6 +902,12 @@ struct TextRun {
     typed: Vec<std::ops::Range<usize>>,
     /// The run holds a reph glyph (one glyph for र् with no advance).
     reph_glyph: bool,
+    /// Where each character of `text` starts along the baseline, in the
+    /// units of `end_x`; `None` once they no longer match.
+    xs: Option<Vec<f64>>,
+    /// Filled and outlined (render mode 2 or 6): the way a word processor
+    /// draws bold in a font that has no bold face (#2569).
+    stroked_bold: bool,
 }
 
 /// A Devanagari consonant (with the nukta forms).
@@ -4024,7 +4038,14 @@ impl<'a> Importer<'a> {
             if !path.elements().is_empty() {
                 let mut shape = self.new_shape(ShapeKind::Path { path, closed: true });
                 shape.fill = Fill::Solid(gs.fill.unwrap_or(Color::BLACK));
-                shape.stroke = None;
+                // Filled and outlined text (bold made up for a font with
+                // no bold face) keeps its outline, so it stays bold.
+                shape.stroke = gs.stroke.filter(|_| fake_bold(gs)).map(|c| {
+                    let w = (gs.line_width * Self::scale_of(gs.ctm)).max(Stroke::HAIRLINE);
+                    let mut st = Stroke::new(c, w);
+                    st.join = LineJoin::Round;
+                    st
+                });
                 shape.opacity = gs.fill_alpha;
                 let clip = gs.clip.clone();
                 self.push(shape, &clip);
@@ -4085,6 +4106,7 @@ impl<'a> Importer<'a> {
         let same_run = match run {
             Some(r) => {
                 std::rc::Rc::ptr_eq(&r.font, &font)
+                    && r.stroked_bold == fake_bold(gs)
                     && (r.size_pt - size_pt).abs() < 1e-6
                     && r.fill == gs.fill
                     && (same_line(&r.matrix, &trm, r.end_x, gs.font_size)
@@ -4107,6 +4129,7 @@ impl<'a> Importer<'a> {
                     if let Some(a) = self.actual.as_mut() {
                         a.broken = true;
                         if let Some(at) = a.at {
+                            r.xs = None;
                             r.text.truncate(at);
                             r.text.push_str(&a.own);
                             r.typed.retain(|t| t.start < at);
@@ -4130,6 +4153,8 @@ impl<'a> Importer<'a> {
                     reach: 0.0,
                     typed: Vec::new(),
                     reph_glyph: false,
+                    xs: Some(Vec::new()),
+                    stroked_bold: fake_bold(gs),
                 });
             }
         } else if let (Some(r), Some((new_end, len))) = (run.as_mut(), along) {
@@ -4139,6 +4164,9 @@ impl<'a> Importer<'a> {
             let em = r.size_pt * PT_MM;
             if (gap > em * 0.18 || r.space_pending) && !joins && !r.text.ends_with(' ') {
                 r.text.push(' ');
+                if let Some(xs) = r.xs.as_mut() {
+                    xs.push(r.reach);
+                }
             }
             r.space_pending = false;
             r.end_x = new_end;
@@ -4163,11 +4191,19 @@ impl<'a> Importer<'a> {
                             a.at = Some(r.text.len());
                             let at = r.text.len();
                             r.text.push_str(&a.text);
+                            if let Some(xs) = r.xs.as_mut() {
+                                xs.extend(a.text.chars().map(|_| r.end_x + advance));
+                            }
                             r.typed.push(at..r.text.len());
                         }
                         a.own.push_str(&own);
                     }
-                    _ => r.text.push_str(&own),
+                    _ => {
+                        r.text.push_str(&own);
+                        if let Some(xs) = r.xs.as_mut() {
+                            xs.extend(own.chars().map(|_| r.end_x + advance));
+                        }
+                    }
                 }
             } else if let Some(a) = self.actual.as_mut().filter(|_| given.is_some()) {
                 a.shown = true;
@@ -4191,7 +4227,22 @@ impl<'a> Importer<'a> {
             return;
         }
         // Take the size out of the matrix: the span carries it in points.
-        let transform = r.matrix * Affine::scale(1.0 / scale);
+        let mut transform = r.matrix * Affine::scale(1.0 / scale);
+        // Upright text slanted forward by its matrix is italic made up for
+        // a font with no italic face: the span says italic and the slant
+        // goes, so the letters are not slanted twice (#2569).
+        let mut slanted = false;
+        {
+            let c = transform.as_coeffs();
+            let det = c[0] * c[3] - c[1] * c[2];
+            if c[1].abs() < 1e-6 && c[0] > 0.0 && c[3] > 0.0 && det > 0.0 {
+                let shear = c[2] / c[3];
+                if (0.1..0.5).contains(&shear) {
+                    slanted = true;
+                    transform = Affine::new([c[0], 0.0, 0.0, c[3], c[4], c[5]]);
+                }
+            }
+        }
         // Hindi and the other Devanagari languages: back from the order
         // the glyphs are drawn in to the order they are typed (#585).
         // Vowels drawn as two glyphs become one character again first.
@@ -4216,9 +4267,15 @@ impl<'a> Importer<'a> {
             }
             from = part.end;
         }
+        // The characters' places hold only while the text is as drawn.
+        let text_chars = if text == r.text {
+            text.chars().count()
+        } else {
+            usize::MAX
+        };
         let span = TextSpan {
-            bold: r.font.bold,
-            italic: r.font.italic,
+            bold: r.font.bold || r.stroked_bold,
+            italic: r.font.italic || slanted,
             ..TextSpan::new(text, r.font.family.clone(), r.size_pt)
         };
         let mut shape = self.new_shape(ShapeKind::Text {
@@ -4238,8 +4295,18 @@ impl<'a> Importer<'a> {
         shape.opacity = r.alpha;
         let _ = r.font.type3_matrix;
         self.line_widths.insert(shape.id, r.reach * scale);
+        if let Some(xs) = r.xs.filter(|xs| xs.len() == text_chars) {
+            self.char_xs
+                .insert(shape.id, xs.iter().map(|x| x * scale).collect());
+        }
         self.push(shape, &r.clip);
     }
+}
+
+/// Text drawn filled and outlined (render mode 2, or 6 with clipping) with
+/// an outline: how bold is made up for a font with no bold face.
+fn fake_bold(gs: &GState) -> bool {
+    matches!(gs.render_mode, 2 | 6) && gs.stroke.is_some() && gs.line_width > 0.0
 }
 
 /// Same baseline and direction, continuing after the previous advance.
@@ -6844,6 +6911,48 @@ mod tests {
                 *b = n;
             }
         })
+    }
+
+    /// Bold and italic a word processor makes up for a font with no such
+    /// faces, text filled and outlined and text slanted by its matrix,
+    /// come in as bold and italic text, the slant taken out (#2569).
+    #[test]
+    fn made_up_bold_and_italic_are_bold_and_italic() {
+        let font =
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
+        let bytes = one_page(
+            "BT /F1 12 Tf 0.3 w 2 Tr 20 60 Td (Bold) Tj 0 Tr ET \
+             BT /F1 12 Tf 1 0 0.33 1 20 30 Tm (Slanted) Tj ET \
+             BT /F1 12 Tf 20 10 Td (Plain) Tj ET",
+            "<< /Font << /F1 5 0 R >> >>",
+            &[font.to_string()],
+        );
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let texts: Vec<(&str, bool, bool, f64)> = imp.pages[0]
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.kind {
+                ShapeKind::Text { spans, .. } => Some((
+                    spans[0].text.as_str(),
+                    spans[0].bold,
+                    spans[0].italic,
+                    s.transform.as_coeffs()[2],
+                )),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts.len(), 3, "{texts:?}");
+        assert_eq!((texts[0].0, texts[0].1, texts[0].2), ("Bold", true, false));
+        assert_eq!(
+            (texts[1].0, texts[1].1, texts[1].2),
+            ("Slanted", false, true)
+        );
+        assert!(texts[1].3.abs() < 1e-9, "{texts:?}");
+        assert_eq!(
+            (texts[2].0, texts[2].1, texts[2].2),
+            ("Plain", false, false)
+        );
     }
 
     /// A one-page file with a rectangle, a text run and a title, as the
