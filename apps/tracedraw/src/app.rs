@@ -1636,8 +1636,6 @@ pub struct App {
     /// The version whose finished download the card already came back
     /// for, after it was dismissed while the file was downloading.
     pub update_card_done: String,
-    /// Page size changes apply to every page (the page bar's All pages).
-    pub page_size_all: bool,
     /// The property bar's object origin: (column, row) of the 3 x 3
     /// reference point selector, (1, 1) the centre.
     pub object_origin: (u8, u8),
@@ -3040,7 +3038,6 @@ impl App {
             palette_strip_rects: Vec::new(),
             palette_new: None,
             pointer_screen: None,
-            page_size_all: true,
             object_origin: (1, 1),
             scale_locked: false,
             pending_copy_properties: false,

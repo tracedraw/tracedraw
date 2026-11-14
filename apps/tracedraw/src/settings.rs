@@ -575,6 +575,12 @@ pub struct Settings {
     /// (#1477).
     #[serde(default = "default_true")]
     pub objects_all_pages: bool,
+    /// Page size changes apply to every page (the page bar's All pages
+    /// and the Page Size dialog's Apply to all pages). Off by default so
+    /// a new size changes only the current page, and kept between
+    /// sessions (#2696).
+    #[serde(default)]
+    pub page_size_all: bool,
     /// The font lists' sample size, in points.
     #[serde(default = "default_font_sample")]
     pub font_sample_px: f32,
@@ -2030,6 +2036,7 @@ impl Default for Settings {
             object_thumb_size: default_object_thumb(),
             master_in_front: [false; 3],
             objects_all_pages: true,
+            page_size_all: false,
             font_sample_px: default_font_sample(),
             workspace_parts: crate::workspace_file::WorkspaceParts::default(),
             printing: Default::default(),

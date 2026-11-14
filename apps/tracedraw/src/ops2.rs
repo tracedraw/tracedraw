@@ -757,6 +757,25 @@ impl App {
         }
     }
 
+    /// The scale factors the property bar shows, in percent: for one
+    /// selected object, how far its transformation has stretched it each
+    /// way from the size it was drawn or imported at; 100% for several
+    /// objects or none. The fields stayed at 100% after any scaling
+    /// (#2693).
+    pub fn scale_shown(&self) -> (f64, f64) {
+        let shapes = self.selected_shapes();
+        let [s] = shapes.as_slice() else {
+            return (100.0, 100.0);
+        };
+        let [a, b, c, d, _, _] = s.transform.as_coeffs();
+        let (sx, sy) = (a.hypot(b) * 100.0, c.hypot(d) * 100.0);
+        if sx.is_finite() && sy.is_finite() && sx > 1e-6 && sy > 1e-6 {
+            (sx, sy)
+        } else {
+            (100.0, 100.0)
+        }
+    }
+
     /// Effects > Flatten Effects: bake the stack into ordinary objects.
     pub fn flatten_effects(&mut self) {
         self.flatten_effects_with(false);
@@ -5465,6 +5484,50 @@ mod tests {
             ShapeKind::SymbolInstance { index } => index,
             ref k => panic!("{k:?}"),
         }
+    }
+
+    /// #2693: the property bar's scale fields show how far one object is
+    /// stretched from the size it was drawn at, through further scaling
+    /// and a turn; several objects show 100%. They stayed at 100%.
+    #[test]
+    fn the_scale_fields_show_how_far_an_object_is_scaled() {
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(10.0, 10.0, 60.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        assert_eq!(app.scale_shown(), (100.0, 100.0));
+        app.transform_selection(Affine::scale_non_uniform(3.0, 2.0));
+        let near =
+            |a: (f64, f64), b: (f64, f64)| (a.0 - b.0).abs() < 1e-6 && (a.1 - b.1).abs() < 1e-6;
+        assert!(
+            near(app.scale_shown(), (300.0, 200.0)),
+            "{:?}",
+            app.scale_shown()
+        );
+        // Typing 150% where 300% shows halves the width.
+        let (now, _) = app.scale_shown();
+        app.transform_selection(Affine::scale_non_uniform(150.0 / now, 1.0));
+        assert!(
+            near(app.scale_shown(), (150.0, 200.0)),
+            "{:?}",
+            app.scale_shown()
+        );
+        app.transform_selection(Affine::rotate(0.5));
+        assert!(near(app.scale_shown(), (150.0, 200.0)), "a turn keeps it");
+        let other = app
+            .new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(100.0, 10.0, 120.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id, other]);
+        assert_eq!(app.scale_shown(), (100.0, 100.0));
     }
 
     /// A page is resized about its centre: an object in the middle of

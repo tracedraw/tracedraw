@@ -1595,7 +1595,7 @@ fn page_size_list(app: &mut App, ui: &mut Ui, current: &str, size: Size) {
         app.dialog = crate::ui::dialogs::Dialog::PageSize {
             width: size.width,
             height: size.height,
-            all_pages: app.page_size_all,
+            all_pages: app.settings.page_size_all,
         };
     }
     if ui.button(tr("toolbar.edit_page_sizes")).clicked() {
@@ -1648,7 +1648,7 @@ pub fn page_bar(app: &mut App, ui: &mut Ui) {
     // Fit page to drawing, as Layout has it (#236); pale on an empty
     // page, or with All Pages on when no page has anything on it.
     let has_objects = |p: &tracedraw_core::Page| p.layers.iter().any(|l| !l.shapes.is_empty());
-    let has_objects = if app.page_size_all {
+    let has_objects = if app.settings.page_size_all {
         app.doc().pages.iter().any(has_objects)
     } else {
         app.doc().page(app.page).ok().is_some_and(has_objects)
@@ -1711,7 +1711,7 @@ pub fn page_bar(app: &mut App, ui: &mut Ui) {
         )
     });
     if fitted {
-        app.autofit_pages(app.settings.fit_page_margin, app.page_size_all);
+        app.autofit_pages(app.settings.fit_page_margin, app.settings.page_size_all);
         app.fit_pending = true;
         egui::Popup::close_id(&ctx, popup_id);
     }
@@ -1734,22 +1734,22 @@ pub fn page_bar(app: &mut App, ui: &mut Ui) {
         Pic::AllPages,
         &tr("toolbar.all_pages_tip"),
         true,
-        app.page_size_all,
+        app.settings.page_size_all,
     )
     .clicked()
     {
-        app.page_size_all = true;
+        app.settings.page_size_all = true;
     }
     if pic_button(
         ui,
         Pic::CurrentPage,
         &tr("toolbar.current_page_tip"),
         true,
-        !app.page_size_all,
+        !app.settings.page_size_all,
     )
     .clicked()
     {
-        app.page_size_all = false;
+        app.settings.page_size_all = false;
     }
     sep(ui);
     ui.label(tr("toolbar.units_label"));
@@ -1834,7 +1834,7 @@ pub fn nudge_part(app: &mut App, ui: &mut Ui) {
 /// Resize the current page, or every page when "all pages" is on, as one
 /// undo step.
 pub fn resize_pages(app: &mut App, size: Size) {
-    let pages: Vec<_> = if app.page_size_all {
+    let pages: Vec<_> = if app.settings.page_size_all {
         app.doc().pages.iter().map(|p| p.id).collect()
     } else {
         vec![app.page]
@@ -1984,7 +1984,10 @@ pub fn object_bar(app: &mut App, ui: &mut Ui) {
             }
         });
     });
-    // Scale factors (relative: the field shows 100% and applies the change).
+    // Scale factors: one object shows how far it is scaled from the size
+    // it was drawn or imported at (#2693); several show 100%. A value
+    // typed scales the selection from what it shows.
+    let shown = app.scale_shown();
     let mut scale: Option<(f64, f64)> = None;
     stacked(ui, |ui| {
         for horizontal in [true, false] {
@@ -1993,9 +1996,10 @@ pub fn object_bar(app: &mut App, ui: &mut Ui) {
             } else {
                 "toolbar.scale_y"
             };
+            let now = if horizontal { shown.0 } else { shown.1 };
             crate::ui::tips::tip_over(ui, crate::ui::tips::keyed(key), |ui| {
                 row(ui, |ui| {
-                    let mut pct = 100.0f64;
+                    let mut pct = now;
                     let r = ui.add_sized(
                         [64.0, ROW],
                         crate::ui::field::NumField::new(&mut pct)
@@ -2003,8 +2007,8 @@ pub fn object_bar(app: &mut App, ui: &mut Ui) {
                             .fixed_decimals(1)
                             .suffix(" %"),
                     );
-                    if r.changed() && (pct - 100.0).abs() > 1e-9 && pct > 0.0 {
-                        let f = pct / 100.0;
+                    if r.changed() && (pct - now).abs() > 1e-9 && pct > 0.0 && now > 1e-9 {
+                        let f = pct / now;
                         scale = Some(if locked {
                             (f, f)
                         } else if horizontal {
@@ -3945,7 +3949,7 @@ mod tests {
         let mut app = App::headless();
         app.add_page();
         let depth = app.engine.history_labels().0.len();
-        app.page_size_all = true;
+        app.settings.page_size_all = true;
         resize_pages(&mut app, Size::new(100.0, 50.0));
         assert!(app
             .doc()
@@ -3953,7 +3957,7 @@ mod tests {
             .iter()
             .all(|p| p.size == Size::new(100.0, 50.0)));
         assert_eq!(app.engine.history_labels().0.len(), depth + 1);
-        app.page_size_all = false;
+        app.settings.page_size_all = false;
         resize_pages(&mut app, Size::new(70.0, 70.0));
         let sizes: Vec<Size> = app.doc().pages.iter().map(|p| p.size).collect();
         assert_eq!(

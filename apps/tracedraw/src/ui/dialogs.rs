@@ -2139,14 +2139,7 @@ pub fn show(app: &mut App, ctx: &Context) {
                 ui.checkbox(all_pages, tr("dialog.apply_all_pages"))
                     .rich_tip(crate::ui::tips::keyed("dialog.apply_all_pages"));
                 if ok_cancel(ui, &mut close) {
-                    let size = Size::new(width.max(1.0), height.max(1.0));
-                    let pages: Vec<_> = if *all_pages {
-                        app.doc().pages.iter().map(|p| p.id).collect()
-                    } else {
-                        vec![app.page]
-                    };
-                    app.resize_pages_about_centre(&pages, size, "Page Size");
-                    app.fit_pending = true;
+                    apply_page_size(app, Size::new(*width, *height), *all_pages);
                 }
             });
         }
@@ -3450,6 +3443,32 @@ fn same_size(a: Size, b: Size) -> bool {
     let close = |x: f64, y: f64| (x - y).abs() < 0.05;
     (close(a.width, b.width) && close(a.height, b.height))
         || (close(a.width, b.height) && close(a.height, b.width))
+}
+
+/// The Page Size dialog as it opens: the current page's size, and Apply
+/// to all pages as it was last left, off until it is ticked (#2696).
+pub fn page_size_dialog(app: &App) -> Dialog {
+    let s = app.page_size();
+    Dialog::PageSize {
+        width: s.width,
+        height: s.height,
+        all_pages: app.settings.page_size_all,
+    }
+}
+
+/// The Page Size dialog's OK: resizes the current page, or every page
+/// when Apply to all pages is ticked, and remembers that choice for the
+/// next time the dialog opens and for the page bar (#2696).
+pub fn apply_page_size(app: &mut App, size: Size, all_pages: bool) {
+    app.settings.page_size_all = all_pages;
+    let size = Size::new(size.width.max(1.0), size.height.max(1.0));
+    let pages: Vec<_> = if all_pages {
+        app.doc().pages.iter().map(|p| p.id).collect()
+    } else {
+        vec![app.page]
+    };
+    app.resize_pages_about_centre(&pages, size, "Page Size");
+    app.fit_pending = true;
 }
 
 /// The name of the preset a page of `size` matches, the user's saved
@@ -7816,6 +7835,43 @@ pub(crate) mod tests {
         for (key, _) in paper_preset_groups() {
             assert_ne!(crate::i18n::tr(key), key.rsplit('.').next().unwrap_or(key));
         }
+    }
+
+    /// The Page Size dialog opens with Apply to all pages off, so a new
+    /// size changes only the current page; once ticked and confirmed, it
+    /// opens ticked the next time, and unticked again after that (#2696).
+    #[test]
+    fn page_size_dialog_applies_to_one_page_unless_all_was_chosen() {
+        let mut app = App::headless();
+        app.add_page();
+        assert_eq!(app.doc().pages.len(), 2);
+        let all = |d: Dialog| match d {
+            Dialog::PageSize { all_pages, .. } => all_pages,
+            _ => panic!("not the Page Size dialog"),
+        };
+        assert!(!all(page_size_dialog(&app)));
+        let first = app.doc().pages[0].size;
+        apply_page_size(&mut app, Size::new(100.0, 50.0), false);
+        let sizes: Vec<Size> = app.doc().pages.iter().map(|p| p.size).collect();
+        assert_eq!(
+            sizes
+                .iter()
+                .filter(|s| **s == Size::new(100.0, 50.0))
+                .count(),
+            1
+        );
+        assert!(sizes.contains(&first));
+        assert!(!all(page_size_dialog(&app)));
+        apply_page_size(&mut app, Size::new(80.0, 80.0), true);
+        assert!(app
+            .doc()
+            .pages
+            .iter()
+            .all(|p| p.size == Size::new(80.0, 80.0)));
+        assert!(all(page_size_dialog(&app)));
+        apply_page_size(&mut app, Size::new(60.0, 40.0), false);
+        assert!(!all(page_size_dialog(&app)));
+        assert!(!crate::settings::Settings::default().page_size_all);
     }
 
     /// A page size finds its preset in either orientation, a saved size

@@ -762,12 +762,7 @@ fn page_menu(app: &mut App, ui: &mut Ui, p: tracedraw_core::Point, close: &mut b
         app.dialog = Dialog::RenamePage { name };
     }
     if ci(ui, close, "menu.layout.page_size", "", true) {
-        let s = app.page_size();
-        app.dialog = Dialog::PageSize {
-            width: s.width,
-            height: s.height,
-            all_pages: true,
-        };
+        app.dialog = crate::ui::dialogs::page_size_dialog(app);
     }
     if ci(ui, close, "menu.layout.page_background", "", true) {
         app.dialog = Dialog::Options;

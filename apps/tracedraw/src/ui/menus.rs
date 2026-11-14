@@ -3136,12 +3136,7 @@ pub(crate) fn layout_menu(app: &mut App, ui: &mut Ui) {
         app.options_page = crate::ui::dialogs::OptionsPage::DocumentGeneral;
     }
     if item(ui, "menu.layout.page_size", "", true) {
-        let s = app.page_size();
-        app.dialog = Dialog::PageSize {
-            width: s.width,
-            height: s.height,
-            all_pages: true,
-        };
+        app.dialog = crate::ui::dialogs::page_size_dialog(app);
     }
     if item(ui, "menu.layout.page_layout", "", true) {
         app.dialog = Dialog::Options;
