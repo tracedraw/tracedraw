@@ -574,6 +574,12 @@ pub enum Drag {
     ContourDrag {
         start: Point,
     },
+    /// Block Shadow or Inner Shadow tool: the selected shadow's end
+    /// square, pressed at `press` with the shadow's offset `from` (#1280).
+    OffsetShadow {
+        press: Point,
+        from: tracedraw_core::geometry::Vec2,
+    },
     /// Connector tool drag from one object to another.
     Connector {
         from: ShapeId,

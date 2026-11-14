@@ -136,6 +136,7 @@ mod new_document;
 mod node_edit;
 mod object_clone;
 mod object_thumbs;
+mod offset_shadow_handle;
 mod ops;
 mod ops2;
 mod package;
