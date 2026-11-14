@@ -104,6 +104,15 @@ parallel, or Small back when they have a vanishing point.
   the object's middle); Ctrl keeps that move horizontal or vertical,
   and the pointer is the move cursor over the line. Each drag is one
   undo step (`effect_line_tests::the_extrusion_line_moves_its_vanishing_point`).
+- A body toward or away from a vanishing point (the four Small and Big
+  types) also has a depth slider: a bar across the line where its far
+  face's middle is, `middle + (vanishing point - middle) * depth` for
+  Small and `middle - (vanishing point - middle) * depth` for Big (the
+  line drawn on past the middle to it). A drag that starts on it sets
+  the depth from the pointer's place along the line, 1 to 99 %, the
+  vanishing point staying where it is; the bar is filled while dragged
+  and each drag is one undo step (#1280,
+  `extrude_tool::tests::the_depth_slider_sets_the_depth_along_the_line`).
 - A click selects the object under the pointer (or nothing). Groups and
   bitmaps are not extruded.
 
@@ -197,6 +206,7 @@ The panel shows these under the other controls; the bar has them in its
 - `extrude_tool::tests::area_fill_takes_the_side_of_a_back_cylinder`
 - `extrude_tool::tests::a_drag_extrudes_toward_the_pointer`
 - `extrude_tool::tests::the_bar_edits_the_selected_extrusion`
+- `extrude_tool::tests::the_depth_slider_sets_the_depth_along_the_line`
 - `extrude_tool::tests::settings_read_older_effects_and_stay_in_range`
 - `ui::extrude_bar::tests::the_bar_and_the_panel_draw_for_every_kind` (with the turn, lights and bevel, which go to the effect and back)
 - `extrude3d::tests::untouched_with_a_raised_light_it_draws_as_the_flat_body`

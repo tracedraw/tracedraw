@@ -4031,6 +4031,7 @@ impl App {
             Drag::FountainHandle { .. }
             | Drag::SymmetryLines { .. }
             | Drag::ContourDrag { .. }
+            | Drag::OffsetShadow { .. }
             | Drag::Shadow { .. }
             | Drag::ShadowHandle { .. }
             | Drag::ShadowLine { .. }
