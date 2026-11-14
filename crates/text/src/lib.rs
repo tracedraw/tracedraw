@@ -4414,9 +4414,11 @@ impl FontSystem {
                 };
                 let mut a = ps.line_step(m.line_height, m.size);
                 if first {
-                    a += ps.space_before;
+                    // In percent of the character height, the space
+                    // follows the line's font (#2613).
+                    a += ps.space_before_mm(m.line_height);
                     if pp != pi {
-                        a += style_of(pp).1.space_after;
+                        a += style_of(pp).1.space_after_mm(m.line_height);
                     }
                 }
                 a
@@ -7168,6 +7170,58 @@ mod tests {
         assert!((right_end - 100.0).abs() < 0.05, "{right_end}");
         assert!(l.baselines[1].0 > 50.0);
         assert!((plain.baselines[1].1 - l.baselines[1].1 - 4.0).abs() < 1e-6);
+    }
+
+    /// The space before and after a paragraph in percent of the
+    /// character height, as the reference program gives them: before
+    /// 150 % is half a line more than the line spacing, after 131 % of
+    /// the paragraph above 1.31 lines more, at any size (#2613).
+    #[test]
+    fn paragraph_space_in_percent_of_the_character_height() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        let gap = |size: f64, before: Option<f64>, after: Option<f64>| {
+            let mut sp = span("one\ntwo");
+            sp.size_pt = size;
+            let mut kind = tracedraw_core::ShapeKind::Text {
+                spans: vec![sp],
+                origin: Point::ZERO,
+                frame: Some(Size::new(100.0, 200.0)),
+                align: TextAlign::Left,
+                para: ParagraphStyle {
+                    space_after_pct: after,
+                    ..ParagraphStyle::default()
+                },
+                on_path: None,
+            };
+            tracedraw_core::paragraphs::edit_paragraph_formats(&mut kind, Some((4, 4)), |p| {
+                p.space_before_pct = before;
+            });
+            let tracedraw_core::ShapeKind::Text { spans, para, .. } = &kind else {
+                unreachable!()
+            };
+            let l = frame_layout(f, spans, para, 100.0);
+            assert_eq!(l.baselines.len(), 2);
+            l.baselines[0].1 - l.baselines[1].1
+        };
+        for size in [12.0, 30.0] {
+            let plain = gap(size, None, None);
+            assert!(plain > 0.0);
+            // 100 % before and 0 % after: no room.
+            assert!((gap(size, Some(100.0), Some(0.0)) - plain).abs() < 1e-6);
+            let before = gap(size, Some(150.0), None);
+            assert!(
+                (before - plain * 1.5).abs() < 1e-6,
+                "{size}: {before} {plain}"
+            );
+            let after = gap(size, None, Some(131.0));
+            assert!(
+                (after - plain * 2.31).abs() < 1e-6,
+                "{size}: {after} {plain}"
+            );
+        }
     }
 
     fn wrap_square(

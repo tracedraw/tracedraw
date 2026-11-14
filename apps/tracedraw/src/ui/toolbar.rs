@@ -2764,6 +2764,16 @@ fn shape_tool_bar(app: &mut App, ui: &mut Ui) {
             .iter()
             .all(|s| matches!(s.kind, ShapeKind::Text { on_path: None, .. }))
     {
+        // The fields show the first chosen character (else the text's
+        // first), read again each frame as with the Pick tool: unread,
+        // they kept what they showed before, so choosing other
+        // characters did not show their format, and a second click on
+        // Bold, compared with that stale reading, changed nothing
+        // (#2365).
+        if let Some(first) = shapes.first() {
+            let id = first.id;
+            app.sync_text_defaults_from(id);
+        }
         text_properties(app, ui);
         crate::ui::propbar::sep(ui);
         crate::ui::propbar::char_offset_part(app, ui);

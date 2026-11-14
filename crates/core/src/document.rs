@@ -1670,6 +1670,16 @@ pub struct ParagraphStyle {
     /// Space before and after each paragraph, mm.
     pub space_before: f64,
     pub space_after: f64,
+    /// The space before and after each paragraph in percent of the
+    /// character height (the font's line height), as the reference
+    /// program gives them with "% of Char. height": before 100 % is no
+    /// room beyond the line spacing, after 0 % none. Set, they take the
+    /// place of `space_before` and `space_after` and follow the text's
+    /// size (#2613). Not in older files.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space_before_pct: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space_after_pct: Option<f64>,
     pub first_line_indent: f64,
     pub left_indent: f64,
     pub right_indent: f64,
@@ -1883,6 +1893,32 @@ impl ParagraphStyle {
             LeadingUnit::PercentPointSize => size_mm * self.leading_pct / 100.0,
         }
     }
+
+    /// The room before a paragraph beyond the line spacing, mm, for a
+    /// first line whose font has `line_height_mm` (see `line_step`).
+    pub fn space_before_mm(&self, line_height_mm: f64) -> f64 {
+        space_mm(
+            self.space_before,
+            self.space_before_pct,
+            100.0,
+            line_height_mm,
+        )
+    }
+
+    /// The room after a paragraph, mm (see `space_before_mm`).
+    pub fn space_after_mm(&self, line_height_mm: f64) -> f64 {
+        space_mm(self.space_after, self.space_after_pct, 0.0, line_height_mm)
+    }
+}
+
+/// A paragraph's space in mm: `mm`, or, given in percent of the
+/// character height (`pct`, `none` percent meaning no room), that share
+/// of `line_height_mm` (#2613).
+pub fn space_mm(mm: f64, pct: Option<f64>, none: f64, line_height_mm: f64) -> f64 {
+    match pct.filter(|p| p.is_finite()) {
+        Some(p) => ((p - none) / 100.0 * line_height_mm).max(0.0),
+        None => mm,
+    }
 }
 
 /// Which way the columns of vertical text follow one another across the
@@ -1923,6 +1959,8 @@ impl Default for ParagraphStyle {
             word_spacing_pct: 100.0,
             space_before: 0.0,
             space_after: 0.0,
+            space_before_pct: None,
+            space_after_pct: None,
             first_line_indent: 0.0,
             left_indent: 0.0,
             right_indent: 0.0,

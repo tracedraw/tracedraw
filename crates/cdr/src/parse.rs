@@ -7223,9 +7223,16 @@ fn paragraph_spacing(style: &text::RunStyle, base: &ParagraphStyle) -> Paragraph
                 _ => to_mm(b) - baseline_mm,
             };
             p.space_before = before.clamp(0.0, 1000.0);
+            // In the character height, kept so: the room follows the
+            // font's own line height and size, as in the reference
+            // program, and the Text docker shows the percent (#2613).
+            p.space_before_pct =
+                (method == 0 && b.is_finite()).then(|| (b * 100.0).clamp(0.0, 10000.0));
         }
         if let Some(a) = style.para_after {
             p.space_after = to_mm(a).clamp(0.0, 1000.0);
+            p.space_after_pct =
+                (method == 0 && a.is_finite()).then(|| (a * 100.0).clamp(0.0, 10000.0));
         }
     }
     if let Some((left, first, right)) = style.indent_pt {
@@ -7295,6 +7302,11 @@ pub(crate) mod tests {
         let line_mm = st.size_pt.unwrap_or(12.0) * 25.4 / 72.0 * 1.15;
         assert!((p.space_before - line_mm).abs() < 1e-9, "{p:?}");
         assert!((p.space_after - line_mm / 2.0).abs() < 1e-9, "{p:?}");
+        // Kept in percent of the character height too (#2613).
+        assert_eq!(
+            (p.space_before_pct, p.space_after_pct),
+            (Some(200.0), Some(50.0))
+        );
         assert!((p.leading_pct - 120.0).abs() < 1e-9);
         // The defaults files hold: no extra room.
         let d = text::parse_style_string(

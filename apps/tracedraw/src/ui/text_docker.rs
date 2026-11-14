@@ -1561,6 +1561,16 @@ fn paragraph(app: &mut App, ui: &mut Ui, first: Option<&tracedraw_core::Shape>) 
                         // Keep the spacing about the same in the new unit.
                         let size_pt = t_size_pt(t);
                         p.leading_pct = convert_leading(p.leading_pct, p.leading_unit, u, size_pt);
+                        // The space before and after in the new unit:
+                        // out of percent of the character height, the
+                        // distance it stood for (#2613).
+                        if u != LeadingUnit::PercentCharHeight {
+                            let line = char_height_mm(size_pt);
+                            p.space_before = p.space_before_mm(line);
+                            p.space_after = p.space_after_mm(line);
+                            p.space_before_pct = None;
+                            p.space_after_pct = None;
+                        }
                         p.leading_unit = u;
                         pc = true;
                     }
@@ -1575,12 +1585,12 @@ fn paragraph(app: &mut App, ui: &mut Ui, first: Option<&tracedraw_core::Shape>) 
             line_icon(ui, ParaIcon::LeftIndent, "docker.left_indent");
             pc |= length(ui, app, &mut p.left_indent);
             line_icon(ui, ParaIcon::SpaceBefore, "docker.space_before");
-            pc |= length(ui, app, &mut p.space_before);
+            pc |= space_field(ui, app, &mut p, true, t_size_pt(t));
             ui.end_row();
             line_icon(ui, ParaIcon::FirstLineIndent, "docker.first_line_indent");
             pc |= length(ui, app, &mut p.first_line_indent);
             line_icon(ui, ParaIcon::SpaceAfter, "docker.space_after");
-            pc |= length(ui, app, &mut p.space_after);
+            pc |= space_field(ui, app, &mut p, false, t_size_pt(t));
             ui.end_row();
             line_icon(ui, ParaIcon::RightIndent, "docker.right_indent");
             pc |= length(ui, app, &mut p.right_indent);
@@ -1648,6 +1658,54 @@ pub(crate) fn tab_summary(tabs: &[tracedraw_core::TabStop], u: crate::app::Units
         places.push("\u{2026}".into());
     }
     format!("{} {}", places.join(", "), u.short())
+}
+
+/// The character height of `size_pt` text, mm, as the docker takes it
+/// (1.2 times the size, see [`convert_leading`]).
+pub(crate) fn char_height_mm(size_pt: f64) -> f64 {
+    size_pt * 1.2 * 25.4 / 72.0
+}
+
+/// The space before (`before`) or after a paragraph: in percent of the
+/// character height while the line spacing is in that unit, as the
+/// reference program shows all three (before 100 % is no extra room,
+/// after 0 % none), else a length. A percent typed is kept as one, so the
+/// room follows the text's size; a length typed replaces it (#2613).
+fn space_field(
+    ui: &mut Ui,
+    app: &App,
+    p: &mut tracedraw_core::ParagraphStyle,
+    before: bool,
+    size_pt: f64,
+) -> bool {
+    let line = char_height_mm(size_pt);
+    let none = if before { 100.0 } else { 0.0 };
+    let (mm, pct) = if before {
+        (&mut p.space_before, &mut p.space_before_pct)
+    } else {
+        (&mut p.space_after, &mut p.space_after_pct)
+    };
+    if p.leading_unit == LeadingUnit::PercentCharHeight {
+        let shown = pct.unwrap_or_else(|| {
+            if line > 0.0 {
+                ((none + *mm / line * 100.0) * 10.0).round() / 10.0
+            } else {
+                none
+            }
+        });
+        let mut v = shown;
+        if number(ui, &mut v, 0.0..=10000.0, " %") && v != shown {
+            *pct = Some(v);
+            *mm = tracedraw_core::document::space_mm(*mm, Some(v), none, line);
+            return true;
+        }
+        false
+    } else if length(ui, app, mm) {
+        *pct = None;
+        true
+    } else {
+        false
+    }
 }
 
 /// The largest font size of a text, points.
