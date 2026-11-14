@@ -2218,6 +2218,26 @@ impl Renderer<'_> {
         let (Some(mut layer), Some(mut mask_pm)) = (Pixmap::new(w, h), Pixmap::new(w, h)) else {
             return;
         };
+        // The drop shadow goes beneath, outside the mask, cast by the
+        // object's shape. Drawn on the layer it went through the mask,
+        // which past the object's box repeats its edge pixels: a shadow
+        // cut by a hard line, faded above it and dark below (an object
+        // with a fountain transparency).
+        let shadowless;
+        let shape = match shape.shadow.as_ref() {
+            Some(sh) => {
+                if sh.opacity > 0.0 && shape.visible && shape.opacity > 0.0 && !self.flags.wireframe
+                {
+                    let page_path = (parent * shape.transform) * shape.local_path();
+                    self.draw_object_shadow(sh, shape, parent, &page_path);
+                }
+                let mut s = shape.clone();
+                s.shadow = None;
+                shadowless = s;
+                &shadowless
+            }
+            None => shape,
+        };
         {
             let mut sub = self.sub(&mut layer);
             sub.draw_shape(shape, parent);
@@ -4916,6 +4936,57 @@ mod tests {
     fn px(pm: &Pixmap, x: u32, y: u32) -> (u8, u8, u8) {
         let p = pm.pixel(x, y).unwrap().demultiply();
         (p.red(), p.green(), p.blue())
+    }
+
+    /// An object with a fountain transparency casts the whole shadow
+    /// of its shape, the same as without the transparency. The shadow
+    /// was drawn through the transparency's mask, which past the
+    /// object's box repeats its edge: cut by a hard line, faint above
+    /// it and dark below (reported 14/11/2026). A fountain fill, black to
+    /// white, casts the whole shadow too, as in the reference program.
+    #[test]
+    fn a_fountain_transparency_leaves_the_drop_shadow_whole() {
+        let disc_filled = |faded: bool, fill: Fill| {
+            let mut s = Shape::new(
+                tracedraw_core::ShapeId(1),
+                ShapeKind::Ellipse {
+                    rect: Rect::new(15.0, 55.0, 45.0, 85.0),
+                    arc: None,
+                },
+            );
+            s.fill = fill;
+            if faded {
+                s.effects.push(tracedraw_core::live::Effect::Transparency {
+                    mask: Fill::linear(Color::WHITE, Color::BLACK, -45.0),
+                    merge: tracedraw_core::live::MergeMode::Normal,
+                    target: 2,
+                });
+            }
+            s.shadow = Some(tracedraw_core::Shadow {
+                offset: tracedraw_core::geometry::Vec2::new(15.0, -30.0),
+                opacity: 0.8,
+                blur: 3.0,
+                color: Color::BLACK,
+                ..Default::default()
+            });
+            let (doc, page) = doc_with(vec![s]);
+            render_page_image(&doc, page, 25.4).unwrap()
+        };
+        let disc = |faded: bool| disc_filled(faded, Fill::Solid(Color::rgb8(0, 160, 80)));
+        let (plain, faded) = (disc(false), disc(true));
+        let graded = disc_filled(false, Fill::linear(Color::BLACK, Color::WHITE, -45.0));
+        // Down the shadow's middle, beside and below the object's box.
+        for y in 40..95 {
+            assert_eq!(px(&faded, 45, y), px(&plain, 45, y), "row {y}");
+            assert_eq!(px(&graded, 45, y), px(&plain, 45, y), "graded, row {y}");
+        }
+        assert!(px(&faded, 45, 60).0 < 80, "shadow dark in its middle");
+        // The object itself still fades.
+        let lighter = (18..43)
+            .flat_map(|y| (18..43).map(move |x| (x, y)))
+            .filter(|&(x, y)| u32::from(px(&faded, x, y).0) > u32::from(px(&plain, x, y).0) + 40)
+            .count();
+        assert!(lighter > 50, "{lighter} pixels of the object faded");
     }
 
     fn doc_with(shapes: Vec<Shape>) -> (Document, PageId) {
@@ -9846,6 +9917,67 @@ mod band_tests {
         assert_eq!(green(770), Some(200));
         render_page_in_bands(&doc, page, &opts, None).unwrap();
         assert_eq!(image_cache::decodes_of(&png), 1);
+    }
+
+    /// The shadow of an object with a fountain transparency is the same
+    /// drawn in bands as drawn whole. Each band faded it by its own cut
+    /// of the transparency, whole in a band below the object and faint
+    /// in the band holding it: a hard line across the shadow, which
+    /// jumped from frame to frame while a shadow was dragged (the bands
+    /// of a picture handed over at once and of one handed over a band at
+    /// a time do not meet on the same rows), so every such shadow on
+    /// screen flickered until the mouse was let go.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn a_faded_object_casts_the_same_shadow_in_bands() {
+        let mut s = Shape::new(
+            tracedraw_core::ShapeId(1),
+            ShapeKind::Ellipse {
+                rect: Rect::new(15.0, 55.0, 45.0, 85.0),
+                arc: None,
+            },
+        );
+        s.fill = Fill::Solid(Color::rgb8(240, 130, 30));
+        s.effects.push(tracedraw_core::live::Effect::Transparency {
+            mask: Fill::linear(Color::WHITE, Color::BLACK, -45.0),
+            merge: tracedraw_core::live::MergeMode::Normal,
+            target: 2,
+        });
+        s.shadow = Some(tracedraw_core::Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(15.0, -30.0),
+            opacity: 0.8,
+            blur: 2.0,
+            color: Color::BLACK,
+            ..Default::default()
+        });
+        let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(100.0, 100.0));
+        let page = doc.pages[0].id;
+        let layer = doc.pages[0].layers[0].id;
+        doc.layer_mut(layer).unwrap().shapes.push(s);
+        let opts = RenderOptions {
+            width: 800,
+            height: 800,
+            view: ViewTransform {
+                zoom: 8.0,
+                origin_x: 0.0,
+                origin_y: 800.0,
+            },
+            anti_alias: true,
+            ..RenderOptions::default()
+        };
+        let whole = render_page_whole(&doc, page, &opts, None).expect("drawn");
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let banded =
+            render_page_progressive(&doc, page, &opts, &cancel, 400, &|_, _| ()).expect("drawn");
+        // The shadow, beside and below the object (rows 120..360).
+        let from = 370 * 800 * 4;
+        let worst = banded.data()[from..]
+            .iter()
+            .zip(&whole.data()[from..])
+            .map(|(a, b)| a.abs_diff(*b))
+            .max()
+            .unwrap_or(0);
+        assert!(worst <= 2, "bands differ by {worst}");
     }
 
     /// A picture handed over a band at a time (#2389): the bands cover
