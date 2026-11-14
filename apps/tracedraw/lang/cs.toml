@@ -2647,6 +2647,7 @@ convert_colors.to = "Převést na" # mt
 convert_colors.cmyk = "CMYK" # mt
 convert_colors.rgb = "RGB" # mt
 convert_colors.gray = "Odstíny šedi" # mt
+convert_colors.lab = "Lab" # mt
 convert_colors.which = "Barvy" # mt
 convert_colors.selection = "Vybraných objektů" # mt
 convert_colors.drawing = "Celé kresby" # mt

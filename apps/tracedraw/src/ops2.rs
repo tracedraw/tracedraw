@@ -2167,15 +2167,18 @@ impl App {
             crate::bitmap_fx::ColorMode::Cmyk => {
                 Some(tracedraw_core::color_convert::ColorTarget::Cmyk)
             }
-            crate::bitmap_fx::ColorMode::Grayscale => None,
+            crate::bitmap_fx::ColorMode::Grayscale
+            | crate::bitmap_fx::ColorMode::Paletted
+            | crate::bitmap_fx::ColorMode::Lab => None,
         };
         if let Some(to) = to {
             let shapes: Vec<ShapeId> = self.bitmap_shapes().into_iter().map(|b| b.0).collect();
             if shapes.is_empty() {
                 return;
             }
-            // A grayscale bitmap made RGB is stored with three channels
-            // again, so it reads as RGB (#2330).
+            // A grayscale, indexed or Lab bitmap made RGB is stored with
+            // three channels and no mark again, so it reads as RGB (#2330,
+            // #2605, #2607).
             if mode == crate::bitmap_fx::ColorMode::Rgb {
                 let cmds: Vec<Command> = self
                     .selected_shapes()
@@ -2185,7 +2188,10 @@ impl App {
                         let ShapeKind::Bitmap { png, .. } = &s.kind else {
                             return None;
                         };
-                        if !crate::bitmap_fx::png_is_gray(png) {
+                        if !crate::bitmap_fx::png_is_gray(png)
+                            && !crate::bitmap_fx::png_is_paletted(png)
+                            && !crate::bitmap_fx::png_is_lab(png)
+                        {
                             return None;
                         }
                         let img = crate::bitmap_fx::decode(png)?;
@@ -2212,7 +2218,42 @@ impl App {
         // one grey channel (with alpha when they have it), no longer CMYK
         // nor keeping ink channels, so the status bar and the Mode menu
         // show them grayscale. The pixels only turned grey before, the
-        // picture staying RGB or CMYK (#2330).
+        // picture staying RGB or CMYK (#2330). Lab Color goes the same
+        // way: the pixels through Lab and back, the PNG marked Lab; the
+        // pixels went through Lab and nothing else changed (#2605).
+        match mode {
+            crate::bitmap_fx::ColorMode::Lab => self.recode_bitmaps("Lab Color", |img| {
+                crate::bitmap_fx::encode_lab(&crate::bitmap_modes::lab_mode(img))
+            }),
+            crate::bitmap_fx::ColorMode::Paletted => {
+                let s = crate::bitmap_modes::PalettedSettings::default();
+                self.paletted_bitmaps(&s);
+            }
+            _ => self.recode_bitmaps("Grayscale", |img| {
+                crate::bitmap_fx::encode_gray(&crate::bitmap_fx::convert_mode(img, mode))
+            }),
+        }
+    }
+
+    /// Image > Mode > Indexed (8-bit): every selected bitmap takes the
+    /// colours of its palette and is stored as an indexed PNG, so it is an
+    /// indexed bitmap, no longer RGB or CMYK; one undo step. A bitmap
+    /// left with more than 256 colours (its see-through levels counted)
+    /// stays RGB with the palette's colours (#2607).
+    pub fn paletted_bitmaps(&mut self, settings: &crate::bitmap_modes::PalettedSettings) {
+        self.recode_bitmaps("Paletted", |img| {
+            let out = crate::bitmap_modes::paletted(img, settings);
+            crate::bitmap_fx::encode_indexed(&out).or_else(|| crate::bitmap_fx::encode(&out))
+        });
+    }
+
+    /// Store each selected bitmap as the PNG `recode` makes of its pixels,
+    /// no longer CMYK nor keeping ink channels; one undo step `label`.
+    fn recode_bitmaps(
+        &mut self,
+        label: &'static str,
+        recode: impl Fn(&image::RgbaImage) -> Option<Vec<u8>>,
+    ) {
         let mut cmds = Vec::new();
         for s in self.selected_shapes() {
             let ShapeKind::Bitmap { png, .. } = &s.kind else {
@@ -2221,10 +2262,7 @@ impl App {
             let Some(img) = crate::bitmap_fx::decode(png) else {
                 continue;
             };
-            let out = crate::bitmap_fx::convert_mode(&img, mode);
-            let Some(cmd) =
-                crate::bitmap_fx::encode_gray(&out).and_then(|g| bitmap_with_png(&s, g))
-            else {
+            let Some(cmd) = recode(&img).and_then(|g| bitmap_with_png(&s, g)) else {
                 continue;
             };
             cmds.push(cmd);
@@ -2237,7 +2275,7 @@ impl App {
             }
         }
         if !cmds.is_empty() {
-            if let Err(e) = self.engine.run_batch("Grayscale", &cmds) {
+            if let Err(e) = self.engine.run_batch(label, &cmds) {
                 self.status = e.to_string();
             }
         }
@@ -2466,6 +2504,13 @@ impl App {
                 },
                 ConvertMode::Grayscale => {
                     crate::bitmap_fx::encode_gray(&crate::bitmap_modes::convert_pixels(&img, o))
+                }
+                // Indexed: a PNG with a palette while the colours fit one
+                // (#2607).
+                ConvertMode::Paletted => {
+                    let out = crate::bitmap_modes::convert_pixels(&img, o);
+                    crate::bitmap_fx::encode_indexed(&out)
+                        .or_else(|| crate::bitmap_fx::encode(&out))
                 }
                 _ => crate::bitmap_fx::encode(&crate::bitmap_modes::convert_pixels(&img, o)),
             }) {
@@ -6345,6 +6390,95 @@ mod tests {
         assert_eq!(mode(&app), ColorMode::Rgb);
         let info = crate::ui::status::object_info(&app);
         assert!(info.contains(&tr("convert_colors.rgb")), "{info}");
+    }
+
+    #[test]
+    fn image_mode_lab_and_indexed_convert_the_bitmap() {
+        // #2605: Image > Mode > Lab Color left the bitmap RGB; #2607:
+        // Indexed (8-bit) gave back an RGB bitmap, not one with a palette.
+        use crate::bitmap_fx::ColorMode;
+        let mut app = App::headless();
+        let img = image::RgbaImage::from_fn(16, 8, |x, y| {
+            image::Rgba([
+                (x * 15) as u8,
+                (y * 30) as u8,
+                90,
+                if x == 0 { 0 } else { 255 },
+            ])
+        });
+        let png = crate::bitmap_fx::encode(&img).expect("png");
+        let id = app
+            .new_shape(ShapeKind::Bitmap {
+                rect: Rect::new(0.0, 0.0, 16.0, 8.0),
+                width_px: 16,
+                height_px: 8,
+                png: png.into(),
+                fx: None,
+            })
+            .expect("bitmap");
+        app.select(vec![id]);
+        let png_of = |app: &App| {
+            let s = app.doc().find_shape(id).expect("bitmap");
+            let ShapeKind::Bitmap { png, .. } = &s.kind else {
+                panic!("a bitmap");
+            };
+            (s.cmyk_bitmap, png.to_vec())
+        };
+        let mode = |app: &App| {
+            let (cmyk, png) = png_of(app);
+            crate::bitmap_fx::mode_of(cmyk, &png)
+        };
+        app.set_bitmap_mode(ColorMode::Lab);
+        assert_eq!(mode(&app), ColorMode::Lab);
+        let info = crate::ui::status::object_info(&app);
+        assert!(info.contains(&tr("convert_colors.lab")), "{info}");
+        // The pixels survive the trip through Lab within rounding.
+        let lab = crate::bitmap_fx::decode(&png_of(&app).1).expect("pixels");
+        for (a, b) in lab.pixels().zip(img.pixels()) {
+            assert_eq!(a[3], b[3]);
+            for i in 0..3 {
+                assert!(
+                    (i32::from(a[i]) - i32::from(b[i])).abs() <= 1,
+                    "{a:?} {b:?}"
+                );
+            }
+        }
+        app.undo();
+        assert_eq!(mode(&app), ColorMode::Rgb);
+        // A CMYK bitmap made Lab is no longer CMYK.
+        app.set_bitmap_mode(ColorMode::Cmyk);
+        app.set_bitmap_mode(ColorMode::Lab);
+        assert_eq!(mode(&app), ColorMode::Lab, "no longer CMYK");
+        app.undo();
+        assert_eq!(mode(&app), ColorMode::Cmyk);
+        app.undo();
+        assert_eq!(mode(&app), ColorMode::Rgb);
+
+        // Indexed: a PNG with a palette (colour type 3), see-through
+        // pixels kept, every colour one of the palette's.
+        let settings = crate::bitmap_modes::PalettedSettings::default();
+        app.paletted_bitmaps(&settings);
+        assert_eq!(mode(&app), ColorMode::Paletted);
+        let (_, png) = png_of(&app);
+        assert!(crate::bitmap_fx::png_is_paletted(&png));
+        let info = crate::ui::status::object_info(&app);
+        assert!(info.contains(&tr("dialog.convert_mode_paletted")), "{info}");
+        let want = crate::bitmap_modes::paletted(&img, &settings);
+        let got = crate::bitmap_fx::decode(&png).expect("pixels");
+        for (g, w) in got.pixels().zip(want.pixels()) {
+            if w[3] == 0 {
+                assert_eq!(g[3], 0);
+            } else {
+                assert_eq!(g, w);
+            }
+        }
+        // RGB again stores three channels and no palette.
+        app.set_bitmap_mode(ColorMode::Rgb);
+        assert_eq!(mode(&app), ColorMode::Rgb);
+        assert!(!crate::bitmap_fx::png_is_paletted(&png_of(&app).1));
+        app.set_bitmap_mode(ColorMode::Lab);
+        app.set_bitmap_mode(ColorMode::Rgb);
+        assert!(!crate::bitmap_fx::png_is_lab(&png_of(&app).1));
     }
 
     #[test]

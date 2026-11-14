@@ -2647,6 +2647,7 @@ convert_colors.to = "Konversi ke" # mt
 convert_colors.cmyk = "CMYK" # mt
 convert_colors.rgb = "RGB" # mt
 convert_colors.gray = "Skala abu-abu" # mt
+convert_colors.lab = "Lab" # mt
 convert_colors.which = "Warna dari" # mt
 convert_colors.selection = "Objek yang dipilih" # mt
 convert_colors.drawing = "Seluruh gambar" # mt

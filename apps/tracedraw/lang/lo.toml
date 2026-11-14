@@ -2650,6 +2650,7 @@ convert_colors.to = "ແປງເປັນ"
 convert_colors.cmyk = "CMYK"
 convert_colors.rgb = "RGB"
 convert_colors.gray = "ລະດັບສີເທົາ"
+convert_colors.lab = "Lab" # mt
 convert_colors.which = "ສີຂອງ"
 convert_colors.selection = "ວັດຖຸທີ່ເລືອກ"
 convert_colors.drawing = "ຮູບແຕ້ມທັງໝົດ"

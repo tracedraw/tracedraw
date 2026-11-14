@@ -2647,6 +2647,7 @@ convert_colors.to = "Umwandeln in" # mt
 convert_colors.cmyk = "CMYK" # mt
 convert_colors.rgb = "RGB" # mt
 convert_colors.gray = "Graustufen" # mt
+convert_colors.lab = "Lab" # mt
 convert_colors.which = "Farben von" # mt
 convert_colors.selection = "Den ausgewählten Objekten" # mt
 convert_colors.drawing = "Der ganzen Zeichnung" # mt

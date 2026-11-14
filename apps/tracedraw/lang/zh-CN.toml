@@ -2647,6 +2647,7 @@ convert_colors.to = "转换为" # mt
 convert_colors.cmyk = "CMYK" # mt
 convert_colors.rgb = "RGB" # mt
 convert_colors.gray = "灰度" # mt
+convert_colors.lab = "Lab" # mt
 convert_colors.which = "颜色范围" # mt
 convert_colors.selection = "所选对象" # mt
 convert_colors.drawing = "整个绘图" # mt

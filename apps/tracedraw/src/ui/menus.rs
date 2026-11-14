@@ -3874,6 +3874,8 @@ fn bitmaps_menu(app: &mut App, ui: &mut Ui) {
         let all_gray = all(crate::bitmap_fx::ColorMode::Grayscale);
         let all_rgb = all(crate::bitmap_fx::ColorMode::Rgb);
         let all_cmyk = all(crate::bitmap_fx::ColorMode::Cmyk);
+        let all_paletted = all(crate::bitmap_fx::ColorMode::Paletted);
+        let all_lab = all(crate::bitmap_fx::ColorMode::Lab);
         if mark_item_if(
             ui,
             "menu.bitmaps.mode_grayscale",
@@ -3886,7 +3888,13 @@ fn bitmaps_menu(app: &mut App, ui: &mut Ui) {
         if item(ui, "menu.bitmaps.mode_duotone", "", has_bitmap) {
             app.dialog = Dialog::BitmapDuotone(Default::default());
         }
-        if item(ui, "menu.bitmaps.mode_paletted", "", has_bitmap) {
+        if mark_item_if(
+            ui,
+            "menu.bitmaps.mode_paletted",
+            "",
+            Mark::Check(all_paletted),
+            has_bitmap,
+        ) {
             app.dialog = Dialog::BitmapPaletted(Default::default());
         }
         if mark_item_if(
@@ -3898,8 +3906,14 @@ fn bitmaps_menu(app: &mut App, ui: &mut Ui) {
         ) {
             app.set_bitmap_mode(crate::bitmap_fx::ColorMode::Rgb);
         }
-        if item(ui, "menu.bitmaps.mode_lab", "", has_bitmap) {
-            app.apply_to_bitmaps("Lab Color", |img, _| crate::bitmap_modes::lab_mode(img));
+        if mark_item_if(
+            ui,
+            "menu.bitmaps.mode_lab",
+            "",
+            Mark::Check(all_lab),
+            has_bitmap,
+        ) {
+            app.set_bitmap_mode(crate::bitmap_fx::ColorMode::Lab);
         }
         if mark_item_if(
             ui,

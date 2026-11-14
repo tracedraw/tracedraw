@@ -2647,6 +2647,7 @@ convert_colors.to = "変換先" # mt
 convert_colors.cmyk = "CMYK" # mt
 convert_colors.rgb = "RGB" # mt
 convert_colors.gray = "グレースケール" # mt
+convert_colors.lab = "Lab" # mt
 convert_colors.which = "対象" # mt
 convert_colors.selection = "選択したオブジェクト" # mt
 convert_colors.drawing = "図面全体" # mt

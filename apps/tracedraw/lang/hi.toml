@@ -2647,6 +2647,7 @@ convert_colors.to = "इसमें बदलें" # mt
 convert_colors.cmyk = "CMYK" # mt
 convert_colors.rgb = "RGB" # mt
 convert_colors.gray = "ग्रेस्केल" # mt
+convert_colors.lab = "Lab" # mt
 convert_colors.which = "किसके रंग" # mt
 convert_colors.selection = "चुने गए ऑब्जेक्ट" # mt
 convert_colors.drawing = "पूरी ड्रॉइंग" # mt

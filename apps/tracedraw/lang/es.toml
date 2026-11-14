@@ -2647,6 +2647,7 @@ convert_colors.to = "Convertir a" # mt
 convert_colors.cmyk = "CMYK" # mt
 convert_colors.rgb = "RGB" # mt
 convert_colors.gray = "Escala de grises" # mt
+convert_colors.lab = "Lab" # mt
 convert_colors.which = "Colores de" # mt
 convert_colors.selection = "Los objetos seleccionados" # mt
 convert_colors.drawing = "Todo el dibujo" # mt

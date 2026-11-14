@@ -2647,6 +2647,7 @@ convert_colors.to = "রূপান্তর করুন" # mt
 convert_colors.cmyk = "CMYK" # mt
 convert_colors.rgb = "RGB" # mt
 convert_colors.gray = "গ্রেস্কেল" # mt
+convert_colors.lab = "Lab" # mt
 convert_colors.which = "যার রং" # mt
 convert_colors.selection = "নির্বাচিত বস্তু" # mt
 convert_colors.drawing = "পুরো ড্রয়িং" # mt
