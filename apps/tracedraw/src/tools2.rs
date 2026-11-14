@@ -345,6 +345,67 @@ impl App {
         }
     }
 
+    /// Object > Outline Offset (#2622): beside each selected object, a new
+    /// curve its outline offset by `distance_mm` outside it (or inside, with
+    /// `outside` false), with sharp corners and the object's fill and
+    /// outline, one undo step. The new curves are selected; one outside
+    /// goes behind its object and one inside in front, so both show. An
+    /// open line gets the band round both of its sides; an inner offset
+    /// larger than the object leaves nothing for it.
+    pub fn outline_offset(&mut self, distance_mm: f64, outside: bool) {
+        let d = distance_mm.abs();
+        if !d.is_finite() || d < 1e-6 {
+            return;
+        }
+        let Some(layer) = self.active_layer() else {
+            return;
+        };
+        let mut cmds = Vec::new();
+        let mut ids = Vec::new();
+        for s in self.selected_shapes() {
+            let base = s.transform * s.local_path();
+            if base.elements().is_empty() {
+                continue;
+            }
+            let open = matches!(s.kind, ShapeKind::Path { closed: false, .. });
+            let join = tracedraw_core::shaping::Join::Miter;
+            let path = if open {
+                tracedraw_core::shaping::open_offset_band(&base, d, join)
+            } else {
+                let signed = if outside { d } else { -d };
+                tracedraw_core::shaping::offset_filled(&base, signed, join, s.fill_rule)
+            };
+            if path.elements().is_empty() {
+                continue;
+            }
+            let id = self.engine.new_shape_id();
+            let mut o = Shape::new(id, ShapeKind::Path { path, closed: true });
+            o.fill = s.fill.clone();
+            o.stroke = s.stroke.clone();
+            if matches!(o.fill, Fill::None) && o.stroke.is_none() {
+                o.stroke = Some(Stroke::new(tracedraw_core::Color::BLACK, Stroke::HAIRLINE));
+            }
+            o.name = Some("Offset".into());
+            let placed = self.doc().locate(s.id).ok();
+            cmds.push(Command::AddShape {
+                layer: placed.map(|(l, _)| l).unwrap_or(layer),
+                shape: o,
+            });
+            if placed.is_some() {
+                cmds.push(Command::OrderRelative {
+                    shapes: vec![id],
+                    reference: s.id,
+                    in_front: !outside,
+                });
+            }
+            ids.push(id);
+        }
+        if !cmds.is_empty() {
+            let _ = self.engine.run_batch("Outline Offset", &cmds);
+            self.select(ids);
+        }
+    }
+
     /// Ctrl+Shift+Q: replace an outline by a filled object of its shape.
     pub fn convert_outline_to_object(&mut self) {
         let shapes = self.selected_shapes();
