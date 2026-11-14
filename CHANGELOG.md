@@ -37,6 +37,8 @@ full, row-by-row status.
 - B-Spline: C or V held on the click that closes the curve makes its first point a fixed point, so the curve ends there with a corner; with Ctrl held for a straight line, Ctrl+C and Ctrl+V fix the point instead of copying and pasting (#2694).
 - Shape tool on text: the property bar has Superscript and Subscript buttons for the chosen characters (else the whole text); a second click puts them back on the baseline (#2164).
 - Paragraph text and tables: Alt held on a side handle stretches the letters with the frame, so the lines stay as they are: across it sets the character width, up and down the size. Without Alt the frame resizes and the text flows anew, as before (#1553).
+- Create Boundary draws an outline around the selection with no fill, with the target's outline (a hairline when it has none), as in CorelDRAW. It took the target's fill and covered what it was drawn around (#2640).
+- The Save button on the standard toolbar is lit while the drawing has changes to save (or was never saved) and pale once it is saved. It looked the same either way (#2640).
 - CorelDRAW files (versions 16 and later): a perspective comes in as a live perspective, on a single object or on a group (its objects each take it, pictures included). It was left out, so a shop sign put in perspective on a photo opened flat, and the grouped parts of the sign stood apart from it, one of them near the bottom of the page (#2691).
 
 ## 0.46.0 (2026-11-14)

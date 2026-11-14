@@ -1756,6 +1756,24 @@ impl App {
             shape.opacity = first.opacity;
             shape
         };
+        // Create Boundary draws an outline around the selection, with no
+        // fill, as in CorelDRAW: it took the target's fill, so the new
+        // object covered what it was drawn around (#2640). The outline is
+        // the target's, or a hairline when the target has none.
+        let unfilled = |mut s: Shape| {
+            if op == Shaping::Boundary {
+                s.fill = tracedraw_core::Fill::None;
+                if s.stroke.is_none() {
+                    s.stroke = Some(tracedraw_core::Stroke::new(
+                        tracedraw_core::Color::BLACK,
+                        tracedraw_core::Stroke::HAIRLINE,
+                    ));
+                }
+            }
+            s
+        };
+        let shape = unfilled(shape);
+        let extra: Vec<Shape> = extra.into_iter().map(unfilled).collect();
         let mut ids = vec![id];
         let mut cmds = vec![Command::AddShape { layer, shape }];
         for shape in extra {
