@@ -782,11 +782,31 @@ fn encode_raster_with(
     Ok(out.into_inner())
 }
 
+/// Keeps the sheet at `n` alone (the last one when `n` is past the end).
+pub fn keep_one_sheet(doc: &mut Document, n: usize) {
+    if doc.pages.is_empty() {
+        return;
+    }
+    let n = n.min(doc.pages.len() - 1);
+    let page = doc.pages.swap_remove(n);
+    doc.pages = vec![page];
+}
+
 /// Print: build a PDF with the print options and send it to the chosen
 /// system printer, or open it in the system viewer, which owns the
 /// printer dialog.
 pub fn print(app: &mut App, st: &PrintState) -> Result<String, String> {
+    print_sheet(app, st, None)
+}
+
+/// File > Print with `only` set to one sheet's index: that sheet alone
+/// (with its plates, under separations) goes out, as Print Preview's
+/// Print this sheet sends it; `None` prints every sheet.
+pub fn print_sheet(app: &mut App, st: &PrintState, only: Option<usize>) -> Result<String, String> {
     let mut doc = print_sheets(app, st);
+    if let Some(n) = only {
+        keep_one_sheet(&mut doc, n);
+    }
     if st.separations {
         doc = separations_doc_without(&doc, &st.plates_off);
     }
