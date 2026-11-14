@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Guidelines: a guideline whose centre of rotation was moved keeps it once it is deselected. Selected again, the Transformations docker's Rotate page turns it about that centre, and a second click shows the rotation handles there. The centre went back to the page's middle, so copies turned about the wrong point (#2335).
 - Colour Eyedropper: the readout gives a colour set in HSB, HSL, Lab, YIQ or grayscale in that model (H, S, B; H, S, L; L, a, b; Y, I, Q; the grey level), as CMYK and RGB colours already were. They all read as CMYK, or RGB in an RGB drawing (#2612).
 - Dark, Medium Dark and High Contrast themes: the Save, Copy and Paste icons on the bars and in the menus read again. Their label, shutter and pages were cut out in white, which on the light icons of those themes left a pale blot; they now take the bar's colour (#2591).
 - PDF export: a fountain transparency (a gradient from solid to clear) goes into the file as a soft mask and fades the object as the drawing window shows it. The PDF took one average opacity, so the object came out evenly half see-through (#2615).

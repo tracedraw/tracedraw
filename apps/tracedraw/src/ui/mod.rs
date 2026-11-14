@@ -2284,6 +2284,148 @@ mod tests {
         assert!(!app.touch_mods.any());
     }
 
+    /// Ctrl held from the keys on the drawing by one finger while another
+    /// drags works in the tools that drag as it does with the Pen's taps
+    /// (#2362): the Rectangle tool's preview stays square while the
+    /// finger drags, and the Pick tool moves an object level.
+    #[test]
+    fn ctrl_held_by_a_finger_constrains_the_rectangle_and_pick_drags() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.settings.autocorrect.enabled = false;
+        app.show_welcome = false;
+        app.set_workspace(crate::app::Workspace::Touch);
+        let clock = std::cell::Cell::new(0.0);
+        let timed = |app: &mut App, events: Vec<egui::Event>| {
+            clock.set(clock.get() + 0.05);
+            let mut input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1600.0, 1000.0),
+                )),
+                events,
+                time: Some(clock.get()),
+                ..Default::default()
+            };
+            crate::touch_modifiers::fingers_on_keys(app, &mut input);
+            app.touch_mods.apply(&ctx, &mut input);
+            let mut out = ctx.run_ui(input, |ui| root(app, ui));
+            out.textures_delta.clear();
+        };
+        let finger = |id: u64, phase, pos| egui::Event::Touch {
+            device_id: egui::TouchDeviceId(1),
+            id: egui::TouchId(id),
+            phase,
+            pos,
+            force: None,
+        };
+        for _ in 0..5 {
+            timed(&mut app, Vec::new());
+        }
+        app.zoom_to_page();
+        timed(&mut app, Vec::new());
+        // A first tap off the page makes the touch screen known.
+        {
+            let at = app.view.to_screen(Point::new(150.0, 200.0));
+            timed(
+                &mut app,
+                vec![
+                    finger(3, egui::TouchPhase::Start, at),
+                    egui::Event::PointerMoved(at),
+                    button(at, true, egui::PointerButton::Primary),
+                ],
+            );
+            timed(
+                &mut app,
+                vec![
+                    finger(3, egui::TouchPhase::End, at),
+                    button(at, false, egui::PointerButton::Primary),
+                    egui::Event::PointerGone,
+                ],
+            );
+            timed(&mut app, Vec::new());
+        }
+        app.set_tool(crate::tools::Tool::Rectangle);
+        timed(&mut app, Vec::new());
+        let ctrl = app
+            .touch_keys_shown
+            .iter()
+            .find(|(k, _)| *k == "ctrl")
+            .map(|(_, r)| r.center())
+            .expect("the Ctrl key is on the drawing");
+        // The first finger on Ctrl: the frame's pointer follows it.
+        timed(
+            &mut app,
+            vec![
+                finger(7, egui::TouchPhase::Start, ctrl),
+                egui::Event::PointerMoved(ctrl),
+                button(ctrl, true, egui::PointerButton::Primary),
+            ],
+        );
+        assert!(app.touch_mods.held(crate::touch_modifiers::ModKey::Ctrl));
+        // The second finger drags a box twice as wide as it is high.
+        let from = app.view.to_screen(Point::new(40.0, 40.0));
+        let to = app.view.to_screen(Point::new(100.0, 70.0));
+        timed(&mut app, vec![finger(8, egui::TouchPhase::Start, from)]);
+        let square = |app: &App| match app.drag {
+            crate::app::Drag::Box { start, current, .. } => {
+                let d = current - start;
+                Some((d.x.abs() - d.y.abs()).abs() < 1e-6 && d.x.abs() > 1.0)
+            }
+            _ => None,
+        };
+        let mut seen = Vec::new();
+        for k in 1..=8 {
+            let at = from + (to - from) * (k as f32 / 8.0);
+            timed(&mut app, vec![finger(8, egui::TouchPhase::Move, at)]);
+            seen.push(square(&app));
+        }
+        assert!(
+            seen.iter().any(|s| s.is_some()),
+            "the second finger drags a box: {seen:?}"
+        );
+        assert!(
+            seen.iter().flatten().all(|s| *s),
+            "the preview stays square while Ctrl is held: {seen:?}"
+        );
+        assert!(app.box_regular, "drawn as a regular box");
+        timed(&mut app, vec![finger(8, egui::TouchPhase::End, to)]);
+        timed(&mut app, Vec::new());
+        // The Pick tool: the box just drawn, dragged a little off the
+        // level by the second finger, moves level while Ctrl is held.
+        let id = *app.selection.first().expect("the rectangle drawn");
+        let before = app.doc().shape(id).expect("shape").1.bounds();
+        app.set_tool(crate::tools::Tool::Pick);
+        timed(&mut app, Vec::new());
+        let from = app.view.to_screen(before.center());
+        let to = app
+            .view
+            .to_screen(before.center() + tracedraw_core::geometry::Vec2::new(40.0, 6.0));
+        timed(&mut app, vec![finger(9, egui::TouchPhase::Start, from)]);
+        for k in 1..=8 {
+            let at = from + (to - from) * (k as f32 / 8.0);
+            timed(&mut app, vec![finger(9, egui::TouchPhase::Move, at)]);
+        }
+        timed(&mut app, vec![finger(9, egui::TouchPhase::End, to)]);
+        timed(&mut app, Vec::new());
+        let after = app.doc().shape(id).expect("shape").1.bounds();
+        assert!(after.x0 - before.x0 > 30.0, "moved: {before:?} {after:?}");
+        assert!(
+            (after.y0 - before.y0).abs() < 1e-6,
+            "level: {before:?} {after:?}"
+        );
+        timed(
+            &mut app,
+            vec![
+                finger(7, egui::TouchPhase::End, ctrl),
+                button(ctrl, false, egui::PointerButton::Primary),
+                egui::Event::PointerGone,
+            ],
+        );
+        timed(&mut app, Vec::new());
+        assert!(!app.touch_mods.any(), "{:?}", app.touch_mods);
+    }
+
     /// Without a touch screen the keys on the drawing are not drawn: the
     /// desktop keeps its look; a Standard toolbar kept from 0.42 with
     /// Shift, Ctrl and Alt on it draws nothing in their place.

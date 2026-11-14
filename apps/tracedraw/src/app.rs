@@ -1508,6 +1508,9 @@ pub struct App {
     pub guide_rotate: Option<usize>,
     /// Rotation centre of that guideline, where it was clicked.
     pub guide_pivot: Point,
+    /// The rotation centre each guideline was last given, by its line:
+    /// selected again later, it turns about the same point (#2335).
+    pub guide_pivots: Vec<(tracedraw_core::document::GuideLine, Point)>,
     /// The Guidelines docker's entry fields.
     pub guide_form: crate::ui::layout_options::GuideForm,
     /// The guideline whose values the Guidelines panel's fields hold
@@ -2958,6 +2961,7 @@ impl App {
             edit_master_guides: true,
             guide_rotate: None,
             guide_pivot: Point::ZERO,
+            guide_pivots: Vec::new(),
             guide_form: Default::default(),
             guide_form_for: None,
             guide_presets: Default::default(),

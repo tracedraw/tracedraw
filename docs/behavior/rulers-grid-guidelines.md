@@ -193,6 +193,13 @@ stand for a distance in the world (`drawing_scale.rs`):
   where it is; a guideline turned about a pivot off it keeps its
   distance from the pivot. A click on the pivot keeps the handles
   (#1850, `guides::tests::a_guides_rotation_centre_drags_and_snaps_to_a_node`).
+- The pivot stays with its guideline: deselected and selected again,
+  alone with one click, the Transformations docker's Rotate page
+  (Relative center on) still turns it about that pivot, and a second
+  click brings the handles back with the pivot where it was, not where
+  the guideline was clicked. A guideline never given a pivot turns
+  about the docker's box. Moving the guideline by other means forgets
+  it (#2335, `guides::tests::a_guideline_keeps_its_moved_centre_once_deselected`).
 - Locked guidelines can be selected but not moved, rotated, nudged,
   deleted or edited: a click or double click on a locked guideline never
   shows its rotation handles, and locking one that shows them hides them;
