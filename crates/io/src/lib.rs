@@ -227,6 +227,22 @@ pub fn page_pictures(doc: &Document, max_side: u32) -> Vec<(Vec<u8>, u32, u32)> 
     out
 }
 
+/// The first page with what lies beside it on the desktop as a PNG, its
+/// longer side `max_side` pixels: the file's thumbnail (#2357). Width
+/// and height go with it; `None` for a drawing without a page.
+pub fn whole_page_picture(doc: &Document, max_side: u32) -> Option<(Vec<u8>, u32, u32)> {
+    let page = doc.pages.first()?;
+    let pm = tracedraw_render::render_whole_page_image(doc, page.id, f64::from(max_side.max(1)))?;
+    let (w, h) = (pm.width(), pm.height());
+    let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+    for p in pm.pixels() {
+        let c = p.demultiply();
+        rgba.extend_from_slice(&[c.red(), c.green(), c.blue(), c.alpha()]);
+    }
+    let png = svg::encode_png(w, h, &rgba);
+    (!png.is_empty()).then_some((png, w, h))
+}
+
 /// The resolution of the drop shadow pictures [`shadow_pictures`] makes
 /// for files: enough for a printed page, small enough for a file.
 pub const SHADOW_PICTURE_DPI: f64 = 150.0;

@@ -4863,6 +4863,44 @@ pub fn render_area_image(doc: &Document, page: PageId, area: Rect, dpi: f64) -> 
     Some(out)
 }
 
+/// How far around the page, in page sizes, [`whole_page_area`] reaches:
+/// an object left far out on the desktop does not shrink the rest to dots.
+pub const WHOLE_PAGE_REACH: f64 = 3.0;
+
+/// The page with everything drawn on it, also what lies beside it on the
+/// desktop (page coordinates, mm), up to [`WHOLE_PAGE_REACH`] page sizes
+/// away: what a file's thumbnail shows (#2357). `None` without the page
+/// or with a page of no size.
+pub fn whole_page_area(doc: &Document, page: PageId) -> Option<Rect> {
+    let p = doc.page(page).ok()?;
+    let (w, h) = (p.size.width, p.size.height);
+    if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
+        return None;
+    }
+    let sheet = Rect::new(0.0, 0.0, w, h);
+    let reach = sheet.inflate(w * WHOLE_PAGE_REACH, h * WHOLE_PAGE_REACH);
+    let content = doc
+        .content_bounds(page)
+        .ok()
+        .flatten()
+        .filter(|b| [b.x0, b.y0, b.x1, b.y1].iter().all(|v| v.is_finite()))
+        .map(|b| b.intersect(reach))
+        .filter(|b| b.width() > 0.0 || b.height() > 0.0);
+    Some(content.map_or(sheet, |b| b.union(sheet)))
+}
+
+/// The page with whatever lies beside it on the desktop
+/// ([`whole_page_area`]) on white, its longer side `long_px` pixels: the
+/// thumbnail of a file (Welcome Screen, file browser, `.cdr` preview).
+pub fn render_whole_page_image(doc: &Document, page: PageId, long_px: f64) -> Option<Pixmap> {
+    let area = whole_page_area(doc, page)?;
+    let longest = area.width().max(area.height());
+    if !(long_px.is_finite() && long_px > 0.0 && longest > 0.0) {
+        return None;
+    }
+    render_area_image(doc, page, area, long_px * 25.4 / longest)
+}
+
 /// `render_page_image` with the behaviour flags of `opts` (`wireframe`,
 /// `simulate_overprints`, `complex_effects`); its size, view and preview
 /// are replaced by the page's own.

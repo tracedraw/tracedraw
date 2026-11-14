@@ -248,9 +248,14 @@ the user's own shapes, drawn like the built-in ones:
   unit square, with its proportions (width over height) kept beside it.
   It is named after the one object (its name or its kind) or "My shape
   n". Nothing with an area (nothing selected, a level or upright line)
-  adds nothing and says so on the status bar.
+  adds nothing and says so on the status bar. A small dialog then asks
+  for a name with that one shown and selected (#2360): typing replaces
+  it, OK or Enter keeps it, Skip or Escape keeps the name shown. Rename
+  on a shape's right-click menu asks again; a blank name keeps the old.
 - A click on a shape picks it; the property bar shows it in its own
   proportions with its name. Picking a built-in shape leaves My shapes.
+  The picker stays open after a pick, to try another shape; a click
+  outside it or on its button closes it (#2361).
 - A drag draws the picked shape into the box like a built-in one, one
   curve with the default fill and outline (filled when the outline it
   came from had a closed part, otherwise an open curve). Ctrl keeps the
