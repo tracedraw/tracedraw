@@ -457,23 +457,40 @@ pub fn plan(sizes: &[Size], o: &Options) -> Vec<SheetPlan> {
             o.bleed.max(0.0),
         ),
     };
+    // The turn of the page in each place of the sheet (radians,
+    // counter-clockwise), and the box round a page so turned.
+    let finite = |v: f64| if v.is_finite() { v } else { 0.0 };
+    let turn_at = |n: usize| {
+        let own = o.cell_rotation.get(n).map_or(0.0, |&t| finite(t));
+        (finite(o.page_rotation) + own).to_radians()
+    };
+    let turned = |s: Size, turn: f64| {
+        let (sin, cos) = turn.sin_cos();
+        let (sin, cos) = (snap(sin.abs()), snap(cos.abs()));
+        Size::new(
+            s.width * cos + s.height * sin,
+            s.width * sin + s.height * cos,
+        )
+    };
     sheets
         .iter()
         .enumerate()
         .map(|(side, cells)| {
             let creep = creep.get(side).copied().unwrap_or(0.0);
-            // The cell size: the largest page on this sheet.
+            // The cell size: the largest page on this sheet, as turned in
+            // its place, so a turned page keeps the gaps and its room
+            // (#2660).
             let cell = cells
                 .iter()
-                .flatten()
-                .filter_map(|&i| sizes.get(i))
+                .enumerate()
+                .filter_map(|(n, p)| p.and_then(|i| sizes.get(i)).map(|s| turned(*s, turn_at(n))))
                 .fold(Size::new(0.0, 0.0), |a, s| {
                     Size::new(a.width.max(s.width), a.height.max(s.height))
                 });
             let cell = if cell.width > 0.0 && cell.height > 0.0 {
                 cell
             } else {
-                sizes[0]
+                turned(sizes[0], turn_at(0))
             };
             // Pages with their bleed, and the gaps between them.
             let step_x = cell.width + 2.0 * inner_bleed + gutter;
@@ -526,9 +543,7 @@ pub fn plan(sizes: &[Size], o: &Options) -> Vec<SheetPlan> {
                 .iter()
                 .enumerate()
                 .map(|(n, page)| {
-                    let own = o.cell_rotation.get(n).map_or(0.0, |&t| ok(t, 0.0));
-                    let turn = (ok(o.page_rotation, 0.0) + own).to_radians();
-                    let (sin, cos) = turn.sin_cos();
+                    let turn = turn_at(n);
                     let col = n as u32 % cols;
                     let col = if o.back_side { cols - 1 - col } else { col } as f64;
                     let row = (n as u32 / cols) as f64;
@@ -543,8 +558,12 @@ pub fn plan(sizes: &[Size], o: &Options) -> Vec<SheetPlan> {
                     let (w, h) = (ps.width * sx * kx, ps.height * sy * ky);
                     // The page turned about its middle; its trim is the
                     // box round the turned page.
-                    let (bw, bh) = (w * cos.abs() + h * sin.abs(), w * sin.abs() + h * cos.abs());
-                    let trim = Rect::new(cx - bw / 2.0, cy - bh / 2.0, cx + bw / 2.0, cy + bh / 2.0);
+                    let Size {
+                        width: bw,
+                        height: bh,
+                    } = turned(Size::new(w, h), turn);
+                    let trim =
+                        Rect::new(cx - bw / 2.0, cy - bh / 2.0, cx + bw / 2.0, cy + bh / 2.0);
                     let transform = if turn == 0.0 {
                         Affine::translate((cx - w / 2.0, cy - h / 2.0))
                             * Affine::scale_non_uniform(sx * kx, sy * ky)
@@ -564,6 +583,18 @@ pub fn plan(sizes: &[Size], o: &Options) -> Vec<SheetPlan> {
             SheetPlan { size, cells }
         })
         .collect()
+}
+
+/// A sine or cosine a hair off 0 or 1 taken as it, so a quarter turn
+/// swaps a page's width and height exactly.
+fn snap(v: f64) -> f64 {
+    if v < 1e-12 {
+        0.0
+    } else if 1.0 - v < 1e-12 {
+        1.0
+    } else {
+        v
+    }
 }
 
 /// Whether a page of the plan runs off its sheet (pages kept at their
@@ -1077,6 +1108,37 @@ mod tests {
             .map(cell_of)
             .collect();
         assert_eq!(places, vec![Some(0), Some(1), Some(2), Some(3)]);
+    }
+
+    /// #2660: cards repeated 2 x 2 with 5 mm between them and turned a
+    /// quarter keep 5 mm between them each way, side by side and one
+    /// above the other, and none overlaps the next. The grid was laid out
+    /// for the cards upright, so the turned ones stood far apart across
+    /// and ran into each other down the sheet, printing cut.
+    #[test]
+    fn turned_pages_keep_the_gaps_between_them() {
+        let card = Size::new(90.0, 50.0);
+        for turn in [90.0, 270.0, -90.0] {
+            for keep_size in [true, false] {
+                let o = Options {
+                    layout: Layout::Repeat { cols: 2, rows: 2 },
+                    sheet: Some(Size::new(210.0, 297.0)),
+                    gutter: 5.0,
+                    gutter_y: Some(5.0),
+                    keep_size,
+                    page_rotation: turn,
+                    ..Default::default()
+                };
+                let sheet = &plan(&[card], &o)[0];
+                let t: Vec<Rect> = sheet.cells.iter().map(|c| c.trim).collect();
+                let near = |a: f64, b: f64| (a - b).abs() < 1e-9;
+                let k = t[0].height() / card.width;
+                assert!(near(t[0].width(), card.height * k), "{turn} {:?}", t[0]);
+                assert!(near(t[1].x0 - t[0].x1, 5.0 * k), "{turn} across {t:?}");
+                assert!(near(t[0].y0 - t[2].y1, 5.0 * k), "{turn} down {t:?}");
+                assert!(!overflows(&[sheet.clone()]), "{turn}");
+            }
+        }
     }
 
     /// A turn of 90 degrees swaps the trim's width and height about the
