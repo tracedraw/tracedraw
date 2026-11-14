@@ -1290,6 +1290,11 @@ pub struct TextSpan {
     /// positive = right; the characters after it keep their place.
     #[serde(default)]
     pub offset_x_pct: f64,
+    /// Character width (#2190): the letters' width as a percentage of
+    /// their own, 100 = as the font draws them; their advances follow,
+    /// their height stays with the size. Not in older files.
+    #[serde(default = "full_width", skip_serializing_if = "is_full_width")]
+    pub width_pct: f64,
     /// Character angle in degrees, counter-clockwise, about the
     /// character's origin on its (shifted) baseline.
     #[serde(default)]
@@ -1358,6 +1363,16 @@ pub struct TextSpan {
     pub paragraph: Option<Box<crate::paragraphs::ParagraphFormat>>,
 }
 
+/// Serde: the character width of a span written before it was kept.
+fn full_width() -> f64 {
+    100.0
+}
+
+/// Serde: leave the full character width out of the file.
+fn is_full_width(v: &f64) -> bool {
+    *v == 100.0
+}
+
 /// Serde: leave a zero out of the file.
 fn is_zero(v: &f64) -> bool {
     *v == 0.0
@@ -1389,6 +1404,7 @@ impl TextSpan {
             tracking_pct: 0.0,
             baseline_shift_pt: 0.0,
             offset_x_pct: 0.0,
+            width_pct: 100.0,
             angle_deg: 0.0,
             underline: LineStyle::None,
             strikethrough: LineStyle::None,
@@ -8342,6 +8358,22 @@ mod tests {
         assert!(!s.feature_on("liga"));
         s.set_feature("liga", None);
         assert_eq!(s.features, vec!["no feature".to_string()]);
+
+        // Character width (#2190): full width is left out of the file and
+        // is what an older file reads as.
+        let mut w = TextSpan::new("a", "Arial", 12.0);
+        assert_eq!(w.width_pct, 100.0);
+        let json = serde_json::to_string(&w).expect("json");
+        assert!(!json.contains("width_pct"), "{json}");
+        w.width_pct = 80.0;
+        let json = serde_json::to_string(&w).expect("json");
+        assert!(json.contains("\"width_pct\":80.0"), "{json}");
+        assert_eq!(serde_json::from_str::<TextSpan>(&json).expect("back"), w);
+        let old: TextSpan = serde_json::from_str(
+            r#"{"text":"a","font_family":"Arial","size_pt":12.0,"bold":false,"italic":false}"#,
+        )
+        .expect("old");
+        assert_eq!(old.width_pct, 100.0);
 
         // Superscript and subscript.
         assert_eq!(TextPosition::Superscript.feature(), Some("sups"));

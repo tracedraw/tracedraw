@@ -465,6 +465,17 @@ impl App {
         Some((sp.offset_x_pct, v, sp.angle_deg))
     }
 
+    /// The character width (percent) and the superscript or subscript
+    /// of the first target character (#2190, #2164).
+    pub fn char_width_position(&self) -> Option<(f64, tracedraw_core::TextPosition)> {
+        let (s, chars) = self.char_targets().into_iter().next()?;
+        let ShapeKind::Text { spans, .. } = &s.kind else {
+            return None;
+        };
+        let sp = span_at(spans, chars.first().copied().unwrap_or(0)).or(spans.first())?;
+        Some((sp.width_pct, sp.position))
+    }
+
     /// Change the character attributes of the targets in one undo step.
     pub fn set_char_attrs(&mut self, label: &'static str, f: impl Fn(&mut TextSpan)) {
         let mut cmds = Vec::new();
@@ -715,6 +726,49 @@ mod tests {
             panic!();
         };
         assert_eq!(spans.len(), 1, "{spans:?}");
+    }
+
+    /// The Shape tool's bar sets the character width and superscript or
+    /// subscript of the chosen characters only, each one undo step, and
+    /// shows those of the first chosen one; a second click on the lit
+    /// position puts them back on the baseline (#2190, #2164).
+    #[test]
+    fn chosen_characters_take_width_and_superscript() {
+        use tracedraw_core::TextPosition;
+        let (mut app, id) = text_app("H2O");
+        app.node_selection = vec![(id, 1)];
+        assert_eq!(
+            app.char_width_position(),
+            Some((100.0, TextPosition::Normal))
+        );
+        let depth = app.engine.history_labels().0.len();
+        app.set_char_attrs("Character Width", |sp| sp.width_pct = 80.0);
+        app.set_char_attrs("Character Position", |sp| {
+            sp.position = TextPosition::Subscript
+        });
+        assert_eq!(app.engine.history_labels().0.len(), depth + 2);
+        assert_eq!(
+            app.char_width_position(),
+            Some((80.0, TextPosition::Subscript))
+        );
+        let spans = |app: &App| match &app.doc().find_shape(id).expect("text").kind {
+            ShapeKind::Text { spans, .. } => spans.clone(),
+            _ => panic!(),
+        };
+        let sp = spans(&app);
+        assert_eq!(sp.len(), 3, "{sp:?}");
+        assert_eq!(
+            (sp[0].width_pct, sp[0].position),
+            (100.0, TextPosition::Normal)
+        );
+        assert_eq!((sp[1].text.as_str(), sp[1].width_pct), ("2", 80.0));
+        assert_eq!(sp[1].position, TextPosition::Subscript);
+        assert_eq!(sp[2].position, TextPosition::Normal);
+        app.set_char_attrs("Character Position", |sp| {
+            sp.position = TextPosition::Normal
+        });
+        app.set_char_attrs("Character Width", |sp| sp.width_pct = 100.0);
+        assert_eq!(spans(&app).len(), 1);
     }
 
     /// Text Properties (Ctrl+T), the palette and the outline colour on

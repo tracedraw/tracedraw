@@ -481,6 +481,14 @@ rings as curves).
 
 ## Paragraph text frames
 
+- Alt held on a side handle of the Pick tool stretches a paragraph
+  text's letters with its frame (#1553): the lines stay as they are.
+  Across, the character width takes the scale; up and down, the size
+  (and baseline shifts, and line spacing set in points) does, the
+  character width giving it back so the letters keep their width.
+  Tables do the same to their cells' text. While dragging, the text
+  shows as a plain stretch (`text_frames::tests::alt_on_a_side_handle_stretches_the_letters_with_the_frame`).
+  Corner handles keep Alt for free scaling of the frame.
 - A paragraph text's bounds are its whole frame (with the letters, when
   they run over it): the selection handles sit on the frame, a click
   anywhere in it picks the text, and alignment and snapping use it.
@@ -1038,6 +1046,15 @@ alternates (`salt`), Swash (`swsh`); then Superscript and Subscript.
   Character section and on the Shape tool's property bar; they act on
   the selected characters while editing, on the chosen character nodes
   with the Shape tool, else on every character of the selected texts.
+- Character width (#2190): the letters narrowed or widened about their
+  origin, as a percentage of their own width (1 to 1000 %, 100 = as the
+  font draws them); their advances follow, their height stays with the
+  size, and the range kerning keeps counting in the full size
+  (`TextSpan::width_pct`, left out of the file at 100 %; exports carry
+  the font's glyphs with the width,
+  `tests::character_width_scales_letters_and_advances`). The field
+  (an A over a double-headed line) is on its own row in the Text panel's Character
+  section and on the Shape tool's property bar.
 - Paragraph: Character spacing (percent of the width of a space, -100 to
   2000, added after every character) and Word spacing (percent of the
   space's own width, 0 to 2000), besides line spacing.
@@ -1049,7 +1066,11 @@ alternates (`salt`), Swash (`swsh`); then Superscript and Subscript.
 
 - The property bar has the text fields the Text tool's bar has (font,
   size, bold, italic, underline, strikethrough, alignment and the
-  rest), then the character offsets and angle. They act on the
+  rest), then the character offsets and angle, the character width
+  and the Superscript (X²) and Subscript (X₂) buttons (#2164): a click
+  sets the chosen characters' position, a click on the lit button puts
+  them back on the baseline (see OpenType features, superscript and
+  subscript). They act on the
   characters whose nodes are chosen, else on the whole text
   (`text_path_bar::tests::the_shape_tool_shows_the_text_fields_on_a_text`,
   #2365).

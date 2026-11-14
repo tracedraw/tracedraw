@@ -2788,6 +2788,8 @@ fn shape_tool_bar(app: &mut App, ui: &mut Ui) {
         crate::ui::propbar::sep(ui);
         crate::ui::propbar::char_offset_part(app, ui);
         crate::ui::propbar::sep(ui);
+        crate::ui::propbar::char_width_position_part(app, ui);
+        crate::ui::propbar::sep(ui);
         ui.label(
             egui::RichText::new(tr("toolbar.text_nodes_hint"))
                 .color(Tokens::text_dim())

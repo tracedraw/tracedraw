@@ -8,6 +8,9 @@ full, row-by-row status.
 
 - Page Number Settings: Begin on page chooses the page that shows the first number, so covers and title pages get none; with Begin on page 3 and Start at 1, page 3 shows 1. It works for numbers on a master layer (saved with the field) and for numbers put on each page (#2127).
 - Remove Background: Erase and Restore brushes paint on the preview, with a brush size and Clear strokes, to take away what the colours left or bring back what they took; each stroke is a step of the dialog's undo. Fill background puts a colour, or a gradient from top to bottom, behind the picture instead of transparency (#1723, #1915).
+- Text: a Character width field (Text panel, Character section, and the Shape tool's property bar) narrows or widens the letters as a percentage of their own width, keeping their height, from 1 to 1000 %. Exports keep the font's letters with the width (#2190).
+- Shape tool on text: the property bar has Superscript and Subscript buttons for the chosen characters (else the whole text); a second click puts them back on the baseline (#2164).
+- Paragraph text and tables: Alt held on a side handle stretches the letters with the frame, so the lines stay as they are: across it sets the character width, up and down the size. Without Alt the frame resizes and the text flows anew, as before (#1553).
 
 ## 0.46.0 (2026-11-14)
 

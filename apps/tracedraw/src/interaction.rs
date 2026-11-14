@@ -3908,7 +3908,11 @@ impl App {
             }
             Drag::Scale { .. } | Drag::Rotate { .. } | Drag::Skew { .. } => {
                 if let Some(t) = self.preview_transform_of(&drag) {
+                    // A side handle with Alt scales the letters of
+                    // paragraph texts and tables too (#1553).
+                    self.glyph_scale = crate::text_frames::glyph_scale_drag(&drag);
                     self.finish_transform(t);
+                    self.glyph_scale = false;
                 }
             }
             Drag::Marquee {

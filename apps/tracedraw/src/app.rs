@@ -313,7 +313,8 @@ pub struct HandleMods {
     /// mirrors at the same size), skews in steps of the constrain angle.
     pub steps: bool,
     /// Alt: corner handles scale freely instead of keeping the
-    /// proportions.
+    /// proportions; side handles scale the letters of paragraph texts
+    /// and tables with their frames (#1553).
     pub free: bool,
 }
 
@@ -1011,6 +1012,11 @@ pub struct App {
     /// A right click during a move, scale, rotation or skew: on release
     /// the change goes to copies and the originals stay.
     pub drag_copy: bool,
+    /// The scale being applied came from a side handle dragged with Alt:
+    /// paragraph texts and tables keep their lines and take the scale in
+    /// their letters (character width and size) as well as their frame
+    /// (#1553).
+    pub glyph_scale: bool,
     /// The clip frame under the pointer while the selection is moved
     /// over it: a release there with W adds the selection to it, with K
     /// replaces its contents (see `docs/behavior/clip-frame.md`).
@@ -2770,6 +2776,7 @@ impl App {
             pivots: Pivots::default(),
             drag: Drag::None,
             drag_copy: false,
+            glyph_scale: false,
             drop_frame: None,
             drop_keys: (false, false),
             drop_colour: None,

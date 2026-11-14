@@ -746,6 +746,37 @@ fn style_name(picks: &[(String, (String, bool, bool))], now: &(String, bool, boo
     tr(STYLES[idx].2)
 }
 
+/// The Character width picture (#2190): an A over a line with an arrow
+/// head at each end, drawn, so no font needs an arrow.
+pub(crate) fn char_width_icon(ui: &mut Ui) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+    let p = ui.painter();
+    let color = ui.visuals().text_color();
+    p.text(
+        rect.center_top() + egui::vec2(0.0, 1.0),
+        egui::Align2::CENTER_TOP,
+        "A",
+        egui::FontId::proportional(11.0),
+        color,
+    );
+    let y = rect.bottom() - 3.5;
+    let (l, r) = (rect.left() + 1.5, rect.right() - 1.5);
+    let stroke = egui::Stroke::new(1.0, color);
+    p.line_segment([egui::pos2(l, y), egui::pos2(r, y)], stroke);
+    for (tip, dir) in [(l, 1.0), (r, -1.0)] {
+        for dy in [-2.5, 2.5] {
+            p.line_segment(
+                [egui::pos2(tip, y), egui::pos2(tip + dir * 2.5, y + dy)],
+                stroke,
+            );
+        }
+    }
+    resp
+}
+
+/// The character widths a field takes (#2190), percent.
+pub(crate) const CHAR_WIDTH_RANGE: std::ops::RangeInclusive<f64> = 1.0..=1000.0;
+
 fn character(app: &mut App, ui: &mut Ui, first: Option<&tracedraw_core::Shape>) {
     // The character at the caret, the first one chosen with the Shape
     // tool, else the text's first (#1662).
@@ -825,6 +856,19 @@ fn character(app: &mut App, ui: &mut Ui, first: Option<&tracedraw_core::Shape>) 
             }
         }
         row_check(app, ui, "underline");
+    });
+    // Character width (#2190): the letters narrowed or widened, their
+    // height kept.
+    ui.horizontal(|ui| {
+        char_width_icon(ui).rich_tip(crate::ui::tips::keyed("docker.char_width"));
+        let mut width = span.as_ref().map_or(100.0, |s| s.width_pct);
+        let mut wc = false;
+        ui.add_enabled_ui(span.is_some(), |ui| {
+            wc = number(ui, &mut width, CHAR_WIDTH_RANGE, " %");
+        });
+        if wc {
+            edit_spans(app, move |sp| sp.width_pct = width);
+        }
     });
     // Text fill, background and outline.
     let mut more_fill = false;

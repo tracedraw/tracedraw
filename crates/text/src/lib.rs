@@ -1369,6 +1369,7 @@ fn shapes_alike(a: &TextSpan, b: &TextSpan) -> bool {
         && a.tracking_pct == b.tracking_pct
         && a.baseline_shift_pt == b.baseline_shift_pt
         && a.offset_x_pct == b.offset_x_pct
+        && a.width_pct == b.width_pct
         && a.angle_deg == b.angle_deg
         && a.features == b.features
         && a.position == b.position
@@ -3296,7 +3297,7 @@ impl FontSystem {
             req.spans
                 .iter()
                 .map(|s| format!(
-                    "{}|{}|{}|{}|{}|{}|{}|{}|{}|{:?}|{:?}|{}|{}|{:?}|{:?}|{:?}|{:?}|{}",
+                    "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{:?}|{:?}|{}|{}|{:?}|{:?}|{:?}|{:?}|{}",
                     s.layout_only,
                     s.font_family,
                     s.size_pt,
@@ -3305,6 +3306,7 @@ impl FontSystem {
                     s.tracking_pct,
                     s.baseline_shift_pt,
                     s.offset_x_pct,
+                    s.width_pct,
                     s.angle_deg,
                     s.underline,
                     s.strikethrough,
@@ -3717,6 +3719,14 @@ impl FontSystem {
         let synth_bold = target >= 600 && weight < 600 && !own_weight;
         let synth_italic = span.italic && !slanted && !own_slant;
         let tracking = span.tracking_pct / 100.0 * full_size_pt * PT_MM;
+        // Character width (#2190): each glyph and its advance narrowed or
+        // widened about its origin; the tracking stays with the size.
+        let width = if span.width_pct.is_finite() {
+            (span.width_pct / 100.0).clamp(0.01, 100.0)
+        } else {
+            1.0
+        };
+        let widen = (width != 1.0).then(|| Affine::scale_non_uniform(width, 1.0));
         let mut baseline = span.baseline_shift_pt * PT_MM;
         if synthetic {
             baseline += span.position.synthetic_shift() * full_size_pt * PT_MM;
@@ -3867,8 +3877,8 @@ impl FontSystem {
                 };
                 face.outline_glyph(g, &mut sink);
                 Arc::new(HyphenGlyph {
-                    path: sink.path,
-                    advance: face.glyph_hor_advance(g).unwrap_or(0) as f64 * scale,
+                    path: widen.map_or_else(|| sink.path.clone(), |w| w * sink.path.clone()),
+                    advance: face.glyph_hor_advance(g).unwrap_or(0) as f64 * scale * width,
                 })
             })
         };
@@ -3902,6 +3912,9 @@ impl FontSystem {
                 let g2 = Affine::translate((off, 0.0)) * gp.clone();
                 gp.extend(g2.elements().iter().copied());
             }
+            if let Some(w) = widen {
+                gp = w * gp;
+            }
             let cluster = chars.iter().position(|(i, _)| *i == info.cluster as usize);
             let ch = cluster
                 .and_then(|k| chars.get(k))
@@ -3911,6 +3924,7 @@ impl FontSystem {
                 Some(g) => face.glyph_hor_advance(g).unwrap_or(0) as f64 * scale,
                 None => pos.x_advance as f64 * scale,
             };
+            adv *= width;
             if ch == ' ' {
                 adv *= word_scale;
             }
@@ -3954,10 +3968,16 @@ impl FontSystem {
                 claimed.push(start);
                 text.get(start..cluster_end).unwrap_or("").to_string()
             };
-            let mut local = Affine::translate((ring_shift, baseline)) * Affine::scale(size_mm);
+            // As the outline above: slanted, widened, then moved into the
+            // ring's room.
+            let mut local = Affine::translate((0.0, baseline)) * Affine::scale(size_mm);
             if synth_italic {
                 local = Affine::new([1.0, 0.0, 0.2, 1.0, 0.0, 0.0]) * local;
             }
+            if let Some(w) = widen {
+                local = w * local;
+            }
+            local = Affine::translate((ring_shift, 0.0)) * local;
             if let Some(a) = place {
                 local = a * local;
             }
@@ -3983,7 +4003,7 @@ impl FontSystem {
             out.push(Glyph {
                 path: Arc::new(gp),
                 advance: adv + tracking + spacing,
-                x_offset: pos.x_offset as f64 * scale,
+                x_offset: pos.x_offset as f64 * scale * width,
                 y_offset: pos.y_offset as f64 * scale,
                 ch,
                 char_idx: char_base + cluster.unwrap_or(0),
@@ -6394,6 +6414,7 @@ mod tests {
             tracking_pct: 0.0,
             baseline_shift_pt: 0.0,
             offset_x_pct: 0.0,
+            width_pct: 100.0,
             angle_deg: 0.0,
             underline: LineStyle::None,
             strikethrough: LineStyle::None,
@@ -6455,6 +6476,59 @@ mod tests {
         a.angle_deg = 90.0;
         let turned = f.outline(&[a, span("B")]);
         assert!(turned.path.bounding_box().x0 < -1.0);
+    }
+
+    /// Character width (#2190): at 50 % the letters and their advances
+    /// are half as wide, their height as before; at 200 % twice as wide.
+    /// The exact glyphs (exports) carry the same width.
+    #[test]
+    fn character_width_scales_letters_and_advances() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        let at = |w: f64| {
+            let mut s = span("Hamburg");
+            s.width_pct = w;
+            f.outline(&[s])
+        };
+        let (plain, narrow, wide) = (at(100.0), at(50.0), at(200.0));
+        let width = |l: &TextLayout| *l.lines[0].edges.last().expect("edges");
+        assert!((width(&narrow) - width(&plain) / 2.0).abs() < 1e-6);
+        assert!((width(&wide) - width(&plain) * 2.0).abs() < 1e-6);
+        let (pb, nb) = (plain.path.bounding_box(), narrow.path.bounding_box());
+        assert!(
+            (nb.width() - pb.width() / 2.0).abs() < 1e-6,
+            "{nb:?} {pb:?}"
+        );
+        assert!((nb.height() - pb.height()).abs() < 1e-6);
+        // The glyphs as the fonts draw them match the outline.
+        let mut s = span("H");
+        s.width_pct = 50.0;
+        let req = TextRequest {
+            spans: &[s],
+            frame: None,
+            align: TextAlign::Left,
+            para: &ParagraphStyle::default(),
+            on_path: None,
+        };
+        let g = f.glyph_layout(&req);
+        let outline = f.layout(&req).path.bounding_box();
+        let exact = g
+            .glyphs
+            .iter()
+            .map(|gl| gl.transform.determinant())
+            .next()
+            .expect("a glyph");
+        let mut full = span("H");
+        full.width_pct = 100.0;
+        let g_full = f.glyph_layout(&TextRequest {
+            spans: &[full],
+            ..req
+        });
+        let exact_full = g_full.glyphs[0].transform.determinant();
+        assert!((exact / exact_full - 0.5).abs() < 1e-9);
+        assert!(outline.width() > 0.0);
     }
 
     #[test]

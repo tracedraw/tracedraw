@@ -2881,6 +2881,73 @@ pub fn char_offset_part(app: &mut App, ui: &mut Ui) {
     }
 }
 
+/// The character width (#2190) and the Superscript and Subscript buttons
+/// (#2164) of the characters being edited, as [`char_offset_part`]
+/// finds them: the Shape tool's chosen character nodes, else every
+/// character of the selected texts. A click on the lit button puts the
+/// characters back on the baseline. Each change is one undo step.
+pub fn char_width_position_part(app: &mut App, ui: &mut Ui) {
+    use tracedraw_core::TextPosition;
+    let Some((mut width, position)) = app.char_width_position() else {
+        return;
+    };
+    let w0 = width;
+    crate::ui::tips::tip_over(ui, crate::ui::tips::keyed("docker.char_width"), |ui| {
+        crate::ui::text_docker::char_width_icon(ui);
+        ui.add_sized(
+            [72.0, ROW + 4.0],
+            crate::ui::field::NumField::new(&mut width)
+                .range(crate::ui::text_docker::CHAR_WIDTH_RANGE)
+                .max_decimals(1)
+                .suffix(" %"),
+        );
+    });
+    if (width - w0).abs() > 1e-9 {
+        app.set_char_attrs("Character Width", move |sp| sp.width_pct = width);
+    }
+    for (p, valign, key) in [
+        (
+            TextPosition::Superscript,
+            egui::Align::TOP,
+            "docker.superscript",
+        ),
+        (
+            TextPosition::Subscript,
+            egui::Align::BOTTOM,
+            "docker.subscript",
+        ),
+    ] {
+        let on = position == p;
+        // An X with a small 2 raised or lowered beside it, laid out so no
+        // font needs the superscript or subscript digit.
+        let color = ui.visuals().text_color();
+        let mut label = egui::text::LayoutJob::default();
+        label.append(
+            "X",
+            0.0,
+            egui::TextFormat::simple(egui::FontId::proportional(13.0), color),
+        );
+        label.append(
+            "2",
+            0.0,
+            egui::TextFormat {
+                font_id: egui::FontId::proportional(8.0),
+                color,
+                valign,
+                ..Default::default()
+            },
+        );
+        if ui
+            .add_sized([28.0, ROW + 4.0], egui::Button::selectable(on, label))
+            .rich_tip(crate::ui::tips::keyed(key))
+            .clicked()
+        {
+            let target = if on { TextPosition::Normal } else { p };
+            app.set_char_attrs("Character Position", move |sp| sp.position = target);
+        }
+    }
+}
+
 /// A change the rectangle part of the bar makes to corners.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CornerEdit {
