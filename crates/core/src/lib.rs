@@ -8,6 +8,7 @@
 //! bottom-left corner of the page and the Y axis pointing up. Renderers flip to screen space as needed.
 
 #![allow(clippy::should_implement_trait)]
+pub mod bitmap_warp;
 pub mod bytes;
 pub mod color;
 pub mod color_convert;

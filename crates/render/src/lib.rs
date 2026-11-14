@@ -4928,6 +4928,59 @@ mod tests {
         (doc, page)
     }
 
+    /// A picture in perspective draws its pixels inside the warped
+    /// shape, transparent beside it (#2691): it drew nothing, the picture
+    /// having become an empty outline.
+    #[test]
+    fn a_picture_in_perspective_draws_warped() {
+        use tracedraw_core::live::Effect;
+        // 100 x 50 pixels: red left half, blue right half.
+        let mut pm = Pixmap::new(100, 50).unwrap();
+        for y in 0..50 {
+            for x in 0..100 {
+                let c = if x < 50 { (255, 0, 0) } else { (0, 0, 255) };
+                pm.pixels_mut()[y * 100 + x] =
+                    tiny_skia::ColorU8::from_rgba(c.0, c.1, c.2, 255).premultiply();
+            }
+        }
+        let png = pm.encode_png().unwrap();
+        let rect = Rect::new(5.0, 20.0, 95.0, 70.0);
+        let mut s = Shape::new(
+            ShapeId(1),
+            ShapeKind::Bitmap {
+                rect,
+                width_px: 100,
+                height_px: 50,
+                png: png.into(),
+                fx: None,
+            },
+        );
+        let (doc, page) = doc_with(vec![s.clone()]);
+        let plain = render_page_image(&doc, page, 25.4).expect("page");
+        let h = plain.height() as f64;
+        // Page millimetres (y up) to a pixel at 1 px a millimetre.
+        let at = |pm: &Pixmap, x: f64, y: f64| px(pm, x as u32, (h - y) as u32);
+        assert_eq!(at(&plain, 8.0, 66.0), (255, 0, 0));
+        assert_eq!(at(&plain, 92.0, 66.0), (0, 0, 255));
+        // The top pulled in to a trapezium.
+        s.effects = vec![Effect::Perspective {
+            corners: [
+                Point::new(5.0, 20.0),
+                Point::new(95.0, 20.0),
+                Point::new(70.0, 70.0),
+                Point::new(30.0, 70.0),
+            ],
+        }];
+        let (doc, page) = doc_with(vec![s]);
+        let warped = render_page_image(&doc, page, 25.4).expect("page");
+        assert_eq!(at(&warped, 8.0, 66.0), (255, 255, 255), "beside it");
+        assert_eq!(at(&warped, 92.0, 66.0), (255, 255, 255), "beside it");
+        assert_eq!(at(&warped, 40.0, 66.0), (255, 0, 0));
+        assert_eq!(at(&warped, 60.0, 66.0), (0, 0, 255));
+        assert_eq!(at(&warped, 8.0, 23.0), (255, 0, 0));
+        assert_eq!(at(&warped, 92.0, 23.0), (0, 0, 255));
+    }
+
     /// Two squares overlapping in one curve, both drawn the same way
     /// round, as the overlapping parts of traced lettering (#1919): with
     /// the curve's fill rule nonzero the overlap stays filled; even-odd

@@ -996,7 +996,65 @@ fn warp_shape(main: &mut Shape, effect: &Effect) {
             }
         }
         Effect::Perspective { corners } => {
+            // Pictures first, through the same map: their pixels are
+            // resampled (#2691); the outlines of the rest bend.
+            let b = main.local_path().bounding_box();
+            perspective_pictures(main, None, b, corners);
             reshape(main, &|p, b| perspective_in(p, b, corners));
+        }
+        _ => {}
+    }
+}
+
+/// The pictures of `shape` (it, or the ones inside it), in the space
+/// `parent` maps them into (`None`: the shape's own space, the top of the
+/// warp), put in the perspective that takes box `b` of that space onto
+/// `corners` (#2691). A warped picture covers the box the warp takes it
+/// to, transparent outside, in the top shape's space.
+fn perspective_pictures(shape: &mut Shape, parent: Option<Affine>, b: Rect, corners: &[Point; 4]) {
+    let t = parent.map(|p| p * shape.transform);
+    let m = t.unwrap_or(Affine::IDENTITY);
+    match &mut shape.kind {
+        ShapeKind::Group { children } => {
+            for c in children.iter_mut() {
+                perspective_pictures(c, Some(m), b, corners);
+            }
+        }
+        ShapeKind::ClipFrame { frame, contents } => {
+            perspective_pictures(frame, Some(m), b, corners);
+            for c in contents.iter_mut() {
+                perspective_pictures(c, Some(m), b, corners);
+            }
+        }
+        ShapeKind::Bitmap {
+            rect,
+            width_px,
+            height_px,
+            png,
+            ..
+        } => {
+            let pic = crate::bitmap_warp::Picture {
+                rect: *rect,
+                width_px: *width_px,
+                height_px: *height_px,
+                png: png.clone(),
+            };
+            if let Some(out) = crate::bitmap_warp::perspective(&pic, m, b, corners) {
+                shape.kind = ShapeKind::Bitmap {
+                    rect: out.rect,
+                    width_px: out.width_px,
+                    height_px: out.height_px,
+                    png: out.png,
+                    fx: None,
+                };
+                // Inside a group the warped picture is in the group's
+                // space: its own transform takes the parents' back.
+                if let Some(p) = parent {
+                    if p.determinant().abs() > 1e-12 {
+                        shape.transform = p.inverse();
+                    }
+                }
+            }
         }
         _ => {}
     }
@@ -1294,6 +1352,10 @@ fn reshape(shape: &mut Shape, f: &dyn Fn(&BezPath, Rect) -> BezPath) {
                 reshape_inside(c, Affine::IDENTITY, b, f);
             }
         }
+        // A picture has no outline to bend: a perspective resamples it
+        // ahead (`perspective_pictures`); the other warps leave it as it
+        // is. It became an empty frame, so the picture went (#2691).
+        ShapeKind::Bitmap { .. } => {}
         _ => {
             let p = f(&shape.local_path(), b);
             set_path(shape, p);
@@ -1322,6 +1384,7 @@ fn reshape_inside(
                 reshape_inside(c, t, b, f);
             }
         }
+        ShapeKind::Bitmap { .. } => {}
         _ => {
             if t.determinant().abs() < 1e-12 {
                 return;
@@ -2500,7 +2563,7 @@ pub fn perspective_in(path: &BezPath, b: Rect, corners: &[Point; 4]) -> BezPath 
 /// the box to, and the outline comes to a tip there (#879). Corners that
 /// crossed by more than a fiftieth of the frame (a frame folded on
 /// purpose) and all others stay as given.
-fn corners_apart(corners: &[Point; 4]) -> [Point; 4] {
+pub(crate) fn corners_apart(corners: &[Point; 4]) -> [Point; 4] {
     let mut c = *corners;
     let span = c
         .iter()
