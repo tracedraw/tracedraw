@@ -60,7 +60,16 @@ over the drawing window is imported like a `.cdr`
 the frame shows only while a mouse button is held: a drag taken away
 without a drop could leave the files listed as hovered, and the frame
 then stayed over the window until TraceDraw was closed
-(`drop_files::drag_held`, #2350).
+(`drop_files::drag_held`, #2350). The drop itself, or the drag leaving,
+can also fail to reach the program on Windows: the files stayed listed,
+nothing was imported, and the frame came back at every later click or
+drag, as if TraceDraw were still waiting for the drop (#2686). Once every
+button has been up for half a second with the same files still listed,
+the drag is over: the files count as let go where the cursor is (inside
+the window, as any drop there; outside it nothing happens), and the frame
+stays away until the next drag. Should the drop come in after all, it is
+not taken twice (`drop_files::FileDrag`,
+`a_file_drag_whose_drop_is_lost_ends_once_the_buttons_are_up`).
 
 ## Browser build
 
