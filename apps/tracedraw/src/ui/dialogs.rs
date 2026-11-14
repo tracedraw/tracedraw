@@ -1089,6 +1089,26 @@ pub use crate::ui::font_manager::FontManagerState;
 
 pub use crate::ui::palette_editor::PaletteEditorState;
 
+/// File > Export All Pages: format, resolution and destination folder.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExportAllPagesState {
+    pub format: usize,
+    pub dpi: f64,
+    pub quality: u8,
+    pub folder: Option<std::path::PathBuf>,
+}
+
+impl Default for ExportAllPagesState {
+    fn default() -> Self {
+        Self {
+            format: 2, // PNG
+            dpi: 150.0,
+            quality: 90,
+            folder: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Dialog {
     None,
@@ -1218,6 +1238,7 @@ pub enum Dialog {
         dont_ask: bool,
     },
     Export(ExportState),
+    ExportAllPages(ExportAllPagesState),
     Print(PrintState),
     PrintMerge(PrintMergeState),
     /// Object > Create > Pattern Fill: a vector or a bitmap pattern.
@@ -2537,6 +2558,7 @@ pub fn show(app: &mut App, ctx: &Context) {
             }
         }
         Dialog::Export(st) => export_dialog(app, ctx, st, &mut close),
+        Dialog::ExportAllPages(st) => export_all_pages_dialog(app, ctx, st, &mut close),
         Dialog::Print(st) => print_dialog(app, ctx, st, &mut close),
         Dialog::PrintMerge(st) => print_merge_dialog(app, ctx, st, &mut close),
         Dialog::GithubOpen(f) => crate::ui::github_dialogs::open_dialog(app, ctx, f, &mut close),
@@ -4208,6 +4230,94 @@ pub fn write_export(app: &mut App, path: &std::path::Path, st: &ExportState, las
 /// Ask for the file and export to it with `st`'s choices: the options
 /// were chosen first (the presets for the web and office, the browser,
 /// Android) or are not shown (`last_options`).
+fn export_all_pages_dialog(
+    app: &mut App,
+    ctx: &Context,
+    st: &mut ExportAllPagesState,
+    close: &mut bool,
+) {
+    use crate::files::{FolderAction, FolderUse};
+    let mut do_export = false;
+    window(ctx, tr("dialog.export_all_pages")).show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(tr("dialog.format"));
+            crate::ui::keynav::ComboBox::from_id_salt("exp_all_fmt")
+                .selected_text(export_format_label(st.format))
+                .show_ui(ui, |ui| {
+                    for entry in export_format_order() {
+                        let Some(i) = entry else {
+                            ui.separator();
+                            continue;
+                        };
+                        if ui
+                            .selectable_label(st.format == i, export_format_label(i))
+                            .clicked()
+                        {
+                            st.format = i;
+                        }
+                    }
+                });
+        });
+        let raster = (2..=7).contains(&st.format) || st.format == 15;
+        if raster {
+            ui.horizontal(|ui| {
+                ui.label(tr("dialog.resolution"));
+                ui.add(
+                    crate::ui::field::NumField::new(&mut st.dpi)
+                        .range(MIN_EXPORT_DPI..=2400.0)
+                        .suffix(" dpi"),
+                );
+                for d in [72.0_f64, 96.0, 150.0, 300.0] {
+                    if ui.small_button(format!("{d:.0}")).clicked() {
+                        st.dpi = d;
+                    }
+                }
+            });
+            if st.format == 3 || st.format == 6 {
+                ui.add(
+                    crate::ui::Slider::new(&mut st.quality, 1..=100)
+                        .text(tr("dialog.quality")),
+                );
+            }
+        }
+        ui.horizontal(|ui| {
+            ui.label(tr("dialog.export_all_pages_folder"));
+            let label = st
+                .folder
+                .as_ref()
+                .map(|f| f.display().to_string())
+                .unwrap_or_else(|| tr("dialog.export_all_pages_no_folder"));
+            ui.label(egui::RichText::new(label).size(11.0));
+        });
+        if let FolderAction::PickFolder(token) = FolderUse::ExportAllPages.action() {
+            if ui.button(tr("dialog.export_all_pages_browse")).clicked() {
+                if let Some(f) = crate::files::pick_folder(token) {
+                    st.folder = Some(f);
+                }
+            }
+        }
+        ui.add_space(8.0);
+        if ok_cancel(ui, close) && st.folder.is_some() {
+            do_export = true;
+        }
+    });
+    if do_export {
+        if let Some(folder) = st.folder.clone() {
+            let doc_title = app.document_title().trim_end_matches('*').to_string();
+            let (_, ext) = EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)];
+            let base = folder.join(format!("{doc_title}.{ext}"));
+            let export_st = ExportState {
+                all_pages: true,
+                format: st.format,
+                dpi: st.dpi,
+                quality: st.quality,
+                ..Default::default()
+            };
+            write_export(app, &base, &export_st, false);
+        }
+    }
+}
+
 pub fn export_with_file_dialog(app: &mut App, st: &ExportState, last_options: bool) {
     let st = st.clone();
     export_save_dialog(app, &st).save_file(app, move |app, path| {

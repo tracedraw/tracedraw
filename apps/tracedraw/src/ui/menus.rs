@@ -2610,6 +2610,9 @@ fn file_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.file.export_with_options", "Ctrl+Shift+E", doc) {
         app.export_with_options();
     }
+    if item(ui, "menu.file.export_all_pages", "", doc) {
+        app.export_all_pages_dialog();
+    }
     sub(ui, "menu.file.export_for", |ui| {
         if item(ui, "menu.file.export_for_web", "", doc) {
             app.dialog = Dialog::Export(crate::ui::dialogs::ExportState::web());

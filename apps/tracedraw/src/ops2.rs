@@ -9,7 +9,7 @@ use tracedraw_core::{
     document::{Shape, ShapeKind},
     geometry::{Affine, BezPath, Point, Rect, Shape as _, Size},
     live::Effect,
-    Color, Command, Fill, ShapeId, Stroke, TextSpan,
+    Color, Command, Fill, LeadingUnit, ShapeId, Stroke, TextSpan,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2840,10 +2840,29 @@ impl App {
             };
             let new_frame = match frame {
                 Some(_) => None,
-                None => Some(Size::new(
-                    local.width().max(10.0) + 2.0,
-                    local.height().max(5.0) + 2.0,
-                )),
+                None => {
+                    // The frame height must be at least the typographic line
+                    // height (including leading), not just the glyph bounding
+                    // box.  When the frame is shorter than the text flow the
+                    // layout marks the text as overflowed and disables
+                    // vertical alignment, even though a single line fits
+                    // visually.  Compute the line height for the first span.
+                    const MM_PER_PT: f64 = 25.4 / 72.0;
+                    let size_pt = spans.first().map(|s| s.size_pt).unwrap_or(12.0);
+                    let line_mm = match para.leading_unit {
+                        LeadingUnit::PercentCharHeight => {
+                            para.leading_pct / 100.0 * size_pt * 1.2 * MM_PER_PT
+                        }
+                        LeadingUnit::Points => para.leading_pct * MM_PER_PT,
+                        LeadingUnit::PercentPointSize => {
+                            para.leading_pct / 100.0 * size_pt * MM_PER_PT
+                        }
+                    };
+                    Some(Size::new(
+                        local.width().max(10.0) + 2.0,
+                        local.height().max(line_mm).max(5.0) + 2.0,
+                    ))
+                }
             };
             // A first guess from the box, then the first letter's place.
             let guess = match (frame, new_frame) {

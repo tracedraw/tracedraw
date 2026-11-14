@@ -95,6 +95,7 @@ pub mod picture_mosaic_docker;
 pub mod preflight_dialog;
 pub mod preview;
 pub mod print_merge_docker;
+pub mod merge_preview;
 pub mod print_preview;
 pub mod propbar;
 pub mod publish_pdf;
@@ -518,6 +519,10 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     }
     if app.print_preview.is_some() {
         print_preview::show(app, ui);
+        return;
+    }
+    if app.merge_preview.is_some() {
+        merge_preview::show(app, ui);
         return;
     }
 

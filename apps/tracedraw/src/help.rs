@@ -132,6 +132,7 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::PdfPages(_) => "file-formats/import#pdf-pages",
         Dialog::ChangeDefaults(_) => "templates-styles/object-styles#document-defaults",
         Dialog::SaveAs(_) | Dialog::Package(_) => "get-started/open-and-save#save-as",
+        Dialog::ExportAllPages(_) => "file-formats/export",
     }
 }
 

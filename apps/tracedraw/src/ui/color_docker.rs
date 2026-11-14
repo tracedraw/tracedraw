@@ -934,18 +934,28 @@ fn top_row(app: &mut App, ui: &mut Ui) {
     });
 }
 
-/// The hex row: the new colour's code, typed values applied when the
-/// field is left, and the gamut warning.
-fn hex_row(ui: &mut Ui, c: &mut Color) -> bool {
+/// The hex row: the new colour's code, typed and applied on Enter or
+/// when the field loses focus, with the gamut warning.
+pub(crate) fn hex_row(ui: &mut Ui, c: &mut Color) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
         ui.label(tr("docker.hex"));
-        let mut hex = c.to_hex();
-        if ui
+        let state_id = ui.id().with("hex_state");
+        let current_hex = c.to_hex();
+        // Keep the in-progress text while the colour hasn't changed
+        // from outside (slider, eyedropper, etc.); reset on external change.
+        let stored: Option<(String, String)> = ui.data(|d| d.get_temp(state_id));
+        let mut hex = match stored {
+            Some((text, snap)) if snap == current_hex => text,
+            _ => current_hex.clone(),
+        };
+        let response = ui
             .add(egui::TextEdit::singleline(&mut hex).desired_width(64.0))
-            .rich_tip(crate::ui::tips::keyed("docker.hex_color"))
-            .lost_focus()
-        {
+            .rich_tip(crate::ui::tips::keyed("docker.hex_color"));
+        ui.data_mut(|d| d.insert_temp(state_id, (hex.clone(), current_hex)));
+        let submit = response.lost_focus()
+            || (response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+        if submit {
             if let Some(nc) = Color::from_hex(&hex) {
                 if nc.to_hex() != c.to_hex() {
                     *c = nc;
