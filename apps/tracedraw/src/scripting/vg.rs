@@ -305,10 +305,6 @@ impl HostInner {
         }))
     }
 
-    fn bounds_of(&self, list: &[ShapeId]) -> Option<tracedraw_core::geometry::Rect> {
-        self.bounds_with(list, false)
-    }
-
     /// The box of the objects; with `outline`, widened by half of each
     /// object's outline, as CorelDRAW's `GetBoundingBox(..., True)`
     /// gives it (#2165: crop marks are placed from it).

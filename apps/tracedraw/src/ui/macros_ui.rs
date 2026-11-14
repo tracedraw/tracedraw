@@ -835,8 +835,20 @@ fn draw_controls(ui: &mut Ui, form: &LiveForm, origin: Pos2, acts: &mut FormActi
             .focus
             .as_deref()
             .is_some_and(|f| f.eq_ignore_ascii_case(name));
-        let resp: Option<egui::Response> = ui
-            .add_enabled_ui(enabled, |ui| -> Option<egui::Response> {
+        // Each control on a child that takes no room. A scope (what
+        // add_enabled_ui makes) moved the form's cursor down a little for
+        // every control, and the window grew by that: a form with sixty
+        // controls came out more than half as tall again (#2165).
+        let mut cui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(ui.max_rect())
+                .id_salt(("macro_control", i)),
+        );
+        if !enabled {
+            cui.disable();
+        }
+        let resp: Option<egui::Response> =
+            Some(&mut cui).and_then(|ui| -> Option<egui::Response> {
                 match c.kind {
                     ControlKind::Label => {
                         if let Some(b) = c.back {
@@ -1050,8 +1062,7 @@ fn draw_controls(ui: &mut Ui, form: &LiveForm, origin: Pos2, acts: &mut FormActi
                         None
                     }
                 }
-            })
-            .inner;
+            });
         let Some(r) = resp else { continue };
         if !c.tip.is_empty() {
             r.clone().rich_tip(c.tip.as_str());
@@ -2180,5 +2191,47 @@ mod tests {
             let tex = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id));
             assert_eq!(tex.map(|t| t.size()), Some([16, 16]), "{name}");
         }
+    }
+
+    /// A form takes the room of its size, however many controls it has
+    /// (#2165: the GRAFISin tiling form, sixty controls, came out more
+    /// than half as tall again, an empty band under its controls).
+    #[test]
+    fn a_form_with_many_controls_keeps_its_height() {
+        use tracedraw_vba_project::{Control, Form};
+        let mut form = Form {
+            name: "F".into(),
+            width: 300.0,
+            height: 100.0,
+            enabled: true,
+            ..Form::default()
+        };
+        for i in 0..60 {
+            let kind = match i % 4 {
+                0 => ControlKind::Label,
+                1 => ControlKind::TextBox,
+                2 => ControlKind::OptionButton,
+                _ => ControlKind::CommandButton,
+            };
+            let mut c = Control::new(kind, &format!("c{i}"));
+            c.left = (i % 10) as f32 * 28.0;
+            c.top = (i / 10) as f32 * 15.0;
+            c.width = 26.0;
+            c.height = 14.0;
+            c.enabled = i % 7 != 0;
+            form.controls.push(c);
+        }
+        let live = LiveForm::from_model(3, "F", Some(&form));
+        let ctx = Context::default();
+        let mut grown = None;
+        let mut out = ctx.run_ui(Default::default(), |ui| {
+            let size = Vec2::new(form.width, form.height) * PX;
+            let (area, _) = ui.allocate_exact_size(size, Sense::click());
+            let mut acts = FormActions::default();
+            draw_controls(ui, &live, area.min, &mut acts);
+            grown = Some(ui.min_rect().bottom() - area.bottom());
+        });
+        out.textures_delta.clear();
+        assert!(grown.is_some_and(|g| g <= 0.5), "{grown:?}");
     }
 }

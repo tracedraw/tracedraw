@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Macro forms open at the size they were made: every control pushed the window down a little, so a form with many controls came out much taller than in CorelDRAW, with an empty band under its controls (the GRAFISin tiling form, sixty controls, by more than half) (#2165).
 - Mesh fill: with nodes chosen, Ctrl+click on a palette colour mixes a tenth of it into each chosen node, one undo step a click, as it mixes into a uniform fill. It did nothing on a mesh (discussion #2616).
 - Objects docker: with several objects selected, the eye of one of them hides them all, or shows them all when it is hidden, in one undo step, and they stay selected. Only the clicked object changed (#2571).
 - Palettes: a double-click on a colour opens the Palette Editor on that palette with the colour selected, where it is renamed, changed or made a spot colour, as in CorelDRAW (the first click fills the selection as before). Only a double-click beside the colours opened the editor, with nothing selected (#2580).
