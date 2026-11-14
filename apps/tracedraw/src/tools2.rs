@@ -353,7 +353,22 @@ impl App {
         };
         let mut cmds = Vec::new();
         let mut ids = Vec::new();
+        let fill_open = self.doc().metadata.fill_open_curves;
         for s in shapes {
+            // A group: the outlines of the objects in it, nested groups
+            // too, become objects in the group, each right above its
+            // object; the group stays selected. It has no outline of its
+            // own, so it was passed over and nothing happened.
+            if let ShapeKind::Group { children } = &s.kind {
+                if let Some(children) = self.outlines_in_group(children, fill_open) {
+                    cmds.push(Command::SetShapeKind {
+                        shape: s.id,
+                        kind: ShapeKind::Group { children },
+                    });
+                    ids.push(s.id);
+                }
+                continue;
+            }
             let Some(st) = &s.stroke else { continue };
             let Some(out) = outline_object_path(&s) else {
                 continue;
@@ -400,6 +415,54 @@ impl App {
             let _ = self.engine.run_batch("Convert Outline To Object", &cmds);
             self.select(ids);
         }
+    }
+}
+
+impl App {
+    /// The objects of a group with each outline made an object of its
+    /// own right above its object (an object that fills nothing is
+    /// replaced by it); `None` when no object in it has an outline.
+    fn outlines_in_group(&mut self, children: &[Shape], fill_open: bool) -> Option<Vec<Shape>> {
+        let mut out = Vec::with_capacity(children.len());
+        let mut changed = false;
+        for c in children {
+            if let ShapeKind::Group { children: inner } = &c.kind {
+                if let Some(inner) = self.outlines_in_group(inner, fill_open) {
+                    let mut g = c.clone();
+                    g.kind = ShapeKind::Group { children: inner };
+                    out.push(g);
+                    changed = true;
+                } else {
+                    out.push(c.clone());
+                }
+                continue;
+            }
+            let made = c
+                .stroke
+                .as_ref()
+                .and_then(|st| outline_object_path(c).map(|p| (st.color, p)));
+            let Some((color, path)) = made else {
+                out.push(c.clone());
+                continue;
+            };
+            // The group's objects are drawn in its space, as `page_path`
+            // of an object in it gives its path.
+            let mut o = Shape::new(
+                self.engine.new_shape_id(),
+                ShapeKind::Path { path, closed: true },
+            );
+            o.fill = Fill::Solid(color);
+            o.stroke = None;
+            o.name = Some("Outline".into());
+            if fill_draws(c, fill_open) {
+                let mut kept = c.clone();
+                kept.stroke = None;
+                out.push(kept);
+            }
+            out.push(o);
+            changed = true;
+        }
+        changed.then_some(out)
     }
 }
 
@@ -964,6 +1027,87 @@ mod tests {
             .map(|s| s.page_path())
             .expect("object");
         (app, out)
+    }
+
+    /// Convert Outline to Object on a selected group did nothing: the
+    /// group has no outline of its own, and its objects were never looked
+    /// at. Now each object's outline becomes an object right above it in
+    /// the group, where the group is on the page; one undo step.
+    #[test]
+    fn a_group_s_outlines_become_objects_in_the_group() {
+        let mut app = App::headless();
+        let mut ids = Vec::new();
+        for x in [10.0, 50.0] {
+            let id = app
+                .new_shape(ShapeKind::Rect {
+                    rect: Rect::new(x, 10.0, x + 20.0, 30.0),
+                    radius: 0.0,
+                    corners: None,
+                })
+                .expect("rect");
+            app.run(Command::SetFill {
+                shapes: vec![id],
+                fill: Fill::Solid(tracedraw_core::Color::rgb8(200, 30, 30)),
+            });
+            app.run(Command::SetStroke {
+                shapes: vec![id],
+                stroke: Some(Stroke::new(tracedraw_core::Color::BLACK, 2.0)),
+            });
+            ids.push(id);
+        }
+        app.select(ids.clone());
+        app.group_selection();
+        let group = app.selection[0];
+        assert!(matches!(
+            app.doc().find_shape(group).map(|s| &s.kind),
+            Some(ShapeKind::Group { .. })
+        ));
+        app.run(Command::TransformShapes {
+            shapes: vec![group],
+            transform: tracedraw_core::Affine::translate((100.0, 40.0)),
+        });
+        app.convert_outline_to_object();
+        assert_eq!(app.selection, vec![group], "the group stays selected");
+        let g = app.doc().find_shape(group).cloned().expect("group");
+        let ShapeKind::Group { children } = &g.kind else {
+            panic!("still a group");
+        };
+        assert_eq!(children.len(), 4, "each rectangle and its outline");
+        for (i, rect_id) in ids.iter().enumerate() {
+            let at = children
+                .iter()
+                .position(|c| c.id == *rect_id)
+                .expect("kept");
+            let kept = &children[at];
+            assert!(
+                kept.stroke.is_none(),
+                "the outline is gone from the rectangle"
+            );
+            let o = &children[at + 1];
+            assert!(
+                matches!(o.kind, ShapeKind::Path { closed: true, .. }),
+                "outline above it"
+            );
+            assert_eq!(o.fill, Fill::Solid(tracedraw_core::Color::BLACK));
+            // Where the rectangle's outline is on the page: its edge, 1 mm
+            // either side, moved with the group.
+            let place = app.doc().parent_transform(o.id).expect("in the group");
+            let b = (place * o.page_path()).bounding_box();
+            let x = [10.0, 50.0][i] + 100.0;
+            assert!((b.x0 - (x - 1.0)).abs() < 0.05, "{b:?}");
+            assert!((b.x1 - (x + 21.0)).abs() < 0.05, "{b:?}");
+            assert!(
+                (b.y0 - 49.0).abs() < 0.05 && (b.y1 - 71.0).abs() < 0.05,
+                "{b:?}"
+            );
+        }
+        app.undo();
+        let g = app.doc().find_shape(group).cloned().expect("group");
+        let ShapeKind::Group { children } = &g.kind else {
+            panic!("a group");
+        };
+        assert_eq!(children.len(), 2, "one undo step");
+        assert!(children.iter().all(|c| c.stroke.is_some()));
     }
 
     /// Lines and curves of a path.
