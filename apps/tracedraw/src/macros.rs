@@ -2007,4 +2007,62 @@ mod tests {
             }
         }
     }
+
+    /// The crop-marks form of the same collection (#2165): it reads the
+    /// object's box through the variables it hands `GetBoundingBox` (with
+    /// the outline), draws each mark with `CreateLineSegment`, gathers
+    /// the marks from `ActiveSelectionRange` (CorelDRAW selects what it
+    /// makes) and groups them. The marks were drawn around the page's
+    /// corner and the object itself was grouped with them.
+    #[test]
+    fn a_crop_marks_macro_marks_the_corners_of_the_object() {
+        let code = "Sub Go()\r\n\
+            Dim xPos As Double, yPos As Double, xWidth As Double, yHeight As Double\r\n\
+            Dim s As Shape, sr As ShapeRange, crop As Shape, cropRange As New ShapeRange\r\n\
+            ActiveDocument.Unit = cdrMillimeter\r\n\
+            Set s = ActiveLayer.CreateRectangle(50#, 80#, 90#, 60#)\r\n\
+            s.Outline.SetProperties 1#\r\n\
+            Set sr = ActiveSelectionRange\r\n\
+            Debug.Print \"selected \" & sr.Count\r\n\
+            For Each s In sr\r\n\
+            s.GetBoundingBox xPos, yPos, xWidth, yHeight, True\r\n\
+            Debug.Print \"box \" & xPos & \" \" & yPos & \" \" & xWidth & \" \" & yHeight\r\n\
+            Set crop = ActiveLayer.CreateLineSegment(xPos - 8, yPos, xPos - 3, yPos)\r\n\
+            crop.Outline.SetProperties 0.2\r\n\
+            cropRange.AddRange ActiveSelectionRange\r\n\
+            Set crop = ActiveLayer.CreateLineSegment(xPos + xWidth, yPos + yHeight + 3, xPos + xWidth, yPos + yHeight + 8)\r\n\
+            crop.Outline.SetProperties 0.2\r\n\
+            cropRange.AddRange ActiveSelectionRange\r\n\
+            Next s\r\n\
+            Debug.Print \"marks \" & cropRange.Count\r\n\
+            cropRange.Group\r\n\
+            End Sub\r\n";
+        let mut app = app_with(project("Crop", code, Vec::new()));
+        app.run_macro(0, "Main", "Go");
+        drive(&mut app, |_| {});
+        assert!(app.macros.error.is_none(), "{:?}", app.macros.error);
+        let out = &app.scripts_output;
+        for want in ["selected 1", "box 49.5 59.5 41 21", "marks 2"] {
+            assert!(out.iter().any(|l| l == want), "{want}: {out:?}");
+        }
+        let top: Vec<&tracedraw_core::document::Shape> = app
+            .doc()
+            .all_layers()
+            .flat_map(|l| l.shapes.iter())
+            .collect();
+        assert_eq!(top.len(), 2, "the rectangle and the group of marks");
+        let group = top
+            .iter()
+            .find(|s| matches!(s.kind, tracedraw_core::document::ShapeKind::Group { .. }))
+            .expect("the marks are grouped");
+        let b = group.bounds();
+        assert!(
+            (b.x0 - 41.5).abs() < 1e-6 && (b.x1 - 90.5).abs() < 1e-6,
+            "{b:?}"
+        );
+        assert!(
+            (b.y0 - 59.5).abs() < 1e-6 && (b.y1 - 88.5).abs() < 1e-6,
+            "{b:?}"
+        );
+    }
 }

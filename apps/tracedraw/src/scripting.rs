@@ -1158,6 +1158,9 @@ impl HostInner {
         shape.id = self.new_id();
         let id = shape.id;
         self.run(Command::AddShape { layer, shape })?;
+        // CorelDRAW selects what a Create* method makes: macros gather
+        // the new shapes from `ActiveSelectionRange` (#2165).
+        self.selection = vec![id];
         Ok(json!({"id": id.raw()}))
     }
 

@@ -306,9 +306,37 @@ impl HostInner {
     }
 
     fn bounds_of(&self, list: &[ShapeId]) -> Option<tracedraw_core::geometry::Rect> {
+        self.bounds_with(list, false)
+    }
+
+    /// The box of the objects; with `outline`, widened by half of each
+    /// object's outline, as CorelDRAW's `GetBoundingBox(..., True)`
+    /// gives it (#2165: crop marks are placed from it).
+    fn bounds_with(
+        &self,
+        list: &[ShapeId],
+        outline: bool,
+    ) -> Option<tracedraw_core::geometry::Rect> {
+        fn half_outline(s: &Shape) -> f64 {
+            let own = s.stroke.as_ref().map_or(0.0, |k| k.width.max(0.0) / 2.0);
+            match &s.kind {
+                ShapeKind::Group { children } => {
+                    children.iter().map(half_outline).fold(own, f64::max)
+                }
+                _ => own,
+            }
+        }
         list.iter()
             .filter_map(|id| self.doc.shape_on_page(*id))
-            .map(|s| s.bounds())
+            .map(|s| {
+                let b = s.bounds();
+                if outline {
+                    let h = half_outline(&s);
+                    b.inflate(h, h)
+                } else {
+                    b
+                }
+            })
             .reduce(|a, b| a.union(b))
     }
 
@@ -337,7 +365,8 @@ impl HostInner {
             "vg_exists" => json!({"yes": self.doc.find_shape(ShapeId(id_arg(a, "id")?)).is_some()}),
             "vg_bounds" => {
                 let list = ids(a, "ids");
-                match self.bounds_of(&list) {
+                let outline = a.get("outline").and_then(|v| v.as_bool()).unwrap_or(false);
+                match self.bounds_with(&list, outline) {
                     Some(b) => json!({"x0": b.x0, "y0": b.y0, "x1": b.x1, "y1": b.y1}),
                     None => json!({"x0": 0.0, "y0": 0.0, "x1": 0.0, "y1": 0.0}),
                 }

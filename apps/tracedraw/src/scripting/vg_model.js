@@ -401,7 +401,7 @@ class __Geo {
   GetPosition() { return [this.PositionX, this.PositionY]; }
   GetSize() { return [this.SizeWidth, this.SizeHeight]; }
   GetBoundingBox(x, y, Width, Height, UseOutline) {
-    const b = this._b();
+    const b = UseOutline ? __call('vg_bounds', { ids: this._ids(), outline: true }) : this._b();
     return [__un(b.x0), __un(b.y0), __un(b.x1 - b.x0), __un(b.y1 - b.y0)];
   }
   SetPosition(PositionX, PositionY) {
