@@ -163,7 +163,8 @@ A 35 px band (and its line): 32 px buttons with 20 px icons in groups
 split by thin lines:
 
 1. New (a page with a green plus), Open with the recent drawings behind
-   its arrow, Save, Print.
+   its arrow, Save (lit while the drawing has changes to save or was
+   never saved, pale once it is saved, #2640), Print.
 2. Cut, Copy, Paste, Delete (a waste bin: what the Delete key does to
    the selection: the selected characters of the text being edited, the
    chosen nodes with the Shape tool, the selected guidelines, else the

@@ -4,6 +4,11 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Create Boundary draws an outline around the selection with no fill, with the target's outline (a hairline when it has none), as in CorelDRAW. It took the target's fill and covered what it was drawn around (#2640).
+- The Save button on the standard toolbar is lit while the drawing has changes to save (or was never saved) and pale once it is saved. It looked the same either way (#2640).
+
 ## 0.46.0 (2026-11-14)
 
 - Properties panel: with one closed object selected (a rectangle, ellipse, polygon or closed curve) the header gives its area under the position and size, holes taken out, in the drawing unit squared (#2599).
