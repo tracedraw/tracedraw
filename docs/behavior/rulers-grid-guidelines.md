@@ -161,6 +161,11 @@ stand for a distance in the world (`drawing_scale.rs`):
   step "Move Guidelines"; a right click during the drag leaves copies
   where it ends and the guidelines where they were ("Copy Guidelines",
   the copies selected); dropped outside the window they all go (#376).
+- A guideline across an unselected picture takes the press: the pointer
+  shows the arrows across it and a drag moves the guideline, not the
+  picture (pictures often fill the page behind the guidelines). Other
+  unselected objects, and a selected picture, still take the press
+  (#2640, `pick_drag_tests::a_guideline_over_a_picture_is_dragged_and_the_picture_stays`).
 - Edit > Duplicate (Ctrl+D) with guidelines and no objects selected
   copies them, moved by the duplicate offset (unlocked), the copies
   selected; the Guidelines docker's Duplicate does the same, and its

@@ -207,6 +207,16 @@ fn pick_cursor(app: &App, pos: Option<Pos2>) -> Option<ToolCursor> {
     if app.grab_turn_point(p).is_some() {
         return Some(ToolCursor::Rotate);
     }
+    // A guideline over a picture that is not selected takes the press,
+    // so its arrows show there (#2640).
+    let guides = app.page_guides();
+    let guide = app
+        .guide_at(p)
+        .and_then(|i| guides.get(i))
+        .filter(|g| !g.locked);
+    if let Some(g) = guide.filter(|_| app.guide_wins_press(p)) {
+        return Some(across_guide(&g.line));
+    }
     // Over an object: the move arrows only where a press would move what
     // is selected already (the object or one of its parts); over another
     // object the plain arrow, as a press there picks it first (#885).
@@ -214,7 +224,6 @@ fn pick_cursor(app: &App, pos: Option<Pos2>) -> Option<ToolCursor> {
     if let Some(selected) = app.over_selection(p) {
         return selected.then_some(moving);
     }
-    let guides = app.page_guides();
     let g = guides.get(app.guide_at(p)?)?;
     (!g.locked).then(|| across_guide(&g.line))
 }

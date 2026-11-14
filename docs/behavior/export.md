@@ -111,14 +111,19 @@ Preferences saved before are brought back to off once (upgrade 7,
 
 - Bitmap formats show Size: a width and a height and their unit (px,
   mm, cm or in, kept with the other choices; #617). In pixels the size
-  is the page (or selection) size over 25.4 times the resolution,
-  rounded up, and typing a width or a height sets the resolution that
-  gives it, so a 32 x 32 pixel icon is typed rather than worked out. In
-  a length it is the printed size: typing a width or a height sets the
-  scale of the artwork (the resolution stays), from 1 % to 10000 % and
-  never past what 2400 dpi can draw; a button with the scale ("200 %")
-  shows when it is not 100 % and puts it back. Either way the other side
-  follows the page's proportions.
+  is the page (or selection) size over 25.4 times the resolution and
+  the scale, rounded up; in a length it is the printed size. Typing a
+  width or a height sets the scale of the artwork that gives it, the
+  resolution staying, so a 32 x 32 pixel icon is typed rather than
+  worked out: from 1 % to 10000 % and never past what 2400 dpi can draw;
+  a button with the scale ("200 %") shows when it is not 100 % and puts
+  it back. Either way the other side follows the page's proportions.
+  The resolution typed or picked (72, 96, 150, 300) leaves the size
+  shown: in pixels the scale makes up for it, so as many pixels come
+  out, recorded at the new resolution; in a length the printed size
+  stays and the pixels follow. A size typed in pixels set the
+  resolution, and a resolution changed the pixels (#2640,
+  `export::tests::the_export_resolution_and_size_change_one_at_a_time`).
 - Under the size: what comes out, "1240 x 1754 pixels, 150 dpi, sRGB"
   ("sRGB + alpha" with a transparent background, "CMYK" or "Grayscale"
   in those colour modes).

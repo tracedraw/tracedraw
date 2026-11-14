@@ -886,6 +886,28 @@ impl App {
         chain
     }
 
+    /// Whether a Pick press at `p` on a guideline takes the guideline
+    /// rather than what lies under it: objects win, as they are what is
+    /// usually edited, but not a picture that is not selected, so a
+    /// guideline over a photo moves (#2640: it could not be picked over
+    /// an image); the rotation handles of a guideline in rotate mode win
+    /// over everything.
+    pub fn guide_wins_press(&self, p: Point) -> bool {
+        if self.guide_rotate.is_some() {
+            return true;
+        }
+        match self.hit_test(p) {
+            None => true,
+            Some(id) => {
+                !self.selection.contains(&id)
+                    && self
+                        .doc()
+                        .find_shape(id)
+                        .is_some_and(|s| matches!(s.kind, ShapeKind::Bitmap { .. }))
+            }
+        }
+    }
+
     /// Whether a Pick press at `p` lands on what is selected: `None`
     /// where no object is, else whether the topmost object there, or one
     /// of its parts under `p`, is in the selection (a drag then moves the
@@ -2163,9 +2185,7 @@ impl App {
             // Guidelines lie above the layers but objects win a press, as
             // they are what is usually edited; the rotation handles of a
             // guideline in rotate mode win over objects.
-            if (self.guide_rotate.is_some() || self.hit_test(p).is_none())
-                && self.press_guide(p, mods.shift)
-            {
+            if self.guide_wins_press(p) && self.press_guide(p, mods.shift) {
                 return;
             }
             // Ctrl takes the object inside a group, unless the press is on
