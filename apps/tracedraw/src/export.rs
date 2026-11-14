@@ -240,7 +240,7 @@ fn page_file(
     icc: Option<&[u8]>,
 ) -> Result<Vec<u8>, String> {
     Ok(match ext {
-        "svg" => tracedraw_io::svg::page_to_svg(doc, k).into_bytes(),
+        "svg" => tracedraw_io::svg::page_to_svg_with(doc, k, &st.svg_options()).into_bytes(),
         "eps" => tracedraw_io::eps::page_to_eps(doc, k).into_bytes(),
         // The classic AI file: one artboard, so one page per file (#1728).
         "ai" if st.classic_ai() => tracedraw_io::ai::page_to_ai8(doc, k).into_bytes(),
@@ -1872,6 +1872,7 @@ pub fn print_layout(app: &App, st: &PrintState, doc: &Document) -> crate::imposi
         booklet: st.booklet(),
         marks: crate::imposition::Marks {
             crop: st.crop_marks,
+            bleed: false,
             registration: st.registration_marks,
             color_bars: st.color_bars,
             densitometer: st.densitometer,
@@ -3353,6 +3354,49 @@ mod tests {
         let bytes = std::fs::read(dir.join("old-1.ai")).unwrap();
         let back = tracedraw_io::eps_import::parse(&bytes, &mut ids).expect("reads");
         assert!(!back.shapes.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SVG's Text choice (#2289): as curves by default, as `<text>`
+    /// naming the font, or with the font file inside.
+    #[test]
+    fn export_svg_text_as_curves_text_or_with_fonts() {
+        tracedraw_text::install();
+        let fonts = tracedraw_text::fonts();
+        let Some(family) = ["DejaVu Sans", "Liberation Sans", "Noto Sans"]
+            .into_iter()
+            .find(|f| fonts.has_family(f))
+        else {
+            return;
+        };
+        let mut app = App::headless();
+        app.new_shape(ShapeKind::Text {
+            spans: vec![TextSpan::new("Editable words", family, 24.0)],
+            origin: tracedraw_core::Point::new(20.0, 50.0),
+            frame: None,
+            align: Default::default(),
+            para: Default::default(),
+            on_path: None,
+        });
+        let dir = std::env::temp_dir().join(format!("tracedraw-2289-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.svg");
+        let mut st = ExportState {
+            format: 0,
+            ..ExportState::default()
+        };
+        let mut out = Vec::new();
+        for choice in 0..3 {
+            st.svg_text = choice;
+            export(&mut app, &path, &st).expect("svg");
+            out.push(std::fs::read_to_string(&path).unwrap());
+        }
+        assert!(!out[0].contains("<text"), "{}", out[0]);
+        assert!(out[1].contains(">Editable words</tspan>"), "{}", out[1]);
+        assert!(out[1].contains(family), "{}", out[1]);
+        assert!(!out[1].contains("@font-face"));
+        assert!(out[2].contains("@font-face"));
+        assert!(out[2].contains(">Editable words</tspan>"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

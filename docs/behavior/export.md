@@ -296,6 +296,52 @@ dialog's choices, and Export for Web and Office keep their own (#617,
   title in its `%%Title` comment and has no place for tags).
 - Checks: `ui::dialogs::tests::the_export_list_puts_the_common_formats_first`.
 
+## SVG text
+
+SVG has a Text list (#2289), kept with the last SVG export's choices
+and in presets:
+
+- As curves (the default, and what every earlier version wrote): every
+  text is filled curves, so the file needs no fonts.
+- As editable text: each text object is a `<g>` holding `<text>`
+  elements with the characters, so other programs can select, search
+  and edit the words. The glyphs keep the places the text engine gave
+  them: characters that share a direction and slant go into one
+  `<text>` whose transform is the first one's place, each run of one
+  span, font and size a `<tspan>` with an `x` and a `y` for every
+  character (the further characters of a ligature where it starts),
+  `font-family` the span's family, `font-size` in millimetres, bold and
+  italic as `font-weight` and `font-style`, `xml:space="preserve"`.
+  Fill, outline, spot colour names and transparency are the object's.
+  What has no characters (underlines, strike lines, added hyphens,
+  synthetic bold, letters no font has) is a curve beside the text.
+  The computer showing the file supplies the fonts.
+- As text with fonts embedded: the same, with every font file used in a
+  `<style>` of `@font-face` rules (`data:` addresses, TrueType or
+  OpenType), named by the font's own family; text names that family.
+  Fonts whose licence forbids embedding, and faces of font collections,
+  go in as curves.
+- Text with a gradient, pattern or texture fill or outline, a
+  calligraphic, positioned or painterly outline stays curves in every
+  choice, since those paints would move with each `<text>`'s transform.
+- Checks: `svg::text_out::tests::text_goes_in_as_text_when_asked`,
+  `fonts_go_in_when_asked_unless_their_licence_forbids`,
+  `marks_without_characters_and_gradients_are_curves`,
+  `export::tests::export_svg_text_as_curves_text_or_with_fonts`,
+  `ui::dialogs::tests::svg_text_choice_goes_to_the_writer_and_presets`.
+
+## PDF settings
+
+With PDF chosen, a PDF Settings... button under the PDF choices (#2197)
+closes the Export dialog and opens File > Export as PDF's PDF Settings
+dialog (see `publish-to-pdf.md`) for the same file, carrying text as
+curves, the standard, the output condition and the bleed: picture
+resolution and compression, all printers' marks (crop, bleed and
+registration marks, colour bars, densitometer scale and file
+information), passwords and permissions, fonts, bookmarks and
+document information are set there. Check:
+`ui::dialogs::tests::export_pdf_settings_opens_for_the_same_file`.
+
 ## AI files
 
 The AI format comes in two kinds, chosen under Compatibility when the

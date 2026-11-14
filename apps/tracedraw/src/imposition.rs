@@ -257,6 +257,8 @@ pub fn booklet_sides(pages: usize, b: &Booklet) -> Vec<BookletSide> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Marks {
     pub crop: bool,
+    /// Short lines on the bleed's edges, beyond the corners (#2197).
+    pub bleed: bool,
     pub registration: bool,
     pub color_bars: bool,
     pub densitometer: bool,
@@ -268,6 +270,7 @@ pub struct Marks {
 impl Marks {
     pub fn any(self) -> bool {
         self.crop
+            || self.bleed
             || self.registration
             || self.color_bars
             || self.densitometer
@@ -666,6 +669,28 @@ pub fn crop_marks(cells: &[Cell], bleed: f64) -> BezPath {
     p
 }
 
+/// Bleed marks (#2197): where the bleed around `content` ends, short
+/// lines in the margin beyond it, from the bleed's edge out, starting
+/// as far out as the crop marks so the two never touch the bleed.
+pub fn bleed_marks(content: Rect, bleed: f64) -> BezPath {
+    let mut p = BezPath::new();
+    let b = content.inflate(bleed, bleed);
+    let (gap, len) = (1.5, 3.5);
+    for x in [b.x0, b.x1] {
+        p.move_to((x, b.y1 + gap));
+        p.line_to((x, b.y1 + gap + len));
+        p.move_to((x, b.y0 - gap));
+        p.line_to((x, b.y0 - gap - len));
+    }
+    for y in [b.y0, b.y1] {
+        p.move_to((b.x0 - gap, y));
+        p.line_to((b.x0 - gap - len, y));
+        p.move_to((b.x1 + gap, y));
+        p.line_to((b.x1 + gap + len, y));
+    }
+    p
+}
+
 /// A registration target: a circle with a cross through it.
 fn target(p: &mut BezPath, c: Point, r: f64) {
     p.extend(tracedraw_core::geometry::ellipse_path(Rect::new(
@@ -740,6 +765,16 @@ pub fn marks(
                 out.push(fold);
             }
         }
+    }
+    if m.bleed && bleed > 0.0 {
+        out.push(mark_shape(
+            ShapeKind::Path {
+                path: bleed_marks(content, bleed),
+                closed: false,
+            },
+            Fill::None,
+            hair(0.1),
+        ));
     }
     if m.registration {
         let mut p = BezPath::new();
@@ -1460,6 +1495,7 @@ mod tests {
             layout: Layout::NUp { cols: 2, rows: 1 },
             marks: Marks {
                 crop: true,
+                bleed: false,
                 registration: true,
                 color_bars: true,
                 densitometer: true,
@@ -1548,6 +1584,40 @@ mod tests {
         assert!(spans[0].text.contains("Card") && spans[0].text.contains("Back"));
         let at = all[1][13].transform * *origin;
         assert!(at.y < -3.0 && at.y > -3.0 - MARK_MARGIN, "{at:?}");
+        // Bleed marks: on the bleed's edges, outside it and inside the
+        // marks margin (#2197).
+        let o = Options {
+            marks: Marks {
+                bleed: true,
+                ..Default::default()
+            },
+            ..o.clone()
+        };
+        let marks = page_marks(&sizes, &names, &o);
+        assert_eq!(marks[0].len(), 1);
+        let ShapeKind::Path { path, .. } = &marks[0][0].kind else {
+            panic!("bleed marks are a path");
+        };
+        let b = marks[0][0]
+            .transform
+            .transform_rect_bbox(kurbo::Shape::bounding_box(path));
+        let bleed = Rect::new(-3.0, -3.0, 103.0, 53.0);
+        assert!(b.x0 < bleed.x0 && b.x1 > bleed.x1, "{b:?}");
+        assert!(b.x0 >= bleed.x0 - MARK_MARGIN && b.x1 <= bleed.x1 + MARK_MARGIN);
+        let xs: Vec<f64> = path
+            .elements()
+            .iter()
+            .filter_map(|e| match e {
+                kurbo::PathEl::MoveTo(p) => Some(marks[0][0].transform * *p),
+                _ => None,
+            })
+            .filter(|p| p.y > 53.0)
+            .map(|p| p.x)
+            .collect();
+        assert_eq!(xs, vec![-3.0, 103.0]);
+        // Without a bleed there is no edge to mark.
+        let o = Options { bleed: 0.0, ..o };
+        assert!(page_marks(&sizes, &names, &o).iter().all(|m| m.is_empty()));
         // No marks asked for: none.
         let none = page_marks(&sizes, &names, &Options::default());
         assert!(none.iter().all(|m| m.is_empty()));

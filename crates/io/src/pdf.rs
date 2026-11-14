@@ -4744,7 +4744,7 @@ mod pdfx_tests {
 /// Text written as PDF text, with a stand-in text engine that lays out
 /// one glyph per character of a test font on one line.
 #[cfg(test)]
-mod text_tests {
+pub(crate) mod text_tests {
     use super::*;
     use std::sync::{Arc, OnceLock};
     use tracedraw_core::document::text_outline::{
@@ -4855,7 +4855,7 @@ mod text_tests {
         out
     }
 
-    fn doc_with(spans: Vec<TextSpan>, fill: Fill, stroke: Option<Stroke>) -> Document {
+    pub(crate) fn doc_with(spans: Vec<TextSpan>, fill: Fill, stroke: Option<Stroke>) -> Document {
         text_outline::set_glyphs(glyphs);
         let mut doc = Document::new("t", tracedraw_core::Size::new(100.0, 50.0));
         let layer = doc.pages[0].layers[0].id;

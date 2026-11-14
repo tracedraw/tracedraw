@@ -61,6 +61,9 @@ pub struct ExportState {
     pub web: bool,
     /// PDF: every text as curves, so the file needs no fonts (#1382).
     pub text_as_curves: bool,
+    /// SVG: how text goes in (#2289): 0 as curves, 1 as text naming its
+    /// fonts, 2 as text with the fonts inside the file.
+    pub svg_text: usize,
     /// PDF only: 0 plain, 1 X-1a, 2 X-3, 3 X-4.
     pub pdf_standard: usize,
     /// AI only: an index into [`AI_VERSIONS`], 0 the PDF-compatible
@@ -129,6 +132,7 @@ impl Default for ExportState {
             quality: 90,
             web: false,
             text_as_curves: false,
+            svg_text: 0,
             pdf_standard: 0,
             ai_version: 0,
             bleed_mm: 0.0,
@@ -317,6 +321,18 @@ impl ExportState {
         matches!(ext, "pdf" | "ai" | "ps" | "prn" | "html")
     }
 
+    /// The SVG export's choices (#2289).
+    pub fn svg_options(&self) -> tracedraw_io::svg::SvgOptions {
+        use tracedraw_io::svg::SvgText;
+        tracedraw_io::svg::SvgOptions {
+            text: match self.svg_text {
+                1 => SvgText::Text,
+                2 => SvgText::TextWithFonts,
+                _ => SvgText::Curves,
+            },
+        }
+    }
+
     /// The PLT export's choices (#2652), each within its range.
     pub fn plt_options(&self) -> tracedraw_io::plt::PltOptions {
         tracedraw_io::plt::PltOptions {
@@ -372,6 +388,13 @@ impl ExportState {
         }
     }
 }
+
+/// The choices of SVG's Text list, in [`ExportState::svg_text`] order.
+pub const SVG_TEXT_KEYS: [&str; 3] = [
+    "dialog.svg_text_curves",
+    "dialog.svg_text_text",
+    "dialog.svg_text_fonts",
+];
 
 pub const EXPORT_FORMATS: [(&str, &str); 18] = [
     ("SVG", "svg"),
@@ -4065,6 +4088,7 @@ fn export_preview_key(app: &App, st: &ExportState) -> u64 {
     st.pages.hash(&mut h);
     st.spreads.hash(&mut h);
     st.text_as_curves.hash(&mut h);
+    st.svg_text.hash(&mut h);
     st.ai_version.hash(&mut h);
     st.quality.hash(&mut h);
     st.dpi.to_bits().hash(&mut h);
@@ -4798,6 +4822,23 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                         .color(Tokens::text_dim()),
                     );
                 }
+                if !scripted && st.format == 0 {
+                    ui.horizontal(|ui| {
+                        ui.label(tr("dialog.svg_text"));
+                        crate::ui::keynav::ComboBox::from_id_salt("svg_text")
+                            .selected_text(tr(SVG_TEXT_KEYS[st.svg_text.min(2)]))
+                            .show_ui(ui, |ui| {
+                                for (i, k) in SVG_TEXT_KEYS.iter().enumerate() {
+                                    ui.selectable_value(&mut st.svg_text, i, tr(k));
+                                }
+                            })
+                            .response
+                            .rich_tip(crate::ui::tips::pair(
+                                "dialog.svg_text",
+                                "dialog.svg_text_desc",
+                            ));
+                    });
+                }
                 if !scripted && st.format == 1 {
                     ui.checkbox(&mut st.text_as_curves, tr("publish.text_as_curves"))
                         .rich_tip(crate::ui::tips::pair(
@@ -4837,6 +4878,17 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                                 .color(Tokens::text_dim())
                                 .size(11.0),
                         );
+                    }
+                    // Picture resolution and compression, printers' marks
+                    // and colour bars, passwords and the rest (#2197):
+                    // the PDF Settings dialog, for the same file.
+                    if ui
+                        .button(tr("dialog.export_pdf_settings"))
+                        .rich_tip(crate::ui::tips::keyed("dialog.export_pdf_settings"))
+                        .clicked()
+                    {
+                        open_pdf_settings(app, st);
+                        *close = true;
                     }
                 }
                 if !scripted && EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)].1 == "ai" {
@@ -4976,6 +5028,26 @@ fn plt_export_fields(ui: &mut Ui, st: &mut ExportState) {
         .rich_tip(crate::ui::tips::keyed("dialog.plt_hpgl2"));
     ui.checkbox(&mut st.plt_one_pen, tr("dialog.plt_one_pen"))
         .rich_tip(crate::ui::tips::keyed("dialog.plt_one_pen"));
+}
+
+/// The Export dialog's PDF Settings button (#2197): the PDF Settings
+/// dialog in its place, writing to the file the Export dialog chose and
+/// keeping its text as curves, standard and bleed.
+pub fn open_pdf_settings(app: &mut App, st: &ExportState) {
+    app.publish_pdf();
+    if let Dialog::PublishPdf(p) = &mut app.dialog {
+        if let Some(t) = &st.target {
+            p.file = t.with_extension("pdf");
+        }
+        p.prefs.text_as_curves = st.text_as_curves;
+        p.bleed_mm = st.bleed_mm.max(0.0);
+        if st.pdf_standard < PDF_STANDARDS.len() {
+            p.prefs.standard = st.pdf_standard;
+        }
+        if !st.output_condition.trim().is_empty() {
+            p.prefs.output_condition = st.output_condition.clone();
+        }
+    }
 }
 
 /// OK in the Export dialog: "Do not show this dialog again" becomes the
@@ -8548,6 +8620,44 @@ pub(crate) mod tests {
         frame(&ctx, &mut app, false);
         frame(&ctx, &mut app, false);
         assert_ne!(ctx.layer_id_at(egui::pos2(5.0, 5.0)), Some(blocker));
+    }
+
+    /// The Export dialog's PDF Settings button (#2197) opens the PDF
+    /// Settings dialog, with its picture, marks and password choices, for
+    /// the file the Export dialog chose and with its PDF choices.
+    #[test]
+    fn export_pdf_settings_opens_for_the_same_file() {
+        let mut app = App::headless();
+        let st = ExportState {
+            format: 1,
+            target: Some(std::path::PathBuf::from("out/card.pdf")),
+            text_as_curves: true,
+            pdf_standard: 3,
+            bleed_mm: 3.0,
+            ..ExportState::default()
+        };
+        open_pdf_settings(&mut app, &st);
+        let Dialog::PublishPdf(p) = &app.dialog else {
+            panic!("{:?}", app.dialog);
+        };
+        assert_eq!(p.file, std::path::PathBuf::from("out/card.pdf"));
+        assert!(p.prefs.text_as_curves);
+        assert_eq!(p.prefs.standard, 3);
+        assert_eq!(p.bleed_mm, 3.0);
+    }
+
+    /// SVG's Text choice reaches the writer and the presets (#2289).
+    #[test]
+    fn svg_text_choice_goes_to_the_writer_and_presets() {
+        use tracedraw_io::svg::SvgText;
+        let mut st = ExportState::default();
+        assert_eq!(st.svg_options().text, SvgText::Curves);
+        st.svg_text = 2;
+        assert_eq!(st.svg_options().text, SvgText::TextWithFonts);
+        let p = crate::prefs::ExportPreset::from_state("svg", &st);
+        let mut back = ExportState::default();
+        p.apply(&mut back);
+        assert_eq!(back.svg_text, 2);
     }
 
     /// The file chosen in the Save dialog picks the export format by its

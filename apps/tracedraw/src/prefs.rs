@@ -535,6 +535,8 @@ pub struct ExportPreset {
     pub plt_hpgl2: bool,
     pub plt_one_pen: bool,
     pub plt_resolution: f64,
+    /// SVG's text: as curves, as text, as text with its fonts (#2289).
+    pub svg_text: usize,
 }
 
 impl Default for ExportPreset {
@@ -581,6 +583,7 @@ impl ExportPreset {
             plt_hpgl2: st.plt_hpgl2,
             plt_one_pen: st.plt_one_pen,
             plt_resolution: st.plt_resolution,
+            svg_text: st.svg_text,
         }
     }
 
@@ -611,6 +614,9 @@ impl ExportPreset {
             st.output_condition = self.output_condition.chars().take(64).collect();
         }
         st.webp_lossless = self.webp_lossless;
+        if self.svg_text < crate::ui::dialogs::SVG_TEXT_KEYS.len() {
+            st.svg_text = self.svg_text;
+        }
         if self.color_mode < EXPORT_COLOR_MODES.len() {
             st.color_mode = self.color_mode;
         }

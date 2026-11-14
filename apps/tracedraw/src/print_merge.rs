@@ -1956,6 +1956,143 @@ mod tests {
         assert_eq!(codes[0].1.data, "X1");
     }
 
+    /// A serial number in a Print Merge barcode (#2158): Same keeps one
+    /// number on every record, Continue counts on from record to record
+    /// after the fixed digits; the wizard adds the counting field and the
+    /// records asked for, and its preview shows the first number.
+    #[test]
+    fn barcode_serial_numbers_stay_the_same_or_count_on() {
+        use crate::ui::barcode_wizard::{finish_wizard, BarcodeState, Serial};
+        for (mode, want) in [
+            (2, ["ABC-0015", "ABC-0020", "ABC-0025"]),
+            (1, ["ABC-0015", "ABC-0015", "ABC-0015"]),
+        ] {
+            let mut app = App::headless();
+            app.merge_state = Some(PrintMergeState {
+                headers: vec!["Name".into()],
+                rows: vec![vec!["a".into()]],
+                kinds: vec![FieldKind::Text],
+                ..Default::default()
+            });
+            let mut st = BarcodeState::for_merge_field("Name", false);
+            st.spec.data = "ABC-<Serial>".into();
+            st.serial = Serial {
+                mode,
+                start: 15,
+                step: 5,
+                digits: 4,
+                records: 3,
+                field: "Serial".into(),
+            };
+            assert_eq!(st.shown().data, "ABC-0015");
+            let mut close = false;
+            finish_wizard(&mut app, &mut st, &mut close);
+            assert!(close, "{}", st.error);
+            let data = app.merge_state.as_ref().expect("data");
+            assert_eq!(data.headers, ["Name", "Serial"]);
+            assert_eq!(data.rows.len(), 3);
+            let doc = merged_document(&app, data).expect("merged");
+            let got: Vec<String> = doc
+                .pages
+                .iter()
+                .map(|p| barcodes(p)[0].1.data.clone())
+                .collect();
+            assert_eq!(got, want, "mode {mode}");
+        }
+    }
+
+    /// The wizard's Serial number list puts the field at the end of the
+    /// data when a number is chosen, under a name no field has, and takes
+    /// it out again with None.
+    #[test]
+    fn choosing_a_serial_number_names_it_in_the_data() {
+        let headers = vec!["Serial".to_string()];
+        assert_eq!(
+            crate::ui::barcode_wizard::serial_field_name(&headers),
+            "Serial 2"
+        );
+        let s = crate::ui::barcode_wizard::Serial {
+            mode: 2,
+            start: 9,
+            step: 1,
+            digits: 2,
+            records: 0,
+            field: "Serial 2".into(),
+        };
+        assert_eq!(s.fill("590<Serial 2>", 0), "59009");
+        assert_eq!(s.fill("590<Serial 2>", 1), "59010");
+    }
+
+    /// Place Inside Frame with a barcode field (#1084): the wizard opens
+    /// for the selected shape, Finish puts the barcode inside it, scaled
+    /// to fit, and Print Merge makes it again inside the frame for every
+    /// record.
+    #[test]
+    fn a_barcode_field_goes_inside_the_selected_frame() {
+        let mut app = App::headless();
+        app.merge_state = Some(PrintMergeState {
+            headers: vec!["SKU".into()],
+            rows: vec![vec!["X1".into()], vec!["Y2".into()]],
+            kinds: vec![FieldKind::Text],
+            ..Default::default()
+        });
+        let frame = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(20.0, 20.0, 60.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![frame]);
+        app.merge_docker.kind = 3;
+        app.merge_docker.column = 0;
+        app.place_merge_field_inside();
+        let crate::ui::dialogs::Dialog::Barcode(st) = &app.dialog else {
+            panic!("the wizard: {:?}", app.dialog);
+        };
+        assert_eq!(st.frames, vec![frame]);
+        let mut st = st.clone();
+        let mut close = false;
+        crate::ui::barcode_wizard::finish_wizard(&mut app, &mut st, &mut close);
+        assert!(close, "{}", st.error);
+        let s = app.doc().find_shape(frame).expect("frame").clone();
+        let ShapeKind::ClipFrame { contents, .. } = &s.kind else {
+            panic!("not a frame: {:?}", s.kind);
+        };
+        assert_eq!(contents.len(), 1);
+        assert!(crate::barcode::BarcodeSpec::of_shape(&contents[0]).is_some());
+        // Inside the frame's box, filling it one way.
+        let b = s.transform * contents[0].transform * contents[0].local_path();
+        let b = tracedraw_core::geometry::Shape::bounding_box(&b);
+        let area = Rect::new(20.0, 20.0, 60.0, 40.0);
+        assert!(b.x0 >= area.x0 - 1e-6 && b.x1 <= area.x1 + 1e-6, "{b:?}");
+        assert!(b.y0 >= area.y0 - 1e-6 && b.y1 <= area.y1 + 1e-6, "{b:?}");
+        assert!(
+            (b.width() - 36.0).abs() < 0.01 || (b.height() - 18.0).abs() < 0.01,
+            "{b:?}"
+        );
+        // Merged, each page's frame holds that record's barcode.
+        let doc = merged_document(&app, app.merge_state.as_ref().expect("data")).expect("merged");
+        let datas: Vec<String> = doc
+            .pages
+            .iter()
+            .map(|p| {
+                let f = p
+                    .layers
+                    .iter()
+                    .flat_map(|l| &l.shapes)
+                    .find_map(|s| match &s.kind {
+                        ShapeKind::ClipFrame { contents, .. } => contents.first().cloned(),
+                        _ => None,
+                    });
+                crate::barcode::BarcodeSpec::of_shape(&f.expect("framed barcode"))
+                    .expect("barcode")
+                    .data
+            })
+            .collect();
+        assert_eq!(datas, ["X1", "Y2"]);
+    }
+
     /// Bulk cards (#377, #378): fields inside a group are filled, a
     /// picture placeholder inside a clip frame fills the frame, and a
     /// rectangle named `<Logo>` takes the picture inside it.

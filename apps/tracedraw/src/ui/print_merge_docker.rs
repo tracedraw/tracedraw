@@ -304,6 +304,15 @@ impl App {
             self.status = tr("merge.place_inside_none");
             return;
         }
+        // A barcode field: the wizard, its data the field; Finish puts a
+        // barcode inside each shape (#1084).
+        if d.kind == 3 {
+            let mut st =
+                crate::ui::barcode_wizard::BarcodeState::for_merge_field(&name, d.all_pages);
+            st.frames = frames.iter().map(|s| s.id).collect();
+            self.dialog = Dialog::Barcode(st);
+            return;
+        }
         let placeholder = (!d.placeholder.trim().is_empty())
             .then(|| crate::print_merge::picture(&d.placeholder, None))
             .flatten();
@@ -909,17 +918,21 @@ pub fn print_merge(app: &mut App, ui: &mut Ui) {
         {
             app.insert_merge_field();
         }
-        if app.merge_docker.kind == 1 {
-            // A shape of the user's as the picture's frame (#460): the
-            // one selected, else the one clicked next, the pointer the
-            // Place Inside arrow meanwhile (#577).
+        if app.merge_docker.kind == 1 || app.merge_docker.kind == 3 {
+            // A shape of the user's as the picture's frame (#460), or the
+            // barcode's (#1084): the one selected, else the one clicked
+            // next, the pointer the Place Inside arrow meanwhile (#577).
             if ui
                 .add(
                     egui::Button::new(tr("merge.place_inside"))
                         .min_size(wide)
                         .selected(app.pending_merge_frame),
                 )
-                .rich_tip(tr("merge.place_inside_tip"))
+                .rich_tip(tr(if app.merge_docker.kind == 3 {
+                    "merge.place_inside_barcode_tip"
+                } else {
+                    "merge.place_inside_tip"
+                }))
                 .clicked()
             {
                 if app.selection.is_empty() {
