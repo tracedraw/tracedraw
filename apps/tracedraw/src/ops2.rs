@@ -51,6 +51,14 @@ pub struct StepRepeat {
     /// 0 = offset, 1 = spacing between copies (uses object size).
     pub mode_x: u8,
     pub mode_y: u8,
+    /// Copies are made across / up and down (#2572): with one of them
+    /// off the copies go along the other axis only.
+    pub use_x: bool,
+    pub use_y: bool,
+    /// The copies go to the left (else right) and up (else down) of the
+    /// selection; the distances typed are taken that way (#2572).
+    pub left: bool,
+    pub up: bool,
     /// Fill page (#1255): the selection tiled over the page instead of
     /// `copies` copies one after another (see [`crate::fill_page`]).
     pub fill: bool,
@@ -86,6 +94,10 @@ impl Default for StepRepeat {
             dy: 0.0,
             mode_x: 0,
             mode_y: 0,
+            use_x: true,
+            use_y: true,
+            left: false,
+            up: false,
             fill: false,
             area_custom: false,
             area: Rect::new(0.0, 0.0, 210.0, 297.0),

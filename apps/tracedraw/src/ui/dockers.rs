@@ -1100,6 +1100,31 @@ pub(crate) fn shadow_summary(sh: &tracedraw_core::Shadow) -> String {
     )
 }
 
+/// The area a closed object covers on the page, mm²: rectangles,
+/// ellipses and pies, polygons and stars, and closed curves, holes taken
+/// out as its fill rule has them; `None` for anything else (open curves,
+/// text, pictures, tables, groups) (#2599).
+pub(crate) fn selection_area_mm2(s: &tracedraw_core::Shape) -> Option<f64> {
+    use tracedraw_core::ShapeKind as K;
+    let closed = match &s.kind {
+        K::Rect { .. } | K::Polygon { .. } => true,
+        K::Ellipse { .. } | K::Path { .. } => !s.kind.is_open_curve(),
+        _ => false,
+    };
+    if !closed {
+        return None;
+    }
+    // A whole ellipse is drawn with four curves a little off the true
+    // ellipse; its area is the true one, as a measure should be.
+    if let K::Ellipse { rect, arc: None } = &s.kind {
+        let a = std::f64::consts::PI * rect.width() * rect.height() / 4.0
+            * s.transform.determinant().abs();
+        return a.is_finite().then_some(a);
+    }
+    let a = tracedraw_core::shaping::filled_area(&s.page_path(), s.fill_rule);
+    a.is_finite().then_some(a)
+}
+
 fn properties(app: &mut App, ui: &mut Ui) {
     let cc = app.current_colors;
     ui.data_mut(|d| d.insert_temp(current_colors_id(), cc));
@@ -1159,6 +1184,26 @@ fn properties(app: &mut App, ui: &mut Ui) {
         .monospace()
         .size(11.0),
     );
+    // One closed object: the area it covers, in the document's unit
+    // squared (#2599).
+    if let Some(area) = shapes
+        .first()
+        .filter(|_| shapes.len() == 1)
+        .and_then(selection_area_mm2)
+    {
+        let k = app.units.world_from_mm(1.0);
+        ui.label(
+            egui::RichText::new(format!(
+                "{} {:.2} {}\u{b2}",
+                tr("docker.area"),
+                area * k * k,
+                app.units.short()
+            ))
+            .monospace()
+            .size(11.0),
+        )
+        .rich_tip(crate::ui::tips::keyed("docker.area"));
+    }
 
     ui.separator();
     // A jump from elsewhere (F11 to the fill, the outline from the status
@@ -5887,5 +5932,43 @@ pub(crate) mod tests {
         );
         // 100 px of finger: egui's drag-to-scroll has no tap distance.
         assert!(offset() > 50.0, "the contents scrolled up: {}", offset());
+    }
+
+    /// #2599: the area of one closed object, holes out; none for an open
+    /// curve or a text.
+    #[test]
+    fn the_area_of_one_closed_object() {
+        use tracedraw_core::geometry::Rect;
+        let rect = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 20.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let a = selection_area_mm2(&rect).expect("closed");
+        assert!((a - 200.0).abs() < 1e-6, "{a}");
+        let circle = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(2),
+            ShapeKind::Ellipse {
+                rect: Rect::new(0.0, 0.0, 20.0, 20.0),
+                arc: None,
+            },
+        );
+        let a = selection_area_mm2(&circle).expect("closed");
+        assert!((a - std::f64::consts::PI * 100.0).abs() < 1e-9, "{a}");
+        let mut line = tracedraw_core::geometry::BezPath::new();
+        line.move_to((0.0, 0.0));
+        line.line_to((10.0, 10.0));
+        line.line_to((20.0, 0.0));
+        let open = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(3),
+            ShapeKind::Path {
+                path: line,
+                closed: false,
+            },
+        );
+        assert_eq!(selection_area_mm2(&open), None);
     }
 }

@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Properties panel: with one closed object selected (a rectangle, ellipse, polygon or closed curve) the header gives its area under the position and size, holes taken out, in the drawing unit squared (#2599).
+- Repeat Copies: the horizontal and vertical settings each have a tick box, so copies are made across only or up and down only, and a choice of the way they go: right or left, down or up. A distance had to be set to 0 for one axis, and a negative one typed to go left or up (#2572).
 - A right click on an object in the Objects docker opens the same menu as a right click on it in the drawing (Edit Bitmap, Trace, Order, Hide, Lock, Clip to Frame, Properties and the rest, fitted to the object), with the docker's Rename and Move to Layer on top. It had only Rename, Move to Layer, a few object commands and Delete (#2601).
 - The dimension tools show the length (or the angle, for the angular dimension) beside the pointer while the dimension is placed, in the property bar's units and decimals. Only a thin line followed the pointer and the measure appeared after the last click (#2624).
 - Colour picker and Edit Fill: the colour's hexadecimal code can be typed or pasted, such as #364C9F, and sets the colour when Enter is pressed. It was only shown (#2606).

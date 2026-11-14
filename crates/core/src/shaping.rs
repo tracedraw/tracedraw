@@ -1168,6 +1168,49 @@ pub fn offset_filled(path: &BezPath, d: f64, join: Join, fill: FillRule) -> BezP
     fit_polygon_curves(&offset_polygon_with(path, d, join, fill), fit_tolerance(d))
 }
 
+/// The area `path` fills read with `fill`, in square units of its
+/// coordinates: holes taken out, overlaps counted once. The curves are
+/// flattened finely for the size of the path, so a circle's area comes
+/// within a hundred-thousandth of pi r squared (#2599).
+pub fn filled_area(path: &BezPath, fill: FillRule) -> f64 {
+    use crate::geometry::Shape as _;
+    use i_overlay::float::simplify::SimplifyShape;
+    let b = path.bounding_box();
+    let size = b.width().hypot(b.height());
+    if !size.is_finite() || size <= 0.0 {
+        return 0.0;
+    }
+    let tol = (size * 1e-6).max(1e-9);
+    let mut rings: Vec<Vec<[f64; 2]>> = Vec::new();
+    let mut cur: Vec<[f64; 2]> = Vec::new();
+    kurbo::flatten(path.elements().iter().copied(), tol, &mut |el| match el {
+        PathEl::MoveTo(p) => {
+            if cur.len() >= 3 {
+                rings.push(std::mem::take(&mut cur));
+            } else {
+                cur.clear();
+            }
+            cur.push([p.x, p.y]);
+        }
+        PathEl::LineTo(p) => cur.push([p.x, p.y]),
+        _ => {}
+    });
+    if cur.len() >= 3 {
+        rings.push(cur);
+    }
+    let clean = rings.simplify_shape(match fill {
+        FillRule::EvenOdd => IFill::EvenOdd,
+        FillRule::NonZero => IFill::NonZero,
+    });
+    // Outer contours turn one way and holes the other once simplified.
+    clean
+        .iter()
+        .flatten()
+        .map(|r| ring_area(r))
+        .sum::<f64>()
+        .abs()
+}
+
 /// The closed band `d` mm (taken as positive) to each side of an open
 /// path's subpaths, with straight-cut ends, its corners `join`ed: the
 /// contour of an open curve, which runs round both sides of it and is
@@ -4430,6 +4473,27 @@ mod tests {
     /// Each contour is swept within itself: two squares far apart stay
     /// two solids, with nothing joining the end of one to the start of the
     /// other (the shards of #2156).
+    #[test]
+    fn filled_area_takes_holes_out_and_follows_curves() {
+        use crate::geometry::Shape as _;
+        let circle = kurbo::Circle::new((0.0, 0.0), 50.0).to_path(1e-9);
+        let a = filled_area(&circle, FillRule::NonZero);
+        let want = std::f64::consts::PI * 2500.0;
+        assert!((a - want).abs() < want * 1e-5, "{a} {want}");
+        // A 10 x 10 square with a 4 x 4 hole, both turning the same way:
+        // even-odd takes the hole out, non-zero fills it.
+        let mut p = BezPath::new();
+        for (x0, y0, x1, y1) in [(0.0, 0.0, 10.0, 10.0), (3.0, 3.0, 7.0, 7.0)] {
+            p.move_to((x0, y0));
+            p.line_to((x1, y0));
+            p.line_to((x1, y1));
+            p.line_to((x0, y1));
+            p.close_path();
+        }
+        assert!((filled_area(&p, FillRule::EvenOdd) - 84.0).abs() < 1e-6);
+        assert!((filled_area(&p, FillRule::NonZero) - 100.0).abs() < 1e-6);
+    }
+
     #[test]
     fn sweep_keeps_each_contour_to_itself() {
         let mut two = square(0.0);

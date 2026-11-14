@@ -147,57 +147,96 @@ fn step_and_repeat_fields(
             .rich_tip(crate::ui::tips::keyed("docker.sr_copies"))
             .has_focus();
     });
-    ui.strong(tr("docker.horizontal_settings"));
-    ui.horizontal(|ui| {
-        ui.radio_value(&mut sr.mode_x, 0, tr("docker.offset"))
-            .rich_tip(crate::ui::tips::pair(
-                "docker.offset",
-                "docker.sr_offset_desc",
-            ));
-        ui.radio_value(&mut sr.mode_x, 1, tr("docker.spacing"))
-            .rich_tip(crate::ui::tips::pair(
-                "docker.spacing",
-                "docker.sr_spacing_desc",
-            ));
+    // Each axis can be turned off, so the copies go across only or up
+    // and down only, and each goes one way or the other (#2572).
+    ui.checkbox(
+        &mut sr.use_x,
+        egui::RichText::new(tr("docker.horizontal_settings")).strong(),
+    )
+    .rich_tip(crate::ui::tips::pair(
+        "docker.horizontal_settings",
+        "docker.sr_use_x_desc",
+    ));
+    let on = sr.use_x;
+    ui.add_enabled_ui(on, |ui| {
+        direction(ui, &mut sr.left, ("docker.sr_right", "docker.sr_left"));
     });
-    let mut dx = u.world_from_mm(sr.dx);
-    let r = ui
-        .add(
-            crate::ui::field::NumField::new(&mut dx)
-                .speed(0.5)
-                .suffix(format!(" {}", u.short())),
-        )
-        .rich_tip(crate::ui::tips::keyed("docker.sr_dx"));
-    focused |= r.has_focus();
-    if r.changed() {
-        sr.dx = u.world_to_mm(dx);
-    }
-    ui.strong(tr("docker.vertical_settings"));
-    ui.horizontal(|ui| {
-        ui.radio_value(&mut sr.mode_y, 0, tr("docker.offset"))
-            .rich_tip(crate::ui::tips::pair(
-                "docker.offset",
-                "docker.sr_offset_desc",
-            ));
-        ui.radio_value(&mut sr.mode_y, 1, tr("docker.spacing"))
-            .rich_tip(crate::ui::tips::pair(
-                "docker.spacing",
-                "docker.sr_spacing_desc",
-            ));
+    ui.add_enabled_ui(on, |ui| {
+        ui.horizontal(|ui| {
+            ui.radio_value(&mut sr.mode_x, 0, tr("docker.offset"))
+                .rich_tip(crate::ui::tips::pair(
+                    "docker.offset",
+                    "docker.sr_offset_desc",
+                ));
+            ui.radio_value(&mut sr.mode_x, 1, tr("docker.spacing"))
+                .rich_tip(crate::ui::tips::pair(
+                    "docker.spacing",
+                    "docker.sr_spacing_desc",
+                ));
+        });
+        let mut dx = u.world_from_mm(sr.dx);
+        let r = ui
+            .add(
+                crate::ui::field::NumField::new(&mut dx)
+                    .speed(0.5)
+                    .suffix(format!(" {}", u.short())),
+            )
+            .rich_tip(crate::ui::tips::keyed("docker.sr_dx"));
+        focused |= r.has_focus();
+        if r.changed() {
+            sr.dx = u.world_to_mm(dx);
+        }
     });
-    let mut dy = u.world_from_mm(sr.dy);
-    let r = ui
-        .add(
-            crate::ui::field::NumField::new(&mut dy)
-                .speed(0.5)
-                .suffix(format!(" {}", u.short())),
-        )
-        .rich_tip(crate::ui::tips::keyed("docker.sr_dy"));
-    focused |= r.has_focus();
-    if r.changed() {
-        sr.dy = u.world_to_mm(dy);
-    }
+    ui.checkbox(
+        &mut sr.use_y,
+        egui::RichText::new(tr("docker.vertical_settings")).strong(),
+    )
+    .rich_tip(crate::ui::tips::pair(
+        "docker.vertical_settings",
+        "docker.sr_use_y_desc",
+    ));
+    let on = sr.use_y;
+    ui.add_enabled_ui(on, |ui| {
+        direction(ui, &mut sr.up, ("docker.sr_down", "docker.sr_up"));
+    });
+    ui.add_enabled_ui(on, |ui| {
+        ui.horizontal(|ui| {
+            ui.radio_value(&mut sr.mode_y, 0, tr("docker.offset"))
+                .rich_tip(crate::ui::tips::pair(
+                    "docker.offset",
+                    "docker.sr_offset_desc",
+                ));
+            ui.radio_value(&mut sr.mode_y, 1, tr("docker.spacing"))
+                .rich_tip(crate::ui::tips::pair(
+                    "docker.spacing",
+                    "docker.sr_spacing_desc",
+                ));
+        });
+        let mut dy = u.world_from_mm(sr.dy);
+        let r = ui
+            .add(
+                crate::ui::field::NumField::new(&mut dy)
+                    .speed(0.5)
+                    .suffix(format!(" {}", u.short())),
+            )
+            .rich_tip(crate::ui::tips::keyed("docker.sr_dy"));
+        focused |= r.has_focus();
+        if r.changed() {
+            sr.dy = u.world_to_mm(dy);
+        }
+    });
     focused
+}
+
+/// The way the copies go along one axis: `keys` names the forward way
+/// (right, down) and the back one (left, up); `back` holds the choice.
+fn direction(ui: &mut Ui, back: &mut bool, keys: (&str, &str)) {
+    ui.horizontal(|ui| {
+        for (value, key) in [(false, keys.0), (true, keys.1)] {
+            ui.radio_value(back, value, tr(key))
+                .rich_tip(crate::ui::tips::pair(key, "docker.sr_direction_desc"));
+        }
+    });
 }
 
 /// A length field in the document's unit holding millimetres, at least
