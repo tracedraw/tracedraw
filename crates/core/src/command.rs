@@ -139,6 +139,11 @@ pub enum Command {
     SetDocumentPalette {
         colors: Vec<Color>,
     },
+    /// The names the document palette gives its colours (#2187),
+    /// replacing the ones it had.
+    SetDocumentPaletteNames {
+        names: Vec<crate::document::PaletteName>,
+    },
     /// The drawing's spot inks, replacing the ones it had.
     SetInks {
         inks: Vec<crate::document::Ink>,
@@ -537,6 +542,7 @@ impl Command {
             Command::SetObjectDefaults { .. } => "Default Properties",
             Command::SetColorStyles { .. } => "Color Styles",
             Command::SetDocumentPalette { .. } => "Document Palette",
+            Command::SetDocumentPaletteNames { .. } => "Document Palette",
             Command::SetInks { .. } => "Spot Inks",
             Command::SetOpacityMask { .. } => "Opacity Mask",
             Command::SetRasterFx { .. } => "Effect",
@@ -784,6 +790,9 @@ impl Command {
             }
             Command::SetDocumentPalette { colors } => {
                 doc.palette = colors.clone();
+            }
+            Command::SetDocumentPaletteNames { names } => {
+                doc.palette_names = names.clone();
             }
             Command::SetInks { inks } => {
                 doc.inks = inks.clone();

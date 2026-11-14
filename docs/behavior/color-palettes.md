@@ -374,9 +374,15 @@ The document palette is first in the editor's palette list while a
 drawing is open, and Edit Palette... in its bar's menu opens it there
 (#2321). It is the drawing's: OK or Apply gives the drawing the colours
 as one step of its undo history (Edit > Undo takes it back). Its colours
-keep no names of their own, so a name is shown and not edited there, and
-a spot colour, an ink of the drawing, keeps its value and its ink; Save
-as writes the colours to a palette file without changing the drawing.
+are named and made spot colours there as in any palette (#2187): a name
+given to a process colour is kept with the drawing (and shown wherever
+the colour's name is, its swatch's tooltip included); a spot colour goes
+by its ink's name, so a new name renames the ink, and the objects using
+it keep it, as the Colour panel's ink list renames it; a colour made a
+spot colour adds its ink to the drawing, named as typed. A spot colour,
+an ink of the drawing, keeps its value; Save as writes the colours to a
+palette file without changing the drawing. Until 2026-11-14 the name and
+Spot colour were greyed in the document palette.
 Spot colours have a small dot in the corner of their swatch, in the
 editor and on the palette bars, black on a light ink and white on a dark
 one. The fill and outline swatches of the status bar and the Colour panel carry

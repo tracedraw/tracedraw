@@ -409,6 +409,20 @@ pub fn name_of(app: &App, c: Color) -> String {
             }
         }
     }
+    // A name given to it in the document palette (#2187).
+    if let Some(n) = app
+        .has_document()
+        .then(|| app.doc().palette_name_of(c))
+        .flatten()
+    {
+        return n.to_string();
+    }
+    palette_name_of(app, c)
+}
+
+/// The name a palette (the default one, then the others) gives colour
+/// `c`, or an empty one.
+pub fn palette_name_of(app: &App, c: Color) -> String {
     app.palette
         .iter()
         .chain(app.palettes.iter().flat_map(|p| p.colors.iter()))

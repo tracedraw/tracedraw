@@ -5129,6 +5129,11 @@ pub struct Document {
     /// Document-level palette (the bottom "document palette").
     #[serde(default)]
     pub palette: Vec<crate::Color>,
+    /// Names given to the document palette's colours in the Palette
+    /// Editor (#2187): a spot colour goes by its ink's name instead, and
+    /// a colour without one by the name a palette gives it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub palette_names: Vec<PaletteName>,
     /// Time Tracker records. Like the id counter they stay as they are
     /// when the drawing's changes are undone.
     #[serde(default, skip_serializing_if = "TimeTracker::is_empty")]
@@ -5211,6 +5216,23 @@ pub struct Comment {
     pub replies: Vec<CommentReply>,
     #[serde(default)]
     pub resolved: bool,
+}
+
+/// A name the document palette gives one of its colours.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PaletteName {
+    pub color: crate::Color,
+    pub name: String,
+}
+
+impl Document {
+    /// The name the document palette gives colour `c`, if any.
+    pub fn palette_name_of(&self, c: crate::Color) -> Option<&str> {
+        self.palette_names
+            .iter()
+            .find(|n| n.color == c)
+            .map(|n| n.name.as_str())
+    }
 }
 
 /// A spot ink: its number (what `Color::Spot` refers to), its name and
@@ -5429,6 +5451,7 @@ impl Document {
                 ..Default::default()
             },
             palette: Vec::new(),
+            palette_names: Vec::new(),
             time_tracker: TimeTracker::default(),
             saved_view: None,
             selection_groups: std::collections::BTreeMap::new(),
