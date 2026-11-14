@@ -897,6 +897,10 @@ pub const OPEN_EXTENSIONS: &[&str] = &[
     "dxf", "psd", "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx",
 ];
 
+/// The picture files a drawing is made of when they are opened (#2600).
+pub const PICTURE_EXTENSIONS: &[&str] =
+    &["png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff"];
+
 /// The extensions File > Import reads (besides those of installed script
 /// filters).
 pub const IMPORT_EXTENSIONS: &[&str] = &[
@@ -7372,6 +7376,64 @@ impl App {
         self.open_path_with_password(path, "");
     }
 
+    /// A picture file opened (#2600): a new, untitled drawing named after
+    /// the file whose page is the picture's size, the picture filling it
+    /// at the resolution the file records, nothing to undo yet. A file
+    /// that cannot be read leaves the new drawing out and says why.
+    pub fn open_picture(&mut self, path: &std::path::Path) {
+        let tabs = self.docs.len();
+        let had = self.has_document();
+        self.new_document();
+        let title = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(App::untitled_name);
+        let before = self.selection.clone();
+        self.import_bitmap(path);
+        let picture = self
+            .selection
+            .first()
+            .copied()
+            .filter(|_| self.selection != before);
+        let Some(bounds) = picture.and_then(|_| self.selection_bounds()) else {
+            // Not read: the status bar says why; the empty drawing goes.
+            let status = std::mem::take(&mut self.status);
+            if self.docs.len() > tabs {
+                self.close_active_document();
+            }
+            if !had {
+                self.show_welcome = true;
+            }
+            self.status = status;
+            return;
+        };
+        let page = self.page;
+        let cmds = [
+            Command::SetTitle { title },
+            Command::ResizePage {
+                page,
+                size: tracedraw_core::Size::new(bounds.width(), bounds.height()),
+            },
+            Command::TransformShapes {
+                shapes: self.selection.clone(),
+                transform: Affine::translate((-bounds.x0, -bounds.y0)),
+            },
+        ];
+        if let Err(e) = self.engine.run_batch("Open", &cmds) {
+            self.status = e.to_string();
+        }
+        // Opened, not edited: nothing to undo and nothing unsaved.
+        let doc = self.doc().clone();
+        self.engine.replace(doc);
+        self.file = None;
+        self.opened_from = None;
+        self.show_welcome = false;
+        self.fit_pending = true;
+        self.settings.touch_recent(path);
+        self.settings.save();
+        self.status = crate::i18n::tr("status.opened");
+    }
+
     /// Open `path` as a template: a new, untitled drawing even when the file
     /// is open already.
     pub fn open_as_template(&mut self, path: PathBuf) {
@@ -7416,6 +7478,12 @@ impl App {
     /// Open `path`; `password` opens a protected PDF (empty: none).
     pub fn open_path_with_password(&mut self, path: PathBuf, password: &str) {
         let ext = Self::file_kind(&path);
+        // A picture (a JPG or PNG opened with TraceDraw from the file
+        // manager, #2600): a new drawing holding it.
+        if PICTURE_EXTENSIONS.contains(&ext.as_str()) {
+            self.open_picture(&path);
+            return;
+        }
         // A package's fonts, beside the drawing, before its text is laid
         // out (#852).
         if ext == "tdraw" {

@@ -61,7 +61,7 @@ struct Actions {
     rename_page: Option<String>,
     delete_layer: Option<LayerId>,
     reorder: Option<(LayerId, usize)>,
-    /// Each top-level object row drawn and where, and each layer row
+    /// Each object row drawn and where, and each layer row
     /// that takes objects, for a row dragged along the list (live test
     /// of 0.41).
     object_rows: Vec<(ShapeId, Rect)>,
@@ -1180,14 +1180,12 @@ fn object_row(
     }
     // A row dragged along the list moves its object (with the rest of
     // the selection when it is selected) in the stacking order where it
-    // is let go (see `drag_rows`). Only a layer's own objects move so: a
-    // group's objects keep their place in it.
-    if depth == LAYER_OBJECT_DEPTH {
-        act.object_rows.push((s.id, rect));
-        if resp.drag_started() && !s.locked {
-            ui.ctx()
-                .data_mut(|d| d.insert_temp(egui::Id::new(ROW_DRAG), s.id));
-        }
+    // is let go (see `drag_rows`): among a layer's objects, among a
+    // group's, into a group or out of one (#2672).
+    act.object_rows.push((s.id, rect));
+    if resp.drag_started() && !s.locked {
+        ui.ctx()
+            .data_mut(|d| d.insert_temp(egui::Id::new(ROW_DRAG), s.id));
     }
     if resp.double_clicked() {
         act.rename_object = Some((s.id, s.name.clone().unwrap_or_else(|| label.clone())));
@@ -1753,29 +1751,48 @@ const ROW_DRAG: &str = "objects_row_drag";
 /// Where an object row let go goes.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum RowDrop {
-    /// In front of `reference` (`in_front`) or behind it, in its layer.
+    /// In front of `reference` (`in_front`) or behind it, in its layer or
+    /// in its group.
     Object { reference: ShapeId, in_front: bool },
+    /// Into the group, over its objects (#2672).
+    Into(ShapeId),
     /// On the top of a layer.
     Layer(LayerId),
 }
 
 /// The objects a dragged row carries, bottom first as they are drawn: the
-/// selected objects of the layers when the row's object is selected (a
-/// group's objects stay in their group), else that object; locked ones
-/// stay where they are.
+/// selected objects when the row's object is selected, on layers or in
+/// groups (an object in a selected group goes with its group), else that
+/// object; locked ones stay where they are.
 fn dragged_objects(app: &App, dragged: ShapeId) -> Vec<ShapeId> {
+    fn walk(s: &Shape, take: &dyn Fn(&Shape) -> bool, out: &mut Vec<ShapeId>) {
+        if take(s) {
+            if !s.locked {
+                out.push(s.id);
+            }
+            return;
+        }
+        if let ShapeKind::Group { children } = &s.kind {
+            for c in children {
+                walk(c, take, out);
+            }
+        }
+    }
     let with_selection = app.selection.contains(&dragged);
+    let take = |s: &Shape| s.id == dragged || (with_selection && app.selection.contains(&s.id));
     let mut out = Vec::new();
     // Layer after layer as their objects are kept, each bottom first.
     for l in app.doc().all_layers() {
         for s in &l.shapes {
-            let carried = s.id == dragged || (with_selection && app.selection.contains(&s.id));
-            if carried && !s.locked {
-                out.push(s.id);
-            }
+            walk(s, &take, &mut out);
         }
     }
     out
+}
+
+/// The objects lie on layers, not in groups.
+fn all_on_layers(app: &App, ids: &[ShapeId]) -> bool {
+    ids.iter().all(|id| app.doc().shape(*id).is_ok())
 }
 
 /// The commands that put `ids` (bottom first) where `drop` says: objects
@@ -1785,9 +1802,22 @@ fn dragged_objects(app: &App, dragged: ShapeId) -> Vec<ShapeId> {
 /// dragged).
 fn drop_commands(app: &App, ids: &[ShapeId], drop: RowDrop) -> Vec<Command> {
     let doc = app.doc();
+    if ids.is_empty() {
+        return Vec::new();
+    }
+    // Into a group, beside an object in one, or objects out of groups
+    // (#2672): one move that keeps them where they show.
+    let nested = match drop {
+        RowDrop::Object { reference, .. } => doc.is_nested(reference) || !all_on_layers(app, ids),
+        RowDrop::Into(_) => true,
+        RowDrop::Layer(_) => !all_on_layers(app, ids),
+    };
+    if nested {
+        return nested_drop_commands(app, ids, drop);
+    }
     let layer = match drop {
         RowDrop::Object { reference, .. } => {
-            if ids.is_empty() || ids.contains(&reference) {
+            if ids.contains(&reference) {
                 return Vec::new();
             }
             match doc.locate(reference) {
@@ -1796,6 +1826,7 @@ fn drop_commands(app: &App, ids: &[ShapeId], drop: RowDrop) -> Vec<Command> {
             }
         }
         RowDrop::Layer(l) => l,
+        RowDrop::Into(_) => return Vec::new(),
     };
     if doc.all_layers().any(|l| l.id == layer && l.locked) {
         return Vec::new();
@@ -1815,12 +1846,76 @@ fn drop_commands(app: &App, ids: &[ShapeId], drop: RowDrop) -> Vec<Command> {
     cmds
 }
 
+/// The command for a drop that involves groups (#2672): `ids` go next to
+/// the reference in whatever holds it, into the group, or on the top of
+/// the layer (next to its top object; an empty layer takes nothing so).
+/// Empty when the target's layer is locked, the target is among the
+/// objects dragged, or nothing would move.
+fn nested_drop_commands(app: &App, ids: &[ShapeId], drop: RowDrop) -> Vec<Command> {
+    let doc = app.doc();
+    let target_layer = match drop {
+        RowDrop::Object { reference: t, .. } | RowDrop::Into(t) => layer_holding(app, t),
+        RowDrop::Layer(l) => Some(l),
+    };
+    let Some(layer) = target_layer else {
+        return Vec::new();
+    };
+    if doc.all_layers().any(|l| l.id == layer && l.locked) {
+        return Vec::new();
+    }
+    let cmd = match drop {
+        RowDrop::Object {
+            reference,
+            in_front,
+        } => Command::PlaceBeside {
+            shapes: ids.to_vec(),
+            reference,
+            in_front,
+        },
+        RowDrop::Into(group) => Command::PlaceInGroup {
+            shapes: ids.to_vec(),
+            group,
+        },
+        RowDrop::Layer(l) => {
+            let top = doc
+                .all_layers()
+                .find(|x| x.id == l)
+                .and_then(|x| x.shapes.last())
+                .map(|s| s.id);
+            match top {
+                Some(reference) => Command::PlaceBeside {
+                    shapes: ids.to_vec(),
+                    reference,
+                    in_front: true,
+                },
+                None => return Vec::new(),
+            }
+        }
+    };
+    // The target, or a group holding it, among the objects dragged: it
+    // cannot go inside itself.
+    let target = match drop {
+        RowDrop::Object { reference: t, .. } | RowDrop::Into(t) => Some(t),
+        RowDrop::Layer(_) => None,
+    };
+    if let Some(t) = target {
+        let mut above = doc.ancestors(t);
+        above.push(t);
+        if ids.iter().all(|id| above.contains(id)) {
+            return Vec::new();
+        }
+    }
+    vec![cmd]
+}
+
 /// Put the objects `ids` (bottom first) where `drop` says, one undo
 /// step; they stay selected, and their layer becomes the active one, on
 /// its page.
 fn drop_rows(app: &mut App, ids: &[ShapeId], drop: RowDrop) {
     let layer = match drop {
-        RowDrop::Object { reference, .. } => layer_holding(app, reference),
+        RowDrop::Object { reference, .. } | RowDrop::Into(reference) => {
+            layer_holding(app, reference)
+        }
         RowDrop::Layer(l) => Some(l),
     };
     let cmds = drop_commands(app, ids, drop);
@@ -1875,6 +1970,17 @@ fn drag_rows(app: &mut App, ui: &Ui, rows: &[(ShapeId, Rect)], layers: &[(LayerI
             if *sid == dragged {
                 return None;
             }
+            // A group's row: its middle half takes the objects into the
+            // group, its top and bottom quarters put them in front of it
+            // or behind it (#2672). Another row: its upper half in front,
+            // its lower half behind.
+            let group = app
+                .doc()
+                .find_shape(*sid)
+                .is_some_and(|s| matches!(s.kind, ShapeKind::Group { .. }));
+            if group && (p.y - r.center().y).abs() < r.height() / 4.0 {
+                return Some((RowDrop::Into(*sid), r.center().y, *r));
+            }
             let in_front = p.y < r.center().y;
             let y = if in_front { r.top() } else { r.bottom() };
             let drop = RowDrop::Object {
@@ -1889,11 +1995,23 @@ fn drag_rows(app: &mut App, ui: &Ui, rows: &[(ShapeId, Rect)], layers: &[(LayerI
             .map(|(l, r)| (RowDrop::Layer(*l), r.bottom(), *r))
     });
     if down {
-        if let Some((_, y, r)) = target {
-            ui.painter().line_segment(
-                [Pos2::new(r.left(), y), Pos2::new(r.right(), y)],
-                Stroke::new(2.0, Tokens::ACCENT),
-            );
+        match target {
+            // Into a group: its row is framed.
+            Some((RowDrop::Into(_), _, r)) => {
+                ui.painter().rect_stroke(
+                    r.shrink(1.0),
+                    3.0,
+                    Stroke::new(2.0, Tokens::ACCENT),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            Some((_, y, r)) => {
+                ui.painter().line_segment(
+                    [Pos2::new(r.left(), y), Pos2::new(r.right(), y)],
+                    Stroke::new(2.0, Tokens::ACCENT),
+                );
+            }
+            None => {}
         }
         return;
     }
@@ -3178,5 +3296,86 @@ mod drag_tests {
             );
         }
         assert!(moved, "Move to Layer moved nothing: {keys:?}");
+    }
+
+    fn children(app: &App, group: ShapeId) -> Vec<ShapeId> {
+        match app.doc().find_shape(group).map(|s| &s.kind) {
+            Some(ShapeKind::Group { children }) => children.iter().map(|s| s.id).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// #2672: a row let go on the middle of a group's row goes into the
+    /// group, on top; a group's object dragged along its rows changes
+    /// places inside it; dragged onto an object of the layer it comes out
+    /// of the group. One undo step each.
+    #[test]
+    fn rows_go_into_groups_and_change_places_inside_them() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let a = app.new_shape(rect_kind()).expect("a");
+        let b = app.new_shape(rect_kind()).expect("b");
+        let c = app.new_shape(rect_kind()).expect("c");
+        app.run(Command::Group { shapes: vec![b, c] });
+        let g = app.doc().pages[0].layers[0].shapes[1].id;
+        app.select(Vec::new());
+        assert_eq!(order(&app, 0), [a, g]);
+        assert_eq!(children(&app, g), [b, c]);
+        // a onto the middle of the group's row: into the group, on top.
+        frame(&ctx, &mut app, Vec::new());
+        let (ra, rg) = (object_row(&ctx, a), object_row(&ctx, g));
+        drag(&ctx, &mut app, ra.center(), rg.center());
+        assert_eq!(order(&app, 0), [g]);
+        assert_eq!(children(&app, g), [b, c, a]);
+        assert_eq!(app.selection, vec![a]);
+        app.undo();
+        assert_eq!(order(&app, 0), [a, g], "one undo step");
+        // The top quarter of the group's row: in front of the group.
+        frame(&ctx, &mut app, Vec::new());
+        let (ra, rg) = (object_row(&ctx, a), object_row(&ctx, g));
+        drag(
+            &ctx,
+            &mut app,
+            ra.center(),
+            Pos2::new(rg.center().x, rg.top() + 2.0),
+        );
+        assert_eq!(order(&app, 0), [g, a]);
+        app.undo();
+        // The group opened, b's row dragged onto the upper half of c's:
+        // b goes in front of c inside the group.
+        app.objects_open_groups.insert(g);
+        app.select(Vec::new());
+        frame(&ctx, &mut app, Vec::new());
+        let (rb, rc) = (object_row(&ctx, b), object_row(&ctx, c));
+        drag(
+            &ctx,
+            &mut app,
+            rb.center(),
+            Pos2::new(rc.center().x, rc.top() + 2.0),
+        );
+        assert_eq!(children(&app, g), [c, b]);
+        assert_eq!(order(&app, 0), [a, g]);
+        // c out of the group, behind a.
+        frame(&ctx, &mut app, Vec::new());
+        let (rc, ra) = (object_row(&ctx, c), object_row(&ctx, a));
+        drag(
+            &ctx,
+            &mut app,
+            rc.center(),
+            Pos2::new(ra.center().x, ra.bottom() - 2.0),
+        );
+        assert_eq!(order(&app, 0), [c, a, g]);
+        assert_eq!(children(&app, g), [b]);
+        // The group onto its own object's row: nothing changes.
+        frame(&ctx, &mut app, Vec::new());
+        let (rg, rb) = (object_row(&ctx, g), object_row(&ctx, b));
+        drag(
+            &ctx,
+            &mut app,
+            rg.center(),
+            Pos2::new(rb.center().x, rb.top() + 2.0),
+        );
+        assert_eq!(order(&app, 0), [c, a, g]);
+        assert_eq!(children(&app, g), [b]);
     }
 }

@@ -3878,6 +3878,15 @@ fn bitmaps_menu(app: &mut App, ui: &mut Ui) {
     ) {
         app.edit_bitmap_externally();
     }
+    // Another picture in its place (#2598).
+    if item(
+        ui,
+        "menu.bitmaps.replace_bitmap",
+        "",
+        app.selected_bitmap().is_some(),
+    ) {
+        app.replace_image();
+    }
     if item(ui, "menu.bitmaps.crop_bitmap", "", has_bitmap) {
         app.set_tool(crate::tools::Tool::Crop);
     }

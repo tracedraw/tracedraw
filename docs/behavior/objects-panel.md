@@ -101,10 +101,21 @@ the right.
   the selection's layer objects along, keeping their order. One undo
   step; the objects stay selected and their layer becomes the active
   one, on its page. Locked objects stay, a locked layer takes nothing,
-  rows inside groups do not drag, and a row let go on itself or away
-  from the rows changes nothing. Checks:
+  and a row let go on itself or away from the rows changes nothing.
+  Groups (#2672): rows inside a group drag too. A row let go on the
+  middle half of a group's row goes into that group, on top of its
+  objects (the row is framed while it would); on the group row's top or
+  bottom quarter it goes in front of or behind the group. Let go on an
+  object inside a group, it goes in front of or behind that object in
+  the group, so a group's objects change places without ungrouping; a
+  group's object let go on an object of a layer comes out of its group.
+  Each object keeps its place on the page whatever group it goes into
+  (`Command::PlaceBeside`, `Command::PlaceInGroup`); a group left empty
+  goes, and a group never goes into itself. Checks:
   `ui::objects_docker::drag_tests::a_row_dragged_along_the_list_changes_the_stacking_order`,
-  `ui::objects_docker::drag_tests::a_row_dragged_onto_another_layer_moves_the_object_there`.
+  `ui::objects_docker::drag_tests::a_row_dragged_onto_another_layer_moves_the_object_there`,
+  `ui::objects_docker::drag_tests::rows_go_into_groups_and_change_places_inside_them`,
+  `command::tests::objects_move_into_out_of_and_inside_groups` (core).
 - The bottom bar:
   - New Layer adds "Layer n" on top of the page's layers (n is the
     number of layers plus one, or the next number not in use) and makes

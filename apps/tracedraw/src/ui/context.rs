@@ -278,6 +278,16 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
         ) {
             app.edit_bitmap_externally();
         }
+        // Another picture in its place (#2598).
+        if ci(
+            ui,
+            close,
+            "menu.bitmaps.replace_bitmap",
+            "",
+            app.selected_bitmap().is_some(),
+        ) {
+            app.replace_image();
+        }
         // On this computer, no AI service needed (#231).
         if ci(
             ui,

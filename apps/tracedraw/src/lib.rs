@@ -274,6 +274,13 @@ mod winit_quit_request;
 #[allow(dead_code)]
 #[path = "../../../vendor/winit/src/file_drop.rs"]
 mod winit_file_drop;
+// Pictures dragged in from other programs, of the same copy (#2349): the
+// mark of a dropped picture's file and the bitmap reading of the Windows
+// clipboard, with its tests.
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+#[allow(dead_code)]
+#[path = "../../../vendor/winit/src/picture_drop.rs"]
+pub(crate) mod winit_picture_drop;
 // The pointer kept on a shortcut with Alt on Windows, of the same copy
 // (#1922).
 #[cfg(all(test, not(target_arch = "wasm32")))]

@@ -384,8 +384,9 @@ fn read_vector() -> Option<Vec<u8>> {
 /// The clipboard's picture, decoded. On an X11 desktop the clipboard's
 /// types are read and its best picture type is asked for, with time for
 /// a busy program that sends a large picture in parts (#1488, see
-/// `x11_clipboard.rs`); elsewhere (Windows, macOS, a Wayland desktop),
-/// and when that finds nothing, the clipboard library reads its PNG.
+/// `x11_clipboard.rs`); on Windows its PNG or bitmap is read
+/// (`win_clipboard::read_picture`, #2349); elsewhere (macOS, a Wayland
+/// desktop), and when that finds nothing, the clipboard library reads it.
 #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 fn read_image() -> Option<image::RgbaImage> {
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -395,6 +396,13 @@ fn read_image() -> Option<image::RgbaImage> {
         if let Some(img) = crate::x11_clipboard::read_image() {
             return Some(img);
         }
+    }
+    // Windows: PNG, then the bitmap of any depth and layout (#2349).
+    #[cfg(windows)]
+    if let Some(img) = crate::win_clipboard::read_picture()
+        .and_then(|bytes| crate::files::decode_picture(&bytes).ok())
+    {
+        return Some(img.into_rgba8());
     }
     let from_library = with_clipboard(|cb| cb.get_image().ok())
         .flatten()
@@ -1188,6 +1196,82 @@ impl App {
         }
     }
 
+    /// Image > Replace Image (#2598): a picture file picked takes the place
+    /// of the selected bitmap (see [`App::replace_image_with`]).
+    pub fn replace_image(&mut self) {
+        let Some(id) = self.selected_bitmap() else {
+            return;
+        };
+        crate::files::Dialog::new()
+            .add_filter(tr("file.images"), crate::app::PICTURE_EXTENSIONS)
+            .pick_file(self, move |app, path| {
+                app.replace_image_with(id, &path);
+            });
+    }
+
+    /// Put the picture of the file `path` in the place of bitmap `id`: the
+    /// same place, turn and size on the page; a picture of other
+    /// proportions fits inside that box, centred, uncut and undistorted.
+    /// Its effects go (they were made for the old pixels) and its link
+    /// now names the new file. One undo step. False when `id` is not a
+    /// bitmap or the file cannot be read (the status bar says so).
+    pub fn replace_image_with(&mut self, id: ShapeId, path: &std::path::Path) -> bool {
+        let Some(s) = self.doc().find_shape(id).cloned() else {
+            return false;
+        };
+        let ShapeKind::Bitmap { rect: old, .. } = s.kind else {
+            return false;
+        };
+        let read = crate::files::read(path)
+            .map_err(|e| e.to_string())
+            .and_then(|b| crate::bitmap_file::read(&b));
+        let picture = match read {
+            Ok(p) => p,
+            Err(e) => {
+                self.status = trf(
+                    "status.could_not_read",
+                    &[("p", &path.display().to_string()), ("e", &e)],
+                );
+                return false;
+            }
+        };
+        let (w, h) = picture.rgba.dimensions();
+        if w == 0 || h == 0 {
+            return false;
+        }
+        let rect = replaced_rect(old, w, h);
+        let Some((png, inks)) = picture.into_png() else {
+            return false;
+        };
+        let mut data = s.data.clone();
+        data.retain(|(k, _)| k != crate::package::LINK_KEY);
+        data.push((crate::package::LINK_KEY.into(), path.display().to_string()));
+        let cmds = vec![
+            Command::SetShapeKind {
+                shape: id,
+                kind: ShapeKind::Bitmap {
+                    rect,
+                    width_px: w,
+                    height_px: h,
+                    png: png.into(),
+                    fx: None,
+                },
+            },
+            Command::SetPictureInks {
+                shape: id,
+                cmyk: inks.is_some(),
+                inks,
+            },
+            Command::SetObjectData { shape: id, data },
+        ];
+        if let Err(e) = self.engine.run_batch("Replace Image", &cmds) {
+            self.status = e.to_string();
+            return false;
+        }
+        self.status = tr("status.bitmap_replaced");
+        true
+    }
+
     /// Image > Update from Link: re-read the linked file into the object.
     pub fn update_bitmap_from_link(&mut self) {
         let Some(id) = self.selected_bitmap() else {
@@ -1328,6 +1412,30 @@ impl App {
         data.retain(|(k, _)| k != "bitmap.link");
         self.run(Command::SetObjectData { shape: id, data });
     }
+}
+
+/// The box a replacing picture of `w` x `h` pixels takes in the bitmap
+/// box `old` (#2598): `old` itself when the proportions match (within a
+/// pixel's worth), else the largest box of the picture's proportions
+/// inside it, centred.
+fn replaced_rect(old: tracedraw_core::Rect, w: u32, h: u32) -> tracedraw_core::Rect {
+    let (ow, oh) = (old.width(), old.height());
+    if !(ow > 0.0 && oh > 0.0) {
+        return old;
+    }
+    let aspect = w as f64 / h as f64;
+    let fit_w = ow.min(oh * aspect);
+    let fit_h = fit_w / aspect;
+    if (fit_w - ow).abs() <= ow / w as f64 && (fit_h - oh).abs() <= oh / h as f64 {
+        return old;
+    }
+    let c = old.center();
+    tracedraw_core::Rect::new(
+        c.x - fit_w / 2.0,
+        c.y - fit_h / 2.0,
+        c.x + fit_w / 2.0,
+        c.y + fit_h / 2.0,
+    )
 }
 
 /// The paste key test of the windowing layer's gate (vendor/README.md,
@@ -1929,6 +2037,130 @@ mod linked_watch_tests {
         tiny_skia::Pixmap::new(w, h)
             .and_then(|p| p.encode_png().ok())
             .unwrap_or_default()
+    }
+
+    /// Replace Image (#2598): the new picture takes the old one's box (a
+    /// picture of the same proportions) or fits inside it, centred (other
+    /// proportions); the link names the new file; one undo step; a file
+    /// that cannot be read changes nothing.
+    #[test]
+    fn replace_image_keeps_the_place_and_size() {
+        if crate::files::WEB {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tracedraw-replace-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let square = dir.join("square.png");
+        let wide = dir.join("wide.png");
+        std::fs::write(&square, png(4, 4)).expect("png");
+        std::fs::write(&wide, png(8, 4)).expect("png");
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Bitmap {
+                rect: Rect::new(10.0, 10.0, 30.0, 30.0),
+                width_px: 2,
+                height_px: 2,
+                png: png(2, 2).into(),
+                fx: None,
+            })
+            .expect("bitmap");
+        let kind = |app: &App| match &app.doc().find_shape(id).expect("bitmap").kind {
+            ShapeKind::Bitmap { rect, width_px, .. } => (*rect, *width_px),
+            _ => unreachable!(),
+        };
+        let link = |app: &App| app.bitmap_link(id);
+        assert!(app.replace_image_with(id, &square));
+        assert_eq!(kind(&app), (Rect::new(10.0, 10.0, 30.0, 30.0), 4));
+        assert_eq!(link(&app), Some(square.display().to_string()));
+        assert!(app.replace_image_with(id, &wide));
+        assert_eq!(kind(&app), (Rect::new(10.0, 15.0, 30.0, 25.0), 8));
+        app.undo();
+        assert_eq!(kind(&app).1, 4, "one undo step");
+        assert!(!app.replace_image_with(id, &dir.join("missing.png")));
+        assert_eq!(kind(&app).1, 4);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A bitmap of the Windows clipboard or of a drag (#2349), with an
+    /// info header, bit field masks and alpha, reads as the picture it
+    /// is once it is a BMP file.
+    #[test]
+    fn a_device_independent_bitmap_reads_as_a_picture() {
+        let mut dib = Vec::new();
+        dib.extend_from_slice(&40u32.to_le_bytes());
+        dib.extend_from_slice(&2i32.to_le_bytes());
+        dib.extend_from_slice(&1i32.to_le_bytes());
+        dib.extend_from_slice(&1u16.to_le_bytes());
+        dib.extend_from_slice(&32u16.to_le_bytes());
+        dib.extend_from_slice(&3u32.to_le_bytes());
+        dib.extend_from_slice(&8u32.to_le_bytes());
+        dib.extend_from_slice(&[0; 16]);
+        for m in [0x00ff_0000u32, 0x0000_ff00, 0x0000_00ff] {
+            dib.extend_from_slice(&m.to_le_bytes());
+        }
+        // Blue, green, red, unused: a red pixel then a blue one.
+        dib.extend_from_slice(&[0, 0, 255, 0, 255, 0, 0, 0]);
+        let bmp = crate::winit_picture_drop::bmp_from_dib(&dib).expect("bmp");
+        let img = crate::files::decode_picture(&bmp)
+            .expect("decoded")
+            .into_rgba8();
+        assert_eq!(img.dimensions(), (2, 1));
+        assert_eq!(&img.get_pixel(0, 0).0[..3], &[255, 0, 0]);
+        assert_eq!(&img.get_pixel(1, 0).0[..3], &[0, 0, 255]);
+    }
+
+    /// A picture dragged in from another program (#2349) is imported
+    /// like a picture file, but without a name or a link to the file the
+    /// drag wrote.
+    #[test]
+    fn a_picture_dragged_in_from_another_program_has_no_link() {
+        if crate::files::WEB {
+            return;
+        }
+        let path = crate::winit_picture_drop::save(&png(3, 2), "png").expect("saved");
+        let mut app = App::headless();
+        app.import_bitmap(&path);
+        let id = *app.selection.first().expect("imported");
+        let s = app.doc().find_shape(id).expect("bitmap");
+        assert!(matches!(s.kind, ShapeKind::Bitmap { width_px: 3, .. }));
+        assert!(s.name.is_none());
+        assert!(app.bitmap_link(id).is_none());
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// A picture file opened (Open With from the file manager, #2600): a
+    /// new untitled drawing named after it, the page the picture's size,
+    /// the picture on it, nothing to undo or save; a file that cannot be
+    /// read opens nothing.
+    #[test]
+    fn an_opened_picture_becomes_a_new_drawing() {
+        if crate::files::WEB {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tracedraw-openpic-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("Holiday.png");
+        std::fs::write(&path, png(96, 48)).expect("png");
+        let mut app = App::headless();
+        let tabs = app.docs.len();
+        app.open_path(path.clone());
+        assert_eq!(app.docs.len(), tabs + 1);
+        assert_eq!(app.doc().title, "Holiday");
+        assert!(app.file.is_none(), "untitled: Save asks where");
+        let size = app.page_size();
+        // 96 x 48 pixels at 96 dpi: 25.4 x 12.7 mm.
+        assert!((size.width - 25.4).abs() < 0.01 && (size.height - 12.7).abs() < 0.01);
+        let shapes = &app.doc().pages[0].layers[0].shapes;
+        assert_eq!(shapes.len(), 1);
+        let b = shapes[0].bounds();
+        assert!(b.x0.abs() < 1e-6 && b.y0.abs() < 1e-6);
+        assert!(!app.engine.is_dirty());
+        assert!(app.engine.undo_label().is_none());
+        let tabs = app.docs.len();
+        std::fs::write(dir.join("broken.png"), b"not a picture").expect("file");
+        app.open_path(dir.join("broken.png"));
+        assert_eq!(app.docs.len(), tabs);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A linked bitmap follows its file: a change on disk is read in on

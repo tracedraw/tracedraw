@@ -406,6 +406,31 @@ change marked `TraceDraw:` in a comment.
   and a buffer whose size it does not divide is a protocol error.
 - The published crate's `examples/` and `tests/` stay as downloaded (the
   manifest lists them); they build in no gate.
+- Change: a picture dragged in from another program (#2349). winit 0.30
+  takes a drag of files only (`CF_HDROP` on Windows, `text/uri-list` on
+  X11 and Wayland), so a picture dragged out of a paint program's canvas
+  or a browser's page was refused. `src/picture_drop.rs` (no crate
+  dependencies) picks the picture type, turns a device-independent
+  bitmap into a BMP file (`bmp_from_dib`) and writes the picture to a
+  file of its own in the temporary folder (`tracedraw-dropped-pictures`);
+  that file then goes out as `HoveredFile` and `DroppedFile`, like a file
+  from a file manager:
+  - Windows (`platform_impl/windows/drop_handler.rs`): without files,
+    `DragEnter` asks for the registered `PNG` or `image/png` formats,
+    then `CF_DIBV5` and `CF_DIB` (`picture_file`, `global_bytes`); a
+    drag that leaves removes the file. The `windows-sys` features
+    `Win32_System_DataExchange` and `Win32_System_Memory` are added.
+  - X11 (`x11/dnd.rs`, `atoms.rs`, `event_processor.rs`): a drag
+    offering no list of files but `image/png`, `image/bmp` or
+    `image/jpeg` is accepted and that type is asked for (`Dnd::wanted`,
+    `parse_wanted`).
+  - Wayland (`wayland/data_device.rs`): the same types are accepted
+    (`drag_type`); the picture read is written to a file and handed to
+    the file drag as a one-line `text/uri-list` (`uri_list`).
+  TraceDraw includes the module (`winit_picture_drop`): its Windows
+  clipboard reads bitmaps with `bmp_from_dib`, its import leaves out the
+  link to a dropped picture's file (`is_dropped_picture`), and its tests
+  run there.
 - Drop the copy and the `[patch.crates-io]` entry when a winit release
   carries pen pressure on X11 and macOS (rust-windowing/winit#99) and
   pen input on Wayland, and

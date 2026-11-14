@@ -5,6 +5,11 @@
 //! metafile (`CF_ENHMETAFILE`). The clipboard library reads text, files
 //! and the picture only, so the paste came in as a bitmap; this reads the
 //! first of those formats the clipboard offers, in that order.
+//!
+//! Pictures (#2349): PNG under `PNG` or `image/png`, else the
+//! device-independent bitmap (`CF_DIBV5`, `CF_DIB`), read as a BMP file,
+//! which takes the bitmaps of every depth and layout a paint program may
+//! copy (the clipboard library reads 32-bit ones of one layout only).
 
 use std::ffi::c_void;
 
@@ -46,6 +51,10 @@ unsafe extern "system" {
 unsafe extern "system" {
     fn GetEnhMetaFileBits(emf: *mut c_void, size: u32, data: *mut u8) -> u32;
 }
+
+/// The bitmap format numbers.
+const CF_DIB: u32 = 8;
+const CF_DIBV5: u32 = 17;
 
 /// The enhanced metafile format number.
 const CF_ENHMETAFILE: u32 = 14;
@@ -180,4 +189,28 @@ pub fn read_vector() -> Option<Vec<u8>> {
         }
     }
     open.metafile_bytes()
+}
+
+/// The picture on the clipboard as a picture file's bytes (PNG or BMP),
+/// the best offered first (#2349); `None` when it offers none.
+pub fn read_picture() -> Option<Vec<u8>> {
+    let open = Open::new()?;
+    for name in ["PNG", "image/png"] {
+        let w = wide(name);
+        // SAFETY: a NUL-terminated name; registering an existing name
+        // gives its number.
+        let format = unsafe { RegisterClipboardFormatW(w.as_ptr()) };
+        if format == 0 {
+            continue;
+        }
+        if let Some(bytes) = open.global_bytes(format) {
+            if bytes.starts_with(b"\x89PNG") {
+                return Some(bytes);
+            }
+        }
+    }
+    [CF_DIBV5, CF_DIB].into_iter().find_map(|format| {
+        open.global_bytes(format)
+            .and_then(|dib| crate::winit_picture_drop::bmp_from_dib(&dib))
+    })
 }

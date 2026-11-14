@@ -1950,6 +1950,14 @@ fn bitmap_properties(app: &mut App, ui: &mut Ui) {
     {
         app.edit_bitmap_externally();
     }
+    // Another picture in its place (#2598).
+    if ui
+        .button(tr("toolbar.replace_bitmap"))
+        .rich_tip(keyed("toolbar.replace_bitmap"))
+        .clicked()
+    {
+        app.replace_image();
+    }
     if ui
         .button(tr("toolbar.crop_bitmap"))
         .rich_tip(keyed("toolbar.crop_bitmap"))

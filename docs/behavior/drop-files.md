@@ -45,6 +45,21 @@ each. Imports go in the middle of the view, not under the pointer;
 File > Import's placement option (Options > Global > File Formats) is
 not used for drops.
 
+## Pictures dragged out of other programs (#2349)
+
+A picture dragged out of another program's canvas or page (a paint
+program, a browser) comes as the picture itself, not as a file. The
+windowing layer takes it as PNG, else as a bitmap (Windows: the
+registered `PNG` or `image/png` formats, then `CF_DIBV5` or `CF_DIB`;
+X11 and Wayland: `image/png`, `image/bmp`, `image/jpeg`), writes it to a
+file of its own in the system's temporary folder (`tracedraw-dropped-pictures`)
+as the drag enters, and hands that file on like a dropped picture file:
+over the drawing it goes into it, elsewhere it gets a new drawing. The
+picture comes in without a name and without a link to that file
+(`vendor/winit/src/picture_drop.rs`; checks
+`winit_picture_drop::tests`,
+`clipboard::linked_watch_tests::a_picture_dragged_in_from_another_program_has_no_link`).
+
 ## While files are dragged over
 
 A 3 px accent frame over a light accent tint goes round where the files

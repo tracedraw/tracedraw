@@ -105,6 +105,15 @@ with Ctrl (Cmd), Shift+Insert or the Paste key that came without a paste
 event or press before it pastes too, once. V let go after Ctrl is typing
 and does not paste.
 
+## Pictures on Windows (#2349)
+
+A picture another program copied is read as PNG (the registered `PNG`
+or `image/png` formats), else as the device-independent bitmap
+(`CF_DIBV5`, `CF_DIB`) turned into a BMP file and decoded, so bitmaps
+of any depth and layout paste, not only the 32-bit kind the clipboard
+library reads; the library is asked last (`win_clipboard::read_picture`;
+check `clipboard::linked_watch_tests::a_device_independent_bitmap_reads_as_a_picture`).
+
 ## Pictures on a Linux desktop (X11)
 
 A screenshot tool keeps its picture on the clipboard itself and hands it

@@ -812,7 +812,14 @@ impl App {
                 return;
             }
         };
-        let name = path.file_name().and_then(|n| n.to_str()).map(String::from);
+        // A picture dragged in from another program (#2349) lies in a file
+        // of the drag's own: no name and no link to it.
+        let dropped = is_dropped_picture(path);
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(String::from)
+            .filter(|_| !dropped);
         // At the resolution the file records, else 96 dpi; a picture its
         // orientation stands upright has its across and down swapped.
         let dpi = crate::image_dpi::resolution(&bytes).map(|(x, y)| {
@@ -845,10 +852,12 @@ impl App {
             }
         }
         // Remember where it came from: Image > Update from Link re-reads it.
-        self.run(Command::SetObjectData {
-            shape: id,
-            data: vec![("bitmap.link".into(), path.display().to_string())],
-        });
+        if !dropped {
+            self.run(Command::SetObjectData {
+                shape: id,
+                data: vec![("bitmap.link".into(), path.display().to_string())],
+            });
+        }
         self.select(vec![id]);
     }
 
@@ -3193,5 +3202,19 @@ mod curves_and_target_tests {
         let rev = app.engine.revision();
         app.convert_to_curves();
         assert_eq!(app.engine.revision(), rev);
+    }
+}
+
+/// Whether `path` is the file of a picture dragged in from another
+/// program (#2349, `vendor/winit/src/picture_drop.rs`).
+fn is_dropped_picture(path: &std::path::Path) -> bool {
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    {
+        crate::winit_picture_drop::is_dropped_picture(path)
+    }
+    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+    {
+        let _ = path;
+        false
     }
 }

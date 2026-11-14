@@ -390,6 +390,23 @@ pub enum Command {
         reference: ShapeId,
         in_front: bool,
     },
+    /// Move `shapes` (lying on layers or in groups, at any depth) next
+    /// to `reference`, in front of it or behind it, in whatever holds it:
+    /// its layer or its group (#2672). Each object stays where it shows
+    /// on the page. Objects in a clip frame, the reference itself, and a
+    /// group holding the reference stay where they are; a group left
+    /// with nothing goes.
+    PlaceBeside {
+        shapes: Vec<ShapeId>,
+        reference: ShapeId,
+        in_front: bool,
+    },
+    /// Move `shapes` into the group `group`, over its objects (#2672);
+    /// otherwise like [`Command::PlaceBeside`].
+    PlaceInGroup {
+        shapes: Vec<ShapeId>,
+        group: ShapeId,
+    },
     /// Reverse the stacking order of the given shapes among themselves.
     ReverseOrder {
         shapes: Vec<ShapeId>,
@@ -591,6 +608,8 @@ impl Command {
             Command::ReplaceFontFamily { .. } => "Replace Font",
             Command::OrderRelative { in_front: true, .. } => "In Front Of",
             Command::OrderRelative { .. } => "Behind",
+            Command::PlaceBeside { .. } => "Order",
+            Command::PlaceInGroup { .. } => "Add to Group",
             Command::ReverseOrder { .. } => "Reverse Order",
             Command::Combine { .. } => "Combine",
             Command::BreakApart { .. } => "Break Apart",
@@ -1290,6 +1309,16 @@ impl Command {
                     target.shapes.insert(at + k, s);
                 }
             }
+            Command::PlaceBeside {
+                shapes,
+                reference,
+                in_front,
+            } => {
+                place_nested(doc, shapes, *reference, Some(*in_front))?;
+            }
+            Command::PlaceInGroup { shapes, group } => {
+                place_nested(doc, shapes, *group, None)?;
+            }
             Command::ReverseOrder { shapes } => {
                 let mut slots: Vec<(LayerId, usize)> = Vec::new();
                 for id in shapes {
@@ -1864,6 +1893,164 @@ fn layer_list_mut(doc: &mut Document, layer: LayerId) -> Result<(&mut Vec<Layer>
         .ok_or(Error::LayerNotFound(layer))
 }
 
+/// Where an object lies: on a layer, or in a group, at that index.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Holder {
+    Layer(LayerId),
+    Group(ShapeId),
+}
+
+/// The list holding `id` in `shapes` (a layer's or a group's): the
+/// group's id, or `None` for `shapes` itself, with the index. Objects in
+/// clip frames are not found.
+fn holder_in(shapes: &[Shape], id: ShapeId) -> Option<(Option<ShapeId>, usize)> {
+    if let Some(i) = shapes.iter().position(|s| s.id == id) {
+        return Some((None, i));
+    }
+    shapes.iter().find_map(|s| match &s.kind {
+        ShapeKind::Group { children } => {
+            holder_in(children, id).map(|(g, i)| (Some(g.unwrap_or(s.id)), i))
+        }
+        _ => None,
+    })
+}
+
+fn holder_of(doc: &Document, id: ShapeId) -> Option<(Holder, usize)> {
+    doc.all_layers().find_map(|l| {
+        holder_in(&l.shapes, id).map(|(g, i)| (g.map_or(Holder::Layer(l.id), Holder::Group), i))
+    })
+}
+
+/// The list of `holder`, to change it.
+fn holder_list(doc: &mut Document, holder: Holder) -> Result<&mut Vec<Shape>> {
+    match holder {
+        Holder::Layer(l) => Ok(&mut doc.layer_mut(l)?.shapes),
+        Holder::Group(g) => match &mut any_mut(doc, g)?.kind {
+            ShapeKind::Group { children } => Ok(children),
+            _ => Err(Error::ShapeNotFound(g)),
+        },
+    }
+}
+
+/// Groups left with no objects, at any depth, go.
+fn drop_empty_groups(shapes: &mut Vec<Shape>) {
+    shapes.retain_mut(|s| match &mut s.kind {
+        ShapeKind::Group { children } => {
+            drop_empty_groups(children);
+            !children.is_empty()
+        }
+        ShapeKind::ClipFrame { contents, .. } => {
+            drop_empty_groups(contents);
+            true
+        }
+        _ => true,
+    });
+}
+
+/// [`Command::PlaceBeside`] (`in_front` given) and
+/// [`Command::PlaceInGroup`] (`None`: into the group `target`, on top).
+fn place_nested(
+    doc: &mut Document,
+    shapes: &[ShapeId],
+    target: ShapeId,
+    in_front: Option<bool>,
+) -> Result<()> {
+    // Where the objects go: beside the reference, in its holder, or in
+    // the group.
+    let into = match in_front {
+        Some(_) => {
+            holder_of(doc, target)
+                .ok_or(Error::ShapeNotFound(target))?
+                .0
+        }
+        None => {
+            if !matches!(
+                doc.find_shape(target)
+                    .ok_or(Error::ShapeNotFound(target))?
+                    .kind,
+                ShapeKind::Group { .. }
+            ) {
+                return Err(Error::ShapeNotFound(target));
+            }
+            if holder_of(doc, target).is_none() {
+                return Err(Error::ShapeNotFound(target));
+            }
+            Holder::Group(target)
+        }
+    };
+    // The target and the groups holding it cannot go inside it.
+    let mut above = doc.ancestors(target);
+    above.push(target);
+    // Bottom first, as they are drawn, each once; with its place on the
+    // page.
+    // (object, its parent's transform to the page)
+    let mut moving: Vec<(Shape, Affine)> = Vec::new();
+    let mut seen = Vec::new();
+    for id in shapes {
+        if above.contains(id) || seen.contains(id) {
+            continue;
+        }
+        let Some((holder, _)) = holder_of(doc, *id) else {
+            continue;
+        };
+        // An object inside one that also moves goes with it.
+        if doc.ancestors(*id).iter().any(|a| shapes.contains(a)) {
+            continue;
+        }
+        let parent = doc.parent_transform(*id).unwrap_or(Affine::IDENTITY);
+        let list = holder_list(doc, holder)?;
+        let Some(i) = list.iter().position(|s| s.id == *id) else {
+            continue;
+        };
+        let s = list.remove(i);
+        seen.push(*id);
+        moving.push((s, parent));
+    }
+    if moving.is_empty() {
+        return Ok(());
+    }
+    let into_space = match into {
+        Holder::Layer(_) => Affine::IDENTITY,
+        Holder::Group(g) => {
+            let parent = doc.parent_transform(g).unwrap_or(Affine::IDENTITY);
+            parent * doc.find_shape(g).map_or(Affine::IDENTITY, |s| s.transform)
+        }
+    };
+    let det = into_space.determinant();
+    if !det.is_finite() || det.abs() < 1e-12 {
+        return Err(Error::ShapeNotFound(target));
+    }
+    let to_local = into_space.inverse();
+    let list = holder_list(doc, into)?;
+    let at = match in_front {
+        Some(front) => {
+            let ri = list
+                .iter()
+                .position(|s| s.id == target)
+                .ok_or(Error::ShapeNotFound(target))?;
+            if front {
+                ri + 1
+            } else {
+                ri
+            }
+        }
+        None => list.len(),
+    };
+    for (k, (mut s, parent)) in moving.into_iter().enumerate() {
+        // From the space it was in to the one it goes into: the same
+        // place on the page, its effects carried along.
+        let change = to_local * parent;
+        if change != Affine::IDENTITY {
+            s.transform_by(change);
+        }
+        list.insert(at + k, s);
+    }
+    for layer in doc.all_layers_mut() {
+        drop_empty_groups(&mut layer.shapes);
+    }
+    Ok(())
+}
+
 /// Take the objects `ids` out of `shapes`, inside groups and clip frames
 /// too; a group left with nothing by it goes as well.
 fn remove_shapes(shapes: &mut Vec<Shape>, ids: &[ShapeId]) {
@@ -2107,6 +2294,127 @@ fn for_group_deep(shape: &mut Shape, f: &mut dyn FnMut(&mut Shape)) {
 
 #[cfg(test)]
 mod tests {
+    /// The Objects docker's moves (#2672): objects go next to an object
+    /// inside a group, into a group on top, change places inside one and
+    /// come out of one, staying where they show on the page; a group
+    /// cannot go inside itself, an emptied group goes, one undo step each.
+    #[test]
+    fn objects_move_into_out_of_and_inside_groups() {
+        use crate::document::ShapeKind;
+        let mut e = crate::Engine::default();
+        let layer = e.document().pages[0].layers[0].id;
+        let rect = |e: &mut crate::Engine, x: f64| {
+            let id = e.new_shape_id();
+            let shape = Shape::new(
+                id,
+                ShapeKind::Rect {
+                    rect: crate::Rect::new(x, 0.0, x + 10.0, 10.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            e.run(&Command::AddShape { layer, shape }).unwrap();
+            id
+        };
+        let a = rect(&mut e, 0.0);
+        let b = rect(&mut e, 20.0);
+        let c = rect(&mut e, 40.0);
+        let d = rect(&mut e, 60.0);
+        e.run(&Command::Group { shapes: vec![c, d] }).unwrap();
+        let g = e.document().pages[0].layers[0].shapes[2].id;
+        // The group moved: its objects sit in its own space.
+        e.run(&Command::TransformShapes {
+            shapes: vec![g],
+            transform: Affine::translate((5.0, 7.0)),
+        })
+        .unwrap();
+        let top = |e: &crate::Engine| -> Vec<ShapeId> {
+            e.document().pages[0].layers[0]
+                .shapes
+                .iter()
+                .map(|s| s.id)
+                .collect()
+        };
+        let kids = |e: &crate::Engine| -> Vec<ShapeId> {
+            match &e.document().find_shape(g).map(|s| &s.kind) {
+                Some(ShapeKind::Group { children }) => children.iter().map(|s| s.id).collect(),
+                _ => Vec::new(),
+            }
+        };
+        let on_page = |e: &crate::Engine, id| e.document().shape_on_page(id).unwrap().bounds();
+        let a_was = on_page(&e, a);
+        assert_eq!(top(&e), vec![a, b, g]);
+        assert_eq!(kids(&e), vec![c, d]);
+        // a goes in front of c, inside the group, where it was on the page.
+        e.run(&Command::PlaceBeside {
+            shapes: vec![a],
+            reference: c,
+            in_front: true,
+        })
+        .unwrap();
+        assert_eq!(top(&e), vec![b, g]);
+        assert_eq!(kids(&e), vec![c, a, d]);
+        let a_now = on_page(&e, a);
+        assert!((a_now.x0 - a_was.x0).abs() < 1e-9 && (a_now.y0 - a_was.y0).abs() < 1e-9);
+        // b into the group, on top.
+        e.run(&Command::PlaceInGroup {
+            shapes: vec![b],
+            group: g,
+        })
+        .unwrap();
+        assert_eq!(top(&e), vec![g]);
+        assert_eq!(kids(&e), vec![c, a, d, b]);
+        // d behind c: the order inside the group changes.
+        e.run(&Command::PlaceBeside {
+            shapes: vec![d],
+            reference: c,
+            in_front: false,
+        })
+        .unwrap();
+        assert_eq!(kids(&e), vec![d, c, a, b]);
+        // The group cannot go into itself or next to its own objects.
+        e.run(&Command::PlaceInGroup {
+            shapes: vec![g],
+            group: g,
+        })
+        .unwrap();
+        e.run(&Command::PlaceBeside {
+            shapes: vec![g],
+            reference: c,
+            in_front: true,
+        })
+        .unwrap();
+        assert_eq!(top(&e), vec![g]);
+        assert_eq!(kids(&e), vec![d, c, a, b]);
+        // a comes out, in front of the group, where it was on the page.
+        e.run(&Command::PlaceBeside {
+            shapes: vec![a],
+            reference: g,
+            in_front: true,
+        })
+        .unwrap();
+        assert_eq!(top(&e), vec![g, a]);
+        let a_out = on_page(&e, a);
+        assert!((a_out.x0 - a_was.x0).abs() < 1e-9 && (a_out.y0 - a_was.y0).abs() < 1e-9);
+        assert_eq!(
+            e.document().find_shape(a).unwrap().transform,
+            Affine::IDENTITY,
+            "back on the layer, in page space"
+        );
+        // One undo step each.
+        e.undo().unwrap();
+        assert_eq!(kids(&e), vec![d, c, a, b]);
+        // Emptied, the group goes.
+        e.run(&Command::PlaceBeside {
+            shapes: vec![d, c, a, b],
+            reference: g,
+            in_front: false,
+        })
+        .unwrap();
+        assert_eq!(top(&e), vec![d, c, a, b]);
+        assert!(e.document().find_shape(g).is_none());
+    }
+
     /// Fill winding (#1211): the command sets the objects' fill rule in
     /// one undo step, an unknown object changes nothing, and the rule
     /// survives a `.tdraw`-style round trip through serde.
