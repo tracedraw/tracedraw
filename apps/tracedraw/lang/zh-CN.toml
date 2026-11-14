@@ -8531,3 +8531,6 @@ dialog.bg_backdrop_top = "顶部" # mt
 dialog.bg_backdrop_top_desc = "背景顶部的颜色。" # mt
 dialog.bg_backdrop_bottom = "底部" # mt
 dialog.bg_backdrop_bottom_desc = "底部的颜色；与顶部相同即为纯色。" # mt
+docker.move_to_page = "移到页面" # mt
+docker.layer_properties = "属性..." # mt
+docker.guide_row_desc = "一条辅助线：眼睛只隐藏它，锁锁定它。单击可在页面上选中它。" # mt

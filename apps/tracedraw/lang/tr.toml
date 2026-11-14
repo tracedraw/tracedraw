@@ -8531,3 +8531,6 @@ dialog.bg_backdrop_top = "Üst" # mt
 dialog.bg_backdrop_top_desc = "Arka planın üstündeki renk." # mt
 dialog.bg_backdrop_bottom = "Alt" # mt
 dialog.bg_backdrop_bottom_desc = "Alttaki renk; düz renk için üsttekiyle aynı." # mt
+docker.move_to_page = "Sayfaya taşı" # mt
+docker.layer_properties = "Özellikler..." # mt
+docker.guide_row_desc = "Tek bir kılavuz: gözü yalnızca onu gizler, kilidi onu kilitler. Sayfada seçmek için tıklayın." # mt

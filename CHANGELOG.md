@@ -14,6 +14,8 @@ full, row-by-row status.
 - Export dialog: with PDF chosen, PDF Settings... opens the full PDF settings for the same file (picture resolution and compression, printers' marks, passwords). The Prepress tab adds All printers' marks, bleed marks and the densitometer scale (#2197).
 - Shape tool on text: the property bar has Superscript and Subscript buttons for the chosen characters (else the whole text); a second click puts them back on the baseline (#2164).
 - Paragraph text and tables: Alt held on a side handle stretches the letters with the frame, so the lines stay as they are: across it sets the character width, up and down the size. Without Alt the frame resizes and the text flows anew, as before (#1553).
+- Objects docker: each Guides row opens with an arrow to list its guidelines, one row each with its own eye (hides that guideline alone, kept in the file) and padlock; a click on a row selects the guideline on the page (#1775).
+- Objects docker: a layer's right-click menu has Move to page, which moves the layer with its objects to another page, and Properties..., a dialog for the layer's name, visibility, printing, lock, master scope and place in front of or behind the page's layers (#1477).
 
 ## 0.46.0 (2026-11-14)
 

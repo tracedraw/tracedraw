@@ -8531,3 +8531,6 @@ dialog.bg_backdrop_top = "Boven" # mt
 dialog.bg_backdrop_top_desc = "De kleur bovenaan de achtergrond." # mt
 dialog.bg_backdrop_bottom = "Onder" # mt
 dialog.bg_backdrop_bottom_desc = "De kleur onderaan; dezelfde als boven voor een effen kleur." # mt
+docker.move_to_page = "Naar pagina verplaatsen" # mt
+docker.layer_properties = "Eigenschappen..." # mt
+docker.guide_row_desc = "Eén hulplijn: het oog verbergt alleen deze, het slot vergrendelt haar. Klik om haar op de pagina te selecteren." # mt

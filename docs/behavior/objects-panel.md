@@ -14,7 +14,8 @@ the right.
 | Active layer | as a layer, on `#D4E6F7` with a 3 px accent bar at the left, name in bold |
 | Master layer for odd or even pages | as a layer, followed by "Odd pages" or "Even pages" in small grey; dimmed on the pages it does not show on |
 | Master layer in front of the page's layers | as a layer, followed by "In front" in small grey (after "Odd pages" or "Even pages" if it has one); it stays listed under the Master Page (#1132) |
-| Guides | eye (show or hide the guidelines), a pale printer (guidelines never print), padlock (locks or unlocks all of the page's guidelines; shut when they all are) |
+| Guides | open or close arrow (when it has guidelines), eye (show or hide the guidelines), a pale printer (guidelines never print), padlock (locks or unlocks all of the page's guidelines; shut when they all are) |
+| Guideline, two steps in (Guides row open) | eye (hides this guideline alone: it is not drawn, picked or snapped to, and stays hidden in the file), padlock (locks it), its kind and position ("Vertical 105.000 mm"); dimmed while hidden; a click selects it on the page, its set becoming the one edited (#1775) |
 | Document Grid | eye (show or hide the grid), a pale printer and a pale shut padlock (the grid never prints and cannot be edited) |
 | Object, two steps in | thumbnail: the object itself drawn small (its shape, fill, outline and effects) on a white tile, then its name, or what it is when it has none ("Rectangle", "Curve with 8 nodes", "Paragraph Text: ...") |
 | Group | as an object, with an arrow that opens it to its objects, one step further in (16 px) |
@@ -77,7 +78,12 @@ the right.
   objects (a page keeps its last layer, emptied); a master layer has
   Show On (All pages, Odd pages, Even pages), In front of the page's
   layers (a tick) and Move to the Current Page: it becomes the page's
-  top layer with its objects, which then show on that page only; then
+  top layer with its objects, which then show on that page only; Move
+  to Page, a list of the other pages (every page for a master layer):
+  the layer becomes the top layer of that page with its name, look and
+  objects, and that page is shown (a page keeps its last layer,
+  emptied); Properties: name, Show/hide, Print and export, Lock and, for
+  a master layer, Show On and In front, changed together on OK; then
   Delete Layer. Each is one undo step (#1477).
 - An object's context menu is the drawing's own object menu for it,
   whatever tool is on (#2601): the object is selected first unless it is

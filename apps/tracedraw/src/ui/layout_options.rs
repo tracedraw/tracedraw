@@ -1074,7 +1074,7 @@ pub fn apply_presets(app: &mut App, form: &PresetForm) {
 
 /// Text for a guideline in the lists: its position from the ruler origin
 /// (and angle).
-fn guide_text(app: &App, g: &Guide) -> String {
+pub(crate) fn guide_text(app: &App, g: &Guide) -> String {
     let u = app.units;
     let (o, _) = g.line.point_and_direction();
     let r = app.to_ruler(o);
