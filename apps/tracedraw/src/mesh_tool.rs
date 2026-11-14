@@ -355,6 +355,26 @@ impl App {
         true
     }
 
+    /// Ctrl+click on a palette colour with mesh nodes chosen: a tenth of
+    /// the colour mixed into each chosen node's own colour, all of them
+    /// in one undo step, so repeated clicks move them towards it (#2616).
+    /// False when no node is chosen.
+    pub fn mix_into_mesh_nodes(&mut self, c: Color) -> bool {
+        let Some((sid, nodes)) = self.selected_mesh_nodes() else {
+            return false;
+        };
+        self.edit_meshes("Mesh Node Colour", |id, m| {
+            if id == sid {
+                for &i in &nodes {
+                    if let Some(n) = m.nodes.get_mut(i) {
+                        n.color = crate::ui::palette::mix(n.color, c, 0.1);
+                    }
+                }
+            }
+        });
+        true
+    }
+
     /// Delete with a mesh node selected: the grid lines through it go
     /// (not those on the edge).
     pub fn delete_mesh_lines(&mut self) -> bool {
@@ -462,5 +482,42 @@ mod tests {
         assert_eq!((mesh(&app, id).rows, mesh(&app, id).cols), (5, 3));
         app.clear_mesh();
         assert_eq!(app.doc().find_shape(id).expect("shape").fill, Fill::None);
+    }
+
+    /// Ctrl+click on a palette colour with mesh nodes chosen mixes a
+    /// tenth of it into each of them, one undo step a click; the other
+    /// nodes and the fill's kind stay (#2616).
+    #[test]
+    fn ctrl_click_on_a_colour_mixes_it_into_the_chosen_mesh_nodes() {
+        let mut app = App::headless();
+        let id = square(&mut app);
+        app.tool = crate::tools::Tool::MeshFill;
+        app.mesh_rows = 2;
+        app.mesh_cols = 2;
+        app.apply_mesh_fill(id);
+        let white = Color::cmyk_pct(0.0, 0.0, 0.0, 0.0);
+        let cyan = Color::cmyk_pct(100.0, 0.0, 0.0, 0.0);
+        // Nodes 0 and 4 white, the rest left as they were.
+        app.choose_mesh_nodes(id, &[0, 4]);
+        app.apply_fill(Fill::Solid(white));
+        let before = mesh(&app, id);
+        assert_eq!(before.nodes[0].color, white);
+        app.mix_into_fill(cyan);
+        let m = mesh(&app, id);
+        let tenth = crate::ui::palette::mix(white, cyan, 0.1);
+        assert_eq!(m.nodes[0].color, tenth);
+        assert_eq!(m.nodes[4].color, tenth);
+        assert_eq!(m.nodes[1].color, before.nodes[1].color);
+        // Again: another tenth of the way.
+        app.mix_into_fill(cyan);
+        let twice = crate::ui::palette::mix(tenth, cyan, 0.1);
+        assert_eq!(mesh(&app, id).nodes[0].color, twice);
+        // Each click is one undo step.
+        app.undo();
+        assert_eq!(mesh(&app, id).nodes[0].color, tenth);
+        // No node chosen: nothing to mix into, the mesh stays a mesh.
+        app.choose_mesh_nodes(id, &[]);
+        app.mix_into_fill(cyan);
+        assert_eq!(mesh(&app, id).nodes[0].color, tenth);
     }
 }

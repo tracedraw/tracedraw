@@ -1991,10 +1991,15 @@ fn apply(app: &mut App, ui: &Ui, act: Actions) {
         app.run(Command::SetLayerLocked { layer, locked });
     }
     if let Some((id, visible)) = act.object_visible {
-        app.run(Command::SetVisible {
-            shapes: vec![id],
-            visible,
-        });
+        // The eye of one of several selected objects hides or shows them
+        // all, as the clicked one goes, in one undo step; an object out
+        // of the selection goes alone (#2571).
+        let shapes = if app.selection.len() > 1 && app.selection.contains(&id) {
+            app.selection.clone()
+        } else {
+            vec![id]
+        };
+        app.run(Command::SetVisible { shapes, visible });
     }
     if let Some((id, locked)) = act.object_locked {
         app.run(Command::SetLocked {
@@ -2306,6 +2311,72 @@ pub(crate) mod tests {
         assert!(app.doc().find_shape(id).expect("shape").locked);
         app.undo();
         assert!(!app.doc().find_shape(id).expect("shape").locked);
+    }
+
+    /// With several objects selected, the eye of one of them hides them
+    /// all, or shows them all when it is hidden, whatever each was; they
+    /// stay selected and one undo brings them back. An object outside
+    /// the selection goes alone (#2571).
+    #[test]
+    fn the_eye_of_a_selected_object_hides_and_shows_the_whole_selection() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let a = app.new_shape(rect_kind()).expect("shape");
+        let b = app.new_shape(rect_kind()).expect("shape");
+        let c = app.new_shape(rect_kind()).expect("shape");
+        let other = app.new_shape(rect_kind()).expect("shape");
+        // One of the selection already hidden.
+        app.run(Command::SetVisible {
+            shapes: vec![c],
+            visible: false,
+        });
+        app.select(vec![a, b, c]);
+        let run = |app: &mut App, events: Vec<egui::Event>| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(400.0, 600.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| objects_docker(app, ui));
+            out.textures_delta.clear();
+        };
+        let eye = |app: &mut App, id: ShapeId| {
+            run(app, Vec::new());
+            let wid = egui::Id::new(("objects_object", id.raw())).with("eye");
+            let at = ctx.read_response(wid).expect("drawn").rect.center();
+            run(app, vec![egui::Event::PointerMoved(at)]);
+            let button = |pressed| egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            run(app, vec![button(true)]);
+            run(app, vec![button(false)]);
+        };
+        let visible = |app: &App, id: ShapeId| app.doc().find_shape(id).expect("shape").visible;
+        // A visible one's eye hides the three.
+        eye(&mut app, a);
+        assert!(!visible(&app, a) && !visible(&app, b) && !visible(&app, c));
+        assert!(visible(&app, other));
+        let mut sel = app.selection.clone();
+        sel.sort();
+        let mut want = vec![a, b, c];
+        want.sort();
+        assert_eq!(sel, want, "the selection stays");
+        // One undo step brings back each as it was.
+        app.undo();
+        assert!(visible(&app, a) && visible(&app, b) && !visible(&app, c));
+        // A hidden one's eye shows them all.
+        eye(&mut app, c);
+        assert!(visible(&app, a) && visible(&app, b) && visible(&app, c));
+        // The eye of an object outside the selection hides it alone.
+        eye(&mut app, other);
+        assert!(!visible(&app, other));
+        assert!(visible(&app, a) && visible(&app, b) && visible(&app, c));
     }
 
     /// Selecting an object on the page scrolls the list to its row when

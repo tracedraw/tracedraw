@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Mesh fill: with nodes chosen, Ctrl+click on a palette colour mixes a tenth of it into each chosen node, one undo step a click, as it mixes into a uniform fill. It did nothing on a mesh (discussion #2616).
+- Objects docker: with several objects selected, the eye of one of them hides them all, or shows them all when it is hidden, in one undo step, and they stay selected. Only the clicked object changed (#2571).
 - Palettes: a double-click on a colour opens the Palette Editor on that palette with the colour selected, where it is renamed, changed or made a spot colour, as in CorelDRAW (the first click fills the selection as before). Only a double-click beside the colours opened the editor, with nothing selected (#2580).
 - Outline Pen (F12): the dialog opens with the width selected, so a number typed and Enter set the outline at once, as in CorelDRAW (#2597).
 - Image > Mode > Lab Color (24-bit) makes the bitmap a Lab bitmap: the status line names it Lab and the menu ticks the item, and a CMYK bitmap is no longer CMYK. The pixels went through Lab and back and nothing else changed, so the command seemed to do nothing (#2605).

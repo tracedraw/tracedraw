@@ -4374,8 +4374,20 @@ impl App {
     }
 
     /// Ctrl+click on a palette colour: a tenth of it goes into the uniform
-    /// fill of each selected object.
+    /// fill of each selected object, or into the chosen mesh nodes.
     pub fn mix_into_fill(&mut self, c: Color) {
+        // With the Mesh Fill, Shape or Interactive Fill tool and mesh
+        // nodes chosen, the colour mixes into those nodes, as a plain
+        // click colours them (#2616).
+        if matches!(
+            self.tool,
+            crate::tools::Tool::MeshFill
+                | crate::tools::Tool::Shape
+                | crate::tools::Tool::InteractiveFill
+        ) && self.mix_into_mesh_nodes(c)
+        {
+            return;
+        }
         let cmds: Vec<Command> = self
             .selected_shapes()
             .iter()
