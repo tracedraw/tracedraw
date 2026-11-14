@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Colour Eyedropper: the readout gives a colour set in HSB, HSL, Lab, YIQ or grayscale in that model (H, S, B; H, S, L; L, a, b; Y, I, Q; the grey level), as CMYK and RGB colours already were. They all read as CMYK, or RGB in an RGB drawing (#2612).
+- Dark, Medium Dark and High Contrast themes: the Save, Copy and Paste icons on the bars and in the menus read again. Their label, shutter and pages were cut out in white, which on the light icons of those themes left a pale blot; they now take the bar's colour (#2591).
 - PDF export: a fountain transparency (a gradient from solid to clear) goes into the file as a soft mask and fades the object as the drawing window shows it. The PDF took one average opacity, so the object came out evenly half see-through (#2615).
 - PDF export: drop shadows come out as the drawing window shows them. A picture with a transparent background cast the shadow of its whole box (a grey slab under a cut-out drawing); a see-through object showed its shadow dark through it; an extruded or contoured object had its shadow drawn over its body (d#2596).
 - Envelope tool: a click on an object selects it and shows the envelope's frame around it, without giving it an envelope; the envelope comes when a node, handle or side of the frame is first dragged, as one undo step, as in CorelDRAW. A click put an envelope on the object at once, which then stood in the way of later edits (#2611).

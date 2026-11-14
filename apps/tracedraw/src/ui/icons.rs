@@ -719,11 +719,31 @@ pub enum Action {
 /// The New button's green badge with a white plus.
 const NEW_GREEN: Color32 = Color32::from_rgb(0x1E, 0x9E, 0x3C);
 
+/// The colour of the parts cut out of a solid icon drawn in `color`:
+/// white when the icon is darker than the bar, the bar's own colour when
+/// it is lighter (the dark and High Contrast themes, #2591).
+fn knockout_for(color: Color32) -> Color32 {
+    let luma =
+        |c: Color32| 0.299 * f32::from(c.r()) + 0.587 * f32::from(c.g()) + 0.114 * f32::from(c.b());
+    let bar = Tokens::panel();
+    if luma(color) > luma(bar) {
+        bar
+    } else {
+        Color32::WHITE
+    }
+}
+
 pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
     let k = r.width() / 16.0;
     let s = Stroke::new(1.25 * k, color);
     let thin = Stroke::new(0.9 * k, color);
     let enabled = color == Tokens::icon();
+    // The light parts cut out of a solid icon (the floppy's label and
+    // shutter, the page over the clipboard and the copied page): white
+    // on a dark icon, the bar's own colour on a light one. White on the
+    // light icons of the dark and High Contrast themes left a pale blot
+    // where the disk and the pages should show (#2591).
+    let knockout = knockout_for(color);
     // A page with a folded top-right corner.
     let page = |painter: &Painter, x0: f32, y0: f32, x1: f32, y1: f32| {
         painter.add(epaint::PathShape::closed_line(
@@ -819,7 +839,7 @@ pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
             painter.rect_filled(
                 Rect::from_min_max(p(r, 4.0, 1.5), p(r, 11.0, 5.5)),
                 0.0,
-                Color32::WHITE,
+                knockout,
             );
             painter.rect_filled(
                 Rect::from_min_max(p(r, 8.5, 2.2), p(r, 10.0, 4.8)),
@@ -829,7 +849,7 @@ pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
             painter.rect_filled(
                 Rect::from_min_max(p(r, 4.0, 9.0), p(r, 12.0, 14.5)),
                 0.0,
-                Color32::WHITE,
+                knockout,
             );
         }
         Action::Print => {
@@ -890,7 +910,7 @@ pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
                     painter.rect_filled(
                         Rect::from_min_max(p(r, 6.0, 5.5), p(r, 14.5, 15.0)),
                         0.0,
-                        Color32::WHITE,
+                        knockout,
                     );
                     page(painter, 6.0, 5.5, 14.5, 15.0);
                     lines(painter, 8.0, 9.0, 12.5);
@@ -904,7 +924,7 @@ pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
                     painter.rect_filled(
                         Rect::from_min_max(p(r, 7.0, 6.0), p(r, 14.5, 15.0)),
                         0.0,
-                        Color32::WHITE,
+                        knockout,
                     );
                     page(painter, 7.0, 6.0, 14.5, 15.0);
                     lines(painter, 9.0, 9.0, 12.5);
@@ -1234,6 +1254,49 @@ mod tests {
             tool_color(Tool::OutlinePen, plain)
         );
         set_colored(false);
+    }
+
+    /// #2591: in every theme the Save, Copy and Paste icons' cut-out
+    /// parts (label, shutter, pages) differ from the icon's colour by
+    /// about as much as the bar does, so the disk and the pages read.
+    /// White cut-outs on the light icons of the dark themes left a blot.
+    #[test]
+    fn the_save_copy_and_paste_icons_read_in_every_theme() {
+        use crate::theme::{set_theme, Theme};
+        let luma = |c: Color32| {
+            0.299 * f32::from(c.r()) + 0.587 * f32::from(c.g()) + 0.114 * f32::from(c.b())
+        };
+        let ctx = egui::Context::default();
+        let r = Rect::from_min_size(Pos2::ZERO, Vec2::splat(16.0));
+        for theme in Theme::ALL {
+            set_theme(theme);
+            let icon = Tokens::icon();
+            let bar = Tokens::panel();
+            for a in [Action::Save, Action::Copy, Action::Paste] {
+                let mut out = ctx.run_ui(Default::default(), |ui| {
+                    draw_action(ui.painter(), r, a, icon);
+                });
+                out.textures_delta.clear();
+                let fills: Vec<Color32> = out
+                    .shapes
+                    .iter()
+                    .filter_map(|c| match &c.shape {
+                        egui::Shape::Rect(rs) => Some(rs.fill),
+                        _ => None,
+                    })
+                    .filter(|f| *f != icon && *f != Color32::TRANSPARENT)
+                    .collect();
+                assert!(!fills.is_empty(), "{theme:?} {a:?}");
+                for f in fills {
+                    let gap = (luma(f) - luma(icon)).abs();
+                    assert!(
+                        gap + 1.0 >= (luma(bar) - luma(icon)).abs().min(120.0),
+                        "{theme:?} {a:?}: cut-out {f:?} on icon {icon:?}"
+                    );
+                }
+            }
+        }
+        set_theme(Theme::Light);
     }
 
     /// The Open icon's folder has no stray stroke across its top corner:
