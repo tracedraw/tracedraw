@@ -1300,6 +1300,12 @@ pub enum Dialog {
     EditText {
         shape: tracedraw_core::ShapeId,
         text: String,
+        /// The characters with their formatting, kept in step with
+        /// `text` and shown as they look (#2366).
+        spans: Vec<tracedraw_core::TextSpan>,
+        /// The object's own solid fill: the colour of characters that
+        /// have none of their own.
+        ink: Option<tracedraw_core::Color>,
     },
     DocumentProperties(Box<crate::ui::doc_properties::DocPropsState>),
     /// Save on a drawing opened from a `.cdr` version TraceDraw does not
@@ -2236,7 +2242,12 @@ pub fn show(app: &mut App, ctx: &Context) {
                 }
             });
         }
-        Dialog::EditText { shape, text } => {
+        Dialog::EditText {
+            shape,
+            text,
+            spans,
+            ink,
+        } => {
             let title = tr("menu.text.edit_text");
             let title = title
                 .trim_end_matches("...")
@@ -2244,14 +2255,9 @@ pub fn show(app: &mut App, ctx: &Context) {
                 .trim()
                 .to_string();
             window(ctx, title).show(ctx, |ui| {
-                ui.add(
-                    egui::TextEdit::multiline(text)
-                        .id(egui::Id::new("edit_text_dialog_box"))
-                        .desired_width(480.0)
-                        .desired_rows(10),
-                );
+                edit_text_box(ui, text, spans, *ink);
                 if ok_cancel(ui, &mut close) {
-                    app.set_text_content(*shape, text);
+                    app.set_text_spans(*shape, spans.clone());
                 }
             });
         }
@@ -9502,4 +9508,199 @@ mod layout_preset_tests {
         assert_eq!(pv.st.layout_preset, "Labels");
         assert_eq!(app.settings.printing.layout_presets.len(), 1);
     }
+}
+
+/// The Edit Text box (#2366): the characters drawn with their own
+/// weight, slant, size, colour, underline and strike line, and a row
+/// that sets those for the selected characters (all of them when none
+/// are selected).
+fn edit_text_box(
+    ui: &mut Ui,
+    text: &mut String,
+    spans: &mut Vec<tracedraw_core::TextSpan>,
+    ink: Option<tracedraw_core::Color>,
+) {
+    use tracedraw_core::{spans_apply, spans_char_count, LineStyle};
+    let id = egui::Id::new("edit_text_dialog_box");
+    crate::ops2::retext_keeping_styles(spans, text);
+    let total = spans_char_count(spans);
+    let (from, to) = egui::TextEdit::load_state(ui.ctx(), id)
+        .and_then(|s| s.cursor.char_range())
+        .map(|r| {
+            let (a, b) = (r.primary.index.0, r.secondary.index.0);
+            (a.min(b).min(total), a.max(b).min(total))
+        })
+        .filter(|(a, b)| a < b)
+        .unwrap_or((0, total));
+    if let Some(first) = span_at(spans, from).cloned() {
+        ui.horizontal(|ui| {
+            let b = egui::RichText::new("B").font(crate::theme::bold(15.0));
+            if ui
+                .selectable_label(first.bold, b)
+                .on_hover_text(tr("toolbar.bold"))
+                .clicked()
+            {
+                let on = !first.bold;
+                spans_apply(spans, from, to, |s| s.bold = on);
+            }
+            let i = egui::RichText::new("I").size(15.0).italics();
+            if ui
+                .selectable_label(first.italic, i)
+                .on_hover_text(tr("toolbar.italic"))
+                .clicked()
+            {
+                let on = !first.italic;
+                spans_apply(spans, from, to, |s| s.italic = on);
+            }
+            let under = first.underline != LineStyle::None;
+            let u = egui::RichText::new("U").size(15.0).underline();
+            if ui
+                .selectable_label(under, u)
+                .on_hover_text(tr("toolbar.underline"))
+                .clicked()
+            {
+                let line = if under {
+                    LineStyle::None
+                } else {
+                    LineStyle::SingleThin
+                };
+                spans_apply(spans, from, to, |s| s.underline = line);
+            }
+            let strike = first.strikethrough != LineStyle::None;
+            let st = egui::RichText::new("S").size(15.0).strikethrough();
+            if ui
+                .selectable_label(strike, st)
+                .on_hover_text(tr("toolbar.strikethrough"))
+                .clicked()
+            {
+                let line = if strike {
+                    LineStyle::None
+                } else {
+                    LineStyle::SingleThin
+                };
+                spans_apply(spans, from, to, |s| s.strikethrough = line);
+            }
+            ui.separator();
+            let mut size = first.size_pt;
+            if ui
+                .add(
+                    egui::DragValue::new(&mut size)
+                        .range(0.5..=3000.0)
+                        .speed(0.1)
+                        .max_decimals(2)
+                        .suffix(" pt"),
+                )
+                .on_hover_text(tr("toolbar.font_size"))
+                .changed()
+            {
+                spans_apply(spans, from, to, |s| s.size_pt = size);
+            }
+            let mut c = span_color(&first, ink);
+            if ui.color_edit_button_srgba(&mut c).changed() {
+                let color = tracedraw_core::Color::rgb8(c.r(), c.g(), c.b());
+                spans_apply(spans, from, to, |s| {
+                    s.fill = Some(tracedraw_core::Fill::Solid(color))
+                });
+            }
+            ui.separator();
+            ui.weak(&first.font_family);
+        });
+    }
+    let shown = spans.clone();
+    let mut layouter = |ui: &Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
+        let mut sp = shown.clone();
+        crate::ops2::retext_keeping_styles(&mut sp, buf.as_str());
+        let mut job = edit_text_job(&sp, ink);
+        job.wrap.max_width = wrap;
+        ui.fonts_mut(|f| f.layout_job(job))
+    };
+    egui::ScrollArea::vertical()
+        .id_salt("edit_text_scroll")
+        .max_height(360.0)
+        .show(ui, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(text)
+                    .id(id)
+                    .desired_width(480.0)
+                    .desired_rows(10)
+                    // A white page: dark characters stay readable in the
+                    // dark theme.
+                    .background_color(egui::Color32::WHITE)
+                    .layouter(&mut layouter),
+            );
+        });
+    crate::ops2::retext_keeping_styles(spans, text);
+}
+
+/// The span holding character `at` (the last one at the end).
+fn span_at(spans: &[tracedraw_core::TextSpan], at: usize) -> Option<&tracedraw_core::TextSpan> {
+    let mut seen = 0;
+    for s in spans {
+        let n = s.text.chars().count();
+        if at < seen + n {
+            return Some(s);
+        }
+        seen += n;
+    }
+    spans.last()
+}
+
+/// The colour a span's characters show in the Edit Text box.
+fn span_color(
+    span: &tracedraw_core::TextSpan,
+    ink: Option<tracedraw_core::Color>,
+) -> egui::Color32 {
+    let color = match &span.fill {
+        Some(tracedraw_core::Fill::Solid(c)) => Some(*c),
+        Some(_) => None,
+        None => ink,
+    };
+    match color {
+        Some(c) => {
+            let [r, g, b] = c.to_rgb8();
+            egui::Color32::from_rgb(r, g, b)
+        }
+        None => egui::Color32::BLACK,
+    }
+}
+
+/// The Edit Text box's lines: each span with its own look. Sizes are
+/// shown relative to the largest so one huge letter does not fill the
+/// box: the largest at 28 px, none under 9 px.
+fn edit_text_job(
+    spans: &[tracedraw_core::TextSpan],
+    ink: Option<tracedraw_core::Color>,
+) -> egui::text::LayoutJob {
+    use tracedraw_core::LineStyle;
+    let largest = spans.iter().map(|s| s.size_pt).fold(0.0_f64, f64::max);
+    let scale = if largest > 28.0 { 28.0 / largest } else { 1.0 };
+    let mut job = egui::text::LayoutJob::default();
+    for span in spans {
+        let px = (span.size_pt * scale).clamp(9.0, 28.0) as f32;
+        let font = if span.bold {
+            crate::theme::bold(px)
+        } else {
+            egui::FontId::proportional(px)
+        };
+        let color = span_color(span, ink);
+        let line = egui::Stroke::new(1.0, color);
+        let format = egui::TextFormat {
+            font_id: font,
+            color,
+            italics: span.italic,
+            underline: if span.underline != LineStyle::None {
+                line
+            } else {
+                egui::Stroke::NONE
+            },
+            strikethrough: if span.strikethrough != LineStyle::None {
+                line
+            } else {
+                egui::Stroke::NONE
+            },
+            ..Default::default()
+        };
+        job.append(&span.text, 0.0, format);
+    }
+    job
 }

@@ -2931,9 +2931,15 @@ impl App {
                 return;
             };
             self.finish_text();
+            let ink = match &s.fill {
+                tracedraw_core::Fill::Solid(c) => Some(*c),
+                _ => None,
+            };
             self.dialog = crate::ui::dialogs::Dialog::EditText {
                 shape: s.id,
                 text: tracedraw_core::spans_text(spans),
+                spans: spans.clone(),
+                ink,
             };
         }
     }
@@ -2942,9 +2948,23 @@ impl App {
     /// ("Edit Text"): the characters before and after the part that
     /// changed keep their own formatting, and the new part takes the
     /// formatting of the character before it.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn set_text_content(&mut self, id: ShapeId, text: &str) {
+        let Some(ShapeKind::Text { spans, .. }) = self.doc().find_shape(id).map(|s| s.kind.clone())
+        else {
+            return;
+        };
+        let mut spans = spans;
+        retext_keeping_styles(&mut spans, text);
+        self.set_text_spans(id, spans);
+    }
+
+    /// The text object `id` gets the characters and formatting `spans`,
+    /// as one undo step ("Edit Text", #2366); nothing when they are the
+    /// same.
+    pub fn set_text_spans(&mut self, id: ShapeId, spans: Vec<TextSpan>) {
         let Some(ShapeKind::Text {
-            spans,
+            spans: old,
             origin,
             frame,
             align,
@@ -2954,25 +2974,9 @@ impl App {
         else {
             return;
         };
-        let old: Vec<char> = tracedraw_core::spans_text(&spans).chars().collect();
-        let new: Vec<char> = text.chars().collect();
-        if old == new {
+        let spans = tracedraw_core::document::merge_equal_spans(spans);
+        if spans.is_empty() || tracedraw_core::document::merge_equal_spans(old) == spans {
             return;
-        }
-        let mut spans = spans;
-        // Each run of characters removed or added, in place: what stays
-        // keeps its formatting and an addition takes the formatting of
-        // the character before it.
-        let mut pos = 0;
-        for op in char_edits(&old, &new) {
-            match op {
-                CharEdit::Keep(n) => pos += n,
-                CharEdit::Remove(n) => tracedraw_core::spans_delete(&mut spans, pos, pos + n),
-                CharEdit::Add(s) => {
-                    tracedraw_core::spans_insert(&mut spans, pos, &s);
-                    pos += s.chars().count();
-                }
-            }
         }
         let kind = ShapeKind::Text {
             spans,
@@ -7973,6 +7977,28 @@ mod fit_page_tests {
     }
 }
 
+/// `spans` take the characters `text`: each run of characters removed or
+/// added is changed in place, so what stays keeps its formatting and an
+/// addition takes the formatting of the character before it.
+pub(crate) fn retext_keeping_styles(spans: &mut Vec<TextSpan>, text: &str) {
+    let old: Vec<char> = tracedraw_core::spans_text(spans).chars().collect();
+    let new: Vec<char> = text.chars().collect();
+    if old == new {
+        return;
+    }
+    let mut pos = 0;
+    for op in char_edits(&old, &new) {
+        match op {
+            CharEdit::Keep(n) => pos += n,
+            CharEdit::Remove(n) => tracedraw_core::spans_delete(spans, pos, pos + n),
+            CharEdit::Add(s) => {
+                tracedraw_core::spans_insert(spans, pos, &s);
+                pos += s.chars().count();
+            }
+        }
+    }
+}
+
 /// One step of turning one text into another (see [`char_edits`]).
 #[derive(Debug, Clone, PartialEq)]
 enum CharEdit {
@@ -8105,7 +8131,7 @@ mod text_dialog_tests {
             .expect("text");
         app.select(vec![id]);
         app.open_edit_text_dialog();
-        let Dialog::EditText { shape, text } = &app.dialog else {
+        let Dialog::EditText { shape, text, .. } = &app.dialog else {
             panic!("no dialog: {:?}", std::mem::discriminant(&app.dialog));
         };
         assert_eq!((*shape, text.as_str()), (id, "Hello world"));
@@ -8149,5 +8175,35 @@ mod text_dialog_tests {
             out.textures_delta.clear();
         }
         assert!(matches!(app.dialog, Dialog::EditText { .. }));
+        // The box keeps each character's formatting and sets new
+        // formatting on a part (#2366): "world!" made italic and 30 pt.
+        let Dialog::EditText { spans, .. } = &app.dialog else {
+            panic!("no dialog");
+        };
+        assert_eq!(spans.len(), 2);
+        assert!(spans[0].bold && !spans[1].bold);
+        let mut spans = spans.clone();
+        tracedraw_core::spans_apply(&mut spans, 10, 16, |s| {
+            s.italic = true;
+            s.size_pt = 30.0;
+        });
+        crate::ops2::retext_keeping_styles(&mut spans, "Hello big world!?");
+        app.set_text_spans(id, spans);
+        let ShapeKind::Text { spans, .. } = app.doc().find_shape(id).expect("text").kind.clone()
+        else {
+            panic!("text");
+        };
+        let styled: Vec<(String, bool, bool, f64)> = spans
+            .iter()
+            .map(|s| (s.text.clone(), s.bold, s.italic, s.size_pt))
+            .collect();
+        assert_eq!(
+            styled,
+            vec![
+                ("Hello big ".to_string(), true, false, 20.0),
+                ("world!?".to_string(), false, true, 30.0)
+            ]
+        );
+        assert_eq!(app.engine.undo_label(), Some("Edit Text"));
     }
 }

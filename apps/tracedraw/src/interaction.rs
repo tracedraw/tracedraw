@@ -409,6 +409,64 @@ impl App {
         self.leaf_at(s, p, self.object_pick_tol())
     }
 
+    /// The text object inside the object `id` under `p`, for the Text
+    /// tool (#2169): a text in a group, a clip frame or a grouped blend
+    /// is reached as it is drawn, through an envelope, a perspective or
+    /// another warp on the group. With it, whether a warp moved it from
+    /// where its letters are laid out (no caret placed by the point then).
+    pub fn text_inside_at(&self, id: ShapeId, p: Point) -> Option<(ShapeId, bool)> {
+        let (_, s) = self.doc().shape(id).ok()?;
+        if !matches!(
+            s.kind,
+            ShapeKind::Group { .. } | ShapeKind::ClipFrame { .. }
+        ) {
+            return None;
+        }
+        self.text_inside(s, p, self.object_pick_tol(), false, 0)
+    }
+
+    fn text_inside(
+        &self,
+        s: &tracedraw_core::Shape,
+        p: Point,
+        tol: f64,
+        warped: bool,
+        depth: usize,
+    ) -> Option<(ShapeId, bool)> {
+        if depth > MAX_HIT_DEPTH {
+            return None;
+        }
+        let is_text = |id: ShapeId| {
+            matches!(
+                self.doc().find_shape(id).map(|t| &t.kind),
+                Some(ShapeKind::Text { .. })
+            )
+        };
+        // A container drawn through a warp: its parts as they are drawn
+        // (each keeps its id).
+        let warps = s.effects.iter().any(|e| e.warps_outline());
+        let drawn;
+        let s = if warps {
+            drawn = tracedraw_core::live::evaluate(s).main;
+            &drawn
+        } else {
+            s
+        };
+        let warped = warped || warps;
+        let open = |children: &[tracedraw_core::Shape]| {
+            children.iter().rev().filter(|c| c.visible).find_map(|c| {
+                let mut c = c.clone();
+                c.transform_by(s.transform);
+                self.text_inside(&c, p, tol, warped, depth + 1)
+            })
+        };
+        match &s.kind {
+            ShapeKind::Group { children } => open(children),
+            ShapeKind::ClipFrame { contents, .. } => open(contents),
+            _ => (is_text(s.id) && self.shape_hit(s, p, tol)).then_some((s.id, warped)),
+        }
+    }
+
     fn leaf_at(
         &self,
         s: &tracedraw_core::Shape,
@@ -2814,7 +2872,10 @@ impl App {
                 .as_ref()
                 .map(|te| te.shape)
                 .filter(|id| {
-                    self.hit_test(p) == Some(*id) || self.dimension_label_at(p) == Some(*id)
+                    let hit = self.hit_test(p);
+                    hit == Some(*id)
+                        || self.dimension_label_at(p) == Some(*id)
+                        || hit.and_then(|h| self.text_inside_at(h, p)) == Some((*id, false))
                 })
                 .is_some();
         if response.drag_started_by(PointerButton::Primary) {
@@ -2861,7 +2922,19 @@ impl App {
             if self.edit_dimension_label_at(p) {
                 return;
             }
-            match self.hit_test(p) {
+            let hit = self.hit_test(p);
+            // A text inside a group or a grouped blend, warped by an
+            // envelope or a perspective on the group or not (#2169).
+            if let Some((text, warped)) = hit.and_then(|id| self.text_inside_at(id, p)) {
+                self.begin_text_edit(text);
+                if !warped {
+                    if let Some(idx) = self.text_hit_char(p) {
+                        self.text_set_caret_at(idx, false);
+                    }
+                }
+                return;
+            }
+            match hit {
                 Some(id)
                     if matches!(
                         self.doc()
