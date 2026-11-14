@@ -43,7 +43,7 @@ rqrr = "0.11"
 csv = "1"
 eframe.workspace = true
 egui.workspace = true
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif", "webp", "tiff"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif", "ico", "webp", "tiff"] }
 # Reading CMYK TIFF files with their inks (Edit Bitmap, #1834); the same
 # version the image crate reads TIFF with.
 tiff = "0.11"

@@ -648,6 +648,29 @@ fn picture(ui: &Ui, key: String, bytes: &[u8]) -> Option<egui::TextureHandle> {
     Some(tex)
 }
 
+/// A control's picture drawn in the middle of its box, shrunk to fit and
+/// never enlarged, as the forms draw a button's or label's icon. Labels
+/// and buttons carried their pictures (the icon of an Undo button, a
+/// maker's logo) but showed none (#2165).
+fn draw_picture(ui: &Ui, form: u32, c: &LiveControl, rect: Rect) {
+    let Some(bytes) = &c.picture else {
+        return;
+    };
+    // A picture the macro changes gets a new key.
+    let key = format!("ctl{form}{}{:x}", c.name, picture_hash(bytes));
+    if let Some(t) = picture(ui, key, bytes) {
+        let s = t.size_vec2();
+        let fit = (rect.width() / s.x).min(rect.height() / s.y).min(1.0);
+        let r = Rect::from_center_size(rect.center(), s * fit);
+        ui.painter().image(
+            t.id(),
+            r,
+            Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+            Color32::WHITE,
+        );
+    }
+}
+
 fn forms(app: &mut App, ctx: &Context) {
     let Some(run) = &app.macros.run else {
         return;
@@ -823,6 +846,7 @@ fn draw_controls(ui: &mut Ui, form: &LiveForm, origin: Pos2, acts: &mut FormActi
                                 color(Some(b), Color32::TRANSPARENT),
                             );
                         }
+                        draw_picture(ui, id, c, rect);
                         let r = ui.put(
                             rect,
                             egui::Label::new(rich(c, &c.caption))
@@ -844,6 +868,7 @@ fn draw_controls(ui: &mut Ui, form: &LiveForm, origin: Pos2, acts: &mut FormActi
                             b = b.fill(color(Some(bg), Color32::LIGHT_GRAY));
                         }
                         let r = ui.put(rect, b);
+                        draw_picture(ui, id, c, rect.shrink(2.0));
                         if c.default {
                             ui.painter().rect_stroke(
                                 rect,
@@ -953,21 +978,7 @@ fn draw_controls(ui: &mut Ui, form: &LiveForm, origin: Pos2, acts: &mut FormActi
                                 color(Some(b), Color32::TRANSPARENT),
                             );
                         }
-                        if let Some(bytes) = &c.picture {
-                            // A picture the macro changes gets a new key.
-                            let key = format!("ctl{id}{name}{:x}", picture_hash(bytes));
-                            if let Some(t) = picture(ui, key, bytes) {
-                                let s = t.size_vec2();
-                                let fit = (rect.width() / s.x).min(rect.height() / s.y).min(1.0);
-                                let r = Rect::from_center_size(rect.center(), s * fit);
-                                ui.painter().image(
-                                    t.id(),
-                                    r,
-                                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                                    Color32::WHITE,
-                                );
-                            }
-                        }
+                        draw_picture(ui, id, c, rect);
                         let r = ui.interact(rect, ui.id().with(("img", id, name)), Sense::click());
                         if r.clicked() {
                             acts.event(id, name, "Click", Vec::new());
@@ -2122,5 +2133,52 @@ mod tests {
         let src = "Sub A() ' hi\r\n  s = \"x\" & 1 ' é\r\nEnd Sub\r\n";
         let job = highlight(src, 12.0);
         assert_eq!(job.text, src);
+    }
+
+    /// A button's and a label's picture are drawn (#2165: the collection's
+    /// Undo and Browse buttons had only an icon, an .ico among them, and
+    /// came out blank).
+    #[test]
+    fn buttons_and_labels_show_their_pictures() {
+        use tracedraw_vba_project::{Control, Form};
+        let mut ico = Vec::new();
+        image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            16,
+            16,
+            image::Rgba([200, 30, 30, 255]),
+        ))
+        .write_to(&mut std::io::Cursor::new(&mut ico), image::ImageFormat::Ico)
+        .unwrap();
+        assert_eq!(&ico[..4], &[0, 0, 1, 0]);
+        let mut form = Form {
+            name: "F".into(),
+            width: 200.0,
+            height: 100.0,
+            enabled: true,
+            ..Form::default()
+        };
+        for (kind, name) in [
+            (ControlKind::CommandButton, "cmdUndo"),
+            (ControlKind::Label, "lblLogo"),
+        ] {
+            let mut c = Control::new(kind, name);
+            c.width = 30.0;
+            c.height = 25.0;
+            c.picture = Some(ico.clone());
+            form.controls.push(c);
+        }
+        let live = LiveForm::from_model(7, "F", Some(&form));
+        let ctx = Context::default();
+        let mut out = ctx.run_ui(Default::default(), |ui| {
+            let mut acts = FormActions::default();
+            draw_controls(ui, &live, Pos2::ZERO, &mut acts);
+        });
+        out.textures_delta.clear();
+        for name in ["cmdUndo", "lblLogo"] {
+            let key = format!("ctl7{name}{:x}", picture_hash(&ico));
+            let id = egui::Id::new(("macro_picture", &key));
+            let tex = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id));
+            assert_eq!(tex.map(|t| t.size()), Some([16, 16]), "{name}");
+        }
     }
 }
