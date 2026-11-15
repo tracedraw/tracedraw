@@ -1092,6 +1092,11 @@ pub struct PropertyFind {
     pub new_width: f64,
     pub set_font: bool,
     pub new_font: String,
+    /// The characters the new font goes to: all, numbers or letters
+    /// (#2585).
+    pub font_chars: tracedraw_core::find::CharClass,
+    /// Write the digits of every script as 0 to 9 (#2585).
+    pub western_digits: bool,
     /// The objects found last, page by page.
     pub hits: Vec<tracedraw_core::find::Hit>,
 }
@@ -1121,6 +1126,8 @@ impl Default for PropertyFind {
             new_width: 0.2,
             set_font: false,
             new_font: String::new(),
+            font_chars: Default::default(),
+            western_digits: false,
             hits: Vec::new(),
         }
     }

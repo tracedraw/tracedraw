@@ -2568,6 +2568,8 @@ impl PropertyFind {
             outline: self.set_outline.then_some(self.new_outline),
             outline_width: self.set_width.then_some(self.new_width),
             font: (self.set_font && !font.is_empty()).then(|| font.to_string()),
+            font_chars: self.font_chars,
+            western_digits: self.western_digits,
         }
     }
 

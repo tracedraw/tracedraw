@@ -503,6 +503,18 @@ fn set_align(app: &mut App, a: TextAlign) {
     app.apply_text_align(a);
 }
 
+/// Set the direction of the selected paragraphs (#2670). Text left at
+/// the start edge follows it there: left-aligned text turned right to
+/// left is aligned right, and right-aligned text turned back left.
+fn set_direction(app: &mut App, d: tracedraw_core::TextDirection, align: Option<TextAlign>) {
+    edit_paragraphs(app, move |q| q.direction = d);
+    match (d.is_right_to_left(), align) {
+        (true, Some(TextAlign::Left | TextAlign::None)) => set_align(app, TextAlign::Right),
+        (false, Some(TextAlign::Right)) => set_align(app, TextAlign::Left),
+        _ => {}
+    }
+}
+
 /// "Apply to default text": new text takes the selected text's font,
 /// style, size, underline and alignment (only the ticked rows while the
 /// boxes are shown), and its fill and outline through the usual question
@@ -1569,6 +1581,26 @@ fn paragraph(app: &mut App, ui: &mut Ui, first: Option<&tracedraw_core::Shape>) 
     let Some((_, mut p)) = app.paragraph_style_of(t) else {
         return;
     };
+    // The direction the paragraph runs in (#2670).
+    ui.horizontal(|ui| {
+        use tracedraw_core::TextDirection as D;
+        let tip = crate::ui::tips::pair("docker.text_direction", "docker.text_direction_desc");
+        ui.label(tr("docker.text_direction")).rich_tip(&tip);
+        for (d, key) in [
+            (D::LeftToRight, "docker.direction_ltr"),
+            (D::RightToLeft, "docker.direction_rtl"),
+        ] {
+            if ui
+                .selectable_label(p.direction == d, tr(key))
+                .rich_tip(&tip)
+                .clicked()
+                && p.direction != d
+            {
+                let align = app.paragraph_style_of(t).map(|(a, _)| a);
+                set_direction(app, d, align);
+            }
+        }
+    });
     let before = p.clone();
     let mut pc = false;
     let line_icon = |ui: &mut Ui, icon: ParaIcon, key: &str| {
@@ -2544,6 +2576,40 @@ mod tests {
         app.settings.text_docker_ticked = vec!["size".into()];
         apply_to_default(&mut app);
         assert_eq!((app.text_font.as_str(), app.text_size_pt), ("Other", 30.0));
+    }
+
+    /// Text turned right to left (#2670) runs from the right: the
+    /// paragraph's direction is set, and left-aligned text is aligned
+    /// right; turned back, right-aligned text is aligned left.
+    #[test]
+    fn text_turned_right_to_left_is_aligned_right() {
+        use tracedraw_core::TextDirection as D;
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Text {
+                spans: vec![TextSpan::new("Text", "Arial", 20.0)],
+                origin: Point::new(10.0, 10.0),
+                frame: Some(Size::new(50.0, 20.0)),
+                align: TextAlign::Left,
+                para: ParagraphStyle::default(),
+                on_path: None,
+            })
+            .expect("text");
+        app.select(vec![id]);
+        let state = |app: &App| {
+            let s = app.doc().find_shape(id).cloned().expect("text");
+            app.paragraph_style_of(&s)
+                .map(|(a, p)| (a, p.direction))
+                .expect("paragraph")
+        };
+        set_direction(&mut app, D::RightToLeft, Some(TextAlign::Left));
+        assert_eq!(state(&app), (TextAlign::Right, D::RightToLeft));
+        set_direction(&mut app, D::LeftToRight, Some(TextAlign::Right));
+        assert_eq!(state(&app), (TextAlign::Left, D::LeftToRight));
+        // Centred text stays centred.
+        set_align(&mut app, TextAlign::Center);
+        set_direction(&mut app, D::RightToLeft, Some(TextAlign::Center));
+        assert_eq!(state(&app), (TextAlign::Center, D::RightToLeft));
     }
 
     /// The fields edit the selected text: background, alignment and line

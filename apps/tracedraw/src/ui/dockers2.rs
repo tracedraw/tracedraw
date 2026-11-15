@@ -1125,6 +1125,25 @@ fn find_properties(app: &mut App, ui: &mut Ui, st: &mut crate::ui::dialogs::Find
                 }
             });
             ui.end_row();
+            // Which characters take the new font (#2585).
+            ui.label("");
+            ui.add_enabled_ui(pf.set_font, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    use tracedraw_core::find::CharClass;
+                    for c in CharClass::ALL {
+                        let key = format!("find.chars_{}", c.key());
+                        ui.radio_value(&mut pf.font_chars, c, tr(&key))
+                            .rich_tip(crate::ui::tips::pair(&key, "find.chars_desc"));
+                    }
+                });
+            });
+            ui.end_row();
+            ui.checkbox(&mut pf.western_digits, tr("find.western_digits"))
+                .rich_tip(crate::ui::tips::pair(
+                    "find.western_digits",
+                    "find.western_digits_desc",
+                ));
+            ui.end_row();
         });
     let can_find = !pf.query().is_empty();
     let can_replace = can_find && !pf.replacement().is_empty();

@@ -41,6 +41,9 @@ pub struct ParagraphFormat {
     pub drop_cap_lines: u32,
     pub tabs: Vec<crate::document::TabStop>,
     pub hyphenate: bool,
+    /// Left to right or right to left; not in older files.
+    #[serde(skip_serializing_if = "crate::document::TextDirection::is_left_to_right")]
+    pub direction: crate::document::TextDirection,
 }
 
 impl Default for ParagraphFormat {
@@ -71,6 +74,7 @@ impl ParagraphFormat {
             drop_cap_lines: p.drop_cap_lines,
             tabs: p.tabs.clone(),
             hyphenate: p.hyphenate,
+            direction: p.direction,
         }
     }
 
@@ -94,6 +98,7 @@ impl ParagraphFormat {
         p.drop_cap_lines = self.drop_cap_lines;
         p.tabs = self.tabs.clone();
         p.hyphenate = self.hyphenate;
+        p.direction = self.direction;
         self.align
     }
 
@@ -126,7 +131,8 @@ impl ParagraphFormat {
             bullet_indent,
             drop_cap_lines,
             tabs,
-            hyphenate
+            hyphenate,
+            direction
         );
     }
 }
