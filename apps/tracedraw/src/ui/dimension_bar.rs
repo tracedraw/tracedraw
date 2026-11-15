@@ -263,7 +263,7 @@ pub fn dimension_bar(app: &mut App, ui: &mut Ui) {
     let first = app.first_selected_dimension();
     let style = first
         .map(|d| d.style)
-        .unwrap_or_else(|| app.dimension_style.clone());
+        .unwrap_or_else(|| app.new_dimension_style());
     dim(ui, tr("dimension.precision"));
     let mut precision = style.precision.min(6);
     crate::ui::keynav::ComboBox::from_id_salt("dimension_precision")
@@ -535,7 +535,8 @@ mod tests {
         app.dimension_points = vec![Point::new(0.0, 0.0)];
         assert_eq!(app.dimension_live_text(Point::new(5.0, 5.0)), None);
         app.dimension_points = vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)];
-        app.dimension_style.precision = 0;
+        // The angular tool's bar sets the angular decimals (#1436).
+        app.set_dimension_style(|s| s.precision = 0);
         let t = app
             .dimension_live_text(Point::new(10.0, 10.0))
             .expect("angle");

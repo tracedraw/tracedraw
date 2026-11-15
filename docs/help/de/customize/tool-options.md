@@ -18,12 +18,17 @@ Werkzeugs.
   aus, die er nur berührt; mit <kbd>Alt</kbd> werden dann nur die vollständig
   umschlossenen ausgewählt.
 
+- [[options.ctrl_shift_keys]] [[options.keys_traditional]]: [[options.keys_traditional_tip]]
+  [[options.keys_windows]]: [[options.keys_windows_tip]]
+
 ## Radierer {#eraser}
 
 ![Die Optionen des Radierers](../../img/customize-tool-options-eraser.png)
 
 [[options.eraser_width]] (anfangs 6,35 mm) sowie [[options.eraser_round]] oder
 [[options.eraser_square]].
+
+[[options.eraser_reduce_nodes]]: [[options.eraser_reduce_nodes_tip]]
 
 ## Zoom und Schwenken {#zoom-pan}
 
@@ -62,6 +67,9 @@ Werkzeugs.
 - [[options.pen_tablet]]: [[options.pen_pressure]] (an); siehe
   [Mit einem Grafiktablett zeichnen](../lines-shapes/pen-pressure.md).
 
+- [[options.corner_threshold]]: [[options.corner_threshold_tip]]
+- [[options.straight_threshold]]: [[options.straight_threshold_tip]]
+
 ## Formerkennung {#shape-recognition}
 
 ![Die Optionen des Werkzeugs Formerkennung](../../img/customize-tool-options-shape-recognition.png)
@@ -86,6 +94,9 @@ Eckengrößen und [[toolbar.corners_together]]. [[options.scale_corners]]:
 [[options.ellipse]], [[options.pie]] oder [[options.arc]], mit
 [[options.starting_angle]] und [[options.ending_angle]].
 
+[[options.arc_direction]]: [[options.counterclockwise]] / [[options.clockwise]].
+[[options.arc_direction_desc]]
+
 ## Polygon {#polygon}
 
 ![Die Optionen des Polygonwerkzeugs](../../img/customize-tool-options-polygon.png)
@@ -105,6 +116,9 @@ Eckengrößen und [[toolbar.corners_together]]. [[options.scale_corners]]:
 [[options.revolutions]] sowie [[options.symmetrical_spiral]] oder
 [[options.logarithmic_spiral]].
 
+[[options.spiral_expansion]]: [[options.spiral_expansion_tip]]
+[[options.spiral_preview_tip]]
+
 ## Tabelle {#table}
 
 ![Die Optionen des Tabellenwerkzeugs](../../img/customize-tool-options-table.png)
@@ -120,11 +134,24 @@ Wie die Beschriftung neuer Bemaßungen aussieht: [[dimension.precision]],
 [[dimension.suffix]]. Bereits gezeichnete Bemaßungen behalten ihre
 Beschriftung; wählen Sie eine aus und ändern Sie sie in der Eigenschaftsleiste.
 
+[[options.dimension_style]]: [[options.decimal]] / [[options.fractional]].
+[[options.dimension_style_tip]]
+
+## Winkelbemaßung {#angular-dimension}
+
+[[dimension.precision]], [[dimension.show_units]], [[dimension.prefix]] and
+[[dimension.suffix]] of new angular dimensions.
+[[options.angular_units_tip]]
+
 ## Verbindungslinie {#connector}
 
 ![Die Optionen des Verbindungswerkzeugs](../../img/customize-tool-options-connector.png)
 
 [[connector.radius]] neuer abgerundeter Verbindungslinien (anfangs 3 mm).
+
+[[options.connector_gap]]: [[options.connector_gap_tip]]
+
+[[options.connector_geometric_anchors]]: [[options.connector_geometric_anchors_tip]]
 
 ## Maschenfüllung {#mesh-fill}
 

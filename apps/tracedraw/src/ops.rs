@@ -2041,7 +2041,12 @@ mod smoke_tests {
         app.create_box_shape(Point::new(50.0, 150.0), Point::new(80.0, 180.0));
         app.tool = Tool::Spiral;
         let r = Rect::new(10.0, 150.0, 40.0, 180.0);
-        let path = crate::tools2::spiral_path(r, app.spiral_revolutions, app.spiral_logarithmic);
+        let path = crate::tools2::spiral_path(
+            r,
+            app.spiral_revolutions,
+            app.spiral_logarithmic,
+            app.settings.spiral_expansion,
+        );
         app.new_shape(ShapeKind::Path {
             path,
             closed: false,

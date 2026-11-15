@@ -17,12 +17,17 @@
   объекты, которых она только касается; тогда <kbd>Alt</kbd> выделяет только
   объекты, целиком находящиеся внутри.
 
+- [[options.ctrl_shift_keys]] [[options.keys_traditional]]: [[options.keys_traditional_tip]]
+  [[options.keys_windows]]: [[options.keys_windows_tip]]
+
 ## Ластик {#eraser}
 
 ![Параметры инструмента «Ластик»](../../img/customize-tool-options-eraser.png)
 
 [[options.eraser_width]] (по умолчанию 6,35 мм), а также
 [[options.eraser_round]] или [[options.eraser_square]].
+
+[[options.eraser_reduce_nodes]]: [[options.eraser_reduce_nodes_tip]]
 
 ## Масштаб и панорамирование {#zoom-pan}
 
@@ -62,6 +67,9 @@
 - [[options.pen_tablet]]: [[options.pen_pressure]] (включено); см.
   [Рисование на графическом планшете](../lines-shapes/pen-pressure.md).
 
+- [[options.corner_threshold]]: [[options.corner_threshold_tip]]
+- [[options.straight_threshold]]: [[options.straight_threshold_tip]]
+
 ## Распознавание фигур {#shape-recognition}
 
 ![Параметры инструмента «Распознавание фигур»](../../img/customize-tool-options-shape-recognition.png)
@@ -86,6 +94,9 @@
 [[options.ellipse]], [[options.pie]] или [[options.arc]], с
 [[options.starting_angle]] и [[options.ending_angle]].
 
+[[options.arc_direction]]: [[options.counterclockwise]] / [[options.clockwise]].
+[[options.arc_direction_desc]]
+
 ## Многоугольник {#polygon}
 
 ![Параметры инструмента «Многоугольник»](../../img/customize-tool-options-polygon.png)
@@ -105,6 +116,9 @@
 [[options.revolutions]], а также [[options.symmetrical_spiral]] или
 [[options.logarithmic_spiral]].
 
+[[options.spiral_expansion]]: [[options.spiral_expansion_tip]]
+[[options.spiral_preview_tip]]
+
 ## Таблица {#table}
 
 ![Параметры инструмента «Таблица»](../../img/customize-tool-options-table.png)
@@ -120,11 +134,24 @@
 [[dimension.suffix]]. Уже нарисованные размеры сохраняют свою подпись;
 выделите размер и измените её на панели свойств.
 
+[[options.dimension_style]]: [[options.decimal]] / [[options.fractional]].
+[[options.dimension_style_tip]]
+
+## Угловой размер {#angular-dimension}
+
+[[dimension.precision]], [[dimension.show_units]], [[dimension.prefix]] and
+[[dimension.suffix]] of new angular dimensions.
+[[options.angular_units_tip]]
+
 ## Соединительная линия {#connector}
 
 ![Параметры инструмента «Соединительная линия»](../../img/customize-tool-options-connector.png)
 
 [[connector.radius]] новых скруглённых соединительных линий (сначала 3 мм).
+
+[[options.connector_gap]]: [[options.connector_gap_tip]]
+
+[[options.connector_geometric_anchors]]: [[options.connector_geometric_anchors_tip]]
 
 ## Заливка сетки {#mesh-fill}
 
