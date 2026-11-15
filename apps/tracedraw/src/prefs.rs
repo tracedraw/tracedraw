@@ -374,6 +374,9 @@ pub struct PrintStyle {
     pub art_rotation: f64,
     pub cell_rotation: Vec<f64>,
     pub cell_order: Vec<usize>,
+    /// The sheets' orientation: 0 as the pages are, 1 portrait, 2
+    /// landscape (#2795).
+    pub orientation: usize,
     pub info_offset: (f64, f64),
     pub copies: u32,
     pub collate: bool,
@@ -416,6 +419,7 @@ impl PrintStyle {
             art_rotation: st.art_rotation,
             cell_rotation: st.cell_rotation.clone(),
             cell_order: st.cell_order.clone(),
+            orientation: st.orientation,
             info_offset: st.info_offset,
             copies: st.copies,
             collate: st.collate,
@@ -475,6 +479,7 @@ impl PrintStyle {
         } else {
             Vec::new()
         };
+        st.orientation = self.orientation.min(2);
         st.info_offset = pair(self.info_offset, -5000.0, 5000.0, 0.0);
         st.copies = self.copies.clamp(1, 999);
         st.collate = self.collate;
@@ -1708,6 +1713,7 @@ mod tests {
             art_rotation: 90.0,
             cell_rotation: vec![0.0, 180.0],
             cell_order: vec![2, 0, 1],
+            orientation: 2,
             as_bitmap: true,
             bitmap_dpi: 600.0,
             ps_level: 3,

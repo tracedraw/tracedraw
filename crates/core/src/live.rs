@@ -419,13 +419,19 @@ impl Lens {
             Lens::Invert => [1.0 - c[0], 1.0 - c[1], 1.0 - c[2]],
             Lens::TintedGrayscale { color } => {
                 let y = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-                let k = k(*color);
-                // Tint: black stays black, white becomes the tint colour's complement-free mix.
+                // The grey as a tint of the lens colour (#2800): black
+                // becomes the colour, white stays white, so a black lens
+                // gives plain grays. A white lens (what the panel gave
+                // before) would whiten everything; it means plain grays.
+                let k = if *color == Color::WHITE {
+                    [0.0; 3]
+                } else {
+                    k(*color)
+                };
                 [
-                    y * (1.0 - (1.0 - k[0]) * 0.0) * (0.5 + 0.5 * k[0])
-                        + y * 0.5 * (1.0 - k[0]) * 0.0,
-                    y * (0.5 + 0.5 * k[1]),
-                    y * (0.5 + 0.5 * k[2]),
+                    k[0] + (1.0 - k[0]) * y,
+                    k[1] + (1.0 - k[1]) * y,
+                    k[2] + (1.0 - k[2]) * y,
                 ]
             }
             Lens::Transparency { rate, color } => {

@@ -1548,6 +1548,10 @@ fn lens(app: &mut App, ui: &mut Ui) {
             for (i, k) in keys.iter().enumerate() {
                 if ui.selectable_label(app.lens.kind == i, tr(k)).clicked() {
                     app.lens.kind = i;
+                    // Tinted grayscale starts black: plain grays (#2800).
+                    if i == 9 && app.lens.color == tracedraw_core::Color::WHITE {
+                        app.lens.color = tracedraw_core::Color::BLACK;
+                    }
                 }
             }
         })
@@ -1602,9 +1606,18 @@ fn lens(app: &mut App, ui: &mut Ui) {
                     "docker.lens_amount_desc",
                 ));
         }
-        9 | 11 => {
+        9 => {
             ui.horizontal(|ui| {
                 ui.label(tr("docker.color"));
+                color_button(ui, &mut l.color);
+            });
+        }
+        11 => {
+            // The objects beneath: their outlines and their insides (#2800).
+            ui.horizontal(|ui| {
+                ui.label(tr("docker.outline"));
+                color_button(ui, &mut l.color_to);
+                ui.label(tr("docker.fill"));
                 color_button(ui, &mut l.color);
             });
         }

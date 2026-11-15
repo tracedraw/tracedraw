@@ -2098,6 +2098,32 @@ impl Renderer<'_> {
                 _ => [1.0, 1.0, 1.0],
             }
         };
+        // What lies beneath at a point between pixels, blended from the
+        // four around it, so a magnified scene is not blocky (#2800).
+        let smooth_px = |fx: f64, fy: f64| -> [f32; 3] {
+            let (fx, fy) = (fx - 0.5, fy - 0.5);
+            let (x0, y0) = (fx.floor(), fy.floor());
+            let (tx, ty) = ((fx - x0) as f32, (fy - y0) as f32);
+            let (xi, yi) = (x0 as i64, y0 as i64);
+            let a = src_px(xi, yi);
+            let b = src_px(xi + 1, yi);
+            let c = src_px(xi, yi + 1);
+            let d = src_px(xi + 1, yi + 1);
+            let mut out = [0.0f32; 3];
+            for i in 0..3 {
+                let top = a[i] + (b[i] - a[i]) * tx;
+                let bottom = c[i] + (d[i] - c[i]) * tx;
+                out[i] = top + (bottom - top) * ty;
+            }
+            out
+        };
+        // The largest difference of two colours' channels.
+        let differ = |p: [f32; 3], q: [f32; 3]| -> f32 {
+            (p[0] - q[0])
+                .abs()
+                .max((p[1] - q[1]).abs())
+                .max((p[2] - q[2]).abs())
+        };
         // Bitmap Effects lens: the effects run over what lies beneath (with
         // a margin, so blurs and the like see past the edge), then the
         // result shows inside the lens.
@@ -2156,23 +2182,34 @@ impl Renderer<'_> {
                         let radius = (b.width().min(b.height()) / 2.0).max(1.0);
                         let d = (dx * dx + dy * dy).sqrt() / radius;
                         let k = if d > 0.0 { d.powf(1.0 + r) / d } else { 1.0 };
-                        src_px(
-                            (center.x + dx * k).round() as i64,
-                            (center.y + dy * k).round() as i64,
-                        )
+                        smooth_px(center.x + dx * k, center.y + dy * k)
                     }
                     Lens::Magnify { amount } => {
                         let a = amount.max(1.0);
                         let dx = (x as f64 - center.x) / a;
                         let dy = (y as f64 - center.y) / a;
-                        src_px(
-                            (center.x + dx).round() as i64,
-                            (center.y + dy).round() as i64,
-                        )
+                        smooth_px(center.x + dx, center.y + dy)
                     }
-                    Lens::Wireframe { fill, .. } => {
-                        let [r, g, bl] = fill.to_rgb8();
-                        [r as f32 / 255.0, g as f32 / 255.0, bl as f32 / 255.0]
+                    Lens::Wireframe { outline, fill } => {
+                        // The objects beneath as a wireframe (#2800): their
+                        // edges in the outline colour, their insides in the
+                        // fill colour, the bare page left as it is.
+                        let rgb = |c: &tracedraw_core::Color| {
+                            let [r, g, bl] = c.to_rgb8();
+                            [r as f32 / 255.0, g as f32 / 255.0, bl as f32 / 255.0]
+                        };
+                        let here = src_px(x as i64, y as i64);
+                        let (xi, yi) = (x as i64, y as i64);
+                        let edge = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                            .iter()
+                            .any(|(ox, oy)| differ(here, src_px(xi + ox, yi + oy)) > 0.12);
+                        if edge {
+                            rgb(outline)
+                        } else if differ(here, [1.0, 1.0, 1.0]) > 0.02 {
+                            rgb(fill)
+                        } else {
+                            here
+                        }
                     }
                     other => other.map_color(src_px(x as i64, y as i64)),
                 };
@@ -5842,6 +5879,38 @@ mod tests {
         let pm = render_page_image(&doc, page, 25.4).unwrap();
         assert_eq!(px(&pm, 50, 50), (0, 255, 255));
         assert_eq!(px(&pm, 5, 5), (255, 0, 0));
+    }
+
+    /// #2800: Wireframe shows the objects beneath as outlines and fills
+    /// in its colours, the bare page as it is; Tinted grayscale turns
+    /// black into the lens colour and keeps white.
+    #[test]
+    fn wireframe_and_tinted_grayscale_lenses_show_what_is_beneath() {
+        let page_white = rect(1, Rect::new(0.0, 0.0, 100.0, 100.0), Color::WHITE);
+        let base = rect(2, Rect::new(30.0, 30.0, 70.0, 70.0), Color::rgb8(255, 0, 0));
+        let mut lens = rect(3, Rect::new(0.0, 0.0, 100.0, 100.0), Color::WHITE);
+        lens.effects.push(tracedraw_core::live::Effect::Lens(
+            tracedraw_core::live::Lens::Wireframe {
+                outline: Color::rgb8(0, 0, 255),
+                fill: Color::rgb8(255, 255, 0),
+            },
+        ));
+        let (doc, page) = doc_with(vec![page_white.clone(), base.clone(), lens]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        assert_eq!(px(&pm, 50, 50), (255, 255, 0), "inside: the fill colour");
+        assert_eq!(px(&pm, 30, 50), (0, 0, 255), "the edge: the outline colour");
+        assert_eq!(px(&pm, 10, 10), (255, 255, 255), "the page stays");
+        let black = rect(2, Rect::new(30.0, 30.0, 70.0, 70.0), Color::BLACK);
+        let mut lens = rect(3, Rect::new(0.0, 0.0, 100.0, 100.0), Color::WHITE);
+        lens.effects.push(tracedraw_core::live::Effect::Lens(
+            tracedraw_core::live::Lens::TintedGrayscale {
+                color: Color::rgb8(255, 0, 0),
+            },
+        ));
+        let (doc, page) = doc_with(vec![page_white, black, lens]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        assert_eq!(px(&pm, 50, 50), (255, 0, 0), "black becomes the tint");
+        assert_eq!(px(&pm, 10, 10), (255, 255, 255), "white stays white");
     }
 
     #[test]
