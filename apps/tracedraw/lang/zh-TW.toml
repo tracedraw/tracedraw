@@ -2499,6 +2499,7 @@ menu.object.break_blend_apart = "拆分漸變群組" # mt
 menu.object.break_contour_apart = "拆分輪廓群組" # mt
 menu.object.break_extrude_apart = "拆分立體化群組" # mt
 menu.object.break_shadow_apart = "拆分陰影"
+menu.object.break_shadows_apart = "拆分陰影" # mt
 menu.object.center_to_page = "置中於頁面"
 menu.object.clear_effect = "清除效果"
 menu.object.clear_transformations = "清除變形"

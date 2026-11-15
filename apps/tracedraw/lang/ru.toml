@@ -2499,6 +2499,7 @@ menu.object.break_blend_apart = "Разъединить группу перет�
 menu.object.break_contour_apart = "Разъединить группу контура" # mt
 menu.object.break_extrude_apart = "Разъединить группу выдавливания" # mt
 menu.object.break_shadow_apart = "Отделить тень"
+menu.object.break_shadows_apart = "Отделить тень" # mt
 menu.object.center_to_page = "Центрировать на странице"
 menu.object.clear_effect = "Удалить эффект"
 menu.object.clear_transformations = "Отменить преобразования"

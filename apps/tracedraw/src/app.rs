@@ -2101,6 +2101,10 @@ pub struct App {
     /// The revision, objects and effect kind of the last effect edit from
     /// a panel or bar, so a slider drag is one undo step.
     pub effect_edit_step: Option<(u64, Vec<ShapeId>, String)>,
+    /// The undo step a drop shadow was last set in and the objects it
+    /// went to: only that step is replaced by the next frame of a drag
+    /// (#2890).
+    pub shadow_step: Option<(u64, Vec<ShapeId>)>,
     /// What new blends take besides their steps: rotation (degrees) and
     /// the object and colour accelerations (-1 to 1).
     pub blend_rotation: f64,
@@ -3384,6 +3388,7 @@ impl App {
             recognize: Default::default(),
             sketch: Default::default(),
             effect_edit_step: None,
+            shadow_step: None,
             blend_rotation: 0.0,
             fill_node: None,
             live_font: None,

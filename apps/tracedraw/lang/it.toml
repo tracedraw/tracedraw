@@ -2499,6 +2499,7 @@ menu.object.break_blend_apart = "Separa gruppo di fusione" # mt
 menu.object.break_contour_apart = "Separa gruppo di contorno" # mt
 menu.object.break_extrude_apart = "Separa gruppo di estrusione" # mt
 menu.object.break_shadow_apart = "Separa ombra esterna"
+menu.object.break_shadows_apart = "Separa ombra" # mt
 menu.object.center_to_page = "Centra nella pagina"
 menu.object.clear_effect = "Rimuovi effetto"
 menu.object.clear_transformations = "Rimuovi trasformazioni"

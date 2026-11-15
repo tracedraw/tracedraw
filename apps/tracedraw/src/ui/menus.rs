@@ -733,6 +733,7 @@ fn menu_pic(key: &str) -> Option<crate::ui::propbar::Pic> {
         "menu.object.combine" => Pic::Combine,
         "menu.object.break_apart"
         | "menu.object.break_shadow_apart"
+        | "menu.object.break_shadows_apart"
         | "menu.object.break_contour_apart"
         | "menu.object.break_blend_apart"
         | "menu.object.break_extrude_apart" => Pic::BreakApart,

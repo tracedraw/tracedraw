@@ -2499,6 +2499,7 @@ menu.object.break_blend_apart = "ব্লেন্ড গ্রুপ আলা
 menu.object.break_contour_apart = "কনট্যুর গ্রুপ আলাদা করুন" # mt
 menu.object.break_extrude_apart = "এক্সট্রুড গ্রুপ আলাদা করুন" # mt
 menu.object.break_shadow_apart = "ড্রপ শ্যাডো আলাদা করুন"
+menu.object.break_shadows_apart = "ছায়া আলাদা করুন" # mt
 menu.object.center_to_page = "পৃষ্ঠার কেন্দ্রে"
 menu.object.clear_effect = "ইফেক্ট মুছুন"
 menu.object.clear_transformations = "রূপান্তর মুছুন"

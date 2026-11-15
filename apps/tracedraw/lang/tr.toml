@@ -2499,6 +2499,7 @@ menu.object.break_blend_apart = "Karışım Grubunu Ayır" # mt
 menu.object.break_contour_apart = "Kontur Grubunu Ayır" # mt
 menu.object.break_extrude_apart = "Ekstrüzyon Grubunu Ayır" # mt
 menu.object.break_shadow_apart = "Gölgeyi Ayır"
+menu.object.break_shadows_apart = "Gölgeyi ayır" # mt
 menu.object.center_to_page = "Sayfaya Ortala"
 menu.object.clear_effect = "Efekti Temizle"
 menu.object.clear_transformations = "Dönüşümleri Temizle"

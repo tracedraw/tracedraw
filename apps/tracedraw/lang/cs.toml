@@ -2499,6 +2499,7 @@ menu.object.break_blend_apart = "Oddělit skupinu prolnutí" # mt
 menu.object.break_contour_apart = "Oddělit skupinu obrysu" # mt
 menu.object.break_extrude_apart = "Oddělit skupinu vysunutí" # mt
 menu.object.break_shadow_apart = "Oddělit vržený stín"
+menu.object.break_shadows_apart = "Oddělit stín" # mt
 menu.object.center_to_page = "Vycentrovat na stránku"
 menu.object.clear_effect = "Odstranit efekt"
 menu.object.clear_transformations = "Zrušit transformace"

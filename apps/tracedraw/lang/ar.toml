@@ -2499,6 +2499,7 @@ menu.object.break_blend_apart = "فصل مجموعة المزج" # mt
 menu.object.break_contour_apart = "فصل مجموعة الكفاف" # mt
 menu.object.break_extrude_apart = "فصل مجموعة البثق" # mt
 menu.object.break_shadow_apart = "فصل الظل المُلقى"
+menu.object.break_shadows_apart = "فصل الظل" # mt
 menu.object.center_to_page = "توسيط في الصفحة"
 menu.object.clear_effect = "مسح التأثير"
 menu.object.clear_transformations = "مسح التحويلات"

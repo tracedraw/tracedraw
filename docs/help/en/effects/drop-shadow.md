@@ -45,6 +45,9 @@ shadow of another object, use
 [[menu.object > menu.object.copy_effect > menu.object.copy_shadow_from]].
 
 **Break Drop Shadow Apart** in the **Object** menu (<kbd>Ctrl+K</kbd>) makes the
-shadow a bitmap of its own, just behind the object. It is a bitmap of the
+shadow a bitmap of its own, just behind the object. When the object also has a
+block shadow or an inner shadow, the command reads **Break Shadow Apart** and
+takes those off too: the block shadow as curves behind the object, the inner
+shadow as a bitmap in front of it. It is a bitmap of the
 shadow's one color, so a click on a palette color (or a right click) recolors
 it, keeping how soft it is.

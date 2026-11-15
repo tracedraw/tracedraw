@@ -2499,6 +2499,7 @@ menu.object.break_blend_apart = "Pisahkan Grup Campuran" # mt
 menu.object.break_contour_apart = "Pisahkan Grup Kontur" # mt
 menu.object.break_extrude_apart = "Pisahkan Grup Ekstrusi" # mt
 menu.object.break_shadow_apart = "Pisahkan Bayangan Jatuh"
+menu.object.break_shadows_apart = "Pisahkan bayangan" # mt
 menu.object.center_to_page = "Pusatkan ke Halaman"
 menu.object.clear_effect = "Bersihkan Efek"
 menu.object.clear_transformations = "Bersihkan Transformasi"

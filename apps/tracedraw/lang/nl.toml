@@ -2499,6 +2499,7 @@ menu.object.break_blend_apart = "Overvloeigroep losmaken" # mt
 menu.object.break_contour_apart = "Contourgroep losmaken" # mt
 menu.object.break_extrude_apart = "Extrusiegroep losmaken" # mt
 menu.object.break_shadow_apart = "Slagschaduw losmaken"
+menu.object.break_shadows_apart = "Schaduw scheiden" # mt
 menu.object.center_to_page = "Centreren op pagina"
 menu.object.clear_effect = "Effect wissen"
 menu.object.clear_transformations = "Transformaties wissen"

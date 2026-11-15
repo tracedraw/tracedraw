@@ -2499,6 +2499,7 @@ menu.object.break_blend_apart = "ब्लेंड समूह अलग क�
 menu.object.break_contour_apart = "कंटूर समूह अलग करें" # mt
 menu.object.break_extrude_apart = "एक्सट्रूड समूह अलग करें" # mt
 menu.object.break_shadow_apart = "ड्रॉप शैडो अलग करें"
+menu.object.break_shadows_apart = "छाया अलग करें" # mt
 menu.object.center_to_page = "पृष्ठ के केंद्र में"
 menu.object.clear_effect = "प्रभाव हटाएँ"
 menu.object.clear_transformations = "रूपांतरण हटाएँ"

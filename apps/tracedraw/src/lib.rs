@@ -182,6 +182,8 @@ mod select_region;
 mod select_similar;
 mod settings;
 mod shadow_tool;
+#[cfg(test)]
+mod shadow_split_tests;
 mod shape_builder;
 mod shape_tool;
 #[cfg(test)]

@@ -3937,6 +3937,87 @@ pub fn render_shadow_image(shape: &Shape, dpi: f64) -> Option<(Rect, Pixmap)> {
     Some((exact, pm))
 }
 
+/// The inner shadow of `shape` (its first `Effect::InnerShadow`, `shape`
+/// in page space) as a picture at `dpi`, for Break Shadow Apart (#2893):
+/// the shadow's density in the alpha of each pixel, its colour in all of
+/// them, over the box of the object; with the box it covers on the page.
+/// The merge mode is left to the caller. `None` when the object has no
+/// inner shadow or casts nothing.
+pub fn render_inner_shadow_image(shape: &Shape, dpi: f64) -> Option<(Rect, Pixmap)> {
+    let (offset, color, opacity, blur) = shape.effects.iter().find_map(|e| match e {
+        tracedraw_core::live::Effect::InnerShadow {
+            offset,
+            color,
+            opacity,
+            blur,
+            ..
+        } => Some((*offset, *color, *opacity, *blur)),
+        _ => None,
+    })?;
+    let opacity = if opacity.is_finite() {
+        opacity.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let path = shape.page_path();
+    if opacity <= 0.0 || path.elements().is_empty() || !(dpi.is_finite() && dpi > 0.0) {
+        return None;
+    }
+    let area = path.bounding_box();
+    let zoom = dpi / 25.4;
+    let w = (area.width() * zoom).ceil();
+    let h = (area.height() * zoom).ceil();
+    if !(w >= 1.0 && h >= 1.0 && w * h <= 64.0e6) {
+        return None;
+    }
+    let blur = if blur.is_finite() { blur.max(0.0) } else { 0.0 };
+    let radius = (blur * zoom).round().min(64.0) as i32;
+    // Room round the object for the blur to draw what lies outside.
+    let pad = radius.max(0) as u32 * 3 + 2;
+    let (lw, lh) = (w as u32 + 2 * pad, h as u32 + 2 * pad);
+    let mut layer = Pixmap::new(lw, lh)?;
+    // Page (y up) to the layer (y down), the object's box at `pad`.
+    let screen = Affine::new([
+        zoom,
+        0.0,
+        0.0,
+        -zoom,
+        f64::from(pad) - area.x0 * zoom,
+        f64::from(pad) + area.y1 * zoom,
+    ]);
+    let rule = shape_fill_rule(shape, false);
+    // Everything outside the object, moved by the offset, casts.
+    layer.fill(tiny_skia::Color::WHITE);
+    let moved = screen * (Affine::translate((offset.x, offset.y)) * path.clone());
+    if let Some(sk) = to_sk_path(&moved) {
+        let mut clear = Paint::default();
+        clear.anti_alias = true;
+        clear.blend_mode = tiny_skia::BlendMode::Clear;
+        layer.fill_path(&sk, &clear, rule, Transform::identity(), None);
+    }
+    if radius > 0 {
+        accel::box_blur(&mut layer, radius, 3);
+    }
+    // Kept where the object covers.
+    let mut mask = tiny_skia::Mask::new(lw, lh)?;
+    if let Some(sk) = to_sk_path(&(screen * path)) {
+        mask.fill_path(&sk, rule, true, Transform::identity());
+    }
+    let [cr, cg, cb] = color.to_rgb8();
+    let mut out = Pixmap::new(w as u32, h as u32)?;
+    let (ow, pad) = (w as usize, pad as usize);
+    let src = layer.pixels();
+    let m = mask.data();
+    for (i, px) in out.pixels_mut().iter_mut().enumerate() {
+        let (x, y) = (i % ow + pad, i / ow + pad);
+        let j = y * lw as usize + x;
+        let a = f64::from(src[j].alpha()) / 255.0 * f64::from(m[j]) / 255.0 * opacity;
+        *px = tiny_skia::ColorU8::from_rgba(cr, cg, cb, (a * 255.0).round() as u8).premultiply();
+    }
+    let exact = Rect::new(area.x0, area.y1 - h / zoom, area.x0 + w / zoom, area.y1);
+    Some((exact, out))
+}
+
 /// The blend mode a merge mode draws with. Subtract, Texturize and
 /// Lightness have no blend of their own and get the nearest;
 /// [`composite_layer`] draws them exactly.

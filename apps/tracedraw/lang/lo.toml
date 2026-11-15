@@ -2502,6 +2502,7 @@ menu.object.break_blend_apart = "ແຍກກຸ່ມປະສົມຮູບ�
 menu.object.break_contour_apart = "ແຍກກຸ່ມເສັ້ນຂອບຊ້ອນອອກ"
 menu.object.break_extrude_apart = "ແຍກກຸ່ມວັດຖຸ 3D ອອກ"
 menu.object.break_shadow_apart = "ແຍກເງົາຕົກກະທົບອອກ"
+menu.object.break_shadows_apart = "ແຍກເງົາ" # mt
 menu.object.center_to_page = "ຈັດໄວ້ກາງໜ້າເຈ້ຍ"
 menu.object.clear_effect = "ລ້າງຜົນກະທົບພິເສດ"
 menu.object.clear_transformations = "ລ້າງການແປງຮູບຮ່າງ"

@@ -2499,6 +2499,7 @@ menu.object.break_blend_apart = "Überblendungsgruppe trennen" # mt
 menu.object.break_contour_apart = "Konturgruppe trennen" # mt
 menu.object.break_extrude_apart = "Extrusionsgruppe trennen" # mt
 menu.object.break_shadow_apart = "Schlagschatten abtrennen"
+menu.object.break_shadows_apart = "Schatten trennen" # mt
 menu.object.center_to_page = "Auf Seite zentrieren"
 menu.object.clear_effect = "Effekt aufheben"
 menu.object.clear_transformations = "Änderungen rückgängig machen"

@@ -276,13 +276,29 @@ pixel for pixel.
 ## Break Drop Shadow Apart
 
 Object > Break Drop Shadow Apart (Ctrl+K, which takes the place of
-Break Apart while a selected object has a shadow), or Break apart on the
-property bar: each selected top-level object's shadow becomes a bitmap
-of its own at 150 dpi, placed just behind the object, named Shadow,
-holding the shadow's colour, feathering, opacity and fade. A merge mode
-other than Normal is kept as an opaque transparency with that merge
-mode. The object loses its shadow. Everything happens in one undo step,
-and the new bitmaps come out selected.
+Break Apart while a selected object has a shadow; the Objects docker's
+menu has it too), or Break apart on the property bar: each selected
+object's shadow becomes a bitmap of its own at 150 dpi, placed just
+behind the object, named Shadow, holding the shadow's colour,
+feathering, opacity and fade. A merge mode other than Normal is kept as
+an opaque transparency with that merge mode. The object loses its
+shadow. Everything happens in one undo step, and the new bitmaps come
+out selected.
+
+The same command takes the object's block shadows and inner shadow off
+too (#2893); it reads Break Shadow Apart when the selection has one of
+them. A block shadow becomes its curves, behind the object (in front of
+the drop shadow's bitmap); an inner shadow becomes a bitmap of its own
+at 150 dpi over the object's box, just in front of it, its colour in
+every pixel and its density in the alpha, with its merge mode kept as
+for the drop shadow. An object inside a group keeps what comes off it
+in its group, beside it. The object keeps its fill (a mesh too) and its
+other effects.
+
+A new shadow given to one object never takes another object's shadow
+back (#2890): a drag with the Drop Shadow tool, a field of its bar typed
+in again or a handle dragged replaces only the step it made itself, on
+the same objects with nothing done since.
 
 ## PDF and printing
 

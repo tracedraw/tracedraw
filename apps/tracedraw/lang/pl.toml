@@ -2499,6 +2499,7 @@ menu.object.break_blend_apart = "Rozdziel grupę przejścia" # mt
 menu.object.break_contour_apart = "Rozdziel grupę konturu" # mt
 menu.object.break_extrude_apart = "Rozdziel grupę wytłoczenia" # mt
 menu.object.break_shadow_apart = "Oddziel cień"
+menu.object.break_shadows_apart = "Rozdziel cień" # mt
 menu.object.center_to_page = "Wyśrodkuj na stronie"
 menu.object.clear_effect = "Usuń efekt"
 menu.object.clear_transformations = "Usuń przekształcenia"
