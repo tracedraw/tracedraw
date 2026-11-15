@@ -773,18 +773,47 @@ impl App {
     /// way from the size it was drawn or imported at; 100% for several
     /// objects or none. The fields stayed at 100% after any scaling
     /// (#2693).
+    ///
+    /// Measured from the size made 100% with
+    /// [`set_scale_as_100`](Self::set_scale_as_100) when it was (#2761).
     pub fn scale_shown(&self) -> (f64, f64) {
         let shapes = self.selected_shapes();
         let [s] = shapes.as_slice() else {
             return (100.0, 100.0);
         };
-        let [a, b, c, d, _, _] = s.transform.as_coeffs();
-        let (sx, sy) = (a.hypot(b) * 100.0, c.hypot(d) * 100.0);
-        if sx.is_finite() && sy.is_finite() && sx > 1e-6 && sy > 1e-6 {
-            (sx, sy)
-        } else {
-            (100.0, 100.0)
+        let Some((sx, sy)) = transform_scale(s) else {
+            return (100.0, 100.0);
+        };
+        let (bx, by) = scale_base(s).unwrap_or((1.0, 1.0));
+        (sx / bx * 100.0, sy / by * 100.0)
+    }
+
+    /// The property bar's 100% button: the selected objects' sizes as
+    /// they are now become 100% in the scale fields, so a later scaling
+    /// reads from them, not from the size each was drawn at (#2761). One
+    /// Undo step. Kept in each object's data (`scale.base`).
+    pub fn set_scale_as_100(&mut self) {
+        let changes: Vec<(ShapeId, Vec<(String, String)>)> = self
+            .selected_shapes()
+            .iter()
+            .filter_map(|s| {
+                let (sx, sy) = transform_scale(s)?;
+                let mut data = s.data.clone();
+                data.retain(|(k, _)| k != SCALE_BASE_KEY);
+                if (sx - 1.0).abs() > 1e-9 || (sy - 1.0).abs() > 1e-9 {
+                    data.push((SCALE_BASE_KEY.into(), format!("{sx} {sy}")));
+                }
+                (data != s.data).then_some((s.id, data))
+            })
+            .collect();
+        if changes.is_empty() {
+            return;
         }
+        let mark = self.engine.begin_group();
+        for (shape, data) in changes {
+            self.run(Command::SetObjectData { shape, data });
+        }
+        self.engine.end_group(mark, "Scale 100%");
     }
 
     /// Effects > Flatten Effects: bake the stack into ordinary objects.
@@ -5574,6 +5603,27 @@ fn shadow_reach(s: &Shape, parent: Affine) -> Option<Rect> {
     }
 }
 
+/// The object data key holding the scale an object reads 100% at
+/// (#2761): its transform's horizontal and vertical scale factors when
+/// the property bar's 100% button was pressed, as "sx sy".
+pub const SCALE_BASE_KEY: &str = "scale.base";
+
+/// How far an object's transformation stretches it each way, as factors
+/// (1 = the size it was drawn at); None when degenerate.
+fn transform_scale(s: &tracedraw_core::document::Shape) -> Option<(f64, f64)> {
+    let [a, b, c, d, _, _] = s.transform.as_coeffs();
+    let (sx, sy) = (a.hypot(b), c.hypot(d));
+    (sx.is_finite() && sy.is_finite() && sx > 1e-8 && sy > 1e-8).then_some((sx, sy))
+}
+
+/// The scale an object was made 100% at (#2761), from its data.
+fn scale_base(s: &tracedraw_core::document::Shape) -> Option<(f64, f64)> {
+    let (_, v) = s.data.iter().find(|(k, _)| k == SCALE_BASE_KEY)?;
+    let mut it = v.split_whitespace().map(|n| n.parse::<f64>().ok());
+    let (bx, by) = (it.next()??, it.next()??);
+    (bx.is_finite() && by.is_finite() && bx > 1e-8 && by > 1e-8).then_some((bx, by))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5711,6 +5761,55 @@ mod tests {
         assert!(app.clip_frame_is_empty(clip), "still a clip frame, empty");
         assert_eq!(app.doc().top_level_of(inner), Some(inner), "out");
         assert_eq!(app.engine.history_labels().0.len(), steps + 1);
+    }
+
+    /// #2761: the 100% button makes the size an object has now read
+    /// 100% in the scale fields; later scaling reads from it, one Undo
+    /// brings the old reading back, and an object at its drawn size
+    /// keeps no base.
+    #[test]
+    fn the_current_size_can_be_made_100_percent() {
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(10.0, 10.0, 60.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        let near =
+            |a: (f64, f64), b: (f64, f64)| (a.0 - b.0).abs() < 1e-6 && (a.1 - b.1).abs() < 1e-6;
+        app.transform_selection(Affine::scale_non_uniform(2.5, 0.5));
+        assert!(near(app.scale_shown(), (250.0, 50.0)));
+        app.set_scale_as_100();
+        assert!(
+            near(app.scale_shown(), (100.0, 100.0)),
+            "{:?}",
+            app.scale_shown()
+        );
+        app.transform_selection(Affine::scale_non_uniform(2.0, 3.0));
+        assert!(
+            near(app.scale_shown(), (200.0, 300.0)),
+            "{:?}",
+            app.scale_shown()
+        );
+        app.transform_selection(Affine::rotate(0.7));
+        assert!(near(app.scale_shown(), (200.0, 300.0)), "a turn keeps it");
+        app.undo();
+        app.undo();
+        app.undo();
+        assert!(
+            near(app.scale_shown(), (250.0, 50.0)),
+            "{:?}",
+            app.scale_shown()
+        );
+        // Back at the drawn size, 100% leaves no base behind.
+        app.transform_selection(Affine::scale_non_uniform(1.0 / 2.5, 2.0));
+        app.set_scale_as_100();
+        let shape = app.selected_shapes()[0].clone();
+        assert!(shape.data.iter().all(|(k, _)| k != SCALE_BASE_KEY));
+        assert!(near(app.scale_shown(), (100.0, 100.0)));
     }
 
     /// A page is resized about its centre: an object in the middle of

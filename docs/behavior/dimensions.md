@@ -99,6 +99,7 @@ is kept in the preferences (`tools.dimension_style`).
 |---|---|---|
 | Precision | 1.23 (2 decimals) | 0 to 6 decimals |
 | Units | Drawing units (the document's) | any unit of the Units list; lengths go through the drawing scale (at 1:100 a 10 mm line reads 1000 mm) |
+| Drawing scale | the document's (1:1) | the typical scales, or Custom... for Document Setup > Rulers; it is the whole drawing's scale, one undo step (#2772, #1891) |
 | Show units | on | the unit's sign after the number; for angles, the degree sign |
 | Prefix, Suffix | empty | text before and after (applied when the field is left or Enter is pressed) |
 | Text | Above the line | Above the line, In the line, Below the line |

@@ -2039,17 +2039,34 @@ pub fn object_bar(app: &mut App, ui: &mut Ui) {
             });
         }
     });
-    if pic_button(
-        ui,
-        Pic::Lock(locked),
-        &tr("toolbar.lock_ratio"),
-        true,
-        locked,
-    )
-    .clicked()
-    {
-        app.scale_locked = !locked;
-    }
+    // The lock over the 100% button, which makes the size as it is now
+    // read 100% in the scale fields (#2761); stacked so the bar keeps its
+    // width.
+    stacked(ui, |ui| {
+        let w = btn().max(30.0);
+        let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, ROW), Sense::click());
+        frame(ui, rect, resp.hovered(), locked);
+        draw_pic(
+            ui.painter(),
+            Rect::from_center_size(rect.center(), Vec2::splat(ROW - 4.0)),
+            Pic::Lock(locked),
+            icon_color(true),
+        );
+        if resp.rich_tip(tr("toolbar.lock_ratio")).clicked() {
+            app.scale_locked = !locked;
+        }
+        if ui
+            .add_sized(
+                [w, ROW],
+                egui::Button::new(egui::RichText::new("100%").size(10.0))
+                    .wrap_mode(egui::TextWrapMode::Extend),
+            )
+            .rich_tip(crate::ui::tips::keyed("toolbar.scale_set_100"))
+            .clicked()
+        {
+            app.set_scale_as_100();
+        }
+    });
     if let Some((nw, nh)) = size {
         if let Some(f) = size_scale((w, h), (nw, nh)) {
             scale = Some(f);

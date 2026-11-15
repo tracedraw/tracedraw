@@ -1,7 +1,7 @@
 //! The dimension tools' property bar (also shown when dimensions are
 //! selected with the Pick tool) and the preview of the dimension being
 //! placed. Bar: Precision, Units, Show units, Prefix, Suffix, Text
-//! position, Text size; the look; more options (extension lines,
+//! position, Text size, Drawing scale; the look; more options (extension lines,
 //! horizontal text); then what to click next. Changes
 //! apply to the selected dimensions and to the ones made next.
 
@@ -212,6 +212,51 @@ fn options_part(app: &mut App, ui: &mut Ui, style: &DimensionStyle) {
         });
 }
 
+/// The document's drawing scale, at hand where dimensions are made: a
+/// plan drawn at 1:100 measures metres in its labels while the page
+/// keeps millimetres (#2772, #1891). Picking a typical scale changes the
+/// whole drawing's scale (Document Setup > Rulers), Custom opens that
+/// page.
+fn drawing_scale_combo(app: &mut App, ui: &mut Ui) {
+    use crate::drawing_scale as ds;
+    let rulers = app.doc().metadata.rulers.clone();
+    let current = ds::matching_preset(&rulers).map(|p| p.label);
+    let shown = current
+        .map(str::to_string)
+        .or_else(|| ds::short_label(&rulers))
+        .unwrap_or_else(|| "1:1".to_string());
+    dim(ui, tr("dimension.drawing_scale"));
+    let mut pick = None;
+    let mut custom = false;
+    crate::ui::keynav::ComboBox::from_id_salt("dimension_drawing_scale")
+        .selected_text(shown)
+        .width(80.0)
+        .height(320.0)
+        .show_ui(ui, |ui| {
+            for p in ds::PRESETS.iter() {
+                if ui
+                    .selectable_label(current == Some(p.label), p.label)
+                    .clicked()
+                {
+                    pick = Some(*p);
+                }
+            }
+            ui.separator();
+            if ui.button(tr("dimension.drawing_scale_custom")).clicked() {
+                custom = true;
+            }
+        })
+        .response
+        .rich_tip(crate::ui::tips::keyed("dimension.drawing_scale"));
+    if let Some(p) = pick {
+        app.set_drawing_scale_preset(&p);
+    }
+    if custom {
+        app.dialog = crate::ui::dialogs::Dialog::Options;
+        app.options_page = crate::ui::dialogs::OptionsPage::Rulers;
+    }
+}
+
 /// The bar.
 pub fn dimension_bar(app: &mut App, ui: &mut Ui) {
     // The first selected dimension, read once a frame.
@@ -263,6 +308,7 @@ pub fn dimension_bar(app: &mut App, ui: &mut Ui) {
     {
         app.set_dimension_style(|s| s.show_units = show);
     }
+    drawing_scale_combo(app, ui);
     crate::ui::propbar::sep(ui);
     dim(ui, tr("dimension.prefix"));
     text_field(app, ui, "dimension.prefix", &style.prefix, |s, v| {
