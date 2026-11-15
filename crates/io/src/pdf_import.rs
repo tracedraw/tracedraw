@@ -1294,22 +1294,25 @@ fn devanagari_piece(p: &[char]) -> bool {
 /// letter ड was mapped to र्; in सम्प्रभुता the half म glyph to म्प्.
 ///
 /// `nominal` gives the glyphs whose letter the font's `cmap` names, which
-/// are taken as they are; `marks` the glyphs with no advance (only they
-/// can be a reph); `units` the codes each text operator shows, in
-/// drawing order. Each other glyph gets, at its first appearance, the
-/// text that gives back the map's entries for the new glyphs of its unit
-/// under that rule, tried among the pieces of the text those entries
-/// spell, the short i sign and the reph (at most three such glyphs in one
-/// unit). Gives the codes whose
-/// text changes.
+/// are taken as they are, and `shaped` the glyphs whose text their
+/// outlines tell (see [`crate::pdf_indic_shapes`]), taken the same way;
+/// `marks` the glyphs with no advance (only they can be a reph); `units`
+/// the codes each text operator shows, in drawing order. Each other
+/// glyph gets, at its first appearance, the text that gives back the
+/// map's entries for the new glyphs of its unit under that rule, tried
+/// among the pieces of the text those entries spell, the short i sign
+/// and the reph (at most three such glyphs in one unit). Gives the codes
+/// whose text changes.
 fn unscramble_tounicode(
     map: &HashMap<u32, String>,
     nominal: &HashMap<u32, char>,
+    shaped: &HashMap<u32, String>,
     marks: &std::collections::HashSet<u32>,
     units: &[Vec<u32>],
 ) -> HashMap<u32, String> {
     let mut known: HashMap<u32, String> =
         nominal.iter().map(|(k, c)| (*k, c.to_string())).collect();
+    known.extend(shaped.iter().map(|(k, t)| (*k, t.clone())));
     let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
     for unit in units {
         // The first appearance of each code new in this unit.
@@ -3698,7 +3701,10 @@ impl<'a> Importer<'a> {
             .any(|(code, c)| map.get(code).is_some_and(|t| *t != c.to_string()));
         let fixes = if scrambled {
             let units = self.text_units(key, map);
-            let mut fixes = unscramble_tounicode(map, &nominal, marks, &units);
+            // The glyphs whose text their own outlines tell (a letter
+            // with a sign, a half form, a longer short i sign).
+            let shaped = self.outline_indic(desc_font, descriptor, &units);
+            let mut fixes = unscramble_tounicode(map, &nominal, &shaped, marks, &units);
             // The same font installed here says outright what each of its
             // glyphs stands for; the map is worked out only for the
             // others.
@@ -3792,6 +3798,50 @@ impl<'a> Importer<'a> {
         families.retain(|f| !f.trim().is_empty());
         families.dedup();
         let texts = crate::pdf_indic::glyph_texts(&data, &families, &used);
+        for code in codes {
+            if let Some(t) = gid_of(code).and_then(|g| texts.get(&g)) {
+                out.insert(code, t.clone());
+            }
+        }
+        out
+    }
+
+    /// The text of the codes `units` show in a two-byte TrueType font
+    /// whose glyphs the font's `cmap` does not name, as far as their
+    /// outlines tell (see [`crate::pdf_indic_shapes`]).
+    fn outline_indic(
+        &self,
+        desc_font: &Dictionary,
+        descriptor: Option<&Dictionary>,
+        units: &[Vec<u32>],
+    ) -> HashMap<u32, String> {
+        let mut out = HashMap::new();
+        let Some(Object::Stream(s)) = descriptor.and_then(|d| self.get(d, b"FontFile2")) else {
+            return out;
+        };
+        let Some(data) = s.decompressed_content().ok() else {
+            return out;
+        };
+        let Ok(face) = ttf_parser::Face::parse(&data, 0) else {
+            return out;
+        };
+        let cid_to_gid: Option<Vec<u16>> = match self.get(desc_font, b"CIDToGIDMap") {
+            Some(Object::Stream(m)) => m.decompressed_content().ok().map(|b| {
+                b.chunks_exact(2)
+                    .map(|c| u16::from_be_bytes([c[0], c[1]]))
+                    .collect()
+            }),
+            _ => None,
+        };
+        let gid_of = |code: u32| match &cid_to_gid {
+            Some(m) => m.get(code as usize).copied(),
+            None => u16::try_from(code).ok(),
+        };
+        let mut codes: Vec<u32> = units.iter().flatten().copied().collect();
+        codes.sort_unstable();
+        codes.dedup();
+        let used: Vec<u16> = codes.iter().filter_map(|c| gid_of(*c)).collect();
+        let texts = crate::pdf_indic_shapes::glyph_texts(&face, &used);
         for code in codes {
             if let Some(t) = gid_of(code).and_then(|g| texts.get(&g)) {
                 out.insert(code, t.clone());
@@ -5824,6 +5874,7 @@ mod tests {
         let fixes = unscramble_tounicode(
             &map,
             &nominal,
+            &HashMap::new(),
             &marks,
             &[vec![1, 2, 3, 4, 5, 6], vec![8, 6, 7, 4]],
         );
@@ -5856,7 +5907,10 @@ mod tests {
         assert_eq!(devanagari_typed_order("पिश्चम", false, false), "पिश्चम");
         // A map that agrees with the font is left alone.
         let ok: HashMap<u32, String> = nominal.iter().map(|(k, c)| (*k, c.to_string())).collect();
-        assert!(unscramble_tounicode(&ok, &nominal, &marks, &[vec![1, 2, 3]]).is_empty());
+        assert!(
+            unscramble_tounicode(&ok, &nominal, &HashMap::new(), &marks, &[vec![1, 2, 3]])
+                .is_empty()
+        );
     }
 
     /// The Devanagari test corpus written to PDF by an office suite
@@ -7288,5 +7342,139 @@ mod tests {
             b"<< /TDcrypt 5 0 R /EncryptMetadata false >> (/TDcrypt)/TDcrypt".to_vec()
         );
         assert!(hide_encryption(b"<< /EncryptMetadata true >>").is_none());
+    }
+
+    /// A PDF of a word processor's kind: a two-byte TrueType font (the
+    /// test font of [`crate::pdf_indic_shapes`]) shows `words` as glyph
+    /// numbers, with `map` as its ToUnicode map.
+    fn glyph_pdf(words: &[&[u16]], map: &[(u16, &str)]) -> Vec<u8> {
+        use crate::pdf_indic_shapes::tests::{deva_glyphs, tiny_font};
+        use lopdf::{dictionary, Object, Stream};
+        let glyphs = deva_glyphs();
+        let data = tiny_font(&glyphs);
+        let mut content = String::from("BT /F1 12 Tf\n");
+        for (i, w) in words.iter().enumerate() {
+            let hex: String = w.iter().map(|g| format!("{g:04X}")).collect();
+            let y = 800 - 20 * i as i32;
+            content.push_str(&format!("1 0 0 1 20 {y} Tm <{hex}> Tj\n"));
+        }
+        content.push_str("ET\n");
+        let utf16 = |s: &str| -> String { s.encode_utf16().map(|u| format!("{u:04X}")).collect() };
+        let entries: String = map
+            .iter()
+            .map(|(g, t)| format!("<{g:04X}> <{}>\n", utf16(t)))
+            .collect();
+        let cmap = format!(
+            "/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n\
+             /CMapName /Adobe-Identity-UCS def /CMapType 2 def\n\
+             1 begincodespacerange <0000> <FFFF> endcodespacerange\n\
+             {} beginbfchar\n{entries}endbfchar\n\
+             endcmap CMapName currentdict /CMap defineresource pop end end",
+            map.len()
+        );
+        let widths: Vec<Object> = glyphs
+            .iter()
+            .enumerate()
+            .flat_map(|(g, glyph)| {
+                [
+                    Object::Integer(g as i64),
+                    Object::Array(vec![Object::Integer(i64::from(glyph.advance))]),
+                ]
+            })
+            .collect();
+        let mut doc = lopdf::Document::with_version("1.7");
+        let file = doc.add_object(Stream::new(dictionary! {}, data));
+        let descriptor = doc.add_object(dictionary! {
+            "Type" => "FontDescriptor", "FontName" => "ABCDEF+Tiny", "Flags" => 32,
+            "FontBBox" => vec![0.into(), (-300).into(), 1000.into(), 1000.into()],
+            "ItalicAngle" => 0, "Ascent" => 800, "Descent" => -200, "CapHeight" => 700,
+            "StemV" => 80, "FontFile2" => file,
+        });
+        let cid = doc.add_object(dictionary! {
+            "Type" => "Font", "Subtype" => "CIDFontType2", "BaseFont" => "ABCDEF+Tiny",
+            "CIDSystemInfo" => dictionary! { "Registry" => Object::string_literal("Adobe"),
+                "Ordering" => Object::string_literal("Identity"), "Supplement" => 0 },
+            "FontDescriptor" => descriptor, "CIDToGIDMap" => "Identity", "W" => widths,
+        });
+        let to_unicode = doc.add_object(Stream::new(dictionary! {}, cmap.into_bytes()));
+        let font = doc.add_object(dictionary! {
+            "Type" => "Font", "Subtype" => "Type0", "BaseFont" => "ABCDEF+Tiny",
+            "Encoding" => "Identity-H", "DescendantFonts" => vec![cid.into()],
+            "ToUnicode" => to_unicode,
+        });
+        let contents = doc.add_object(Stream::new(dictionary! {}, content.into_bytes()));
+        let pages_id = doc.new_object_id();
+        let page = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+            "Contents" => contents,
+            "Resources" => dictionary! { "Font" => dictionary! { "F1" => font } },
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(
+                dictionary! { "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1 },
+            ),
+        );
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        doc.trailer.set("Root", catalog);
+        let mut out = Vec::new();
+        doc.save_to(&mut out).expect("writes");
+        out
+    }
+
+    /// Glyphs the map holds the characters of nowhere, as in the second
+    /// file sent with #1806 (स्कूल came in as स्ूल, मुश्किल as मुक्किल,
+    /// विश्वास as विविास, उपयुक्त as उपयुति): the glyph of क with the uu
+    /// sign, the half form of श and a longer short i sign take their
+    /// text from their outlines, and the half form of क, which is drawn
+    /// unlike क, follows from the short i sign being known.
+    #[test]
+    fn glyphs_the_map_holds_nowhere_are_read_off_their_outlines() {
+        // Glyphs of the test font: 1 क, 2 श, 3 ू, 4 ि, 6 कू, 7 श्, 8 a long
+        // ि, 10 क् (its own shape), 12 स्, 13 ल, 14 म, 15 ु, 16 व, 17 ा,
+        // 18 स, 19 उ, 20 प, 21 य, 22 त. The map gives each syllable's
+        // characters in typed order to its glyphs in drawn order, the
+        // first glyph getting the rest; a glyph keeps its first text.
+        let words: [&[u16]; 5] = [
+            &[21, 15, 8, 10, 22],      // युक्ति, drawn य ु ि क् त
+            &[14, 15, 8, 7, 1, 13],    // मुश्किल, drawn म ु ि श् क ल
+            &[12, 6, 13],              // स्कूल, drawn स् कू ल
+            &[4, 16, 7, 16, 17, 18],   // विश्वास, drawn ि व श् व ा स
+            &[19, 20, 21, 15, 10, 22], // उपयुक्त
+        ];
+        let map = [
+            (21, "\u{092F}"),
+            (15, "\u{0941}"),
+            (8, "\u{0915}\u{094D}"),
+            (10, "\u{0924}"),
+            (22, "\u{093F}"),
+            (14, "\u{092E}"),
+            (7, "\u{0915}"),
+            (1, "\u{0915}"),
+            (13, "\u{0932}"),
+            (12, "\u{0938}\u{094D}\u{0915}"),
+            (6, "\u{0942}"),
+            (4, "\u{093F}"),
+            (16, "\u{0935}"),
+            (17, "\u{093E}"),
+            (18, "\u{0938}"),
+            (19, "\u{0909}"),
+            (20, "\u{092A}"),
+        ];
+        let bytes = glyph_pdf(&words, &map);
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let texts: Vec<String> = imp.pages[0]
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.kind {
+                ShapeKind::Text { spans, .. } => {
+                    Some(spans.iter().map(|s| s.text.as_str()).collect())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, ["युक्ति", "मुश्किल", "स्कूल", "विश्वास", "उपयुक्त"]);
     }
 }

@@ -112,6 +112,7 @@ full, row-by-row status.
 - Create Boundary draws an outline around the selection with no fill, with the target's outline (a hairline when it has none), as in CorelDRAW. It took the target's fill and covered what it was drawn around (#2640).
 - The Save button on the standard toolbar is lit while the drawing has changes to save (or was never saved) and pale once it is saved. It looked the same either way (#2640).
 - CorelDRAW files (versions 16 and later): a perspective comes in as a live perspective, on a single object or on a group (its objects each take it, pictures included). It was left out, so a shop sign put in perspective on a photo opened flat, and the grouped parts of the sign stood apart from it, one of them near the bottom of the page (#2691).
+- Opening a PDF: Hindi from a word processor's PDF comes in as typed in the words whose conjunct, half letter or joined sign the file's `ToUnicode` map holds nowhere, also without the file's font installed. The embedded font keeps its glyphs' outlines, and they tell what a glyph is: a letter drawn with a sign under it (कू) is the letter's outline and the sign's, a half letter (श्) is the letter's outline without its stem, and a longer short i sign is the same hook with a longer arm. TraceDraw now reads those glyphs off their outlines and works the others out from them, so in the second file sent with the report स्कूल no longer comes in as स्ूल, मुश्किल as मुक्किल, विश्वास as विविास or उपयुक्त as उपयुति; every word of that file now comes in as it was typed (#1806).
 
 ## 0.46.0 (2026-11-14)
 
