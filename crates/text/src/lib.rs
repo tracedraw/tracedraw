@@ -26,6 +26,7 @@ pub mod hyphen;
 #[cfg(any(windows, all(test, not(target_arch = "wasm32"))))]
 mod installed;
 pub mod traits;
+pub mod type1;
 
 /// Points to millimetres.
 pub const PT_MM: f64 = 25.4 / 72.0;
@@ -710,6 +711,36 @@ fn load_code_page_named_in(db: &mut fontdb::Database, roots: &[std::path::PathBu
     if added > 0 {
         log::info!("{added} font faces named only in a code page added");
     }
+}
+
+/// Add the Type 1 fonts under `roots` (see [`type1::fonts_under`]),
+/// each turned into a font the engine reads. A face whose family and
+/// style a loaded font already has is left out: the font installed the
+/// usual way stays the one used.
+fn load_type1_in(db: &mut fontdb::Database, roots: &[std::path::PathBuf]) -> usize {
+    let key = |f: &fontdb::FaceInfo| {
+        f.families.first().map(|(n, _)| {
+            (
+                n.to_lowercase(),
+                f.weight.0,
+                f.style == fontdb::Style::Normal,
+            )
+        })
+    };
+    let have: std::collections::HashSet<_> = db.faces().filter_map(key).collect();
+    let mut added = 0;
+    for data in type1::fonts_under(roots) {
+        let mut probe = fontdb::Database::new();
+        probe.load_font_data(data.clone());
+        if probe.faces().filter_map(key).any(|k| have.contains(&k)) {
+            continue;
+        }
+        added += load_source(db, fontdb::Source::Binary(Arc::new(data))).len();
+    }
+    if added > 0 {
+        log::info!("{added} Type 1 font faces added");
+    }
+    added
 }
 
 /// How a family's fonts are built, for the icons of font lists.
@@ -2123,6 +2154,10 @@ impl FontSystem {
         load_code_page_named_in(&mut db, &system_font_roots());
         #[cfg(windows)]
         installed::drop_unregistered(&mut db);
+        // Type 1 fonts (.pfb with its .pfm) in the system's font folders,
+        // as older Windows systems installed many (#193).
+        #[cfg(not(target_arch = "wasm32"))]
+        load_type1_in(&mut db, &system_font_roots());
         // Adobe Fonts activated in Creative Cloud (#2741), after the
         // registry's list, which does not name them.
         #[cfg(any(windows, target_os = "macos"))]
@@ -8451,7 +8486,7 @@ mod tests {
     /// Selawik lacks ("Ĉ") and without one it has (U+0336).
     const QUICKSAND: &[u8] = include_bytes!("../testdata/Quicksand-VF.ttf");
 
-    fn system_with(files: &[&[u8]]) -> FontSystem {
+    pub(crate) fn system_with(files: &[&[u8]]) -> FontSystem {
         let mut db = fontdb::Database::new();
         for f in files {
             db.load_font_data(f.to_vec());
