@@ -179,6 +179,7 @@ mod shape_tool;
 mod shaping_tests;
 mod shelf;
 mod shortcuts;
+mod sizes;
 mod snap;
 mod snap_points;
 mod soft_canvas;

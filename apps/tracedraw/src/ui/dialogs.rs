@@ -1387,6 +1387,9 @@ pub enum Dialog {
     },
     /// Help > Benchmark: a score of this computer (`ui::benchmark`).
     Benchmark,
+    /// Tools > Sizes and Areas: the selected objects' and the pages'
+    /// sizes and areas (`ui::sizes`, #2098).
+    SizesAreas(crate::ui::sizes::SizesTab),
     /// Take an item off the Shelf? (Options > Global > Warnings.)
     ConfirmShelfRemove {
         uid: u64,
@@ -3437,6 +3440,7 @@ pub fn show(app: &mut App, ctx: &Context) {
         }
         Dialog::About => crate::ui::about::about_dialog(app, ctx, &mut close),
         Dialog::Benchmark => crate::ui::benchmark::dialog(app, ctx, &mut close),
+        Dialog::SizesAreas(tab) => crate::ui::sizes::dialog(app, ctx, tab, &mut close),
         Dialog::WebNotice => {
             let text = format!("{}\n\n{}", tr("web.notice_title"), tr("web.notice_text"));
             desktop_app_message(app, ctx, &text, &mut close);
@@ -8643,6 +8647,8 @@ pub(crate) mod tests {
             Dialog::ConfirmResetSettings,
             Dialog::Updates,
             Dialog::Benchmark,
+            Dialog::SizesAreas(Default::default()),
+            Dialog::SizesAreas(crate::ui::sizes::SizesTab::Pages),
             Dialog::UpdatePolicy,
             Dialog::Recover(vec![crate::recovery::Found {
                 marker: "/nowhere/session-x.json".into(),

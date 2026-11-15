@@ -105,6 +105,7 @@ pub mod save_as;
 pub mod screen_margins;
 pub mod shaping_docker;
 pub mod shelf_docker;
+pub mod sizes;
 pub mod slider;
 pub mod status;
 pub mod straighten_dialog;

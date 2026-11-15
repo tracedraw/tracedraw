@@ -4532,6 +4532,9 @@ fn tools_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.tools.ai_generate", "", true) {
         app.open_ai_generate();
     }
+    if item(ui, "menu.tools.sizes_areas", "", true) {
+        app.dialog = Dialog::SizesAreas(Default::default());
+    }
     if item(ui, "menu.tools.font_manager", "", true) {
         app.dialog = Dialog::FontManager(Default::default());
     }
