@@ -21324,6 +21324,7 @@ fn repeat_turns_copies_about_the_moved_centre_of_rotation() {
     let centre = |app: &App, id: ShapeId| bounds(app, id).center();
     let start = centre(&app, id);
     let radius = (start - pivot).hypot();
+    app.rotate_mode = true;
     app.copy_selection_by(turn(30.0));
     let mut ids = vec![id, app.selection[0]];
     assert_eq!(
@@ -21331,10 +21332,12 @@ fn repeat_turns_copies_about_the_moved_centre_of_rotation() {
         Some(pivot),
         "the copy keeps the centre"
     );
+    assert!(app.rotate_mode, "the copy stays in rotate mode");
     for _ in 0..4 {
         app.repeat_last();
         ids.push(app.selection[0]);
     }
+    assert!(app.rotate_mode, "and so do its repeats");
     assert_eq!(shape_count(&app), 6);
     for (i, s) in ids.iter().enumerate() {
         let want = turn(30.0 * i as f64) * start;

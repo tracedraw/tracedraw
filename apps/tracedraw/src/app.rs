@@ -5032,11 +5032,15 @@ impl App {
         };
         let originals = self.selection.clone();
         let pivot = self.moved_rotation_center();
+        let rotating = self.rotate_mode;
         // One step: the copies and their move (#471).
         let mark = self.engine.begin_group();
         self.duplicate_in_place();
         self.transform_selection(t);
         self.engine.end_group(mark, "Duplicate");
+        // A copy turned in rotate mode stays in it, its centre of rotation
+        // in sight for the next turn (#2353).
+        self.rotate_mode = rotating;
         // The copies turn about the centre of rotation the originals had,
         // carried with them, so a turned copy and its Repeat go on round
         // the same point (#2353).

@@ -1635,7 +1635,8 @@ fn convert_fields(app: &App, ui: &mut Ui, o: &mut crate::bitmap_modes::ConvertOp
             "dialog.transparent_background",
             "dialog.convert_transparent_desc",
         ));
-    if let Some(b) = app.selection_bounds() {
+    // The size of the bitmap made: drop shadows and outlines count (#2351).
+    if let Some(b) = app.convert_to_bitmap_area() {
         let w = (b.width() / 25.4 * o.dpi).ceil().max(1.0) as u64;
         let h = (b.height() / 25.4 * o.dpi).ceil().max(1.0) as u64;
         let kb = o.bytes(w, h).div_ceil(1024);

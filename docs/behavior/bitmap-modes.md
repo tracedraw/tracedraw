@@ -120,6 +120,7 @@ selection into one bitmap in one undo step:
   it for an outline outside, mitred corners and arrowheads), so a thick
   outline is not cut (#2369,
   `ops2::tests::convert_to_bitmap_keeps_the_whole_thick_outline`).
+  The size shown in the dialog is worked out from this same area.
 
 ## Monochrome bitmaps
 

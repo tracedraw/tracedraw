@@ -2629,6 +2629,25 @@ impl App {
         });
     }
 
+    /// The area Convert to Bitmap renders, the whole of what the
+    /// selection draws: a drop shadow reaches past the objects' box and
+    /// was cut off at it (#2351), and so did a thick outline, its outer
+    /// half or all of it (#2369). The dialog works its size out from it.
+    pub fn convert_to_bitmap_area(&self) -> Option<Rect> {
+        let shapes = self.selected_shapes();
+        self.selection_bounds().map(|b| {
+            shapes
+                .iter()
+                .filter_map(|s| shadow_reach(s, Affine::IDENTITY))
+                .chain(
+                    shapes
+                        .iter()
+                        .filter_map(|s| outline_area(s, Affine::IDENTITY)),
+                )
+                .fold(b, |a, r| a.union(r))
+        })
+    }
+
     /// Image > Convert to Bitmap: the selection becomes one bitmap with
     /// the dialog's resolution, colour mode, dithering, anti-aliasing,
     /// background and overprint, in one undo step.
@@ -2642,20 +2661,7 @@ impl App {
         } else {
             300.0
         };
-        // The whole of what the selection draws: a drop shadow reaches
-        // past the objects' box and was cut off at it (#2351), and so did
-        // a thick outline, its outer half or all of it (#2369).
-        let Some(area) = self.selection_bounds().map(|b| {
-            shapes
-                .iter()
-                .filter_map(|s| shadow_reach(s, Affine::IDENTITY))
-                .chain(
-                    shapes
-                        .iter()
-                        .filter_map(|s| outline_area(s, Affine::IDENTITY)),
-                )
-                .fold(b, |a, r| a.union(r))
-        }) else {
+        let Some(area) = self.convert_to_bitmap_area() else {
             return;
         };
         let Some(tmp) = self.selection_alone(area) else {
@@ -6692,6 +6698,8 @@ mod tests {
             Affine::IDENTITY,
         );
         app.select(vec![circle]);
+        // The size the dialog shows is that of this area.
+        let told = app.convert_to_bitmap_area().expect("area");
         app.convert_to_bitmap(150.0, true);
         let pic = app.selection[0];
         let s = app.doc().find_shape(pic).expect("picture");
@@ -6706,6 +6714,14 @@ mod tests {
             panic!("a bitmap");
         };
         let want = object.inflate(line, line).union(reach);
+        assert_eq!(
+            (
+                (told.width() / 25.4 * 150.0).ceil() as u32,
+                (told.height() / 25.4 * 150.0).ceil() as u32
+            ),
+            (*width_px, *height_px),
+            "the dialog tells the size of the bitmap made"
+        );
         assert!(
             (rect.x0 - want.x0).abs() < 1e-6
                 && (rect.y0 - want.y0).abs() < 1e-6
