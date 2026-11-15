@@ -340,6 +340,17 @@ same function (`export::print_sheets`).
   page's clip and marks follow it, the marks standing round the box that
   holds the turned page, and Print prints it so
   (`imposition::tests::pages_turn_about_their_middle`).
+- Arrange pages (left panel, under Transform, off at first; turning one
+  on turns the other off): with several pages on the sheet, a drag from
+  a page onto another place trades the two pages' places, the same
+  places on every sheet; the page dragged is shaded and the place under
+  the pointer outlined, and the artwork does not move. Each page keeps
+  its own size in its new place, and a place's turn stays with the
+  place. Reset order puts every page back where the layout puts it.
+  Presets keep the order with the print style; a saved order that is not
+  an arrangement of the places is dropped (`imposition::place_order`,
+  `imposition::tests::arranged_places_take_their_pages_on_every_sheet`,
+  `print_preview::tests::a_page_dragged_onto_another_place_trades_places`).
 - Stretch to fill (a fixed sheet): the pages stretch on each axis on
   their own to fill the room inside the paper margins (#591,
   `imposition::tests::pages_stretch_to_fill_and_follow_the_preview_transform`).

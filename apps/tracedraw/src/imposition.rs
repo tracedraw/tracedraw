@@ -366,6 +366,11 @@ pub struct Options {
     /// rows; missing ones 0): Print Preview's Rotation for the page
     /// chosen on the sheet, the same place on every sheet (#2587).
     pub cell_rotation: Vec<f64>,
+    /// The pages moved between the places of the sheet, the same on
+    /// every sheet: place `n` takes the page the layout puts in place
+    /// `cell_order[n]` (see [`place_order`]; empty for none): Print
+    /// Preview's Arrange pages.
+    pub cell_order: Vec<usize>,
     /// On a fixed sheet the pages stretch to fill the room inside the
     /// margins, width and height each on its own (#591).
     pub stretch_fit: bool,
@@ -397,6 +402,7 @@ impl Default for Options {
             page_stretch: (1.0, 1.0),
             page_rotation: 0.0,
             cell_rotation: Vec::new(),
+            cell_order: Vec::new(),
             stretch_fit: false,
             booklet: Booklet::default(),
             marks: Marks::default(),
@@ -447,6 +453,36 @@ pub fn booklet_order(pages: usize) -> Vec<(Option<usize>, Option<usize>)> {
         .collect()
 }
 
+/// Where each of `n` places takes its page from: `order` for the places
+/// it names when it is an arrangement of them (each place once), the
+/// rest (or all, for any other list) their own.
+pub fn place_order(order: &[usize], n: usize) -> Vec<usize> {
+    let mut out: Vec<usize> = (0..n).collect();
+    let k = order.len();
+    let mut seen = vec![false; k];
+    let whole = k <= n
+        && order
+            .iter()
+            .all(|&i| i < k && !std::mem::replace(&mut seen[i], true));
+    if whole {
+        out[..k].copy_from_slice(order);
+    }
+    out
+}
+
+/// Swap the pages in places `a` and `b` of `order` (see
+/// [`Options::cell_order`]); an order back to the layout's own is
+/// emptied.
+pub fn swap_places(order: &mut Vec<usize>, a: usize, b: usize) {
+    let n = order.len().max(a + 1).max(b + 1);
+    let mut o = place_order(order, n);
+    o.swap(a, b);
+    while o.last().is_some_and(|&i| i + 1 == o.len()) {
+        o.pop();
+    }
+    *order = o;
+}
+
 /// Plan the sheets for pages of `sizes`.
 pub fn plan(sizes: &[Size], o: &Options) -> Vec<SheetPlan> {
     if sizes.is_empty() {
@@ -489,6 +525,20 @@ pub fn plan(sizes: &[Size], o: &Options) -> Vec<SheetPlan> {
         Layout::Repeat { .. } => (0..sizes.len())
             .map(|i| vec![Some(i); (cols * rows) as usize])
             .collect(),
+    };
+    // The pages moved between places (Arrange pages).
+    let sheets: Vec<Vec<Option<usize>>> = if o.cell_order.is_empty() {
+        sheets
+    } else {
+        sheets
+            .into_iter()
+            .map(|cells| {
+                place_order(&o.cell_order, cells.len())
+                    .into_iter()
+                    .map(|i| cells[i])
+                    .collect()
+            })
+            .collect()
     };
     let margin = if o.marks.any() { MARK_MARGIN } else { 0.0 } + o.bleed.max(0.0);
     let pm = o
@@ -1768,6 +1818,63 @@ mod tests {
             .filter(|e| matches!(e, tracedraw_core::geometry::PathEl::MoveTo(_)))
             .count();
         assert_eq!(segments, (6 + 4) * 2);
+    }
+
+    #[test]
+    fn arranged_places_take_their_pages_on_every_sheet() {
+        assert_eq!(place_order(&[], 3), vec![0, 1, 2]);
+        assert_eq!(place_order(&[1, 0], 4), vec![1, 0, 2, 3]);
+        // Not an arrangement, or longer than the places: as laid out.
+        assert_eq!(place_order(&[1, 1], 3), vec![0, 1, 2]);
+        assert_eq!(place_order(&[0, 2], 3), vec![0, 1, 2]);
+        assert_eq!(place_order(&[1, 0, 2], 2), vec![0, 1]);
+        let mut order = Vec::new();
+        swap_places(&mut order, 0, 3);
+        assert_eq!(order, vec![3, 1, 2, 0]);
+        swap_places(&mut order, 1, 2);
+        assert_eq!(order, vec![3, 2, 1, 0]);
+        swap_places(&mut order, 1, 2);
+        swap_places(&mut order, 3, 0);
+        assert!(order.is_empty(), "back to the layout's own");
+        // Two up on a sheet of five pages of different sizes: the pages
+        // trade places, each with its own size, on every sheet.
+        let a4 = Size::new(210.0, 297.0);
+        let sizes = [A5, a4, A5, a4, A5];
+        let o = Options {
+            layout: Layout::NUp { cols: 2, rows: 1 },
+            ..Default::default()
+        };
+        let pages = |o: &Options| -> Vec<Vec<Option<usize>>> {
+            plan(&sizes, o)
+                .iter()
+                .map(|s| s.cells.iter().map(|c| c.page).collect())
+                .collect()
+        };
+        assert_eq!(
+            pages(&o),
+            vec![
+                vec![Some(0), Some(1)],
+                vec![Some(2), Some(3)],
+                vec![Some(4), None]
+            ]
+        );
+        let swapped = Options {
+            cell_order: vec![1, 0],
+            ..o.clone()
+        };
+        assert_eq!(
+            pages(&swapped),
+            vec![
+                vec![Some(1), Some(0)],
+                vec![Some(3), Some(2)],
+                vec![None, Some(4)]
+            ]
+        );
+        let plan = plan(&sizes, &swapped);
+        let first = &plan[0].cells;
+        assert!(first[0].trim.x1 <= first[1].trim.x0 + 1e-9);
+        assert!((first[0].trim.width() - a4.width).abs() < 1e-9);
+        assert!((first[1].trim.width() - A5.width).abs() < 1e-9);
     }
 
     #[test]

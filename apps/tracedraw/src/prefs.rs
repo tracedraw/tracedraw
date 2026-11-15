@@ -373,6 +373,7 @@ pub struct PrintStyle {
     pub art_stretch: (f64, f64),
     pub art_rotation: f64,
     pub cell_rotation: Vec<f64>,
+    pub cell_order: Vec<usize>,
     pub info_offset: (f64, f64),
     pub copies: u32,
     pub collate: bool,
@@ -413,6 +414,7 @@ impl PrintStyle {
             art_stretch: st.art_stretch,
             art_rotation: st.art_rotation,
             cell_rotation: st.cell_rotation.clone(),
+            cell_order: st.cell_order.clone(),
             info_offset: st.info_offset,
             copies: st.copies,
             collate: st.collate,
@@ -462,6 +464,15 @@ impl PrintStyle {
             .take(9999)
             .map(|v| num(*v, -360.0, 360.0, 0.0))
             .collect();
+        // An arrangement of the places, or none.
+        st.cell_order = if self.cell_order.len() <= 9999
+            && crate::imposition::place_order(&self.cell_order, self.cell_order.len())
+                == self.cell_order
+        {
+            self.cell_order.clone()
+        } else {
+            Vec::new()
+        };
         st.info_offset = pair(self.info_offset, -5000.0, 5000.0, 0.0);
         st.copies = self.copies.clamp(1, 999);
         st.collate = self.collate;
@@ -1693,6 +1704,7 @@ mod tests {
             art_stretch: (1.5, 0.5),
             art_rotation: 90.0,
             cell_rotation: vec![0.0, 180.0],
+            cell_order: vec![2, 0, 1],
             as_bitmap: true,
             bitmap_dpi: 600.0,
             ps_level: 3,
@@ -1711,12 +1723,14 @@ mod tests {
         // Out of range values come back into range.
         let wild = r#"{"format":"tracedraw-print-layout","version":1,"layout":{
             "name":"w","style":{"scale":0.0,"copies":0,"bitmap_dpi":1e9,
-            "ps_level":9,"art_stretch":[0.0,99.0],"art_rotation":1000.0}}}"#;
+            "ps_level":9,"art_stretch":[0.0,99.0],"art_rotation":1000.0,
+            "cell_order":[1,1,5]}}}"#;
         let p = LayoutPreset::from_file(wild).expect("a layout");
         let mut st = PrintState::default();
         p.apply(&mut st);
         assert_eq!(st.scale, 1.0);
         assert_eq!(st.copies, 1);
+        assert!(st.cell_order.is_empty(), "not an arrangement");
         assert_eq!(st.bitmap_dpi, 1200.0);
         assert_eq!(st.ps_level, 3);
         assert_eq!(st.art_stretch, (0.01, 10.0));

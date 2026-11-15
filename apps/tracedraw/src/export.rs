@@ -1899,6 +1899,7 @@ pub fn print_layout(app: &App, st: &PrintState, doc: &Document) -> crate::imposi
         page_stretch: st.art_stretch,
         page_rotation: st.art_rotation,
         cell_rotation: st.cell_rotation.clone(),
+        cell_order: st.cell_order.clone(),
         stretch_fit: st.stretch_fit,
         booklet: st.booklet(),
         marks: crate::imposition::Marks {

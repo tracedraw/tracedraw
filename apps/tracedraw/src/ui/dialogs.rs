@@ -537,6 +537,9 @@ pub struct PrintState {
     /// place's number: Print Preview's Rotation for the page chosen on
     /// the sheet (#2587).
     pub cell_rotation: Vec<f64>,
+    /// The pages moved between the places of the sheet in Print Preview
+    /// (`imposition::Options::cell_order`).
+    pub cell_order: Vec<usize>,
     /// The pages stretch to fill the sheet inside the margins (#591).
     pub stretch_fit: bool,
     /// The Custom sheet's size, mm (#591).
@@ -901,6 +904,7 @@ impl Default for PrintState {
             art_stretch: (1.0, 1.0),
             art_rotation: 0.0,
             cell_rotation: Vec::new(),
+            cell_order: Vec::new(),
             stretch_fit: false,
             custom_sheet: Size::new(210.0, 297.0),
             sheet_name_typed: String::new(),

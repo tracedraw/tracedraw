@@ -42,6 +42,11 @@ pub struct PrintPreview {
     /// only its page, the same place on every sheet (#2587); `None` turns
     /// them all.
     pub chosen_cell: Option<usize>,
+    /// Arrange pages: a page dragged onto another place of the sheet
+    /// trades places with the page there, on every sheet.
+    pub arrange: bool,
+    /// The place the page being dragged comes from.
+    arrange_from: Option<usize>,
     /// The pages on the sheet shown, on screen, with their places.
     shown_cells: Vec<(usize, egui::Rect)>,
     /// The width the options panel needs for its widest row, as last
@@ -120,6 +125,8 @@ impl PrintPreview {
             transform: false,
             handle_drag: None,
             chosen_cell: None,
+            arrange: false,
+            arrange_from: None,
             shown_cells: Vec::new(),
             options_need: 0.0,
             built: None,
@@ -794,8 +801,33 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 }
                 // Transform: the page stretched on the sheet by handles,
                 // or by these percentages (#595).
-                ui.checkbox(&mut pv.transform, tr("print.transform"))
-                    .rich_tip(tr("print.transform_tip"));
+                if ui
+                    .checkbox(&mut pv.transform, tr("print.transform"))
+                    .rich_tip(tr("print.transform_tip"))
+                    .changed()
+                    && pv.transform
+                {
+                    pv.arrange = false;
+                }
+                // Arrange pages: drag a page onto another place.
+                ui.horizontal(|ui| {
+                    if ui
+                        .checkbox(&mut pv.arrange, tr("print.arrange"))
+                        .rich_tip(crate::ui::tips::keyed("print.arrange"))
+                        .changed()
+                        && pv.arrange
+                    {
+                        pv.transform = false;
+                    }
+                    if !pv.st.cell_order.is_empty()
+                        && ui
+                            .small_button(tr("print.arrange_reset"))
+                            .rich_tip(crate::ui::tips::keyed("print.arrange_reset"))
+                            .clicked()
+                    {
+                        pv.st.cell_order.clear();
+                    }
+                });
                 let chosen = pv.chosen_cell.filter(|_| pv.transform);
                 let transform = pv.transform;
                 let st = &mut pv.st;
@@ -1232,7 +1264,49 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             };
             let mut edge = None;
             let mut handle = None;
-            if pick {
+            // Arrange pages: a page dragged onto another place trades
+            // places with the page there.
+            let arranging = pick && pv.arrange && several;
+            if !arranging {
+                pv.arrange_from = None;
+            }
+            let mut arrange_to = None;
+            if arranging {
+                let at = |p: Option<egui::Pos2>| {
+                    p.and_then(|p| {
+                        let (x, y) = to_sheet(p);
+                        cell_at(&cells, x, y)
+                    })
+                };
+                let resp = resp.clone().rich_tip(tr("print.arrange_desc"));
+                if resp.drag_started_by(egui::PointerButton::Primary) {
+                    // Where the button went down, before the drag began.
+                    let origin = ctx.input(|i| i.pointer.press_origin());
+                    pv.arrange_from = at(origin.or(resp.interact_pointer_pos()));
+                }
+                let pointer = resp.interact_pointer_pos().or(resp.hover_pos());
+                if pv.arrange_from.is_some() {
+                    arrange_to = at(pointer);
+                }
+                if resp.hovered() || pv.arrange_from.is_some() {
+                    ctx.set_cursor_icon(if pv.arrange_from.is_some() {
+                        egui::CursorIcon::Grabbing
+                    } else if at(pointer).is_some() {
+                        egui::CursorIcon::Grab
+                    } else {
+                        egui::CursorIcon::Default
+                    });
+                }
+                if resp.drag_stopped() {
+                    if let (Some(a), Some(b)) = (pv.arrange_from.take(), arrange_to) {
+                        if a != b {
+                            crate::imposition::swap_places(&mut pv.st.cell_order, a, b);
+                        }
+                    }
+                    arrange_to = None;
+                }
+            }
+            if pick && !arranging {
                 let resp = resp.clone().rich_tip(if info {
                     tr("print.info_drag_tip")
                 } else {
@@ -1369,8 +1443,24 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     (*n, r)
                 })
                 .collect();
+            // The page dragged and the place it goes to.
+            if arranging {
+                for (n, r) in &pv.shown_cells {
+                    if Some(*n) == pv.arrange_from {
+                        p.rect_filled(*r, 0.0, Tokens::ACCENT.gamma_multiply(0.18));
+                    }
+                    if Some(*n) == arrange_to && arrange_to != pv.arrange_from {
+                        p.rect_stroke(
+                            *r,
+                            0.0,
+                            egui::Stroke::new(2.5, Tokens::ACCENT),
+                            egui::StrokeKind::Inside,
+                        );
+                    }
+                }
+            }
             // The pages a click can choose, outlined faintly.
-            if pv.transform && several {
+            if (pv.transform || arranging) && several {
                 for (_, r) in &pv.shown_cells {
                     p.rect_stroke(
                         *r,
@@ -3173,6 +3263,63 @@ mod tests {
         assert_eq!(count(&mut app), 1, "the current page, whatever the parity");
         let st = &app.print_preview.as_ref().expect("preview").st;
         assert!(!st.all_pages, "the current page alone");
+    }
+
+    /// Arrange pages: a page dragged onto another place of the sheet
+    /// trades places with the page there, and the artwork stays put.
+    #[test]
+    fn a_page_dragged_onto_another_place_trades_places() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.print_preview(None);
+        if let Some(pv) = app.print_preview.as_mut() {
+            pv.st.looking_for_printers = false;
+            pv.st.layout_kind = 3;
+            pv.st.cols = 2;
+            pv.st.rows = 2;
+            pv.arrange = true;
+        }
+        let run = |app: &mut App, events: Vec<egui::Event>| {
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1400.0, 900.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| show(app, ui),
+            );
+            out.textures_delta.clear();
+        };
+        let button = |at: egui::Pos2, pressed: bool| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        for _ in 0..3 {
+            run(&mut app, Vec::new());
+        }
+        let cells = app.print_preview.as_ref().unwrap().shown_cells.clone();
+        assert_eq!(cells.len(), 4, "{cells:?}");
+        let (a, b) = (cells[0].1.center(), cells[3].1.center());
+        run(&mut app, vec![egui::Event::PointerMoved(a)]);
+        run(&mut app, vec![button(a, true)]);
+        for i in 1..=6 {
+            let t = i as f32 / 6.0;
+            run(&mut app, vec![egui::Event::PointerMoved(a + (b - a) * t)]);
+        }
+        assert_eq!(app.print_preview.as_ref().unwrap().arrange_from, Some(0));
+        run(&mut app, vec![button(b, false)]);
+        run(&mut app, Vec::new());
+        let pv = app.print_preview.as_mut().unwrap();
+        assert_eq!(pv.st.cell_order, vec![3, 1, 2, 0]);
+        assert_eq!(pv.arrange_from, None);
+        // The art did not move with the drag.
+        assert_eq!(pv.st.art_offset, (0.0, 0.0));
     }
 
     /// With Transform on and several pages on the sheet, a click on a
