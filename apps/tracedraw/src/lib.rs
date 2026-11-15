@@ -15,6 +15,7 @@
 //! [`run`], and on Android the library is the app itself (`android.rs`,
 //! loaded by the system as a shared library).
 
+mod action_lines;
 mod ai;
 mod ai_image;
 mod ai_retry;
@@ -204,6 +205,7 @@ mod system_prefs;
 #[cfg(any(target_os = "macos", test))]
 mod system_quit;
 mod tab_ruler;
+mod spreadsheet_import;
 mod table;
 mod table_tool;
 mod templates;

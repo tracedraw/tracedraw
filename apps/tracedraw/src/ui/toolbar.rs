@@ -1130,6 +1130,108 @@ pub(crate) fn dim_labelled<R>(ui: &mut Ui, key: &str, add: impl FnOnce(&mut Ui) 
     dim_labelled_as(ui, key, &format!("{key}_desc"), add)
 }
 
+/// The Action Lines tool's bar (#1617): lines, parallel or radial, how
+/// much lengths vary, the empty middle (radial), width (0: thin lines),
+/// how much widths vary and the ends (wide lines), spacing, angle, the
+/// oval (radial) or the side lines start from (parallel), and New Random.
+fn action_lines_bar(app: &mut App, ui: &mut Ui) {
+    use crate::action_lines::{Anchor, Taper};
+    use crate::ui::field::NumField;
+    let a = &mut app.action_lines;
+    dim_labelled(ui, "toolbar.lines", |ui| {
+        ui.add(NumField::new(&mut a.count).range(2..=500))
+    });
+    if ui
+        .selectable_label(!a.radial, tr("toolbar.parallel"))
+        .rich_tip(crate::ui::tips::keyed("toolbar.parallel"))
+        .clicked()
+    {
+        a.radial = false;
+    }
+    if ui
+        .selectable_label(a.radial, tr("toolbar.radial"))
+        .rich_tip(crate::ui::tips::keyed("toolbar.radial"))
+        .clicked()
+    {
+        a.radial = true;
+    }
+    let pct = |ui: &mut Ui, v: &mut f64, max: f64| {
+        ui.add(
+            NumField::new(v)
+                .range(0.0..=max)
+                .fixed_decimals(0)
+                .suffix(" %")
+                .width(46.0),
+        )
+    };
+    dim_labelled(ui, "toolbar.action_length_var", |ui| {
+        pct(ui, &mut a.length_var, 100.0)
+    });
+    if a.radial {
+        dim_labelled(ui, "toolbar.action_inner", |ui| pct(ui, &mut a.inner, 90.0));
+    }
+    dim_labelled(ui, "toolbar.action_width", |ui| {
+        ui.add(
+            NumField::new(&mut a.width)
+                .range(0.0..=100.0)
+                .fixed_decimals(1)
+                .suffix(" mm")
+                .width(54.0),
+        )
+    });
+    if a.filled() {
+        dim_labelled(ui, "toolbar.action_width_var", |ui| {
+            pct(ui, &mut a.width_var, 100.0)
+        });
+        dim_labelled(ui, "toolbar.action_taper", |ui| {
+            crate::ui::keynav::ComboBox::from_id_salt("action_taper")
+                .selected_text(tr(a.taper.key()))
+                .width(90.0)
+                .show_ui(ui, |ui| {
+                    for t in Taper::ALL {
+                        ui.selectable_value(&mut a.taper, t, tr(t.key()))
+                            .rich_tip(crate::ui::tips::keyed("toolbar.action_taper"));
+                    }
+                })
+        });
+    }
+    dim_labelled(ui, "toolbar.action_spacing_var", |ui| {
+        pct(ui, &mut a.spacing_var, 100.0)
+    });
+    dim_labelled(ui, "toolbar.action_angle", |ui| {
+        ui.add(
+            NumField::new(&mut a.angle)
+                .range(-360.0..=360.0)
+                .fixed_decimals(0)
+                .suffix("°")
+                .width(46.0),
+        )
+    });
+    if a.radial {
+        ui.checkbox(&mut a.oval, tr("toolbar.action_oval"))
+            .rich_tip(crate::ui::tips::keyed("toolbar.action_oval"));
+    } else {
+        dim_labelled(ui, "toolbar.action_anchor", |ui| {
+            crate::ui::keynav::ComboBox::from_id_salt("action_anchor")
+                .selected_text(tr(a.anchor.key()))
+                .width(80.0)
+                .show_ui(ui, |ui| {
+                    for k in Anchor::ALL {
+                        ui.selectable_value(&mut a.anchor, k, tr(k.key()))
+                            .rich_tip(crate::ui::tips::keyed("toolbar.action_anchor"));
+                    }
+                })
+        });
+    }
+    if ui
+        .button(tr("toolbar.action_reseed"))
+        .rich_tip(crate::ui::tips::keyed("toolbar.action_reseed"))
+        .clicked()
+    {
+        a.seed = a.seed.wrapping_add(1);
+    }
+}
+
 /// The Brush Strokes tool's bar: the mode list (Preset, Brush, Sprayer,
 /// Calligraphic, Expression), the width, then the mode's own fields:
 /// the nib angle (Calligraphic), the stroke shape (Preset, Brush), the
@@ -1539,27 +1641,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                     ui.add(crate::ui::field::NumField::new(&mut app.graph_cols).range(1..=99))
                 });
             }
-            Tool::ActionLines => {
-                dim_labelled(ui, "toolbar.lines", |ui| {
-                    ui.add(
-                        crate::ui::field::NumField::new(&mut app.action_lines_count).range(2..=500),
-                    )
-                });
-                if ui
-                    .selectable_label(!app.action_lines_radial, tr("toolbar.parallel"))
-                    .rich_tip(crate::ui::tips::keyed("toolbar.parallel"))
-                    .clicked()
-                {
-                    app.action_lines_radial = false;
-                }
-                if ui
-                    .selectable_label(app.action_lines_radial, tr("toolbar.radial"))
-                    .rich_tip(crate::ui::tips::keyed("toolbar.radial"))
-                    .clicked()
-                {
-                    app.action_lines_radial = true;
-                }
-            }
+            Tool::ActionLines => action_lines_bar(app, ui),
             Tool::CommonShapes => common_shapes_bar(app, ui),
             Tool::Table => crate::ui::table_bar::table_bar(app, ui, true),
             Tool::PainterlyBrush => crate::painterly_tool::painterly_bar(app, ui),

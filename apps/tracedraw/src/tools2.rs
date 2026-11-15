@@ -52,42 +52,6 @@ pub fn grid_path(rect: Rect, rows: u32, cols: u32) -> BezPath {
     p
 }
 
-/// The Action Lines tool's speed lines across `rect`: parallel (ending at the
-/// right edge, random lengths) or radial (around the centre). The lengths
-/// come from a fixed pseudo-random sequence, so the live preview and the
-/// object created on release are the same.
-pub fn action_lines_path(rect: Rect, lines: u32, radial: bool) -> BezPath {
-    let n = lines.clamp(2, 500) as usize;
-    let mut path = BezPath::new();
-    let mut seed: u32 = 0x9E37_79B9 ^ n as u32;
-    let mut rnd = move || {
-        seed ^= seed << 13;
-        seed ^= seed >> 17;
-        seed ^= seed << 5;
-        (seed % 1000) as f64 / 1000.0
-    };
-    if radial {
-        let c = rect.center();
-        let rmax = (rect.width().min(rect.height())) / 2.0;
-        for i in 0..n {
-            let a = std::f64::consts::TAU * i as f64 / n as f64;
-            let dir = Vec2::new(a.cos(), a.sin());
-            let r0 = rmax * (0.25 + 0.35 * rnd());
-            let r1 = rmax * (0.75 + 0.25 * rnd());
-            path.move_to(c + dir * r0);
-            path.line_to(c + dir * r1);
-        }
-    } else {
-        for i in 0..n {
-            let y = rect.y0 + rect.height() * (i as f64 + 0.5) / n as f64;
-            let len = rect.width() * (0.3 + 0.7 * rnd());
-            path.move_to(Point::new(rect.x1 - len, y));
-            path.line_to(Point::new(rect.x1, y));
-        }
-    }
-    path
-}
-
 impl App {
     pub fn tools2_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
         match self.tool {
@@ -250,9 +214,7 @@ impl App {
                 None => self.common_shape.path(r),
             },
             Tool::GraphPaper => grid_path(r, self.graph_rows, self.graph_cols),
-            Tool::ActionLines => {
-                action_lines_path(r, self.action_lines_count, self.action_lines_radial)
-            }
+            Tool::ActionLines => self.action_lines.path(r),
             Tool::Table => grid_path(r, self.table_rows, self.table_cols),
             Tool::Knife => {
                 let mut p = BezPath::new();
@@ -1638,11 +1600,13 @@ mod tests {
     #[test]
     fn action_lines_preview_matches_the_created_object() {
         let r = Rect::new(0.0, 0.0, 80.0, 40.0);
-        assert_eq!(
-            action_lines_path(r, 12, false),
-            action_lines_path(r, 12, false)
-        );
-        assert_eq!(action_lines_path(r, 12, true).elements().len(), 24);
+        let lines = crate::action_lines::ActionLines::default();
+        assert_eq!(lines.path(r), lines.path(r));
+        let radial = crate::action_lines::ActionLines {
+            radial: true,
+            ..lines
+        };
+        assert_eq!(radial.path(r).elements().len(), 24);
         let g = grid_path(r, 4, 3);
         // Frame (5 elements) plus 2 vertical and 3 horizontal lines.
         assert_eq!(g.elements().len(), 5 + 2 * 2 + 3 * 2);

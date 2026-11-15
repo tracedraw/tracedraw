@@ -275,9 +275,39 @@ the user's own shapes, drawn like the built-in ones:
 
 ## Action Lines
 
-- Lines: default 12 (2..500), parallel (default) or radial. Lengths are
-  pseudo-random from a fixed seed, so the same box gives the same
-  object; the lines are grouped.
+The bar (#1617), all kept while the program runs:
+
+- Lines: default 12 (2..500), parallel (default) or radial.
+- Length (0..100 %, 70): how much shorter than the longest a line may
+  come out; 0 makes them all as long as the box (parallel) or reaching
+  its edge (radial).
+- Middle (radial, 0..90 %, 30): the empty middle as a share of the
+  radius; lines start there or further out.
+- Width (mm, 0): 0 draws thin open lines with the default outline, as
+  before; more draws each line as a filled stroke, in the default
+  outline's colour, no outline. Then:
+  - Width var. (0..100 %, 50): how much thinner a stroke may come out.
+  - Ends: Square, Pointed (default: a point at the start, the middle for
+    radial lines, full width at the far end) or Both pointed (widest in
+    the middle).
+- Spacing (0..100 %, 0): how far a line may stray from even spacing, as
+  a share of a step.
+- Angle (degrees, 0): parallel lines turn about the box's middle; radial
+  lines' first direction.
+- Oval (radial): lines reach the box's ellipse instead of the circle in
+  it.
+- From (parallel): Right (lines end at the right edge, as before), Left
+  or Centre; the thin end points away from that side.
+- New Random: another seed, so other random lengths, widths and spacing.
+
+Lengths, widths and spacing are pseudo-random from the seed, so the
+same settings and box always give the same object, and the live preview
+is that object. One curve object.
+
+Checks: `action_lines::tests` (same settings same lines, a seed others;
+even lengths and the three sides; the empty middle and the oval; the
+three ends as filled strokes, a square stroke twice the area of a
+pointed one; the angle and stray spacing).
 
 ## Checks
 

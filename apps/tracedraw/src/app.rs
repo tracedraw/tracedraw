@@ -905,7 +905,8 @@ pub struct Pivots {
 /// The extensions File > Open reads.
 pub const OPEN_EXTENSIONS: &[&str] = &[
     "cdr", "cdt", "cdrt", "csl", "cmx", "tdraw", "svg", "svgz", "pdf", "ai", "eps", "ps", "prn",
-    "dxf", "psd", "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx",
+    "dxf", "psd", "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx", "xlsx", "csv",
+    "tsv",
 ];
 
 /// The picture files a drawing is made of when they are opened (#2600).
@@ -916,8 +917,8 @@ pub const PICTURE_EXTENSIONS: &[&str] =
 /// filters).
 pub const IMPORT_EXTENSIONS: &[&str] = &[
     "cdr", "cdt", "cdrt", "csl", "cmx", "tdraw", "svg", "svgz", "pdf", "ai", "eps", "ps", "prn",
-    "dxf", "psd", "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx", "png", "jpg",
-    "jpeg", "bmp", "gif", "webp", "tif", "tiff",
+    "dxf", "psd", "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx", "xlsx", "csv",
+    "tsv", "png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff",
 ];
 
 /// The memory the undo steps of one drawing may hold before the oldest
@@ -1262,8 +1263,8 @@ pub struct App {
     pub table_border: Option<Stroke>,
     pub graph_rows: u32,
     pub graph_cols: u32,
-    pub action_lines_count: u32,
-    pub action_lines_radial: bool,
+    /// The Action Lines tool's settings (#1617).
+    pub action_lines: crate::action_lines::ActionLines,
     /// 3-point tools: the base segment already dragged, waiting for the third click.
     pub three_point_base: Option<(Point, Point)>,
     /// The first line of the 3-Point Ellipse is being dragged with Ctrl
@@ -2972,8 +2973,7 @@ impl App {
             table_border: Some(Stroke::hairline(Color::BLACK)),
             graph_rows: 4,
             graph_cols: 3,
-            action_lines_count: 12,
-            action_lines_radial: false,
+            action_lines: Default::default(),
             three_point_base: None,
             three_point_circle: false,
             media_width: 3.0,
@@ -5918,28 +5918,32 @@ impl App {
         }
     }
 
-    /// Action lines: speed lines across `rect`, parallel (left to right, random
-    /// lengths) or radial (from the centre); one combined curve object.
+    /// Action lines: speed lines across `rect` as the tool's settings
+    /// make them (#1617); one curve object: thin lines in the default
+    /// outline, or filled strokes in its colour.
     pub fn create_action_lines(&mut self, rect: Rect) {
-        let path = crate::tools2::action_lines_path(
-            rect,
-            self.action_lines_count,
-            self.action_lines_radial,
-        );
+        let settings = self.action_lines;
+        let path = settings.path(rect);
+        let filled = settings.filled();
         if let Some(id) = self.new_shape(ShapeKind::Path {
             path,
-            closed: false,
+            closed: filled,
         }) {
             let stroke = self
                 .default_stroke()
                 .unwrap_or_else(|| Stroke::hairline(Color::BLACK));
+            let (fill, stroke) = if filled {
+                (Fill::Solid(stroke.color), None)
+            } else {
+                (Fill::None, Some(stroke))
+            };
             self.run(Command::SetStroke {
                 shapes: vec![id],
-                stroke: Some(stroke),
+                stroke,
             });
             self.run(Command::SetFill {
                 shapes: vec![id],
-                fill: Fill::None,
+                fill,
             });
             self.select(vec![id]);
         }
@@ -7582,6 +7586,10 @@ impl App {
             .add_filter(crate::i18n::tr("file.all_supported"), OPEN_EXTENSIONS)
             .add_filter("HPGL plotter (*.plt, *.hpgl)", &["plt", "hpgl", "hgl"])
             .add_filter("Text (*.txt, *.rtf, *.docx)", &["txt", "rtf", "docx"])
+            .add_filter(
+                crate::i18n::tr("file.spreadsheets"),
+                &crate::spreadsheet_import::EXTENSIONS,
+            )
             .add_filter("SVG (*.svg, *.svgz)", &["svg", "svgz"])
             .add_filter("PDF, AI (*.pdf, *.ai)", &["pdf", "ai"])
             .add_filter("PostScript (*.ps, *.eps, *.prn)", &["ps", "eps", "prn"])
@@ -7900,6 +7908,16 @@ impl App {
                     doc.set_ids(ids);
                     (doc, format!("HPGL: {n} stroke(s)"))
                 })
+        } else if crate::spreadsheet_import::is_spreadsheet(&ext) {
+            crate::spreadsheet_import::read_rows(&path).map(|rows| {
+                let title = path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(App::untitled_name);
+                let doc = crate::spreadsheet_import::document(&title, &rows);
+                let n = rows.len();
+                (doc, format!("{n} row(s)"))
+            })
         } else if matches!(ext.as_str(), "txt" | "rtf" | "docx") {
             Self::parse_text_file(&path).map(|imported| {
                 let title = path
@@ -8166,6 +8184,9 @@ impl App {
                         | "txt"
                         | "rtf"
                         | "docx"
+                        | "xlsx"
+                        | "csv"
+                        | "tsv"
                 ) {
                     None
                 } else {
@@ -9206,6 +9227,10 @@ impl App {
         dialog
             .add_filter("HPGL plotter (*.plt, *.hpgl)", &["plt", "hpgl", "hgl"])
             .add_filter("Text (*.txt, *.rtf, *.docx)", &["txt", "rtf", "docx"])
+            .add_filter(
+                crate::i18n::tr("file.spreadsheets"),
+                &crate::spreadsheet_import::EXTENSIONS,
+            )
             .add_filter("TraceDraw (*.tdraw)", &["tdraw"])
             .add_filter(crate::i18n::tr("file.cdr_files"), &["cdr", "cdt", "cdrt"])
             .add_filter(crate::i18n::tr("file.symbol_library"), &["csl"])
@@ -9316,6 +9341,10 @@ impl App {
         }
         if matches!(ext.as_str(), "txt" | "rtf" | "docx") {
             self.import_text_file(&path);
+            return;
+        }
+        if crate::spreadsheet_import::is_spreadsheet(&ext) {
+            self.import_spreadsheet(&path);
             return;
         }
         if ext == "eps" || ext == "ps" {
