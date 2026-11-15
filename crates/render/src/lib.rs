@@ -10580,3 +10580,111 @@ mod band_tests {
         }
     }
 }
+
+/// An inner shadow seen zoomed in close (#2895): the object reaches past
+/// the picture, which is drawn in bands and anew at every pan. Each
+/// pixel comes out the same whatever band or view draws it, so nothing
+/// moves on screen while the picture is replaced.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod inner_shadow_view_tests {
+    use super::*;
+    use tracedraw_core::{Color, Fill};
+
+    fn mesh_with_inner_shadow() -> (Document, PageId) {
+        let r = Rect::new(10.0, 10.0, 90.0, 90.0);
+        let mut s = Shape::new(
+            tracedraw_core::ShapeId(1),
+            ShapeKind::Rect {
+                rect: r,
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let mut m = tracedraw_core::Mesh::new(r, 2, 2, Color::WHITE);
+        let colors = [
+            Color::rgb8(255, 0, 0),
+            Color::rgb8(0, 255, 0),
+            Color::rgb8(0, 0, 255),
+            Color::rgb8(255, 255, 0),
+            Color::rgb8(0, 255, 255),
+            Color::rgb8(255, 0, 255),
+            Color::rgb8(255, 128, 0),
+            Color::rgb8(0, 128, 255),
+            Color::rgb8(128, 0, 255),
+        ];
+        for (n, c) in m.nodes.iter_mut().zip(colors) {
+            n.color = c;
+        }
+        s.fill = Fill::Mesh(m);
+        s.stroke = None;
+        s.effects.push(tracedraw_core::live::Effect::InnerShadow {
+            offset: tracedraw_core::geometry::Vec2::new(2.0, -2.0),
+            color: Color::BLACK,
+            opacity: 0.8,
+            blur: 2.0,
+            merge: tracedraw_core::live::MergeMode::Normal,
+        });
+        let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(100.0, 100.0));
+        let layer = doc.pages[0].layers[0].id;
+        doc.layer_mut(layer).expect("layer").shapes.push(s);
+        let page = doc.pages[0].id;
+        (doc, page)
+    }
+
+    fn opts(zoom: f64, dx: f64) -> RenderOptions {
+        RenderOptions {
+            width: 1200,
+            height: 900,
+            view: ViewTransform {
+                zoom,
+                origin_x: -8.0 * zoom - dx,
+                origin_y: 900.0 + 8.0 * zoom,
+            },
+            draft: true,
+            ..Default::default()
+        }
+    }
+
+    fn diff(p: tiny_skia::PremultipliedColorU8, q: tiny_skia::PremultipliedColorU8) -> u8 {
+        p.red()
+            .abs_diff(q.red())
+            .max(p.green().abs_diff(q.green()))
+            .max(p.blue().abs_diff(q.blue()))
+            .max(p.alpha().abs_diff(q.alpha()))
+    }
+
+    #[test]
+    fn bands_draw_an_inner_shadow_as_one_picture_does() {
+        let (doc, page) = mesh_with_inner_shadow();
+        for zoom in [4.0, 20.0, 60.0] {
+            let a = render_page(&doc, page, &opts(zoom, 0.0)).expect("bands");
+            let b = render_page_on_one_thread(&doc, page, &opts(zoom, 0.0)).expect("whole");
+            let worst = a
+                .pixels()
+                .iter()
+                .zip(b.pixels())
+                .map(|(p, q)| diff(*p, *q))
+                .max()
+                .unwrap_or(0);
+            assert!(worst <= 1, "zoom {zoom}: {worst}");
+        }
+    }
+
+    #[test]
+    fn a_pan_moves_an_inner_shadow_and_nothing_else() {
+        let (doc, page) = mesh_with_inner_shadow();
+        for zoom in [4.0, 20.0, 60.0] {
+            let a = render_page(&doc, page, &opts(zoom, 0.0)).expect("before");
+            let b = render_page(&doc, page, &opts(zoom, 37.0)).expect("panned");
+            let mut worst = 0;
+            for y in 0..900 {
+                for x in 0..1100 {
+                    let p = a.pixel(x + 37, y).expect("pixel");
+                    let q = b.pixel(x, y).expect("pixel");
+                    worst = worst.max(diff(p, q));
+                }
+            }
+            assert!(worst <= 1, "zoom {zoom}: {worst}");
+        }
+    }
+}

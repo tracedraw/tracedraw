@@ -28457,3 +28457,54 @@ fn windows_keys_swap_ctrl_and_shift_for_transforms() {
     app.drag = Drag::None;
     assert_eq!(app.pick_mods(Modifiers::CTRL), Modifiers::CTRL, "a press");
 }
+
+/// A drop shadow cast past the page (#2891): the backdrop shown while
+/// the view moves reaches all of it, not only the page and the object,
+/// which cut the shadow off at the page's edge.
+#[test]
+fn the_backdrop_reaches_a_shadow_cast_past_the_page() {
+    let (_ctx, mut app, _) = setup();
+    let size = app.page_size();
+    let r = Rect::new(size.width - 30.0, 20.0, size.width - 10.0, 40.0);
+    let id = app
+        .new_shape(ShapeKind::Rect {
+            rect: r,
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![id]);
+    app.set_shadow(
+        Some(tracedraw_core::Shadow {
+            offset: Vec2::new(50.0, -5.0),
+            blur: 3.0,
+            ..Default::default()
+        }),
+        false,
+    );
+    let shadow = app
+        .doc()
+        .find_shape(id)
+        .and_then(|s| s.shadow.map(|sh| sh.bounds(s.bounds())))
+        .expect("shadow");
+    assert!(shadow.x1 > size.width + 20.0, "{shadow:?}");
+    let area = app.backdrop_area(app.engine.revision());
+    assert!(
+        area.x1 >= shadow.x1 - 1e-6 && area.y0 <= shadow.y0 + 1e-6,
+        "{area:?} misses {shadow:?}"
+    );
+    // A stacked outer shadow (#1141) reaches as far.
+    app.set_shadow(None, false);
+    app.push_effect(
+        tracedraw_core::live::Effect::OuterShadow {
+            offset: Vec2::new(40.0, 0.0),
+            color: tracedraw_core::Color::BLACK,
+            opacity: 0.5,
+            blur: 2.0,
+            merge: tracedraw_core::live::MergeMode::Normal,
+        },
+        false,
+    );
+    let area = app.backdrop_area(app.engine.revision());
+    assert!(area.x1 >= r.x1 + 40.0, "{area:?}");
+}

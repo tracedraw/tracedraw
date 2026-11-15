@@ -5287,7 +5287,9 @@ impl App {
     /// [`BACKDROP_REACH`] page sizes away. With the page alone, a
     /// drawing laid out around a small page came back piece by piece at
     /// every zoom out, the desktop bare around the page meanwhile
-    /// (#2354). Worked out once a change of the drawing, at `revision`.
+    /// (#2354). Shadows and glows count where they reach: one cast past
+    /// the page was cut off at its edge while the view moved (#2891).
+    /// Worked out once a change of the drawing, at `revision`.
     pub fn backdrop_area(&self, revision: u64) -> Rect {
         let page = self.page_rect();
         if let Some((r, p, b, area)) = self.backdrop_area.get() {
@@ -5300,7 +5302,7 @@ impl App {
             page.height() * BACKDROP_REACH,
         );
         let area = self
-            .drawing_bounds()
+            .drawing_reach_bounds()
             .map(|b| {
                 Rect::new(
                     b.x0.max(reach.x0),

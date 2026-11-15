@@ -182,6 +182,31 @@ impl App {
         self.page_drawing_bounds(self.page)
     }
 
+    /// What the current page's objects draw, in page mm: their visual
+    /// bounds with the drop shadows, outer shadows, glows and blurs that
+    /// reach past them (#2891: the backdrop shown while the view moves
+    /// cut a shadow cast past the page off at the page's edge).
+    pub fn drawing_reach_bounds(&self) -> Option<tracedraw_core::geometry::Rect> {
+        let doc = self.doc();
+        let page = doc.page(self.page).ok()?;
+        page.layers
+            .iter()
+            .flat_map(|l| l.shapes.iter())
+            .filter(|s| s.visible)
+            .map(|s| {
+                let mut b = self.visual_bounds(s);
+                let r = effects_reach(s);
+                if r > 0.0 {
+                    b = b.inflate(r, r);
+                }
+                match shadow_reach(s, Affine::IDENTITY) {
+                    Some(sh) => b.union(sh),
+                    None => b,
+                }
+            })
+            .reduce(|a, b| a.union(b))
+    }
+
     /// As [`Self::drawing_bounds`], for the page `page`.
     pub fn page_drawing_bounds(
         &self,
@@ -5582,6 +5607,27 @@ fn outline_area(s: &Shape, parent: Affine) -> Option<Rect> {
             finite(&area).then_some(area)
         }
     }
+}
+
+/// How far past its visual bounds `s` or an object in it draws, mm: its
+/// widest outer shadow (offset and feathering), glow or Gaussian blur.
+fn effects_reach(s: &Shape) -> f64 {
+    use tracedraw_core::live::Effect;
+    let own = s
+        .effects
+        .iter()
+        .map(|e| match e {
+            Effect::OuterShadow { offset, blur, .. } => blur.abs() + offset.hypot(),
+            Effect::Glow { blur, .. } | Effect::GaussianBlur { radius: blur } => blur.abs(),
+            _ => 0.0,
+        })
+        .filter(|r| r.is_finite())
+        .fold(0.0f64, f64::max);
+    let inner = match &s.kind {
+        ShapeKind::Group { children } => children.iter().map(effects_reach).fold(0.0, f64::max),
+        _ => 0.0,
+    };
+    own.max(inner)
 }
 
 /// The area the drop shadows of `s` (inside `parent`) and of the objects
