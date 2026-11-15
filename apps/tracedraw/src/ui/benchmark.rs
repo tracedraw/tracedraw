@@ -163,9 +163,9 @@ fn step(app: &mut App, ui: &mut Ui) {
                 let fps = if secs > 0.0 { timed / secs } else { 0.0 };
                 let (all, one, memory) = g.cpu;
                 let m = Measured {
-                    acceleration: !crate::gpu::software(),
-                    adapter: crate::gpu::in_use().unwrap_or_default().to_string(),
-                    software: crate::gpu::software(),
+                    acceleration: !gpu_software(),
+                    adapter: gpu_in_use().unwrap_or_default().to_string(),
+                    software: gpu_software(),
                     cores: bench::cores(),
                     all_cores_seconds: all,
                     one_core_seconds: one,
@@ -268,9 +268,9 @@ pub fn dialog(app: &mut App, ctx: &Context, close: &mut bool) {
         ui.set_max_width(560.0);
         ui.label(tr("benchmark.intro"));
         ui.add_space(6.0);
-        let window_by = crate::gpu::in_use().map(|n| n.to_string());
+        let window_by = gpu_in_use().map(|n| n.to_string());
         if let Some(name) = window_by {
-            let key = if crate::gpu::software() {
+            let key = if gpu_software() {
                 "benchmark.window_software"
             } else {
                 "benchmark.window_card"
@@ -390,6 +390,32 @@ pub fn dialog(app: &mut App, ctx: &Context, close: &mut bool) {
             }
         });
     });
+}
+
+/// The adapter that draws the window; the browser build has no wgpu
+/// adapter list of its own.
+fn gpu_in_use() -> Option<&'static str> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        crate::gpu::in_use()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        None
+    }
+}
+
+/// Whether the window is drawn by a software adapter (never known in the
+/// browser).
+fn gpu_software() -> bool {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        crate::gpu::software()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        false
+    }
 }
 
 #[cfg(test)]
