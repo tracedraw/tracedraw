@@ -383,6 +383,9 @@ pub struct PrintStyle {
     pub reverse_order: bool,
     pub separations: bool,
     pub skip_empty_plates: bool,
+    pub plate_files: bool,
+    pub manual_duplex: bool,
+    pub duplex_reverse: bool,
     pub grayscale: bool,
     pub mirror: bool,
     pub invert: bool,
@@ -426,6 +429,9 @@ impl PrintStyle {
             reverse_order: st.reverse_order,
             separations: st.separations,
             skip_empty_plates: st.skip_empty_plates,
+            plate_files: st.plate_files,
+            manual_duplex: st.manual_duplex,
+            duplex_reverse: st.duplex_reverse,
             grayscale: st.grayscale,
             mirror: st.mirror,
             invert: st.invert,
@@ -486,6 +492,9 @@ impl PrintStyle {
         st.reverse_order = self.reverse_order;
         st.separations = self.separations;
         st.skip_empty_plates = self.skip_empty_plates;
+        st.plate_files = self.plate_files;
+        st.manual_duplex = self.manual_duplex;
+        st.duplex_reverse = self.duplex_reverse;
         st.grayscale = self.grayscale;
         st.mirror = self.mirror;
         st.invert = self.invert;

@@ -796,7 +796,71 @@ pub fn keep_one_sheet(doc: &mut Document, n: usize) {
 /// system printer, or open it in the system viewer, which owns the
 /// printer dialog.
 pub fn print(app: &mut App, st: &PrintState) -> Result<String, String> {
+    if st.manual_duplex {
+        return print_duplex_side(app, st, false);
+    }
     print_sheet(app, st, None)
+}
+
+/// The sheets of one side of a manual two-sided print of `n` sheets, in
+/// printing order: the fronts are the odd sheets (1, 3, 5...), the backs
+/// the even ones. Backs in reverse order run from the last; then an odd
+/// count's last front, which has no back, gets a blank one first
+/// (`None`), so each back meets its front in the turned stack.
+pub fn duplex_sides(n: usize, back: bool, reverse: bool) -> Vec<Option<usize>> {
+    if !back {
+        return (0..n).step_by(2).map(Some).collect();
+    }
+    let mut v: Vec<Option<usize>> = (1..n).step_by(2).map(Some).collect();
+    if reverse {
+        if n % 2 == 1 {
+            v.push(None);
+        }
+        v.reverse();
+    }
+    v
+}
+
+/// Keeps the sheets `picked` of `doc` in that order, a blank sheet of the
+/// first one's size for each `None`.
+pub fn keep_sheets(doc: &mut Document, picked: &[Option<usize>]) {
+    let pages = std::mem::take(&mut doc.pages);
+    let blank = |like: &tracedraw_core::document::Page| {
+        let mut p = like.clone();
+        p.background = None;
+        for l in p.layers.iter_mut() {
+            l.shapes.clear();
+        }
+        p
+    };
+    doc.pages = picked
+        .iter()
+        .filter_map(|i| match i {
+            Some(i) => pages.get(*i).cloned(),
+            None => pages.first().map(blank),
+        })
+        .collect();
+}
+
+/// Manual two-sided printing: the fronts (`back` false), after which the
+/// prompt to turn the stack over waits (`App::duplex_backs`), or the
+/// backs. One sheet alone prints as it is.
+pub fn print_duplex_side(app: &mut App, st: &PrintState, back: bool) -> Result<String, String> {
+    let n = print_sheets(app, st).pages.len();
+    if n < 2 {
+        return print_sheet(app, st, None);
+    }
+    let picked = duplex_sides(n, back, st.duplex_reverse);
+    // The sides set their own order; Reverse order would undo it.
+    let side = PrintState {
+        reverse_order: false,
+        ..st.clone()
+    };
+    let r = print_picked(app, &side, &picked);
+    if !back && r.is_ok() {
+        app.duplex_backs = Some(st.clone());
+    }
+    r
 }
 
 /// File > Print with `only` set to one sheet's index: that sheet alone
@@ -806,6 +870,29 @@ pub fn print_sheet(app: &mut App, st: &PrintState, only: Option<usize>) -> Resul
     let mut doc = print_sheets(app, st);
     if let Some(n) = only {
         keep_one_sheet(&mut doc, n);
+    }
+    print_doc(app, st, doc)
+}
+
+/// File > Print with only the sheets `picked` (in that order, `None` a
+/// blank sheet): one side of a manual two-sided print.
+fn print_picked(
+    app: &mut App,
+    st: &PrintState,
+    picked: &[Option<usize>],
+) -> Result<String, String> {
+    let mut doc = print_sheets(app, st);
+    keep_sheets(&mut doc, picked);
+    print_doc(app, st, doc)
+}
+
+/// The sheets `doc` printed as `st` asks: separations, copies, and the
+/// destination.
+fn print_doc(app: &mut App, st: &PrintState, mut doc: Document) -> Result<String, String> {
+    // Each plate in a file of its own, named after its ink, beside the
+    // name chosen.
+    if st.separations && st.plate_files && matches!(st.destination, 1 | 2) {
+        return print_plate_files(app, st, &doc);
     }
     if st.separations {
         doc = separations_doc_without(&doc, &st.plates_off, st.skip_empty_plates);
@@ -866,6 +953,86 @@ pub fn print_sheet(app: &mut App, st: &PrintState, only: Option<usize>) -> Resul
             print_through_viewer(&name, pdf)
         }
     }
+}
+
+/// Separations with each plate in a file of its own (PDF or PostScript):
+/// the file name chosen gives each its name, the ink's name after it
+/// ("poster - Cyan.pdf").
+fn print_plate_files(app: &mut App, st: &PrintState, sheets: &Document) -> Result<String, String> {
+    let ps = st.destination == 2;
+    let (ext, filter) = if ps {
+        ("ps", "PostScript")
+    } else {
+        ("pdf", "PDF")
+    };
+    let files: Vec<(String, Vec<u8>)> = plate_files(sheets, st)
+        .into_iter()
+        .map(|(name, mut doc)| {
+            if st.copies > 1 {
+                repeat_copies(&mut doc, st.copies.min(999) as usize, st.collate);
+            }
+            let bytes = if ps {
+                postscript_level(tracedraw_io::eps::document_to_ps(&doc), st.ps_level).into_bytes()
+            } else {
+                tracedraw_io::pdf::document_to_pdf(&doc)
+            };
+            (name, bytes)
+        })
+        .collect();
+    let stem = app.document_title().trim_end_matches('*').to_string();
+    crate::files::Dialog::new()
+        .add_filter(filter, &[ext])
+        .set_file_name(format!("{stem}.{ext}"))
+        .save_file(app, move |app, path| {
+            let mut written = Vec::new();
+            for (name, bytes) in files {
+                let to = plate_file_path(&path, &name);
+                if let Err(e) = crate::files::write(&to, bytes) {
+                    app.status = format!("{}: {e}", tr("dialog.print_failed"));
+                    return;
+                }
+                written.push(to.display().to_string());
+            }
+            app.status = trf("status.exported", &[("path", &written.join(", "))]);
+        });
+    Ok(String::new())
+}
+
+/// The plates of `sheets` as documents of their own, each named after
+/// its ink, in [`plates`] order: the plates unticked in Print Preview
+/// left out, and with Leave out empty plates each plate no sheet puts
+/// ink on. A sheet with no ink on a plate kept prints blank on it, so
+/// every file keeps the sheets in step.
+pub fn plate_files(sheets: &Document, st: &PrintState) -> Vec<(String, Document)> {
+    let all = plates(sheets);
+    let mut out = Vec::new();
+    for (i, (plate, name)) in all.iter().enumerate() {
+        if st.plates_off.contains(&i) {
+            continue;
+        }
+        if st.skip_empty_plates && !sheets.pages.iter().any(|p| plate_has_ink(p, *plate)) {
+            continue;
+        }
+        let others: Vec<usize> = (0..all.len()).filter(|&j| j != i).collect();
+        let mut doc = separations_doc_without(sheets, &others, false);
+        doc.title = format!("{} {name}", sheets.title);
+        out.push((name.clone(), doc));
+    }
+    out
+}
+
+/// The file of the plate `ink` beside `chosen`: its name with the ink's
+/// after it ("poster.pdf" and Cyan give "poster - Cyan.pdf").
+pub fn plate_file_path(chosen: &std::path::Path, ink: &str) -> std::path::PathBuf {
+    let stem = chosen
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let ext = chosen
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    chosen.with_file_name(shared_file_name(&format!("{stem} - {ink}{ext}")))
 }
 
 /// The print PDF sent to the system printer `printer` (`lp`), with the
@@ -2861,6 +3028,83 @@ mod tests {
     }
 
     use super::*;
+
+    /// Separations to files: each plate in a document of its own named
+    /// after its ink, every sheet on it; the empty ones left out when asked.
+    #[test]
+    fn each_plate_goes_to_a_file_of_its_own() {
+        use tracedraw_core::Fill;
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(20.0, 20.0, 80.0, 60.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.run(tracedraw_core::Command::SetFill {
+            shapes: vec![id],
+            fill: Fill::Solid(tracedraw_core::Color::Cmyk {
+                c: 0.0,
+                m: 1.0,
+                y: 1.0,
+                k: 0.0,
+            }),
+        });
+        let mut st = PrintState {
+            separations: true,
+            plate_files: true,
+            ..PrintState::default()
+        };
+        let sheets = print_sheets(&app, &st);
+        let names = |files: &[(String, Document)]| -> Vec<String> {
+            files.iter().map(|(n, _)| n.clone()).collect()
+        };
+        let files = plate_files(&sheets, &st);
+        assert_eq!(names(&files), ["Cyan", "Magenta", "Yellow", "Black"]);
+        for (name, doc) in &files {
+            assert_eq!(doc.pages.len(), sheets.pages.len(), "{name}");
+            assert!(doc.pages[0].name.ends_with(name.as_str()), "{name}");
+        }
+        // Unticked in Print Preview, or with no ink when empty plates
+        // are left out (the black outline keeps the black plate).
+        st.plates_off = vec![1];
+        st.skip_empty_plates = true;
+        assert_eq!(names(&plate_files(&sheets, &st)), ["Yellow", "Black"]);
+        let p = plate_file_path(std::path::Path::new("/tmp/out/poster.pdf"), "Spot Red");
+        assert_eq!(
+            p,
+            std::path::PathBuf::from("/tmp/out/poster - Spot Red.pdf")
+        );
+        let p = plate_file_path(std::path::Path::new("card"), "Black/K");
+        assert_eq!(p.parent(), Some(std::path::Path::new("")));
+        assert!(!p.to_string_lossy().contains('/'), "{p:?}");
+    }
+
+    #[test]
+    fn manual_two_sided_prints_fronts_then_backs_each_meeting_its_front() {
+        let s = |v: Vec<Option<usize>>| -> Vec<i64> {
+            v.iter().map(|i| i.map_or(-1, |i| i as i64)).collect()
+        };
+        assert_eq!(s(duplex_sides(5, false, false)), [0, 2, 4]);
+        assert_eq!(s(duplex_sides(5, true, false)), [1, 3]);
+        // From the last: the odd count's last front gets a blank back first.
+        assert_eq!(s(duplex_sides(5, true, true)), [-1, 3, 1]);
+        assert_eq!(s(duplex_sides(4, true, true)), [3, 1]);
+        let mut doc = Document::new("t", Size::new(50.0, 50.0));
+        let mut ids = doc.ids().clone();
+        let mut second = doc.pages[0].clone();
+        second.id = ids.page();
+        second.name = "B".into();
+        doc.set_ids(ids);
+        doc.pages[0].name = "A".into();
+        doc.pages.push(second);
+        keep_sheets(&mut doc, &[None, Some(1), Some(0)]);
+        let names: Vec<_> = doc.pages.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["A", "B", "A"]);
+        assert!(doc.pages[0].layers.iter().all(|l| l.shapes.is_empty()));
+        assert!(doc.pages[0].background.is_none());
+    }
 
     /// A spot colour on a rectangle: printed with separations, the sheets
     /// give the four process plates and one for the spot ink, where the

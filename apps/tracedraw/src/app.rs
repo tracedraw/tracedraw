@@ -1570,6 +1570,9 @@ pub struct App {
     /// a printer's spooler can take minutes and the window stays usable
     /// meanwhile (#810). The status it ends with.
     pub print_job: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
+    /// Manual two-sided printing: the settings of a print whose fronts
+    /// went out, while the prompt to turn the stack over shows.
+    pub duplex_backs: Option<crate::ui::dialogs::PrintState>,
     pub printers_seen: Vec<crate::printers::Printer>,
     /// The printer printed to last in this session, which the next Print
     /// dialog and Print Preview start on; not kept across runs, which
@@ -3103,6 +3106,7 @@ impl App {
             print_preview: None,
             printer_fetch: None,
             print_job: None,
+            duplex_backs: None,
             printers_seen: Vec::new(),
             printer_last: None,
             preview_selected_only: false,

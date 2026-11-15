@@ -116,6 +116,14 @@ has one.
     sheets last first, for a stack that comes out face up or for the
     backs of printed sheets; it reverses the sheets as imposed, so a
     booklet or n-up layout keeps its sheets whole (#1394, #1571).
+  - Two-sided by hand, for a printer that prints one side: the odd
+    sheets (the fronts) print first, then a prompt asks to turn the
+    stack over and put it back, and Print the backs sends the even
+    sheets. Backs from the last sheet runs them last first for a
+    printer whose stack comes out face up, an odd count's last front
+    getting a blank back first so each back meets its front; Reverse
+    order does not apply to the sides (`export::duplex_sides`,
+    `export::tests::manual_two_sided_prints_fronts_then_backs_each_meeting_its_front`).
   - Print as bitmap: each sheet becomes one picture at the resolution
     given (36 to 1200 dpi).
 - Color: Composite, with Grayscale under it, or Separations (one grey
@@ -143,6 +151,16 @@ has one.
   sheet with no ink at all keeps its first plate
   (`export::plate_has_ink`). The count of pages to print in Print
   Preview's status line still counts every plate.
+  Each plate in its own file (under Separations in the Print dialog,
+  with PDF or PostScript file as the destination; kept in presets):
+  the file name chosen names one file per plate, the ink's name after
+  it (`poster - Cyan.pdf`, `poster - Spot Red.pdf`), each holding that
+  plate of every sheet with the copies asked for. The plates unticked in
+  Print Preview get no file, nor, with Leave out empty plates, a plate
+  no sheet puts ink on; a sheet with no ink on a plate that has a file
+  prints blank there, so the files keep the sheets in step
+  (`export::plate_files`, `export::plate_file_path`,
+  `export::tests::each_plate_goes_to_a_file_of_its_own`).
   Pictures are split into their inks too (#1659): a picture that keeps
   its ink channels (a CMYK image of a `.cdr` file) prints each ink as it
   holds it, so cyan ink alone prints on the cyan plate alone and black

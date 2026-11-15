@@ -500,6 +500,13 @@ pub struct PrintState {
     pub plates_off: Vec<usize>,
     /// Separations leave out each sheet's plate that takes no ink.
     pub skip_empty_plates: bool,
+    /// Separations to a file: each plate in a file of its own.
+    pub plate_files: bool,
+    /// Manual two-sided printing: the fronts first, then the backs once
+    /// the stack is turned over (`export::print_duplex_side`).
+    pub manual_duplex: bool,
+    /// The backs from the last sheet (the stack comes out face up).
+    pub duplex_reverse: bool,
     pub copies: u32,
     pub all_pages: bool,
     pub scale: f64,
@@ -890,6 +897,9 @@ impl Default for PrintState {
         PrintState {
             plates_off: Vec::new(),
             skip_empty_plates: false,
+            plate_files: false,
+            manual_duplex: false,
+            duplex_reverse: false,
             copies: 1,
             all_pages: true,
             scale: 100.0,
@@ -1934,6 +1944,9 @@ fn unit_value(ui: &mut Ui, label: &str, tip: &str, mm: &mut f64, units: Units) -
 pub fn show(app: &mut App, ctx: &Context) {
     // A plotter job sent on a thread of its own tells how it went.
     crate::tracecut_send::poll(app);
+    // Manual two-sided printing: the fronts went out, the backs wait for
+    // the stack to be turned over.
+    duplex_backs_prompt(app, ctx);
     // A shape of My shapes asks for its name (#2360).
     crate::ui::toolbar::my_shape_name_dialog(app, ctx);
     crate::ui::chrome::set_center_dialogs(ctx, app.settings.center_dialogs);
@@ -6266,6 +6279,32 @@ fn print_dialog(app: &mut App, ctx: &Context, st: &mut PrintState, close: &mut b
     });
 }
 
+/// The prompt between the two sides of a manual two-sided print: turn
+/// the printed stack over and put it back, then Print backs (with the
+/// backs from the last sheet when ticked) or Cancel.
+fn duplex_backs_prompt(app: &mut App, ctx: &Context) {
+    let Some(mut st) = app.duplex_backs.take() else {
+        return;
+    };
+    let (backs, cancel) = (tr("print.duplex_print_backs"), tr("dialog.cancel"));
+    match crate::ui::chrome::message_box_check(
+        ctx,
+        crate::ui::chrome::MessageIcon::Info,
+        &tr("print.duplex_turn"),
+        &[&backs, &cancel],
+        &tr("print.duplex_reverse"),
+        &mut st.duplex_reverse,
+    ) {
+        Some(0) => match crate::export::print_duplex_side(app, &st, true) {
+            Ok(msg) if !msg.is_empty() => app.status = msg,
+            Ok(_) => {}
+            Err(e) => app.status = format!("{}: {e}", tr("dialog.print_failed")),
+        },
+        Some(_) => {}
+        None => app.duplex_backs = Some(st),
+    }
+}
+
 /// The name of the destination that leaves the printer to the system:
 /// the PDF viewer, or on Android the system's print service (#1398).
 pub fn print_service_key() -> &'static str {
@@ -6489,6 +6528,8 @@ fn print_tab_general(app: &App, ui: &mut Ui, st: &mut PrintState) -> Option<Stri
                 .rich_disabled_tip(crate::ui::tips::keyed("print.collate"));
                 ui.checkbox(&mut st.reverse_order, tr("print.reverse_order"))
                     .rich_tip(tr("print.reverse_order_tip"));
+                ui.checkbox(&mut st.manual_duplex, tr("print.manual_duplex"))
+                    .rich_tip(crate::ui::tips::keyed("print.manual_duplex"));
             });
             ui.add_space(6.0);
             ui.horizontal(|ui| {
@@ -6542,6 +6583,12 @@ fn print_tab_color(ui: &mut Ui, st: &mut PrintState) {
                         ),
                     )
                     .rich_tip(crate::ui::tips::keyed("print.skip_empty_plates"));
+                    ui.add_enabled(
+                        st.separations && matches!(st.destination, 1 | 2),
+                        egui::Checkbox::new(&mut st.plate_files, tr("print.plate_files")),
+                    )
+                    .rich_tip(crate::ui::tips::keyed("print.plate_files"))
+                    .rich_disabled_tip(crate::ui::tips::keyed("print.plate_files"));
                 });
             });
             ui.end_row();
