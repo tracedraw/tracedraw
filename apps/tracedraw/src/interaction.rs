@@ -4159,20 +4159,18 @@ impl App {
             Drag::Freehand { points } => {
                 // Smoothing (Options > Tools > Curves, the property bar)
                 // sets how far the stroke may be simplified, on screen.
+                // Corners and straight stretches (Options > Tools >
+                // Curves, #1436); as few nodes as fit (#2887).
                 let tol = self.settings.curves.freehand_tolerance_px() / self.view.zoom as f64;
-                let pts = tracedraw_core::geometry::simplify(&points, tol.max(0.02));
-                if pts.len() >= 2 {
-                    // Corners and straight stretches (Options > Tools >
-                    // Curves, #1436).
-                    let c = self.settings.curves;
-                    let px = 1.0 / self.view.zoom as f64;
-                    let path = crate::tools2::fit_freehand(
-                        &points,
-                        &pts,
-                        c.corner_turn_deg(),
-                        (c.straight_threshold > 0)
-                            .then(|| (f64::from(c.straight_threshold.min(10)) * px, 20.0 * px)),
-                    );
+                let c = self.settings.curves;
+                let px = 1.0 / self.view.zoom as f64;
+                if let Some(path) = crate::tools2::freehand_path(
+                    &points,
+                    tol,
+                    c.corner_turn_deg(),
+                    (c.straight_threshold > 0)
+                        .then(|| (f64::from(c.straight_threshold.min(10)) * px, 20.0 * px)),
+                ) {
                     // Drawn with a pen: the outline follows its pressure
                     // along the stroke (#850); the mouse keeps it even.
                     let widths = self

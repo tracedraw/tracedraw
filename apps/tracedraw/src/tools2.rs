@@ -39,6 +39,45 @@ pub fn spiral_path(rect: Rect, revolutions: u32, logarithmic: bool, expansion: u
     tracedraw_core::geometry::smooth_path(&pts, false)
 }
 
+/// A freehand stroke drawn through `raw` as few nodes as stay within
+/// `tol` (mm, from the Smoothing setting): the points are thinned to
+/// within `tol`, drawn as a curve through them by [`fit_freehand`] (with
+/// its corners and straight stretches) and that curve is fitted again
+/// with long cubic curves, so a gentle bend takes one or two nodes
+/// rather than one every few millimetres (#2887). `None` for a stroke of
+/// one point.
+pub fn freehand_path(
+    raw: &[Point],
+    tol: f64,
+    corner_deg: Option<f64>,
+    straight: Option<(f64, f64)>,
+) -> Option<BezPath> {
+    let tol = if tol.is_finite() { tol.max(0.02) } else { 0.02 };
+    let pts = tracedraw_core::geometry::simplify(raw, tol);
+    if pts.len() < 2 {
+        return None;
+    }
+    let path = fit_freehand(raw, &pts, corner_deg, straight);
+    if pts.len() < 4 {
+        return Some(path);
+    }
+    let fitted = tracedraw_core::fit::fit_path(&path, tol);
+    use tracedraw_core::geometry::PathEl;
+    let nodes = |p: &BezPath| p.elements().len();
+    let sane = fitted.elements().len() >= 2
+        && fitted.elements().iter().all(|e| match *e {
+            PathEl::MoveTo(p) | PathEl::LineTo(p) => p.is_finite(),
+            PathEl::QuadTo(a, p) => a.is_finite() && p.is_finite(),
+            PathEl::CurveTo(a, b, p) => a.is_finite() && b.is_finite() && p.is_finite(),
+            PathEl::ClosePath => false,
+        });
+    Some(if sane && nodes(&fitted) < nodes(&path) {
+        fitted
+    } else {
+        path
+    })
+}
+
 /// A freehand stroke as a curve through its simplified points `pts`
 /// (taken from `raw`, the points as drawn): smooth as
 /// `geometry::smooth_path` makes it, except at the nodes where the stroke
@@ -1727,6 +1766,57 @@ mod tests {
         let g = grid_path(r, 4, 3);
         // Frame (5 elements) plus 2 vertical and 3 horizontal lines.
         assert_eq!(g.elements().len(), 5 + 2 * 2 + 3 * 2);
+    }
+
+    /// A wavy stroke drawn by hand (jittered mouse points every few
+    /// pixels) takes a handful of nodes, not one every few millimetres,
+    /// and stays near what was drawn (#2887).
+    #[test]
+    fn freehand_stroke_takes_few_nodes() {
+        use tracedraw_core::geometry::{ParamCurve, ParamCurveNearest};
+        // 120 mm of two gentle waves, 4 px per mm, a point every ~3 px
+        // with up to half a pixel of hand jitter.
+        let zoom = 4.0;
+        let mut raw = Vec::new();
+        let mut seed = 7u32;
+        for i in 0..=160 {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+            let j = (f64::from(seed >> 16 & 0xff) / 255.0 - 0.5) / zoom;
+            let x = f64::from(i) * 0.75;
+            let y = 15.0 * (x / 120.0 * std::f64::consts::TAU * 2.0).sin() + j;
+            raw.push(Point::new(x, y));
+        }
+        let tol = 1.3 / zoom; // Smoothing 50
+        let old = fit_freehand(
+            &raw,
+            &tracedraw_core::geometry::simplify(&raw, tol),
+            None,
+            None,
+        );
+        let path = freehand_path(&raw, tol, None, None).unwrap();
+        let n = path.elements().len();
+        assert!(n <= 12, "{n} nodes (was {})", old.elements().len());
+        assert!(
+            n * 2 <= old.elements().len(),
+            "{n} vs {}",
+            old.elements().len()
+        );
+        // Every drawn point within a few tolerances of the curve.
+        let segs: Vec<_> = path.segments().collect();
+        for p in &raw {
+            let d = segs
+                .iter()
+                .map(|s| s.nearest(*p, 1e-6).distance_sq.sqrt())
+                .fold(f64::MAX, f64::min);
+            assert!(d < tol * 3.0, "{p:?} is {d} mm off");
+        }
+        // Ends stay where the stroke began and ended.
+        assert_eq!(
+            path.elements()[0],
+            tracedraw_core::geometry::PathEl::MoveTo(raw[0])
+        );
+        let end = path.segments().last().unwrap().end();
+        assert!((end - raw[raw.len() - 1]).hypot() < 1e-9);
     }
 
     /// Options > Tools > Curves: with a corner threshold a freehand stroke
