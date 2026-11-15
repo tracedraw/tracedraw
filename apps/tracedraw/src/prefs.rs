@@ -386,6 +386,9 @@ pub struct PrintStyle {
     pub plate_files: bool,
     pub manual_duplex: bool,
     pub duplex_reverse: bool,
+    pub screens: bool,
+    pub screen_lpi: f64,
+    pub screen_angles: Vec<(String, f64)>,
     pub grayscale: bool,
     pub mirror: bool,
     pub invert: bool,
@@ -432,6 +435,9 @@ impl PrintStyle {
             plate_files: st.plate_files,
             manual_duplex: st.manual_duplex,
             duplex_reverse: st.duplex_reverse,
+            screens: st.screens,
+            screen_lpi: st.screen_lpi,
+            screen_angles: st.screen_angles.clone(),
             grayscale: st.grayscale,
             mirror: st.mirror,
             invert: st.invert,
@@ -495,6 +501,9 @@ impl PrintStyle {
         st.plate_files = self.plate_files;
         st.manual_duplex = self.manual_duplex;
         st.duplex_reverse = self.duplex_reverse;
+        st.screens = self.screens;
+        st.screen_lpi = self.screen_lpi;
+        st.screen_angles = self.screen_angles.clone();
         st.grayscale = self.grayscale;
         st.mirror = self.mirror;
         st.invert = self.invert;

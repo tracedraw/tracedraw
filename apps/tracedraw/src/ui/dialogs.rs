@@ -647,6 +647,13 @@ pub struct PrintState {
     pub page_numbers: bool,
     /// PostScript language level of a PostScript file (2 or 3).
     pub ps_level: u8,
+    /// Separations to a PostScript file set each plate's halftone screen:
+    /// `screen_lpi` lines per inch at the plate's angle.
+    pub screens: bool,
+    pub screen_lpi: f64,
+    /// Angles set by hand, by ink name; the others take
+    /// `export::default_screen_angle`.
+    pub screen_angles: Vec<(String, f64)>,
     /// Each sheet printed in tiles of the chosen paper, a poster: the
     /// sheet fits the pages and the paper is the Sheet field's size.
     pub tile: bool,
@@ -966,6 +973,9 @@ impl Default for PrintState {
             info_text: String::new(),
             page_numbers: false,
             ps_level: 2,
+            screens: false,
+            screen_lpi: 150.0,
+            screen_angles: Vec::new(),
             tile: false,
             tile_overlap: 10.0,
             tile_marks: true,
@@ -6211,7 +6221,7 @@ fn print_dialog(app: &mut App, ctx: &Context, st: &mut PrintState, close: &mut b
                 2 => print_tab_composite(ui, st),
                 3 => print_tab_layout(app, ui, st),
                 4 => print_tab_prepress(app, ui, st),
-                5 => print_tab_postscript(ui, st),
+                5 => print_tab_postscript(app, ui, st),
                 6 => print_tab_issues(app, ui, &issues, close),
                 _ => {
                     if let Some(p) = print_tab_general(app, ui, st) {
@@ -6706,7 +6716,7 @@ fn print_tab_prepress(app: &App, ui: &mut Ui, st: &mut PrintState) {
     });
 }
 
-fn print_tab_postscript(ui: &mut Ui, st: &mut PrintState) {
+fn print_tab_postscript(app: &App, ui: &mut Ui, st: &mut PrintState) {
     if st.destination != 2 {
         ui.label(egui::RichText::new(tr("print.postscript_hint")).color(Tokens::text_dim()));
         ui.add_space(6.0);
@@ -6724,6 +6734,45 @@ fn print_tab_postscript(ui: &mut Ui, st: &mut PrintState) {
                         );
                     }
                 });
+        });
+        print_group(ui, &tr("print.screens"), |ui| {
+            ui.add_enabled(
+                st.separations,
+                egui::Checkbox::new(&mut st.screens, tr("print.screens_set")),
+            )
+            .rich_tip(crate::ui::tips::keyed("print.screens_set"))
+            .rich_disabled_tip(crate::ui::tips::keyed("print.screens_set"));
+            ui.add_enabled_ui(st.separations && st.screens, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(tr("print.screen_lpi"));
+                    ui.add(
+                        crate::ui::field::NumField::new(&mut st.screen_lpi)
+                            .range(10.0..=600.0)
+                            .suffix(" lpi"),
+                    );
+                });
+                egui::Grid::new("print_screen_angles")
+                    .num_columns(2)
+                    .spacing([16.0, 4.0])
+                    .show(ui, |ui| {
+                        for (i, (_, name)) in crate::export::plates(app.doc()).iter().enumerate() {
+                            ui.label(name);
+                            let mut a = crate::export::screen_angle(st, i, name);
+                            let before = a;
+                            ui.add(
+                                crate::ui::field::NumField::new(&mut a)
+                                    .range(0.0..=180.0)
+                                    .suffix("°"),
+                            )
+                            .rich_tip(tr("print.screen_angle"));
+                            if (a - before).abs() > 1e-9 {
+                                st.screen_angles.retain(|(n, _)| n != name);
+                                st.screen_angles.push((name.clone(), a));
+                            }
+                            ui.end_row();
+                        }
+                    });
+            });
         });
     });
 }

@@ -894,6 +894,7 @@ fn print_doc(app: &mut App, st: &PrintState, mut doc: Document) -> Result<String
     if st.separations && st.plate_files && matches!(st.destination, 1 | 2) {
         return print_plate_files(app, st, &doc);
     }
+    let plate_names: Vec<String> = plates(&doc).into_iter().map(|(_, n)| n).collect();
     if st.separations {
         doc = separations_doc_without(&doc, &st.plates_off, st.skip_empty_plates);
     }
@@ -912,7 +913,11 @@ fn print_doc(app: &mut App, st: &PrintState, mut doc: Document) -> Result<String
                 ("pdf", "PDF")
             };
             let bytes = if ps {
-                postscript_level(tracedraw_io::eps::document_to_ps(&doc), st.ps_level).into_bytes()
+                let mut out = tracedraw_io::eps::document_to_ps(&doc);
+                if st.separations && st.screens {
+                    out = with_screens(&out, &page_screens(&doc, &plate_names, st));
+                }
+                postscript_level(out, st.ps_level).into_bytes()
             } else {
                 tracedraw_io::pdf::document_to_pdf(&doc)
             };
@@ -965,6 +970,7 @@ fn print_plate_files(app: &mut App, st: &PrintState, sheets: &Document) -> Resul
     } else {
         ("pdf", "PDF")
     };
+    let names: Vec<String> = plates(sheets).into_iter().map(|(_, n)| n).collect();
     let files: Vec<(String, Vec<u8>)> = plate_files(sheets, st)
         .into_iter()
         .map(|(name, mut doc)| {
@@ -972,7 +978,11 @@ fn print_plate_files(app: &mut App, st: &PrintState, sheets: &Document) -> Resul
                 repeat_copies(&mut doc, st.copies.min(999) as usize, st.collate);
             }
             let bytes = if ps {
-                postscript_level(tracedraw_io::eps::document_to_ps(&doc), st.ps_level).into_bytes()
+                let mut out = tracedraw_io::eps::document_to_ps(&doc);
+                if st.screens {
+                    out = with_screens(&out, &page_screens(&doc, &names, st));
+                }
+                postscript_level(out, st.ps_level).into_bytes()
             } else {
                 tracedraw_io::pdf::document_to_pdf(&doc)
             };
@@ -1033,6 +1043,68 @@ pub fn plate_file_path(chosen: &std::path::Path, ink: &str) -> std::path::PathBu
         .map(|e| format!(".{}", e.to_string_lossy()))
         .unwrap_or_default();
     chosen.with_file_name(shared_file_name(&format!("{stem} - {ink}{ext}")))
+}
+
+/// The usual screen angle of plate `i` of [`plates`]: cyan 15°, magenta
+/// 75°, yellow 0°, black and the spot inks 45°, angles 30° apart for
+/// the strong inks so their dots make no moiré.
+pub fn default_screen_angle(i: usize) -> f64 {
+    match i {
+        0 => 15.0,
+        1 => 75.0,
+        2 => 0.0,
+        _ => 45.0,
+    }
+}
+
+/// The screen angle of plate `i`, named `name`: the one set by hand in
+/// the Print dialog, or its usual one.
+pub fn screen_angle(st: &PrintState, i: usize, name: &str) -> f64 {
+    st.screen_angles
+        .iter()
+        .find(|(n, _)| n == name)
+        .map(|(_, a)| *a)
+        .unwrap_or_else(|| default_screen_angle(i))
+}
+
+/// The halftone screen (lines per inch, angle) of each page of the
+/// separations `sep`, whose pages are named after their ink (see
+/// `separations_doc_without`); `names` are the ink names of [`plates`].
+/// A page of no ink known gets none.
+pub fn page_screens(sep: &Document, names: &[String], st: &PrintState) -> Vec<Option<(f64, f64)>> {
+    let lpi = st.screen_lpi.clamp(10.0, 600.0);
+    sep.pages
+        .iter()
+        .map(|p| {
+            names
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| p.name == **n || p.name.ends_with(&format!(" {n}")))
+                .max_by_key(|(_, n)| n.len())
+                .map(|(i, n)| (lpi, screen_angle(st, i, n)))
+        })
+        .collect()
+}
+
+/// PostScript `ps` with the halftone screen of each page set at its
+/// start, a round dot at the frequency and angle given.
+pub fn with_screens(ps: &str, screens: &[Option<(f64, f64)>]) -> String {
+    const MARK: &str = "%%EndPageSetup\n";
+    let mut out = String::with_capacity(ps.len() + screens.len() * 80);
+    let mut rest = ps;
+    let mut n = 0;
+    while let Some(i) = rest.find(MARK) {
+        out.push_str(&rest[..i + MARK.len()]);
+        rest = &rest[i + MARK.len()..];
+        if let Some(Some((lpi, angle))) = screens.get(n) {
+            out.push_str(&format!(
+                "{lpi} {angle} {{dup mul exch dup mul add 1 exch sub}} setscreen\n"
+            ));
+        }
+        n += 1;
+    }
+    out.push_str(rest);
+    out
 }
 
 /// The print PDF sent to the system printer `printer` (`lp`), with the
@@ -3079,6 +3151,46 @@ mod tests {
         let p = plate_file_path(std::path::Path::new("card"), "Black/K");
         assert_eq!(p.parent(), Some(std::path::Path::new("")));
         assert!(!p.to_string_lossy().contains('/'), "{p:?}");
+    }
+
+    /// Separations to PostScript with screens: each plate's page sets its
+    /// ink's screen, the usual angles unless one is set by hand.
+    #[test]
+    fn each_plate_gets_its_halftone_screen() {
+        let mut app = App::headless();
+        app.new_shape(ShapeKind::Rect {
+            rect: tracedraw_core::geometry::Rect::new(20.0, 20.0, 80.0, 60.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+        let mut st = PrintState {
+            separations: true,
+            screens: true,
+            screen_lpi: 133.0,
+            ..PrintState::default()
+        };
+        st.screen_angles.push(("Yellow".into(), 90.0));
+        let sheets = print_sheets(&app, &st);
+        let names: Vec<String> = plates(&sheets).into_iter().map(|(_, n)| n).collect();
+        let sep = separations_doc_without(&sheets, &[], false);
+        let screens = page_screens(&sep, &names, &st);
+        assert_eq!(
+            screens,
+            [
+                Some((133.0, 15.0)),
+                Some((133.0, 75.0)),
+                Some((133.0, 90.0)),
+                Some((133.0, 45.0))
+            ]
+        );
+        let ps = with_screens(&tracedraw_io::eps::document_to_ps(&sep), &screens);
+        assert_eq!(ps.matches(" setscreen").count(), 4);
+        let at = ps.find("133 75 {").expect("magenta screen");
+        assert!(
+            ps[..at].matches("%%Page: ").count() == 2,
+            "on the second page"
+        );
     }
 
     #[test]

@@ -203,7 +203,15 @@ has one.
   and Print page numbers (each page's number under it); Crop/fold marks;
   Registration marks; Color bars and Densitometer scale.
 - PostScript: with a PostScript file as the destination, the language
-  level written in its header (2 or 3).
+  level written in its header (2 or 3). Halftone screens: with
+  Separations, Set each plate's screen starts each plate's page with
+  its screen (`setscreen`, a round dot) at the frequency given (150 lpi
+  at first) and its ink's angle: cyan 15°, magenta 75°, yellow 0°,
+  black and spot inks 45°, each changeable in the list of the
+  document's inks and kept in presets by ink name. Off, the printer or
+  imagesetter keeps its own screens. Plates in files of their own get
+  theirs too (`export::page_screens`, `export::with_screens`,
+  `export::tests::each_plate_gets_its_halftone_screen`).
 - Issues: what the preflight finds, and the way to its dialog.
 
 ## Print Preview
