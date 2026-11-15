@@ -55,6 +55,18 @@ change marked `TraceDraw:` in a comment.
   screen (#787). TraceDraw's tests include and run it
   (`splash::eframe_window_start::tests`). Check whether egui 0.37 still
   needs it before dropping the copy.
+- `native/wgpu_integration.rs` and `native/glow_integration.rs`
+  wait for the first Resumed when a window event arrives before app
+  creation. Android can send focus or configuration events at that point,
+  especially during consecutive resource-overlay relaunches. The existing
+  `app_creator` is present until initialization consumes it, so it
+  distinguishes startup from the state after `save_and_destroy` removes
+  the running app. Window events after that cleanup still return Exit.
+  TraceDraw's source contract test checks both renderer branches and the
+  creator's lifecycle
+  (`android_package::tests::window_events_wait_for_initial_resume_and_exit_after_shutdown`).
+  Device regression checks compare the original and patched APKs during
+  consecutive overlay changes on a single-core Android 30 emulator.
 - Change: in the browser, `dragover` and `drop` (`web/events.rs`,
   `install_drag_and_drop`) push a pointer move at the event's place
   before the hovered or dropped files (#1142): the browser sends no mouse

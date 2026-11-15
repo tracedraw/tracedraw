@@ -379,6 +379,13 @@ Now:
   was not told about. A finished activity (not relaunched) ends the
   same way and stays closed.
 
+Android can deliver focus or configuration window events before the first
+Resumed creates the app and its window surface. Both eframe renderers wait
+for that first resume while the existing `app_creator` is still present.
+Initialization consumes it, so window events after shutdown can still exit
+once the running app has been removed. The source contract is checked by
+`android_package::tests::window_events_wait_for_initial_resume_and_exit_after_shutdown`.
+
 ## How it is wired
 
 - `apps/tracedraw/src/lib.rs` holds the whole app; `main.rs` is the
