@@ -1943,6 +1943,24 @@ fn rotation_field(app: &mut App, ui: &mut Ui, refp: Point) -> egui::Response {
     r
 }
 
+/// The scale that takes a selection `now` wide and high to the size
+/// typed, `to`. A side with no size (a horizontal line's height, a
+/// vertical line's width) cannot scale and stays as it is, so the other
+/// side can still be typed (#2762). `None` when nothing would change.
+pub(crate) fn size_scale(now: (f64, f64), to: (f64, f64)) -> Option<(f64, f64)> {
+    let axis = |old: f64, new: f64| -> Option<f64> {
+        if old <= 1e-9 {
+            Some(1.0)
+        } else if new > 1e-6 {
+            Some(new / old)
+        } else {
+            None
+        }
+    };
+    let f = (axis(now.0, to.0)?, axis(now.1, to.1)?);
+    ((f.0 - 1.0).abs() > 1e-12 || (f.1 - 1.0).abs() > 1e-12).then_some(f)
+}
+
 pub fn object_bar(app: &mut App, ui: &mut Ui) {
     let Some(b) = app.selection_bounds() else {
         return;
@@ -2033,8 +2051,8 @@ pub fn object_bar(app: &mut App, ui: &mut Ui) {
         app.scale_locked = !locked;
     }
     if let Some((nw, nh)) = size {
-        if nw > 1e-6 && nh > 1e-6 && w > 1e-9 && h > 1e-9 {
-            scale = Some((nw / w, nh / h));
+        if let Some(f) = size_scale((w, h), (nw, nh)) {
+            scale = Some(f);
         }
     }
     if let Some((sx, sy)) = scale {
@@ -3498,6 +3516,20 @@ pub fn order_part(app: &mut App, ui: &mut Ui) {
 mod tests {
     use super::*;
     use tracedraw_core::geometry::Rect as R;
+
+    /// A horizontal line has no height and a vertical one no width: the
+    /// other side typed on the bar still sizes it (#2762).
+    #[test]
+    fn a_straight_line_takes_the_size_typed_on_its_long_side() {
+        assert_eq!(size_scale((50.0, 0.0), (100.0, 0.0)), Some((2.0, 1.0)));
+        assert_eq!(size_scale((0.0, 40.0), (0.0, 10.0)), Some((1.0, 0.25)));
+        // Its missing side typed does nothing; nor does the same size.
+        assert_eq!(size_scale((50.0, 0.0), (50.0, 30.0)), None);
+        assert_eq!(size_scale((50.0, 20.0), (50.0, 20.0)), None);
+        // A side typed as nothing is refused.
+        assert_eq!(size_scale((50.0, 20.0), (0.0, 20.0)), None);
+        assert_eq!(size_scale((50.0, 20.0), (25.0, 40.0)), Some((0.5, 2.0)));
+    }
 
     /// A bar button that cannot run now is drawn greyed but plain to see
     /// in every theme: on the Dark theme the Shape tool's node buttons,

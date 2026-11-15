@@ -1258,10 +1258,11 @@ impl App {
                 });
             }
         }
+        let spots = self.chosen_node_spots();
         if !cmds.is_empty() {
             let _ = self.engine.run_batch("Reduce Nodes", &cmds);
         }
-        self.node_selection.clear();
+        self.choose_nodes_at(&spots);
     }
 
     /// Align Nodes: move the selected nodes onto a common horizontal and/or vertical.
@@ -1693,10 +1694,11 @@ impl App {
                 })
             })
             .collect();
+        let spots = self.chosen_node_spots();
         if !cmds.is_empty() {
             let _ = self.engine.run_batch("Break Curve", &cmds);
         }
-        self.node_selection.clear();
+        self.choose_nodes_at(&spots);
     }
 
     pub fn close_selected_curves(&mut self) {
@@ -1736,10 +1738,11 @@ impl App {
                 });
             }
         }
+        let spots = self.chosen_node_spots();
         if !cmds.is_empty() {
             let _ = self.engine.run_batch("Reverse Direction", &cmds);
         }
-        self.node_selection.clear();
+        self.choose_nodes_at(&spots);
     }
 
     pub fn select_all_nodes(&mut self) {
@@ -1772,6 +1775,39 @@ impl App {
 }
 
 impl App {
+    /// Where the chosen nodes sit, in their curves' own coordinates, to
+    /// choose them again after an edit with [`App::choose_nodes_at`].
+    pub(crate) fn chosen_node_spots(&self) -> Vec<(ShapeId, Point)> {
+        let mut out = Vec::new();
+        for &(id, i) in &self.node_selection {
+            let Some((path, _, _)) = self.path_of(id) else {
+                continue;
+            };
+            if let Some(n) = nodes::nodes(&path).into_iter().find(|n| n.index == i) {
+                out.push((id, n.pos));
+            }
+        }
+        out
+    }
+
+    /// After a node edit, choose the nodes now sitting at `spots`, so the
+    /// result stays chosen as in CorelDRAW (#2358): the joined node after
+    /// Join, both ends after Break, the nodes left after Reduce Nodes.
+    pub(crate) fn choose_nodes_at(&mut self, spots: &[(ShapeId, Point)]) {
+        let mut sel = Vec::new();
+        for &(id, at) in spots {
+            let Some((path, _, _)) = self.path_of(id) else {
+                continue;
+            };
+            for n in nodes::nodes(&path) {
+                if (n.pos - at).hypot() <= 1e-6 && !sel.contains(&(id, n.index)) {
+                    sel.push((id, n.index));
+                }
+            }
+        }
+        self.node_selection = sel;
+    }
+
     /// Join two selected end nodes of one curve. Nodes of two objects
     /// are not joined: the objects must be combined first (#1007).
     pub fn join_selected_nodes(&mut self) {
@@ -1783,8 +1819,18 @@ impl App {
             self.status = tr("status.join_other_object");
             return;
         }
+        let spots = self.chosen_node_spots();
         if self.join_nodes(a, b) {
-            self.node_selection.clear();
+            self.choose_joined_node(&spots);
+        }
+    }
+
+    /// Choose the node two end nodes at `spots` were joined into: it sits
+    /// halfway between them (#2358).
+    fn choose_joined_node(&mut self, spots: &[(ShapeId, Point)]) {
+        match spots {
+            [(id, a), (_, b)] => self.choose_nodes_at(&[(*id, a.lerp(*b, 0.5))]),
+            _ => self.node_selection.clear(),
         }
     }
 
@@ -1848,8 +1894,12 @@ impl App {
         near.sort_by(|a, b| a.1.total_cmp(&b.1));
         // The nearest end node of an open subpath.
         for (target, _) in near {
+            let Some(other) = nodes::nodes(&path).into_iter().find(|n| n.index == target) else {
+                continue;
+            };
+            let spots = [(id, other.pos), (id, t.inverse() * at)];
             if self.join_nodes((id, target), (id, index)) {
-                self.node_selection.clear();
+                self.choose_joined_node(&spots);
                 return;
             }
         }

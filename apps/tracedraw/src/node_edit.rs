@@ -672,6 +672,7 @@ impl App {
             return;
         };
         if let Some(np) = nodes::connect_ends(&path, idxs[0], idxs[1]) {
+            let spots = self.chosen_node_spots();
             let all_closed = np
                 .elements()
                 .iter()
@@ -689,7 +690,8 @@ impl App {
                     closed: closed || all_closed,
                 },
             });
-            self.node_selection.clear();
+            // The two ends stay chosen, now joined by the new segment (#2358).
+            self.choose_nodes_at(&spots);
         }
     }
 

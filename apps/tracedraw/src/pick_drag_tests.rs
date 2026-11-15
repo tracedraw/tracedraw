@@ -28023,3 +28023,53 @@ fn several_imported_files_come_in_at_once_without_the_cursor() {
     assert_eq!(app.selection.len(), 2);
     assert!(app.import_batch.is_none());
 }
+
+/// The result of a node edit stays chosen, as in CorelDRAW (#2358): the
+/// node two ends were joined into, both ends a Break makes, the ends
+/// Extend Curve to Close links, the nodes Reverse Direction turns.
+#[test]
+fn node_edits_keep_their_result_chosen() {
+    let (ctx, mut app, id) = setup();
+    let (a, _) = two_open_curves(&ctx, &mut app, id);
+    let at = |app: &App, p: Point| app.node_at(p).expect("node");
+    let chosen_spots = |app: &App| -> Vec<Point> {
+        let mut v: Vec<Point> = app
+            .chosen_node_spots()
+            .into_iter()
+            .map(|(_, p)| p)
+            .collect();
+        v.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)));
+        v
+    };
+    let start = at(&app, Point::new(10.0, 10.0));
+    let end = at(&app, Point::new(30.0, 10.0));
+    let ends = vec![(start.shape, start.index), (end.shape, end.index)];
+    // Join: the one joined node, halfway between the two ends.
+    app.node_selection = ends.clone();
+    app.join_selected_nodes();
+    assert_eq!(app.node_selection.len(), 1);
+    assert_eq!(app.node_selection[0].0, a);
+    assert_eq!(chosen_spots(&app), vec![Point::new(20.0, 10.0)]);
+    // Break at that node: both ends it makes.
+    app.break_selected_nodes();
+    assert_eq!(app.engine.undo_label(), Some("Break Curve"));
+    assert_eq!(app.node_selection.len(), 2, "{:?}", app.node_selection);
+    assert_eq!(
+        chosen_spots(&app),
+        vec![Point::new(20.0, 10.0), Point::new(20.0, 10.0)]
+    );
+    // Extend Curve to Close on the two ends of the open curve.
+    app.undo();
+    app.undo();
+    app.node_selection = ends.clone();
+    app.extend_curve_to_close();
+    assert_eq!(
+        chosen_spots(&app),
+        vec![Point::new(10.0, 10.0), Point::new(30.0, 10.0)]
+    );
+    // Reverse Direction keeps the same nodes chosen.
+    app.undo();
+    app.node_selection = vec![(end.shape, end.index)];
+    app.reverse_selected_curves();
+    assert_eq!(chosen_spots(&app), vec![Point::new(30.0, 10.0)]);
+}
