@@ -850,7 +850,7 @@ pub(crate) fn parse_document_kept(
                     layer.visible = false;
                     layer.printable = false;
                 }
-                _ => layer.visible = true,
+                _ => layer.visible = !ctx.layer_hidden(lc),
             }
             let mut ids = std::mem::take(doc.ids_mut());
             layer.shapes = ctx.read_objects(lc, &mut ids, size, 0);
@@ -1072,10 +1072,22 @@ impl<'a> Ctx<'a> {
         self.flags(lc).filter(|f| f[3] == 0x98).map(|f| f[0])
     }
 
+    /// Modern hidden layers carry bit 0 of byte 1, observed in version
+    /// 27 as [0x40, 1, 0, 0x98] beside [0, 0, 0, 0x98] (#2862).
+    fn layer_hidden(&self, lc: &Chunk) -> bool {
+        self.v >= 16 && matches!(self.flags(lc), Some(f) if f[3] == 0x98 && f[1] & 1 != 0)
+    }
+
     /// A guides, grid or desktop layer (type byte not 0), or a page's
     /// entry for a layer of the master page (byte 2 set).
     fn is_structural_layer(&self, lc: &Chunk) -> bool {
-        matches!(self.flags(lc), Some(f) if f[3] == 0x98 && (f[0] != 0 || f[2] != 0))
+        let Some(f) = self.flags(lc).filter(|f| f[3] == 0x98) else {
+            return false;
+        };
+        // The ordinary hidden layer of #2862 also carries 0x40. That
+        // flag does not make it a guide, grid or desktop layer.
+        let kind = if self.v >= 16 { f[0] & !0x40 } else { f[0] };
+        kind != 0 || f[2] != 0
     }
 
     /// The `loda`/`lobj` chunk of a list: a direct child, or (version 16+,
