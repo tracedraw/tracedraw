@@ -61,11 +61,12 @@ right-to-left language) over a white page. The tab
 column to its right is 27 px wide: `#EAEAEA` under the title bar and
 below the tabs, a `#B2B2B2` line along the panel, grey `#D8D8D8` tabs
 with an icon and the name running downwards (every panel has its
-picture, the same one its row in the three-dot menu shows; a column too
-short for the tabs with their names but long enough for the pictures
-alone shows the pictures alone, the name in the tab's tip; #2708,
-`ui::dockers::tests::every_docker_tab_has_a_picture`,
-`ui::dockers::tests::a_short_column_shows_the_tab_pictures_alone`), the open panel's tab
+picture, the same one its row in the three-dot menu shows; #2708,
+`ui::dockers::tests::every_docker_tab_has_a_picture`). The names stay
+however short the column: a column too short for its tabs slides.
+Options > Customization > Appearance > "Panel tabs: icons only" (off by
+default) shows the pictures alone, the name in the tab's tip (#2902,
+`ui::dockers::tests::tabs_keep_their_names_unless_icons_only_is_chosen`). The open panel's tab
 `#B2B2B2`; the three-dot button under the tabs lists every panel in the
 groups of Window > Panels with a box ticked at each one in the column
 (ticking opens the panel in front, unticking closes it). The pointer

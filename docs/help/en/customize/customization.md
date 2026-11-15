@@ -12,6 +12,9 @@ the color palette behaves.
   off, they open where you left them.
 - [[options.ui_shadows]] (fewer shadows help slower graphics).
 - [[options.colored_icons]]: each group of tools gets a color of its own.
+- [[options.docker_tabs_icons_only]]: the panel tabs at the window's sides
+  show their pictures alone, the name in the tip. Off, each tab shows its
+  picture and name, and a column with more tabs than fit slides.
 - [[options.ui_size]]: how large menus, bars, icons and panels are, relative
   to the scaling your system gives the monitor (100% at first).
   [[options.reset_to_default]] goes back to 100%. The interface size never

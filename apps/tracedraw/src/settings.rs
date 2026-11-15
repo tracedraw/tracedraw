@@ -325,6 +325,12 @@ pub struct Settings {
     /// theme's icon colour.
     #[serde(default)]
     pub colored_icons: bool,
+    /// Appearance: the panel tabs at the window's sides show their
+    /// pictures alone, the name in the tab's tip. Off (the default) they
+    /// show the picture and the name, the column sliding when the tabs
+    /// do not fit (#2902).
+    #[serde(default)]
+    pub docker_tabs_icons_only: bool,
     /// Customization > Appearance > Theme: "light", "medium_light",
     /// "medium_dark" or "dark".
     #[serde(default)]
@@ -2132,6 +2138,7 @@ impl Default for Settings {
             center_dialogs: true,
             ui_shadows: true,
             colored_icons: false,
+            docker_tabs_icons_only: false,
             theme: String::new(),
             bars: crate::ui::bars::BarLayout::default(),
             bar_items: Default::default(),

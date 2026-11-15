@@ -93,11 +93,7 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
                 )
             })
             .collect();
-        let compact = icons_only(
-            &tabs,
-            &galleys.iter().map(|g| g.size().x).collect::<Vec<_>>(),
-            full.height() - TITLE_H - 8.0 - 22.0,
-        );
+        let compact = icons_only(&tabs, app.settings.docker_tabs_icons_only);
         for (tab, galley) in tabs.into_iter().zip(galleys) {
             let name = tr(tab.key());
             let below = app.docker_below(place) == Some(tab);
@@ -706,17 +702,12 @@ fn tab_height(icon_h: f32, name_w: f32, compact: bool) -> f32 {
 }
 
 /// Whether a column's tabs show their pictures alone (the name stays in
-/// the tip): when the tabs with their names (`name_w` long each) are
-/// longer than the column's `room` and with pictures alone they all fit
-/// (#2708). When even those do not fit, the names stay and the column
-/// slides as before (#950).
-fn icons_only(tabs: &[DockerTab], name_w: &[f32], room: f32) -> bool {
-    if tabs.iter().any(|t| tab_icon(*t).is_none()) {
-        return false;
-    }
-    let total =
-        |compact: bool| -> f32 { name_w.iter().map(|w| tab_height(24.0, *w, compact)).sum() };
-    total(false) > room && total(true) <= room
+/// the tip): only when Options > Customization > Appearance asks for it
+/// (`chosen`) and every tab has a picture. Otherwise each tab shows its
+/// picture and its name, however short the column: a column too short
+/// for its tabs slides (#950, #2902).
+fn icons_only(tabs: &[DockerTab], chosen: bool) -> bool {
+    chosen && tabs.iter().all(|t| tab_icon(*t).is_some())
 }
 
 /// The small picture above a docker tab's name.
@@ -4775,23 +4766,17 @@ pub(crate) mod tests {
         }
     }
 
-    /// A column too short for its tabs with their names but long enough
-    /// for their pictures alone shows the pictures alone (the name in
-    /// the tip); a column too short even for those keeps the names and
-    /// slides (#2708, #950).
+    /// The tabs show their pictures and names however short the column
+    /// (it slides instead, #950); with Options > Customization >
+    /// Appearance > icons only, the pictures alone, the name in the tip
+    /// (#2902, #2708).
     #[test]
-    fn a_short_column_shows_the_tab_pictures_alone() {
+    fn tabs_keep_their_names_unless_icons_only_is_chosen() {
         let tabs = [DockerTab::Properties, DockerTab::Objects, DockerTab::Blend];
-        let names = [90.0, 60.0, 40.0];
-        let full: f32 = names.iter().map(|w| tab_height(24.0, *w, false)).sum();
-        let small: f32 = names.iter().map(|w| tab_height(24.0, *w, true)).sum();
-        assert!(!icons_only(&tabs, &names, full + 1.0), "names fit");
-        assert!(icons_only(&tabs, &names, full - 1.0), "pictures alone fit");
-        assert!(
-            !icons_only(&tabs, &names, small - 1.0),
-            "nothing fits: names"
-        );
-        // Drawn: five panels in a column 400 px tall.
+        assert!(!icons_only(&tabs, false), "names by default");
+        assert!(icons_only(&tabs, true), "pictures alone when chosen");
+        assert!(!crate::settings::Settings::default().docker_tabs_icons_only);
+        // Drawn: five panels in a tall column, then a short one.
         let ctx = crate::theme::ui_context();
         let mut app = App::headless();
         for tab in [
@@ -4822,10 +4807,18 @@ pub(crate) mod tests {
         let tall = run(&mut app, 2000.0);
         assert!(tall.iter().all(|(_, r)| r.height() > 60.0), "{tall:?}");
         let n = tall.len() as f32;
+        // A short column keeps the names (it slides, #950).
         let short = run(&mut app, TITLE_H + 30.0 + n * 60.0);
+        assert_eq!(short.len(), tall.len());
+        for ((_, a), (_, b)) in short.iter().zip(&tall) {
+            assert!((a.height() - b.height()).abs() < 0.5, "{a:?} {b:?}");
+        }
+        // Icons only chosen: the pictures alone, in any column.
+        app.settings.docker_tabs_icons_only = true;
+        let compact = run(&mut app, 2000.0);
         assert!(
-            short.iter().all(|(_, r)| (r.height() - 54.0).abs() < 0.5),
-            "{short:?}"
+            compact.iter().all(|(_, r)| (r.height() - 54.0).abs() < 0.5),
+            "{compact:?}"
         );
     }
 
