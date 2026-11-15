@@ -4469,6 +4469,45 @@ impl App {
         {
             return;
         }
+        // Command shortcuts the field gave up last frame run now, on
+        // what the field applied.
+        if !self.deferred_keys.is_empty() {
+            let keys = std::mem::take(&mut self.deferred_keys);
+            ctx.input_mut(|i| i.events.extend(keys));
+        }
+        // A command shortcut (Ctrl+K, Ctrl+G...) pressed while a field of
+        // a bar or a docker has the keyboard: the field applies what was
+        // typed in it and gives the keyboard back to the drawing, and the
+        // command runs in the next frame, on what the field changed. The
+        // video of #2893 typed in the bar, then pressed Ctrl+K, and
+        // nothing happened. The keys that edit the field's text stay its
+        // own (see `field_editing_key`).
+        if !dialog_open && ctx.egui_wants_keyboard_input() {
+            let commands: Vec<egui::Event> = ctx.input(|i| {
+                i.events
+                    .iter()
+                    .filter(|e| match e {
+                        egui::Event::Key {
+                            key,
+                            pressed: true,
+                            modifiers,
+                            ..
+                        } => modifiers.command && !modifiers.alt && !field_editing_key(*key),
+                        _ => false,
+                    })
+                    .cloned()
+                    .collect()
+            });
+            if !commands.is_empty() {
+                if let Some(id) = ctx.memory(|m| m.focused()) {
+                    ctx.memory_mut(|m| m.surrender_focus(id));
+                }
+                ctx.input_mut(|i| i.events.retain(|e| !commands.contains(e)));
+                self.deferred_keys = commands;
+                ctx.request_repaint();
+                return;
+            }
+        }
         // A field with the keyboard (the font search field of the
         // property bar, a docker's box) keeps what is typed in it, even
         // while a text is being edited (#342).
@@ -5417,4 +5456,31 @@ impl App {
             }
         }
     }
+}
+
+/// A key that, with Ctrl (Command on macOS), edits the text of a field:
+/// select all, copy, cut, paste, undo, redo, and the moves and deletes by
+/// word. A field with the keyboard keeps these; other Ctrl shortcuts are
+/// commands for the drawing.
+fn field_editing_key(key: Key) -> bool {
+    matches!(
+        key,
+        Key::A
+            | Key::C
+            | Key::V
+            | Key::X
+            | Key::Z
+            | Key::Y
+            | Key::Backspace
+            | Key::Delete
+            | Key::ArrowLeft
+            | Key::ArrowRight
+            | Key::ArrowUp
+            | Key::ArrowDown
+            | Key::Home
+            | Key::End
+            | Key::Insert
+            | Key::Enter
+            | Key::Tab
+    )
 }

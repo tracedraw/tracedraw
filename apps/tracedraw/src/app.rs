@@ -2105,6 +2105,10 @@ pub struct App {
     /// went to: only that step is replaced by the next frame of a drag
     /// (#2890).
     pub shadow_step: Option<(u64, Vec<ShapeId>)>,
+    /// Command shortcuts (Ctrl+K...) pressed while a field had the
+    /// keyboard: the field gave it up and applied what was typed in it,
+    /// and they run in the next frame, on what the field changed.
+    pub deferred_keys: Vec<egui::Event>,
     /// What new blends take besides their steps: rotation (degrees) and
     /// the object and colour accelerations (-1 to 1).
     pub blend_rotation: f64,
@@ -3389,6 +3393,7 @@ impl App {
             sketch: Default::default(),
             effect_edit_step: None,
             shadow_step: None,
+            deferred_keys: Vec::new(),
             blend_rotation: 0.0,
             fill_node: None,
             live_font: None,
