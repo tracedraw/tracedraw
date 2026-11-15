@@ -18,7 +18,8 @@ use crate::text::{self, RunStyle, StyleRec};
 use std::collections::HashMap;
 use tracedraw_core::{
     document::{
-        Corners, EllipseArc, Layer, Page, ParagraphStyle, Shape, ShapeKind, TextAlign, TextSpan,
+        Corners, EllipseArc, Layer, LeadingUnit, Page, ParagraphStyle, Shape, ShapeKind, TextAlign,
+        TextSpan,
     },
     geometry::{Affine, BezPath, Point, Rect, Size},
     style::{
@@ -7576,23 +7577,38 @@ fn paragraph_spacing(style: &text::RunStyle, base: &ParagraphStyle) -> Paragraph
         2 => f * size_mm,
         _ => f * line_mm,
     };
+    // Points and the point size stay what they are: turned into a share
+    // of a line height taken as 1.15 times the size, they grew with the
+    // font's real line height, so a face whose lines are taller than
+    // that (1.41 times the size for some Tamil faces) set its lines
+    // about 1.23 times as far apart as the file (#2676).
+    const MM_PT: f64 = 72.0 / 25.4;
     if let Some(ls) = style.line_spacing {
-        let pct = match method {
-            1 | 2 if line_mm > 0.0 => to_mm(ls) / line_mm * 100.0,
-            _ => ls * 100.0,
-        };
-        p.leading_pct = pct.clamp(10.0, 1000.0);
-    } else if let Some(mm) = style.line_spacing_mm {
-        // A distance between baselines, as a share of the line height.
-        if line_mm > 0.0 {
-            p.leading_pct = (mm / line_mm * 100.0).clamp(10.0, 1000.0);
+        match method {
+            1 => {
+                p.leading_unit = LeadingUnit::Points;
+                p.leading_pct = (to_mm(ls) * MM_PT).clamp(0.1, 2000.0);
+            }
+            2 => {
+                p.leading_unit = LeadingUnit::PercentPointSize;
+                p.leading_pct = (ls * 100.0).clamp(10.0, 1000.0);
+            }
+            _ => {
+                p.leading_unit = LeadingUnit::PercentCharHeight;
+                p.leading_pct = (ls * 100.0).clamp(10.0, 1000.0);
+            }
         }
+    } else if let Some(mm) = style.line_spacing_mm {
+        // A distance between baselines (a version 12 interval entry of
+        // unit 1), in points for the same reason.
+        p.leading_unit = LeadingUnit::Points;
+        p.leading_pct = (mm * MM_PT).clamp(0.1, 2000.0);
     }
     // Space before: the distance from the paragraph before, so only what
     // goes past the line spacing is extra room (100 % of the character
     // height, the default, is none). Space after: all extra room.
     if method <= 2 {
-        let baseline_mm = line_mm * p.leading_pct / 100.0;
+        let baseline_mm = p.line_step(line_mm, size_mm);
         if let Some(b) = style.para_before {
             let before = match method {
                 0 => (b - 1.0) * line_mm,
@@ -7743,9 +7759,13 @@ pub(crate) mod tests {
         );
         let p = paragraph_spacing(&st, &ParagraphStyle::default());
         let size_mm = st.size_pt.expect("size") * 25.4 / 72.0;
-        let line_mm = size_mm * 1.15;
-        let baseline = line_mm * p.leading_pct / 100.0;
-        assert!((baseline - 3.5277).abs() < 1e-6, "{p:?}");
+        // Points stay points, whatever the face's own line height
+        // (#2676: a tall face set the lines further apart than the file).
+        assert_eq!(p.leading_unit, LeadingUnit::Points);
+        for line_height in [size_mm * 1.15, size_mm * 1.41] {
+            let baseline = p.line_step(line_height, size_mm);
+            assert!((baseline - 3.5277).abs() < 1e-6, "{p:?}");
+        }
         assert!((p.space_before - (6.2603 - 3.5277)).abs() < 1e-6, "{p:?}");
         assert!((p.space_after - 0.2118).abs() < 1e-6, "{p:?}");
         // In the point size: 1.2 times the size between baselines.
@@ -7754,8 +7774,11 @@ pub(crate) mod tests {
         );
         let p = paragraph_spacing(&pt, &ParagraphStyle::default());
         let size_mm = pt.size_pt.expect("size") * 25.4 / 72.0;
-        let baseline = size_mm * 1.15 * p.leading_pct / 100.0;
-        assert!((baseline - 1.2 * size_mm).abs() < 1e-6, "{p:?}");
+        assert_eq!(p.leading_unit, LeadingUnit::PercentPointSize);
+        for line_height in [size_mm * 1.15, size_mm * 1.41] {
+            let baseline = p.line_step(line_height, size_mm);
+            assert!((baseline - 1.2 * size_mm).abs() < 1e-6, "{p:?}");
+        }
     }
     use tracedraw_core::geometry::Shape as _;
 
@@ -12446,7 +12469,9 @@ pub(crate) mod tests {
                 assert_eq!(*align, TextAlign::Center);
                 assert!((para.char_spacing_pct + 10.0).abs() < 1e-9, "{para:?}");
                 assert_eq!(spans[0].tracking_pct, 0.0);
-                assert!((para.leading_pct - 150.0).abs() < 1e-6, "{para:?}");
+                // The distance in points: 1.5 times 1.15 times 36 pt.
+                assert_eq!(para.leading_unit, LeadingUnit::Points);
+                assert!((para.leading_pct - 36.0 * 1.15 * 1.5).abs() < 1e-3, "{para:?}");
             }
             other => panic!("{other:?}"),
         }

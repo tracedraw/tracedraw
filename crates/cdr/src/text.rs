@@ -2385,7 +2385,24 @@ pub(crate) fn object_transparency_mask(style: &str) -> Option<(tracedraw_core::F
         let v: f32 = parts.nth(1)?.trim().parse().ok()?;
         Some((v / 255.0).clamp(0.0, 1.0))
     };
-    let (first, last) = (grey("primaryColor")?, grey("secondaryColor")?);
+    let (mut first, mut last) = (grey("primaryColor")?, grey("secondaryColor")?);
+    // The section's start and end amounts run the nodes' transparency
+    // from the one to the other: 0 and 1 in every file seen, whichever
+    // grey comes first. A run from 1 down to 0 is taken as the reversed
+    // transparency (#2736: Reverse Fill on a radial transparency drew as
+    // the plain one; manual node edits swap the greys instead). Assumed:
+    // no file with a reversed transparency has been seen.
+    let amount = |key: &str| num(&tr, key).filter(|v| (0.0..=1.0).contains(v));
+    if let (Some(s), Some(e)) = (amount("startTransparency"), amount("endTransparency")) {
+        if e < s {
+            let run = |g: f32| {
+                let t = f64::from(1.0 - g);
+                (1.0 - (s + (e - s) * t)).clamp(0.0, 1.0) as f32
+            };
+            first = run(first);
+            last = run(last);
+        }
+    }
     let kind = match num(&fill, "fountainType").unwrap_or(1.0) as i64 {
         2 => FountainKind::Radial,
         3 => FountainKind::Conical,

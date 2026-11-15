@@ -9580,3 +9580,101 @@ fn radial_transparency_keeps_its_reach_through_a_file() {
         assert!((want - got).abs() < 0.01, "{want} vs {got}");
     }
 }
+
+/// Each entry of a version 16+ package with `from` replaced by `to` (of
+/// the same length, so no chunk changes size), packed again without
+/// TraceDraw's own entries.
+fn package_with_bytes_replaced(bytes: &[u8], from: &[u8], to: &[u8]) -> (Vec<u8>, usize) {
+    use std::io::{Read, Write};
+    assert_eq!(from.len(), to.len());
+    let mut zin = zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("a package");
+    let mut out = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let mut hits = 0;
+    for i in 0..zin.len() {
+        let mut e = zin.by_index(i).expect("entry");
+        let name = e.name().expect("name").to_string();
+        // What TraceDraw keeps for itself is left out, as another
+        // program's file would not have it.
+        if name.starts_with("tracedraw/") {
+            continue;
+        }
+        let mut data = Vec::new();
+        e.read_to_end(&mut data).expect("read");
+        let mut at = 0;
+        while let Some(p) = data[at..].windows(from.len()).position(|w| w == from) {
+            data[at + p..at + p + to.len()].copy_from_slice(to);
+            at += p + to.len();
+            hits += 1;
+        }
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        out.start_file(name, opts).expect("start");
+        out.write_all(&data).expect("write");
+    }
+    (out.finish().expect("finish").into_inner(), hits)
+}
+
+#[test]
+fn a_reversed_radial_transparency_reads_reversed() {
+    // #2736: a radial transparency reversed with Reverse Fill drew as the
+    // plain one, while the same one reversed by swapping its nodes'
+    // transparency drew as intended. A file whose transparency section
+    // runs its amounts from 1 down to 0 reads as the reversed one.
+    let circle = |mask: Fill| {
+        let mut doc = Document::new("w", Size::new(200.0, 100.0));
+        let mut ids = doc.ids().clone();
+        let mut s = Shape::new(
+            ids.shape(),
+            ShapeKind::Ellipse {
+                rect: Rect::new(10.0, 10.0, 50.0, 50.0),
+                arc: None,
+            },
+        );
+        s.fill = Fill::Solid(Color::BLACK);
+        s.effects.push(tracedraw_core::live::Effect::Transparency {
+            mask,
+            merge: tracedraw_core::live::MergeMode::Normal,
+            target: 2,
+        });
+        doc.pages[0].layers[0].shapes = vec![s];
+        doc.set_ids(ids);
+        doc
+    };
+    let radial = |a: Color, b: Color| {
+        Fill::Fountain(tracedraw_core::Fountain::two(
+            tracedraw_core::FountainKind::Radial,
+            a,
+            b,
+            0.0,
+        ))
+    };
+    let mask_of = |bytes: &[u8]| {
+        let (back, _) = crate::open_bytes(bytes, "back").expect("reads back");
+        back.pages[0].layers[0].shapes[0]
+            .effects
+            .iter()
+            .find_map(|e| match e {
+                tracedraw_core::live::Effect::Transparency {
+                    mask: Fill::Fountain(f),
+                    ..
+                } => Some(f.stops.iter().map(|s| s.color).collect::<Vec<_>>()),
+                _ => None,
+            })
+            .expect("mask")
+    };
+    // Opaque in the middle, see-through at the rim, and the other way.
+    let save = |a: Color, b: Color| {
+        let bytes = document_to_cdr_version(&circle(radial(a, b)), 21);
+        package_with_bytes_replaced(&bytes, b"-", b"-").0
+    };
+    let plain = save(Color::WHITE, Color::BLACK);
+    let swapped = save(Color::BLACK, Color::WHITE);
+    let (reversed, hits) = package_with_bytes_replaced(
+        &plain,
+        br#""startTransparency":"0","endTransparency":"1""#,
+        br#""startTransparency":"1","endTransparency":"0""#,
+    );
+    assert_eq!(hits, 1);
+    assert_ne!(mask_of(&plain), mask_of(&swapped));
+    assert_eq!(mask_of(&reversed), mask_of(&swapped));
+}
