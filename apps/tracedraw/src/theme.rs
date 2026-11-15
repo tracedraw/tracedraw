@@ -1519,7 +1519,9 @@ mod glyph_tests {
                 .strip_prefix(&root)
                 .map(|p| p.to_string_lossy().replace('\\', "/"))
                 .unwrap_or_default();
-            if !name.ends_with(".rs") || name.ends_with("tests.rs") {
+            // The signs of formulas are drawn in the formula's own font
+            // (#2183), not in the interface's.
+            if !name.ends_with(".rs") || name.ends_with("tests.rs") || name == "formula.rs" {
                 continue;
             }
             let src = std::fs::read_to_string(&path).expect("source file");

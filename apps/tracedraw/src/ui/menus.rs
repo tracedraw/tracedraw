@@ -3312,6 +3312,10 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         if item(ui, "menu.object.insert_barcode", "", true) {
             app.dialog = Dialog::Barcode(Default::default());
         }
+        // A formula; with one selected, the same item edits it (#2183).
+        if item(ui, "menu.object.insert_formula", "", true) {
+            app.open_formula_dialog();
+        }
         if item(ui, "menu.object.insert_qr", "", true) {
             app.insert_qr_code();
             // Its settings are edited in Properties.

@@ -1276,6 +1276,8 @@ pub struct App {
     pub dimension_points: Vec<Point>,
     /// The end node the Join tool holds after a click (#2150).
     pub join_pending: Option<crate::join_tool::JoinEnd>,
+    /// The formula settings used last, for the next new formula (#2183).
+    pub last_formula: Option<crate::formula::FormulaSpec>,
     pub blend_steps: u32,
     /// The Blend docker's options for the next blend (and the shown one).
     pub blend_options: tracedraw_core::live::BlendOptions,
@@ -2980,6 +2982,7 @@ impl App {
             media_angle: 45.0,
             dimension_points: Vec::new(),
             join_pending: None,
+            last_formula: None,
             blend_steps: 20,
             blend_options: Default::default(),
             blend_spacing_mm: 5.0,
@@ -7727,6 +7730,12 @@ impl App {
     /// Open `path`; `password` opens a protected PDF (empty: none).
     pub fn open_path_with_password(&mut self, path: PathBuf, password: &str) {
         let ext = Self::file_kind(&path);
+        // A format kept closed by its maker (#2589): say how to bring the
+        // drawing in, instead of a reading error.
+        if closed_native_format(&ext) {
+            self.status = closed_format_message(&path);
+            return;
+        }
         // A picture (a JPG or PNG opened with TraceDraw from the file
         // manager, #2600): a new drawing holding it.
         if PICTURE_EXTENSIONS.contains(&ext.as_str()) {
@@ -9319,6 +9328,10 @@ impl App {
             return;
         }
         let ext = Self::file_kind(&path);
+        if closed_native_format(&ext) {
+            self.status = closed_format_message(&path);
+            return;
+        }
         if ext == "svg" || ext == "svgz" {
             self.import_svg(&path);
             return;
@@ -10334,6 +10347,22 @@ pub fn color_description(c: Color) -> String {
         Color::Registration => "Registration".into(),
         Color::Spot { ink, tint, .. } => format!("Spot {ink} {:.0}%", tint * 100.0),
     }
+}
+
+/// Native files of applications that do not publish their format (#2589):
+/// there are no public notes to read them from, so they are not read.
+pub(crate) fn closed_native_format(ext: &str) -> bool {
+    matches!(ext, "af" | "afdesign" | "afphoto" | "afpub")
+}
+
+/// What to do with a file of a closed format: export it from the
+/// application that made it.
+pub(crate) fn closed_format_message(path: &std::path::Path) -> String {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    crate::i18n::trf("status.closed_format", &[("name", &name)])
 }
 
 /// True for a template's path (`.tdt`, `.cdt`, `.cdrt`, any case): opened,
@@ -12673,5 +12702,38 @@ mod tests {
         let s: crate::settings::Settings = serde_json::from_str("{}").expect("defaults");
         assert!(!s.update_check_asked);
         assert!(s.check_updates);
+    }
+}
+
+#[cfg(test)]
+mod closed_format_tests {
+    use super::*;
+
+    /// #2589: a native file of a closed format is not read as a drawing
+    /// (it gave a reading error); opening or importing it says to export
+    /// it as PDF or SVG, and nothing changes.
+    #[test]
+    fn closed_formats_say_how_to_bring_the_drawing_in() {
+        let dir = std::env::temp_dir().join(format!("td-closed-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["card.af", "logo.afdesign", "Photo.AFPHOTO"] {
+            let path = dir.join(name);
+            std::fs::write(&path, b"\x00\x01binary").unwrap();
+            let mut app = App::headless();
+            let tabs = app.docs.len();
+            app.open_path(path.clone());
+            assert_eq!(app.docs.len(), tabs);
+            let want = crate::i18n::trf("status.closed_format", &[("name", name)]);
+            assert_eq!(app.status, want);
+            let count = |app: &App| -> usize {
+                let pg = app.doc().page(app.page).unwrap();
+                pg.layers.iter().map(|l| l.shapes.len()).sum()
+            };
+            let shapes = count(&app);
+            app.import_path(&path);
+            assert_eq!(app.status, want);
+            assert_eq!(shapes, count(&app));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -50,6 +50,7 @@ objects/index
   objects/comments
   objects/tables
   objects/barcodes
+  objects/formulas
   objects/tracecut
 color/index
   color/color-docker

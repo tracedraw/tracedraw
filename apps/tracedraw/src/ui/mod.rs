@@ -56,6 +56,7 @@ pub mod field;
 pub mod fill_tool_bars;
 pub mod focus_bar;
 pub mod font_list;
+pub mod formula_dialog;
 pub mod font_manager;
 pub mod font_sampler;
 pub mod fountain_place;
