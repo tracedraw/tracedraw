@@ -13,6 +13,7 @@ thiserror.workspace = true
 base64 = "0.22"
 i_overlay = "9"
 png = "0.18"
+flate2 = "1"
 
 [features]
 # Hand-assembled ICC profiles, for the tests of other crates.

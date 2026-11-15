@@ -496,10 +496,14 @@ pub fn release_name(version: u16) -> &'static str {
     }
 }
 
-/// The versions offered, newest first.
-/// The `.tdraw` versions offered, newest first.
+/// The `.tdraw` versions offered, newest first. 1 is not: it has the
+/// layout of 0, which TraceDraw 0.4 to 0.46 open (2 is packed and
+/// compressed, #2849).
 pub fn tdraw_version_choices() -> Vec<u32> {
-    (0..=TDRAW_FORMAT_VERSION).rev().collect()
+    (0..=TDRAW_FORMAT_VERSION)
+        .rev()
+        .filter(|&v| v != 1)
+        .collect()
 }
 
 /// "v2 (TraceDraw 1.0)": the format version and the release that first
@@ -509,6 +513,11 @@ pub fn tdraw_version_label(version: u32) -> String {
         return format!("v{version}");
     }
     let release = TDRAW_RELEASES.get(version as usize).copied().unwrap_or("?");
+    // The plain layout opens in every release before the packed one.
+    if version < tracedraw_core::document::PACKED_VERSION {
+        let last = tracedraw_core::document::LAST_PLAIN_RELEASE;
+        return format!("v{version} (TraceDraw {release}–{last})");
+    }
     format!("v{version} (TraceDraw {release})")
 }
 
@@ -732,7 +741,7 @@ impl App {
                     std::borrow::Cow::Borrowed(&*carried)
                 };
                 files::write_with(&path, |w| {
-                    doc.write_json_version(w, tdraw_version)
+                    doc.write_tdraw_version(w, tdraw_version)
                         .map_err(std::io::Error::other)
                 })
                 .map_err(|e| e.to_string())
@@ -1587,7 +1596,9 @@ mod tests {
         assert_eq!(st.file_name(), "native.tdraw");
         assert_eq!(st.tdraw_version, TDRAW_FORMAT_VERSION);
         assert_eq!(tdraw_version_choices()[0], TDRAW_FORMAT_VERSION);
-        assert_eq!(tdraw_version_choices(), vec![0]);
+        assert_eq!(tdraw_version_choices(), vec![2, 0]);
+        assert_eq!(tdraw_version_label(0), "v0 (TraceDraw 0.4–0.46)");
+        assert_eq!(tdraw_version_label(2), "v2 (TraceDraw 0.47)");
         st.tdraw_version = 0;
         let mut st = st.clone();
         assert!(app.finish_save_as(&mut st));
@@ -2313,8 +2324,8 @@ mod tests {
         st.selected_only = true;
         let mut st = st.clone();
         assert!(app.finish_save_as(&mut st));
-        let text = std::fs::read_to_string(dir.join("part.tdraw")).unwrap_or_default();
-        let saved = tracedraw_core::Document::from_json(&text).expect("a drawing");
+        let bytes = std::fs::read(dir.join("part.tdraw")).unwrap_or_default();
+        let saved = tracedraw_core::Document::from_tdraw_bytes(&bytes).expect("a drawing");
         assert_eq!(total(&saved), 1, "only the selection");
         let s = &saved.pages[0].layers.iter().flat_map(|l| &l.shapes).next();
         assert_eq!(s.map(|s| s.id), Some(keep));

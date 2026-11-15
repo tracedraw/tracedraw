@@ -943,7 +943,7 @@ type BackupWritten = (String, (u64, u64), Result<(), String>);
 /// renamed when complete; the page's storage in a browser).
 fn write_backup(path: &std::path::Path, doc: &tracedraw_core::Document) -> Result<(), String> {
     crate::files::write_creating_with(path, |w| {
-        doc.write_json_version(w, tracedraw_core::document::TDRAW_FORMAT_VERSION)
+        doc.write_tdraw_version(w, tracedraw_core::document::TDRAW_FORMAT_VERSION)
             .map_err(std::io::Error::other)
     })
     .map_err(|e| e.to_string())
@@ -1605,6 +1605,11 @@ pub struct App {
     /// a printer's spooler can take minutes and the window stays usable
     /// meanwhile (#810). The status it ends with.
     pub print_job: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
+    /// A large `.tdraw` being read off the interface's thread, with its
+    /// progress window (#2849).
+    pub opening: Option<crate::opening::Opening>,
+    /// What that read gave, for the open it finishes.
+    pub opened_read: Option<(PathBuf, crate::opening::OpenRead)>,
     /// Manual two-sided printing: the settings of a print whose fronts
     /// went out, while the prompt to turn the stack over shows.
     pub duplex_backs: Option<crate::ui::dialogs::PrintState>,
@@ -3154,6 +3159,8 @@ impl App {
             print_preview: None,
             printer_fetch: None,
             print_job: None,
+            opening: None,
+            opened_read: None,
             duplex_backs: None,
             printers_seen: Vec::new(),
             printer_last: None,
@@ -7801,6 +7808,27 @@ impl App {
             self.open_picture(&path);
             return;
         }
+        // A drawing read already off the interface's thread (#2849).
+        let opened_read = match self.opened_read.take() {
+            Some((p, read)) if p == path && ext == "tdraw" => Some(read),
+            _ => None,
+        };
+        // A large drawing is read off the interface's thread, with a
+        // window that shows how far it got (#2849); the open ends when
+        // it is read ([`App::poll_opening`]).
+        if ext == "tdraw" && opened_read.is_none() {
+            if let Some(size) = crate::opening::wants_background(&path) {
+                if let Some(old) = self.opening.take() {
+                    old.cancel();
+                }
+                self.opening = Some(crate::opening::Opening::start(
+                    path,
+                    password.to_string(),
+                    size,
+                ));
+                return;
+            }
+        }
         // A package's fonts, beside the drawing, before its text is laid
         // out (#852).
         if ext == "tdraw" {
@@ -8218,13 +8246,18 @@ impl App {
                     (doc, msg)
                 })
                 .map_err(|e| e.to_string())
+        } else if let Some(read) = opened_read {
+            read.map(|(d, known)| {
+                tdraw_version = Some(known);
+                (d, crate::i18n::tr("status.opened"))
+            })
         } else {
-            crate::files::read_to_string(&path)
+            crate::files::read(&path)
+                .and_then(|bytes| tracedraw_core::document::tdraw_text(&bytes))
                 .map_err(|e| e.to_string())
                 .and_then(|json| {
                     // A newer file saves back in the newest version known
-                    // here (while that is 0, the min is a no-op).
-                    #[allow(clippy::unnecessary_min_or_max)]
+                    // here.
                     let known = tracedraw_core::document::tdraw_text_version(&json)
                         .min(tracedraw_core::document::TDRAW_FORMAT_VERSION);
                     tdraw_version = Some(known);
@@ -8427,7 +8460,7 @@ impl App {
             // Written to the file as it is made: the JSON of a large
             // drawing is several times its size.
             let result = crate::files::write_with(&path, |w| {
-                doc.write_json_version(w, version)
+                doc.write_tdraw_version(w, version)
                     .map_err(std::io::Error::other)
             })
             .map_err(|e| e.to_string());
@@ -8768,7 +8801,8 @@ impl App {
     pub fn recover(&mut self, found: &[crate::recovery::Found]) {
         let mut opened = Vec::new();
         for path in found.iter().flat_map(|f| &f.backups) {
-            let doc = crate::files::read_to_string(path)
+            let doc = crate::files::read(path)
+                .and_then(|bytes| tracedraw_core::document::tdraw_text(&bytes))
                 .map_err(|e| e.to_string())
                 .and_then(|json| {
                     tracedraw_core::Document::from_json(&json).map_err(|e| e.to_string())
@@ -9229,6 +9263,31 @@ impl App {
         self.print_job = Some(rx);
     }
 
+    /// A large drawing read off the interface's thread (#2849): once it
+    /// is read, finish opening it. Whether it is still being read.
+    pub fn poll_opening(&mut self) -> bool {
+        let Some(job) = &self.opening else {
+            return false;
+        };
+        let Some(read) = job.poll() else {
+            return true;
+        };
+        if let Some(job) = self.opening.take() {
+            self.opened_read = Some((job.path.clone(), read));
+            self.open_path_with_password(job.path, &job.password);
+            self.opened_read = None;
+        }
+        false
+    }
+
+    /// Stop reading the large drawing being opened.
+    pub fn cancel_opening(&mut self) {
+        if let Some(job) = self.opening.take() {
+            job.cancel();
+            self.status = crate::i18n::tr("status.open_cancelled");
+        }
+    }
+
     /// The outcome of the print on its way, once there is one, into the
     /// status bar. Returns whether a print is still on its way.
     pub fn poll_print_job(&mut self) -> bool {
@@ -9475,7 +9534,8 @@ impl App {
             // A package's fonts, beside the drawing, before its text is
             // laid out, as File > Open has them (#852).
             self.load_package_fonts(&path);
-            let read = crate::files::read_to_string(&path)
+            let read = crate::files::read(&path)
+                .and_then(|bytes| tracedraw_core::document::tdraw_text(&bytes))
                 .map_err(|e| e.to_string())
                 .and_then(|json| {
                     tracedraw_core::Document::from_json(&json).map_err(|e| e.to_string())
@@ -12555,8 +12615,8 @@ mod tests {
             .map(|e| e.file_name().to_string_lossy().to_string())
             .collect();
         assert_eq!(saved, ["AutoBackup_of_art.tdraw"], "no .part left");
-        let back = std::fs::read_to_string(dir.join("auto").join(&saved[0])).unwrap();
-        assert!(tracedraw_core::Document::from_json(&back).is_ok());
+        let back = std::fs::read(dir.join("auto").join(&saved[0])).unwrap();
+        assert!(tracedraw_core::Document::from_tdraw_bytes(&back).is_ok());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
