@@ -40,6 +40,7 @@ mod blend_tool;
 mod border_grommet;
 mod brushes;
 mod callouts;
+mod captions;
 mod chinese;
 mod canvas;
 mod clipboard;

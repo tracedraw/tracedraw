@@ -1425,6 +1425,8 @@ pub enum Dialog {
         height: f64,
     },
     PasteSpecial(PasteSpecialState),
+    /// Bitmaps > Picture Captions (#2180).
+    PictureCaptions(crate::captions::Captions),
     Barcode(BarcodeState),
     ConvertToBitmap(crate::bitmap_modes::ConvertOptions),
     StraightenImage(crate::ui::straighten_dialog::StraightenState),
@@ -3319,6 +3321,7 @@ pub fn show(app: &mut App, ctx: &Context) {
             crate::ui::writing_tools::custom_hyphens_dialog(app, ctx, st, &mut close)
         }
         Dialog::Encode(st) => encode_dialog(app, ctx, st, &mut close),
+        Dialog::PictureCaptions(st) => crate::captions::dialog(app, ctx, st, &mut close),
         Dialog::BorderGrommet(st) => border_grommet_dialog(app, ctx, st, &mut close),
         Dialog::ConvertColors(st) => crate::ui::convert_colors::dialog(app, ctx, st, &mut close),
         Dialog::Recolor(st) => crate::ui::recolor::dialog(app, ctx, st, &mut close),
@@ -8770,6 +8773,7 @@ pub(crate) mod tests {
             Dialog::WritingTools(crate::ui::writing_tools::WritingToolsState::on_tab(2)),
             Dialog::CustomHyphens(Default::default()),
             Dialog::Encode(EncodeState::default()),
+            Dialog::PictureCaptions(Default::default()),
             Dialog::BorderGrommet(crate::border_grommet::BorderGrommetState::default()),
             Dialog::ColorManagement(Default::default()),
             Dialog::FontManager(FontManagerState::default()),

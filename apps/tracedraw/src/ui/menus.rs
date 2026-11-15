@@ -4017,6 +4017,10 @@ fn bitmaps_menu(app: &mut App, ui: &mut Ui) {
     ) {
         app.replace_image();
     }
+    // Each picture's name beside it (#2180).
+    if item(ui, "menu.bitmaps.captions", "", app.can_caption_pictures()) {
+        app.dialog = Dialog::PictureCaptions(app.settings.picture_captions.clone());
+    }
     if item(ui, "menu.bitmaps.crop_bitmap", "", has_bitmap) {
         app.set_tool(crate::tools::Tool::Crop);
     }

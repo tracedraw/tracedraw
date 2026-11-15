@@ -93,6 +93,7 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::PasteSpecial(_) => "objects/paste-special",
         Dialog::Barcode(_) => "objects/barcodes",
         Dialog::ConvertToBitmap(_) => "bitmaps/convert-to-bitmap",
+        Dialog::PictureCaptions(_) => "bitmaps/picture-captions",
         Dialog::StraightenImage(_) => "bitmaps/resample-and-straighten#straighten",
         Dialog::Resample(_) => "bitmaps/resample-and-straighten#resample",
         Dialog::InflateBitmap(_) => "bitmaps/resample-and-straighten#inflate",

@@ -22,8 +22,17 @@ offered at once through the compositor's data control protocol and the
 picture joins them when it has been drawn, on a thread of its own, unless
 another copy was made meanwhile (`wayland_copy.rs`); a compositor without
 that protocol (GNOME) gets the copy through the X11 programs' clipboard,
-which it shares with Wayland programs. Elsewhere the text alone goes
-there.
+which it shares with Wayland programs.
+
+On Windows (#1539) the copy goes there as an enhanced metafile
+(`CF_ENHMETAFILE`), a PDF (`Portable Document Format`), an SVG image
+(`image/svg+xml`) and the SVG text, all at once (`win_clipboard::write`):
+CorelDRAW pastes the metafile or the PDF as objects with their fills,
+outlines and text, and so do office programs, where the SVG text alone
+came in as text before. The metafile and the PDF are the size of the
+selection (`App::selection_alone`); the SVG keeps the page, so positions
+survive a copy between two TraceDraw windows. Elsewhere (macOS) the text
+alone goes there.
 
 ## Paste (Ctrl+V, Edit > Paste)
 
@@ -43,7 +52,13 @@ there.
      loses the CR;
   2. vector data another drawing program copied beside a picture of
      its copy (#2514): its objects with their fills and outlines, one
-     undo step, selected. Read on Windows from the registered formats
+     undo step, selected. On Windows CorelDRAW's own copy data comes
+     first (#1539): a registered format whose name mentions Corel, CMX
+     or CDR and holds a CMX or CDR file (RIFF form `CMX1` or `CDR`, or
+     the ZIP package of version X4 and later, cut to the length its
+     header gives) is opened by the `.cdr` reader, and the objects of
+     its first page are pasted, text as text with its font
+     (`clipboard::corel_tests`). Else read on Windows from the registered formats
      `image/svg+xml`, `Portable Document Format` (also `PDF`,
      `application/pdf`) and the enhanced metafile, and on an X11 desktop
      (also through a Wayland one's X server) from `image/svg+xml`,

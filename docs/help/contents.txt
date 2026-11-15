@@ -102,6 +102,7 @@ bitmaps/index
   bitmaps/tracing
   bitmaps/bitmap-mask
   bitmaps/remove-background
+  bitmaps/picture-captions
 printing/index
   printing/print
   printing/booklet

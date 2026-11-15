@@ -707,6 +707,9 @@ pub struct Settings {
     /// The programs of Object > Insert > Insert Object, each opened with
     /// one click (#1025).
     pub object_apps: Vec<crate::insert_object::ObjectApp>,
+    /// Bitmaps > Picture Captions, as last used (#2180).
+    #[serde(default)]
+    pub picture_captions: crate::captions::Captions,
 }
 
 fn default_path_tick() -> f64 {
@@ -2133,6 +2136,7 @@ impl Default for Settings {
             fx_presets: Vec::new(),
             fx_settings_only: false,
             object_apps: Vec::new(),
+            picture_captions: Default::default(),
         }
     }
 }

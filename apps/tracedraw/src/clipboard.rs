@@ -381,6 +381,50 @@ fn read_vector() -> Option<Vec<u8>> {
     None
 }
 
+/// Whether a registered format's name is one of CorelDRAW's: it names
+/// Corel, CMX or CDR.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn is_corel_format_name(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.contains("corel") || n.contains("cmx") || n.contains("cdr")
+}
+
+/// A CMX or CDR file in a memory block, cut to the length its RIFF
+/// header gives (a block may be larger than what was put in it).
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn corel_file(mut bytes: Vec<u8>) -> Option<Vec<u8>> {
+    let riff = matches!(bytes.get(0..4), Some(b"RIFF") | Some(b"RIFX"));
+    if riff {
+        let form = bytes.get(8..11)?;
+        if form != b"CMX" && form != b"CDR" && form != b"cdr" {
+            return None;
+        }
+        let size = u32::from_le_bytes(bytes.get(4..8)?.try_into().ok()?) as usize;
+        let end = size.saturating_add(8);
+        if end <= bytes.len() {
+            bytes.truncate(end);
+        }
+        return Some(bytes);
+    }
+    // CorelDRAW X4 and later: a ZIP package.
+    bytes.starts_with(b"PK\x03\x04").then_some(bytes)
+}
+
+/// The objects of the CMX or CDR file CorelDRAW copied (#1539), as they
+/// lie on its first page; `None` when `bytes` is not such a file or holds
+/// no objects.
+fn corel_shapes(bytes: &[u8]) -> Option<Vec<tracedraw_core::Shape>> {
+    let riff = matches!(bytes.get(0..4), Some(b"RIFF") | Some(b"RIFX"))
+        && matches!(bytes.get(8..11), Some(b"CMX") | Some(b"CDR") | Some(b"cdr"));
+    if !riff && !bytes.starts_with(b"PK\x03\x04") {
+        return None;
+    }
+    let (doc, _) = tracedraw_cdr::open_bytes(bytes, "clipboard").ok()?;
+    let page = doc.pages.into_iter().next()?;
+    let shapes: Vec<_> = page.layers.into_iter().flat_map(|l| l.shapes).collect();
+    (!shapes.is_empty()).then_some(shapes)
+}
+
 /// The clipboard's picture, decoded. On an X11 desktop the clipboard's
 /// types are read and its best picture type is asked for, with time for
 /// a busy program that sends a large picture in parts (#1488, see
@@ -606,7 +650,33 @@ impl App {
         }
     }
 
-    #[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android")))))]
+    /// Windows (#1539): the copy as an enhanced metafile, a PDF and SVG
+    /// beside its SVG text, all at once: CorelDRAW and office programs
+    /// paste the metafile (or the PDF) as objects, with their colours,
+    /// outlines and text, where they took the SVG text as text before.
+    /// The metafile and the PDF are the size of the selection.
+    #[cfg(windows)]
+    fn offer_copy(&self, svg: &str) -> bool {
+        use crate::win_clipboard::Item;
+        let mut items = vec![Item::Named("image/svg+xml", svg.as_bytes().to_vec())];
+        if let Some(alone) = self
+            .selection_bounds()
+            .and_then(|b| self.selection_alone(b))
+        {
+            items.push(Item::Metafile(tracedraw_io::emf::page_to_emf(&alone, 0)));
+            items.push(Item::Named(
+                "Portable Document Format",
+                tracedraw_io::pdf::document_to_pdf(&alone),
+            ));
+        }
+        items.push(Item::Text(svg.to_string()));
+        crate::win_clipboard::write(items)
+    }
+
+    #[cfg(not(any(
+        windows,
+        all(unix, not(any(target_os = "macos", target_os = "android")))
+    )))]
     fn offer_copy(&self, _svg: &str) -> bool {
         false
     }
@@ -718,13 +788,15 @@ impl App {
         }
     }
 
-    /// Paste vector data another program copied (SVG, PDF or EMF, told
-    /// apart by their own signatures) as objects, one undo step, selected
-    /// (#2514). False when it holds nothing this reads, so the picture
+    /// Paste vector data another program copied (CorelDRAW's CMX or CDR
+    /// data, #1539; SVG, PDF or EMF, told apart by their own signatures)
+    /// as objects, one undo step, selected (#2514). False when it holds nothing this reads, so the picture
     /// copied with it is pasted instead.
     pub fn paste_vector(&mut self, bytes: &[u8]) -> bool {
         let mut ids = tracedraw_core::id::IdSource::default();
-        let shapes = if let Some(svg) = std::str::from_utf8(bytes)
+        let shapes = if let Some(shapes) = corel_shapes(bytes) {
+            Some(shapes)
+        } else if let Some(svg) = std::str::from_utf8(bytes)
             .ok()
             .map(|t| t.trim_start_matches('\u{feff}').trim_start())
             .filter(|t| t.starts_with('<') && t.contains("<svg"))
@@ -2214,5 +2286,71 @@ mod linked_watch_tests {
         app.watch_linked_bitmaps(None, t0 + std::time::Duration::from_millis(2200));
         assert_eq!(app.engine.history_labels().0.len(), depth);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod corel_tests {
+    use super::*;
+    use tracedraw_core::geometry::Rect;
+    use tracedraw_core::{Color, Fill, Shape, ShapeKind};
+
+    /// A .cdr file of one red rectangle, 30 x 20 mm, as CorelDRAW's copy
+    /// data would hold it.
+    fn cdr_of_a_rectangle() -> Vec<u8> {
+        let mut doc =
+            tracedraw_core::Document::new("copy", tracedraw_core::Size::new(100.0, 100.0));
+        let layer = doc.pages[0].layers[0].id;
+        let id = doc.ids_mut().shape();
+        let mut s = Shape::new(
+            id,
+            ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 40.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        s.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        doc.layer_mut(layer).expect("layer").shapes.push(s);
+        tracedraw_cdr::write::document_to_cdr(&doc)
+    }
+
+    #[test]
+    fn corel_format_names_and_files_are_told_apart() {
+        assert!(is_corel_format_name("CorelDRAW 2024"));
+        assert!(is_corel_format_name("Corel Presentation Exchange"));
+        assert!(is_corel_format_name("CMX data"));
+        assert!(!is_corel_format_name("image/svg+xml"));
+        assert!(!is_corel_format_name("Portable Document Format"));
+        // A RIFF file is cut to its header's length.
+        let mut riff = b"RIFF".to_vec();
+        riff.extend(8u32.to_le_bytes());
+        riff.extend(b"CMX1abcd");
+        riff.extend([0u8; 16]);
+        assert_eq!(corel_file(riff).map(|b| b.len()), Some(16));
+        assert!(corel_file(b"%PDF-1.7".to_vec()).is_none());
+        assert!(corel_file(b"PK\x03\x04rest".to_vec()).is_some());
+    }
+
+    #[test]
+    fn coreldraw_copy_data_pastes_as_objects() {
+        let bytes = cdr_of_a_rectangle();
+        let shapes = corel_shapes(&bytes).expect("objects");
+        assert_eq!(shapes.len(), 1);
+        assert!(corel_shapes(b"<svg/>").is_none());
+        let mut app = App::headless();
+        assert!(app.paste_vector(&bytes));
+        let sel = app.selected_shapes();
+        assert_eq!(sel.len(), 1);
+        assert!(
+            matches!(&sel[0].fill, Fill::Solid(c) if *c != Color::BLACK),
+            "{:?}",
+            sel[0].fill
+        );
+        let b = sel[0].bounds();
+        assert!(
+            (b.width() - 30.0).abs() < 0.1 && (b.height() - 20.0).abs() < 0.1,
+            "{b:?}"
+        );
     }
 }
