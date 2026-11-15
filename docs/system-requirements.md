@@ -31,6 +31,11 @@ memory, processor and disk lines are measured or estimated, and say so.
   has no 32-bit package. A
   32-bit program can use at most 2 GB of memory, so very large drawings
   and exports are better done on 64-bit Windows. There is no Windows on ARM build.
+  Windows 7 and 8.1 are not supported: the Rust Windows targets the
+  program is built for need Windows 10, so on older versions it stops
+  at start with a missing-function error. A user reported it
+  running on Windows 7 x64 with the VxKex NEXT compatibility layer
+  (discussion #2790); that is untested by us and at your own risk.
 - **macOS:** 11 Big Sur or later (`LSMinimumSystemVersion` in
   `packaging/macos/Info.plist`), with a separate download for Apple
   silicon (arm64) and for Intel (x86_64).
