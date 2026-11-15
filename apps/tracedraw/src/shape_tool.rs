@@ -2045,8 +2045,17 @@ impl App {
     /// pressure gives at each place (#883), from a fifth of the width at
     /// the lightest touch.
     pub fn eraser_band(&self, points: &[Point]) -> tracedraw_core::geometry::BezPath {
-        let even =
-            || tracedraw_core::shaping::stroke_band(points, self.eraser_width, self.eraser_square);
+        // The hand's shake, about two screen pixels, is smoothed away
+        // so the edge left is smooth and has few nodes (#2831).
+        let steady = 2.0 / f64::from(self.view.zoom.max(1e-3));
+        let even = || {
+            tracedraw_core::shaping::eraser_band(
+                points,
+                self.eraser_width,
+                self.eraser_square,
+                steady,
+            )
+        };
         if self.eraser_square || points.len() < 2 {
             return even();
         }
@@ -2343,6 +2352,40 @@ mod eraser_tests {
         app.eraser_width = 100.0;
         app.erase_along(&[Point::new(0.0, 10.0), Point::new(40.0, 10.0)]);
         assert!(app.doc().find_shape(id).is_none());
+    }
+
+    /// A shaky drag of the Eraser across an ellipse (#2831): the cut edges
+    /// are smooth and the ellipse keeps few nodes, its own curves outside
+    /// the band untouched.
+    #[test]
+    fn a_shaky_eraser_drag_leaves_a_smooth_edge_with_few_nodes() {
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: Rect::new(0.0, 0.0, 60.0, 40.0),
+                arc: None,
+            })
+            .unwrap();
+        app.select(vec![id]);
+        app.eraser_width = 6.0;
+        app.view.zoom = 4.0;
+        let points: Vec<Point> = (0..=400)
+            .map(|i| {
+                let x = -5.0 + i as f64 * 0.175;
+                Point::new(x, 20.0 + 0.2 * ((i as f64) * 1.9).sin())
+            })
+            .collect();
+        app.erase_along(&points);
+        let s = app.doc().find_shape(id).unwrap();
+        let ShapeKind::Path { path, .. } = &s.kind else {
+            panic!("{:?}", s.kind);
+        };
+        let n = path.elements().len();
+        assert!(n <= 20, "{n} nodes");
+        assert!(path
+            .elements()
+            .iter()
+            .any(|e| matches!(e, tracedraw_core::geometry::PathEl::CurveTo(..))));
     }
 
     /// A 40 mm square clip frame holding a 30 mm square, moved 10 mm right.
