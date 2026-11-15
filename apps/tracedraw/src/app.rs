@@ -1582,6 +1582,8 @@ pub struct App {
     pub multipage: bool,
     /// The wheel zoom still gliding (#1648).
     pub zoom_glide: crate::view_motion::ZoomGlide,
+    /// Help > Benchmark: the run going on or just finished.
+    pub benchmark: crate::ui::benchmark::Bench,
     /// The pan's slide after a flick (#831).
     pub pan_inertia: crate::view_motion::PanInertia,
     /// The Font Sampler docker.
@@ -3107,6 +3109,7 @@ impl App {
             page_sorter: false,
             multipage: false,
             zoom_glide: Default::default(),
+            benchmark: Default::default(),
             pan_inertia: Default::default(),
             font_sampler: Default::default(),
             perspective: None,

@@ -38,6 +38,7 @@ również na pasku właściwości każdego narzędzia.
 - [[options.smooth_zoom]] (włączone): ząbek kółka powiększa w krótkim płynnym
   ruchu zamiast skoku; im szybciej obraca się kółko, tym krótszym.
   Wyłączone: każdy ząbek powiększa od razu.
+- [[options.light_zoom]]: [[options.light_zoom_tip]]
 - [[options.wheel_zoom_step]] jak bardzo jeden ząbek powiększa lub pomniejsza,
   od 1 do 100 procent (na początku 15 %).
 - [[options.pan_right_button]] [[options.zoom_out]] lub [[options.context_menu]] (na początku).

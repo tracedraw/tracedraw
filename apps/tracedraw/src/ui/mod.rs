@@ -14,6 +14,7 @@ pub mod bar_items;
 pub mod barcode_wizard;
 pub mod bars;
 pub mod before_after;
+pub mod benchmark;
 pub mod bitmap_dialogs;
 pub mod bitmap_preview;
 pub mod brand;
@@ -1105,12 +1106,14 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                     // of one jump; its frames multiply to the step a
                     // notch (#766), in the browser too (#1016). The glide
                     // is shorter the faster the wheel turns (#1648); with
-                    // Smooth zoom off a notch zooms at once.
+                    // Smooth zoom off (or Light zoom on) a notch zooms at
+                    // once.
                     if zoom_now_notches != 0.0 {
                         app.view.zoom_at(anchor, step.powf(zoom_now_notches));
                     }
                     if zoom_glide_notches != 0.0 {
-                        if app.settings.smooth_zoom {
+                        // Light zoom: no glide, one jump a notch.
+                        if app.settings.smooth_zoom && !app.settings.light_zoom {
                             let now = ui.input(|i| i.time);
                             app.zoom_glide.add(zoom_glide_notches, step, anchor, now);
                         } else {

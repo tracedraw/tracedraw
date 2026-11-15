@@ -38,6 +38,7 @@ maioria desses valores também está na barra de propriedades de cada ferramenta
 - [[options.smooth_zoom]] (ligado): cada clique da roda aplica o zoom num breve
   deslizamento em vez de um salto; quanto mais rápido a roda gira, mais curto.
   Desligado, cada clique aplica o zoom na hora.
+- [[options.light_zoom]]: [[options.light_zoom_tip]]
 - [[options.wheel_zoom_step]] quanto um clique aproxima ou afasta, de 1 a 100 por
   cento (15 % no início).
 - [[options.pan_right_button]] [[options.zoom_out]] ou o [[options.context_menu]] (de início).

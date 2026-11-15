@@ -29,6 +29,11 @@ use tracedraw_render::{
 /// rendered anew instead of showing the last render moved into place.
 pub const SETTLE_SECONDS: f64 = 0.12;
 
+/// With Light zoom (Options > Tools > Zoom/Pan): how long the view rests
+/// after a zoom before the drawing is drawn anew for it, seconds. Long
+/// enough for the notches of one turn of the wheel to make one render.
+pub const LIGHT_SETTLE_SECONDS: f64 = 0.3;
+
 /// A render that took longer than this, seconds, makes the next ones
 /// run on a thread of their own.
 const SLOW_RENDER: f64 = 0.03;
@@ -246,6 +251,11 @@ pub struct Raster {
     /// last picture shows where its part of the page now is, and the
     /// render waits for a later frame (#903).
     pub defer: bool,
+    /// Light zoom (Options > Tools > Zoom/Pan, for slow computers): a
+    /// zoom shows the last picture scaled, like a pan, and the drawing
+    /// is drawn anew once, when the view has rested
+    /// [`LIGHT_SETTLE_SECONDS`], instead of at every step of the zoom.
+    pub light_zoom: bool,
     /// The drawing as given, shared, for a render on its own thread to
     /// take instead of a copy of its own (no threads in the browser).
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
@@ -607,7 +617,13 @@ impl Raster {
                     let now = ctx.input(|i| i.time);
                     let due = match &self.settle {
                         Some((k, due)) if *k == key => *due,
-                        _ => now + SETTLE_SECONDS,
+                        _ => {
+                            now + if self.light_zoom && old.zoom != key.zoom {
+                                LIGHT_SETTLE_SECONDS
+                            } else {
+                                SETTLE_SECONDS
+                            }
+                        }
                     };
                     if now < due {
                         self.settle = Some((key, due));
@@ -987,9 +1003,13 @@ impl Raster {
     /// (`old`) by its zoom and the picture is the main canvas's: rendered
     /// at once on a thread instead of shown scaled until the view rests.
     /// The pages beside the current one in the Multipage View keep waiting
-    /// (many come due at once, #903), and the browser has no threads.
+    /// (many come due at once, #903), as does every zoom with Light zoom
+    /// on, and the browser has no threads.
     fn zooms_at_once(&self, old: &Key, new: &Key) -> bool {
-        cfg!(not(target_arch = "wasm32")) && !self.follows_zoom && old.zoom != new.zoom
+        cfg!(not(target_arch = "wasm32"))
+            && !self.follows_zoom
+            && !self.light_zoom
+            && old.zoom != new.zoom
     }
 
     /// The bands of the picture being drawn on its thread that are done,
@@ -1457,6 +1477,57 @@ mod tests {
         }
         assert!(done, "the zoomed picture came well before the view rested");
         assert_eq!(raster.render_count(), renders + 1);
+    }
+
+    /// Light zoom: a zoom shows the last picture scaled, renders nothing
+    /// while the zoom goes on, and renders once when the view rests.
+    #[test]
+    fn light_zoom_renders_once_when_the_zoom_stops() {
+        static TURNS: Turns = Turns::new();
+        let ctx = Context::default();
+        let doc = Document::new("t", Size::new(100.0, 50.0));
+        let rect = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(320.0, 200.0));
+        let mut raster = Raster {
+            turns: Some(&TURNS),
+            light_zoom: true,
+            ..Default::default()
+        };
+        let mut view = View::default();
+        let (first, _) = pass(&ctx, &mut raster, &doc, &view, rect, 0.0);
+        let renders = raster.render_count();
+        // Ten steps of a zoom, a frame apart: the old picture, scaled.
+        let mut t = 1.0;
+        for _ in 0..10 {
+            view.zoom *= 1.05;
+            t += 1.0 / 60.0;
+            let (tex, screen) = pass(&ctx, &mut raster, &doc, &view, rect, t);
+            assert_eq!(tex, first);
+            assert!(screen.width() > rect.width());
+        }
+        assert_eq!(raster.render_count(), renders, "nothing drawn meanwhile");
+        assert!(raster.job.is_none());
+        // Still within the wait after the last step.
+        pass(
+            &ctx,
+            &mut raster,
+            &doc,
+            &view,
+            rect,
+            t + LIGHT_SETTLE_SECONDS / 2.0,
+        );
+        assert_eq!(raster.render_count(), renders);
+        // Rested: one render for the zoom it stopped at.
+        let (_, screen) = pass(
+            &ctx,
+            &mut raster,
+            &doc,
+            &view,
+            rect,
+            t + LIGHT_SETTLE_SECONDS + 0.01,
+        );
+        assert_eq!(raster.render_count(), renders + 1);
+        assert_eq!(raster.picture_zoom(), Some(view.zoom));
+        assert_eq!(screen, rect);
     }
 
     /// A slow page is drawn on a thread of its own: the frame that asks

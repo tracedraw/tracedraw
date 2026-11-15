@@ -14155,6 +14155,57 @@ fn smooth_zoom_off_zooms_the_fixed_step_at_once() {
     assert!((app.view.zoom / z0 - 1.25).abs() < 0.01);
 }
 
+/// Light zoom (Options > Tools > Zoom/Pan, turned on by Help >
+/// Benchmark on slow computers): a notch zooms at once, without the
+/// glide, and a turn of three notches draws the drawing anew once, after
+/// the zoom stops; with the glide every frame of it starts a new render
+/// (each giving up the last one).
+#[test]
+fn light_zoom_draws_once_per_wheel_turn() {
+    let renders_of_a_turn = |light: bool| {
+        let (ctx, mut app, _) = setup();
+        app.settings.light_zoom = light;
+        let at = Pos2::new(700.0, 500.0);
+        let mut t = 10.0;
+        let mut step = |app: &mut App, events: Vec<Event>| {
+            t += 1.0 / 60.0;
+            wheel_frame(&ctx, app, t, events);
+        };
+        step(&mut app, vec![Event::PointerMoved(at)]);
+        // The first picture drawn, the view at rest.
+        for _ in 0..60 {
+            step(&mut app, Vec::new());
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        let z0 = app.view.zoom;
+        let before = app.raster.borrow().render_count();
+        let mut glide_frames = 0;
+        for n in 0..3 {
+            step(&mut app, vec![notch()]);
+            if n == 0 && light {
+                assert!((app.view.zoom / z0 - 1.15).abs() < 1e-3, "at once");
+            }
+            step(&mut app, Vec::new());
+            glide_frames += app.zoom_glide.active() as u32;
+        }
+        for _ in 0..90 {
+            step(&mut app, Vec::new());
+            glide_frames += app.zoom_glide.active() as u32;
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert!((app.view.zoom / z0 - 1.15f32.powi(3)).abs() < 0.01);
+        let r = app.raster.borrow();
+        assert_eq!(r.picture_zoom(), Some(app.view.zoom), "sharp in the end");
+        (r.render_count() - before, glide_frames)
+    };
+    let (smooth, glided) = renders_of_a_turn(false);
+    let (light, no_glide) = renders_of_a_turn(true);
+    eprintln!("renders of a three-notch turn: smooth {smooth}, light {light}");
+    assert!(glided > 0 && no_glide == 0);
+    assert_eq!(light, 1, "one render once the zoom stops");
+    assert!(smooth > light, "{smooth} {light}");
+}
+
 /// Pan inertia (Options > Tools > Zoom/Pan, off at first): a Pan tool
 /// drag let go while moving keeps the view sliding the same way, slower
 /// each frame, until it stops; off, the view stays where the drag left

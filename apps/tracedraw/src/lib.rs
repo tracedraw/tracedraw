@@ -29,6 +29,7 @@ mod android_package;
 mod app;
 mod autocorrect;
 mod barcode;
+pub mod benchmark;
 mod bg_remove;
 mod bitmap_file;
 mod bitmap_fx;

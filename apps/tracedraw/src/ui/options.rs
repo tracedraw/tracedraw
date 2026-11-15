@@ -1143,6 +1143,17 @@ fn hardware_acceleration(app: &mut App, ui: &mut Ui) {
         dim(ui, trf("options.gpu_in_use", &[("name", name)]));
     }
     dim(ui, tr("options.restart_to_apply"));
+    // How fast this computer is, with this setting and the other one.
+    if ui
+        .button(tr("menu.help.benchmark"))
+        .rich_tip(crate::ui::tips::pair(
+            "menu.help.benchmark",
+            "menu.help.benchmark_tip",
+        ))
+        .clicked()
+    {
+        app.dialog = crate::ui::dialogs::Dialog::Benchmark;
+    }
     // What the card does and what the processor does, and why.
     ui.add_space(4.0);
     ui.scope(|ui| {
@@ -4208,6 +4219,12 @@ fn zoom_pan_page(app: &mut App, ui: &mut Ui) {
         .rich_tip(crate::ui::tips::pair(
             "options.smooth_zoom",
             "options.smooth_zoom_tip",
+        ));
+    // Slow computers: one jump a notch, one render once the zoom stops.
+    ui.checkbox(&mut app.settings.light_zoom, tr("options.light_zoom"))
+        .rich_tip(crate::ui::tips::pair(
+            "options.light_zoom",
+            "options.light_zoom_tip",
         ));
     ui.horizontal(|ui| {
         ui.label(tr("options.wheel_zoom_step"));

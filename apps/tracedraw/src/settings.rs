@@ -459,6 +459,17 @@ pub struct Settings {
     /// off, each notch zooms at once (#1648, #895).
     #[serde(default = "default_true")]
     pub smooth_zoom: bool,
+    /// Options > Tools > Zoom/Pan > Light zoom: for slow computers. A
+    /// wheel notch zooms at once (no glide) and the drawing is drawn
+    /// anew once, after the zoom stops, instead of at every step; the
+    /// scaled picture shows meanwhile. Turned on by Help > Benchmark
+    /// when the score is low (`benchmark.rs`).
+    #[serde(default)]
+    pub light_zoom: bool,
+    /// The last Help > Benchmark results, one with hardware acceleration
+    /// on and one with it off, to compare them.
+    #[serde(default)]
+    pub benchmarks: Vec<crate::benchmark::Measured>,
     /// Options > Tools > Zoom/Pan: how much one wheel notch zooms, in
     /// percent (15 by default); see [`Settings::wheel_zoom_factor`].
     #[serde(default = "default_wheel_zoom_step")]
@@ -2003,6 +2014,8 @@ impl Default for Settings {
             zoom_relative_1to1: true,
             wheel_zoom_centers: false,
             smooth_zoom: true,
+            light_zoom: false,
+            benchmarks: Vec::new(),
             wheel_zoom_step: default_wheel_zoom_step(),
             pan_right_click_out: false,
             pan_inertia: false,

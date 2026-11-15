@@ -35,6 +35,7 @@ property bar of each tool.
 - [[options.smooth_zoom]] (on): a wheel notch zooms in a short glide instead of a
   jump; the faster you turn the wheel, the shorter the glide. Off, each notch
   zooms at once.
+- [[options.light_zoom]]: [[options.light_zoom_tip]]
 - [[options.wheel_zoom_step]] how much one notch zooms in or out, from 1 to 100
   percent (15 % at first).
 - [[options.pan_right_button]] [[options.zoom_out]] or the [[options.context_menu]] (at first).

@@ -38,6 +38,7 @@ deze waarden staan ook op de eigenschappenbalk van elk gereedschap.
 - [[options.smooth_zoom]] (aan): een klik van het wiel zoomt in een korte
   glijbeweging in plaats van een sprong; hoe sneller het wiel draait, hoe
   korter. Uit: elke klik zoomt meteen.
+- [[options.light_zoom]]: [[options.light_zoom_tip]]
 - [[options.wheel_zoom_step]] hoeveel één klik in- of uitzoomt, van 1 tot 100
   procent (eerst 15 %).
 - [[options.pan_right_button]] [[options.zoom_out]] of het [[options.context_menu]] (eerst).

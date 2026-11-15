@@ -4802,6 +4802,9 @@ fn help_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.help.updates", "", true) {
         app.check_for_updates(Some(ui.ctx().clone()));
     }
+    if item(ui, "menu.help.benchmark", "", true) {
+        app.dialog = Dialog::Benchmark;
+    }
     if item(ui, "menu.help.message_settings", "", true) {
         app.dialog = Dialog::Options;
         app.options_page = crate::ui::dialogs::OptionsPage::General;

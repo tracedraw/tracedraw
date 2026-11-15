@@ -39,6 +39,7 @@ ada di bilah properti masing-masing alat.
 - [[options.smooth_zoom]] (aktif): satu takik roda melakukan zoom dalam luncuran
   singkat, bukan lompatan; makin cepat roda diputar, makin singkat. Nonaktif,
   tiap takik langsung melakukan zoom.
+- [[options.light_zoom]]: [[options.light_zoom_tip]]
 - [[options.wheel_zoom_step]] seberapa besar satu takik memperbesar atau
   memperkecil, 1 sampai 100 persen (awalnya 15 %).
 - [[options.pan_right_button]] [[options.zoom_out]] atau [[options.context_menu]] (awalnya).

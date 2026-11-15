@@ -39,6 +39,7 @@ strumento.
 - [[options.smooth_zoom]] (attivo): uno scatto della rotellina zooma con un breve
   scorrimento invece di un salto; più veloce gira la rotellina, più è breve.
   Disattivo, ogni scatto zooma subito.
+- [[options.light_zoom]]: [[options.light_zoom_tip]]
 - [[options.wheel_zoom_step]] di quanto uno scatto ingrandisce o riduce, da 1 a
   100 per cento (15 % all'inizio).
 - [[options.pan_right_button]] [[options.zoom_out]] o il [[options.context_menu]] (all'inizio).

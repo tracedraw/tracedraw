@@ -51,6 +51,16 @@
 - Smooth zoom (Options > Tools > Zoom/Pan, on at first): off, every notch
   zooms its whole step at once
   (`pick_drag_tests::smooth_zoom_off_zooms_the_fixed_step_at_once`).
+- Light zoom (Options > Tools > Zoom/Pan, off at first; Help >
+  Benchmark turns it on when the score is under 4.0, see `benchmark.md`):
+  for slow computers. A notch zooms its whole step at once, without the
+  glide, and the canvas keeps the last picture scaled while the zoom
+  goes on, drawing the drawing anew once the view has rested 0.3 s
+  (`raster::LIGHT_SETTLE_SECONDS`) instead of starting a render at every
+  step. A three-notch wheel turn with the glide starts 6 renders (each
+  frame of the glide gives up the last one); with Light zoom, 1
+  (`raster::tests::light_zoom_renders_once_when_the_zoom_stops`,
+  `pick_drag_tests::light_zoom_draws_once_per_wheel_turn`).
 - With the Scroll setting: the wheel scrolls vertically; Shift+wheel
   scrolls horizontally; Ctrl+wheel zooms.
 - A trackpad pinch zooms by the gesture's factor with either setting.
