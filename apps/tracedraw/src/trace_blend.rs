@@ -31,6 +31,9 @@ const SMALL: f64 = 12.0;
 /// it.
 const BLEND_APART: f64 = 24.0;
 const BLEND_FIT: f64 = 18.0;
+/// The most of a lone patch's colour variation a blend may leave
+/// unexplained for the patch to be drawn as one.
+const ALONE_LEFT: f64 = 0.35;
 
 /// The sums a plane is fitted to a patch's colours from; they add up
 /// when patches join.
@@ -142,7 +145,9 @@ impl Sums {
 /// edge of the art between them (the colours two pixels either side of
 /// their border are close, [`BAND_STEP`]) are one region. Flat colours
 /// are never joined, so the soft edge between two of them, bands and
-/// all, never makes them one. The region is drawn as a blend along the
+/// all, never makes them one. A patch whose own colour changes steadily
+/// from end to end (a gentle blend the colour reduction left whole) is a
+/// region by itself. The region is drawn as a blend along the
 /// direction its colour changes most, from the colour at one end to the
 /// colour at the other, when its pixels lie near that blend; else in its
 /// mean colour. `colors` are the picture's own; pixels on an edge
@@ -201,10 +206,6 @@ pub(crate) fn join_blends(
         sums.push(s);
     }
     let count = sums.len();
-    if count < 2 {
-        let blends = none(&palette);
-        return Some((palette, blends));
-    }
     // 2. The step across each border, two pixels either side.
     let mut steps: std::collections::HashMap<(u32, u32), Vec<u16>> =
         std::collections::HashMap::new();
@@ -269,7 +270,6 @@ pub(crate) fn join_blends(
         }
         i
     }
-    let mut joined = false;
     for (_, a, b) in pairs {
         let (sa, sb) = (sloped[a as usize], sloped[b as usize]);
         let (ta, tb) = (small[a as usize], small[b as usize]);
@@ -282,13 +282,9 @@ pub(crate) fn join_blends(
         let (ra, rb) = (find(&mut root, a), find(&mut root, b));
         if ra != rb {
             root[rb as usize] = ra;
-            joined = true;
         }
     }
     let mut blends = none(&palette);
-    if !joined {
-        return Some((palette, blends));
-    }
     // 4. Each joined region: its sums, a new label, its blend.
     let mut group: Vec<Sums> = vec![Sums::new(); count];
     let mut members = vec![0u32; count];
@@ -300,16 +296,13 @@ pub(crate) fn join_blends(
         members[r] += 1;
         blended[r] |= sloped[i as usize];
     }
-    let mut label_of = vec![usize::MAX; count];
+    // The direction each region's colour changes most along, and its
+    // reach along it.
     let mut axis: Vec<Option<(f64, f64)>> = vec![None; count];
     for r in 0..count {
-        if members[r] < 2 || group[r].n < 1.0 || !blended[r] {
+        if group[r].n < 1.0 || !blended[r] {
             continue;
         }
-        label_of[r] = palette.len();
-        palette.push(group[r].mean());
-        blends.push(None);
-        // The direction the colour changes most along.
         if let Some(s) = group[r].slopes() {
             let (mut a, mut b, mut c) = (0.0, 0.0, 0.0);
             for (gx, gy) in s {
@@ -321,24 +314,20 @@ pub(crate) fn join_blends(
             axis[r] = Some((angle.cos(), angle.sin()));
         }
     }
-    // The reach of each region along its direction.
     let mut span = vec![(f64::MAX, f64::MIN); count];
     for i in 0..w * h {
         if of[i] == u32::MAX {
             continue;
         }
         let r = find(&mut root, of[i]) as usize;
-        if label_of[r] == usize::MAX {
-            continue;
-        }
-        labels[i] = label_of[r];
         if let Some((dx, dy)) = axis[r] {
             let s = (i % w) as f64 * dx + (i / w) as f64 * dy;
             span[r] = (span[r].0.min(s), span[r].1.max(s));
         }
     }
+    let mut blend_of: Vec<Option<Blend>> = vec![None; count];
     for r in 0..count {
-        let (Some((dx, dy)), true) = (axis[r], label_of[r] != usize::MAX) else {
+        let Some((dx, dy)) = axis[r] else {
             continue;
         };
         let g = &group[r];
@@ -354,29 +343,57 @@ pub(crate) fn join_blends(
         if var < 1e-6 {
             continue;
         }
-        let (mut start, mut end, mut rss) = ([0u8; 3], [0u8; 3], 0.0);
+        let (mut start, mut end, mut rss, mut all) = ([0u8; 3], [0u8; 3], 0.0, 0.0);
         for k in 0..3 {
             let sc = dx * g.xc[k] + dy * g.yc[k];
             let slope = (sc - s_sum * g.c[k] / n) / var;
             let at0 = g.c[k] / n - slope * s_sum / n;
             start[k] = (at0 + slope * s0).round().clamp(0.0, 255.0) as u8;
             end[k] = (at0 + slope * s1).round().clamp(0.0, 255.0) as u8;
-            rss += (g.cc[k] - g.c[k] * g.c[k] / n) - slope * slope * var;
+            let spread = g.cc[k] - g.c[k] * g.c[k] / n;
+            all += spread;
+            rss += spread - slope * slope * var;
         }
         let fit = (rss.max(0.0) / n).sqrt();
         if dist(start, end) < BLEND_APART || fit > BLEND_FIT {
+            continue;
+        }
+        // A patch on its own is a blend only when the blend accounts for
+        // most of what its colour varies by: a flat colour with a stain
+        // or a soft shadow in it stays flat.
+        if members[r] < 2 && rss > ALONE_LEFT * all {
             continue;
         }
         // Through the region's middle, pixel middles at half pixels.
         let (mx, my) = (g.x / n + 0.5, g.y / n + 0.5);
         let mid = dx * (mx - 0.5) + dy * (my - 0.5);
         let at = |s: f64| Point::new(mx + dx * (s - mid), my + dy * (s - mid));
-        blends[label_of[r]] = Some(Blend {
+        blend_of[r] = Some(Blend {
             from: at(s0),
             to: at(s1 + 1.0),
             start,
             end,
         });
+    }
+    // 5. A label of its own for each region of several bands and each
+    // patch that is a blend by itself.
+    let mut label_of = vec![usize::MAX; count];
+    for r in 0..count {
+        if group[r].n < 1.0 || !blended[r] || (members[r] < 2 && blend_of[r].is_none()) {
+            continue;
+        }
+        label_of[r] = palette.len();
+        palette.push(group[r].mean());
+        blends.push(blend_of[r]);
+    }
+    for i in 0..w * h {
+        if of[i] == u32::MAX {
+            continue;
+        }
+        let r = find(&mut root, of[i]) as usize;
+        if label_of[r] != usize::MAX {
+            labels[i] = label_of[r];
+        }
     }
     Some((palette, blends))
 }

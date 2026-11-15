@@ -798,50 +798,74 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
             }
         }
         let cleaned = labels.clone();
-        crate::trace_fine::settle_on_ends(&mut labels, &edges, |end, other| {
-            let c = raw_colors[end];
-            if black_white {
-                return (0.299 * c[0] as f32 + 0.587 * c[1] as f32 + 0.114 * c[2] as f32 >= 128.0)
-                    as usize;
-            }
-            let kept = cleaned[end];
-            if palette
-                .get(kept)
-                .is_some_and(|p| distance2(*p, c) <= END_TRUE * END_TRUE)
-            {
-                return kept;
-            }
-            // The core of a stroke too thin to reach its colour lies
-            // part of the way from the colour around it (the other end)
-            // to the stroke's: the nearest colour it lies on the way to,
-            // at least [`THIN_SHARE`] of it; a grey hairline on white,
-            // in a picture of black and white, is black (#2927).
-            let around = palette.get(cleaned[other]).copied();
-            let on_the_way = |p: [u8; 3]| {
-                let Some(a) = around else {
-                    return false;
-                };
-                let Some((d, slack)) = off_segment(c, a, p) else {
-                    return false;
-                };
-                let t = (0..3)
-                    .map(|k| (c[k] as f64 - a[k] as f64) * (p[k] as f64 - a[k] as f64))
-                    .sum::<f64>()
-                    / (distance2(a, p) as f64).max(1.0);
-                d <= 2.0 * slack && t >= THIN_SHARE
-            };
-            let nearest = |way: bool| {
-                palette
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, p)| {
-                        used[*i] && (!way || (*i != cleaned[other] && on_the_way(**p)))
+        crate::trace_fine::settle_on_ends(
+            &mut labels,
+            &edges,
+            &raw_colors,
+            &palette,
+            |end, other| {
+                let c = raw_colors[end];
+                if black_white {
+                    return (0.299 * c[0] as f32 + 0.587 * c[1] as f32 + 0.114 * c[2] as f32
+                        >= 128.0) as usize;
+                }
+                let kept = cleaned[end];
+                let true_end = palette
+                    .get(kept)
+                    .is_some_and(|p| distance2(*p, c) <= END_TRUE * END_TRUE);
+                // Part of a stroke or an area of its colour: two or more of
+                // the pixels around it are of it too. A pixel or two alone
+                // (the gap in a small letter, lighter than the letter and
+                // darker than the paper) may be a mix like any other.
+                let (x, y) = (end % w, end / w);
+                let alike = (y.saturating_sub(1)..=(y + 1).min(h - 1))
+                    .flat_map(|v| {
+                        (x.saturating_sub(1)..=(x + 1).min(w - 1)).map(move |u| v * w + u)
                     })
-                    .min_by_key(|(_, p)| distance2(**p, c))
-                    .map(|(i, _)| i)
-            };
-            nearest(true).or_else(|| nearest(false)).unwrap_or(kept)
-        });
+                    .filter(|j| *j != end && distance2(raw_colors[*j], c) <= END_ALIKE * END_ALIKE)
+                    .count();
+                if true_end && alike >= 2 {
+                    return kept;
+                }
+                // The core of a stroke too thin to reach its colour lies
+                // part of the way from the colour around it (the other end)
+                // to the stroke's: the nearest colour it lies on the way to,
+                // at least [`THIN_SHARE`] of it; a grey hairline on white,
+                // in a picture of black and white, is black (#2927).
+                let around = palette.get(cleaned[other]).copied();
+                let on_the_way = |p: [u8; 3]| {
+                    let Some(a) = around else {
+                        return false;
+                    };
+                    let Some((d, slack)) = off_segment(c, a, p) else {
+                        return false;
+                    };
+                    let t = (0..3)
+                        .map(|k| (c[k] as f64 - a[k] as f64) * (p[k] as f64 - a[k] as f64))
+                        .sum::<f64>()
+                        / (distance2(a, p) as f64).max(1.0);
+                    d <= 2.0 * slack && t >= THIN_SHARE
+                };
+                let nearest = |way: bool| {
+                    palette
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, p)| {
+                            used[*i]
+                                && (!way
+                                    || (*i != cleaned[other]
+                                        && !(true_end && *i == kept)
+                                        && on_the_way(**p)))
+                        })
+                        .min_by_key(|(_, p)| distance2(**p, c))
+                        .map(|(i, _)| i)
+                };
+                nearest(true)
+                    .or_else(|| true_end.then_some(kept))
+                    .or_else(|| nearest(false))
+                    .unwrap_or(kept)
+            },
+        );
     }
     // Specks: patches of one colour smaller than the detail allows take
     // the colour around them, so stray dots and the fringes of soft edges
@@ -953,6 +977,13 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
     // that grid, and the curves are brought back to the picture's at the
     // end.
     let fine = crate::trace_fine::scale_for(w, h);
+    // How soft the picture is: a soft one is sharpened before its edges
+    // are placed, and its corners are taken to be rounded further.
+    let soft = if hard {
+        0.0
+    } else {
+        crate::trace_fine::soft_share(crate::trace_fine::softness(&labels, &edges, w, h))
+    };
     let mut labels = crate::trace_fine::finer_labels(
         &labels,
         &raw_colors,
@@ -962,6 +993,7 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
         w,
         h,
         fine,
+        soft,
         cancel,
     )?;
     let (w, h) = (w * fine, h * fine);
@@ -1033,7 +1065,7 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
         }
         stacking_order(&inside, &luma)
     };
-    let fit = crate::trace_fine::Fit::of(s, fine, hard);
+    let fit = crate::trace_fine::Fit::of(s, fine, hard, soft);
     let mut rank = vec![0usize; palette.len()];
     for (k, ci) in order.iter().enumerate() {
         rank[*ci] = k;
@@ -1108,6 +1140,9 @@ fn outline(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec
 /// How near (RGB distance) the colour of an edge's end must be to the
 /// colour of its label for the label to stand.
 const END_TRUE: u32 = 48;
+/// How near (RGB distance) a pixel beside an edge's end must be to it to
+/// be of the same stroke or area.
+const END_ALIKE: u32 = 24;
 
 /// Whether a colour along the picture's edge is paper: light and nearly
 /// grey, the surround a drawing is scanned or exported on.
@@ -1333,7 +1368,7 @@ fn rings_path(
         &labels,
         w,
         h,
-        &crate::trace_fine::Fit::of(s, 1, true),
+        &crate::trace_fine::Fit::of(s, 1, true, 0.0),
         cancel,
     )?;
     let path = fitted.rings(mask, (0, 0), w, h, cancel)?;
@@ -1720,8 +1755,8 @@ fn append_curve(path: &mut BezPath, curve: &BezPath, forwards: bool, closed: boo
 }
 
 /// A border's curve, from its start to its end (closed round a loop):
-/// fitted as a ring is ([`fit_ring`], [`fit_open`]), or simplified to
-/// straight lines along the pixel edges without smoothing.
+/// fitted with its corners kept ([`crate::trace_fine::fit`]), or
+/// simplified to straight lines along the pixel edges without smoothing.
 fn fit_border(b: &Border, fit: &crate::trace_fine::Fit) -> BezPath {
     let mut pts = b.corners();
     if b.closed {
@@ -2768,10 +2803,10 @@ fn denoise(img: &RgbaImage, cancel: Option<&Cancel>) -> Option<RgbaImage> {
     Some(out)
 }
 
-/// How many times noise is taken out: none at the highest detail (where
-/// specks stay too), once at high detail, twice below.
+/// How many times noise is taken out: none from [`NOISE_STAYS`] up,
+/// once at high detail, twice below.
 fn denoise_passes(detail: f64) -> usize {
-    if speck_area(detail) <= 1 {
+    if detail >= NOISE_STAYS {
         0
     } else if detail >= 75.0 {
         1
@@ -2780,12 +2815,24 @@ fn denoise_passes(detail: f64) -> usize {
     }
 }
 
-/// The smallest patch of one colour that is kept, in pixels: none
-/// below detail 100, a few pixels at 80, about 40 at 35.
+/// The smallest patch of one colour that is kept, in pixels: every
+/// patch at detail 100, two pixels just below it, a few at 80, about
+/// 40 at 35.
 fn speck_area(detail: f64) -> usize {
+    if detail >= ALL_DETAIL {
+        return 1;
+    }
     let k = (100.0 - detail.clamp(0.0, 100.0)) / 100.0 * 10.0;
-    (k * k).round().max(1.0) as usize
+    (k * k).round().max(2.0) as usize
 }
+
+/// From this detail up nothing is cleaned: every pixel of the picture
+/// is taken as art. Below it noise is taken out once at least and a
+/// patch of a single pixel goes, however high the detail.
+const ALL_DETAIL: f64 = 99.5;
+/// From this detail up noise is not taken out of the picture first:
+/// that would take the finest lines of the art with it.
+const NOISE_STAYS: f64 = 88.0;
 
 /// The smallest dot of the art kept however small the detail asks
 /// patches to be: a quarter of [`speck_area`], at least 2 pixels (4 at
@@ -2803,6 +2850,9 @@ const DOT_CONTRAST: u32 = 64;
 /// to be kept from `GLINT_AREA` pixels at any detail.
 const GLINT_CONTRAST: u32 = 160;
 const GLINT_AREA: usize = 4;
+/// How far (RGB distance) a patch of two pixels or more inside one
+/// colour must stand from it to be kept as a gap in it.
+const GAP_CONTRAST: u32 = 120;
 
 /// Give every 4-connected patch of one label smaller than `min_area`
 /// pixels the label of the neighbours outside it whose colour is
@@ -3038,7 +3088,13 @@ fn despeckle_pass(
                     .unwrap_or(0);
                 let big_enough = patch.len() >= keep_area
                     || (patch.len() >= GLINT_AREA && contrast >= GLINT_CONTRAST * GLINT_CONTRAST);
-                (big_enough && x1 > x0 && y1 > y0 && contrast >= DOT_CONTRAST * DOT_CONTRAST)
+                // The gap in a small letter (the bowls of a B seven
+                // pixels high): two pixels or more, one colour all
+                // round, far from it.
+                let gap = patch.len() >= 2
+                    && counts.len() == 1
+                    && contrast >= GAP_CONTRAST * GAP_CONTRAST;
+                (gap || big_enough && x1 > x0 && y1 > y0 && contrast >= DOT_CONTRAST * DOT_CONTRAST)
                     .then_some(())
             };
             if near.is_none() && side().is_none() && stands_out().is_some() {
@@ -6048,5 +6104,126 @@ mod tests {
             let again = optimize(&img, &found, None).expect("searched");
             assert_eq!(again.detail, found.detail, "from {detail}");
         }
+    }
+
+    /// Small print that the picture's blur has softened comes out with
+    /// straight sides and sharp corners: an H and an L seven pixels
+    /// high, strokes under two pixels wide, are straight lines only,
+    /// each level or upright, twelve and six corners.
+    #[test]
+    fn soft_small_capitals_have_straight_sides_and_sharp_corners() {
+        use tracedraw_core::geometry::PathEl;
+        let orange = [255u8, 136, 0];
+        let inside = |x: f64, y: f64, x0: f64, y0: f64, x1: f64, y1: f64| {
+            x >= x0 && x < x1 && y >= y0 && y < y1
+        };
+        let crisp = antialiased(48, |x, y| {
+            // H: two stems and a bar. L: a stem and a foot.
+            let h = inside(x, y, 10.2, 16.3, 11.9, 23.9)
+                || inside(x, y, 14.6, 16.3, 16.3, 23.9)
+                || inside(x, y, 10.2, 19.3, 16.3, 20.9);
+            let l = inside(x, y, 26.4, 16.3, 28.1, 23.9) || inside(x, y, 26.4, 22.2, 31.8, 23.9);
+            if h || l {
+                orange
+            } else {
+                WHITE
+            }
+        });
+        let soft = image::imageops::blur(&crisp, 0.7);
+        let t = trace(&soft, &Preset::Logo.settings());
+        let letters: Vec<&Traced> = t.iter().filter(|t| t.color.to_rgb8()[2] < 128).collect();
+        assert_eq!(letters.len(), 1, "one curve of the two letters");
+        let els = letters[0].path.elements();
+        let curves = els
+            .iter()
+            .filter(|e| matches!(e, PathEl::CurveTo(..)))
+            .count();
+        assert_eq!(curves, 0, "{els:?}");
+        let nodes = stats(&[letters[0].clone()]).nodes;
+        assert_eq!(nodes, 18, "{els:?}");
+        for seg in letters[0].path.segments() {
+            let (a, b) = (
+                tracedraw_core::geometry::ParamCurve::eval(&seg, 0.0),
+                tracedraw_core::geometry::ParamCurve::eval(&seg, 1.0),
+            );
+            assert!(
+                (a.x - b.x).abs() < 0.05 || (a.y - b.y).abs() < 0.05,
+                "{a:?} to {b:?} is neither level nor upright"
+            );
+        }
+    }
+
+    /// An edge between two colours equally bright is traced where it
+    /// runs inside its pixels too: purple beside a blue of the same
+    /// brightness, the edge three tenths into a column of pixels.
+    #[test]
+    fn an_edge_between_colours_equally_bright_is_found() {
+        let (purple, blue) = ([170u8, 70, 220], [60u8, 120, 255]);
+        let img = antialiased(60, |x, _| if x < 20.3 { purple } else { blue });
+        let mut s = Preset::Logo.settings();
+        s.remove = Remove::None;
+        let t = trace(&img, &s);
+        let left = t
+            .iter()
+            .find(|t| t.color.to_rgb8()[0] > 120)
+            .expect("the purple part");
+        let b = left.path.bounding_box();
+        assert!((b.x1 - 20.3).abs() < 0.15, "{b:?}");
+    }
+
+    /// A shape filled with a gradient, alone on its paper, is one region
+    /// with a blend, not bands of flat colours.
+    #[test]
+    fn a_single_shape_with_a_gradient_is_one_blend() {
+        let img = antialiased(120, |x, y| {
+            if (Point::new(x, y) - Point::new(60.0, 60.0)).hypot() < 40.0 {
+                let t = ((x - 20.0) / 80.0).clamp(0.0, 1.0);
+                [
+                    (255.0 - 100.0 * t) as u8,
+                    (120.0 + 60.0 * t) as u8,
+                    (180.0 + 70.0 * t) as u8,
+                ]
+            } else {
+                WHITE
+            }
+        });
+        let mut s = Preset::Logo.settings();
+        s.remove = Remove::None;
+        let t = trace(&img, &s);
+        assert_eq!(t.len(), 2, "the paper and the disc");
+        assert!(t.iter().any(|t| t.blend.is_some()), "the disc is a blend");
+    }
+
+    /// A high Smoothing takes the ripples out of a round shape without
+    /// drawing it in: a disc keeps its area.
+    #[test]
+    fn a_high_smoothing_keeps_the_size_of_a_round_shape() {
+        let img = antialiased(60, |x, y| {
+            if (Point::new(x, y) - Point::new(30.4, 29.7)).hypot() < 8.0 {
+                BLACK
+            } else {
+                WHITE
+            }
+        });
+        let mut s = Preset::Logo.settings();
+        s.smoothing = 100.0;
+        let t = trace(&img, &s);
+        assert_eq!(t.len(), 1);
+        let (area, disc) = (t[0].path.area().abs(), std::f64::consts::PI * 64.0);
+        assert!((area - disc).abs() < 0.02 * disc, "{area} for {disc}");
+    }
+
+    /// Below detail 100 a patch of a single pixel is a speck, however
+    /// high the detail; noise is not taken out of the picture first from
+    /// detail 88 up, where that would take fine lines too.
+    #[test]
+    fn single_pixels_are_specks_below_the_highest_detail() {
+        assert_eq!(speck_area(100.0), 1);
+        assert_eq!(speck_area(95.0), 2);
+        assert_eq!(speck_area(90.0), 2);
+        assert_eq!(speck_area(80.0), 4);
+        assert_eq!(denoise_passes(90.0), 0);
+        assert_eq!(denoise_passes(80.0), 1);
+        assert_eq!(denoise_passes(60.0), 2);
     }
 }
