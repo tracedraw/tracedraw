@@ -143,7 +143,10 @@ pane, the wireframe and the counts take the result when it comes in.
   soft shades go with it: from the border on through every pixel within
   56 of the background colour and 10 of its neighbour that lies on no
   edge (a vignette, a faint gradient), and the edge pixels a shade so
-  emptied leaves round the art. Specify: the colour of the swatch, or the colour
+  emptied leaves round the art. The edge pixels of a shade beside the
+  pixels of it that went go too when flat pixels of the shade stay
+  elsewhere (inside the letters): in a picture traced on its own pixels
+  they were a pale line round every letter. Specify: the colour of the swatch, or the colour
   under a click on the preview with the eyedropper (taken from the
   picture, so an anti-aliased or compressed colour still stands for the
   palette colour nearest it).
@@ -496,6 +499,65 @@ Corners are found on the polygon of each lightly smoothed border
   more), and a slanted side that turns on at its far
   end like an arc's (15 to 46 degrees, turn times length up to 1.3) is
   part of a bowl.
+- A bowl has no corner: four polygon points or more in a row turning
+  the same way by 15 to 60 degrees each, 150 degrees or more in all,
+  no more than 1.5 px apart, the longest side between them at most 1.4
+  times the middle one (the round bottom inside a small U).
+- A round ring has none either: eight polygon points or more, every
+  one turning the same way by at most 60 degrees, the longest side at
+  most 2.5 times the side a quarter of the way up from the shortest
+  (the inside of an O; a square with rounded corners has four long
+  sides and keeps its corners).
+- A ring no longer than 10 px round is smooth when only one corner was
+  found on it, and in a picture with soft edges whatever was found.
+- Between two level or upright sides the wider rounding (1.4 times) is
+  also allowed when one of them is a straight side of 4 px or more that
+  does not bend on, whatever the other does (the corner where the stem
+  of a B meets its top).
+
+## Enlarged pictures
+
+`Settings::pixel_scale` says how many pixels of the picture make one
+pixel of the art: 1 for a picture traced as it is, 4 for one enlarged
+four times before the trace. Above 1:
+
+- every area the trace measures in pixels is in pixels of the art: the
+  smallest patch kept, the smallest dot, the glint and the gap of a
+  letter are `pixel_scale` squared times as many pixels;
+- soft-edge bands (fringes) may be `pixel_scale` times as thick;
+- the picture is put on a grid twice as fine at most, where its size
+  allows (`scale_for`, 2 at most): its edges are sharp already, and
+  half a pixel places a straight edge without the one-pixel steps a
+  grid of its own pixels leaves in it;
+- the corner finder and the smoothing work in pixels of the art times
+  0.875 (an enlarging model rounds corners a little less than blur
+  does), and the curves may stray half as far as in a picture traced
+  as it is (its edges are placed more exactly);
+- the gap of a small letter (one colour all round, 120 or more from
+  its own) stays from half a pixel of the art: the enlarging draws the
+  gap of an A five pixels high smaller than it was;
+- the darker rim enlarging leaves along the edge of a colour with a
+  lighter one is that colour's: an edge pixel whose colour lies beyond
+  the colour it is the edge of, seen from the colour across the edge,
+  keeps it, where it would be a line of the nearest darker colour of
+  the picture;
+- the place two sides meet may lie 0.4 times as far from the rounded
+  corner as in a picture traced as it is (the tip of a small A is where
+  the enlarging drew it, not well above the letter);
+- the round end of a thin stroke is squared off only when its two
+  corners would lie within a quarter of the end's width of the border
+  (a square end rounded to half a circle leaves them a fifth away): a
+  round end whose corners would lie further is a bend (of an S) and
+  stays round;
+- the curves come out in pixels of the picture given; whoever enlarged
+  it scales them back.
+
+At any scale, the pale inside of a small letter that opens onto the
+paper is paper: a patch of at most 40 px of the art, most of its edge
+against a colour 120 or more from its own, that also touches a colour
+within 48 of its own takes that colour (the inside of a small G or C,
+left a shade darker than the paper by blur or by enlarging, was a
+region of its own closing the letter).
 - The cleaning of edges, fringes and specks runs at every detail, 100
   included.
 
@@ -698,6 +760,14 @@ width equal to the mean local thickness.
   `trace::tests::a_high_smoothing_keeps_the_size_of_a_round_shape`,
   `trace::tests::single_pixels_are_specks_below_the_highest_detail`,
   `trace_fine::tests::only_a_soft_picture_is_sharpened`.
+- `trace::tests::an_enlarged_picture_is_measured_in_pixels_of_the_art`,
+  `trace::tests::the_gap_of_a_letter_open_to_the_paper_is_paper`,
+  `trace_fine::tests::a_bowl_between_two_straight_sides_has_no_corner`,
+  `trace_fine::tests::a_round_ring_and_a_tiny_one_have_no_corner`,
+  `trace::tests::no_pale_line_is_left_round_a_letter_on_a_shaded_background`,
+  `trace::tests::the_gap_of_a_small_letter_in_an_enlarged_picture_stays`,
+  `trace::tests::the_dark_rim_of_an_enlarged_edge_is_no_line`,
+  `trace_fine::tests::the_bend_of_a_small_s_is_not_squared_off`.
 - `trace::tests::an_edge_is_traced_where_it_runs_inside_its_pixels`,
   `ops2::tests::a_trace_lies_exactly_over_its_bitmap` (#2926).
 - `trace::tests::edge_pixels_make_no_ring_of_a_look_alike_colour`

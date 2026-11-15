@@ -588,6 +588,13 @@ pub(crate) struct Fit {
     pub rounded: f64,
     /// The widest radius of a corner the picture's blur rounded.
     pub round_most: f64,
+    /// How far (fine pixels) the place two sides meet may lie from the
+    /// rounded corner.
+    pub reach: f64,
+    /// How far from the border the two corners of a stroke's square end
+    /// may lie, as a share of the end's width: infinite when any end
+    /// found is taken.
+    pub cap_near: f64,
 }
 
 /// The least smoothing of a picture drawn with hard edges
@@ -662,7 +669,20 @@ const SAME_LINE: f64 = 0.25;
 const ARC_TURN: f64 = 0.26;
 const ARC_MOST: f64 = 0.8;
 const ARC_PRODUCT: f64 = 1.3;
-/// How far the place two sides meet may lie from the rounded corner.
+/// The most a vertex of a bowl turns (radians), the longest side
+/// between two of them (pixels) and the least a bowl turns in all.
+const BOWL_TURN: f64 = 1.05;
+const BOWL_SIDE: f64 = 1.5;
+const BOWL_LEAST: f64 = 2.6;
+/// The fewest vertices of a round ring, and how many times the side a
+/// quarter of the way up from its shortest its longest may be.
+const ROUND_RING: usize = 8;
+const ROUND_RING_SIDES: f64 = 2.5;
+/// The longest ring (pixels round) that has no corner when only one
+/// was found on it, or in a picture with soft edges.
+const LONE_CORNER_RING: f64 = 10.0;
+/// How far (pixels) the place two sides meet may lie from the rounded
+/// corner.
 const CORNER_REACH: f64 = 1.6;
 /// A side this near level or upright (pixels its far end is off by, and
 /// radians) is taken for level or upright.
@@ -685,17 +705,19 @@ const PUSH_BACK: f64 = 1.06;
 const GROW_MOST: f64 = 1.25;
 
 impl Fit {
-    pub(crate) fn of(s: &Settings, k: usize, hard: bool, soft: f64) -> Fit {
+    pub(crate) fn of(s: &Settings, k: f64, hard: bool, soft: f64) -> Fit {
         let detail = s.detail.clamp(0.0, 100.0);
         let sigma = 0.3 + s.smoothing.clamp(0.0, 100.0) / 100.0 * 1.5;
         Fit {
-            k: k as f64,
+            k,
             sigma: if hard { sigma.max(HARD_SIGMA) } else { sigma },
             light: if hard { HARD_LIGHT } else { 0.45 },
             corner: (35.0 + s.corner_smoothness.clamp(0.0, 100.0) * 1.3).to_radians(),
             tolerance: 0.35 + ((100.0 - detail) / 100.0).powf(1.5) * 0.6,
             rounded: ROUNDED + soft.clamp(0.0, 1.0) * (ROUNDED_SOFT - ROUNDED),
             round_most: ROUND_MOST + soft.clamp(0.0, 1.0) * (ROUND_MOST_SOFT - ROUND_MOST),
+            reach: CORNER_REACH * k,
+            cap_near: f64::INFINITY,
         }
     }
 }
@@ -987,7 +1009,7 @@ fn corners_of(p: &[Point], closed: bool, f: &Fit) -> Vec<Corner> {
         (total / (n - 1) as f64).max(1e-6)
     };
     let margin = ((0.3 * f.k / mean_gap).round() as usize).max(1);
-    let reach = CORNER_REACH * f.k;
+    let reach = f.reach;
     // How many points of a side, from its end at a corner on, are the
     // rounding: until the border comes within a little of the side's
     // line, at least `room` and at most six tenths of the side. `from`
@@ -1126,6 +1148,21 @@ fn corners_of(p: &[Point], closed: bool, f: &Fit) -> Vec<Corner> {
         if (c1 - tip).hypot() > CAP_WIDE * f.k || (c2 - tip).hypot() > CAP_WIDE * f.k {
             continue;
         }
+        // The corners of a square end lie no further from the border
+        // than the rounding of such an end leaves them: further, the
+        // border turns round there (the bend of an S).
+        if f.cap_near.is_finite() {
+            let wide = (c2 - c1).hypot();
+            let span = (ib - ia).min(n / 4);
+            let off = |c: Point| {
+                (ia + n - span..=ib + n + span)
+                    .map(|j| (p[j % n] - c).hypot())
+                    .fold(f64::MAX, f64::min)
+            };
+            if off(c1).max(off(c2)) > f.cap_near * wide {
+                continue;
+            }
+        }
         for v in a..=b {
             used[slot(v)] = true;
         }
@@ -1141,6 +1178,63 @@ fn corners_of(p: &[Point], closed: bool, f: &Fit) -> Vec<Corner> {
             back: ib - ia,
             fwd: rounding(lb, ib, index(b + 1)),
         });
+    }
+    // A round ring: every vertex turns the same way no more than a
+    // bowl's do, eight of them at least, with no side much longer than
+    // the short ones (a square with rounded corners has four). It has no
+    // corner.
+    if closed && m >= ROUND_RING && used.iter().all(|u| !*u) {
+        let way = (0..m as isize).map(turn).sum::<f64>().signum();
+        let mut sides: Vec<f64> = (0..m as isize).map(side).collect();
+        sides.sort_by(|x, y| x.total_cmp(y));
+        if (0..m as isize).all(|v| (0.0..=BOWL_TURN).contains(&(turn(v) * way)))
+            && sides[m - 1] <= ROUND_RING_SIDES * sides[m / 4]
+        {
+            return out;
+        }
+    }
+    // A bowl: four vertices or more in a row turning the same way, each
+    // like an arc's ([`ARC_TURN`] to [`BOWL_TURN`]), half a turn in all
+    // nearly, with sides alike between them. No corner is in it.
+    {
+        let fits = |v: isize| {
+            (closed || (first..=last).contains(&v)) && !used[slot(v)] && {
+                let t = turn(v).abs();
+                (ARC_TURN..=BOWL_TURN).contains(&t)
+            }
+        };
+        let mut bowls: Vec<(isize, isize)> = Vec::new();
+        let mut v = first;
+        while v <= last {
+            if !fits(v) {
+                v += 1;
+                continue;
+            }
+            let mut e = v;
+            while e - v < m as isize - 1
+                && (closed || e < last)
+                && fits(e + 1)
+                && turn(e) * turn(e + 1) > 0.0
+                && side(e) <= BOWL_SIDE * f.k
+            {
+                e += 1;
+            }
+            let total: f64 = (v..=e).map(turn).sum();
+            let mut sides: Vec<f64> = (v..e).map(side).collect();
+            sides.sort_by(|x, y| x.total_cmp(y));
+            if e - v >= 3
+                && total.abs() >= BOWL_LEAST
+                && sides[sides.len() - 1] <= SPLIT_STANDS_OUT * sides[sides.len() / 2]
+            {
+                bowls.push((v, e));
+            }
+            v = e + 1;
+        }
+        for (v, e) in bowls {
+            for u in v..=e {
+                used[slot(u)] = true;
+            }
+        }
     }
     // 2. The other corners. The core of one is a run of vertices each
     // turning the same way by [`CORE_TURN`] or more, a short side apart.
@@ -1334,10 +1428,11 @@ fn corners_of(p: &[Point], closed: bool, f: &Fit) -> Vec<Corner> {
                 && (ARC_TURN..=ARC_MOST).contains(&far.abs())
                 && far.abs() * len <= ARC_PRODUCT * f.k
         };
+        let (bends_a, bends_b) = (bends(len_a, va), bends(len_b, vb + 1));
+        let stem = |len: f64, bent: bool| len >= STRAIGHT_SIDE * f.k && !bent;
         let most = if square
             && len_a.min(len_b) >= ROUND_LONG_SIDE * f.k
-            && !bends(len_a, va)
-            && !bends(len_b, vb + 1)
+            && ((!bends_a && !bends_b) || stem(len_a, bends_a) || stem(len_b, bends_b))
         {
             ROUND_LONG * f.round_most
         } else {
@@ -1382,6 +1477,15 @@ fn corners_of(p: &[Point], closed: bool, f: &Fit) -> Vec<Corner> {
     }
     out.sort_by_key(|c| c.at);
     out.dedup_by_key(|c| c.at);
+    // A small ring (the gap in a small letter) is smooth when the blur
+    // left only one of its corners, and in a picture with soft edges
+    // whatever was found: its corners cannot be told from the blur.
+    if closed
+        && mean_gap * n as f64 <= LONE_CORNER_RING * f.k
+        && (out.len() == 1 || f.light < HARD_LIGHT)
+    {
+        out.clear();
+    }
     out
 }
 
@@ -1585,5 +1689,130 @@ mod tests {
         );
         assert!(row[2][0] < 30.0 && row[5][0] > 240.0, "{row:?}");
         assert!(row[5][0] - row[2][0] > 240.0, "{row:?}");
+    }
+
+    fn soft_fit() -> Fit {
+        Fit::of(&crate::trace::Preset::Logo.settings(), 3.5, false, 1.0)
+    }
+
+    /// Points a pixel apart along the lines joining `at`, closed.
+    fn border(at: &[Point]) -> Vec<Point> {
+        let mut out = Vec::new();
+        for (i, a) in at.iter().enumerate() {
+            let b = at[(i + 1) % at.len()];
+            let steps = ((b - *a).hypot()).ceil().max(1.0) as usize;
+            for s in 0..steps {
+                out.push(*a + (b - *a) * (s as f64 / steps as f64));
+            }
+        }
+        out
+    }
+
+    /// The round bottom inside a small U (half a turn eleven pixels
+    /// wide between two straight sides, its polygon as an enlarged
+    /// picture gave it) has no corner; the two square corners at its
+    /// top stay.
+    #[test]
+    fn a_bowl_between_two_straight_sides_has_no_corner() {
+        let at = [
+            Point::new(7.9, 4.6),
+            Point::new(8.3, 20.2),
+            Point::new(10.0, 23.5),
+            Point::new(12.6, 24.9),
+            Point::new(16.6, 24.1),
+            Point::new(18.7, 21.2),
+            Point::new(19.4, 4.6),
+        ];
+        let fit = Fit::of(&crate::trace::Preset::Logo.settings(), 3.0, false, 0.575);
+        let found = corners_of(&border(&at), true, &fit);
+        let points: Vec<Point> = found.iter().map(|c| c.point).collect();
+        assert_eq!(points.len(), 2, "{points:?}");
+        assert!(points.iter().all(|p| (p.y - 4.6).abs() < 0.5), "{points:?}");
+    }
+
+    /// The bends of a small S (its polygon as an enlarged picture gave
+    /// it) are no square ends of a stroke: where every end found is
+    /// taken, the corners of one lie three pixels inside the letter; with
+    /// the corners of an end held near the border, none strays from it.
+    #[test]
+    fn the_bend_of_a_small_s_is_not_squared_off() {
+        let at = [
+            Point::new(19.8, 15.3),
+            Point::new(26.5, 15.0),
+            Point::new(30.5, 16.0),
+            Point::new(33.0, 17.5),
+            Point::new(35.7, 20.8),
+            Point::new(35.6, 23.1),
+            Point::new(34.4, 23.8),
+            Point::new(31.8, 23.7),
+            Point::new(28.0, 21.5),
+            Point::new(24.5, 21.0),
+            Point::new(20.9, 21.4),
+            Point::new(19.4, 23.7),
+            Point::new(21.1, 26.4),
+            Point::new(32.7, 30.8),
+            Point::new(36.7, 34.8),
+            Point::new(36.9, 38.4),
+            Point::new(35.8, 41.3),
+            Point::new(32.5, 45.0),
+            Point::new(29.2, 46.7),
+            Point::new(20.0, 46.5),
+            Point::new(15.5, 44.0),
+            Point::new(12.3, 40.2),
+            Point::new(12.3, 37.8),
+            Point::new(13.7, 36.4),
+            Point::new(23.6, 40.9),
+            Point::new(27.2, 40.7),
+            Point::new(29.7, 38.2),
+            Point::new(29.4, 36.1),
+            Point::new(27.9, 34.6),
+            Point::new(16.7, 30.8),
+            Point::new(12.5, 26.0),
+            Point::new(12.3, 23.7),
+            Point::new(14.6, 19.1),
+            Point::new(17.1, 16.6),
+        ];
+        let ring = border(&at);
+        let strays = |fit: &Fit| {
+            corners_of(&ring, true, fit)
+                .iter()
+                .map(|c| {
+                    ring.iter()
+                        .map(|q| (*q - c.point).hypot())
+                        .fold(f64::MAX, f64::min)
+                })
+                .fold(0.0, f64::max)
+        };
+        let mut fit = Fit::of(&crate::trace::Preset::Logo.settings(), 3.5, false, 0.0);
+        assert!(strays(&fit) > 2.5, "{}", strays(&fit));
+        fit.cap_near = 0.25;
+        assert!(strays(&fit) < 1.8, "{}", strays(&fit));
+    }
+
+    /// A small oval ring (the inside of an O) has no corner, and neither
+    /// has a ring too small to tell its corners from the blur.
+    #[test]
+    fn a_round_ring_and_a_tiny_one_have_no_corner() {
+        let oval: Vec<Point> = (0..24)
+            .map(|i| {
+                let a = std::f64::consts::TAU * i as f64 / 24.0;
+                Point::new(20.0 + 8.0 * a.cos(), 20.0 + 10.0 * a.sin())
+            })
+            .collect();
+        assert!(corners_of(&border(&oval), true, &soft_fit()).is_empty());
+        let slot = [
+            Point::new(0.0, 0.0),
+            Point::new(6.0, 0.0),
+            Point::new(6.0, 10.0),
+            Point::new(0.0, 10.0),
+        ];
+        assert!(corners_of(&border(&slot), true, &soft_fit()).is_empty());
+        let window = [
+            Point::new(0.0, 0.0),
+            Point::new(30.0, 0.0),
+            Point::new(30.0, 40.0),
+            Point::new(0.0, 40.0),
+        ];
+        assert_eq!(corners_of(&border(&window), true, &soft_fit()).len(), 4);
     }
 }
