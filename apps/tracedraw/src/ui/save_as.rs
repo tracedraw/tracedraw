@@ -1073,7 +1073,9 @@ fn listing(ui: &mut Ui, st: &mut SaveAsState) {
                                     .horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = 4.0;
                                         entry_icon(ui, e.is_dir);
-                                        ui.selectable_label(selected, e.name.as_str())
+                                        let shown = tracedraw_text::seen_order(&e.name)
+                                            .unwrap_or_else(|| e.name.clone());
+                                        ui.selectable_label(selected, shown)
                                     })
                                     .inner;
                                 if selected && st.scroll_to {
@@ -1250,20 +1252,75 @@ fn entry_icon(ui: &mut Ui, folder: bool) {
     }
 }
 
+/// A one-line field for a file name in any script (d#2122). The UI
+/// toolkit lays the letters out in the order they were typed, so a Hebrew
+/// or Arabic name would read with its words left to right; while the
+/// field is not being typed in, it shows the name as it reads (the words
+/// from right to left), and a name that begins with such a letter sits at
+/// the field's right edge.
+pub fn name_edit(ui: &mut Ui, text: &mut String, id: egui::Id, width: f32) -> egui::Response {
+    let typing = ui.memory(|m| m.has_focus(id));
+    let seen = if typing {
+        None
+    } else {
+        tracedraw_text::seen_order(text)
+    };
+    let rtl = begins_right_to_left(text);
+    let font = egui::FontSelection::default().resolve(ui.style());
+    let mut layouter = |ui: &Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
+        let shown = seen.clone().unwrap_or_else(|| buf.as_str().to_string());
+        let color = ui
+            .visuals()
+            .override_text_color
+            .unwrap_or_else(|| ui.visuals().widgets.inactive.text_color());
+        let mut job = egui::text::LayoutJob::simple_singleline(shown, font.clone(), color);
+        job.wrap.max_width = wrap;
+        ui.fonts_mut(|f| f.layout_job(job))
+    };
+    let mut edit = egui::TextEdit::singleline(text).id(id).desired_width(width);
+    if rtl {
+        edit = edit.horizontal_align(egui::Align::RIGHT);
+    }
+    if seen.is_some() {
+        edit = edit.layouter(&mut layouter);
+    }
+    ui.add(edit)
+}
+
+/// Whether the first letter of `text` is written right to left.
+fn begins_right_to_left(text: &str) -> bool {
+    text.chars()
+        .find(|c| c.is_alphabetic())
+        .is_some_and(|c| tracedraw_text::seen_order(&c.to_string()).is_some())
+}
+
 /// File name, type, version and the document's properties.
 fn fields(ui: &mut Ui, st: &mut SaveAsState) {
     grid("save_as_fields").show(ui, |ui| {
         row_label(ui, &tr("dialog.file_name"));
-        let name = ui.add(
-            egui::TextEdit::singleline(&mut st.name)
-                .id(egui::Id::new("save_as_name"))
-                .desired_width(WIDTH - 140.0),
-        );
+        let id = egui::Id::new("save_as_name");
+        let name = name_edit(ui, &mut st.name, id, WIDTH - 140.0);
         if name.changed() {
             st.replace = None;
             st.note = None;
         }
         ui.end_row();
+        // While a right-to-left name is typed, the field keeps the letters
+        // in typed order; the line under it shows how the name reads.
+        let seen = name
+            .has_focus()
+            .then(|| tracedraw_text::seen_order(&st.name))
+            .flatten();
+        if let Some(seen) = seen {
+            ui.label("");
+            ui.horizontal(|ui| {
+                ui.set_width(WIDTH - 140.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.weak(seen);
+                });
+            });
+            ui.end_row();
+        }
         row_label(ui, &tr("dialog.save_as_type"));
         let mut cdr = st.cdr;
         if combo(
@@ -1517,6 +1574,72 @@ mod tests {
             Dialog::SaveAs(st) => st,
             other => panic!("no Save Drawing dialog: {other:?}"),
         }
+    }
+
+    /// d#2122: a Hebrew file name shows its words from right to left, in
+    /// the name field and in the folder's list; the name saved is the one
+    /// typed, in its own order.
+    #[test]
+    fn hebrew_names_read_right_to_left_in_the_dialog() {
+        // "שלום עולם" and "קובץ ישן" (an old file in the folder).
+        let typed = "\u{5E9}\u{5DC}\u{5D5}\u{5DD} \u{5E2}\u{5D5}\u{5DC}\u{5DD}";
+        let reads = "\u{5DD}\u{5DC}\u{5D5}\u{5E2} \u{5DD}\u{5D5}\u{5DC}\u{5E9}";
+        let dir = temp_dir("save-as-hebrew");
+        let old = "\u{5E7}\u{5D5}\u{5D1}\u{5E5} \u{5D9}\u{5E9}\u{5DF}.tdraw";
+        std::fs::write(dir.join(old), b"x").expect("file");
+        let mut app = drawing();
+        app.save_as_dialog();
+        let st = state(&mut app);
+        st.open_dir(dir.clone());
+        st.name = typed.to_string();
+        let ctx = crate::theme::ui_context();
+        let painted = |app: &mut App, events: Vec<egui::Event>| {
+            fn walk(s: &egui::Shape, out: &mut Vec<String>) {
+                match s {
+                    egui::Shape::Text(t) => out.push(t.galley.text().to_string()),
+                    egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+                    _ => {}
+                }
+            }
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1400.0, 900.0))),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| crate::ui::dialogs::show(app, ui.ctx()));
+            out.textures_delta.clear();
+            let mut texts = Vec::new();
+            for c in &out.shapes {
+                walk(&c.shape, &mut texts);
+            }
+            texts
+        };
+        // Not typed in: the field shows the name as it reads.
+        ctx.memory_mut(|m| m.surrender_focus(egui::Id::new("save_as_name")));
+        painted(&mut app, Vec::new());
+        let texts = painted(&mut app, Vec::new());
+        assert!(texts.iter().any(|t| t == reads), "{texts:?}");
+        assert!(!texts.iter().any(|t| t == typed), "{texts:?}");
+        // The folder's Hebrew file reads right to left too.
+        let old_reads = tracedraw_text::seen_order(old).expect("Hebrew");
+        // The Latin extension on the left, the first Hebrew letter on the right.
+        assert_eq!(
+            old_reads,
+            "tdraw.\u{5DF}\u{5E9}\u{5D9} \u{5E5}\u{5D1}\u{5D5}\u{5E7}"
+        );
+        assert!(texts.iter().any(|t| *t == old_reads), "{texts:?}");
+        // Typed in: the letters stay in typed order in the field, and the
+        // line under it shows how the name reads.
+        ctx.memory_mut(|m| m.request_focus(egui::Id::new("save_as_name")));
+        painted(&mut app, Vec::new());
+        let texts = painted(&mut app, Vec::new());
+        assert!(texts.iter().any(|t| t == typed), "{texts:?}");
+        assert!(texts.iter().any(|t| t == reads), "{texts:?}");
+        // The name saved is the typed one.
+        let st = state(&mut app);
+        assert_eq!(st.file_name(), format!("{typed}.tdraw"));
+        assert!(begins_right_to_left(typed));
+        assert!(!begins_right_to_left("logo \u{5D0}"));
     }
 
     #[test]
