@@ -8429,6 +8429,7 @@ print.gap_across = "आड़ा" # mt
 print.gap_across_tip = "अगल-बगल के पृष्ठों के बीच की जगह।" # mt
 print.gap_down = "खड़ा" # mt
 print.gap_down_tip = "पृष्ठों की पंक्तियों के बीच की जगह।" # mt
+print.gaps_linked_tip = "अंतर जोड़ें: एक लिखने पर दूसरा भी वही मान ले लेता है।" # mt
 print.layout_preset = "प्रीसेट" # mt
 print.layout_preset_desc = "नाम से सहेजे लेआउट: एक चुनने पर इम्पोज़िशन, शीट, अंतर, हाशिये, ब्लीड और चिह्न तय होते हैं।" # mt
 print.layout_preset_none = "(कोई नहीं)" # mt

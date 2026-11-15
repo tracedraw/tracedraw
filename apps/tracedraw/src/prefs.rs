@@ -34,6 +34,8 @@ pub struct PrintPrefs {
     /// Space between the rows of pages, mm (#1795); preferences saved
     /// before have none and take `gutter`.
     pub gutter_y: Option<f64>,
+    /// The gaps across and down linked (#2162).
+    pub gaps_linked: bool,
     /// Layout presets saved in Print and Print Preview, by name (#1796).
     pub layout_presets: Vec<LayoutPreset>,
     /// Printing keeps the dialog's choices here for the next time.
@@ -87,6 +89,7 @@ impl Default for PrintPrefs {
             landscape: st.landscape,
             gutter: st.gutter,
             gutter_y: None,
+            gaps_linked: false,
             layout_presets: Vec::new(),
             remember_last: false,
             preflight: true,
@@ -155,6 +158,7 @@ impl PrintPrefs {
                 self.gutter_y.unwrap_or(self.gutter),
                 PrintState::default().gutter_y,
             ),
+            gaps_linked: self.gaps_linked,
             ..PrintState::default()
         }
     }
@@ -174,6 +178,7 @@ impl PrintPrefs {
         self.landscape = st.landscape;
         self.gutter = st.gutter;
         self.gutter_y = Some(st.gutter_y);
+        self.gaps_linked = st.gaps_linked;
         self.destination = st.destination;
         self.printer = st.printer.clone();
         self.orientation = st.orientation;

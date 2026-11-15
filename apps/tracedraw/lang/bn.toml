@@ -8429,6 +8429,7 @@ print.gap_across = "আড়াআড়ি" # mt
 print.gap_across_tip = "পাশাপাশি পৃষ্ঠার মাঝের ফাঁক।" # mt
 print.gap_down = "খাড়া" # mt
 print.gap_down_tip = "পৃষ্ঠার সারিগুলোর মাঝের ফাঁক।" # mt
+print.gaps_linked_tip = "ফাঁক দুটি যুক্ত করুন: একটি লিখলে অন্যটিও একই মান নেয়।" # mt
 print.layout_preset = "প্রিসেট" # mt
 print.layout_preset_desc = "নামে সংরক্ষিত বিন্যাস: একটি বাছলে ইমপোজিশন, শিট, ফাঁক, মার্জিন, ব্লিড ও চিহ্ন ঠিক হয়।" # mt
 print.layout_preset_none = "(কিছু না)" # mt

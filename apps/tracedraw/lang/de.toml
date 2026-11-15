@@ -8429,6 +8429,7 @@ print.gap_across = "quer" # mt
 print.gap_across_tip = "Der Abstand zwischen nebeneinander liegenden Seiten." # mt
 print.gap_down = "senkrecht" # mt
 print.gap_down_tip = "Der Abstand zwischen den Reihen der Seiten." # mt
+print.gaps_linked_tip = "Abstände verknüpfen: Ein eingegebener Wert gilt auch für den anderen." # mt
 print.layout_preset = "Vorgabe" # mt
 print.layout_preset_desc = "Unter einem Namen gespeicherte Layouts: eines zu wählen setzt Ausschießen, Bogen, Abstände, Ränder, Beschnitt und Marken." # mt
 print.layout_preset_none = "(keine)" # mt

@@ -8429,6 +8429,7 @@ print.gap_across = "horizontal" # mt
 print.gap_across_tip = "L'espace entre les pages côte à côte." # mt
 print.gap_down = "vertical" # mt
 print.gap_down_tip = "L'espace entre les rangées de pages." # mt
+print.gaps_linked_tip = "Lier les espaces : saisir l'un donne la même valeur à l'autre." # mt
 print.layout_preset = "Préréglage" # mt
 print.layout_preset_desc = "Mises en page enregistrées sous un nom : en choisir une règle l'imposition, la feuille, les espacements, les marges, le fond perdu et les traits." # mt
 print.layout_preset_none = "(aucun)" # mt

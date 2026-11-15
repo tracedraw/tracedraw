@@ -8429,6 +8429,7 @@ print.gap_across = "по горизонтали" # mt
 print.gap_across_tip = "Расстояние между страницами рядом." # mt
 print.gap_down = "по вертикали" # mt
 print.gap_down_tip = "Расстояние между рядами страниц." # mt
+print.gaps_linked_tip = "Связать промежутки: ввод одного задаёт такое же значение другому." # mt
 print.layout_preset = "Набор" # mt
 print.layout_preset_desc = "Раскладки, сохранённые под именем: выбор одной задаёт спуск полос, лист, промежутки, поля, вылеты и метки." # mt
 print.layout_preset_none = "(нет)" # mt

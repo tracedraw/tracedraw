@@ -8429,6 +8429,7 @@ print.gap_across = "横向" # mt
 print.gap_across_tip = "左右相邻页面之间的空间。" # mt
 print.gap_down = "纵向" # mt
 print.gap_down_tip = "页面各行之间的空间。" # mt
+print.gaps_linked_tip = "链接间距：输入其中一个，另一个设为相同的值。" # mt
 print.layout_preset = "预设" # mt
 print.layout_preset_desc = "以名称保存的版式：选择后会设置拼版、纸张、间距、边距、出血和标记。" # mt
 print.layout_preset_none = "（无）" # mt

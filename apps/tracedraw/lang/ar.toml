@@ -8429,6 +8429,7 @@ print.gap_across = "أفقيًا" # mt
 print.gap_across_tip = "المسافة بين الصفحات المتجاورة." # mt
 print.gap_down = "رأسيًا" # mt
 print.gap_down_tip = "المسافة بين صفوف الصفحات." # mt
+print.gaps_linked_tip = "ربط المسافتين: كتابة إحداهما تضبط الأخرى على القيمة نفسها." # mt
 print.layout_preset = "إعداد مسبق" # mt
 print.layout_preset_desc = "تخطيطات محفوظة باسم: اختيار أحدها يضبط الترتيب والورقة والفجوات والهوامش والنزف والعلامات." # mt
 print.layout_preset_none = "(لا شيء)" # mt

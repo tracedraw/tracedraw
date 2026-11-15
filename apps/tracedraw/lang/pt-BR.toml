@@ -8429,6 +8429,7 @@ print.gap_across = "horizontal" # mt
 print.gap_across_tip = "O espaço entre páginas lado a lado." # mt
 print.gap_down = "vertical" # mt
 print.gap_down_tip = "O espaço entre as fileiras de páginas." # mt
+print.gaps_linked_tip = "Vincular os espaços: digitar um define o outro com o mesmo valor." # mt
 print.layout_preset = "Predefinição" # mt
 print.layout_preset_desc = "Layouts salvos com um nome: escolher um define a imposição, a folha, os espaçamentos, as margens, a sangria e as marcas." # mt
 print.layout_preset_none = "(nenhuma)" # mt

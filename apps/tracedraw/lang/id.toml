@@ -8429,6 +8429,7 @@ print.gap_across = "mendatar" # mt
 print.gap_across_tip = "Ruang antara halaman yang bersebelahan." # mt
 print.gap_down = "menurun" # mt
 print.gap_down_tip = "Ruang antara baris halaman." # mt
+print.gaps_linked_tip = "Tautkan jarak: mengetik satu mengatur yang lain ke nilai yang sama." # mt
 print.layout_preset = "Preset" # mt
 print.layout_preset_desc = "Tata letak yang disimpan dengan nama: memilih satu mengatur imposisi, lembar, jarak, margin, bleed, dan tanda." # mt
 print.layout_preset_none = "(tidak ada)" # mt

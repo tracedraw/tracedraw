@@ -8429,6 +8429,7 @@ print.gap_across = "横" # mt
 print.gap_across_tip = "横に並ぶページの間隔。" # mt
 print.gap_down = "縦" # mt
 print.gap_down_tip = "ページの行同士の間隔。" # mt
+print.gaps_linked_tip = "間隔をリンク: 一方を入力するともう一方も同じ値になります。" # mt
 print.layout_preset = "プリセット" # mt
 print.layout_preset_desc = "名前を付けて保存したレイアウト。選ぶと面付け、用紙、間隔、余白、裁ち落とし、トンボが設定されます。" # mt
 print.layout_preset_none = "(なし)" # mt

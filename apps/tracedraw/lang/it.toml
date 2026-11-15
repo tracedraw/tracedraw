@@ -8429,6 +8429,7 @@ print.gap_across = "orizzontale" # mt
 print.gap_across_tip = "Lo spazio tra pagine affiancate." # mt
 print.gap_down = "verticale" # mt
 print.gap_down_tip = "Lo spazio tra le file di pagine." # mt
+print.gaps_linked_tip = "Collega gli spazi: scriverne uno imposta l'altro allo stesso valore." # mt
 print.layout_preset = "Predefinito" # mt
 print.layout_preset_desc = "Layout salvati con un nome: sceglierne uno imposta imposizione, foglio, spaziature, margini, abbondanza e segni." # mt
 print.layout_preset_none = "(nessuno)" # mt

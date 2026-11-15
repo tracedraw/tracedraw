@@ -565,6 +565,8 @@ pub struct PrintState {
     pub gutter: f64,
     /// Space between the rows of pages on the sheet, mm (#1795).
     pub gutter_y: f64,
+    /// The two gaps linked: typing one sets the other too (#2162).
+    pub gaps_linked: bool,
     /// The order of several pages per sheet: 0 across, 1 down the
     /// columns of each sheet, 2 down each column through every sheet
     /// (#1658), 3 cut and stack ([`crate::imposition::PageOrder`]).
@@ -923,6 +925,7 @@ impl Default for PrintState {
             landscape: false,
             gutter: 5.0,
             gutter_y: 5.0,
+            gaps_linked: false,
             page_order: 0,
             layout_preset: String::new(),
             layout_preset_typed: None,
@@ -5701,6 +5704,15 @@ fn tile_rows(app: &App, ui: &mut Ui, st: &mut PrintState) {
     ui.end_row();
 }
 
+/// Linked gaps (#2162): the one typed sets the other.
+fn link_gaps(st: &mut PrintState, across_changed: bool, down_changed: bool) {
+    if across_changed {
+        st.gutter_y = st.gutter;
+    } else if down_changed {
+        st.gutter = st.gutter_y;
+    }
+}
+
 pub(crate) fn print_layout_fields(app: &App, ui: &mut Ui, st: &mut PrintState) {
     ui.strong(tr("print.layout"));
     ui.vertical(|ui| {
@@ -5841,37 +5853,62 @@ pub(crate) fn print_layout_fields(app: &App, ui: &mut Ui, st: &mut PrintState) {
                         ui.end_row();
                     }
                     if matches!(st.layout_kind, 1 | 3) {
-                        // Across and down, each its own (#1795).
+                        // Across and down, each its own (#1795), or
+                        // linked by the lock so one value sets both
+                        // (#2162).
                         ui.label(tr("print.gutter"));
+                        let mut across_changed = false;
+                        let mut down_changed = false;
                         ui.horizontal(|ui| {
-                            ui.add(
-                                crate::ui::field::NumField::new(&mut st.gutter)
-                                    .range(0.0..=50.0)
-                                    .speed(0.5)
-                                    .suffix(" mm"),
-                            )
-                            .rich_tip(crate::ui::tips::pair(
-                                "print.gap_across",
-                                "print.gap_across_tip",
-                            ));
+                            across_changed = ui
+                                .add(
+                                    crate::ui::field::NumField::new(&mut st.gutter)
+                                        .range(0.0..=50.0)
+                                        .speed(0.5)
+                                        .suffix(" mm"),
+                                )
+                                .rich_tip(crate::ui::tips::pair(
+                                    "print.gap_across",
+                                    "print.gap_across_tip",
+                                ))
+                                .changed();
                             ui.label(tr("print.gap_across"));
+                            if crate::ui::propbar::pic_button(
+                                ui,
+                                crate::ui::propbar::Pic::Lock(st.gaps_linked),
+                                &tr("print.gaps_linked_tip"),
+                                true,
+                                st.gaps_linked,
+                            )
+                            .clicked()
+                            {
+                                st.gaps_linked = !st.gaps_linked;
+                                if st.gaps_linked {
+                                    st.gutter_y = st.gutter;
+                                }
+                            }
                         });
                         ui.end_row();
                         ui.label("");
                         ui.horizontal(|ui| {
-                            ui.add(
-                                crate::ui::field::NumField::new(&mut st.gutter_y)
-                                    .range(0.0..=50.0)
-                                    .speed(0.5)
-                                    .suffix(" mm"),
-                            )
-                            .rich_tip(crate::ui::tips::pair(
-                                "print.gap_down",
-                                "print.gap_down_tip",
-                            ));
+                            down_changed = ui
+                                .add(
+                                    crate::ui::field::NumField::new(&mut st.gutter_y)
+                                        .range(0.0..=50.0)
+                                        .speed(0.5)
+                                        .suffix(" mm"),
+                                )
+                                .rich_tip(crate::ui::tips::pair(
+                                    "print.gap_down",
+                                    "print.gap_down_tip",
+                                ))
+                                .changed();
                             ui.label(tr("print.gap_down"));
                         });
                         ui.end_row();
+                        if st.gaps_linked {
+                            link_gaps(st, across_changed, down_changed);
+                        }
                         ui.label("");
                         ui.checkbox(&mut st.back_side, tr("print.back_side"))
                             .rich_tip(tr("print.back_side_tip"));
@@ -9720,6 +9757,28 @@ mod layout_preset_tests {
             .find(|(t, _)| t == label)
             .map(|(_, r)| r.center())
             .unwrap_or_else(|| panic!("{label} shown"))
+    }
+
+    /// #2162: with the gaps linked, the one typed sets the other, and
+    /// the link is remembered for the next print.
+    #[test]
+    fn linked_gaps_follow_each_other() {
+        let mut st = PrintState {
+            layout_kind: 1,
+            gutter: 4.0,
+            gutter_y: 7.0,
+            gaps_linked: true,
+            ..Default::default()
+        };
+        link_gaps(&mut st, true, false);
+        assert_eq!((st.gutter, st.gutter_y), (4.0, 4.0));
+        st.gutter_y = 9.0;
+        link_gaps(&mut st, false, true);
+        assert_eq!((st.gutter, st.gutter_y), (9.0, 9.0));
+        let mut prefs = crate::prefs::PrintPrefs::default();
+        prefs.remember(&st);
+        assert!(prefs.gaps_linked);
+        assert!(prefs.state().gaps_linked);
     }
 
     /// #1796, #1795, #1658: the layout fields of several pages per sheet

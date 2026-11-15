@@ -92,6 +92,18 @@ const PLACEHOLDER_MM: f64 = 40.0;
 /// The longest side a placeholder picture is given, mm.
 const PLACEHOLDER_MAX_MM: f64 = 80.0;
 
+/// The text of the sample QR code Insert Field shows for column `col`:
+/// the first record's value, else the field's name.
+fn qr_sample(st: &crate::ui::dialogs::PrintMergeState, col: usize) -> String {
+    crate::print_merge::values(st)
+        .iter()
+        .filter_map(|r| r.get(col))
+        .find(|v| !v.trim().is_empty())
+        .cloned()
+        .or_else(|| st.headers.get(col).cloned())
+        .unwrap_or_else(|| "QR".to_string())
+}
+
 /// The field a placeholder stands for: a text holding only `<Field>`, or
 /// an object named `<Field>`.
 pub fn field_of(s: &Shape) -> Option<String> {
@@ -184,16 +196,36 @@ impl App {
             at.y + h / 2.0,
         );
         let id = self.engine.new_shape_id();
-        let mut frame = Shape::new(
-            id,
-            ShapeKind::Rect {
-                rect,
-                radius: 0.0,
-                corners: None,
-            },
-        );
+        // A QR code: a sample code (of the first record's value, else of
+        // the field's name) to paint, outline and Place Inside a frame;
+        // every record's code comes out in its colour, where it is
+        // (#2796).
+        let sample = (d.kind == 2)
+            .then(|| self.merge_state.as_ref().map(|st| qr_sample(st, d.column)))
+            .flatten()
+            .and_then(|t| crate::ui::dialogs::qr_path(&t, w.min(h)).ok());
+        let mut frame = match sample {
+            Some(path) => {
+                let path = tracedraw_core::geometry::Affine::translate((rect.x0, rect.y0)) * path;
+                let mut code = Shape::new(id, ShapeKind::Path { path, closed: true });
+                code.fill = Fill::Solid(tracedraw_core::Color::BLACK);
+                code.stroke = None;
+                code
+            }
+            None => {
+                let mut frame = Shape::new(
+                    id,
+                    ShapeKind::Rect {
+                        rect,
+                        radius: 0.0,
+                        corners: None,
+                    },
+                );
+                frame.fill = Fill::None;
+                frame
+            }
+        };
         frame.name = Some(field);
-        frame.fill = Fill::None;
         if d.kind == 1 {
             frame.data = placement_data(d.scale, d.anchor);
         }

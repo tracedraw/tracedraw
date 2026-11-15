@@ -8429,6 +8429,7 @@ print.gap_across = "horizontal" # mt
 print.gap_across_tip = "El espacio entre páginas una al lado de otra." # mt
 print.gap_down = "vertical" # mt
 print.gap_down_tip = "El espacio entre las filas de páginas." # mt
+print.gaps_linked_tip = "Vincular los espacios: al escribir uno, el otro toma el mismo valor." # mt
 print.layout_preset = "Ajuste" # mt
 print.layout_preset_desc = "Diseños guardados con un nombre: elegir uno fija la imposición, la hoja, las separaciones, los márgenes, el sangrado y las marcas." # mt
 print.layout_preset_none = "(ninguno)" # mt

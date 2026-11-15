@@ -8429,6 +8429,7 @@ print.gap_across = "橫向" # mt
 print.gap_across_tip = "左右相鄰頁面之間的空間。" # mt
 print.gap_down = "縱向" # mt
 print.gap_down_tip = "頁面各列之間的空間。" # mt
+print.gaps_linked_tip = "連結間距：輸入其中一個，另一個設為相同的值。" # mt
 print.layout_preset = "預設" # mt
 print.layout_preset_desc = "以名稱儲存的版面：選擇後會設定拼版、紙張、間距、邊界、出血和標記。" # mt
 print.layout_preset_none = "（無）" # mt

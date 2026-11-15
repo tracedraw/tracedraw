@@ -8429,6 +8429,7 @@ print.gap_across = "yatay" # mt
 print.gap_across_tip = "Yan yana sayfalar arasındaki boşluk." # mt
 print.gap_down = "dikey" # mt
 print.gap_down_tip = "Sayfa sıraları arasındaki boşluk." # mt
+print.gaps_linked_tip = "Boşlukları bağla: birini yazmak diğerini aynı değere ayarlar." # mt
 print.layout_preset = "Hazır ayar" # mt
 print.layout_preset_desc = "Adla kaydedilmiş düzenler: birini seçmek yerleşimi, kâğıdı, aralıkları, kenar boşluklarını, taşmayı ve işaretleri ayarlar." # mt
 print.layout_preset_none = "(yok)" # mt

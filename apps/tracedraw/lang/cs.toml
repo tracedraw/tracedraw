@@ -8429,6 +8429,7 @@ print.gap_across = "vodorovně" # mt
 print.gap_across_tip = "Mezera mezi stránkami vedle sebe." # mt
 print.gap_down = "svisle" # mt
 print.gap_down_tip = "Mezera mezi řadami stránek." # mt
+print.gaps_linked_tip = "Propojit mezery: zadání jedné nastaví druhou na stejnou hodnotu." # mt
 print.layout_preset = "Předvolba" # mt
 print.layout_preset_desc = "Rozvržení uložená pod názvem: výběr jednoho nastaví vyřazení, arch, mezery, okraje, spadávku a značky." # mt
 print.layout_preset_none = "(žádná)" # mt

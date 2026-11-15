@@ -8429,6 +8429,7 @@ print.gap_across = "w poziomie" # mt
 print.gap_across_tip = "Odstęp między stronami obok siebie." # mt
 print.gap_down = "w pionie" # mt
 print.gap_down_tip = "Odstęp między rzędami stron." # mt
+print.gaps_linked_tip = "Połącz odstępy: wpisanie jednego ustawia drugi na tę samą wartość." # mt
 print.layout_preset = "Ustawienie" # mt
 print.layout_preset_desc = "Układy zapisane pod nazwą: wybór jednego ustawia impozycję, arkusz, odstępy, marginesy, spad i znaczniki." # mt
 print.layout_preset_none = "(brak)" # mt

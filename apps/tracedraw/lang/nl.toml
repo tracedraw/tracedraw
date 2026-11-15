@@ -8429,6 +8429,7 @@ print.gap_across = "horizontaal" # mt
 print.gap_across_tip = "De ruimte tussen pagina's naast elkaar." # mt
 print.gap_down = "verticaal" # mt
 print.gap_down_tip = "De ruimte tussen de rijen pagina's." # mt
+print.gaps_linked_tip = "Afstanden koppelen: de ene invullen geeft de andere dezelfde waarde." # mt
 print.layout_preset = "Voorinstelling" # mt
 print.layout_preset_desc = "Onder een naam opgeslagen indelingen: er een kiezen stelt inslag, vel, tussenruimtes, marges, afloop en tekens in." # mt
 print.layout_preset_none = "(geen)" # mt
