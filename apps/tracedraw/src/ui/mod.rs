@@ -569,6 +569,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         .response
         .rect;
     tab_focus::set_menu_bar(&ctx, menu_bar);
+    crate::frame_mark("the menus");
     // The bars, where the layout puts them (see bars.rs). Outer panels
     // come first: the status bar (at the very bottom, or right under the
     // menu bar), then the toolbars, then the palettes and the toolbox.
@@ -702,6 +703,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     // the drawing, and the palette can lie between the two. Where the
     // columns are is kept for the frame (`dockers::DOCKER_COLUMNS`), for
     // the drop bands of a dragged docker or palette.
+    crate::frame_mark("the bars");
     app.reconcile_dockers();
     use crate::app::DockerPlace;
     let mut columns: Vec<(DockerPlace, egui::Rect)> = Vec::new();
@@ -725,6 +727,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         }
     }
     ctx.data_mut(|d| d.insert_temp(egui::Id::new(dockers::DOCKER_COLUMNS), columns));
+    crate::frame_mark("the dockers");
     bars_at(app, ui, COLUMNS, BarSlot::Inner);
 
     if show_palette && palette_beside && matches!(palette_dock, Dock::Left | Dock::Right) {
@@ -860,6 +863,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
                 windows::arranged(app, ui, full);
             }
         });
+    crate::frame_mark("the drawing");
 
     if app.has_document() && !app.show_welcome {
         symmetry_bar::show(app, &ctx);

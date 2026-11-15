@@ -430,6 +430,16 @@ and `--reset-settings` starts open windows of their own.
   debug off nothing is measured (#616,
   `frame_stats::tests::frames_are_summed_up_every_ten_seconds`,
   `startup_log::tests::the_log_names_the_computer`).
+- Slow frames are logged at every level (d#2729, d#2670: a delay after
+  every click on some Windows computers): a frame that took 250 ms or
+  more to build names its slowest steps (before the interface, the
+  menus, the bars, the dockers, the drawing, the dialogs, after the
+  interface), and a frame asked for at once that came 250 ms or more
+  after the one before says how long that one took to reach the screen
+  (drawn on the graphics card and shown) and which renderer draws the
+  window. At most one line every 5 s, counting the slow frames in
+  between ("slow frame: built in 1946 ms (the drawing 1900 ms, ...)";
+  `frame_stats::tests::slow_frames_name_their_slowest_steps`).
 - The Windows builds link the C runtime statically (`.cargo/config.toml`,
   `+crt-static`): they do not need `vcruntime140.dll` (#570).
 - The browser build draws with WebGL.

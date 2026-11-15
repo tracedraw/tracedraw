@@ -907,6 +907,16 @@ fn paint_probe(ctx: &egui::Context) -> [usize; 2] {
 #[cfg(not(target_arch = "wasm32"))]
 const RENDERER_CHECK: &str = "renderer-check";
 
+/// The end of a step of the frame, named for the slow-frame log
+/// (`frame_stats::mark`, d#2729).
+#[inline]
+pub(crate) fn frame_mark(name: &'static str) {
+    #[cfg(not(target_arch = "wasm32"))]
+    frame_stats::mark(name);
+    #[cfg(target_arch = "wasm32")]
+    let _ = name;
+}
+
 impl eframe::App for Shell {
     /// Characters the windowing layer lost (input methods on Windows,
     /// #1151) and what Android's on-screen keyboard typed (#1309) join the
@@ -1085,7 +1095,9 @@ impl eframe::App for Shell {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
+        frame_mark("before the interface");
         ui::root(app, ui);
+        frame_mark("the dialogs");
         // The frame around the safe area (#1917).
         ui::screen_margins::paint(ui.ctx(), &app.settings);
         // The emulator check's typing test (Android, soft_keyboard.rs).
