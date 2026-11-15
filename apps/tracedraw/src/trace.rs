@@ -2595,6 +2595,13 @@ fn despeckle_pass(
 ) -> bool {
     let mut changed = false;
     let mut seen = vec![false; w * h];
+    // The patch each pixel was last gathered into: pixels given the
+    // patch's label earlier in this pass (seen already, as part of the
+    // patch they were) are gathered into it too, so a patch handed to
+    // its neighbour joins it at once instead of leaving it cut off
+    // (#1619: the steps of a slanted hairline went one by one to the
+    // page around them).
+    let mut gathered = vec![usize::MAX; w * h];
     let mut patch: Vec<usize> = Vec::new();
     let mut stack: Vec<usize> = Vec::new();
     let mut counts: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
@@ -2610,6 +2617,7 @@ fn despeckle_pass(
         counts.clear();
         stack.push(start);
         seen[start] = true;
+        gathered[start] = start;
         while let Some(i) = stack.pop() {
             patch.push(i);
             let (x, y) = (i % w, i / w);
@@ -2628,8 +2636,9 @@ fn despeckle_pass(
             }
             for j in near.into_iter().filter(|j| *j != usize::MAX) {
                 if labels[j] == l {
-                    if !seen[j] {
+                    if gathered[j] != start {
                         seen[j] = true;
+                        gathered[j] = start;
                         stack.push(j);
                     }
                 } else if labels[j] != usize::MAX && patch.len() < min_area {
@@ -2698,7 +2707,19 @@ fn despeckle_pass(
             if near.is_none() && side().is_none() && stands_out().is_some() {
                 continue;
             }
-            if let Some((&to, _)) = near.or_else(side).or_else(most) {
+            // A piece of a thin line in a shade of its own (the dark core
+            // of a slanted hairline between lighter steps of it): the
+            // neighbour of a colour far nearer its own than the colour
+            // most of them have, so the line is not cut where the shade
+            // changes (#1619).
+            let nearest = || {
+                let (k, c) = counts
+                    .iter()
+                    .min_by_key(|(k, c)| (far(**k), usize::MAX - **c, **k))?;
+                let (m, _) = most()?;
+                (k != m && far(*k).saturating_mul(4) < far(*m)).then_some((k, c))
+            };
+            if let Some((&to, _)) = near.or_else(side).or_else(nearest).or_else(most) {
                 for &i in &patch {
                     labels[i] = to;
                 }
@@ -4069,6 +4090,98 @@ mod tests {
                 p[3] == 255 && p[0] > 150 && p[1] < 100,
                 "the red line at {x}: {p:?} of {:?}",
                 color_counts(&t)
+            );
+        }
+    }
+
+    /// #1619: a detailed logo with thin slanted spokes (dark blue, a
+    /// pixel and a half wide, anti-aliased) around a yellow disc, traced
+    /// with the Detailed Logo preset. The steps of a slanted hairline
+    /// take several shades, its dark core among them; the core's small
+    /// patches went to the white around them, so each spoke fell apart
+    /// into dashes and dots. Every spoke stays one unbroken line.
+    #[test]
+    fn thin_slanted_lines_of_a_detailed_logo_stay_lines() {
+        const N: u32 = 240;
+        const SS: u32 = 4;
+        let (cx, cy) = (120.0f64, 120.0f64);
+        let angles: Vec<f64> = (0..12)
+            .map(|i| i as f64 * std::f64::consts::PI / 6.0 + 0.2)
+            .collect();
+        let navy = [29.0, 41.0, 108.0];
+        let yellow = [241.0, 181.0, 22.0];
+        let img: RgbaImage = ImageBuffer::from_fn(N, N, |x, y| {
+            let mut acc = [0.0f64; 3];
+            for sy in 0..SS {
+                for sx in 0..SS {
+                    let px = x as f64 + (sx as f64 + 0.5) / SS as f64;
+                    let py = y as f64 + (sy as f64 + 0.5) / SS as f64;
+                    let (dx, dy) = (px - cx, py - cy);
+                    let r = dx.hypot(dy);
+                    let c = if r < 30.0 {
+                        yellow
+                    } else if r < 33.0 {
+                        navy
+                    } else if r < 105.0
+                        && angles.iter().any(|a| {
+                            (dx * a.sin() - dy * a.cos()).abs() < 0.75
+                                && dx * a.cos() + dy * a.sin() > 0.0
+                        })
+                    {
+                        navy
+                    } else {
+                        [255.0; 3]
+                    };
+                    for (a, c) in acc.iter_mut().zip(c) {
+                        *a += c;
+                    }
+                }
+            }
+            let n = (SS * SS) as f64;
+            Rgba([
+                (acc[0] / n) as u8,
+                (acc[1] / n) as u8,
+                (acc[2] / n) as u8,
+                255,
+            ])
+        });
+        let t = trace(&img, &Preset::DetailedLogo.settings());
+        let out = render_traced(&t, N, N, 1.0);
+        for a in &angles {
+            // Along the spoke from just outside the ring to near its end:
+            // the longest run of page showing through.
+            let (mut gap, mut worst) = (0, 0);
+            for step in 0..(100 - 40) * 2 {
+                let r = 40.0 + step as f64 / 2.0;
+                let (x, y) = (cx + r * a.cos(), cy + r * a.sin());
+                // The darkest pixel across the line here.
+                let dark = (-1i64..=1)
+                    .flat_map(|o| [(o, 0), (0, o)])
+                    .map(|(ox, oy)| {
+                        let p = out.get_pixel(
+                            (x.round() as i64 + ox) as u32,
+                            (y.round() as i64 + oy) as u32,
+                        );
+                        if p[3] < 128 {
+                            255
+                        } else {
+                            p[0].max(p[1]).max(p[2]) as i32
+                        }
+                    })
+                    .min()
+                    .unwrap_or(255);
+                if dark > 200 {
+                    gap += 1;
+                    worst = worst.max(gap);
+                } else {
+                    gap = 0;
+                }
+            }
+            assert!(
+                worst <= 2,
+                "the spoke at {a:.2} rad breaks for {} px: {:?}",
+                worst / 2,
+                stats(&t)
             );
         }
     }
