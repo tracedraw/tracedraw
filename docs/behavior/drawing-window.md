@@ -200,6 +200,9 @@ window shows.
   shown (one of an earlier state would bring back what was deleted), it
   is painted only where the render does not reach (never under it:
   see-through objects would show twice as dense) and not at all at rest.
+  The two meet edge to edge: no strip of bare paper shows between them
+  while the view zooms out (#2899,
+  `canvas::tests::the_backdrop_meets_the_shrunk_picture_without_a_gap`).
   It covers the page, not what lies off it, and is not drawn while a
   drag is previewed, in the Pixels view or while only some objects show.
   The browser build, which has no thread to draw it on, has none.

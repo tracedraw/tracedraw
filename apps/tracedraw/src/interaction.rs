@@ -1884,7 +1884,11 @@ impl App {
             && ((self.tool == Tool::Zoom && self.settings.zoom_right_click_out)
                 || (self.tool == Tool::Pan && self.settings.pan_right_click_out))
         {
-            self.view.zoom_at(screen, 0.5);
+            if self.tool == Tool::Zoom {
+                self.zoom_tool_click(screen, 0.5);
+            } else {
+                self.view.zoom_at(screen, 0.5);
+            }
             self.end_zoom_one_shot();
             return;
         }
@@ -3051,10 +3055,23 @@ impl App {
             }
         }
         if response.clicked_by(PointerButton::Primary) {
-            self.view
-                .zoom_at(screen, if mods.shift { 0.5 } else { 2.0 });
+            self.zoom_tool_click(screen, if mods.shift { 0.5 } else { 2.0 });
             self.end_zoom_one_shot();
         }
+    }
+
+    /// A click of the Zoom tool: the zoom changes by `factor` and the
+    /// point clicked comes to the middle of the window, so a click near
+    /// the page's edge brings that edge into view with room round it,
+    /// as the reference program does; before, the point stayed under
+    /// the pointer and the page's top edge, at the window's edge after
+    /// a zoom to fit, could not be zoomed into (#2898).
+    pub(crate) fn zoom_tool_click(&mut self, screen: egui::Pos2, factor: f32) {
+        let p = self.view.to_page(screen);
+        self.view.zoom_at(screen, factor);
+        let c = self.canvas_rect.center();
+        let at = self.view.to_screen(p);
+        self.view.pan(c - at);
     }
 
     /// After a zoom with the Zoom tool picked by F2, the tool before it

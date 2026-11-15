@@ -831,8 +831,24 @@ pub(crate) fn backdrop_parts(rect: ERect, at: ERect, back_at: ERect) -> Vec<ERec
     if !(area.width() > 0.0 && area.height() > 0.0) {
         return Vec::new();
     }
-    // (A picture a hair short of the canvas's edge covers it.)
-    outside(area, &[at.expand(0.5)])
+    // The backdrop meets the picture edge to edge: a hole a half pixel
+    // wider than the picture left a thin line of bare paper around it
+    // while the view zoomed out (#2899). A picture a hair short of the
+    // canvas's edge still covers it.
+    let mut hole = at;
+    if hole.left() - area.left() < 0.5 {
+        hole.min.x = hole.min.x.min(area.left());
+    }
+    if hole.top() - area.top() < 0.5 {
+        hole.min.y = hole.min.y.min(area.top());
+    }
+    if area.right() - hole.right() < 0.5 {
+        hole.max.x = hole.max.x.max(area.right());
+    }
+    if area.bottom() - hole.bottom() < 0.5 {
+        hole.max.y = hole.max.y.max(area.bottom());
+    }
+    outside(area, &[hole])
 }
 
 /// The parts of `area` no rectangle of `holes` covers, as rectangles:
@@ -4178,6 +4194,26 @@ mod tests {
         m.grid.baseline_start = 0.0;
         app.run(tracedraw_core::Command::SetMetadata { metadata: m });
         assert!((app.baseline_ys()[0] - page.y1).abs() < 1e-9);
+    }
+
+    /// While the view zooms out the old picture shows smaller and the
+    /// backdrop fills round it, edge to edge: no strip of bare paper
+    /// between the two, not even half a pixel wide (#2899). At rest a
+    /// picture a hair short of the canvas needs no backdrop.
+    #[test]
+    fn the_backdrop_meets_the_shrunk_picture_without_a_gap() {
+        let canvas = ERect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(800.0, 600.0));
+        let back = canvas.expand(200.0);
+        let at = ERect::from_min_max(Pos2::new(200.3, 150.7), Pos2::new(600.2, 450.4));
+        let parts = backdrop_parts(canvas, at, back);
+        let covered: f32 = parts.iter().map(|r| r.area()).sum::<f32>() + at.area();
+        let whole = canvas.area();
+        assert!((covered - whole).abs() < 0.01, "{covered} of {whole}");
+        for r in &parts {
+            assert!(r.intersect(at).area() < 1e-3, "{r:?} over the picture");
+        }
+        let rest = ERect::from_min_max(Pos2::new(0.3, 0.2), Pos2::new(799.8, 599.6));
+        assert!(backdrop_parts(canvas, rest, back).is_empty());
     }
 }
 

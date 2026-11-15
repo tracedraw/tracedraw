@@ -9986,7 +9986,7 @@ impl App {
             OpenView::FitPage => {}
             OpenView::FitObjects => {
                 if !self.multipage {
-                    if let Some(b) = self.doc().content_bounds(self.page).ok().flatten() {
+                    if let Some(b) = self.drawn_bounds() {
                         self.view.fit(
                             b.inflate(b.width() * 0.05 + 1.0, b.height() * 0.05 + 1.0),
                             canvas,
@@ -10090,7 +10090,7 @@ impl App {
             self.fit_pending = true;
             return;
         }
-        let Some(b) = self.doc().content_bounds(self.page).ok().flatten() else {
+        let Some(b) = self.drawn_bounds() else {
             self.fit_pending = true;
             return;
         };
@@ -10098,6 +10098,28 @@ impl App {
             b.inflate(b.width() * 0.05 + 1.0, b.height() * 0.05 + 1.0),
             self.canvas_rect,
         );
+    }
+
+    /// The bounds of what the current page draws: its objects with their
+    /// shadows, contours, extrusions and other live effects, so Zoom to
+    /// Fit leaves a margin round a shadow too, not only round the
+    /// objects' own outlines (#2898).
+    pub fn drawn_bounds(&self) -> Option<Rect> {
+        let page = self.doc().page(self.page).ok()?;
+        page.layers
+            .iter()
+            .flat_map(|l| &l.shapes)
+            .map(|s| {
+                let b = self.visual_bounds(s);
+                match s.shadow.filter(|sh| sh.opacity > 0.0) {
+                    Some(sh) => b.union(sh.bounds(s.shadow_box())),
+                    None => b,
+                }
+            })
+            .filter(|b| {
+                b.x0.is_finite() && b.y0.is_finite() && b.x1.is_finite() && b.y1.is_finite()
+            })
+            .reduce(|a, b| a.union(b))
     }
 
     pub fn zoom_to_selection(&mut self) {

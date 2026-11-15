@@ -28508,3 +28508,56 @@ fn the_backdrop_reaches_a_shadow_cast_past_the_page() {
     let area = app.backdrop_area(app.engine.revision());
     assert!(area.x1 >= r.x1 + 40.0, "{area:?}");
 }
+
+/// The Zoom tool's click brings the point clicked to the middle of the
+/// window, as the reference program does: after a zoom to fit a click at
+/// the page's top edge shows that edge with room above it (#2898).
+#[test]
+fn the_zoom_tool_brings_the_point_clicked_to_the_middle() {
+    let (ctx, mut app, _id) = setup();
+    app.set_tool(Tool::Zoom);
+    let page = app.page_rect();
+    let edge = Point::new(page.center().x - 40.0, page.y1);
+    let at = app.view.to_screen(edge);
+    let zoom = app.view.zoom;
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert!((app.view.zoom / zoom - 2.0).abs() < 1e-6);
+    let c = app.canvas_rect.center();
+    let now = app.view.to_screen(edge);
+    assert!((now - c).length() < 0.5, "{now:?} at {c:?}");
+    assert!(now.y - app.canvas_rect.top() > 100.0, "room above the edge");
+    let r = app.view.rect_to_screen(page);
+    assert!(r.top() > app.canvas_rect.top(), "the top edge in view");
+}
+
+/// Zoom to fit (F4) leaves a margin round a drop shadow too, not only
+/// round the objects' own outlines (#2898).
+#[test]
+fn zoom_to_fit_leaves_room_round_a_shadow() {
+    let (_ctx, mut app, id) = setup();
+    let own = app.doc().find_shape(id).expect("shape").bounds();
+    let shadow = tracedraw_core::Shadow {
+        offset: tracedraw_core::geometry::Vec2::new(30.0, -30.0),
+        ..Default::default()
+    };
+    app.run(tracedraw_core::Command::SetShadow {
+        shapes: vec![id],
+        shadow: Some(shadow),
+    });
+    let drawn = app.drawn_bounds().expect("drawn");
+    assert!(
+        drawn.y0 < own.y0 - 20.0 && drawn.x1 > own.x1 + 20.0,
+        "{drawn:?} {own:?}"
+    );
+    app.zoom_to_fit();
+    let r = app.view.rect_to_screen(drawn);
+    let canvas = app.canvas_rect;
+    for gap in [
+        r.left() - canvas.left(),
+        r.top() - canvas.top(),
+        canvas.right() - r.right(),
+        canvas.bottom() - r.bottom(),
+    ] {
+        assert!(gap >= 40.0, "{gap} px between the shadow and the edge");
+    }
+}

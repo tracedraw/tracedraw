@@ -2,12 +2,24 @@
 
 ## Zoom tool (Z, F2)
 
-- Click zooms in by 2 at the point; Shift+click or right-click zooms
-  out by 2 (with this tool the right button never opens the context
-  menu). Dragging a marquee zooms to fit that rectangle.
+- Click zooms in by 2 and brings the point clicked to the middle of
+  the window; Shift+click or right-click zooms out by 2 the same way
+  (with this tool the right button never opens the context menu). So a
+  click near the page's edge shows that edge with room round it, even
+  where the edge sat at the window's edge (#2898,
+  `pick_drag_tests::the_zoom_tool_brings_the_point_clicked_to_the_middle`).
+  Dragging a marquee zooms to fit that rectangle.
 - Zooming to a rectangle (marquee, selection, all objects, page) centres
   that rectangle in the window, wherever it lies on the page, with a
-  40 px margin: `zoom = min((W - 80) / w, (H - 80) / h)`.
+  40 px margin: `zoom = min((W - 80) / w, (H - 80) / h)`. Zoom to fit
+  (F4) takes what the page draws, objects with their shadows, contours
+  and other live effects (`App::drawn_bounds`), 5 % wider on each side,
+  so a shadow keeps a margin too (#2898).
+- The zoom box (Standard toolbar, Zoom tool bar) shows the zoom as it
+  is, also while it has the focus and the wheel zooms on; what it shows
+  is applied when it lets go only if something was typed into it.
+  Before, a level shown when it was clicked stayed and was put back when
+  the box lost the focus (#2898). Below 10 % it shows a decimal.
 - Double-clicking the tool button zooms to fit all objects (F4).
 - F2 picks the tool for one zoom: after a click, a right click or a
   marquee the tool before it comes back (#1039,
