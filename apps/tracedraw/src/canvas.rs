@@ -2964,6 +2964,12 @@ fn draw_nodes(app: &App, painter: &Painter) {
             }
         }
     }
+    // The control handle chosen by a click: a ring round its head, the
+    // one the arrow keys move (#2819).
+    if let Some(c) = app.chosen_handle_point() {
+        let r = prefs.size.handle_head() * 0.5 + 3.0;
+        painter.circle_stroke(view.to_screen(c), r, EStroke::new(1.5, main));
+    }
     // The spot clicked on a segment: a small round mark where Add Node
     // puts the node.
     if let Some((id, index, t)) = app.segment_spot {

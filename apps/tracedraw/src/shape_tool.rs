@@ -614,6 +614,7 @@ impl App {
                 // The page's picture is kept from the drag's first step
                 // (#1259); a handle drag has no `begun` of its own.
                 self.node_drag_shown = None;
+                self.choose_handle((shape, index, which));
                 self.drag = Drag::Handle {
                     shape,
                     index,
@@ -945,6 +946,11 @@ impl App {
         }
 
         if response.clicked_by(PointerButton::Primary) {
+            // A click anywhere but on a handle lets go of the chosen
+            // handle (below, a click on one chooses it again).
+            if self.ctrl_handle_at(p).is_none() {
+                self.chosen_handle = None;
+            }
             // Ctrl+click on a corner widget chooses its corner, or takes
             // it out, so one or several corners round together.
             if self.settings.nodes.corner_one_at_a_time && mods.command && !mods.shift {
@@ -994,7 +1000,10 @@ impl App {
             // handle can be dragged next; the segment under it is not
             // taken instead (#639). A node comes first, so a handle lying
             // on its node never swallows a click on the node.
-            if self.ctrl_handle_at(p).is_some() {
+            // The handle is chosen: the arrow keys then move it, not its
+            // node (#2819).
+            if let Some(key) = self.ctrl_handle_at(p) {
+                self.choose_handle(key);
                 return;
             }
             // A plain click on a corner widget chooses its corner alone:
@@ -1367,6 +1376,62 @@ impl App {
         if !cmds.is_empty() {
             let _ = self.engine.run_batch("Align Nodes", &cmds);
         }
+        true
+    }
+
+    /// Choose control handle `key`, with the nodes chosen now (#2819).
+    fn choose_handle(&mut self, key: (ShapeId, usize, Which)) {
+        self.chosen_handle = Some((key, self.node_selection.clone()));
+    }
+
+    /// Where control handle `key` is, on the page.
+    fn handle_point(&self, (id, index, which): (ShapeId, usize, Which)) -> Option<Point> {
+        let (path, _, t) = self.path_of(id)?;
+        let n = nodes::nodes(&path).into_iter().find(|n| n.index == index)?;
+        let c = match which {
+            Which::In => n.ctrl_in,
+            Which::Out => n.ctrl_out,
+        }?;
+        Some(t * c)
+    }
+
+    /// The control handle chosen by a click or a drag on it, while the
+    /// Shape tool is on and the nodes chosen then still are (#2819):
+    /// the arrow keys move it.
+    pub(crate) fn chosen_handle(&self) -> Option<(ShapeId, usize, Which)> {
+        let (key, chosen_nodes) = self.chosen_handle.as_ref()?;
+        (self.tool == crate::tools::Tool::Shape && *chosen_nodes == self.node_selection)
+            .then_some(*key)
+            .filter(|k| self.handle_point(*k).is_some())
+    }
+
+    /// Where the chosen control handle is, on the page (drawn ringed).
+    pub(crate) fn chosen_handle_point(&self) -> Option<Point> {
+        self.handle_point(self.chosen_handle()?)
+    }
+
+    /// Move the chosen control handle by `d` (page millimetres), one undo
+    /// step: the arrow keys with the Shape tool. A smooth or symmetrical
+    /// node's other handle follows, as in a drag. False when no handle
+    /// is chosen (the chosen nodes move instead).
+    pub fn nudge_chosen_handle(&mut self, d: Vec2) -> bool {
+        let Some(key) = self.chosen_handle() else {
+            return false;
+        };
+        let (id, index, which) = key;
+        let (Some((path, closed, t)), Some(at)) = (self.path_of(id), self.handle_point(key)) else {
+            return false;
+        };
+        let lp = t.inverse() * (at + d);
+        let ty = self.node_type_of(id, index);
+        let np = nodes::move_handle(&path, index, which, lp, ty);
+        let _ = self.engine.run_with_label(
+            &Command::SetShapeKind {
+                shape: id,
+                kind: ShapeKind::Path { path: np, closed },
+            },
+            "Nudge Handle",
+        );
         true
     }
 
