@@ -1777,6 +1777,7 @@ fn properties(app: &mut App, ui: &mut Ui) {
                     }
                 }
                 let has = stroke.is_some() || mix.presence;
+                group_heading(ui, "docker.group_opacity");
                 object_opacity_row(app, ui, "outline");
                 extra_strokes(app, ui, first, has);
                 // Overprint and the dialog's button on one row (#1200).
@@ -2420,6 +2421,37 @@ fn pick_section(app: &mut App, id: &str, shown: &[&str], beside: bool) {
     }
 }
 
+/// The title of a group of settings inside a Properties section (the
+/// outline's appearance, caps and corners, arrowheads, line style,
+/// position, opacity: #2573): bold text in the full text colour with a
+/// light rule to the right edge, a little space above, so a long
+/// section reads as a few short groups.
+fn group_heading(ui: &mut Ui, key: &str) {
+    ui.add_space(5.0);
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 16.0), egui::Sense::hover());
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    let galley = ui
+        .painter()
+        .layout_no_wrap(tr(key), crate::theme::bold(11.5), Tokens::text());
+    let y = rect.center().y;
+    let w = galley.size().x;
+    ui.painter().galley(
+        egui::pos2(rect.left(), y - galley.size().y / 2.0),
+        galley,
+        Tokens::text(),
+    );
+    let x0 = rect.left() + w + 6.0;
+    if x0 < rect.right() {
+        ui.painter().line_segment(
+            [egui::pos2(x0, y), egui::pos2(rect.right(), y)],
+            egui::Stroke::new(1.0, Tokens::border()),
+        );
+    }
+}
+
 /// A Properties section's header: a bar with the open or closed triangle
 /// and the title; a click opens or closes the section. True when open.
 fn section_header(app: &mut App, ui: &mut Ui, id: &str, title: &str) -> bool {
@@ -2432,6 +2464,23 @@ fn section_header(app: &mut App, ui: &mut Ui, id: &str, title: &str) -> bool {
         crate::theme::Tokens::control_fill()
     };
     ui.painter().rect_filled(rect, 2.0, fill);
+    if open {
+        // An open section is marked in the accent down its left edge,
+        // so the sections stand apart from the groups inside (#2573).
+        ui.painter().rect_filled(
+            egui::Rect::from_min_max(
+                rect.left_top(),
+                egui::pos2(rect.left() + 3.0, rect.bottom()),
+            ),
+            egui::CornerRadius {
+                nw: 2,
+                sw: 2,
+                ne: 0,
+                se: 0,
+            },
+            Tokens::ACCENT,
+        );
+    }
     let c = egui::pos2(rect.left() + 10.0, rect.center().y);
     let points = if open {
         vec![
@@ -3884,6 +3933,7 @@ fn outline_editor_mixed(
         // The outline's paint offers every kind a fill does, with the
         // same editors: none takes the outline away, uniform is its
         // colour, the others its own fill.
+        group_heading(ui, "docker.group_appearance");
         ui.label(tr("docker.outline_fill"));
         let mut paint = outline_paint_of(s);
         let paint_mix = if mix.has(StrokeField::Paint) {
@@ -3966,6 +4016,7 @@ fn outline_editor_mixed(
                 }
             });
         }
+        group_heading(ui, "docker.group_caps_corners");
         ui.horizontal_wrapped(|ui| {
             ui.label(tr("docker.caps"));
             let mixed = mix.has(StrokeField::Cap);
@@ -4010,6 +4061,7 @@ fn outline_editor_mixed(
                 }
             }
         });
+        group_heading(ui, "docker.group_arrowheads");
         ui.horizontal_wrapped(|ui| {
             for (field, id, key) in [
                 (StrokeField::StartArrow, "Start", "docker.arrow_start"),
@@ -4057,6 +4109,7 @@ fn outline_editor_mixed(
                 changed = true;
             }
         });
+        group_heading(ui, "docker.group_line_style");
         ui.horizontal_wrapped(|ui| {
             ui.label(tr("docker.dash"));
             let mixed = mix.has(StrokeField::Dash);
@@ -4130,6 +4183,7 @@ fn outline_editor_mixed(
                 crate::ui::line_style::request(ui);
             }
         });
+        group_heading(ui, "docker.group_position");
         ui.horizontal_wrapped(|ui| {
             ui.label(tr("docker.outline_position"));
             for (pos, n) in [
@@ -5415,7 +5469,7 @@ pub(crate) mod tests {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(1400.0, 900.0),
+                egui::vec2(1400.0, 1200.0),
             )),
             ..Default::default()
         };
@@ -5986,6 +6040,32 @@ pub(crate) mod tests {
                 !texts.iter().any(|(t, _)| t.ends_with('\u{2026}')),
                 "{what}: a label cut short in {texts:?}"
             );
+            // The outline's settings come in titled groups (#2573), each
+            // title above its first setting and below the group before.
+            let y_of = |key: &str| {
+                let want = tr(key);
+                texts
+                    .iter()
+                    .find(|(t, _)| *t == want)
+                    .or_else(|| texts.iter().find(|(t, _)| t.starts_with(&want)))
+                    .map(|(_, r)| r.center().y)
+                    .unwrap_or_else(|| panic!("{what}: {key} missing in {texts:?}"))
+            };
+            let mut last = f32::MIN;
+            for (title, first) in [
+                ("docker.group_appearance", "docker.hairline"),
+                ("docker.group_caps_corners", "docker.caps"),
+                ("docker.group_arrowheads", "arrowhead_editor.share"),
+                ("docker.group_line_style", "docker.dash"),
+                ("docker.group_position", "docker.outline_position"),
+            ] {
+                let (t, f) = (y_of(title), y_of(first));
+                assert!(
+                    last < t && t < f,
+                    "{what}: {title} at {t} not between {last} and {first} at {f}"
+                );
+                last = f;
+            }
             // A click on the header shows the rest.
             let at = texts
                 .iter()

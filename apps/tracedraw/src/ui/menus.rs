@@ -599,6 +599,7 @@ fn menu_icon(key: &str) -> Option<crate::ui::icons::Action> {
     Some(match key {
         "menu.file.new" => Action::New,
         "menu.file.open" => Action::Open,
+        "menu.file.new_from_template" => Action::Template,
         "menu.file.save" => Action::Save,
         "menu.file.print" => Action::Print,
         "menu.file.import" => Action::Import,

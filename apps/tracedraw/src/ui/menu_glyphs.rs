@@ -28,7 +28,6 @@ pub enum Glyph {
     Exit,
     Mail,
     Acquire,
-    FromTemplate,
     // Edit
     Delete,
     Duplicate,
@@ -172,7 +171,6 @@ pub fn for_key(key: &str) -> Option<Glyph> {
         "menu.file.document_properties" => DocProperties,
         "menu.file.exit" => Exit,
         "menu.file.send_to_mail" => Mail,
-        "menu.file.new_from_template" => FromTemplate,
         "menu.file.acquire_image" => Acquire,
         "menu.edit.delete" => Delete,
         "menu.edit.duplicate" => Duplicate,
@@ -571,13 +569,6 @@ pub fn draw(painter: &Painter, r: Rect, g: Glyph, color: Color32) {
             line((3.0, 9.5), (13.0, 9.5), Stroke::new(1.4 * k, blue));
             page(4.0, 1.5, 12.0, 7.0);
         }
-        FromTemplate => {
-            page(2.0, 1.5, 12.0, 14.5);
-            for (y, w) in [(5.0, 6.0), (7.5, 4.0), (10.0, 6.0)] {
-                fillr(4.0, y - 0.6, 4.0 + w, y + 0.6, blue);
-            }
-            plus(12.5, 12.5, 2.5);
-        }
         Delete => cross(8.0, 8.0, 5.5),
         Duplicate => {
             rect(1.5, 1.5, 9.5, 9.5, paper, s);
@@ -692,17 +683,11 @@ pub fn draw(painter: &Painter, r: Rect, g: Glyph, color: Color32) {
             gear(11.5, 11.5, 4.0);
         }
         PageBackground => {
-            // The page on a backdrop in the accent: a tinted square with
-            // the accent frame, the page over it.
-            rect(
-                1.5,
-                1.5,
-                14.5,
-                14.5,
-                accent(blue.gamma_multiply(0.22)),
-                Stroke::new(1.0 * k, blue),
-            );
-            page(4.0, 3.5, 12.0, 13.0);
+            // The page in the same line as the other page pictures, with
+            // the background in the accent behind it (#1682): it was a
+            // tinted square framed in the accent, unlike the rest.
+            fillr(5.0, 4.0, 14.5, 15.0, blue);
+            page(1.5, 1.0, 11.0, 12.5);
         }
         PageSize => {
             page(3.0, 3.5, 12.5, 15.0);
