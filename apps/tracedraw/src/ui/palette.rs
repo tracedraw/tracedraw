@@ -1148,7 +1148,7 @@ fn swatch(
             && !hold_open
             && !app.transforming()
         {
-            app.apply_outline_color(entry.map(|(_, c)| *c));
+            right_click_outline(app, ui, entry);
         }
         egui::Popup::menu(&resp)
             .id(menu_id)
@@ -1157,10 +1157,27 @@ fn swatch(
             .style(crate::ui::menus::menu_popup_style)
             .show(|ui| crate::ui::menus::body(ui, |ui| swatch_menu(app, ui, which, color_index)));
     } else {
+        // With the menu on a right click, Ctrl or Alt held sets the
+        // outline instead, without the menu (#2132).
+        let keyed = ui.input(|i| i.modifiers.ctrl || i.modifiers.alt || i.modifiers.command);
+        if keyed && resp.secondary_clicked() && !app.transforming() {
+            right_click_outline(app, ui, entry);
+            return;
+        }
         egui::Popup::context_menu(&resp)
             .id(menu_id)
             .style(crate::ui::menus::menu_popup_style)
             .show(|ui| crate::ui::menus::body(ui, |ui| swatch_menu(app, ui, which, color_index)));
+    }
+}
+
+/// A right click on a swatch that sets the outline: Ctrl held mixes a
+/// tenth of the colour into the outline, as Ctrl+click mixes into the
+/// fill; otherwise the outline takes the colour (#2132).
+fn right_click_outline(app: &mut App, ui: &Ui, entry: Option<&(String, Color)>) {
+    match entry {
+        Some((_, c)) if ui.input(|i| i.modifiers.ctrl) => app.mix_into_outline(*c),
+        _ => app.apply_outline_color(entry.map(|(_, c)| *c)),
     }
 }
 
@@ -2283,6 +2300,105 @@ mod tests {
             fill: Fill::Solid(other),
         });
         assert_eq!(app.doc().palette.len(), 3);
+    }
+
+    /// A right click with Ctrl held on a palette colour mixes a tenth of
+    /// it into the outline, as Ctrl+click mixes into the fill; with the
+    /// menu set for a right click, Ctrl or Alt held sets the outline
+    /// without the menu (#2132).
+    #[test]
+    fn ctrl_or_alt_right_click_sets_the_outline_without_the_menu() {
+        use tracedraw_core::{geometry::Rect as R, ShapeKind, Stroke};
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: R::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape");
+        let white = Color::rgb8(255, 255, 255);
+        app.run(tracedraw_core::Command::SetStroke {
+            shapes: vec![id],
+            stroke: Some(Stroke::new(white, 0.5)),
+        });
+        app.select(vec![id]);
+        let ctx = crate::theme::ui_context();
+        let clock = std::cell::Cell::new(0.0);
+        let right_click = |app: &mut App, x: f32, modifiers: egui::Modifiers| {
+            clock.set(clock.get() + 1.0);
+            for (i, pressed) in [(0, false), (1, true), (2, false), (3, false)] {
+                let mut events = vec![
+                    egui::Event::ModifiersChanged(modifiers),
+                    egui::Event::PointerMoved(egui::pos2(x, 10.0)),
+                ];
+                if i == 1 || i == 2 {
+                    events.push(egui::Event::PointerButton {
+                        pos: egui::pos2(x, 10.0),
+                        button: egui::PointerButton::Secondary,
+                        pressed,
+                        modifiers,
+                    });
+                }
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(800.0, 100.0),
+                    )),
+                    events,
+                    time: Some({
+                        clock.set(clock.get() + 0.05);
+                        clock.get()
+                    }),
+                    ..Default::default()
+                };
+                let mut out = ctx.run_ui(input, |ui| palette_row(app, ui));
+                out.textures_delta.clear();
+            }
+        };
+        let pen = |app: &App| {
+            app.doc()
+                .find_shape(id)
+                .expect("shape")
+                .stroke
+                .as_ref()
+                .map(|s| s.color)
+        };
+        // A swatch whose right click sets the outline to a colour.
+        let (x, swatch) = (0..30)
+            .map(|k| 30.0 + k as f32 * 21.0)
+            .find_map(|x| {
+                right_click(&mut app, x, egui::Modifiers::NONE);
+                let now = pen(&app);
+                if now != Some(white) {
+                    app.undo();
+                }
+                now.filter(|c| *c != white).map(|c| (x, c))
+            })
+            .expect("a coloured swatch");
+        assert_eq!(pen(&app), Some(white));
+        // Ctrl: a tenth of the colour mixes into the outline.
+        right_click(&mut app, x, egui::Modifiers::CTRL);
+        let mixed = pen(&app).expect("an outline");
+        assert_eq!(mixed, mix(white, swatch, 0.1));
+        assert_ne!(mixed, swatch);
+        assert!(!egui::Popup::is_any_open(&ctx), "no menu");
+        app.undo();
+        // The menu on a right click: Alt sets the outline, Ctrl mixes,
+        // and neither opens the menu.
+        app.settings.palette.right_click_outline = false;
+        right_click(&mut app, x, egui::Modifiers::ALT);
+        assert_eq!(pen(&app), Some(swatch));
+        assert!(!egui::Popup::is_any_open(&ctx), "no menu with Alt");
+        app.undo();
+        right_click(&mut app, x, egui::Modifiers::CTRL);
+        assert_eq!(pen(&app), Some(mix(white, swatch, 0.1)));
+        assert!(!egui::Popup::is_any_open(&ctx), "no menu with Ctrl");
+        app.undo();
+        // Without keys the menu opens and the outline stays.
+        right_click(&mut app, x, egui::Modifiers::NONE);
+        assert_eq!(pen(&app), Some(white));
+        assert!(egui::Popup::is_any_open(&ctx), "the menu");
     }
 
     /// On the Welcome Screen the palette takes no clicks: a click on a

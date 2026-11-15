@@ -35,6 +35,18 @@ fn editable(s: &Shape) -> bool {
     matches!(&s.kind, ShapeKind::Text { on_path: None, .. })
 }
 
+/// Text fitted to a path: the Shape tool shows its horizontal spacing
+/// arrow only (#193).
+pub fn on_path(s: &Shape) -> bool {
+    matches!(
+        &s.kind,
+        ShapeKind::Text {
+            on_path: Some(_),
+            ..
+        }
+    )
+}
+
 /// The character nodes of a text object: (character index, page point) at
 /// each character's origin on its baseline, moved by its offsets.
 /// Newlines have none, nor has text fitted to a path.
@@ -424,7 +436,12 @@ impl App {
                 return Some((s.id, false));
             }
         }
-        None
+        // Text fitted to a path has the horizontal arrow only (#193).
+        self.selected_shapes()
+            .into_iter()
+            .filter(on_path)
+            .find(|s| self.spacing_arrow_spots(s).0.distance(at) <= 8.0)
+            .map(|s| (s.id, true))
     }
 
     /// Move the characters `chars` of the text as it was (`start`) by the
@@ -1055,6 +1072,46 @@ mod tests {
             para.leading_pct
         );
         assert_eq!(app.text_arrow_at(Point::new(-1000.0, -1000.0)), None);
+    }
+
+    /// Text fitted to a path (a stamp's line round its circle) shows the
+    /// Shape tool's horizontal spacing arrow, and dragging it opens up the
+    /// letters along the path; it has no vertical arrow (#193).
+    #[test]
+    fn text_on_a_path_has_the_horizontal_spacing_arrow() {
+        if !has_fonts() {
+            return;
+        }
+        let mut app = App::headless();
+        let mut path = tracedraw_core::BezPath::new();
+        path.move_to(Point::new(0.0, 0.0));
+        path.line_to(Point::new(200.0, 0.0));
+        let id = app
+            .new_shape(ShapeKind::Text {
+                spans: vec![TextSpan::new("STAMPS", "DejaVu Sans", 24.0)],
+                origin: Point::ZERO,
+                frame: None,
+                align: TextAlign::Left,
+                para: ParagraphStyle::default(),
+                on_path: Some(tracedraw_core::TextOnPath {
+                    path,
+                    ..Default::default()
+                }),
+            })
+            .expect("a text");
+        app.select(vec![id]);
+        app.tool = crate::tools::Tool::Shape;
+        let s = app.doc().find_shape(id).cloned().expect("text");
+        assert!(on_path(&s));
+        let (h, v) = app.spacing_arrow_spots(&s);
+        let page = |q: egui::Pos2| app.view.to_page(q);
+        assert_eq!(app.text_arrow_at(page(h)), Some((id, true)));
+        assert_eq!(app.text_arrow_at(page(v)), None);
+        app.drag_text_spacing(&s, true, false, Vec2::new(10.0, 0.0), false);
+        let ShapeKind::Text { para, .. } = &app.doc().find_shape(id).expect("text").kind else {
+            panic!();
+        };
+        assert!(para.char_spacing_pct > 0.0, "{}", para.char_spacing_pct);
     }
 
     #[test]

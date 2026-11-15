@@ -4608,6 +4608,34 @@ impl App {
         }
     }
 
+    /// Ctrl+right click on a palette colour: a tenth of `c` mixes into
+    /// the outline colour of each selected object that has an outline,
+    /// as Ctrl+click mixes into the fill (#2132). Each object keeps its
+    /// width, dash and the rest.
+    pub fn mix_into_outline(&mut self, c: Color) {
+        let cmds: Vec<Command> = self
+            .selected_shapes()
+            .iter()
+            .filter_map(|s| {
+                let old = s.stroke.as_ref()?;
+                Some(Command::PatchStroke {
+                    shapes: vec![s.id],
+                    stroke: tracedraw_core::Stroke {
+                        color: crate::ui::palette::mix(old.color, c, 0.1),
+                        ..tracedraw_core::Stroke::default()
+                    },
+                    fields: vec![tracedraw_core::patch::StrokeField::Paint],
+                })
+            })
+            .collect();
+        if cmds.is_empty() {
+            return;
+        }
+        if let Err(e) = self.engine.run_batch("Outline Color", &cmds) {
+            self.status = e.to_string();
+        }
+    }
+
     /// The colours that best stand for the selected picture: at most
     /// `n`, chosen by the median cut the paletted conversion uses
     /// ([`crate::bitmap_modes::build_palette`]), ordered dark to light.
