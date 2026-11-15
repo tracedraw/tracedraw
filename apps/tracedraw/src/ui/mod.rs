@@ -25,6 +25,7 @@ pub mod clip_bar;
 pub mod color_docker;
 pub mod color_management;
 pub mod color_picker;
+pub mod color_styles_docker;
 pub mod command_search;
 pub mod comments_docker;
 pub mod connector_bar;

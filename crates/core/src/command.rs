@@ -384,6 +384,12 @@ pub enum Command {
         shapes: Vec<ShapeId>,
         recolor: crate::recolor::Recolor,
     },
+    /// Change every use of the first colour of each pair in the drawing
+    /// to the second, all pairs at once (a swap needs no third colour):
+    /// objects follow a colour style that changes (#778).
+    ReplaceColors {
+        pairs: Vec<(crate::Color, crate::Color)>,
+    },
     /// Move `shapes` directly in front of (or behind) `reference` in its layer.
     OrderRelative {
         shapes: Vec<ShapeId>,
@@ -605,6 +611,7 @@ impl Command {
             Command::SetPictureInks { .. } => "Edit Object",
             Command::ConvertColors { .. } => "Convert Colors",
             Command::Recolor { .. } => "Recolor",
+            Command::ReplaceColors { .. } => "Color Styles",
             Command::ReplaceFontFamily { .. } => "Replace Font",
             Command::OrderRelative { in_front: true, .. } => "In Front Of",
             Command::OrderRelative { .. } => "Behind",
@@ -1284,6 +1291,9 @@ impl Command {
             }
             Command::ReplaceFontFamily { from, to } => {
                 doc.replace_font_family(from, to);
+            }
+            Command::ReplaceColors { pairs } => {
+                crate::color_convert::replace_colors(doc, pairs);
             }
             Command::OrderRelative {
                 shapes,
