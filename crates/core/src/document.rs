@@ -1961,9 +1961,28 @@ pub struct ParagraphStyle {
     pub right_indent: f64,
     pub columns: u32,
     pub gutter: f64,
+    /// Columns of different widths (Text > Columns, Equal column width
+    /// off, #2192): each column's width, then each gap after a column but
+    /// the last, in mm as typed. They share the frame's width in these
+    /// proportions, so a frame resized keeps them. Empty, or not one
+    /// width a column, = equal columns `gutter` apart.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub column_widths: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub column_gutters: Vec<f64>,
+    /// The text flows from the right-hand column to the left (horizontal
+    /// text; vertical text has [`Self::vertical_columns`]). Not in older
+    /// files.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub columns_right_to_left: bool,
     pub bullets: bool,
     pub bullet_char: String,
     pub bullet_indent: f64,
+    /// Numbers in place of the symbol, the bullet's font, size and
+    /// baseline shift, its distance from the frame and the hanging indent
+    /// (Text > Bullets, #1443). Not in older files.
+    #[serde(skip_serializing_if = "BulletStyle::is_plain")]
+    pub bullet: BulletStyle,
     /// Drop cap height in lines; 0 = none.
     pub drop_cap_lines: u32,
     /// Tab stops, in order from the frame's left edge; empty = a left
@@ -2270,9 +2289,13 @@ impl Default for ParagraphStyle {
             right_indent: 0.0,
             columns: 1,
             gutter: 5.0,
+            column_widths: Vec::new(),
+            column_gutters: Vec::new(),
+            columns_right_to_left: false,
             bullets: false,
             bullet_char: "\u{2022}".into(),
             bullet_indent: 5.0,
+            bullet: BulletStyle::default(),
             drop_cap_lines: 0,
             tabs: Vec::new(),
             hyphenate: false,
@@ -2299,6 +2322,219 @@ impl ParagraphStyle {
     pub fn columns_from_right(&self) -> bool {
         self.vertical && self.vertical_columns == VerticalColumns::RightToLeft
     }
+
+    /// Whether the columns have widths of their own (#2192).
+    pub fn uneven_columns(&self) -> bool {
+        let n = self.columns.max(1) as usize;
+        n > 1 && self.column_widths.len() == n
+    }
+
+    /// Each column of a frame `width` wide: (left edge from the frame's
+    /// left, width), in the order the text flows. Equal columns `gutter`
+    /// apart, or the widths and gaps of uneven columns, scaled to share
+    /// the frame's width. Right to left, the first column is at the
+    /// right (#2192).
+    pub fn column_boxes(&self, width: f64) -> Vec<(f64, f64)> {
+        let n = self.columns.max(1) as usize;
+        let mut boxes = Vec::with_capacity(n);
+        if self.uneven_columns() {
+            let w: Vec<f64> = self.column_widths.iter().map(|v| v.max(0.0)).collect();
+            let g: Vec<f64> = (0..n - 1)
+                .map(|i| {
+                    self.column_gutters
+                        .get(i)
+                        .copied()
+                        .unwrap_or(self.gutter)
+                        .max(0.0)
+                })
+                .collect();
+            let total: f64 = w.iter().sum::<f64>() + g.iter().sum::<f64>();
+            let k = if total > 1e-9 { width / total } else { 0.0 };
+            let mut x = 0.0;
+            for (i, wi) in w.iter().enumerate() {
+                boxes.push((x, (wi * k).max(1.0)));
+                x += wi * k + g.get(i).copied().unwrap_or(0.0) * k;
+            }
+        } else {
+            let gutter = self.gutter;
+            let cw = ((width - gutter * (n as f64 - 1.0)) / n as f64).max(1.0);
+            for i in 0..n {
+                boxes.push((i as f64 * (cw + gutter), cw));
+            }
+        }
+        if self.columns_right_to_left && !self.vertical {
+            for b in &mut boxes {
+                b.0 = width - b.0 - b.1;
+            }
+        }
+        boxes
+    }
+}
+
+/// How a paragraph's bullet is numbered (Text > Bullets, #1443).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum Numbering {
+    /// The bullet symbol ([`ParagraphStyle::bullet_char`]).
+    #[default]
+    Symbol,
+    /// 1, 2, 3
+    Arabic,
+    /// a, b, c
+    LowerAlpha,
+    /// A, B, C
+    UpperAlpha,
+    /// i, ii, iii
+    LowerRoman,
+    /// I, II, III
+    UpperRoman,
+}
+
+impl Numbering {
+    pub const ALL: [Numbering; 6] = [
+        Numbering::Symbol,
+        Numbering::Arabic,
+        Numbering::LowerAlpha,
+        Numbering::UpperAlpha,
+        Numbering::LowerRoman,
+        Numbering::UpperRoman,
+    ];
+
+    /// The number `n` (from 1) written this way; empty for the symbol.
+    pub fn format(self, n: u32) -> String {
+        let n = n.max(1);
+        let alpha = |upper: bool| {
+            // a..z, then aa, ab ... as spreadsheets count.
+            let mut v = n;
+            let mut out = Vec::new();
+            while v > 0 {
+                v -= 1;
+                let c = b'a' + (v % 26) as u8;
+                out.push(if upper { c.to_ascii_uppercase() } else { c } as char);
+                v /= 26;
+            }
+            out.iter().rev().collect::<String>()
+        };
+        let roman = |upper: bool| {
+            const R: [(u32, &str); 13] = [
+                (1000, "m"),
+                (900, "cm"),
+                (500, "d"),
+                (400, "cd"),
+                (100, "c"),
+                (90, "xc"),
+                (50, "l"),
+                (40, "xl"),
+                (10, "x"),
+                (9, "ix"),
+                (5, "v"),
+                (4, "iv"),
+                (1, "i"),
+            ];
+            let mut v = n.min(3999);
+            let mut out = String::new();
+            for (k, s) in R {
+                while v >= k {
+                    out.push_str(s);
+                    v -= k;
+                }
+            }
+            if upper {
+                out.to_uppercase()
+            } else {
+                out
+            }
+        };
+        match self {
+            Numbering::Symbol => String::new(),
+            Numbering::Arabic => n.to_string(),
+            Numbering::LowerAlpha => alpha(false),
+            Numbering::UpperAlpha => alpha(true),
+            Numbering::LowerRoman => roman(false),
+            Numbering::UpperRoman => roman(true),
+        }
+    }
+}
+
+/// A paragraph's bullet beyond its symbol and indent (Text > Bullets,
+/// #1443): numbers in its place, its own font, size and baseline shift,
+/// how far it sits from the frame and whether the lines after the first
+/// hang under the text or go back under the bullet.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BulletStyle {
+    pub numbering: Numbering,
+    /// Written before and after the number ("(" and ")", or "" and ".").
+    pub prefix: String,
+    pub suffix: String,
+    /// The first paragraph's number; the next numbered paragraphs count
+    /// on from it until a paragraph without bullets.
+    pub start: u32,
+    /// The bullet's font family; `None` = the paragraph's first letter's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
+    /// The bullet's size in percent of the first letter's.
+    pub size_pct: f64,
+    /// How far the bullet is raised (negative: lowered), mm.
+    pub baseline_shift: f64,
+    /// The bullet's distance from the frame's edge (past the left
+    /// indent), mm; the text starts `bullet_indent` past the bullet.
+    pub offset: f64,
+    /// Off (the default): the lines after the first hang under the text,
+    /// the bullet standing out on its own. On: they go back to the left
+    /// indent, under the bullet.
+    pub no_hanging: bool,
+}
+
+impl Default for BulletStyle {
+    fn default() -> Self {
+        BulletStyle {
+            numbering: Numbering::Symbol,
+            prefix: String::new(),
+            suffix: ".".into(),
+            start: 1,
+            font: None,
+            size_pct: 100.0,
+            baseline_shift: 0.0,
+            offset: 0.0,
+            no_hanging: false,
+        }
+    }
+}
+
+impl BulletStyle {
+    /// Nothing beyond the plain symbol bullet: not written to files.
+    pub fn is_plain(&self) -> bool {
+        *self == BulletStyle::default()
+    }
+
+    /// What the bullet of a paragraph numbered `n` shows: `symbol` or
+    /// the number with its prefix and suffix.
+    pub fn label(&self, symbol: &str, n: u32) -> String {
+        match self.numbering {
+            Numbering::Symbol => symbol.to_string(),
+            k => format!("{}{}{}", self.prefix, k.format(n), self.suffix),
+        }
+    }
+}
+
+/// The number of each paragraph's bullet, given whether each has bullets
+/// and how it is set: the first of a run of numbered paragraphs takes its
+/// start, the next ones count on; a paragraph without bullets, or with a
+/// symbol, ends the run (#1443).
+pub fn bullet_numbers<'a>(paras: impl IntoIterator<Item = (bool, &'a BulletStyle)>) -> Vec<u32> {
+    let mut out = Vec::new();
+    let mut next: Option<u32> = None;
+    for (on, b) in paras {
+        if !on || b.numbering == Numbering::Symbol {
+            next = None;
+            out.push(0);
+            continue;
+        }
+        let n = next.unwrap_or(b.start.max(1));
+        out.push(n);
+        next = Some(n + 1);
+    }
+    out
 }
 
 /// Table object (Table tool). Cell text is laid out as paragraph text
@@ -4820,9 +5056,13 @@ impl ParagraphStyle {
         to.tabs = self.tabs.clone();
         to.columns = self.columns;
         to.gutter = self.gutter;
+        to.column_widths = self.column_widths.clone();
+        to.column_gutters = self.column_gutters.clone();
+        to.columns_right_to_left = self.columns_right_to_left;
         to.bullets = self.bullets;
         to.bullet_char = self.bullet_char.clone();
         to.bullet_indent = self.bullet_indent;
+        to.bullet = self.bullet.clone();
         to.drop_cap_lines = self.drop_cap_lines;
     }
 }
@@ -6657,6 +6897,76 @@ mod index_keys {
 
 #[cfg(test)]
 mod tests {
+    /// Bullet numbers (#1443): written as numbers, letters or Roman
+    /// numerals; a run of numbered paragraphs counts on from its start
+    /// and a paragraph without bullets ends it.
+    #[test]
+    fn bullet_numbers_count_runs_of_paragraphs() {
+        use super::{bullet_numbers, BulletStyle, Numbering};
+        assert_eq!(Numbering::LowerAlpha.format(1), "a");
+        assert_eq!(Numbering::UpperAlpha.format(27), "AA");
+        assert_eq!(Numbering::LowerRoman.format(4), "iv");
+        assert_eq!(Numbering::UpperRoman.format(1994), "MCMXCIV");
+        assert_eq!(Numbering::Arabic.format(12), "12");
+        let num = BulletStyle {
+            numbering: Numbering::Arabic,
+            prefix: "(".into(),
+            suffix: ")".into(),
+            start: 3,
+            ..Default::default()
+        };
+        assert_eq!(num.label("\u{2022}", 5), "(5)");
+        let sym = BulletStyle::default();
+        assert!(sym.is_plain());
+        assert_eq!(sym.label("\u{2022}", 5), "\u{2022}");
+        let n = bullet_numbers([
+            (true, &num),
+            (true, &num),
+            (false, &num),
+            (true, &num),
+            (true, &sym),
+            (true, &num),
+        ]);
+        assert_eq!(n, vec![3, 4, 0, 3, 0, 3]);
+    }
+
+    /// Columns of their own widths share the frame in proportion and
+    /// turn round right to left (#2192); equal columns stay as they were.
+    #[test]
+    fn column_boxes_share_the_frame() {
+        use super::ParagraphStyle;
+        let equal = ParagraphStyle {
+            columns: 2,
+            gutter: 10.0,
+            ..Default::default()
+        };
+        assert_eq!(equal.column_boxes(110.0), vec![(0.0, 50.0), (60.0, 50.0)]);
+        let uneven = ParagraphStyle {
+            columns: 3,
+            column_widths: vec![20.0, 40.0, 20.0],
+            column_gutters: vec![10.0, 10.0],
+            ..Default::default()
+        };
+        assert!(uneven.uneven_columns());
+        // Typed for 100 mm, laid out in 200 mm: twice as wide.
+        let b = uneven.column_boxes(200.0);
+        assert_eq!(b, vec![(0.0, 40.0), (60.0, 80.0), (160.0, 40.0)]);
+        let rtl = ParagraphStyle {
+            columns_right_to_left: true,
+            ..uneven.clone()
+        };
+        assert_eq!(
+            rtl.column_boxes(100.0),
+            vec![(80.0, 20.0), (30.0, 40.0), (0.0, 20.0)]
+        );
+        // A width missing for a column: equal columns.
+        let short = ParagraphStyle {
+            column_widths: vec![20.0, 40.0],
+            ..uneven
+        };
+        assert!(!short.uneven_columns());
+    }
+
     /// An empty curve in a group takes no room in the group's box: the
     /// box of a dimension without arrowheads reached the origin (#996).
     #[test]

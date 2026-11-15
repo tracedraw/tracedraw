@@ -4434,8 +4434,15 @@ impl FontSystem {
         // line has (the column, less indents, drop caps and the objects the
         // text wraps around) and give every line its place.
         let columns = para.columns.max(1) as usize;
-        let col_width = frame
-            .map(|f| ((f.width - para.gutter * (columns as f64 - 1.0)) / columns as f64).max(1.0));
+        // Each column's left edge and width: equal ones, or widths of
+        // their own, in the order the text flows (#2192).
+        let col_boxes = frame.map(|f| para.column_boxes(f.width));
+        let col_w = |col: usize| -> f64 {
+            col_boxes
+                .as_ref()
+                .and_then(|b| b.get(col.min(columns - 1)))
+                .map_or(1.0, |b| b.1)
+        };
         let frame_h = frame.map(|f| f.height);
         let artistic = frame.is_none();
         // Vertical text does not wrap around objects.
@@ -4473,8 +4480,12 @@ impl FontSystem {
                 _ => (col, next),
             }
         };
-        let col_x_of =
-            |col: usize| col.min(columns - 1) as f64 * (col_width.unwrap_or(0.0) + para.gutter);
+        let col_x_of = |col: usize| -> f64 {
+            col_boxes
+                .as_ref()
+                .and_then(|b| b.get(col.min(columns - 1)))
+                .map_or(0.0, |b| b.0)
+        };
         let mut lines: Vec<Line> = Vec::new();
         let mut overflow = false;
         // The first line that does not fit the frame.
@@ -4510,11 +4521,18 @@ impl FontSystem {
                 .first()
                 .map(|g| metrics[g.span])
                 .unwrap_or_else(|| metrics[0]);
-            let bullet = if ps.bullets { ps.bullet_indent } else { 0.0 };
+            // The text starts past the bullet's distance from the frame
+            // and its indent; the lines after the first hang there too,
+            // or go back under the bullet (#1443).
+            let bullet = if ps.bullets {
+                ps.bullet.offset.max(0.0) + ps.bullet_indent
+            } else {
+                0.0
+            };
             let indent_first = ps.left_indent + ps.first_line_indent + bullet;
-            let indent_rest = ps.left_indent + bullet;
+            let indent_rest = ps.left_indent + if ps.bullet.no_hanging { 0.0 } else { bullet };
             let para_start = para_starts.get(pi).copied().unwrap_or(0);
-            let Some(w) = col_width else {
+            if col_boxes.is_none() {
                 // Artistic text: one line a paragraph.
                 let m = line_metrics(glyphs, metrics, m_para);
                 let advance = if pi == 0 {
@@ -4620,6 +4638,13 @@ impl FontSystem {
                     Some(c) if first => c.glyph_advance,
                     _ => 0.0,
                 };
+                // The width of the column the line goes in: the one it
+                // is expected to land in, for columns of their own widths.
+                let est_col = {
+                    let m_est = br.peek().map(|g| metrics[g.span]).unwrap_or(m_para);
+                    row_at(y, col, advance_of(&m_est, first, prev_para), &m_est).0
+                };
+                let w = col_w(est_col);
                 let base = (w - indent - right_indent).max(1.0);
                 let room = |seg: f64| (seg + back).max(1.0);
                 let mut row_lines: Vec<Line> = Vec::new();
@@ -4655,7 +4680,7 @@ impl FontSystem {
                     let segs = loop {
                         let col_x = col_x_of(c);
                         let lo = col_x + indent;
-                        let hi = col_x + w - right_indent;
+                        let hi = col_x + col_w(c) - right_indent;
                         if c >= columns || guard > 20_000 {
                             break vec![(lo + cap_w, hi.max(lo + cap_w + 1.0))];
                         }
@@ -4755,7 +4780,11 @@ impl FontSystem {
                             line.cap_x = Some(line.x0 - cap_w);
                         }
                         if ps.bullets {
-                            line.bullet_x = Some(line.x0 - cap_w - indent + ps.left_indent);
+                            line.bullet_x = Some(
+                                line.x0 - cap_w - indent
+                                    + ps.left_indent
+                                    + ps.bullet.offset.max(0.0),
+                            );
                         }
                     }
                     lines.push(line);
@@ -4783,6 +4812,11 @@ impl FontSystem {
         // room but are not drawn (a text drawn in parts, one per character
         // colour).
         let span_drawn = |span: usize| spans.get(span).is_none_or(|s| !s.layout_only);
+        // Each paragraph's bullet number (#1443).
+        let bullet_nums = tracedraw_core::bullet_numbers((0..paragraphs.len()).map(|pi| {
+            let (_, ps) = style_of(pi);
+            (ps.bullets, &ps.bullet)
+        }));
         let mut path = BezPath::new();
         let mut glyphs_out = GlyphLayout::default();
         let mut glyph_count = 0usize;
@@ -4919,7 +4953,23 @@ impl FontSystem {
             if let (Some(bx), false) = (line.bullet_x, artistic) {
                 let first_span = glyphs.first().map(|g| g.span).unwrap_or(0);
                 if let Some(span) = spans.get(first_span).filter(|_| span_drawn(first_span)) {
-                    let b = self.shape_run(span, 0, &ps.bullet_char, size_scale, 0, ps, &[]);
+                    // The symbol or the paragraph's number, in the
+                    // bullet's own font, size and shift (#1443).
+                    let label = ps.bullet.label(
+                        &ps.bullet_char,
+                        bullet_nums.get(line.para).copied().unwrap_or(1),
+                    );
+                    let mut bspan = span.clone();
+                    if let Some(f) = ps.bullet.font.as_ref().filter(|f| !f.is_empty()) {
+                        bspan.font_family = f.clone();
+                    }
+                    if ps.bullet.size_pct.is_finite() && ps.bullet.size_pct > 0.0 {
+                        bspan.size_pt *= (ps.bullet.size_pct / 100.0).clamp(0.01, 100.0);
+                    }
+                    if ps.bullet.baseline_shift.is_finite() {
+                        bspan.baseline_shift_pt += ps.bullet.baseline_shift / PT_MM;
+                    }
+                    let b = self.shape_run(&bspan, 0, &label, size_scale, 0, ps, &[]);
                     for g in &b {
                         let a = orient(Affine::translate((bx, y)), g, m.ascent);
                         place_glyph(collect, a, g, &mut line_glyphs);
@@ -6706,6 +6756,134 @@ mod tests {
         let exact_full = g_full.glyphs[0].transform.determinant();
         assert!((exact / exact_full - 0.5).abs() < 1e-9);
         assert!(outline.width() > 0.0);
+    }
+
+    /// Columns of their own widths (#2192): the lines of each column
+    /// start at its own left edge and keep to its width; right to left,
+    /// the text starts in the right-hand column.
+    #[test]
+    fn uneven_columns_take_their_own_widths_and_order() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        let text = "word ".repeat(400);
+        let lay = |para: &ParagraphStyle| {
+            f.layout(&TextRequest {
+                spans: &[span(&text)],
+                frame: Some(Size::new(100.0, 40.0)),
+                align: TextAlign::Left,
+                para,
+                on_path: None,
+            })
+        };
+        let uneven = ParagraphStyle {
+            columns: 2,
+            column_widths: vec![70.0, 20.0],
+            column_gutters: vec![10.0],
+            ..Default::default()
+        };
+        let l = lay(&uneven);
+        let starts: Vec<f64> = l.lines.iter().map(|b| b.edges[0]).collect();
+        let ends: Vec<f64> = l
+            .lines
+            .iter()
+            .map(|b| *b.edges.last().expect("edge"))
+            .collect();
+        let first_col: Vec<usize> = (0..starts.len()).filter(|&i| starts[i] < 1.0).collect();
+        let second_col: Vec<usize> = (0..starts.len()).filter(|&i| starts[i] > 79.0).collect();
+        assert!(
+            !first_col.is_empty() && !second_col.is_empty(),
+            "{starts:?}"
+        );
+        assert_eq!(
+            first_col.len() + second_col.len(),
+            starts.len(),
+            "{starts:?}"
+        );
+        assert!(
+            first_col.iter().all(|&i| ends[i] <= 70.0 + 1e-6),
+            "{ends:?}"
+        );
+        // The narrow column holds narrow lines.
+        assert!(second_col
+            .iter()
+            .all(|&i| ends[i] <= 100.0 + 1e-6 && ends[i] - starts[i] <= 20.0 + 1e-6));
+        // Right to left: the first line is in the right-hand column.
+        let rtl = lay(&ParagraphStyle {
+            columns: 2,
+            gutter: 10.0,
+            columns_right_to_left: true,
+            ..Default::default()
+        });
+        assert!(
+            (rtl.lines[0].edges[0] - 55.0).abs() < 1e-6,
+            "{:?}",
+            rtl.lines[0].edges[0]
+        );
+        let last = rtl.lines.last().expect("line");
+        assert!(last.edges[0] < 1.0, "{:?}", last.edges[0]);
+    }
+
+    /// Numbered bullets (#1443): each paragraph shows its number with the
+    /// suffix in place of the symbol, counting from the start set; with
+    /// the hanging indent off, the second line of a paragraph goes back
+    /// under the bullet.
+    #[test]
+    fn numbered_bullets_count_the_paragraphs() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        let lay = |text: &str, para: &ParagraphStyle| {
+            f.layout(&TextRequest {
+                spans: &[span(text)],
+                frame: Some(Size::new(60.0, 200.0)),
+                align: TextAlign::Left,
+                para,
+                on_path: None,
+            })
+        };
+        let symbols = ParagraphStyle {
+            bullets: true,
+            ..Default::default()
+        };
+        let mut numbers = symbols.clone();
+        numbers.bullet.numbering = tracedraw_core::Numbering::Arabic;
+        numbers.bullet.start = 9;
+        // a, b, c: one glyph bullet each, or "9.", "10." and "11.".
+        let drawn = |para: &ParagraphStyle| {
+            f.glyph_layout(&TextRequest {
+                spans: &[span("a\nb\nc")],
+                frame: Some(Size::new(60.0, 200.0)),
+                align: TextAlign::Left,
+                para,
+                on_path: None,
+            })
+            .glyphs
+            .len()
+        };
+        let plain = drawn(&symbols);
+        let counted = drawn(&numbers);
+        assert_eq!(plain, 6);
+        assert_eq!(counted, 3 + 2 + 3 + 3);
+        // The bullet's distance from the frame moves the text along.
+        let mut off = symbols.clone();
+        off.bullet.offset = 4.0;
+        let x = |l: &TextLayout| l.lines[0].edges[0];
+        assert!((x(&lay("a", &off)) - x(&lay("a", &symbols)) - 4.0).abs() < 1e-6);
+        // Hanging off: the second line starts at the left indent.
+        let long = "word ".repeat(40);
+        let hang = lay(&long, &symbols);
+        let mut flat = symbols.clone();
+        flat.bullet.no_hanging = true;
+        let back = lay(&long, &flat);
+        assert!((hang.lines[1].edges[0] - symbols.bullet_indent).abs() < 1e-6);
+        assert!(
+            back.lines[1].edges[0].abs() < 1e-6,
+            "{}",
+            back.lines[1].edges[0]
+        );
     }
 
     #[test]

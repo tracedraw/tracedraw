@@ -3339,6 +3339,9 @@ impl App {
         if let ShapeKind::Text { para: own, .. } = &mut kind {
             own.columns = para.columns;
             own.gutter = para.gutter;
+            own.column_widths = para.column_widths.clone();
+            own.column_gutters = para.column_gutters.clone();
+            own.columns_right_to_left = para.columns_right_to_left;
             own.fit_to_frame = para.fit_to_frame;
             own.baseline_grid_mm = para.baseline_grid_mm;
             own.vertical_align = para.vertical_align;

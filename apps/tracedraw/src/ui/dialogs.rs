@@ -7533,6 +7533,221 @@ pub(crate) fn next_tab_position(tabs: &[tracedraw_core::TabStop]) -> f64 {
     tabs.iter().map(|t| t.pos).fold(0.0, f64::max) + 10.0
 }
 
+/// Text > Columns: how many, the gutter, and with Equal column width off
+/// each column's width and the gap after it (#2192); Right to left flows
+/// the text from the right-hand column.
+fn columns_settings(ui: &mut Ui, p: &mut tracedraw_core::ParagraphStyle, u: Units) -> bool {
+    let mut changed = false;
+    crate::ui::tips::tip_over(ui, crate::ui::tips::keyed("dialog.columns"), |ui| {
+        ui.horizontal(|ui| {
+            ui.label(tr("dialog.columns"));
+            changed |= ui
+                .add(crate::ui::field::NumField::new(&mut p.columns).range(1..=8))
+                .changed();
+        })
+    });
+    let n = p.columns.max(1) as usize;
+    let mut equal = !p.uneven_columns();
+    if n > 1
+        && ui
+            .checkbox(&mut equal, tr("dialog.equal_columns"))
+            .rich_tip(crate::ui::tips::keyed("dialog.equal_columns"))
+            .changed()
+    {
+        changed = true;
+        if equal {
+            p.column_widths.clear();
+            p.column_gutters.clear();
+        } else {
+            // Start from the equal columns of a frame 100 mm wide.
+            let boxes = p.column_boxes(100.0);
+            p.column_widths = boxes.iter().map(|b| b.1).collect();
+            p.column_gutters = vec![p.gutter; n - 1];
+        }
+    }
+    if n > 1 && !equal {
+        // A column added or taken away keeps the others' widths.
+        if p.column_widths.len() != n {
+            let last = p.column_widths.last().copied().unwrap_or(30.0);
+            p.column_widths.resize(n, last);
+            changed = true;
+        }
+        p.column_gutters.resize(n - 1, p.gutter);
+        for i in 0..n {
+            ui.horizontal(|ui| {
+                ui.label(crate::i18n::trf(
+                    "dialog.column_n",
+                    &[("n", &(i + 1).to_string())],
+                ));
+                let tip = crate::ui::tips::keyed("dialog.column_width");
+                changed |= unit_value(
+                    ui,
+                    &tr("dialog.column_width"),
+                    &tip,
+                    &mut p.column_widths[i],
+                    u,
+                );
+                if i + 1 < n {
+                    let tip = crate::ui::tips::keyed("dialog.column_gap");
+                    changed |= unit_value(
+                        ui,
+                        &tr("dialog.column_gap"),
+                        &tip,
+                        &mut p.column_gutters[i],
+                        u,
+                    );
+                }
+            });
+        }
+        for v in p
+            .column_widths
+            .iter_mut()
+            .chain(p.column_gutters.iter_mut())
+        {
+            *v = v.max(0.0);
+        }
+    } else {
+        let tip = crate::ui::tips::keyed("dialog.gutter");
+        changed |= unit_value(ui, &tr("dialog.gutter"), &tip, &mut p.gutter, u);
+    }
+    if n > 1 && !p.vertical {
+        changed |= ui
+            .checkbox(&mut p.columns_right_to_left, tr("dialog.columns_rtl"))
+            .rich_tip(crate::ui::tips::keyed("dialog.columns_rtl"))
+            .changed();
+    }
+    changed
+}
+
+/// Text > Bullets beyond the symbol (#1443): numbers in its place with
+/// what goes before and after them and where they start, the bullet's
+/// font, size and baseline shift, its distance from the frame, the indent
+/// to the text and the hanging indent.
+fn bullet_settings(
+    app: &mut App,
+    ui: &mut Ui,
+    p: &mut tracedraw_core::ParagraphStyle,
+    u: Units,
+) -> bool {
+    use tracedraw_core::Numbering;
+    let mut changed = false;
+    let name = |k: Numbering| match k {
+        Numbering::Symbol => tr("dialog.numbering_symbol"),
+        k => (1..=3).map(|n| k.format(n)).collect::<Vec<_>>().join(", "),
+    };
+    crate::ui::tips::tip_over(ui, crate::ui::tips::keyed("dialog.numbering"), |ui| {
+        ui.horizontal(|ui| {
+            ui.label(tr("dialog.numbering"));
+            egui::ComboBox::from_id_salt("bullet_numbering")
+                .selected_text(name(p.bullet.numbering))
+                .show_ui(ui, |ui| {
+                    for k in Numbering::ALL {
+                        changed |= ui
+                            .selectable_value(&mut p.bullet.numbering, k, name(k))
+                            .changed();
+                    }
+                });
+        })
+    });
+    if p.bullet.numbering == Numbering::Symbol {
+        ui.horizontal(|ui| {
+            ui.label(tr("dialog.bullet_symbol"));
+            for b in [
+                "\u{2022}", "\u{25E6}", "\u{25AA}", "\u{2013}", "\u{2713}", "\u{27A4}",
+            ] {
+                if ui
+                    .selectable_label(p.bullet_char == b, b)
+                    .rich_tip(crate::ui::tips::keyed("dialog.bullet_symbol"))
+                    .clicked()
+                {
+                    p.bullet_char = b.to_string();
+                    changed = true;
+                }
+            }
+            // Any other character typed.
+            let mut own = p.bullet_char.clone();
+            if ui
+                .add(egui::TextEdit::singleline(&mut own).desired_width(28.0))
+                .rich_tip(crate::ui::tips::keyed("dialog.bullet_symbol"))
+                .changed()
+            {
+                if let Some(c) = own.chars().last() {
+                    p.bullet_char = c.to_string();
+                    changed = true;
+                }
+            }
+        });
+    } else {
+        ui.horizontal(|ui| {
+            for (key, v) in [
+                ("dialog.bullet_prefix", &mut p.bullet.prefix),
+                ("dialog.bullet_suffix", &mut p.bullet.suffix),
+            ] {
+                ui.label(tr(key));
+                changed |= ui
+                    .add(egui::TextEdit::singleline(v).desired_width(36.0))
+                    .rich_tip(crate::ui::tips::keyed(key))
+                    .changed();
+            }
+            ui.label(tr("dialog.bullet_start"));
+            changed |= ui
+                .add(crate::ui::field::NumField::new(&mut p.bullet.start).range(1..=9999))
+                .rich_tip(crate::ui::tips::keyed("dialog.bullet_start"))
+                .changed();
+        });
+    }
+    // The bullet's own font, else the text's.
+    let mut own_font = p.bullet.font.is_some();
+    ui.horizontal(|ui| {
+        if ui
+            .checkbox(&mut own_font, tr("dialog.bullet_font"))
+            .rich_tip(crate::ui::tips::keyed("dialog.bullet_font"))
+            .changed()
+        {
+            p.bullet.font = own_font.then(|| app.text_settings_shown().0);
+            changed = true;
+        }
+        if let Some(f) = p.bullet.font.clone() {
+            let (pick, _) = crate::ui::font_list::font_list_live(app, ui, "bullet_font", &f, 170.0);
+            if let Some(pick) = pick {
+                p.bullet.font = Some(pick.family);
+                changed = true;
+            }
+        }
+    });
+    crate::ui::tips::tip_over(ui, crate::ui::tips::keyed("dialog.bullet_size"), |ui| {
+        ui.horizontal(|ui| {
+            ui.label(tr("dialog.bullet_size"));
+            changed |= ui
+                .add(
+                    crate::ui::field::NumField::new(&mut p.bullet.size_pct)
+                        .range(1.0..=1000.0)
+                        .suffix(" %"),
+                )
+                .changed();
+        })
+    });
+    for (key, v) in [
+        ("dialog.bullet_shift", &mut p.bullet.baseline_shift),
+        ("dialog.bullet_offset", &mut p.bullet.offset),
+        ("dialog.bullet_indent", &mut p.bullet_indent),
+    ] {
+        let tip = crate::ui::tips::keyed(key);
+        changed |= unit_value(ui, &tr(key), &tip, v, u);
+    }
+    p.bullet.offset = p.bullet.offset.max(0.0);
+    let mut hanging = !p.bullet.no_hanging;
+    if ui
+        .checkbox(&mut hanging, tr("dialog.bullet_hanging"))
+        .rich_tip(crate::ui::tips::keyed("dialog.bullet_hanging"))
+        .changed()
+    {
+        p.bullet.no_hanging = !hanging;
+        changed = true;
+    }
+    changed
+}
+
 fn paragraph_dialog(app: &mut App, ctx: &Context, which: &Dialog, close: &mut bool) {
     let title = match which {
         Dialog::TextTabs => tr("menu.text.tabs"),
@@ -7625,45 +7840,14 @@ fn paragraph_dialog(app: &mut App, ctx: &Context, which: &Dialog, close: &mut bo
                 }
             }
             Dialog::TextColumns => {
-                crate::ui::tips::tip_over(ui, crate::ui::tips::keyed("dialog.columns"), |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(tr("dialog.columns"));
-                        changed |= ui
-                            .add(crate::ui::field::NumField::new(&mut p.columns).range(1..=8))
-                            .changed();
-                    })
-                });
-                let tip = crate::ui::tips::keyed("dialog.gutter");
-                changed |= unit_value(ui, &tr("dialog.gutter"), &tip, &mut p.gutter, u);
+                changed |= columns_settings(ui, &mut p, u);
             }
             Dialog::TextBullets => {
                 changed |= ui
                     .checkbox(&mut p.bullets, tr("dialog.use_bullets"))
                     .rich_tip(crate::ui::tips::keyed("dialog.use_bullets"))
                     .changed();
-                ui.horizontal(|ui| {
-                    ui.label(tr("dialog.bullet_symbol"));
-                    for b in [
-                        "\u{2022}", "\u{25E6}", "\u{25AA}", "\u{2013}", "\u{2713}", "\u{27A4}",
-                    ] {
-                        if ui
-                            .selectable_label(p.bullet_char == b, b)
-                            .rich_tip(crate::ui::tips::keyed("dialog.bullet_symbol"))
-                            .clicked()
-                        {
-                            p.bullet_char = b.to_string();
-                            changed = true;
-                        }
-                    }
-                });
-                let tip = crate::ui::tips::keyed("dialog.bullet_indent");
-                changed |= unit_value(
-                    ui,
-                    &tr("dialog.bullet_indent"),
-                    &tip,
-                    &mut p.bullet_indent,
-                    u,
-                );
+                changed |= bullet_settings(app, ui, &mut p, u);
             }
             _ => {
                 let mut on = p.drop_cap_lines > 1;

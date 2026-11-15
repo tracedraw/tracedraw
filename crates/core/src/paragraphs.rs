@@ -38,6 +38,9 @@ pub struct ParagraphFormat {
     pub bullets: bool,
     pub bullet_char: String,
     pub bullet_indent: f64,
+    /// Numbering, font, size, shift and indents of the bullet (#1443).
+    #[serde(skip_serializing_if = "crate::document::BulletStyle::is_plain")]
+    pub bullet: crate::document::BulletStyle,
     pub drop_cap_lines: u32,
     pub tabs: Vec<crate::document::TabStop>,
     pub hyphenate: bool,
@@ -71,6 +74,7 @@ impl ParagraphFormat {
             bullets: p.bullets,
             bullet_char: p.bullet_char.clone(),
             bullet_indent: p.bullet_indent,
+            bullet: p.bullet.clone(),
             drop_cap_lines: p.drop_cap_lines,
             tabs: p.tabs.clone(),
             hyphenate: p.hyphenate,
@@ -95,6 +99,7 @@ impl ParagraphFormat {
         p.bullets = self.bullets;
         p.bullet_char = self.bullet_char.clone();
         p.bullet_indent = self.bullet_indent;
+        p.bullet = self.bullet.clone();
         p.drop_cap_lines = self.drop_cap_lines;
         p.tabs = self.tabs.clone();
         p.hyphenate = self.hyphenate;
@@ -129,6 +134,7 @@ impl ParagraphFormat {
             bullets,
             bullet_char,
             bullet_indent,
+            bullet,
             drop_cap_lines,
             tabs,
             hyphenate,
