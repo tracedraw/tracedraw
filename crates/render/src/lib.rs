@@ -6784,6 +6784,7 @@ mod tests {
             to_center: false,
             fill_to: Color::rgb8(0, 0, 255),
             outline_to: None,
+            fill_end_to: None,
             color_blend: 0,
             corners: None,
             accel_objects: 0.0,
