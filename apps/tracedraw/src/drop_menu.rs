@@ -290,17 +290,28 @@ impl App {
         {
             return;
         }
+        let Some(t) = self.doc().find_shape(target).cloned() else {
+            return;
+        };
+        // Read from the object that shows the properties (a group's
+        // frontmost object), as Copy Properties From does; a mesh fill,
+        // whose nodes lie in its object's own space, is fitted to the
+        // target's box, not left where the source is (#2896).
+        let src = crate::copy_props::properties_source(first);
+        let targets = [t];
         let mut cmds = Vec::new();
         if action != DropAction::CopyOutline {
-            cmds.push(Command::SetFill {
-                shapes: vec![target],
-                fill: first.fill.clone(),
-            });
+            cmds.extend(crate::copy_props::fill_commands(
+                &crate::copy_props::shown_fill(&src),
+                &src,
+                &targets,
+            ));
         }
         if action != DropAction::CopyFill {
+            cmds.extend(crate::copy_props::clear_character_outlines(&targets));
             cmds.push(Command::SetStroke {
                 shapes: vec![target],
-                stroke: first.stroke.clone(),
+                stroke: crate::copy_props::shown_stroke(&src),
             });
         }
         if action == DropAction::CopyProperties {
@@ -578,5 +589,88 @@ mod tests {
         app.right_drag_released(drag, egui::Modifiers::default());
         assert_eq!(app.drop_menu.map(|m| m.target), Some(Some(b)));
         assert_eq!(*app.doc(), before);
+    }
+
+    /// #2896: Copy All Properties (a right-button drag let go with Ctrl,
+    /// or the drop menu) gives the target a mesh fill over its own box,
+    /// as a mesh fill given to it directly lies, not one left where the
+    /// source is; the same onto an ellipse.
+    #[test]
+    fn copy_all_properties_fits_a_mesh_fill_to_the_target() {
+        use tracedraw_core::Mesh;
+        let ctrl = egui::Modifiers {
+            command: true,
+            ctrl: true,
+            ..Default::default()
+        };
+        let ellipse = ShapeKind::Ellipse {
+            rect: Rect::new(100.0, 40.0, 130.0, 60.0),
+            arc: None,
+        };
+        for target in [None, Some(ellipse)] {
+            let mut app = App::headless();
+            let (a, mut b) = two_boxes(&mut app);
+            if let Some(kind) = target.clone() {
+                b = app.new_shape(kind).expect("ellipse");
+            }
+            app.run(Command::SetFill {
+                shapes: vec![a],
+                fill: Fill::Mesh(Mesh::new(
+                    Rect::new(0.0, 0.0, 10.0, 10.0),
+                    2,
+                    2,
+                    Color::rgb8(200, 30, 30),
+                )),
+            });
+            app.select(vec![a]);
+            let drag = RightDrag {
+                start: bounds(&app, a).center(),
+                current: bounds(&app, b).center(),
+            };
+            app.right_drag_released(drag, ctrl);
+            let s = app.doc().find_shape(b).expect("b").clone();
+            let Fill::Mesh(m) = &s.fill else {
+                panic!("no mesh: {:?}", s.fill);
+            };
+            let bb = s.bounds();
+            for n in &m.nodes {
+                let p = s.transform * n.pos;
+                assert!(
+                    p.x >= bb.x0 - 1e-6
+                        && p.x <= bb.x1 + 1e-6
+                        && p.y >= bb.y0 - 1e-6
+                        && p.y <= bb.y1 + 1e-6,
+                    "node {p:?} off the target {bb:?}"
+                );
+            }
+            let has = |c: Point| {
+                m.nodes
+                    .iter()
+                    .any(|n| (s.transform * n.pos - c).hypot() < 1e-6)
+            };
+            assert!(has(Point::new(bb.x0, bb.y0)) && has(Point::new(bb.x1, bb.y1)));
+            // One undo step gives the target back its fill.
+            app.undo();
+            assert!(!matches!(
+                app.doc().find_shape(b).expect("b").fill,
+                Fill::Mesh(_)
+            ));
+            // The drop menu's Copy All Properties fits it too.
+            let menu = DropMenu {
+                screen: egui::Pos2::ZERO,
+                offset: Vec2::new(55.0, 5.0),
+                target: Some(b),
+            };
+            app.drop_action(menu, DropAction::CopyProperties);
+            let s = app.doc().find_shape(b).expect("b").clone();
+            let Fill::Mesh(m) = &s.fill else {
+                panic!("no mesh");
+            };
+            let bb = s.bounds();
+            assert!(m
+                .nodes
+                .iter()
+                .all(|n| bb.inflate(1e-6, 1e-6).contains(s.transform * n.pos)));
+        }
     }
 }

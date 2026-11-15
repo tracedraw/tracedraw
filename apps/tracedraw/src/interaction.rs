@@ -2064,7 +2064,11 @@ impl App {
             }
             Tool::Text => self.text_input(response, p, mods),
             Tool::ColorEyedropper | Tool::AttributesEyedropper => {
-                if response.clicked() {
+                // A press let go counts as a click also when the pointer
+                // moved a little (a pen, a shaky hand) or the button was
+                // held a moment, which the window takes for a drag: such
+                // a click sampled or applied nothing (#2897).
+                if response.clicked() || response.drag_stopped_by(PointerButton::Primary) {
                     let attrs = self.tool == Tool::AttributesEyedropper;
                     // Ctrl samples again in Apply mode (#1302).
                     self.eyedropper_click(p, attrs, mods.shift, mods.ctrl);

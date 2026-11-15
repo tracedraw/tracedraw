@@ -25,6 +25,13 @@ object under the pointer, a locked one or one on a locked layer too
 (reading leaves it as it is; `App::hit_test_to_read`, #365). Applying a
 sampled colour or attributes never changes a locked object.
 
+A press let go is a click for both tools also when the pointer moved a
+little while the button was down (a pen, a shaky hand) or the button
+was held a moment, which the window takes for a drag or a long press:
+such a click sampled or applied nothing, so the attributes eyedropper
+seemed to apply only now and then (#2897,
+`pick_drag_tests::the_attributes_eyedropper_applies_on_every_click`).
+
 ## Sample again after applying
 
 Both tools' property bars have "Sample again after applying"

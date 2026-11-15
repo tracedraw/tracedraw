@@ -1589,6 +1589,95 @@ fn click_at(ctx: &egui::Context, app: &mut App, at: Pos2, mods: Modifiers) {
     }
 }
 
+/// #2897: the Attributes Eyedropper takes the source's attributes and
+/// gives them to every target clicked, also when the pointer moves a
+/// little while the button is down (a pen or a shaky hand) or the
+/// button is held a moment: such a click was a drag or a long press to
+/// the window, and nothing was sampled or applied.
+#[test]
+fn the_attributes_eyedropper_applies_on_every_click() {
+    use tracedraw_core::{Color, Fill};
+    let (ctx, mut app, src) = setup();
+    let red = Fill::Solid(Color::rgb8(200, 30, 30));
+    let blue = Fill::Solid(Color::rgb8(20, 40, 220));
+    let mut targets = Vec::new();
+    for x in [80.0, 140.0, 200.0] {
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(x, 10.0, x + 40.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.run(tracedraw_core::Command::SetFill {
+            shapes: vec![id],
+            fill: blue.clone(),
+        });
+        targets.push(id);
+    }
+    app.select(Vec::new());
+    app.choose_tool(Tool::AttributesEyedropper);
+    let none = Modifiers::NONE;
+    let fill_of = |app: &App, id| app.doc().find_shape(id).expect("shape").fill.clone();
+    let centre = |app: &App, id| app.view.to_screen(bounds(app, id).center());
+    // A wobbly press on the source samples it.
+    let at = centre(&app, src);
+    drag(
+        &ctx,
+        &mut app,
+        at,
+        at + egui::vec2(9.0, 7.0),
+        none,
+        Vec::new(),
+    );
+    for _ in 0..20 {
+        frame(&ctx, &mut app, Vec::new(), none);
+    }
+    assert!(app.eyedropper_attrs.is_some(), "sampled");
+    assert!(app.eyedropper_apply);
+    // A wobbly press on the first target applies.
+    let at = centre(&app, targets[0]);
+    drag(
+        &ctx,
+        &mut app,
+        at,
+        at + egui::vec2(-8.0, 10.0),
+        none,
+        Vec::new(),
+    );
+    for _ in 0..20 {
+        frame(&ctx, &mut app, Vec::new(), none);
+    }
+    assert_eq!(fill_of(&app, targets[0]), red, "the wobbly click");
+    // A press held for a second on the second target applies.
+    let at = centre(&app, targets[1]);
+    frame(&ctx, &mut app, vec![Event::PointerMoved(at)], none);
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(at, true, PointerButton::Primary, none)],
+        none,
+    );
+    for _ in 0..60 {
+        frame(&ctx, &mut app, Vec::new(), none);
+    }
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(at, false, PointerButton::Primary, none)],
+        none,
+    );
+    for _ in 0..20 {
+        frame(&ctx, &mut app, Vec::new(), none);
+    }
+    assert_eq!(fill_of(&app, targets[1]), red, "the long click");
+    // A plain click on the third applies, and the tool stays applying.
+    let at = centre(&app, targets[2]);
+    click_at(&ctx, &mut app, at, none);
+    assert_eq!(fill_of(&app, targets[2]), red, "the plain click");
+    assert!(app.eyedropper_apply);
+}
+
 fn last_path(app: &App) -> tracedraw_core::BezPath {
     app.doc()
         .all_layers()

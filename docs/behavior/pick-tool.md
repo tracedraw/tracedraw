@@ -267,6 +267,13 @@ vertical, Esc cancels it. On release a menu opens there:
 | Place Inside | the object under the pointer becomes the clip frame of the selection |
 | Cancel | nothing |
 
+The fill, outline and transparency are read from the object that shows
+them (a group's frontmost object), as Edit > Copy Properties From does,
+and a mesh fill is fitted to the target's own box, its grid over the
+target as a mesh fill given to it directly lies. It stayed where the
+source was, outside the target (#2896,
+`drop_menu::tests::copy_all_properties_fits_a_mesh_fill_to_the_target`).
+
 The four items that act on the object under the pointer are dimmed when
 there is none. A right click without a drag opens the context menu. A
 right click or a right-button drag on a selected object keeps the
