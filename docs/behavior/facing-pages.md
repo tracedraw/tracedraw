@@ -57,6 +57,26 @@ existed only in print imposition.
   right and left pages their own master objects: with Start on Right
   side odd pages are right pages.
 
+## Margins
+
+- Document Options > Layout > Margins (#1660): Top, Bottom, Inside and
+  Outside, in the document's units, the box the text and pictures of
+  every page keep inside. Ticked, the margins start at 12.7 mm all
+  round; unticked, the drawing has none. Each change is one undo step
+  (Document Properties); the margins are a document property
+  (`Metadata::margins`), saved in `.tdraw` files only while set.
+- Each page shown, the facing page and the pages of the Multipage View
+  too, draws the margins as a dashed violet frame over the drawing,
+  like the guidelines; a frame is drawn only while a margin is above 0.
+- With facing pages the inside margin lies at the spine and the
+  outside one at the page's free edge, so the two swap sides between
+  left and right pages: on the right of a left page, on the left of a
+  right page. A page shown alone takes the inside margin on its left,
+  as a right-hand page (`spreads::tests::page_margins_mirror_at_the_spine`,
+  `multipage::tests::page_margins_show_on_both_pages_of_the_spread`).
+- Margins wider than the page leave a frame of no width there; values
+  below 0 or above 1000 mm are kept in range.
+
 ## Multipage View
 
 With facing pages the Multipage View lays the spreads out two a row
@@ -100,8 +120,8 @@ single pages, each object where it shows on its page.
 
 ## Not done
 
-- Inside and outside margins, a table of contents and an advanced
-  booklet window asked for in #1660 are separate features.
+- A table of contents and an advanced booklet window asked for in
+  #1660 are separate features.
 - The Page Sorter shows pages one by one, not in spreads.
 
 ## Formula

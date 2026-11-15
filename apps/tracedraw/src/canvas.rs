@@ -477,6 +477,61 @@ pub fn printable_rect(
     )
 }
 
+/// A rectangle drawn in dashes of 4 points, one pixel wide.
+fn dashed_rect(painter: &Painter, r: ERect, color: Color32) {
+    let dash = 4.0;
+    for (a, b) in [
+        (r.left_top(), r.right_top()),
+        (r.right_top(), r.right_bottom()),
+        (r.right_bottom(), r.left_bottom()),
+        (r.left_bottom(), r.left_top()),
+    ] {
+        let len = (b - a).length();
+        let n = (len / (dash * 2.0)).floor() as usize;
+        for k in 0..n {
+            let t0 = (k as f32 * dash * 2.0) / len;
+            let t1 = ((k as f32 * dash * 2.0) + dash) / len;
+            painter.line_segment(
+                [a + (b - a) * t0, a + (b - a) * t1],
+                EStroke::new(1.0, color),
+            );
+        }
+    }
+}
+
+/// The colour of the page margins' frame (#1660).
+pub const PAGE_MARGIN_COLOR: Color32 = Color32::from_rgb(0xC0, 0x3C, 0xC8);
+
+/// The boxes inside the page margins of the pages on the desktop, in the
+/// current page's coordinates (#1660): with facing pages the inside
+/// margin at the spine of each page of the spread.
+pub fn page_margin_boxes(app: &App) -> Vec<tracedraw_core::geometry::Rect> {
+    let doc = app.doc();
+    if doc.metadata.margins.is_none() {
+        return Vec::new();
+    }
+    app.shown_pages()
+        .into_iter()
+        .filter_map(|(id, r)| {
+            let index = doc.pages.iter().position(|p| p.id == id)?;
+            doc.margin_box(index, r)
+        })
+        .collect()
+}
+
+/// The page margins (Document Setup > Layout, #1660): a dashed frame on
+/// each page shown, over the drawing like the guides.
+fn draw_page_margins(app: &App, painter: &Painter) {
+    for b in page_margin_boxes(app) {
+        let r = app.view.rect_to_screen(b);
+        dashed_rect(
+            painter,
+            ERect::from_min_max(r.min.round(), r.max.round()),
+            PAGE_MARGIN_COLOR,
+        );
+    }
+}
+
 /// The window's background, the page with its shadow and border, bleed
 /// and printable area, the grids, and the objects rendered (`preview`
 /// moves the selection while it is dragged).
@@ -649,24 +704,7 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         // Printable area: the page minus the printer's hard margins, as
         // the system reports them, else a typical 5 mm (#1924).
         let r = view.rect_to_screen(printable_rect(app, shown));
-        let dash = 4.0;
-        for (a, b) in [
-            (r.left_top(), r.right_top()),
-            (r.right_top(), r.right_bottom()),
-            (r.right_bottom(), r.left_bottom()),
-            (r.left_bottom(), r.left_top()),
-        ] {
-            let len = (b - a).length();
-            let n = (len / (dash * 2.0)).floor() as usize;
-            for k in 0..n {
-                let t0 = (k as f32 * dash * 2.0) / len;
-                let t1 = ((k as f32 * dash * 2.0) + dash) / len;
-                painter.line_segment(
-                    [a + (b - a) * t0, a + (b - a) * t1],
-                    EStroke::new(1.0, Tokens::text_dim()),
-                );
-            }
-        }
+        dashed_rect(painter, r, Tokens::text_dim());
     }
 
     if app.show_grid {
@@ -713,6 +751,7 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         }
     }
 
+    draw_page_margins(app, painter);
     if app.mask_outside_page {
         mask_outside_pages(app, painter, rect, paper);
     }

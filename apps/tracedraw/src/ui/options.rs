@@ -5354,6 +5354,7 @@ fn layout_page(app: &mut App, ui: &mut Ui) {
     }
     page_spacing_row(app, ui);
     facing_pages_row(app, ui);
+    page_margins_row(app, ui);
     ui.separator();
     ui.strong(tr("options.master_layers"));
     type MasterRow = (
@@ -5461,6 +5462,57 @@ fn facing_pages_row(app: &mut App, ui: &mut Ui) {
     });
     if changed {
         app.set_facing_pages(on, start);
+    }
+}
+
+/// Document Setup > Layout: Margins, the page margins for book layouts
+/// (#1660): top, bottom, inside (at the spine with facing pages, else
+/// on the left) and outside, in the document's units, one undo step a
+/// change. Shown on the pages as a dashed frame.
+fn page_margins_row(app: &mut App, ui: &mut Ui) {
+    use tracedraw_core::document::{PageMargins, MAX_PAGE_MARGIN};
+    let u = app.units;
+    let current = app.doc().metadata.margins;
+    let mut on = current.is_some();
+    let mut changed = ui
+        .checkbox(&mut on, tr("options.page_margins"))
+        .rich_tip(crate::ui::tips::pair(
+            "options.page_margins",
+            "options.page_margins_tip",
+        ))
+        .changed();
+    // Ticked: 12.7 mm all round to start with.
+    let mut m = current.unwrap_or(PageMargins::uniform(12.7));
+    ui.add_enabled_ui(on, |ui| {
+        grid("doc_page_margins").show(ui, |ui| {
+            for (key, v) in [
+                ("options.margin_top", &mut m.top),
+                ("options.margin_bottom", &mut m.bottom),
+                ("options.margin_inside", &mut m.inside),
+                ("options.margin_outside", &mut m.outside),
+            ] {
+                row_label(ui, &tr(key));
+                let mut shown = u.from_mm(*v);
+                if ui
+                    .add_sized(
+                        [100.0, 22.0],
+                        crate::ui::field::NumField::new(&mut shown)
+                            .range(0.0..=u.from_mm(MAX_PAGE_MARGIN))
+                            .speed(0.1)
+                            .suffix(format!(" {}", u.short())),
+                    )
+                    .rich_tip(crate::ui::tips::pair(key, "options.page_margins_tip"))
+                    .changed()
+                {
+                    *v = u.to_mm(shown);
+                    changed = true;
+                }
+                ui.end_row();
+            }
+        });
+    });
+    if changed {
+        app.set_page_margins(on.then_some(m));
     }
 }
 

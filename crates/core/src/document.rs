@@ -5169,6 +5169,79 @@ pub struct Metadata {
     /// while empty.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub multipage_pages: String,
+    /// The page margins for book layouts (Document Setup > Layout,
+    /// #1660): the box the text and pictures of every page keep inside,
+    /// shown on the pages as a dashed frame. `None`: no margins. Left out
+    /// of the file while unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub margins: Option<PageMargins>,
+}
+
+/// Page margins, mm (#1660). With facing pages the inside margin lies at
+/// the spine and the outside one at the page's free edge, so they swap
+/// sides between the left and the right pages of a spread; a page shown
+/// alone takes the inside margin on its left, as a right-hand page.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PageMargins {
+    pub top: f64,
+    pub bottom: f64,
+    pub inside: f64,
+    pub outside: f64,
+}
+
+/// The widest page margin taken, mm.
+pub const MAX_PAGE_MARGIN: f64 = 1000.0;
+
+impl PageMargins {
+    /// The same margin all round.
+    pub fn uniform(mm: f64) -> Self {
+        PageMargins {
+            top: mm,
+            bottom: mm,
+            inside: mm,
+            outside: mm,
+        }
+    }
+
+    /// Each margin kept between 0 and [`MAX_PAGE_MARGIN`] (0 for a value
+    /// that is not a number).
+    pub fn clamped(self) -> Self {
+        let c = |v: f64| {
+            if v.is_finite() {
+                v.clamp(0.0, MAX_PAGE_MARGIN)
+            } else {
+                0.0
+            }
+        };
+        PageMargins {
+            top: c(self.top),
+            bottom: c(self.bottom),
+            inside: c(self.inside),
+            outside: c(self.outside),
+        }
+    }
+
+    /// No margin is set.
+    pub fn is_zero(&self) -> bool {
+        let m = self.clamped();
+        m.top == 0.0 && m.bottom == 0.0 && m.inside == 0.0 && m.outside == 0.0
+    }
+
+    /// The box inside the margins of a page whose box is `page` (y up),
+    /// sitting on `side` of a spread: the inside margin at the spine,
+    /// on the right of a left page and on the left of a right page.
+    /// Margins wider than the page leave a box of no width there.
+    pub fn inner(&self, page: Rect, side: crate::spreads::PageSide) -> Rect {
+        let m = self.clamped();
+        let (left, right) = match side {
+            crate::spreads::PageSide::Left => (m.outside, m.inside),
+            crate::spreads::PageSide::Right => (m.inside, m.outside),
+        };
+        let x0 = (page.x0 + left).min(page.x1);
+        let y0 = (page.y0 + m.bottom).min(page.y1);
+        Rect::new(x0, y0, (page.x1 - right).max(x0), (page.y1 - m.top).max(y0))
+    }
 }
 
 /// The pages of `range` ("1-3, 5"; page numbers from 1, ranges either
