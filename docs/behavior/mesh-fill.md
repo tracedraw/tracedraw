@@ -124,6 +124,12 @@ seemed to miss a piece (#2892, #2894). A mesh moved off its text's box
 stays where it is
 (`command::tests::a_texts_mesh_follows_the_text_when_it_is_typed_over`).
 
+A file saved before that, with a text whose grid lies inside the text's
+box but no longer covers it, opens with the grid stretched over the
+whole box again, so nothing has to be done by hand. A grid reaching
+past the text's box is left as it is
+(`document::tests::a_texts_mesh_left_over_its_old_box_covers_it_when_the_file_opens`).
+
 ## Weld, Combine and the other shaping operations
 
 Their result lies in page space: a mesh fill it takes goes there with

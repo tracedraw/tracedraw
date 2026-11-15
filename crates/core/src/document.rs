@@ -6756,7 +6756,42 @@ impl Document {
         };
         // What text wraps around is not saved: work it out again.
         doc.refresh_text_flow();
+        doc.refit_text_meshes();
         Ok(doc)
+    }
+
+    /// Stretch the mesh fill of every text whose grid lies inside the
+    /// text's box but no longer covers it back over the whole box. Before
+    /// 0.47 a text typed over (a T made a C, more letters) kept the grid
+    /// made over its old box; the part past it had no fill, and a block
+    /// or inner shadow showed through it (#2892, #2894). A file saved
+    /// that way opens with the text filled again. A grid reaching past
+    /// the text's box, or already over it, is left as it is.
+    pub fn refit_text_meshes(&mut self) {
+        fn walk(s: &mut Shape) {
+            if let (ShapeKind::Text { .. }, Fill::Mesh(m)) = (&s.kind, &s.fill) {
+                let b = crate::geometry::Shape::bounding_box(&s.local_path());
+                if let Some(m) = m.refit_inside(b) {
+                    s.fill = Fill::Mesh(m);
+                }
+            }
+            match &mut s.kind {
+                ShapeKind::Group { children } => children.iter_mut().for_each(walk),
+                ShapeKind::ClipFrame { frame, contents } => {
+                    walk(frame);
+                    contents.iter_mut().for_each(walk);
+                }
+                _ => {}
+            }
+        }
+        for page in &mut self.pages {
+            for l in &mut page.layers {
+                l.shapes.iter_mut().for_each(walk);
+            }
+        }
+        for l in &mut self.master {
+            l.shapes.iter_mut().for_each(walk);
+        }
     }
 }
 
@@ -7134,6 +7169,73 @@ mod tests {
             children[0].node_types.get(&3),
             Some(&crate::nodes::NodeType::Smooth)
         );
+    }
+
+    /// A text saved with a mesh grid left over its old, smaller box (typed
+    /// over before 0.47: a T made a C) opens with the grid over its whole
+    /// box again, inside a group too, so no part of it is left without
+    /// fill for the shadows to show through (#2892, #2894). A grid
+    /// reaching past the text's box is left as it is.
+    #[test]
+    fn a_texts_mesh_left_over_its_old_box_covers_it_when_the_file_opens() {
+        use crate::geometry::{Point, Rect};
+        let text = |s: &str| {
+            Shape::new(
+                ShapeId(1),
+                ShapeKind::Text {
+                    spans: vec![TextSpan::new(s, "Any", 72.0)],
+                    origin: Point::ZERO,
+                    frame: None,
+                    align: Default::default(),
+                    para: Default::default(),
+                    on_path: None,
+                },
+            )
+        };
+        let bounds = |s: &Shape| crate::geometry::Shape::bounding_box(&s.local_path());
+        let grid = |f: &Fill| {
+            let Fill::Mesh(m) = f else { panic!("{f:?}") };
+            let p = m.nodes[0].pos;
+            m.nodes
+                .iter()
+                .fold(Rect::from_points(p, p), |r, n| r.union_pt(n.pos))
+        };
+        let old = bounds(&text("T"));
+        let mut cc = text("CC");
+        let wide = bounds(&cc);
+        assert!(wide.width() > old.width() * 1.5, "{wide:?} vs {old:?}");
+        cc.fill = Fill::Mesh(crate::Mesh::new(old, 2, 2, crate::Color::BLACK));
+        let mut past = text("CC");
+        let big = wide.inflate(10.0, 10.0);
+        past.fill = Fill::Mesh(crate::Mesh::new(big, 2, 2, crate::Color::BLACK));
+        let group = Shape::new(
+            ShapeId(2),
+            ShapeKind::Group {
+                children: vec![cc.clone()],
+            },
+        );
+        let mut doc = Document::default();
+        doc.pages[0].layers[0].shapes = vec![cc, group, past];
+        let json = doc.to_json().expect("json");
+        let back = Document::from_json(&json).expect("opens");
+        let shapes = &back.pages[0].layers[0].shapes;
+        let ShapeKind::Group { children } = &shapes[1].kind else {
+            panic!("a group");
+        };
+        for (got, want) in [
+            (grid(&shapes[0].fill), wide),
+            (grid(&children[0].fill), wide),
+            (grid(&shapes[2].fill), big),
+        ] {
+            for (g, w) in [
+                (got.x0, want.x0),
+                (got.y0, want.y0),
+                (got.x1, want.x1),
+                (got.y1, want.y1),
+            ] {
+                assert!((g - w).abs() < 1e-9, "{got:?} vs {want:?}");
+            }
+        }
     }
 
     use super::*;
