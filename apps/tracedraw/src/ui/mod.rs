@@ -994,10 +994,13 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
     // Shift+wheel horizontally and Ctrl+wheel zooms. Pinch zooms.
     // Edit Fill and Outline Pen leave the wheel to the drawing outside
     // them, so it can be zoomed to see the change; nothing else of the
-    // drawing takes the pointer meanwhile (#1035).
+    // drawing takes the pointer meanwhile (#1035). So does a bitmap
+    // effect's dialog, whose effect shows on the drawing (#2799).
     let wheel_through_dialog = matches!(
         app.dialog,
-        crate::ui::dialogs::Dialog::EditFill(_) | crate::ui::dialogs::Dialog::OutlinePen(_)
+        crate::ui::dialogs::Dialog::EditFill(_)
+            | crate::ui::dialogs::Dialog::OutlinePen(_)
+            | crate::ui::dialogs::Dialog::Effect(_)
     ) && ui.ctx().pointer_hover_pos().is_some_and(|p| {
         canvas_rect.contains(p) && crate::ui::chrome::over_modal_blocker(ui.ctx(), p)
     });

@@ -684,6 +684,16 @@ pub struct Settings {
     /// keeps clear of the camera cutout and the screen's rounded corners.
     #[serde(default)]
     pub screen_margins: crate::ui::screen_margins::ScreenMargins,
+    /// The looks saved in the Effects docker's Presets (#2160).
+    #[serde(default)]
+    pub style_presets: Vec<crate::style_presets::StylePreset>,
+    /// The settings saved in a bitmap effect's dialog, by effect (#1129).
+    #[serde(default)]
+    pub fx_presets: Vec<crate::ui::effect_dialog::FxPreset>,
+    /// The bitmap effect dialogs show their settings alone, the effect
+    /// seen on the drawing instead of in Before and After panes (#2799).
+    #[serde(default)]
+    pub fx_settings_only: bool,
 }
 
 fn default_path_tick() -> f64 {
@@ -2104,6 +2114,9 @@ impl Default for Settings {
             path_tick_snap: false,
             path_tick_mm: default_path_tick(),
             screen_margins: crate::ui::screen_margins::ScreenMargins::default(),
+            style_presets: Vec::new(),
+            fx_presets: Vec::new(),
+            fx_settings_only: false,
         }
     }
 }
