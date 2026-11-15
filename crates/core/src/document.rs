@@ -3153,6 +3153,15 @@ pub struct Shape {
     /// frames, which is another feature.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_link: Option<u64>,
+    /// A heading of the table of contents (#1660): the text is listed
+    /// in the drawing's tables of contents at this level, 1 to 3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toc_level: Option<u8>,
+    /// A table of contents (#1660): the text lists the headings of the
+    /// drawing with their page numbers, worked out anew whenever it is
+    /// drawn, printed or exported (see [`crate::toc`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toc: Option<crate::toc::TocField>,
 }
 
 /// What a QR code holds: the kind of content, which decides the fields
@@ -3454,6 +3463,8 @@ impl Shape {
             qr: None,
             fill_rule: crate::shaping::FillRule::EvenOdd,
             content_link: None,
+            toc_level: None,
+            toc: None,
         }
     }
 
@@ -6339,16 +6350,33 @@ impl Document {
 
     /// [`Document::layers_for_page`] as drawn, printed and exported: a
     /// master layer holding a page number field comes as a copy showing
-    /// this page's number (#807).
+    /// this page's number (#807), and a layer holding a table of contents
+    /// as a copy listing the headings as they stand (#1660).
     pub fn layers_drawn_for_page(&self, page: PageId) -> Result<Vec<std::borrow::Cow<'_, Layer>>> {
         use std::borrow::Cow;
         let idx = self.page_index(page)?;
+        // The headings, found once for the tables of contents (#1660).
+        let entries = std::cell::OnceCell::new();
         Ok(self
             .layers_for_page(page)?
             .into_iter()
             .map(|l| {
                 let master = self.master.iter().any(|m| m.id == l.id);
-                if master && l.shapes.iter().any(Shape::holds_page_number) {
+                if l.shapes.iter().any(Shape::holds_toc) {
+                    let entries = entries.get_or_init(|| crate::toc::entries(self));
+                    let mut l = l.clone();
+                    if master {
+                        l.shapes
+                            .retain(|s| s.page_number.as_ref().is_none_or(|f| f.numbers(idx)));
+                    }
+                    for s in &mut l.shapes {
+                        if master {
+                            s.show_page_number(idx);
+                        }
+                        s.show_toc(entries);
+                    }
+                    Cow::Owned(l)
+                } else if master && l.shapes.iter().any(Shape::holds_page_number) {
                     let mut l = l.clone();
                     // A field on a page before the first numbered page
                     // is left out (#2127).

@@ -224,6 +224,7 @@ mod text_effect_tests;
 mod text_frames;
 mod text_nodes;
 mod text_path;
+mod toc;
 #[cfg(test)]
 mod text_wrap_tests;
 mod textflow;

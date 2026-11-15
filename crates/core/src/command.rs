@@ -243,6 +243,13 @@ pub enum Command {
         shape: ShapeId,
         name: Option<String>,
     },
+    /// Mark texts as headings of the tables of contents at `level`, 1 to
+    /// 3, or as no heading (`None`), #1660. Levels out of range read as
+    /// none.
+    SetTocLevel {
+        shapes: Vec<ShapeId>,
+        level: Option<u8>,
+    },
     /// A B-spline's control points (local space; two at least): the
     /// curve's outline becomes their spline, open or closed as the curve
     /// is, and the Shape tool edits them (see [`Shape::spline`]).
@@ -585,6 +592,7 @@ impl Command {
             Command::SwapColors { .. } => "Swap Colors",
             Command::SetShapeKind { .. } => "Edit Object",
             Command::SetShapeName { .. } => "Rename Object",
+            Command::SetTocLevel { .. } => "Table of Contents Heading",
             Command::SetSpline { .. } => "Edit B-Spline",
             Command::SetQrCode { .. } => "QR Code",
             Command::Reorder { .. } => "Order",
@@ -1067,6 +1075,12 @@ impl Command {
                 any_mut(doc, *shape)?.node_types = types.clone()
             }
             Command::SetShapeName { shape, name } => any_mut(doc, *shape)?.name = name.clone(),
+            Command::SetTocLevel { shapes, level } => {
+                let level = level.filter(|l| (1..=crate::toc::MAX_LEVEL).contains(l));
+                for id in shapes {
+                    any_mut(doc, *id)?.toc_level = level;
+                }
+            }
             Command::SetQrCode { shape, qr } => any_mut(doc, *shape)?.qr = qr.clone(),
 
             Command::Reorder {

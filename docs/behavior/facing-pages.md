@@ -142,8 +142,9 @@ single pages, each object where it shows on its page.
 
 ## Not done
 
-- A table of contents and an advanced booklet window asked for in
-  #1660 are separate features.
+- An advanced booklet window asked for in #1660 is a separate
+  feature. The table of contents asked for there is Text > Table of
+  Contents (see `table-of-contents.md`).
 - The Page Sorter shows pages one by one, not in spreads.
 
 ## Formula

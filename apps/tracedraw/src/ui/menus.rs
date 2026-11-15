@@ -4415,6 +4415,26 @@ fn text_menu(app: &mut App, ui: &mut Ui) {
             app.add_pinyin();
         }
     });
+    // Headings and a table of contents listing them (#1660).
+    sub(ui, "menu.text.toc", |ui| {
+        if item(ui, "menu.text.toc_insert", "", true) {
+            app.insert_toc();
+        }
+        sep(ui);
+        let level = app.selected_toc_level();
+        for (n, key) in [
+            (1, "menu.text.toc_heading_1"),
+            (2, "menu.text.toc_heading_2"),
+            (3, "menu.text.toc_heading_3"),
+        ] {
+            if check(ui, key, "", level == Some(Some(n))) {
+                app.set_toc_level(Some(n));
+            }
+        }
+        if item(ui, "menu.text.toc_not_heading", "", is_text) {
+            app.set_toc_level(None);
+        }
+    });
     sep(ui);
     if item(ui, "menu.text.encode", "", is_text) {
         app.dialog = Dialog::Encode(Default::default());
