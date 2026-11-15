@@ -112,6 +112,18 @@ cell a double-click lands in, and where in it, are found on the curved
 patch. Changing the rows and columns from the property bar spreads a
 straight grid anew.
 
+## Text typed over
+
+A mesh made over a text (its grid's box is the text's box, within a
+hundredth of its size, as the Mesh Fill tool makes it) stretches with
+the text's box when the text changes: typed over with a wider letter (a
+T made a C) or more letters, the grid still covers all of it. The part
+past the old grid was left without fill, so a block shadow behind
+showed through it along the grid's straight edge and an inner shadow
+seemed to miss a piece (#2892, #2894). A mesh moved off its text's box
+stays where it is
+(`command::tests::a_texts_mesh_follows_the_text_when_it_is_typed_over`).
+
 ## Weld, Combine and the other shaping operations
 
 Their result lies in page space: a mesh fill it takes goes there with

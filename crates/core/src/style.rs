@@ -1816,6 +1816,23 @@ impl Mesh {
         m
     }
 
+    /// Whether the grid was made over the box `b` (local space): its
+    /// nodes' box is `b`, within a hundredth of its size, as the Mesh
+    /// Fill tool makes it over its object.
+    pub fn fits(&self, b: crate::geometry::Rect) -> bool {
+        let mut it = self.nodes.iter().map(|n| n.pos);
+        let Some(first) = it.next() else {
+            return false;
+        };
+        let nb = it.fold(Rect::from_points(first, first), |r, p| r.union_pt(p));
+        let tol = 0.01 * b.width().max(b.height());
+        tol > 0.0
+            && (nb.x0 - b.x0).abs() <= tol
+            && (nb.y0 - b.y0).abs() <= tol
+            && (nb.x1 - b.x1).abs() <= tol
+            && (nb.y1 - b.y1).abs() <= tol
+    }
+
     /// Whether any node carries handles (curved grid lines).
     pub fn is_curved(&self) -> bool {
         self.nodes.iter().any(|n| n.handles.is_some())
