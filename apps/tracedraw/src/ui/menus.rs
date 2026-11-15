@@ -1393,7 +1393,8 @@ pub(crate) mod replay {
 
     /// Items that would block on a native file chooser, start another
     /// program (an editor or the web browser) or close the window.
-    const SKIP: [&str; 18] = [
+    const SKIP: [&str; 19] = [
+        "menu.tools.plugin_install",
         "menu.object.insert_object_add",
         "menu.object.insert_object_file",
         "menu.file.send_to_mail",
@@ -4605,6 +4606,10 @@ fn tools_menu(app: &mut App, ui: &mut Ui) {
         }
     });
     sub(ui, "menu.tools.macros", |ui| macros_items(app, ui));
+    // Commands added by plugins, and their manager (#1802).
+    sub(ui, "menu.tools.plugins", |ui| {
+        crate::plugins::menu_items(app, ui)
+    });
     if item(ui, "menu.tools.ai_generate", "", true) {
         app.open_ai_generate();
     }

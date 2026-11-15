@@ -128,6 +128,7 @@ customize/index
   customize/reset-settings
   customize/ai
   customize/scripts
+  customize/plugins
   customize/time-tracker
 reference/index
   reference/keyboard-shortcuts

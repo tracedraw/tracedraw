@@ -1074,6 +1074,14 @@ fn general_page(app: &mut App, ui: &mut Ui) {
             tr("options.system_title_bar"),
         )
         .rich_tip(crate::ui::tips::keyed("options.system_title_bar"));
+        // Minimize, Maximize and Close on the menu bar, for a window
+        // without a title bar (#2574).
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+        ui.checkbox(
+            &mut app.settings.window_buttons,
+            tr("options.window_buttons"),
+        )
+        .rich_tip(crate::ui::tips::keyed("options.window_buttons"));
     });
     chrome::section(ui, &tr("options.undo_levels"));
     ui.indent("undo", |ui| {

@@ -1448,6 +1448,8 @@ pub enum Dialog {
     WritingTools(crate::ui::writing_tools::WritingToolsState),
     CustomHyphens(crate::ui::writing_tools::CustomHyphensState),
     Encode(EncodeState),
+    /// Tools > Plugins > Plugin Manager (#1802).
+    Plugins,
     BorderGrommet(crate::border_grommet::BorderGrommetState),
     ColorManagement(Box<crate::ui::color_management::ColorManagementState>),
     /// Tools > Convert Colors (#972).
@@ -3456,6 +3458,7 @@ pub fn show(app: &mut App, ctx: &Context) {
         }
         Dialog::About => crate::ui::about::about_dialog(app, ctx, &mut close),
         Dialog::Benchmark => crate::ui::benchmark::dialog(app, ctx, &mut close),
+        Dialog::Plugins => crate::plugins::manager(app, ctx, &mut close),
         Dialog::SizesAreas(tab) => crate::ui::sizes::dialog(app, ctx, tab, &mut close),
         Dialog::WebNotice => {
             let text = format!("{}\n\n{}", tr("web.notice_title"), tr("web.notice_text"));
@@ -8736,6 +8739,7 @@ pub(crate) mod tests {
             Dialog::ConfirmResetSettings,
             Dialog::Updates,
             Dialog::Benchmark,
+            Dialog::Plugins,
             Dialog::SizesAreas(Default::default()),
             Dialog::SizesAreas(crate::ui::sizes::SizesTab::Pages),
             Dialog::UpdatePolicy,

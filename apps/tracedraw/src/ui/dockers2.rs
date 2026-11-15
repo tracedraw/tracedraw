@@ -1334,6 +1334,17 @@ fn scripts(app: &mut App, ui: &mut Ui) {
             let src = app.script_source.clone();
             app.install_script_filter(&src);
         }
+        // A script that defines TraceDrawPlugin: its commands go to
+        // Tools > Plugins (#1802).
+        if !vba
+            && ui
+                .button(tr("docker.install_plugin"))
+                .rich_tip(crate::ui::tips::keyed("docker.install_plugin"))
+                .clicked()
+        {
+            let src = app.script_source.clone();
+            app.install_plugin(&src);
+        }
     });
     if !app.settings.script_filters.is_empty() {
         ui.strong(tr("docker.script_filters"));

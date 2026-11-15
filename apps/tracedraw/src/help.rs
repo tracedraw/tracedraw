@@ -83,6 +83,7 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::ConfirmShelfRemove { .. } => "objects/shelf#remove",
         Dialog::HardwareAccelerationHint { .. } => "customize/options-app#general",
         Dialog::Benchmark => "customize/options-app#benchmark",
+        Dialog::Plugins => "customize/plugins#manager",
         Dialog::SizesAreas(_) => "lines-shapes/dimensions#sizes-areas",
         Dialog::Export(_) => "file-formats/export",
         Dialog::Print(_) => "printing/print",

@@ -538,7 +538,32 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         .exact_size(24.0)
         .resizable(false)
         .show_separator_line(false)
-        .show(ui, |ui| menus::menu_bar(app, ui))
+        .show(ui, |ui| {
+            // Minimize, Maximize and Close at the right end, and the empty
+            // part of the bar as a title bar, when turned on (#2574).
+            if !crate::window_buttons::shown(app) {
+                menus::menu_bar(app, ui);
+                return;
+            }
+            let full = ui.max_rect();
+            let split = full.right() - crate::window_buttons::WIDTH;
+            let left = egui::Rect::from_min_max(full.min, egui::pos2(split, full.bottom()));
+            let right = egui::Rect::from_min_max(egui::pos2(split, full.top()), full.max);
+            let used = ui
+                .scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {
+                    menus::menu_bar(app, ui);
+                    ui.min_rect().right()
+                })
+                .inner;
+            let gap = egui::Rect::from_min_max(
+                egui::pos2(used, full.top()),
+                egui::pos2(split, full.bottom()),
+            );
+            crate::window_buttons::title_area(ui, gap);
+            ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| {
+                crate::window_buttons::show(app, ui)
+            });
+        })
         .response
         .rect;
     tab_focus::set_menu_bar(&ctx, menu_bar);

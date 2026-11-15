@@ -662,6 +662,14 @@ pub struct Settings {
     /// or write (see `behavior/script-filters.md`).
     #[serde(default)]
     pub script_filters: Vec<crate::scripting::ScriptFilter>,
+    /// The plugins of Tools > Plugins, on or off (#1802, see
+    /// `behavior/plugins.md`).
+    #[serde(default)]
+    pub plugins: Vec<crate::scripting::Plugin>,
+    /// Minimize, Maximize and Close at the right end of the menu bar,
+    /// for windows without the desktop's title bar (#2574).
+    #[serde(default)]
+    pub window_buttons: bool,
     /// File > GitHub's last repository, branch, path (and the token, when
     /// the user asked to remember it).
     #[serde(default)]
@@ -2123,6 +2131,8 @@ impl Default for Settings {
             skipped_update: String::new(),
             pending_update: String::new(),
             script_filters: Vec::new(),
+            plugins: Vec::new(),
+            window_buttons: false,
             github: Default::default(),
             tracing: Default::default(),
             warnings: Default::default(),

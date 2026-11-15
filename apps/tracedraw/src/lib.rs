@@ -159,6 +159,7 @@ mod pick_drag_tests;
 mod picture_mosaic;
 mod picture_plates;
 mod placeholder;
+mod plugins;
 mod preflight;
 mod prefs;
 mod print_merge;
@@ -252,6 +253,7 @@ mod web;
 mod web_page;
 #[cfg(windows)]
 mod win_clipboard;
+mod window_buttons;
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 mod x11_clipboard;
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]

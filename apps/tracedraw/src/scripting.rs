@@ -635,6 +635,101 @@ impl ScriptFilter {
     }
 }
 
+/// A plugin (#1802): a script that defines the global `TraceDrawPlugin`
+/// with a `name`, an optional `description` and `version`, and the
+/// commands it adds to Tools > Plugins: `commands`, a list of objects
+/// with a `name` and a `run()` function, or one `run()` of its own (one
+/// command named after the plugin). See `behavior/plugins.md`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Plugin {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub version: String,
+    /// The names of its commands, in its order.
+    pub commands: Vec<String>,
+    /// Off: kept, but its commands are not in the menu.
+    #[serde(default = "plugin_on")]
+    pub enabled: bool,
+    pub source: String,
+}
+
+fn plugin_on() -> bool {
+    true
+}
+
+/// The commands of `TraceDrawPlugin` that have a `run()`, as a script
+/// expression: its `commands`, else the plugin itself.
+const PLUGIN_COMMANDS: &str = "(Array.isArray(TraceDrawPlugin.commands) \
+     ? TraceDrawPlugin.commands.filter(c => c && typeof c.run === 'function') \
+     : (typeof TraceDrawPlugin.run === 'function' ? [TraceDrawPlugin] : []))";
+
+/// Check a plugin script and read what it says about itself: it runs
+/// against an empty drawing with the limits of AI Drawing scripts, and
+/// nothing it does is kept.
+pub fn plugin_info(src: &str) -> Result<Plugin, String> {
+    let doc = Document::new("Plugin", tracedraw_core::Size::new(210.0, 297.0));
+    let call = format!(
+        "typeof TraceDrawPlugin === 'undefined' ? '' : JSON.stringify({{\
+         name: String(TraceDrawPlugin.name || ''),\
+         description: String(TraceDrawPlugin.description || ''),\
+         version: String(TraceDrawPlugin.version || ''),\
+         commands: {PLUGIN_COMMANDS}.map((c, i) => String(c.name || ('Command ' + (i + 1))))}})"
+    );
+    let ev = evaluate(blank_host(doc, Trust::Untrusted), src, Some(&call), None)?;
+    ev.result?;
+    let text = ev.text.unwrap_or_default();
+    if text.is_empty() {
+        return Err("the script defines no TraceDrawPlugin".into());
+    }
+    let v: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let field = |k: &str| v[k].as_str().unwrap_or("").trim().to_string();
+    let name = field("name");
+    if name.is_empty() {
+        return Err("TraceDrawPlugin has no name".into());
+    }
+    let commands: Vec<String> = v["commands"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .map(|c| c.as_str().unwrap_or("").trim().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    if commands.is_empty() {
+        return Err("TraceDrawPlugin has no command with a run() function".into());
+    }
+    Ok(Plugin {
+        name,
+        description: field("description"),
+        version: field("version"),
+        commands,
+        enabled: true,
+        source: src.to_string(),
+    })
+}
+
+/// Run command `index` of a plugin against the app, as a script of the
+/// user's own: its changes are one undo step named "Plugin", kept up to
+/// an error. Returns the printed lines.
+pub fn run_plugin(app: &mut App, plugin: &Plugin, index: usize) -> Result<Vec<String>, String> {
+    let call = format!("{PLUGIN_COMMANDS}[Number(__input)].run()");
+    let index = index.to_string();
+    let Evaluated { inner, result, .. } = evaluate(
+        host_for(app, Trust::User),
+        &plugin.source,
+        Some(&call),
+        Some(&index),
+    )?;
+    let output = inner.output;
+    if let Some(s) = inner.status {
+        app.status = s;
+    }
+    apply(app, inner.commands, inner.selection, inner.page, "Plugin");
+    result.map(|_| output)
+}
+
 /// The names the object model for macros defines (globals, classes,
 /// constants): the VBA compiler leaves them to the host. Worked out once.
 pub fn vg_global_names() -> Vec<String> {
