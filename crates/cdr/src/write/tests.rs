@@ -9679,3 +9679,78 @@ fn a_reversed_radial_transparency_reads_reversed() {
     assert_ne!(mask_of(&plain), mask_of(&swapped));
     assert_eq!(mask_of(&reversed), mask_of(&swapped));
 }
+
+/// The same picture placed several times is stored once and every copy
+/// opens again with it (#2923: a 17 MB file with repeated pictures saved
+/// as hundreds of MB, one image record per object). A copy at another
+/// box size keeps its own record.
+#[test]
+fn repeated_pictures_are_stored_once() {
+    let png: SharedBytes = {
+        let mut pm = tiny_skia::Pixmap::new(4, 3).expect("pixmap");
+        pm.fill(tiny_skia::Color::from_rgba8(200, 40, 90, 255));
+        pm.encode_png().expect("png").into()
+    };
+    let mut ids = tracedraw_core::id::IdSource::default();
+    let mut picture = |rect: Rect, png: SharedBytes, at: f64| {
+        let mut s = Shape::new(
+            ids.shape(),
+            ShapeKind::Bitmap {
+                rect,
+                width_px: 4,
+                height_px: 3,
+                png,
+                fx: None,
+            },
+        );
+        s.fill = Fill::None;
+        s.stroke = None;
+        s.transform = Affine::translate((at, 0.0));
+        s
+    };
+    let box_a = Rect::new(0.0, 0.0, 40.0, 30.0);
+    let shapes = vec![
+        picture(box_a, png.clone(), 0.0),
+        picture(box_a, png.clone(), 50.0),
+        // The same bytes held apart (as two opened copies would be).
+        picture(box_a, png.to_vec().into(), 100.0),
+        picture(Rect::new(0.0, 0.0, 20.0, 15.0), png.clone(), 150.0),
+    ];
+    let doc = doc_with(shapes);
+    for v in versions() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (_, tree, riff) = chunk_ids(&bytes);
+        let mut records = 0;
+        tree.root.walk(&mut |c, _| {
+            if c.is(b"bmp ") && !tree.data(&riff, c).is_empty() {
+                records += 1;
+            }
+        });
+        assert_eq!(records, 2, "{v}: one record per distinct picture and size");
+        let (back, rep) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let shapes: Vec<&Shape> = back
+            .pages
+            .iter()
+            .flat_map(|p| p.layers.iter())
+            .flat_map(|l| l.shapes.iter())
+            .collect();
+        let pictures: Vec<&Shape> = shapes
+            .iter()
+            .copied()
+            .filter(|s| matches!(s.kind, ShapeKind::Bitmap { .. }))
+            .collect();
+        assert_eq!(pictures.len(), 4, "{v}: {:?}", rep.warnings);
+        let mut lefts: Vec<f64> = pictures.iter().map(|s| s.bounds().x0).collect();
+        lefts.sort_by(f64::total_cmp);
+        for (got, want) in lefts.iter().zip([0.0, 50.0, 100.0, 150.0]) {
+            assert!((got - want).abs() < 0.05, "{v}: {lefts:?}");
+        }
+        for s in pictures {
+            let ShapeKind::Bitmap { png: p, .. } = &s.kind else {
+                unreachable!()
+            };
+            let pm = tiny_skia::Pixmap::decode_png(p).expect("decodes");
+            assert_eq!((pm.width(), pm.height()), (4, 3), "{v}");
+        }
+    }
+}

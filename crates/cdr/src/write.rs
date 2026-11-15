@@ -2923,6 +2923,14 @@ fn stlt(v: Ver, uses: StyleUses) -> Vec<u8> {
     t.done()
 }
 
+/// A picture written as a `bmp ` record: its bytes, the box size in mm
+/// (as bits) it was written at, and the record's id and pixel size.
+struct WrittenImage {
+    png: SharedBytes,
+    size_mm: (u64, u64),
+    record: (u32, u32, u32),
+}
+
 /// `bmp `: a 24-bit image: id, a file-like header ("UI" block size, the
 /// "RI" block with its size and pixel offset), colour model 1, size,
 /// bits, row stride, pixel bytes, resolution, then rows bottom-up in
@@ -3833,6 +3841,10 @@ struct Writer<'a> {
     /// Bitmap pattern fills already written, matched by their picture's
     /// content (the pointer first, then the bytes) and size.
     bitmap_fills: Vec<(SharedBytes, u32, u32, u64, u32)>,
+    /// Images already written as `bmp ` records, matched the same way
+    /// (picture, then the box size in mm as bits): the id and pixel size.
+    /// The same picture placed many times is stored once (#2923).
+    bitmap_images: Vec<WrittenImage>,
     /// Static ids (`usdn`), object ids (argument 100), next fill, outline
     /// and bitmap ids.
     next_usdn: u32,
@@ -4026,6 +4038,7 @@ impl<'a> Writer<'a> {
             next_outline: 1,
             next_bitmap: 1,
             bitmap_fills: Vec::new(),
+            bitmap_images: Vec::new(),
             next_spnd: 1,
             text_formats: Vec::new(),
             guid_seed: seed,
@@ -4190,13 +4203,29 @@ impl<'a> Writer<'a> {
         id
     }
 
-    /// A new `bmp ` record for `png`: its id and the image's size in
-    /// pixels.
-    fn bitmap_id(&mut self, png: &[u8], size_mm: (f64, f64)) -> Option<(u32, u32, u32)> {
+    /// The `bmp ` record for `png`: its id and the image's size in
+    /// pixels. A picture already written at the same box size reuses its
+    /// record, as files of the program that reads them share one image
+    /// among its copies; writing it once per object made a 17 MB file
+    /// with repeated pictures hundreds of MB (#2923).
+    fn bitmap_id(&mut self, png: &SharedBytes, size_mm: (f64, f64)) -> Option<(u32, u32, u32)> {
+        let key = (size_mm.0.to_bits(), size_mm.1.to_bits());
+        if let Some(found) = self
+            .bitmap_images
+            .iter()
+            .find(|b| b.size_mm == key && b.png == *png)
+        {
+            return Some(found.record);
+        }
         let id = self.next_bitmap;
         let (rec, w, h) = bmp_record(id, png, size_mm)?;
         self.next_bitmap += 1;
         self.bitmaps.push(rec);
+        self.bitmap_images.push(WrittenImage {
+            png: png.clone(),
+            size_mm: key,
+            record: (id, w, h),
+        });
         Some((id, w, h))
     }
 
@@ -5210,9 +5239,10 @@ impl<'a> Writer<'a> {
         // number among the drawing's bitmap objects' images (1, 2, ...,
         // in order of first use: files never hold 0 there), the image id,
         // then 0, 0, -1, 0, 0. The program that wrote the samples shows
-        // no image when the pixel size is left at zero. Every image is
-        // written once per object here, so the number is the image id
-        // (from version 14; before it 0, as written before #1226).
+        // no image when the pixel size is left at zero. Images get their
+        // ids in order of first use and copies share them (#2923), so the
+        // number is the image id (from version 14; before it 0, as
+        // written before #1226).
         let corners = |c: &mut Buf| {
             c.i32(units(local.x0))
                 .i32(units(local.y1))
