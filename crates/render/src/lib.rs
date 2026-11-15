@@ -461,12 +461,38 @@ fn snap_upright(m: [f64; 6], w: u32, h: u32) -> Option<([f64; 6], Option<tiny_sk
     Some(([a, 0.0, 0.0, d, e, f], area))
 }
 
+/// The radius (mm) of the Gaussian blur `shape` is drawn with, when it
+/// has one switched on (#1141).
+fn gaussian_blur(shape: &Shape) -> Option<f64> {
+    shape.effects.iter().find_map(|e| match e {
+        tracedraw_core::live::Effect::GaussianBlur { radius }
+            if radius.is_finite() && *radius > 0.0 =>
+        {
+            Some(*radius)
+        }
+        _ => None,
+    })
+}
+
 /// What `s` reaches past its own pixels: sets `lens` when it or an
 /// object in it has a lens, and grows `blur` to its widest drop shadow
 /// blur (mm).
 fn reach_walk(s: &Shape, lens: &mut bool, blur: &mut f64) {
     if let Some(sh) = &s.shadow {
         *blur = blur.max(sh.blur.abs());
+    }
+    // Stacked outer shadows, glows and a Gaussian blur reach as far
+    // (#1141).
+    for e in &s.effects {
+        use tracedraw_core::live::Effect;
+        let r = match e {
+            Effect::OuterShadow { offset, blur, .. } => blur.abs() + offset.hypot(),
+            Effect::Glow { blur, .. } | Effect::GaussianBlur { radius: blur } => blur.abs(),
+            _ => 0.0,
+        };
+        if r.is_finite() {
+            *blur = blur.max(r);
+        }
     }
     if s.effects
         .iter()
@@ -956,6 +982,11 @@ impl Renderer<'_> {
                     self.draw_group_shadow(sh, shape, parent);
                 }
             }
+            // Stacked outer shadows and outer glows (#1141), beneath all
+            // the object and its effects draw, cast by its shape.
+            if self.flags.complex_effects && !self.flags.wireframe && shape.opacity > 0.0 {
+                self.draw_outer_shadows(shape, &ev.main, parent);
+            }
             for b in &ev.below {
                 let mut b = b.clone();
                 b.effects.clear();
@@ -1002,34 +1033,52 @@ impl Renderer<'_> {
                         self.draw_shape(&part, parent);
                     }
                 }
+            } else if let Some(radius) = gaussian_blur(shape) {
+                // Gaussian blur (#1141): the object drawn on its own
+                // and blurred.
+                self.draw_blurred(&main, parent, radius);
             } else {
                 self.draw_shape(&main, parent);
             }
             self.flags.text_outline = was_text;
             // An inner shadow, over the object and cut to its shape
             // (#2473).
-            if self.flags.complex_effects && !self.flags.wireframe && main.opacity > 0.0 {
+            // An inner glow is an inner shadow that does not move (#1141).
+            // Fill opacity leaves both as they are.
+            if self.flags.complex_effects && !self.flags.wireframe && shape.opacity > 0.0 {
                 for e in &shape.effects {
-                    if let tracedraw_core::live::Effect::InnerShadow {
-                        offset,
-                        color,
-                        opacity,
-                        blur,
-                        merge,
-                    } = e
-                    {
-                        self.draw_inner_shadow(
-                            &main,
-                            parent,
-                            InnerShadow {
-                                offset: *offset,
-                                color: *color,
-                                opacity: *opacity,
-                                blur: *blur,
-                                merge: *merge,
-                            },
-                        );
-                    }
+                    let ish = match e {
+                        tracedraw_core::live::Effect::InnerShadow {
+                            offset,
+                            color,
+                            opacity,
+                            blur,
+                            merge,
+                        } => InnerShadow {
+                            offset: *offset,
+                            color: *color,
+                            opacity: *opacity,
+                            blur: *blur,
+                            merge: *merge,
+                        },
+                        tracedraw_core::live::Effect::Glow {
+                            inner: true,
+                            color,
+                            opacity,
+                            blur,
+                            merge,
+                        } => InnerShadow {
+                            offset: tracedraw_core::geometry::Vec2::ZERO,
+                            color: *color,
+                            opacity: *opacity,
+                            blur: *blur,
+                            merge: *merge,
+                        },
+                        _ => continue,
+                    };
+                    let mut lit = main.clone();
+                    lit.opacity = shape.opacity;
+                    self.draw_inner_shadow(&lit, parent, ish);
                 }
             }
             for a in &ev.above {
@@ -1445,9 +1494,15 @@ impl Renderer<'_> {
                     1.0
                 };
                 let [r, g, b] = stroke.color.to_rgb8();
-                for mark in
-                    tracedraw_core::painterly::marks(&page_path, stroke.width * scale, brush)
-                {
+                // A pen's pressure along the stroke sets the marks' width
+                // (#883).
+                for mark in tracedraw_core::painterly::marks_along(
+                    &page_path,
+                    stroke.width * scale,
+                    brush,
+                    &stroke.widths,
+                    stroke.width,
+                ) {
                     let Some(mp) = to_sk_path(&(self.screen * mark.path)) else {
                         continue;
                     };
@@ -1989,6 +2044,81 @@ impl Renderer<'_> {
             None,
         );
         composite_layer(self.pixmap, &out, (x0 as i32, y0 as i32), ish.merge);
+    }
+
+    /// The stacked outer shadows and outer glows of `shape` (#1141),
+    /// cast by `main`, what its effects leave of the object: each a drop
+    /// shadow of its own; a glow does not move and spreads outside the
+    /// edge only.
+    fn draw_outer_shadows(&mut self, shape: &Shape, main: &Shape, parent: Affine) {
+        use tracedraw_core::live::Effect;
+        let mut caster = main.clone();
+        caster.effects.clear();
+        caster.shadow = None;
+        caster.opacity = shape.opacity;
+        let page_path = (parent * caster.transform) * caster.local_path();
+        for e in &shape.effects {
+            let sh = match e {
+                Effect::OuterShadow {
+                    offset,
+                    color,
+                    opacity,
+                    blur,
+                    merge,
+                } => tracedraw_core::Shadow {
+                    offset: *offset,
+                    opacity: *opacity,
+                    blur: *blur,
+                    color: *color,
+                    merge: *merge,
+                    ..Default::default()
+                },
+                Effect::Glow {
+                    inner: false,
+                    color,
+                    opacity,
+                    blur,
+                    merge,
+                } => tracedraw_core::Shadow {
+                    offset: tracedraw_core::geometry::Vec2::ZERO,
+                    opacity: *opacity,
+                    blur: *blur,
+                    color: *color,
+                    merge: *merge,
+                    feather_direction: tracedraw_core::shadow::FeatherDirection::Outside,
+                    ..Default::default()
+                },
+                _ => continue,
+            };
+            if sh.opacity.is_finite() && sh.opacity > 0.0 {
+                self.draw_object_shadow(&sh, &caster, parent, &page_path);
+            }
+        }
+    }
+
+    /// `shape` drawn inside `parent` on a layer of its own, blurred by
+    /// `radius` mm (three box passes), and merged over the target
+    /// (#1141).
+    fn draw_blurred(&mut self, shape: &Shape, parent: Affine, radius: f64) {
+        let (w, h) = (self.pixmap.width(), self.pixmap.height());
+        let Some(mut layer) = Pixmap::new(w, h) else {
+            self.draw_shape(shape, parent);
+            return;
+        };
+        {
+            let mut sub = self.sub(&mut layer);
+            sub.draw_shape(shape, parent);
+        }
+        let px = (radius * self.zoom).round().clamp(0.0, 64.0) as i32;
+        if px > 0 {
+            accel::box_blur(&mut layer, px, 3);
+        }
+        composite_layer(
+            self.pixmap,
+            &layer,
+            (0, 0),
+            tracedraw_core::live::MergeMode::Normal,
+        );
     }
 
     /// Merge a finished shadow layer, its top left at `at` on the
@@ -6323,6 +6453,78 @@ mod tests {
         let (edge, mid) = (px(&pm, 22, 50).0, px(&pm, 30, 50).0);
         assert!(edge < mid && mid < 255, "fades from {edge} to {mid}");
         assert_eq!(px(&pm, 15, 50), (255, 255, 255), "outside is untouched");
+    }
+
+    /// The layer effects drawn by the renderer (#1141): an outer shadow
+    /// and an outer glow beneath, outside the object; an inner glow along
+    /// the inside edge; a Gaussian blur softening the edge; fill opacity
+    /// fading the object and not its glow.
+    #[test]
+    fn layer_effects_shadow_glow_and_blur_the_object() {
+        use tracedraw_core::geometry::Vec2;
+        use tracedraw_core::live::{Effect, MergeMode};
+        let with = |e: Vec<Effect>| {
+            let mut s = rect(1, Rect::new(30.0, 30.0, 70.0, 70.0), Color::BLACK);
+            s.effects = e;
+            let (doc, page) = doc_with(vec![s]);
+            render_page_image(&doc, page, 25.4).unwrap()
+        };
+        let plain = with(vec![]);
+        assert_eq!(px(&plain, 75, 50), (255, 255, 255));
+        // Outer shadow to the right: dark right of the object only.
+        let shadow = with(vec![Effect::OuterShadow {
+            offset: Vec2::new(8.0, 0.0),
+            color: Color::BLACK,
+            opacity: 1.0,
+            blur: 0.0,
+            merge: MergeMode::Normal,
+        }]);
+        assert!(px(&shadow, 75, 50).0 < 30, "{:?}", px(&shadow, 75, 50));
+        assert_eq!(px(&shadow, 25, 50), (255, 255, 255));
+        // Outer glow: red all round, fading out.
+        let glow = with(vec![Effect::Glow {
+            inner: false,
+            color: Color::rgb8(255, 0, 0),
+            opacity: 1.0,
+            blur: 6.0,
+            merge: MergeMode::Normal,
+        }]);
+        for (x, y) in [(72, 50), (27, 50), (50, 72), (50, 27)] {
+            let (r, g, b) = px(&glow, x, y);
+            assert!(r > 200 && g < 200 && b < 200, "({x},{y}): {:?}", (r, g, b));
+        }
+        assert_eq!(px(&glow, 50, 50), (0, 0, 0), "the object over its glow");
+        assert_eq!(px(&glow, 90, 50), (255, 255, 255), "beyond its reach");
+        // Inner glow on a black object: lit inside the edge, dark middle.
+        let inner = with(vec![Effect::Glow {
+            inner: true,
+            color: Color::WHITE,
+            opacity: 1.0,
+            blur: 3.0,
+            merge: MergeMode::Normal,
+        }]);
+        assert!(px(&inner, 31, 50).0 > 50, "{:?}", px(&inner, 31, 50));
+        assert!(px(&inner, 50, 50).0 < 30, "{:?}", px(&inner, 50, 50));
+        assert_eq!(px(&inner, 25, 50), (255, 255, 255));
+        // Gaussian blur: grey across the edge, still black in the middle.
+        let blurred = with(vec![Effect::GaussianBlur { radius: 3.0 }]);
+        let edge = px(&blurred, 71, 50).0;
+        assert!(edge > 0 && edge < 255, "{edge}");
+        assert!(px(&blurred, 50, 50).0 < 10);
+        // Fill opacity: the object fades, its glow does not.
+        let faded = with(vec![
+            Effect::Glow {
+                inner: false,
+                color: Color::rgb8(255, 0, 0),
+                opacity: 1.0,
+                blur: 6.0,
+                merge: MergeMode::Normal,
+            },
+            Effect::FillOpacity { opacity: 0.0 },
+        ]);
+        assert!(px(&faded, 72, 50).0 > 200);
+        // The object gone, its glow (solid up to the edge) shows.
+        assert_eq!(px(&faded, 50, 50), (255, 0, 0), "the object is gone");
     }
 
     #[test]

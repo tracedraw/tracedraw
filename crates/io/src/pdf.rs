@@ -1589,11 +1589,13 @@ impl PageWriter<'_> {
         self.stroke_state(&drawn);
         if let Some(brush) = &s.painterly {
             // Painterly brush: the marks, one filled path per opacity.
-            for (alpha, marks) in tracedraw_core::painterly::marks_by_opacity(
+            for (alpha, marks) in tracedraw_core::painterly::marks_by_opacity_along(
                 &shape.page_path(),
                 drawn.width,
                 brush,
                 12,
+                &s.widths,
+                s.width,
             ) {
                 self.content.push_str("q\n");
                 if self.pdf.allow_alpha {

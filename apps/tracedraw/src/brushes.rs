@@ -71,6 +71,10 @@ pub struct StrokeBase {
 pub const MIN_RADIUS: f64 = 0.5;
 pub const MAX_RADIUS: f64 = 500.0;
 
+/// The share of the nib a shaping brush keeps at the lightest touch of a
+/// pen (#883).
+pub const PEN_NIB_FLOOR: f64 = 0.2;
+
 /// How much one wheel notch grows (or, turned the other way, shrinks)
 /// the nib.
 pub const WHEEL_STEP: f64 = 1.1;
@@ -166,6 +170,22 @@ impl App {
         self.set_brush_radius(px / zoom);
     }
 
+    /// The share of the nib a pen's pressure gives the shaping brushes
+    /// right now (#883): [`PEN_NIB_FLOOR`] at the lightest touch, the
+    /// whole nib pressed fully; the whole nib with the mouse, or with
+    /// Options > Tools > Curve tools' pen pressure off.
+    pub fn pen_nib_scale(&self) -> f64 {
+        match self
+            .pen_pressure
+            .filter(|_| self.settings.curves.pen_pressure)
+        {
+            Some(p) if p.is_finite() => {
+                PEN_NIB_FLOOR + (1.0 - PEN_NIB_FLOOR) * f64::from(p.clamp(0.0, 1.0))
+            }
+            _ => 1.0,
+        }
+    }
+
     /// A stroke begins at `p`. Brushes change only what is selected:
     /// with nothing selected the stroke does nothing and the status bar
     /// says to select an object first (a click selects, see
@@ -208,7 +228,8 @@ impl App {
             return;
         };
         let delta = p - last;
-        let radius = self.brush_radius;
+        // A pen pressed lightly works with a smaller nib (#883).
+        let radius = self.brush_radius * self.pen_nib_scale();
         let b = self.brush;
         let held = if dt.is_finite() {
             dt.clamp(0.0, 0.1)

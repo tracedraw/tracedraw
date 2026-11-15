@@ -2208,6 +2208,8 @@ impl App {
                     }
                 } else if response.drag_started_by(PointerButton::Primary) {
                     self.drag = Drag::Freehand { points: vec![p] };
+                    // A pen's pressure sets the width along the drag (#883).
+                    self.pen_stroke = crate::pen::PenStroke::start(self.pen_pressure);
                 } else if response.dragged_by(PointerButton::Primary) {
                     if let Drag::Freehand { points } = &mut self.drag {
                         if points
@@ -2216,6 +2218,8 @@ impl App {
                             .unwrap_or(true)
                         {
                             points.push(p);
+                            let n = points.len();
+                            self.pen_stroke.record(n, self.pen_pressure);
                         }
                     }
                 } else if response.clicked_by(PointerButton::Primary) {

@@ -2040,6 +2040,41 @@ impl App {
 // ----- Eraser ----------------------------------------------------------------------
 
 impl App {
+    /// The band the Eraser takes out along `points`: its width all along,
+    /// or, dragged with a pen and the round nib, as wide as the pen's
+    /// pressure gives at each place (#883), from a fifth of the width at
+    /// the lightest touch.
+    pub fn eraser_band(&self, points: &[Point]) -> tracedraw_core::geometry::BezPath {
+        let even =
+            || tracedraw_core::shaping::stroke_band(points, self.eraser_width, self.eraser_square);
+        if self.eraser_square || points.len() < 2 {
+            return even();
+        }
+        let Some(pen) = self
+            .pen_pressures(points)
+            .and_then(|pr| crate::pen::PressureProfile::new(points, pr))
+        else {
+            return even();
+        };
+        let mut line = tracedraw_core::geometry::BezPath::new();
+        line.move_to(points[0]);
+        for p in &points[1..] {
+            line.line_to(*p);
+        }
+        let mut stroke =
+            tracedraw_core::Stroke::new(tracedraw_core::Color::BLACK, self.eraser_width);
+        stroke.cap = tracedraw_core::style::LineCap::Round;
+        stroke.widths = pen.width_nodes(
+            crate::pen::FREEHAND_NODES,
+            self.eraser_width,
+            crate::brushes::PEN_NIB_FLOOR,
+            &|_| 1.0,
+        );
+        tracedraw_core::shaping::outline_band(&line, &stroke, 1.0)
+            .filter(|b| !b.elements().is_empty())
+            .unwrap_or_else(even)
+    }
+
     /// Eraser: subtract the nib's band along `points` (page space) from
     /// the selected objects, or from the object under the first point.
     /// Objects become curves; what vanishes entirely is deleted.
@@ -2049,8 +2084,7 @@ impl App {
         let Some(first) = points.first().copied() else {
             return;
         };
-        let band =
-            tracedraw_core::shaping::stroke_band(points, self.eraser_width, self.eraser_square);
+        let band = self.eraser_band(points);
         if band.elements().is_empty() {
             return;
         }

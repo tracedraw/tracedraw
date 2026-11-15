@@ -575,9 +575,14 @@ fn write_unlinked(
         .as_ref()
         .and_then(|(s, _)| s.painterly.as_ref().map(|b| (s, b)))
     {
-        for (alpha, marks) in
-            tracedraw_core::painterly::marks_by_opacity(&shape.page_path(), s.width, brush, 12)
-        {
+        for (alpha, marks) in tracedraw_core::painterly::marks_by_opacity_along(
+            &shape.page_path(),
+            s.width,
+            brush,
+            12,
+            &s.widths,
+            s.width,
+        ) {
             let _ = writeln!(
                 out,
                 "{pad}<path d=\"{}\" fill=\"{}\" fill-opacity=\"{}\" stroke=\"none\"/>",

@@ -3956,6 +3956,7 @@ fn effects_menu(app: &mut App, ui: &mut Ui) {
     // The effect panels: each opens its docker, checked while its tab is
     // in the docker column.
     for (key, shortcut, tab) in [
+        ("menu.effects.layer_effects", "", DockerTab::Effects),
         ("menu.effects.brush_strokes", "", DockerTab::BrushStrokes),
         ("menu.effects.bevel", "", DockerTab::Bevel),
         ("menu.effects.blend", "", DockerTab::Blend),

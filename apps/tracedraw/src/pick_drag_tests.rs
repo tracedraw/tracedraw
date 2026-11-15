@@ -28262,3 +28262,54 @@ fn node_edits_keep_their_result_chosen() {
     app.reverse_selected_curves();
     assert_eq!(chosen_spots(&app), vec![Point::new(30.0, 10.0)]);
 }
+
+/// A pen's pressure reaches the other drawing tools (#883): a Painterly
+/// Brush stroke and a Sketch stroke pressed hard then lightly are wide
+/// then thin; the shaping brushes' nib shrinks under a light touch; the
+/// Eraser's round band narrows where the pen was pressed lightly.
+#[test]
+fn pen_pressure_reaches_painterly_sketch_brushes_and_eraser() {
+    let (ctx, mut app, _) = setup();
+    let hard_then_light = |t: f32| if t < 0.5 { 0.9 } else { 0.2 };
+    for (tool, y) in [(Tool::PainterlyBrush, 100.0), (Tool::Sketch, 130.0)] {
+        app.set_tool(tool);
+        app.select(Vec::new());
+        let from = app.view.to_screen(Point::new(80.0, y));
+        let to = app.view.to_screen(Point::new(180.0, y));
+        let before = shape_count(&app);
+        pen_drag(&ctx, &mut app, from, to, &hard_then_light);
+        assert_eq!(shape_count(&app), before + 1, "{tool:?}");
+        let st = last_stroke(&app);
+        assert!(
+            !st.widths.is_empty(),
+            "{tool:?}: the outline follows the pressure"
+        );
+        let (start, end) = end_widths(&st.widths);
+        assert!(start > end * 2.0, "{tool:?}: {start} vs {end}");
+    }
+    // The shaping brushes' nib.
+    app.pen_pressure = Some(0.0);
+    assert!((app.pen_nib_scale() - crate::brushes::PEN_NIB_FLOOR).abs() < 1e-9);
+    app.pen_pressure = Some(1.0);
+    assert!((app.pen_nib_scale() - 1.0).abs() < 1e-9);
+    app.pen_pressure = None;
+    assert_eq!(app.pen_nib_scale(), 1.0);
+    app.pen_pressure = Some(0.0);
+    app.settings.curves.pen_pressure = false;
+    assert_eq!(app.pen_nib_scale(), 1.0);
+    app.settings.curves.pen_pressure = true;
+    app.pen_pressure = None;
+    // The Eraser's band: narrower with a light pen than the mouse's.
+    use tracedraw_core::geometry::Shape as _;
+    app.eraser_width = 4.0;
+    app.eraser_square = false;
+    let points: Vec<Point> = (0..=40).map(|i| Point::new(f64::from(i), 0.0)).collect();
+    app.pen_stroke = crate::pen::PenStroke::default();
+    let even = app.eraser_band(&points).area().abs();
+    app.pen_stroke = crate::pen::PenStroke::start(Some(0.1));
+    for n in 2..=points.len() {
+        app.pen_stroke.record(n, Some(0.1));
+    }
+    let light = app.eraser_band(&points).area().abs();
+    assert!(light > 0.0 && light < even * 0.6, "{light} vs {even}");
+}

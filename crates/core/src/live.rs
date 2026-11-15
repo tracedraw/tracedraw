@@ -161,6 +161,47 @@ pub enum Effect {
         angle: f64,
         lines: u8,
     },
+    /// Outer shadow (#1141): a soft shadow cast beneath the object by its
+    /// shape, moved by `offset`; one of a stack of them, beside the
+    /// object's own drop shadow. Drawn by the renderer.
+    OuterShadow {
+        offset: Vec2,
+        color: Color,
+        /// 0..1
+        opacity: f64,
+        /// Feathering, millimetres.
+        blur: f64,
+        merge: MergeMode,
+    },
+    /// Glow (#1141): a soft light in `color` round the edge, spreading
+    /// `blur` mm outside the object, or inside it (`inner`). Drawn by the
+    /// renderer, as an outer shadow or an inner shadow that does not move.
+    Glow {
+        inner: bool,
+        color: Color,
+        /// 0..1
+        opacity: f64,
+        /// Spread, millimetres.
+        blur: f64,
+        merge: MergeMode,
+    },
+    /// Colour overlay (#1141): the object's shape in one colour over it,
+    /// `opacity` 0..1.
+    ColorOverlay { color: Color, opacity: f64 },
+    /// Gradient overlay (#1141): the object's shape filled with a linear
+    /// gradient from `from` to `to` at `angle` degrees over it.
+    GradientOverlay {
+        from: Color,
+        to: Color,
+        angle: f64,
+        opacity: f64,
+    },
+    /// Gaussian blur (#1141): the object drawn blurred by `radius` mm.
+    /// Drawn by the renderer.
+    GaussianBlur { radius: f64 },
+    /// Fill opacity (#1141): the object itself drawn at `opacity` 0..1
+    /// while what its other effects draw keeps its own.
+    FillOpacity { opacity: f64 },
     /// Lens over everything beneath (evaluated by the renderer).
     Lens(Lens),
     /// Non-uniform transparency: the fill's luminance is the opacity.
@@ -470,8 +511,28 @@ impl Effect {
         !self.warps_outline()
             && !matches!(
                 self,
-                Effect::Lens(_) | Effect::Transparency { .. } | Effect::InnerShadow { .. }
+                Effect::Lens(_)
+                    | Effect::Transparency { .. }
+                    | Effect::InnerShadow { .. }
+                    | Effect::OuterShadow { .. }
+                    | Effect::Glow { .. }
+                    | Effect::GaussianBlur { .. }
+                    | Effect::FillOpacity { .. }
             )
+    }
+
+    /// Drawn by the renderer from the object as it is drawn, adding no
+    /// objects of its own (#1141).
+    pub fn drawn_by_renderer(&self) -> bool {
+        matches!(
+            self,
+            Effect::Lens(_)
+                | Effect::Transparency { .. }
+                | Effect::InnerShadow { .. }
+                | Effect::OuterShadow { .. }
+                | Effect::Glow { .. }
+                | Effect::GaussianBlur { .. }
+        )
     }
 }
 
@@ -924,6 +985,33 @@ impl Effect {
     }
 }
 
+/// A colour or gradient overlay (#1141): the object's shape over it,
+/// filled with `fill` and its outline in `line`, at `opacity` of the
+/// object's own; nothing at no opacity.
+fn overlay(main: &Shape, fill: Fill, line: Color, opacity: f64) -> Option<Shape> {
+    let opacity = if opacity.is_finite() {
+        opacity.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    if opacity <= 0.0 {
+        return None;
+    }
+    let mut s = main.clone();
+    s.effects.clear();
+    s.parked_effects.clear();
+    s.shadow = None;
+    if !matches!(s.fill, Fill::None) {
+        s.fill = fill;
+    }
+    if let Some(st) = s.stroke.as_mut() {
+        st.color = line;
+        st.painterly = None;
+    }
+    s.opacity *= opacity;
+    Some(s)
+}
+
 /// Result of evaluating a shape's effect stack.
 #[derive(Clone)]
 pub struct Evaluated {
@@ -1225,7 +1313,42 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             // Mirrored last, whatever its place in the list: the copies
             // carry every other effect of the object (#2121).
             Effect::Symmetry { .. } => {}
-            Effect::Lens(_) | Effect::Transparency { .. } | Effect::InnerShadow { .. } => {}
+            Effect::ColorOverlay { color, opacity } => {
+                above.extend(overlay(&main, Fill::Solid(*color), *color, *opacity));
+            }
+            Effect::GradientOverlay {
+                from,
+                to,
+                angle,
+                opacity,
+            } => {
+                let f = crate::style::Fountain::two(
+                    crate::style::FountainKind::Linear,
+                    *from,
+                    *to,
+                    *angle,
+                );
+                above.extend(overlay(&main, Fill::Fountain(f), *to, *opacity));
+            }
+            Effect::FillOpacity { .. } => {}
+            Effect::Lens(_)
+            | Effect::Transparency { .. }
+            | Effect::InnerShadow { .. }
+            | Effect::OuterShadow { .. }
+            | Effect::Glow { .. }
+            | Effect::GaussianBlur { .. } => {}
+        }
+    }
+    // Fill opacity: the object alone, after the overlays and the other
+    // effects took it as it was (#1141).
+    for effect in &shape.effects {
+        if let Effect::FillOpacity { opacity } = effect {
+            let o = if opacity.is_finite() {
+                opacity.clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+            main.opacity *= o;
         }
     }
     for effect in &shape.effects {
@@ -2727,6 +2850,72 @@ pub fn homography(src: &[Point; 4], dst: &[Point; 4]) -> Option<[f64; 8]> {
 mod tests {
     use super::*;
 
+    /// Colour and gradient overlays draw the object's shape over it at
+    /// their opacity; fill opacity fades the object alone; the shadows,
+    /// glows and blur add no objects (the renderer draws them) (#1141).
+    #[test]
+    fn layer_effect_overlays_and_fill_opacity() {
+        let mut s = Shape::new(
+            crate::ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        s.fill = Fill::Solid(Color::BLACK);
+        s.stroke = Some(crate::Stroke::new(Color::BLACK, 1.0));
+        s.effects = vec![
+            Effect::ColorOverlay {
+                color: Color::rgb8(255, 0, 0),
+                opacity: 0.5,
+            },
+            Effect::GradientOverlay {
+                from: Color::WHITE,
+                to: Color::BLACK,
+                angle: 0.0,
+                opacity: 1.0,
+            },
+            Effect::FillOpacity { opacity: 0.25 },
+            Effect::Glow {
+                inner: false,
+                color: Color::WHITE,
+                opacity: 1.0,
+                blur: 2.0,
+                merge: MergeMode::Screen,
+            },
+            Effect::GaussianBlur { radius: 1.0 },
+        ];
+        let ev = evaluate(&s);
+        assert!(ev.below.is_empty());
+        assert_eq!(ev.above.len(), 2);
+        assert_eq!(ev.above[0].fill, Fill::Solid(Color::rgb8(255, 0, 0)));
+        assert!((ev.above[0].opacity - 0.5).abs() < 1e-9);
+        assert_eq!(
+            ev.above[0].stroke.as_ref().map(|st| st.color),
+            Some(Color::rgb8(255, 0, 0))
+        );
+        assert!(matches!(ev.above[1].fill, Fill::Fountain(_)));
+        assert!((ev.above[1].opacity - 1.0).abs() < 1e-9);
+        assert!((ev.main.opacity - 0.25).abs() < 1e-9);
+        // Nothing at no opacity.
+        s.effects = vec![Effect::ColorOverlay {
+            color: Color::WHITE,
+            opacity: 0.0,
+        }];
+        assert!(evaluate(&s).above.is_empty());
+        // Saved and read back.
+        let e = Effect::OuterShadow {
+            offset: Vec2::new(1.0, -1.0),
+            color: Color::BLACK,
+            opacity: 0.5,
+            blur: 1.0,
+            merge: MergeMode::Multiply,
+        };
+        let back: Effect = serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
+        assert_eq!(back, e);
+    }
+
     /// The parts a transparency's target fades (live test of 0.41: the
     /// target made no difference): the fill and the outline apart, the
     /// outline first when it is behind the fill, an object lacking the
@@ -3201,7 +3390,11 @@ mod tests {
             ],
         });
         let main = evaluate(&text).main;
-        assert!(matches!(main.kind, ShapeKind::Path { .. }), "{:?}", main.kind);
+        assert!(
+            matches!(main.kind, ShapeKind::Path { .. }),
+            "{:?}",
+            main.kind
+        );
         assert_eq!(main.fill_rule, FillRule::NonZero);
         // A curve keeps its own rule.
         let mut curve = rect_shape();

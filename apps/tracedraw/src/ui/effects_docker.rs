@@ -26,6 +26,13 @@ pub fn effect_key(e: &Effect) -> &'static str {
         Effect::Bevel { .. } => "effect.bevel",
         Effect::BlockShadow { .. } => "effect.block_shadow",
         Effect::InnerShadow { .. } => "effect.inner_shadow",
+        Effect::OuterShadow { .. } => "effect.outer_shadow",
+        Effect::Glow { inner: true, .. } => "effect.inner_glow",
+        Effect::Glow { .. } => "effect.outer_glow",
+        Effect::ColorOverlay { .. } => "effect.color_overlay",
+        Effect::GradientOverlay { .. } => "effect.gradient_overlay",
+        Effect::GaussianBlur { .. } => "effect.gaussian_blur",
+        Effect::FillOpacity { .. } => "effect.fill_opacity",
         Effect::Symmetry { .. } => "effect.symmetry",
         Effect::Lens(_) => "effect.lens",
         Effect::Transparency { .. } => "effect.transparency",
@@ -57,6 +64,9 @@ fn changed_stack(s: &Shape, change: Change) -> Option<Vec<(Effect, bool)>> {
 }
 
 pub fn effects_docker(app: &mut App, ui: &mut Ui) {
+    // The stackable looks with their values (#1141), then the whole stack.
+    crate::ui::layer_effects::layer_effects(app, ui);
+    ui.separator();
     effect_stack(app, ui);
     ui.separator();
     presets(app, ui);

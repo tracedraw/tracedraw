@@ -49,6 +49,12 @@ pub fn portable(e: &Effect) -> bool {
             | Effect::Bevel { .. }
             | Effect::BlockShadow { .. }
             | Effect::InnerShadow { .. }
+            | Effect::OuterShadow { .. }
+            | Effect::Glow { .. }
+            | Effect::ColorOverlay { .. }
+            | Effect::GradientOverlay { .. }
+            | Effect::GaussianBlur { .. }
+            | Effect::FillOpacity { .. }
             | Effect::Lens(_)
             | Effect::Transparency { .. }
     )

@@ -182,6 +182,8 @@ impl App {
             Tool::ShapeRecognition | Tool::Sketch => {
                 if response.drag_started_by(PointerButton::Primary) {
                     self.drag = Drag::Freehand { points: vec![p] };
+                    // A pen's pressure along the stroke (#883).
+                    self.pen_stroke = crate::pen::PenStroke::start(self.pen_pressure);
                 }
                 if response.dragged_by(PointerButton::Primary) {
                     if let Drag::Freehand { points } = &mut self.drag {
@@ -191,6 +193,8 @@ impl App {
                             .unwrap_or(true)
                         {
                             points.push(p);
+                            let n = points.len();
+                            self.pen_stroke.record(n, self.pen_pressure);
                         }
                     }
                 }
@@ -402,12 +406,33 @@ impl App {
                 }
             }
         }
-        if let Some(id) = self.new_shape(ShapeKind::Path {
-            path,
-            closed: false,
-        }) {
+        // Drawn with a pen: the outline follows its pressure (#883).
+        let widths = self.pen_widths(&points);
+        if let Some(id) = self.new_shape_styled(
+            ShapeKind::Path {
+                path,
+                closed: false,
+            },
+            |shape| {
+                if let Some(st) = shape.stroke.as_mut().filter(|_| !widths.is_empty()) {
+                    st.widths = widths;
+                }
+            },
+        ) {
             self.select(vec![id]);
         }
+    }
+
+    /// The width nodes a line drawn along `points` gets from the pen's
+    /// pressure, for the default outline's width; empty with the mouse
+    /// or with Options > Tools > Curve tools' pen pressure off (#850,
+    /// #883).
+    pub fn pen_widths(&self, points: &[Point]) -> Vec<tracedraw_core::style::WidthNode> {
+        self.pen_pressures(points)
+            .and_then(|pr| crate::pen::PressureProfile::new(points, pr))
+            .zip(self.default_stroke())
+            .map(|(pen, st)| pen.freehand_widths(st.width))
+            .unwrap_or_default()
     }
 
     /// Right-angle and rounded connectors: an elbow path between the

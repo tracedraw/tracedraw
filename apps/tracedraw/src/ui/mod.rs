@@ -69,6 +69,7 @@ pub mod icon_paint;
 pub mod icons;
 pub mod keynav;
 pub mod lab_dialog;
+pub mod layer_effects;
 pub mod layout_options;
 pub mod line_style;
 pub mod macros_ui;
