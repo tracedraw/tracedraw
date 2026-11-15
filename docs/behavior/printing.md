@@ -135,6 +135,14 @@ has one.
   plate and its box in the print preview; before, the sheets lost the
   list and only the four process plates printed (#779,
   `export::tests::separations_print_a_plate_for_each_spot_ink`).
+  Leave out empty plates (under Separations in the Print dialog and
+  under the inks in Print Preview, off at first, kept in presets): each
+  sheet's plate that takes no ink does not print; a colour counts on a
+  plate where it has coverage of that ink, a picture counts on every
+  plate, the registration colour of the marks counts on none, and a
+  sheet with no ink at all keeps its first plate
+  (`export::plate_has_ink`). The count of pages to print in Print
+  Preview's status line still counts every plate.
   Pictures are split into their inks too (#1659): a picture that keeps
   its ink channels (a CMYK image of a `.cdr` file) prints each ink as it
   holds it, so cyan ink alone prints on the cyan plate alone and black

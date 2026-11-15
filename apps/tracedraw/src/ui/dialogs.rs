@@ -498,6 +498,8 @@ pub struct PrintState {
     /// With Print separations: the plates (in `export::plates` order)
     /// unticked in Print Preview, which do not print (#846).
     pub plates_off: Vec<usize>,
+    /// Separations leave out each sheet's plate that takes no ink.
+    pub skip_empty_plates: bool,
     pub copies: u32,
     pub all_pages: bool,
     pub scale: f64,
@@ -887,6 +889,7 @@ impl Default for PrintState {
     fn default() -> Self {
         PrintState {
             plates_off: Vec::new(),
+            skip_empty_plates: false,
             copies: 1,
             all_pages: true,
             scale: 100.0,
@@ -6530,6 +6533,16 @@ fn print_tab_color(ui: &mut Ui, st: &mut PrintState) {
                     .rich_disabled_tip(tr("print.grayscale_tip"));
                 });
                 ui.radio_value(&mut st.separations, true, tr("print.separations_output"));
+                ui.indent("print_skip_empty", |ui| {
+                    ui.add_enabled(
+                        st.separations,
+                        egui::Checkbox::new(
+                            &mut st.skip_empty_plates,
+                            tr("print.skip_empty_plates"),
+                        ),
+                    )
+                    .rich_tip(crate::ui::tips::keyed("print.skip_empty_plates"));
+                });
             });
             ui.end_row();
             ui.label("");

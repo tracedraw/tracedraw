@@ -808,7 +808,7 @@ pub fn print_sheet(app: &mut App, st: &PrintState, only: Option<usize>) -> Resul
         keep_one_sheet(&mut doc, n);
     }
     if st.separations {
-        doc = separations_doc_without(&doc, &st.plates_off);
+        doc = separations_doc_without(&doc, &st.plates_off, st.skip_empty_plates);
     }
     let stem = app.document_title().trim_end_matches('*').to_string();
     // Files get their copies inside; the printer (lp) or the system
@@ -1987,15 +1987,72 @@ fn invert_colors(s: &mut tracedraw_core::Shape) {
 /// Colour separations with every plate.
 #[cfg(test)]
 fn separations_doc(doc: &Document) -> Document {
-    separations_doc_without(doc, &[])
+    separations_doc_without(doc, &[], false)
+}
+
+/// Whether `plate` of `page` takes any ink: a colour with coverage on
+/// that plate, or a picture (its inks not looked into, so it counts on
+/// every plate); the registration colour the marks are drawn in does not
+/// count.
+pub fn plate_has_ink(page: &tracedraw_core::document::Page, plate: Plate) -> bool {
+    use tracedraw_core::{Color, Fill};
+    let inked = std::cell::Cell::new(false);
+    let look = |c: Color| -> Color {
+        let v = match (plate, c) {
+            (_, Color::Registration) => 0.0,
+            (Plate::Spot(id), Color::Spot { ink, tint, .. }) if ink == id => tint,
+            (Plate::Spot(_), _) | (Plate::Process(_), Color::Spot { .. }) => 0.0,
+            (Plate::Process(i), _) => match c.convert_to("CMYK") {
+                Color::Cmyk { c, m, y, k } => [c, m, y, k].get(i).copied().unwrap_or(0.0),
+                _ => 0.0,
+            },
+        };
+        if v > 1e-6 {
+            inked.set(true);
+        }
+        c
+    };
+    fn has_picture(s: &tracedraw_core::Shape) -> bool {
+        match &s.kind {
+            ShapeKind::Bitmap { .. } => true,
+            ShapeKind::Group { children } => children.iter().any(has_picture),
+            ShapeKind::ClipFrame { frame, contents } => {
+                has_picture(frame) || contents.iter().any(has_picture)
+            }
+            _ => false,
+        }
+    }
+    for layer in &page.layers {
+        for s in &layer.shapes {
+            if has_picture(s) {
+                return true;
+            }
+            let mut s = s.clone();
+            if matches!(
+                s.fill,
+                Fill::Texture(_) | Fill::Pattern(_) | Fill::Procedural(_)
+            ) {
+                if let Some(c) = s.fill.preview_color() {
+                    s.fill = Fill::Solid(c);
+                }
+            }
+            map_colors(&mut s, &look);
+            if inked.get() {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Colour separations: one grey page per sheet and plate (the four
 /// process inks, then each spot ink), each the grey of that ink's
 /// coverage; a spot colour prints on its own plate only, at its tint.
 /// The plates at the indices `off` (in [`plates`] order), those unticked
-/// in Print Preview, are left out (#846).
-fn separations_doc_without(doc: &Document, off: &[usize]) -> Document {
+/// in Print Preview, are left out (#846); with `skip_empty` so is each
+/// sheet's plate that takes no ink ([`plate_has_ink`]), a sheet with no
+/// ink at all keeping its first plate.
+fn separations_doc_without(doc: &Document, off: &[usize], skip_empty: bool) -> Document {
     let size = doc
         .pages
         .first()
@@ -2011,7 +2068,15 @@ fn separations_doc_without(doc: &Document, off: &[usize]) -> Document {
         .map(|(_, p)| p)
         .collect();
     for page in &doc.pages {
-        for (plate, name) in &plates {
+        let inked: Vec<bool> = plates
+            .iter()
+            .map(|(plate, _)| !skip_empty || plate_has_ink(page, *plate))
+            .collect();
+        let any = inked.iter().any(|i| *i);
+        for (n, (plate, name)) in plates.iter().enumerate() {
+            if !inked[n] && (any || n > 0) {
+                continue;
+            }
             let mut p = plate_page(page, *plate);
             p.name = format!("{} {}", page.name, name);
             let mut ids = sep.ids().clone();
@@ -2839,7 +2904,7 @@ mod tests {
         let seps = separations_doc(&sheets);
         assert_eq!(seps.pages.len(), 5);
         // Plates unticked in Print Preview do not print (#846).
-        let some = separations_doc_without(&sheets, &[0, 2]);
+        let some = separations_doc_without(&sheets, &[0, 2], false);
         let kept: Vec<&str> = some.pages.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(kept.len(), 3, "{kept:?}");
         assert!(
@@ -2865,6 +2930,28 @@ mod tests {
             }
             out
         };
+        // Empty plates left out: the spot red rectangle with its black
+        // outline takes no cyan, magenta or yellow, so those plates go;
+        // the marks' registration colour does not count.
+        let st_marks = PrintState {
+            separations: true,
+            crop_marks: true,
+            registration_marks: true,
+            ..PrintState::default()
+        };
+        let marked = print_sheets(&app, &st_marks);
+        let inked = separations_doc_without(&marked, &[], true);
+        let kept: Vec<&str> = inked.pages.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(kept, ["1 Black", "1 Spot Red"]);
+        // With nothing on any plate the sheet keeps its first plate.
+        let blank = print_sheets(&App::headless(), &st_marks);
+        let left = separations_doc_without(&blank, &[], true);
+        assert_eq!(left.pages.len(), 1);
+        assert!(
+            left.pages[0].name.ends_with("Cyan"),
+            "{}",
+            left.pages[0].name
+        );
         let full = Fill::Solid(tracedraw_core::Color::Gray { v: 0.0 });
         assert!(fills(spot).contains(&full), "{:?}", fills(spot));
         assert!(!fills(&seps.pages[0]).contains(&full));

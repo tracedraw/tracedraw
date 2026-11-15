@@ -813,6 +813,10 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                         // prints, or the colour the ink gives (#1652).
                         ui.checkbox(&mut pv.ink_in_color, tr("print.ink_in_color"))
                             .rich_tip(tr("print.ink_in_color_tip"));
+                        // Plates with no ink on a sheet left out of the
+                        // print.
+                        ui.checkbox(&mut pv.st.skip_empty_plates, tr("print.skip_empty_plates"))
+                            .rich_tip(crate::ui::tips::keyed("print.skip_empty_plates"));
                     });
                 }
                 let st = &mut pv.st;

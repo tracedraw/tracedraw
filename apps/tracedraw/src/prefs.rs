@@ -379,6 +379,7 @@ pub struct PrintStyle {
     pub collate: bool,
     pub reverse_order: bool,
     pub separations: bool,
+    pub skip_empty_plates: bool,
     pub grayscale: bool,
     pub mirror: bool,
     pub invert: bool,
@@ -420,6 +421,7 @@ impl PrintStyle {
             collate: st.collate,
             reverse_order: st.reverse_order,
             separations: st.separations,
+            skip_empty_plates: st.skip_empty_plates,
             grayscale: st.grayscale,
             mirror: st.mirror,
             invert: st.invert,
@@ -478,6 +480,7 @@ impl PrintStyle {
         st.collate = self.collate;
         st.reverse_order = self.reverse_order;
         st.separations = self.separations;
+        st.skip_empty_plates = self.skip_empty_plates;
         st.grayscale = self.grayscale;
         st.mirror = self.mirror;
         st.invert = self.invert;
