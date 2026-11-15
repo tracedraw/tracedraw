@@ -694,6 +694,9 @@ pub struct Settings {
     /// seen on the drawing instead of in Before and After panes (#2799).
     #[serde(default)]
     pub fx_settings_only: bool,
+    /// The programs of Object > Insert > Insert Object, each opened with
+    /// one click (#1025).
+    pub object_apps: Vec<crate::insert_object::ObjectApp>,
 }
 
 fn default_path_tick() -> f64 {
@@ -2117,6 +2120,7 @@ impl Default for Settings {
             style_presets: Vec::new(),
             fx_presets: Vec::new(),
             fx_settings_only: false,
+            object_apps: Vec::new(),
         }
     }
 }

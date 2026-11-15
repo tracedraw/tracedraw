@@ -1322,7 +1322,9 @@ pub(crate) mod replay {
 
     /// Items that would block on a native file chooser, start another
     /// program (an editor or the web browser) or close the window.
-    const SKIP: [&str; 16] = [
+    const SKIP: [&str; 18] = [
+        "menu.object.insert_object_add",
+        "menu.object.insert_object_file",
         "menu.file.send_to_mail",
         "menu.tools.macros_load",
         "menu.help.updates",
@@ -3319,6 +3321,49 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         if item(ui, "menu.object.insert_page_number", "", true) {
             app.insert_page_number(crate::ops2::PageNumberWhere::Active);
         }
+        // Programs added once, each opened with one click; what they
+        // make comes in through the clipboard or a file (#1025).
+        sub(ui, "menu.object.insert_object", |ui| {
+            if crate::insert_object::OFFERED {
+                let apps = app.settings.object_apps.clone();
+                for (i, a) in apps.iter().enumerate() {
+                    if item_label(ui, &a.name, "", true) {
+                        app.open_object_app(i);
+                    }
+                }
+                if !apps.is_empty() {
+                    sep(ui);
+                }
+            }
+            if item(ui, "menu.object.insert_object_paste", "", true) {
+                app.paste_any();
+            }
+            if item(ui, "menu.object.insert_object_paste_special", "", true) {
+                app.dialog = Dialog::PasteSpecial(Default::default());
+            }
+            if item(ui, "menu.object.insert_object_file", "", true) {
+                app.import();
+            }
+            if crate::insert_object::OFFERED {
+                sep(ui);
+                if item(ui, "menu.object.insert_object_add", "", true) {
+                    app.add_object_app();
+                }
+                let apps = app.settings.object_apps.clone();
+                sub_if(
+                    ui,
+                    "menu.object.insert_object_remove",
+                    !apps.is_empty(),
+                    |ui| {
+                        for (i, a) in apps.iter().enumerate() {
+                            if item_label(ui, &a.name, "", true) {
+                                app.remove_object_app(i);
+                            }
+                        }
+                    },
+                );
+            }
+        });
         let has = !app.selection.is_empty();
         if item(ui, "menu.object.add_dimensions", "", has) {
             app.add_dimensions(false);
@@ -4265,6 +4310,17 @@ fn text_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.text.make_web_compatible", "", is_text) {
         app.make_text_web_compatible();
     }
+    sub(ui, "menu.text.chinese", |ui| {
+        if item(ui, "menu.text.chinese_traditional", "", is_text) {
+            app.convert_chinese(crate::chinese::Script::Traditional);
+        }
+        if item(ui, "menu.text.chinese_simplified", "", is_text) {
+            app.convert_chinese(crate::chinese::Script::Simplified);
+        }
+        if item(ui, "menu.text.chinese_pinyin", "", is_text) {
+            app.add_pinyin();
+        }
+    });
     sep(ui);
     if item(ui, "menu.text.encode", "", is_text) {
         app.dialog = Dialog::Encode(Default::default());

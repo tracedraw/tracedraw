@@ -39,6 +39,7 @@ mod blend_tool;
 mod border_grommet;
 mod brushes;
 mod callouts;
+mod chinese;
 mod canvas;
 mod clipboard;
 mod clone_effect;
@@ -106,6 +107,7 @@ mod help_shots;
 mod hunspell;
 mod i18n;
 mod image_dpi;
+mod insert_object;
 mod import_place;
 mod imposition;
 #[cfg(test)]
