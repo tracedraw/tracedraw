@@ -27,6 +27,7 @@ pub mod fit;
 pub mod geometry;
 pub mod icc;
 pub mod id;
+pub mod jpeg_source;
 pub mod join;
 pub mod linked_text;
 pub mod live;

@@ -496,10 +496,13 @@ pub fn release_name(version: u16) -> &'static str {
     }
 }
 
-/// The versions offered, newest first.
-/// The `.tdraw` versions offered, newest first.
+/// The `.tdraw` versions offered, newest first: the packed ones (#2849).
+/// The plain files of 0.46 and older are not written any more (those
+/// releases do not open the packed ones).
 pub fn tdraw_version_choices() -> Vec<u32> {
-    (0..=TDRAW_FORMAT_VERSION).rev().collect()
+    (tracedraw_core::document::PACKED_VERSION..=TDRAW_FORMAT_VERSION)
+        .rev()
+        .collect()
 }
 
 /// "v2 (TraceDraw 1.0)": the format version and the release that first
@@ -732,7 +735,7 @@ impl App {
                     std::borrow::Cow::Borrowed(&*carried)
                 };
                 files::write_with(&path, |w| {
-                    doc.write_json_version(w, tdraw_version)
+                    doc.write_tdraw_version(w, tdraw_version)
                         .map_err(std::io::Error::other)
                 })
                 .map_err(|e| e.to_string())
@@ -1587,20 +1590,28 @@ mod tests {
         assert_eq!(st.file_name(), "native.tdraw");
         assert_eq!(st.tdraw_version, TDRAW_FORMAT_VERSION);
         assert_eq!(tdraw_version_choices()[0], TDRAW_FORMAT_VERSION);
-        assert_eq!(tdraw_version_choices(), vec![0]);
-        st.tdraw_version = 0;
+        // Only the packed format is offered (#2849): nothing to choose.
+        assert_eq!(tdraw_version_choices(), vec![2]);
+        assert_eq!(tdraw_version_label(2), "v2 (TraceDraw 0.47)");
         let mut st = st.clone();
         assert!(app.finish_save_as(&mut st));
-        let text = std::fs::read_to_string(dir.join("native.tdraw")).unwrap_or_default();
-        assert_eq!(tracedraw_core::document::tdraw_text_version(&text), 0);
-        // Ctrl+S keeps the version; opening the file brings it back.
-        app.engine.mark_saved();
-        app.save(false);
-        let text = std::fs::read_to_string(dir.join("native.tdraw")).unwrap_or_default();
-        assert_eq!(tracedraw_core::document::tdraw_text_version(&text), 0);
+        let packed = |p: &std::path::Path| {
+            let bytes = std::fs::read(p).unwrap_or_default();
+            let text = tracedraw_core::document::tdraw_text(&bytes).unwrap_or_default();
+            (
+                tracedraw_core::document::is_gzip(&bytes),
+                tracedraw_core::document::tdraw_text_version(&text),
+            )
+        };
+        assert_eq!(packed(&dir.join("native.tdraw")), (true, 2));
+        // A plain file of 0.46 opens, and Ctrl+S saves it packed.
+        let old = app.doc().to_json_version(0).expect("plain");
+        std::fs::write(dir.join("old.tdraw"), old).expect("write");
         let mut other = App::headless();
-        other.open_path(dir.join("native.tdraw"));
+        other.open_path(dir.join("old.tdraw"));
         assert_eq!(other.tdraw_version, Some(0));
+        other.save(false);
+        assert_eq!(packed(&dir.join("old.tdraw")), (true, 2));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2313,8 +2324,8 @@ mod tests {
         st.selected_only = true;
         let mut st = st.clone();
         assert!(app.finish_save_as(&mut st));
-        let text = std::fs::read_to_string(dir.join("part.tdraw")).unwrap_or_default();
-        let saved = tracedraw_core::Document::from_json(&text).expect("a drawing");
+        let bytes = std::fs::read(dir.join("part.tdraw")).unwrap_or_default();
+        let saved = tracedraw_core::Document::from_tdraw_bytes(&bytes).expect("a drawing");
         assert_eq!(total(&saved), 1, "only the selection");
         let s = &saved.pages[0].layers.iter().flat_map(|l| &l.shapes).next();
         assert_eq!(s.map(|s| s.id), Some(keep));

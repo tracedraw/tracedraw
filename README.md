@@ -227,7 +227,7 @@ or the moon button at the right of the status bar).
       <h4>Formats</h4>
       Open: <code>.tdraw</code>, <code>.cdr</code> (versions 1 to 27) and its templates, CMX, SVG and SVGZ, PDF and AI, EPS, DXF, PSD, EMF, WMF, HPGL (PLT), TXT, RTF and DOCX, and bitmaps.
       <br><br>
-      Save and export: <code>.tdraw</code> (JSON), <code>.cdr</code> (versions 7 to 27), SVG, PDF, AI, EPS, DXF, EMF, WMF, PLT, PSD, HTML, PNG, JPEG, WebP, GIF, BMP and TIFF.
+      Save and export: <code>.tdraw</code> (compressed JSON; a file saved by TraceDraw 0.47 or newer opens only in 0.47 or newer), <code>.cdr</code> (versions 7 to 27), SVG, PDF, AI, EPS, DXF, EMF, WMF, PLT, PSD, HTML, PNG, JPEG, WebP, GIF, BMP and TIFF.
     </td>
     <td width="33%" valign="top">
       <h4>The everyday essentials</h4>

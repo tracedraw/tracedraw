@@ -4375,12 +4375,15 @@ name = "tracedraw-core"
 version = "0.46.0"
 dependencies = [
  "base64 0.22.1",
+ "flate2",
  "i_overlay",
  "kurbo",
  "png",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]

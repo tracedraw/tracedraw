@@ -164,18 +164,20 @@ pub fn for_export(doc: &Document, page: Option<usize>) -> std::borrow::Cow<'_, D
     exclude_output_layers(out)
 }
 
-/// Native format: compact JSON with a `.tdraw` extension.
+/// Native format: JSON with a `.tdraw` extension, packed and
+/// gzip-compressed (#2849, `Document::write_tdraw_version`).
 pub fn save_native(doc: &Document, path: impl AsRef<Path>) -> Result<()> {
     // Written as it is made, not gathered in memory first.
     let mut w = std::io::BufWriter::new(std::fs::File::create(path)?);
-    doc.write_json_version(&mut w, tracedraw_core::document::TDRAW_FORMAT_VERSION)?;
+    doc.write_tdraw_version(&mut w, tracedraw_core::document::TDRAW_FORMAT_VERSION)?;
     std::io::Write::flush(&mut w)?;
     Ok(())
 }
 
+/// A `.tdraw` file of any version, packed or plain JSON.
 pub fn load_native(path: impl AsRef<Path>) -> Result<Document> {
-    let s = std::fs::read_to_string(path)?;
-    Ok(Document::from_json(&s)?)
+    let bytes = std::fs::read(path)?;
+    Ok(Document::from_tdraw_bytes(&bytes)?)
 }
 
 /// Write every page to a PDF file.
@@ -377,7 +379,7 @@ mod tests {
             std::thread::current().id()
         ));
         save_native(&doc, &path).unwrap();
-        let text = std::fs::read_to_string(&path).unwrap();
+        let text = tracedraw_core::document::tdraw_text(&std::fs::read(&path).unwrap()).unwrap();
         let back = load_native(&path).unwrap();
         let _ = std::fs::remove_file(&path);
         assert!(text.contains("\"sharpness\":-0.7"), "{text}");
@@ -581,7 +583,7 @@ mod tests {
         let back = load_native(&path).unwrap();
         let _ = std::fs::remove_file(&path);
         assert_eq!(back, doc);
-        let text = String::from_utf8_lossy(&bytes);
+        let text = tracedraw_core::document::tdraw_text(&bytes).unwrap();
         assert_eq!(
             text.matches("placement").count(),
             1,
@@ -709,7 +711,7 @@ mod tests {
             std::thread::current().id()
         ));
         save_native(&doc, &path).unwrap();
-        let text = std::fs::read_to_string(&path).unwrap();
+        let text = tracedraw_core::document::tdraw_text(&std::fs::read(&path).unwrap()).unwrap();
         let back = load_native(&path).unwrap();
         let _ = std::fs::remove_file(&path);
         assert_eq!(back, doc);

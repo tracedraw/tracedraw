@@ -149,6 +149,7 @@ mod object_thumbs;
 mod offset_shadow_handle;
 mod ops;
 mod ops2;
+mod opening;
 mod package;
 mod page_drop;
 mod page_names;
@@ -1073,6 +1074,11 @@ impl eframe::App for Shell {
         #[cfg(not(target_arch = "wasm32"))]
         if app.sync_mcp_link(ui.ctx()) {
             ui.ctx().request_repaint();
+        }
+        // A large drawing being opened off the interface's thread (#2849).
+        if app.poll_opening() {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(50));
         }
         // An answer from GitHub (File > GitHub).
         if app.poll_github() {

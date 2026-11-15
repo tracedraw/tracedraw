@@ -1239,8 +1239,8 @@ mod tests {
         app.save(false);
         app.switch_document(1);
         assert!(!app.engine.is_dirty());
-        let saved = std::fs::read_to_string(&path).unwrap_or_default();
-        let doc = Document::from_json(&saved).expect("saved drawing");
+        let saved = std::fs::read(&path).unwrap_or_default();
+        let doc = Document::from_tdraw_bytes(&saved).expect("saved drawing");
         assert_eq!(
             doc.pages[0]
                 .layers

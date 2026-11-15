@@ -622,7 +622,7 @@ fn main() -> ExitCode {
                         let _ =
                             tracedraw_io::svg_import::parse(&String::from_utf8_lossy(&m), &mut ids);
                     } else {
-                        let _ = tracedraw_core::Document::from_json(&String::from_utf8_lossy(&m));
+                        let _ = tracedraw_core::Document::from_tdraw_bytes(&m);
                     }
                 })
                 .is_ok();

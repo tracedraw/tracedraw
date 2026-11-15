@@ -832,9 +832,21 @@ impl App {
             }
         });
         let planes = picture.planes;
+        // A JPEG whose pixels are the picture's (not turned by its Exif
+        // orientation, not CMYK) is kept, so a packed .tdraw saves the
+        // JPEG instead of a PNG two to three times its size (#2849).
+        let (w, h) = picture.rgba.dimensions();
+        let keep_jpeg = planes.is_none()
+            && tracedraw_core::jpeg_source::decodes_to(&bytes, w, h, picture.rgba.as_raw());
         let Some(id) = self.place_image_at(picture.rgba, name, dpi) else {
             return;
         };
+        if keep_jpeg {
+            if let Some(ShapeKind::Bitmap { png, .. }) = self.doc().find_shape(id).map(|s| &s.kind)
+            {
+                tracedraw_core::jpeg_source::remember(png, bytes.as_slice().into());
+            }
+        }
         if let Some(planes) = planes {
             // The pixels as the object keeps them, with the inks beside.
             let png = match self.doc().find_shape(id).map(|s| &s.kind) {

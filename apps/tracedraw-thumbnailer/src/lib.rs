@@ -18,8 +18,8 @@ pub const CLSID_TEXT: &str = "{6B1E5D3A-2F41-4C8E-9B7A-1D2C3E4F5A60}";
 /// pixels (straight, not premultiplied). `None` when the file cannot be
 /// read or has no page; never panics on what the file holds.
 pub fn thumbnail_rgba(bytes: &[u8], size: u32) -> Option<(u32, u32, Vec<u8>)> {
-    let text = std::str::from_utf8(bytes).ok()?;
-    let doc = Document::from_json(text).ok()?;
+    // Packed (gzip) or plain JSON, as every version saved it (#2849).
+    let doc = Document::from_tdraw_bytes(bytes).ok()?;
     let page = doc.pages.first()?;
     let size = f64::from(size.clamp(16, 2048));
     let pm = tracedraw_render::render_whole_page_image(&doc, page.id, size)?;
