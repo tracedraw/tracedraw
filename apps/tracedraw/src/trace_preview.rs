@@ -606,6 +606,10 @@ fn run(req: Request, cancel: &AtomicBool, mut send: impl FnMut(Outcome), defer_f
         let stroke_px = trace::last_stroke_width_px();
         for t in &mut raw {
             t.path = map * t.path.clone();
+            if let Some(b) = t.blend.as_mut() {
+                b.from = map * b.from;
+                b.to = map * b.to;
+            }
         }
         let size = (
             ((w as f64 * scale).round() as u32).max(1),

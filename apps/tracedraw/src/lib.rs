@@ -243,6 +243,8 @@ mod touch_bars;
 mod touch_modifiers;
 mod touch_taps;
 mod trace;
+mod trace_blend;
+mod trace_fine;
 mod trace_preview;
 mod tracecut;
 mod tracecut_cut;

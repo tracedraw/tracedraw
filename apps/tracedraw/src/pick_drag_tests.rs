@@ -19007,7 +19007,8 @@ fn trace_ok_is_at_the_right_and_best_optimization_sets_the_detail() {
     let st = trace_state(&app);
     assert!(!st.settings.optimize);
     assert!(
-        [50.0, 60.0, 70.0, 80.0, 85.0].contains(&st.settings.detail),
+        // The details the search tries, and the one it started from.
+        [50.0, 60.0, 70.0, 75.0, 80.0, 90.0, 95.0].contains(&st.settings.detail),
         "{}",
         st.settings.detail
     );

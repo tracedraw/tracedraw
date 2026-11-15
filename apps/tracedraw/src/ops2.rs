@@ -2910,6 +2910,7 @@ impl App {
             for t in traced {
                 let sid = self.engine.new_shape_id();
                 let path = crate::trace::to_rect(&t.path, w, h, rect);
+                let path_box = tracedraw_core::geometry::Shape::bounding_box(&path);
                 let mut s = Shape::new(
                     sid,
                     ShapeKind::Path {
@@ -2918,7 +2919,10 @@ impl App {
                     },
                 );
                 if t.closed {
-                    s.fill = Fill::Solid(t.color);
+                    s.fill = match t.blend {
+                        Some(blend) => crate::trace::blend_fill(&blend, &path_box, w, h, rect),
+                        None => Fill::Solid(t.color),
+                    };
                     s.stroke = None;
                 } else {
                     s.fill = Fill::None;
@@ -6344,6 +6348,62 @@ mod tests {
             }
             _ => panic!("the Trace dialog"),
         }
+    }
+
+    /// A trace lies exactly over its bitmap, wherever the bitmap is on
+    /// the page (#2926): the group covers the bitmap's rectangle, and a
+    /// square of the picture is traced where the picture shows it, to a
+    /// fiftieth of a pixel.
+    #[test]
+    fn a_trace_lies_exactly_over_its_bitmap() {
+        use tracedraw_core::geometry::Shape as _;
+        let mut app = App::headless();
+        let img = image::RgbaImage::from_fn(300, 300, |x, y| {
+            if (200..260).contains(&x) && (40..100).contains(&y) {
+                image::Rgba([0, 0, 0, 255])
+            } else {
+                image::Rgba([255, 255, 255, 255])
+            }
+        });
+        let bmp = app.place_image(img, Some("Square".into())).expect("bitmap");
+        app.select(vec![bmp]);
+        app.nudge(tracedraw_core::geometry::Vec2::new(13.7, -4.2));
+        let rect = app.doc().shape(bmp).expect("the bitmap").1.bounds();
+        let mut settings = crate::trace::Preset::Logo.settings();
+        settings.remove = crate::trace::Remove::None;
+        app.select(vec![bmp]);
+        app.trace_bitmaps(&settings);
+        let group = app.selection[0];
+        assert_ne!(group, bmp);
+        let (_, traced) = app.doc().shape(group).expect("the trace");
+        let px = rect.width() / 300.0;
+        let near = |a: f64, b: f64| (a - b).abs() < 0.02 * px;
+        let all = traced.bounds();
+        assert!(
+            near(all.x0, rect.x0)
+                && near(all.y0, rect.y0)
+                && near(all.x1, rect.x1)
+                && near(all.y1, rect.y1),
+            "{all:?} over {rect:?}"
+        );
+        let ShapeKind::Group { children } = &traced.kind else {
+            panic!("a group");
+        };
+        let square = children
+            .iter()
+            .find(|c| matches!(&c.fill, Fill::Solid(k) if k.to_rgb8() == [0, 0, 0]))
+            .expect("the black square");
+        let ShapeKind::Path { path, .. } = &square.kind else {
+            panic!("a curve");
+        };
+        let b = (traced.transform * path.clone()).bounding_box();
+        assert!(
+            near(b.x0, rect.x0 + 200.0 * px)
+                && near(b.x1, rect.x0 + 260.0 * px)
+                && near(b.y1, rect.y1 - 40.0 * px)
+                && near(b.y0, rect.y1 - 100.0 * px),
+            "{b:?} in {rect:?}"
+        );
     }
 
     #[test]

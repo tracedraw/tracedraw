@@ -136,7 +136,14 @@ pane, the wireframe and the counts take the result when it comes in.
   out, inside the picture too.
 - None: the background is traced like any colour.
 - Automatically: the background colour is the commonest palette colour
-  along the border. Specify: the colour of the swatch, or the colour
+  along the border that is paper (brightness 180 or more, its channels
+  within 48 of each other). A dark or coloured surround is part of the
+  design (the dark square behind a gold emblem) and stays unless its
+  colour is specified (#2928). With Background color, the background's
+  soft shades go with it: from the border on through every pixel within
+  56 of the background colour and 10 of its neighbour that lies on no
+  edge (a vignette, a faint gradient), and the edge pixels a shade so
+  emptied leaves round the art. Specify: the colour of the swatch, or the colour
   under a click on the preview with the eyedropper (taken from the
   picture, so an anti-aliased or compressed colour still stands for the
   palette colour nearest it).
@@ -342,31 +349,32 @@ can be undone.
    eyes). Regions side by side meet along their shared curve, as in the
    trace the program that wrote the #1250 sample made of the same
    picture (each region one ring, the borders coinciding).
-4. Smoothing 0: each ring as straight lines along the pixel edges
-   (Douglas-Peucker, tolerance `0.3 + (100 - detail) / 100 * 2.5` px).
-   Otherwise each ring is fitted (#611):
-   - one point in the middle of every pixel edge, so stair steps become
-     slopes;
-   - corners where the ring turns by more than `60 + corner smoothness *
-     0.8` degrees over 3 pixels (the sharpest point of each run) and
-     still does over 6, so a notch of a pixel or two along a smooth edge
-     is no corner, moved onto the pixel corner standing out, so a square
-     keeps its corners;
-   - the points between corners smoothed `round(1 + smoothing * 0.12)`
-     times with weights 1, 2, 1;
+4. Each border is fitted on the finer grid (see Fine edges below), at
+   every smoothing, 0 included (#2925: Detail 100 with Smoothing 0 put a
+   node on every pixel step, 14 479 nodes for a logo):
+   - one point in the middle of every step of the finer grid, smoothed
+     lightly (0.45 px; 0.9 px in a picture with hard edges) so the grid's
+     steps go;
+   - corners where the direction, measured along chords of 1 px, turns
+     by more than `35 + corner smoothness * 1.3` degrees within 2 px,
+     the sharpest place of each run, standing out 1.6 times from the
+     turning around it (the steady turning of a small circle is no
+     corner); a corner is put where the straight runs of its two sides
+     cross, when they cross within 1.6 px and half the room of each
+     side, so a square keeps its corners to a tenth of a pixel;
+   - the points between corners smoothed with a spread of
+     `0.3 + smoothing / 100 * 1.5` px (1.4 px at least in a picture with
+     hard edges), the rounded part beside each corner left out;
    - a border between two junctions keeps its ends on them, where the
      borders of the other regions meeting there end too, and is fitted
      like a stretch between corners;
-   - each stretch between corners (a ring without corners in quarters
-     meeting smoothly) fitted with as few cubic Beziers as keep every
-     point within `0.2 + (100 - detail) / 100 * 2` px (1 px at the
-     Clipart detail of 60, 0.6 before: the smoothed points lie on a
-     smooth curve already, and the tighter fit only added nodes): least
-     squares on
-     chord-length parameters with Newton steps, split at the worst point
-     (P. J. Schneider, "An Algorithm for Automatically Fitting Digitized
-     Curves", Graphics Gems, 1990). Ends take the direction over 4
-     points.
+   - each stretch between corners is one straight line when no point
+     lies further than 0.2 px from it, else as few cubic Beziers as keep
+     every point within `0.2 + ((100 - detail) / 100)^1.5 * 0.6` px
+     (a ring without corners in quarters meeting smoothly): least
+     squares on chord-length parameters with Newton steps, split at the
+     worst point (P. J. Schneider, "An Algorithm for Automatically
+     Fitting Digitized Curves", Graphics Gems, 1990).
 5. Stack regions as step 3 orders them; leave out the background (see Remove
    above) when requested. The background found (no colour specified) is
    the commonest colour on the picture's edge; when no colour touches
@@ -380,10 +388,72 @@ can be undone.
    there, so Remove background took their black for the background and
    erased every shape touching the edge).
 
+## Fine edges
+
+The colour of a pixel on the edge of two colours says how much of it
+each covers, so the edge is traced inside the pixels (`trace_fine.rs`;
+#2925, #2926, #2927, #2929).
+
+- Edge pixels: from each pixel, steps to the brightest and to the
+  darkest neighbour while each gains 5 levels of brightness, 6 steps at
+  most, find the two ends of the edge it lies on (48 apart at least)
+  and its share between them. After the cleaning of step 1 each edge
+  pixel takes the label of the nearer end: the label the cleaning left
+  that end when its colour is within 48 of it; else (the core of a
+  stroke too thin to reach its colour, which the noise filter took out)
+  the nearest colour still in the picture that the end lies on the way
+  to from the colour at the other end, at least 0.3 of the way, else the
+  nearest. So no third colour that looks like the blend rings a shape
+  (the grey halo round black letters), and a grey hairline in a black
+  and white picture is black.
+- A step of a thin slanted line touches the next by a corner only: a
+  small patch that stands out from its neighbours (64) and reaches the
+  smallest kept area with the patches it touches by corners is no
+  speck.
+- In flat art, a colour with no flat pixel (every stroke of it under
+  three pixels wide) lying between the colour around it and a colour
+  with flat areas, at least 0.3 of the way, is that colour: grey small
+  print is black.
+- The labels are made on a grid 4 times finer (fewer times for large
+  pictures: 6 million fine pixels at most): the stand-in colours of the
+  pixels (the blend of the two labels' colours by the pixel's share on
+  an edge) are interpolated (Catmull-Rom) and each fine pixel takes the
+  nearest colour among the labels of the four pixels around it. Borders
+  are walked and fitted on this grid and the curves scaled back, so an
+  edge covering 30 % of its pixels is traced 0.3 px in, and the trace
+  lies on the picture to a fraction of a pixel.
+- A picture with hard edges (at least 70 % of its borders between full
+  colours, no blend) has nothing inside its pixels to read: its steps
+  are smoothed more instead.
+- The cleaning of edges, fringes and specks runs at every detail, 100
+  included.
+
+## Gradients
+
+In flat art, the bands the colour reduction cuts a blend into are one
+region again (`trace_blend.rs`, #2929). A patch is part of a blend when
+its colour changes by at least 0.25 levels a pixel (a plane fitted to
+its pixels, edge pixels left out); a patch under 12 pixels or one pixel
+wide joins a blend beside it. Two patches join when the colours two
+pixels either side of their border are within 18 at the middle border
+place. Flat colours never join, however soft the edge between them. The
+region takes one colour (the mean) and, when its pixels lie within 18
+(root mean square) of a blend along the direction its colour changes
+most and the two ends are at least 24 apart, a linear blend from the
+colour at one end to the colour at the other: drawn as a gradient in
+the preview and placed as a linear fountain fill. Recolouring a colour
+on the Colors tab makes its region flat.
+
+## Presets
+
+Logo: detail 75, smoothing 20, 16 colours (50, 25, 8 before: letters
+melted and slogans were lost). Detailed logo: detail 90, smoothing 15,
+32 colours (75, 20, 24 before).
+
 ## Best settings (Optimized, Best optimization)
 
-The detail that draws a picture best: each detail of 50, 60, 70, 80 and
-85 traces samples of the picture at its own size, its art alone (the
+The detail that draws a picture best: each detail of 50, 60, 70, 80,
+90 and 95, and the detail the settings have, traces samples of the picture at its own size, its art alone (the
 box of its opaque pixels) when no more than 400 pixels across, else the
 four squares of 200 pixels in it with the most edges (neighbouring
 pixels more than 60 apart), side by side a transparent pixel apart,
@@ -394,8 +464,10 @@ within a pixel (an edge a pixel off is not wrong; a lost dot or line, a
 region in another colour, a gap are). The detail with the lowest score
 wins: the share drawn wrong (percent) plus 0.3 per node per pixel of
 the samples' sides, so a finer detail is chosen while it draws the
-picture better for the nodes it adds, and no further. Above 85 the
-cleaning of edges and specks stops and the nodes multiply. On the
+picture better for the nodes it adds, and no further. The detail the
+settings have stays unless another scores better by more than 0.05, so
+the search never leaves a trace worse than the one it started from and
+a second search changes nothing (#2930). On the
 desktop the details are traced at once, a thread each; in the browser
 one after the other, and only 60, 70 and 80. A search whose picture or
 settings changed before it ended (another image type, a detail set by
@@ -534,10 +606,26 @@ width equal to the mean local thickness.
 - `trace::tests::edge_pixels_go_to_the_flat_colours_beside_them`,
   `trace::tests::close_colours_and_colour_counts_are_kept` (a 246 grey
   logo on white at the Logo preset and with two colours, a grey ramp at
-  96 colours), `trace::tests::the_highest_detail_keeps_thin_lines`,
+  96 colours), `trace::tests::the_blend_of_two_colours_is_no_shape_at_any_detail`,
   `trace::tests::dilation_grows_a_mask_by_a_square`.
 
 - Given a 200x200 image of a black circle on white, outline mode, 2
   colours, then one closed curve with area within 2% of the circle.
 - Given the same with "remove background", then the white region is not
   emitted.
+- `trace::tests::anti_aliased_art_is_fitted_at_the_highest_detail`
+  (#2925): at Detail 100 and Smoothing 0 an anti-aliased disc is at most
+  16 nodes within 0.25 px of its circle, and a square turned 30 degrees
+  is four straight lines with a node within 0.3 px of each corner.
+- `trace::tests::an_edge_is_traced_where_it_runs_inside_its_pixels`,
+  `ops2::tests::a_trace_lies_exactly_over_its_bitmap` (#2926).
+- `trace::tests::edge_pixels_make_no_ring_of_a_look_alike_colour`
+  (#2929), `trace::tests::a_gradient_is_one_region_with_a_blend`
+  (#2929: a red to yellow bar is one curve with a blend along it; two
+  flat colours with a soft edge stay two).
+- `trace::tests::thin_faint_strokes_keep_their_shape_and_take_the_full_colour`
+  (#2927): a ring 7 px across drawn a pixel wide in mid grey is a black
+  ring with its hole at the Logo, Detailed logo and Optimized presets.
+- `trace::tests::only_paper_is_removed_and_all_of_it` (#2928).
+- `trace::tests::the_search_keeps_the_detail_when_none_is_better`
+  (#2930).
