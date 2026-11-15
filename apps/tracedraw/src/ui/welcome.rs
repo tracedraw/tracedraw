@@ -272,8 +272,14 @@ fn start_buttons(app: &mut App, ui: &mut Ui) {
         }
     }
     ui.add_space(20.0);
+    // A touch screen without keys gets the gestures instead (#1691).
+    let hint = if crate::touch_modifiers::offered(ui.ctx()) {
+        "welcome.touch_hint"
+    } else {
+        "welcome.shortcuts_hint"
+    };
     ui.label(
-        egui::RichText::new(tr("welcome.shortcuts_hint"))
+        egui::RichText::new(tr(hint))
             .color(Tokens::text_dim())
             .size(11.0),
     );

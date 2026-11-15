@@ -1219,6 +1219,14 @@ fn display_page(app: &mut App, ui: &mut Ui) {
                 "options.touch_keys",
                 "options.touch_keys_tip",
             ));
+        ui.checkbox(
+            &mut app.settings.touch_selection_bar,
+            tr("options.touch_selection_bar"),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "options.touch_selection_bar",
+            "options.touch_selection_bar_tip",
+        ));
     });
     chrome::section(ui, &tr("options.full_screen_preview"));
     ui.indent("fsp", |ui| {

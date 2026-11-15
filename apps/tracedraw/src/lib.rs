@@ -232,6 +232,7 @@ mod time_tracker;
 mod title_bar;
 mod tools;
 mod tools2;
+mod touch_bars;
 mod touch_modifiers;
 mod touch_taps;
 mod trace;
@@ -926,6 +927,7 @@ impl eframe::App for Shell {
         // (#2362).
         if let Some(app) = self.app.as_mut() {
             touch_modifiers::fingers_on_keys(app, raw_input);
+            touch_bars::second_finger_copies(app, raw_input);
             app.touch_mods.apply(ctx, raw_input);
         }
     }

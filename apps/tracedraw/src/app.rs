@@ -1165,6 +1165,12 @@ pub struct App {
     /// The fingers on the drawing, for the taps of two and three fingers
     /// that undo and redo (touch_taps.rs).
     pub touch_tap: crate::touch_taps::TapGesture,
+    /// The fingers on the window, for a second finger that leaves a copy
+    /// of what the first one drags (#1691, touch_bars.rs).
+    pub copy_fingers: crate::touch_bars::CopyFingers,
+    /// The buttons of the touch bars as drawn this frame (empty when they
+    /// are not shown).
+    pub touch_bar_shown: Vec<(crate::touch_bars::BarCommand, egui::Rect)>,
     pub docker_tab: DockerTab,
     pub flyout_open: Option<usize>,
     /// The tool each toolbox group shows: the one last used from its flyout.
@@ -2932,6 +2938,8 @@ impl App {
             touch_keys_shown: Vec::new(),
             key_fingers: Default::default(),
             touch_tap: Default::default(),
+            copy_fingers: Default::default(),
+            touch_bar_shown: Vec::new(),
             docker_tab: DockerTab::Hints,
             flyout_open: None,
             toolbox_last: crate::tools::GROUPS.iter().map(|g| g.tools[0]).collect(),

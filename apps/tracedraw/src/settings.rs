@@ -369,6 +369,10 @@ pub struct Settings {
     /// where there is a touch screen (#1996).
     #[serde(default = "default_true")]
     pub touch_keys: bool,
+    /// Options > Display: the touch bars beside the selection, where
+    /// there is a touch screen (#1691).
+    #[serde(default = "default_true")]
+    pub touch_selection_bar: bool,
     #[serde(default = "default_true")]
     pub preview_page_border: bool,
     /// Options > Edit: Ctrl constrains rotation and line angles to
@@ -2024,6 +2028,7 @@ impl Default for Settings {
             hide_bbox_curve_tools: false,
             node_tracking: false,
             touch_keys: true,
+            touch_selection_bar: true,
             preview_page_border: true,
             constrain_angle: default_constrain_angle(),
             symmetry_show_lines: true,
