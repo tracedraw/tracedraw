@@ -122,13 +122,36 @@ pub fn resolve_open_fills(doc: &Document) -> std::borrow::Cow<'_, Document> {
     std::borrow::Cow::Owned(out)
 }
 
-/// The document as vector exports should see it: open curves' fills as
+/// An output-only copy with excluded layer contents removed. The editor
+/// and native saves keep those layers visible and editable according to
+/// their own state; output exclusion must not mutate the source drawing.
+pub fn for_output(doc: &Document) -> std::borrow::Cow<'_, Document> {
+    exclude_output_layers(std::borrow::Cow::Borrowed(doc))
+}
+
+fn exclude_output_layers(
+    mut doc: std::borrow::Cow<'_, Document>,
+) -> std::borrow::Cow<'_, Document> {
+    if doc
+        .all_layers()
+        .any(|l| !l.printable && (l.visible || !l.shapes.is_empty()))
+    {
+        for layer in doc.to_mut().all_layers_mut().filter(|l| !l.printable) {
+            layer.visible = false;
+            layer.shapes.clear();
+        }
+    }
+    doc
+}
+
+/// The document as vector exports should see it: excluded layer content
+/// removed ([`for_output`]), open curves' fills as
 /// the screen shows them ([`resolve_open_fills`]) and the pictures in
 /// clip frames without the pixels their frames hide
 /// ([`picture_crop::trim_framed_pictures`]), of page `page` (by index)
 /// alone or of every page.
 pub fn for_export(doc: &Document, page: Option<usize>) -> std::borrow::Cow<'_, Document> {
-    match resolve_open_fills(doc) {
+    let out = match resolve_open_fills(doc) {
         std::borrow::Cow::Borrowed(d) => picture_crop::trim_framed_pictures(d, page),
         std::borrow::Cow::Owned(d) => {
             let trimmed = match picture_crop::trim_framed_pictures(&d, page) {
@@ -137,7 +160,8 @@ pub fn for_export(doc: &Document, page: Option<usize>) -> std::borrow::Cow<'_, D
             };
             std::borrow::Cow::Owned(trimmed.unwrap_or(d))
         }
-    }
+    };
+    exclude_output_layers(out)
 }
 
 /// Native format: compact JSON with a `.tdraw` extension.

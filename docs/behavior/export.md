@@ -5,6 +5,21 @@ Export dialog. File > Export starts with the choices of Options > Global
 > File Formats, which can also keep those of the last export; the Web and
 Office presets start with their own (see `options.md`).
 
+## Layer exclusion
+
+A layer excluded from output stays visible on the canvas according to its
+eye state, and remains in native saves. Export prepares a separate copy
+without the contents of excluded page and master layers. The dialog, CLI
+and MCP use the same preparation, including SVG and bitmap output (#2868).
+Locked objects and layers still export when visible and not excluded;
+locking prevents edits and does not exclude artwork. Hiding and output
+exclusion are independent.
+
+Preparing output never changes the source drawing. A drawing without
+excluded content is borrowed without copying; an already prepared drawing
+does not need a second copy. Native and CDR file conversions retain source
+state, rather than applying static-output exclusion.
+
 ## Order: the file, then the options
 
 On the desktop, File > Export (the menu, Ctrl+E, the toolbar button)

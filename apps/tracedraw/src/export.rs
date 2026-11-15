@@ -194,6 +194,8 @@ fn document_file(
     ext: &str,
     st: &ExportState,
 ) -> Result<Vec<u8>, String> {
+    let output = tracedraw_io::for_output(doc);
+    let doc = output.as_ref();
     Ok(match ext {
         "pdf" | "ai" => {
             use tracedraw_io::pdf::{PdfOptions, PdfStandard};
@@ -239,6 +241,8 @@ fn page_file(
     st: &ExportState,
     icc: Option<&[u8]>,
 ) -> Result<Vec<u8>, String> {
+    let output = tracedraw_io::for_output(doc);
+    let doc = output.as_ref();
     Ok(match ext {
         "svg" => tracedraw_io::svg::page_to_svg_with(doc, k, &st.svg_options()).into_bytes(),
         "eps" => tracedraw_io::eps::page_to_eps(doc, k).into_bytes(),
@@ -3024,6 +3028,37 @@ pub fn replace_properties(app: &mut App, st: &mut FindReplaceState) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{is_address, shared_file_name, why_not_send_to, SendTarget};
+
+    #[test]
+    fn page_exports_omit_excluded_layer_contents_without_changing_the_drawing() {
+        use tracedraw_core::{Color, Document, Fill, Rect, Shape, ShapeKind, Size};
+        let mut doc = Document::new("Excluded", Size::new(10.0, 10.0));
+        let mut shape = Shape::new(
+            doc.ids_mut().shape(),
+            ShapeKind::Rect {
+                rect: Rect::new(1.0, 1.0, 4.0, 4.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        shape.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        shape.stroke = None;
+        doc.pages[0].layers[0].shapes.push(shape);
+        doc.pages[0].layers[0].printable = false;
+        let before = doc.to_json().unwrap();
+        let st = super::ExportState {
+            dpi: 25.4,
+            transparent: false,
+            ..Default::default()
+        };
+        let png = super::page_file(&doc, 0, "png", &st, None).unwrap();
+        let pm = tiny_skia::Pixmap::decode_png(&png).unwrap();
+        let p = pm.pixel(2, 8).unwrap();
+        assert_eq!((p.red(), p.green(), p.blue()), (255, 255, 255));
+        let svg = super::page_file(&doc, 0, "svg", &st, None).unwrap();
+        assert!(!String::from_utf8(svg).unwrap().contains("#ff0000"));
+        assert_eq!(doc.to_json().unwrap(), before);
+    }
 
     /// Android (#1398): Send To has no desktop folder there (the row is
     /// greyed with the reason), while Documents and Mail stay; every
