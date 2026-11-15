@@ -115,6 +115,28 @@ left page reaches across the spine stays at the spine. Each page took
 the side that put most of its own objects on it before, and the pages
 showed one by one: a book opened with pages mixed and no spreads
 (#1660, `parse::tests::a_book_on_facing_pages_opens_in_spreads`).
+
+The turns may break where the pages after hold their objects better
+the other way (#2833): each page scores the share of its objects that
+lands on it from the right of the spine and from the left, a break (two
+pages running on one side) costs 1.5 pages' worth, and the sides with
+the most score are taken (Viterbi's way through the pages,
+`parse::facing_sides`). One page whose objects reach across the spine
+keeps its turn (two breaks cost 3, more than its 1); a page the file
+holds more or less in a long book no longer throws every page after it
+half a page across, onto the page beside it. On a tie the first page is
+on the right and the turns go on
+(`parse::tests::facing_sides_take_turns_and_follow_a_lost_page`,
+`parse::tests::a_long_book_whose_turns_break_keeps_every_page_on_its_side`:
+300 pages whose sides change at page 151).
+
+A large file's record stream (`content/riffData.cdr` in version 14 and
+later packages) is read as far as the package declares it, up to 3 GB,
+as the data streams are: it was cut at 512 MB, so in a book of some 300
+pages in a 1 GB file the pages after the cut were lost and the last one
+read was cut short (#2833). A member that inflates past what it
+declares still stops at 512 MB or that size, whichever is larger.
+
 Nothing is written for facing pages: a `.cdr` saved from TraceDraw has
 single pages, each object where it shows on its page.
 
