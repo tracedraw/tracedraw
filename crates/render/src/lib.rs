@@ -6678,6 +6678,28 @@ mod tests {
         assert!(r < 40, "moved bulge should be black: {r}");
     }
 
+    /// A mesh node's own transparency (#2789, #2154): the colour fades
+    /// to see-through at the nodes whose alpha is 0 and stays solid at
+    /// the opaque ones, across the patch.
+    #[test]
+    fn mesh_nodes_fade_by_their_own_transparency() {
+        let mut s = rect(1, Rect::new(0.0, 0.0, 100.0, 100.0), Color::BLACK);
+        let mut m =
+            tracedraw_core::Mesh::new(Rect::new(0.0, 0.0, 100.0, 100.0), 1, 1, Color::BLACK);
+        // The left column of nodes see-through, the right one solid.
+        m.nodes[0].alpha = 0.0;
+        m.nodes[2].alpha = 0.0;
+        s.fill = Fill::Mesh(m);
+        let (doc, page) = doc_with(vec![s]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        let (left, _, _) = px(&pm, 3, 50);
+        let (mid, _, _) = px(&pm, 50, 50);
+        let (right, _, _) = px(&pm, 97, 50);
+        assert!(left > 230, "left nearly clear: {left}");
+        assert!(right < 25, "right solid: {right}");
+        assert!((90..170).contains(&mid), "half way: {mid}");
+    }
+
     /// A mesh over part of its object leaves the rest of the path clear
     /// (nothing is drawn outside the grid), also on screen where a large
     /// picture is worked out on a coarser grid (steps 2 and 3).

@@ -2991,6 +2991,8 @@ pub enum CornerEdit {
     Size(usize, f64),
     /// Relative corner scaling on or off.
     Scaling(bool),
+    /// Every edge's bow, 0 straight to 1 a quarter circle (#2188).
+    Bulge(f64),
 }
 
 impl CornerEdit {
@@ -3007,6 +3009,14 @@ impl CornerEdit {
                 }
             }
             CornerEdit::Scaling(relative) => c.fixed = !relative,
+            CornerEdit::Bulge(v) => {
+                let v = if v.is_finite() {
+                    v.clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                c.bulge = [v; 4];
+            }
         }
         c
     }
@@ -3044,6 +3054,7 @@ pub fn edit_corners(app: &mut App, edit: CornerEdit) {
         CornerEdit::Kind(_) => "Corner Style",
         CornerEdit::Size(..) => "Corner Radius",
         CornerEdit::Scaling(_) => "Corner Scaling",
+        CornerEdit::Bulge(_) => "Edge Bulge",
     };
     if let Err(e) = app.engine.run_batch(label, &cmds) {
         app.status = e.to_string();
@@ -3128,6 +3139,35 @@ pub fn rectangle_part(app: &mut App, ui: &mut Ui) {
     .clicked()
     {
         edit = Some(CornerEdit::Scaling(!relative));
+    }
+    // The edges' bow (#2188): a share of a quarter circle, the largest
+    // edge's when they differ; the Shape tool's edge handles bow one.
+    // Shown with the Rectangle and Shape tools, or once a rectangle
+    // bows, so the Pick tool's full bar keeps its room.
+    let show_bulge = matches!(
+        app.tool,
+        crate::tools::Tool::Rectangle | crate::tools::Tool::Shape
+    ) || current.has_bulge();
+    if !show_bulge {
+        if let Some(e) = edit {
+            edit_corners(app, e);
+        }
+        return;
+    }
+    sep(ui);
+    let mut bulge = ((0..4).map(|i| current.edge_bulge(i)).fold(0.0, f64::max) * 100.0).round();
+    ui.label(egui::RichText::new(tr("toolbar.edge_bulge_short")).size(12.0));
+    if ui
+        .add(
+            crate::ui::field::NumField::new(&mut bulge)
+                .range(0.0..=100.0)
+                .suffix(" %")
+                .width(44.0),
+        )
+        .rich_tip(crate::ui::tips::keyed("toolbar.edge_bulge"))
+        .changed()
+    {
+        edit = Some(CornerEdit::Bulge(bulge / 100.0));
     }
     if let Some(e) = edit {
         edit_corners(app, e);

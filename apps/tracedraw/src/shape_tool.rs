@@ -924,8 +924,10 @@ impl App {
                         let _ = if begun {
                             self.engine.amend(&cmd)
                         } else {
-                            self.engine
-                                .run_with_label(&cmd, crate::kind_nodes::label(&start))
+                            self.engine.run_with_label(
+                                &cmd,
+                                crate::kind_nodes::label_for(&start, Some(node)),
+                            )
                         };
                     }
                     self.drag = Drag::KindNode {

@@ -2940,7 +2940,7 @@ fn draw_nodes(app: &App, painter: &Painter) {
             for (pts, _) in flatten(&s.page_path(), view) {
                 painter.add(egui::Shape::line(pts, EStroke::new(1.0, outline_of(s.id))));
             }
-            let own = crate::kind_nodes::nodes(&s);
+            let own = crate::kind_nodes::handles(&s);
             let poly: Vec<Pos2> = own.iter().map(|(_, p)| view.to_screen(*p)).collect();
             let closed = matches!(s.kind, ShapeKind::Path { closed: true, .. });
             let lines = if closed {
@@ -3008,6 +3008,23 @@ fn draw_nodes(app: &App, painter: &Painter) {
                 } else {
                     None
                 };
+                // An edge's bow handle (#2188) is a small diamond, told
+                // apart from the corner nodes.
+                if let crate::kind_nodes::KindNode::Edge { .. } = node {
+                    let c = view.to_screen(p);
+                    let h = size / 2.0 + 1.0;
+                    painter.add(egui::Shape::convex_polygon(
+                        vec![
+                            c + egui::vec2(0.0, -h),
+                            c + egui::vec2(h, 0.0),
+                            c + egui::vec2(0.0, h),
+                            c + egui::vec2(-h, 0.0),
+                        ],
+                        Color32::WHITE,
+                        EStroke::new(1.0, main),
+                    ));
+                    continue;
+                }
                 node_marker(painter, view.to_screen(p), size, prefs.cusp, fill, main);
             }
             continue;

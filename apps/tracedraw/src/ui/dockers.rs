@@ -1328,6 +1328,29 @@ fn object_opacity_row(app: &mut App, ui: &mut Ui, salt: &str) {
     }
 }
 
+/// The chosen mesh nodes' own transparency (#2789, #2154), apart from
+/// the whole object's: shown while mesh nodes are chosen.
+fn mesh_node_transparency_row(app: &mut App, ui: &mut Ui) {
+    let Some((id, i)) = app.selected_mesh_node() else {
+        return;
+    };
+    let alpha = match app.doc().find_shape(id).map(|s| &s.fill) {
+        Some(Fill::Mesh(m)) => m.nodes.get(i).map_or(1.0, |n| n.alpha),
+        _ => return,
+    };
+    let mut transparency = ((1.0 - alpha) * 100.0).round() as i32;
+    ui.horizontal(|ui| {
+        ui.label(tr("toolbar.mesh_node_transparency"));
+        if ui
+            .add(crate::ui::Slider::new(&mut transparency, 0..=100).suffix(" %"))
+            .rich_tip(crate::ui::tips::keyed("toolbar.mesh_node_transparency"))
+            .changed()
+        {
+            app.set_mesh_node_alpha(1.0 - transparency as f32 / 100.0);
+        }
+    });
+}
+
 /// Fill winding (#1211, #1919): on, the selected curves fill with the
 /// nonzero rule, so where their contours overlap turning the same way the
 /// fill stays (traced lettering made of overlapping parts); off, with the
@@ -1820,6 +1843,7 @@ fn properties(app: &mut App, ui: &mut Ui) {
                     }
                 }
                 object_opacity_row(app, ui, "fill");
+                mesh_node_transparency_row(app, ui);
                 fill_winding_row(app, ui);
                 extra_fills(app, ui, first, has);
                 // Overprint and the dialog's button on one row (#1200).

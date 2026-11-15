@@ -499,6 +499,101 @@ pub struct Corners {
     /// space and scale, or stretch, with it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub fixed: bool,
+    /// How far each edge bows outward (#2188): top, right, bottom, left
+    /// (top is +y in the local space), 0 a straight edge and 1 an edge
+    /// bent into a quarter circle through its two corner points, so a
+    /// square bulged all round is a circle. The bow is a share of the
+    /// edge's length, so it keeps its look when the rectangle is
+    /// stretched; the corners round, scallop or cut along the bowed
+    /// edges.
+    #[serde(default, skip_serializing_if = "no_bulge")]
+    pub bulge: [f64; 4],
+}
+
+fn no_bulge(b: &[f64; 4]) -> bool {
+    b.iter().all(|v| *v == 0.0)
+}
+
+/// The tangent half-length of a cubic that draws a circular arc of
+/// `sweep` radians, as a share of the radius.
+fn arc_handle(sweep: f64) -> f64 {
+    4.0 / 3.0 * (sweep / 4.0).tan()
+}
+
+/// One bowed edge of a rectangle (see [`Corners::bulge`]): the circle
+/// it follows from its start corner to its end corner, counter-clockwise.
+#[derive(Debug, Clone, Copy)]
+struct EdgeArc {
+    centre: Point,
+    radius: f64,
+    /// Angle of the start corner, radians.
+    start: f64,
+    /// Radians from the start corner to the end corner (positive).
+    sweep: f64,
+}
+
+impl EdgeArc {
+    /// The arc from `a` to `b` (counter-clockwise round the rectangle)
+    /// bowed out by `bulge`; `None` for a straight edge.
+    fn new(a: Point, b: Point, bulge: f64) -> Option<EdgeArc> {
+        let d = b - a;
+        let len = d.hypot();
+        if bulge.is_nan() || bulge <= 1e-9 || len < 1e-12 {
+            return None;
+        }
+        let half = len / 2.0;
+        let sag = bulge.min(1.0) * (std::f64::consts::SQRT_2 - 1.0) * half;
+        // Outward: to the right of the way round.
+        let n = Vec2::new(d.y, -d.x) / len;
+        let radius = (half * half + sag * sag) / (2.0 * sag);
+        let centre = a.midpoint(b) - n * (radius - sag);
+        let start = (a - centre).atan2();
+        let sweep = 2.0 * (half / radius).clamp(-1.0, 1.0).asin();
+        Some(EdgeArc {
+            centre,
+            radius,
+            start,
+            sweep,
+        })
+    }
+
+    fn at_angle(&self, a: f64) -> Point {
+        self.centre + Vec2::new(a.cos(), a.sin()) * self.radius
+    }
+
+    /// The point `len` along the arc from its start and the unit tangent
+    /// there, the way round.
+    fn along(&self, len: f64) -> (Point, Vec2) {
+        let a = self.start + (len / self.radius).clamp(0.0, self.sweep);
+        (self.at_angle(a), Vec2::new(-a.sin(), a.cos()))
+    }
+
+    /// Append the arc between the lengths `from` and `to` from its start
+    /// to `path`, in pieces of at most a quarter turn.
+    fn append(&self, path: &mut BezPath, from: f64, to: f64) {
+        let (a0, a1) = (
+            self.start + from / self.radius,
+            self.start + to / self.radius,
+        );
+        let total = a1 - a0;
+        if total <= 1e-12 {
+            return;
+        }
+        let pieces = (total / std::f64::consts::FRAC_PI_2).ceil().max(1.0) as usize;
+        let step = total / pieces as f64;
+        let k = arc_handle(step) * self.radius;
+        for i in 0..pieces {
+            let (s, e) = (a0 + step * i as f64, a0 + step * (i + 1) as f64);
+            let (p0, p1) = (self.at_angle(s), self.at_angle(e));
+            let t0 = Vec2::new(-s.sin(), s.cos());
+            let t1 = Vec2::new(-e.sin(), e.cos());
+            path.curve_to(p0 + t0 * k, p1 - t1 * k, p1);
+        }
+    }
+
+    fn length(&self) -> f64 {
+        self.radius * self.sweep
+    }
 }
 
 impl Corners {
@@ -506,12 +601,98 @@ impl Corners {
     pub const TOP_RIGHT: usize = 1;
     pub const BOTTOM_LEFT: usize = 2;
     pub const BOTTOM_RIGHT: usize = 3;
+    /// The edges in [`Corners::bulge`].
+    pub const EDGE_TOP: usize = 0;
+    pub const EDGE_RIGHT: usize = 1;
+    pub const EDGE_BOTTOM: usize = 2;
+    pub const EDGE_LEFT: usize = 3;
+
+    /// Edge `i`'s bow, from 0 (straight) to 1 (a quarter circle); a
+    /// non-finite one counts as straight.
+    pub fn edge_bulge(&self, i: usize) -> f64 {
+        match self.bulge.get(i) {
+            Some(b) if b.is_finite() => b.clamp(0.0, 1.0),
+            _ => 0.0,
+        }
+    }
+
+    /// Some edge bows outward.
+    pub fn has_bulge(&self) -> bool {
+        (0..4).any(|i| self.edge_bulge(i) > 1e-9)
+    }
+
+    /// The edge that runs into each corner of `layout`'s order (bottom
+    /// right, top right, top left, bottom left): bottom, right, top, left.
+    const EDGE_INTO: [usize; 4] = [
+        Self::EDGE_BOTTOM,
+        Self::EDGE_RIGHT,
+        Self::EDGE_TOP,
+        Self::EDGE_LEFT,
+    ];
+
+    /// The arcs of the bowed edges, by `layout` order (the edge running
+    /// into each corner), from the corner points of `rect`.
+    fn edge_arcs(&self, order: &[CornerAt; 4]) -> [Option<EdgeArc>; 4] {
+        [0, 1, 2, 3].map(|i| {
+            let from = order[(i + 3) % 4].p;
+            EdgeArc::new(from, order[i].p, self.edge_bulge(Self::EDGE_INTO[i]))
+        })
+    }
+
+    /// The middle of edge `edge` (see [`Corners::bulge`]) as it is drawn
+    /// in `rect`, bowed or straight, in the rectangle's own space, and
+    /// its outward direction.
+    pub fn edge_middle(&self, edge: usize, rect: Rect) -> (Point, Vec2) {
+        let r = rect.abs();
+        let (a, b, n) = match edge {
+            Self::EDGE_TOP => (
+                Point::new(r.x1, r.y1),
+                Point::new(r.x0, r.y1),
+                Vec2::new(0.0, 1.0),
+            ),
+            Self::EDGE_RIGHT => (
+                Point::new(r.x1, r.y0),
+                Point::new(r.x1, r.y1),
+                Vec2::new(1.0, 0.0),
+            ),
+            Self::EDGE_BOTTOM => (
+                Point::new(r.x0, r.y0),
+                Point::new(r.x1, r.y0),
+                Vec2::new(0.0, -1.0),
+            ),
+            _ => (
+                Point::new(r.x0, r.y1),
+                Point::new(r.x0, r.y0),
+                Vec2::new(-1.0, 0.0),
+            ),
+        };
+        let len = (b - a).hypot();
+        let sag = self.edge_bulge(edge) * (std::f64::consts::SQRT_2 - 1.0) * len / 2.0;
+        (a.midpoint(b) + n * sag, n)
+    }
+
+    /// The bow that puts the middle of edge `edge` of `rect` `out` units
+    /// past the straight edge (see [`Corners::bulge`]), from 0 to 1.
+    pub fn bulge_for(edge: usize, rect: Rect, out: f64) -> f64 {
+        let r = rect.abs();
+        let len = if edge == Self::EDGE_TOP || edge == Self::EDGE_BOTTOM {
+            r.width()
+        } else {
+            r.height()
+        };
+        let full = (std::f64::consts::SQRT_2 - 1.0) * len / 2.0;
+        if full.is_nan() || full <= 1e-12 || !out.is_finite() {
+            return 0.0;
+        }
+        (out / full).clamp(0.0, 1.0)
+    }
 
     pub fn uniform(radius: f64, kind: CornerKind) -> Corners {
         Corners {
             radii: [radius; 4],
             kind,
             fixed: false,
+            bulge: [0.0; 4],
         }
     }
 
@@ -534,7 +715,7 @@ impl Corners {
     /// Same size on every corner, round and scaling with the object: a
     /// plain radius says as much.
     pub fn is_plain(&self) -> bool {
-        self.kind == CornerKind::Round && !self.fixed && self.is_uniform()
+        self.kind == CornerKind::Round && !self.fixed && self.is_uniform() && !self.has_bulge()
     }
 
     /// The largest corner.
@@ -747,9 +928,11 @@ impl Corners {
     /// the horizontal edge. A square corner has both ends on its point.
     pub fn ends(&self, rect: Rect, scale: (f64, f64)) -> [(Point, Point, Point); 4] {
         let mut out = [(Point::ZERO, Point::ZERO, Point::ZERO); 4];
-        for c in self.layout(rect, scale) {
-            let a = c.p - c.d_in * c.a_in;
-            let b = c.p + c.d_out * c.a_out;
+        let order = self.layout(rect, scale);
+        let arcs = self.edge_arcs(&order);
+        for (i, c) in order.iter().enumerate() {
+            let (a, _) = Self::cut_in(c, &arcs[i]);
+            let (b, _) = Self::cut_out(c, &arcs[(i + 1) % 4]);
             out[c.index] = if c.d_in.x == 0.0 {
                 (c.p, a, b)
             } else {
@@ -759,11 +942,88 @@ impl Corners {
         out
     }
 
+    /// Where corner `c`'s cut starts on the edge running into it (bowed
+    /// along `arc`, else straight) and the way the edge runs there.
+    fn cut_in(c: &CornerAt, arc: &Option<EdgeArc>) -> (Point, Vec2) {
+        match arc {
+            Some(a) => a.along(a.length() - c.a_in.min(a.length())),
+            None => (c.p - c.d_in * c.a_in, c.d_in),
+        }
+    }
+
+    /// Where corner `c`'s cut ends on the edge leaving it (bowed along
+    /// `arc`, else straight) and the way the edge runs there.
+    fn cut_out(c: &CornerAt, arc: &Option<EdgeArc>) -> (Point, Vec2) {
+        match arc {
+            Some(a) => a.along(c.a_out.min(a.length())),
+            None => (c.p + c.d_out * c.a_out, c.d_out),
+        }
+    }
+
+    /// The outline when some edge bows (see [`Corners::bulge`]): each
+    /// edge an arc through its corner points (or straight), each cut
+    /// corner a curve between the two edges, tangent to them when round.
+    fn bulged_path(&self, order: &[CornerAt; 4]) -> BezPath {
+        let arcs = self.edge_arcs(order);
+        let mut path = BezPath::new();
+        // Start where the last corner's cut ends on the first edge.
+        let (start, _) = Self::cut_out(&order[3], &arcs[0]);
+        path.move_to(start);
+        let mut at = start;
+        for (i, c) in order.iter().enumerate() {
+            let arc_in = &arcs[i];
+            let (a, t_in) = Self::cut_in(c, arc_in);
+            // The edge up to the corner's cut.
+            match arc_in {
+                Some(arc) => {
+                    let from = order[(i + 3) % 4].a_out.min(arc.length());
+                    let to = arc.length() - c.a_in.min(arc.length());
+                    arc.append(&mut path, from, to);
+                }
+                None => {
+                    if (a - at).hypot() > 1e-12 {
+                        path.line_to(a);
+                    }
+                }
+            }
+            let (b, t_out) = Self::cut_out(c, &arcs[(i + 1) % 4]);
+            if c.a_in > 1e-12 && c.a_out > 1e-12 {
+                // How far the way round turns at the corner.
+                let turn = t_in.cross(t_out).atan2(t_in.dot(t_out)).abs();
+                match self.kind {
+                    CornerKind::Round => {
+                        // An arc tangent to both edges, its handles as
+                        // long as the turn asks.
+                        let k = if turn > 1e-6 {
+                            arc_handle(turn) / (turn / 2.0).tan()
+                        } else {
+                            2.0 / 3.0
+                        };
+                        path.curve_to(a + t_in * (k * c.a_in), b - t_out * (k * c.a_out), b);
+                    }
+                    CornerKind::Scallop => {
+                        const K: f64 = 0.552_284_749_830_793_4;
+                        path.curve_to(a + t_out * (K * c.a_out), b - t_in * (K * c.a_in), b);
+                    }
+                    CornerKind::Chamfer => path.line_to(b),
+                }
+            } else if (b - a).hypot() > 1e-12 {
+                path.line_to(b);
+            }
+            at = b;
+        }
+        path.close_path();
+        path
+    }
+
     /// Outline of `rect` with these corners; see `layout` for `scale`.
     pub fn path(&self, rect: Rect, scale: (f64, f64)) -> BezPath {
         // Quarter-ellipse handle length.
         const K: f64 = 0.552_284_749_830_793_4;
         let order = self.layout(rect, scale);
+        if self.has_bulge() {
+            return self.bulged_path(&order);
+        }
         let mut path = BezPath::new();
         let last = &order[3];
         let start = last.p + last.d_out * last.a_out;
@@ -3519,6 +3779,10 @@ impl Shape {
         let Some(c) = corners else {
             return Some((*rect, local(*radius), t));
         };
+        // Bowed edges (#2188) go out as the curve they draw.
+        if c.has_bulge() {
+            return None;
+        }
         if c.is_square() {
             return Some((*rect, 0.0, t));
         }
@@ -6751,6 +7015,88 @@ mod tests {
         assert!(spans[0].variations.is_empty());
     }
 
+    /// Bowed edges (#2188): a square bulged all round is a circle through
+    /// its corners, a little bow keeps the corners where they were and
+    /// lifts the edges' middles, rounded corners stay tangent to the
+    /// bowed edges, and a rectangle that bows is never written as a plain
+    /// one. No bow leaves the outline as it was.
+    #[test]
+    fn bulged_edges_bow_the_rectangle_out() {
+        use crate::geometry::{ParamCurve, ParamCurveDeriv, ParamCurveNearest, Shape as _};
+        let r = Rect::new(0.0, 0.0, 100.0, 100.0);
+        let full = Corners {
+            bulge: [1.0; 4],
+            ..Corners::default()
+        };
+        let p = full.path(r, (1.0, 1.0));
+        // Every point of the outline on the circle through the corners.
+        let c = Point::new(50.0, 50.0);
+        let radius = 50.0 * std::f64::consts::SQRT_2;
+        for seg in p.segments() {
+            for i in 0..=8 {
+                let q = seg.eval(i as f64 / 8.0);
+                assert!(((q - c).hypot() - radius).abs() < 0.05, "{q:?}");
+            }
+        }
+        // A little bow on the top edge alone.
+        let top = Corners {
+            bulge: [0.5, 0.0, 0.0, 0.0],
+            ..Corners::default()
+        };
+        let (mid, out) = top.edge_middle(Corners::EDGE_TOP, r);
+        assert_eq!(out, Vec2::new(0.0, 1.0));
+        let sag = 0.5 * (std::f64::consts::SQRT_2 - 1.0) * 50.0;
+        assert!((mid.y - (100.0 + sag)).abs() < 1e-9 && (mid.x - 50.0).abs() < 1e-9);
+        let b = top.path(r, (1.0, 1.0)).bounding_box();
+        assert!((b.y1 - (100.0 + sag)).abs() < 1e-6, "{b:?}");
+        assert!(b.y0.abs() < 1e-9 && b.x0.abs() < 1e-9 && (b.x1 - 100.0).abs() < 1e-9);
+        assert!((Corners::bulge_for(Corners::EDGE_TOP, r, sag) - 0.5).abs() < 1e-9);
+        // Rounded corners: the cut ends on the bowed edge, and the outline
+        // turns smoothly there (no kink between the edge and the corner).
+        let round = Corners {
+            radii: [10.0; 4],
+            bulge: [0.6; 4],
+            ..Corners::default()
+        };
+        let path = round.path(r, (1.0, 1.0));
+        let segs: Vec<_> = path.segments().collect();
+        for w in segs.windows(2) {
+            let (a, b) = (w[0], w[1]);
+            let ta = a.to_cubic().deriv().eval(1.0).to_vec2();
+            let tb = b.to_cubic().deriv().eval(0.0).to_vec2();
+            let turn = ta.cross(tb).atan2(ta.dot(tb)).abs();
+            assert!(turn < 0.02, "kink of {turn} rad at {:?}", a.end());
+        }
+        // The square corner nodes stay on the corners; the cut ends of a
+        // round corner lie on the bowed edge, not inside it.
+        let ends = round.ends(r, (1.0, 1.0));
+        for (_, v, h) in ends {
+            for q in [v, h] {
+                let d = segs
+                    .iter()
+                    .map(|s| s.nearest(q, 1e-9).distance_sq)
+                    .fold(f64::MAX, f64::min);
+                assert!(d < 1e-6, "{q:?}");
+            }
+        }
+        // Kept as a rectangle with corners, never plain, and the bow
+        // survives a trip through the file.
+        let kind = ShapeKind::rect_with_corners(r, top);
+        assert!(matches!(kind, ShapeKind::Rect { corners: Some(c), .. } if c.bulge[0] == 0.5));
+        let s = Shape::new(ShapeId(1), kind);
+        assert!(s.plain_rect().is_none());
+        let json = serde_json::to_string(&s).unwrap();
+        let back: Shape = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.kind, s.kind);
+        // No bow: the same outline as before, and no field in the file.
+        let plain = Corners {
+            radii: [10.0; 4],
+            ..Corners::default()
+        };
+        assert!(!serde_json::to_string(&plain).unwrap().contains("bulge"));
+        assert_eq!(plain.path(r, (1.0, 1.0)).elements().len(), 10);
+    }
+
     /// Imported rounded corners keep their size (#619): a corner larger
     /// than the shorter side stays as it was, and a stretched rectangle
     /// takes the stretch into its size, its corners round at the smaller
@@ -6762,6 +7108,7 @@ mod tests {
             radii: [30.0, 30.0, 0.0, 0.0],
             kind: CornerKind::Round,
             fixed: false,
+            ..Corners::default()
         };
         let mut s = Shape::new(
             ids.shape(),

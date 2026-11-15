@@ -242,10 +242,6 @@ impl Pdf {
     fn add_str(&mut self, s: String) -> usize {
         self.add(s.into_bytes())
     }
-    fn add_image(&mut self, w: u32, h: u32, rgb: &[u8]) -> usize {
-        self.add_image_masked(w, h, rgb, None)
-    }
-
     /// An image with a soft mask (`alpha`, one byte per pixel) for its
     /// transparent pixels, when it has any.
     fn add_image_masked(&mut self, w: u32, h: u32, rgb: &[u8], alpha: Option<&[u8]>) -> usize {
@@ -810,9 +806,14 @@ impl PageWriter<'_> {
                     bounds
                 };
                 if let Some((png, w, h)) = rasterise_fill(fill, path, bounds) {
-                    if let Some(rgb) = decode_png_rgb(&png) {
+                    if let Some((rgb, alpha)) = decode_png_rgb_alpha(&png) {
                         let name = format!("Im{}", self.images.len());
-                        let id = self.pdf.add_image(w, h, &rgb);
+                        // A mesh keeps its nodes' own transparency
+                        // (#2789, #2154) as the picture's soft mask.
+                        let alpha = alpha.filter(|_| {
+                            matches!(fill, Fill::Mesh(m) if m.nodes.iter().any(|n| n.alpha < 1.0))
+                        });
+                        let id = self.pdf.add_image_masked(w, h, &rgb, alpha.as_deref());
                         self.images.push((name.clone(), id));
                         self.content.push_str("q\n");
                         self.path_ops(path);
@@ -2109,10 +2110,6 @@ fn rasterise_fill(
     };
     let (w, h) = (pm.width(), pm.height());
     Some((pm.encode_png().ok()?, w, h))
-}
-
-fn decode_png_rgb(png: &[u8]) -> Option<Vec<u8>> {
-    decode_png_rgb_alpha(png).map(|(rgb, _)| rgb)
 }
 
 /// RGB samples and, when any pixel is not opaque, the alpha channel.
@@ -3430,6 +3427,37 @@ mod tests {
         assert!(text.contains("/SMask"), "{text}");
         assert!(text.contains("/XObject << /Im "), "{text}");
         assert!(text.contains("/PatternType 1"), "{text}");
+    }
+
+    /// A mesh whose nodes fade (#2789, #2154) keeps its see-through
+    /// part in the PDF: its picture carries a soft mask; an opaque mesh
+    /// needs none.
+    #[test]
+    fn a_mesh_with_see_through_nodes_exports_its_transparency() {
+        let pdf_of = |alpha: f32| {
+            let mut doc = Document::default();
+            let layer = doc.pages[0].layers[0].id;
+            let id = doc.ids_mut().shape();
+            let r = Rect::new(10.0, 10.0, 30.0, 30.0);
+            let mut s = Shape::new(
+                id,
+                ShapeKind::Rect {
+                    rect: r,
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            let mut m = tracedraw_core::Mesh::new(r, 1, 1, Color::rgb8(255, 0, 0));
+            m.nodes[0].alpha = alpha;
+            s.fill = Fill::Mesh(m);
+            s.stroke = None;
+            doc.layer_mut(layer).unwrap().shapes.push(s);
+            String::from_utf8_lossy(&document_to_pdf(&doc)).to_string()
+        };
+        let faded = pdf_of(0.0);
+        assert!(faded.contains("/Subtype /Image"), "{faded}");
+        assert!(faded.contains("/SMask"), "{faded}");
+        assert!(!pdf_of(1.0).contains("/SMask"));
     }
 
     #[test]
