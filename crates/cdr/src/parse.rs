@@ -844,6 +844,10 @@ pub(crate) fn parse_document_kept(
             let default_name = format!("Layer {}", page.layers.len() + 1);
             let name = ctx.layer_name(lc).unwrap_or(default_name);
             let mut layer = Layer::new(doc.ids_mut().layer(), name);
+            if let Some(f) = ctx.modern_layer_flags(lc) {
+                layer.locked = f[0] & 0x10 != 0;
+                layer.printable = f[0] & 0x08 == 0;
+            }
             // Guides and grid layers hold no drawable content.
             match ctx.layer_type(lc) {
                 Some(t) if t & 0x0f == 0x0a => {
@@ -1033,9 +1037,9 @@ impl<'a> Ctx<'a> {
         Reader::at(d, pos, self.v16())
     }
 
-    /// `flgs` of a `page` or `layr` list: 4 bytes, byte 3 is the record
-    /// type (0x90 page, 0x98 layer), byte 2 marks the master page, byte 0
-    /// is the layer type (0 normal, 8 desktop, 0x0a guides, 0x1a grid).
+    /// Four-byte state flags; byte 3 identifies the record (0x90 page,
+    /// 0x98 layer), and byte 2 marks master-page entries. Modern layers
+    /// identify their kind in `loda`; byte 0 also holds state bits.
     fn flags(&self, list: &Chunk) -> Option<[u8; 4]> {
         let f = list.find(b"flgs")?;
         let d = self.data(f);
@@ -1050,18 +1054,12 @@ impl<'a> Ctx<'a> {
         matches!(self.flags(oc), Some(f) if f[3] & 0xf8 == 0x08 && f[0] & OBJECT_LOCKED != 0)
     }
 
-    /// A hidden group in a version 27 drawing: [0x80, 1, 0, 0x10],
-    /// beside its visible group [0x80, 0, 0, 0x10]. The bit belongs to
-    /// the group, not to each of its objects or its `loda` arguments.
-    fn group_hidden(&self, gc: &Chunk) -> bool {
-        self.v >= 16 && matches!(self.flags(gc), Some(f) if f[3] == 0x10 && f[1] & 1 != 0)
-    }
-
-    /// The same modern hidden bit on an individual object: a hidden
-    /// text has [0, 3, 0, 8], its visible neighbour [0, 2, 0, 8].
-    fn object_hidden(&self, oc: &Chunk) -> bool {
+    /// Modern object and group records share byte 1's hidden bit. A
+    /// hidden text has [0, 3, 0, 8], its visible neighbour [0, 2, 0, 8];
+    /// groups use record type 0x10 and keep their children's own state.
+    fn shape_hidden(&self, oc: &Chunk) -> bool {
         self.v >= 16
-            && matches!(self.flags(oc), Some(f) if f[3] & 0xf8 == 0x08 && f[1] & 1 != 0)
+            && matches!(self.flags(oc), Some(f) if (f[3] & 0xf8 == 0x08 || f[3] == 0x10) && f[1] & 1 != 0)
     }
 
     fn page_is_master(&self, pc: &Chunk) -> bool {
@@ -1069,13 +1067,37 @@ impl<'a> Ctx<'a> {
     }
 
     fn layer_type(&self, lc: &Chunk) -> Option<u8> {
+        // Modern `loda` kinds distinguish an ordinary excluded layer
+        // from the desktop: both can have byte-0 flag 0x08 (#2850).
+        if self.v >= 16 {
+            if let Some(kind) = self
+                .own_loda(lc)
+                .and_then(|c| tracedraw_cdr_format::loda::table(self.data(c), self.v))
+                .map(|l| l.kind)
+            {
+                match kind {
+                    0 => return Some(0),
+                    11 => return Some(0x1a),
+                    12 => return Some(0x0a),
+                    17 => return Some(0x08),
+                    _ => {}
+                }
+            }
+        }
         self.flags(lc).filter(|f| f[3] == 0x98).map(|f| f[0])
+    }
+
+    fn modern_layer_flags(&self, lc: &Chunk) -> Option<[u8; 4]> {
+        (self.v >= 16)
+            .then(|| self.flags(lc))
+            .flatten()
+            .filter(|f| f[3] == 0x98)
     }
 
     /// Modern hidden layers carry bit 0 of byte 1, observed in version
     /// 27 as [0x40, 1, 0, 0x98] beside [0, 0, 0, 0x98] (#2862).
     fn layer_hidden(&self, lc: &Chunk) -> bool {
-        self.v >= 16 && matches!(self.flags(lc), Some(f) if f[3] == 0x98 && f[1] & 1 != 0)
+        self.modern_layer_flags(lc).is_some_and(|f| f[1] & 1 != 0)
     }
 
     /// A guides, grid or desktop layer (type byte not 0), or a page's
@@ -1084,9 +1106,7 @@ impl<'a> Ctx<'a> {
         let Some(f) = self.flags(lc).filter(|f| f[3] == 0x98) else {
             return false;
         };
-        // The ordinary hidden layer of #2862 also carries 0x40. That
-        // flag does not make it a guide, grid or desktop layer.
-        let kind = if self.v >= 16 { f[0] & !0x40 } else { f[0] };
+        let kind = self.layer_type(lc).unwrap_or(0);
         kind != 0 || f[2] != 0
     }
 
@@ -4806,7 +4826,7 @@ impl<'a> Ctx<'a> {
                         // Both the older hidden-object argument and the
                         // modern flag apply to the whole object, also
                         // when a crop or clip wraps it in a new shape.
-                        let visible = shape.visible && !self.object_hidden(c);
+                        let visible = shape.visible && !self.shape_hidden(c);
                         if std::mem::take(&mut self.pending_renumber) {
                             renumber(&mut shape, ids);
                         }
@@ -4837,7 +4857,7 @@ impl<'a> Ctx<'a> {
                     None => self.report.skipped_objects += 1,
                 }
             } else if c.is(b"grp ") {
-                let hidden = self.group_hidden(c);
+                let hidden = self.shape_hidden(c);
                 // A table (versions 14 on) is a group of cell groups.
                 if let Some(mut table) = self.read_table(c, ids, page_size) {
                     table.visible = !hidden;

@@ -86,3 +86,29 @@ fn hidden_layer_flags_ignore_missing_malformed_and_unrelated_records() {
     assert!(!guides.visible);
     assert!(!guides.printable);
 }
+
+#[test]
+fn layer_state_flags_preserve_lock_and_output_exclusion_independently() {
+    for (file, name, visible, locked, printable, count) in [
+        ("locked.cdr", "LOCKED", true, true, true, 1),
+        ("excluded.cdr", "EXCLUDED", true, false, false, 1),
+        ("locked-excluded-hidden.cdr", "ALL", false, true, false, 1),
+        ("locked-empty.cdr", "LOCKED", true, true, true, 0),
+        ("excluded-empty.cdr", "EXCLUDED", true, false, false, 0),
+    ] {
+        let doc = sample(file);
+        for doc in [
+            doc.clone(),
+            Document::from_json(&doc.to_json().unwrap()).unwrap(),
+        ] {
+            let layer = named(&doc.pages[0].layers, name);
+            assert_eq!(
+                (layer.visible, layer.locked, layer.printable),
+                (visible, locked, printable),
+                "{file}"
+            );
+            assert_eq!(layer.shapes.len(), count);
+            assert!(layer.shapes.iter().all(|s| s.visible && !s.locked));
+        }
+    }
+}

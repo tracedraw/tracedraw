@@ -82,7 +82,11 @@ fn individual_object_flags_preserve_visibility_and_lock_independently() {
         assert_eq!(report.skipped_objects, 0);
         let shapes = &doc.pages[0].layers[0].shapes;
         assert_eq!(shapes.len(), 1);
-        assert_eq!((shapes[0].visible, shapes[0].locked), (visible, locked), "{file}");
+        assert_eq!(
+            (shapes[0].visible, shapes[0].locked),
+            (visible, locked),
+            "{file}"
+        );
         let reopened = Document::from_json(&doc.to_json().unwrap()).unwrap();
         let shape = &reopened.pages[0].layers[0].shapes[0];
         assert_eq!((shape.visible, shape.locked), (visible, locked));

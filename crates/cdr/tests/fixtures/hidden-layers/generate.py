@@ -36,8 +36,8 @@ def loda(kind, args):
             + body + u32(*offsets) + u32(*(t for t, _ in reversed(args))))
 
 
-def layer(name, flags, empty=False):
-    props = chunk(b'loda', loda(0, [(1000, (name+'\0').encode('utf-16le'))]))
+def layer(name, flags, empty=False, kind=0):
+    props = chunk(b'loda', loda(kind, [(1000, (name+'\0').encode('utf-16le'))]))
     header = b'' if flags is None else chunk(b'flgs', flags)
     coords = struct.pack('<4d', 100000, 100000, 1, 1) + bytes(88)
     rect = listing(b'obj ', chunk(b'loda', loda(1, [(30, coords), (20, u32(9))])))
@@ -82,7 +82,12 @@ def main():
         'short-flags.cdr': cdr([layer('VISIBLE', b'\x40\x01\0')]),
         'wrong-record-type.cdr': cdr([layer('VISIBLE', b'\x40\x01\0\x10')]),
         'unrelated-bit.cdr': cdr([layer('VISIBLE', b'\0\x02\0\x98')]),
-        'guides.cdr': cdr([layer('Guides', b'\x0a\0\0\x98')]),
+        'guides.cdr': cdr([layer('Guides', b'\x0a\0\0\x98', kind=12)]),
+        'locked.cdr': cdr([layer('LOCKED', b'\x10\0\0\x98')]),
+        'excluded.cdr': cdr([layer('EXCLUDED', b'\x08\0\0\x98')]),
+        'locked-excluded-hidden.cdr': cdr([layer('ALL', b'\x58\x01\0\x98')]),
+        'locked-empty.cdr': cdr([layer('LOCKED', b'\x10\0\0\x98', True)]),
+        'excluded-empty.cdr': cdr([layer('EXCLUDED', b'\x08\0\0\x98', True)]),
     }
     with zipfile.ZipFile(Path(__file__).with_name('samples.zip'), 'w') as archive:
         for name, data in samples.items():

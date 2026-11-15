@@ -1,4 +1,4 @@
-# Hidden group flags (#2850)
+# Object and group state flags (#2850)
 
 Original synthetic CDR27 parser fixtures made for TraceDraw, licensed under
 MIT OR Apache-2.0. Run `python3 generate.py` to reproduce `samples.zip`
@@ -23,3 +23,14 @@ These are parser fixtures, not files saved or validated by another editor.
 All rectangles are black. The hidden-only files should render blank.
 Native `.tdraw` save/reopen must retain the hidden parent and its children.
 CDR export of hidden containers is outside this import regression.
+
+Additional samples cover individual objects: `hidden-object.cdr` carries
+`00 03 00 08`, while `visible-object.cdr` carries `00 02 00 08`, as seen
+on two text objects in the reporter's updated version 27 sample. The
+hidden bit is the same as a group's, on a different record type.
+`locked-object.cdr` and `hidden-locked-object.cdr` check the already known
+byte-0 lock bit 0x10 independently of visibility. `hidden-object-argument.cdr`
+retains support for argument 16016. Short and mismatched object records
+must not hide an otherwise visible object. All states survive native
+save/reopen. Parent layer exclusion applies to the objects on that layer;
+no independent per-object print-exclusion field was observed in this sample.
