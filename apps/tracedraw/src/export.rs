@@ -948,6 +948,13 @@ fn print_doc(app: &mut App, st: &PrintState, mut doc: Document) -> Result<String
                 });
                 return Ok(msg);
             }
+            // Android's print service, its Save as PDF and the printers'
+            // plugins draw the PDF on a transparent bitmap, and some drop
+            // its alpha: what the sheet leaves unpainted came out black
+            // (#2663). The sheets go out on white paper.
+            if cfg!(target_os = "android") {
+                on_white_paper(&mut doc);
+            }
             let pdf = tracedraw_io::pdf::document_to_pdf(&doc);
             if crate::files::WEB {
                 // In a browser the PDF is downloaded; its viewer prints it.
@@ -957,6 +964,15 @@ fn print_doc(app: &mut App, st: &PrintState, mut doc: Document) -> Result<String
             }
             print_through_viewer(&name, pdf)
         }
+    }
+}
+
+/// Each sheet of `doc` without a background of its own on opaque white
+/// paper: a reader that draws the PDF on a transparent bitmap and drops
+/// its alpha shows white, not black, where nothing is drawn (#2663).
+fn on_white_paper(doc: &mut Document) {
+    for page in doc.pages.iter_mut().filter(|p| p.background.is_none()) {
+        page.background = Some(tracedraw_core::Fill::Solid(tracedraw_core::Color::WHITE));
     }
 }
 
@@ -5127,6 +5143,37 @@ mod tests {
         let sheets = print_sheets(&app, &st);
         assert!(!format!("{sheets:?}").contains(&blue));
         assert!(app.doc().pages[0].background.is_some());
+    }
+
+    /// A sheet printed through Android's print service lies on opaque
+    /// white paper: a printer plugin that draws the PDF on a transparent
+    /// bitmap and drops its alpha printed what nothing covers black
+    /// (#2663). A page's own background is kept.
+    #[test]
+    fn android_prints_go_out_on_white_paper() {
+        use tracedraw_core::{Color, Fill};
+        let mut app = App::headless();
+        app.new_shape(ShapeKind::Rect {
+            rect: Rect::new(20.0, 20.0, 80.0, 60.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+        let mut doc = print_sheets(&app, &PrintState::default());
+        assert_eq!(doc.pages[0].background, None);
+        // A second sheet with a blue page keeps it.
+        let mut blue = doc.pages[0].clone();
+        blue.background = Some(Fill::Solid(Color::rgb8(0, 0, 255)));
+        doc.pages.push(blue);
+        on_white_paper(&mut doc);
+        assert_eq!(doc.pages[0].background, Some(Fill::Solid(Color::WHITE)));
+        assert_eq!(
+            doc.pages[1].background,
+            Some(Fill::Solid(Color::rgb8(0, 0, 255)))
+        );
+        if let Some(out) = std::env::var_os("TRACEDRAW_DUMP_PRINT_PDF") {
+            std::fs::write(out, tracedraw_io::pdf::document_to_pdf(&doc)).expect("dump");
+        }
     }
 
     /// Keep size: the selection never prints smaller than it is, even on

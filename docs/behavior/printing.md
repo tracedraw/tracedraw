@@ -6,6 +6,11 @@ viewer, where the printer is chosen (in the browser the PDF is
 downloaded; on Android it goes to the system's print service, whose
 dialog chooses the printer, the copies and the paper, #1398).
 `export::print` builds it; the sheets come from `imposition.rs`.
+On Android each sheet without a page background of its own goes out
+on opaque white paper: the print service, its Save as PDF and the
+printers' plugins draw the PDF on a transparent bitmap, and one that
+drops the alpha printed whatever the sheet leaves unpainted black
+(#2663, `export::tests::android_prints_go_out_on_white_paper`).
 
 ## Printers
 
