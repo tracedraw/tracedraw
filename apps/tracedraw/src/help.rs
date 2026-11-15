@@ -171,6 +171,7 @@ pub fn options_topic(p: OptionsPage) -> &'static str {
         Eraser => "customize/tool-options#eraser",
         ShapeRecognition => "customize/tool-options#shape-recognition",
         Dimension => "customize/tool-options#dimension",
+        AngularDimension => "customize/tool-options#angular-dimension",
         Connector => "customize/tool-options#connector",
         MeshFill => "customize/tool-options#mesh-fill",
         GlobalGeneral => "customize/global-options#general",

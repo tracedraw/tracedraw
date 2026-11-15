@@ -437,6 +437,35 @@ pub struct Settings {
     /// touches (off by default; Alt does it either way round).
     #[serde(default)]
     pub marquee_touching: bool,
+    /// Options > Tools > Pick, Ctrl and Shift keys: off (Traditional,
+    /// the default) Ctrl constrains and Shift works from the centre; on
+    /// (Windows standard) Shift constrains and Ctrl held when a move is
+    /// let go leaves the original, a copy taking the new place (#1436).
+    #[serde(default)]
+    pub pick_windows_keys: bool,
+    /// Options > Tools > Eraser: the curves the Eraser leaves lose the
+    /// nodes they do not need (#1436).
+    #[serde(default)]
+    pub eraser_reduce_nodes: bool,
+    /// Options > Tools > Ellipse: new pies and arcs run clockwise from
+    /// the starting to the ending angle (#1436). The tool's stored arc is
+    /// always counterclockwise; with this on its angles are the other
+    /// way round.
+    #[serde(default)]
+    pub ellipse_clockwise: bool,
+    /// Options > Tools > Spiral and the property bar: how fast a
+    /// logarithmic spiral widens, 1 (almost even) to 100 (#1436).
+    #[serde(default = "default_spiral_expansion")]
+    pub spiral_expansion: u32,
+    /// Options > Tools > Angular Dimension: the decimals, degree sign,
+    /// prefix and suffix new angular dimensions take (#1436).
+    pub angular_dimension: crate::dimensions::AngularDefaults,
+    /// Options > Tools > Connector: an object's own nodes are anchors
+    /// too, besides its side midpoints and custom anchors (#1436).
+    pub connector_geometric_anchors: bool,
+    /// Options > Tools > Connector: how far new right-angle connectors
+    /// run straight out of an object before they turn, mm (#1436).
+    pub connector_gap: f64,
     /// The one-time changes already made to preferences saved by older
     /// versions (see `Settings::upgrade`); 0 in files that predate them.
     #[serde(default)]
@@ -825,6 +854,10 @@ const UPGRADES: u32 = 8;
 
 fn default_outline_units() -> String {
     "pt".into()
+}
+
+fn default_spiral_expansion() -> u32 {
+    100
 }
 
 fn default_true() -> bool {
@@ -2047,6 +2080,13 @@ impl Default for Settings {
             follow_text_size: true,
             follow_high_contrast: true,
             marquee_touching: false,
+            pick_windows_keys: false,
+            eraser_reduce_nodes: false,
+            ellipse_clockwise: false,
+            spiral_expansion: 100,
+            angular_dimension: Default::default(),
+            connector_geometric_anchors: false,
+            connector_gap: 0.0,
             upgrades: UPGRADES,
             crosshair_cursor: false,
             screen_ppi: default_screen_ppi(),

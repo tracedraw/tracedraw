@@ -17,12 +17,17 @@ również na pasku właściwości każdego narzędzia.
   obiekty, których tylko dotyka; <kbd>Alt</kbd> zaznacza wtedy tylko obiekty
   całkowicie wewnątrz.
 
+- [[options.ctrl_shift_keys]] [[options.keys_traditional]]: [[options.keys_traditional_tip]]
+  [[options.keys_windows]]: [[options.keys_windows_tip]]
+
 ## Gumka {#eraser}
 
 ![Opcje narzędzia Gumka](../../img/customize-tool-options-eraser.png)
 
 [[options.eraser_width]] (domyślnie 6,35 mm) oraz [[options.eraser_round]] lub
 [[options.eraser_square]].
+
+[[options.eraser_reduce_nodes]]: [[options.eraser_reduce_nodes_tip]]
 
 ## Powiększenie i przesuwanie {#zoom-pan}
 
@@ -61,6 +66,9 @@ również na pasku właściwości każdego narzędzia.
 - [[options.pen_tablet]]: [[options.pen_pressure]] (włączone); zobacz
   [Rysowanie na tablecie graficznym](../lines-shapes/pen-pressure.md).
 
+- [[options.corner_threshold]]: [[options.corner_threshold_tip]]
+- [[options.straight_threshold]]: [[options.straight_threshold_tip]]
+
 ## Rozpoznawanie kształtów {#shape-recognition}
 
 ![Opcje narzędzia Rozpoznawanie kształtów](../../img/customize-tool-options-shape-recognition.png)
@@ -84,6 +92,9 @@ narożników oraz [[toolbar.corners_together]]. [[options.scale_corners]]:
 [[options.ellipse]], [[options.pie]] lub [[options.arc]], z wartościami
 [[options.starting_angle]] i [[options.ending_angle]].
 
+[[options.arc_direction]]: [[options.counterclockwise]] / [[options.clockwise]].
+[[options.arc_direction_desc]]
+
 ## Wielokąt {#polygon}
 
 ![Opcje narzędzia Wielokąt](../../img/customize-tool-options-polygon.png)
@@ -103,6 +114,9 @@ narożników oraz [[toolbar.corners_together]]. [[options.scale_corners]]:
 [[options.revolutions]] oraz [[options.symmetrical_spiral]] lub
 [[options.logarithmic_spiral]].
 
+[[options.spiral_expansion]]: [[options.spiral_expansion_tip]]
+[[options.spiral_preview_tip]]
+
 ## Tabela {#table}
 
 ![Opcje narzędzia Tabela](../../img/customize-tool-options-table.png)
@@ -118,11 +132,24 @@ Jak wygląda etykieta nowych wymiarów: [[dimension.precision]],
 [[dimension.suffix]]. Narysowane już wymiary zachowują swoją etykietę;
 zaznacz jeden i zmień ją na pasku właściwości.
 
+[[options.dimension_style]]: [[options.decimal]] / [[options.fractional]].
+[[options.dimension_style_tip]]
+
+## Wymiar kątowy {#angular-dimension}
+
+[[dimension.precision]], [[dimension.show_units]], [[dimension.prefix]] and
+[[dimension.suffix]] of new angular dimensions.
+[[options.angular_units_tip]]
+
 ## Łącznik {#connector}
 
 ![Opcje narzędzia Łącznik](../../img/customize-tool-options-connector.png)
 
 [[connector.radius]] nowych zaokrąglonych łączników (na początku 3 mm).
+
+[[options.connector_gap]]: [[options.connector_gap_tip]]
+
+[[options.connector_geometric_anchors]]: [[options.connector_geometric_anchors_tip]]
 
 ## Wypełnienie siatkowe {#mesh-fill}
 

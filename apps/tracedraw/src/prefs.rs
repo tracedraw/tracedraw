@@ -1132,6 +1132,17 @@ pub struct CurvePrefs {
     /// hand's touches are ignored (palm rejection, #1832, `palm.rs`).
     #[serde(default = "yes")]
     pub pen_ignores_hand: bool,
+    /// Freehand corner threshold, 0 (off) to 10 (#1436): a node where
+    /// the stroke turns by more than `180 - 12 x` degrees becomes a cusp,
+    /// so higher values make more corners.
+    #[serde(default)]
+    pub corner_threshold: u32,
+    /// Freehand straight line threshold, screen pixels, 0 (off) to 10
+    /// (#1436): a stretch between two nodes at least 20 pixels long whose
+    /// stroke stays this near the line between them becomes a straight
+    /// segment, so higher values make more lines.
+    #[serde(default)]
+    pub straight_threshold: u32,
 }
 
 /// The modifier key that constrains the angle while drawing curves.
@@ -1175,6 +1186,8 @@ impl Default for CurvePrefs {
             constrain_key: ConstrainKey::Ctrl,
             pen_pressure: true,
             pen_ignores_hand: true,
+            corner_threshold: 0,
+            straight_threshold: 0,
         }
     }
 }
@@ -1193,6 +1206,15 @@ impl CurvePrefs {
     /// pixels: 0.2 at no smoothing, 1.3 at the default 50, 2.4 at 100.
     pub fn freehand_tolerance_px(&self) -> f64 {
         0.2 + f64::from(self.smoothing.min(100)) / 100.0 * 2.2
+    }
+
+    /// The turn, degrees, past which a freehand node is a cusp; `None`
+    /// with the corner threshold off.
+    pub fn corner_turn_deg(&self) -> Option<f64> {
+        match self.corner_threshold.min(10) {
+            0 => None,
+            t => Some(180.0 - 12.0 * f64::from(t)),
+        }
     }
 }
 

@@ -28398,3 +28398,62 @@ fn a_clicked_handle_moves_with_the_arrow_keys() {
         start(&app)
     );
 }
+
+/// Options > Tools > Pick, "Ctrl and Shift keys", Windows standard
+/// (#1436): Ctrl held as a move is dropped leaves the original (the moved
+/// one is a copy) and does not keep the move straight; Shift still does.
+#[test]
+fn windows_keys_ctrl_drops_a_copy_and_shift_keeps_straight() {
+    let (ctx, mut app, id) = setup();
+    app.settings.pick_windows_keys = true;
+    let from = app.view.to_screen(Point::new(35.0, 25.0));
+    drag(
+        &ctx,
+        &mut app,
+        from,
+        from + egui::vec2(120.0, 60.0),
+        Modifiers::CTRL,
+        Vec::new(),
+    );
+    assert_eq!(shape_count(&app), 2, "a copy");
+    assert!(close(bounds(&app, id).x0, 10.0), "the original stays");
+    let copy = app.selection.first().copied().expect("copy");
+    assert_ne!(copy, id);
+    let b = bounds(&app, copy);
+    assert!(b.x0 > 15.0 && !close(b.y0, 10.0), "moved both ways: {b:?}");
+    // Shift keeps it straight.
+    let from = app.view.to_screen(b.center());
+    drag(
+        &ctx,
+        &mut app,
+        from,
+        from + egui::vec2(120.0, 35.0),
+        Modifiers::SHIFT,
+        Vec::new(),
+    );
+    let after = bounds(&app, copy);
+    assert!(after.x0 > b.x0 + 5.0 && close(after.y0, b.y0), "{after:?}");
+    assert_eq!(shape_count(&app), 2);
+}
+
+/// With the Windows standard keys, Ctrl and Shift trade places while
+/// scaling, rotating or skewing; with the traditional ones nothing
+/// changes.
+#[test]
+fn windows_keys_swap_ctrl_and_shift_for_transforms() {
+    let mut app = App::headless();
+    app.drag = Drag::Rotate {
+        center: Point::ZERO,
+        start_angle: 0.0,
+        current_angle: 0.0,
+        grab: None,
+    };
+    assert_eq!(app.pick_mods(Modifiers::CTRL), Modifiers::CTRL);
+    app.settings.pick_windows_keys = true;
+    let m = app.pick_mods(Modifiers::CTRL);
+    assert!(m.shift && !m.ctrl, "{m:?}");
+    let m = app.pick_mods(Modifiers::SHIFT);
+    assert!(m.ctrl && !m.shift, "{m:?}");
+    app.drag = Drag::None;
+    assert_eq!(app.pick_mods(Modifiers::CTRL), Modifiers::CTRL, "a press");
+}

@@ -2727,6 +2727,9 @@ pub fn ellipse_part(app: &mut App, ui: &mut Ui) {
     {
         std::mem::swap(&mut arc.start_deg, &mut arc.end_deg);
         new = Some(arc);
+        // New pies and arcs keep their angles as typed, now the other
+        // way round (Options > Tools > Ellipse, #1436).
+        app.settings.ellipse_clockwise = !app.settings.ellipse_clockwise;
     }
     if new != current {
         app.ellipse_arc = new;

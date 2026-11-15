@@ -14,8 +14,13 @@ use tracedraw_core::{
 
 pub use crate::common_shapes::CommonShape;
 
-/// Archimedean or logarithmic spiral inscribed in `rect`.
-pub fn spiral_path(rect: Rect, revolutions: u32, logarithmic: bool) -> BezPath {
+/// Archimedean or logarithmic spiral inscribed in `rect`. A logarithmic
+/// spiral widens by `expansion` (1 to 100, Options > Tools > Spiral,
+/// #1436): its radius grows as `(e^(k t) - 1) / (e^k - 1)` with
+/// `k = expansion / 25`, so 100 widens as it always did and 1 is almost an
+/// even spiral.
+pub fn spiral_path(rect: Rect, revolutions: u32, logarithmic: bool, expansion: u32) -> BezPath {
+    let k = f64::from(expansion.clamp(1, 100)) / 25.0;
     let c = rect.center();
     let (rx, ry) = (rect.width() / 2.0, rect.height() / 2.0);
     let turns = revolutions.max(1) as f64;
@@ -25,13 +30,108 @@ pub fn spiral_path(rect: Rect, revolutions: u32, logarithmic: bool) -> BezPath {
         let t = i as f64 / steps as f64;
         let a = t * turns * std::f64::consts::TAU;
         let r = if logarithmic {
-            (t * 4.0).exp() / 4.0f64.exp()
+            ((t * k).exp() - 1.0) / (k.exp() - 1.0)
         } else {
             t
         };
         pts.push(Point::new(c.x + rx * r * a.cos(), c.y + ry * r * a.sin()));
     }
     tracedraw_core::geometry::smooth_path(&pts, false)
+}
+
+/// A freehand stroke as a curve through its simplified points `pts`
+/// (taken from `raw`, the points as drawn): smooth as
+/// `geometry::smooth_path` makes it, except at the nodes where the stroke
+/// turns by more than `corner_deg` (cusps, each handle pointing at its
+/// neighbour) and on the stretches at least `straight.1` long whose raw
+/// points stay within `straight.0` of the line between their ends
+/// (straight segments). Options > Tools > Curves (#1436).
+pub fn fit_freehand(
+    raw: &[Point],
+    pts: &[Point],
+    corner_deg: Option<f64>,
+    straight: Option<(f64, f64)>,
+) -> BezPath {
+    let n = pts.len();
+    if n < 3 || (corner_deg.is_none() && straight.is_none()) {
+        return tracedraw_core::geometry::smooth_path(pts, false);
+    }
+    // Where each kept point lies in the raw stroke.
+    let mut at = Vec::with_capacity(n);
+    let mut from = 0;
+    for p in pts {
+        let i = raw[from..]
+            .iter()
+            .position(|q| (*q - *p).hypot() < 1e-9)
+            .map_or(from, |k| from + k);
+        at.push(i);
+        from = i;
+    }
+    let corner: Vec<bool> = (0..n)
+        .map(|i| {
+            if i == 0 || i + 1 == n {
+                return false;
+            }
+            let (a, b) = (pts[i] - pts[i - 1], pts[i + 1] - pts[i]);
+            let (la, lb) = (a.hypot(), b.hypot());
+            if la < 1e-12 || lb < 1e-12 {
+                return false;
+            }
+            let turn = (a.dot(b) / (la * lb)).clamp(-1.0, 1.0).acos().to_degrees();
+            corner_deg.is_some_and(|d| turn > d)
+        })
+        .collect();
+    let line: Vec<bool> = (0..n - 1)
+        .map(|i| {
+            let Some((tol, min_len)) = straight else {
+                return false;
+            };
+            let (a, b) = (pts[i], pts[i + 1]);
+            let len = (b - a).hypot();
+            if len < min_len {
+                return false;
+            }
+            let dir = (b - a) / len;
+            raw[at[i]..=at[i + 1].max(at[i])]
+                .iter()
+                .all(|q| (dir.cross(*q - a)).abs() <= tol)
+        })
+        .collect();
+    let get = |i: isize| pts[i.clamp(0, n as isize - 1) as usize];
+    let handle = |from: Point, along: Vec2, len: f64| -> Point {
+        let l = along.hypot();
+        if l < 1e-12 {
+            from
+        } else {
+            from + along * (len / (3.0 * l))
+        }
+    };
+    let mut path = BezPath::new();
+    path.move_to(pts[0]);
+    for i in 0..n - 1 {
+        let (p1, p2) = (pts[i], pts[i + 1]);
+        if line[i] {
+            path.line_to(p2);
+            continue;
+        }
+        let len = (p2 - p1).hypot();
+        // A node beside a straight segment or at a corner takes the
+        // direction of this segment alone, as a cusp does.
+        let sharp_start = corner[i] || (i > 0 && line[i - 1]);
+        let sharp_end = corner[i + 1] || (i + 2 < n && line[i + 1]);
+        let c1 = if sharp_start {
+            handle(p1, p2 - p1, len)
+        } else {
+            handle(p1, p2 - get(i as isize - 1), len)
+        };
+        let c2 = if sharp_end {
+            handle(p2, p1 - p2, len)
+        } else {
+            handle(p2, p1 - get(i as isize + 2), len)
+        };
+        path.curve_to(c1, c2, p2);
+    }
+    path
 }
 
 /// A grid of `rows` x `cols` cells covering `rect`: the outer frame and
@@ -208,7 +308,12 @@ impl App {
                 self.polygon_points,
                 self.star_sharpness,
             ),
-            Tool::Spiral => spiral_path(r, self.spiral_revolutions, self.spiral_logarithmic),
+            Tool::Spiral => spiral_path(
+                r,
+                self.spiral_revolutions,
+                self.spiral_logarithmic,
+                self.settings.spiral_expansion,
+            ),
             Tool::CommonShapes => match self.picked_my_shape() {
                 Some(mine) => mine.path(r),
                 None => self.common_shape.path(r),
@@ -240,7 +345,12 @@ impl App {
         match self.tool {
             Tool::Spiral => {
                 if rect.width() > 0.1 && rect.height() > 0.1 {
-                    let path = spiral_path(rect, self.spiral_revolutions, self.spiral_logarithmic);
+                    let path = spiral_path(
+                        rect,
+                        self.spiral_revolutions,
+                        self.spiral_logarithmic,
+                        self.settings.spiral_expansion,
+                    );
                     if let Some(id) = self.new_shape(ShapeKind::Path {
                         path,
                         closed: false,
@@ -1617,6 +1727,70 @@ mod tests {
         let g = grid_path(r, 4, 3);
         // Frame (5 elements) plus 2 vertical and 3 horizontal lines.
         assert_eq!(g.elements().len(), 5 + 2 * 2 + 3 * 2);
+    }
+
+    /// Options > Tools > Curves: with a corner threshold a freehand stroke
+    /// that turns sharply keeps a cusp there; with a straight line
+    /// threshold a stretch drawn straight becomes a line (#1436).
+    #[test]
+    fn freehand_thresholds_keep_corners_and_lines() {
+        use tracedraw_core::geometry::PathEl;
+        // An L drawn by hand: down 40 mm, then right 40 mm.
+        let mut raw = Vec::new();
+        for i in 0..=40 {
+            raw.push(Point::new(0.0, f64::from(i)));
+        }
+        for i in 1..=40 {
+            raw.push(Point::new(f64::from(i), 40.0));
+        }
+        let pts = vec![raw[0], raw[20], raw[40], raw[60], raw[80]];
+        let smooth = fit_freehand(&raw, &pts, None, None);
+        let cusp = fit_freehand(&raw, &pts, Some(60.0), None);
+        // Smooth: the handles at the corner node lean across it.
+        let handles_at_corner = |p: &BezPath| match (p.elements()[2], p.elements()[3]) {
+            (PathEl::CurveTo(_, c2, _), PathEl::CurveTo(c1, _, _)) => (c2, c1),
+            other => panic!("{other:?}"),
+        };
+        let (s2, s1) = handles_at_corner(&smooth);
+        assert!(s2.x.abs() > 1e-6 || s1.y < 40.0 - 1e-6, "{s2:?} {s1:?}");
+        let (c2, c1) = handles_at_corner(&cusp);
+        assert!(c2.x.abs() < 1e-9, "the way in stays vertical: {c2:?}");
+        assert!((c1.y - 40.0).abs() < 1e-9, "the way out level: {c1:?}");
+        // Straight lines: every segment drawn straight is a line.
+        let lines = fit_freehand(&raw, &pts, None, Some((0.5, 10.0)));
+        assert!(
+            lines.elements()[1..]
+                .iter()
+                .all(|e| matches!(e, PathEl::LineTo(_))),
+            "{:?}",
+            lines.elements()
+        );
+        // A threshold of 0 leaves the stroke as it was.
+        assert_eq!(fit_freehand(&raw, &pts, None, None), smooth);
+    }
+
+    /// Options > Tools > Spiral, Expansion: a low value makes a
+    /// logarithmic spiral nearly even, a high one widens it fast; at 100
+    /// it widens about as before (#1436).
+    #[test]
+    fn spiral_expansion_sets_how_fast_it_widens() {
+        use tracedraw_core::geometry::PathEl;
+        let r = Rect::new(-50.0, -50.0, 50.0, 50.0);
+        // How far from the centre the spiral is halfway along.
+        let half = |e: u32| {
+            let p = spiral_path(r, 4, true, e);
+            let els = p.elements();
+            let mid = match els[els.len() / 2] {
+                PathEl::MoveTo(p) | PathEl::LineTo(p) | PathEl::CurveTo(_, _, p) => p,
+                PathEl::QuadTo(_, p) => p,
+                PathEl::ClosePath => panic!("open"),
+            };
+            mid.to_vec2().hypot()
+        };
+        let (slow, fast) = (half(1), half(100));
+        assert!(slow > 20.0 && slow < 30.0, "almost even: {slow}");
+        assert!(fast < 10.0, "widens late: {fast}");
+        assert!(half(50) > fast && half(50) < slow);
     }
 }
 

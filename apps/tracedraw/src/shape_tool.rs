@@ -2212,6 +2212,17 @@ impl App {
                 deleted.push(s.id);
                 continue;
             }
+            // Auto-reduce nodes (Options > Tools > Eraser, #1436): the
+            // nodes the nib's edge left that the shape does not need go,
+            // the curve staying within 2% of the nib's width.
+            let remaining = if self.settings.eraser_reduce_nodes {
+                tracedraw_core::nodes::reduce_nodes(
+                    &remaining,
+                    (self.eraser_width * 0.02).max(0.005),
+                )
+            } else {
+                remaining
+            };
             let local = s.transform.inverse() * remaining;
             cmds.push(Command::SetShapeKind {
                 shape: s.id,
@@ -2557,6 +2568,34 @@ mod eraser_tests {
         app.erase_along(&[Point::new(10.0, 20.0), Point::new(50.0, 20.0)]);
         assert!(app.doc().find_shape(id).is_none());
         assert!(app.selection.is_empty());
+    }
+
+    /// Options > Tools > Eraser, "Auto-reduce nodes": what a round nib
+    /// leaves keeps fewer nodes (#1436).
+    #[test]
+    fn auto_reduce_leaves_fewer_nodes() {
+        let nodes = |reduce: bool| {
+            let mut app = App::headless();
+            app.settings.eraser_reduce_nodes = reduce;
+            let id = app
+                .new_shape(ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, 40.0, 20.0),
+                    radius: 0.0,
+                    corners: None,
+                })
+                .unwrap();
+            app.select(vec![id]);
+            app.eraser_width = 10.0;
+            app.eraser_square = false;
+            let stroke: Vec<Point> = (0..=20)
+                .map(|i| Point::new(f64::from(i) * 2.0, 20.0 + (f64::from(i) * 0.7).sin() * 2.0))
+                .collect();
+            app.erase_along(&stroke);
+            let s = app.doc().find_shape(id).unwrap();
+            s.page_path().elements().len()
+        };
+        let (plain, reduced) = (nodes(false), nodes(true));
+        assert!(reduced < plain, "{reduced} < {plain}");
     }
 }
 

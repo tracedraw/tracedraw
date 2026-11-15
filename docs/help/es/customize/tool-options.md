@@ -17,12 +17,17 @@ valores también están en la barra de propiedades de cada herramienta.
   selecciona los objetos que solo toca; <kbd>Alt</kbd> selecciona entonces
   solo los que están por completo dentro.
 
+- [[options.ctrl_shift_keys]] [[options.keys_traditional]]: [[options.keys_traditional_tip]]
+  [[options.keys_windows]]: [[options.keys_windows_tip]]
+
 ## Borrador {#eraser}
 
 ![Las opciones de la herramienta Borrador](../../img/customize-tool-options-eraser.png)
 
 [[options.eraser_width]] (6,35 mm de forma predeterminada), y
 [[options.eraser_round]] o [[options.eraser_square]].
+
+[[options.eraser_reduce_nodes]]: [[options.eraser_reduce_nodes_tip]]
 
 ## Zoom y desplazamiento {#zoom-pan}
 
@@ -61,6 +66,9 @@ valores también están en la barra de propiedades de cada herramienta.
 - [[options.pen_tablet]]: [[options.pen_pressure]] (activada); vea
   [Dibujar con una tableta gráfica](../lines-shapes/pen-pressure.md).
 
+- [[options.corner_threshold]]: [[options.corner_threshold_tip]]
+- [[options.straight_threshold]]: [[options.straight_threshold_tip]]
+
 ## Reconocimiento de formas {#shape-recognition}
 
 ![Las opciones de la herramienta Reconocimiento de formas](../../img/customize-tool-options-shape-recognition.png)
@@ -84,6 +92,9 @@ esquina y [[toolbar.corners_together]]. [[options.scale_corners]]:
 [[options.ellipse]], [[options.pie]] o [[options.arc]], con el
 [[options.starting_angle]] y el [[options.ending_angle]].
 
+[[options.arc_direction]]: [[options.counterclockwise]] / [[options.clockwise]].
+[[options.arc_direction_desc]]
+
 ## Polígono {#polygon}
 
 ![Las opciones de la herramienta Polígono](../../img/customize-tool-options-polygon.png)
@@ -103,6 +114,9 @@ esquina y [[toolbar.corners_together]]. [[options.scale_corners]]:
 [[options.revolutions]], y [[options.symmetrical_spiral]] o
 [[options.logarithmic_spiral]].
 
+[[options.spiral_expansion]]: [[options.spiral_expansion_tip]]
+[[options.spiral_preview_tip]]
+
 ## Tabla {#table}
 
 ![Las opciones de la herramienta Tabla](../../img/customize-tool-options-table.png)
@@ -118,11 +132,24 @@ Cómo se lee la etiqueta de las cotas nuevas: [[dimension.precision]],
 [[dimension.suffix]]. Las cotas ya dibujadas mantienen su etiqueta; seleccione
 una y use la barra de propiedades para cambiarla.
 
+[[options.dimension_style]]: [[options.decimal]] / [[options.fractional]].
+[[options.dimension_style_tip]]
+
+## Cota angular {#angular-dimension}
+
+[[dimension.precision]], [[dimension.show_units]], [[dimension.prefix]] and
+[[dimension.suffix]] of new angular dimensions.
+[[options.angular_units_tip]]
+
 ## Conector {#connector}
 
 ![Las opciones de la herramienta Conector](../../img/customize-tool-options-connector.png)
 
 [[connector.radius]] de los conectores redondeados nuevos (3 mm al principio).
+
+[[options.connector_gap]]: [[options.connector_gap_tip]]
+
+[[options.connector_geometric_anchors]]: [[options.connector_geometric_anchors_tip]]
 
 ## Relleno de malla {#mesh-fill}
 

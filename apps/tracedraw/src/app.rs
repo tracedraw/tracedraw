@@ -1028,6 +1028,10 @@ pub struct App {
     /// A right click during a move, scale, rotation or skew: on release
     /// the change goes to copies and the originals stay.
     pub drag_copy: bool,
+    /// Ctrl is held while the selection is moved with the Windows
+    /// standard keys (Options > Tools > Pick): the drop leaves the
+    /// original (#1436).
+    pub ctrl_copy: bool,
     /// The scale being applied came from a side handle dragged with Alt:
     /// paragraph texts and tables keep their lines and take the scale in
     /// their letters (character width and size) as well as their frame
@@ -2910,6 +2914,7 @@ impl App {
             pivots: Pivots::default(),
             drag: Drag::None,
             drag_copy: false,
+            ctrl_copy: false,
             glyph_scale: false,
             drop_frame: None,
             drop_keys: (false, false),

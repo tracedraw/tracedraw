@@ -1673,6 +1673,15 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 {
                     app.spiral_logarithmic = true;
                 }
+                if app.spiral_logarithmic {
+                    // How fast it widens (#1436).
+                    dim_labelled(ui, "toolbar.spiral_expansion", |ui| {
+                        ui.add(
+                            crate::ui::field::NumField::new(&mut app.settings.spiral_expansion)
+                                .range(1..=100),
+                        )
+                    });
+                }
             }
             Tool::GraphPaper => {
                 dim_labelled(ui, "toolbar.rows", |ui| {

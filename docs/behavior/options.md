@@ -76,7 +76,7 @@ mouse button; see `color-palettes.md`).
 The page list shows each tool's toolbox icon beside its name, in this
 order: Pick, Eraser, Zoom/Pan, Freehand/Bézier, Shape Recognition,
 Rectangle, Ellipse, Polygon, Graph Paper, Spiral, Table, Dimension,
-Connector, Mesh Fill (`OptionsSet::pages`). Each page has the label column
+Angular Dimension, Connector, Mesh Fill (`OptionsSet::pages`). Each page has the label column
 and controls of the other options pages; every value is the same one the
 tool's property bar edits, so a change on either shows on the other, is
 kept with the tool settings across restarts (`settings.tools`) and is put
@@ -85,8 +85,16 @@ back by Cancel.
 Pick (cross hair cursor; treat all objects as filled, on by default:
 unfilled objects are picked inside too; marquee selects touched objects,
 off by default: a marquee or freehand selection takes what it touches and
-Alt only what lies wholly inside), Eraser (thickness, round or square
-nib), Zoom/Pan (Zoom tool section: right mouse button of the Zoom tool:
+Alt only what lies wholly inside; Ctrl and Shift keys: Traditional, at
+first (Ctrl or Shift keeps a move straight; on a handle Shift works from
+the centre and Ctrl in steps), or Windows standard
+(`settings.pick_windows_keys`: Ctrl held when a move is dropped leaves
+the original, what moved being a copy, and no longer keeps the move
+straight, Shift does; on a scale, rotate or skew handle Ctrl and Shift
+trade places)), Eraser (thickness, round or square nib; Auto-reduce
+nodes of resulting objects, off: what the eraser leaves loses the nodes
+it does not need, the curve staying within 2 % of the nib width,
+`settings.eraser_reduce_nodes`), Zoom/Pan (Zoom tool section: right mouse button of the Zoom tool:
 zoom out or context menu; Zoom relative to 1:1, on: zoom 100 % is the
 real size at the calibrated screen resolution, off: 96 pixels per inch
 whatever the calibration (`settings.zoom_relative_1to1`); Center mouse
@@ -99,7 +107,11 @@ calibration on the Display page; Pan tool section: right mouse button of
 the Pan tool, zoom out or context menu (at first,
 `settings.pan_right_click_out`)), Freehand/Bézier (Freehand
 smoothing, 0 to 100, 50 by default; Join and close within, 1 to 50
-screen pixels, 5 by default; Graphics tablet: pen pressure sets the
+screen pixels, 5 by default; Corner threshold, 0 (off, at first) to 10:
+a freehand stroke keeps a cusp where it turns by more than 180 - 12 x
+the value degrees; Straight line threshold, 0 (off, at first) to 10
+screen pixels: a stretch of at least 20 pixels drawn within that many
+pixels of straight becomes a line (`settings.curves`); Graphics tablet: pen pressure sets the
 width of Freehand and Brush Strokes drags, on; on Android, Ignore the
 hand while drawing with a pen, on (palm rejection, `android.md`); see
 `curve-tools.md` and `pen-pressure.md`), Shape Recognition (recognition and smoothing levels,
@@ -107,13 +119,31 @@ off to highest, as on the tool's property bar), Rectangle (Rectangle
 corners: style, the four sizes, Edit corners together; Scale corners:
 Relative corner scaling, off by default so that new rectangles keep
 their corner size when resized; see `shape-tools.md`),
-Ellipse (ellipse, pie or arc and its angles), Polygon (points, sharpness),
+Ellipse (ellipse, pie or arc and its angles; Direction,
+counterclockwise at first or clockwise, which swaps the starting and
+ending angles of new pies and arcs, the same setting as the property
+bar's direction button, `settings.ellipse_clockwise`), Polygon (points, sharpness),
 Graph Paper (rows, columns), Spiral (revolutions, symmetrical or
-logarithmic), Table (rows, columns), Dimension (the label of new
-dimensions: precision, units, show units, prefix, suffix; dimensions
+logarithmic; Expansion, 1 to 100, 100 at first, enabled for logarithmic
+spirals and also on the property bar: the radius grows as
+(e^(kt) - 1) / (e^k - 1) with k = expansion / 25, so 1 is almost even;
+a small preview draws the spiral these values make,
+`settings.spiral_expansion`), Table (rows, columns), Dimension (the label of new
+dimensions: precision, style (Decimal or Fractional: a length in
+halves, quarters and so on down to 64ths as the precision rises,
+`DimensionStyle::fractional`), units, show units, prefix, suffix; dimensions
 already drawn keep theirs, unlike the property bar, which also changes
-the selected dimensions; see `dimensions.md`), Connector (corner radius
-of new rounded connectors, 0 to 1000 mm, 3 mm by default), Mesh Fill
+the selected dimensions; see `dimensions.md`), Angular Dimension
+(precision, show units (degrees), prefix and suffix of new angular
+dimensions, `settings.angular_dimension`; the Angular Dimension tool's
+property bar edits these, the other dimension tools' bar the linear
+ones), Connector (corner radius of new rounded connectors, 0 to 1000
+mm, 3 mm by default; Route distance from object, 0 to 100 mm, 0 at
+first: new right-angle connectors run that far straight out of the side
+their anchor is on before they turn, kept with each connector as it
+follows its objects, `settings.connector_gap`; Use geometric anchor
+points as snapping points, off: an object's own nodes, up to 64, are
+anchors too, `settings.connector_geometric_anchors`), Mesh Fill
 (columns and rows of a new mesh, 1 to 50, 2 by 2 by default).
 
 ## Global and Workspaces

@@ -12,11 +12,16 @@
 - [[options.treat_all_filled]]（打开）：在未填充对象内部单击即可选中它。
 - [[options.marquee_touching]]（关闭）：选取框也选择它仅仅接触到的对象；此时按住 <kbd>Alt</kbd> 只选择完全位于其中的对象。
 
+- [[options.ctrl_shift_keys]] [[options.keys_traditional]]: [[options.keys_traditional_tip]]
+  [[options.keys_windows]]: [[options.keys_windows_tip]]
+
 ## 橡皮擦 {#eraser}
 
 ![橡皮擦工具选项](../../img/customize-tool-options-eraser.png)
 
 [[options.eraser_width]]（起初为 6.35 mm），以及 [[options.eraser_round]] 或 [[options.eraser_square]]。
+
+[[options.eraser_reduce_nodes]]: [[options.eraser_reduce_nodes_tip]]
 
 ## 缩放和平移 {#zoom-pan}
 
@@ -42,6 +47,9 @@
 - [[options.pen_preview]] 和 [[options.pen_auto_add_delete]]（均默认开启），用于 [[tool.pen]] 工具；参见[钢笔](../lines-shapes/lines.md#pen)。
 - [[options.pen_tablet]]：[[options.pen_pressure]]（默认开启）；参见[使用数位板绘图](../lines-shapes/pen-pressure.md)。
 
+- [[options.corner_threshold]]: [[options.corner_threshold_tip]]
+- [[options.straight_threshold]]: [[options.straight_threshold_tip]]
+
 ## 形状识别 {#shape-recognition}
 
 ![形状识别工具选项](../../img/customize-tool-options-shape-recognition.png)
@@ -61,6 +69,9 @@
 
 [[options.ellipse]]、[[options.pie]] 或 [[options.arc]]，以及 [[options.starting_angle]] 和 [[options.ending_angle]]。
 
+[[options.arc_direction]]: [[options.counterclockwise]] / [[options.clockwise]].
+[[options.arc_direction_desc]]
+
 ## 多边形 {#polygon}
 
 ![多边形工具选项](../../img/customize-tool-options-polygon.png)
@@ -79,6 +90,9 @@
 
 [[options.revolutions]]，以及 [[options.symmetrical_spiral]] 或 [[options.logarithmic_spiral]]。
 
+[[options.spiral_expansion]]: [[options.spiral_expansion_tip]]
+[[options.spiral_preview_tip]]
+
 ## 表格 {#table}
 
 ![表格工具选项](../../img/customize-tool-options-table.png)
@@ -93,11 +107,24 @@
 [[dimension.show_units]]、[[dimension.prefix]] 和 [[dimension.suffix]]。
 已绘制的尺度保留其标签；选择一个尺度并在属性栏中更改。
 
+[[options.dimension_style]]: [[options.decimal]] / [[options.fractional]].
+[[options.dimension_style_tip]]
+
+## 角度量度 {#angular-dimension}
+
+[[dimension.precision]], [[dimension.show_units]], [[dimension.prefix]] and
+[[dimension.suffix]] of new angular dimensions.
+[[options.angular_units_tip]]
+
 ## 连接器 {#connector}
 
 ![连接器工具选项](../../img/customize-tool-options-connector.png)
 
 新圆角连接器的 [[connector.radius]]（初始为 3 毫米）。
+
+[[options.connector_gap]]: [[options.connector_gap_tip]]
+
+[[options.connector_geometric_anchors]]: [[options.connector_geometric_anchors_tip]]
 
 ## 网状填充 {#mesh-fill}
 

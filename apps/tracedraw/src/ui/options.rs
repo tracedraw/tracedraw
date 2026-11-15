@@ -58,6 +58,7 @@ pub enum OptionsPage {
     Eraser,
     ShapeRecognition,
     Dimension,
+    AngularDimension,
     Connector,
     MeshFill,
     // Tools > Options > Global.
@@ -141,6 +142,7 @@ impl OptionsSet {
                 Spiral,
                 Table,
                 Dimension,
+                AngularDimension,
                 Connector,
                 MeshFill,
             ],
@@ -198,6 +200,7 @@ impl OptionsPage {
             Eraser => Tool::Eraser,
             ShapeRecognition => Tool::ShapeRecognition,
             Dimension => Tool::ParallelDimension,
+            AngularDimension => Tool::AngularDimension,
             Connector => Tool::Connector,
             MeshFill => Tool::MeshFill,
             _ => return None,
@@ -240,6 +243,7 @@ impl OptionsPage {
             Eraser => "tool.eraser",
             ShapeRecognition => "tool.shape_recognition",
             Dimension => "options.dimension_tool",
+            AngularDimension => "tool.angular_dimension",
             Connector => "options.connector_tool",
             MeshFill => "tool.mesh_fill",
             FileLocations => "options.file_locations",
@@ -705,6 +709,7 @@ fn draw_page(app: &mut App, ui: &mut Ui) {
         Eraser => eraser_page(app, ui),
         ShapeRecognition => shape_recognition_page(app, ui),
         Dimension => dimension_page(app, ui),
+        AngularDimension => angular_dimension_page(app, ui),
         Connector => connector_page(app, ui),
         MeshFill => mesh_fill_page(app, ui),
         Curves => curves_page(app, ui),
@@ -4331,6 +4336,28 @@ fn pick_page(app: &mut App, ui: &mut Ui) {
         tr("options.marquee_touching"),
     )
     .rich_tip(tr("options.marquee_touching_tip"));
+    ui.add_space(6.0);
+    ui.label(tr("options.ctrl_shift_keys"));
+    ui.indent("pick_keys", |ui| {
+        ui.radio_value(
+            &mut app.settings.pick_windows_keys,
+            false,
+            tr("options.keys_traditional"),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "options.keys_traditional",
+            "options.keys_traditional_tip",
+        ));
+        ui.radio_value(
+            &mut app.settings.pick_windows_keys,
+            true,
+            tr("options.keys_windows"),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "options.keys_windows",
+            "options.keys_windows_tip",
+        ));
+    });
 }
 
 fn zoom_pan_page(app: &mut App, ui: &mut Ui) {
@@ -4565,7 +4592,15 @@ fn ellipse_page(app: &mut App, ui: &mut Ui) {
             }
         };
     }
+    let clockwise = &mut app.settings.ellipse_clockwise;
     if let Some(a) = &mut app.ellipse_arc {
+        // The angles as typed: from the start to the end in the chosen
+        // direction; the stored arc always runs counterclockwise (#1436).
+        let (mut start, mut end) = if *clockwise {
+            (a.end_deg, a.start_deg)
+        } else {
+            (a.start_deg, a.end_deg)
+        };
         grid("arc").show(ui, |ui| {
             row_label(ui, &tr("options.starting_angle"));
             crate::ui::tips::tip_over(
@@ -4573,7 +4608,7 @@ fn ellipse_page(app: &mut App, ui: &mut Ui) {
                 crate::ui::tips::pair("options.starting_angle", "options.starting_angle_tip"),
                 |ui| {
                     ui.add(
-                        crate::ui::field::NumField::new(&mut a.start_deg)
+                        crate::ui::field::NumField::new(&mut start)
                             .range(-360.0..=360.0)
                             .suffix("°"),
                     );
@@ -4587,7 +4622,7 @@ fn ellipse_page(app: &mut App, ui: &mut Ui) {
                 crate::ui::tips::pair("options.ending_angle", "options.ending_angle_tip"),
                 |ui| {
                     ui.add(
-                        crate::ui::field::NumField::new(&mut a.end_deg)
+                        crate::ui::field::NumField::new(&mut end)
                             .range(-360.0..=360.0)
                             .suffix("°"),
                     );
@@ -4595,7 +4630,20 @@ fn ellipse_page(app: &mut App, ui: &mut Ui) {
             );
 
             ui.end_row();
+            row_label(ui, &tr("options.arc_direction"));
+            ui.horizontal(|ui| {
+                ui.radio_value(clockwise, false, tr("options.counterclockwise"))
+                    .rich_tip(crate::ui::tips::keyed("options.arc_direction"));
+                ui.radio_value(clockwise, true, tr("options.clockwise"))
+                    .rich_tip(crate::ui::tips::keyed("options.arc_direction"));
+            });
+            ui.end_row();
         });
+        (a.start_deg, a.end_deg) = if *clockwise {
+            (end, start)
+        } else {
+            (start, end)
+        };
     }
 }
 
@@ -4666,6 +4714,60 @@ fn spiral_page(app: &mut App, ui: &mut Ui) {
     .rich_tip(crate::ui::tips::pair(
         "options.logarithmic_spiral",
         "options.logarithmic_spiral_tip",
+    ));
+    // How fast the logarithmic spiral widens, and a picture of the
+    // spiral the tool draws (#1436).
+    ui.add_enabled_ui(app.spiral_logarithmic, |ui| {
+        grid("spiral_expansion").show(ui, |ui| {
+            row_label(ui, &tr("options.spiral_expansion"));
+            ui.add(crate::ui::Slider::new(
+                &mut app.settings.spiral_expansion,
+                1..=100,
+            ))
+            .rich_tip(crate::ui::tips::pair(
+                "options.spiral_expansion",
+                "options.spiral_expansion_tip",
+            ));
+            ui.end_row();
+        });
+    });
+    spiral_picture(
+        ui,
+        app.spiral_revolutions,
+        app.spiral_logarithmic,
+        app.settings.spiral_expansion,
+    );
+}
+
+/// A small picture of the spiral the tool draws with these settings.
+fn spiral_picture(ui: &mut Ui, revolutions: u32, logarithmic: bool, expansion: u32) {
+    let side = 96.0;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(side, side), egui::Sense::hover());
+    resp.on_hover_text(tr("options.spiral_preview_tip"));
+    let painter = ui.painter_at(rect);
+    painter.rect_stroke(
+        rect,
+        4.0,
+        egui::Stroke::new(1.0, Tokens::border()),
+        egui::StrokeKind::Inside,
+    );
+    let box_mm = tracedraw_core::geometry::Rect::new(0.0, 0.0, 1.0, 1.0);
+    let path = crate::tools2::spiral_path(box_mm, revolutions.min(20), logarithmic, expansion);
+    let inner = rect.shrink(8.0);
+    let mut pts = Vec::new();
+    tracedraw_core::geometry::flatten(&path, 0.002, &mut |el| {
+        use tracedraw_core::geometry::PathEl;
+        match el {
+            PathEl::MoveTo(p) | PathEl::LineTo(p) => pts.push(egui::pos2(
+                inner.left() + p.x as f32 * inner.width(),
+                inner.top() + p.y as f32 * inner.height(),
+            )),
+            _ => {}
+        }
+    });
+    painter.add(egui::Shape::line(
+        pts,
+        egui::Stroke::new(1.5, Tokens::text()),
     ));
 }
 
@@ -4739,6 +4841,24 @@ fn dimension_page(app: &mut App, ui: &mut Ui) {
             .rich_tip(crate::ui::tips::keyed("dimension.precision"));
         style.precision = precision;
         ui.end_row();
+        row_label(ui, &tr("options.dimension_style"));
+        crate::ui::keynav::ComboBox::from_id_salt("options_dimension_style")
+            .selected_text(tr(if style.fractional {
+                "options.fractional"
+            } else {
+                "options.decimal"
+            }))
+            .width(120.0)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut style.fractional, false, tr("options.decimal"));
+                ui.selectable_value(&mut style.fractional, true, tr("options.fractional"));
+            })
+            .response
+            .rich_tip(crate::ui::tips::pair(
+                "options.dimension_style",
+                "options.dimension_style_tip",
+            ));
+        ui.end_row();
         row_label(ui, &tr("dimension.units"));
         let choices = crate::dimensions::units_choices();
         let shown = choices
@@ -4775,7 +4895,49 @@ fn dimension_page(app: &mut App, ui: &mut Ui) {
     }
 }
 
-/// The corner radius new rounded connectors take.
+/// The decimals, degree sign, prefix and suffix new angular dimensions
+/// take (#1436).
+fn angular_dimension_page(app: &mut App, ui: &mut Ui) {
+    let a = &mut app.settings.angular_dimension;
+    grid("angular_dimension").show(ui, |ui| {
+        row_label(ui, &tr("dimension.precision"));
+        let mut precision = a.precision.min(6);
+        crate::ui::keynav::ComboBox::from_id_salt("options_angular_precision")
+            .selected_text(crate::ui::dimension_bar::precision_sample(precision))
+            .width(120.0)
+            .show_ui(ui, |ui| {
+                for p in 0..=6u8 {
+                    ui.selectable_value(
+                        &mut precision,
+                        p,
+                        crate::ui::dimension_bar::precision_sample(p),
+                    );
+                }
+            })
+            .response
+            .rich_tip(crate::ui::tips::keyed("dimension.precision"));
+        a.precision = precision;
+        ui.end_row();
+        row_label(ui, &tr("dimension.units"));
+        ui.label("\u{b0}").rich_tip(tr("options.angular_units_tip"));
+        ui.end_row();
+        ui.label("");
+        ui.checkbox(&mut a.show_units, tr("dimension.show_units"))
+            .rich_tip(crate::ui::tips::keyed("dimension.show_units"));
+        ui.end_row();
+        row_label(ui, &tr("dimension.prefix"));
+        ui.add(egui::TextEdit::singleline(&mut a.prefix).desired_width(190.0))
+            .rich_tip(crate::ui::tips::keyed("dimension.prefix"));
+        ui.end_row();
+        row_label(ui, &tr("dimension.suffix"));
+        ui.add(egui::TextEdit::singleline(&mut a.suffix).desired_width(190.0))
+            .rich_tip(crate::ui::tips::keyed("dimension.suffix"));
+        ui.end_row();
+    });
+}
+
+/// The corner radius new rounded connectors take, whether an object's
+/// nodes are anchors and how far right-angle connectors leave objects.
 fn connector_page(app: &mut App, ui: &mut Ui) {
     grid("connector").show(ui, |ui| {
         row_label(ui, &tr("connector.radius"));
@@ -4793,7 +4955,37 @@ fn connector_page(app: &mut App, ui: &mut Ui) {
             app.connector_radius = r.clamp(0.0, 1000.0);
         }
         ui.end_row();
+        row_label(ui, &tr("options.connector_gap"));
+        let mut gap = app.settings.connector_gap;
+        if ui
+            .add(
+                crate::ui::field::NumField::new(&mut gap)
+                    .speed(0.1)
+                    .range(0.0..=100.0)
+                    .suffix(" mm"),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "options.connector_gap",
+                "options.connector_gap_tip",
+            ))
+            .changed()
+        {
+            app.settings.connector_gap = if gap.is_finite() {
+                gap.clamp(0.0, 100.0)
+            } else {
+                0.0
+            };
+        }
+        ui.end_row();
     });
+    ui.checkbox(
+        &mut app.settings.connector_geometric_anchors,
+        tr("options.connector_geometric_anchors"),
+    )
+    .rich_tip(crate::ui::tips::pair(
+        "options.connector_geometric_anchors",
+        "options.connector_geometric_anchors_tip",
+    ));
 }
 
 /// The grid new mesh fills take.
@@ -4913,6 +5105,21 @@ fn curves_page(app: &mut App, ui: &mut Ui) {
         ));
         c.join_px = px;
         ui.end_row();
+        // Corners and straight stretches of freehand strokes (#1436).
+        row_label(ui, &tr("options.corner_threshold"));
+        ui.add(crate::ui::Slider::new(&mut c.corner_threshold, 0..=10))
+            .rich_tip(crate::ui::tips::pair(
+                "options.corner_threshold",
+                "options.corner_threshold_tip",
+            ));
+        ui.end_row();
+        row_label(ui, &tr("options.straight_threshold"));
+        ui.add(crate::ui::Slider::new(&mut c.straight_threshold, 0..=10).suffix(" px"))
+            .rich_tip(crate::ui::tips::pair(
+                "options.straight_threshold",
+                "options.straight_threshold_tip",
+            ));
+        ui.end_row();
         row_label(ui, &tr("options.pen"));
         ui.checkbox(&mut c.pen_preview, tr("options.pen_preview"))
             .rich_tip(crate::ui::tips::pair(
@@ -5000,6 +5207,14 @@ fn eraser_page(app: &mut App, ui: &mut Ui) {
             "options.eraser_square",
             "options.eraser_square_tip",
         ));
+    ui.checkbox(
+        &mut app.settings.eraser_reduce_nodes,
+        tr("options.eraser_reduce_nodes"),
+    )
+    .rich_tip(crate::ui::tips::pair(
+        "options.eraser_reduce_nodes",
+        "options.eraser_reduce_nodes_tip",
+    ));
 }
 
 // ----- Global ------------------------------------------------------------

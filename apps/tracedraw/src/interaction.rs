@@ -1427,6 +1427,33 @@ impl App {
             || self.page_tab_at(p).is_some()
     }
 
+    /// The modifier keys as the Pick tool reads them. With the Windows
+    /// standard keys (Options > Tools > Pick, #1436) Ctrl no longer
+    /// constrains a move (Shift does; Ctrl leaves the original, see
+    /// `note_drop_keys`), and Ctrl and Shift trade places while the
+    /// selection is scaled, turned or slanted: Shift keeps steps and
+    /// proportions, Ctrl works from the centre.
+    pub fn pick_mods(&self, mods: Modifiers) -> Modifiers {
+        if !self.settings.pick_windows_keys {
+            return mods;
+        }
+        let mut m = mods;
+        match self.drag {
+            Drag::Move { .. } => {
+                m.ctrl = false;
+                m.command = false;
+            }
+            Drag::Scale { .. } | Drag::Rotate { .. } | Drag::Skew { .. } => {
+                let ctrl = mods.ctrl || mods.command;
+                m.ctrl = mods.shift;
+                m.command = mods.shift && cfg!(target_os = "macos");
+                m.shift = ctrl;
+            }
+            _ => {}
+        }
+        m
+    }
+
     /// A move, scale, rotation or skew of the selection is being dragged.
     pub fn transforming(&self) -> bool {
         matches!(
@@ -2618,6 +2645,10 @@ impl App {
     /// frame does (they are not tool shortcuts then).
     fn note_drop_keys(&mut self, ctx: &egui::Context) {
         if matches!(self.drag, Drag::Move { .. }) {
+            // Windows standard keys: Ctrl held at the drop leaves the
+            // original (#1436).
+            self.ctrl_copy = self.settings.pick_windows_keys
+                && ctx.input(|i| i.modifiers.ctrl || i.modifiers.command);
             // Alt adds to the frame as W does (#1337).
             self.drop_keys =
                 ctx.input(|i| (i.key_down(Key::W) || i.modifiers.alt, i.key_down(Key::K)));
@@ -2633,6 +2664,8 @@ impl App {
     }
 
     fn pick_drag_to(&mut self, p: Point, mods: Modifiers) {
+        // The Windows standard keys (Options > Tools > Pick, #1436).
+        let mods = self.pick_mods(mods);
         if let Drag::ShadowHandle {
             handle,
             grab,
@@ -4004,6 +4037,9 @@ impl App {
                     .then(|| self.multipage_drop_page(total))
                     .flatten();
                 let mark = to_page.map(|_| self.engine.begin_group());
+                if std::mem::take(&mut self.ctrl_copy) {
+                    self.drag_copy = true;
+                }
                 if total.hypot() > 1e-6 {
                     self.finish_transform(Affine::translate(total));
                 }
@@ -4101,7 +4137,17 @@ impl App {
                 let tol = self.settings.curves.freehand_tolerance_px() / self.view.zoom as f64;
                 let pts = tracedraw_core::geometry::simplify(&points, tol.max(0.02));
                 if pts.len() >= 2 {
-                    let path = tracedraw_core::geometry::smooth_path(&pts, false);
+                    // Corners and straight stretches (Options > Tools >
+                    // Curves, #1436).
+                    let c = self.settings.curves;
+                    let px = 1.0 / self.view.zoom as f64;
+                    let path = crate::tools2::fit_freehand(
+                        &points,
+                        &pts,
+                        c.corner_turn_deg(),
+                        (c.straight_threshold > 0)
+                            .then(|| (f64::from(c.straight_threshold.min(10)) * px, 20.0 * px)),
+                    );
                     // Drawn with a pen: the outline follows its pressure
                     // along the stroke (#850); the mouse keeps it even.
                     let widths = self
