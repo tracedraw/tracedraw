@@ -3168,6 +3168,19 @@ pub(crate) fn layout_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.layout.delete_page", "", app.doc().pages.len() > 1) {
         app.ask_delete_page();
     }
+    // Every page's objects side by side on the first page (#2098).
+    if item(
+        ui,
+        "menu.layout.gather_pages",
+        "",
+        app.doc().pages.len() > 1,
+    ) {
+        app.dialog = Dialog::GatherPages {
+            gap: app.units.from_mm(5.0),
+            resize: true,
+            delete: false,
+        };
+    }
     if item(ui, "menu.layout.go_to_page", "", true) {
         app.dialog = Dialog::GoToPage {
             page: app.page_index() + 1,

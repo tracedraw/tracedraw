@@ -95,6 +95,7 @@ mod font_folder;
 mod frame_stats;
 mod frame_type;
 mod fx;
+mod gather_pages;
 mod github;
 #[cfg(not(target_arch = "wasm32"))]
 mod gpu;
@@ -160,6 +161,7 @@ mod picture_mosaic;
 mod picture_plates;
 mod placeholder;
 mod plugins;
+mod pmd_open;
 mod preflight;
 mod prefs;
 mod print_merge;

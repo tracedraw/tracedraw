@@ -6,7 +6,7 @@ checked screenshot behind it.
 "partial" names what is missing. "baked" means the result is applied once
 instead of staying live and editable. The goal is every row at "works".
 
-Counts: works 192, partial 8 (`.cdr` content coverage; `.cdr` tables; CMX import; print preview; data merge; colour styles; Find and Replace; the Android app), missing 1 (system windows), not applicable 4.
+Counts: works 192, partial 9 (`.cdr` content coverage; `.cdr` tables; CMX import; print preview; data merge; colour styles; Find and Replace; the Android app; PMD import), missing 1 (system windows), not applicable 4.
 
 ## 1. Selection and navigation
 
@@ -260,6 +260,7 @@ Counts: works 192, partial 8 (`.cdr` content coverage; `.cdr` tables; CMX import
 | Files dropped on the window: imported into the shown drawing, otherwise opened (a picture gets a new drawing); a hint while files are dragged over; desktop and browser | works (see `behavior/drop-files.md`) |
 | Import EMF and WMF (GDI paths, pens, brushes, text, DIB bitmaps, clips); export EMF and WMF | works (see `behavior/emf-wmf.md`) |
 | Import CMX: pages, layers, groups, curves, rectangles, ellipses, uniform and fountain fills, outlines with dashes and arrowheads, embedded 24-bit images, clips, text (from the drawn characters); not yet lenses and other fill types | partial (see `behavior/cmx-import.md`) |
+| Import desktop publishing `.pmd`, `.pm6`, `.p65`: the text in one frame and the pictures stored inside; not the layout, type, shapes or linked pictures | partial (see `behavior/pmd-import.md`) |
 | Scan or Camera (scanner) | not applicable: no scanner stack in pure Rust; import the scanned file instead |
 
 ## 11. Productivity and customisation

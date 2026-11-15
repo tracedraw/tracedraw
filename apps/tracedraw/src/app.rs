@@ -906,7 +906,7 @@ pub struct Pivots {
 pub const OPEN_EXTENSIONS: &[&str] = &[
     "cdr", "cdt", "cdrt", "csl", "cmx", "tdraw", "svg", "svgz", "pdf", "ai", "eps", "ps", "prn",
     "dxf", "psd", "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx", "xlsx", "csv",
-    "tsv",
+    "tsv", "pmd", "pm6", "p65",
 ];
 
 /// The picture files a drawing is made of when they are opened (#2600).
@@ -918,7 +918,7 @@ pub const PICTURE_EXTENSIONS: &[&str] =
 pub const IMPORT_EXTENSIONS: &[&str] = &[
     "cdr", "cdt", "cdrt", "csl", "cmx", "tdraw", "svg", "svgz", "pdf", "ai", "eps", "ps", "prn",
     "dxf", "psd", "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx", "xlsx", "csv",
-    "tsv", "png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff",
+    "tsv", "pmd", "pm6", "p65", "png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff",
 ];
 
 /// The memory the undo steps of one drawing may hold before the oldest
@@ -1499,6 +1499,9 @@ pub struct App {
     /// The pictures of the PDF just opened that came in smaller than the
     /// file holds them, for the message after opening (#1835).
     pub pdf_shrunk: Vec<tracedraw_io::pdf_import::ShrunkPicture>,
+    /// What the file just opened could not give, for the message after
+    /// opening (a desktop publishing file's layout, #2822).
+    pub open_limits: Option<String>,
     /// Where a drag for the new frame of a flow began.
     pub text_link_drag: Option<Point>,
     /// The pending link came from a frame's top tab: the frame clicked
@@ -3084,6 +3087,7 @@ impl App {
             pdf_text_chosen: false,
             pdf_open_picture: None,
             pdf_shrunk: Vec::new(),
+            open_limits: None,
             text_link_drag: None,
             text_link_incoming: false,
             text_link_from_tab: false,
@@ -7603,6 +7607,10 @@ impl App {
             .add_filter(crate::i18n::tr("file.cdr_files"), &["cdr", "cdt", "cdrt"])
             .add_filter(crate::i18n::tr("file.symbol_library"), &["csl"])
             .add_filter("CMX (*.cmx)", &["cmx"])
+            .add_filter(
+                "PageMaker (*.pmd, *.pm6, *.p65)",
+                &crate::pmd_open::EXTENSIONS,
+            )
             .add_filter("TraceDraw (*.tdraw)", &["tdraw"])
             .pick_file(self, |app, p| app.open_path(p));
     }
@@ -7724,6 +7732,10 @@ impl App {
         // hold symbols; the reader goes by the file's own header.
         if ext == "csl" {
             return "cdr".into();
+        }
+        // Every version of a desktop publishing file is read alike (#2822).
+        if crate::pmd_open::is_pmd(&ext) {
+            return "pmd".into();
         }
         ext
     }
@@ -8079,6 +8091,28 @@ impl App {
                     ),
                 )
             })
+        } else if ext == "pmd" {
+            // What a desktop publishing file holds that can be read: its
+            // text and pictures, with a note of what is left (#2822).
+            crate::files::read(&path)
+                .map_err(|e| e.to_string())
+                .and_then(|bytes| {
+                    let title = path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_else(App::untitled_name);
+                    crate::pmd_open::document(&title, &bytes)
+                })
+                .map(|o| {
+                    let msg = crate::i18n::trf(
+                        "pmd.opened",
+                        &[
+                            ("p", &o.paragraphs.to_string()),
+                            ("n", &o.pictures.to_string()),
+                        ],
+                    );
+                    (o.doc, msg)
+                })
         } else if ext == "cmx" {
             Self::open_cdr(&path)
                 .map(|(doc, report)| {
@@ -8149,6 +8183,9 @@ impl App {
         match result {
             Ok((doc, msg)) => {
                 self.open_document(doc, None);
+                if ext == "pmd" {
+                    self.open_limits = Some(crate::i18n::tr("pmd.limits"));
+                }
                 if let Some(dpi) = pictures {
                     self.opened_pages_to_pictures(dpi);
                 }
@@ -8191,6 +8228,7 @@ impl App {
                         | "xlsx"
                         | "csv"
                         | "tsv"
+                        | "pmd"
                 ) {
                     None
                 } else {
@@ -9016,6 +9054,7 @@ impl App {
         // Pictures shrunk on reading are told whatever the warnings say,
         // after the missing fonts' dialog when it comes first (#1835).
         let shrunk = crate::ui::dialogs::shrunk_sizes(&std::mem::take(&mut self.pdf_shrunk));
+        let limits = self.open_limits.take();
         if !matches!(self.dialog, crate::ui::dialogs::Dialog::None) {
             return;
         }
@@ -9057,9 +9096,14 @@ impl App {
                 Vec::new()
             },
             shrunk,
+            limits,
             dont_show: false,
         };
-        if notes.unread > 0 || !notes.fonts.is_empty() || !notes.shrunk.is_empty() {
+        if notes.unread > 0
+            || !notes.fonts.is_empty()
+            || !notes.shrunk.is_empty()
+            || notes.limits.is_some()
+        {
             self.dialog = crate::ui::dialogs::Dialog::OpenNotes(notes);
         }
     }
@@ -9239,6 +9283,10 @@ impl App {
             .add_filter(crate::i18n::tr("file.cdr_files"), &["cdr", "cdt", "cdrt"])
             .add_filter(crate::i18n::tr("file.symbol_library"), &["csl"])
             .add_filter("CMX (*.cmx)", &["cmx"])
+            .add_filter(
+                "PageMaker (*.pmd, *.pm6, *.p65)",
+                &crate::pmd_open::EXTENSIONS,
+            )
             .add_filter("SVG (*.svg, *.svgz)", &["svg", "svgz"])
             .add_filter("PDF, AI (*.pdf, *.ai)", &["pdf", "ai"])
             .add_filter("PostScript (*.ps, *.eps, *.prn)", &["ps", "eps", "prn"])
@@ -9357,6 +9405,14 @@ impl App {
         }
         if ext == "psd" || ext == "psb" {
             self.import_psd(&path);
+            return;
+        }
+        if ext == "pmd" {
+            // Its text and pictures (#2822).
+            let read = crate::files::read(&path)
+                .map_err(|e| e.to_string())
+                .and_then(|bytes| crate::pmd_open::document("", &bytes).map(|o| o.doc));
+            self.import_document(read);
             return;
         }
         if ext == "tdraw" {

@@ -254,6 +254,7 @@ pub fn dialog(app: &mut App, ctx: &Context, st: &mut MissingFontsState, close: &
             unread: st.unread,
             fonts: Vec::new(),
             shrunk: st.shrunk.clone(),
+            limits: None,
             dont_show: false,
         });
     }

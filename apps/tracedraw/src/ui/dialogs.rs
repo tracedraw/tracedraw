@@ -1192,6 +1192,9 @@ pub struct OpenNotes {
     /// Pictures read smaller than the file holds them, each "from to" in
     /// pixels (#1835); told whatever the warnings say.
     pub shrunk: Vec<String>,
+    /// What the file's format could not give (a desktop publishing
+    /// file's layout, #2822); told whatever the warnings say.
+    pub limits: Option<String>,
     pub dont_show: bool,
 }
 
@@ -1247,6 +1250,9 @@ impl OpenNotes {
                 ],
             ));
         }
+        if let Some(l) = &self.limits {
+            parts.push(l.clone());
+        }
         parts.join("\n\n")
     }
 }
@@ -1291,6 +1297,14 @@ pub enum Dialog {
     /// Multipage View, in the document's units.
     PageSpacing {
         value: f64,
+    },
+    /// Layout > Gather Pages on Page 1 (#2098): the gap between the
+    /// pages' objects in the drawing's units, whether the first page
+    /// grows to hold them and whether the other pages go.
+    GatherPages {
+        gap: f64,
+        resize: bool,
+        delete: bool,
     },
     /// Object > Outline Offset (#2622): the distance, in the drawing's
     /// units, and whether the new outline goes outside or inside.
@@ -2122,6 +2136,42 @@ pub fn show(app: &mut App, ctx: &Context) {
                 });
                 if ok_cancel(ui, &mut close) {
                     app.set_page_spacing(u.to_mm(*value));
+                }
+            });
+        }
+        Dialog::GatherPages {
+            gap,
+            resize,
+            delete,
+        } => {
+            let u = app.units;
+            window(ctx, tr("dialog.gather_pages")).show(ctx, |ui| {
+                ui.label(tr("dialog.gather_pages_intro"));
+                ui.horizontal(|ui| {
+                    ui.label(tr("dialog.gather_pages_gap"));
+                    ui.add(
+                        crate::ui::field::NumField::new(gap)
+                            .range(0.0..=u.from_mm(crate::gather_pages::GAP_MAX))
+                            .speed(0.1)
+                            .suffix(format!(" {}", u.short())),
+                    )
+                    .rich_tip(crate::ui::tips::pair(
+                        "dialog.gather_pages_gap",
+                        "dialog.gather_pages_gap_desc",
+                    ));
+                });
+                ui.checkbox(resize, tr("dialog.gather_pages_resize"))
+                    .rich_tip(crate::ui::tips::pair(
+                        "dialog.gather_pages_resize",
+                        "dialog.gather_pages_resize_desc",
+                    ));
+                ui.checkbox(delete, tr("dialog.gather_pages_delete"))
+                    .rich_tip(crate::ui::tips::pair(
+                        "dialog.gather_pages_delete",
+                        "dialog.gather_pages_delete_desc",
+                    ));
+                if ok_cancel(ui, &mut close) {
+                    app.gather_pages(u.to_mm(*gap), *resize, *delete);
                 }
             });
         }
@@ -8697,6 +8747,11 @@ pub(crate) mod tests {
             Dialog::OutlineOffset {
                 distance: 2.0,
                 outside: true,
+            },
+            Dialog::GatherPages {
+                gap: 5.0,
+                resize: true,
+                delete: true,
             },
             Dialog::MultipagePages {
                 all: false,

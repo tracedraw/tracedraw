@@ -18,6 +18,7 @@ mod pdf_indic;
 pub mod pdf_paragraphs;
 pub mod picture_crop;
 pub mod plt;
+pub mod pmd_import;
 pub mod psd;
 pub mod svg;
 pub mod svg_import;
