@@ -156,7 +156,15 @@ Text and Glyphs dockers and Options (default font):
   empty space under the list (until 0.45.0 they made it taller, #867).
   The choices, Clear filter at the top, in sections that fold:
   - Fonts shown: all fonts, installed fonts, the fonts in this drawing,
-    or, in the browser, the fonts to download.
+    or, in the browser, the fonts to download; and a box for the
+    protected system fonts alone, the families with a face in the
+    operating system's own font folders, which the Font Manager never
+    uninstalls (`FamilyInfo::system`, #867).
+  - My Collections, after Folders: Favorites and each collection made
+    in the Font Manager; a family shows when one of its faces is in a
+    collection checked, matched by the face's PostScript name as the
+    Font Manager keeps it (`FamilyInfo::face_keys`,
+    `traits::tests::collections_and_protected_system_fonts`, #867).
   - Folders, right after Fonts shown: the folders added to the Font
     Manager's libraries, once each, whatever subfolder a file lies in;
     not the operating system's font folders, which Installed fonts

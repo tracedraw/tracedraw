@@ -824,6 +824,14 @@ pub struct FamilyInfo {
     pub feature_tags: Vec<[u8; 4]>,
     /// The folders its font files are in, sorted.
     pub folders: Vec<std::path::PathBuf>,
+    /// What the Font Manager's Favorites and collections remember its
+    /// faces by: each face's PostScript name, else its family and style
+    /// as `family|style` (see `catalog::FaceRecord::key`), sorted
+    /// (#867).
+    pub face_keys: Vec<String>,
+    /// A face of it is a font of the operating system's own folders,
+    /// which the Font Manager never uninstalls (#867).
+    pub system: bool,
     /// The family's English name when the listed one is in another
     /// language (a Hindi or Japanese name of the font), for the font
     /// lists to show beside it (#1249).
@@ -2972,6 +2980,10 @@ impl FontSystem {
         let mut embedding: Option<catalog::Embedding> = None;
         let mut feature_tags: Vec<[u8; 4]> = Vec::new();
         let mut folders: Vec<std::path::PathBuf> = Vec::new();
+        let mut face_keys: Vec<String> = Vec::new();
+        let mut system = false;
+        #[cfg(not(target_arch = "wasm32"))]
+        let system_roots = system_font_roots();
         let mut english: Option<String> = None;
         for id in ids {
             let Some(info) = db.face(id) else {
@@ -3020,6 +3032,7 @@ impl FontSystem {
                 if let Some(dir) = folder_under(p, roots) {
                     folders.push(dir);
                 }
+                system |= system_roots.iter().any(|r| p.starts_with(r));
             }
             if class == traits::FontClass::Unknown {
                 class = face_traits.class;
@@ -3042,6 +3055,11 @@ impl FontSystem {
                     (true, true) => "Bold Italic",
                 }
                 .to_string()
+            });
+            face_keys.push(if info.post_script_name.is_empty() {
+                format!("{family}|{name}")
+            } else {
+                info.post_script_name.clone()
             });
             if !faces.iter().any(|f| f.name == name) {
                 faces.push(FaceStyle {
@@ -3078,6 +3096,12 @@ impl FontSystem {
                 folders.dedup();
                 folders
             },
+            face_keys: {
+                face_keys.sort();
+                face_keys.dedup();
+                face_keys
+            },
+            system,
             english,
         })
     }
@@ -9209,6 +9233,10 @@ mod tests {
         assert_eq!(names, ["Regular", "Bold"]);
         assert!(selawik.faces[1].weight >= 600 && !selawik.faces[1].italic);
         assert!(!selawik.embedded && !selawik.symbol);
+        // What the Font Manager's collections remember each face by, and
+        // fonts loaded from memory are none of the system's (#867).
+        assert_eq!(selawik.face_keys, ["Selawik-Bold", "Selawik-Regular"]);
+        assert!(!selawik.system);
         let quicksand = f.family_info("Quicksand").expect("installed");
         assert_eq!(quicksand.kind, FontKind::Variable);
         assert_eq!(quicksand.faces.len(), 1);
