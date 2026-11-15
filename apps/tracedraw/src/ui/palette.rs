@@ -48,8 +48,8 @@ pub fn row_h(app: &App) -> f32 {
 }
 
 /// What a strip follows: the default palette's settings for the default
-/// palette (and the document palette row under it), a palette bar's own
-/// for a further one.
+/// palette (and the document palette row under it, but for its own
+/// swatch size), a palette bar's own for a further one.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StripPrefs {
     pub dock: crate::ui::bars::Dock,
@@ -69,10 +69,11 @@ pub fn strip_prefs(app: &App, which: Row) -> StripPrefs {
     };
     match which {
         Row::Main => main,
-        // A row under the drawing, one line, the default palette's size.
+        // A row under the drawing, one line, of its own swatch size.
         Row::Document => StripPrefs {
             dock: crate::ui::bars::Dock::Bottom,
             rows: 1,
+            swatch: p.document_swatch(),
             ..main
         },
         Row::Extra(k) => match app.settings.palette_bars.get(k) {
@@ -851,8 +852,8 @@ fn row(app: &mut App, ui: &mut Ui, which: Row, vertical: bool) {
         );
     }
     px.paint(&painter);
-    // Ctrl+wheel over the strip sizes the swatches (every palette row
-    // follows); the plain wheel scrolls it.
+    // Ctrl+wheel over the strip sizes its swatches, no other palette's
+    // (#2900); the plain wheel scrolls it.
     if let Some(steps) = crate::ui::bars::ctrl_wheel_steps(
         ui,
         rect,
@@ -2823,6 +2824,69 @@ mod tests {
             in_rgb(Color::cmyk_pct(0.0, 0.0, 0.0, 100.0)),
             Color::rgb8(0, 0, 0)
         );
+    }
+
+    /// Ctrl+wheel over a palette sizes that palette's swatches alone: the
+    /// document palette row kept the default palette's size and changed
+    /// with it, both ways (#2900).
+    #[test]
+    fn ctrl_wheel_sizes_only_the_palette_under_the_pointer() {
+        let mut app = App::headless();
+        let ctx = crate::theme::ui_context();
+        let clock = std::cell::Cell::new(0.0);
+        let frame = |app: &mut App, which: Row, events: Vec<egui::Event>| {
+            clock.set(clock.get() + 0.1);
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(800.0, 100.0),
+                )),
+                events,
+                time: Some(clock.get()),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| row(app, ui, which, false));
+            out.textures_delta.clear();
+        };
+        let over = egui::pos2(LEAD + 60.0, 12.0);
+        let wheel = |dy: f32| {
+            vec![
+                egui::Event::PointerMoved(over),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Line,
+                    delta: egui::vec2(0.0, dy),
+                    phase: egui::TouchPhase::Move,
+                    modifiers: egui::Modifiers::CTRL,
+                },
+            ]
+        };
+        assert_eq!(swatch_side_of(&app, Row::Document), 20.0);
+        // Over the default palette: it grows, the document row stays.
+        frame(&mut app, Row::Main, vec![egui::Event::PointerMoved(over)]);
+        frame(&mut app, Row::Main, wheel(1.0));
+        assert_eq!(swatch_side_of(&app, Row::Main), 22.0);
+        assert_eq!(swatch_side_of(&app, Row::Document), 20.0);
+        assert_eq!(app.doc_palette_scroll, 0);
+        // Over the document row: it shrinks, the default palette stays.
+        frame(
+            &mut app,
+            Row::Document,
+            vec![egui::Event::PointerMoved(over)],
+        );
+        frame(&mut app, Row::Document, wheel(-1.0));
+        assert_eq!(swatch_side_of(&app, Row::Document), 18.0);
+        assert_eq!(swatch_side_of(&app, Row::Main), 22.0);
+        assert_eq!(app.palette_scroll, 0);
+        // Preferences written before the document row had a size of its
+        // own: it shows the default palette's until either is sized.
+        let mut old = crate::settings::PalettePrefs {
+            swatch_size: 24,
+            document_swatch_size: 0,
+            ..Default::default()
+        };
+        assert_eq!(old.document_swatch(), 24);
+        old.document_swatch_size = 30;
+        assert_eq!(old.document_swatch(), 30);
     }
 
     /// Ctrl+wheel over a palette row sizes its swatches (up larger, down

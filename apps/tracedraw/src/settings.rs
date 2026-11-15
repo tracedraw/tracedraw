@@ -1296,6 +1296,12 @@ pub struct PalettePrefs {
     /// [`SWATCH_STEP`] a notch. Preferences written before it existed
     /// keep the 20 px swatches.
     pub swatch_size: u8,
+    /// The side of a swatch of the document palette row, as
+    /// [`Self::swatch_size`] and set the same ways over that row, so
+    /// Ctrl+wheel over one palette leaves the other's size alone
+    /// (#2900). 0 (preferences written before it existed): the default
+    /// palette's, until either is sized.
+    pub document_swatch_size: u8,
     /// The room asked for the floating palette's swatches (points, the
     /// title left out): its rows or columns flow from it (see
     /// `ui::palette::floating_flow`).
@@ -1331,6 +1337,15 @@ impl PalettePrefs {
     /// [`Self::swatch_size`] brought into its range, as points.
     pub fn swatch_size(&self) -> f32 {
         f32::from(self.swatch_size.clamp(SWATCH_MIN, SWATCH_MAX))
+    }
+
+    /// The document palette row's swatch side setting: its own, or the
+    /// default palette's while it has none.
+    pub fn document_swatch(&self) -> u8 {
+        match self.document_swatch_size {
+            0 => self.swatch_size,
+            s => s,
+        }
     }
 }
 
@@ -1502,6 +1517,7 @@ impl Default for PalettePrefs {
             show_palette: true,
             rows: 1,
             swatch_size: SWATCH_DEFAULT,
+            document_swatch_size: 0,
             float_size: FLOAT_SIZE,
         }
     }

@@ -5766,9 +5766,10 @@ impl App {
     }
 
     pub fn select(&mut self, mut ids: Vec<ShapeId>) {
-        // A locked object (or one inside a locked group) is never
-        // selected: neither by a click nor by the Objects docker nor when
-        // a file is imported. Imported objects locked in a .cdr came in
+        // A locked object (or one inside a locked group, or a group or
+        // clip frame holding one, #2901) is never selected: neither by a
+        // click nor by the Objects docker nor by Select All nor when a
+        // file is imported. Imported objects locked in a .cdr came in
         // selected and could then be moved and edited (#2347).
         if !ids.is_empty() {
             let locked = self.locked_ids();
@@ -5785,7 +5786,9 @@ impl App {
         self.rect_corners_selected.clear();
     }
 
-    /// The locked objects of the drawing and every object inside them.
+    /// The locked objects of the drawing, every object inside them, and
+    /// every group or clip frame holding one, which a move or a change
+    /// would carry along (#2901): none of them is ever selected.
     pub fn locked_ids(&self) -> std::collections::HashSet<ShapeId> {
         fn all(s: &Shape, out: &mut std::collections::HashSet<ShapeId>) {
             out.insert(s.id);
@@ -5798,18 +5801,26 @@ impl App {
                 _ => {}
             }
         }
-        fn walk(s: &Shape, out: &mut std::collections::HashSet<ShapeId>) {
+        // Whether `s` holds a locked object; it then joins `out` too.
+        fn walk(s: &Shape, out: &mut std::collections::HashSet<ShapeId>) -> bool {
             if s.locked {
-                return all(s, out);
+                all(s, out);
+                return true;
             }
-            match &s.kind {
-                ShapeKind::Group { children } => children.iter().for_each(|c| walk(c, out)),
-                ShapeKind::ClipFrame { frame, contents } => {
-                    walk(frame, out);
-                    contents.iter().for_each(|c| walk(c, out));
-                }
-                _ => {}
+            let holds = match &s.kind {
+                // Every child walked, not only up to the first locked one.
+                ShapeKind::Group { children } => children
+                    .iter()
+                    .fold(false, |held, c| walk(c, out) | held),
+                ShapeKind::ClipFrame { frame, contents } => contents
+                    .iter()
+                    .fold(walk(frame, out), |held, c| walk(c, out) | held),
+                _ => false,
+            };
+            if holds {
+                out.insert(s.id);
             }
+            holds
         }
         let mut out = std::collections::HashSet::new();
         for s in self.doc().all_layers().flat_map(|l| &l.shapes) {

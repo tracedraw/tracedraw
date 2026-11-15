@@ -1188,6 +1188,10 @@ impl App {
     /// Add `id` to the selection, taking out the groups holding it and the
     /// objects inside it, so nothing is selected twice over.
     pub fn select_add(&mut self, id: ShapeId) {
+        // Shift+click adds no locked object either (#2901).
+        if self.locked_ids().contains(&id) {
+            return;
+        }
         let above = self.doc().ancestors(id);
         let doc = self.doc();
         let keep: Vec<ShapeId> = self
