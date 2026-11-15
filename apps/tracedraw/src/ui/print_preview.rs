@@ -161,6 +161,76 @@ fn rotation_of(st: &mut PrintState, chosen: Option<usize>) -> &mut f64 {
     }
 }
 
+/// The artwork's offset that puts the pages at anchor `a` (0 to 8,
+/// across the rows from the top left) of the room on a sheet of `sheet`
+/// inside `inset` (mm: left, right, top, bottom), from the pages' boxes
+/// `cells` now drawn with offset `now`.
+pub fn anchor_offset(
+    cells: &[tracedraw_core::geometry::Rect],
+    sheet: tracedraw_core::geometry::Size,
+    inset: [f64; 4],
+    a: u8,
+    now: (f64, f64),
+) -> (f64, f64) {
+    let Some(c) = cells.iter().copied().reduce(|a, b| a.union(b)) else {
+        return now;
+    };
+    let [l, r, t, b] = inset.map(|v| if v.is_finite() { v.max(0.0) } else { 0.0 });
+    let (x0, x1) = (l, (sheet.width - r).max(l));
+    let (y0, y1) = (b, (sheet.height - t).max(b));
+    let dx = match a % 3 {
+        0 => x0 - c.x0,
+        1 => (x0 + x1) / 2.0 - (c.x0 + c.x1) / 2.0,
+        _ => x1 - c.x1,
+    };
+    let dy = match a / 3 {
+        0 => y1 - c.y1,
+        1 => (y0 + y1) / 2.0 - (c.y0 + c.y1) / 2.0,
+        _ => y0 - c.y0,
+    };
+    (now.0 + dx, now.1 + dy)
+}
+
+/// Nine buttons in a square, one for each anchor of the sheet's room;
+/// the one clicked.
+fn anchor_buttons(ui: &mut Ui) -> Option<u8> {
+    const CELL: f32 = 13.0;
+    let (r, _) = ui.allocate_exact_size(egui::Vec2::splat(CELL * 3.0), egui::Sense::hover());
+    ui.painter().rect_stroke(
+        r.shrink(CELL / 2.0),
+        0.0,
+        egui::Stroke::new(1.0, Tokens::border()),
+        egui::StrokeKind::Middle,
+    );
+    let mut out = None;
+    for i in 0..9u8 {
+        let c = r.min + egui::vec2((i % 3) as f32 + 0.5, (i / 3) as f32 + 0.5) * CELL;
+        let cell = egui::Rect::from_center_size(c, egui::Vec2::splat(CELL - 3.0));
+        let resp = ui
+            .interact(
+                cell,
+                ui.id().with(("print_anchor", i)),
+                egui::Sense::click(),
+            )
+            .rich_tip(crate::ui::tips::keyed("print.art_anchor"));
+        if resp.clicked() {
+            out = Some(i);
+        }
+        ui.painter().rect(
+            cell,
+            1.0,
+            if resp.hovered() {
+                Tokens::ACCENT
+            } else {
+                Tokens::panel()
+            },
+            egui::Stroke::new(1.0, Tokens::text_dim()),
+            egui::StrokeKind::Inside,
+        );
+    }
+    out
+}
+
 /// The place on the sheet under a point (mm, y up): the page's clip
 /// frame there, with its box.
 fn cell_at(cells: &[(usize, tracedraw_core::geometry::Rect)], x: f64, y: f64) -> Option<usize> {
@@ -905,10 +975,41 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     )
                     .rich_tip(tr("print.rotation_pick_tip"));
                 }
+                // The pages on the sheet shown and the room they may take,
+                // for the anchor buttons.
+                let shown = pv.sheet;
+                let room = sheets(app, &mut pv).pages.get(shown).map(|p| {
+                    let boxes: Vec<_> = sheet_cells(p).into_iter().map(|(_, r)| r).collect();
+                    (boxes, p.size)
+                });
                 let st = &mut pv.st;
                 // Where the artwork sits on its page: a drag on the sheet
                 // moves it too (#536).
                 ui.horizontal(|ui| {
+                    // The pages put at a corner, side or the middle of the
+                    // paper inside its margins (and the marks' room).
+                    if let Some(a) = anchor_buttons(ui) {
+                        if let Some((boxes, size)) = &room {
+                            let marks = st.crop_marks
+                                || st.registration_marks
+                                || st.color_bars
+                                || st.densitometer
+                                || st.page_info
+                                || st.page_numbers;
+                            let extra = if marks {
+                                crate::imposition::MARK_MARGIN
+                                    + if st.bleed {
+                                        st.bleed_limit.clamp(0.0, 50.0)
+                                    } else {
+                                        0.0
+                                    }
+                            } else {
+                                0.0
+                            };
+                            let inset = st.margins.map(|m| m.max(0.0) + extra);
+                            st.art_offset = anchor_offset(boxes, *size, inset, a, st.art_offset);
+                        }
+                    }
                     ui.label(tr("print.art_position"));
                     ui.add(
                         crate::ui::field::NumField::new(&mut st.art_offset.0)
@@ -3263,6 +3364,53 @@ mod tests {
         assert_eq!(count(&mut app), 1, "the current page, whatever the parity");
         let st = &app.print_preview.as_ref().expect("preview").st;
         assert!(!st.all_pages, "the current page alone");
+    }
+
+    /// The anchor buttons put the pages at a corner, a side or the
+    /// middle of the paper inside its margins, and Print prints them so.
+    #[test]
+    fn an_anchor_puts_the_pages_at_that_place_of_the_paper() {
+        use tracedraw_core::geometry::{Rect, Size};
+        let sheet = Size::new(200.0, 100.0);
+        let page = [Rect::new(20.0, 30.0, 60.0, 50.0)];
+        let inset = [5.0, 10.0, 15.0, 20.0];
+        // Top left, middle, bottom right.
+        assert_eq!(
+            anchor_offset(&page, sheet, inset, 0, (0.0, 0.0)),
+            (-15.0, 35.0)
+        );
+        assert_eq!(
+            anchor_offset(&page, sheet, inset, 4, (1.0, 1.0)),
+            (58.5, 13.5)
+        );
+        assert_eq!(
+            anchor_offset(&page, sheet, inset, 8, (0.0, 0.0)),
+            (130.0, -10.0)
+        );
+        assert_eq!(anchor_offset(&[], sheet, inset, 8, (3.0, 4.0)), (3.0, 4.0));
+        // On a printed sheet: half size on A4 with 10 mm margins.
+        let app = App::headless();
+        let mut st = PrintState {
+            fit_to_page: false,
+            scale: 50.0,
+            sheet: crate::ui::dialogs::SHEETS
+                .iter()
+                .position(|(n, _)| *n == "A4")
+                .expect("A4"),
+            margins: [10.0; 4],
+            ..PrintState::default()
+        };
+        let first = print_sheets(&app, &st);
+        let p = &first.pages[0];
+        let boxes: Vec<Rect> = sheet_cells(p).into_iter().map(|(_, r)| r).collect();
+        st.art_offset = anchor_offset(&boxes, p.size, st.margins, 0, st.art_offset);
+        let moved = print_sheets(&app, &st);
+        let r = sheet_cells(&moved.pages[0])[0].1;
+        assert!((r.x0 - 10.0).abs() < 1e-6, "{r:?}");
+        assert!(
+            (r.y1 - (moved.pages[0].size.height - 10.0)).abs() < 1e-6,
+            "{r:?}"
+        );
     }
 
     /// Arrange pages: a page dragged onto another place of the sheet

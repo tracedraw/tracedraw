@@ -351,6 +351,13 @@ same function (`export::print_sheets`).
   an arrangement of the places is dropped (`imposition::place_order`,
   `imposition::tests::arranged_places_take_their_pages_on_every_sheet`,
   `print_preview::tests::a_page_dragged_onto_another_place_trades_places`).
+- Place on the paper (nine buttons beside Artwork position, a square
+  of corners, sides and the middle): moves the artwork so that the pages
+  of the sheet shown sit at that corner, side or the middle of the paper
+  inside its margins, and with any mark on inside the marks' room too
+  (12 mm and the bleed); the offset fields show the move and Print
+  prints it so (`print_preview::anchor_offset`,
+  `print_preview::tests::an_anchor_puts_the_pages_at_that_place_of_the_paper`).
 - Stretch to fill (a fixed sheet): the pages stretch on each axis on
   their own to fill the room inside the paper margins (#591,
   `imposition::tests::pages_stretch_to_fill_and_follow_the_preview_transform`).
