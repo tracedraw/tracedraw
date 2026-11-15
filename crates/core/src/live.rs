@@ -27,6 +27,12 @@ pub enum Effect {
         to_center: bool,
         fill_to: Color,
         outline_to: Option<Color>,
+        /// The last step's colour for the end of a fountain fill (#1265):
+        /// a fountain-filled object's steps keep its fountain, its first
+        /// colour going to `fill_to` and its last to this one. None (older
+        /// files): `fill_to` for both.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fill_end_to: Option<Color>,
         /// 0 = direct RGB, 1 = clockwise HSB, 2 = counter-clockwise HSB.
         color_blend: u8,
         /// How the steps turn their corners; older files have none (round).
@@ -1182,6 +1188,7 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
                 to_center,
                 fill_to,
                 outline_to,
+                fill_end_to,
                 color_blend,
                 corners,
                 accel_objects,
@@ -1197,6 +1204,7 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
                         to_center: *to_center,
                         fill_to: *fill_to,
                         outline_to: *outline_to,
+                        fill_end_to: *fill_end_to,
                         color_blend: *color_blend,
                         corners: corners.unwrap_or(crate::shaping::Join::Round),
                         accel_objects: *accel_objects,
@@ -1616,6 +1624,8 @@ pub struct ContourParams {
     pub to_center: bool,
     pub fill_to: Color,
     pub outline_to: Option<Color>,
+    /// The last step's colour for the end of a fountain fill.
+    pub fill_end_to: Option<Color>,
     pub color_blend: u8,
     pub corners: crate::shaping::Join,
     pub accel_objects: f64,
@@ -1784,8 +1794,21 @@ fn contour(shape: &Shape, rule: crate::shaping::FillRule, p: &ContourParams) -> 
             s.effects.clear();
             s.shadow = None;
             s.kind = ShapeKind::Path { path, closed: true };
-            if !matches!(shape.fill, Fill::None) {
-                s.fill = Fill::Solid(mix(from_fill, p.fill_to, t, p.color_blend));
+            match &shape.fill {
+                Fill::None => {}
+                // A fountain stays a fountain (#1265): each stop goes
+                // toward the last step's colour at its place between the
+                // first (fill) and the last (last fill) colours.
+                Fill::Fountain(f) => {
+                    let end = p.fill_end_to.unwrap_or(p.fill_to);
+                    let mut g = f.clone();
+                    for st in &mut g.stops {
+                        let to = mix(p.fill_to, end, st.pos.clamp(0.0, 1.0), 0);
+                        st.color = mix(st.color, to, t, p.color_blend);
+                    }
+                    s.fill = Fill::Fountain(g);
+                }
+                _ => s.fill = Fill::Solid(mix(from_fill, p.fill_to, t, p.color_blend)),
             }
             if let (Some(st), Some(from)) = (&mut s.stroke, from_outline) {
                 st.color = mix(from, p.outline_to.unwrap_or(p.fill_to), t, p.color_blend);
@@ -3546,6 +3569,7 @@ mod tests {
             to_center: false,
             fill_to: Color::BLACK,
             outline_to: None,
+            fill_end_to: None,
             color_blend: 0,
             corners: Some(crate::shaping::Join::Miter),
             accel_objects: 0.0,
@@ -3600,6 +3624,7 @@ mod tests {
             to_center: false,
             fill_to: Color::WHITE,
             outline_to: None,
+            fill_end_to: None,
             color_blend: 0,
             corners: Some(crate::shaping::Join::Miter),
             accel_objects: 0.0,
@@ -3662,6 +3687,7 @@ mod tests {
             to_center: false,
             fill_to: Color::WHITE,
             outline_to: None,
+            fill_end_to: None,
             color_blend: 0,
             corners: Some(crate::shaping::Join::Miter),
             accel_objects: 0.0,
@@ -3712,6 +3738,7 @@ mod tests {
             to_center: false,
             fill_to: Color::WHITE,
             outline_to: None,
+            fill_end_to: None,
             color_blend: 0,
             corners: Some(crate::shaping::Join::Round),
             accel_objects: 0.0,
@@ -3739,6 +3766,53 @@ mod tests {
         assert!(!winds(Point::new(-1.5, -3.0)));
     }
 
+    /// A fountain-filled object's contour steps keep the fountain (#1265):
+    /// its first colour goes to the fill colour and its last to the last
+    /// fill colour, the outermost step reaching both.
+    #[test]
+    fn contour_steps_keep_a_fountain_toward_both_end_colours() {
+        let mut s = rect_shape();
+        s.fill = Fill::linear(Color::rgb8(255, 0, 0), Color::rgb8(0, 0, 255), 0.0);
+        let effect = |end: Option<Color>| Effect::Contour {
+            steps: 2,
+            offset: 2.0,
+            outside: true,
+            to_center: false,
+            fill_to: Color::WHITE,
+            outline_to: None,
+            fill_end_to: end,
+            color_blend: 0,
+            corners: None,
+            accel_objects: 0.0,
+            accel_colors: 0.0,
+        };
+        s.effects.push(effect(Some(Color::BLACK)));
+        let ev = evaluate(&s);
+        assert_eq!(ev.below.len(), 2);
+        let stops = |f: &Fill| match f {
+            Fill::Fountain(g) => g
+                .stops
+                .iter()
+                .map(|st| st.color.to_rgb8())
+                .collect::<Vec<_>>(),
+            other => panic!("a fountain, not {other:?}"),
+        };
+        // Outermost first: the last step, all the way to white and black.
+        let outer = stops(&ev.below[0].fill);
+        assert_eq!(outer.first(), Some(&Color::WHITE.to_rgb8()));
+        assert_eq!(outer.last(), Some(&Color::BLACK.to_rgb8()));
+        // The step nearer the object is half way from red and blue.
+        let near = stops(&ev.below[1].fill);
+        let close = |a: [u8; 3], b: [u8; 3]| (0..3).all(|k| a[k].abs_diff(b[k]) <= 4);
+        assert!(close(near[0], [255, 128, 128]), "{near:?}");
+        assert!(close(near[near.len() - 1], [0, 0, 128]), "{near:?}");
+        // Without a last fill colour (older files) both ends go to the
+        // fill colour.
+        s.effects[0] = effect(None);
+        let outer = stops(&evaluate(&s).below[0].fill);
+        assert!(outer.iter().all(|c| *c == Color::WHITE.to_rgb8()), "{outer:?}");
+    }
+
     #[test]
     fn contour_outside_three_steps() {
         let mut s = rect_shape();
@@ -3749,6 +3823,7 @@ mod tests {
             to_center: false,
             fill_to: Color::WHITE,
             outline_to: None,
+            fill_end_to: None,
             color_blend: 0,
             corners: Some(crate::shaping::Join::Miter),
             accel_objects: 0.0,
@@ -3780,6 +3855,7 @@ mod tests {
             to_center: true,
             fill_to: Color::WHITE,
             outline_to: None,
+            fill_end_to: None,
             color_blend: 0,
             corners: None,
             accel_objects: 0.0,
@@ -4154,6 +4230,7 @@ mod tests {
             to_center: false,
             fill_to: Color::WHITE,
             outline_to: None,
+            fill_end_to: None,
             color_blend: 0,
             corners: None,
             accel_objects: 0.0,
@@ -5239,6 +5316,7 @@ mod warped_extrusion_tests {
             to_center: false,
             fill_to: Color::WHITE,
             outline_to: None,
+            fill_end_to: None,
             color_blend: 0,
             corners: None,
             accel_objects: 0.0,
@@ -5462,6 +5540,7 @@ mod symmetry_tests {
                 to_center: false,
                 fill_to: crate::color::Color::WHITE,
                 outline_to: None,
+                fill_end_to: None,
                 color_blend: 0,
                 corners: None,
                 accel_objects: 0.0,

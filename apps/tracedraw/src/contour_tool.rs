@@ -163,6 +163,8 @@ pub struct ContourSettings {
     /// The last step's fill and outline colours.
     pub fill_to: Color,
     pub outline_to: Color,
+    /// The last step's colour for the end of a fountain fill (#1265).
+    pub fill_end_to: Color,
     /// -1 to 1.
     pub accel_objects: f64,
     pub accel_colors: f64,
@@ -178,6 +180,7 @@ impl Default for ContourSettings {
             color_blend: 0,
             fill_to: Color::WHITE,
             outline_to: Color::BLACK,
+            fill_end_to: Color::WHITE,
             accel_objects: 0.0,
             accel_colors: 0.0,
         }
@@ -214,6 +217,7 @@ impl ContourSettings {
             to_center: s.direction == ContourDirection::ToCenter,
             fill_to: s.fill_to,
             outline_to: Some(s.outline_to),
+            fill_end_to: Some(s.fill_end_to),
             color_blend: s.color_blend,
             corners: Some(s.corners),
             accel_objects: s.accel_objects,
@@ -230,6 +234,7 @@ impl ContourSettings {
             to_center,
             fill_to,
             outline_to,
+            fill_end_to,
             color_blend,
             corners,
             accel_objects,
@@ -251,6 +256,7 @@ impl ContourSettings {
         self.color_blend = *color_blend;
         self.fill_to = *fill_to;
         self.outline_to = outline_to.unwrap_or(*fill_to);
+        self.fill_end_to = fill_end_to.unwrap_or(*fill_to);
         self.accel_objects = *accel_objects;
         self.accel_colors = *accel_colors;
         *self = self.clamped();
@@ -726,11 +732,14 @@ mod tests {
         assert_eq!(app.contour.direction, ContourDirection::ToCenter);
         app.contour.corners = Join::Round;
         app.contour.accel_colors = 0.5;
+        // The last fill colour, for fountain fills (#1265).
+        app.contour.fill_end_to = Color::BLACK;
         app.apply_contour_settings();
         let Some(Effect::Contour {
             to_center,
             corners,
             accel_colors,
+            fill_end_to,
             ..
         }) = contour_of(&app, id)
         else {
@@ -739,6 +748,10 @@ mod tests {
         assert!(to_center);
         assert_eq!(corners, Some(Join::Round));
         assert_eq!(accel_colors, 0.5);
+        assert_eq!(fill_end_to, Some(Color::BLACK));
+        app.contour = ContourSettings::default();
+        app.sync_contour_settings();
+        assert_eq!(app.contour.fill_end_to, Color::BLACK);
         app.clear_contour();
         assert!(contour_of(&app, id).is_none());
         // Settings from an older contour and odd values.
@@ -750,6 +763,7 @@ mod tests {
             to_center: false,
             fill_to: Color::BLACK,
             outline_to: None,
+            fill_end_to: None,
             color_blend: 9,
             corners: None,
             accel_objects: 3.0,

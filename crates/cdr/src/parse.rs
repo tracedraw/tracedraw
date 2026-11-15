@@ -6531,6 +6531,7 @@ fn contour_effect(
         to_center: false,
         fill_to,
         outline_to,
+        fill_end_to: None,
         color_blend: 0,
         corners,
         accel_objects: 0.0,
