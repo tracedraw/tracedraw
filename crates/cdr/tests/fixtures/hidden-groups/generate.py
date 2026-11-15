@@ -37,13 +37,15 @@ def loda(kind, args):
             + bodies + words(*offsets) + words(*(t for t, _ in reversed(args))))
 
 
-def rectangle():
+def rectangle(flags=None, hidden_arg=False):
     # A black 10 x 10 mm rectangle, no text or font dependencies.
     coords = struct.pack('<4d', 100000, 100000, 1, 1) + bytes(8)
     coords += bytes(24 * 3 + 8)
-    return listing(b'obj ', chunk(b'loda', loda(1, [
-        (30, coords), (20, words(9)),
-    ])))
+    args = [(30, coords), (20, words(9))]
+    if hidden_arg:
+        args.append((16016, words(1)))
+    header = b'' if flags is None else chunk(b'flgs', flags)
+    return listing(b'obj ', header + chunk(b'loda', loda(1, args)))
 
 
 def group(objects, flags=b'\x80\x01\x00\x10'):
@@ -84,6 +86,13 @@ def main():
         'short-flags.cdr': cdr([group([r, r], b'\x80\x01')]),
         'wrong-record-type.cdr': cdr([group([r, r], b'\x80\x01\x00\x98')]),
         'unrelated-flag.cdr': cdr([group([r, r], b'\x80\x02\x00\x10')]),
+        'hidden-object.cdr': cdr([rectangle(b'\0\x03\0\x08')]),
+        'visible-object.cdr': cdr([rectangle(b'\0\x02\0\x08')]),
+        'locked-object.cdr': cdr([rectangle(b'\x10\x02\0\x08')]),
+        'hidden-locked-object.cdr': cdr([rectangle(b'\x10\x03\0\x08')]),
+        'hidden-object-argument.cdr': cdr([rectangle(b'\0\x02\0\x08', True)]),
+        'short-object-flags.cdr': cdr([rectangle(b'\0\x03\0')]),
+        'wrong-object-record.cdr': cdr([rectangle(b'\0\x03\0\x98')]),
     }
     with zipfile.ZipFile(Path(__file__).with_name('samples.zip'), 'w') as archive:
         for name, data in samples.items():

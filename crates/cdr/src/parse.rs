@@ -1057,6 +1057,13 @@ impl<'a> Ctx<'a> {
         self.v >= 16 && matches!(self.flags(gc), Some(f) if f[3] == 0x10 && f[1] & 1 != 0)
     }
 
+    /// The same modern hidden bit on an individual object: a hidden
+    /// text has [0, 3, 0, 8], its visible neighbour [0, 2, 0, 8].
+    fn object_hidden(&self, oc: &Chunk) -> bool {
+        self.v >= 16
+            && matches!(self.flags(oc), Some(f) if f[3] & 0xf8 == 0x08 && f[1] & 1 != 0)
+    }
+
     fn page_is_master(&self, pc: &Chunk) -> bool {
         matches!(self.flags(pc), Some(f) if f[3] == 0x90 && f[2] != 0)
     }
@@ -4784,6 +4791,10 @@ impl<'a> Ctx<'a> {
                 let id = ids.shape();
                 match self.read_object(c, id, page_size) {
                     Some(mut shape) => {
+                        // Both the older hidden-object argument and the
+                        // modern flag apply to the whole object, also
+                        // when a crop or clip wraps it in a new shape.
+                        let visible = shape.visible && !self.object_hidden(c);
                         if std::mem::take(&mut self.pending_renumber) {
                             renumber(&mut shape, ids);
                         }
@@ -4805,6 +4816,7 @@ impl<'a> Ctx<'a> {
                         if self.object_locked(c) {
                             shape.locked = true;
                         }
+                        shape.visible &= visible;
                         self.note_static_id(c, shape.id);
                         out.push(shape);
                     }

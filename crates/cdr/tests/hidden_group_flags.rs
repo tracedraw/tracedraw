@@ -66,3 +66,25 @@ fn hidden_group_flags_ignore_short_wrong_type_and_unrelated_bits() {
         assert_eq!(children(group).len(), 2);
     }
 }
+
+#[test]
+fn individual_object_flags_preserve_visibility_and_lock_independently() {
+    for (file, visible, locked) in [
+        ("hidden-object.cdr", false, false),
+        ("visible-object.cdr", true, false),
+        ("locked-object.cdr", true, true),
+        ("hidden-locked-object.cdr", false, true),
+        ("hidden-object-argument.cdr", false, false),
+        ("short-object-flags.cdr", true, false),
+        ("wrong-object-record.cdr", true, false),
+    ] {
+        let (doc, report) = sample(file);
+        assert_eq!(report.skipped_objects, 0);
+        let shapes = &doc.pages[0].layers[0].shapes;
+        assert_eq!(shapes.len(), 1);
+        assert_eq!((shapes[0].visible, shapes[0].locked), (visible, locked), "{file}");
+        let reopened = Document::from_json(&doc.to_json().unwrap()).unwrap();
+        let shape = &reopened.pages[0].layers[0].shapes[0];
+        assert_eq!((shape.visible, shape.locked), (visible, locked));
+    }
+}
