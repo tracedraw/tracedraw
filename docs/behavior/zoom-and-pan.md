@@ -106,8 +106,15 @@
   what comes in (#2051, `interaction::edge_scroll_step`,
   `pick_drag_tests::a_drag_at_the_window_edge_scrolls_the_view`). A drag
   that has left the window keeps following the pointer.
+- The dimension tools scroll the same way: while a dimension is dragged
+  from its first point to its second, and between its clicks, with the
+  pointer resting in the band inside the window (no button held), so
+  the next point can be put on a part of the drawing out of view; the
+  point lands where the pointer is in the scrolled view
+  (`pick_drag_tests::a_dimension_scrolls_the_view_at_the_window_edge`).
 - The cost a frame is a few comparisons; nothing scrolls without a drag
-  or in a drawing window smaller than four bands.
+  or a dimension being placed, or in a drawing window smaller than four
+  bands.
 
 ## Navigator and scrollbars
 

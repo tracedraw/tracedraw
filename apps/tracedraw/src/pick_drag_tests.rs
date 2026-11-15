@@ -4520,6 +4520,81 @@ fn a_drag_at_the_window_edge_scrolls_the_view() {
     assert_eq!(app.view.origin, still);
 }
 
+/// A dimension scrolls the view at the window's edge too (#2051):
+/// between its clicks, with the pointer resting near the edge inside the
+/// window, and dragged from its first point; the next point lands where
+/// the pointer is in the scrolled view. Away from the edge, or with no
+/// dimension begun, nothing scrolls.
+#[test]
+fn a_dimension_scrolls_the_view_at_the_window_edge() {
+    let n = Modifiers::NONE;
+    let left = |p: Pos2, down: bool| button(p, down, PointerButton::Primary, n);
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::ParallelDimension);
+    frame(&ctx, &mut app, Vec::new(), n);
+    let canvas = app.canvas_rect;
+    let edge = Pos2::new(canvas.right() - 4.0, canvas.center().y);
+    // No dimension begun: resting at the edge scrolls nothing.
+    let still = app.view.origin;
+    frame(&ctx, &mut app, vec![Event::PointerMoved(edge)], n);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), n);
+    }
+    assert_eq!(app.view.origin, still);
+    // The first click, then the pointer rests at the edge.
+    let first = app.view.to_screen(Point::new(20.0, 100.0));
+    click_at(&ctx, &mut app, first, n);
+    assert_eq!(app.dimension_points.len(), 1);
+    let a = app.dimension_points[0];
+    frame(&ctx, &mut app, vec![Event::PointerMoved(edge)], n);
+    let origin = app.view.origin.x;
+    for _ in 0..5 {
+        frame(&ctx, &mut app, Vec::new(), n);
+    }
+    assert!(app.view.origin.x < origin - 1.0, "the view scrolls");
+    // Back in the middle it stops.
+    let middle = canvas.center();
+    frame(&ctx, &mut app, vec![Event::PointerMoved(middle)], n);
+    let held = app.view.origin;
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), n);
+    }
+    assert_eq!(app.view.origin, held);
+    // The second click is taken where the pointer is now.
+    let far = app.view.to_page(middle);
+    click_at(&ctx, &mut app, middle, n);
+    assert_eq!(app.dimension_points.len(), 2);
+    let b = app.dimension_points[1];
+    assert!((b.x - far.x).abs() < 0.5, "{b:?} {far:?}");
+    assert!(b.x - a.x > 20.0, "{a:?} {b:?}");
+    app.dimension_points.clear();
+
+    // Dragged from the first point: held at the edge it scrolls, and the
+    // release sets the second point under the pointer.
+    let from = app.view.to_screen(Point::new(30.0, 120.0));
+    frame(&ctx, &mut app, vec![Event::PointerMoved(from)], n);
+    frame(&ctx, &mut app, vec![left(from, true)], n);
+    for k in 1..=4 {
+        let t = k as f32 / 4.0;
+        let p = from + (edge - from) * t;
+        frame(&ctx, &mut app, vec![Event::PointerMoved(p)], n);
+    }
+    assert!(app.dimension_dragging, "a dimension drag");
+    let origin = app.view.origin.x;
+    for _ in 0..5 {
+        frame(&ctx, &mut app, Vec::new(), n);
+    }
+    assert!(app.view.origin.x < origin - 1.0, "the drag scrolls");
+    let under = app.view.to_page(edge);
+    frame(&ctx, &mut app, vec![left(edge, false)], n);
+    frame(&ctx, &mut app, Vec::new(), n);
+    assert!(!app.dimension_dragging);
+    assert_eq!(app.dimension_points.len(), 2, "{:?}", app.dimension_points);
+    let b = app.dimension_points[1];
+    assert!((b.x - under.x).abs() < 1.0, "{b:?} {under:?}");
+}
+
 /// The right button held while a selection box is dragged moves the
 /// box instead of sizing it; let go, the box is sized again, and the
 /// left release selects what the box encloses where it was moved to

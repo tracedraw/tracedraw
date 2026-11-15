@@ -1606,20 +1606,43 @@ impl App {
         )
     }
 
+    /// A dimension tool has the first point (or points) of a dimension
+    /// and waits for the click of the next one.
+    pub(crate) fn placing_dimension(&self) -> bool {
+        use crate::tools::Tool;
+        matches!(
+            self.tool,
+            Tool::ParallelDimension
+                | Tool::HorizontalVerticalDimension
+                | Tool::AngularDimension
+                | Tool::SegmentDimension
+        ) && !self.dimension_points.is_empty()
+    }
+
     /// Auto-scroll (#2051): while a drag that [`App::scrolls_at_edge`]
     /// has the left button held within [`EDGE_SCROLL_BAND`] of the
     /// drawing window's edge, or past it, the view scrolls toward that
     /// edge, faster the nearer it is, and the frame after is asked for so
     /// it goes on while the pointer rests. A few comparisons a frame; the
     /// drag then follows the pointer in the scrolled view.
+    ///
+    /// A dimension scrolls too (#2051): dragged from its first point to
+    /// its second, and between its clicks, with the pointer resting near
+    /// the edge inside the window, so its far end can be put on a part of
+    /// the drawing out of view.
     fn edge_scroll(&mut self, response: &Response) {
-        if !self.scrolls_at_edge() {
+        let dragging = self.scrolls_at_edge() || self.dimension_dragging;
+        if !dragging && !self.placing_dimension() {
             return;
         }
         let (held, dt) = response
             .ctx
             .input(|i| (i.pointer.primary_down(), i.stable_dt));
-        let Some(p) = self.pointer_screen.filter(|_| held) else {
+        let over = response.hovered();
+        let Some(p) = self
+            .pointer_screen
+            .filter(|_| if dragging { held } else { over && !held })
+        else {
             return;
         };
         // Over a palette bar or a page tab the drag is bound for that
@@ -1697,7 +1720,9 @@ impl App {
         // while the view scrolls (#2051).
         let hover = response.hover_pos().or_else(|| {
             let held = response.ctx.input(|i| i.pointer.primary_down());
-            let boxing = matches!(self.drag, Drag::Box { .. }) || self.scrolls_at_edge();
+            let boxing = matches!(self.drag, Drag::Box { .. })
+                || self.scrolls_at_edge()
+                || self.dimension_dragging;
             if ((self.transforming() || boxing) && held) || self.curve_drag_running(response) {
                 self.pointer_screen
             } else {
