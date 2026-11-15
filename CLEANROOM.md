@@ -5,6 +5,27 @@ from, so that anyone can check that the format support was written
 independently. The details of each layout, and whether a file confirmed
 it, live in `docs/cdr-format.md` and in the pages of `docs/behavior/`.
 
+## Saved Gaussian blur observation
+
+Format observation, 2026-11-15: a contributor-owned version 27 CDR with
+two original rectangles stores the upper vector object's Gaussian blur
+in argument 201 JSON under `StackedBitmapEffects.GaussianBlurEffect`.
+`Radius` is `1500` while the contributor's screenshot shows 15.0;
+`Resampled` is `0`, with sibling deletion `0`, visibility `1` and stack
+index `0`. Read using TraceDraw's own inspector and a ZIP reader. The
+original drawing and screenshots are not bundled; tests and sample assets
+are original synthetic rectangles built from the observed keys and this
+repository's existing container/geometry layouts. No program, third-party
+reader code or proprietary documentation was inspected or copied. Exact
+blur-kernel equivalence and unobserved versions/states are not asserted.
+The contributor subsequently exported the same drawing as a 300 dpi PNG
+(also not bundled). Its normalized white-edge spread is about 13.5 pixels,
+consistent with a Gaussian using radius as sigma and a cutoff near two
+sigma. This rendering convention is inferred from pixels, not confirmed
+by a specification; the implementation preserves it as an internal native
+effect parameter and uses the same code in the desktop and CLI.
+Details: `docs/cdr-format.md`, "Version 27 saved Gaussian blur".
+
 ## Rules
 
 - No program is ever decompiled or disassembled, and no decompiled code,

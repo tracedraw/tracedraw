@@ -5612,6 +5612,19 @@ impl<'a> Writer<'a> {
         if !s.visible && !keeps_hidden {
             return none();
         }
+        // Bitmap filters keep their source and settings in our member,
+        // with a picture other readers can show without a filter engine.
+        if let Some(picture) = s.drawn_as() {
+            return self.drawn_as(s, vec![picture], 0, None, centre, depth);
+        }
+        if let Some(fx) = &s.raster_fx {
+            if fx.effects.iter().any(|e| e.visible) && fx.png.is_empty() {
+                log::warn!("bitmap effect picture unavailable; .cdr keeps the source without its filter picture");
+            }
+            let mut plain = s.clone();
+            plain.raster_fx = None;
+            return self.drawn_as(s, vec![plain], 0, None, centre, depth);
+        }
         // An object with live effects goes out as what they draw, and its
         // drop shadow as a picture of it beneath it (the caller's, or one
         // drawn here). From version 14 the package's own member keeps the

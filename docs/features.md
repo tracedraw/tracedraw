@@ -232,6 +232,12 @@ Counts: works 193, partial 9 (`.cdr` content coverage; `.cdr` tables; CMX import
 
 ## 10. Import and export
 
+CDR bitmap effects: version 27 vector Gaussian blur imports into the
+editable FX list; other filters, bitmap inputs and unverified layouts
+remain unsupported with warnings. Native saves keep the settings; CLI
+PNG/PDF/SVG and cached CDR output keep its appearance. See
+[`behavior/cdr-bitmap-effects.md`](behavior/cdr-bitmap-effects.md).
+
 | Capability | Status |
 |---|---|
 | Open `.cdr`: `WL` files of versions 1 and 2 (shapes, curves, text, uniform fills, outlines), RIFF (versions 3 to 13), ZIP of versions 14 and 15, ZIP with redirected chunks (version 16 on) | works (layouts confirmed against the public format description; real-file corpus still being collected) |

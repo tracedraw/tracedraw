@@ -1,5 +1,13 @@
 # Attribution
 
+The original two-rectangle Gaussian blur fixture
+(`crates/cdr/tests/fixtures/gaussian-blur.cdr`), its generator
+(`scripts/samples/cdr_gaussian_blur.py`) and associated synthetic sample
+images are by TraceDraw contributors, written for this change and licensed
+MIT OR Apache-2.0. They contain no private source drawing or application
+assets. The style record layout was observed independently in a
+contributor-owned CDR27 file; see `CLEANROOM.md`.
+
 Every asset bundled with TraceDraw, with its author, source and license.
 Code dependencies (Rust crates) keep their own licenses, recorded in
 their packages; `cargo tree` lists them from `Cargo.lock`.

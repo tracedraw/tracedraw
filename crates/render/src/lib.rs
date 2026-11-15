@@ -5,6 +5,7 @@
 
 #![allow(clippy::field_reassign_with_default)]
 pub mod accel;
+pub mod bitmap_effects;
 mod image_cache;
 
 use tiny_skia::{

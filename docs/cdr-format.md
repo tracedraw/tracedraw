@@ -567,3 +567,34 @@ and tables are still written as groups.
 Version 8 files come in two layouts the version number does not tell apart: the usual one (800) with paragraph text frames of 32 bytes after the matrix and path flag, and the bidirectional one (801) with 34. The reader tries 32, and when the counts that follow are implausible, 34; the style table is read both without and with the set11 table, and the reading that ends where the table ends without complaint wins (2026-10-19, from version 8 samples a user attached to a bug report; 2026-10-29: the version 8 files of both variants saved by the program that reads these files hold set11, so TraceDraw writes it in version 8 and the reader no longer settles for the first reading without complaint, which a table with set11 could pass by chance).
 
 The program that reads these files saves both version 8 variants with the 801 layout (34-byte frames and set11), the 800 one differing only in its form type (`CDR8`), `vrsn` (800) and the two version fields of `sumi`; its version 8 saves are its version 9 saves record for record apart from those, the configuration record (656 bytes and no `pref` in 8, `bcfg` and an 848-byte `mcfg` in 9) and the addresses it keeps in ids. Its 2010 release crashed on opening TraceDraw's version 8 file of the `interop-0004` bundle, written so, while the same drawing's files of versions 7 and 9 to 15 opened. Record for record that file was TraceDraw's version 9 file (which opened) apart from three things: the header (`CDR8`, `vrsn` and `sumi`), the configuration record (the program's own version 8 one, field for field as its saves hold it, differing from them only where TraceDraw's version 7 record, which opened, differs from the program's) and the rectangles' single radius (12 bytes of argument 30, as the version 7 file that opened has them; four radii from 9). So the program reads the 800 header in a way of its own: either its style table without set11, as the public notes give it to 800 and as the files version 8 itself wrote must be, which that release has to open (then its own version 8 saves would not open in it either, which no one has checked), or its rectangles with four radii, as in 9 (the program's version 8 saves of the drawing hold no rectangle to tell: it saved them as curves). Reading the set11 table where none is expected misplaces every style record after it, while a radius read past its 12 bytes reads the next argument's bytes inside the same record; the first is the likelier crash. TraceDraw has written version 8 in the public notes' 800 layout since (no set11; one radius; it writes no paragraph frames), the layout of the files version 8 itself saved, and the `interop-0005` bundle holds the drawing in both style tables, under both headers, and split into an empty page, the shapes alone and the texts alone, to tell the two apart (2026-10-30, #1139). Not confirmed in the program yet.
+
+## Version 27 saved Gaussian blur on vector objects
+
+Confirmed in one original contributor-owned file on 2026-11-15 (not
+committed): the object's argument 201 style JSON contains
+`StackedBitmapEffects.GaussianBlurEffect` with `Radius: "1500"` and
+`Resampled: "0"`. Sibling keys `GaussianBlurEffect_Deleted: "0"`,
+`GaussianBlurEffect_Visible: "1"` and `GaussianBlurEffect_Z_Index: "0"`
+describe state and stack position. The contributor's screenshot shows
+Gaussian blur radius 15.0 on the white rectangle above a dark rectangle.
+The file has no bitmap or stored raster result for this object.
+
+Read the radius as hundredths of the displayed bitmap setting, into the
+existing `BitmapEffect` / `RasterFx` model. The geometry and transform are
+unchanged. Synthetic hidden/deleted tests use the flags' obvious 0/1
+interpretation; those states have not been independently observed in a
+second source file. Other versions, resampling modes, extra parameters
+and bitmap objects are not mapped. Unknown filters are warned about.
+This is one filter mapping, not evidence for a general stack layout.
+
+An independent 300 dpi PNG export has an edge spread of about 13.5 pixels
+at radius 15.0. This is consistent with sigma = radius and a cutoff near
+two sigma, rather than the native bitmap filter's sigma = radius / 2.
+This kernel interpretation is inferred from the reference, not confirmed
+by a specification or other radii. Imported effects carry TraceDraw's own
+`kernel_extent: 2` parameter to keep the displayed radius and select that
+finite-kernel approximation in both the app and headless rendering.
+Native saves preserve the source and settings. CDR output uses a prepared
+bitmap appearance plus TraceDraw's private source member from version 14,
+not the source application's native filter records. See
+[`behavior/cdr-bitmap-effects.md`](behavior/cdr-bitmap-effects.md).

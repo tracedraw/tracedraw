@@ -4485,6 +4485,9 @@ impl<'a> Ctx<'a> {
         shape.keep_corner_size();
         shape.name = name;
         shape.opacity = opacity;
+        if let Some(style) = style_string.as_deref() {
+            crate::bitmap_effects::apply(style, self.v, &mut shape, &mut self.report);
+        }
         // Version 16+: the fill's winding (#1919): "1" fills nonzero.
         if style_string.as_deref().and_then(text::object_fill_winding) == Some(true) {
             shape.fill_rule = tracedraw_core::shaping::FillRule::NonZero;

@@ -182,6 +182,7 @@ fn load(
             _ => eprintln!("{path}: the colour profile it carries could not be used"),
         }
     }
+    tracedraw_render::bitmap_effects::prepare(&mut loaded.0);
     Ok(loaded)
 }
 
