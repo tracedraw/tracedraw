@@ -1050,6 +1050,13 @@ impl<'a> Ctx<'a> {
         matches!(self.flags(oc), Some(f) if f[3] & 0xf8 == 0x08 && f[0] & OBJECT_LOCKED != 0)
     }
 
+    /// A hidden group in a version 27 drawing: [0x80, 1, 0, 0x10],
+    /// beside its visible group [0x80, 0, 0, 0x10]. The bit belongs to
+    /// the group, not to each of its objects or its `loda` arguments.
+    fn group_hidden(&self, gc: &Chunk) -> bool {
+        self.v >= 16 && matches!(self.flags(gc), Some(f) if f[3] == 0x10 && f[1] & 1 != 0)
+    }
+
     fn page_is_master(&self, pc: &Chunk) -> bool {
         matches!(self.flags(pc), Some(f) if f[3] == 0x90 && f[2] != 0)
     }
@@ -4806,8 +4813,10 @@ impl<'a> Ctx<'a> {
                     None => self.report.skipped_objects += 1,
                 }
             } else if c.is(b"grp ") {
+                let hidden = self.group_hidden(c);
                 // A table (versions 14 on) is a group of cell groups.
-                if let Some(table) = self.read_table(c, ids, page_size) {
+                if let Some(mut table) = self.read_table(c, ids, page_size) {
+                    table.visible = !hidden;
                     self.note_static_id(c, table.id);
                     out.push(table);
                     continue;
@@ -4865,9 +4874,10 @@ impl<'a> Ctx<'a> {
                 let mask = self.group_pattern_transparency(c);
                 match children.len() {
                     0 => {}
-                    1 if mask.is_none() => out.extend(children),
+                    1 if mask.is_none() && !hidden => out.extend(children),
                     _ => {
                         let mut g = Shape::new(ids.shape(), ShapeKind::Group { children });
+                        g.visible = !hidden;
                         g.fill = Fill::None;
                         g.stroke = None;
                         if let Some(mask) = mask {
