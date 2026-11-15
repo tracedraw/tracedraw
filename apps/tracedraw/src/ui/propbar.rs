@@ -2393,7 +2393,14 @@ pub fn outline_part(app: &mut App, ui: &mut Ui) {
     // The first object's outline; values that differ across the selection
     // show empty. Each control changes only its own value on each object.
     let first = app.first_paint_target();
-    let stroke = first.as_ref().and_then(|s| s.stroke.clone());
+    // Nothing selected (a drawing tool): the outline new objects get, set
+    // here before drawing (#1892).
+    let defaults = app.selection.is_empty();
+    let stroke = if defaults {
+        app.default_stroke()
+    } else {
+        first.as_ref().and_then(|s| s.stroke.clone())
+    };
     let mix = app.selection_stroke_mix();
     label_pic(ui, Pic::Pen, &tr("toolbar.outline_width"));
     let width = stroke.as_ref().map(|s| s.width);
@@ -2436,6 +2443,14 @@ pub fn outline_part(app: &mut App, ui: &mut Ui) {
                     .selectable_label(dash_shown && dash.as_slice() == d, dash_label(d))
                     .clicked()
                 {
+                    if defaults {
+                        let mut st = stroke.clone().unwrap_or_default();
+                        st.dash = d.to_vec();
+                        app.request_default_change(crate::defaults::DefaultChange::Outline(Some(
+                            st,
+                        )));
+                        continue;
+                    }
                     // Each object (each one in a group too) keeps the
                     // rest of its own outline.
                     let cmds: Vec<Command> = app
@@ -2496,6 +2511,18 @@ pub fn outline_part(app: &mut App, ui: &mut Ui) {
                     .selectable_label(shown && current == a, arrow_label(&a))
                     .clicked()
                 {
+                    if defaults {
+                        let mut st = stroke.clone().unwrap_or_default();
+                        if start {
+                            st.start_arrow = a.clone();
+                        } else {
+                            st.end_arrow = a.clone();
+                        }
+                        app.request_default_change(crate::defaults::DefaultChange::Outline(Some(
+                            st,
+                        )));
+                        continue;
+                    }
                     // Each object (each one in a group too) keeps the
                     // rest of its own outline.
                     let cmds: Vec<Command> = app

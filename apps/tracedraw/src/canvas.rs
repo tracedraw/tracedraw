@@ -115,6 +115,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     draw_table_cells(app, painter);
     crate::table_tool::draw_table_drag(app, painter);
     crate::variable_outline::draw_width_nodes(app, painter);
+    crate::join_tool::draw_join_ends(app, painter);
     crate::comments::draw_comments(app, painter);
     crate::perspective_draw::draw_grid(app, painter, rect);
     draw_frame_links(app, painter);

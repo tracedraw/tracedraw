@@ -1388,9 +1388,10 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 object_properties(app, ui);
                 crate::ui::propbar::sep(ui);
                 crate::ui::propbar::rectangle_part(app, ui);
+                // Nothing selected: the outline of the next one (#1892).
+                crate::ui::propbar::sep(ui);
+                crate::ui::propbar::outline_part(app, ui);
                 if !app.selection.is_empty() {
-                    crate::ui::propbar::sep(ui);
-                    crate::ui::propbar::outline_part(app, ui);
                     crate::ui::propbar::sep(ui);
                     crate::ui::propbar::order_part(app, ui);
                 }
@@ -1399,9 +1400,10 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 object_properties(app, ui);
                 crate::ui::propbar::sep(ui);
                 crate::ui::propbar::ellipse_part(app, ui);
+                // Nothing selected: the outline of the next one (#1892).
+                crate::ui::propbar::sep(ui);
+                crate::ui::propbar::outline_part(app, ui);
                 if !app.selection.is_empty() {
-                    crate::ui::propbar::sep(ui);
-                    crate::ui::propbar::outline_part(app, ui);
                     crate::ui::propbar::sep(ui);
                     crate::ui::propbar::order_part(app, ui);
                 }
@@ -1411,9 +1413,10 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 crate::ui::propbar::sep(ui);
                 let star = app.tool == Tool::Star;
                 crate::ui::propbar::polygon_part(app, ui, star);
+                // Nothing selected: the outline of the next one (#1892).
+                crate::ui::propbar::sep(ui);
+                crate::ui::propbar::outline_part(app, ui);
                 if !app.selection.is_empty() {
-                    crate::ui::propbar::sep(ui);
-                    crate::ui::propbar::outline_part(app, ui);
                     crate::ui::propbar::sep(ui);
                     crate::ui::propbar::order_part(app, ui);
                 }
@@ -1474,6 +1477,13 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
             Tool::Contour => crate::ui::contour_bar::contour_bar(app, ui),
             Tool::Crop => crate::ui::crop_bar::crop_bar(app, ui),
             Tool::Knife => crate::ui::drawing_bars::knife_bar(app, ui),
+            Tool::Join => {
+                ui.label(
+                    egui::RichText::new(tr("status_hint.join"))
+                        .color(Tokens::text_dim())
+                        .size(11.0),
+                );
+            }
             Tool::SegmentDelete => {
                 // How a drag picks the segments: a box, or a freehand
                 // stroke (Alt at the press takes the other, #1150).
@@ -1878,9 +1888,11 @@ fn curve_tool_properties(app: &mut App, ui: &mut Ui) {
     use crate::ui::propbar::{pic_button, sep, Pic};
     object_properties(app, ui);
     let selected = !app.selection.is_empty();
+    // Nothing selected: the outline width, line style and arrowheads of
+    // the next curve, set before drawing it (#1892).
+    sep(ui);
+    crate::ui::propbar::outline_part(app, ui);
     if selected {
-        sep(ui);
-        crate::ui::propbar::outline_part(app, ui);
         let open = app.selected_rc().iter().any(|s| match &s.kind {
             ShapeKind::Path { path, .. } => !path
                 .elements()
@@ -4227,6 +4239,66 @@ pub fn node_selection_mode(app: &mut App, ui: &mut Ui) {
 mod tests {
     use super::*;
     use crate::ui::dialogs::Dialog;
+
+    /// #1892: with a drawing tool and nothing selected, the property bar
+    /// shows the outline of the next object (width, line style,
+    /// arrowheads) and follows the defaults when they change.
+    #[test]
+    fn drawing_tools_show_the_outline_of_the_next_object() {
+        fn bar_texts(app: &mut App) -> Vec<String> {
+            let ctx = crate::theme::ui_context();
+            let mut texts = Vec::new();
+            for _ in 0..2 {
+                let mut out = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(6000.0, 60.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| property_bar(app, ui),
+                );
+                out.textures_delta.clear();
+                texts = out
+                    .shapes
+                    .iter()
+                    .filter_map(|c| match &c.shape {
+                        egui::epaint::Shape::Text(t) => Some(t.galley.text().to_string()),
+                        _ => None,
+                    })
+                    .collect();
+            }
+            texts
+        }
+        let dashed: &[f64] = crate::ui::propbar::DASHES[1];
+        for tool in [
+            Tool::Freehand,
+            Tool::TwoPointLine,
+            Tool::Rectangle,
+            Tool::Ellipse,
+        ] {
+            let mut app = App::headless();
+            app.set_tool(tool);
+            assert!(app.selection.is_empty());
+            let texts = bar_texts(&mut app);
+            assert!(
+                texts.contains(&crate::ui::propbar::dash_label(&[])),
+                "{tool:?}: {texts:?}"
+            );
+            let mut st = app.default_stroke().unwrap_or_default();
+            st.dash = dashed.to_vec();
+            app.change_defaults(
+                &crate::defaults::DefaultChange::Outline(Some(st)),
+                [true, false, false],
+            );
+            let texts = bar_texts(&mut app);
+            assert!(
+                texts.contains(&crate::ui::propbar::dash_label(dashed)),
+                "{tool:?}: {texts:?}"
+            );
+        }
+    }
 
     /// One frame of the whole window; the texts it drew and where.
     fn frame(

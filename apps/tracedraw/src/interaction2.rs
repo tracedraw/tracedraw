@@ -148,6 +148,7 @@ impl App {
                 self.brush_input(response, p, mods)
             }
             Tool::VariableOutline => self.variable_outline_input(response, p, mods),
+            Tool::Join => self.join_tool_input(response, p),
             Tool::SegmentDelete => {
                 if response.clicked_by(PointerButton::Primary) {
                     self.delete_virtual_segment_at(p);

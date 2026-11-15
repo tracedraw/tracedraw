@@ -114,6 +114,7 @@ mod input_method_tests;
 mod instance;
 mod interaction;
 mod interaction2;
+mod join_tool;
 mod kind_nodes;
 mod knife;
 mod lens;

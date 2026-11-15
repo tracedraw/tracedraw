@@ -42,6 +42,7 @@ pub fn steps(tool: Tool) -> &'static [Option<Pic>] {
             p!(shape_add_node),
             p!(shape_corners),
         ],
+        Tool::Join => &[p!(join_stroke), p!(join_click), None],
         Tool::Smooth => &[p!(smooth_drag), None],
         Tool::Smear => &[p!(smear_out), p!(smear_in), None],
         Tool::Twirl => &[p!(twirl_hold), None],
@@ -1221,6 +1222,30 @@ fn crossing_lines(k: &K, cut: bool) {
     } else {
         k.line(&a, 1.5, INK);
     }
+}
+
+fn join_stroke(k: &K) {
+    // Two open curves whose near ends a stroke passes over.
+    k.line(&[(25.0, 75.0), (60.0, 40.0), (95.0, 45.0)], 1.5, INK);
+    k.line(&[(105.0, 45.0), (140.0, 30.0), (175.0, 70.0)], 1.5, INK);
+    k.node((95.0, 45.0), false);
+    k.node((105.0, 45.0), false);
+    k.dashed(&[(85.0, 25.0), (100.0, 45.0), (115.0, 65.0)], ACCENT);
+    k.tool_cursor((115.0, 65.0), Tool::Join);
+}
+
+fn join_click(k: &K) {
+    // One end held (filled), a click on the other closes the curve.
+    k.line(
+        &[(40.0, 75.0), (70.0, 25.0), (130.0, 25.0), (160.0, 75.0)],
+        1.5,
+        INK,
+    );
+    k.dashed(&[(40.0, 75.0), (160.0, 75.0)], ACCENT);
+    k.node((40.0, 75.0), true);
+    k.node((160.0, 75.0), false);
+    k.click((160.0, 75.0));
+    k.tool_cursor((160.0, 75.0), Tool::Join);
 }
 
 fn segdel_click(k: &K) {

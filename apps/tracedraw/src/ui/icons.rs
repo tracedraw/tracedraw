@@ -116,6 +116,13 @@ pub fn draw_on(painter: &Painter, r: Rect, tool: Tool, color: Color32, bg: Color
             pen.node(12.0, 12.0, true);
             pen.pointer(12.8, 12.9, 0.58, false);
         }
+        Tool::Join => {
+            // Two curves whose ends meet in one node, a stroke over it.
+            pen.line("M3 18C5 12 8 11 12 11", ink);
+            pen.line("M12 11c4 0 6-3 9-7", ink);
+            pen.thin("M9 15l6-8", acc);
+            pen.node(12.0, 11.0, true);
+        }
         Tool::Smooth => {
             // Jagged ink becomes a smooth wave from the node on.
             pen.line("M3 16l3-7 3 7 3-7", ink);

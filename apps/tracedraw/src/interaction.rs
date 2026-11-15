@@ -1963,6 +1963,7 @@ impl App {
             | Tool::Smudge
             | Tool::Roughen
             | Tool::VariableOutline
+            | Tool::Join
             | Tool::SegmentDelete
             | Tool::ShapeRecognition
             | Tool::Sketch
@@ -3863,6 +3864,7 @@ impl App {
             } => self.finish_connector(from, start, current),
             Drag::Freehand { points } if self.tool == Tool::Eraser => self.erase_along(&points),
             Drag::Freehand { points } if self.tool == Tool::Knife => self.knife_cut(&points),
+            Drag::Freehand { points } if self.tool == Tool::Join => self.join_along(&points),
             Drag::Freehand { points } if self.tool == Tool::SegmentDelete => {
                 // A click that slipped into a little stroke reaching
                 // nothing still deletes as a click at the press.

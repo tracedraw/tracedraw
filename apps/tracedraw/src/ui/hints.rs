@@ -317,6 +317,7 @@ impl Topic {
             Topic::RotateSkew => &[Tool::Pick, Tool::FreeTransform],
             Topic::ShapeObjects => &[
                 Tool::Shape,
+                Tool::Join,
                 Tool::Smooth,
                 Tool::Smear,
                 Tool::Twirl,

@@ -245,6 +245,7 @@ pub fn tool_topic(t: Tool) -> &'static str {
         Tool::FreeformPick => "objects/selecting#freehand-pick",
         Tool::FreeTransform => "objects/transforming#free-transform",
         Tool::Shape => "lines-shapes/shape-tool",
+        Tool::Join => "lines-shapes/join-curves#join-tool",
         Tool::Smooth => "lines-shapes/distortion-tools#smooth",
         Tool::Smear => "lines-shapes/distortion-tools#smear",
         Tool::Twirl => "lines-shapes/distortion-tools#twirl",

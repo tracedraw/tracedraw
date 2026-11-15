@@ -18,6 +18,7 @@ pub enum Tool {
     Smudge,
     Roughen,
     VariableOutline,
+    Join,
     // Crop group
     Crop,
     Knife,
@@ -104,6 +105,7 @@ pub const GROUPS: &[ToolGroup] = &[
     ToolGroup {
         tools: &[
             Tool::Shape,
+            Tool::Join,
             Tool::Smooth,
             Tool::Smear,
             Tool::Twirl,
@@ -222,7 +224,7 @@ pub const GROUPS: &[ToolGroup] = &[
 ];
 
 impl Tool {
-    pub const ALL: [Tool; 65] = [
+    pub const ALL: [Tool; 66] = [
         Tool::Pick,
         Tool::FreeformPick,
         Tool::FreeTransform,
@@ -234,6 +236,7 @@ impl Tool {
         Tool::Smudge,
         Tool::Roughen,
         Tool::VariableOutline,
+        Tool::Join,
         Tool::Crop,
         Tool::Knife,
         Tool::SegmentDelete,
@@ -304,6 +307,7 @@ impl Tool {
             Tool::Smudge => "smudge",
             Tool::Roughen => "roughen",
             Tool::VariableOutline => "variable_outline",
+            Tool::Join => "join",
             Tool::Crop => "crop",
             Tool::Knife => "knife",
             Tool::SegmentDelete => "segment_delete",

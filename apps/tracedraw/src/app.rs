@@ -1273,6 +1273,8 @@ pub struct App {
     pub media_width: f64,
     pub media_angle: f64,
     pub dimension_points: Vec<Point>,
+    /// The end node the Join tool holds after a click (#2150).
+    pub join_pending: Option<crate::join_tool::JoinEnd>,
     pub blend_steps: u32,
     /// The Blend docker's options for the next blend (and the shown one).
     pub blend_options: tracedraw_core::live::BlendOptions,
@@ -2974,6 +2976,7 @@ impl App {
             media_width: 3.0,
             media_angle: 45.0,
             dimension_points: Vec::new(),
+            join_pending: None,
             blend_steps: 20,
             blend_options: Default::default(),
             blend_spacing_mm: 5.0,
