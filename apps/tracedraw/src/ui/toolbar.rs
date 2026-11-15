@@ -3453,7 +3453,7 @@ fn common_shapes_bar(app: &mut App, ui: &mut Ui) {
             ui.separator();
             let shown = match shown {
                 ShapeTab::Mine => {
-                    my_shapes_grid(app, ui, popup);
+                    my_shapes_grid(app, ui);
                     return;
                 }
                 ShapeTab::All => None,
@@ -3484,10 +3484,11 @@ fn common_shapes_bar(app: &mut App, ui: &mut Ui) {
                                     let on = app.my_shape.is_none() && app.common_shape == s;
                                     let picked =
                                         shape_thumbnail(ui, s, on, false).rich_tip(s.name());
+                                    // The picker stays open until a click
+                                    // outside it or on its button (#2361).
                                     if picked.clicked() {
                                         app.common_shape = s;
                                         app.my_shape = None;
-                                        egui::Popup::close_id(ui.ctx(), popup);
                                     }
                                     if i % 9 == 8 {
                                         ui.end_row();
@@ -3532,7 +3533,7 @@ enum ShapeTab {
 
 /// The My shapes set of the Common Shapes picker: Add Selection as Common
 /// Shape, the shapes (a click picks one) and Remove for the one picked.
-fn my_shapes_grid(app: &mut App, ui: &mut Ui, popup: egui::Id) {
+fn my_shapes_grid(app: &mut App, ui: &mut Ui) {
     ui.horizontal(|ui| {
         let has = !app.selection.is_empty();
         if ui
@@ -3579,6 +3580,7 @@ fn my_shapes_grid(app: &mut App, ui: &mut Ui, popup: egui::Id) {
     }
     let mut picked = None;
     let mut remove = None;
+    let mut rename = None;
     egui::ScrollArea::vertical()
         .max_height(320.0)
         .show(ui, |ui| {
@@ -3592,6 +3594,10 @@ fn my_shapes_grid(app: &mut App, ui: &mut Ui, popup: egui::Id) {
                             picked = Some(s.uid);
                         }
                         r.context_menu(|ui| {
+                            if ui.button(tr("shapes.mine_rename")).clicked() {
+                                rename = Some(s.uid);
+                                ui.close();
+                            }
                             if ui.button(tr("shapes.mine_remove")).clicked() {
                                 remove = Some(s.uid);
                                 ui.close();
@@ -3607,7 +3613,89 @@ fn my_shapes_grid(app: &mut App, ui: &mut Ui, popup: egui::Id) {
         app.remove_common_shape(uid);
     } else if let Some(uid) = picked {
         app.my_shape = Some(uid);
-        egui::Popup::close_id(ui.ctx(), popup);
+    }
+    if let Some(uid) = rename {
+        if let Some(s) = app.my_shapes.get(uid) {
+            app.my_shape_naming = Some((uid, s.name.clone()));
+        }
+    }
+}
+
+/// The name of a shape of My shapes asked in a small dialog: right after
+/// Add Selection as Common Shape (the name made up for it shown, kept on
+/// Skip or Escape) and by Rename on a shape's menu (#2360).
+pub fn my_shape_name_dialog(app: &mut App, ctx: &egui::Context) {
+    let Some((uid, _)) = app.my_shape_naming else {
+        return;
+    };
+    if app.my_shapes.get(uid).is_none() {
+        app.my_shape_naming = None;
+        return;
+    }
+    let mut done: Option<bool> = None;
+    let modal = egui::Modal::new(egui::Id::new("my_shape_name")).show(ctx, |ui| {
+        ui.set_width(320.0);
+        ui.label(egui::RichText::new(tr("shapes.mine_name_title")).strong());
+        ui.label(
+            egui::RichText::new(tr("shapes.mine_name_desc"))
+                .color(Tokens::text_dim())
+                .size(11.0),
+        );
+        ui.add_space(6.0);
+        let enter = ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+        if let Some((_, name)) = app.my_shape_naming.as_mut() {
+            let edit = ui.add(
+                egui::TextEdit::singleline(name)
+                    .char_limit(crate::my_shapes::MAX_NAME)
+                    .desired_width(f32::INFINITY),
+            );
+            // Focused and all selected at first: typing replaces it.
+            let first = ui.data_mut(|d| {
+                let seen = d.get_temp::<u64>(egui::Id::new("my_shape_name_for"));
+                d.insert_temp(egui::Id::new("my_shape_name_for"), uid);
+                seen != Some(uid)
+            });
+            if first {
+                edit.request_focus();
+                if let Some(mut st) = egui::TextEdit::load_state(ui.ctx(), edit.id) {
+                    let all = egui::text::CCursorRange::two(
+                        egui::text::CCursor::new(0),
+                        egui::text::CCursor::new(name.chars().count()),
+                    );
+                    st.cursor.set_char_range(Some(all));
+                    st.store(ui.ctx(), edit.id);
+                }
+            }
+        }
+        if enter {
+            done = Some(true);
+        }
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if ui
+                .add_sized([100.0, 26.0], egui::Button::new(tr("dialog.ok")))
+                .clicked()
+            {
+                done = Some(true);
+            }
+            if ui
+                .add_sized([100.0, 26.0], egui::Button::new(tr("dialog.skip")))
+                .clicked()
+            {
+                done = Some(false);
+            }
+        });
+    });
+    if modal.should_close() && done.is_none() {
+        done = Some(false);
+    }
+    if let Some(keep) = done {
+        if let Some((uid, name)) = app.my_shape_naming.take() {
+            if keep {
+                app.rename_common_shape(uid, &name);
+            }
+        }
+        ctx.data_mut(|d| d.remove::<u64>(egui::Id::new("my_shape_name_for")));
     }
 }
 
@@ -4381,6 +4469,97 @@ mod tests {
         for c in Category::ALL {
             assert_eq!(count(&texts, c.key()), 2, "{c:?}: its tab and heading");
         }
+    }
+
+    /// A click on a shape in the Common Shapes picker picks it and leaves
+    /// the picker open, to try another (#2361).
+    #[test]
+    fn the_common_shapes_picker_stays_open_after_a_pick() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.set_tool(crate::tools::Tool::CommonShapes);
+        let popup = egui::Id::new("common_shapes_popup");
+        frame(&ctx, &mut app, Vec::new());
+        egui::Popup::open_id(&ctx, popup);
+        let mut texts = Vec::new();
+        for _ in 0..2 {
+            texts = frame(&ctx, &mut app, Vec::new());
+        }
+        let tab = texts
+            .iter()
+            .find(|(t, _)| *t == tr("shapes.all"))
+            .map(|(_, r)| *r)
+            .expect("the All tab");
+        let before = app.common_shape;
+        // The grid's second thumbnail, below the tabs and the separator.
+        let mut picked = false;
+        for dy in [24.0, 30.0, 36.0, 42.0] {
+            let at = egui::pos2(tab.left() + 17.0 + 36.0, tab.bottom() + dy);
+            let button = |pressed| egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            frame(&ctx, &mut app, vec![egui::Event::PointerMoved(at)]);
+            frame(&ctx, &mut app, vec![button(true)]);
+            frame(&ctx, &mut app, vec![button(false)]);
+            frame(&ctx, &mut app, Vec::new());
+            if app.common_shape != before {
+                picked = true;
+                break;
+            }
+        }
+        assert!(picked, "a click on a thumbnail picks its shape");
+        assert!(
+            egui::Popup::is_id_open(&ctx, popup),
+            "the picker stays open"
+        );
+    }
+
+    /// The name asked for a shape of My shapes: typed and confirmed with
+    /// Enter, it is the shape's name (#2360).
+    #[test]
+    fn a_shape_of_my_own_is_named_in_the_dialog() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        let mut path = tracedraw_core::geometry::BezPath::new();
+        path.move_to((10.0, 10.0));
+        path.line_to((50.0, 10.0));
+        path.line_to((30.0, 30.0));
+        path.close_path();
+        let id = app
+            .new_shape(tracedraw_core::ShapeKind::Path { path, closed: true })
+            .expect("triangle");
+        app.select(vec![id]);
+        assert!(app.add_selection_as_common_shape());
+        let uid = app.my_shape.expect("picked");
+        let mut texts = Vec::new();
+        for _ in 0..3 {
+            texts = frame(&ctx, &mut app, Vec::new());
+        }
+        assert!(
+            texts
+                .iter()
+                .any(|(t, _)| *t == tr("shapes.mine_name_title")),
+            "the dialog asks for a name"
+        );
+        // The made-up name is selected: typing replaces it.
+        frame(&ctx, &mut app, vec![egui::Event::Text("Badge".into())]);
+        let enter = |pressed| egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(&ctx, &mut app, vec![enter(true), enter(false)]);
+        frame(&ctx, &mut app, Vec::new());
+        assert!(app.my_shape_naming.is_none(), "the dialog closed");
+        assert_eq!(app.my_shapes.get(uid).expect("kept").name, "Badge");
+        app.remove_common_shape(uid);
     }
 
     /// The Launch list holds the tools (Font Manager, TraceCut, the

@@ -1243,6 +1243,10 @@ pub struct App {
     /// The shape of My shapes picked for the Common Shapes tool (`None`:
     /// `common_shape`).
     pub my_shape: Option<u64>,
+    /// A shape of My shapes being named: its uid and the name typed so
+    /// far (asked right after Add Selection as Common Shape and by
+    /// Rename, #2360).
+    pub my_shape_naming: Option<(u64, String)>,
     pub table_rows: u32,
     pub table_cols: u32,
     /// Create New Table's width and height in millimetres.
@@ -2950,6 +2954,7 @@ impl App {
             common_shape: crate::tools2::CommonShape::RightArrow,
             my_shapes: Default::default(),
             my_shape: None,
+            my_shape_naming: None,
             table_rows: 3,
             table_cols: 4,
             table_size: (75.0, 100.0),
@@ -10362,7 +10367,7 @@ pub(crate) fn carried_cmyk_profile(
 }
 
 /// The pictures a version 16+ `.cdr` file stores with the drawing: a
-/// thumbnail and each page, 256 pixels on the longer side.
+/// thumbnail (the first page with what lies beside it) and each page, 256 pixels on the longer side.
 pub(crate) fn cdr_previews(doc: &tracedraw_core::Document) -> tracedraw_cdr::write::Previews {
     let pages: Vec<tracedraw_cdr::write::Png> = tracedraw_io::page_pictures(doc, 256)
         .into_iter()
@@ -10373,7 +10378,14 @@ pub(crate) fn cdr_previews(doc: &tracedraw_core::Document) -> tracedraw_cdr::wri
         })
         .collect();
     tracedraw_cdr::write::Previews {
-        thumbnail: pages.first().cloned(),
+        // The thumbnail shows what lies beside the first page too (#2357).
+        thumbnail: tracedraw_io::whole_page_picture(doc, 256)
+            .map(|(data, width, height)| tracedraw_cdr::write::Png {
+                data,
+                width,
+                height,
+            })
+            .or_else(|| pages.first().cloned()),
         pages,
         fonts: cdr_font_faces(doc),
         embed_fonts: false,
