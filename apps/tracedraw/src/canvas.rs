@@ -2558,47 +2558,98 @@ pub fn grid_positions(a: f64, b: f64, origin: f64, step: f64) -> Vec<f64> {
 
 /// The document grid over the whole drawing window, as lines or dots,
 /// passing through the ruler origin. Lines are thinned out when the zoom
-/// would crowd them.
+/// would crowd them, and fade in as they spread apart, so a dense grid
+/// is faint rather than a shimmering pattern (#2313). Each line or dot
+/// lands on one whole device pixel, also when the interface is scaled
+/// by a fraction (a line one point wide there covers one or two device
+/// pixels by turns, which drew the grid as moire).
 fn draw_grid(app: &App, painter: &Painter, rect: ERect) {
     let view = &app.view;
     let meta = &app.doc().metadata;
     let (grid, rulers) = (meta.grid, meta.rulers.clone());
     let zoom = view.zoom as f64;
+    let ppp = painter.ctx().pixels_per_point();
     let dots = grid.display == tracedraw_core::document::GridDisplay::Dots;
-    let min_px = if dots { 8.0 } else { 6.0 };
-    let sx = grid.spacing_x.max(1e-6) * grid_thinning(grid.spacing_x * zoom, min_px);
-    let sy = grid.spacing_y.max(1e-6) * grid_thinning(grid.spacing_y * zoom, min_px);
+    let min_px = if dots { GRID_MIN_DOTS } else { GRID_MIN_LINES };
+    let (fx, fy) = (
+        grid_thinning(grid.spacing_x * zoom, min_px),
+        grid_thinning(grid.spacing_y * zoom, min_px),
+    );
+    let sx = grid.spacing_x.max(1e-6) * fx;
+    let sy = grid.spacing_y.max(1e-6) * fy;
     let tl = view.to_page(rect.left_top());
     let br = view.to_page(rect.right_bottom());
     let xs: Vec<f32> = grid_positions(tl.x, br.x, rulers.origin_x, sx)
         .into_iter()
-        .map(|x| view.to_screen(Point::new(x, 0.0)).x.round() + 0.5)
-        .filter(|x| *x >= rect.left() && *x <= rect.right())
+        .map(|x| device_pixel(view.to_screen(Point::new(x, 0.0)).x, ppp))
+        .filter(|x| *x >= rect.left() && *x < rect.right())
         .collect();
     let ys: Vec<f32> = grid_positions(br.y, tl.y, rulers.origin_y, sy)
         .into_iter()
-        .map(|y| view.to_screen(Point::new(0.0, y)).y.round() + 0.5)
-        .filter(|y| *y >= rect.top() && *y <= rect.bottom())
+        .map(|y| device_pixel(view.to_screen(Point::new(0.0, y)).y, ppp))
+        .filter(|y| *y >= rect.top() && *y < rect.bottom())
         .collect();
+    let one = 1.0 / ppp;
     let mut px = crate::ui::rulers::Pixels::default();
     if dots {
         if xs.len() * ys.len() > 200_000 {
             return;
         }
+        let fade = grid_fade((sx * zoom).min(sy * zoom), min_px);
+        let c = GRID_DOT.gamma_multiply(fade);
         for x in &xs {
             for y in &ys {
-                px.dot(x.floor(), y.floor(), GRID_DOT);
+                px.rect(
+                    ERect::from_min_size(Pos2::new(*x, *y), egui::vec2(one, one)),
+                    c,
+                );
             }
         }
     } else {
+        let cx = GRID_LINE.gamma_multiply(grid_fade(sx * zoom, min_px));
+        let cy = GRID_LINE.gamma_multiply(grid_fade(sy * zoom, min_px));
         for x in &xs {
-            px.rect(vline_rect(*x, rect), GRID_LINE);
+            px.rect(
+                ERect::from_min_max(Pos2::new(*x, rect.top()), Pos2::new(x + one, rect.bottom())),
+                cx,
+            );
         }
         for y in &ys {
-            px.rect(hline_rect(*y, rect), GRID_LINE);
+            px.rect(
+                ERect::from_min_max(Pos2::new(rect.left(), *y), Pos2::new(rect.right(), y + one)),
+                cy,
+            );
         }
     }
     px.paint(painter);
+}
+
+/// Fewest screen points between drawn grid lines, and between dots.
+const GRID_MIN_LINES: f64 = 8.0;
+const GRID_MIN_DOTS: f64 = 10.0;
+
+/// How strongly grid lines `spacing_px` points apart are drawn: faint
+/// just past the thinning limit `min_px`, full once they are two and a
+/// half times as far apart, so the grid fades in and out with the zoom
+/// instead of crowding into a pattern.
+pub fn grid_fade(spacing_px: f64, min_px: f64) -> f32 {
+    if !(spacing_px.is_finite() && min_px > 0.0) {
+        return 1.0;
+    }
+    let t = ((spacing_px / min_px - 1.0) / 1.5).clamp(0.0, 1.0);
+    (0.55 + 0.45 * t) as f32
+}
+
+/// The left (top) edge, in points, of the device pixel a one-pixel line
+/// at the screen coordinate `v` is drawn in, at `ppp` device pixels per
+/// point: `v` rounded to a whole device pixel, as the rulers' ticks are.
+pub fn device_pixel(v: f32, ppp: f32) -> f32 {
+    let ppp = if ppp.is_finite() && ppp > 0.0 {
+        ppp
+    } else {
+        1.0
+    };
+    (v * ppp).round() / ppp
 }
 
 /// A one-pixel vertical line through the pixel containing `x`, across `r`.
@@ -4024,6 +4075,34 @@ mod tests {
             .all(|r| !r.intersects(page.shrink(0.01)) && !r.intersects(second.shrink(0.01))));
         // No page in view: the whole window.
         assert_eq!(outside(area, &[]), vec![area]);
+    }
+
+    #[test]
+    fn grid_fades_in_and_lands_on_whole_device_pixels() {
+        // #2313: lines just past the thinning limit are faint, lines far
+        // apart are drawn in full, and the strength grows with the gap.
+        assert!((grid_fade(8.0, 8.0) - 0.55).abs() < 1e-6);
+        assert_eq!(grid_fade(20.0, 8.0), 1.0);
+        assert_eq!(grid_fade(80.0, 8.0), 1.0);
+        let mut last = 0.0;
+        for i in 0..40 {
+            let f = grid_fade(8.0 + i as f64 * 0.5, 8.0);
+            assert!(f >= last);
+            last = f;
+        }
+        // At 125 % every line starts on a device pixel boundary, so a
+        // line 1/ppp points wide fills exactly one device pixel: lines
+        // 7.3 points apart are 9 or 10 device pixels apart, never a
+        // pixel and a quarter that the rasteriser would split.
+        let ppp = 1.25;
+        for i in 0..200 {
+            let x = device_pixel(3.1 + i as f32 * 7.3, ppp);
+            let d = x * ppp;
+            assert!((d - d.round()).abs() < 1e-3, "{x} is not on a device pixel");
+        }
+        assert_eq!(device_pixel(10.4, 1.0), 10.0);
+        assert_eq!(device_pixel(10.6, 1.0), 11.0);
+        assert_eq!(device_pixel(10.6, 0.0), 11.0);
     }
 
     #[test]
