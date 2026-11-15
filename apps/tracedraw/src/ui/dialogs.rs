@@ -3209,6 +3209,7 @@ pub fn show(app: &mut App, ctx: &Context) {
                     .color(Tokens::text_dim())
                     .size(11.0),
                 );
+                resample_file_section(app, ui, st);
                 apply = ok_cancel(ui, &mut close);
             });
             if apply {
@@ -10059,4 +10060,99 @@ fn edit_text_job(
         job.append(&span.text, 0.0, format);
     }
     job
+}
+
+/// Resample's "Save as file" part (#1901): the format, a quality slider
+/// that sets the file size, the size the file would have, a target size
+/// to fit it under, and Save As. The drawing does not change.
+fn resample_file_section(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    st: &mut crate::resample::ResampleState,
+) {
+    use crate::resample::{size_text, FileFormat};
+    use crate::ui::field::NumField;
+    ui.add_space(6.0);
+    ui.separator();
+    ui.label(egui::RichText::new(tr("resample.save_file")).strong());
+    ui.horizontal(|ui| {
+        ui.label(tr("resample.format"));
+        for f in FileFormat::ALL {
+            ui.selectable_value(&mut st.format, f, f.name())
+                .rich_tip(crate::ui::tips::pair(
+                    "resample.format",
+                    "resample.save_as_desc",
+                ));
+        }
+    });
+    if st.format.lossy() {
+        let mut q = st.quality as f64;
+        ui.horizontal(|ui| {
+            ui.label(tr("resample.quality"));
+            if ui
+                .add(egui::Slider::new(&mut q, 1.0..=100.0).fixed_decimals(0))
+                .rich_tip(crate::ui::tips::pair(
+                    "resample.quality",
+                    "resample.quality_desc",
+                ))
+                .changed()
+            {
+                st.quality = q.round() as u8;
+            }
+        });
+    }
+    // The size is worked out again once the settings rest (not while a
+    // slider is dragged: a big picture takes a moment to encode).
+    let key = st.estimate_key();
+    let dragging = ui.ctx().input(|i| i.pointer.any_down());
+    if st.estimate.as_ref().map(|(k, _)| *k) != Some(key) && !dragging {
+        st.estimate = Some((key, app.resample_file_size(st)));
+    }
+    let size = match &st.estimate {
+        Some((k, Some(b))) if *k == key => size_text(*b),
+        _ => "...".into(),
+    };
+    ui.label(
+        egui::RichText::new(trf("resample.file_size", &[("size", &size)]))
+            .color(Tokens::text_dim())
+            .size(11.0),
+    );
+    ui.horizontal(|ui| {
+        ui.label(tr("resample.target"));
+        ui.add(
+            NumField::new(&mut st.target_kb)
+                .range(0.0..=1_000_000.0)
+                .fixed_decimals(0)
+                .suffix(" KB")
+                .width(90.0),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "resample.target",
+            "resample.target_desc",
+        ));
+        if ui
+            .add_enabled(st.target_kb > 0.0, egui::Button::new(tr("resample.fit")))
+            .rich_tip(crate::ui::tips::pair(
+                "resample.fit",
+                "resample.target_desc",
+            ))
+            .clicked()
+            && !app.resample_fit_target(st)
+        {
+            app.status = trf(
+                "resample.cannot_fit",
+                &[("kb", &format!("{:.0}", st.target_kb))],
+            );
+        }
+    });
+    if ui
+        .button(tr("resample.save_as"))
+        .rich_tip(crate::ui::tips::pair(
+            "resample.save_as",
+            "resample.save_as_desc",
+        ))
+        .clicked()
+    {
+        app.resample_save_as(st);
+    }
 }

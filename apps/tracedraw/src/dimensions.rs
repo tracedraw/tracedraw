@@ -963,6 +963,28 @@ fn sweep(center: Point, a: Point, b: Point) -> f64 {
     }
 }
 
+/// The group that draws the dimension `d`: its lines, arrowheads and
+/// label (ids `ids`) in a group `group` that keeps the dimension, so it
+/// stays live. Scripts make theirs with it too (#2348).
+pub fn group_of(
+    d: Dimension,
+    ids: [ShapeId; 3],
+    group: ShapeId,
+    font: &str,
+    drawing_units: Units,
+) -> Shape {
+    let d = d.noting_drawn(font, drawing_units);
+    let children = d.shapes(ids, font, drawing_units);
+    let mut g = Shape::new(
+        group,
+        ShapeKind::Group {
+            children: children.to_vec(),
+        },
+    );
+    g.data = with_data(Vec::new(), &d);
+    g
+}
+
 fn with_data(mut data: Vec<(String, String)>, d: &Dimension) -> Vec<(String, String)> {
     data.retain(|(k, _)| k != DATA_KEY);
     if let Ok(v) = serde_json::to_string(d) {
@@ -1068,22 +1090,13 @@ impl App {
     fn dimension_group(&mut self, measure: Measure) -> Shape {
         let mut d = Dimension::new(measure, self.dimension_style.clone());
         d.anchors = self.anchors_for(&d);
-        let d = d.noting_drawn(&self.text_font, self.units);
         let ids = [
             self.engine.new_shape_id(),
             self.engine.new_shape_id(),
             self.engine.new_shape_id(),
         ];
-        let children = d.shapes(ids, &self.text_font, self.units);
         let group = self.engine.new_shape_id();
-        let mut g = Shape::new(
-            group,
-            ShapeKind::Group {
-                children: children.to_vec(),
-            },
-        );
-        g.data = with_data(Vec::new(), &d);
-        g
+        group_of(d, ids, group, &self.text_font, self.units)
     }
 
     /// The anchors of `d`'s points (page space) that sit on a node of an

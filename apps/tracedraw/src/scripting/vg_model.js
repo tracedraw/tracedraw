@@ -25,6 +25,8 @@ const __consts = {
   cdrMeshFillShape: 20, cdrCustomShape: 21, cdrCustomEffectGroupShape: 22,
   cdrSymbolShape: 23, cdrHTMLFormObjectShape: 24, cdrHTMLActiveObjectShape: 25,
   cdrPerfectShape: 26, cdrEPSShape: 27,
+  // cdrLinearDimensionType
+  cdrDimensionHorizontal: 0, cdrDimensionVertical: 1, cdrDimensionSlanted: 2,
   // cdrFillType
   cdrNoFill: 0, cdrUniformFill: 1, cdrFountainFill: 2, cdrPostscriptFill: 3,
   cdrTextureFill: 8, cdrPatternFill: 9, cdrHatchFill: 10,
@@ -170,6 +172,14 @@ const __mmPer = { 0: 0.0001, 1: 25.4, 2: 304.8, 3: 1, 4: 10, 5: 25.4 / 96, 6: 16
   14: 25.4 / 72, 15: 0.25, 16: 0.25 };
 function __f() { return __mmPer[__vg.unit] || 25.4; }
 function __mm(v) { return Number(v) * __f(); }
+// A point argument in page millimetres: [x, y], {x, y}, or anything
+// with PositionX/PositionY (a snap point, a node, a shape).
+function __pt(p) {
+  if (Array.isArray(p)) return [__mm(p[0]), __mm(p[1])];
+  if (p && p.PositionX !== undefined) return [__mm(p.PositionX), __mm(p.PositionY)];
+  if (p && p.x !== undefined) return [__mm(p.x), __mm(p.y)];
+  throw new Error('a dimension needs points');
+}
 function __un(mm) { return mm / __f(); }
 function __ids(x) {
   if (x === undefined || x === null) return [];
@@ -1093,6 +1103,36 @@ class Layer {
   }
   CreateLineSegment(StartX, StartY, EndX, EndY) {
     return new Shape(__call('create_curve', { layer: this.id, points: [[__mm(StartX), __mm(StartY)], [__mm(EndX), __mm(EndY)]], closed: false }).id);
+  }
+  // Dimensions (#2348): live, in the Dimension tool's style. A point is
+  // a snap point or shape (PositionX/PositionY), {x, y} or [x, y], in
+  // document units. The dimension line passes through (TextX, TextY);
+  // without it, 10 mm off the measured points.
+  CreateLinearDimension(Type, Point1, Point2, TextCentered, TextX, TextY) {
+    const a = __pt(Point1), b = __pt(Point2);
+    const kind = Type === 0 ? 'horizontal' : Type === 1 ? 'vertical' : 'parallel';
+    let t;
+    if (TextX !== undefined && TextY !== undefined) t = [__mm(TextX), __mm(TextY)];
+    else if (kind === 'horizontal') t = [(a[0] + b[0]) / 2, Math.max(a[1], b[1]) + 10];
+    else if (kind === 'vertical') t = [Math.max(a[0], b[0]) + 10, (a[1] + b[1]) / 2];
+    else {
+      const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+      t = [(a[0] + b[0]) / 2 - dy / l * 10, (a[1] + b[1]) / 2 + dx / l * 10];
+    }
+    return new Shape(__call('create_dimension', { layer: this.id, kind: kind, x1: a[0], y1: a[1], x2: b[0], y2: b[1], tx: t[0], ty: t[1] }).id);
+  }
+  // The angle at Center from Point1 to Point2, its arc through (TextX,
+  // TextY) (else at three quarters of the shorter arm).
+  CreateAngularDimension(Center, Point1, Point2, TextX, TextY) {
+    const c = __pt(Center), a = __pt(Point1), b = __pt(Point2);
+    let t;
+    if (TextX !== undefined && TextY !== undefined) t = [__mm(TextX), __mm(TextY)];
+    else {
+      const r = 0.75 * Math.min(Math.hypot(a[0] - c[0], a[1] - c[1]), Math.hypot(b[0] - c[0], b[1] - c[1]));
+      const ang = (Math.atan2(a[1] - c[1], a[0] - c[0]) + Math.atan2(b[1] - c[1], b[0] - c[0])) / 2;
+      t = [c[0] + r * Math.cos(ang), c[1] + r * Math.sin(ang)];
+    }
+    return new Shape(__call('create_dimension', { layer: this.id, kind: 'angular', cx: c[0], cy: c[1], x1: a[0], y1: a[1], x2: b[0], y2: b[1], tx: t[0], ty: t[1] }).id);
   }
   CreateCurveSegment(StartX, StartY, EndX, EndY, StartingControlPointLength, StartingControlPointAngle, EndingControlPointLength, EndingControlPointAngle) {
     const sx = __mm(StartX), sy = __mm(StartY), ex = __mm(EndX), ey = __mm(EndY);
