@@ -3415,6 +3415,9 @@ pub struct ShortcutEditor {
     pub keys_tab: bool,
     /// Reset all shortcuts was pressed: the question is shown.
     pub confirm_reset_all: bool,
+    /// The General tab's list of pictures to choose a command's icon
+    /// from is open (#2100).
+    pub icon_picker: bool,
 }
 
 /// The Commands page's category for the toolbox's tools.
@@ -3759,7 +3762,12 @@ fn commands_page(app: &mut App, ui: &mut Ui) {
                         egui::RichText::new(tr("options.no_command")).color(Tokens::text_dim()),
                     );
                 }
-                Some(c) if !app.shortcut_editor.keys_tab => command_general(app, ui, &c),
+                Some(c) if !app.shortcut_editor.keys_tab => {
+                    command_general(app, ui, &c);
+                    if c.id.starts_with("menu.") {
+                        command_icon(app, ui, &c);
+                    }
+                }
                 Some(c) => command_keys(app, ui, &c),
             }
         });
@@ -3876,6 +3884,140 @@ fn command_general(app: &App, ui: &mut Ui, c: &CommandItem) {
         });
         ui.end_row();
     });
+}
+
+/// The pictures a command's icon can be chosen from (#2100): those of
+/// the menu commands that have one of their own, then the tools'.
+pub(crate) fn icon_sources(entries: &[crate::ui::menus::invoke::Entry]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for e in entries {
+        if crate::ui::menus::has_own_picture(&e.key) && !out.contains(&e.key) {
+            out.push(e.key.clone());
+        }
+    }
+    out.extend(
+        crate::tools::Tool::ALL
+            .into_iter()
+            .map(|t| format!("{}{}", crate::ui::bar_items::TOOL, t.id())),
+    );
+    out
+}
+
+/// Give the command `key` the picture `source`, or its own back with
+/// `None`; kept in the settings (#2100).
+pub(crate) fn set_command_icon(app: &mut App, key: &str, source: Option<&str>) {
+    app.settings.command_icons.retain(|(k, _)| k != key);
+    if let Some(src) = source.filter(|s| *s != key) {
+        app.settings
+            .command_icons
+            .push((key.to_string(), src.to_string()));
+    }
+    crate::ui::menus::set_command_icons(&app.settings.command_icons);
+    app.settings.save();
+}
+
+/// The General tab's Icon (#2100): the command's picture, Choose... with
+/// the pictures to pick from, and Reset to Default. A command with a
+/// picture shows it on a toolbar instead of its name.
+fn command_icon(app: &mut App, ui: &mut Ui, c: &CommandItem) {
+    ui.add_space(6.0);
+    let chosen = crate::ui::menus::chosen_icon(&c.id).is_some();
+    ui.horizontal(|ui| {
+        ui.label(tr("options.command_icon"));
+        let (r, resp) = ui.allocate_exact_size(egui::vec2(32.0, 32.0), egui::Sense::hover());
+        ui.painter().rect_stroke(
+            r,
+            2.0,
+            egui::Stroke::new(1.0, Tokens::control_border()),
+            egui::StrokeKind::Inside,
+        );
+        if !crate::ui::menus::draw_menu_picture(
+            ui.painter(),
+            egui::Rect::from_center_size(r.center(), egui::vec2(20.0, 20.0)),
+            &c.id,
+            Tokens::icon(),
+        ) {
+            ui.painter().text(
+                r.center(),
+                egui::Align2::CENTER_CENTER,
+                "-",
+                egui::FontId::proportional(13.0),
+                Tokens::text_dim(),
+            );
+        }
+        resp.rich_tip(crate::ui::tips::pair(
+            "options.command_icon",
+            "options.command_icon_tip",
+        ));
+        let open = app.shortcut_editor.icon_picker;
+        if ui
+            .add(egui::Button::new(tr("options.command_icon_choose")).selected(open))
+            .rich_tip(crate::ui::tips::pair(
+                "options.command_icon_choose",
+                "options.command_icon_choose_tip",
+            ))
+            .clicked()
+        {
+            app.shortcut_editor.icon_picker = !open;
+        }
+        if ui
+            .add_enabled(chosen, egui::Button::new(tr("options.command_icon_reset")))
+            .rich_tip(crate::ui::tips::pair(
+                "options.command_icon_reset",
+                "options.command_icon_reset_tip",
+            ))
+            .clicked()
+        {
+            set_command_icon(app, &c.id, None);
+        }
+    });
+    if !app.shortcut_editor.icon_picker {
+        return;
+    }
+    let sources = icon_sources(&app.shortcut_editor.entries);
+    const CELL: f32 = 26.0;
+    egui::Frame::new()
+        .stroke(egui::Stroke::new(1.0, Tokens::control_border()))
+        .fill(Tokens::field())
+        .show(ui, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("command_icon_picker")
+                .max_height(150.0)
+                .show(ui, |ui| {
+                    let per_row = ((ui.available_width() / CELL).floor() as usize).max(1);
+                    for row in sources.chunks(per_row) {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            for src in row {
+                                let (r, resp) = ui.allocate_exact_size(
+                                    egui::vec2(CELL, CELL),
+                                    egui::Sense::click(),
+                                );
+                                if resp.hovered() {
+                                    ui.painter().rect_filled(r, 2.0, Tokens::hovered_row());
+                                }
+                                crate::ui::menus::draw_icon_source(
+                                    ui.painter(),
+                                    egui::Rect::from_center_size(
+                                        r.center(),
+                                        egui::vec2(16.0, 16.0),
+                                    ),
+                                    src,
+                                    Tokens::icon(),
+                                );
+                                let name = match crate::ui::bar_items::tool_of(src) {
+                                    Some(t) => t.name(),
+                                    None => tr(src),
+                                };
+                                if resp.rich_tip(name).clicked() {
+                                    set_command_icon(app, &c.id, Some(src));
+                                    app.shortcut_editor.icon_picker = false;
+                                }
+                            }
+                        });
+                    }
+                });
+        });
 }
 
 /// The keys that run `c` now: the user's, else the built-in ones. The

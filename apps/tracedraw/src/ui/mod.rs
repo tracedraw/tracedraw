@@ -419,6 +419,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     }
     crate::ui::icons::set_colored(app.settings.colored_icons);
     menus::invoke::set_bindings(&app.settings.shortcuts);
+    menus::set_command_icons(&app.settings.command_icons);
     // F1: the Help page of the open dialog, the docker or the tool.
     if app.shortcut_editor.capture.is_none() {
         crate::help::handle_f1(app, &ctx);

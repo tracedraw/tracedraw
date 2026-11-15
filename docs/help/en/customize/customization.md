@@ -48,6 +48,12 @@ command, and so do rows the menus show only at times (such as Finish Editing
 Contents). A **Toolbar buttons** list holds every button of the Standard and
 Zoom toolbars: drag a button you removed from a bar back onto it from there.
 
+A command dragged onto a toolbar shows its picture there, or its name when
+it has none. On the **General** tab, **Icon** shows the command's picture:
+**Choose...** opens the pictures of the other commands and of the tools, and
+a click gives the command that one, in the menus and on the toolbars;
+**Reset to Default** gives it its own back.
+
 ## Command Bars {#command-bars}
 
 ![The Command Bars page of the customization options](../../img/customize-customization-command-bars.png)

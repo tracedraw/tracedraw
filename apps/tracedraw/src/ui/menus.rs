@@ -620,9 +620,73 @@ pub(crate) fn menu_titles() -> Vec<&'static str> {
     all_menus().iter().map(|(k, _)| *k).collect()
 }
 
-/// Draw the picture the menu row of `key` shows into `r`; false when the
-/// row has none.
+thread_local! {
+    /// The pictures the user chose for commands (`Settings::command_icons`).
+    static COMMAND_ICONS: std::cell::RefCell<Vec<(String, String)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Keep the pictures the user chose for commands (#2100), for the menus
+/// and the toolbar buttons drawn after.
+pub(crate) fn set_command_icons(icons: &[(String, String)]) {
+    COMMAND_ICONS.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.as_slice() != icons {
+            *c = icons.to_vec();
+        }
+    });
+}
+
+/// The picture the user chose for the command `key`: another command's
+/// key, or a tool ("tool:" and its id).
+pub(crate) fn chosen_icon(key: &str) -> Option<String> {
+    COMMAND_ICONS.with(|c| {
+        c.borrow()
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, src)| src.clone())
+    })
+}
+
+/// Draw the picture of `source` (a command's key with a picture of its
+/// own, or "tool:" and a tool's id); false when it has none.
+pub(crate) fn draw_icon_source(
+    painter: &egui::Painter,
+    r: egui::Rect,
+    source: &str,
+    color: egui::Color32,
+) -> bool {
+    if let Some(t) = crate::ui::bar_items::tool_of(source) {
+        crate::ui::icons::draw(painter, r, t, color);
+        true
+    } else {
+        draw_own_picture(painter, r, source, color)
+    }
+}
+
+/// Whether `source` names a picture [`draw_icon_source`] draws.
+pub(crate) fn is_icon_source(source: &str) -> bool {
+    crate::ui::bar_items::tool_of(source).is_some() || has_own_picture(source)
+}
+
+/// Draw the picture the menu row of `key` shows into `r`: the one the
+/// user chose for it (#2100), else its own; false when the row has none.
 pub(crate) fn draw_menu_picture(
+    painter: &egui::Painter,
+    r: egui::Rect,
+    key: &str,
+    color: egui::Color32,
+) -> bool {
+    if let Some(src) = chosen_icon(key).filter(|s| s != key) {
+        if draw_icon_source(painter, r, &src, color) {
+            return true;
+        }
+    }
+    draw_own_picture(painter, r, key, color)
+}
+
+/// The picture the menu row of `key` has of its own.
+pub(crate) fn draw_own_picture(
     painter: &egui::Painter,
     r: egui::Rect,
     key: &str,
@@ -642,8 +706,14 @@ pub(crate) fn draw_menu_picture(
     }
 }
 
-/// Whether the menu item `key` has a picture to draw.
+/// Whether the menu item `key` has a picture to draw, its own or one the
+/// user chose (#2100).
 pub(crate) fn has_menu_picture(key: &str) -> bool {
+    chosen_icon(key).is_some_and(|s| is_icon_source(&s)) || has_own_picture(key)
+}
+
+/// Whether the menu item `key` has a picture of its own.
+pub(crate) fn has_own_picture(key: &str) -> bool {
     menu_icon(key).is_some()
         || menu_pic(key).is_some()
         || crate::ui::menu_glyphs::for_key(key).is_some()

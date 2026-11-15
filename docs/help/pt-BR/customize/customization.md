@@ -52,6 +52,12 @@ teclas do comando de menu, assim como linhas que os menus mostram só às vezes
 ferramentas** tem todos os botões das barras Padrão e Zoom: arraste dali de
 volta para a barra um botão que você tirou.
 
+Um comando arrastado para uma barra de ferramentas mostra ali a figura dele,
+ou o nome quando não tem figura. Na aba **Geral**, **Ícone** mostra a figura
+do comando: **Escolher...** abre as figuras dos outros comandos e das
+ferramentas, e um clique dá aquela ao comando, nos menus e nas barras;
+**Restaurar padrão** devolve a figura dele.
+
 ## Barras de comando {#command-bars}
 
 ![A página Barras de comando das opções de personalização](../../img/customize-customization-command-bars.png)

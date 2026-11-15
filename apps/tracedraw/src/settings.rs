@@ -170,6 +170,11 @@ pub struct Settings {
     pub default_dpi: f64,
     pub snap: SnapPrefs,
     pub shortcuts: Vec<(String, String)>,
+    /// Pictures the user chose for menu commands (#2100): the command's
+    /// key and the picture's source, another command's key or a tool
+    /// ("tool:" and its id). Shown in the menus and on toolbar buttons.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub command_icons: Vec<(String, String)>,
     /// The program Edit Bitmap opens pictures in (a path; empty for the
     /// system's program for PNG files, #593).
     #[serde(default)]
@@ -1978,6 +1983,7 @@ impl Default for Settings {
             default_dpi: 300.0,
             snap: SnapPrefs::default(),
             shortcuts: Vec::new(),
+            command_icons: Vec::new(),
             bitmap_editor: String::new(),
             last_dir: None,
             last_export_dir: None,
