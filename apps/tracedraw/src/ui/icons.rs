@@ -456,6 +456,12 @@ pub fn draw_on(painter: &Painter, r: Rect, tool: Tool, color: Color32, bg: Color
             pen.circle(16.0, 12.0, 4.8, pen.wash(), LINE, ink);
             pen.line("M3 7.5h6.5M2 12h6M3 16.5h6.5", acc);
         }
+        Tool::Balloon => {
+            // A speech balloon, its tail down to the left, the node on
+            // the tail's tip.
+            pen.body("M12 4C6.5 4 3 6.9 3 10.3c0 2.2 1.5 4.1 3.8 5.2L5 20.5l5.2-3.9c.6.1 1.2.1 1.8.1 5.5 0 9-2.9 9-6.4S17.5 4 12 4z");
+            pen.node(5.0, 20.5, true);
+        }
         Tool::GraphPaper => {
             // A grid of cells, the node on its corner.
             pen.body(&rrect(3.0, 3.0, 18.0, 18.0, 2.0));

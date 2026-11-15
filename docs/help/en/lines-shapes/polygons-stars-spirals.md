@@ -96,6 +96,14 @@ On the property bar:
 - **From** (parallel): the side the lines start from: right, left or
   centre.
 
+## Speech Balloon {#speech-balloons}
+
+[[tool.balloon]]: Draw speech balloons for comics: body and tail in one curve, the tail dragged to point at anyone.
+
+1. Choose the style on the property bar: Speech, Thought, Whisper, Shout or Caption.
+2. Drag a box: the balloon fills it, its tail welded on in one curve.
+3. Drag the diamond at the tail's tip to point the tail at someone; set its width and bend on the bar.
+
 ## Graph Paper {#graph-paper}
 
 The [[tool.graph_paper]] tool (<kbd>D</kbd>) draws a grid of cells: a group of

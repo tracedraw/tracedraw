@@ -1126,6 +1126,47 @@ pub fn transform_toolbar(app: &mut App, ui: &mut Ui) {
 
 /// A dim label and the control `add` draws after it, both showing the
 /// tip of `key`: the label's text in bold and the `key_desc` description.
+/// The Speech Balloon tool's bar (#2179): the style, then the tail's
+/// width and bend. It shows the selected balloon's settings, and a change
+/// goes to the selected balloons and the ones drawn next.
+fn balloon_bar(app: &mut App, ui: &mut Ui) {
+    use crate::balloons::BalloonStyle;
+    let shown = app
+        .selected_balloons()
+        .first()
+        .map(|(_, b, _)| (b.style, b.width, b.bend))
+        .unwrap_or((app.balloon_style, app.balloon_width, app.balloon_bend));
+    for style in BalloonStyle::ALL {
+        if ui
+            .selectable_label(shown.0 == style, tr(style.key()))
+            .rich_tip(crate::ui::tips::keyed(style.key()))
+            .clicked()
+        {
+            app.set_balloon_settings(|s, _, _| *s = style);
+        }
+    }
+    let mut width = shown.1;
+    if dim_labelled(ui, "balloon.tail_width", |ui| {
+        ui.add(
+            crate::ui::field::NumField::new(&mut width)
+                .range(5.0..=100.0)
+                .suffix(" %"),
+        )
+    })
+    .changed()
+    {
+        app.set_balloon_settings(|_, w, _| *w = width);
+    }
+    let mut bend = shown.2;
+    if dim_labelled(ui, "balloon.tail_bend", |ui| {
+        ui.add(crate::ui::field::NumField::new(&mut bend).range(-100.0..=100.0))
+    })
+    .changed()
+    {
+        app.set_balloon_settings(|_, _, b| *b = bend);
+    }
+}
+
 pub(crate) fn dim_labelled<R>(ui: &mut Ui, key: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
     dim_labelled_as(ui, key, &format!("{key}_desc"), add)
 }
@@ -1643,6 +1684,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
             }
             Tool::ActionLines => action_lines_bar(app, ui),
             Tool::CommonShapes => common_shapes_bar(app, ui),
+            Tool::Balloon => balloon_bar(app, ui),
             Tool::Table => crate::ui::table_bar::table_bar(app, ui, true),
             Tool::PainterlyBrush => crate::painterly_tool::painterly_bar(app, ui),
             Tool::BrushStrokes => brush_strokes_bar(app, ui),

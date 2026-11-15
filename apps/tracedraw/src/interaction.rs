@@ -1931,6 +1931,14 @@ impl App {
             }
             return;
         }
+        // Speech Balloon tool: the diamond at a selected balloon's tail
+        // tip takes a drag before the selection's handles (#2179).
+        if self.tool == Tool::Balloon
+            && matches!(self.drag, Drag::None)
+            && self.balloon_tip_input(response, p, screen)
+        {
+            return;
+        }
         // Right after a shape is drawn its handles show with the drawing
         // tool still chosen: a drag from one resizes the selection, as
         // with the Pick tool, and a click on one leaves it as it is,

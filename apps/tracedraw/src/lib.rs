@@ -39,6 +39,7 @@ mod blend_link;
 mod blend_tool;
 mod border_grommet;
 mod brushes;
+mod balloons;
 mod callouts;
 mod captions;
 mod chinese;

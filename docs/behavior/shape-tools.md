@@ -309,7 +309,34 @@ even lengths and the three sides; the empty middle and the oval; the
 three ends as filled strokes, a square stroke twice the area of a
 pointed one; the angle and stray spacing).
 
+## Speech Balloon
+
+- Drag a box: the balloon's body fills it and its tail points down and
+  to the left, its tip half the box's height below the box, a quarter of
+  the way across. Body and tail are welded into one closed curve
+  (`balloons.rs`), filled with the default fill (white when that is
+  none) and the default outline (hairline black when none).
+- Styles: Speech (ellipse), Thought (a cloud of 11 bumps with three
+  bubbles toward the tip, 16 %, 11 % and 7 % of the smaller side, at 30 %,
+  62 % and 92 % of the way from the cloud's rim, instead of a tail),
+  Whisper (Speech with a 4-2 dashed outline), Shout (a 16-point burst,
+  points 0.83 to 1.0 and notches 0.72 to 0.8 of the half box) and Caption
+  (a box rounded by 20 % of its smaller side).
+- Tail width: 5 to 100 % of the body's smaller side (30), measured across
+  the body's middle where the tail starts. Tail bend: -100 to 100 (0); the
+  sides bow sideways by `bend/100 * 0.35 *` the tail's length. A tip
+  inside the body gives no tail.
+- The balloon is kept in the object's data (`balloon`: style, body box,
+  tip, width, bend, in the object's own space). With the tool, the
+  selected balloons show a diamond at the tail's tip; a drag from it
+  (within 8 pixels) points the tail elsewhere, one undo step. The bar
+  shows the selected balloon's style, width and bend, and a change goes
+  to the selected balloons (one undo step) and to the next ones.
+
 ## Checks
+
+- `balloons::tests::every_style_makes_one_closed_curve_reaching_the_tip`
+- `balloons::tests::a_balloon_is_drawn_its_tip_dragged_and_its_style_changed`
 
 - Given a 3 mm black default outline, while a rectangle or an ellipse is
   dragged out, the outline is painted at its width and the edge line is

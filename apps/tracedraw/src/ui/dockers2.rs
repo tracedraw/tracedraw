@@ -2009,6 +2009,7 @@ fn bevel(app: &mut App, ui: &mut Ui) {
         light_color,
         level,
         emboss_color,
+        directional,
     }) = &cur
     {
         {
@@ -2021,6 +2022,7 @@ fn bevel(app: &mut App, ui: &mut Ui) {
                 light_color: *light_color,
                 level: *level,
                 emboss_color: *emboss_color,
+                directional: *directional,
             };
             app.bevel_synced_to = app.selection.first().copied();
         }
@@ -2038,10 +2040,14 @@ fn bevel(app: &mut App, ui: &mut Ui) {
     use crate::ui::tips::{keyed, pair};
     let b = &mut app.bevel;
     let mut changed = false;
-    // The style: two equal buttons across the panel.
+    // The style: three equal buttons across the panel.
     ui.horizontal(|ui| {
-        let w = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-        for (style, key) in [(0, "docker.soft_edge"), (1, "docker.emboss")] {
+        let w = (ui.available_width() - ui.spacing().item_spacing.x * 2.0) / 3.0;
+        for (style, key) in [
+            (0, "docker.soft_edge"),
+            (1, "docker.emboss"),
+            (2, "docker.bevel_center"),
+        ] {
             let pick = ui
                 .add_sized(
                     [w, 26.0],
@@ -2090,6 +2096,10 @@ fn bevel(app: &mut App, ui: &mut Ui) {
         .add(crate::ui::Slider::new(&mut b.intensity, 0.0..=100.0).text(tr("docker.intensity")))
         .rich_tip(pair("docker.intensity", "extrude.light_intensity_desc"))
         .changed();
+    changed |= ui
+        .checkbox(&mut b.directional, tr("docker.bevel_smooth_light"))
+        .rich_tip(keyed("docker.bevel_smooth_light"))
+        .changed();
     section(ui, None);
     row(ui, &tr("docker.light_color"), |ui| {
         changed |= color_button(ui, &mut b.light_color);
@@ -2125,9 +2135,12 @@ fn bevel(app: &mut App, ui: &mut Ui) {
         light_color: bv.light_color,
         level: bv.level,
         emboss_color: bv.emboss_color,
+        directional: bv.directional,
     };
     let has = !app.selection.is_empty();
-    if cur.is_some() && changed {
+    // Live: a change shows on the selection at once, also before Apply
+    // (#1034); Remove takes it away.
+    if has && changed {
         app.push_effect(effect.clone(), true);
     }
     ui.horizontal(|ui| {

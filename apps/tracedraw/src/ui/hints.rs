@@ -311,6 +311,7 @@ impl Topic {
                 Tool::CommonShapes,
                 Tool::GraphPaper,
                 Tool::ActionLines,
+                Tool::Balloon,
             ],
             Topic::Select => &[Tool::Pick, Tool::FreeformPick],
             Topic::MoveScale => &[Tool::Pick, Tool::FreeTransform],

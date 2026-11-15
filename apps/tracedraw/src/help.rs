@@ -285,6 +285,7 @@ pub fn tool_topic(t: Tool) -> &'static str {
         Tool::Spiral => "lines-shapes/polygons-stars-spirals#spiral",
         Tool::CommonShapes => "lines-shapes/polygons-stars-spirals#common-shapes",
         Tool::ActionLines => "lines-shapes/polygons-stars-spirals#action-lines",
+        Tool::Balloon => "lines-shapes/polygons-stars-spirals#speech-balloons",
         Tool::GraphPaper => "lines-shapes/polygons-stars-spirals#graph-paper",
         Tool::Text => "text/adding-text",
         Tool::Table => "objects/tables",

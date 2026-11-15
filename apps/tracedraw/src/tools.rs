@@ -53,6 +53,7 @@ pub enum Tool {
     Spiral,
     CommonShapes,
     ActionLines,
+    Balloon,
     GraphPaper,
     // Text group
     Text,
@@ -172,6 +173,7 @@ pub const GROUPS: &[ToolGroup] = &[
             Tool::Spiral,
             Tool::CommonShapes,
             Tool::ActionLines,
+            Tool::Balloon,
             Tool::GraphPaper,
         ],
         hidden: false,
@@ -231,7 +233,7 @@ pub const GROUPS: &[ToolGroup] = &[
 ];
 
 impl Tool {
-    pub const ALL: [Tool; 67] = [
+    pub const ALL: [Tool; 68] = [
         Tool::Pick,
         Tool::FreeformPick,
         Tool::FreeTransform,
@@ -271,6 +273,7 @@ impl Tool {
         Tool::Spiral,
         Tool::CommonShapes,
         Tool::ActionLines,
+        Tool::Balloon,
         Tool::GraphPaper,
         Tool::Text,
         Tool::Table,
@@ -343,6 +346,7 @@ impl Tool {
             Tool::Spiral => "spiral",
             Tool::CommonShapes => "common_shapes",
             Tool::ActionLines => "action_lines",
+            Tool::Balloon => "balloon",
             Tool::GraphPaper => "graph_paper",
             Tool::Text => "text",
             Tool::Table => "table",
@@ -522,6 +526,7 @@ impl Tool {
                 | Tool::Star
                 | Tool::GraphPaper
                 | Tool::ActionLines
+                | Tool::Balloon
         )
     }
 

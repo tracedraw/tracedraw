@@ -1271,6 +1271,13 @@ pub struct App {
     pub graph_cols: u32,
     /// The Action Lines tool's settings (#1617).
     pub action_lines: crate::action_lines::ActionLines,
+    /// Speech Balloon tool (#2179): the style, the tail's width (percent
+    /// of the body's smaller side) and bend for new balloons, and the
+    /// balloon whose tail tip is being dragged.
+    pub balloon_style: crate::balloons::BalloonStyle,
+    pub balloon_width: f64,
+    pub balloon_bend: f64,
+    pub balloon_tip_drag: Option<ShapeId>,
     /// 3-point tools: the base segment already dragged, waiting for the third click.
     pub three_point_base: Option<(Point, Point)>,
     /// The first line of the 3-Point Ellipse is being dragged with Ctrl
@@ -2992,6 +2999,10 @@ impl App {
             graph_rows: 4,
             graph_cols: 3,
             action_lines: Default::default(),
+            balloon_style: Default::default(),
+            balloon_width: 30.0,
+            balloon_bend: 0.0,
+            balloon_tip_drag: None,
             three_point_base: None,
             three_point_circle: false,
             media_width: 3.0,
@@ -5886,6 +5897,10 @@ impl App {
             }
             Tool::ActionLines => {
                 self.create_action_lines(rect);
+                return;
+            }
+            Tool::Balloon => {
+                self.create_balloon(rect);
                 return;
             }
             _ => return,

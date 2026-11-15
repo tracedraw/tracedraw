@@ -105,6 +105,7 @@ impl Kind {
                     light_color: b.light_color,
                     level: 4,
                     emboss_color: b.emboss_color,
+                    directional: b.directional,
                 }
             }
             Kind::Outline => {
@@ -471,6 +472,13 @@ fn settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
                 changed |= ui
                     .selectable_value(style, 1, tr("docker.emboss"))
                     .rich_tip(crate::ui::tips::pair("docker.emboss", "docker.emboss_desc"))
+                    .changed();
+                changed |= ui
+                    .selectable_value(style, 2, tr("docker.bevel_center"))
+                    .rich_tip(crate::ui::tips::pair(
+                        "docker.bevel_center",
+                        "docker.bevel_center_desc",
+                    ))
                     .changed();
             });
             ui.horizontal(|ui| {

@@ -5361,6 +5361,7 @@ mod tests {
                 light_color: Color::WHITE,
                 level,
                 emboss_color: None,
+                directional: false,
             });
             let (doc, page) = doc_with(vec![s]);
             let pm = render_page_image(&doc, page, 25.4).expect("render");

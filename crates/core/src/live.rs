@@ -117,8 +117,9 @@ pub enum Effect {
         distance: f64,
         light_angle: f64,
         intensity: f64,
-        /// Soft edge (0, the band inside the outline) or emboss (1, the
-        /// band around it, so the object stands out of the page).
+        /// Soft edge (0, the band inside the outline), emboss (1, the
+        /// band around it, so the object stands out of the page) or
+        /// centre (2, the band half inside and half outside, #1144).
         style: u8,
         shadow_color: Color,
         light_color: Color,
@@ -131,6 +132,12 @@ pub enum Effect {
         /// own fill; older files use the fill.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         emboss_color: Option<Color>,
+        /// The light falls round the band by direction: each part of
+        /// the band as lit as it faces the light, fading from lit to
+        /// shaded, instead of two halves cut through the middle (#1144).
+        /// Older files have the halves.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        directional: bool,
     },
     /// Block shadow: a solid extrusion behind the object.
     BlockShadow {
@@ -2159,6 +2166,9 @@ pub fn extrude_body(
 /// The most steps a bevel band is cut into.
 pub const MAX_BEVEL_LEVEL: u8 = 8;
 
+/// The wedges a directional bevel's light is toned in, round the object.
+const BEVEL_WEDGES: usize = 24;
+
 fn one_level() -> u8 {
     1
 }
@@ -2176,6 +2186,7 @@ fn bevel(shape: &Shape, effect: &Effect) -> Vec<Shape> {
         light_color,
         level,
         emboss_color,
+        directional,
     } = effect
     else {
         return Vec::new();
@@ -2190,10 +2201,10 @@ fn bevel(shape: &Shape, effect: &Effect) -> Vec<Shape> {
     // Offsets of the step boundaries, from the band's outer edge in.
     let reach = |j: usize| {
         let t = j as f64 / steps as f64;
-        if *style == 1 {
-            width * (1.0 - t)
-        } else {
-            -width * t
+        match style {
+            1 => width * (1.0 - t),
+            2 => width * (0.5 - t),
+            _ => -width * t,
         }
     };
     let edge = |j: usize| {
@@ -2223,6 +2234,24 @@ fn bevel(shape: &Shape, effect: &Effect) -> Vec<Shape> {
         c + Vec2::new(ldir.y, -ldir.x) * big.width() * 2.0 + ldir * big.width() * 2.0,
         c + Vec2::new(-ldir.y, ldir.x) * big.width() * 2.0 + ldir * big.width() * 2.0,
     ]);
+    // Directional light: wedges round the centre, each toned by how
+    // squarely it faces the light (1 facing it, -1 facing away).
+    let wedges: Vec<(BezPath, f64)> = if *directional {
+        let reach = big.width().max(big.height()) * 2.0;
+        (0..BEVEL_WEDGES)
+            .map(|w| {
+                let step = std::f64::consts::TAU / BEVEL_WEDGES as f64;
+                let a0 = step * w as f64;
+                let a1 = a0 + step;
+                let at = |a: f64| c + Vec2::new(a.cos(), a.sin()) * reach;
+                let mid = a0 + step / 2.0;
+                let facing = mid.cos() * ldir.x + mid.sin() * ldir.y;
+                (crate::effects::polygon(&[c, at(a0), at(a1)]), facing)
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let mut out = Vec::new();
     for i in 0..steps {
         let inner = edge(i + 1);
@@ -2232,12 +2261,29 @@ fn bevel(shape: &Shape, effect: &Effect) -> Vec<Shape> {
         let band = crate::shaping::overlay(&outer, &inner, crate::shaping::Op::Trim);
         // The light fades from the band's outer edge inwards.
         let strength = (k * (steps - i) as f64 / steps as f64) as f32;
-        let lit = crate::shaping::overlay(&band, &half, crate::shaping::Op::Intersect);
-        let dark = crate::shaping::overlay(&band, &half, crate::shaping::Op::Trim);
-        for (p, col) in [
-            (lit, lerp_color(base, *light_color, strength)),
-            (dark, lerp_color(base, *shadow_color, strength)),
-        ] {
+        let parts: Vec<(BezPath, Color)> = if *directional {
+            wedges
+                .iter()
+                .map(|(wedge, facing)| {
+                    let p = crate::shaping::overlay(&band, wedge, crate::shaping::Op::Intersect);
+                    let f = (*facing as f32 * strength).clamp(-1.0, 1.0);
+                    let col = if f >= 0.0 {
+                        lerp_color(base, *light_color, f)
+                    } else {
+                        lerp_color(base, *shadow_color, -f)
+                    };
+                    (p, col)
+                })
+                .collect()
+        } else {
+            let lit = crate::shaping::overlay(&band, &half, crate::shaping::Op::Intersect);
+            let dark = crate::shaping::overlay(&band, &half, crate::shaping::Op::Trim);
+            vec![
+                (lit, lerp_color(base, *light_color, strength)),
+                (dark, lerp_color(base, *shadow_color, strength)),
+            ]
+        };
+        for (p, col) in parts {
             if p.elements().is_empty() {
                 continue;
             }
@@ -3080,8 +3126,69 @@ mod tests {
             light_color: Color::WHITE,
             level: 1,
             emboss_color: None,
+            directional: false,
         });
         evaluate(&s)
+    }
+
+    /// #1144: the centre style puts the band half inside and half
+    /// outside the outline; directional light tones it round the object,
+    /// brightest where it faces the light and darkest opposite.
+    #[test]
+    fn centre_bevel_straddles_the_outline_and_directional_light_fades_round_it() {
+        let ev = bevelled(2);
+        let all = ev
+            .above
+            .iter()
+            .map(|p| p.bounds())
+            .reduce(|a, b| a.union(b))
+            .expect("a band");
+        assert!(
+            (all.x0 + 1.0).abs() < 1e-3 && (all.x1 - 21.0).abs() < 1e-3,
+            "{all:?}"
+        );
+        let mut s = rect_shape();
+        s.effects.push(Effect::Bevel {
+            distance: 2.0,
+            light_angle: 0.0,
+            intensity: 100.0,
+            style: 0,
+            shadow_color: Color::BLACK,
+            light_color: Color::WHITE,
+            level: 1,
+            emboss_color: None,
+            directional: true,
+        });
+        let ev = evaluate(&s);
+        assert!(ev.above.len() > 8, "toned in wedges: {}", ev.above.len());
+        let lum = |p: &Shape| match p.fill {
+            Fill::Solid(c) => {
+                let [r, g, b] = c.to_rgb8();
+                r as u32 + g as u32 + b as u32
+            }
+            _ => 0,
+        };
+        // The light comes from the right (+x): the right edge is the
+        // brightest part, the left edge the darkest, the top in between.
+        let at = |x: f64, y: f64| {
+            ev.above
+                .iter()
+                .find(|p| {
+                    p.bounds().contains(Point::new(x, y)) && {
+                        let path = p.local_path();
+                        path.winding(Point::new(x, y)) != 0
+                    }
+                })
+                .map(lum)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "no wedge at {x},{y}: {:?}",
+                        ev.above.iter().map(|p| p.bounds()).collect::<Vec<_>>()
+                    )
+                })
+        };
+        let (right, top, left) = (at(19.5, 11.0), at(11.0, 19.5), at(0.5, 11.0));
+        assert!(right > top && top > left, "{right} {top} {left}");
     }
 
     #[test]
@@ -3129,6 +3236,7 @@ mod tests {
             light_color: Color::WHITE,
             level,
             emboss_color,
+            directional: false,
         });
         evaluate(&s)
     }
@@ -3186,6 +3294,7 @@ mod tests {
             light_color: Color::WHITE,
             level: 1,
             emboss_color: None,
+            directional: false,
         })
         .unwrap_or_default();
         // The new fields are left out while they hold their defaults ...

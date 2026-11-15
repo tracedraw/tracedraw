@@ -215,6 +215,13 @@ impl App {
             },
             Tool::GraphPaper => grid_path(r, self.graph_rows, self.graph_cols),
             Tool::ActionLines => self.action_lines.path(r),
+            Tool::Balloon => crate::balloons::Balloon::new(
+                r,
+                self.balloon_style,
+                self.balloon_width,
+                self.balloon_bend,
+            )
+            .path(),
             Tool::Table => grid_path(r, self.table_rows, self.table_cols),
             Tool::Knife => {
                 let mut p = BezPath::new();
