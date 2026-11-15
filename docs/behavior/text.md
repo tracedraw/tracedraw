@@ -168,6 +168,13 @@ Text and Glyphs dockers and Options (default font):
     `/etc/fonts/fonts.conf`), else `/usr/share/fonts`,
     `/usr/local/share/fonts`, `~/.fonts` and `~/.local/share/fonts`
     (`font_folders::system_folders_are_the_ones_the_database_reads`).
+    On Windows and macOS the Adobe Fonts Creative Cloud activates count
+    as installed too (#2741): its `Adobe/CoreSync/plugins/livetype/.r`
+    (or `r`) folder under the roaming `APPDATA` or `~/Library/Application
+    Support` holds them as files with no extension that Windows' font
+    registry does not list, so every file there that starts as a font is
+    loaded at startup, after the registry's list
+    (`font_folders::adobe_fonts_with_no_extension_are_loaded`).
   - Style: Serif, Sans serif, Script, Decorative, Monospaced, Symbol.
   - Weight: Light (below 350), Regular (350 to 599), Bold (600 and up),
     from each face's OS/2 `usWeightClass`; a variable font counts for

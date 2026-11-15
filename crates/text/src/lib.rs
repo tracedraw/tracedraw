@@ -1892,6 +1892,9 @@ fn read_system_font_roots() -> Vec<std::path::PathBuf> {
     }
     #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
     out.extend(fontconfig_font_roots(&|name| std::env::var(name).ok()));
+    // Adobe Fonts activated in Creative Cloud count as installed (#2741).
+    #[cfg(any(windows, target_os = "macos"))]
+    out.extend(adobe_font_dirs(&|name| std::env::var(name).ok()));
     let mut seen = std::collections::HashSet::new();
     out.retain(|dir| seen.insert(dir.clone()));
     out
@@ -2005,6 +2008,88 @@ fn fontconfig_font_roots(var: &dyn Fn(&str) -> Option<String>) -> Vec<std::path:
     out
 }
 
+/// The folders Creative Cloud keeps the Adobe Fonts it activates in
+/// (#2741): `Adobe\CoreSync\plugins\livetype` under the roaming
+/// `APPDATA` on Windows, under `~/Library/Application Support` on macOS,
+/// in its hidden `.r` folder (`r` in older versions). Windows' font
+/// registry does not list them and their files have no extension, so
+/// neither the font database nor the installed fonts' list finds them.
+/// `var` reads an environment variable.
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+fn adobe_font_dirs(var: &dyn Fn(&str) -> Option<String>) -> Vec<std::path::PathBuf> {
+    let mut bases = Vec::new();
+    if let Some(app_data) = var("APPDATA") {
+        bases.push(std::path::PathBuf::from(app_data));
+    }
+    if let Some(home) = var("HOME") {
+        bases.push(
+            std::path::PathBuf::from(home)
+                .join("Library")
+                .join("Application Support"),
+        );
+    }
+    let mut out = Vec::new();
+    for base in bases {
+        let livetype = base
+            .join("Adobe")
+            .join("CoreSync")
+            .join("plugins")
+            .join("livetype");
+        for name in [".r", "r"] {
+            out.push(livetype.join(name));
+        }
+    }
+    out
+}
+
+/// Whether `head`, a file's first bytes, starts a font: OpenType with
+/// outlines or curves, TrueType or a collection.
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+fn starts_a_font(head: &[u8]) -> bool {
+    matches!(
+        head.get(..4),
+        Some(b"OTTO") | Some(b"true") | Some(b"ttcf") | Some([0, 1, 0, 0])
+    )
+}
+
+/// Add the font files right in `dirs` whatever their names, as Adobe's
+/// have no extension (#2741), when no loaded face comes from them yet.
+/// Files that do not start as a font (its lists and settings) are left.
+/// Gives the number of faces added.
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+fn load_font_files_in(db: &mut fontdb::Database, dirs: &[std::path::PathBuf]) -> usize {
+    use std::io::Read;
+    let loaded: std::collections::HashSet<std::path::PathBuf> = db
+        .faces()
+        .filter_map(|f| match &f.source {
+            fontdb::Source::File(p) | fontdb::Source::SharedFile(p, _) => Some(p.clone()),
+            fontdb::Source::Binary(_) => None,
+        })
+        .collect();
+    let mut added = 0;
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !entry.file_type().is_ok_and(|k| k.is_file()) || loaded.contains(&path) {
+                continue;
+            }
+            let mut head = [0u8; 4];
+            let is_font = std::fs::File::open(&path)
+                .and_then(|mut f| f.read_exact(&mut head))
+                .is_ok()
+                && starts_a_font(&head);
+            if is_font {
+                added += load_source(db, fontdb::Source::File(path)).len();
+            }
+        }
+    }
+    added
+}
+
 /// The folder `file` counts as in: the deepest of `roots` it lies
 /// under, else the folder it is in (#867).
 fn folder_under(
@@ -2035,6 +2120,16 @@ impl FontSystem {
         load_code_page_named_in(&mut db, &system_font_roots());
         #[cfg(windows)]
         installed::drop_unregistered(&mut db);
+        // Adobe Fonts activated in Creative Cloud (#2741), after the
+        // registry's list, which does not name them.
+        #[cfg(any(windows, target_os = "macos"))]
+        {
+            let added =
+                load_font_files_in(&mut db, &adobe_font_dirs(&|name| std::env::var(name).ok()));
+            if added > 0 {
+                log::info!("{added} Adobe font faces added");
+            }
+        }
         if let Ok(extra) = EXTRA_FONTS.lock() {
             for data in extra.iter() {
                 let source: Arc<dyn AsRef<[u8]> + Sync + Send> = data.clone();
@@ -10392,6 +10487,51 @@ mod font_folders {
         }
         let cached = t.elapsed();
         assert!(cached < std::time::Duration::from_millis(100), "{cached:?}");
+    }
+
+    /// #2741: Creative Cloud's Adobe Fonts folders, and its font files
+    /// with no extension load while its other files are left.
+    #[test]
+    fn adobe_fonts_with_no_extension_are_loaded() {
+        use std::path::PathBuf;
+        let env = |name: &str| -> Option<String> {
+            match name {
+                "APPDATA" => Some("C:\\Users\\me\\AppData\\Roaming".into()),
+                _ => None,
+            }
+        };
+        let livetype = PathBuf::from("C:\\Users\\me\\AppData\\Roaming")
+            .join("Adobe")
+            .join("CoreSync")
+            .join("plugins")
+            .join("livetype");
+        assert_eq!(
+            adobe_font_dirs(&env),
+            vec![livetype.join(".r"), livetype.join("r")]
+        );
+        let mac = adobe_font_dirs(&|name| (name == "HOME").then(|| "/Users/me".to_string()));
+        assert!(mac[0].ends_with("Library/Application Support/Adobe/CoreSync/plugins/livetype/.r"));
+        assert!(starts_a_font(b"OTTO...."));
+        assert!(starts_a_font(&[0, 1, 0, 0, 0]));
+        assert!(!starts_a_font(b"<?xml"));
+        assert!(!starts_a_font(b"OT"));
+
+        let dir = std::env::temp_dir().join(format!("tracedraw-adobe-{}", std::process::id()));
+        let r = dir.join(".r");
+        std::fs::create_dir_all(&r).unwrap();
+        let font = include_bytes!("../../../apps/tracedraw/assets/fonts/Selawik-Regular.ttf");
+        std::fs::write(r.join("28419"), font).unwrap();
+        std::fs::write(r.join("manifest"), b"<?xml version=\"1.0\"?>").unwrap();
+        let mut db = fontdb::Database::new();
+        let dirs = vec![r.clone(), dir.join("r")];
+        assert_eq!(load_font_files_in(&mut db, &dirs), 1);
+        assert!(db
+            .faces()
+            .any(|f| f.families.iter().any(|(n, _)| n.starts_with("Selawik"))));
+        // Already loaded: not added twice.
+        assert_eq!(load_font_files_in(&mut db, &dirs), 0);
+        assert_eq!(db.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The system's folders are the ones the font database reads, so a

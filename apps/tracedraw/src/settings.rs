@@ -848,7 +848,8 @@ pub fn effective_ui_size(s: &Settings) -> f32 {
 }
 
 /// The theme in use: the high contrast one while the desktop has high
-/// contrast on (unless turned off), else the one picked.
+/// contrast on (unless turned off), else the one picked; with none picked
+/// yet, the dark one while the desktop asks for dark windows (#2748).
 pub fn effective_theme(s: &Settings) -> String {
     effective_theme_with(s, crate::system_prefs::get())
 }
@@ -856,6 +857,16 @@ pub fn effective_theme(s: &Settings) -> String {
 pub fn effective_theme_with(s: &Settings, sys: crate::system_prefs::SystemPrefs) -> String {
     if s.follow_high_contrast && sys.high_contrast.is_some() {
         crate::theme::Theme::HighContrast.id().to_string()
+    } else {
+        chosen_theme_with(s, sys)
+    }
+}
+
+/// The theme picked in Options, or the desktop's light or dark one while
+/// none was picked (#2748).
+pub fn chosen_theme_with(s: &Settings, sys: crate::system_prefs::SystemPrefs) -> String {
+    if s.theme.is_empty() && sys.dark {
+        crate::theme::Theme::Dark.id().to_string()
     } else {
         s.theme.clone()
     }
@@ -2622,6 +2633,7 @@ mod tests {
             high_contrast: Some(ContrastColors::BLACK),
             text_scale_known: true,
             contrast_known: true,
+            dark: false,
         };
         assert!((effective_ui_size_with(&s, big) - 1.5).abs() < 1e-6);
         assert_eq!(effective_theme_with(&s, big), "high_contrast");
@@ -2634,6 +2646,28 @@ mod tests {
         s.ui_size = 3.0;
         assert!(effective_ui_size_with(&s, big) <= 4.0);
         assert_eq!(effective_theme_with(&s, SystemPrefs::default()), s.theme);
+    }
+
+    /// #2748: with no theme picked, a dark desktop gives the dark theme;
+    /// a picked theme stays whatever the desktop asks.
+    #[test]
+    fn a_dark_desktop_gives_the_dark_theme_until_one_is_picked() {
+        use crate::system_prefs::SystemPrefs;
+        let mut s = Settings::default();
+        assert!(s.theme.is_empty());
+        let dark = SystemPrefs {
+            dark: true,
+            ..SystemPrefs::default()
+        };
+        assert_eq!(effective_theme_with(&s, dark), "dark");
+        assert_eq!(effective_theme_with(&s, SystemPrefs::default()), "");
+        s.theme = "light".into();
+        assert_eq!(effective_theme_with(&s, dark), "light");
+        s.theme = "medium_dark".into();
+        assert_eq!(
+            effective_theme_with(&s, SystemPrefs::default()),
+            "medium_dark"
+        );
     }
 
     #[test]

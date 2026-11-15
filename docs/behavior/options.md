@@ -359,9 +359,18 @@ white too (white stood for the theme's colour, so picking it changed
 nothing, #530, `app::tests::a_white_desktop_picked_is_white`); Reset goes
 back to the theme's. The button with a moon (light themes) or a sun (dark
 themes) at the right end of the status bar switches to Dark or to
-Light. The choice is kept in the preferences and applies at once. The
-system's dark mode (the browser's `prefers-color-scheme` in the browser
-build) does not change the theme: egui's own theme preference is pinned
+Light. The choice is kept in the preferences and applies at once. Until
+a theme is picked, the desktop's dark mode gives Dark and its light mode
+Light (#2748, `settings::chosen_theme_with`), and the Theme list shows
+the one in use; the desktop is read as for high contrast
+(`system_prefs`): Windows' `AppsUseLightTheme`, macOS' dark appearance,
+the desktop portal's `color-scheme` on Linux (any package, the AppImage
+too), else GNOME's `color-scheme` or a GTK theme named dark, KDE's
+colour scheme named dark, and the browser's `prefers-color-scheme`
+(`system_prefs::tests::the_desktop_dark_mode_is_read`,
+`settings::tests::a_dark_desktop_gives_the_dark_theme_until_one_is_picked`).
+Once a theme is picked, the system's dark mode does not change it:
+egui's own theme preference is pinned
 and both of its style slots hold the chosen theme's visuals
 (`App::setup_context`, `ui::apply_theme` each frame;
 `ui::tests::the_system_dark_mode_does_not_change_the_theme`).

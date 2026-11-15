@@ -3143,7 +3143,9 @@ fn appearance_page(app: &mut App, ui: &mut Ui) {
     crate::ui::chrome::section(ui, &tr("options.color_section"));
     grid("appearance_color").show(ui, |ui| {
         row_label(ui, &tr("options.theme"));
-        let current = crate::theme::Theme::from_id(&app.settings.theme);
+        // With none picked yet, the desktop's light or dark one (#2748).
+        let current =
+            crate::theme::Theme::from_id(&crate::settings::chosen_theme_with(&app.settings, sys));
         let tip = crate::ui::tips::pair("options.theme", "options.theme_tip");
         crate::ui::tips::tip_over(ui, tip, |ui| {
             crate::ui::keynav::ComboBox::from_id_salt("ui_theme")
