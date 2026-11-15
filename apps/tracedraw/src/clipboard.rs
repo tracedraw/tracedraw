@@ -2235,6 +2235,62 @@ mod linked_watch_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// File > Open offers pictures (#2924): among all the files it reads
+    /// and in a filter of their own. Chosen from the start screen, with no
+    /// drawing open, a JPG becomes a drawing holding it.
+    #[test]
+    fn file_open_offers_pictures_and_opens_one_from_the_start_screen() {
+        crate::i18n::set_language("en");
+        let dialog = App::open_file_dialog();
+        let filters = dialog.filters();
+        for ext in ["png", "jpg", "jpeg", "tif", "webp"] {
+            assert!(
+                filters[0].1.iter().any(|e| e == ext),
+                "{ext} in {:?}",
+                filters[0]
+            );
+        }
+        assert!(filters[0].1.iter().any(|e| e == "cdr"));
+        assert!(filters
+            .iter()
+            .any(|(name, exts)| name == &crate::i18n::tr("file.images")
+                && exts.iter().any(|e| e == "png")));
+        if crate::files::WEB {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tracedraw-open2924-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("Logo.JPG");
+        let mut jpg = Vec::new();
+        image::DynamicImage::new_rgb8(30, 20)
+            .write_to(
+                &mut std::io::Cursor::new(&mut jpg),
+                image::ImageFormat::Jpeg,
+            )
+            .expect("jpg");
+        std::fs::write(&path, jpg).expect("write");
+        let mut app = App::headless();
+        while app.has_document() {
+            app.close_active_document();
+        }
+        app.show_welcome = true;
+        app.open_path(path);
+        assert!(app.has_document(), "a drawing opened");
+        assert!(!app.show_welcome, "off the start screen");
+        assert_eq!(app.doc().title, "Logo");
+        let shapes = &app.doc().pages[0].layers[0].shapes;
+        assert_eq!(shapes.len(), 1);
+        assert!(matches!(
+            shapes[0].kind,
+            ShapeKind::Bitmap {
+                width_px: 30,
+                height_px: 20,
+                ..
+            }
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A linked bitmap follows its file: a change on disk is read in on
     /// the next check (once a second), as Update from Link does; a file
     /// seen for the first time is only remembered (#284).

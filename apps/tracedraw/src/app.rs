@@ -7659,8 +7659,22 @@ impl App {
     }
 
     pub fn open_dialog(&mut self) {
+        Self::open_file_dialog().pick_file(self, |app, p| app.open_path(p));
+    }
+
+    /// File > Open's dialog. Pictures are among what it opens, each a new
+    /// drawing holding it (#2600); the dialog left them out, so a PNG or
+    /// JPG could not be chosen there and the window stayed on the empty
+    /// start screen (#2924).
+    pub(crate) fn open_file_dialog() -> crate::files::Dialog {
+        let all: Vec<&str> = OPEN_EXTENSIONS
+            .iter()
+            .chain(PICTURE_EXTENSIONS)
+            .copied()
+            .collect();
         crate::files::Dialog::new()
-            .add_filter(crate::i18n::tr("file.all_supported"), OPEN_EXTENSIONS)
+            .add_filter(crate::i18n::tr("file.all_supported"), &all)
+            .add_filter(crate::i18n::tr("file.images"), PICTURE_EXTENSIONS)
             .add_filter("HPGL plotter (*.plt, *.hpgl)", &["plt", "hpgl", "hgl"])
             .add_filter("Text (*.txt, *.rtf, *.docx)", &["txt", "rtf", "docx"])
             .add_filter(
@@ -7681,7 +7695,6 @@ impl App {
                 &crate::pmd_open::EXTENSIONS,
             )
             .add_filter("TraceDraw (*.tdraw)", &["tdraw"])
-            .pick_file(self, |app, p| app.open_path(p));
     }
 
     /// Open `path`, or show the drawing already open from it (read from
