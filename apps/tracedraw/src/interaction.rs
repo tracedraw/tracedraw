@@ -5355,8 +5355,12 @@ impl App {
             }
         }
         if d.hypot() > 0.0 {
-            // With the Shape tool and nodes chosen, the nodes move.
-            if self.tool == Tool::Shape && !self.node_selection.is_empty() {
+            // With the Shape tool a chosen control handle moves (#2819),
+            // else the chosen nodes.
+            let shape = self.tool == Tool::Shape;
+            if shape && self.nudge_chosen_handle(d) {
+                // The handle moved.
+            } else if shape && !self.node_selection.is_empty() {
                 self.nudge_nodes(d);
             } else {
                 self.nudge(d);

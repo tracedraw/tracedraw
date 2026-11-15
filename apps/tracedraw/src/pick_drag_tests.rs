@@ -28316,3 +28316,85 @@ fn pen_pressure_reaches_painterly_sketch_brushes_and_eraser() {
     let light = app.eraser_band(&points).area().abs();
     assert!(light > 0.0 && light < even * 0.6, "{light} vs {even}");
 }
+
+/// #2819: a click on a node's control handle with the Shape tool
+/// chooses the handle, and the arrow keys then move that handle, not
+/// the node (each press one undo step). A click elsewhere lets go of it
+/// and the arrows move the node again. The handle still drags with the
+/// mouse, and a dragged handle is the chosen one.
+#[test]
+fn a_clicked_handle_moves_with_the_arrow_keys() {
+    use tracedraw_core::geometry::BezPath;
+    let (ctx, mut app, _) = setup();
+    let mut p = BezPath::new();
+    p.move_to((20.0, 20.0));
+    p.curve_to((30.0, 40.0), (50.0, 40.0), (60.0, 20.0));
+    let curve = app
+        .new_shape(ShapeKind::Path {
+            path: p,
+            closed: false,
+        })
+        .expect("curve");
+    app.select(vec![curve]);
+    app.set_tool(Tool::Shape);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let path = |app: &App| match &app.doc().find_shape(curve).expect("curve").kind {
+        ShapeKind::Path { path, .. } => path.clone(),
+        k => panic!("{k:?}"),
+    };
+    let ctrl1 = |app: &App| match path(app).elements()[1] {
+        tracedraw_core::geometry::PathEl::CurveTo(c1, _, _) => c1,
+        e => panic!("{e:?}"),
+    };
+    let start = |app: &App| match path(app).elements()[0] {
+        tracedraw_core::geometry::PathEl::MoveTo(q) => q,
+        e => panic!("{e:?}"),
+    };
+    // Choose the first node, then click its outgoing handle at (30, 40).
+    let node = app.view.to_screen(Point::new(20.0, 20.0));
+    click_at(&ctx, &mut app, node, Modifiers::NONE);
+    assert_eq!(app.node_selection, vec![(curve, 0)]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let handle = app.view.to_screen(Point::new(30.0, 40.0));
+    click_at(&ctx, &mut app, handle, Modifiers::NONE);
+    assert_eq!(
+        app.node_selection,
+        vec![(curve, 0)],
+        "the node stays chosen"
+    );
+    assert!(app.chosen_handle().is_some(), "the handle is chosen");
+    let press = |app: &mut App, k: egui::Key| {
+        frame(&ctx, app, vec![key(k, Modifiers::NONE)], Modifiers::NONE);
+        frame(&ctx, app, vec![key_up(k, Modifiers::NONE)], Modifiers::NONE);
+    };
+    let step = app.nudge_mm;
+    press(&mut app, egui::Key::ArrowRight);
+    press(&mut app, egui::Key::ArrowUp);
+    let c = ctrl1(&app);
+    assert!(
+        (c.x - (30.0 + step)).abs() < 1e-6 && (c.y - (40.0 + step)).abs() < 1e-6,
+        "{c:?}"
+    );
+    assert!(
+        (start(&app) - Point::new(20.0, 20.0)).hypot() < 1e-9,
+        "the node stays"
+    );
+    let steps = app.engine.history_labels().0;
+    assert_eq!(
+        steps.iter().filter(|l| **l == "Nudge Handle").count(),
+        2,
+        "{steps:?}"
+    );
+    // A click on the node: the arrows move the node (and its handle).
+    let node = app.view.to_screen(Point::new(20.0, 20.0));
+    click_at(&ctx, &mut app, node, Modifiers::NONE);
+    assert!(app.chosen_handle().is_none());
+    press(&mut app, egui::Key::ArrowRight);
+    assert!(
+        (start(&app) - Point::new(20.0 + step, 20.0)).hypot() < 1e-6,
+        "{:?}",
+        start(&app)
+    );
+}

@@ -1453,6 +1453,13 @@ pub struct App {
     /// segment (the element ending it) and where along it; Add Node puts
     /// the node there.
     pub segment_spot: Option<(ShapeId, usize, f64)>,
+    /// The Shape tool's control handle chosen by a click or a drag on it,
+    /// with the nodes chosen then: the arrow keys move the handle while
+    /// those nodes stay chosen (#2819). See `App::chosen_handle`.
+    pub chosen_handle: Option<(
+        (ShapeId, usize, tracedraw_core::nodes::Which),
+        Vec<(ShapeId, usize)>,
+    )>,
     pub snap: crate::snap::SnapSettings,
     /// The Corners docker's operation and sizes.
     pub corners: crate::corners::CornersSettings,
@@ -3082,6 +3089,7 @@ impl App {
             transform: Default::default(),
             node_selection: Vec::new(),
             segment_spot: None,
+            chosen_handle: None,
             curve_steps: CurveSteps::default(),
             pen_curve_steps: std::collections::HashMap::new(),
             snap: crate::snap::SnapSettings::default(),
