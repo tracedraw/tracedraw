@@ -328,6 +328,7 @@ impl Topic {
                 Tool::Knife,
                 Tool::SegmentDelete,
                 Tool::Eraser,
+                Tool::ShapeBuilder,
             ],
             Topic::Effects => &[
                 Tool::DropShadow,

@@ -2008,6 +2008,7 @@ impl App {
             | Tool::MeshFill
             | Tool::OutlinePen
             | Tool::OutlineColor => self.tools3_input(response, p, mods),
+            Tool::ShapeBuilder => self.shape_builder_input(response, p, mods),
             Tool::Zoom => self.zoom_input(response, p, screen, mods),
             Tool::Pan => {
                 if response.dragged() {
@@ -3890,6 +3891,10 @@ impl App {
             Drag::Freehand { points } if self.tool == Tool::Eraser => self.erase_along(&points),
             Drag::Freehand { points } if self.tool == Tool::Knife => self.knife_cut(&points),
             Drag::Freehand { points } if self.tool == Tool::Join => self.join_along(&points),
+            Drag::Freehand { .. } if self.tool == Tool::ShapeBuilder => {
+                let remove = self.builder.remove;
+                self.builder_finish(remove);
+            }
             Drag::Freehand { points } if self.tool == Tool::SegmentDelete => {
                 // A click that slipped into a little stroke reaching
                 // nothing still deletes as a click at the press.

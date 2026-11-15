@@ -1127,7 +1127,7 @@ fn group_leaves(s: &Shape) -> Vec<Shape> {
 /// objects' outlines one after the other, so where two of them overlapped
 /// the even-odd rule left a hole, and Weld, Trim and Intersect cut it
 /// out of their results (#555).
-fn shaping_area(s: &Shape) -> tracedraw_core::BezPath {
+pub(crate) fn shaping_area(s: &Shape) -> tracedraw_core::BezPath {
     use tracedraw_core::shaping::{nonzero_as_even_odd, overlay, overlay_with, FillRule, Op};
     let own = |s: &Shape| {
         if matches!(s.kind, ShapeKind::Text { .. }) || s.fill_rule == FillRule::NonZero {

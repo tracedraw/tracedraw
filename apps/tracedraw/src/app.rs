@@ -1411,6 +1411,9 @@ pub struct App {
     pub overflow_cache: std::cell::RefCell<(u64, std::collections::HashMap<ShapeId, bool>)>,
     /// Paragraph texts flowed in the frames a drag gives them (#1327).
     pub live_reflow: std::cell::RefCell<crate::text_frames::LiveReflow>,
+    /// The Shape Builder's parts crossed and the one under the pointer
+    /// (#1149).
+    pub builder: crate::shape_builder::Builder,
     /// The corners the Shape tool's corner widgets stand on.
     pub corner_cache: std::cell::RefCell<crate::corner_widgets::CornerCache>,
     pub wireframe: bool,
@@ -3041,6 +3044,7 @@ impl App {
             window_layout_seen: None,
             overflow_cache: Default::default(),
             live_reflow: Default::default(),
+            builder: Default::default(),
             corner_cache: Default::default(),
             wireframe: false,
             font_families: tracedraw_text::fonts().available_families(),

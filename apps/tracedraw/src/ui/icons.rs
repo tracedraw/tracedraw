@@ -236,6 +236,16 @@ pub fn draw_on(painter: &Painter, r: Rect, tool: Tool, color: Color32, bg: Color
             pen.line("M3 21h6", acc);
         }
 
+        Tool::ShapeBuilder => {
+            // Two overlapping squares, the parts a stroke crossed merged
+            // in the accent, the stroke ending in a plus (#1149).
+            pen.fill("M9 9h6v6H9z", acc, true);
+            pen.fill("M15 9h6v6h-6z", acc, true);
+            pen.thin("M3 3h12v12H3zM9 9h12v12H9z", ink);
+            pen.line("M6 12c3-1 9-1 13 0", ink);
+            pen.thin("M19 2v5M16.5 4.5h5", ink);
+        }
+
         // Zoom group.
         Tool::Zoom => {
             // A lens showing a magnified curve and node.

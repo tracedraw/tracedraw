@@ -27,7 +27,7 @@ Pages: `ai-drawing.md`, `align-distribute.md`, `brush-strokes.md`, `before-after
 `outline-pen.md`, `pdf-import.md`, `picture-mosaic.md`, `pick-tool.md`, `properties-docker.md`,
 `plt.md`, `vba.md`, `vector-mosaic.md`,
 `clip-frame.md`, `clipboard.md`, `bitmap-tracing.md`, `psd-import.md`,
-`rulers-grid-guidelines.md`, `shape-tool.md`, `shape-tools.md`,
+`rulers-grid-guidelines.md`, `shape-builder.md`, `shape-tool.md`, `shape-tools.md`,
 `shaping.md`, `shelf.md`, `shortcuts.md`, `sliders.md`, `area-fill.md`, `snapping.md`, `status-bar.md`,
 `straighten-image.md`,
 `svg-import.md`, `symmetry.md`, `table.md`, `text-import.md`, `text.md`, `text-wrap.md`, `toolbars.md`,

@@ -540,6 +540,11 @@ pub struct Settings {
     /// they show again the next time a font list opens (#867).
     #[serde(default)]
     pub font_filter_open: bool,
+    /// The font lists show a family's English name, light, beside a
+    /// name in another language (#1249); the EN button beside Filter
+    /// turns it off.
+    #[serde(default = "default_true")]
+    pub font_english_names: bool,
     /// Options > Text > Fonts: the fonts used last shown at the top of
     /// the font lists, and how many (1 to 20).
     #[serde(default = "default_true")]
@@ -2078,6 +2083,7 @@ impl Default for Settings {
             dockers: None,
             recent_fonts: Vec::new(),
             font_filter_open: false,
+            font_english_names: true,
             show_recent_fonts: true,
             recent_font_count: default_recent_font_count(),
             properties_closed: Vec::new(),

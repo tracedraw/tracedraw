@@ -15,9 +15,10 @@ use crate::ui::tips::RichTip;
 use egui::{Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
 /// Tools after which a flyout draws a separator.
-const SEPARATE_AFTER: [Tool; 6] = [
+const SEPARATE_AFTER: [Tool; 7] = [
     Tool::FreeformPick,
     Tool::SegmentDelete,
+    Tool::Eraser,
     Tool::CommonShapes,
     Tool::SegmentDimension,
     Tool::RoundedConnector,

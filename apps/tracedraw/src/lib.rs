@@ -175,6 +175,7 @@ mod select_region;
 mod select_similar;
 mod settings;
 mod shadow_tool;
+mod shape_builder;
 mod shape_tool;
 #[cfg(test)]
 mod shaping_tests;

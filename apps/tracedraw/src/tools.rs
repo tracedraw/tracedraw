@@ -24,6 +24,7 @@ pub enum Tool {
     Knife,
     SegmentDelete,
     Eraser,
+    ShapeBuilder,
     // Zoom group
     Zoom,
     Pan,
@@ -116,7 +117,13 @@ pub const GROUPS: &[ToolGroup] = &[
         hidden: false,
     },
     ToolGroup {
-        tools: &[Tool::Crop, Tool::Knife, Tool::SegmentDelete, Tool::Eraser],
+        tools: &[
+            Tool::Crop,
+            Tool::Knife,
+            Tool::SegmentDelete,
+            Tool::Eraser,
+            Tool::ShapeBuilder,
+        ],
         hidden: false,
     },
     ToolGroup {
@@ -224,7 +231,7 @@ pub const GROUPS: &[ToolGroup] = &[
 ];
 
 impl Tool {
-    pub const ALL: [Tool; 66] = [
+    pub const ALL: [Tool; 67] = [
         Tool::Pick,
         Tool::FreeformPick,
         Tool::FreeTransform,
@@ -241,6 +248,7 @@ impl Tool {
         Tool::Knife,
         Tool::SegmentDelete,
         Tool::Eraser,
+        Tool::ShapeBuilder,
         Tool::Zoom,
         Tool::Pan,
         Tool::Freehand,
@@ -312,6 +320,7 @@ impl Tool {
             Tool::Knife => "knife",
             Tool::SegmentDelete => "segment_delete",
             Tool::Eraser => "eraser",
+            Tool::ShapeBuilder => "shape_builder",
             Tool::Zoom => "zoom",
             Tool::Pan => "pan",
             Tool::Freehand => "freehand",

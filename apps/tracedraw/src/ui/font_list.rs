@@ -906,6 +906,7 @@ fn list_body(
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             filter_button(ui, st);
+            english_button(ui, st, &mut app.settings.font_english_names);
         });
     });
     let sample = app
@@ -1189,6 +1190,22 @@ fn filter_button(ui: &mut Ui, st: &mut ListState) {
     }
 }
 
+/// The EN button beside Filter: the families' English names beside
+/// names in other languages, on or off (#1249).
+fn english_button(ui: &mut Ui, st: &mut ListState, on: &mut bool) {
+    let label = tr("font_list.english");
+    let r = ui
+        .add(egui::Button::selectable(
+            *on,
+            egui::RichText::new(label.clone()).size(11.5),
+        ))
+        .rich_tip(tr("font_list.english_tip"));
+    st.filter_hits.push((label, r.rect));
+    if r.clicked() {
+        *on = !*on;
+    }
+}
+
 /// A check box of the filter: `on` as it is, the new value when clicked.
 fn filter_box(ui: &mut Ui, st: &mut ListState, label: String, on: bool) -> Option<bool> {
     let mut v = on;
@@ -1466,6 +1483,25 @@ fn draw_row(
             false,
         );
         right = tag.left() - 6.0;
+    }
+    // The English name, light, at the end of a family listed by a name
+    // in another language (#1249).
+    if matches!(row, Row::Family(_)) && app.settings.font_english_names {
+        if let Some(en) = info.as_ref().and_then(|i| i.english.as_deref()) {
+            let font = egui::FontId::proportional(11.0);
+            let galley = painter.layout_no_wrap(en.to_string(), font, Tokens::text_dim());
+            let room = (right - left) * 0.5;
+            let w = galley.size().x.min(room);
+            let at = egui::pos2(right - w, rect.center().y - galley.size().y / 2.0);
+            let clip = Rect::from_min_max(
+                egui::pos2(right - w, rect.top()),
+                egui::pos2(right, rect.bottom()),
+            );
+            painter
+                .with_clip_rect(clip)
+                .galley(at, galley, Tokens::text_dim());
+            right -= w + 6.0;
+        }
     }
     // The name in its own font; symbol fonts, families to download and
     // names it cannot draw in the interface font.

@@ -486,6 +486,26 @@ fn code_page_name(name: &ttf_parser::name::Name) -> Option<String> {
     (!bad && !text.trim().is_empty()).then(|| text.into_owned())
 }
 
+/// The English name among a face's family `names` (US English first)
+/// when `family` is one of its names in another language, or a legacy
+/// name in another script (#1249); none when `family` is the English
+/// name, or a Latin legacy name ("Arial Narrow" of a face named "Arial"),
+/// or the face has no English name.
+pub fn english_name(family: &str, names: &[(String, fontdb::Language)]) -> Option<String> {
+    let english = |l: &fontdb::Language| format!("{l:?}").starts_with("English");
+    match names.iter().find(|(n, _)| n == family) {
+        Some((_, l)) if english(l) => return None,
+        None if family.is_ascii() => return None,
+        _ => {}
+    }
+    names
+        .iter()
+        .find(|(_, l)| *l == fontdb::Language::English_UnitedStates)
+        .or_else(|| names.iter().find(|(_, l)| english(l)))
+        .map(|(n, _)| n.clone())
+        .filter(|n| n != family && !n.trim().is_empty())
+}
+
 /// The legacy family names (name ID 1) a face's name table gives that
 /// differ from the families fontdb lists for it (the typographic family,
 /// name ID 16): "Arial Narrow" for a face fontdb files under "Arial".
@@ -804,6 +824,10 @@ pub struct FamilyInfo {
     pub feature_tags: Vec<[u8; 4]>,
     /// The folders its font files are in, sorted.
     pub folders: Vec<std::path::PathBuf>,
+    /// The family's English name when the listed one is in another
+    /// language (a Hindi or Japanese name of the font), for the font
+    /// lists to show beside it (#1249).
+    pub english: Option<String>,
 }
 
 /// What a font list's filter reads of one face (#867).
@@ -2948,10 +2972,14 @@ impl FontSystem {
         let mut embedding: Option<catalog::Embedding> = None;
         let mut feature_tags: Vec<[u8; 4]> = Vec::new();
         let mut folders: Vec<std::path::PathBuf> = Vec::new();
+        let mut english: Option<String> = None;
         for id in ids {
             let Some(info) = db.face(id) else {
                 continue;
             };
+            if english.is_none() {
+                english = english_name(family, &info.families);
+            }
             let read = db.with_face_data(id, |data, index| {
                 let f = ttf_parser::Face::parse(data, index).ok()?;
                 let tables = f.tables();
@@ -3050,6 +3078,7 @@ impl FontSystem {
                 folders.dedup();
                 folders
             },
+            english,
         })
     }
 
@@ -6212,6 +6241,38 @@ fn decoration_rects(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_name_in_another_language_shows_its_english_name() {
+        use fontdb::Language as L;
+        let names = vec![
+            ("Mangal".to_string(), L::English_UnitedStates),
+            (
+                "\u{092e}\u{0902}\u{0917}\u{0932}".to_string(),
+                L::Hindi_India,
+            ),
+        ];
+        let hindi = "\u{092e}\u{0902}\u{0917}\u{0932}";
+        assert_eq!(english_name(hindi, &names).as_deref(), Some("Mangal"));
+        assert_eq!(english_name("Mangal", &names), None, "already English");
+        // A Latin legacy name of a face filed under another family.
+        let arial = vec![("Arial".to_string(), L::English_UnitedStates)];
+        assert_eq!(english_name("Arial Narrow", &arial), None);
+        // A legacy name in another script (a code page name, #860).
+        assert_eq!(
+            english_name("\u{30e1}\u{30a4}\u{30ea}\u{30aa}", &arial).as_deref(),
+            Some("Arial")
+        );
+        // Only names in other languages: nothing to show.
+        let only = vec![(hindi.to_string(), L::Hindi_India)];
+        assert_eq!(english_name(hindi, &only), None);
+        // Any English when there is no US English one.
+        let uk = vec![
+            ("Gill".to_string(), L::English_UnitedKingdom),
+            ("Gill FR".to_string(), L::French_France),
+        ];
+        assert_eq!(english_name("Gill FR", &uk).as_deref(), Some("Gill"));
+    }
 
     /// Lines of `text` broken to `chars` full-width cells (every glyph is
     /// 1 mm wide), as strings.

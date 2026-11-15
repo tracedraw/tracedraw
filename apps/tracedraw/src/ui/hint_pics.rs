@@ -54,6 +54,7 @@ pub fn steps(tool: Tool) -> &'static [Option<Pic>] {
         Tool::Knife => &[p!(knife_cut), p!(knife_apart), None],
         Tool::SegmentDelete => &[p!(segdel_click), p!(segdel_marquee)],
         Tool::Eraser => &[p!(eraser_drag), None, None],
+        Tool::ShapeBuilder => &[p!(builder_drag), p!(builder_merged), None],
         Tool::Zoom => &[p!(zoom_click), p!(zoom_marquee), None],
         Tool::Pan => &[p!(pan_drag), None],
         Tool::Freehand => &[
@@ -1173,6 +1174,41 @@ fn crop_done(k: &K) {
     k.click((110.0, 50.0));
     k.click((110.0, 50.0));
     k.cursor((110.0, 50.0));
+}
+
+/// Three overlapping rectangles, the Shape Builder's start (#1149).
+fn builder_rects(k: &K) {
+    k.outline(&rect_pts(30.0, 30.0, 170.0, 60.0), true, 1.5, INK);
+    k.outline(&rect_pts(60.0, 10.0, 90.0, 90.0), true, 1.5, INK);
+    k.outline(&rect_pts(110.0, 10.0, 140.0, 90.0), true, 1.5, INK);
+}
+
+fn builder_drag(k: &K) {
+    for r in [
+        rect_pts(60.0, 30.0, 90.0, 60.0),
+        rect_pts(90.0, 30.0, 110.0, 60.0),
+        rect_pts(110.0, 30.0, 140.0, 60.0),
+        rect_pts(110.0, 60.0, 140.0, 90.0),
+    ] {
+        k.fill(&r, Paint::Solid(GHOST.gamma_multiply(0.5)));
+    }
+    builder_rects(k);
+    k.drag_path(&[(70.0, 45.0), (100.0, 47.0), (125.0, 44.0), (126.0, 80.0)]);
+    k.tool_cursor((126.0, 80.0), Tool::ShapeBuilder);
+}
+
+fn builder_merged(k: &K) {
+    let merged = vec![
+        (60.0, 30.0),
+        (140.0, 30.0),
+        (140.0, 90.0),
+        (110.0, 90.0),
+        (110.0, 60.0),
+        (60.0, 60.0),
+    ];
+    k.shape(&merged, Paint::Solid(GREEN));
+    builder_rects(k);
+    k.handles((60.0, 30.0), (140.0, 90.0));
 }
 
 fn knife_cut(k: &K) {

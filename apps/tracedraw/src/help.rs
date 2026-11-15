@@ -258,6 +258,7 @@ pub fn tool_topic(t: Tool) -> &'static str {
         Tool::Knife => "lines-shapes/cut-and-erase#knife",
         Tool::SegmentDelete => "lines-shapes/cut-and-erase#segment-delete",
         Tool::Eraser => "lines-shapes/cut-and-erase#eraser",
+        Tool::ShapeBuilder => "lines-shapes/cut-and-erase#shape-builder",
         Tool::Zoom => "get-started/undo-and-views#zoom",
         Tool::Pan => "get-started/undo-and-views#pan",
         Tool::Freehand => "lines-shapes/lines#freehand",

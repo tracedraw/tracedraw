@@ -134,6 +134,17 @@ Text and Glyphs dockers and Options (default font):
   instead (#1754,
   `pick_drag_tests::arrows_in_the_font_field_step_the_selected_texts_font`,
   `ui::font_list::live_tests::arrows_in_the_font_field_with_no_text_open_the_list`).
+- English names (#1249): a family listed by a name in another language
+  (a Hindi, Japanese or other name the font's name table gives for a
+  language other than English, or a legacy name in another script) shows
+  its English name at the end of its row, small and light, so a name the
+  user cannot read still says which font it is. The EN button left of
+  Filter turns it off and on for every font list, kept with the
+  preferences (`font_english_names`, on at first). A Latin legacy name
+  ("Arial Narrow" of a face filed under "Arial") and an English name show
+  nothing more (`tracedraw_text::english_name`,
+  `tests::a_name_in_another_language_shows_its_english_name` in
+  `tracedraw-text`).
 - At the top of the list, the number of families shown and the Filter
   button (#867). It shows or hides the filter's choices beside the list,
   in the same popup (only one menu is open at a time, so a menu opened
