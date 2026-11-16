@@ -5338,6 +5338,18 @@ impl PrimaryColorMode {
             PrimaryColorMode::Rgb => crate::Color::BLACK,
         }
     }
+
+    /// A grey of `k` % black in this mode: `k` % K in CMYK, the RGB grey
+    /// that light in RGB (#3006).
+    pub fn gray(self, k: f32) -> crate::Color {
+        match self {
+            PrimaryColorMode::Cmyk => crate::Color::cmyk_pct(0.0, 0.0, 0.0, k),
+            PrimaryColorMode::Rgb => {
+                let v = (1.0 - k / 100.0).clamp(0.0, 1.0);
+                crate::Color::Rgb { r: v, g: v, b: v }
+            }
+        }
+    }
 }
 
 /// How a page number field shows the number (Layout > Insert Page

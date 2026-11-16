@@ -2616,7 +2616,7 @@ pub fn grid_positions(a: f64, b: f64, origin: f64, step: f64) -> Vec<f64> {
 }
 
 /// The document grid over the whole drawing window, as lines or dots,
-/// passing through the ruler origin. Lines are thinned out when the zoom
+/// passing through the grid origin (App::grid_origin). Lines are thinned out when the zoom
 /// would crowd them, and fade in as they spread apart, so a dense grid
 /// is faint rather than a shimmering pattern (#2313). Each line or dot
 /// lands on one whole device pixel, also when the interface is scaled
@@ -2625,7 +2625,8 @@ pub fn grid_positions(a: f64, b: f64, origin: f64, step: f64) -> Vec<f64> {
 fn draw_grid(app: &App, painter: &Painter, rect: ERect) {
     let view = &app.view;
     let meta = &app.doc().metadata;
-    let (grid, rulers) = (meta.grid, meta.rulers.clone());
+    let grid = meta.grid;
+    let origin = app.grid_origin();
     let zoom = view.zoom as f64;
     let ppp = painter.ctx().pixels_per_point();
     let dots = grid.display == tracedraw_core::document::GridDisplay::Dots;
@@ -2638,12 +2639,12 @@ fn draw_grid(app: &App, painter: &Painter, rect: ERect) {
     let sy = grid.spacing_y.max(1e-6) * fy;
     let tl = view.to_page(rect.left_top());
     let br = view.to_page(rect.right_bottom());
-    let xs: Vec<f32> = grid_positions(tl.x, br.x, rulers.origin_x, sx)
+    let xs: Vec<f32> = grid_positions(tl.x, br.x, origin.x, sx)
         .into_iter()
         .map(|x| device_pixel(view.to_screen(Point::new(x, 0.0)).x, ppp))
         .filter(|x| *x >= rect.left() && *x < rect.right())
         .collect();
-    let ys: Vec<f32> = grid_positions(br.y, tl.y, rulers.origin_y, sy)
+    let ys: Vec<f32> = grid_positions(br.y, tl.y, origin.y, sy)
         .into_iter()
         .map(|y| device_pixel(view.to_screen(Point::new(0.0, y)).y, ppp))
         .filter(|y| *y >= rect.top() && *y < rect.bottom())

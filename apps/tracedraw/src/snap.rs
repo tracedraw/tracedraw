@@ -324,13 +324,13 @@ impl App {
             }
         }
         if best.is_none() && self.snap.grid {
-            // Grid lines pass through the ruler origin.
+            // Grid lines pass through the grid origin (#2990).
             let grid = self.doc().metadata.grid;
-            let rulers = self.doc().metadata.rulers.clone();
+            let o = self.grid_origin();
             let (step, origin) = if horizontal {
-                (grid.spacing_x, rulers.origin_x)
+                (grid.spacing_x, o.x)
             } else {
-                (grid.spacing_y, rulers.origin_y)
+                (grid.spacing_y, o.y)
             };
             let step = step.max(0.001);
             let g = origin + ((v - origin) / step).round() * step;
@@ -778,14 +778,13 @@ impl App {
                 return false;
             }
             let grid = self.doc().metadata.grid;
-            let rulers = &self.doc().metadata.rulers;
+            let o = self.grid_origin();
             let on = |v: f64, step: f64, origin: f64| {
                 let step = step.max(0.001);
                 let k = (v - origin) / step;
                 (k - k.round()).abs() * step < 1e-9
             };
-            (moved_x && on(q.x, grid.spacing_x, rulers.origin_x))
-                || (moved_y && on(q.y, grid.spacing_y, rulers.origin_y))
+            (moved_x && on(q.x, grid.spacing_x, o.x)) || (moved_y && on(q.y, grid.spacing_y, o.y))
         };
         let on_baseline = || {
             self.snap.baseline_grid
@@ -1465,6 +1464,37 @@ mod tests {
             ..SnapSettings::default()
         };
         app
+    }
+
+    /// A new drawing's grid starts at the page's top-left corner, so a
+    /// page whose height is not a whole number of grid squares has its
+    /// part row at the bottom (#2990); a ruler origin moved elsewhere
+    /// still has the grid pass through it.
+    #[test]
+    fn the_grid_starts_at_the_top_of_the_page() {
+        let mut app = App::headless();
+        app.view.zoom = 1.0;
+        app.snap = SnapSettings {
+            grid: true,
+            page: false,
+            guides: false,
+            objects: false,
+            off: false,
+            ..SnapSettings::default()
+        };
+        let top = app.page_size().height;
+        assert_eq!(app.doc().metadata.rulers.origin_y, 0.0);
+        assert_eq!(app.grid_origin(), Point::new(0.0, top));
+        // A4 is 297 mm tall: lines at 287, 277, ... 7, not at 290 or 10.
+        let p = app.snap_point_without_guides(Point::new(30.4, top - 19.6));
+        assert!((p.y - (top - 20.0)).abs() < 1e-9, "{p:?}");
+        assert!((p.x - 30.0).abs() < 1e-9, "{p:?}");
+        let mut metadata = app.doc().metadata.clone();
+        metadata.rulers.origin_y = 5.0;
+        app.run(Command::SetMetadata { metadata });
+        assert_eq!(app.grid_origin(), Point::new(0.0, 5.0));
+        let p = app.snap_point_without_guides(Point::new(30.4, 24.6));
+        assert!((p.y - 25.0).abs() < 1e-9, "{p:?}");
     }
 
     fn rect(app: &mut App, x0: f64, y0: f64, x1: f64, y1: f64) -> ShapeId {

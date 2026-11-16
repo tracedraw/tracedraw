@@ -7205,6 +7205,11 @@ fn the_snap_tip_shows_while_placing_and_pulling_with_the_pen() {
     app.snap.objects = false;
     app.snap.guides = false;
     app.snap.page = false;
+    // Grid lines through y = 10 (and so every 10 mm from the bottom),
+    // as when the grid ran from the page's bottom edge (#2990).
+    let mut metadata = app.doc().metadata.clone();
+    metadata.rulers.origin_y = 10.0;
+    app.run(tracedraw_core::Command::SetMetadata { metadata });
     app.set_tool(Tool::Pen);
     click_page(&ctx, &mut app, Point::new(100.2, 150.3));
     // Placing: the pointer near a grid crossing is marked "grid".
@@ -7412,6 +7417,11 @@ fn the_snap_mark_shows_before_the_first_node_of_a_freehand_line() {
     app.snap.objects = false;
     app.snap.guides = false;
     app.snap.page = false;
+    // Grid lines through y = 10 (and so every 10 mm from the bottom),
+    // as when the grid ran from the page's bottom edge (#2990).
+    let mut metadata = app.doc().metadata.clone();
+    metadata.rulers.origin_y = 10.0;
+    app.run(tracedraw_core::Command::SetMetadata { metadata });
     app.set_tool(Tool::Freehand);
     let near_grid = app.view.to_screen(Point::new(120.3, 140.2));
     frame(

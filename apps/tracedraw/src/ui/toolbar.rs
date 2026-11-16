@@ -3290,7 +3290,7 @@ fn interactive_fill_bar(app: &mut App, ui: &mut Ui, shapes: &[tracedraw_core::do
         if clicked && kind != i {
             let base = fill
                 .preview_color()
-                .unwrap_or(tracedraw_core::Color::cmyk_pct(0.0, 0.0, 0.0, 20.0));
+                .unwrap_or(app.doc().metadata.primary_color_mode.gray(20.0));
             fill = match i {
                 0 => Fill::None,
                 1 => Fill::Solid(base),

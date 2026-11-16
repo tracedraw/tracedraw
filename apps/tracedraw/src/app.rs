@@ -5332,6 +5332,21 @@ impl App {
             .unwrap_or(paper::A4)
     }
 
+    /// The point the document grid's lines pass through: the ruler
+    /// origin, and while the origin is at its place on the page's bottom
+    /// edge, the page's top edge for the horizontal lines, so the grid
+    /// starts square at the top-left corner as in the reference program
+    /// and the part row falls at the bottom (#2990).
+    pub fn grid_origin(&self) -> Point {
+        let r = &self.doc().metadata.rulers;
+        let y = if r.origin_y == 0.0 {
+            self.page_size().height
+        } else {
+            r.origin_y
+        };
+        Point::new(r.origin_x, y)
+    }
+
     pub fn page_rect(&self) -> Rect {
         Rect::from_origin_size((0.0, 0.0), self.page_size())
     }

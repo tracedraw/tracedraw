@@ -118,10 +118,10 @@ impl App {
             AlignTo::PageCenter => Rect::new(c.x, c.y, c.x, c.y),
         };
         let grid = self.doc().metadata.grid;
-        let rulers = self.doc().metadata.rulers.clone();
+        let origin = self.grid_origin();
         let on_grid = to == AlignTo::Grid && how != Align::CenterPage;
-        let gx = |v: f64| nearest_line(v, rulers.origin_x, grid.spacing_x);
-        let gy = |v: f64| nearest_line(v, rulers.origin_y, grid.spacing_y);
+        let gx = |v: f64| nearest_line(v, origin.x, grid.spacing_x);
+        let gy = |v: f64| nearest_line(v, origin.y, grid.spacing_y);
         let mut cmds = Vec::new();
         for s in &shapes {
             let b = self.align_box(s);
