@@ -822,7 +822,25 @@ mod tests {
         assert!((back.size.width - 210.0).abs() < 0.01, "{:?}", back.size);
         assert!((back.size.height - 297.0).abs() < 0.01, "{:?}", back.size);
         let page = |s: &Shape| s.page_path().bounding_box();
-        let all: Vec<&Shape> = back.shapes.iter().collect();
+        // The ring and the line come back as the group they were saved
+        // as (`u` ... `U`).
+        let group = back
+            .shapes
+            .iter()
+            .find_map(|s| match &s.kind {
+                ShapeKind::Group { children } => Some(children),
+                _ => None,
+            })
+            .expect("the group");
+        assert_eq!(group.len(), 2);
+        let all: Vec<&Shape> = back
+            .shapes
+            .iter()
+            .flat_map(|s| match &s.kind {
+                ShapeKind::Group { children } => children.iter().collect::<Vec<_>>(),
+                _ => vec![s],
+            })
+            .collect();
         // The rectangle, its fill cyan and its outline there.
         let rect = all
             .iter()

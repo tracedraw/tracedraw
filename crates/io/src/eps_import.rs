@@ -227,8 +227,10 @@ fn parse_here(bytes: &[u8], ids: &mut IdSource, stack_budget: usize) -> Result<I
 /// them, in PostScript: path construction (`m`, `l`, `L`, `c`, `C`,
 /// `v`, `V`, `y`, `Y`), painting (`f`, `F`, `s`, `S`, `b`, `B`, `n`,
 /// `N`), compound paths (`*u`, `*U`), clipping (`W` in a `q` ... `Q`
-/// group), groups (`u`, `U`), process and grey colours for the fill
-/// (`k`, `g`) and the outline (`K`, `G`), outline settings and layers.
+/// group), groups (`u`, `U`), process, grey, RGB and custom colours for
+/// the fill (`k`, `g`, `Xa`, `x`, `Xx`) and the outline (`K`, `G`, `XA`,
+/// `X`, `XX`), outline settings and layers. A custom colour's tint runs
+/// from 0 (the whole colour) to 1 (none: white).
 /// The fill and outline colours are kept apart, as the format keeps
 /// them; the parts of a compound path are painted together at its end.
 const CLASSIC_AI_PROCS: &str = "\
@@ -238,6 +240,13 @@ const CLASSIC_AI_PROCS: &str = "\
 /K {[ 5 1 roll /setcmykcolor load ] cvx /_s exch def} def
 /g {[ exch /setgray load ] cvx /_f exch def} def
 /G {[ exch /setgray load ] cvx /_s exch def} def
+/Xa {[ 4 1 roll /setrgbcolor load ] cvx /_f exch def} def
+/XA {[ 4 1 roll /setrgbcolor load ] cvx /_s exch def} def
+/_tc {/_t exch def pop [ 5 1 roll 4 {1 _t sub mul 4 1 roll} repeat /setcmykcolor load ] cvx} def
+/_tr {/_t exch def pop [ 4 1 roll 3 {1 exch sub 1 _t sub mul 1 exch sub 3 1 roll} repeat /setrgbcolor load ] cvx} def
+/x {_tc /_f exch def} def /X {_tc /_s exch def} def
+/Xx {1 eq {_tr} {_tc} ifelse /_f exch def} def
+/XX {1 eq {_tr} {_tc} ifelse /_s exch def} def
 /w {setlinewidth} def /j {setlinejoin} def /J {setlinecap} def
 /M {setmiterlimit} def /d {setdash} def
 /m {moveto} def /l {lineto} def /L {lineto} def /c {curveto} def /C {curveto} def
@@ -252,7 +261,7 @@ const CLASSIC_AI_PROCS: &str = "\
 /N {{} _paint} def /n {closepath N} def
 /W {/_clip true def} def
 /*u {/_cp true def} def /*U {/_cp false def _pp _done /_pp {} def} def
-/u {} def /U {} def /q {gsave} def /Q {grestore} def
+/u {.tdbegingroup} def /U {.tdendgroup} def /q {gsave} def /Q {grestore} def
 /Lb {clear} def /Ln {pop} def /LB {} def
 /A {pop} def /O {pop} def /R {pop} def /D {pop} def
 ";
@@ -886,6 +895,9 @@ struct Interp<'a> {
     pages: Vec<(usize, Option<Size>)>,
     /// The page size `setpagedevice` set, mm.
     page_size: Option<Size>,
+    /// Where each open group of a classic Illustrator file (`u`) started
+    /// among the objects painted.
+    group_starts: Vec<usize>,
     /// Where the stack stood when the program started running, and how
     /// many bytes of it the program's recursion may use (see
     /// [`STACK_BUDGET`]).
@@ -935,6 +947,7 @@ impl<'a> Interp<'a> {
             jpeg_files: Vec::new(),
             pages: Vec::new(),
             page_size: None,
+            group_starts: Vec::new(),
             stack_base: stack_mark(),
             stack_budget: usize::MAX,
         }
@@ -1099,6 +1112,9 @@ impl<'a> Interp<'a> {
             "resourcestatus",
             "setpagedevice",
             "currentpagedevice",
+            // the groups of classic Illustrator files (see CLASSIC_AI_PROCS)
+            ".tdbegingroup",
+            ".tdendgroup",
             "nulldevice",
             "echo",
             "setuserparams",
@@ -1459,6 +1475,25 @@ impl<'a> Interp<'a> {
     }
 
     // ----- shapes -----
+
+    /// The objects painted since `start` become one group (two or more;
+    /// one object stays as it is). Page ends inside the group move to
+    /// its end.
+    fn close_group(&mut self, start: usize) {
+        if start > self.shapes.len() || self.shapes.len() - start < 2 {
+            return;
+        }
+        let children = self.shapes.split_off(start);
+        let mut group = self.new_shape(ShapeKind::Group { children });
+        group.fill = Fill::None;
+        group.stroke = None;
+        self.shapes.push(group);
+        for (at, _) in &mut self.pages {
+            if *at > start {
+                *at = start + 1;
+            }
+        }
+    }
 
     fn new_shape(&mut self, kind: ShapeKind) -> Shape {
         Shape::new(ShapeId(self.ids.shape().0), kind)
@@ -2491,6 +2526,16 @@ impl<'a> Interp<'a> {
                 self.gs = GState::default();
                 self.gs.ctm = self.base;
                 self.gs.path = path;
+            }
+            ".tdbegingroup" => {
+                if self.group_starts.len() < 256 {
+                    self.group_starts.push(self.shapes.len());
+                }
+            }
+            ".tdendgroup" => {
+                if let Some(start) = self.group_starts.pop() {
+                    self.close_group(start);
+                }
             }
             "showpage" | "copypage" => {
                 // A page ends (copypage keeps the marks on the device;
@@ -5082,5 +5127,64 @@ mod tests {
             imp.warnings
         );
         assert!(imp.shapes.is_empty());
+    }
+
+    /// A classic Illustrator file as tracing programs write them: RGB
+    /// (`Xa`), custom (`x`, `Xx`) colours and groups (`u` ... `U`),
+    /// with no procedure set (d#2949: everything came in black and
+    /// ungrouped).
+    #[test]
+    fn classic_ai_rgb_and_custom_colours_and_groups() {
+        let imp = run("%!PS-Adobe-3.0\n%%Creator: tracer\n%AI5_FileFormat 3\n\
+            %%BoundingBox: 0 0 100 100\n%%EndProlog\n%%BeginSetup\n%%EndSetup\n\
+            u\n1 0 0 Xa\n0 0 m 10 0 L 10 10 L 0 10 L 0 0 L f\n\
+            0 0 1 XA 2 w\n20 0 m 30 0 L 30 10 L S\n\
+            U\n\
+            0 1 1 0 (Spot red) 0.25 x\n40 0 m 50 0 L 50 10 L f\n\
+            0 0.5 0 (Green) 0 1 Xx\n60 0 m 70 0 L 70 10 L f\n\
+            1 0 0 0 (Cyan) 0 0 Xx\n80 0 m 90 0 L 90 10 L f\n\
+            u\n0 0 m 1 0 L 1 1 L f\nU\n\
+            %%Trailer\n");
+        assert!(
+            imp.warnings.iter().all(|w| !w.contains("undefined")),
+            "{:?}",
+            imp.warnings
+        );
+        assert_eq!(imp.shapes.len(), 5, "{:?}", imp.shapes);
+        let ShapeKind::Group { children } = &imp.shapes[0].kind else {
+            panic!("the first two paths make a group: {:?}", imp.shapes[0].kind);
+        };
+        assert_eq!(children.len(), 2);
+        let near = |a: f32, b: f32| (a - b).abs() < 1e-4;
+        assert!(
+            matches!(children[0].fill, Fill::Solid(Color::Rgb { r, g, b }) if near(r, 1.0) && near(g, 0.0) && near(b, 0.0)),
+            "{:?}",
+            children[0].fill
+        );
+        let stroke = children[1].stroke.as_ref().expect("the line is stroked");
+        assert!(
+            matches!(stroke.color, Color::Rgb { r, g, b } if near(r, 0.0) && near(g, 0.0) && near(b, 1.0)),
+            "{:?}",
+            stroke.color
+        );
+        // A custom colour at tint 0.25 is three quarters of the colour.
+        assert!(
+            matches!(imp.shapes[1].fill, Fill::Solid(Color::Cmyk { c, m, y, k }) if near(c, 0.0) && near(m, 0.75) && near(y, 0.75) && near(k, 0.0)),
+            "{:?}",
+            imp.shapes[1].fill
+        );
+        // `Xx` with type 1 is RGB, type 0 CMYK.
+        assert!(
+            matches!(imp.shapes[2].fill, Fill::Solid(Color::Rgb { r, g, b }) if near(r, 0.0) && near(g, 0.5) && near(b, 0.0)),
+            "{:?}",
+            imp.shapes[2].fill
+        );
+        assert!(
+            matches!(imp.shapes[3].fill, Fill::Solid(Color::Cmyk { c, .. }) if near(c, 1.0)),
+            "{:?}",
+            imp.shapes[3].fill
+        );
+        // A group of one object is the object.
+        assert!(matches!(imp.shapes[4].kind, ShapeKind::Path { .. }));
     }
 }

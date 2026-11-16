@@ -121,7 +121,10 @@ pixels more when that is larger, #2731):
 
 - The controls show the selected object's contour and edit the selected
   contours live (a run of changes is one undo step). Apply (shown when
-  a selected object has no contour) adds the contour; Clear Contour
+  a selected object has no contour) adds the contour, as Enter does in
+  a number box of the bar or panel (d#2945,
+  `contour_bar::tests::enter_in_a_box_of_the_panel_applies_the_contour`);
+  Clear Contour
   removes it; Break Apart turns the steps into objects, grouped beside
   the object when there are several (`App::break_effect_groups`).
 - Object > Break Contour Group Apart (Ctrl+K, and the right-click
