@@ -9754,3 +9754,78 @@ fn repeated_pictures_are_stored_once() {
         }
     }
 }
+
+/// Object data opens again from a package (#2879): a clone keeps its
+/// link to its master, naming the master's id in the drawing read, and
+/// data fields come back; inside a group too. A RIFF file has no place
+/// for them.
+#[test]
+fn object_data_and_clone_links_open_again() {
+    let rect = |id: u64, x: f64| {
+        let mut s = Shape::new(
+            tracedraw_core::ShapeId(id),
+            ShapeKind::Rect {
+                rect: Rect::new(x, 10.0, x + 20.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        s.fill = Fill::Solid(Color::rgb8(200, 30, 30));
+        s
+    };
+    let master = rect(101, 10.0);
+    let mut clone = rect(102, 50.0);
+    clone.data = vec![
+        ("Price".into(), "5".into()),
+        ("clone.master".into(), "101".into()),
+        ("clone.state".into(), "fill:1/2;outline:own".into()),
+    ];
+    let mut inner = rect(103, 90.0);
+    inner.data = vec![("Code".into(), "A-1".into())];
+    let group = Shape::new(
+        tracedraw_core::ShapeId(104),
+        ShapeKind::Group {
+            children: vec![inner, rect(105, 130.0)],
+        },
+    );
+    let mut doc = doc_with(vec![master, clone, group]);
+    doc.ids_mut().shape();
+    for v in [20u16, 24] {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, _) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let mut all = Vec::new();
+        shapes_on_page(&back.pages[0].layers[0].shapes, Affine::IDENTITY, &mut all);
+        let at = |x: f64| {
+            all.iter()
+                .map(|(_, s)| s)
+                .find(|s| {
+                    (s.bounds().x0 - x).abs() < 0.5 && !matches!(s.kind, ShapeKind::Group { .. })
+                })
+                .unwrap_or_else(|| panic!("v{v}: object at {x}"))
+        };
+        let (m, c) = (at(10.0), at(50.0));
+        let value = |s: &Shape, k: &str| {
+            s.data
+                .iter()
+                .find(|(key, _)| key == k)
+                .map(|(_, v)| v.clone())
+        };
+        assert_eq!(value(c, "Price").as_deref(), Some("5"), "v{v}");
+        assert_eq!(
+            value(c, "clone.master"),
+            Some(m.id.raw().to_string()),
+            "v{v}"
+        );
+        assert_eq!(
+            value(c, "clone.state").as_deref(),
+            Some("fill:1/2;outline:own")
+        );
+        assert!(m.data.is_empty(), "v{v}: {:?}", m.data);
+        assert_eq!(value(at(90.0), "Code").as_deref(), Some("A-1"), "v{v}");
+    }
+    // Version 13, a RIFF file: as before, without them.
+    let (back, _) = crate::open_bytes(&document_to_cdr_version(&doc, 13), "back").expect("reads");
+    let mut all = Vec::new();
+    shapes_on_page(&back.pages[0].layers[0].shapes, Affine::IDENTITY, &mut all);
+    assert!(all.iter().all(|(_, s)| s.data.is_empty()));
+}

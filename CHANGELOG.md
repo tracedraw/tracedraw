@@ -6,6 +6,8 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Exported pictures (PNG, JPG, TIFF, PSD and the others) no longer have a light line along the top and right edge of the object. When the page's size was not a whole number of pixels at the resolution chosen, the last row and column were only partly covered and blended with white; the drawing is now scaled by a hair so it fills every pixel of the picture, which keeps the size the dialog shows (#2866).
+- A clone saved in a .cdr file (CorelDRAW X4 and later) opens again linked to its master and keeps following it, and the fields of Object Properties > Data come back too. TraceDraw now keeps every object's data in the file, where CorelDRAW leaves it alone (#2879).
 - Bezier and Pen tools: while a curve is drawn, S makes the last node smooth and Y symmetrical, as with the Shape tool (C already made it a cusp). S and Y switched to the Sketch and Polygon tools and dropped the curve (#2876).
 - Alt+E opens the Edit menu, as Alt and the other menus' letters open theirs (Alt+E, N clones); it edits a symmetry only while an object with one is selected (#2881).
 

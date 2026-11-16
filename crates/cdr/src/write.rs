@@ -188,6 +188,10 @@ pub fn document_to_cdr_version_with(doc: &Document, version: u16, previews: &Pre
     if let Some(b) = crate::kept_effects::encode(&w.effects) {
         own.push((crate::kept_effects::MEMBER, b));
     }
+    // Object data, a clone's link to its master among it (#2879).
+    if let Some(b) = crate::kept_data::encode(doc, &w.static_ids) {
+        own.push((crate::kept_data::MEMBER, b));
+    }
     let out = if v.redirects() {
         let (root, files) = pack_redirected(v, &tree);
         zip_v16(

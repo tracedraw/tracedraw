@@ -269,7 +269,7 @@ fn page_file(
                     return bytes.ok_or_else(|| "CMYK encoding failed".to_string());
                 }
                 ExportColorMode::Gray => {
-                    let pm = tracedraw_render::render_page_image(doc, pid, st.render_dpi())
+                    let pm = tracedraw_render::render_page_export_image(doc, pid, st.render_dpi())
                         .ok_or("render failed")?;
                     let bytes =
                         encode_gray(&on_white(&pm).ok_or("render failed")?, ext, st.quality)?;
@@ -277,25 +277,23 @@ fn page_file(
                 }
                 ExportColorMode::Rgb => {}
             }
-            let mut pm = tracedraw_render::render_page_image(doc, pid, st.render_dpi())
+            let mut pm = tracedraw_render::render_page_export_image(doc, pid, st.render_dpi())
                 .ok_or("render failed")?;
             if st.transparent && matches!(ext, "png" | "webp" | "gif") {
                 // Re-render on a transparent background.
                 let p = doc.page(pid).map_err(|e| e.to_string())?;
-                let zoom = st.render_dpi() / 25.4;
-                let w = (p.size.width * zoom).ceil() as u32;
-                let h = (p.size.height * zoom).ceil() as u32;
+                let (w, h, view) = tracedraw_render::ViewTransform::whole_page(
+                    p.size.width,
+                    p.size.height,
+                    st.render_dpi() / 25.4,
+                );
                 pm = tracedraw_render::render_page(
                     doc,
                     pid,
                     &tracedraw_render::RenderOptions {
                         width: w,
                         height: h,
-                        view: tracedraw_render::ViewTransform {
-                            zoom,
-                            origin_x: 0.0,
-                            origin_y: h as f64,
-                        },
+                        view,
                         preview: None,
                         wireframe: false,
                         ..tracedraw_render::RenderOptions::default()
@@ -376,7 +374,7 @@ pub(crate) fn cmyk_pixels(
     let mut out: Option<(u32, u32, Vec<u8>)> = None;
     for ink in 0..4 {
         *one.pages.first_mut()? = plate_page(&page, Plate::Process(ink));
-        let pm = on_white(&tracedraw_render::render_page_image(&one, pid, dpi)?)?;
+        let pm = on_white(&tracedraw_render::render_page_export_image(&one, pid, dpi)?)?;
         let (w, h) = (pm.width(), pm.height());
         let (ow, oh, buf) =
             out.get_or_insert_with(|| (w, h, vec![0u8; w as usize * h as usize * 4]));
@@ -535,19 +533,15 @@ pub fn preview(app: &App, st: &ExportState, max_px: u32) -> Option<tiny_skia::Pi
     let page = doc.pages.first()?;
     let longest = page.size.width.max(page.size.height).max(0.1);
     let zoom = max_px.max(16) as f64 / longest;
-    let w = (page.size.width * zoom).ceil().max(1.0) as u32;
-    let h = (page.size.height * zoom).ceil().max(1.0) as u32;
+    let (w, h, view) =
+        tracedraw_render::ViewTransform::whole_page(page.size.width, page.size.height, zoom);
     let mut pm = tracedraw_render::render_page(
         &doc,
         page.id,
         &tracedraw_render::RenderOptions {
             width: w,
             height: h,
-            view: tracedraw_render::ViewTransform {
-                zoom,
-                origin_x: 0.0,
-                origin_y: h as f64,
-            },
+            view,
             preview: None,
             wireframe: false,
             ..tracedraw_render::RenderOptions::default()

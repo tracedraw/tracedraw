@@ -675,8 +675,24 @@ pub(crate) fn parse_document_kept(
     kept: &[crate::kept_blends::KeptBlend],
     kept_effects: &[crate::kept_effects::KeptEffect],
 ) -> (Document, ParseReport) {
+    parse_document_kept_data(tree, main, version, cmyk_profile, (kept, kept_effects), &[])
+}
+
+/// [`parse_document_kept`] that also gives objects back the data
+/// `kept_data` holds for them (see [`crate::kept_data`]).
+pub(crate) fn parse_document_kept_data(
+    tree: &Tree,
+    main: &[u8],
+    version: Version,
+    cmyk_profile: Option<&[u8]>,
+    (kept, kept_effects): (
+        &[crate::kept_blends::KeptBlend],
+        &[crate::kept_effects::KeptEffect],
+    ),
+    kept_data: &[crate::kept_data::KeptData],
+) -> (Document, ParseReport) {
     let mut ctx = Ctx::new(main, tree, version.0);
-    if !kept.is_empty() || !kept_effects.is_empty() {
+    if !kept.is_empty() || !kept_effects.is_empty() || !kept_data.is_empty() {
         ctx.static_ids = Some(HashMap::new());
     }
     ctx.report.version = Some(version);
@@ -998,6 +1014,7 @@ pub(crate) fn parse_document_kept(
                 kept.len()
             );
         }
+        crate::kept_data::restore(&mut doc, kept_data, &ids);
     }
     if !ctx.library_inks.is_empty() {
         let n = ctx.library_inks.len();

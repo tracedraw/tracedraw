@@ -938,14 +938,8 @@ pub fn page_to_psd(doc: &Document, page_index: usize, dpi: f64) -> Option<Vec<u8
     let page_id = page.id;
     let max_dpi = (MAX_WRITE_PX / page.size.width.max(page.size.height) * 25.4).max(1.0);
     let dpi = dpi.clamp(1.0, max_dpi);
-    let zoom = dpi / 25.4;
-    let w = (page.size.width * zoom).ceil().max(1.0) as u32;
-    let h = (page.size.height * zoom).ceil().max(1.0) as u32;
-    let view = tracedraw_render::ViewTransform {
-        zoom,
-        origin_x: 0.0,
-        origin_y: h as f64,
-    };
+    let (w, h, view) =
+        tracedraw_render::ViewTransform::whole_page(page.size.width, page.size.height, dpi / 25.4);
     let opts = || tracedraw_render::RenderOptions {
         width: w,
         height: h,
