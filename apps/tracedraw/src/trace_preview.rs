@@ -82,6 +82,8 @@ pub struct Outcome {
     pub colors: Arc<Vec<([u8; 3], usize)>>,
     /// Mean centreline stroke width, pixels of what was traced.
     pub stroke_px: f64,
+    /// The size, pixels, of what was traced (`traced`'s space).
+    pub trace_size: (u32, u32),
     pub stats: Stats,
     pub after: ColorImage,
     pub wire: ColorImage,
@@ -102,6 +104,8 @@ pub struct Shown {
     pub traced: Arc<Vec<Traced>>,
     pub colors: Arc<Vec<([u8; 3], usize)>>,
     pub stroke_px: f64,
+    /// The size, pixels, of what was traced (`traced`'s space).
+    pub trace_size: (u32, u32),
     pub stats: Stats,
     pub after: TextureHandle,
     pub wire: TextureHandle,
@@ -294,6 +298,7 @@ impl Live {
             traced: o.traced,
             colors: o.colors,
             stroke_px: o.stroke_px,
+            trace_size: o.trace_size,
             stats: o.stats,
             after,
             wire,
@@ -539,6 +544,7 @@ fn outcome(
         traced,
         colors,
         stroke_px,
+        trace_size: (tw, th),
         stats,
         after: color_image(&after),
         wire: color_image(&wire),

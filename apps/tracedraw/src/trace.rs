@@ -4488,10 +4488,44 @@ fn paint_traced(traced: &[Traced], w: u32, h: u32, scale: f32, how: Paint) -> Rg
         ((w as f32 * scale).round() as u32).max(1),
         ((h as f32 * scale).round() as u32).max(1),
     );
+    paint_traced_at(traced, (pw, ph), scale, (0.0, 0.0), how)
+}
+
+/// A `size` part of `traced` drawn `scale` times the trace's pixels, its
+/// top left `origin` (pixels of the result) from the trace's: the Trace
+/// dialog's preview zoomed in, drawn sharp at the screen's pixels
+/// (#2951). `stroke_px` as for [`render_traced_scaled`]; `None` draws the
+/// wireframe.
+pub fn render_traced_view(
+    traced: &[Traced],
+    size: (u32, u32),
+    scale: f32,
+    origin: (f32, f32),
+    stroke_px: Option<f64>,
+) -> RgbaImage {
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    let how = match stroke_px {
+        Some(px) => Paint::Filled(px),
+        None => Paint::Wire,
+    };
+    paint_traced_at(traced, (size.0.max(1), size.1.max(1)), scale, origin, how)
+}
+
+fn paint_traced_at(
+    traced: &[Traced],
+    (pw, ph): (u32, u32),
+    scale: f32,
+    (ox, oy): (f32, f32),
+    how: Paint,
+) -> RgbaImage {
     let Some(mut pm) = tiny_skia::Pixmap::new(pw, ph) else {
         return RgbaImage::new(pw, ph);
     };
-    let transform = tiny_skia::Transform::from_scale(scale, scale);
+    let transform = tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, -ox, -oy);
     for t in traced {
         let mut pb = tiny_skia::PathBuilder::new();
         for el in t.path.elements() {
