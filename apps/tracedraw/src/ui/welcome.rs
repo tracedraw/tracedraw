@@ -253,7 +253,7 @@ fn start_buttons(app: &mut App, ui: &mut Ui) {
     ui.add_space(8.0);
     if big_button(
         ui,
-        icons::Action::Template,
+        icons::Action::Welcome,
         tr("welcome.new_from_template"),
         String::new(),
     ) {

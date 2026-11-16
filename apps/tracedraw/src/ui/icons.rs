@@ -183,19 +183,18 @@ pub fn draw_on(painter: &Painter, r: Rect, tool: Tool, color: Color32, bg: Color
         }
 
         Tool::VariableOutline => {
-            // A straight ink stroke swelling in the middle, the width
-            // handle pulled out square from its edge. It was an arch,
-            // read as a compass (#1682).
+            // An ink ribbon swelling in the middle, the width handle
+            // pulled off the curve.
             let band = ribbon(
-                [pt(3.5, 20.5), pt(9.0, 15.0), pt(15.0, 9.0), pt(20.5, 3.5)],
-                |t| 0.6 + 2.8 * (std::f32::consts::PI * t).sin(),
+                [pt(3.0, 18.0), pt(7.0, 6.0), pt(17.0, 6.0), pt(21.0, 18.0)],
+                |t| 0.5 + 2.6 * (std::f32::consts::PI * t).sin(),
                 28,
             );
             pen.fill_pts(&band, pen.wash(), false);
             pen.stroke_pts(&band, true, LINE, ink);
-            pen.thin("M14.4 14.4L18.5 18.5", acc);
-            pen.handle(18.5, 18.5, 1.8);
-            pen.node(14.4, 14.4, true);
+            pen.thin("M12 9V3.5", acc);
+            pen.handle(12.0, 3.5, 1.8);
+            pen.node(12.0, 9.0, true);
         }
 
         // Crop group.
@@ -256,13 +255,12 @@ pub fn draw_on(painter: &Painter, r: Rect, tool: Tool, color: Color32, bg: Color
             pen.node(13.5, 7.0, true);
         }
         Tool::Pan => {
-            // An open hand, the one that grabs the view (#1727): four
-            // fingers up, the thumb out to the left.
-            pen.body(
-                "M8 14.5V5.5a1.25 1.25 0 0 1 2.5 0V11V4a1.25 1.25 0 0 1 2.5 0v7V5\
-                 a1.25 1.25 0 0 1 2.5 0v6.5V7.5a1.25 1.25 0 0 1 2.5 0V15c0 3.5-2.5 6-6 6\
-                 h-1c-2.5 0-4-1.2-5.2-3l-2.2-4.4a1.3 1.3 0 0 1 2-1.6z",
-            );
+            // A page shifted from its ghost, the drag arrow.
+            pen.ghost(&rrect(3.0, 3.0, 13.0, 13.0, 1.5), a(0.4));
+            pen.solid(&rrect(8.0, 8.0, 13.0, 13.0, 1.5));
+            pen.line("M6 6l5.5 5.5", acc);
+            pen.arrow_head(13.5, 13.5, 1.0, 1.0, 3.0, acc);
+            pen.node(6.0, 6.0, true);
         }
 
         // Curve group.
@@ -615,27 +613,13 @@ pub fn draw_on(painter: &Painter, r: Rect, tool: Tool, color: Color32, bg: Color
         }
 
         Tool::Transparency => {
-            // The see-through checkerboard: a square of four by four
-            // cells on whole units, its dark cells fading in steps from
-            // solid ink at the top left to faint at the bottom right, the
-            // live node on that corner. No smooth fade and no handle bar,
-            // so it is not taken for the fill tools (#1682).
-            for (row, col) in transparency_cells() {
-                let x = 4.0 + 4.0 * col as f32;
-                let y = 4.0 + 4.0 * row as f32;
-                pen.rect(
-                    x,
-                    y,
-                    4.0,
-                    4.0,
-                    0.0,
-                    a(transparency_alpha(row, col)),
-                    0.0,
-                    ink,
-                );
-            }
-            pen.rect(4.0, 4.0, 16.0, 16.0, 1.0, Color32::TRANSPARENT, LINE, ink);
-            pen.node(20.0, 20.0, true);
+            // A circle filled with a fade from ink at the left to nothing
+            // at the right, the node to handle gradient bar across it.
+            pen.fade_circle(12.0, 12.0, 8.0, ink, Color32::TRANSPARENT);
+            pen.circle(12.0, 12.0, 8.0, Color32::TRANSPARENT, LINE, ink);
+            pen.thin("M6 18L18 6", acc);
+            pen.node(6.0, 18.0, true);
+            pen.handle(18.0, 6.0, 1.75);
         }
 
         // Eyedropper group: the diagonal pipette with the drop drawn
@@ -726,9 +710,7 @@ pub enum Action {
     /// Snapping off: the snap icon crossed out in red when on.
     SnapOff,
     Options,
-    /// New from Template: a folder with a plus and a sheet standing in
-    /// it (#1677).
-    Template,
+    Welcome,
     Fullscreen,
     /// View toggles: a ruler, the grid and guidelines, each with an eye.
     ShowRulers,
@@ -742,7 +724,7 @@ pub enum Action {
     GitPush,
 }
 
-/// The green of the plus on New and New from Template.
+/// The New button's green badge with a white plus.
 const NEW_GREEN: Color32 = Color32::from_rgb(0x1E, 0x9E, 0x3C);
 
 /// The colour of the parts cut out of a solid icon drawn in `color`:
@@ -759,24 +741,11 @@ fn knockout_for(color: Color32) -> Color32 {
     }
 }
 
-/// A plus in a green circle centred on `c` (New and New from Template,
-/// #1677), ringed in the bar's colour; in the icon colour when dimmed.
-fn plus_badge(painter: &Painter, c: Pos2, k: f32, enabled: bool, color: Color32) {
-    let fill = if enabled { NEW_GREEN } else { color };
-    painter.circle(c, 3.6 * k, fill, Stroke::new(1.0 * k, Tokens::panel()));
-    let w = Stroke::new(1.3 * k, Color32::WHITE);
-    let h = 1.9 * k;
-    painter.line_segment([c - Vec2::new(h, 0.0), c + Vec2::new(h, 0.0)], w);
-    painter.line_segment([c - Vec2::new(0.0, h), c + Vec2::new(0.0, h)], w);
-}
-
 pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
     let k = r.width() / 16.0;
     let s = Stroke::new(1.25 * k, color);
     let thin = Stroke::new(0.9 * k, color);
-    // Only a dimmed icon loses its green: the Welcome screen draws its
-    // big buttons in the accent and keeps the green plus (#1677).
-    let enabled = color != Tokens::icon_off() && color != Tokens::menu_text_off();
+    let enabled = color == Tokens::icon();
     // The light parts cut out of a solid icon (the floppy's label and
     // shutter, the page over the clipboard and the copied page): white
     // on a dark icon, the bar's own colour on a light one. White on the
@@ -822,39 +791,45 @@ pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
     };
     match a {
         Action::New => {
-            // A page with a plus in a green circle at its bottom right
-            // (#1677). A ring in the bar's colour parts the circle from
-            // the page under it.
-            page(painter, 2.0, 1.5, 11.5, 14.5);
-            plus_badge(painter, p(r, 11.5, 11.5), k, enabled, color);
+            page(painter, 2.5, 2.5, 11.5, 15.0);
+            let badge = Rect::from_min_max(p(r, 9.5, 0.5), p(r, 15.5, 6.5));
+            painter.rect_filled(badge, 0.0, if enabled { NEW_GREEN } else { color });
+            let c = badge.center();
+            let w = Stroke::new(1.2 * k, Color32::WHITE);
+            painter.line_segment(
+                [c - Vec2::new(2.0 * k, 0.0), c + Vec2::new(2.0 * k, 0.0)],
+                w,
+            );
+            painter.line_segment(
+                [c - Vec2::new(0.0, 2.0 * k), c + Vec2::new(0.0, 2.0 * k)],
+                w,
+            );
         }
         Action::Open => {
-            // An open folder (#1677): the back with its tab, then the
-            // front flap tipped forward, lightly shaded. The back is an
+            // Back of the folder, then its open front flap. The back is an
             // open line: closed, it drew a stroke from its right edge
             // back up to the tab, across the folder's top corner (#2340).
-            let bold = Stroke::new(1.4 * k, color);
             painter.add(epaint::PathShape::line(
                 vec![
-                    p(r, 1.5, 13.5),
-                    p(r, 1.5, 2.5),
-                    p(r, 6.0, 2.5),
-                    p(r, 7.5, 4.0),
-                    p(r, 13.0, 4.0),
+                    p(r, 1.5, 3.0),
+                    p(r, 6.0, 3.0),
+                    p(r, 7.5, 4.5),
+                    p(r, 13.0, 4.5),
                     p(r, 13.0, 7.0),
                 ],
-                bold,
+                s,
             ));
             painter.add(epaint::PathShape::convex_polygon(
                 vec![
-                    p(r, 4.0, 7.0),
+                    p(r, 3.5, 7.0),
                     p(r, 15.0, 7.0),
                     p(r, 12.5, 14.0),
                     p(r, 1.5, 14.0),
                 ],
-                color.gamma_multiply(0.18),
-                bold,
+                Color32::TRANSPARENT,
+                s,
             ));
+            painter.line_segment([p(r, 1.5, 3.0), p(r, 1.5, 14.0)], s);
         }
         Action::Save => {
             // A solid floppy disk with a white label and shutter.
@@ -1094,33 +1069,10 @@ pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
             painter.circle_filled(c, 5.0 * k, color);
             painter.circle_filled(c, 2.0 * k, Tokens::panel());
         }
-        Action::Template => {
-            // A sheet standing in a folder, the folder with a plus in a
-            // green circle (#1677). The sheet shows only above the
-            // folder, so nothing has to hide its lower part.
-            let bold = Stroke::new(1.4 * k, color);
-            painter.add(epaint::PathShape::line(
-                vec![
-                    p(r, 6.5, 6.5),
-                    p(r, 6.5, 0.75),
-                    p(r, 11.5, 0.75),
-                    p(r, 13.5, 2.75),
-                    p(r, 13.5, 6.5),
-                ],
-                s,
-            ));
-            painter.add(epaint::PathShape::closed_line(
-                vec![
-                    p(r, 1.5, 4.5),
-                    p(r, 5.0, 4.5),
-                    p(r, 6.5, 6.5),
-                    p(r, 14.5, 6.5),
-                    p(r, 14.5, 14.5),
-                    p(r, 1.5, 14.5),
-                ],
-                bold,
-            ));
-            plus_badge(painter, p(r, 8.0, 10.5), k * 0.85, enabled, color);
+        Action::Welcome => {
+            for y in [4.0, 8.0, 12.0] {
+                painter.line_segment([p(r, 2.5, y), p(r, 13.5, y)], Stroke::new(1.8 * k, color));
+            }
         }
         Action::ShowRulers => {
             // An L-shaped ruler with ticks.
@@ -1255,20 +1207,6 @@ pub fn draw_action(painter: &Painter, r: Rect, a: Action, color: Color32) {
     }
 }
 
-/// The dark cells of the Transparency icon's checkerboard (row, column),
-/// four by four, the top left one dark.
-fn transparency_cells() -> impl Iterator<Item = (usize, usize)> {
-    (0..4usize)
-        .flat_map(|r| (0..4usize).map(move |c| (r, c)))
-        .filter(|(r, c)| (r + c) % 2 == 0)
-}
-
-/// How much ink a dark cell of the Transparency icon takes: solid at
-/// the top left, fading by diagonal steps to 15 % at the bottom right.
-fn transparency_alpha(row: usize, col: usize) -> f32 {
-    1.0 - (row + col) as f32 / 6.0 * 0.85
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1394,73 +1332,6 @@ mod tests {
         }
     }
 
-    /// New and New from Template carry the same plus in a green circle
-    /// and Open is an open folder, on the Welcome screen, the toolbar and
-    /// the File menu alike (#1677).
-    #[test]
-    fn new_and_template_icons_have_the_green_circled_plus() {
-        let ctx = egui::Context::default();
-        let r = Rect::from_min_size(Pos2::ZERO, Vec2::splat(16.0));
-        let circles = |a: Action, color: Color32| {
-            let mut out = ctx.run_ui(Default::default(), |ui| {
-                draw_action(ui.painter(), r, a, color);
-            });
-            out.textures_delta.clear();
-            out.shapes
-                .into_iter()
-                .filter_map(|c| match c.shape {
-                    egui::Shape::Circle(c) => Some(c),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-        };
-        for a in [Action::New, Action::Template] {
-            let c = circles(a, Tokens::icon());
-            assert_eq!(c.len(), 1, "{a:?}: one badge");
-            assert_eq!(c[0].fill, NEW_GREEN, "{a:?}: the badge is green");
-            assert!(r.expand(0.5).contains(c[0].center), "{a:?}: in the box");
-            // In the Welcome screen's accent too; dimmed, the badge
-            // takes the dimmed colour.
-            assert_eq!(circles(a, Tokens::ACCENT)[0].fill, NEW_GREEN, "{a:?}");
-            let off = Tokens::icon_off();
-            assert_eq!(circles(a, off)[0].fill, off, "{a:?} dimmed");
-        }
-        assert!(circles(Action::Open, Tokens::icon()).is_empty());
-    }
-
-    /// The Variable Outline icon is a straight stroke swelling in the
-    /// middle, no longer an arch read as a compass (#1682): everything
-    /// lies along the diagonal it runs on, but the width handle pulled
-    /// out square from its middle.
-    #[test]
-    fn the_variable_outline_icon_is_not_an_arch() {
-        fn points(s: &egui::Shape, out: &mut Vec<Pos2>) {
-            match s {
-                egui::Shape::Path(p) => out.extend(p.points.iter().copied()),
-                egui::Shape::Mesh(m) => out.extend(m.vertices.iter().map(|v| v.pos)),
-                egui::Shape::LineSegment { points: p, .. } => out.extend(p.iter().copied()),
-                egui::Shape::Circle(c) => out.push(c.center),
-                egui::Shape::Vec(v) => v.iter().for_each(|s| points(s, out)),
-                _ => {}
-            }
-        }
-        let mut pts = Vec::new();
-        for s in shapes_of(Tool::VariableOutline, Tokens::icon()) {
-            points(&s, &mut pts);
-        }
-        assert!(pts.len() > 20);
-        for p in pts {
-            // Back on the 24 grid of the 22 px box at (4, 4).
-            let g = (p - Pos2::new(4.0, 4.0)) * (24.0 / 22.0);
-            let along = (g.x + g.y - 24.0).abs() / 2f32.sqrt();
-            let handle = (g.x - g.y).abs() < 2.5 && g.x > 12.5;
-            assert!(
-                along < 4.6 || handle,
-                "the icon reaches {g:?}, off the diagonal stroke"
-            );
-        }
-    }
-
     /// The shapes `draw` adds for `tool` in a 22 px box.
     fn shapes_of(tool: Tool, color: Color32) -> Vec<egui::Shape> {
         let ctx = egui::Context::default();
@@ -1497,84 +1368,6 @@ mod tests {
             egui::Shape::Mesh(m) => out.extend(m.vertices.iter().map(|v| v.color)),
             egui::Shape::Vec(v) => v.iter().for_each(|s| colors(s, out)),
             _ => {}
-        }
-    }
-
-    /// The shapes `draw` adds for `tool` in a box `size` points wide at
-    /// `ppp` pixels per point.
-    fn shapes_at(tool: Tool, color: Color32, size: f32, ppp: f32) -> Vec<egui::Shape> {
-        let ctx = egui::Context::default();
-        ctx.set_pixels_per_point(ppp);
-        let input = egui::RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::splat(size + 20.0))),
-            ..Default::default()
-        };
-        let mut out = ctx.run_ui(input, |ui| {
-            let r = Rect::from_min_size(Pos2::new(4.0, 4.0), Vec2::splat(size));
-            draw(ui.painter(), r, tool, color);
-        });
-        out.textures_delta.clear();
-        out.shapes.into_iter().map(|s| s.shape).collect()
-    }
-
-    /// The Transparency tool's icon was a disc fading like a gradient
-    /// with a node-to-handle bar, and was taken for the fill tools
-    /// (#1682). At every icon size it is now a checkerboard of filled
-    /// cells fading in steps, with no gradient mesh, unlike the
-    /// Interactive Fill icon.
-    #[test]
-    fn the_transparency_icon_is_a_fading_checkerboard_unlike_the_fill_icon() {
-        crate::theme::set_theme(crate::theme::Theme::Light);
-        let ink = Tokens::icon();
-        let signature = |shapes: &[egui::Shape]| -> Vec<String> {
-            shapes
-                .iter()
-                .map(|s| format!("{:?}", s.visual_bounding_rect()))
-                .collect()
-        };
-        for ppp in [1.0, 2.0] {
-            for size in [15.0, 16.0, 20.0, 22.0, 24.0, 32.0, 40.0] {
-                let t = shapes_at(Tool::Transparency, ink, size, ppp);
-                let f = shapes_at(Tool::InteractiveFill, ink, size, ppp);
-                assert_ne!(signature(&t), signature(&f), "{size} px at {ppp}x");
-                assert!(
-                    !t.iter().any(|s| matches!(s, egui::Shape::Mesh(_))),
-                    "no gradient fan at {size} px"
-                );
-                // The dark cells: ink rectangles, each at least two
-                // physical pixels wide, in at least four steps of ink.
-                let cells: Vec<&epaint::RectShape> = t
-                    .iter()
-                    .filter_map(|s| match s {
-                        egui::Shape::Rect(r)
-                            if r.fill.a() > 0
-                                && r.fill != accent()
-                                && r.rect.width() > size * 3.5 / 24.0
-                                && r.rect.width() < size / 3.0 =>
-                        {
-                            Some(r)
-                        }
-                        _ => None,
-                    })
-                    .collect();
-                assert!(cells.len() >= 8, "{} cells at {size} px", cells.len());
-                for c in &cells {
-                    assert!(
-                        c.rect.width() * ppp >= 2.0 && c.rect.height() * ppp >= 2.0,
-                        "a cell under two pixels at {size} px: {:?}",
-                        c.rect
-                    );
-                }
-                let mut alphas: Vec<u8> = cells.iter().map(|c| c.fill.a()).collect();
-                alphas.sort_unstable();
-                alphas.dedup();
-                assert!(alphas.len() >= 4, "fading in steps: {alphas:?}");
-                // The cells sit inside the frame, top left the darkest.
-                let darkest = cells.iter().max_by_key(|c| c.fill.a()).expect("cells");
-                let faintest = cells.iter().min_by_key(|c| c.fill.a()).expect("cells");
-                assert!(darkest.rect.center().x < faintest.rect.center().x);
-                assert!(darkest.rect.center().y < faintest.rect.center().y);
-            }
         }
     }
 
