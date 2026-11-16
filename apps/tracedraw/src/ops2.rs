@@ -2889,6 +2889,7 @@ impl App {
         let Some(layer) = self.active_layer() else {
             return;
         };
+        let enlarge = self.settings.tracing.enlarge;
         let mut cmds = Vec::new();
         let mut new_sel = Vec::new();
         for (id, rect, w, h, png) in bitmaps {
@@ -2902,8 +2903,15 @@ impl App {
                     let Some(img) = crate::bitmap_fx::decode(&png) else {
                         continue;
                     };
-                    let traced = crate::trace::trace(&img, settings);
-                    (traced, crate::trace::last_stroke_width_px())
+                    if enlarge {
+                        // Enlarged first, as the Trace dialog asks (see
+                        // `upscale.rs`).
+                        crate::upscale::trace_unless(&img, settings, true, None)
+                            .unwrap_or((Vec::new(), 1.0))
+                    } else {
+                        let traced = crate::trace::trace(&img, settings);
+                        (traced, crate::trace::last_stroke_width_px())
+                    }
                 }
             };
             let mut children = Vec::new();

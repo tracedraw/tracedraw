@@ -28654,3 +28654,64 @@ fn zoom_to_fit_leaves_room_round_a_shadow() {
         assert!(gap >= 40.0, "{gap} px between the shadow and the edge");
     }
 }
+
+/// The Trace dialog's "Enlarge small pictures first" box is remembered in
+/// the preferences and traces the picture again, enlarged, with the
+/// curves at the picture's own size; the AI model's Download button shows
+/// under it until the model is there. Trace with AI opens Options > AI >
+/// Service while the vectorization service is not set up, and Cancel
+/// there comes back to the Trace dialog.
+#[test]
+fn trace_enlarge_box_and_trace_with_ai_button() {
+    let (ctx, mut app, _) = trace_setup(black_white_image(120, |x, y| {
+        ((x as f32 - 60.0).powi(2) + (y as f32 - 60.0).powi(2)).sqrt() < 30.0
+    }));
+    let plain = trace_wait(&ctx, &mut app);
+    assert!(!app.settings.tracing.enlarge);
+    click_at(
+        &ctx,
+        &mut app,
+        trace_rect(&ctx, "enlarge").center(),
+        Modifiers::NONE,
+    );
+    assert!(app.settings.tracing.enlarge);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    if !crate::upscale::model_ready() {
+        trace_rect(&ctx, "enlarge_download");
+    }
+    // The enlarged trace: the same disc, at the picture's size.
+    let t0 = std::time::Instant::now();
+    let big = loop {
+        let s = trace_wait(&ctx, &mut app);
+        if s.key != plain.key {
+            break s;
+        }
+        assert!(t0.elapsed() < std::time::Duration::from_secs(60));
+    };
+    let span = |s: &crate::trace_preview::Shown| {
+        s.raw
+            .iter()
+            .filter(|t| t.color.to_rgb8()[0] < 100)
+            .map(|t| kurbo::Shape::bounding_box(&t.path))
+            .reduce(|a, b| a.union(b))
+            .expect("the disc")
+    };
+    let (a, b) = (span(&plain), span(&big));
+    assert!((a.width() - b.width()).abs() < 1.0, "{a:?} {b:?}");
+    assert!((a.center() - b.center()).hypot() < 1.0, "{a:?} {b:?}");
+    // Trace with AI, not set up: Options > AI > Service, then back.
+    app.ai_vectorize.key.clear();
+    click_at(
+        &ctx,
+        &mut app,
+        trace_rect(&ctx, "trace_with_ai").center(),
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::Options));
+    assert_eq!(app.options_page, crate::ui::options::OptionsPage::AiService);
+    assert!(matches!(
+        app.dialog_return.as_deref(),
+        Some(crate::ui::dialogs::Dialog::Trace(_))
+    ));
+}

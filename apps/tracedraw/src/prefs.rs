@@ -1037,6 +1037,9 @@ pub struct TracePrefs {
     /// Every trace starts with these.
     pub remove_background: bool,
     pub delete_original: bool,
+    /// The Trace dialog's "Enlarge small pictures first": a small
+    /// picture is traced enlarged (see `upscale.rs`).
+    pub enlarge: bool,
 }
 
 impl Default for TracePrefs {
@@ -1048,6 +1051,7 @@ impl Default for TracePrefs {
             quick_preset: crate::trace::Preset::Optimized,
             remove_background: s.removes_background(),
             delete_original: s.delete_original,
+            enlarge: false,
         }
     }
 }
@@ -1707,6 +1711,7 @@ mod tests {
             quick_preset: crate::trace::Preset::Logo,
             remove_background: false,
             delete_original: true,
+            enlarge: false,
         };
         let s = t.settings(crate::trace::Preset::HighQualityImage);
         let p = crate::trace::Preset::HighQualityImage.settings();

@@ -80,6 +80,9 @@ ureq = { version = "3", features = ["platform-verifier"] }
 # Lossy WebP export (libwebp, BSD licence): the pure-Rust encoder writes
 # lossless files only (#592).
 webp = { version = "0.3", default-features = false }
+# Enlarge before tracing: the matrix products of the AI enlargement
+# (MIT OR Apache-2.0, pure Rust).
+matrixmultiply = "0.3"
 
 # The system clipboard (text, images, copied files): the desktop builds;
 # a browser hands over clipboard contents in paste events only and
