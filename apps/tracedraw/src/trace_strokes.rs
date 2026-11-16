@@ -55,6 +55,24 @@ const STRAY_WIDE: f64 = 0.3;
 /// a point, up to [`MITER_MOST`].
 const MITER_LEAST: f64 = 0.45;
 const MITER_MOST: f64 = 2.4;
+/// A straight stretch of a middle line: at least [`RUN_LEAST`] widths
+/// long (and [`RUN_POINTS`] points of the grid), no point of it further
+/// than [`RUN_OFF`] points from its line, its two halves within
+/// [`RUN_TURN`] radians of each other. One within [`RUN_AXIS`] radians
+/// of level or upright is level or upright.
+const RUN_LEAST: f64 = 1.5;
+const RUN_POINTS: f64 = 12.0;
+/// How much of that length is the run's own, what the line goes on
+/// past a free end aside.
+const RUN_OWN: f64 = 0.7;
+const RUN_OFF: f64 = 0.6;
+const RUN_TURN: f64 = 0.1;
+const RUN_AXIS: f64 = 0.07;
+/// A free end is carried on along the bend its stroke has there when
+/// the bend is at least this much, radians over one width, and
+/// [`BEND_MOST`] at most.
+const BEND_LEAST: f64 = 0.08;
+const BEND_MOST: f64 = 0.8;
 /// Two colours this near are shades of one, a letter in both one letter.
 const SHADE_NEAR: i64 = 48;
 
@@ -572,6 +590,312 @@ fn past_ends(c: &Chain, inside: &[f32], w: usize, h: usize) -> [f64; 2] {
     ]
 }
 
+/// The straight stretches of `soft` (points a unit apart): pairs of
+/// the indexes of their first and last points. `past` is how far the
+/// line goes on before the first point and after the last.
+fn straight_runs(soft: &[Point], past: [f64; 2], least: f64) -> Vec<(usize, usize)> {
+    let m = soft.len();
+    let straight = |a: usize, b: usize| -> bool {
+        let d = unit(soft[b] - soft[a]);
+        if d == Vec2::ZERO {
+            return false;
+        }
+        if soft[a + 1..b]
+            .iter()
+            .any(|p| (*p - soft[a]).cross(d).abs() > RUN_OFF)
+        {
+            return false;
+        }
+        if b - a >= 8 {
+            let mid = (a + b) / 2;
+            let (u, v) = (soft[mid] - soft[a], soft[b] - soft[mid]);
+            if u.cross(v).atan2(u.dot(v)).abs() > RUN_TURN {
+                return false;
+            }
+        }
+        true
+    };
+    let mut runs = Vec::new();
+    let mut a = 0;
+    while a + 4 < m {
+        let mut b = a + 1;
+        while b + 1 < m && straight(a, b + 1) {
+            b += 1;
+        }
+        let own = (soft[b] - soft[a]).hypot();
+        let mut long = own;
+        if a == 0 {
+            long += past[0];
+        }
+        if b == m - 1 {
+            long += past[1];
+        }
+        if long < least || own < RUN_OWN * least || b - a < 4 {
+            a += 1;
+            continue;
+        }
+        // Its ends inside the line lean into the bends there.
+        let lo = if a == 0 { a } else { a + 2 };
+        let hi = if b == m - 1 { b } else { b - 2 };
+        if hi > lo + 1 {
+            runs.push((lo, hi));
+        }
+        a = b;
+    }
+    runs
+}
+
+/// `path`, of straight lines only, with the lines that are nearly level
+/// or upright made so.
+fn upright(path: &BezPath) -> BezPath {
+    use tracedraw_core::geometry::PathEl;
+    let mut pts: Vec<Point> = Vec::new();
+    let mut closed = false;
+    for el in path.elements() {
+        match el {
+            PathEl::MoveTo(p) | PathEl::LineTo(p) => pts.push(*p),
+            PathEl::ClosePath => closed = true,
+            _ => return path.clone(),
+        }
+    }
+    let n = pts.len();
+    let sides = if closed { n } else { n.saturating_sub(1) };
+    for i in 0..sides {
+        let j = (i + 1) % n;
+        let d = unit(pts[j] - pts[i]);
+        if d == Vec2::ZERO {
+            continue;
+        }
+        if d.y.abs() < RUN_AXIS.sin() {
+            let y = (pts[i].y + pts[j].y) / 2.0;
+            (pts[i].y, pts[j].y) = (y, y);
+        } else if d.x.abs() < RUN_AXIS.sin() {
+            let x = (pts[i].x + pts[j].x) / 2.0;
+            (pts[i].x, pts[j].x) = (x, x);
+        }
+    }
+    let mut out = BezPath::new();
+    for (i, p) in pts.iter().enumerate() {
+        if i == 0 {
+            out.move_to(*p);
+        } else {
+            out.line_to(*p);
+        }
+    }
+    if closed {
+        out.close_path();
+    }
+    out
+}
+
+/// The middle line through `pts` (a unit apart): its straight stretches
+/// as lines, level or upright when they nearly are, and what lies
+/// between them fitted like a border.
+fn middle_line(pts: &[Point], closed: bool, fit: &Faithful, wide: f64, past: [f64; 2]) -> BezPath {
+    use tracedraw_core::geometry::PathEl;
+    let fitted = crate::trace_fit::fit(pts, closed, fit, None).path;
+    // A middle line of straight lines only is those lines.
+    if !fitted
+        .elements()
+        .iter()
+        .any(|el| matches!(el, PathEl::CurveTo(..) | PathEl::QuadTo(..)))
+    {
+        return upright(&fitted);
+    }
+    let whole = || fitted.clone();
+    let n = pts.len();
+    if n < 8 {
+        return whole();
+    }
+    let least = (RUN_LEAST * wide).max(RUN_POINTS);
+    let soften = |src: &[Point], wraps: bool| -> Vec<Point> {
+        let m = src.len() as i64;
+        (0..m)
+            .map(|i| {
+                let (mut sum, mut count) = (Vec2::ZERO, 0.0);
+                let reach = if wraps { 2 } else { 2.min(i).min(m - 1 - i) };
+                for k in -reach..=reach {
+                    sum += src[(i + k).rem_euclid(m) as usize].to_vec2();
+                    count += 1.0;
+                }
+                (sum / count).to_point()
+            })
+            .collect()
+    };
+    // A loop is opened where a straight stretch starts.
+    let mut open: Vec<Point> = pts.to_vec();
+    if closed {
+        let mut twice = soften(pts, true);
+        twice.extend_from_within(..);
+        let Some(first) = straight_runs(&twice, [0.0, 0.0], least)
+            .into_iter()
+            .find(|r| r.1 - r.0 < n)
+        else {
+            return whole();
+        };
+        open.rotate_left(first.0 % n);
+        open.push(open[0]);
+    }
+    let soft = soften(&open, false);
+    let runs = straight_runs(&soft, if closed { [0.0, 0.0] } else { past }, least);
+    if runs.is_empty() {
+        return whole();
+    }
+    // Each run as the line through its points.
+    let lines: Vec<(Point, Point)> = runs
+        .iter()
+        .map(|(a, b)| {
+            let count = (b - a + 1) as f64;
+            let c = (open[*a..=*b]
+                .iter()
+                .fold(Vec2::ZERO, |s, p| s + p.to_vec2())
+                / count)
+                .to_point();
+            let (mut xx, mut xy, mut yy) = (0.0, 0.0, 0.0);
+            for p in &open[*a..=*b] {
+                let v = *p - c;
+                xx += v.x * v.x;
+                xy += v.x * v.y;
+                yy += v.y * v.y;
+            }
+            let turn = 0.5 * (2.0 * xy).atan2(xx - yy);
+            let mut d = Vec2::new(turn.cos(), turn.sin());
+            if d.dot(open[*b] - open[*a]) < 0.0 {
+                d = -d;
+            }
+            if d.y.abs() < RUN_AXIS.sin() {
+                d = Vec2::new(d.x.signum(), 0.0);
+            } else if d.x.abs() < RUN_AXIS.sin() {
+                d = Vec2::new(0.0, d.y.signum());
+            }
+            (c + d * (open[*a] - c).dot(d), c + d * (open[*b] - c).dot(d))
+        })
+        .collect();
+    // Two lines going opposite ways with a round between them (a U):
+    // the half circle that joins them, when the round is one.
+    let mut lines = lines;
+    let mut rounds: Vec<Option<[PathEl; 2]>> = vec![None; lines.len()];
+    let near = 2.0 * fit.tolerance * fit.k;
+    for i in 1..lines.len() {
+        let (d0, d1) = (
+            unit(lines[i - 1].1 - lines[i - 1].0),
+            unit(lines[i].1 - lines[i].0),
+        );
+        if d0.dot(d1) > -0.995 {
+            continue;
+        }
+        let across = lines[i].0 - lines[i - 1].1;
+        let across = across - d0 * across.dot(d0);
+        let r = across.hypot() / 2.0;
+        if r < 0.5 * wide {
+            continue;
+        }
+        let gap = &open[runs[i - 1].1..=runs[i].0];
+        let far = gap
+            .iter()
+            .map(|p| (*p - lines[i - 1].1).dot(d0))
+            .fold(f64::MIN, f64::max);
+        let c = lines[i - 1].1 + d0 * (far - r) + across / 2.0;
+        let (from, to) = (c - across / 2.0, c + across / 2.0);
+        let fits = gap.iter().all(|p| {
+            let v = *p - c;
+            if v.dot(d0) >= 0.0 {
+                (v.hypot() - r).abs() <= near
+            } else {
+                (v.cross(d0).abs() - r).abs() <= near
+            }
+        });
+        if !fits || (from - lines[i - 1].0).dot(d0) <= 0.0 || (lines[i].1 - to).dot(d1) <= 0.0 {
+            continue;
+        }
+        const QUARTER: f64 = 0.5522847498;
+        let (side, top) = (unit(across), c + d0 * r);
+        rounds[i] = Some([
+            PathEl::CurveTo(from + d0 * (QUARTER * r), top - side * (QUARTER * r), top),
+            PathEl::CurveTo(top + side * (QUARTER * r), to + d0 * (QUARTER * r), to),
+        ]);
+        lines[i - 1].1 = from;
+        lines[i].0 = to;
+    }
+    let mut els: Vec<PathEl> = Vec::new();
+    // What lies between two lines, ending at `to`.
+    let between = |els: &mut Vec<PathEl>,
+                   from: usize,
+                   until: usize,
+                   to: Option<Point>,
+                   ways: Option<(Vec2, Vec2)>| {
+        if until <= from {
+            return;
+        }
+        let gap = &open[from..=until];
+        let long: f64 = gap.windows(2).map(|p| (p[1] - p[0]).hypot()).sum();
+        let before = els.len();
+        if long <= CHAMFER * wide || gap.len() < 4 {
+            els.push(PathEl::LineTo(gap[gap.len() - 1]));
+        } else {
+            // Between two lines: the arc that joins them, when it is
+            // one.
+            let arc = ways.and_then(|(leave, arrive)| {
+                crate::trace_fit::arc_between(gap, leave, arrive, 2.0 * fit.tolerance * fit.k)
+            });
+            let fitted = arc.unwrap_or_else(|| crate::trace_fit::fit(gap, false, fit, None).path);
+            for el in fitted.elements() {
+                match el {
+                    PathEl::MoveTo(p) if els.is_empty() => els.push(PathEl::MoveTo(*p)),
+                    PathEl::LineTo(_) | PathEl::CurveTo(..) => els.push(*el),
+                    _ => {}
+                }
+            }
+        }
+        if let (Some(to), true) = (to, els.len() > before) {
+            let last = els.len() - 1;
+            els[last] = match els[last] {
+                PathEl::CurveTo(a, b, c) => PathEl::CurveTo(a, b + (to - c), to),
+                _ => PathEl::LineTo(to),
+            };
+        }
+    };
+    let mut at = 0;
+    for (i, (a, b)) in runs.iter().enumerate() {
+        if *a == 0 {
+            els.push(PathEl::MoveTo(lines[i].0));
+        } else {
+            if els.is_empty() {
+                els.push(PathEl::MoveTo(open[0]));
+            }
+            let ways = (i > 0).then(|| {
+                (
+                    unit(lines[i - 1].1 - lines[i - 1].0),
+                    unit(lines[i].1 - lines[i].0),
+                )
+            });
+            match rounds[i] {
+                Some(round) => els.extend(round),
+                None => between(&mut els, at, *a, Some(lines[i].0), ways),
+            }
+        }
+        els.push(PathEl::LineTo(lines[i].1));
+        at = *b;
+    }
+    let last = lines.len() - 1;
+    let (ends_at, ways) = if closed {
+        (
+            Some(lines[0].0),
+            Some((
+                unit(lines[last].1 - lines[last].0),
+                unit(lines[0].1 - lines[0].0),
+            )),
+        )
+    } else {
+        (None, None)
+    };
+    between(&mut els, at, open.len() - 1, ends_at, ways);
+    if closed {
+        els.push(PathEl::ClosePath);
+    }
+    BezPath::from_vec(els)
+}
+
 /// A fitted middle line ready to be drawn: its points, the corners
 /// that take a point (where, the way in, the way out) and which of its
 /// ends are cut square.
@@ -592,33 +916,43 @@ fn stroke_of(
     square: [bool; 2],
     past: [f64; 2],
     wide: f64,
-    reach: &dyn Fn(Point, Vec2, f64) -> f64,
+    held: &dyn Fn(Point) -> bool,
 ) -> Stroke {
     use tracedraw_core::geometry::{Line, PathSeg};
     let mut line: Vec<Point> = Vec::new();
     let mut corners = Vec::new();
     let mut ways: Vec<(Point, Vec2, Vec2)> = Vec::new();
+    // How each piece bends at its two ends, radians a point (to the
+    // left of its way above zero).
+    let mut bends: Vec<(f64, f64)> = Vec::new();
     // A short piece between two lines that turn is the thinning's way
     // round a corner: the two lines meet where they cross.
     let mut segs: Vec<PathSeg> = path.segments().collect();
-    let mut i = 1;
-    while i + 1 < segs.len() {
-        if let (PathSeg::Line(a), PathSeg::Line(b)) = (segs[i - 1], segs[i + 1]) {
-            let (da, db) = (unit(a.p1 - a.p0), unit(b.p1 - b.p0));
-            let cross = da.cross(db);
-            let short = (segs[i].eval(1.0) - segs[i].eval(0.0)).hypot() <= CHAMFER * wide;
-            if short && cross.abs() > MITER_LEAST.sin() {
-                let t = (b.p0 - a.p0).cross(db) / cross;
-                let at = a.p0 + da * t;
-                if (at - segs[i].eval(0.5)).hypot() <= CHAMFER * wide {
-                    segs[i - 1] = PathSeg::Line(Line::new(a.p0, at));
-                    segs[i + 1] = PathSeg::Line(Line::new(at, b.p1));
-                    segs.remove(i);
-                    continue;
+    // A loop is gone over twice, from two places, so the piece across
+    // its start is seen too.
+    for pass in 0..if closed { 2 } else { 1 } {
+        if pass == 1 && segs.len() > 3 {
+            segs.rotate_left(2);
+        }
+        let mut i = 1;
+        while i + 1 < segs.len() {
+            if let (PathSeg::Line(a), PathSeg::Line(b)) = (segs[i - 1], segs[i + 1]) {
+                let (da, db) = (unit(a.p1 - a.p0), unit(b.p1 - b.p0));
+                let cross = da.cross(db);
+                let short = (segs[i].eval(1.0) - segs[i].eval(0.0)).hypot() <= CHAMFER * wide;
+                if short && cross.abs() > MITER_LEAST.sin() {
+                    let t = (b.p0 - a.p0).cross(db) / cross;
+                    let at = a.p0 + da * t;
+                    if (at - segs[i].eval(0.5)).hypot() <= CHAMFER * wide {
+                        segs[i - 1] = PathSeg::Line(Line::new(a.p0, at));
+                        segs[i + 1] = PathSeg::Line(Line::new(at, b.p1));
+                        segs.remove(i);
+                        continue;
+                    }
                 }
             }
+            i += 1;
         }
-        i += 1;
     }
     for seg in segs {
         let (from, to) = (seg.eval(0.0), seg.eval(1.0));
@@ -636,6 +970,30 @@ fn stroke_of(
             line.push(seg.eval(i as f64 / steps as f64));
         }
         ways.push((from, unit(seg.eval(0.03) - from), unit(to - seg.eval(0.97))));
+        bends.push(match seg {
+            PathSeg::Line(_) => (0.0, 0.0),
+            _ => {
+                let bend = |t0: f64, t1: f64| -> f64 {
+                    let a = unit(seg.eval(t0 + 0.03) - seg.eval(t0));
+                    let b = unit(seg.eval(t1) - seg.eval(t1 - 0.03));
+                    let long: f64 = (0..8)
+                        .map(|k| {
+                            let (u, v) = (
+                                t0 + (t1 - t0) * k as f64 / 8.0,
+                                t0 + (t1 - t0) * (k + 1) as f64 / 8.0,
+                            );
+                            (seg.eval(v) - seg.eval(u)).hypot()
+                        })
+                        .sum();
+                    if long > 1e-9 {
+                        a.cross(b).atan2(a.dot(b)) / long
+                    } else {
+                        0.0
+                    }
+                };
+                (bend(0.0, 0.4), bend(0.6, 1.0))
+            }
+        });
     }
     let n = ways.len();
     for i in 0..n {
@@ -655,16 +1013,53 @@ fn stroke_of(
     let mut cuts = Vec::new();
     if !closed && n > 0 && line.len() >= 2 {
         let (first, last) = (-ways[0].1, ways[n - 1].2);
+        // The line carried on from `p` along `d`, bending as it did,
+        // as far as the letter goes: its points and the way at its end.
+        let carry = |p: Point, d: Vec2, bend: f64, most: f64| -> (Vec<Point>, Vec2) {
+            // A tighter bend is the hook of a tip, not the stroke's.
+            let bend = if (BEND_LEAST..=BEND_MOST).contains(&(bend.abs() * wide)) {
+                bend
+            } else {
+                0.0
+            };
+            let side = Vec2::new(-d.y, d.x);
+            let at = |t: f64| -> (Point, Vec2) {
+                if bend == 0.0 {
+                    (p + d * t, d)
+                } else {
+                    let a = bend * t;
+                    (
+                        p + d * (a.sin() / bend) + side * ((1.0 - a.cos()) / bend),
+                        d * a.cos() + side * a.sin(),
+                    )
+                }
+            };
+            let mut t = 0.0;
+            while t < most && held(at(t + 0.25).0) {
+                t += 0.25;
+            }
+            let steps = if bend == 0.0 {
+                1
+            } else {
+                (t.ceil() as usize).max(1)
+            };
+            let pts = (1..=steps)
+                .map(|k| at(t * k as f64 / steps as f64).0)
+                .collect();
+            (pts, at(t).1)
+        };
         if square[0] && first != Vec2::ZERO {
-            let far = reach(line[0], first, 2.0 * past[0] + 4.0);
-            line.insert(0, line[0] + first * far);
-            cuts.push((line[0], first));
+            let (pts, way) = carry(line[0], first, -bends[0].0, 2.0 * past[0] + 4.0);
+            for q in pts {
+                line.insert(0, q);
+            }
+            cuts.push((line[0], way));
         }
         if square[1] && last != Vec2::ZERO {
             let from = line[line.len() - 1];
-            let end = from + last * reach(from, last, 2.0 * past[1] + 4.0);
-            line.push(end);
-            cuts.push((end, last));
+            let (pts, way) = carry(from, last, bends[n - 1].1, 2.0 * past[1] + 4.0);
+            line.extend(pts);
+            cuts.push((line[line.len() - 1], way));
         }
     }
     Stroke {
@@ -754,20 +1149,13 @@ fn letter(mask: &[bool], w: usize, h: usize, unit_px: f64, f: &Faithful) -> Opti
         corner: f.corner,
         scale: f.scale,
     };
-    // How far the letter goes on from `p` along `d`, `most` at most.
-    let reach = |p: Point, d: Vec2, most: f64| -> f64 {
-        let held = |q: Point| {
-            q.x >= 0.0
-                && q.y >= 0.0
-                && (q.x as usize) < w
-                && (q.y as usize) < h
-                && mask[q.y as usize * w + q.x as usize]
-        };
-        let mut t = 0.0;
-        while t < most && held(p + d * (t + 0.25)) {
-            t += 0.25;
-        }
-        t
+    // Whether `q` is a point of the letter.
+    let held = |q: Point| {
+        q.x >= 0.0
+            && q.y >= 0.0
+            && (q.x as usize) < w
+            && (q.y as usize) < h
+            && mask[q.y as usize * w + q.x as usize]
     };
     let mut strokes = Vec::new();
     for c in chains.iter().filter(|c| c.alive) {
@@ -810,14 +1198,14 @@ fn letter(mask: &[bool], w: usize, h: usize, unit_px: f64, f: &Faithful) -> Opti
         if pts.len() < 2 {
             continue;
         }
-        let path = crate::trace_fit::fit(&pts, c.closed, &fit, None).path;
+        let path = middle_line(&pts, c.closed, &fit, own, past);
         let s = stroke_of(
             &path,
             c.closed,
             [c.ends[0].is_none(), c.ends[1].is_none()],
             past,
             own,
-            &reach,
+            &held,
         );
         if s.line.len() >= 2 {
             strokes.push(s);
@@ -1154,5 +1542,79 @@ mod tests {
             "{:?}",
             stem.pts
         );
+    }
+
+    /// The middle line of a U is its two stems, exactly upright, and
+    /// the half circle that joins them.
+    #[test]
+    fn the_middle_line_of_a_u_is_two_stems_and_a_half_circle() {
+        use tracedraw_core::geometry::PathSeg;
+        let mut pts: Vec<Point> = Vec::new();
+        let waver = |i: usize| 0.3 * ((i * 7 % 5) as f64 - 2.0) / 2.0;
+        for i in 0..40 {
+            pts.push(Point::new(20.0 + waver(i), 10.0 + i as f64));
+        }
+        for i in 0..63 {
+            let a = std::f64::consts::PI * (1.0 - i as f64 / 62.0);
+            pts.push(Point::new(40.0 + 20.0 * a.cos(), 50.0 + 20.0 * a.sin()));
+        }
+        for i in 1..=40 {
+            pts.push(Point::new(60.0 + waver(i), 50.0 - i as f64));
+        }
+        let f = faithful();
+        let fit = Faithful {
+            tolerance: FIT_TOLERANCE * 8.0 / f.k,
+            ..f
+        };
+        let path = middle_line(&pts, false, &fit, 12.0, [0.0, 0.0]);
+        let segs: Vec<PathSeg> = path.segments().collect();
+        assert_eq!(segs.len(), 4, "{path:?}");
+        for i in [0, 3] {
+            let (a, b) = (segs[i].eval(0.0), segs[i].eval(1.0));
+            assert!(matches!(segs[i], PathSeg::Line(_)), "{path:?}");
+            assert!((a.x - b.x).abs() < 1e-9, "a stem leans: {a:?} {b:?}");
+        }
+        for seg in &segs[1..3] {
+            for t in [0.0, 0.3, 0.6, 1.0] {
+                let p = seg.eval(t);
+                let r = (p.x - 40.0).hypot(p.y - 50.0);
+                assert!((r - 20.0).abs() < 0.6, "{p:?} at {r}");
+            }
+        }
+    }
+
+    /// The free ends of a C go on round its ring: the letter drawn
+    /// again stays in the ring the letter is.
+    #[test]
+    fn a_free_end_follows_the_bend_of_its_stroke() {
+        let ring = |x: usize, y: usize| {
+            let (dx, dy) = (x as f64 + 0.5 - 80.0, y as f64 + 0.5 - 80.0);
+            let r = dx.hypot(dy);
+            (23.0..37.0).contains(&r) && dy.atan2(dx).abs() > 0.8
+        };
+        let mut labels: Vec<usize> = (0..SIDE * SIDE)
+            .map(|i| ring(i % SIDE, i / SIDE) as usize)
+            .collect();
+        let palette = [[255, 255, 255], [0, 0, 0]];
+        let redrawn =
+            redraw(&mut labels, SIDE, SIDE, 8.0, &faithful(), &palette, None).expect("not stopped");
+        assert!(redrawn.iter().any(|r| *r), "the letter was not drawn again");
+        for (i, l) in labels.iter().enumerate() {
+            if *l == 1 {
+                let (dx, dy) = (
+                    (i % SIDE) as f64 + 0.5 - 80.0,
+                    (i / SIDE) as f64 + 0.5 - 80.0,
+                );
+                let r = dx.hypot(dy);
+                assert!((21.5..38.5).contains(&r), "a point at {r} from the middle");
+            }
+        }
+        // And reaches the ends the ring has.
+        let at = |a: f64| {
+            let (x, y) = (80.0 + 30.0 * a.cos(), 80.0 + 30.0 * a.sin());
+            labels[y as usize * SIDE + x as usize]
+        };
+        assert_eq!(at(0.9), 1, "the end is short");
+        assert_eq!(at(-0.9), 1, "the end is short");
     }
 }

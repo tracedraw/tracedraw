@@ -1829,6 +1829,74 @@ fn fit_arc(
     true
 }
 
+/// The stretch `d` between two straight lines, leaving along `leave`
+/// and arriving along `arrive`, as an arc of a circle or of a level
+/// ellipse when it is one within `most`.
+pub(crate) fn arc_between(d: &[Point], leave: Vec2, arrive: Vec2, most: f64) -> Option<BezPath> {
+    let mut pieces = Vec::new();
+    fit_arc(d, leave, arrive, (true, true), most, &mut pieces)
+        .then(|| path_of(d[0], &pieces, false))
+}
+
+/// The round `g` between the straight runs `before` and `after` as the
+/// arc of a circle that touches both lines, when it is one: no point of
+/// the round further than `most` from the arc or the two lines. Gives
+/// where the arc leaves the first line and its pieces; it ends on the
+/// second line.
+fn touching_arc(g: &[Point], before: &Run, after: &Run, most: f64) -> Option<(Point, Vec<Piece>)> {
+    let m = g.len();
+    if m < 6 {
+        return None;
+    }
+    let o = Oval::through(&g[1..m - 1], true)?;
+    let (d0, d1) = (before.dir, after.dir);
+    let (n0, n1) = (Vec2::new(-d0.y, d0.x), Vec2::new(-d1.y, d1.x));
+    let (s0, s1) = ((o.c - before.to).dot(n0), (o.c - after.from).dot(n1));
+    // The round turns one way: its centre is on the same side of both.
+    if s0 * s1 <= 0.0 || (s0.abs() - o.rx).abs() > most || (s1.abs() - o.rx).abs() > most {
+        return None;
+    }
+    let side = s0.signum();
+    let r = (s0.abs() + s1.abs()) / 2.0;
+    let c = match crossing(
+        (before.to + n0 * (r * side), d0),
+        (after.from + n1 * (r * side), d1),
+    ) {
+        Some(c) if d0.cross(d1).abs() > 0.05 => c,
+        _ => o.c - n0 * (s0 - r * side),
+    };
+    let (from, to) = (c - n0 * (r * side), c - n1 * (r * side));
+    // Each line still has some of its length.
+    let kept = |a: Point, b: Point, d: Vec2, whole: f64| (b - a).dot(d) >= 0.3 * whole;
+    if !kept(before.from, from, d0, (before.to - before.from).hypot())
+        || !kept(to, after.to, d1, (after.to - after.from).hypot())
+    {
+        return None;
+    }
+    let near = |p: &Point| {
+        ((*p - c).hypot() - r).abs() <= most
+            || (*p - from).cross(d0).abs() <= most
+            || (*p - to).cross(d1).abs() <= most
+    };
+    if !g.iter().all(near) {
+        return None;
+    }
+    let mut sweep = d0.cross(d1).atan2(d0.dot(d1));
+    if sweep * side < 0.0 {
+        sweep += side * std::f64::consts::TAU;
+    }
+    if !(0.3..=5.0).contains(&sweep.abs()) {
+        return None;
+    }
+    let round = Oval { c, rx: r, ry: r };
+    let mut pieces = Vec::new();
+    round.arc(round.angle_of(from), sweep, ARC_PART, &mut pieces);
+    if let Some(Piece::Cubic(_, _, end)) = pieces.last_mut() {
+        *end = to;
+    }
+    Some((from, pieces))
+}
+
 /// A stretch with no straight run: an arc of a circle or an ellipse
 /// when it is one ([`fit_arc`]), else the fewest lines and cubics
 /// ([`fit_gap`]).
@@ -1878,8 +1946,19 @@ fn fit_stretch(
         pts[r.b] = r.to;
     }
     let (mut at, mut way, mut smooth) = (0usize, leave, smooth_ends.0);
-    for r in runs {
-        if r.a > at {
+    for (i, r) in runs.iter().enumerate() {
+        // A round between two runs: the arc that touches both.
+        let round = if i > 0 && r.a > at {
+            touching_arc(&pts[at..=r.a], &runs[i - 1], r, tol * ARC_SLACK)
+        } else {
+            None
+        };
+        if let Some((from, arc)) = round {
+            if let Some(Piece::Line(to)) = out.last_mut() {
+                *to = from;
+            }
+            out.extend(arc);
+        } else if r.a > at {
             fit_bend(&pts[at..=r.a], way, r.dir, (smooth, true), tol, f, out);
         }
         out.push(Piece::Line(r.to));
@@ -2829,5 +2908,34 @@ mod tests {
             })
             .count();
         assert_eq!(upright, 2, "{:?}", got.path);
+    }
+
+    /// The small round between the two sides of a U is the half circle
+    /// that touches both, its ends on the sides.
+    #[test]
+    fn a_round_between_two_sides_is_the_arc_that_touches_both() {
+        let u = border_of(120, |x, y| {
+            let (dx, dy) = (x as f64 + 0.5 - 60.0, y as f64 + 0.5 - 80.0);
+            (dx.abs() < 12.0 && (20.0..=80.0).contains(&(y as f64))) || dx * dx + dy * dy < 144.0
+        });
+        let got = fit(&u, true, &faithful(), None);
+        let mut upright = 0;
+        for seg in got.path.segments() {
+            let (a, b) = (seg.eval(0.0), seg.eval(1.0));
+            if matches!(seg, tracedraw_core::geometry::PathSeg::Line(_)) {
+                if (a.x - b.x).abs() < 1e-6 && (a.y - b.y).abs() > 50.0 {
+                    upright += 1;
+                }
+                continue;
+            }
+            for t in [0.0, 0.25, 0.5, 0.75, 1.0] {
+                let p = seg.eval(t);
+                let r = (p.x - 60.0).hypot(p.y - 80.0);
+                assert!((r - 12.0).abs() < 0.7, "{p:?} at {r}");
+            }
+        }
+        assert_eq!(upright, 2, "{:?}", got.path);
+        let (_, curves) = lines_and_curves(&got.path);
+        assert_eq!(curves, 2, "{:?}", got.path);
     }
 }
