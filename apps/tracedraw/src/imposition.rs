@@ -374,6 +374,10 @@ pub struct Options {
     /// On a fixed sheet the pages stretch to fill the room inside the
     /// margins, width and height each on its own (#591).
     pub stretch_fit: bool,
+    /// Fit to page: on a fixed sheet the pages grow or shrink to fill the
+    /// room inside the margins, keeping their proportions. What runs off
+    /// a page stays cut at its edge, as on screen (#2678).
+    pub fit: bool,
     /// The binding, creep and gap of the Booklet layout.
     pub booklet: Booklet,
     pub marks: Marks,
@@ -404,6 +408,7 @@ impl Default for Options {
             cell_rotation: Vec::new(),
             cell_order: Vec::new(),
             stretch_fit: false,
+            fit: false,
             booklet: Booklet::default(),
             marks: Marks::default(),
             crop: CropStyle::default(),
@@ -607,6 +612,9 @@ pub fn plan(sizes: &[Size], o: &Options) -> Vec<SheetPlan> {
                         (1.0, 1.0)
                     } else if o.stretch_fit {
                         (avail_w / grid_w, avail_h / grid_h)
+                    } else if o.fit {
+                        let s = (avail_w / grid_w).min(avail_h / grid_h);
+                        (s, s)
                     } else {
                         let s = (avail_w / grid_w).min(avail_h / grid_h).min(1.0);
                         (s, s)
@@ -1597,6 +1605,40 @@ mod tests {
         // The page's corners land on the trim's.
         let far = moved.transform * Point::new(page.width, page.height);
         assert!(near(far.x, m.x1) && near(far.y, m.y1), "{far:?} {m:?}");
+    }
+
+    /// Fit to page: the page grows or shrinks to fill the room inside
+    /// the margins, keeping its proportions; without it a small page
+    /// keeps its size (#2678).
+    #[test]
+    fn fit_to_page_scales_the_page_to_the_paper() {
+        let a4 = Size::new(210.0, 297.0);
+        let near = |a: f64, b: f64| (a - b).abs() < 1e-9;
+        let o = |page: Size, fit| {
+            plan(
+                &[page],
+                &Options {
+                    sheet: Some(a4),
+                    paper_margins: [10.0, 10.0, 20.0, 20.0],
+                    fit,
+                    ..Default::default()
+                },
+            )[0]
+            .cells[0]
+                .trim
+        };
+        let small = Size::new(100.0, 50.0);
+        let t = o(small, true);
+        assert!(near(t.width(), 190.0) && near(t.height(), 95.0), "{t:?}");
+        assert!(near(t.center().x, 105.0), "centred: {t:?}");
+        let t = o(small, false);
+        assert!(near(t.width(), 100.0), "kept: {t:?}");
+        let big = Size::new(420.0, 594.0);
+        let t = o(big, true);
+        assert!(
+            near(t.height(), 257.0) && t.width() <= 190.0 + 1e-9,
+            "{t:?}"
+        );
     }
 
     const A5: Size = Size {

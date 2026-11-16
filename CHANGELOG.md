@@ -18,6 +18,7 @@ full, row-by-row status.
 - Text fitted to a path, scaled with the Pick tool's handles (or any scale of it alone), keeps to its path: its letters grow or shrink, as far from the path in proportion, and the path stays where it is. The text's own copy of the path was scaled with it, so the letters left the curve they were fitted to. A curve scaled together with its text still takes the text along (#2962).
 - Opening CorelDRAW (`.cdr`) files: texts that hold a print merge field (shown as `<FIELD>`) open with their letters. A version 24 file opened without its paragraph and artistic texts of fields, the 12 objects counted as skipped (#2969).
 - Welcome Screen: the recent documents table and its scroll bar stop short of the window's right edge, as far from it as the New and Open buttons are from the left; the table ran into the edge (#2867).
+- Print: Fit to page scales the page to fill the paper inside its margins, larger or smaller, and what is put partly off a page stays cut at its edge, where it was drawn, on facing pages too. It pulled such objects onto the page and shrank the page's other objects with them. Printing the selection, Fit to page still shrinks it to fit the page (#2678).
 
 ## 0.47.0 (2026-11-16)
 
