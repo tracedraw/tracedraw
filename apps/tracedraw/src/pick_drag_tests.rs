@@ -28715,3 +28715,70 @@ fn trace_enlarge_box_and_trace_with_ai_button() {
         Some(crate::ui::dialogs::Dialog::Trace(_))
     ));
 }
+
+/// While a curve is drawn with the Bezier tool, S and Y set the last
+/// node's type as C does, and pick no tool: they switched to the Sketch
+/// and Polygon tools and the curve was dropped (#2876). S keeps the
+/// incoming handle's length opposite the outgoing one; Y mirrors it.
+#[test]
+fn s_and_y_set_the_node_while_drawing_and_pick_no_tool() {
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::Bezier);
+    let press = |ctx: &egui::Context, app: &mut App, k: egui::Key| {
+        frame(
+            ctx,
+            app,
+            vec![key(k, Modifiers::NONE), key_up(k, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    pull(
+        &ctx,
+        &mut app,
+        Point::new(100.0, 150.0),
+        Point::new(110.0, 160.0),
+    );
+    pull(
+        &ctx,
+        &mut app,
+        Point::new(140.0, 150.0),
+        Point::new(150.0, 150.0),
+    );
+    let last = app.curve.as_ref().expect("drawing").nodes.len() - 1;
+    for k in [egui::Key::S, egui::Key::Y, egui::Key::C] {
+        press(&ctx, &mut app, k);
+        assert_eq!(app.tool, Tool::Bezier, "{k:?} picked no tool");
+        let c = app.curve.as_ref().expect("still drawing");
+        assert_eq!(c.nodes.len(), last + 1);
+        match k {
+            egui::Key::S => assert!(c.in_lengths.contains_key(&last), "smooth"),
+            egui::Key::Y => {
+                assert!(!c.in_lengths.contains_key(&last) && !c.in_handles.contains_key(&last))
+            }
+            _ => assert!(c.in_handles.contains_key(&last), "cusp"),
+        }
+    }
+}
+
+/// A smooth node of a curve being drawn: the incoming handle keeps its
+/// length and turns to stay opposite the outgoing one (#2876).
+#[test]
+fn a_smooth_node_being_drawn_keeps_its_incoming_length() {
+    use tracedraw_core::nodes::NodeType;
+    let mut c = crate::app::CurveInProgress {
+        smooth: true,
+        ..Default::default()
+    };
+    c.nodes.push((Point::new(0.0, 0.0), None));
+    let out = Point::new(14.0, 0.0);
+    c.nodes.push((Point::new(10.0, 0.0), Some(out)));
+    c.set_last_node_type(NodeType::Smooth);
+    c.nodes[1].1 = Some(Point::new(10.0, 20.0));
+    let h = c.in_handle(1).expect("incoming");
+    assert!(near(h, Point::new(10.0, -4.0)), "{h:?}");
+    c.set_last_node_type(NodeType::Symmetrical);
+    let h = c.in_handle(1).expect("incoming");
+    assert!(near(h, Point::new(10.0, -20.0)), "{h:?}");
+}

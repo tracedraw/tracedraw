@@ -42,8 +42,15 @@ delete the selection as everywhere (#1527,
   it is and only the outgoing one follows. C acts while it is held (also
   when it went down before the press) and the node stays a cusp after C
   is let go; pressing it again in the same pull changes nothing more.
-  While a curve is being drawn C never aligns the selection. Alt while
-  pulling moves the node itself, its handles with it.
+  While a curve is being drawn C never aligns the selection. S and Y,
+  pressed while pulling or before the next node, set the last node's
+  type as with the Shape tool: S smooth (the incoming handle keeps its
+  length, opposite the outgoing one), Y symmetrical (it mirrors the
+  outgoing one), and C makes it a cusp the same way. None of the three
+  picks a tool then: S and Y switched to the Sketch and Polygon tools
+  and dropped the curve (#2876,
+  `pick_drag_tests::s_and_y_set_the_node_while_drawing_and_pick_no_tool`).
+  Alt while pulling moves the node itself, its handles with it.
   A pull carried out of the drawing window (over a docker or a toolbar)
   goes on following the pointer and ends where the button goes up, and a
   closing drag from the first node closes the curve there; the preview

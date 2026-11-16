@@ -723,6 +723,10 @@ pub struct CurveInProgress {
     /// was frozen (`None`: the segment arrives straight), no longer the
     /// mirror of their outgoing one.
     pub in_handles: std::collections::BTreeMap<usize, Option<Point>>,
+    /// Nodes made smooth (S while drawing, #2876): the length their
+    /// incoming handle keeps; it lies opposite the outgoing handle, which
+    /// can still be pulled longer or shorter on its own.
+    pub in_lengths: std::collections::BTreeMap<usize, f64>,
     /// A press on the first node closes the curve: while it is dragged,
     /// where the pointer is (it pulls the closing segment's handle at the
     /// first node; the first node's own outgoing handle stays).
@@ -740,7 +744,38 @@ impl CurveInProgress {
             return *h;
         }
         let (p, out) = *self.nodes.get(i)?;
+        if let (Some(len), Some(o)) = (self.in_lengths.get(&i), out) {
+            let d = o - p;
+            let n = d.hypot();
+            if n > 1e-12 {
+                return Some(p - d * (len / n));
+            }
+        }
         out.map(|o| p - (o - p))
+    }
+
+    /// The node keys while a curve is drawn (#2876), on the last node:
+    /// C a cusp (its handles move apart), S smooth (the incoming handle
+    /// keeps its length, opposite the outgoing one), Y symmetrical (the
+    /// incoming handle mirrors the outgoing one).
+    pub fn set_last_node_type(&mut self, ty: tracedraw_core::nodes::NodeType) {
+        use tracedraw_core::nodes::NodeType;
+        let Some(i) = self.nodes.len().checked_sub(1) else {
+            return;
+        };
+        match ty {
+            NodeType::Cusp => self.freeze_last_in(),
+            NodeType::Smooth => {
+                let p = self.nodes[i].0;
+                let len = self.in_handle(i).map_or(0.0, |h| (h - p).hypot());
+                self.in_handles.remove(&i);
+                self.in_lengths.insert(i, len);
+            }
+            _ => {
+                self.in_handles.remove(&i);
+                self.in_lengths.remove(&i);
+            }
+        }
     }
 
     /// Make the last node a cusp: its incoming handle stays as it is now
@@ -752,6 +787,7 @@ impl CurveInProgress {
         };
         let incoming = self.in_handle(i);
         self.in_handles.insert(i, incoming);
+        self.in_lengths.remove(&i);
         self.nodes[i].1 = None;
     }
 
@@ -763,6 +799,7 @@ impl CurveInProgress {
         };
         let incoming = self.in_handle(i);
         self.in_handles.insert(i, incoming);
+        self.in_lengths.remove(&i);
     }
 
     /// The handle the closing drag gives the first node for the closing

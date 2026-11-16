@@ -48,7 +48,10 @@ running toward a mirror line runs toward it from the other side too
   (`App::join_symmetry`,
   `ops2::symmetry_tests::a_symmetry_takes_several_objects_and_those_made_while_editing`).
 - Edit (Object > Symmetry > Edit Symmetry, Alt+E): the symmetry editing
-  mode (`symmetry_edit.rs`). A bar floats at the top left of the drawing
+  mode (`symmetry_edit.rs`). Alt+E edits only while an object with a
+  symmetry is selected; otherwise it opens the Edit menu, as Alt and the
+  other titles' letters open theirs (#2881,
+  `ui::keynav::tests::alt_e_opens_the_edit_menu`). A bar floats at the top left of the drawing
   window: Finish; the mirror lines icon and their number (1 to 12); the
   centre (X, Y in the drawing's units); the angle of rotation icon and
   the angle (0 to 360 degrees), every number field with spin arrows and

@@ -4,6 +4,11 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Bezier and Pen tools: while a curve is drawn, S makes the last node smooth and Y symmetrical, as with the Shape tool (C already made it a cusp). S and Y switched to the Sketch and Polygon tools and dropped the curve (#2876).
+- Alt+E opens the Edit menu, as Alt and the other menus' letters open theirs (Alt+E, N clones); it edits a symmetry only while an object with one is selected (#2881).
+
 ## 0.47.0 (2026-11-16)
 
 - Saving to CorelDRAW (`.cdr`): text fitted to a path, or bent by an envelope, perspective or distortion, goes out as curves that fill with the nonzero rule (Fill winding on), as the text is drawn. They went out even-odd, so CorelDRAW showed holes where letters or their strokes overlapped (#2733).

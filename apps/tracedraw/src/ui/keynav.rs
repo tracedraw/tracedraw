@@ -1522,6 +1522,34 @@ mod tests {
         assert_ne!(app.selection_bounds(), before);
     }
 
+    /// Alt+E opens the Edit menu like the other titles' letters (Alt+E,
+    /// N clones); it edits a symmetry only while an object with one is
+    /// selected (#2881).
+    #[test]
+    fn alt_e_opens_the_edit_menu() {
+        let ctx = crate::theme::ui_context();
+        let mut app = app_with_shapes();
+        keys(&ctx, &mut app, Vec::new());
+        let e = titles(&ctx).keys[1];
+        assert_eq!(e, 'e', "Edit's access key");
+        keys(&ctx, &mut app, vec![press(Key::E, Modifiers::ALT)]);
+        assert_eq!(open_menu(&ctx), Some(1), "Edit");
+        assert!(app.symmetry_edit.is_none());
+        key(&ctx, &mut app, Key::Escape);
+        key(&ctx, &mut app, Key::Escape);
+        assert_eq!(open_menu(&ctx), None);
+        // With a symmetry selected Alt+E edits it and opens no menu.
+        app.create_symmetry();
+        app.finish_symmetry_edit();
+        assert!(app.selected_symmetry().is_some());
+        assert!(app.symmetry_edit.is_none());
+        keys(&ctx, &mut app, Vec::new());
+        assert_eq!(open_menu(&ctx), None, "before");
+        keys(&ctx, &mut app, vec![press(Key::E, Modifiers::ALT)]);
+        assert_eq!(open_menu(&ctx), None);
+        assert!(app.symmetry_edit.is_some());
+    }
+
     /// The arrows never nudge the selection while a menu of the bar is
     /// open.
     #[test]

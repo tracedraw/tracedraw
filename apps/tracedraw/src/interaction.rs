@@ -5307,6 +5307,29 @@ impl App {
                 };
             }
         }
+        // While a curve with handles is drawn (Bezier, Pen) C, S and Y
+        // set the last node's type, as with the Shape tool, and pick no
+        // tool: S and Y switched to the Sketch and Polygon tools and the
+        // curve was dropped (#2876).
+        if self
+            .curve
+            .as_ref()
+            .is_some_and(|c| c.smooth && !c.bspline && !c.nodes.is_empty())
+        {
+            use tracedraw_core::nodes::NodeType;
+            for (k, ty) in [
+                (Key::C, NodeType::Cusp),
+                (Key::S, NodeType::Smooth),
+                (Key::Y, NodeType::Symmetrical),
+            ] {
+                if pressed(k, Modifiers::NONE) {
+                    if let Some(c) = &mut self.curve {
+                        c.set_last_node_type(ty);
+                    }
+                    return;
+                }
+            }
+        }
         // The Shape tool with nodes chosen: C makes them cusp, S smooth
         // and Y symmetrical (before the alignment and tool letters).
         // Each key names one type: C used to turn a cusp node smooth

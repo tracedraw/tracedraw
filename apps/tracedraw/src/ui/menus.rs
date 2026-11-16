@@ -2395,6 +2395,10 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
     // instead of opening a menu; while Options waits for a shortcut's keys
     // no menu opens either.
     let capturing = app.shortcut_editor.capture.is_some();
+    // Alt+E edits the selected object's symmetry (Object > Symmetry,
+    // run before the menu bar is drawn, so also while it is edited);
+    // with no symmetry selected it opens the Edit menu (#2881).
+    let symmetry_e = app.selected_symmetry().is_some();
     let user_alt_keys: Vec<egui::Key> = app
         .settings
         .shortcuts
@@ -2403,8 +2407,11 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
         .filter(|(m, _)| m.alt && !(m.ctrl || m.command || m.shift))
         .map(|(_, k)| k)
         .collect();
-    let blocked =
-        move |c: char| capturing || access::key_of(c).is_some_and(|k| user_alt_keys.contains(&k));
+    let blocked = move |c: char| {
+        capturing
+            || (symmetry_e && c == 'e')
+            || access::key_of(c).is_some_and(|k| user_alt_keys.contains(&k))
+    };
     egui::MenuBar::new()
         .style(menu_bar_style)
         .config(egui::containers::menu::MenuConfig::new().style(menu_popup_style))
@@ -2557,8 +2564,10 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
 }
 
 /// Alt+letter used by commands (symmetry, Alt+Q, Alt+Z): they keep it
-/// over opening a menu.
-const ALT_TAKEN: [char; 5] = ['e', 's', 'x', 'q', 'z'];
+/// over opening a menu. Alt+E opens the Edit menu, as on every Windows
+/// program (Alt+E, N clones); it edits a symmetry only while an object
+/// with one is selected (#2881).
+const ALT_TAKEN: [char; 4] = ['s', 'x', 'q', 'z'];
 
 /// Alt and a title's access key open that menu (closing another one),
 /// unless `blocked` keeps that letter for something else.
