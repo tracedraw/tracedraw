@@ -294,6 +294,12 @@ pub(crate) struct RunStyle {
     /// slot of a style table font entry, the `farEast` section of a
     /// version 16+ style string), when it is not the Latin one.
     pub asian: Option<ScriptFont>,
+    /// The font the style gives right-to-left letters (Arabic, Persian,
+    /// Hebrew...): the `RTL` section of a version 16+ style string, when
+    /// it is not the Latin one. A version 27 file sets its Persian title
+    /// at 154 pt there with the Latin slot at 24 pt on some letters, and
+    /// CorelDRAW draws them all at 154 pt (#2886).
+    pub rtl: Option<ScriptFont>,
 }
 
 /// The font settings of one script in a style: the style table's font
@@ -363,15 +369,39 @@ pub(crate) fn is_east_asian(c: char) -> bool {
     )
 }
 
-/// `text` cut into runs of East Asian letters and of the rest, each with
-/// whether it is East Asian. Characters of neither kind (spaces, line
-/// breaks, common punctuation) go with the run before them, or with the
-/// run after them at the start.
-pub(crate) fn split_scripts(text: &str) -> Vec<(String, bool)> {
-    let mut out: Vec<(String, bool)> = Vec::new();
+/// Whether a character is set in the right-to-left font of a style:
+/// Hebrew, Arabic (with its supplements and presentation forms), Syriac,
+/// Thaana and N'Ko letters, and the Arabic digits and punctuation.
+pub(crate) fn is_rtl_script(c: char) -> bool {
+    matches!(
+        c as u32,
+        0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF | 0x10800..=0x10FFF | 0x1E800..=0x1EFFF
+    )
+}
+
+/// Which of a style's fonts a character is set in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Script {
+    Latin,
+    EastAsian,
+    Rtl,
+}
+
+/// `text` cut into runs by the font of the style they are set in, East
+/// Asian, right-to-left or the Latin one for the rest, with the script
+/// of each. Only the scripts asked for (`asian`, `rtl`) are cut off; the
+/// others count as Latin. Characters of no script (spaces, line breaks,
+/// common punctuation, the joiners and direction marks) go with the run
+/// before them, or with the run after them at the start, so that a
+/// word's letters stay one run and join.
+pub(crate) fn split_scripts(text: &str, asian: bool, rtl: bool) -> Vec<(String, Script)> {
+    let mut out: Vec<(String, Script)> = Vec::new();
     let mut pending = String::new();
     for c in text.chars() {
-        let neutral = c.is_whitespace() || c.is_ascii_punctuation() || c.is_control();
+        let neutral = c.is_whitespace()
+            || c.is_ascii_punctuation()
+            || c.is_control()
+            || matches!(c as u32, 0x200B..=0x200F | 0x2028..=0x202E | 0x2066..=0x2069);
         if neutral {
             match out.last_mut() {
                 Some(last) => last.0.push(c),
@@ -379,18 +409,24 @@ pub(crate) fn split_scripts(text: &str) -> Vec<(String, bool)> {
             }
             continue;
         }
-        let asian = is_east_asian(c);
+        let script = if asian && is_east_asian(c) {
+            Script::EastAsian
+        } else if rtl && is_rtl_script(c) {
+            Script::Rtl
+        } else {
+            Script::Latin
+        };
         match out.last_mut() {
-            Some(last) if last.1 == asian => last.0.push(c),
+            Some(last) if last.1 == script => last.0.push(c),
             _ => {
                 let mut s = std::mem::take(&mut pending);
                 s.push(c);
-                out.push((s, asian));
+                out.push((s, script));
             }
         }
     }
     if !pending.is_empty() {
-        out.push((pending, false));
+        out.push((pending, Script::Latin));
     }
     out
 }
@@ -452,29 +488,42 @@ impl RunStyle {
             // A style naming its own font sets it for every script; one
             // that only changes the size or the face keeps the base's
             // East Asian font at that size and face.
-            asian: if self.font_id.is_some() || self.family.is_some() {
-                self.asian.clone()
-            } else {
-                self.asian.clone().or_else(|| {
-                    base.asian.clone().map(|mut a| {
-                        if self.size_pt.is_some() {
-                            a.size_pt = self.size_pt;
-                        }
-                        if self.flags.is_some() {
-                            a.flags = self.flags;
-                        }
-                        if self.bold.is_some() {
-                            a.bold = self.bold;
-                            a.weight = self.weight;
-                        }
-                        if self.italic.is_some() {
-                            a.italic = self.italic;
-                        }
-                        a
-                    })
-                })
-            },
+            asian: self.script_over(&self.asian, &base.asian),
+            // The same for the right-to-left font (#2886).
+            rtl: self.script_over(&self.rtl, &base.rtl),
         }
+    }
+
+    /// A script's font of `self` (`own`) on top of the base's (`base`):
+    /// a style naming its own font sets it for every script; one that
+    /// only changes the size or the face keeps the base's font of the
+    /// script at that size and face.
+    fn script_over(
+        &self,
+        own: &Option<ScriptFont>,
+        base: &Option<ScriptFont>,
+    ) -> Option<ScriptFont> {
+        if self.font_id.is_some() || self.family.is_some() {
+            return own.clone();
+        }
+        own.clone().or_else(|| {
+            base.clone().map(|mut a| {
+                if self.size_pt.is_some() {
+                    a.size_pt = self.size_pt;
+                }
+                if self.flags.is_some() {
+                    a.flags = self.flags;
+                }
+                if self.bold.is_some() {
+                    a.bold = self.bold;
+                    a.weight = self.weight;
+                }
+                if self.italic.is_some() {
+                    a.italic = self.italic;
+                }
+                a
+            })
+        })
     }
 
     /// The style with its East Asian font in place of the Latin one, for
@@ -483,6 +532,20 @@ impl RunStyle {
         let Some(a) = &self.asian else {
             return self.clone();
         };
+        self.with_script_font(a)
+    }
+
+    /// The style with its right-to-left font in place of the Latin one,
+    /// for the Arabic, Persian or Hebrew letters set in it (#2886).
+    pub fn for_rtl(&self) -> RunStyle {
+        let Some(a) = &self.rtl else {
+            return self.clone();
+        };
+        self.with_script_font(a)
+    }
+
+    /// The style with the script font `a` in place of the Latin one.
+    fn with_script_font(&self, a: &ScriptFont) -> RunStyle {
         let mut s = self.clone();
         if a.font_id.is_some() || a.family.is_some() {
             s.font_id = a.font_id;
@@ -497,6 +560,7 @@ impl RunStyle {
         }
         s.italic = a.italic.or(s.italic);
         s.asian = None;
+        s.rtl = None;
         s
     }
 }
@@ -2144,16 +2208,21 @@ fn apply_style_object(s: &mut RunStyle, obj: &Json, depth: usize) {
                         s.fill_color = Some(c);
                     }
                 }
-                // An inline outline, the frame and the settings for
-                // right-to-left scripts are not read; the Latin font
-                // settings apply to the text, the East Asian ones to its
-                // East Asian letters.
-                ("outline" | "frame" | "RTL", Json::Obj(_)) => {}
-                ("farEast", Json::Obj(_)) => {
+                // An inline outline and the frame are not read; the Latin
+                // font settings apply to the text, the East Asian ones to
+                // its East Asian letters, the right-to-left ones to its
+                // Arabic, Persian or Hebrew letters (#2886).
+                ("outline" | "frame", Json::Obj(_)) => {}
+                ("farEast" | "RTL", Json::Obj(_)) => {
                     let mut f = RunStyle::default();
                     apply_style_object(&mut f, v, depth + 1);
                     if f.font_id.is_some() || f.family.is_some() || f.size_pt.is_some() {
-                        s.asian = Some(ScriptFont::of(&f));
+                        let font = Some(ScriptFont::of(&f));
+                        if k == "RTL" {
+                            s.rtl = font;
+                        } else {
+                            s.asian = font;
+                        }
                     }
                 }
                 ("paragraph", Json::Obj(p)) => apply_paragraph_object(s, p),
@@ -3147,19 +3216,26 @@ mod tests {
     fn split_scripts_cuts_east_asian_runs() {
         assert!(is_east_asian('荣') && is_east_asian('〇') && is_east_asian('ア'));
         assert!(!is_east_asian('A') && !is_east_asian('é') && !is_east_asian('5'));
+        let (l, a) = (Script::Latin, Script::EastAsian);
         assert_eq!(
-            split_scripts("Ab 荣誉, 250g铜版纸\n"),
+            split_scripts("Ab 荣誉, 250g铜版纸\n", true, false),
             vec![
-                ("Ab ".to_string(), false),
-                ("荣誉, ".to_string(), true),
-                ("250g".to_string(), false),
-                ("铜版纸\n".to_string(), true),
+                ("Ab ".to_string(), l),
+                ("荣誉, ".to_string(), a),
+                ("250g".to_string(), l),
+                ("铜版纸\n".to_string(), a),
             ]
         );
         // Neutral characters at the start go with the first run.
-        assert_eq!(split_scripts(" 在"), vec![(" 在".to_string(), true)]);
-        assert_eq!(split_scripts(" \n"), vec![(" \n".to_string(), false)]);
-        assert!(split_scripts("").is_empty());
+        assert_eq!(
+            split_scripts(" 在", true, false),
+            vec![(" 在".to_string(), a)]
+        );
+        assert_eq!(
+            split_scripts(" \n", true, false),
+            vec![(" \n".to_string(), l)]
+        );
+        assert!(split_scripts("", true, false).is_empty());
     }
 
     #[test]
@@ -3198,6 +3274,50 @@ mod tests {
             r#"{"character":{"latin":{"font":"Arial","size":"42333"},"farEast":{"font":"Arial","size":"42333"}}}"#,
         );
         assert!(!same.asian.as_ref().unwrap().differs_from(&same));
+    }
+
+    /// #2886: the `RTL` section of a style string is the font of the
+    /// Arabic, Persian and Hebrew letters; a run changing only the size
+    /// keeps it at that size; the joiners and direction marks between
+    /// letters stay in their word's run.
+    #[test]
+    fn style_string_rtl_section_is_the_right_to_left_font() {
+        let s = parse_style_string(
+            r#"{"character":{"RTL":{"font":"IRNazanin","size":"543325"},"latin":{"font":"Arial","size":"84667"}}}"#,
+        );
+        assert_eq!(s.family.as_deref(), Some("Arial"));
+        let r = s.rtl.as_ref().expect("right-to-left font");
+        assert_eq!(r.family.as_deref(), Some("IRNazanin"));
+        assert!(r.differs_from(&s));
+        let rs = s.for_rtl();
+        assert_eq!(rs.family.as_deref(), Some("IRNazanin"));
+        assert!(
+            (rs.size_pt.unwrap() - 154.0).abs() < 0.1,
+            "{:?}",
+            rs.size_pt
+        );
+        assert!(rs.rtl.is_none());
+        let sized = RunStyle {
+            size_pt: Some(20.0),
+            ..RunStyle::default()
+        };
+        assert_eq!(sized.over(&s).rtl.and_then(|r| r.size_pt), Some(20.0));
+        assert!(is_rtl_script('ب') && is_rtl_script('ש') && is_rtl_script('ﻻ'));
+        assert!(!is_rtl_script('A') && !is_rtl_script('5') && !is_rtl_script('荣'));
+        let (l, r) = (Script::Latin, Script::Rtl);
+        assert_eq!(
+            split_scripts("Ab می\u{200c}بینید 12", false, true),
+            vec![
+                ("Ab ".to_string(), l),
+                ("می\u{200c}بینید ".to_string(), r),
+                ("12".to_string(), l),
+            ]
+        );
+        // East Asian letters are cut off only when asked for.
+        assert_eq!(
+            split_scripts("荣ب", false, true),
+            vec![("荣".to_string(), l), ("ب".to_string(), r)]
+        );
     }
 
     #[test]

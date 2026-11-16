@@ -2394,15 +2394,22 @@ impl<'a> Ctx<'a> {
                 // when it is another one (a version 14 file sets its
                 // Chinese titles in a 54 pt script font with Arial at
                 // 12 pt in the Latin slot, #955).
-                let pieces = match &style.asian {
-                    Some(a) if a.differs_from(&style) => text::split_scripts(&text),
-                    _ => vec![(text, false)],
+                // Arabic, Persian and Hebrew letters take its right-to-left
+                // font the same way (#2886).
+                let asian = style.asian.as_ref().is_some_and(|a| a.differs_from(&style));
+                let rtl = style.rtl.as_ref().is_some_and(|a| a.differs_from(&style));
+                let pieces = if asian || rtl {
+                    text::split_scripts(&text, asian, rtl)
+                } else {
+                    vec![(text, text::Script::Latin)]
                 };
-                for (piece, asian) in pieces {
-                    let span = if asian {
-                        self.make_span(piece, &style.for_east_asian(), object_fill)
-                    } else {
-                        self.make_span(piece, &style, object_fill)
+                for (piece, script) in pieces {
+                    let span = match script {
+                        text::Script::EastAsian => {
+                            self.make_span(piece, &style.for_east_asian(), object_fill)
+                        }
+                        text::Script::Rtl => self.make_span(piece, &style.for_rtl(), object_fill),
+                        text::Script::Latin => self.make_span(piece, &style, object_fill),
                     };
                     match spans.last_mut() {
                         Some(last)
@@ -11996,6 +12003,71 @@ pub(crate) mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    /// #2886: a Persian word whose last letter's style gives the Latin
+    /// slot 24 pt and the right-to-left (`RTL`) slot 154 pt, as the cover
+    /// of the report does: the letter is drawn at 154 pt like the rest of
+    /// the word, one run that joins, and Latin letters keep the Latin
+    /// size. The reader took the Latin size for all letters and cut the
+    /// word apart at 24 pt.
+    #[test]
+    fn right_to_left_letters_take_the_rtl_font_of_their_style() {
+        let v = 16u16;
+        let mut t = u32s(&[1]); // frame
+        t.extend_from_slice(&[0; 32]);
+        t.extend_from_slice(&u16s(&[1600]));
+        t.extend_from_slice(&[0; 3]);
+        t.extend_from_slice(&u32s(&[1, 1])); // one frame, id 1
+        t.extend_from_slice(&[0; 48]);
+        t.extend_from_slice(&u32s(&[0])); // not on a path
+        t.extend_from_slice(&[0; 8]);
+        t.extend_from_slice(&u32s(&[1])); // one paragraph
+        t.extend_from_slice(&u32s(&[0]));
+        t.push(0);
+        t.push(0); // frame flag byte: not 1
+        t.extend_from_slice(&style_string(
+            v,
+            r#"{"character":{"RTL":{"font":"Calibri","size":"543325"},"latin":{"font":"Calibri","size":"543325"}}}"#,
+        ));
+        t.extend_from_slice(&u32s(&[1])); // one style record
+        t.extend_from_slice(&u16s(&[0, 1, 0]));
+        t.extend_from_slice(&style_string(
+            v,
+            r#"{"character":{"RTL":{"font":"Calibri","size":"543325"},"latin":{"font":"Calibri","size":"84667"}}}"#,
+        ));
+        let text = "بوی ab";
+        let n = text.chars().count();
+        t.extend_from_slice(&u32s(&[n as u32]));
+        for i in 0..n {
+            t.extend_from_slice(&u16s(&[0]));
+            t.push(if i >= 2 { 0 } else { 0xfe });
+            t.extend_from_slice(&[0; 5]);
+        }
+        let bytes = utf16(text);
+        t.extend_from_slice(&u32s(&[bytes.len() as u32]));
+        t.extend_from_slice(&bytes);
+        t.push(0);
+        let mut coords = vec![0u8; 4];
+        coords.extend_from_slice(&i32s(&[508_000, 254_000]));
+        let (doc, rep) = text_doc(
+            v,
+            b"CDRG",
+            Vec::new(),
+            OBJ_PARAGRAPH_TEXT,
+            &[(ARG_COORDS, coords)],
+            t,
+        );
+        assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+        let ShapeKind::Text { spans, .. } = &first_shape(&doc).kind else {
+            panic!("{:?}", first_shape(&doc).kind);
+        };
+        assert_eq!(spans.len(), 2, "{spans:?}");
+        assert_eq!(spans[0].text, "بوی ");
+        assert!((spans[0].size_pt - 154.0).abs() < 0.1, "{spans:?}");
+        assert_eq!(spans[0].font_family, "Calibri");
+        assert_eq!(spans[1].text, "ab");
+        assert!((spans[1].size_pt - 24.0).abs() < 0.1, "{spans:?}");
     }
 
     /// Paragraph text of layout 1500 in a version 21 file (#1833, saved by
