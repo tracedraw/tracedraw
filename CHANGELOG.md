@@ -6,7 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
-- Icons: the Variable Outline, Transparency and Pan tool icons, the New, Open and New from Template pictures (Welcome screen, toolbar, File menu) and the Page Background menu picture are back as they were in the workspace icon set. They had been redrawn after user reports (#1682, #1677, #1727) without the maintainer's approval; icon changes now wait for it.
+- Variable Outline tool: its icon is the arch-shaped ribbon again, as before 0.47.0; it had been redrawn as a straight stroke after a user report (#1682) without the maintainer's approval.
 - Bezier and Pen tools: while a curve is drawn, S makes the last node smooth and Y symmetrical, as with the Shape tool (C already made it a cusp). S and Y switched to the Sketch and Polygon tools and dropped the curve (#2876).
 - Alt+E opens the Edit menu, as Alt and the other menus' letters open theirs (Alt+E, N clones); it edits a symmetry only while an object with one is selected (#2881).
 - Welcome Screen: the recent documents table and its scroll bar stop short of the window's right edge, as far from it as the New and Open buttons are from the left; the table ran into the edge (#2867).
