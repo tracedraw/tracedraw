@@ -2365,6 +2365,49 @@ fn curve_nodes_carry_the_marks_of_version_16_files() {
 }
 
 #[test]
+fn a_line_of_no_length_alone_is_kept() {
+    // A dimension's extension lines can be lines of no length: saving
+    // to .cdr left the whole object out (306 of them lost in one file).
+    let mut doc = doc_with(Vec::new());
+    let mut ids = doc.ids().clone();
+    let mut p = BezPath::new();
+    p.move_to((30.0, 40.0));
+    p.line_to((30.0, 40.0));
+    let mut dot = Shape::new(
+        ids.shape(),
+        ShapeKind::Path {
+            path: p,
+            closed: false,
+        },
+    );
+    dot.stroke = Some(Stroke::new(Color::BLACK, 0.2));
+    let mut q = BezPath::new();
+    q.move_to((10.0, 10.0));
+    q.line_to((50.0, 10.0));
+    let mut line = Shape::new(
+        ids.shape(),
+        ShapeKind::Path {
+            path: q,
+            closed: false,
+        },
+    );
+    line.stroke = Some(Stroke::new(Color::BLACK, 0.2));
+    doc.pages[0].layers[0].shapes = vec![dot, line];
+    doc.set_ids(ids);
+    for v in versions() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, rep) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let shapes = &back.pages[0].layers[0].shapes;
+        assert_eq!(shapes.len(), 2, "{v}: {:?}", rep.warnings);
+        let b = shapes[0].bounds();
+        assert!(
+            (b.x0 - 30.0).abs() < 0.01 && (b.y0 - 40.0).abs() < 0.01 && b.width() < 0.01,
+            "{v}: {b:?}"
+        );
+    }
+}
+
+#[test]
 fn subpaths_back_at_their_start_close_on_their_last_node() {
     // Letters' outlines (#1130): a curve back to the start, then the
     // close; a line back to the start; lone moves around them.

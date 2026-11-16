@@ -3149,10 +3149,16 @@ fn curve_coords_typed(
             PathEl::LineTo(p) => {
                 // A line of no length (a file of an earlier version read
                 // back: a curve to the start, then the closing line) is
-                // left out.
-                let q = (units(p.x), units(p.y));
+                // left out. A subpath that is only such a line (the
+                // extension lines of a dimension, as files have them)
+                // keeps a line of one unit instead: left out, the object
+                // was lost on saving.
+                let mut q = (units(p.x), units(p.y));
                 if pts.len() > last_start && pts.last() == Some(&q) {
-                    continue;
+                    if pts.len() > last_start + 1 {
+                        continue;
+                    }
+                    q.0 = q.0.saturating_add(1);
                 }
                 pts.push(q);
                 types.push(0x40 | node_bits(i));
