@@ -4455,9 +4455,12 @@ impl FontSystem {
                 }
                 first = false;
                 // Tabs are kept as glyph-less markers so the line breaker can
-                // expand them to the next tab stop.
-                let mut parts = piece.split('\t').enumerate().peekable();
-                while let Some((ti, part)) = parts.next() {
+                // expand them to the next tab stop, and so is a line break
+                // inside the paragraph (Shift+Enter, U+2028), where the
+                // breaker ends the line; shaped, it drew the font's empty
+                // box (d#2238).
+                let mut parts = split_markers(piece).into_iter().enumerate().peekable();
+                while let Some((ti, (marker, part))) = parts.next() {
                     if ti > 0 {
                         if let Some(p) = paragraphs.last_mut() {
                             p.push(Glyph {
@@ -4465,7 +4468,7 @@ impl FontSystem {
                                 advance: 0.0,
                                 x_offset: 0.0,
                                 y_offset: 0.0,
-                                ch: '\t',
+                                ch: marker,
                                 char_idx,
                                 char_end: char_idx + 1,
                                 rtl: false,
@@ -4495,7 +4498,10 @@ impl FontSystem {
                         for (sj, next) in spans.iter().enumerate().skip(si + 1) {
                             let mut n = 0;
                             if shapes_alike(span, next) {
-                                n = next.text.find(['\n', '\t']).unwrap_or(next.text.len());
+                                n = next
+                                    .text
+                                    .find(['\n', '\t', LINE_BREAK])
+                                    .unwrap_or(next.text.len());
                                 if let Some(c) =
                                     next.text.get(..n).and_then(|t| t.chars().next_back())
                                 {
@@ -4723,29 +4729,39 @@ impl FontSystem {
             let indent_rest = ps.left_indent + if ps.bullet.no_hanging { 0.0 } else { bullet };
             let para_start = para_starts.get(pi).copied().unwrap_or(0);
             if col_boxes.is_none() {
-                // Artistic text: one line a paragraph.
-                let m = line_metrics(glyphs, metrics, m_para);
-                let advance = if pi == 0 {
-                    0.0
-                } else {
-                    ps.line_step(m.line_height, m.size)
-                };
-                y -= advance;
+                // Artistic text: one line a paragraph, and one more for
+                // each line break inside it (Shift+Enter).
+                let pieces = split_at_line_breaks(glyphs);
+                let count = pieces.len();
+                for (k, piece) in pieces.into_iter().enumerate() {
+                    let m = line_metrics(&piece, metrics, m_para);
+                    let advance = if pi == 0 && k == 0 {
+                        0.0
+                    } else {
+                        ps.line_step(m.line_height, m.size)
+                    };
+                    y -= advance;
+                    let start_char = if k == 0 {
+                        para_start
+                    } else {
+                        piece.first().map_or(para_start, |g| g.char_idx)
+                    };
+                    lines.push(Line {
+                        glyphs: piece,
+                        hyphen: None,
+                        metrics: m,
+                        last_in_para: k + 1 == count,
+                        para: pi,
+                        start_char,
+                        y,
+                        x0: if k == 0 { indent_first } else { indent_rest },
+                        avail: f64::INFINITY,
+                        col_x: 0.0,
+                        cap_x: None,
+                        bullet_x: None,
+                    });
+                }
                 prev_para = Some(pi);
-                lines.push(Line {
-                    glyphs: glyphs.clone(),
-                    hyphen: None,
-                    metrics: m,
-                    last_in_para: true,
-                    para: pi,
-                    start_char: para_start,
-                    y,
-                    x0: indent_first,
-                    avail: f64::INFINITY,
-                    col_x: 0.0,
-                    cap_x: None,
-                    bullet_x: None,
-                });
                 continue;
             };
             // A drop cap takes the first glyph out of the first line and
@@ -5181,7 +5197,7 @@ impl FontSystem {
                 TextAlign::Center | TextAlign::Right if line.hyphen.is_none() => {
                     let kept = glyphs
                         .iter()
-                        .rposition(|g| !matches!(g.ch, ' ' | '\u{3000}' | '\n' | '\r'))
+                        .rposition(|g| !matches!(g.ch, ' ' | '\u{3000}' | '\n' | '\r' | LINE_BREAK))
                         .map_or(0, |i| i + 1);
                     let trimmed = &glyphs[..kept];
                     let w = line_width(trimmed, ps, x0 - col_start, tab_step);
@@ -5195,7 +5211,9 @@ impl FontSystem {
                 TextAlign::Right => ((avail.min(1e9) - total_w).max(0.0), Vec::new()),
                 TextAlign::Justify | TextAlign::ForceJustify => {
                     // Forced justification spreads the last line too.
-                    let last = line.last_in_para && align == TextAlign::Justify;
+                    // So is a line ended by a line break (Shift+Enter).
+                    let last = (line.last_in_para || glyphs.iter().any(|g| g.ch == LINE_BREAK))
+                        && align == TextAlign::Justify;
                     if last || !avail.is_finite() {
                         (0.0, Vec::new())
                     } else {
@@ -5912,6 +5930,41 @@ fn cjk_break(a: char, b: char) -> bool {
     (cjk_char(a) || cjk_char(b)) && !no_line_start(b) && !no_line_end(a)
 }
 
+/// The line break inside a paragraph (Shift+Enter): U+2028 LINE SEPARATOR.
+const LINE_BREAK: char = '\u{2028}';
+
+/// `piece` cut at its tabs and line breaks: each part with the marker
+/// that comes before it (the first part's is unused).
+fn split_markers(piece: &str) -> Vec<(char, &str)> {
+    let mut out = Vec::new();
+    let mut marker = '\t';
+    let mut from = 0;
+    for (i, c) in piece.char_indices() {
+        if c == '\t' || c == LINE_BREAK {
+            out.push((marker, &piece[from..i]));
+            marker = c;
+            from = i + c.len_utf8();
+        }
+    }
+    out.push((marker, &piece[from..]));
+    out
+}
+
+/// A paragraph's glyphs cut into lines after each line break (the break
+/// stays at the end of its line); one line when there is none.
+fn split_at_line_breaks(glyphs: &[Glyph]) -> Vec<Vec<Glyph>> {
+    let mut out = vec![Vec::new()];
+    for g in glyphs {
+        if let Some(l) = out.last_mut() {
+            l.push(g.clone());
+        }
+        if g.ch == LINE_BREAK {
+            out.push(Vec::new());
+        }
+    }
+    out
+}
+
 /// Greedy line breaking at spaces, with optional hyphenation and a
 /// fallback to breaking inside words that do not fit alone, one line at a
 /// time for the room each line has.
@@ -5923,8 +5976,11 @@ struct Breaker<'a> {
     tail: Option<Vec<Glyph>>,
     /// The next line is the paragraph's first.
     first: bool,
-    /// An empty paragraph still owes its one empty line.
+    /// An empty paragraph still owes its one empty line, as does a line
+    /// break at the end of a paragraph.
     empty_pending: bool,
+    /// Where that empty line after a line break starts, in characters.
+    after_break: Option<usize>,
     hyphenate: bool,
     /// The paragraph's tab stops (a line's width depends on them) and
     /// the default spacing past them.
@@ -5948,7 +6004,7 @@ impl<'a> Breaker<'a> {
         let mut words: Vec<Vec<Glyph>> = Vec::new();
         let mut cur: Vec<Glyph> = Vec::new();
         for (k, g) in glyphs.iter().enumerate() {
-            let is_sep = g.ch == ' ' || g.ch == '\t';
+            let is_sep = g.ch == ' ' || g.ch == '\t' || g.ch == LINE_BREAK;
             cur.push(g.clone());
             // Text without spaces (Chinese, Japanese) breaks between its
             // characters, where the line-start and line-end rules allow.
@@ -5964,6 +6020,7 @@ impl<'a> Breaker<'a> {
         }
         Breaker {
             empty_pending: words.is_empty(),
+            after_break: None,
             words,
             i: 0,
             tail: None,
@@ -5974,6 +6031,15 @@ impl<'a> Breaker<'a> {
             metrics,
             pi,
             para_start,
+        }
+    }
+
+    /// After the line break ending `line`: the paragraph's last word
+    /// leaves one empty line to come.
+    fn break_after(&mut self, line: &[Glyph]) {
+        if self.i >= self.words.len() {
+            self.empty_pending = true;
+            self.after_break = line.last().map(|g| g.char_idx + 1);
         }
     }
 
@@ -5994,6 +6060,7 @@ impl<'a> Breaker<'a> {
         let start_char = glyphs
             .first()
             .map(|g| g.char_idx)
+            .or(self.after_break)
             .unwrap_or(self.para_start);
         // Trailing spaces do not count toward alignment: strip them.
         while glyphs.last().map(|g| g.ch == ' ').unwrap_or(false) {
@@ -6044,10 +6111,17 @@ impl<'a> Breaker<'a> {
                     None => break,
                 },
             };
+            let forced = word.last().is_some_and(|g| g.ch == LINE_BREAK);
             if trimmed(&[line.as_slice(), word.as_slice()].concat()) <= avail {
                 line.extend(word);
                 self.tail = None;
                 self.i += 1;
+                if forced {
+                    // A line break inside the paragraph ends the line; one
+                    // at its end still leaves the empty line after it.
+                    self.break_after(&line);
+                    break;
+                }
                 continue;
             }
             // Try hyphenating the word.
@@ -6095,6 +6169,9 @@ impl<'a> Breaker<'a> {
                 line.extend(word);
                 self.tail = None;
                 self.i += 1;
+                if forced {
+                    self.break_after(&line);
+                }
             }
             break;
         }
@@ -6699,6 +6776,61 @@ mod tests {
         let a = lay(ar, &ltr);
         let b = lay(ar, &rtl);
         assert_eq!(a.lines[0].starts, b.lines[0].starts);
+    }
+
+    /// Shift+Enter puts a line break (U+2028) in the paragraph: the line
+    /// ends there and the next one starts under it, with no first-line
+    /// indent and no space before, and nothing is drawn for the break
+    /// itself (it showed as an empty box, d#2238).
+    #[test]
+    fn a_line_break_inside_a_paragraph_starts_a_new_line() {
+        if !has_fonts() {
+            return;
+        }
+        let para = ParagraphStyle {
+            first_line_indent: 5.0,
+            space_before: 4.0,
+            ..ParagraphStyle::default()
+        };
+        let lay = |text: &str, frame: Option<Size>| {
+            fonts().layout(&TextRequest {
+                spans: &[span(text)],
+                frame,
+                align: TextAlign::Left,
+                para: &para,
+                on_path: None,
+            })
+        };
+        let frame = Some(Size::new(100.0, 50.0));
+        let one = lay("ab", frame);
+        if one.glyphs == 0 {
+            return;
+        }
+        let two = lay("ab\u{2028}cd", frame);
+        assert_eq!(two.lines.len(), 2, "two lines");
+        assert_eq!(
+            two.lines[1].start_char, 3,
+            "the second starts after the break"
+        );
+        let w = |l: &TextLayout| l.path.bounding_box().width();
+        let first_line = lay("ab\u{2028}", frame);
+        assert!((w(&first_line) - w(&one)).abs() < 1e-6, "no box drawn");
+        // The second line is the paragraph's: no first-line indent, and
+        // one line step below the first, with no space before.
+        let (x0, y0) = two.baselines[0];
+        let (x1, y1) = two.baselines[1];
+        assert!(x1 < x0 - 4.0, "{x0} {x1}");
+        let paras = lay("ab\ncd", frame);
+        let step_para = paras.baselines[0].1 - paras.baselines[1].1;
+        assert!((y0 - y1) < step_para - 1.0, "{} {}", y0 - y1, step_para);
+        // A break at the end leaves an empty line to type on.
+        assert_eq!(first_line.lines.len(), 2);
+        assert_eq!(first_line.lines[1].start_char, 3);
+        // Artistic text breaks there too.
+        let art = lay("ab\u{2028}cd", None);
+        assert_eq!(art.lines.len(), 2);
+        assert_eq!(art.lines[1].start_char, 3);
+        assert!(art.baselines[1].1 < art.baselines[0].1, "under the first");
     }
 
     /// Text mixing directions is cut into runs of one level, in text

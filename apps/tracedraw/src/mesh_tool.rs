@@ -4,7 +4,8 @@
 //! colour goes with them, and they snap) and coloured from the colour
 //! palette; the selected node shows a handle on each grid line leaving
 //! it, dragged to bend the line; a double-click adds grid lines through
-//! the point and Delete removes the lines through the selected node. The
+//! the point, and a double-click on a node or Delete removes the lines
+//! through it (the selected node for Delete). The
 //! property bar sets the grid, Smooth colour, the selected node's
 //! transparency and Clear Mesh.
 

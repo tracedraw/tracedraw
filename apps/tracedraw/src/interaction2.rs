@@ -592,6 +592,23 @@ impl App {
     /// the node follows the pointer, snapping where it lands (#2004,
     /// discussion #2073).
     pub fn effect_node_input(&mut self, response: &Response, p: Point) -> bool {
+        // Checked before the click, which the second click of a
+        // double-click also is.
+        if response.double_clicked() {
+            // Double-click on a mesh node: the grid lines through it go,
+            // as with Delete and as in CorelDRAW; a row or column could
+            // not be taken out with the mouse (d#2889).
+            let on_node = self.effect_node_at(p).filter(|h| {
+                !crate::mesh_tool::is_mesh_handle(h.1)
+                    && crate::mesh_tool::mesh_node_of(h.1).is_some()
+            });
+            if let Some(hit) = on_node {
+                self.selected_effect_node = Some(hit);
+                self.mesh_more_nodes = None;
+                self.delete_mesh_lines();
+                return true;
+            }
+        }
         if response.clicked_by(PointerButton::Primary) {
             if let Some(hit) = self.effect_node_at(p) {
                 // A handle keeps its node selected. Shift+click on a

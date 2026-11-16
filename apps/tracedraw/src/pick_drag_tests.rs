@@ -15302,6 +15302,34 @@ fn mesh_nodes_land_where_they_are_clicked_and_dragged() {
     assert!((mesh(&app).nodes[i].pos - at).hypot() <= tol);
 }
 
+/// Discussion #2889, Mesh Fill: a double-click on an inner mesh node
+/// takes out the grid lines through it, as Delete does and as in
+/// CorelDRAW, one undo step; on an edge node the lines stay.
+#[test]
+fn a_double_click_on_a_mesh_node_removes_its_grid_lines() {
+    let (ctx, mut app, id) = setup();
+    app.mesh_rows = 3;
+    app.mesh_cols = 3;
+    app.set_tool(Tool::MeshFill);
+    click_page(&ctx, &mut app, Point::new(30.0, 20.0));
+    let mesh = |app: &App| match &app.doc().find_shape(id).expect("shape").fill {
+        tracedraw_core::Fill::Mesh(m) => m.clone(),
+        other => panic!("{other:?}"),
+    };
+    let m = mesh(&app);
+    assert_eq!((m.rows, m.cols), (3, 3));
+    // Row 1, column 1: an inner node.
+    let inner = app.view.to_screen(m.node(1, 1).expect("node").pos);
+    double_click_at(&ctx, &mut app, inner);
+    assert_eq!((mesh(&app).rows, mesh(&app).cols), (2, 2));
+    // A corner node: the edge stays.
+    let corner = app.view.to_screen(mesh(&app).node(0, 0).expect("node").pos);
+    double_click_at(&ctx, &mut app, corner);
+    assert_eq!((mesh(&app).rows, mesh(&app).cols), (2, 2));
+    app.undo();
+    assert_eq!((mesh(&app).rows, mesh(&app).cols), (3, 3));
+}
+
 /// Discussion #2387, Mesh Fill as in CorelDRAW: Shift+click adds mesh
 /// nodes to the chosen ones (and takes a chosen one out), a marquee
 /// chooses the nodes inside it, a palette colour, the transparency and
