@@ -4,7 +4,7 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.47.0 (2026-11-16)
 
 - Saving to CorelDRAW (`.cdr`): text fitted to a path, or bent by an envelope, perspective or distortion, goes out as curves that fill with the nonzero rule (Fill winding on), as the text is drawn. They went out even-odd, so CorelDRAW showed holes where letters or their strokes overlapped (#2733).
 - Panel tabs at the window's sides show their picture and their name again, however many panels are open: a column with more tabs than fit slides, as before. Options > Customization > Appearance > Panel tabs: icons only (off by default) shows the pictures alone, the name in the tip. Since 0.46.0 a column too short for the names showed the pictures alone (#2902).
