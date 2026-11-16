@@ -187,10 +187,15 @@ has one.
   of every text); Always overprint black (100 % black fills and outlines
   overprint).
 - Layout: As in document, Fit to page or Scale (percent). Fit to page
-  also brings objects that run off the page inside it: the objects the
-  page shows (every printed one when the range is the selection) shrink
-  as one to fit it, centred, when they do not fit; objects wholly off the
-  page stay out (#534, `fit_contents_to_page`,
+  scales each page to fill the room inside the paper's margins, up or
+  down, keeping its proportions (`imposition::Options::fit`,
+  `imposition::tests::fit_to_page_scales_the_page_to_the_paper`); As in
+  document only shrinks a page too big for the sheet. What runs off a
+  page stays cut at its edge, where it was drawn, on facing pages too:
+  it is not pulled onto the page nor shrunk with the page's objects
+  (#2678, `export::tests::fit_to_page_leaves_what_runs_off_the_page_where_it_is`).
+  With the selection printed, Fit to page shrinks every printed object
+  as one to fit the page, centred (#534, `fit_contents_to_page`,
   `export::tests::fit_to_page_shrinks_what_runs_off_the_page`). Choosing
   Fit to page (here, or ticking it in Print Preview) also puts back a
   page moved or stretched on the sheet in Print Preview: the artwork
@@ -407,7 +412,7 @@ same function (`export::print_sheets`).
 
 - With facing pages each page prints with what its facing page holds
   across the spine and in the bleed beside it (not for the selection
-  alone, nor with Fit to page; see `facing-pages.md`, #1972).
+  alone; see `facing-pages.md`, #1972).
 - Pages keep their aspect ratio; each cell is as large as the largest
   page on its sheet and a smaller page sits in its middle.
 - Gap between pages (several pages per sheet and repeat on the sheet,
