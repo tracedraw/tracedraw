@@ -16801,6 +16801,7 @@ fn frame_times_of_a_shadow_drag() {
             zoom: (app.view.zoom * ppp) as f64,
             origin_x: ((app.view.origin.x - rect.min.x) * ppp) as f64,
             origin_y: ((app.view.origin.y - rect.min.y) * ppp) as f64,
+            stretch_y: 1.0,
         },
         draft: true,
         ..Default::default()

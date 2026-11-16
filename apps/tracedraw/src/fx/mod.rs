@@ -453,6 +453,7 @@ pub fn vector_base(
                 zoom,
                 origin_x: 0.0,
                 origin_y: h as f64,
+                stretch_y: 1.0,
             },
             preview: None,
             wireframe: false,

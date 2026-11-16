@@ -524,6 +524,7 @@ mod tests {
                 zoom,
                 origin_x: 0.0,
                 origin_y: 297.0 * zoom,
+                stretch_y: 1.0,
             },
             draft: true,
             ..Default::default()

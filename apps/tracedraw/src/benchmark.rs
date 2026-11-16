@@ -284,6 +284,7 @@ pub fn sample_options() -> tracedraw_render::RenderOptions {
             zoom,
             origin_x: (w as f64 - 297.0 * zoom) / 2.0,
             origin_y: h as f64 - (h as f64 - 210.0 * zoom) / 2.0,
+            stretch_y: 1.0,
         },
         anti_alias: true,
         draft: true,

@@ -1214,6 +1214,7 @@ fn sheet_tiles(
             zoom,
             origin_x: 0.0,
             origin_y: h as f64,
+            stretch_y: 1.0,
         },
         ..Default::default()
     };

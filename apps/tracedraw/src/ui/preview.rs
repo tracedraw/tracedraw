@@ -43,6 +43,7 @@ pub fn fullscreen(app: &mut App, ui: &mut Ui) {
                 zoom,
                 origin_x: -bounds.x0 * zoom,
                 origin_y: bounds.y1 * zoom,
+                stretch_y: 1.0,
             };
             let opts = tracedraw_render::RenderOptions {
                 width: w.max(1),
@@ -261,6 +262,7 @@ mod tests {
                 zoom,
                 origin_x: -b.x0 * zoom,
                 origin_y: b.y1 * zoom,
+                stretch_y: 1.0,
             },
             preview: None,
             wireframe: false,

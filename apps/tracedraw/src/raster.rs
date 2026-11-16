@@ -650,11 +650,13 @@ impl Raster {
                 zoom: dpi / 25.4,
                 origin_x: -(win.ix0 as f64),
                 origin_y: win.iy1 as f64,
+                stretch_y: 1.0,
             },
             _ => ViewTransform {
                 zoom: (view.zoom * ppp) as f64,
                 origin_x: ((view.origin.x - rect.min.x) * ppp) as f64,
                 origin_y: ((view.origin.y - rect.min.y) * ppp) as f64,
+                stretch_y: 1.0,
             },
         };
         let opts = RenderOptions {
@@ -898,6 +900,7 @@ impl Raster {
                             zoom: scale,
                             origin_x: -area.x0 * scale,
                             origin_y: area.y1 * scale,
+                            stretch_y: 1.0,
                         },
                         preview: None,
                         wireframe,

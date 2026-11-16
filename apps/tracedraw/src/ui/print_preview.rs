@@ -2143,6 +2143,7 @@ fn render_part(
             zoom: px_per_mm,
             origin_x: -part.x0 * px_per_mm,
             origin_y: part.y1 * px_per_mm,
+            stretch_y: 1.0,
         },
         preview: None,
         wireframe: false,
