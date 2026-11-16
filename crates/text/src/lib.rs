@@ -5160,11 +5160,17 @@ impl FontSystem {
                         bspan.baseline_shift_pt += ps.bullet.baseline_shift / PT_MM;
                     }
                     let b = self.shape_run(&bspan, 0, &label, size_scale, 0, ps, &[]);
+                    let mut bpen = bx;
                     for g in &b {
-                        let a = orient(Affine::translate((bx, y)), g, m.ascent);
+                        let a = orient(
+                            Affine::translate((bpen + g.x_offset, y + g.y_offset)),
+                            g,
+                            m.ascent,
+                        );
                         place_glyph(collect, a, g, &mut line_glyphs);
                         let gp = a * g.path.as_ref().clone();
                         line_path.extend(gp.elements().iter().copied());
+                        bpen += g.advance;
                     }
                 }
             }
@@ -7135,6 +7141,37 @@ mod tests {
             back.lines[1].edges[0].abs() < 1e-6,
             "{}",
             back.lines[1].edges[0]
+        );
+    }
+
+    #[test]
+    fn numbered_bullet_glyphs_advance_without_overlapping() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        let mut numbers = ParagraphStyle {
+            bullets: true,
+            ..Default::default()
+        };
+        numbers.bullet.numbering = tracedraw_core::Numbering::Arabic;
+        numbers.bullet.start = 10;
+        // "10." (3 glyphs) + "a" (1 glyph) = 4 glyphs.
+        let layout = f.glyph_layout(&TextRequest {
+            spans: &[span("a")],
+            frame: Some(Size::new(60.0, 200.0)),
+            align: TextAlign::Left,
+            para: &numbers,
+            on_path: None,
+        });
+        assert_eq!(layout.glyphs.len(), 4);
+        let xs: Vec<f64> = layout.glyphs[..3]
+            .iter()
+            .map(|g| g.transform.as_coeffs()[4])
+            .collect();
+        assert!(
+            xs[0] < xs[1] && xs[1] < xs[2],
+            "bullet glyphs overlapped at {xs:?}"
         );
     }
 
