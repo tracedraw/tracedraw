@@ -7964,7 +7964,12 @@ impl App {
             crate::files::read(&path)
                 .map_err(|e| e.to_string())
                 .and_then(|bytes| {
-                    tracedraw_io::psd::parse(&bytes, &mut tracedraw_core::id::IdSource::default())
+                    let mut imported = tracedraw_io::psd::parse(
+                        &bytes,
+                        &mut tracedraw_core::id::IdSource::default(),
+                    )?;
+                    crate::bitmap_file::keep_psd_mode(&bytes, &mut imported.shapes);
+                    Ok(imported)
                 })
                 .map(|imported| {
                     let title = path
@@ -9863,7 +9868,11 @@ impl App {
         let parsed = crate::files::read(path)
             .map_err(|e| e.to_string())
             .and_then(|bytes| {
-                tracedraw_io::psd::parse(&bytes, &mut tracedraw_core::id::IdSource::default())
+                let mut imported =
+                    tracedraw_io::psd::parse(&bytes, &mut tracedraw_core::id::IdSource::default())?;
+                // A 1-bit, grayscale or indexed file keeps its mode (#3025).
+                crate::bitmap_file::keep_psd_mode(&bytes, &mut imported.shapes);
+                Ok(imported)
             });
         match parsed {
             Ok(imported) => {

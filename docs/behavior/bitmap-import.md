@@ -26,6 +26,16 @@ file as inverted and leaving the colour management out, so the picture
 came in brighter than the same inks in the drawing (#2163,
 `bitmap_file::tests::a_cmyk_jpeg_imports_with_its_inks_as_the_drawing_shows_them`).
 
+A picture keeps the colour mode its file stores (Image > Mode and the
+status bar show it): a 1-bit file (PNG, BMP, TIFF) comes in Black and
+White (1-bit), a grey one (PNG, TIFF, a one-component JPEG) Grayscale,
+one with a palette (PNG, BMP of 4 or 8 bits, GIF, TIFF) Indexed (8-bit);
+a 1-bit file of two colours other than black and white is Indexed.
+Before, every picture came in as RGB. A palette TIFF, which did not
+open at all, opens with its colours: it is read as the grey levels that
+are its indices, looked up in its colour map (TIFF 6.0, section 5)
+(#3025, `bitmap_file::tests::imported_pictures_keep_their_colour_mode`).
+
 ## Opening a picture (#2600)
 
 A picture file opened (Open With TraceDraw in the file manager, the
