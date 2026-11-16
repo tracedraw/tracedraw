@@ -4860,13 +4860,24 @@ impl App {
         let mut cmds = Vec::new();
         let mut new_sel = Vec::new();
         for k in 1..=sr.copies.max(1) {
+            // Each copy and every object inside it (a group's or a
+            // PowerClip's) take new ids, as Duplicate gives them: the
+            // objects inside kept their originals' ids, so a drawing had
+            // two objects of each id (#3066).
+            let mut round = Vec::new();
             for s in &shapes {
-                let mut c = s.clone();
-                c.id = self.engine.new_shape_id();
+                let id = self.engine.new_shape_id();
+                let mut c = crate::app::reid_pub(s.clone(), id, &mut self.engine);
                 c.transform_by(Affine::translate((dx * k as f64, dy * k as f64)));
                 new_sel.push(c.id);
-                cmds.push(Command::AddShape { layer, shape: c });
+                round.push(c);
             }
+            crate::textflow::relink_copies(&shapes, &mut round);
+            cmds.extend(
+                round
+                    .into_iter()
+                    .map(|shape| Command::AddShape { layer, shape }),
+            );
         }
         if let Err(e) = self.engine.run_batch("Step and Repeat", &cmds) {
             self.status = e.to_string();
@@ -5356,8 +5367,10 @@ impl App {
                     continue;
                 };
                 let layer = layer.id;
-                let mut copy = def.shape.clone();
-                copy.id = self.engine.new_shape_id();
+                // New ids for the objects inside a group definition
+                // too: each instance reverted brought the same ones (#3066).
+                let id = self.engine.new_shape_id();
+                let mut copy = crate::app::reid_pub(def.shape.clone(), id, &mut self.engine);
                 copy.absorb(s.transform);
                 new_sel.push(copy.id);
                 cmds.push(Command::DeleteShapes { shapes: vec![s.id] });
