@@ -1069,6 +1069,72 @@ fn with_data(mut data: Vec<(String, String)>, d: &Dimension) -> Vec<(String, Str
     data
 }
 
+/// The anchors of `d`'s points (page space) that sit on a node of an
+/// object of `layers`, or else on one of its segments (an edge, its
+/// midpoint or any point along it, #1178): within `tol` mm of it. A node
+/// wins over a segment, so a corner stays a corner. The Dimension tool
+/// reaches 3 pixels; a script's dimension, typed to the object's
+/// corners, holds to them too (#2348).
+pub(crate) fn anchors_on(
+    layers: &[&tracedraw_core::Layer],
+    d: &Dimension,
+    tol: f64,
+) -> Vec<Anchor> {
+    use tracedraw_core::geometry::ParamCurveNearest;
+    let mut out = Vec::new();
+    for i in 0..3u8 {
+        let Some(p) = d.point(i) else {
+            continue;
+        };
+        let mut node_best: Option<(Anchor, f64)> = None;
+        let mut edge_best: Option<(Anchor, f64)> = None;
+        for layer in layers {
+            if !layer.visible {
+                continue;
+            }
+            for s in &layer.shapes {
+                if is_dimension(s) || !s.visible {
+                    continue;
+                }
+                let path = s.page_path();
+                if !path.bounding_box().inflate(tol, tol).contains(p) {
+                    continue;
+                }
+                for (node, q) in tracedraw_core::nodes::nodes(&path).into_iter().enumerate() {
+                    let dist = (q.pos - p).hypot();
+                    if dist <= tol && node_best.is_none_or(|b| dist < b.1) {
+                        let a = Anchor {
+                            point: i,
+                            shape: s.id,
+                            node,
+                            segment: None,
+                        };
+                        node_best = Some((a, dist));
+                    }
+                }
+                if node_best.is_some() {
+                    continue;
+                }
+                for (index, seg) in path.segments().enumerate() {
+                    let n = seg.nearest(p, 1e-6);
+                    let dist = n.distance_sq.sqrt();
+                    if dist <= tol && edge_best.is_none_or(|b| dist < b.1) {
+                        let a = Anchor {
+                            point: i,
+                            shape: s.id,
+                            node: 0,
+                            segment: Some((index, n.t)),
+                        };
+                        edge_best = Some((a, dist));
+                    }
+                }
+            }
+        }
+        out.extend(node_best.or(edge_best).map(|b| b.0));
+    }
+    out
+}
+
 /// How far Add Dimensions puts the dimension lines from the box they
 /// measure, mm.
 pub const ADD_DIMENSIONS_GAP: f64 = 5.0;
@@ -1101,13 +1167,18 @@ impl App {
         };
         let g = self.dimension_group(measure);
         let group = g.id;
-        if let Err(e) = self
-            .engine
-            .run_batch(label, &[Command::AddShape { layer, shape: g }])
-        {
+        if let Err(e) = self.engine.run_batch(
+            label,
+            &[Command::AddShape {
+                layer,
+                shape: g.clone(),
+            }],
+        ) {
             self.status = e.to_string();
             return;
         }
+        // A macro being recorded makes it again (#2348).
+        self.note_recorded(&[Command::AddShape { layer, shape: g }]);
         self.select(vec![group]);
     }
 
@@ -1158,6 +1229,7 @@ impl App {
             self.status = e.to_string();
             return;
         }
+        self.note_recorded(&cmds);
         self.select(ids);
     }
 
@@ -1176,64 +1248,11 @@ impl App {
     }
 
     /// The anchors of `d`'s points (page space) that sit on a node of an
-    /// object on the page, or else on one of its segments (an edge, its
-    /// midpoint or any point along it, #1178): within 3 pixels of it. A
-    /// node wins over a segment, so a corner stays a corner.
+    /// object on the page, or else on one of its segments: within 3
+    /// pixels of it (see [`anchors_on`]).
     fn anchors_for(&self, d: &Dimension) -> Vec<Anchor> {
-        use tracedraw_core::geometry::ParamCurveNearest;
         let tol = (3.0 / self.view.zoom as f64).max(1e-3);
-        let mut out = Vec::new();
-        for i in 0..3u8 {
-            let Some(p) = d.point(i) else {
-                continue;
-            };
-            let mut node_best: Option<(Anchor, f64)> = None;
-            let mut edge_best: Option<(Anchor, f64)> = None;
-            for layer in self.page_layers() {
-                if !layer.visible {
-                    continue;
-                }
-                for s in &layer.shapes {
-                    if is_dimension(s) || !s.visible {
-                        continue;
-                    }
-                    let path = s.page_path();
-                    if !path.bounding_box().inflate(tol, tol).contains(p) {
-                        continue;
-                    }
-                    for (node, q) in tracedraw_core::nodes::nodes(&path).into_iter().enumerate() {
-                        let dist = (q.pos - p).hypot();
-                        if dist <= tol && node_best.is_none_or(|b| dist < b.1) {
-                            let a = Anchor {
-                                point: i,
-                                shape: s.id,
-                                node,
-                                segment: None,
-                            };
-                            node_best = Some((a, dist));
-                        }
-                    }
-                    if node_best.is_some() {
-                        continue;
-                    }
-                    for (index, seg) in path.segments().enumerate() {
-                        let n = seg.nearest(p, 1e-6);
-                        let dist = n.distance_sq.sqrt();
-                        if dist <= tol && edge_best.is_none_or(|b| dist < b.1) {
-                            let a = Anchor {
-                                point: i,
-                                shape: s.id,
-                                node: 0,
-                                segment: Some((index, n.t)),
-                            };
-                            edge_best = Some((a, dist));
-                        }
-                    }
-                }
-            }
-            out.extend(node_best.or(edge_best).map(|b| b.0));
-        }
-        out
+        anchors_on(&self.page_layers(), d, tol)
     }
 
     /// `d` (dimension group `g`'s) with its anchored points on their nodes

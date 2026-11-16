@@ -5760,6 +5760,14 @@ impl App {
         }
     }
 
+    /// Commands run straight on the engine as one undo step, kept by a
+    /// macro being recorded too, as [`Self::run`] keeps its command.
+    pub(crate) fn note_recorded(&mut self, cmds: &[Command]) {
+        if let Some(rec) = &mut self.recording {
+            rec.extend(cmds.iter().cloned());
+        }
+    }
+
     /// Open the docker (or hide the column when it is already the active
     /// tab), as the docker shortcuts do.
     pub fn toggle_docker(&mut self, tab: DockerTab) {
