@@ -1707,13 +1707,15 @@ fn ctrl_keeps_lines_to_the_constrain_angle() {
     assert!((p.y.atan2(p.x).to_degrees() - 45.0).abs() < 1e-9);
     assert_eq!(constrain_from(o, o, 15.0), o);
 
-    // Freehand: two clicks make a straight line; with Ctrl a level one.
+    // Freehand: two clicks make a straight line (ended by hand, as a
+    // double-click or Enter would, #2339); with Ctrl a level one.
     let (ctx, mut app, _id) = setup();
     app.set_tool(Tool::Freehand);
     let a = app.view.to_screen(Point::new(100.0, 100.0));
     let b = app.view.to_screen(Point::new(160.0, 104.0));
     click_at(&ctx, &mut app, a, Modifiers::NONE);
     click_at(&ctx, &mut app, b, Modifiers::CTRL);
+    app.finish_curve();
     let path = last_path(&app);
     let pts: Vec<Point> = path
         .elements()
@@ -7263,11 +7265,12 @@ fn the_snap_tip_shows_while_placing_and_pulling_with_the_pen() {
     );
 }
 
-/// Freehand by clicks, as in CorelDRAW (#2339): a double-click instead of
-/// the second click makes a corner and the line goes on; a single click
-/// ends it once the double-click time has passed; Space ends it at once.
+/// Freehand by clicks (#2339): each click adds a node and the line goes
+/// on, however long the wait between clicks; a double-click ends it where
+/// it is; Space ends it at once. A quick click somewhere else is the next
+/// node, not the end.
 #[test]
-fn freehand_double_clicks_make_corners_and_a_click_ends_the_line() {
+fn freehand_clicks_add_nodes_and_a_double_click_ends_the_line() {
     let (ctx, mut app, _id) = setup();
     app.set_tool(Tool::Freehand);
     let pts_of = |app: &App| -> Vec<Point> {
@@ -7307,30 +7310,53 @@ fn freehand_double_clicks_make_corners_and_a_click_ends_the_line() {
     );
     let before = shape_count(&app);
     click_at(&ctx, &mut app, a, Modifiers::NONE);
-    double_click_at(&mut app, b);
+    click_at(&ctx, &mut app, b, Modifiers::NONE);
+    // Well past the double-click time (a frame is a sixtieth of a second).
+    for _ in 0..60 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
     assert_eq!(
         shape_count(&app),
         before,
-        "the line goes on after a double-click"
+        "a click goes on, however long the wait"
     );
     assert_eq!(app.curve.as_ref().map(|c| c.nodes.len()), Some(2));
-    double_click_at(&mut app, c);
-    click_at(&ctx, &mut app, d, Modifiers::NONE);
-    assert!(app.curve.is_none(), "a single click ends the line");
+    click_at(&ctx, &mut app, c, Modifiers::NONE);
+    double_click_at(&mut app, d);
+    assert!(app.curve.is_none(), "a double-click ends the line");
     assert_eq!(shape_count(&app), before + 1, "one line");
     let pts = pts_of(&app);
     assert_eq!(pts.len(), 4, "{pts:?}");
     assert!((pts[1] - Point::new(160.0, 100.0)).hypot() < 0.5, "{pts:?}");
     assert!((pts[2] - Point::new(160.0, 160.0)).hypot() < 0.5, "{pts:?}");
-    // Two single clicks still make one straight segment.
+    assert!((pts[3] - Point::new(100.0, 160.0)).hypot() < 0.5, "{pts:?}");
+    // A click, then a double-click: one straight segment.
     click_at(&ctx, &mut app, at(30.0, 30.0), Modifiers::NONE);
-    click_at(&ctx, &mut app, at(60.0, 30.0), Modifiers::NONE);
+    double_click_at(&mut app, at(60.0, 30.0));
     assert_eq!(shape_count(&app), before + 2);
     assert_eq!(pts_of(&app).len(), 2);
+    // Two quick clicks at different places are two nodes, not an end.
+    let (e, f) = (at(30.0, 100.0), at(60.0, 100.0));
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::PointerMoved(e)],
+        Modifiers::NONE,
+    );
+    for (q, down) in [(e, true), (e, false), (f, true), (f, false)] {
+        frame(
+            &ctx,
+            &mut app,
+            vec![
+                Event::PointerMoved(q),
+                button(q, down, PointerButton::Primary, Modifiers::NONE),
+            ],
+            Modifiers::NONE,
+        );
+    }
+    assert_eq!(app.curve.as_ref().map(|c| c.nodes.len()), Some(2));
     // Space ends a line of clicks at once, with the nodes placed (as
     // Enter and Esc do), and switches to the Pick tool.
-    click_at(&ctx, &mut app, at(30.0, 200.0), Modifiers::NONE);
-    double_click_at(&mut app, at(60.0, 200.0));
     frame(
         &ctx,
         &mut app,
@@ -8199,12 +8225,14 @@ fn the_constrain_key_can_be_shift_or_alt() {
         let b = app.view.to_screen(Point::new(160.0, 104.0));
         click_at(&ctx, &mut app, a, Modifiers::NONE);
         click_at(&ctx, &mut app, b, mods);
+        app.finish_curve();
         assert!(level(&app), "{key:?} held: level");
         app.set_tool(Tool::Freehand);
         let a = app.view.to_screen(Point::new(100.0, 150.0));
         let b = app.view.to_screen(Point::new(160.0, 154.0));
         click_at(&ctx, &mut app, a, Modifiers::NONE);
         click_at(&ctx, &mut app, b, other);
+        app.finish_curve();
         assert!(!level(&app), "{key:?}: another key does not constrain");
     }
 }
@@ -27772,6 +27800,50 @@ fn a_two_point_line_drag_ends_at_the_release() {
         (ends[1] - Point::new(100.0, 160.0)).hypot() < 0.5,
         "{ends:?}"
     );
+}
+
+/// #2594: while a 2-point line is dragged its second node follows the
+/// pen or finger, so the line is seen before it is let go (it showed only
+/// the first node until the release).
+#[test]
+fn a_two_point_line_follows_the_drag_before_the_release() {
+    let (ctx, mut app, _) = setup();
+    app.set_tool(Tool::TwoPointLine);
+    let a = app.view.to_screen(Point::new(100.0, 100.0));
+    let b = app.view.to_screen(Point::new(140.0, 160.0));
+    let mods = Modifiers::NONE;
+    frame(&ctx, &mut app, vec![Event::PointerMoved(a)], mods);
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(a, true, PointerButton::Primary, mods)],
+        mods,
+    );
+    for i in 1..=4 {
+        let p = a + (b - a) * (i as f32 / 4.0);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(p)], mods);
+        let want = app.view.to_page(p);
+        let c = app.curve.as_ref().expect("the line is being drawn");
+        assert_eq!(c.nodes.len(), 1);
+        let got = app
+            .curve_preview_point(false)
+            .expect("the second node shows");
+        assert!((got - want).hypot() < 0.5, "step {i}: {got:?} vs {want:?}");
+        let path = c.path(Some(got));
+        let ends: Vec<Point> = path
+            .elements()
+            .iter()
+            .filter_map(|e| e.end_point())
+            .collect();
+        assert_eq!(ends.len(), 2, "step {i}: the preview runs to the pointer");
+    }
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(b, false, PointerButton::Primary, mods)],
+        mods,
+    );
+    assert!(app.curve.is_none(), "the line is finished at the release");
 }
 
 /// #2580: a double click on a palette colour opens the Palette Editor
