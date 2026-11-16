@@ -938,4 +938,74 @@ mod tests {
             assert!((b.center().x - 90.0).abs() < 1.0, "{bottom} {b:?}");
         }
     }
+
+    /// #2962: scaling a text fitted to a path with the handles scales its
+    /// letters, and the text stays on the path; the path was scaled with
+    /// it, so the letters left the curve they were fitted to. With the
+    /// curve selected too, both scale as before.
+    #[test]
+    fn scaling_a_text_on_a_path_scales_its_letters_not_the_path() {
+        let mut app = App::headless();
+        app.settings.autocorrect.enabled = false;
+        let t = fitted_on_line(&mut app);
+        let line = app.doc().pages[0]
+            .layers
+            .iter()
+            .flat_map(|l| l.shapes.iter())
+            .map(|s| s.id)
+            .find(|id| *id != t)
+            .expect("line");
+        let before = app.doc().shape(t).expect("text").1.clone();
+        let (size, page_path) = match &before.kind {
+            ShapeKind::Text {
+                spans,
+                on_path: Some(p),
+                ..
+            } => (spans[0].size_pt, before.transform * p.path.clone()),
+            _ => panic!("a fitted text"),
+        };
+        app.select(vec![t]);
+        let corner = Affine::translate((10.0, 50.0))
+            * Affine::scale(2.0)
+            * Affine::translate((-10.0, -50.0));
+        assert!(app.resizes_fitted_text(t, corner, &[t]));
+        app.transform_selection(corner);
+        let after = app.doc().shape(t).expect("text").1.clone();
+        assert_eq!(after.transform, before.transform);
+        match &after.kind {
+            ShapeKind::Text {
+                spans,
+                on_path: Some(p),
+                ..
+            } => {
+                assert!(
+                    (spans[0].size_pt - 2.0 * size).abs() < 1e-9,
+                    "{}",
+                    spans[0].size_pt
+                );
+                assert_eq!(after.transform * p.path.clone(), page_path);
+            }
+            _ => panic!("still fitted"),
+        }
+        // One undo step; a side handle scales by its own side.
+        app.undo();
+        let side = Affine::scale_non_uniform(1.5, 1.0);
+        app.select(vec![t]);
+        app.transform_selection(side);
+        match &app.doc().shape(t).expect("text").1.kind {
+            ShapeKind::Text { spans, .. } => assert!((spans[0].size_pt - 1.5 * size).abs() < 1e-9),
+            _ => panic!("text"),
+        }
+        app.undo();
+        // A mirror, a turn, or the curve scaled along: as before.
+        assert!(!app.resizes_fitted_text(t, Affine::scale_non_uniform(-1.0, 1.0), &[t]));
+        assert!(!app.resizes_fitted_text(t, Affine::rotate(0.3), &[t]));
+        assert!(!app.resizes_fitted_text(t, corner, &[t, line]));
+        app.select(vec![t, line]);
+        app.transform_selection(corner);
+        assert_eq!(
+            app.doc().shape(t).expect("text").1.transform,
+            corner * before.transform
+        );
+    }
 }

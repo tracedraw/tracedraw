@@ -9,6 +9,7 @@ full, row-by-row status.
 - Icons: the Variable Outline, Transparency and Pan tool icons, the New, Open and New from Template pictures (Welcome screen, toolbar, File menu) and the Page Background menu picture are back as they were in the workspace icon set. They had been redrawn after user reports (#1682, #1677, #1727) without the maintainer's approval; icon changes now wait for it.
 - Bezier and Pen tools: while a curve is drawn, S makes the last node smooth and Y symmetrical, as with the Shape tool (C already made it a cusp). S and Y switched to the Sketch and Polygon tools and dropped the curve (#2876).
 - Alt+E opens the Edit menu, as Alt and the other menus' letters open theirs (Alt+E, N clones); it edits a symmetry only while an object with one is selected (#2881).
+- Text fitted to a path, scaled with the Pick tool's handles (or any scale of it alone), keeps to its path: its letters grow or shrink, as far from the path in proportion, and the path stays where it is. The text's own copy of the path was scaled with it, so the letters left the curve they were fitted to. A curve scaled together with its text still takes the text along (#2962).
 - Welcome Screen: the recent documents table and its scroll bar stop short of the window's right edge, as far from it as the New and Open buttons are from the left; the table ran into the edge (#2867).
 
 ## 0.47.0 (2026-11-16)

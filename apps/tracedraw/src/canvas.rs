@@ -560,13 +560,17 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
             0
         };
     // Paragraph text being resized keeps its letters while the frame
-    // follows the drag (the drag outline shows the text flowed anew).
+    // follows the drag (the drag outline shows the text flowed anew); a
+    // text fitted to a path stays on it, its letters scaled on release
+    // (#2962).
     let preview_ids = preview.map(|t| {
         let ids: Vec<_> = app
             .selection
             .iter()
             .copied()
-            .filter(|id| !app.resizes_text_frame(*id, t))
+            .filter(|id| {
+                !app.resizes_text_frame(*id, t) && !app.resizes_fitted_text(*id, t, &app.selection)
+            })
             .collect();
         (ids, t)
     });
