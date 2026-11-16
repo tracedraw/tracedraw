@@ -2397,6 +2397,38 @@ pub(crate) fn object_transparency_is_uniform_fill(style: &str) -> bool {
         .is_some_and(|n| n == 1.0)
 }
 
+/// The `type` of the `fill` of an object's version 16+ style string
+/// `transparency` section: 0 or 1 uniform, 2 fountain, others patterns
+/// and textures, as in fill sections (#2960).
+pub(crate) fn object_transparency_fill_type(style: &str) -> Option<i64> {
+    let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
+    let Json::Obj(items) = parse_json(t)? else {
+        return None;
+    };
+    let (_, Json::Obj(tr)) = items.iter().find(|(k, _)| k == "transparency")? else {
+        return None;
+    };
+    let (_, Json::Obj(fill)) = tr.iter().find(|(k, _)| k == "fill")? else {
+        return None;
+    };
+    let n = fill.iter().find(|(k, _)| k == "type")?.1.num()?;
+    n.is_finite().then_some(n as i64)
+}
+
+/// Whether an object's version 16+ style string holds an empty
+/// `transparency` section (`{}`): no transparency, whatever argument 8000
+/// holds (#1706, #2960).
+pub(crate) fn object_transparency_is_empty(style: &str) -> bool {
+    let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
+    let Some(Json::Obj(items)) = parse_json(t) else {
+        return false;
+    };
+    matches!(
+        items.iter().find(|(k, _)| k == "transparency"),
+        Some((_, Json::Obj(tr))) if tr.is_empty()
+    )
+}
+
 /// The merge mode code of an object's version 16+ style string
 /// transparency (`transparency` > `mode`), when it is not 0. Every
 /// file seen so far holds 0 there (#1666: 126 files attached to issues,

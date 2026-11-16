@@ -4181,6 +4181,9 @@ impl<'a> Ctx<'a> {
         let mut v15_mask_axis: Option<(Point, Point)> = None;
         // A version 16+ uniform transparency held in argument 8000 (#1706).
         let mut record_opacity: Option<f64> = None;
+        // A version 16+ transparency record read on its own, for a style
+        // string that does not say what the transparency is (#2960).
+        let mut record_transparency: Option<RecordTransparency> = None;
 
         for arg in &l.args {
             match arg.ty {
@@ -4190,6 +4193,7 @@ impl<'a> Ctx<'a> {
                     if let Some(axis) = self.read_graded_transparency_axis(d, *arg) {
                         v15_mask_axis = Some(axis);
                     }
+                    record_transparency = self.read_transparency_record_v16(d, *arg);
                     if let Some(l) = self.read_lens(d, *arg) {
                         lens = Some(l);
                     } else if let Some((o, m)) = self.read_transparency_v11(d, *arg) {
@@ -4480,6 +4484,20 @@ impl<'a> Ctx<'a> {
                 .as_deref()
                 .and_then(text::object_transparency_mask)
         });
+        // A pattern transparency in the style string (a fill type other
+        // than uniform or fountain) is the pattern its record names, not
+        // the mean of its two amounts (#2960).
+        if mask.is_none()
+            && style_string
+                .as_deref()
+                .and_then(text::object_transparency_fill_type)
+                .is_some_and(|t| !matches!(t, 0..=2))
+        {
+            if let Some(RecordTransparency::Mask(m @ (Fill::Pattern(_), _))) = &record_transparency
+            {
+                mask = Some(m.clone());
+            }
+        }
         if opacity >= 1.0 && mask.is_none() {
             if let Some(o) = style_string.as_deref().and_then(text::object_opacity) {
                 opacity = o;
@@ -4491,6 +4509,23 @@ impl<'a> Ctx<'a> {
                 // The style string names a uniform transparency without its
                 // amount; the record in argument 8000 holds it (#1706).
                 opacity = o;
+            }
+        }
+        // The style string does not give the transparency (a pattern
+        // transparency, a fountain of colours other than greys, or no
+        // transparency section at all, #2960): the record's own type,
+        // amount and fill.
+        // An empty transparency section is no transparency (#1706).
+        if opacity >= 1.0
+            && mask.is_none()
+            && !style_string
+                .as_deref()
+                .is_some_and(text::object_transparency_is_empty)
+        {
+            match record_transparency {
+                Some(RecordTransparency::Mask(m)) => mask = Some(m),
+                Some(RecordTransparency::Opacity(o)) => opacity = o,
+                None => {}
             }
         }
 
@@ -4593,7 +4628,18 @@ impl<'a> Ctx<'a> {
                 },
             );
         }
-        if let Some((mask, target)) = mask {
+        if let Some((mut mask, target)) = mask {
+            // A pattern transparency's tiles start at the bottom-left
+            // corner of the object's box, at their own size (#2960: the
+            // tiles of the file's bitmap and vector patterns lie so in its
+            // page preview; from the page's corner they did not).
+            if let Fill::Pattern(p) = &mut mask {
+                use tracedraw_core::geometry::Shape as _;
+                let b = (shape.transform * shape.local_path()).bounding_box();
+                let pl = p.placement_mut();
+                pl.offset_x = b.x0;
+                pl.offset_y = b.y0;
+            }
             shape
                 .effects
                 .push(tracedraw_core::live::Effect::Transparency {
@@ -5394,6 +5440,67 @@ impl<'a> Ctx<'a> {
             return None;
         }
         Some(1.0 - percent / 100.0)
+    }
+
+    /// A version 16+ object's transparency record on its own (#2960, a
+    /// version 18 file with each kind of transparency): argument 8000
+    /// holds the record tagged 1300 of 117 bytes read for versions 13 and
+    /// 15 (`read_graded_transparency_v15`), the byte 5 and the record's
+    /// number first, the transparency's type (u16) at byte 37 of the
+    /// body, its start amount in percent (f64) at 61 and a fill id at 105.
+    /// Type 0 is a uniform transparency of the start amount (the fill id
+    /// then names the object's own fill, as in version 11); otherwise the
+    /// fill id names the transparency's fill: a fountain of greys (as in
+    /// version 15), whose lightness is the opacity, or a pattern (types
+    /// 7, 9 and 10: two-colour, bitmap and vector), whose lightness runs
+    /// the transparency from the end amount (at f64 69; black) to the
+    /// start amount (white): 100 and 0 in the file of #2960, whose page
+    /// preview shows the pattern's light parts see-through and its dark
+    /// ones nearly solid, at the pattern's own tile size. Versions 16 and later
+    /// mostly say the same in the object's style string, which wins;
+    /// this is for a style string that does not. `None` for other
+    /// records.
+    fn read_transparency_record_v16(
+        &mut self,
+        d: &'a [u8],
+        arg: Arg,
+    ) -> Option<RecordTransparency> {
+        if self.v < 16 || arg.end.checked_sub(arg.off)? < 8 + 117 {
+            return None;
+        }
+        let data = d.get(..arg.end)?;
+        let mut r = self.reader_at(data, arg.off);
+        if r.u32()? != 0x514 || r.u32()? != 117 || r.u8()? != 5 {
+            return None;
+        }
+        let body = r.pos - 1;
+        let kind = self.reader_at(data, body + 37).u16()?;
+        let percent = self.reader_at(data, body + 61).f64()?;
+        let end = self.reader_at(data, body + 69).f64()?;
+        let fill_id = self.reader_at(data, body + 105).u32()?;
+        if kind == 0 {
+            return ((0.0..=100.0).contains(&percent) && percent > 0.0)
+                .then(|| RecordTransparency::Opacity(1.0 - percent / 100.0));
+        }
+        match self.fills.get(&fill_id).map(|f| &f.fill) {
+            Some(Fill::Fountain(f)) => Some(RecordTransparency::Mask((grey_mask(f), 2))),
+            Some(Fill::Pattern(p)) => {
+                let (start, end) = (percent, end);
+                if !(0.0..=100.0).contains(&start) || !(0.0..=100.0).contains(&end) {
+                    return None;
+                }
+                Some(RecordTransparency::Mask((
+                    Fill::Pattern(pattern_mask(p, start, end)),
+                    2,
+                )))
+            }
+            _ => {
+                self.report.warn(format!(
+                    "transparency of type {kind} names fill {fill_id}, not a fountain or pattern; object drawn opaque"
+                ));
+                None
+            }
+        }
     }
 
     fn read_opacity(&mut self, d: &'a [u8], arg: Arg) -> Option<f64> {
@@ -7737,6 +7844,79 @@ fn paragraph_spacing(style: &text::RunStyle, base: &ParagraphStyle) -> Paragraph
 
 /// A transparency mask and the part of the object it applies to.
 type Mask = (Fill, u8);
+
+/// A pattern as a transparency mask (#2960): each colour becomes the
+/// grey of its opacity, the transparency running from `end` percent for
+/// black to `start` percent for white by the colour's lightness.
+fn pattern_mask(
+    p: &tracedraw_core::style::Pattern,
+    start: f64,
+    end: f64,
+) -> tracedraw_core::style::Pattern {
+    use tracedraw_core::style::Pattern;
+    let opacity = move |light: f32| {
+        let t = end + (start - end) * f64::from(light.clamp(0.0, 1.0));
+        (1.0 - t / 100.0).clamp(0.0, 1.0) as f32
+    };
+    let lightness = |c: Color| {
+        let [r, g, b] = c.to_rgb_f32_builtin();
+        r * 0.2126 + g * 0.7152 + b * 0.0722
+    };
+    let grey = move |c: Color| Color::Gray {
+        v: opacity(lightness(c)),
+    };
+    let mut p = p.clone();
+    match &mut p {
+        Pattern::TwoColor { front, back, .. } => {
+            *front = grey(*front);
+            *back = grey(*back);
+        }
+        Pattern::Vector { shapes, .. } => {
+            for s in shapes {
+                tracedraw_core::color_convert::map_shape_colors(s, &grey);
+            }
+        }
+        Pattern::Bitmap {
+            png,
+            width_px,
+            height_px,
+            ..
+        } => {
+            if let Ok(pm) = tiny_skia::Pixmap::decode_png(png) {
+                let mut rgba = pm.data().to_vec();
+                for px in rgba.chunks_exact_mut(4) {
+                    // Premultiplied: a clear pixel lets the background through.
+                    let a = f32::from(px[3]) / 255.0;
+                    let un = |v: u8| {
+                        if a > 0.0 {
+                            f32::from(v) / 255.0 / a
+                        } else {
+                            0.0
+                        }
+                    };
+                    let l = un(px[0]) * 0.2126 + un(px[1]) * 0.7152 + un(px[2]) * 0.0722;
+                    let v = (opacity(l) * a * 255.0).round() as u8;
+                    px[0] = v;
+                    px[1] = v;
+                    px[2] = v;
+                    px[3] = 255;
+                }
+                *png = encode_png(pm.width(), pm.height(), &rgba).into();
+                *width_px = pm.width();
+                *height_px = pm.height();
+            }
+        }
+    }
+    p
+}
+
+/// What a version 16+ transparency record says on its own (#2960).
+enum RecordTransparency {
+    /// A fountain or pattern whose lightness is the opacity.
+    Mask(Mask),
+    /// A uniform transparency.
+    Opacity(f64),
+}
 
 /// A vector pattern as a transparency mask over `shape`: one tile over
 /// the shape's box on the page.
@@ -16226,6 +16406,244 @@ pub(crate) mod tests {
         ] {
             let (f, _) = read(fill(tail));
             assert!(f.handles.is_none() && f.edge_pad > 0.0, "{f:?}");
+        }
+    }
+
+    /// The 117-byte transparency record of a version 16+ object, as
+    /// versions 13 to 27 lay it out: the byte 5 and the record's number,
+    /// the type (u16) at byte 37 of the body, the start amount in percent
+    /// at 61 and the fill id at 105.
+    fn transparency_record_v16(kind: u16, percent: f64, fill: u32) -> Vec<u8> {
+        transparency_record_v16_to(kind, percent, 0.0, fill)
+    }
+
+    /// [`transparency_record_v16`] with the end amount at byte 69.
+    fn transparency_record_v16_to(kind: u16, percent: f64, end: f64, fill: u32) -> Vec<u8> {
+        let mut b = vec![5u8];
+        b.extend_from_slice(&u32s(&[3]));
+        b.resize(29, 0);
+        b.extend_from_slice(&u32s(&[1]));
+        b.resize(37, 0);
+        b.extend_from_slice(&u16s(&[kind]));
+        b.resize(61, 0);
+        b.extend_from_slice(&f64s(&[percent, end]));
+        b.resize(81, 0);
+        b.extend_from_slice(&u32s(&[2]));
+        b.resize(105, 0);
+        b.extend_from_slice(&u32s(&[fill]));
+        b.resize(117, 0);
+        [u32s(&[0x514, 117]), b].concat()
+    }
+
+    /// #2960: a version 18 file whose objects' style strings do not
+    /// describe their transparency keeps it in argument 8000: a uniform
+    /// one (type 0) as its amount, the others as the fill the record
+    /// names, a fountain of greys or a pattern, whose lightness is the
+    /// opacity. Every kind opened solid.
+    #[test]
+    fn version_18_transparency_records_without_a_style_string_section() {
+        use tracedraw_core::live::Effect;
+        use tracedraw_core::style::{Pattern, PatternTile};
+        let main = riff(b"CDRI", &chunk(b"mcfg", &mcfg(18, 2_540_000, 2_540_000)));
+        let tree = crate::riff::parse(&main).unwrap();
+        let mut ctx = Ctx::new(&main, &tree, 18);
+        let ramp = Fountain {
+            stops: vec![
+                Stop::new(0.0, Color::rgb8(255, 255, 255)),
+                Stop::new(1.0, Color::rgb8(0, 0, 0)),
+            ],
+            ..Default::default()
+        };
+        let two = Fill::Pattern(Pattern::TwoColor {
+            tile: PatternTile::Checker,
+            front: Color::rgb8(0, 0, 0),
+            back: Color::rgb8(255, 255, 255),
+            size_mm: 5.0,
+            placement: Default::default(),
+        });
+        ctx.fills.insert(
+            7,
+            FillDef {
+                fill: Fill::Fountain(ramp),
+            },
+        );
+        ctx.fills.insert(8, FillDef { fill: two.clone() });
+        ctx.fills.insert(
+            9,
+            FillDef {
+                fill: Fill::Solid(Color::rgb8(10, 20, 30)),
+            },
+        );
+        let mut read_to = |kind: u16, percent: f64, end: f64, fill: u32| {
+            // Kept for the reader's lifetime, as file data is.
+            let op: &'static [u8] =
+                Box::leak(transparency_record_v16_to(kind, percent, end, fill).into_boxed_slice());
+            let arg = Arg {
+                ty: ARG_OPACITY,
+                off: 0,
+                end: op.len(),
+            };
+            ctx.read_transparency_record_v16(op, arg)
+        };
+        // Uniform: its amount, whatever the fill (the object's own).
+        assert!(
+            matches!(read_to(0, 40.0, 0.0, 9), Some(RecordTransparency::Opacity(o)) if (o - 0.6).abs() < 1e-9)
+        );
+        assert!(matches!(
+            read_to(0, 40.0, 0.0, 7),
+            Some(RecordTransparency::Opacity(_))
+        ));
+        assert!(read_to(0, 0.0, 0.0, 9).is_none());
+        assert!(read_to(0, 250.0, 0.0, 9).is_none());
+        // A fountain: its greys, white opaque.
+        let Some(RecordTransparency::Mask((Fill::Fountain(f), 2))) = read_to(1, 0.0, 0.0, 7) else {
+            panic!("no fountain mask");
+        };
+        assert_eq!(f.stops[0].color, Color::Gray { v: 1.0 });
+        assert_eq!(f.stops[1].color, Color::Gray { v: 0.0 });
+        // A two-colour pattern: its colours become greys of their opacity,
+        // the transparency running from the end amount for black to the
+        // start amount for white (100 and 0 in the reporter's file: white
+        // see-through, black solid).
+        let Some(RecordTransparency::Mask((
+            Fill::Pattern(Pattern::TwoColor { front, back, .. }),
+            2,
+        ))) = read_to(7, 100.0, 0.0, 8)
+        else {
+            panic!("no two-colour mask");
+        };
+        assert_eq!(
+            (front, back),
+            (Color::Gray { v: 1.0 }, Color::Gray { v: 0.0 })
+        );
+        // Amounts of 30 % for white and 80 % for black.
+        let Some(RecordTransparency::Mask((
+            Fill::Pattern(Pattern::TwoColor { front, back, .. }),
+            _,
+        ))) = read_to(7, 30.0, 80.0, 8)
+        else {
+            panic!("no two-colour mask");
+        };
+        let grey = |c: Color| match c {
+            Color::Gray { v } => v,
+            other => panic!("{other:?}"),
+        };
+        assert!(
+            (grey(front) - 0.2).abs() < 1e-6 && (grey(back) - 0.7).abs() < 1e-6,
+            "{front:?} {back:?}"
+        );
+        // A fill that is neither: opaque, with a warning.
+        assert!(read_to(1, 0.0, 0.0, 9).is_none());
+        assert!(read_to(1, 0.0, 0.0, 99).is_none());
+        assert!(ctx
+            .report
+            .warnings
+            .iter()
+            .any(|w| w.contains("names fill 99")));
+
+        // Through an object: a style string without a transparency
+        // section and a uniform record of 40 %.
+        let rect = |style: &str, op: Vec<u8>| {
+            let style = [u32s(&[1, style.len() as u32]), style.as_bytes().to_vec()].concat();
+            let args = vec![
+                (ARG_OPACITY, op),
+                (ARG_STYLE_STRING, style),
+                (ARG_COORDS, f64s(&[254_000.0, 254_000.0, 1.0, 1.0])),
+            ];
+            let body = [
+                chunk(b"mcfg", &mcfg(18, 2_540_000, 2_540_000)),
+                list(
+                    b"page",
+                    &list(
+                        b"layr",
+                        &list(b"obj ", &chunk(b"loda", &loda(OBJ_RECT, &args))),
+                    ),
+                ),
+            ]
+            .concat();
+            let (doc, rep) = parse(&riff(b"CDRI", &body), 18);
+            assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+            first_shape(&doc).clone()
+        };
+        let fill = r#"{"fill":{"type":"1","primaryColor":"RGB255,USER,102,97,143,100,00000000-0000-0000-0000-000000000000"}}"#;
+        let s = rect(fill, transparency_record_v16(0, 40.0, 1));
+        assert!((s.opacity - 0.6).abs() < 1e-9, "{}", s.opacity);
+        assert!(!s
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::Transparency { .. })));
+        // An empty transparency section is still none.
+        let s = rect(
+            r#"{"transparency":{}}"#,
+            transparency_record_v16(0, 40.0, 1),
+        );
+        assert_eq!(s.opacity, 1.0);
+        // The style string's own amount wins over the record's.
+        let own = r#"{"transparency":{"fill":{"type":"1"},"uniformTransparency":"0.2"}}"#;
+        let s = rect(own, transparency_record_v16(0, 40.0, 1));
+        assert!((s.opacity - 0.8).abs() < 1e-9, "{}", s.opacity);
+    }
+
+    /// #2960: an object's vector pattern transparency read from its
+    /// record: the pattern at its own tile size from the bottom-left
+    /// corner of the object's box, its colours the greys of their opacity.
+    #[test]
+    fn an_object_with_a_vector_pattern_transparency_record() {
+        use tracedraw_core::live::Effect;
+        let v = 27u16;
+        let read = |style: &str| {
+            let pattern = vector_pattern_fild_v27(
+                5,
+                (254_000, 254_000),
+                [-200_000, 200_000, 200_000, -200_000],
+                19,
+            );
+            let style = [u32s(&[1, style.len() as u32]), style.as_bytes().to_vec()].concat();
+            let args = vec![
+                (ARG_OPACITY, transparency_record_v16(10, 0.0, 5)),
+                (ARG_STYLE_STRING, style),
+                (ARG_COORDS, f64s(&[254_000.0, 254_000.0, 1.0, 1.0])),
+            ];
+            let obj = list(b"obj ", &chunk(b"loda", &loda(OBJ_RECT, &args)));
+            let body = [
+                chunk(b"mcfg", &mcfg(v, 2_540_000, 2_540_000)),
+                chunk(b"vpat", &vpat_with_a_rectangle(19)),
+                chunk(b"fild", &pattern),
+                list(b"page", &list(b"layr", &obj)),
+            ]
+            .concat();
+            let (doc, rep) = parse(&riff(b"CDRU", &body), v);
+            assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+            first_shape(&doc).clone()
+        };
+        let fill = r#""fill":{"type":"1","primaryColor":"RGB255,USER,102,97,143,100,00000000-0000-0000-0000-000000000000"}"#;
+        // No transparency section, and a section naming a vector pattern
+        // (type 10) with its two amounts, which read as their mean before.
+        for style in [
+            format!("{{{fill}}}"),
+            format!(
+                r#"{{"transparency":{{"fill":{{"type":"10"}},"startTransparency":"0","endTransparency":"1"}},{fill}}}"#
+            ),
+        ] {
+            let s = read(&style);
+            assert_eq!(s.opacity, 1.0, "{style}");
+            let b = s.bounds();
+            // At the tile's own size, from the box's bottom-left corner;
+            // the drawing's colours turned into the greys of their opacity.
+            let placed = s.effects.iter().any(|e| {
+                matches!(
+                    e,
+                    Effect::Transparency {
+                        mask: Fill::Pattern(tracedraw_core::style::Pattern::Vector { placement, shapes, .. }),
+                        target: 2,
+                        ..
+                    } if (placement.offset_x - b.x0).abs() < 1e-6
+                        && (placement.offset_y - b.y0).abs() < 1e-6
+                        && placement.size.is_none()
+                        && shapes.iter().all(|s| matches!(s.fill, Fill::Solid(Color::Gray { .. }) | Fill::None))
+                )
+            });
+            assert!(placed, "{style}: {:?}", s.effects);
         }
     }
 }
