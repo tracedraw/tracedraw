@@ -552,6 +552,138 @@ four times before the trace. Above 1:
 - the curves come out in pixels of the picture given; whoever enlarged
   it scales them back.
 
+### Faithful fit and the check
+
+The borders of an enlarged picture are fitted by `trace_fit`, not by
+the fitter of a picture traced as it is: the enlarging has drawn every
+edge sharp, so the curves copy the picture and do not guess at what a
+blur hid.
+
+- Where the edge runs between the pixels is read from the picture:
+  across each point of a border (1.5 px either side) the colour goes
+  from one region's to the other's, and the point is put where it is
+  half way. A border moves only when its two colours are 40 or more
+  apart and four fifths of its points show that step; one between two
+  shades too alike to tell, or seen only here and there, stays as the
+  labels drew it.
+- Corners are found by how much the border turns over 1.5 px against
+  3 px either side: a corner turns as much over the short reach, an
+  arc about twice as much over the long one. A corner is put where its
+  two straight sides cross when that lies within 1.1 px of the border;
+  a rounded one is no corner and stays round.
+- The round end of a thin stroke is made square. A stroke no wider
+  than 2 px of the picture before it was enlarged has no shape of its
+  end in that picture: the rounding is the enlarging's. Where the
+  border turns back on itself round such a stroke (2.6 radians or
+  more, its two sides straight within 0.3 px), the end is put level
+  or upright when it is nearly so and else square across the stroke,
+  a tenth of the stroke's width back from the round tip. Only a turn
+  round the shape is squared: of the two regions of a border the one
+  covering less of the picture is the shape, so the inside of a U and
+  the ends of a counter stay round.
+- The straight runs of a stretch are lines: 14 px or more within
+  0.3 px of one line, the border turning 0.25 radians or more over
+  the 2 to 8 px past each end (6 px within 0.2 px between two turns
+  of 0.6 radians over 1 to 4.5 px). A wide arc is as straight over a
+  short way but turns no faster past the run than along it, and is
+  no run: the side of a stem is a line and a circle stays curves.
+- Each stretch between two corners is the fewest lines and cubics
+  that stay within the tolerance (0.85 of that of a picture traced as
+  it is: about a third of a pixel at full detail, more as the detail
+  falls) of its points, found over every way to cut it at
+  points a pixel apart. Of two ways with as many pieces the one with
+  the shorter curves is taken, so a straight side is a line to its
+  end. A line nearly level or upright (within 0.09 radians, its
+  ends moving 0.8 px at most) is made exactly so, and the end of a
+  stroke between two straight sides is put level, upright or square
+  across it when its corners lie within 1.5 px of the bend.
+- Every stretch is then measured against its own border, both ways
+  (each point of the border to the curve, each point of the curve to
+  the border). One that strays is fitted again at 0.6 and at 0.35 of
+  the tolerance, and at last drawn as the border's own points in
+  straight pieces. A fit that deforms a small letter is not kept.
+
+Round shapes are fitted as what they are:
+
+- a closed border with no corner that lies within 1.3 tolerances of a
+  circle, or of an ellipse whose axes are level and upright, is that
+  shape exactly: four curves with their nodes at its top, bottom and
+  sides. An ellipse whose two radii differ by less than 3% is a circle;
+- a stretch between two corners, or between two straight runs, that
+  lies within 1.3 tolerances of an arc of a circle turning 0.9 rad or
+  more is that arc, in curves of at most 1.95 rad each, in place of the
+  straight runs and free curves it would have been. An arc of a level
+  ellipse is taken the same way when it turns 2 rad or more and lies
+  within half that distance (an ellipse bends to fit what is not one,
+  the round end of a U with its two sides), no flatter than 0.3;
+- an arc keeps the ends of its stretch (bent to them at its two ends
+  only) and meets a straight run along it; one that would meet it more
+  than 0.2 rad off is not taken;
+- a shape that is none of these (an ellipse turned on its side, an S)
+  is the fewest lines and cubics, as before.
+
+### Small letters by their strokes
+
+A letter a few pixels tall in the picture before it was enlarged has
+strokes about two pixels wide there. The enlarging gives it an outline,
+but its stems lean, its bowls bulge and its strokes thicken and thin.
+Such a letter was drawn with a pen of one width, and that says more
+about it than its outline does (`trace_strokes`):
+
+- a letter is a shape (in one colour, or in shades of it within 48 of
+  each other, which become the shade most of it has) no larger than 20
+  px of the picture before it was enlarged, whose strokes are 0.8 to
+  2.7 of those pixels wide and of one width (80% of its middle line
+  within 30% of the middle width);
+- the letter is thinned to its middle line. The short branches the
+  thinning grows into the corners of a square end are dropped, two
+  strokes going straight through a meeting (within 0.5 rad) are one
+  stroke, straight across it, and a branch ends straight on the
+  stroke it meets (the bar of an H runs straight from stem to stem);
+- each stroke's middle line is fitted like a border, to 0.2 px of the
+  picture before it was enlarged: straight lines, arcs, corners. A
+  short piece that cuts the corner between two lines is the corner
+  where they cross;
+- the letter is drawn again with those lines at the width its strokes
+  have (a stroke at least two widths long that differs by more than
+  12% has its own, 30% at most: the bar of a T thinner than its stem).
+  A free end is cut square across the stroke, where the picture's
+  stroke ends; a corner of the middle line is a pointed corner;
+- the letter drawn again is compared with the picture's: where more
+  than 1.5% of it lies further than 0.6 px of the picture before it
+  was enlarged (0.3 of the stroke's width at most) from the letter of
+  the picture, or it has another number of holes, the letter is left
+  as the picture has it;
+- the borders of a letter drawn again are fitted as they are, and are
+  not placed by the picture's colours again.
+
+So an F, an H or a T of small print is a few exact lines with square
+ends, and an O a ring of two ellipses. A shape that is no stroke (a
+dot, a leaf, a letter with thick and thin strokes) is not touched.
+
+After the curves are made the whole trace is checked against the
+picture, up to twice:
+
+- the trace is drawn at the picture's size and compared with it as
+  `wrong_share` does (a colour 60 or more from every colour drawn
+  within a pixel);
+- each patch of 0.75 px of the art or more that differs (the gap of a
+  small letter the cleaning closed) takes the one colour of the
+  palette the picture is nearest there, when that is much nearer
+  (0.6 of the distance) than the colours it had and is no shade of
+  what is drawn there (within 60 of it: as a patch of its own it would
+  be a seam inside the shape);
+- the curves are made again and the change is checked the same way: a
+  patch more than half of which still differs goes back to what it
+  was. With no patch kept the check ends.
+
+A small piece of a shade inside a small letter (16 px of the art at
+most) joins the larger piece beside it when the colours the two have
+in the picture, all in all, are within 48: the letter is one shape
+whose colour runs from one shade to the other, drawn as a blend, with
+no seam across it. A piece whose own colour is further (a pale leaf on
+a darker one) stays a shape.
+
 At any scale, the pale inside of a small letter that opens onto the
 paper is paper: a patch of at most 40 px of the art, most of its edge
 against a colour 120 or more from its own, that also touches a colour
@@ -768,6 +900,24 @@ width equal to the mean local thickness.
   `trace::tests::the_gap_of_a_small_letter_in_an_enlarged_picture_stays`,
   `trace::tests::the_dark_rim_of_an_enlarged_edge_is_no_line`,
   `trace_fine::tests::the_bend_of_a_small_s_is_not_squared_off`.
+- `trace_fit::tests::a_rectangle_is_four_lines_with_sharp_corners`,
+  `trace_fit::tests::a_disc_is_a_few_curves_within_the_tolerance`,
+  `trace_fit::tests::a_stem_with_a_round_end_keeps_straight_sides`,
+  `trace_fit::tests::the_edge_is_placed_by_the_picture_between_its_pixels`,
+  `trace_fit::tests::open_borders_keep_their_ends_and_short_ones_are_safe`,
+  `trace_fit::tests::a_stem_is_a_straight_run_and_a_wide_arc_is_not`,
+  `trace_fit::tests::the_round_end_of_a_thin_stroke_is_made_square`,
+  `trace_fit::tests::a_disc_is_a_circle_of_four_curves`,
+  `trace_fit::tests::an_ellipse_is_four_curves_and_a_turned_one_is_not_forced`,
+  `trace_fit::tests::a_half_disc_is_an_arc_and_a_u_keeps_its_sides`,
+  `trace_strokes::tests::a_soft_letter_comes_back_with_straight_strokes_and_square_ends`,
+  `trace_strokes::tests::a_shape_that_is_no_stroke_is_left_alone`,
+  `trace_strokes::tests::a_letter_in_two_shades_is_drawn_as_one`,
+  `trace_strokes::tests::the_middle_line_of_a_t_is_two_strokes`,
+  `trace::tests::a_small_letter_of_an_enlarged_picture_is_traced_as_drawn`,
+  `trace::tests::the_check_finds_a_closed_gap_and_leaves_a_shade`,
+  `trace::tests::a_small_piece_of_a_shade_joins_the_letter_it_is_of`
+  (the faithful fit and the check of enlarged pictures).
 - `trace::tests::an_edge_is_traced_where_it_runs_inside_its_pixels`,
   `ops2::tests::a_trace_lies_exactly_over_its_bitmap` (#2926).
 - `trace::tests::edge_pixels_make_no_ring_of_a_look_alike_colour`
