@@ -369,7 +369,7 @@ pub fn trace_dialog(app: &mut App, ctx: &Context, st: &mut TraceState, close: &m
                 .filter(|s| s.shape == shape)
                 .map(|s| (s.shape, s.traced.clone(), s.stroke_px))
         });
-        app.trace_bitmaps_using(&settings, ready);
+        app.trace_bitmaps_in_background(&settings, ready);
         app.last_trace = Some((st.preset, settings));
     }
 }

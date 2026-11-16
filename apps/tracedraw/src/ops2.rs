@@ -2840,7 +2840,7 @@ impl App {
         let prefs = &self.settings.tracing;
         let preset = prefs.quick_preset;
         let settings = prefs.settings(preset);
-        self.trace_bitmaps(&settings);
+        self.trace_bitmaps_in_background(&settings, None);
         self.last_trace = Some((preset, settings));
     }
 
@@ -2856,7 +2856,7 @@ impl App {
     /// was, without the dialog.
     pub fn repeat_last_trace(&mut self) {
         if let Some((_, settings)) = self.last_trace.clone() {
-            self.trace_bitmaps(&settings);
+            self.trace_bitmaps_in_background(&settings, None);
         }
     }
 
@@ -2882,21 +2882,9 @@ impl App {
         settings: &crate::trace::Settings,
         ready: Option<(ShapeId, std::sync::Arc<Vec<crate::trace::Traced>>, f64)>,
     ) {
-        let bitmaps = self.bitmap_shapes();
-        if bitmaps.is_empty() {
-            return;
-        }
-        let Some(layer) = self.active_layer() else {
-            return;
-        };
         let enlarge = self.settings.tracing.enlarge;
-        let mut cmds = Vec::new();
-        let mut new_sel = Vec::new();
-        for (id, rect, w, h, png) in bitmaps {
-            let Ok((_, src)) = self.doc().shape(id) else {
-                continue;
-            };
-            let transform = src.transform;
+        let mut done = Vec::new();
+        for (id, rect, w, h, png) in self.bitmap_shapes() {
             let (traced, stroke_px): (Vec<crate::trace::Traced>, f64) = match &ready {
                 Some((rid, t, px)) if *rid == id => (t.as_ref().clone(), *px),
                 _ => {
@@ -2914,6 +2902,47 @@ impl App {
                     }
                 }
             };
+            done.push(crate::trace_job::TracedBitmap {
+                shape: id,
+                rect,
+                w,
+                h,
+                traced,
+                stroke_px,
+            });
+        }
+        self.place_traces(settings, done);
+    }
+
+    /// Place the curves of traced bitmaps, one group over each bitmap, as
+    /// one undo step ("Trace Bitmap"), and select them. A bitmap gone or
+    /// changed meanwhile is left out.
+    pub fn place_traces(
+        &mut self,
+        settings: &crate::trace::Settings,
+        done: Vec<crate::trace_job::TracedBitmap>,
+    ) {
+        if done.is_empty() {
+            return;
+        }
+        let Some(layer) = self.active_layer() else {
+            return;
+        };
+        let mut cmds = Vec::new();
+        let mut new_sel = Vec::new();
+        for crate::trace_job::TracedBitmap {
+            shape: id,
+            rect,
+            w,
+            h,
+            traced,
+            stroke_px,
+        } in done
+        {
+            let Ok((_, src)) = self.doc().shape(id) else {
+                continue;
+            };
+            let transform = src.transform;
             let mut children = Vec::new();
             for t in traced {
                 let sid = self.engine.new_shape_id();
@@ -6335,6 +6364,7 @@ mod tests {
         assert!(app.last_trace.is_none());
         app.select(vec![bmp]);
         app.quick_trace();
+        app.wait_for_trace();
         let (preset, settings) = app.last_trace.clone().expect("remembered");
         assert_eq!(preset, app.settings.tracing.quick_preset);
         let count = |app: &App| {
@@ -6347,6 +6377,7 @@ mod tests {
         let after_first = count(&app);
         app.select(vec![bmp]);
         app.repeat_last_trace();
+        app.wait_for_trace();
         assert!(count(&app) > after_first, "traced again");
         app.open_last_trace_settings();
         match &app.dialog {

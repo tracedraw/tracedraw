@@ -100,7 +100,7 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::StraightenImage(_) => "bitmaps/resample-and-straighten#straighten",
         Dialog::Resample(_) => "bitmaps/resample-and-straighten#resample",
         Dialog::InflateBitmap(_) => "bitmaps/resample-and-straighten#inflate",
-        Dialog::Trace(_) => "bitmaps/tracing",
+        Dialog::Trace(_) | Dialog::Tracing => "bitmaps/tracing",
         Dialog::Effect(_) => "effects/bitmap-effects",
         Dialog::TextDefaults { .. } => "text/fonts",
         Dialog::CopyProperties(_) => "effects/copy-and-clone#clone",

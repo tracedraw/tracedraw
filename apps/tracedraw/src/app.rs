@@ -1117,6 +1117,9 @@ pub struct App {
     /// The Trace dialog's live preview: the trace of the selected bitmap
     /// worked out off the interface thread as the settings change.
     pub trace_live: crate::trace_preview::Live,
+    /// The trace of the selected bitmaps running off the interface
+    /// thread, shown in its progress window (`trace_job.rs`).
+    pub trace_job: Option<crate::trace_job::TraceJob>,
     /// The digits typed with Alt held while editing text, for a character
     /// by its number (#447; the system does it on Windows).
     pub alt_code: String,
@@ -2979,6 +2982,7 @@ impl App {
             text_clip: None,
             last_trace: None,
             trace_live: Default::default(),
+            trace_job: None,
             alt_code: String::new(),
             alt_composed: None,
             current_colors: (Color::BLACK, Color::WHITE),
