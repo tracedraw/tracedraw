@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Convert to Curves on condensed or tightly spaced text whose letters overlap, as Hindi and Malayalam text often does: the curves keep the letter shapes. Where one letter's outline crossed another's near a node, or two stems stood a hair apart, the curves cut a corner or filled the gap, so letters came out changed (#1483). The same goes for Weld and the other shaping commands, and for text saved to .cdr as curves.
 - .cdr: Arabic, Persian and Hebrew letters take the font and size a text style gives right-to-left scripts, as CorelDRAW draws them. A Persian title came out with the letters of one word at 24, 60 and 154 pt, cut apart, where CorelDRAW prints the whole word at 154 pt (#2886).
 - Image > Trace > Automatic, Repeat Last Trace and the Trace dialog's OK trace off the interface thread, with a window that shows the step (enlarging the picture, choosing the best detail, finding the colours, drawing the curves, checking against the picture, matching the letters), a bar with the percentage, the time taken and Cancel. The program looked frozen until the trace ended. Small print is matched with its font in about half the time, and colours and edges are found on every core, with the same curves as before.
 - Bezier and Pen tools: while a curve is drawn, S makes the last node smooth and Y symmetrical, as with the Shape tool (C already made it a cusp). S and Y switched to the Sketch and Polygon tools and dropped the curve (#2876).
