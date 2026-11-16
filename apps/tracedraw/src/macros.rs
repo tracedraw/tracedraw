@@ -1671,6 +1671,41 @@ mod tests {
         assert!(app.clipboard.is_none());
     }
 
+    /// A macro that puts each selected object into a clip frame of its
+    /// own (#2968), and one that centres the contents on the frame. The
+    /// macro of the report calls these members by other names, which
+    /// reach them through `__member_alias` (see vg_tests).
+    #[test]
+    fn a_macro_puts_each_selected_object_into_its_own_clip_frame() {
+        let code = "Sub Go()\r\n\
+            ActiveDocument.Unit = cdrMillimeter\r\n\
+            Dim s As Shape, r As Shape, f As Shape, c As Shape\r\n\
+            ActiveDocument.CreateShapeRangeFromArray(ActiveLayer.CreateEllipse2(10#, 10#, 5#), ActiveLayer.CreateEllipse2(40#, 10#, 5#)).CreateSelection\r\n\
+            For Each s In ActiveSelectionRange\r\n\
+            Set r = ActiveLayer.CreateRectangle2(s.LeftX - 2#, s.BottomY - 2#, s.SizeWidth + 4#, s.SizeHeight + 4#)\r\n\
+            s.AddToClipFrame r\r\n\
+            Next s\r\n\
+            Debug.Print \"frames \" & ActiveLayer.Shapes.Count\r\n\
+            For Each f In ActiveLayer.Shapes\r\n\
+            Debug.Print \"holds \" & f.ClipFrame.Shapes.Count & \" \" & (f.ClipFrame.Shapes.Item(1).ClipFrameParent.StaticID = f.StaticID)\r\n\
+            Next f\r\n\
+            Set f = ActiveLayer.CreateRectangle2(0#, 0#, 20#, 20#)\r\n\
+            Set c = ActiveLayer.CreateEllipse2(100#, 100#, 3#)\r\n\
+            c.AddToClipFrame f, cdrTrue\r\n\
+            Set c = f.ClipFrame.Shapes.Item(1)\r\n\
+            Debug.Print \"centred \" & Round(c.CenterX, 3) & \" \" & Round(c.CenterY, 3)\r\n\
+            End Sub\r\n";
+        let mut app = app_with(project("Frames", code, Vec::new()));
+        app.run_macro(0, "Main", "Go");
+        drive(&mut app, |_| {});
+        assert!(app.macros.error.is_none(), "{:?}", app.macros.error);
+        let out = &app.scripts_output;
+        let holds = out.iter().filter(|l| *l == "holds 1 True").count();
+        assert!(out.iter().any(|l| l == "frames 2"), "{out:?}");
+        assert_eq!(holds, 2, "{out:?}");
+        assert!(out.iter().any(|l| l == "centred 10 10"), "{out:?}");
+    }
+
     /// What the macros of a published collection use that stopped them
     /// (#2165): `FontList` (For Each over the installed families),
     /// `ActiveVirtualLayer`, `InsertPagesEx` (its argument named `Page`

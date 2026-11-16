@@ -185,7 +185,9 @@ Shared with ranges and the selection:
   new curve).
 - **Groups and frames:** `Ungroup`, `UngroupEx`, `UngroupAll`,
   `UngroupAllEx`, `Shapes` (a group's), `Layer`, `Page`, `ParentGroup`,
-  `ClipFrame` (`Shapes` inside a clip frame), `ClipFrameParent`.
+  `ClipFrame` (`Shapes` inside a clip frame), `ClipFrameParent`; macros
+  that call these and `AddToClipFrame` by other programs' names reach
+  them too (#2968, see below).
 - **Views of the object:**
   - `Curve`: `Nodes`, `SubPaths`, `Segments`, `Closed`, `Length`.
     Nodes have `PositionX`, `PositionY`, `SetPosition`, `Move`, `Type`
@@ -373,12 +375,22 @@ declare variables (`cdrShapeType`, `cdrColorType`, `cdrImageType`,
 
 The remaining rarer members follow the same rules:
 
-- Works: `MoveToLayer`, `OrderIsInFrontOf`, `AddToClipFrame`,
+- Works: `MoveToLayer`, `OrderIsInFrontOf`, `AddToClipFrame`
+  (`CenterInContainer` true centres the contents first),
   `FindAnyOfType`, `SelectShapesAtPoint`, `ImportEx`, `DrawingOriginX`
   and `DrawingOriginY` (0: the origin is the page corner).
 - Raise a named error: `GetUserClick`, `GetUserArea`, `DesktopLayer`,
   `UserAssignEx`, `PasteSpecial`, `StartShape`, `Fill.Pattern`,
   `GetPixelColor`, `Quit`, `VBE`.
+
+### Other names for members
+
+Some members are called by other programs' names in macros. Those names
+are not written in this repository (AGENTS.md rule 3): the object model
+keeps the FNV-1a hashes of their lowercase spelling with the member each
+stands for (`__member_alias` in `vg_model.js`), and the VBA runtime looks
+a member the object lacks up there before raising error 438 (#2968: the
+clip frame members).
 
 ### Not supported
 

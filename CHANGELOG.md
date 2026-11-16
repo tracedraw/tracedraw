@@ -15,6 +15,7 @@ full, row-by-row status.
 - A clone saved in a .cdr file (CorelDRAW X4 and later) opens again linked to its master and keeps following it, and the fields of Object Properties > Data come back too. TraceDraw now keeps every object's data in the file, where CorelDRAW leaves it alone (#2879).
 - Variable Outline tool: its icon is the arch-shaped ribbon again, as before 0.47.0; it had been redrawn as a straight stroke after a user report (#1682) without the maintainer's approval.
 - Freehand tool by clicks: each click adds a node and the line goes on, and a double-click ends it there, so a single straight line is a click and a double-click. Single clicks ended the line and double-clicks made corners (#2339).
+- Macros: a macro that calls the clip frame members by the names another program gives them reaches them again instead of stopping with error 438, and AddToClipFrame's CenterInContainer centres the contents in the frame (#2968).
 - Trace Bitmap: zoomed in on the preview, the After picture shows the traced curves drawn sharp at the screen's pixels, not the preview's pixels blown up (#2951).
 - Alt+E opens the Edit menu, as Alt and the other menus' letters open theirs (Alt+E, N clones); it edits a symmetry only while an object with one is selected (#2881).
 - Objects docker on a touch screen: a finger or stylus held on an object's row and then moved drags the row to change the stacking order, and held still and lifted it opens the object's full menu. The hold ended the drag and opened the menu under the finger (#2948).

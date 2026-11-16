@@ -847,3 +847,21 @@ fn pdf_settings_publish_the_current_page_alone() {
     assert_eq!(pages(&one), "1");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The other names macros call members by (#2968) are known by the
+/// FNV-1a hash of their lowercase spelling: the hash is the standard one
+/// (reference values of plain strings), and every entry names a member
+/// shapes have.
+#[test]
+fn other_member_names_are_known_by_hash_and_name_real_members() {
+    let mut app = App::headless();
+    let out = run(
+        &mut app,
+        "print(__nameHash(''), __nameHash('Shape'), __nameHash('AddToClipFrame'));
+         const r = ActiveLayer.CreateRectangle2(0, 0, 1, 1);
+         const missing = [...__memberAliases.values()].filter(m => !(m in r));
+         print(__memberAliases.size, missing.length, __member_alias('AddToClipFrame') === undefined);",
+    );
+    assert_eq!(out[0], "2166136261 2646858022 4187151640");
+    assert_eq!(out[1], "3 0 true");
+}
