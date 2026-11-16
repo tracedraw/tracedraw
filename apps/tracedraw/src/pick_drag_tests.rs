@@ -28854,3 +28854,27 @@ fn a_smooth_node_being_drawn_keeps_its_incoming_length() {
     let h = c.in_handle(1).expect("incoming");
     assert!(near(h, Point::new(10.0, -20.0)), "{h:?}");
 }
+
+/// Options > Nodes and Handles, Handle size: the Shape tool's control
+/// handle heads follow it too, full length at Large (the default) and
+/// shorter at Medium and Small. It sized only the Pick tool's handles,
+/// so on that page it seemed to do nothing (#3003).
+#[test]
+fn control_handle_heads_follow_the_handle_size() {
+    use crate::settings::{HandleSize, NodeSize};
+    let mut prefs = App::headless().settings.nodes;
+    assert_eq!(prefs.handles, HandleSize::Large);
+    assert_eq!(
+        prefs.control_head(),
+        NodeSize::Small.handle_head(),
+        "as before"
+    );
+    let large = prefs.control_head();
+    prefs.handles = HandleSize::Medium;
+    let medium = prefs.control_head();
+    prefs.handles = HandleSize::Small;
+    let small = prefs.control_head();
+    assert!(large > medium && medium > small, "{large} {medium} {small}");
+    // A press still takes the whole head at every size.
+    assert!(prefs.handle_pick_px() >= prefs.pick_px());
+}

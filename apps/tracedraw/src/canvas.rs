@@ -316,7 +316,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
                 view.to_screen(*node),
                 view.to_screen(*h),
                 look.preview_color,
-                app.settings.nodes.size.handle_head(),
+                app.settings.nodes.control_head(),
             );
         }
         for (p, mark) in &look.nodes {
@@ -370,7 +370,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
             if let Some(o) = out {
                 let so = view.to_screen(*o);
                 let mirrored = sp - (so - sp);
-                let head = app.settings.nodes.size.handle_head();
+                let head = app.settings.nodes.control_head();
                 draw_control_handle(painter, sp, so, Tokens::SELECTION, head);
                 draw_control_handle(painter, sp, mirrored, Tokens::SELECTION, head);
             }
@@ -2976,7 +2976,7 @@ fn draw_nodes(app: &App, painter: &Painter) {
                     );
                     if let (Some(a), Some(b)) = ends {
                         let sp = |q| view.to_screen(s.transform * q);
-                        let head = prefs.size.handle_head();
+                        let head = prefs.control_head();
                         draw_control_handle(painter, sp(a), sp(c1), main, head);
                         draw_control_handle(painter, sp(b), sp(c2), main, head);
                     }
@@ -2987,7 +2987,7 @@ fn draw_nodes(app: &App, painter: &Painter) {
     // The control handle chosen by a click: a ring round its head, the
     // one the arrow keys move (#2819).
     if let Some(c) = app.chosen_handle_point() {
-        let r = prefs.size.handle_head() * 0.5 + 3.0;
+        let r = prefs.control_head() * 0.5 + 3.0;
         painter.circle_stroke(view.to_screen(c), r, EStroke::new(1.5, main));
     }
     // The spot clicked on a segment: a small round mark where Add Node
@@ -3194,7 +3194,7 @@ fn draw_nodes(app: &App, painter: &Painter) {
             if selected {
                 for c in [n.ctrl_in, n.ctrl_out].into_iter().flatten() {
                     let cp = view.to_screen(s.transform * c);
-                    draw_control_handle(painter, p, cp, main, prefs.size.handle_head());
+                    draw_control_handle(painter, p, cp, main, prefs.control_head());
                 }
             }
             let shape = match nodes::node_type_of_with(&n, &s.node_types) {

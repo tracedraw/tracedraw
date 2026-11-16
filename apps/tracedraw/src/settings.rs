@@ -1129,6 +1129,19 @@ impl HandleSize {
         }
     }
 
+    /// How large the Shape tool's control handle heads are drawn, as a
+    /// share of their size for the node size: the largest (the default)
+    /// keeps them as they were, the smaller sizes draw them smaller. The
+    /// setting changed only the Pick tool's handles, so on the Nodes and
+    /// Handles page it seemed to do nothing (#3003).
+    pub fn head_scale(self) -> f32 {
+        match self {
+            HandleSize::Small => 0.6,
+            HandleSize::Medium => 0.8,
+            HandleSize::Large => 1.0,
+        }
+    }
+
     pub fn key(self) -> &'static str {
         match self {
             HandleSize::Small => "options.node_small",
@@ -1234,8 +1247,14 @@ impl NodePrefs {
     /// 5/4 of its length) and a pixel more, so the whole head takes a
     /// press and the reach grows with the node size (#1643, #1935).
     pub fn handle_pick_px(&self) -> f64 {
-        let head = f64::from(self.size.handle_head());
+        let head = f64::from(self.control_head());
         self.pick_px().max(head * 1.25f64.sqrt() + 1.0)
+    }
+
+    /// Length of a control handle's arrow head, screen pixels: the node
+    /// size's, scaled by the handle size (#1643, #3003).
+    pub fn control_head(&self) -> f32 {
+        self.size.handle_head() * self.handles.head_scale()
     }
 
     /// The object click distance in screen pixels, kept sensible
