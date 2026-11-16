@@ -666,6 +666,16 @@ about it than its outline does (`trace_strokes`):
   stroke ends, and is reached along the bend the stroke has there (0.08
   to 0.8 rad over one width: the ends of a C go on round its ring); a
   corner of the middle line is a pointed corner;
+- letters side by side are a word: of one colour (or shades within 48),
+  their heights, tops and bottoms within 15% of the taller one's height
+  of each other, no further apart than 3 heights. A word of three
+  letters or more has one width of stroke, the middle one of its
+  letters, taken by every letter whose own is within 25% of it (and
+  then by all its strokes). A level line of the middle line, or an
+  upright free end, within 0.75 px of the picture before it was
+  enlarged of the word's top or bottom (the middle ones of its
+  letters) lies on it, so the letters are of one height. A letter that
+  no longer agrees with the picture this way is drawn again by itself;
 - the letter drawn again is compared with the picture's: where more
   than 1.5% of it lies further than 0.6 px of the picture before it
   was enlarged (0.3 of the stroke's width at most) from the letter of
@@ -933,6 +943,7 @@ width equal to the mean local thickness.
   `trace_strokes::tests::the_middle_line_of_a_t_is_two_strokes`,
   `trace_strokes::tests::the_middle_line_of_a_u_is_two_stems_and_a_half_circle`,
   `trace_strokes::tests::a_free_end_follows_the_bend_of_its_stroke`,
+  `trace_strokes::tests::the_letters_of_a_word_share_a_width_and_a_line`,
   `trace_fit::tests::a_round_between_two_sides_is_the_arc_that_touches_both`,
   `trace::tests::a_small_letter_of_an_enlarged_picture_is_traced_as_drawn`,
   `trace::tests::the_check_finds_a_closed_gap_and_leaves_a_shade`,

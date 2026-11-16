@@ -73,6 +73,19 @@ const RUN_AXIS: f64 = 0.07;
 /// [`BEND_MOST`] at most.
 const BEND_LEAST: f64 = 0.08;
 const BEND_MOST: f64 = 0.8;
+/// Letters side by side are a word: of one colour, their heights
+/// within [`WORD_TALL`] of each other, on one line (their tops and
+/// bottoms within the same share of the height) and no further apart
+/// than [`WORD_GAP`] heights. A word of [`WORD_LEAST`] letters or more
+/// has one width of stroke, the middle one of its letters, taken by a
+/// letter whose own is within [`WORD_WIDE`] of it; and a level line or
+/// a square end within [`WORD_LINE`] pixels of the picture before it
+/// was enlarged of the word's top or bottom lies on it.
+const WORD_TALL: f64 = 0.15;
+const WORD_GAP: f64 = 3.0;
+const WORD_LEAST: usize = 3;
+const WORD_WIDE: f64 = 0.25;
+const WORD_LINE: f64 = 0.75;
 /// Two colours this near are shades of one, a letter in both one letter.
 const SHADE_NEAR: i64 = 48;
 
@@ -590,6 +603,17 @@ fn past_ends(c: &Chain, inside: &[f32], w: usize, h: usize) -> [f64; 2] {
     ]
 }
 
+/// What the word a letter is of says of it: the width of its strokes,
+/// where its top and bottom are (in the letter's own box) and how near
+/// one a line must be to lie on it.
+#[derive(Clone, Copy)]
+struct Word {
+    wide: f64,
+    top: f64,
+    bottom: f64,
+    near: f64,
+}
+
 /// The straight stretches of `soft` (points a unit apart): pairs of
 /// the indexes of their first and last points. `past` is how far the
 /// line goes on before the first point and after the last.
@@ -646,8 +670,9 @@ fn straight_runs(soft: &[Point], past: [f64; 2], least: f64) -> Vec<(usize, usiz
 }
 
 /// `path`, of straight lines only, with the lines that are nearly level
-/// or upright made so.
-fn upright(path: &BezPath) -> BezPath {
+/// or upright made so. `lines` is where a level middle line lies along
+/// the top and the bottom of the word, and how near one counts.
+fn upright(path: &BezPath, lines: Option<(f64, f64, f64)>) -> BezPath {
     use tracedraw_core::geometry::PathEl;
     let mut pts: Vec<Point> = Vec::new();
     let mut closed = false;
@@ -667,7 +692,16 @@ fn upright(path: &BezPath) -> BezPath {
             continue;
         }
         if d.y.abs() < RUN_AXIS.sin() {
-            let y = (pts[i].y + pts[j].y) / 2.0;
+            let mut y = (pts[i].y + pts[j].y) / 2.0;
+            // A level line beside the top or the bottom of its word
+            // lies on it.
+            if let Some((top, bottom, near)) = lines {
+                if (y - top).abs() <= near {
+                    y = top;
+                } else if (y - bottom).abs() <= near {
+                    y = bottom;
+                }
+            }
             (pts[i].y, pts[j].y) = (y, y);
         } else if d.x.abs() < RUN_AXIS.sin() {
             let x = (pts[i].x + pts[j].x) / 2.0;
@@ -691,7 +725,14 @@ fn upright(path: &BezPath) -> BezPath {
 /// The middle line through `pts` (a unit apart): its straight stretches
 /// as lines, level or upright when they nearly are, and what lies
 /// between them fitted like a border.
-fn middle_line(pts: &[Point], closed: bool, fit: &Faithful, wide: f64, past: [f64; 2]) -> BezPath {
+fn middle_line(
+    pts: &[Point],
+    closed: bool,
+    fit: &Faithful,
+    wide: f64,
+    past: [f64; 2],
+    word: Option<&Word>,
+) -> BezPath {
     use tracedraw_core::geometry::PathEl;
     let fitted = crate::trace_fit::fit(pts, closed, fit, None).path;
     // A middle line of straight lines only is those lines.
@@ -700,7 +741,8 @@ fn middle_line(pts: &[Point], closed: bool, fit: &Faithful, wide: f64, past: [f6
         .iter()
         .any(|el| matches!(el, PathEl::CurveTo(..) | PathEl::QuadTo(..)))
     {
-        return upright(&fitted);
+        let lines = word.map(|l| (l.top + wide / 2.0, l.bottom - wide / 2.0, l.near));
+        return upright(&fitted, lines);
     }
     let whole = || fitted.clone();
     let n = pts.len();
@@ -917,6 +959,7 @@ fn stroke_of(
     past: [f64; 2],
     wide: f64,
     held: &dyn Fn(Point) -> bool,
+    word: Option<&Word>,
 ) -> Stroke {
     use tracedraw_core::geometry::{Line, PathSeg};
     let mut line: Vec<Point> = Vec::new();
@@ -1043,9 +1086,19 @@ fn stroke_of(
             } else {
                 (t.ceil() as usize).max(1)
             };
-            let pts = (1..=steps)
+            let mut pts: Vec<Point> = (1..=steps)
                 .map(|k| at(t * k as f64 / steps as f64).0)
                 .collect();
+            // An upright end beside the top or the bottom of its word
+            // ends on it.
+            if let (Some(l), true, Some(end)) =
+                (word, bend == 0.0 && d.x.abs() < 1e-6, pts.last_mut())
+            {
+                let line = if d.y < 0.0 { l.top } else { l.bottom };
+                if (end.y - line).abs() <= l.near && (line - p.y) * d.y > 0.0 {
+                    end.y = line;
+                }
+            }
             (pts, at(t).1)
         };
         if square[0] && first != Vec2::ZERO {
@@ -1114,10 +1167,36 @@ impl Stroke {
     }
 }
 
+/// The width of the strokes of the letter `mask`, none when it is not
+/// a letter of strokes of one width.
+fn width_of(mask: &[bool], w: usize, h: usize, unit_px: f64) -> Option<f64> {
+    let inside = distances(mask, w, h);
+    let mut thin = mask.to_vec();
+    if !crate::trace::thin_unless(&mut thin, w, h, None) {
+        return None;
+    }
+    let mut on: Vec<f32> = (0..w * h).filter(|i| thin[*i]).map(|i| inside[i]).collect();
+    if on.len() < 4 {
+        return None;
+    }
+    on.sort_by(|a, b| a.total_cmp(b));
+    let wide = 2.0 * on[on.len() / 2] as f64 - 1.0;
+    (WIDE_LEAST * unit_px..=WIDE_MOST * unit_px)
+        .contains(&wide)
+        .then_some(wide)
+}
+
 /// One letter: `mask` (`w` x `h`, with room round it) drawn again by
 /// its strokes, or none when it is not such a letter or the two do not
 /// agree.
-fn letter(mask: &[bool], w: usize, h: usize, unit_px: f64, f: &Faithful) -> Option<Vec<bool>> {
+fn letter(
+    mask: &[bool],
+    w: usize,
+    h: usize,
+    unit_px: f64,
+    f: &Faithful,
+    word: Option<&Word>,
+) -> Option<Vec<bool>> {
     let area = mask.iter().filter(|m| **m).count();
     let inside = distances(mask, w, h);
     let mut thin = mask.to_vec();
@@ -1141,6 +1220,9 @@ fn letter(mask: &[bool], w: usize, h: usize, unit_px: f64, f: &Faithful) -> Opti
     if (even as f64) < EVEN_SHARE * on.len() as f64 || (on.len() as f64) < 1.5 * wide {
         return None;
     }
+    // The width of its word, when its own is near it.
+    let word = word.filter(|l| (l.wide - wide).abs() <= WORD_WIDE * wide);
+    let wide = word.map_or(wide, |l| l.wide);
     let (mut chains, nodes) = chains_of(&thin, w, h);
     join(&mut chains, &nodes, wide);
     let fit = Faithful {
@@ -1170,7 +1252,7 @@ fn letter(mask: &[bool], w: usize, h: usize, unit_px: f64, f: &Faithful) -> Opti
             .collect();
         on.sort_by(|a, b| a.total_cmp(b));
         let mut own = wide;
-        if c.length() >= 2.0 * wide && !on.is_empty() {
+        if word.is_none() && c.length() >= 2.0 * wide && !on.is_empty() {
             let mine = 2.0 * on[on.len() / 2] as f64 - 1.0;
             if (mine - wide).abs() > OWN_LEAST * wide {
                 own = mine.clamp((1.0 - OWN_MOST) * wide, (1.0 + OWN_MOST) * wide);
@@ -1198,7 +1280,7 @@ fn letter(mask: &[bool], w: usize, h: usize, unit_px: f64, f: &Faithful) -> Opti
         if pts.len() < 2 {
             continue;
         }
-        let path = middle_line(&pts, c.closed, &fit, own, past);
+        let path = middle_line(&pts, c.closed, &fit, own, past, word);
         let s = stroke_of(
             &path,
             c.closed,
@@ -1206,6 +1288,7 @@ fn letter(mask: &[bool], w: usize, h: usize, unit_px: f64, f: &Faithful) -> Opti
             past,
             own,
             &held,
+            word,
         );
         if s.line.len() >= 2 {
             strokes.push(s);
@@ -1265,6 +1348,18 @@ pub(crate) fn redraw(
     let mut seen = vec![false; w * h];
     let (mut stack, mut cells) = (Vec::new(), Vec::new());
     let mut changes: Vec<(usize, usize)> = Vec::new();
+    /// A shape that may be a letter: its points, its box with room
+    /// round it, its box in the picture, its label and the width of its
+    /// strokes.
+    struct Found {
+        cells: Vec<usize>,
+        mask: Vec<bool>,
+        at: (usize, usize, usize, usize),
+        span: (usize, usize, usize, usize),
+        label: usize,
+        wide: Option<f64>,
+    }
+    let mut found: Vec<Found> = Vec::new();
     for start in 0..w * h {
         if seen[start] || labels[start] == usize::MAX {
             continue;
@@ -1328,12 +1423,102 @@ pub(crate) fn redraw(
         for i in &cells {
             mask[(i / w - by) * lw + (i % w - bx)] = true;
         }
-        let Some(drawn) = letter(&mask, lw, lh, unit_px, f) else {
+        let wide = width_of(&mask, lw, lh, unit_px);
+        found.push(Found {
+            cells: cells.clone(),
+            mask,
+            at: (bx, by, lw, lh),
+            span: (x0, y0, x1, y1),
+            label,
+            wide,
+        });
+    }
+    // The words the letters are of.
+    let count = found.len();
+    let mut word: Vec<usize> = (0..count).collect();
+    fn root(word: &mut [usize], mut i: usize) -> usize {
+        while word[i] != i {
+            word[i] = word[word[i]];
+            i = word[i];
+        }
+        i
+    }
+    let shade = |a: usize, b: usize| -> bool {
+        a == b
+            || match (palette.get(a), palette.get(b)) {
+                (Some(a), Some(b)) => {
+                    let d = |i: usize| (a[i] as i64 - b[i] as i64).pow(2);
+                    d(0) + d(1) + d(2) <= SHADE_NEAR * SHADE_NEAR
+                }
+                _ => false,
+            }
+    };
+    for i in 0..count {
+        for j in i + 1..count {
+            let (a, b) = (&found[i], &found[j]);
+            if a.wide.is_none() || b.wide.is_none() || !shade(a.label, b.label) {
+                continue;
+            }
+            let (ha, hb) = (
+                (a.span.3 - a.span.1 + 1) as f64,
+                (b.span.3 - b.span.1 + 1) as f64,
+            );
+            let tall = ha.max(hb);
+            let off = |p: usize, q: usize| (p as f64 - q as f64).abs() <= WORD_TALL * tall;
+            let gap = if a.span.0 > b.span.2 {
+                (a.span.0 - b.span.2) as f64
+            } else if b.span.0 > a.span.2 {
+                (b.span.0 - a.span.2) as f64
+            } else {
+                0.0
+            };
+            if off(a.span.1, b.span.1) && off(a.span.3, b.span.3) && gap <= WORD_GAP * tall {
+                let (ra, rb) = (root(&mut word, i), root(&mut word, j));
+                word[ra] = rb;
+            }
+        }
+    }
+    let middle = |mut v: Vec<f64>| -> f64 {
+        v.sort_by(|a, b| a.total_cmp(b));
+        v[v.len() / 2]
+    };
+    for at in 0..count {
+        if at % 16 == 0 && crate::trace::cancelled(cancel) {
+            return None;
+        }
+        let mine = root(&mut word, at);
+        let fellows: Vec<usize> = (0..count).filter(|i| root(&mut word, *i) == mine).collect();
+        let Found {
+            cells,
+            mask,
+            at: (bx, by, lw, lh),
+            label,
+            ..
+        } = &found[at];
+        let (bx, by, lw, lh, label) = (*bx, *by, *lw, *lh, *label);
+        let said = (fellows.len() >= WORD_LEAST).then(|| Word {
+            wide: middle(fellows.iter().filter_map(|i| found[*i].wide).collect()),
+            top: middle(fellows.iter().map(|i| found[*i].span.1 as f64).collect()) - by as f64,
+            bottom: middle(
+                fellows
+                    .iter()
+                    .map(|i| found[*i].span.3 as f64 + 1.0)
+                    .collect(),
+            ) - by as f64,
+            near: WORD_LINE * unit_px,
+        });
+        // What the word says is kept only where the letter still
+        // agrees with the picture.
+        let drawn = said
+            .as_ref()
+            .and_then(|l| letter(mask, lw, lh, unit_px, f, Some(l)))
+            .or_else(|| letter(mask, lw, lh, unit_px, f, None));
+        let Some(drawn) = drawn else {
             continue;
         };
         // The shade most of it has.
         let mut shades: Vec<(usize, usize)> = Vec::new();
-        for i in &cells {
+        for i in cells.iter() {
             match shades.iter_mut().find(|s| s.0 == labels[*i]) {
                 Some(s) => s.1 += 1,
                 None => shades.push((labels[*i], 1)),
@@ -1566,7 +1751,7 @@ mod tests {
             tolerance: FIT_TOLERANCE * 8.0 / f.k,
             ..f
         };
-        let path = middle_line(&pts, false, &fit, 12.0, [0.0, 0.0]);
+        let path = middle_line(&pts, false, &fit, 12.0, [0.0, 0.0], None);
         let segs: Vec<PathSeg> = path.segments().collect();
         assert_eq!(segs.len(), 4, "{path:?}");
         for i in [0, 3] {
@@ -1616,5 +1801,32 @@ mod tests {
         };
         assert_eq!(at(0.9), 1, "the end is short");
         assert_eq!(at(-0.9), 1, "the end is short");
+    }
+
+    /// The letters of a word have one width of stroke and stand on
+    /// one line: a stem a little wider and a little shorter than its
+    /// fellows comes back as wide and as tall as they are.
+    #[test]
+    fn the_letters_of_a_word_share_a_width_and_a_line() {
+        let stems = |x: usize, y: usize| {
+            ((30..42).contains(&x) && (40..104).contains(&y))
+                || ((70..84).contains(&x) && (42..104).contains(&y))
+                || ((110..122).contains(&x) && (40..104).contains(&y))
+        };
+        let mut labels: Vec<usize> = (0..SIDE * SIDE)
+            .map(|i| stems(i % SIDE, i / SIDE) as usize)
+            .collect();
+        let palette = [[255, 255, 255], [0, 0, 0]];
+        redraw(&mut labels, SIDE, SIDE, 8.0, &faithful(), &palette, None).expect("not stopped");
+        let wide = |from: usize| {
+            (from..from + 40)
+                .filter(|x| labels[70 * SIDE + x] == 1)
+                .count()
+        };
+        let top = |x: usize| (0..SIDE).find(|y| labels[y * SIDE + x] == 1);
+        assert_eq!(wide(20), wide(60), "the middle stem is wider");
+        assert_eq!(wide(100), wide(60));
+        assert_eq!(top(36), top(77), "the middle stem is shorter");
+        assert_eq!(top(116), top(77));
     }
 }
