@@ -1094,9 +1094,6 @@ pub struct App {
     /// down (see `interaction::paste_without_text`).
     pub paste_seen: bool,
     pub curve: Option<CurveInProgress>,
-    /// Freehand by clicks: the input time at which the line ends unless
-    /// a double-click made the last click a corner first (#2339).
-    pub freehand_ends_at: Option<f64>,
     /// Undo and redo steps of `curve`, node by node.
     pub curve_steps: CurveSteps,
     /// The steps that made or changed a curve drawn with the Pen or
@@ -2976,7 +2973,6 @@ impl App {
             pen_editing: false,
             paste_seen: false,
             curve: None,
-            freehand_ends_at: None,
             text_edit: None,
             ime_preedit: String::new(),
             text_clip: None,
@@ -6152,9 +6148,14 @@ impl App {
     /// The pointer as the next node of the curve being drawn would take
     /// it (`ctrl`, the constrain key: in steps of the constrain angle);
     /// `None` while a handle is pulled. The preview runs the curve to it.
+    /// A 2-point line dragged from its first node pulls no handle: its
+    /// second node follows the pen or finger to where it is let go. The
+    /// line showed nothing until the release, so on a touch screen the
+    /// second node could not be placed by eye (#2594).
     pub fn curve_preview_point(&self, ctrl: bool) -> Option<Point> {
         let c = self.curve.as_ref()?;
-        if c.dragging_handle {
+        let line_drag = self.tool == Tool::TwoPointLine && c.nodes.len() == 1;
+        if c.dragging_handle && !line_drag {
             return None;
         }
         self.pointer_page
