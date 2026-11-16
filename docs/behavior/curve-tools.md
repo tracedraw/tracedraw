@@ -177,6 +177,18 @@ delete the selection as everywhere (#1527,
   every curve tool and the Freehand tool's two-click lines
   (`pick_drag_tests::the_constrain_key_can_be_shift_or_alt`).
 
+## Freehand by clicks
+
+- Each click adds a node and the line goes on with a straight segment to
+  it, however long the wait between clicks; a double-click on the last
+  node ends the line there (the first click of the pair placed it), so a
+  single straight line is a click and a double-click (#2339). A quick
+  click somewhere else is the next node, not the end: egui pairs clicks
+  by time alone. Space, Enter and Esc end the line at its last node; Esc
+  drops a lone first click. A drag ends a line of clicks first, then
+  draws freehand
+  (`pick_drag_tests::freehand_clicks_add_nodes_and_a_double_click_ends_the_line`).
+
 ## B-spline
 
 - Each click (or the start of a drag) places a control point; there are
@@ -228,8 +240,12 @@ delete the selection as everywhere (#1527,
 
 - Polyline: clicks add straight segments (no smooth handles);
   double-click or Enter finishes. 2-point line: the second click
-  finishes the segment at once. Ctrl keeps each segment to steps of the
-  constrain angle.
+  finishes the segment at once; dragged from the first node, the second
+  node follows the pen, finger or pointer while the button is down (on a
+  touch screen there is nothing else to show where it goes) and lands
+  where it is let go (#2594,
+  `pick_drag_tests::a_two_point_line_follows_the_drag_before_the_release`).
+  Ctrl keeps each segment to steps of the constrain angle.
 - While drawing, the polyline, line or B-spline (as with the 3-point
   curve) shows as a black hairline on a white line twice as wide, the
   segment to the pointer included, and its node squares have a white
@@ -238,7 +254,7 @@ delete the selection as everywhere (#1527,
 ## Continuing the selected curve
 
 With one open curve selected (lying on a layer), a line drawn with
-Freehand (dragged, or click and click), Bezier, Pen, B-spline, Polyline
+Freehand (dragged, or by clicks), Bezier, Pen, B-spline, Polyline
 or 2-point line that starts or ends within the join distance (Options >
 Tools > Curve tools, 5 screen pixels by default) of one of the curve's
 end nodes becomes part of that curve (code: `curve_join.rs`):

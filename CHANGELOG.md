@@ -7,6 +7,8 @@ full, row-by-row status.
 ## Unreleased
 
 - Bezier and Pen tools: while a curve is drawn, S makes the last node smooth and Y symmetrical, as with the Shape tool (C already made it a cusp). S and Y switched to the Sketch and Polygon tools and dropped the curve (#2876).
+- 2-point line: dragged on a touch screen (or with a mouse or pen), the second node follows the finger while it is down, so the line is seen before it is let go; it showed only the first node until the release (#2594).
+- Freehand tool by clicks: each click adds a node and the line goes on, and a double-click ends it there, so a single straight line is a click and a double-click. Single clicks ended the line and double-clicks made corners (#2339).
 - Alt+E opens the Edit menu, as Alt and the other menus' letters open theirs (Alt+E, N clones); it edits a symmetry only while an object with one is selected (#2881).
 
 ## 0.47.0 (2026-11-16)
