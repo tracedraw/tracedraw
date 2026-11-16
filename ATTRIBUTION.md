@@ -21,6 +21,7 @@ pure-Rust `vaam-image-webp` crate (MIT OR Apache-2.0) for it instead.
 | Asset | Path | Author and source | License |
 |---|---|---|---|
 | Selawik Regular and Bold (interface font) | `apps/tracedraw/assets/fonts/` | Copyright 2015 Microsoft Corporation, the open-source Selawik project | SIL Open Font License 1.1, see `Selawik-OFL.txt` next to the fonts |
+| Fonts the trace compares small print with: 53 faces of 26 families (Inter, Montserrat, Poppins, Roboto, Open Sans and others), cut down to the capitals and figures | `apps/tracedraw/assets/fonts/trace/` | Their project authors, each copyright notice listed in `FONTS.md` there; fetched from the Google Fonts service by `scripts/fetch_trace_fonts.py` | SIL Open Font License 1.1, see `OFL.txt` next to the fonts |
 | TestSymbol (test font: Selawik Regular's "A", "B", "C" and space, renamed and re-mapped to a symbol character map at U+F020 to U+F043) | `crates/text/testdata/` | Copyright 2015 Microsoft Corporation, the open-source Selawik project | SIL Open Font License 1.1, see `apps/tracedraw/assets/fonts/Selawik-OFL.txt` |
 | Noto Sans Devanagari (test font) | `crates/text/testdata/` | Copyright 2022 The Noto Project Authors, from the notofonts collection | SIL Open Font License 1.1, see `NotoSansDevanagari-OFL.txt` next to the font |
 | Noto Sans Tamil (test font) | `crates/text/testdata/` | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/tamil), from the Google Fonts collection | SIL Open Font License 1.1, see `NotoSansTamil-OFL.txt` next to the font |

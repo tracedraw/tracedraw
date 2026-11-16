@@ -327,11 +327,22 @@ pub fn trace_unless(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> O
     if s.centerline {
         return centerline(img, s, cancel);
     }
-    if s.optimize {
+    let mut traced = if s.optimize {
         let best = optimize(img, s, cancel)?;
-        return outline(img, &best, cancel);
-    }
-    outline(img, s, cancel)
+        outline(img, &best, cancel)?
+    } else {
+        outline(img, s, cancel)?
+    };
+    // Small print redrawn with the letters of the font that draws it.
+    crate::trace_text::redraw_text(img, s, &mut traced, cancel)?;
+    Some(traced)
+}
+
+/// The trace before the small print is redrawn, for the tests of
+/// `trace_text.rs`.
+#[cfg(test)]
+pub(crate) fn outline_for_tests(img: &RgbaImage, s: &Settings) -> Vec<Traced> {
+    outline(img, s, None).unwrap_or_default()
 }
 
 // ----- the best settings for a picture -----------------------------------------

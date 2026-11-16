@@ -26,6 +26,8 @@ tracedraw-core.workspace = true
 tracedraw-cdr.workspace = true
 tracedraw-io.workspace = true
 tracedraw-text.workspace = true
+# Letters of the fonts the trace compares small print with (trace_text.rs).
+ttf-parser.workspace = true
 tracedraw-render.workspace = true
 tracedraw-vba.workspace = true
 tracedraw-vba-project.workspace = true

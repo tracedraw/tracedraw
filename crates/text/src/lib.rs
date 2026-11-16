@@ -2829,6 +2829,24 @@ impl FontSystem {
         .flatten()
     }
 
+    /// Calls `f` with the family name, weight, file data and face index
+    /// of every upright face loaded (installed or brought by documents),
+    /// for the trace's comparison of small print with fonts.
+    pub fn each_upright_face(&self, mut f: impl FnMut(&str, u16, &[u8], u32)) {
+        let db = self.db();
+        let faces: Vec<(fontdb::ID, String, u16)> = db
+            .faces()
+            .filter(|face| face.style == fontdb::Style::Normal)
+            .filter_map(|face| {
+                let name = face.families.first()?.0.clone();
+                Some((face.id, name, face.weight.0))
+            })
+            .collect();
+        for (id, name, weight) in faces {
+            db.with_face_data(id, |d, i| f(&name, weight, d, i));
+        }
+    }
+
     /// Raw file data and face index of the first installed family in
     /// `candidates`, for registering UI fallback fonts (scripts the bundled
     /// UI font lacks: CJK, Arabic, Devanagari, Bengali...).
