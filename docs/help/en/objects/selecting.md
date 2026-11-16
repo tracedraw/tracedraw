@@ -63,10 +63,10 @@ Text tool keep their clicks.
   of 15 degrees. Drag the ring in the middle to turn about another point;
   double-click it to put it back in the middle. In this rotate mode, a node of
   the selection (or the middle of a segment) dragged turns the selection
-  about the ring; let go near another object's edge and the node lands
-  exactly on it, so an arc turned about one end can be laid onto a line. The
-  rotate handle still snaps to other objects' nodes, midpoints and centres to
-  aim the turn at one.
+  about the ring; let go near another object's edge or a guideline and
+  the node lands exactly on it, so an arc turned about one end can be laid
+  onto a line. The rotate handle still snaps to other objects' nodes,
+  midpoints and centres to aim the turn at one.
 - While dragging, press <kbd>Space</kbd> or click the right button to leave
   a copy where the objects were; <kbd>Esc</kbd> cancels the drag.
 - The arrow keys nudge the selection by the nudge distance (2.54 mm at

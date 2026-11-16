@@ -112,6 +112,10 @@ round its circle about the centre of rotation, aims at another
 object's point near it, and near an edge lands where its circle
 crosses the edge, exactly on it (#933,
 `a_node_dragged_in_rotate_mode_turns_the_selection_onto_a_line`).
+With Snap to Guidelines on, a guideline takes it the same way: the
+node stops where its circle crosses the guideline, horizontal,
+vertical or angled, the page's or the master page's (#3056,
+`snap::tests::a_node_turned_onto_a_guideline_ends_on_it`).
 
 A node dragged with the Shape tool (or by node tracking with the Pick
 tool) snaps to other objects and also to what stays put of its own

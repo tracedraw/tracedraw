@@ -68,9 +68,10 @@ ferramenta Texto mantêm os cliques delas.
   girar em torno de outro ponto; clique duas vezes nele para devolvê-lo ao
   meio. Nesse modo de rotação, um nó da seleção (ou o meio de um segmento)
   arrastado gira a seleção em torno do anel; solte perto da borda de outro
-  objeto e o nó cai exatamente nela, então um arco girado em torno de uma
-  ponta pode ser deitado sobre uma linha. A alça de rotação ainda se encaixa
-  nos nós, pontos médios e centros de outros objetos para mirar o giro.
+  objeto ou de uma linha-guia e o nó cai exatamente nela, então um arco
+  girado em torno de uma ponta pode ser deitado sobre uma linha. A alça de
+  rotação ainda se encaixa nos nós, pontos médios e centros de outros objetos
+  para mirar o giro.
 - Durante o arraste, pressione <kbd>Space</kbd> ou clique com o botão direito
   para deixar uma cópia onde os objetos estavam; <kbd>Esc</kbd> cancela o
   arraste.

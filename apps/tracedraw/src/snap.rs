@@ -663,8 +663,9 @@ impl App {
     /// round its circle towards the pointer; near another object's point
     /// the turn aims at that point, and near an edge the point lands
     /// where its circle crosses the edge, so a node turned onto a line
-    /// ends on the line. Returns where the turn aims (only its direction
-    /// from `center` counts).
+    /// ends on the line; a guideline takes it the same way (#3056).
+    /// Returns where the turn aims (only its direction from `center`
+    /// counts).
     pub fn snap_turn_grab(
         &self,
         center: Point,
@@ -682,21 +683,73 @@ impl App {
         if !self.snap_enabled() {
             return q;
         }
-        let Some(t) = self.object_snap(q, exclude, &[], true, true) else {
-            return q;
-        };
-        if t.mode.is_point() {
-            self.snap_mark.set(Some(t));
-            return t.point;
-        }
         let reach = 2.0 * self.snap_tolerance();
-        match t.edge.and_then(|seg| circle_crossing(seg, center, r, q)) {
-            Some(x) if (x - q).hypot() <= reach => {
-                self.snap_mark.set(Some(Target { point: x, ..t }));
-                x
+        let mut best: Option<Target> = None;
+        if let Some(t) = self.object_snap(q, exclude, &[], true, true) {
+            if t.mode.is_point() {
+                self.snap_mark.set(Some(t));
+                return t.point;
             }
-            _ => q,
+            if let Some(x) = t.edge.and_then(|seg| circle_crossing(seg, center, r, q)) {
+                if (x - q).hypot() <= reach {
+                    best = Some(Target { point: x, ..t });
+                }
+            }
         }
+        // Guidelines: the point lands where its circle crosses the
+        // nearest one, as on an object's edge (#3056).
+        if let Some(x) = self.guide_circle_crossing(center, r, q) {
+            if (x - q).hypot() <= reach
+                && best.is_none_or(|b| (x - q).hypot() < (b.point - q).hypot())
+            {
+                best = Some(Target {
+                    point: x,
+                    mode: crate::snap_points::SnapMode::Guideline,
+                    edge: None,
+                });
+            }
+        }
+        match best {
+            Some(t) => {
+                self.snap_mark.set(Some(t));
+                t.point
+            }
+            None => q,
+        }
+    }
+
+    /// Where the circle about `center` of radius `r` crosses a guideline
+    /// of the page (or its master page), the crossing nearest `near`;
+    /// `None` with Snap to Guidelines off.
+    fn guide_circle_crossing(&self, center: Point, r: f64, near: Point) -> Option<Point> {
+        if !self.snap.guides {
+            return None;
+        }
+        let guides = self.doc().guides_on_page(self.page).ok()?;
+        let mut best: Option<(f64, Point)> = None;
+        for g in &guides {
+            let (o, dir) = g.line.point_and_direction();
+            let dl = dir.hypot();
+            if dl < 1e-12 {
+                continue;
+            }
+            let dir = dir / dl;
+            // Foot of the perpendicular from the centre, then the two
+            // crossings either side of it.
+            let foot = o + dir * (center - o).dot(dir);
+            let h2 = r * r - (foot - center).hypot2();
+            if h2 < 0.0 {
+                continue;
+            }
+            let h = h2.sqrt();
+            for x in [foot + dir * h, foot - dir * h] {
+                let dist = (x - near).hypot();
+                if best.is_none_or(|(bd, _)| dist < bd) {
+                    best = Some((dist, x));
+                }
+            }
+        }
+        best.map(|(_, x)| x)
     }
 
     /// [`App::snap_point_excluding`], with `own` snapping geometry of the
@@ -1728,6 +1781,42 @@ mod tests {
         let near = c + Vec2::new(3.0, -2.0);
         assert_eq!(app.snap_pivot(near), near);
         let _ = circle;
+    }
+
+    /// Rotate mode, the selection turned by one of its nodes: the node
+    /// stops where its circle crosses a guideline it comes near, as it
+    /// does on another object's edge (#3056).
+    #[test]
+    fn a_node_turned_onto_a_guideline_ends_on_it() {
+        let mut app = app();
+        app.settings.snap.threshold_px = 3.0;
+        let page = app.page;
+        app.run(Command::AddGuide {
+            page,
+            guide: Guide::vertical(32.0),
+        });
+        let id = rect(&mut app, 10.0, 10.0, 30.0, 30.0);
+        app.select(vec![id]);
+        app.rotate_mode = true;
+        let center = Point::new(20.0, 20.0);
+        let grab = Point::new(30.0, 30.0);
+        let r = (grab - center).hypot();
+        // The circle crosses x = 32 at y = 20 - sqrt(r² - 144).
+        let cross = Point::new(32.0, 20.0 - (r * r - 144.0).sqrt());
+        let v = cross - center;
+        let (sn, cs) = 0.03_f64.sin_cos();
+        let near = center + Vec2::new(v.x * cs - v.y * sn, v.x * sn + v.y * cs);
+        let t = app.snap_turn_grab(center, grab, near, &[id]);
+        assert!((t - cross).hypot() < 1e-9, "{t:?} should be {cross:?}");
+        assert_eq!(
+            app.snap_mark.get().map(|m| m.mode),
+            Some(SnapMode::Guideline)
+        );
+        // Snap to Guidelines off: the node follows the pointer.
+        app.snap.guides = false;
+        let t = app.snap_turn_grab(center, grab, near, &[id]);
+        assert!((t - cross).hypot() > 0.1, "{t:?}");
+        assert!(((t - center).hypot() - r).abs() < 1e-9);
     }
 
     #[test]
