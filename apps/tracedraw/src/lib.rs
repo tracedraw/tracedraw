@@ -118,6 +118,8 @@ mod import_place;
 mod imposition;
 #[cfg(test)]
 mod input_method_tests;
+#[cfg(test)]
+mod stress_tests;
 #[cfg(not(target_arch = "wasm32"))]
 mod instance;
 mod interaction;
@@ -342,10 +344,28 @@ mod winit_frame_input;
 mod winit_android_mouse;
 mod workspace_file;
 
+/// Stack of every thread TraceDraw starts without saying how large
+/// (drawing, opening, saving, export workers), as the main window's
+/// thread has (see build.rs): a drawing of a few hundred groups nested
+/// in one another, which a file may hold, overflowed the 2 MB threads
+/// get by default and ended the program. Only the part used is ever
+/// taken from memory.
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+const THREAD_STACK: &str = "8388608";
+
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+fn roomy_thread_stacks() {
+    // Before any thread starts: the standard library reads it once.
+    if std::env::var_os("RUST_MIN_STACK").is_none() {
+        std::env::set_var("RUST_MIN_STACK", THREAD_STACK);
+    }
+}
+
 /// The desktop program: the window, with the command line's files and
 /// options (see `docs/behavior/about-and-startup.md`).
 #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 pub fn run() -> eframe::Result<()> {
+    roomy_thread_stacks();
     let args: Vec<String> = std::env::args().skip(1).collect();
     // One window for every start (#646): files given to a start while
     // TraceDraw runs go to its window, in tabs of their own, and this

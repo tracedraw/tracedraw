@@ -69,6 +69,10 @@ struct Actions {
     /// Every object row of the list, top to bottom (laid out or not), for
     /// Shift+click's range (#2483).
     row_order: Vec<ShapeId>,
+    /// The selection as a set: each row asks whether its object is
+    /// selected, and asking the list for each of 50,000 selected objects
+    /// took most of a second a frame.
+    selected: std::collections::HashSet<ShapeId>,
     layer_drop_rows: Vec<(LayerId, Rect)>,
     collapse: Option<LayerId>,
     expand_group: Option<ShapeId>,
@@ -559,6 +563,7 @@ pub fn objects(app: &mut App, ui: &mut Ui) {
         thumbs: std::mem::take(&mut app.object_thumbs),
         thumb_size: crate::object_thumbs::clamp_size(app.settings.object_thumb_size),
         drawing: (app.engine.instance(), app.engine.revision()),
+        selected: app.selection.iter().copied().collect(),
         ..Default::default()
     };
     act.thumbs.begin_frame();
@@ -1301,7 +1306,7 @@ fn grid_row(app: &App, ui: &mut Ui, act: &mut Actions) {
 /// The row of `s` at nesting `depth`, then its children when it is an
 /// open group.
 fn object_rows(app: &App, ui: &mut Ui, s: &Shape, depth: usize, act: &mut Actions) {
-    let selected = app.selection.contains(&s.id);
+    let selected = act.selected.contains(&s.id);
     act.row_order.push(s.id);
     let height = (act.thumb_size + 6.0).max(ROW_H);
     let (rect, resp) = row_of(ui, Look::Object { selected }, height);

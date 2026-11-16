@@ -1309,7 +1309,7 @@ impl App {
 
     /// The symmetry effect of the first selected object.
     pub fn selected_symmetry(&self) -> Option<(ShapeId, Point, f64, u8)> {
-        self.selected_shapes().iter().find_map(|s| {
+        self.selected_rc().iter().find_map(|s| {
             s.effects.iter().find_map(|e| match e {
                 Effect::Symmetry {
                     center,

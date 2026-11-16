@@ -5880,6 +5880,46 @@ pub struct Document {
     /// Review comments pinned to the pages (never printed or exported).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub comments: Vec<Comment>,
+    /// Where the object found last by its id lay, so looking up the
+    /// objects of a selection one after the other does not walk the
+    /// whole drawing for each (never saved, never compared).
+    #[serde(skip)]
+    pub find_hint: FindHint,
+}
+
+/// The layer (counted as [`Document::all_layers`] gives them) and the
+/// place among its objects of the object [`Document::find_shape`] found
+/// last. Only a hint: a lookup checks the object there first and walks
+/// the drawing when it is not the one, so a stale hint costs nothing.
+#[derive(Debug, Default)]
+pub struct FindHint(std::sync::atomic::AtomicU64);
+
+impl FindHint {
+    fn get(&self) -> (usize, usize) {
+        let v = self.0.load(std::sync::atomic::Ordering::Relaxed);
+        ((v >> 32) as usize, (v & 0xffff_ffff) as usize)
+    }
+
+    fn set(&self, layer: usize, index: usize) {
+        let v = ((layer as u64 & 0xffff_ffff) << 32) | (index as u64 & 0xffff_ffff);
+        self.0.store(v, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl Clone for FindHint {
+    fn clone(&self) -> Self {
+        FindHint(std::sync::atomic::AtomicU64::new(
+            self.0.load(std::sync::atomic::Ordering::Relaxed),
+        ))
+    }
+}
+
+/// A hint is no part of the drawing: two drawings are equal whatever
+/// their hints.
+impl PartialEq for FindHint {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 /// What a comment points at on its page (page millimetres).
@@ -6145,6 +6185,21 @@ impl TimeTracker {
     }
 }
 
+/// `s` itself when it is `id`, or the object `id` in it (in its groups
+/// and clip frames).
+fn find_in(s: &Shape, id: ShapeId) -> Option<&Shape> {
+    if s.id == id {
+        return Some(s);
+    }
+    match &s.kind {
+        ShapeKind::Group { children } => children.iter().find_map(|c| find_in(c, id)),
+        ShapeKind::ClipFrame { frame, contents } => {
+            find_in(frame, id).or_else(|| contents.iter().find_map(|c| find_in(c, id)))
+        }
+        _ => None,
+    }
+}
+
 impl Default for Document {
     fn default() -> Self {
         Document::new("Untitled", paper::A4)
@@ -6188,6 +6243,7 @@ impl Document {
             cmyk_profile: None,
             inks: Vec::new(),
             comments: Vec::new(),
+            find_hint: FindHint::default(),
         }
     }
 
@@ -6438,50 +6494,84 @@ impl Document {
 
     /// Find a top-level shape and the layer holding it.
     pub fn shape(&self, id: ShapeId) -> Result<(&Layer, &Shape)> {
-        for layer in self.all_layers() {
-            if let Some(s) = layer.shapes.iter().find(|s| s.id == id) {
-                return Ok((layer, s));
-            }
-        }
-        Err(Error::ShapeNotFound(id))
+        let (k, i) = self.locate_on_layer(id).ok_or(Error::ShapeNotFound(id))?;
+        let layer = self.all_layers().nth(k).ok_or(Error::ShapeNotFound(id))?;
+        Ok((layer, &layer.shapes[i]))
     }
 
     pub fn shape_mut(&mut self, id: ShapeId) -> Result<&mut Shape> {
-        for layer in self.all_layers_mut() {
-            if let Some(s) = layer.shapes.iter_mut().find(|s| s.id == id) {
-                return Ok(s);
+        let (k, i) = self.locate_on_layer(id).ok_or(Error::ShapeNotFound(id))?;
+        self.all_layers_mut()
+            .nth(k)
+            .and_then(|l| l.shapes.get_mut(i))
+            .ok_or(Error::ShapeNotFound(id))
+    }
+
+    /// The layer number and place of the object `id` lying on a layer
+    /// (not in a group), trying where the last lookup found its object,
+    /// and the places next to it, first (see [`FindHint`]).
+    fn locate_on_layer(&self, id: ShapeId) -> Option<(usize, usize)> {
+        let (k, i) = self.find_hint.get();
+        if let Some(layer) = self.all_layers().nth(k) {
+            for j in [i, i + 1, i.wrapping_sub(1)] {
+                if layer.shapes.get(j).is_some_and(|s| s.id == id) {
+                    self.find_hint.set(k, j);
+                    return Some((k, j));
+                }
             }
         }
-        Err(Error::ShapeNotFound(id))
+        for (k, layer) in self.all_layers().enumerate() {
+            if let Some(i) = layer.shapes.iter().position(|s| s.id == id) {
+                self.find_hint.set(k, i);
+                return Some((k, i));
+            }
+        }
+        None
     }
 
     /// Position of a shape: (layer id, index inside the layer).
     pub fn locate(&self, id: ShapeId) -> Result<(LayerId, usize)> {
-        for layer in self.all_layers() {
-            if let Some(i) = layer.shapes.iter().position(|s| s.id == id) {
-                return Ok((layer.id, i));
-            }
-        }
-        Err(Error::ShapeNotFound(id))
+        let (k, i) = self.locate_on_layer(id).ok_or(Error::ShapeNotFound(id))?;
+        let layer = self.all_layers().nth(k).ok_or(Error::ShapeNotFound(id))?;
+        Ok((layer.id, i))
     }
 
     /// Find any shape, including children of groups and clip frames.
     pub fn find_shape(&self, id: ShapeId) -> Option<&Shape> {
-        fn walk(s: &Shape, id: ShapeId) -> Option<&Shape> {
-            if s.id == id {
-                return Some(s);
+        let (k, i) = self.locate_top(id)?;
+        let top = self.all_layers().nth(k)?.shapes.get(i)?;
+        find_in(top, id)
+    }
+
+    /// The layer number and the place on it of the object on a layer
+    /// that is `id` or holds it (in a group or clip frame), trying where
+    /// the last lookup found its object, and the places next to it,
+    /// first (each object of a selection of thousands walked the
+    /// whole drawing to be found, so moving them all took seconds).
+    fn locate_top(&self, id: ShapeId) -> Option<(usize, usize)> {
+        let (k, i) = self.find_hint.get();
+        if let Some(layer) = self.all_layers().nth(k) {
+            if layer
+                .shapes
+                .get(i)
+                .is_some_and(|s| find_in(s, id).is_some())
+            {
+                return Some((k, i));
             }
-            match &s.kind {
-                ShapeKind::Group { children } => children.iter().find_map(|c| walk(c, id)),
-                ShapeKind::ClipFrame { frame, contents } => {
-                    walk(frame, id).or_else(|| contents.iter().find_map(|c| walk(c, id)))
+            for j in [i + 1, i.wrapping_sub(1)] {
+                if layer.shapes.get(j).is_some_and(|s| s.id == id) {
+                    self.find_hint.set(k, j);
+                    return Some((k, j));
                 }
-                _ => None,
             }
         }
-        self.all_layers()
-            .flat_map(|l| &l.shapes)
-            .find_map(|s| walk(s, id))
+        for (k, layer) in self.all_layers().enumerate() {
+            if let Some(i) = layer.shapes.iter().position(|s| find_in(s, id).is_some()) {
+                self.find_hint.set(k, i);
+                return Some((k, i));
+            }
+        }
+        None
     }
 
     /// Find any shape to change it, including children of groups and clip
@@ -6499,9 +6589,9 @@ impl Document {
                 _ => None,
             }
         }
-        self.all_layers_mut()
-            .flat_map(|l| &mut l.shapes)
-            .find_map(|s| walk(s, id))
+        let (k, i) = self.locate_top(id)?;
+        let top = self.all_layers_mut().nth(k)?.shapes.get_mut(i)?;
+        walk(top, id)
     }
 
     /// The transform taking the space of `id` to the page: the product of
@@ -6521,9 +6611,9 @@ impl Document {
                 _ => None,
             }
         }
-        self.all_layers()
-            .flat_map(|l| &l.shapes)
-            .find_map(|s| walk(s, id, Affine::IDENTITY))
+        let (k, i) = self.locate_top(id)?;
+        let top = self.all_layers().nth(k)?.shapes.get(i)?;
+        walk(top, id, Affine::IDENTITY)
     }
 
     /// A copy of any object, nested ones too, whose transform takes it
@@ -6577,20 +6667,8 @@ impl Document {
     /// The object on a layer that holds `id` (itself when it lies on a
     /// layer).
     pub fn top_level_of(&self, id: ShapeId) -> Option<ShapeId> {
-        fn holds(s: &Shape, id: ShapeId) -> bool {
-            s.id == id
-                || match &s.kind {
-                    ShapeKind::Group { children } => children.iter().any(|c| holds(c, id)),
-                    ShapeKind::ClipFrame { frame, contents } => {
-                        holds(frame, id) || contents.iter().any(|c| holds(c, id))
-                    }
-                    _ => false,
-                }
-        }
-        self.all_layers()
-            .flat_map(|l| &l.shapes)
-            .find(|s| holds(s, id))
-            .map(|s| s.id)
+        let (k, i) = self.locate_top(id)?;
+        self.all_layers().nth(k)?.shapes.get(i).map(|s| s.id)
     }
 
     /// Union of all shape bounds on a page, or None when the page is empty.
@@ -6818,6 +6896,17 @@ impl Document {
     /// date by [`migrate`]; newer ones are read as far as this version
     /// knows them (fields it does not know are left out).
     pub fn from_json(s: &str) -> Result<Self> {
+        // Reading nests a few large stack frames per level of the file:
+        // a drawing of a couple of hundred nested groups, which the file
+        // may hold (MAX_JSON_DEPTH), overflowed the stack and ended the
+        // program. A deep file is read on a thread of its own with room.
+        if json_depth(s) > SHALLOW_JSON_DEPTH {
+            return on_deep_stack(|| Self::from_json_here(s));
+        }
+        Self::from_json_here(s)
+    }
+
+    fn from_json_here(s: &str) -> Result<Self> {
         let mut v: serde_json::Value = json_value(s)?;
         let from = tdraw_version(&v);
         migrate(&mut v, from);
@@ -6890,6 +6979,29 @@ impl Document {
 /// about 30 groups inside groups, which drawings do reach: such a
 /// drawing saved and then refused to open, and was lost.
 pub const MAX_JSON_DEPTH: usize = 1024;
+
+/// JSON nested no deeper than this is read on the caller's thread; any
+/// thread's stack (1 MB at the least) has room for it.
+const SHALLOW_JSON_DEPTH: usize = 96;
+
+/// Stack for reading or writing a deeply nested drawing: room for
+/// [`MAX_JSON_DEPTH`] levels with plenty to spare (only the part used is
+/// ever taken from memory).
+const DEEP_STACK: usize = 512 * 1024 * 1024;
+
+/// `f` run on a thread of its own with a [`DEEP_STACK`], its result (or
+/// its panic) passed back.
+pub fn on_deep_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("deep-drawing".into())
+            .stack_size(DEEP_STACK)
+            .spawn_scoped(scope, f)
+            .expect("a thread to read a deeply nested drawing")
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    })
+}
 
 /// The JSON of a `.tdraw` text as a value, with the reader's nesting
 /// limit lifted and [`MAX_JSON_DEPTH`] in its place.
@@ -7164,6 +7276,131 @@ mod index_keys {
 
 #[cfg(test)]
 mod tests {
+    /// Objects are found by id from where the last one was found (a
+    /// selection of thousands was looked up one after the other, walking
+    /// the whole drawing for each): whatever the hint, including one left
+    /// stale by objects removed or moved to another page, a lookup finds
+    /// the right object, in groups too, and nothing for an id that is gone.
+    #[test]
+    fn objects_are_found_whatever_the_last_lookup_left() {
+        use super::{Document, Layer, Page, Shape, ShapeKind};
+        use crate::geometry::{Affine, Rect, Size};
+        let mut doc = Document::new("Find", Size::new(100.0, 100.0));
+        let mut ids = doc.ids().clone();
+        let rect = |ids: &mut crate::id::IdSource| {
+            Shape::new(
+                ids.shape(),
+                ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, 1.0, 1.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            )
+        };
+        let flat: Vec<Shape> = (0..50).map(|_| rect(&mut ids)).collect();
+        let flat_ids: Vec<_> = flat.iter().map(|s| s.id).collect();
+        let inner = rect(&mut ids);
+        let inner_id = inner.id;
+        let mut group = Shape::new(
+            ids.shape(),
+            ShapeKind::Group {
+                children: vec![inner],
+            },
+        );
+        group.transform = Affine::translate((5.0, 7.0));
+        let group_id = group.id;
+        doc.pages[0].layers[0].shapes = flat;
+        doc.pages.push(Page {
+            id: ids.page(),
+            name: "2".into(),
+            size: Size::new(100.0, 100.0),
+            layers: vec![Layer::new(ids.layer(), "L")],
+            guides: Vec::new(),
+            background: None,
+        });
+        doc.pages[1].layers[0].shapes.push(group);
+        doc.set_ids(ids);
+        // Forwards, backwards, and jumping about.
+        for &id in flat_ids.iter().chain(flat_ids.iter().rev()) {
+            assert_eq!(doc.find_shape(id).map(|s| s.id), Some(id));
+            assert_eq!(doc.shape(id).map(|(_, s)| s.id).ok(), Some(id));
+        }
+        for k in 0..50 {
+            let id = flat_ids[(k * 17) % 50];
+            assert_eq!(doc.locate(id).ok().map(|(_, i)| i), Some((k * 17) % 50));
+        }
+        // In a group on another page.
+        assert_eq!(doc.find_shape(inner_id).map(|s| s.id), Some(inner_id));
+        assert!(doc.shape(inner_id).is_err());
+        assert_eq!(doc.top_level_of(inner_id), Some(group_id));
+        assert_eq!(
+            doc.parent_transform(inner_id),
+            Some(Affine::translate((5.0, 7.0)))
+        );
+        // The hint left on the last object; objects before it removed,
+        // so everything shifts down, and the group moved to page 1.
+        assert!(doc.find_shape(flat_ids[49]).is_some());
+        doc.pages[0].layers[0].shapes.drain(0..10);
+        let moved = doc.pages[1].layers[0].shapes.remove(0);
+        doc.pages[0].layers[0].shapes.insert(3, moved);
+        assert_eq!(
+            doc.find_shape(flat_ids[49]).map(|s| s.id),
+            Some(flat_ids[49])
+        );
+        assert_eq!(doc.locate(flat_ids[49]).ok().map(|(_, i)| i), Some(40));
+        assert_eq!(doc.find_shape(inner_id).map(|s| s.id), Some(inner_id));
+        assert!(doc.find_shape(flat_ids[0]).is_none());
+        assert!(doc.find_shape_mut(flat_ids[5]).is_none());
+        doc.find_shape_mut(inner_id).expect("found to change").name = Some("x".into());
+        assert_eq!(
+            doc.find_shape(inner_id).and_then(|s| s.name.clone()),
+            Some("x".into())
+        );
+        // A hint is no part of the drawing.
+        let other = doc.clone();
+        assert!(doc.find_shape(flat_ids[20]).is_some());
+        assert_eq!(doc, other);
+    }
+
+    /// A drawing of more groups nested in one another than a thread's
+    /// stack had room for opens (it ended the program), and one nested
+    /// past the most a file may hold says so.
+    #[test]
+    fn deeply_nested_groups_open() {
+        use super::{Document, Shape, ShapeKind, MAX_JSON_DEPTH};
+        use crate::geometry::{Rect, Size};
+        let nested = |depth: usize| {
+            let mut doc = Document::new("Deep", Size::new(100.0, 100.0));
+            let mut ids = doc.ids().clone();
+            let mut s = Shape::new(
+                ids.shape(),
+                ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, 1.0, 1.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            for _ in 0..depth {
+                s = Shape::new(ids.shape(), ShapeKind::Group { children: vec![s] });
+            }
+            doc.pages[0].layers[0].shapes.push(s);
+            doc.set_ids(ids);
+            super::on_deep_stack(|| doc.to_json().expect("written"))
+        };
+        // Read on a small stack, as on any worker thread.
+        let json = nested(300);
+        let read = std::thread::Builder::new()
+            .stack_size(1024 * 1024)
+            .spawn(move || Document::from_json(&json).map(|d| d.pages[0].layers[0].shapes.len()))
+            .unwrap()
+            .join()
+            .unwrap();
+        assert_eq!(read.ok(), Some(1));
+        let too_deep = nested(MAX_JSON_DEPTH);
+        let err = Document::from_json(&too_deep).expect_err("too deep");
+        assert!(err.to_string().contains("levels deep"), "{err}");
+    }
+
     /// Bullet numbers (#1443): written as numbers, letters or Roman
     /// numerals; a run of numbered paragraphs counts on from its start
     /// and a paragraph without bullets ends it.
