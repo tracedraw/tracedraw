@@ -4,7 +4,7 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.48.0 (2026-11-16)
 
 - Guidelines panel: with a guideline selected, a position typed and Add, the selected guideline stays where it was and one new guideline is added at the typed place. The typed value had already moved the selected one, so Add left two guidelines at the new place (#3068). Modify still moves the selected guideline.
 - Shape tool: the ring round a chosen control handle is centred on the handle's head, not on its tip, and a handle you drag is no longer left ringed once you let go; a click on a handle still chooses it for the arrow keys (#3041, #3042).
