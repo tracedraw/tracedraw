@@ -3977,6 +3977,66 @@ fn turning_follows_the_pointer_across_edges() {
     assert!((turned - want).abs() < 1e-6, "{turned} {want}");
 }
 
+/// Rotate mode with Snap to Guidelines: the arc's end node, dragged
+/// round the centre of rotation, lands exactly on a horizontal guideline
+/// it is let go near, as it lands on a line (#3056). With Snap to
+/// Guidelines off it stays where the pointer aimed.
+#[test]
+fn a_node_turned_in_rotate_mode_lands_on_a_guideline() {
+    let (ctx, mut app, id) = setup();
+    app.select(vec![id]);
+    app.delete_selection();
+    let page = app.page;
+    app.run(tracedraw_core::Command::AddGuide {
+        page,
+        guide: tracedraw_core::document::Guide::horizontal(210.0),
+    });
+    app.snap.guides = true;
+    // Snapping to objects on, as a node is grabbed only then (#933).
+    app.snap.objects = true;
+    let mut a = tracedraw_core::BezPath::new();
+    a.move_to((20.0, 210.0));
+    a.curve_to((20.0, 170.0), (60.0, 140.0), (100.0, 175.0));
+    let arc = app
+        .new_shape(ShapeKind::Path {
+            path: a.clone(),
+            closed: false,
+        })
+        .expect("arc");
+    let pivot = Point::new(20.0, 210.0);
+    let node = Point::new(100.0, 175.0);
+    let r = (node - pivot).hypot();
+    let end = |app: &App| {
+        let p = app.doc().find_shape(arc).expect("arc").page_path();
+        match p.segments().last() {
+            Some(seg) => tracedraw_core::geometry::ParamCurve::end(&seg),
+            None => panic!("a curve"),
+        }
+    };
+    let turn = |app: &mut App| {
+        app.select(vec![arc]);
+        app.rotate_mode = true;
+        app.set_pivot(pivot);
+        frame(&ctx, app, Vec::new(), Modifiers::NONE);
+        let off = 1.5 / app.view.zoom as f64;
+        let from = app.view.to_screen(node);
+        let to = app
+            .view
+            .to_screen(Point::new(20.0 + r - 2.0 * off, 210.0 - off));
+        drag(&ctx, app, from, to, Modifiers::NONE, Vec::new());
+    };
+    turn(&mut app);
+    let e = end(&app);
+    assert!((e.y - 210.0).abs() < 1e-6, "on the guideline: {e:?}");
+    assert!(((e - pivot).hypot() - r).abs() < 1e-6, "turned: {e:?}");
+    // Snap to Guidelines off: not pulled onto it.
+    app.undo();
+    assert!((end(&app) - node).hypot() < 1e-6, "{:?}", end(&app));
+    app.snap.guides = false;
+    turn(&mut app);
+    assert!((end(&app).y - 210.0).abs() > 1e-3, "{:?}", end(&app));
+}
+
 /// Rotate mode, the centre of rotation on one end of an arc standing on
 /// a line: the other end node, dragged, turns the arc about it, and let
 /// go near the line it ends exactly on the line (#933). Dragging the arc

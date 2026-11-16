@@ -682,21 +682,73 @@ impl App {
         if !self.snap_enabled() {
             return q;
         }
-        let Some(t) = self.object_snap(q, exclude, &[], true, true) else {
-            return q;
-        };
-        if t.mode.is_point() {
+        let t = self.object_snap(q, exclude, &[], true, true);
+        if let Some(t) = t.filter(|t| t.mode.is_point()) {
             self.snap_mark.set(Some(t));
             return t.point;
         }
         let reach = 2.0 * self.snap_tolerance();
-        match t.edge.and_then(|seg| circle_crossing(seg, center, r, q)) {
-            Some(x) if (x - q).hypot() <= reach => {
-                self.snap_mark.set(Some(Target { point: x, ..t }));
-                x
+        // Where the point's circle crosses an edge it nears, or a
+        // guideline (#3056): the nearer of the two.
+        let on_edge = t.and_then(|t| {
+            let x = circle_crossing(t.edge?, center, r, q)?;
+            ((x - q).hypot() <= reach).then_some(Target { point: x, ..t })
+        });
+        let on_guide = self.guide_circle_crossing(center, r, q).and_then(|x| {
+            ((x - q).hypot() <= reach).then_some(Target {
+                point: x,
+                mode: crate::snap_points::SnapMode::Guideline,
+                edge: None,
+            })
+        });
+        let best = match (on_edge, on_guide) {
+            (Some(e), Some(g)) => Some(if (g.point - q).hypot() < (e.point - q).hypot() {
+                g
+            } else {
+                e
+            }),
+            (e, g) => e.or(g),
+        };
+        match best {
+            Some(t) => {
+                self.snap_mark.set(Some(t));
+                t.point
             }
-            _ => q,
+            None => q,
         }
+    }
+
+    /// Where the circle about `center` of radius `r` crosses a guideline
+    /// of the page within snapping reach of `q`, the crossing nearest to
+    /// `q` (Snap to Guidelines on): a node turned onto a guideline lands
+    /// on it (#3056).
+    fn guide_circle_crossing(&self, center: Point, r: f64, q: Point) -> Option<Point> {
+        if !self.snap.guides {
+            return None;
+        }
+        let tol = self.snap_tolerance();
+        let guides = self.doc().guides_on_page(self.page).ok()?;
+        let mut best: Option<(f64, Point)> = None;
+        for g in &guides {
+            if g.distance(q).abs() > tol {
+                continue;
+            }
+            let (o, dir) = g.line.point_and_direction();
+            // The guideline as a segment long enough to hold the circle.
+            let foot = o + dir * (center - o).dot(dir);
+            let reach = 2.0 * r + 1.0;
+            let seg = tracedraw_core::geometry::PathSeg::Line(tracedraw_core::geometry::Line::new(
+                foot - dir * reach,
+                foot + dir * reach,
+            ));
+            if let Some(x) = circle_crossing(seg, center, r, q) {
+                let dist = (x - q).hypot();
+                if best.is_none_or(|(bd, _)| dist < bd) {
+                    best = Some((dist, x));
+                }
+            }
+        }
+        best.map(|(_, x)| x)
     }
 
     /// [`App::snap_point_excluding`], with `own` snapping geometry of the
