@@ -198,6 +198,35 @@ impl App {
         g.color.unwrap_or(self.doc().metadata.guides.color)
     }
 
+    /// A value typed in the Guidelines panel's fields: the one selected
+    /// guideline moves to `line` (#311), and the panel remembers where it
+    /// was, for Add (#3068).
+    pub fn move_guide_from_form(&mut self, line: GuideLine) -> bool {
+        if let [i] = self.selected_guides.as_slice() {
+            let i = *i;
+            if self.guide_form_from.is_none_or(|(at, _)| at != i) {
+                self.guide_form_from = self.page_guides().get(i).copied().map(|g| (i, g));
+            }
+        }
+        self.set_selected_guide_line(line)
+    }
+
+    /// The Guidelines panel's Add: a new guideline at `line`, selected.
+    /// A selected guideline the typed values moved goes back where it was,
+    /// so Add leaves it in place and only adds the new one (#3068); Modify
+    /// is how it moves for good.
+    pub fn add_guide_from_form(&mut self, line: GuideLine) {
+        if let (Some((i, was)), [sel]) = (self.guide_form_from, self.selected_guides.as_slice()) {
+            if i == *sel && self.page_guides().get(i).is_some_and(|g| g.line == line) {
+                self.replace_guide(i, was, "Move Guideline");
+            }
+        }
+        self.guide_form_from = None;
+        self.add_guide(Guide::from(line));
+        self.selected_guides = vec![self.page_guides().len().saturating_sub(1)];
+        self.guide_form_for = self.selected_guides.first().copied();
+    }
+
     pub fn add_guide(&mut self, guide: Guide) {
         if self.edit_master_guides {
             let mut guides = self.doc().master_guides.clone();
@@ -289,6 +318,7 @@ impl App {
         self.show_dockers = true;
         self.docker_tab = crate::app::DockerTab::Guidelines;
         self.guide_form_for = Some(index);
+        self.guide_form_from = None;
         let mut form = self.guide_form;
         form.load(self, &g.line);
         self.guide_form = form;
@@ -305,6 +335,7 @@ impl App {
             return;
         }
         self.guide_form_for = single;
+        self.guide_form_from = None;
         if let Some(g) = single.and_then(|i| self.page_guides().get(i).copied()) {
             let mut form = self.guide_form;
             form.load(self, &g.line);
@@ -1113,6 +1144,40 @@ mod tests {
         app.view.zoom = 1.0;
         app.canvas_rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
         app
+    }
+
+    /// #3068: a guideline double-clicked into the Guidelines panel, a new
+    /// position typed (which moves it, #311) and Add: the original stays
+    /// where it was and one new guideline is added at the typed place,
+    /// not two at the new place. Modify still moves it, and Add with
+    /// nothing typed adds a copy at the shown place.
+    #[test]
+    fn add_in_the_panel_after_a_typed_position_keeps_the_original() {
+        let mut app = app();
+        app.add_guide(Guide::vertical(50.0));
+        let i = app.page_guides().len() - 1;
+        app.open_guide_properties(i);
+        app.sync_guide_form();
+        let typed = GuideLine::Vertical { x: 80.0 };
+        assert!(app.move_guide_from_form(typed));
+        assert_eq!(app.page_guides()[i].line, typed, "moved as typed (#311)");
+        app.add_guide_from_form(typed);
+        let lines: Vec<GuideLine> = app.page_guides().iter().map(|g| g.line).collect();
+        assert_eq!(lines.len(), i + 2, "{lines:?}");
+        assert_eq!(lines[i], GuideLine::Vertical { x: 50.0 }, "the original stays");
+        assert_eq!(lines[i + 1], typed, "the new one at the typed place");
+        assert_eq!(app.selected_guides, vec![i + 1]);
+        // Typing again on the new one and Add: it stays at 80 too.
+        let again = GuideLine::Vertical { x: 120.0 };
+        app.sync_guide_form();
+        assert!(app.move_guide_from_form(again));
+        app.add_guide_from_form(again);
+        let lines: Vec<GuideLine> = app.page_guides().iter().map(|g| g.line).collect();
+        assert_eq!(&lines[i..], &[GuideLine::Vertical { x: 50.0 }, typed, again]);
+        // Add with nothing typed: a second guideline at the same place.
+        app.add_guide_from_form(again);
+        assert_eq!(app.page_guides().len(), i + 4);
+        assert_eq!(app.page_guides()[i + 3].line, again);
     }
 
     /// #1775: in a new drawing a guideline goes to the master page's

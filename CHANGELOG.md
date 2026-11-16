@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Guidelines panel: with a guideline selected, a position typed and Add, the selected guideline stays where it was and one new guideline is added at the typed place. The typed value had already moved the selected one, so Add left two guidelines at the new place (#3068). Modify still moves the selected guideline.
 - Shape tool: the ring round a chosen control handle is centred on the handle's head, not on its tip, and a handle you drag is no longer left ringed once you let go; a click on a handle still chooses it for the arrow keys (#3041, #3042).
 - Exported pictures keep all four edges of the page: one zoom for both ways, made large enough for the width, cut up to a pixel off the top of an A4 page and many off a long strip, so a line along the page's top edge could be lost (#2866).
 - Palette Editor: ticking Spot color for a colour that objects of the open drawing already use paints those objects with the spot colour and adds its ink, in one undo step. They stayed in process inks, so PDF, EPS and PostScript output had no separation for the ink and a UV printer printed its white ink as black (#2580).

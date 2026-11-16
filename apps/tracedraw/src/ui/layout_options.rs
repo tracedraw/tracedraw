@@ -1206,7 +1206,7 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
     app.guide_form = form;
     if moved {
         let line = form.line(app);
-        app.set_selected_guide_line(line);
+        app.move_guide_from_form(line);
     }
     ui.horizontal(|ui| {
         if ui
@@ -1215,8 +1215,7 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
             .clicked()
         {
             let line = form.line(app);
-            app.add_guide(Guide::from(line));
-            app.selected_guides = vec![app.page_guides().len().saturating_sub(1)];
+            app.add_guide_from_form(line);
         }
         let single = match app.selected_guides.as_slice() {
             [i] => Some(*i),

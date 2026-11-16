@@ -1625,6 +1625,10 @@ pub struct App {
     /// The guideline whose values the Guidelines panel's fields hold
     /// (`sync_guide_form`); `None` with none or several selected.
     pub guide_form_for: Option<usize>,
+    /// The guideline the Guidelines panel's fields hold, as it was before
+    /// a value typed there moved it: Add puts it back and adds the new
+    /// one at the typed place (#3068).
+    pub guide_form_from: Option<(usize, tracedraw_core::document::Guide)>,
     /// Document Setup > Guidelines presets section.
     pub guide_presets: crate::ui::layout_options::PresetForm,
     /// Document Setup > Grid shows lines per unit instead of spacing.
@@ -3196,6 +3200,7 @@ impl App {
             guide_pivots: Vec::new(),
             guide_form: Default::default(),
             guide_form_for: None,
+            guide_form_from: None,
             guide_presets: Default::default(),
             grid_frequency: false,
             settings: crate::settings::Settings::default(),
