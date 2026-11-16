@@ -29,6 +29,7 @@ pub mod check;
 pub mod cmx;
 pub mod container;
 mod kept_blends;
+mod kept_data;
 mod kept_effects;
 pub mod parse;
 mod shadow_image;
@@ -144,13 +145,22 @@ pub fn open_bytes_keeping(
     )
     .map(|b| kept_effects::decode(&b))
     .unwrap_or_default();
-    let mut doc_report = parse::parse_document_kept(
+    // Object data, a clone's link to its master among it (#2879).
+    let kept_data = container::own_member(
+        bytes,
+        &container,
+        kept_data::MEMBER,
+        kept_data::MAX_MEMBER,
+    )
+    .map(|b| kept_data::decode(&b))
+    .unwrap_or_default();
+    let mut doc_report = parse::parse_document_kept_data(
         &root,
         &riff,
         container.version,
         cmyk_profile.as_ref().map(|p| p.data.as_slice()),
-        &kept,
-        &kept_effects,
+        (&kept, &kept_effects),
+        &kept_data,
     );
     doc_report.0.title = title.to_string();
     doc_report.0.palette = container::document_palette(bytes, &container)

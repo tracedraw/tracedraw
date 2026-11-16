@@ -4963,14 +4963,8 @@ pub fn render_alone_png(
 ) -> Option<(Vec<u8>, u32, u32)> {
     let page = tmp.pages.first()?;
     let size = page.size;
-    let zoom = dpi / 25.4;
-    let w = (size.width * zoom).ceil().max(1.0) as u32;
-    let h = (size.height * zoom).ceil().max(1.0) as u32;
-    let view = tracedraw_render::ViewTransform {
-        zoom,
-        origin_x: 0.0,
-        origin_y: h as f64,
-    };
+    let (w, h, view) =
+        tracedraw_render::ViewTransform::whole_page(size.width, size.height, dpi / 25.4);
     let mut pm = tracedraw_render::render_page(
         tmp,
         page.id,

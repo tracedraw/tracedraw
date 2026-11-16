@@ -31,6 +31,38 @@ pub struct ViewTransform {
 }
 
 impl ViewTransform {
+    /// A page of `width` by `height` mm at `zoom` pixels per mm as a
+    /// picture of whole pixels: the page's size rounded up, as the
+    /// export dialog counts it, and the zoom made a hair larger so the
+    /// page fills every one of them. At the zoom asked, the page left a
+    /// row and a column partly empty above it and to its right, a light
+    /// line on the edge of an exported picture (#2866). Returns the
+    /// picture's width, height and the view.
+    pub fn whole_page(width: f64, height: f64, zoom: f64) -> (u32, u32, ViewTransform) {
+        let px = |mm: f64| {
+            let v = (mm * zoom).ceil();
+            // A size that is not a number asks for a picture too large
+            // to make, as before (no picture rather than a wrong one).
+            if v.is_nan() {
+                u32::MAX
+            } else {
+                v.clamp(1.0, f64::from(u32::MAX)) as u32
+            }
+        };
+        let (w, h) = (px(width), px(height));
+        let fit = (f64::from(w) / width).max(f64::from(h) / height);
+        let zoom = if fit.is_finite() && fit > 0.0 { fit } else { zoom };
+        (
+            w,
+            h,
+            ViewTransform {
+                zoom,
+                origin_x: 0.0,
+                origin_y: f64::from(h),
+            },
+        )
+    }
+
     pub fn affine(&self) -> Affine {
         Affine::new([
             self.zoom,
@@ -5293,6 +5325,25 @@ pub fn render_page_image_with(
         origin_x: 0.0,
         origin_y: h as f64,
     };
+    page_image_in(doc, page, (w, h, view), opts)
+}
+
+/// [`render_page_image`] for a picture file (#2866): the page fills
+/// every pixel of it (see [`ViewTransform::whole_page`]), with no light
+/// row above it or column to its right.
+pub fn render_page_export_image(doc: &Document, page: PageId, dpi: f64) -> Option<Pixmap> {
+    let p = doc.page(page).ok()?;
+    let fit = ViewTransform::whole_page(p.size.width, p.size.height, dpi / 25.4);
+    page_image_in(doc, page, fit, &RenderOptions::default())
+}
+
+/// `page` drawn `w` by `h` pixels through `view`, on white.
+fn page_image_in(
+    doc: &Document,
+    page: PageId,
+    (w, h, view): (u32, u32, ViewTransform),
+    opts: &RenderOptions,
+) -> Option<Pixmap> {
     let mut objects = render_page(
         doc,
         page,
@@ -10979,6 +11030,41 @@ mod inner_shadow_view_tests {
                 }
             }
             assert!(worst <= 1, "zoom {zoom}: {worst}");
+        }
+    }
+}
+
+/// A picture of a page whose size is not whole pixels at the resolution
+/// asked (#2866): what covers the page covers every pixel, with no light
+/// row above it or column to its right.
+#[cfg(test)]
+mod whole_page_tests {
+    use super::*;
+    use tracedraw_core::{Color, Fill};
+
+    #[test]
+    fn an_exported_page_has_no_light_edge() {
+        for (w, h, dpi) in [(30.1, 20.3, 96.0), (95.37, 41.82, 300.0), (10.0, 10.0, 72.0)] {
+            let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(w, h));
+            let mut s = Shape::new(
+                tracedraw_core::ShapeId(1),
+                ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, w, h),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            s.fill = Fill::Solid(Color::BLACK);
+            s.stroke = None;
+            let layer = doc.pages[0].layers[0].id;
+            doc.layer_mut(layer).expect("layer").shapes.push(s);
+            let page = doc.pages[0].id;
+            let pm = render_page_export_image(&doc, page, dpi).expect("render");
+            let zoom = dpi / 25.4;
+            assert_eq!(pm.width(), (w * zoom).ceil() as u32);
+            assert_eq!(pm.height(), (h * zoom).ceil() as u32);
+            let lightest = pm.pixels().iter().map(|p| p.red()).max().unwrap_or(0);
+            assert!(lightest < 8, "{w} x {h} mm at {dpi} dpi: a pixel at {lightest}");
         }
     }
 }

@@ -9743,7 +9743,11 @@ impl App {
             .and_then(|s| s.to_str())
             .unwrap_or("Untitled")
             .to_string();
-        tracedraw_cdr::open_bytes(&bytes, &title).map_err(|e| e.to_string())
+        let (mut doc, report) =
+            tracedraw_cdr::open_bytes(&bytes, &title).map_err(|e| e.to_string())?;
+        // Clones saved by TraceDraw follow their masters again (#2879).
+        crate::object_clone::rebase_clone_links(&mut doc);
+        Ok((doc, report))
     }
 
     /// Read an SVG file (plain or gzip-compressed) as text.
