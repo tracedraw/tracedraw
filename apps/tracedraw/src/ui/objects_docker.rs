@@ -121,6 +121,20 @@ enum GuideRowAct {
     Hide(bool),
     Lock(bool),
     Select,
+    /// A command of its right-click menu (#3012).
+    Menu(GuideCmd),
+}
+
+/// The commands of a guideline row's right-click menu (#3012): they act
+/// on the selected guidelines, the one clicked among them.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum GuideCmd {
+    Delete,
+    Cut,
+    Copy,
+    Paste,
+    Lock(bool),
+    Hide(bool),
 }
 
 /// Where a layer sits: its index in its list (0 at the bottom), how many
@@ -1181,10 +1195,72 @@ fn guide_rows(
         if done.is_none() && resp.clicked() {
             done = Some(GuideRowAct::Select);
         }
+        // Right-click: Delete, Cut, Copy, Paste, Lock or Unlock, Hide or
+        // Show (#3012).
+        resp.context_menu(|ui| {
+            let can_paste = app.clipboard.as_ref().is_some_and(|c| !c.guides.is_empty());
+            let lock_key = if g.locked {
+                "guides.unlock"
+            } else {
+                "guides.lock"
+            };
+            let hide_key = if g.hidden {
+                "guides.show"
+            } else {
+                "menu.object.hide"
+            };
+            for (key, enabled, cmd) in [
+                ("menu.edit.delete", !g.locked, GuideCmd::Delete),
+                ("menu.edit.cut", !g.locked, GuideCmd::Cut),
+                ("menu.edit.copy", true, GuideCmd::Copy),
+                ("menu.edit.paste", can_paste, GuideCmd::Paste),
+                (lock_key, true, GuideCmd::Lock(!g.locked)),
+                (hide_key, true, GuideCmd::Hide(!g.hidden)),
+            ] {
+                if ui
+                    .add_enabled(enabled, egui::Button::new(tr(key)))
+                    .clicked()
+                {
+                    done = Some(GuideRowAct::Menu(cmd));
+                    ui.close();
+                }
+            }
+        });
         if let Some(d) = done {
             act.guide_row = Some((master, i, d));
             if let Some(p) = page.filter(|p| *p != app.page) {
                 act.goto = Some(p);
+            }
+        }
+    }
+}
+
+/// A command of a guideline row's menu (#3012), on the selected
+/// guidelines when the row is one of them, else on the row's alone.
+fn guide_menu_command(app: &mut App, i: usize, cmd: GuideCmd) {
+    if app.page_guides().get(i).is_none() {
+        return;
+    }
+    let before = app.selected_guides.clone();
+    app.select(Vec::new());
+    app.selected_guides = if before.contains(&i) {
+        before
+    } else {
+        app.guide_rotate = None;
+        vec![i]
+    };
+    let chosen = app.selected_guides.clone();
+    match cmd {
+        GuideCmd::Delete => app.delete_command(),
+        GuideCmd::Cut => app.cut(),
+        GuideCmd::Copy => {
+            app.copy_selected_guides();
+        }
+        GuideCmd::Paste => app.paste(),
+        GuideCmd::Lock(locked) => app.set_guides_locked(&chosen, locked),
+        GuideCmd::Hide(hidden) => {
+            for g in chosen {
+                app.set_guide_hidden(g, hidden);
             }
         }
     }
@@ -2479,6 +2555,7 @@ fn apply(app: &mut App, ui: &Ui, mut act: Actions) {
                     app.guide_rotate = None;
                 }
             }
+            GuideRowAct::Menu(cmd) => guide_menu_command(app, i, cmd),
         }
     }
     if let Some((layer, page)) = act.layer_to_page {
@@ -2935,6 +3012,109 @@ pub(crate) mod tests {
         assert!(ctx
             .read_response(base.with(("guide", 1)).with("eye"))
             .is_some());
+    }
+
+    /// A guideline chosen by its row in the Objects docker goes with the
+    /// Delete key, and its row's right-click menu deletes, cuts, copies,
+    /// pastes, locks and hides it; a locked one is not deleted (#3012).
+    #[test]
+    fn a_guideline_row_deletes_and_has_a_menu() {
+        use tracedraw_core::document::Guide;
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.choose_master_guides(false);
+        app.add_guide(Guide::vertical(50.0));
+        app.add_guide(Guide::horizontal(80.0));
+        app.add_guide(Guide::vertical(120.0));
+        let run = |app: &mut App, events: Vec<egui::Event>| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(400.0, 800.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                objects_docker(app, ui);
+                app.keyboard(ui.ctx());
+            });
+            out.textures_delta.clear();
+        };
+        let press = |app: &mut App, at: egui::Pos2, button: egui::PointerButton| {
+            run(app, vec![egui::Event::PointerMoved(at)]);
+            for pressed in [true, false] {
+                run(
+                    app,
+                    vec![egui::Event::PointerButton {
+                        pos: at,
+                        button,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                );
+            }
+        };
+        let page = app.page;
+        let base = egui::Id::new(("objects_guides", page.raw()));
+        run(&mut app, Vec::new());
+        // The page's Guides row, opened.
+        let at = ctx
+            .read_response(base.with("arrow"))
+            .expect("arrow")
+            .rect
+            .center();
+        press(&mut app, at, egui::PointerButton::Primary);
+        let row_at = |app: &mut App, i: usize| {
+            run(app, Vec::new());
+            let lock = ctx
+                .read_response(base.with(("guide", i)).with("lock"))
+                .expect("drawn")
+                .rect;
+            egui::pos2(lock.right() + 120.0, lock.center().y)
+        };
+        let p = row_at(&mut app, 1);
+        press(&mut app, p, egui::PointerButton::Primary);
+        assert_eq!(app.selected_guides, vec![1]);
+        let key = |pressed| egui::Event::Key {
+            key: egui::Key::Delete,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        run(&mut app, vec![key(true), key(false)]);
+        assert_eq!(
+            app.page_guides().len(),
+            2,
+            "Delete took the chosen guideline"
+        );
+        assert!(app
+            .page_guides()
+            .iter()
+            .all(|g| !matches!(g.line, GuideLine::Horizontal { .. })));
+        // The row's menu opens on a right-click.
+        let p = row_at(&mut app, 0);
+        press(&mut app, p, egui::PointerButton::Secondary);
+        run(&mut app, Vec::new());
+        assert!(egui::Popup::is_any_open(&ctx), "a menu");
+        // Its commands.
+        guide_menu_command(&mut app, 0, GuideCmd::Copy);
+        guide_menu_command(&mut app, 0, GuideCmd::Paste);
+        assert_eq!(app.page_guides().len(), 3, "pasted");
+        guide_menu_command(&mut app, 0, GuideCmd::Lock(true));
+        assert!(app.page_guides()[0].locked);
+        guide_menu_command(&mut app, 0, GuideCmd::Delete);
+        assert_eq!(app.page_guides().len(), 3, "a locked one stays");
+        guide_menu_command(&mut app, 0, GuideCmd::Lock(false));
+        guide_menu_command(&mut app, 0, GuideCmd::Cut);
+        assert_eq!(app.page_guides().len(), 2, "cut");
+        assert!(app.clipboard.as_ref().is_some_and(|c| c.guides.len() == 1));
+        guide_menu_command(&mut app, 1, GuideCmd::Hide(true));
+        assert!(app.page_guides()[1].hidden);
+        assert!(app.selected_guides.is_empty());
+        guide_menu_command(&mut app, 0, GuideCmd::Delete);
+        assert_eq!(app.page_guides().len(), 1);
     }
 
     /// A layer's menu moves it to another page with its objects and

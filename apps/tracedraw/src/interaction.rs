@@ -467,6 +467,84 @@ impl App {
         }
     }
 
+    /// A Text tool click at `p` on the container `id`: the text inside it
+    /// there (see [`Self::text_inside_at`]) is edited, the caret by the
+    /// letter clicked, through a warp too (#3010); whether there was one.
+    pub fn edit_text_inside(&mut self, id: ShapeId, p: Point) -> bool {
+        let Some((text, warped)) = self.text_inside_at(id, p) else {
+            return false;
+        };
+        self.begin_text_edit(text);
+        let at = if warped {
+            self.unwarped_text_point(id, text, p)
+        } else {
+            Some(p)
+        };
+        if let Some(idx) = at.and_then(|q| self.text_hit_char(q)) {
+            self.text_set_caret_at(idx, false);
+        }
+        true
+    }
+
+    /// Where a click at `p` on the text `text`, drawn through a warp on
+    /// the container `id` (an envelope, a perspective), falls among its
+    /// letters as they are laid out (#3010): a grid of points over the
+    /// text is drawn through the same warp beside it, and the grid point
+    /// drawn nearest `p` is taken. `None` when the warp loses the grid.
+    pub fn unwarped_text_point(&self, id: ShapeId, text: ShapeId, p: Point) -> Option<Point> {
+        use tracedraw_core::geometry::{BezPath, PathEl};
+        const N: usize = 48;
+        let (_, s) = self.doc().shape(id).ok()?;
+        let t = self.doc().find_shape(text)?;
+        let bb = t.page_path().bounding_box();
+        if !(bb.width() > 0.0 && bb.height() > 0.0) {
+            return None;
+        }
+        let step = Vec2::new(bb.width() / (N - 1) as f64, bb.height() / (N - 1) as f64);
+        let tiny = Vec2::new(step.x * 1e-3, 0.0);
+        let mut grid = Vec::with_capacity(N * N);
+        let mut marks = BezPath::new();
+        for j in 0..N {
+            for i in 0..N {
+                let q = Point::new(bb.x0 + step.x * i as f64, bb.y0 + step.y * j as f64);
+                marks.move_to(q);
+                marks.line_to(q + tiny);
+                grid.push(q);
+            }
+        }
+        let marker = ShapeId(u64::MAX);
+        let mut probe = tracedraw_core::Shape::new(
+            marker,
+            ShapeKind::Path {
+                path: marks,
+                closed: false,
+            },
+        );
+        probe.fill = tracedraw_core::Fill::None;
+        let mut copy = s.clone();
+        if !insert_beside(&mut copy, text, &probe, 0) {
+            return None;
+        }
+        let drawn = drawn_path_of(&copy, marker, 0)?;
+        let starts: Vec<Point> = drawn
+            .elements()
+            .iter()
+            .filter_map(|e| match e {
+                PathEl::MoveTo(q) => Some(*q),
+                _ => None,
+            })
+            .collect();
+        if starts.len() != grid.len() {
+            return None;
+        }
+        let nearest = starts
+            .iter()
+            .enumerate()
+            .min_by(|a, b| a.1.distance_squared(p).total_cmp(&b.1.distance_squared(p)))?
+            .0;
+        Some(grid[nearest])
+    }
+
     fn leaf_at(
         &self,
         s: &tracedraw_core::Shape,
@@ -3012,13 +3090,7 @@ impl App {
             let hit = self.hit_test(p);
             // A text inside a group or a grouped blend, warped by an
             // envelope or a perspective on the group or not (#2169).
-            if let Some((text, warped)) = hit.and_then(|id| self.text_inside_at(id, p)) {
-                self.begin_text_edit(text);
-                if !warped {
-                    if let Some(idx) = self.text_hit_char(p) {
-                        self.text_set_caret_at(idx, false);
-                    }
-                }
+            if hit.is_some_and(|id| self.edit_text_inside(id, p)) {
                 return;
             }
             match hit {
@@ -5498,4 +5570,61 @@ fn field_editing_key(key: Key) -> bool {
             | Key::Enter
             | Key::Tab
     )
+}
+
+/// Put `probe` next to the object `text` inside the container `s` (in
+/// the same group or clip frame, so the same warps draw it); whether
+/// `text` was found.
+fn insert_beside(
+    s: &mut tracedraw_core::Shape,
+    text: ShapeId,
+    probe: &tracedraw_core::Shape,
+    depth: usize,
+) -> bool {
+    if depth > MAX_HIT_DEPTH {
+        return false;
+    }
+    let list = match &mut s.kind {
+        ShapeKind::Group { children } => children,
+        ShapeKind::ClipFrame { contents, .. } => contents,
+        _ => return false,
+    };
+    if let Some(i) = list.iter().position(|c| c.id == text) {
+        list.insert(i + 1, probe.clone());
+        return true;
+    }
+    list.iter_mut()
+        .any(|c| insert_beside(c, text, probe, depth + 1))
+}
+
+/// The page outline of the part `id` of `s` as `s` draws it, through the
+/// warps on `s` and on the containers inside it.
+fn drawn_path_of(
+    s: &tracedraw_core::Shape,
+    id: ShapeId,
+    depth: usize,
+) -> Option<tracedraw_core::geometry::BezPath> {
+    if depth > MAX_HIT_DEPTH {
+        return None;
+    }
+    let drawn;
+    let s = if s.effects.iter().any(|e| e.warps_outline()) {
+        drawn = tracedraw_core::live::evaluate(s).main;
+        &drawn
+    } else {
+        s
+    };
+    if s.id == id {
+        return Some(s.page_path());
+    }
+    let list = match &s.kind {
+        ShapeKind::Group { children } => children,
+        ShapeKind::ClipFrame { contents, .. } => contents,
+        _ => return None,
+    };
+    list.iter().find_map(|c| {
+        let mut c = c.clone();
+        c.transform_by(s.transform);
+        drawn_path_of(&c, id, depth + 1)
+    })
 }

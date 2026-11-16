@@ -1566,6 +1566,105 @@ mod tests {
         assert_eq!(spans_text(spans), "CDE");
     }
 
+    /// A text in a group given an envelope: a Text tool click on one of
+    /// its middle letters as the envelope draws it puts the caret there,
+    /// not at the end of the text (#3010).
+    #[test]
+    fn a_click_in_an_enveloped_grouped_text_puts_the_caret_by_the_letter() {
+        use tracedraw_core::geometry::{BezPath, Shape as _, Vec2};
+        use tracedraw_core::Command;
+        let mut app = App::headless();
+        let text = |app: &mut App, x: f64, t: &str| {
+            app.new_shape(ShapeKind::Text {
+                spans: vec![TextSpan::new(t, "Sans", 36.0)],
+                origin: Point::new(x, 100.0),
+                frame: None,
+                align: Default::default(),
+                para: Default::default(),
+                on_path: None,
+            })
+            .expect("text")
+        };
+        let a = text(&mut app, 0.0, "ABCDEFGHIJ");
+        let b = text(&mut app, 0.0, "KL");
+        let ab = app.doc().find_shape(a).expect("a").bounds();
+        app.run(Command::TransformShapes {
+            shapes: vec![b],
+            transform: Affine::translate((0.0, ab.height() * 3.0)),
+        });
+        app.select(vec![a, b]);
+        app.group_selection();
+        let g = app.selection[0];
+        let gb = app.doc().find_shape(g).expect("group").bounds();
+        let mut nodes = tracedraw_core::envelope::default_nodes(gb);
+        // An arch: the middles of the top and bottom sides pulled up.
+        let lift = gb.height() * 0.6;
+        nodes[1].y += lift;
+        nodes[5].y += lift;
+        app.run(Command::SetEffects {
+            shape: g,
+            effects: vec![tracedraw_core::live::Effect::Envelope {
+                nodes,
+                keep_lines: false,
+                handles: vec![],
+                corners: vec![],
+                mapping: Default::default(),
+            }],
+        });
+        // The place of the sixth letter as laid out, and where the
+        // envelope draws it (a small square there, beside the text).
+        app.begin_text_edit(a);
+        let laid = Point::new(ab.x0 + ab.width() * 0.55, ab.center().y);
+        let want = app.text_hit_char(laid).expect("a letter");
+        app.finish_text();
+        assert!(want > 2 && want < 8, "{want}");
+        let mut square = BezPath::new();
+        square.move_to(laid + Vec2::new(-0.5, -0.5));
+        square.line_to(laid + Vec2::new(0.5, -0.5));
+        square.line_to(laid + Vec2::new(0.5, 0.5));
+        square.close_path();
+        let mut gs = app.doc().find_shape(g).expect("group").clone();
+        let ShapeKind::Group { children } = &mut gs.kind else {
+            panic!("a group");
+        };
+        let mark = tracedraw_core::ShapeId(u64::MAX - 1);
+        children.insert(
+            1,
+            tracedraw_core::Shape::new(
+                mark,
+                ShapeKind::Path {
+                    path: square,
+                    closed: true,
+                },
+            ),
+        );
+        let drawn = tracedraw_core::live::evaluate(&gs).main;
+        let ShapeKind::Group { children } = &drawn.kind else {
+            panic!("a group");
+        };
+        let mut m = children
+            .iter()
+            .find(|c| c.id == mark)
+            .expect("square")
+            .clone();
+        m.transform_by(drawn.transform);
+        let p = m.page_path().bounding_box().center();
+        assert!(
+            (p.y - laid.y).abs() > ab.height() * 0.3,
+            "the envelope moves it"
+        );
+        assert_eq!(app.text_inside_at(g, p), Some((a, true)));
+        // A Text tool click there.
+        assert!(app.edit_text_inside(g, p));
+        let te = app.text_edit.as_ref().expect("editing");
+        assert_eq!(te.shape, a);
+        assert!(
+            te.caret.abs_diff(want) <= 1,
+            "caret {} wanted {want}",
+            te.caret
+        );
+    }
+
     fn texts(app: &App) -> Vec<String> {
         app.page_layers()
             .iter()

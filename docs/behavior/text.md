@@ -459,6 +459,14 @@ together keep their stacking order
 `text_effect_tests::break_apart_keeps_the_hole_of_a_single_warped_letter`,
 `text_effect_tests::breaking_several_warped_texts_keeps_the_stacking_order`).
 
+The Text tool edits a text inside a group, a clip frame or a grouped
+blend where it is drawn, through an envelope, a perspective or another
+warp on the group (#2169). The caret goes by the letter clicked, as on
+a text of its own: through a warp, the point is taken back to where the
+letters are laid out by drawing a grid over the text through the same
+warp and keeping the grid point drawn nearest the click (#3010,
+`text_editing::tests::a_click_in_an_enveloped_grouped_text_puts_the_caret_by_the_letter`).
+
 Text takes blends (with another text or any object) and extrusions like
 any other object; the steps and sides follow the letters' outlines
 (`text_effect_tests::the_blend_tool_blends_two_texts_and_a_text_with_a_shape`,
