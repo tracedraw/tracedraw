@@ -98,6 +98,9 @@ the right.
   layer, or a page's object onto the master page (#1477)
   (`objects_docker::drag_tests::a_right_click_on_an_object_row_opens_the_drawings_object_menu`,
   `objects_docker::drag_tests::an_object_rows_menu_is_the_full_object_menu_with_rename_and_move`).
+  On a touch screen a finger held still on the row and lifted there
+  opens this menu; up to 0.47 it opened under the finger while it was
+  still held (#2948).
 - A layer's object row dragged along the list (live test of 0.41): while
   the button is held a line marks where it goes; let go on the upper
   half of another object's row it goes in front of that object, on the
@@ -117,7 +120,12 @@ the right.
   group's object let go on an object of a layer comes out of its group.
   Each object keeps its place on the page whatever group it goes into
   (`Command::PlaceBeside`, `Command::PlaceInGroup`); a group left empty
-  goes, and a group never goes into itself. Checks:
+  goes, and a group never goes into itself. On a touch screen a finger
+  held on a row (0.8 s) and then moved drags it the same way, and a
+  finger lifted ends the drag where it last was; up to 0.47 the hold
+  ended the drag, so a row could not be dragged by finger or stylus
+  (#2948, `ui::objects_docker::drag_tests::a_finger_held_on_a_row_drags_it_or_opens_its_menu`).
+  Checks:
   `ui::objects_docker::drag_tests::a_row_dragged_along_the_list_changes_the_stacking_order`,
   `ui::objects_docker::drag_tests::a_row_dragged_onto_another_layer_moves_the_object_there`,
   `ui::objects_docker::drag_tests::rows_go_into_groups_and_change_places_inside_them`,
