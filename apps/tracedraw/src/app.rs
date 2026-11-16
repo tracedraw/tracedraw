@@ -1425,6 +1425,10 @@ pub struct App {
     /// arrangement and number of windows last laid out.
     pub window_layout: crate::ui::windows::WindowLayout,
     pub window_layout_seen: Option<(crate::ui::windows::WindowLayout, usize)>,
+    /// Drawings in windows of their own (#2904), and the drawing the main
+    /// window shows while the active one is in such a window.
+    pub detached: Vec<crate::ui::detached::Detached>,
+    pub main_window_doc: Option<(u64, u32)>,
     /// Whether each paragraph text overflows its frame, by document
     /// revision (laying text out every frame would be slow).
     pub overflow_cache: std::cell::RefCell<(u64, std::collections::HashMap<ShapeId, bool>)>,
@@ -3094,6 +3098,8 @@ impl App {
             view_anchor: None,
             window_layout: Default::default(),
             window_layout_seen: None,
+            detached: Vec::new(),
+            main_window_doc: None,
             overflow_cache: Default::default(),
             live_reflow: Default::default(),
             builder: Default::default(),

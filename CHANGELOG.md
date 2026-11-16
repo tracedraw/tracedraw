@@ -4,6 +4,10 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- A drawing can have a window of its own, for a second monitor: drag its tab out of the main window, or use Window > Move to Own Window. The window shows the drawing with its own tab; clicking in it makes it the drawing that tools, panels and shortcuts work on, and closing it closes only that drawing. Dragging its tab back onto the main window's tabs, its Back to Tab Bar button or Window > Back to Tab Bar puts it back among the tabs (#2904).
+
 ## 0.47.0 (2026-11-16)
 
 - Saving to CorelDRAW (`.cdr`): text fitted to a path, or bent by an envelope, perspective or distortion, goes out as curves that fill with the nonzero rule (Fill winding on), as the text is drawn. They went out even-odd, so CorelDRAW showed holes where letters or their strokes overlapped (#2733).
