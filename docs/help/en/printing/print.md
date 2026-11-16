@@ -54,8 +54,9 @@ and **Apply** keeps them for the next time.
 ## Layout {#layout}
 
 - **As in document**, **Fit to page**, or **Scale** to a percentage. **Fit
-  to page** also shrinks objects larger than the page (or the selection, when
-  you print only that) so they print whole on it.
+  to page** scales the page to fill the paper inside its margins, larger or
+  smaller; what you put partly off the page stays cut at its edge, as on
+  screen. When you print only the selection, it shrinks to fit the page.
 - **Bleed limit**: how far beyond the page objects print (4 mm at first, or
   the drawing's own bleed).
 - **Paper margins** (left, right, top, bottom, 0 at first) keep the paper's
