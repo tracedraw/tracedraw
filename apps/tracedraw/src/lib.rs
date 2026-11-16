@@ -287,6 +287,10 @@ mod winit_pen_pressure;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "../../../vendor/winit/src/size_bounds.rs"]
 mod winit_size_bounds;
+// The pointer pixels and scale of the same copy on Linux (#2871).
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "../../../vendor/winit/src/cursor_pixels.rs"]
+mod winit_cursor_pixels;
 // The pen pressure of the patched eframe's web layer, with its tests
 // (vendor/README.md, #1410), so that the gate runs them.
 #[cfg(test)]
