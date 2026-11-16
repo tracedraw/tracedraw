@@ -1129,6 +1129,16 @@ impl HandleSize {
         }
     }
 
+    /// Length of the Shape tool's control handle arrow heads this size
+    /// gives, screen pixels: the three sizes nodes come in (#3003).
+    pub fn head(self) -> f32 {
+        match self {
+            HandleSize::Small => NodeSize::Small.handle_head(),
+            HandleSize::Medium => NodeSize::Medium.handle_head(),
+            HandleSize::Large => NodeSize::Large.handle_head(),
+        }
+    }
+
     pub fn key(self) -> &'static str {
         match self {
             HandleSize::Small => "options.node_small",
@@ -1213,6 +1223,13 @@ impl Default for NodePrefs {
 }
 
 impl NodePrefs {
+    /// Length (and width) of a control handle's arrow head, screen
+    /// pixels: the Handle size option's (#3003), and never smaller than a
+    /// node is wide, so larger nodes still give larger heads (#1643).
+    pub fn handle_head(&self) -> f32 {
+        self.size.handle_head().max(self.handles.head())
+    }
+
     /// The pick distance in screen pixels, kept sensible and never less
     /// than the node marker reaches, out to the corners of its square,
     /// and a pixel more: larger nodes take a press on all of their marker
@@ -1234,7 +1251,7 @@ impl NodePrefs {
     /// 5/4 of its length) and a pixel more, so the whole head takes a
     /// press and the reach grows with the node size (#1643, #1935).
     pub fn handle_pick_px(&self) -> f64 {
-        let head = f64::from(self.size.handle_head());
+        let head = f64::from(self.handle_head());
         self.pick_px().max(head * 1.25f64.sqrt() + 1.0)
     }
 

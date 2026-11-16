@@ -2859,6 +2859,14 @@ impl EmfWriter<'_> {
                     .iter()
                     .any(|(k, v)| k == "fill.rule" && v == "evenodd")
                     || !matches!(shape.kind, ShapeKind::Text { .. });
+                // An unfilled line with arrowheads ends under them (#2981).
+                let path = shape
+                    .stroke
+                    .as_ref()
+                    .filter(|_| matches!(shape.fill, Fill::None))
+                    .and_then(|s| tracedraw_core::arrowhead_stroke_path(&shape.page_path(), s))
+                    .map(|cut| parent * cut)
+                    .unwrap_or(path);
                 self.fill_and_stroke(&path, &shape.fill, shape.stroke.as_ref(), scale, even_odd);
                 if let Some(st) = &shape.stroke {
                     for head in tracedraw_core::style::arrowhead_paths(&shape.page_path(), st) {
@@ -3489,6 +3497,14 @@ impl WmfWriter<'_> {
                     Fill::None => None,
                     other => other.preview_color().or(Some(Color::Gray { v: 0.5 })),
                 };
+                // An unfilled line with arrowheads ends under them (#2981).
+                let path = shape
+                    .stroke
+                    .as_ref()
+                    .filter(|_| fill.is_none())
+                    .and_then(|s| tracedraw_core::arrowhead_stroke_path(&shape.page_path(), s))
+                    .map(|cut| parent * cut)
+                    .unwrap_or(path);
                 self.fill_and_stroke(&path, fill, shape.stroke.as_ref(), scale, even_odd);
                 if let Some(st) = &shape.stroke {
                     for head in tracedraw_core::style::arrowhead_paths(&shape.page_path(), st) {

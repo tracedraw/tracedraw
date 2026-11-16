@@ -25110,10 +25110,52 @@ fn control_handle_heads_follow_the_node_size() {
     let node = Point::new(100.0, 100.0);
     let u = (node - ctrl) / (node - ctrl).hypot();
     let on_head = ctrl + u * (9.0 / app.view.zoom as f64);
+    app.settings.nodes.handles = crate::settings::HandleSize::Small;
     app.settings.nodes.size = NodeSize::Small;
     assert_eq!(app.ctrl_handle_at(on_head), None);
     app.settings.nodes.size = NodeSize::Large;
     assert_eq!(app.ctrl_handle_at(on_head), Some((id, 0, Which::Out)));
+    // Handle size works the same way (#3003).
+    app.settings.nodes.size = NodeSize::Small;
+    app.settings.nodes.handles = crate::settings::HandleSize::Large;
+    assert_eq!(app.ctrl_handle_at(on_head), Some((id, 0, Which::Out)));
+}
+
+/// Options > Nodes and Handles, Handle size: the Shape tool's control
+/// handle heads take it too, small, medium or large as nodes come (#3003:
+/// changing it changed nothing in the Shape tool); a larger node size
+/// still gives heads at least as large as a node (#1643).
+#[test]
+fn control_handle_heads_follow_the_handle_size() {
+    use crate::settings::{HandleSize, NodePrefs, NodeSize};
+    let heads: Vec<f32> = HandleSize::ALL
+        .iter()
+        .map(|&handles| {
+            NodePrefs {
+                size: NodeSize::Small,
+                handles,
+                ..NodePrefs::default()
+            }
+            .handle_head()
+        })
+        .collect();
+    assert_eq!(heads, vec![7.0, 9.0, 11.0]);
+    let large_nodes = NodePrefs {
+        size: NodeSize::Large,
+        handles: HandleSize::Small,
+        ..NodePrefs::default()
+    };
+    assert_eq!(large_nodes.handle_head(), NodeSize::Large.handle_head());
+    // The press reach grows with it.
+    let small = NodePrefs {
+        handles: HandleSize::Small,
+        ..NodePrefs::default()
+    };
+    let large = NodePrefs {
+        handles: HandleSize::Large,
+        ..NodePrefs::default()
+    };
+    assert!(large.handle_pick_px() > small.handle_pick_px());
 }
 
 /// Options > Nodes and Handles, Object click distance: how far from a
@@ -25256,9 +25298,10 @@ fn nodes_and_handles_are_taken_on_their_whole_marker() {
     // Small nodes keep the pick distance (6 px).
     app.settings.nodes.size = NodeSize::Small;
     assert_eq!(app.node_at(corner).map(|h| h.index), None);
-    // A small node's handle head (7 px long, 3.5 px each side): its far
-    // corner, 7.8 px from the tip, takes the handle; 10 px along it does
-    // not.
+    // A small node's handle head with small handles (7 px long, 3.5 px
+    // each side): its far corner, 7.8 px from the tip, takes the handle;
+    // 10 px along it does not.
+    app.settings.nodes.handles = crate::settings::HandleSize::Small;
     app.node_selection = vec![(id, 0)];
     let ctrl = Point::new(110.0, 130.0);
     let u = (Point::new(100.0, 100.0) - ctrl) / (Point::new(100.0, 100.0) - ctrl).hypot();

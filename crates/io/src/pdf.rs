@@ -1636,7 +1636,11 @@ impl PageWriter<'_> {
             let half = drawn.width / 2.0;
             self.paint_area(&paint, &area, bounds.inflate(half, half), true, transform);
         } else {
-            self.path_ops(path);
+            // A line with arrowheads ends under them, as drawn (#2981).
+            match tracedraw_core::arrowhead_stroke_path(&shape.page_path(), s) {
+                Some(cut) => self.path_ops(&(parent * cut)),
+                None => self.path_ops(path),
+            }
             self.content.push_str("S\n");
         }
         // Arrowheads (presets and custom) are filled with the outline
