@@ -1593,6 +1593,7 @@ impl Renderer<'_> {
             {
                 // A filled outline: the stroke's area painted with the fill,
                 // spread over the outline's bounds.
+                let sk = headed_line(&page_path, stroke, self.screen).unwrap_or_else(|| sk.clone());
                 if let Some(band) = sk.stroke(&sk_stroke, 1.0) {
                     use tracedraw_core::geometry::Shape as _;
                     let pad = (sk_stroke.width as f64 / self.zoom.max(1e-9)) / 2.0;
@@ -1600,6 +1601,8 @@ impl Renderer<'_> {
                     self.draw_fill(&fill, &b.to_path(0.01), &band, FillRule::Winding);
                 }
             } else {
+                // Cut back under its arrowheads (#2981).
+                let sk = headed_line(&page_path, stroke, self.screen).unwrap_or_else(|| sk.clone());
                 self.pixmap
                     .stroke_path(&sk, &paint, &sk_stroke, Transform::identity(), None);
             }
@@ -3605,6 +3608,7 @@ fn paint_shown(
             },
             dash,
         };
+        let sk = headed_line(shown.path, stroke, to_screen).unwrap_or(sk);
         layer.stroke_path(&sk, &paint, &line, Transform::identity(), clip);
     }
     for head in tracedraw_core::style::arrowhead_paths(shown.path, stroke) {
@@ -5062,6 +5066,13 @@ pub fn sk_color(c: Color) -> SkColor {
 pub fn sk_color_alpha(c: Color, opacity: f32) -> SkColor {
     let [r, g, b] = c.to_rgb8();
     SkColor::from_rgba8(r, g, b, (opacity.clamp(0.0, 1.0) * 255.0).round() as u8)
+}
+
+/// An open line with arrowheads cut back under them (page space), on
+/// screen: `None` when nothing is cut (#2981).
+fn headed_line(page_path: &BezPath, stroke: &Stroke, screen: Affine) -> Option<SkPath> {
+    let cut = tracedraw_core::style::arrowhead_stroke_path(page_path, stroke)?;
+    to_sk_path(&(screen * cut))
 }
 
 pub fn to_sk_path(path: &BezPath) -> Option<SkPath> {
