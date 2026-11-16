@@ -1433,10 +1433,21 @@ impl Renderer<'_> {
                         m[4] as f32,
                         m[5] as f32,
                     );
+                    // A black and white (1-bit) picture blown up keeps
+                    // its pixels' hard edges, black or white, as it
+                    // prints; smoothed, its dots grew grey rims (#2922).
+                    let quality = if level == 0
+                        && png_is_black_white(png)
+                        && m[0].hypot(m[1]).min(m[2].hypot(m[3])) > 1.0
+                    {
+                        tiny_skia::FilterQuality::Nearest
+                    } else {
+                        tiny_skia::FilterQuality::Bilinear
+                    };
                     paint.shader = tiny_skia::Pattern::new(
                         Pixmap::as_ref(&img),
                         SpreadMode::Pad,
-                        tiny_skia::FilterQuality::Bilinear,
+                        quality,
                         1.0,
                         t,
                     );
@@ -5374,8 +5385,60 @@ fn page_image_in(
     Some(out)
 }
 
+/// Whether `png` is a black and white (1-bit) picture: a grey PNG of one
+/// bit per pixel, or one marked "TraceDraw color mode" = "BlackWhite" in a
+/// `tEXt` chunk before its pixels (#2922).
+fn png_is_black_white(png: &[u8]) -> bool {
+    const SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
+    if png.get(..8) != Some(SIGNATURE) || png.get(12..16) != Some(b"IHDR".as_slice()) {
+        return false;
+    }
+    if png.get(24) == Some(&1) && png.get(25) == Some(&0) {
+        return true;
+    }
+    let mut at = 8usize;
+    while let Some(len) = png
+        .get(at..at + 4)
+        .and_then(|b| b.try_into().ok())
+        .map(|b: [u8; 4]| u32::from_be_bytes(b) as usize)
+    {
+        let (Some(ty), Some(data)) = (png.get(at + 4..at + 8), png.get(at + 8..at + 8 + len))
+        else {
+            return false;
+        };
+        if ty == b"IDAT" {
+            return false;
+        }
+        if ty == b"tEXt" && data == b"TraceDraw color mode\0BlackWhite" {
+            return true;
+        }
+        at += 12 + len;
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn one_bit_pictures_are_known_by_their_png() {
+        // #2922: blown up, they keep hard edges.
+        let mut one_bit = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+        one_bit.extend_from_slice(&[0, 0, 0, 4, 0, 0, 0, 4, 1, 0, 0, 0, 0]);
+        assert!(super::png_is_black_white(&one_bit));
+        let mut gray8 = one_bit.clone();
+        gray8[24] = 8;
+        assert!(!super::png_is_black_white(&gray8));
+        let mut marked = gray8.clone();
+        marked.extend_from_slice(&[0, 0, 0, 0]); // the IHDR CRC
+        let text = b"TraceDraw color mode\0BlackWhite";
+        marked.extend_from_slice(&(text.len() as u32).to_be_bytes());
+        marked.extend_from_slice(b"tEXt");
+        marked.extend_from_slice(text);
+        marked.extend_from_slice(&[0, 0, 0, 0]);
+        assert!(super::png_is_black_white(&marked));
+        assert!(!super::png_is_black_white(b"not a png"));
+    }
     /// A text and the warped outline of one fill with the nonzero rule,
     /// so letters an envelope pushes together stay filled where they
     /// overlap (#647); other curves fill even-odd.

@@ -114,10 +114,9 @@ pub fn bw_dialog(app: &mut App, ctx: &Context, s: &mut BwSettings, close: &mut b
             );
         });
         if super::dialogs::ok_cancel(ui, close) {
+            // Stored as 1-bit bitmaps, no longer RGB (#2922).
             let settings = *s;
-            app.apply_to_bitmaps("Black and White", move |img, dpi| {
-                black_and_white(img, &settings, dpi)
-            });
+            app.black_and_white_bitmaps(&settings);
         }
     });
 }

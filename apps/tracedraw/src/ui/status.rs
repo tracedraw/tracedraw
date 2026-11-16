@@ -139,6 +139,7 @@ pub fn object_info(app: &App) -> String {
                                     "dialog.convert_mode_paletted"
                                 }
                                 crate::bitmap_fx::ColorMode::Lab => "convert_colors.lab",
+                                crate::bitmap_fx::ColorMode::BlackWhite => "dialog.convert_mode_bw",
                                 crate::bitmap_fx::ColorMode::Rgb => "convert_colors.rgb",
                             }),
                         ),

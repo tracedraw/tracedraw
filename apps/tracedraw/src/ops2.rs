@@ -2382,7 +2382,8 @@ impl App {
             }
             crate::bitmap_fx::ColorMode::Grayscale
             | crate::bitmap_fx::ColorMode::Paletted
-            | crate::bitmap_fx::ColorMode::Lab => None,
+            | crate::bitmap_fx::ColorMode::Lab
+            | crate::bitmap_fx::ColorMode::BlackWhite => None,
         };
         if let Some(to) = to {
             let shapes: Vec<ShapeId> = self.bitmap_shapes().into_iter().map(|b| b.0).collect();
@@ -2435,14 +2436,17 @@ impl App {
         // way: the pixels through Lab and back, the PNG marked Lab; the
         // pixels went through Lab and nothing else changed (#2605).
         match mode {
-            crate::bitmap_fx::ColorMode::Lab => self.recode_bitmaps("Lab Color", |img| {
+            crate::bitmap_fx::ColorMode::Lab => self.recode_bitmaps("Lab Color", |img, _| {
                 crate::bitmap_fx::encode_lab(&crate::bitmap_modes::lab_mode(img))
             }),
             crate::bitmap_fx::ColorMode::Paletted => {
                 let s = crate::bitmap_modes::PalettedSettings::default();
                 self.paletted_bitmaps(&s);
             }
-            _ => self.recode_bitmaps("Grayscale", |img| {
+            crate::bitmap_fx::ColorMode::BlackWhite => {
+                self.black_and_white_bitmaps(&Default::default());
+            }
+            _ => self.recode_bitmaps("Grayscale", |img, _| {
                 crate::bitmap_fx::encode_gray(&crate::bitmap_fx::convert_mode(img, mode))
             }),
         }
@@ -2454,28 +2458,46 @@ impl App {
     /// left with more than 256 colours (its see-through levels counted)
     /// stays RGB with the palette's colours (#2607).
     pub fn paletted_bitmaps(&mut self, settings: &crate::bitmap_modes::PalettedSettings) {
-        self.recode_bitmaps("Paletted", |img| {
+        self.recode_bitmaps("Paletted", |img, _| {
             let out = crate::bitmap_modes::paletted(img, settings);
             crate::bitmap_fx::encode_indexed(&out).or_else(|| crate::bitmap_fx::encode(&out))
         });
     }
 
-    /// Store each selected bitmap as the PNG `recode` makes of its pixels,
-    /// no longer CMYK nor keeping ink channels; one undo step `label`.
+    /// Image > Mode > Black and White (1-bit): every selected bitmap made
+    /// black and white by `settings` (a halftone screen at the bitmap's
+    /// own resolution) and stored as a 1-bit bitmap, no longer RGB or
+    /// CMYK; one undo step. It stayed an RGB picture before (#2922).
+    pub fn black_and_white_bitmaps(&mut self, settings: &crate::bitmap_modes::BwSettings) {
+        self.recode_bitmaps("Black and White", |img, dpi| {
+            crate::bitmap_fx::encode_bw(&crate::bitmap_modes::black_and_white(img, settings, dpi))
+        });
+    }
+
+    /// Store each selected bitmap as the PNG `recode` makes of its pixels
+    /// (and its resolution, dots per inch), no longer CMYK nor keeping ink
+    /// channels; one undo step `label`.
     fn recode_bitmaps(
         &mut self,
         label: &'static str,
-        recode: impl Fn(&image::RgbaImage) -> Option<Vec<u8>>,
+        recode: impl Fn(&image::RgbaImage, f32) -> Option<Vec<u8>>,
     ) {
         let mut cmds = Vec::new();
         for s in self.selected_shapes() {
-            let ShapeKind::Bitmap { png, .. } = &s.kind else {
+            let ShapeKind::Bitmap {
+                png,
+                rect,
+                width_px,
+                ..
+            } = &s.kind
+            else {
                 continue;
             };
             let Some(img) = crate::bitmap_fx::decode(png) else {
                 continue;
             };
-            let Some(cmd) = recode(&img).and_then(|g| bitmap_with_png(&s, g)) else {
+            let dpi = (*width_px as f64 / (rect.width().abs().max(1e-6) / 25.4)) as f32;
+            let Some(cmd) = recode(&img, dpi).and_then(|g| bitmap_with_png(&s, g)) else {
                 continue;
             };
             cmds.push(cmd);
@@ -2730,6 +2752,10 @@ impl App {
                     let out = crate::bitmap_modes::convert_pixels(&img, o);
                     crate::bitmap_fx::encode_indexed(&out)
                         .or_else(|| crate::bitmap_fx::encode(&out))
+                }
+                // Black and white: a 1-bit bitmap (#2922).
+                ConvertMode::BlackWhite => {
+                    crate::bitmap_fx::encode_bw(&crate::bitmap_modes::convert_pixels(&img, o))
                 }
                 _ => crate::bitmap_fx::encode(&crate::bitmap_modes::convert_pixels(&img, o)),
             }) {
@@ -7081,6 +7107,58 @@ mod tests {
         assert_eq!(mode(&app), ColorMode::Rgb);
         let info = crate::ui::status::object_info(&app);
         assert!(info.contains(&tr("convert_colors.rgb")), "{info}");
+    }
+
+    #[test]
+    fn image_mode_black_and_white_stores_a_one_bit_bitmap() {
+        // #2922: Image > Mode > Black and White (Halftone) left an RGB
+        // picture; it is a 1-bit bitmap now, named so on the status line
+        // and ticked in the Mode menu, and one undo step.
+        use crate::bitmap_fx::ColorMode;
+        let mut app = App::headless();
+        let img = image::RgbaImage::from_fn(120, 40, |x, _| {
+            let v = (x * 2) as u8;
+            image::Rgba([v, v, v, 255])
+        });
+        let png = crate::bitmap_fx::encode(&img).expect("png");
+        let id = app
+            .new_shape(ShapeKind::Bitmap {
+                rect: Rect::new(0.0, 0.0, 120.0 * 25.4 / 300.0, 40.0 * 25.4 / 300.0),
+                width_px: 120,
+                height_px: 40,
+                png: png.into(),
+                fx: None,
+            })
+            .expect("bitmap");
+        app.select(vec![id]);
+        let png_of = |app: &App| {
+            let s = app.doc().find_shape(id).expect("bitmap");
+            let ShapeKind::Bitmap { png, .. } = &s.kind else {
+                panic!("a bitmap");
+            };
+            (s.cmyk_bitmap, png.to_vec())
+        };
+        let (cmyk, before) = png_of(&app);
+        assert_eq!(crate::bitmap_fx::mode_of(cmyk, &before), ColorMode::Rgb);
+        app.black_and_white_bitmaps(&crate::bitmap_modes::BwSettings {
+            lpi: 35.0,
+            ..Default::default()
+        });
+        let (cmyk, after) = png_of(&app);
+        assert_eq!(
+            crate::bitmap_fx::mode_of(cmyk, &after),
+            ColorMode::BlackWhite
+        );
+        assert!(crate::bitmap_fx::png_is_black_white(&after));
+        let out = crate::bitmap_fx::decode(&after).expect("decodes");
+        assert_eq!(out.dimensions(), (120, 40));
+        assert!(out
+            .pixels()
+            .all(|p| p[0] == p[1] && p[1] == p[2] && (p[0] == 0 || p[0] == 255)));
+        let info = crate::ui::status::object_info(&app);
+        assert!(info.contains(&tr("dialog.convert_mode_bw")), "{info}");
+        app.undo();
+        assert_eq!(png_of(&app).1, before, "one undo step");
     }
 
     #[test]
