@@ -8,6 +8,7 @@ full, row-by-row status.
 
 - Bezier and Pen tools: while a curve is drawn, S makes the last node smooth and Y symmetrical, as with the Shape tool (C already made it a cusp). S and Y switched to the Sketch and Polygon tools and dropped the curve (#2876).
 - Alt+E opens the Edit menu, as Alt and the other menus' letters open theirs (Alt+E, N clones); it edits a symmetry only while an object with one is selected (#2881).
+- Welcome Screen: the recent documents table and its scroll bar stop short of the window's right edge, as far from it as the New and Open buttons are from the left; the table ran into the edge (#2867).
 
 ## 0.47.0 (2026-11-16)
 
