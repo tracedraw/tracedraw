@@ -4770,10 +4770,14 @@ impl FontSystem {
                 let step = ps.line_step(m_para.line_height, m_para.size);
                 let n = ps.drop_cap_lines as f64;
                 let (outline, advance) = drop_cap_outline(glyphs);
-                let (scale, _) = drop_cap_placement(&outline, n, step, 0.0, m_para.ascent);
+                let below = drop_cap_room_below(step, m_para.ascent, m_para.descent);
+                let (scale, base) =
+                    drop_cap_placement(&outline, n, step, 0.0, m_para.ascent, below);
+                // Below the last line's baseline.
+                let last = -(n - 1.0) * step;
                 DropCap {
                     width: drop_cap_extent(&outline, advance).1 * scale + 1.0,
-                    depth: drop_cap_depth(&outline) * scale,
+                    depth: (drop_cap_depth(&outline) * scale - (base - last)).max(0.0),
                     lines: ps.drop_cap_lines as usize,
                     glyph_advance: advance,
                 }
@@ -5114,8 +5118,9 @@ impl FontSystem {
                 // letter wider than its room (#2575).
                 let mp = metrics.get(g.span).copied().unwrap_or(m);
                 let cap_step = ps.line_step(mp.line_height, mp.size);
+                let below = drop_cap_room_below(cap_step, mp.ascent, mp.descent);
                 let (scale, baseline) =
-                    drop_cap_placement(&outline, n, cap_step, line.y, mp.ascent);
+                    drop_cap_placement(&outline, n, cap_step, line.y, mp.ascent, below);
                 let (lead, extent) = drop_cap_extent(&outline, advance);
                 // Mirrored: the cap's band runs from the first line's top
                 // to its own descent, its baseline on the band's left.
@@ -5633,13 +5638,17 @@ fn line_metrics(glyphs: &[Glyph], metrics: &[Metrics], fallback: Metrics) -> Met
 /// whose first line has its baseline at `baseline` (y up): the letter sits
 /// on the last line's baseline and its top meets the top of the first
 /// line's letters (the glyph's own height there, or 70 % of `ascent` for
-/// a glyph without outline).
+/// a glyph without outline). A letter whose ink hangs below its baseline
+/// (g, y, j, p) is made smaller so that ink ends within `below` under the
+/// last baseline, the room the last line's own descenders take: scaled
+/// to its top alone, a g hung into the line after the set count (#2979).
 fn drop_cap_placement(
     glyph: &BezPath,
     lines: f64,
     step: f64,
     baseline: f64,
     ascent: f64,
+    below: f64,
 ) -> (f64, f64) {
     let top = glyph.bounding_box().y1;
     let letter = if top.is_finite() && top > 1e-6 {
@@ -5654,7 +5663,24 @@ fn drop_cap_placement(
     } else {
         lines
     };
-    (scale.max(1.0), last)
+    let scale = scale.max(1.0);
+    let depth = drop_cap_depth(glyph);
+    let below = below.max(0.0);
+    if depth * scale > below + 1e-9 {
+        // From the first line's top down to `below` under the last
+        // baseline, the ink's top and bottom.
+        let fit = (height + below) / (letter + depth);
+        if fit < scale {
+            return (fit, baseline + letter - letter * fit);
+        }
+    }
+    (scale, last)
+}
+
+/// The room under a drop cap's last baseline its ink may take: the
+/// line's descent, short of the next line's letters.
+fn drop_cap_room_below(step: f64, ascent: f64, descent: f64) -> f64 {
+    descent.min(step - ascent - 0.01).max(0.0)
 }
 
 /// How many glyphs at the start of `glyphs` a drop cap takes: the first
@@ -7385,7 +7411,7 @@ mod tests {
         glyph.line_to((1.0, 2.0));
         glyph.line_to((2.0, 0.0));
         glyph.close_path();
-        let (scale, base) = drop_cap_placement(&glyph, 3.0, 5.0, -4.0, 3.0);
+        let (scale, base) = drop_cap_placement(&glyph, 3.0, 5.0, -4.0, 3.0, 1.0);
         assert!((base - (-14.0)).abs() < 1e-9, "{base}");
         assert!((base + 2.0 * scale - (-4.0 + 2.0)).abs() < 1e-9, "{scale}");
         if !has_fonts() {
@@ -7418,6 +7444,49 @@ mod tests {
         for l in &capped_layout.lines {
             let right = l.edges.last().copied().unwrap_or(0.0);
             assert!(right <= 40.0 + 0.01, "line ends at {right}");
+        }
+    }
+
+    /// A drop cap whose letter hangs below its baseline (g, y) keeps to
+    /// its set line count: scaled to its low top alone it hung into the
+    /// line after, which was narrowed too (#2979).
+    #[test]
+    fn a_drop_cap_with_a_descender_keeps_to_its_lines() {
+        let mut g = BezPath::new();
+        g.move_to((0.0, -1.0));
+        g.line_to((1.0, 2.0));
+        g.line_to((2.0, -1.0));
+        g.close_path();
+        // Top meets the first line's top, the ink ends 1 mm under the
+        // third baseline.
+        let (scale, base) = drop_cap_placement(&g, 3.0, 5.0, -4.0, 3.0, 1.0);
+        assert!((base + 2.0 * scale - (-2.0)).abs() < 1e-9, "{scale} {base}");
+        assert!((base - scale - (-15.0)).abs() < 1e-9, "{scale} {base}");
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        for word in ["ghjghj", "yghjg", "jfhfgh", "pfdhfd", "Ghjghj"] {
+            let words = format!(
+                "{word} dfhfgh fhfghf ghfghf fdhfdh dfhfgh fhfghf ghfghf \
+                 fdhfdh dfhfgh fhfghf ghfghf fdhfdh dfhfgh fhfghf ghfghf"
+            );
+            let lay = f.layout(&TextRequest {
+                spans: &[span(&words)],
+                frame: Some(Size::new(40.0, 100.0)),
+                align: TextAlign::Left,
+                para: &ParagraphStyle {
+                    drop_cap_lines: 3,
+                    ..Default::default()
+                },
+                on_path: None,
+            });
+            assert!(lay.lines.len() > 4, "{word}: {}", lay.lines.len());
+            let x = |i: usize| lay.lines[i].edges.first().copied().unwrap_or(0.0);
+            for i in 1..3 {
+                assert!(x(i) > 3.0, "{word}: line {i} starts at {}", x(i));
+            }
+            assert!(x(3) < 1.0, "{word}: line 3 starts at {}", x(3));
         }
     }
 
