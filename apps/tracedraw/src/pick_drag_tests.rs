@@ -7046,6 +7046,29 @@ fn the_pen_deletes_a_node_of_the_selected_curve_and_the_toggle_turns_it_off() {
     assert!(node_count(&app, id) >= 3);
 }
 
+/// #2988, Pen with automatic adding and deleting on: a press that lands
+/// a few pixels off the end node of the selected open curve, where a
+/// finger lands, goes on from that end; within the node's pick distance
+/// but past the join distance it deleted the end node.
+#[test]
+fn the_pen_goes_on_from_an_end_node_pressed_a_little_off() {
+    let (ctx, mut app, _) = setup();
+    let id = line_curve(&ctx, &mut app);
+    app.set_tool(Tool::Pen);
+    app.settings.curves.pen_auto_add_delete = true;
+    let join = app.settings.curves.join_px();
+    let pick = app.settings.nodes.pick_px();
+    assert!(pick > join + 0.5, "the gap this is about: {join} {pick}");
+    let end = app.view.to_screen(Point::new(200.0, 100.0));
+    let off = end + egui::vec2(((join + pick) / 2.0) as f32, 0.0);
+    click_at(&ctx, &mut app, off, Modifiers::NONE);
+    assert_eq!(node_count(&app, id), 3, "the end node stays");
+    assert!(app.curve.is_some(), "a line goes on from the end");
+    click_page(&ctx, &mut app, Point::new(200.0, 140.0));
+    app.finish_curve();
+    assert_eq!(node_count(&app, id), 4, "the curve went on");
+}
+
 /// Pen with automatic adding and deleting on: a click on a segment or a
 /// middle node of the curve being drawn places the next node there, it
 /// neither adds on the segment nor deletes the node (#1143).
