@@ -2783,6 +2783,18 @@ fn draw_pixel_grid(app: &App, painter: &Painter, rect: ERect) {
     px.paint(painter);
 }
 
+/// The middle of a control handle's head as `draw_control_handle` draws
+/// it: a triangle `head` pixels long, its tip on the handle, drawn back
+/// towards the node (and shortened on a handle shorter than that).
+fn handle_head_centre(node: Pos2, ctrl: Pos2, head: f32) -> Pos2 {
+    let d = ctrl - node;
+    let len = d.length();
+    if len < 0.5 {
+        return ctrl;
+    }
+    ctrl - d / len * (head.min(len) * 0.5)
+}
+
 /// One node marker: `shape` of side `size` around `p`.
 /// A node's control handle: a dashed line from the node `node` to the
 /// control point `ctrl`, which is a solid arrow head pointing away from
@@ -2986,10 +2998,14 @@ fn draw_nodes(app: &App, painter: &Painter) {
         }
     }
     // The control handle chosen by a click: a ring round its head, the
-    // one the arrow keys move (#2819).
-    if let Some(c) = app.chosen_handle_point() {
-        let r = prefs.control_head() * 0.5 + 3.0;
-        painter.circle_stroke(view.to_screen(c), r, EStroke::new(1.5, main));
+    // one the arrow keys move (#2819). The head is a triangle drawn back
+    // from the tip towards the node, so the ring is centred half a head
+    // back from the tip, not on the tip (#3041).
+    if let Some((node, tip)) = app.chosen_handle_ends() {
+        let head = prefs.control_head();
+        let centre = handle_head_centre(view.to_screen(node), view.to_screen(tip), head);
+        let r = head * 0.5 + 3.0;
+        painter.circle_stroke(centre, r, EStroke::new(1.5, main));
     }
     // The spot clicked on a segment: a small round mark where Add Node
     // puts the node.
@@ -3952,6 +3968,21 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The ring round a chosen control handle sits on the handle's head,
+    /// half a head back from its tip towards the node, not on the tip
+    /// (#3041); on a handle shorter than a head, halfway along it.
+    #[test]
+    fn the_handle_ring_sits_on_the_head() {
+        let c = handle_head_centre(egui::pos2(0.0, 0.0), egui::pos2(100.0, 0.0), 12.0);
+        assert!((c - egui::pos2(94.0, 0.0)).length() < 1e-4, "{c:?}");
+        let c = handle_head_centre(egui::pos2(10.0, 10.0), egui::pos2(10.0, 50.0), 12.0);
+        assert!((c - egui::pos2(10.0, 44.0)).length() < 1e-4, "{c:?}");
+        let c = handle_head_centre(egui::pos2(0.0, 0.0), egui::pos2(8.0, 0.0), 12.0);
+        assert!((c - egui::pos2(4.0, 0.0)).length() < 1e-4, "{c:?}");
+        let c = handle_head_centre(egui::pos2(5.0, 5.0), egui::pos2(5.0, 5.0), 12.0);
+        assert_eq!(c, egui::pos2(5.0, 5.0));
+    }
 
     /// An empty clip frame's crossing lines stay inside its outline: an
     /// ellipse's run corner to corner of its box no more (#2702); a

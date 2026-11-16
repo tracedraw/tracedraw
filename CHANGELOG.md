@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Shape tool: the ring round a chosen control handle is centred on the handle's head, not on its tip, and a handle you drag is no longer left ringed once you let go; a click on a handle still chooses it for the arrow keys (#3041, #3042).
 - Exported pictures keep all four edges of the page: one zoom for both ways, made large enough for the width, cut up to a pixel off the top of an A4 page and many off a long strip, so a line along the page's top edge could be lost (#2866).
 - Convert to Curves on condensed or tightly spaced text whose letters overlap, as Hindi and Malayalam text often does: the curves keep the letter shapes. Where one letter's outline crossed another's near a node, or two stems stood a hair apart, the curves cut a corner or filled the gap, so letters came out changed (#1483). The same goes for Weld and the other shaping commands, and for text saved to .cdr as curves.
 - .cdr: Arabic, Persian and Hebrew letters take the font and size a text style gives right-to-left scripts, as CorelDRAW draws them. A Persian title came out with the letters of one word at 24, 60 and 154 pt, cut apart, where CorelDRAW prints the whole word at 154 pt (#2886).

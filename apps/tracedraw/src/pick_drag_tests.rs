@@ -28529,7 +28529,8 @@ fn pen_pressure_reaches_painterly_sketch_brushes_and_eraser() {
 /// chooses the handle, and the arrow keys then move that handle, not
 /// the node (each press one undo step). A click elsewhere lets go of it
 /// and the arrows move the node again. The handle still drags with the
-/// mouse, and a dragged handle is the chosen one.
+/// mouse, and a dragged handle is not chosen: no ring stays round it
+/// once the button is let go (#3042).
 #[test]
 fn a_clicked_handle_moves_with_the_arrow_keys() {
     use tracedraw_core::geometry::BezPath;
@@ -28605,6 +28606,24 @@ fn a_clicked_handle_moves_with_the_arrow_keys() {
         "{:?}",
         start(&app)
     );
+    // A drag on the handle moves it, and lets no ring stay round it.
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let from = app.view.to_screen(ctrl1(&app));
+    drag(
+        &ctx,
+        &mut app,
+        from,
+        from + egui::vec2(40.0, 0.0),
+        Modifiers::NONE,
+        Vec::new(),
+    );
+    assert!(
+        (ctrl1(&app).x - (30.0 + 2.0 * step)).abs() > 1.0,
+        "the handle moved: {:?}",
+        ctrl1(&app)
+    );
+    assert_eq!(app.node_selection, vec![(curve, 0)], "the node stays chosen");
+    assert!(app.chosen_handle().is_none(), "no ring after a drag");
 }
 
 /// Options > Tools > Pick, "Ctrl and Shift keys", Windows standard

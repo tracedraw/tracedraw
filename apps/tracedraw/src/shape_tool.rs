@@ -812,6 +812,11 @@ impl App {
                     index,
                     which,
                 } => {
+                    // A handle dragged is not chosen: no ring follows it,
+                    // and none stays once the button is let go. A click
+                    // without a drag chooses it for the arrow keys
+                    // (#2819, #3041, #3042).
+                    self.chosen_handle = None;
                     if let Some((path, closed, t)) = self.path_of(shape) {
                         // The handle snaps like a node does; Ctrl or Shift
                         // keeps it to the constrain angle about its node,
@@ -1405,9 +1410,14 @@ impl App {
             .filter(|k| self.handle_point(*k).is_some())
     }
 
-    /// Where the chosen control handle is, on the page (drawn ringed).
-    pub(crate) fn chosen_handle_point(&self) -> Option<Point> {
-        self.handle_point(self.chosen_handle()?)
+    /// The chosen control handle's node and tip, on the page: the ring
+    /// goes round the handle's head, which points from the node to the
+    /// tip (#3041).
+    pub(crate) fn chosen_handle_ends(&self) -> Option<(Point, Point)> {
+        let key = self.chosen_handle()?;
+        let (path, _, t) = self.path_of(key.0)?;
+        let n = nodes::nodes(&path).into_iter().find(|n| n.index == key.1)?;
+        Some((t * n.pos, self.handle_point(key)?))
     }
 
     /// Move the chosen control handle by `d` (page millimetres), one undo
