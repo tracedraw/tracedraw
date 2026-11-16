@@ -19518,6 +19518,9 @@ fn the_trace_dialog_rests_once_the_trace_is_in() {
                 "the trace never came"
             );
         }
+        // The threads of the traces ended (the one stopped above too):
+        // none asks for a frame later, however slow the machine.
+        app.trace_live.join_workers();
         let shown = app.trace_live.shown.as_ref().expect("the trace");
         assert!(shown.done);
         assert_eq!(
@@ -19563,6 +19566,7 @@ fn the_trace_dialog_rests_once_the_trace_is_in() {
             std::thread::sleep(std::time::Duration::from_millis(3));
         }
         assert_eq!(app.trace_live.started, started + 1, "defer {defer_full}");
+        app.trace_live.join_workers();
         for _ in 0..20 {
             trace_frame_asks_for_another(&ctx, &mut app);
         }
