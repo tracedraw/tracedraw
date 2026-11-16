@@ -6095,22 +6095,26 @@ impl<'a> Writer<'a> {
             }
             _ => {
                 let coords = match &s.kind {
-                    // Before version 16 no file seen holds a fill rule: a
-                    // curve that fills nonzero (#1919) goes out as the
+                    // A curve that fills nonzero (#1919) goes out as the
                     // outline of the area it covers, which fills the same
-                    // under the even-odd rule those versions draw with.
+                    // under the even-odd rule: before version 16 no file
+                    // seen holds a fill rule, and from 16 the program that
+                    // reads the files still filled such curves even-odd,
+                    // with holes where their parts overlap, although
+                    // their style strings hold `winding` "1" (#2733). The
+                    // winding stays in the style string, so TraceDraw
+                    // reads the curve back as nonzero.
                     ShapeKind::Path { path, .. }
-                        if v.0 < 16
-                            && s.fill_rule == tracedraw_core::shaping::FillRule::NonZero
+                        if s.fill_rule == tracedraw_core::shaping::FillRule::NonZero
                             && !matches!(s.fill, Fill::None) =>
                     {
                         curve_coords(&tracedraw_core::shaping::nonzero_as_even_odd(path))
                     }
                     ShapeKind::Path { path, .. } => curve_coords_typed(path, &s.node_types),
-                    // The outline of a text fitted to a path fills nonzero
-                    // as the text does (#2733): before 16 as the area it
-                    // covers, from 16 with the style string's winding.
-                    ShapeKind::Text { .. } if v.0 < 16 => curve_coords(
+                    // The outline of a text fitted to a path, or bent,
+                    // fills nonzero as the text does (#2733): written as
+                    // the area it covers, in every version.
+                    ShapeKind::Text { .. } => curve_coords(
                         &tracedraw_core::shaping::nonzero_as_even_odd(&s.local_path()),
                     ),
                     _ => curve_coords(&s.local_path()),

@@ -8967,6 +8967,58 @@ fn text_fitted_to_a_path_goes_out_filling_nonzero() {
     }
 }
 
+/// A curve that fills nonzero goes out, in every version, as the outline
+/// of the area it covers (#2733): from version 16 the program that read
+/// the files still filled such curves even-odd, with holes where their
+/// parts overlap, although the style string held `winding` "1". The
+/// winding is kept, so the curve reads back nonzero; two overlapping
+/// squares come back as one outline of their union.
+#[test]
+fn a_nonzero_curve_goes_out_as_the_area_it_fills() {
+    use tracedraw_core::shaping::FillRule;
+    let mut doc = doc_with(Vec::new());
+    let mut ids = doc.ids().clone();
+    let mut p = BezPath::new();
+    for x in [0.0, 20.0] {
+        p.move_to((x, 0.0));
+        p.line_to((x + 40.0, 0.0));
+        p.line_to((x + 40.0, 40.0));
+        p.line_to((x, 40.0));
+        p.close_path();
+    }
+    let mut c = Shape::new(
+        ids.shape(),
+        ShapeKind::Path {
+            path: p,
+            closed: true,
+        },
+    );
+    c.fill = Fill::Solid(Color::BLACK);
+    c.fill_rule = FillRule::NonZero;
+    c.transform = Affine::translate((50.0, 30.0));
+    doc.pages[0].layers[0].shapes = vec![c];
+    doc.set_ids(ids);
+    for v in versions() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, rep) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let s = &back.pages[0].layers[0].shapes[0];
+        let ShapeKind::Path { path, .. } = &s.kind else {
+            panic!("{v}: {:?} {:?}", s.kind, rep.warnings);
+        };
+        let starts = path
+            .elements()
+            .iter()
+            .filter(|e| matches!(e, PathEl::MoveTo(_)))
+            .count();
+        assert_eq!(starts, 1, "{v}: one outline of the union");
+        let area = (s.transform * path.clone()).area().abs();
+        assert!((area - 2400.0).abs() < 24.0, "{v}: area {area}");
+        if v >= 16 {
+            assert_eq!(s.fill_rule, FillRule::NonZero, "{v}");
+        }
+    }
+}
+
 /// From version 16 the `font` records are the faces the text uses, and
 /// the style table names the first of them: the file of #1733 that
 /// program saved for bold "Khand" text has one Khand record, the bold
