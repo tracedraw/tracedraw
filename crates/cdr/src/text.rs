@@ -1704,6 +1704,15 @@ fn read_txsm_16(d: &[u8], v: u16, charset: u8, warn: &mut dyn FnMut(String)) -> 
                 let len = r.u32()? as usize;
                 r.skip(len.saturating_mul(2));
             }
+            // Bit 3: the run is a print merge field. A word (0 in the
+            // samples), the field name's length and its UTF-16 letters
+            // follow the language (a version 24 file's twelve texts of
+            // fields such as "EVTI", stored as the text "<EVTI>", #2969).
+            if st3 & 0x08 != 0 {
+                r.skip(2);
+                let len = r.u16()? as usize;
+                r.skip(len.saturating_mul(2));
+            }
             // Every record ends with a style string, also one marked
             // with neither members nor a locale (0, 0): the files of
             // versions 16 to 27 that hold such records (the saves of
@@ -3358,5 +3367,80 @@ mod tests {
         // Records that all name style 0 leave the lengths to cut the runs.
         let t = read_txsm(&txsm8(b"x\xc4y", &[0, 0, 0]), 8, 0, &mut |_| {}).expect("txsm");
         assert_eq!(t.paragraphs[0].runs[0].text, "x\u{c4}y");
+    }
+
+    /// A version 24 artistic text whose second style record is a print
+    /// merge field (bit 3 of its third word), as in the file of #2969.
+    fn txsm24_merge_field(field: &str, text: &[u8]) -> Vec<u8> {
+        fn style(b: &mut Vec<u8>, s: &str) {
+            b.extend_from_slice(&(s.len() as u32).to_le_bytes());
+            b.extend_from_slice(s.as_bytes());
+        }
+        fn utf16(b: &mut Vec<u8>, s: &str) {
+            for u in s.encode_utf16() {
+                b.extend_from_slice(&u.to_le_bytes());
+            }
+        }
+        let mut b = Vec::new();
+        b.extend_from_slice(&u32::MAX.to_le_bytes()); // frame layout
+        b.extend_from_slice(&[0; 32]);
+        b.extend_from_slice(&1800u16.to_le_bytes());
+        b.extend_from_slice(&[0; 3]);
+        b.extend_from_slice(&1u32.to_le_bytes()); // one frame
+        b.extend_from_slice(&32u32.to_le_bytes());
+        b.extend_from_slice(&[0; 48]);
+        b.extend_from_slice(&0u32.to_le_bytes()); // not on a path
+        b.extend_from_slice(&[0; 8]);
+        b.extend_from_slice(&1u32.to_le_bytes()); // one paragraph
+        b.extend_from_slice(&13u32.to_le_bytes());
+        b.extend_from_slice(&[0, 0]);
+        style(
+            &mut b,
+            r#"{"character":{"latin":{"font":"Arial","size":"12700"}}}"#,
+        );
+        b.extend_from_slice(&2u32.to_le_bytes()); // two records
+        for (st, merge) in [([7u16, 0, 0x04], false), ([1, 0x3fff, 0x1c], true)] {
+            for w in st {
+                b.extend_from_slice(&w.to_le_bytes());
+            }
+            b.extend_from_slice(&3u32.to_le_bytes());
+            utf16(&mut b, "PTB");
+            if merge {
+                b.extend_from_slice(&0u16.to_le_bytes());
+                b.extend_from_slice(&(field.len() as u16).to_le_bytes());
+                utf16(&mut b, field);
+                style(&mut b, r#"{"character":{"latin":{"font":"Gabriola"}}}"#);
+            } else {
+                style(&mut b, r#"{"character":{}}"#);
+            }
+        }
+        b.extend_from_slice(&(text.len() as u32).to_le_bytes());
+        for _ in text {
+            b.extend_from_slice(&[0, 0, 1 << 1, 0, 0, 0, 0, 0]);
+        }
+        b.extend_from_slice(&(text.len() as u32).to_le_bytes());
+        b.extend_from_slice(text);
+        b.push(0); // no letter positions
+        b
+    }
+
+    #[test]
+    fn version_24_text_of_a_print_merge_field_is_read() {
+        let d = txsm24_merge_field("EVTI", b"\xa0<EVTI>");
+        let t = read_txsm(&d, 24, 0, &mut |w| panic!("{w}")).expect("txsm");
+        let runs: Vec<(&str, Option<&str>)> = t.paragraphs[0]
+            .runs
+            .iter()
+            .map(|r| (r.text.as_str(), r.style.family.as_deref()))
+            .collect();
+        assert_eq!(runs, [("\u{a0}<EVTI>", Some("Gabriola"))]);
+        // Field names of other lengths keep the records after them in step.
+        let d = txsm24_merge_field("DS", b"\xa0<DS>");
+        let t = read_txsm(&d, 24, 0, &mut |w| panic!("{w}")).expect("txsm");
+        assert_eq!(t.paragraphs[0].runs[0].text, "\u{a0}<DS>");
+        // A record cut inside the field name is not read past the end.
+        for cut in 0..d.len() {
+            let _ = read_txsm(&d[..cut], 24, 0, &mut |_| {});
+        }
     }
 }
