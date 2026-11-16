@@ -6,7 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
-- Icons: the Variable Outline, Transparency and Pan tool icons, the New, Open and New from Template pictures (Welcome screen, toolbar, File menu) and the Page Background menu picture are back as they were in the workspace icon set. They had been redrawn after user reports (#1682, #1677, #1727) without the maintainer's approval; icon changes now wait for it.
+- Variable Outline tool: its icon is the arch-shaped ribbon again, as before 0.47.0; it had been redrawn as a straight stroke after a user report (#1682) without the maintainer's approval.
 - Image > Trace > Automatic, Repeat Last Trace and the Trace dialog's OK trace off the interface thread, with a window that shows the step (enlarging the picture, choosing the best detail, finding the colours, drawing the curves, checking against the picture, matching the letters), a bar with the percentage, the time taken and Cancel. The program looked frozen until the trace ended. Small print is matched with its font in about half the time, and colours and edges are found on every core, with the same curves as before.
 - Bezier and Pen tools: while a curve is drawn, S makes the last node smooth and Y symmetrical, as with the Shape tool (C already made it a cusp). S and Y switched to the Sketch and Polygon tools and dropped the curve (#2876).
 - Files dropped on the window on Windows: after a drop that did not reach TraceDraw, a file dropped and then deleted came back with every later drop until TraceDraw was restarted. The files of that drop, which Windows keeps listing as dragged over, now belong to the drag that is over and are not dropped again (#2940).
