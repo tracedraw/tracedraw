@@ -12,6 +12,7 @@ full, row-by-row status.
 - Bezier and Pen tools: while a curve is drawn, S makes the last node smooth and Y symmetrical, as with the Shape tool (C already made it a cusp). S and Y switched to the Sketch and Polygon tools and dropped the curve (#2876).
 - Files dropped on the window on Windows: after a drop that did not reach TraceDraw, a file dropped and then deleted came back with every later drop until TraceDraw was restarted. The files of that drop, which Windows keeps listing as dragged over, now belong to the drag that is over and are not dropped again (#2940).
 - 2-point line: dragged on a touch screen (or with a mouse or pen), the second node follows the finger while it is down, so the line is seen before it is let go; it showed only the first node until the release (#2594).
+- Numbered bullets: the characters of a paragraph's number ("10.", "iv.") stand one after another; they were all drawn at the bullet's place, one over the other, so the numbers could not be read (#2987).
 - Freehand tool by clicks: each click adds a node and the line goes on, and a double-click ends it there, so a single straight line is a click and a double-click. Single clicks ended the line and double-clicks made corners (#2339).
 - Trace Bitmap: zoomed in on the preview, the After picture shows the traced curves drawn sharp at the screen's pixels, not the preview's pixels blown up (#2951).
 - Alt+E opens the Edit menu, as Alt and the other menus' letters open theirs (Alt+E, N clones); it edits a symmetry only while an object with one is selected (#2881).

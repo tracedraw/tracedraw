@@ -5160,8 +5160,14 @@ impl FontSystem {
                         bspan.baseline_shift_pt += ps.bullet.baseline_shift / PT_MM;
                     }
                     let b = self.shape_run(&bspan, 0, &label, size_scale, 0, ps, &[]);
+                    // Each glyph of a number ("12.") after the one before
+                    // it: they all stood at the bullet's x, one over the
+                    // other (#2987).
+                    let mut pen = bx;
                     for g in &b {
-                        let a = orient(Affine::translate((bx, y)), g, m.ascent);
+                        let at = Affine::translate((pen + g.x_offset, y + g.y_offset));
+                        pen += g.advance;
+                        let a = orient(at, g, m.ascent);
                         place_glyph(collect, a, g, &mut line_glyphs);
                         let gp = a * g.path.as_ref().clone();
                         line_path.extend(gp.elements().iter().copied());
@@ -10879,6 +10885,36 @@ mod tests {
         assert!(layout.lines[0].baseline < plain.lines[0].baseline * 2.0);
         assert!((gap(&layout, 1) - gap(&plain, 1)).abs() < 1e-6);
         assert!((gap(&layout, 2) - gap(&plain, 2)).abs() < 1e-6);
+    }
+
+    /// A numbered bullet's glyphs follow one another: "10." stood as
+    /// three glyphs at the same x, one over the other (#2987).
+    #[test]
+    fn the_glyphs_of_a_bullet_number_follow_each_other() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        let mut ps = ParagraphStyle {
+            bullets: true,
+            ..Default::default()
+        };
+        ps.bullet.numbering = tracedraw_core::Numbering::Arabic;
+        ps.bullet.start = 10;
+        let l = f.glyph_layout(&TextRequest {
+            spans: &[span("ab")],
+            frame: Some(Size::new(60.0, 200.0)),
+            align: TextAlign::Left,
+            para: &ps,
+            on_path: None,
+        });
+        let x: Vec<f64> = l
+            .glyphs
+            .iter()
+            .map(|g| g.transform.as_coeffs()[4])
+            .collect();
+        assert_eq!(l.glyphs.len(), 5, "1, 0, ., a, b");
+        assert!(x[0] < x[1] && x[1] < x[2], "{x:?}");
     }
 }
 
