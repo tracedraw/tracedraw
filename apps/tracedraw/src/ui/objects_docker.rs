@@ -1054,7 +1054,30 @@ fn guides_row(
     // The row opens to list its guidelines one by one, each with its
     // own eye and padlock (#1775).
     let open_id = base.with("open");
-    let open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(false);
+    let mut open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(false);
+    // A guideline just selected in this row's set (dragged out of a
+    // ruler, picked on the page or added in Guidelines Setup) opens the
+    // row and scrolls to it, so a new guideline shows in the docker
+    // (#2882).
+    let seen_id = base.with("seen");
+    let picked: Vec<usize> = if chosen {
+        app.selected_guides
+            .iter()
+            .copied()
+            .filter(|i| *i < guides.len())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let seen = ui.data(|d| d.get_temp::<Vec<usize>>(seen_id));
+    let reveal = !picked.is_empty() && seen.as_ref() != Some(&picked);
+    if seen.as_ref() != Some(&picked) {
+        ui.data_mut(|d| d.insert_temp(seen_id, picked.clone()));
+    }
+    if reveal && !open {
+        open = true;
+        ui.data_mut(|d| d.insert_temp(open_id, true));
+    }
     if !guides.is_empty() {
         let (ar, a) = hot(ui, rect, rect.left() + 3.0 + INDENT, 14.0, base.with("arrow"));
         let a = a.rich_tip_with(|| crate::ui::tips::keyed("docker.expand_row"));
@@ -1095,12 +1118,14 @@ fn guides_row(
         Tokens::text(),
     );
     if open && !guides.is_empty() {
-        guide_rows(app, ui, guides, page, base, shown, act);
+        let scroll_to = reveal.then(|| picked[0]);
+        guide_rows(app, ui, guides, page, base, shown, scroll_to, act);
     }
 }
 
 /// The guidelines of a Guides row, one row each: its eye, its padlock
 /// and where it is; a click selects it on the page (#1775).
+#[allow(clippy::too_many_arguments)]
 fn guide_rows(
     app: &App,
     ui: &mut Ui,
@@ -1108,6 +1133,7 @@ fn guide_rows(
     page: Option<PageId>,
     base: egui::Id,
     set_shown: bool,
+    scroll_to: Option<usize>,
     act: &mut Actions,
 ) {
     let master = page.is_none();
@@ -1115,6 +1141,9 @@ fn guide_rows(
     for (i, g) in guides.iter().enumerate() {
         let selected = edited && app.selected_guides.contains(&i);
         let (rect, resp) = row(ui, Look::Object { selected });
+        if scroll_to == Some(i) {
+            ui.scroll_to_rect(rect, None);
+        }
         let text = crate::ui::layout_options::guide_text(app, g);
         let kind = match g.line {
             GuideLine::Horizontal { .. } => tr("options.horizontal"),
@@ -2806,6 +2835,106 @@ pub(crate) mod tests {
         }
         assert!(app.edit_master_guides);
         assert_eq!(app.selected_guides, vec![1]);
+    }
+
+    /// A guideline dragged out of a ruler opens its Guides row in the
+    /// docker and shows highlighted there; closed by hand, the row stays
+    /// closed until another guideline is picked (#2882).
+    #[test]
+    fn a_new_guideline_opens_its_guides_row() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.canvas_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(4000.0, 4000.0));
+        let run = |app: &mut App| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(400.0, 800.0),
+                )),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| objects_docker(app, ui));
+            out.textures_delta.clear();
+        };
+        // New guidelines go to every page by default: the master Guides row.
+        assert!(app.edit_master_guides);
+        let base = egui::Id::new("objects_guides");
+        run(&mut app);
+        assert!(
+            ctx.read_response(base.with("arrow")).is_none(),
+            "no guidelines yet"
+        );
+        let pos = app.view.to_page(egui::pos2(200.0, 200.0));
+        app.drag = crate::app::Drag::NewGuide {
+            horizontal: true,
+            pos,
+        };
+        app.finish_guide_drag();
+        assert_eq!(
+            app.selected_guides,
+            vec![0],
+            "the new guideline is selected"
+        );
+        run(&mut app);
+        run(&mut app);
+        assert!(
+            ctx.read_response(base.with(("guide", 0)).with("eye"))
+                .is_some(),
+            "the row opened on the new guideline"
+        );
+        // Closed by hand, it stays closed while the selection is the same.
+        let at = ctx
+            .read_response(base.with("arrow"))
+            .expect("drawn")
+            .rect
+            .center();
+        for events in [
+            vec![egui::Event::PointerMoved(at)],
+            vec![egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            vec![egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        ] {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(400.0, 800.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| objects_docker(&mut app, ui));
+            out.textures_delta.clear();
+        }
+        // Widgets of the frame before are still read: one more frame.
+        run(&mut app);
+        run(&mut app);
+        assert!(
+            ctx.read_response(base.with(("guide", 0)).with("eye"))
+                .is_none(),
+            "closed by hand"
+        );
+        // Another guideline dragged out opens it again.
+        let pos = app.view.to_page(egui::pos2(300.0, 300.0));
+        app.drag = crate::app::Drag::NewGuide {
+            horizontal: false,
+            pos,
+        };
+        app.finish_guide_drag();
+        assert_eq!(app.selected_guides, vec![1]);
+        run(&mut app);
+        run(&mut app);
+        assert!(ctx
+            .read_response(base.with(("guide", 1)).with("eye"))
+            .is_some());
     }
 
     /// A layer's menu moves it to another page with its objects and
