@@ -5126,6 +5126,82 @@ pub fn draws_symbol(shape: &Shape, index: usize, symbols: &[Symbol]) -> bool {
     walk(shape, index, symbols, &mut seen)
 }
 
+/// The most objects one symbol stands for, the objects of the symbols
+/// it draws counted in: more is a file built to never finish drawing.
+pub const SYMBOL_MAX_OBJECTS: u64 = 1_000_000;
+
+/// The most symbols one symbol draws inside one another.
+pub const SYMBOL_MAX_NESTING: usize = 64;
+
+impl Document {
+    /// Turn every instance in a symbol that would draw without end, or
+    /// far past what any drawing holds, into an empty group in its place.
+    /// A file whose symbol drew itself (directly or through another one)
+    /// overflowed the stack and ended the program when drawn, and one of
+    /// 40 symbols each drawing the one before twice stood for a trillion
+    /// objects and never finished. Edit Symbol already refuses a symbol
+    /// drawing itself; this mends a file made elsewhere.
+    pub fn break_symbol_loops(&mut self) {
+        const OPEN: u64 = u64::MAX;
+        // Objects each symbol stands for; OPEN while it is being walked.
+        let mut size: Vec<Option<u64>> = vec![None; self.symbols.len()];
+        fn symbol(i: usize, syms: &mut [Symbol], size: &mut [Option<u64>], depth: usize) -> u64 {
+            if let Some(n) = size[i] {
+                return n;
+            }
+            size[i] = Some(OPEN);
+            let mut shape = std::mem::replace(
+                &mut syms[i].shape,
+                Shape::new(
+                    ShapeId(0),
+                    ShapeKind::Group {
+                        children: Vec::new(),
+                    },
+                ),
+            );
+            let n = walk(&mut shape, syms, size, depth);
+            syms[i].shape = shape;
+            size[i] = Some(n);
+            n
+        }
+        fn walk(s: &mut Shape, syms: &mut [Symbol], size: &mut [Option<u64>], depth: usize) -> u64 {
+            let n = match &mut s.kind {
+                ShapeKind::SymbolInstance { index } => {
+                    let i = *index;
+                    if i >= syms.len() {
+                        return 1;
+                    }
+                    let n = match size[i] {
+                        Some(OPEN) => OPEN,
+                        _ if depth >= SYMBOL_MAX_NESTING => OPEN,
+                        _ => symbol(i, syms, size, depth + 1),
+                    };
+                    if n > SYMBOL_MAX_OBJECTS {
+                        s.kind = ShapeKind::Group {
+                            children: Vec::new(),
+                        };
+                        return 1;
+                    }
+                    n
+                }
+                ShapeKind::Group { children } => children
+                    .iter_mut()
+                    .fold(0u64, |a, c| a.saturating_add(walk(c, syms, size, depth))),
+                ShapeKind::ClipFrame { frame, contents } => contents
+                    .iter_mut()
+                    .fold(walk(frame, syms, size, depth), |a, c| {
+                        a.saturating_add(walk(c, syms, size, depth))
+                    }),
+                _ => 0,
+            };
+            n.saturating_add(1)
+        }
+        for i in 0..self.symbols.len() {
+            symbol(i, &mut self.symbols, &mut size, 0);
+        }
+    }
+}
+
 /// Document properties (File > Document Properties).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -6933,6 +7009,7 @@ impl Document {
         // What text wraps around is not saved: work it out again.
         doc.refresh_text_flow();
         doc.refit_text_meshes();
+        doc.break_symbol_loops();
         Ok(doc)
     }
 
@@ -9579,6 +9656,75 @@ mod tests {
             shown.contains("Press") && shown.contains("bytes: 4"),
             "{shown}"
         );
+    }
+
+    #[test]
+    fn symbols_drawing_themselves_or_trillions_open_mended() {
+        let inst =
+            |id: u64, index: usize| Shape::new(ShapeId(id), ShapeKind::SymbolInstance { index });
+        let group = |children: Vec<Shape>| Shape::new(ShapeId(0), ShapeKind::Group { children });
+        let sym = |shape: Shape| Symbol {
+            name: "s".into(),
+            shape,
+        };
+        let empty =
+            |s: &Shape| matches!(&s.kind, ShapeKind::Group { children } if children.is_empty());
+        // 0 draws itself; 1 and 2 draw each other (the loop is cut where
+        // it closes, in 2); 2 also draws 0, which stays; 3 draws 2.
+        let mut doc = Document {
+            symbols: vec![
+                sym(group(vec![inst(1, 0)])),
+                sym(inst(2, 2)),
+                sym(group(vec![inst(3, 1), inst(4, 0)])),
+                sym(inst(5, 2)),
+            ],
+            ..Default::default()
+        };
+        doc.pages[0].layers[0].shapes = vec![inst(9, 3)];
+        let back = Document::from_json(&doc.to_json().expect("json")).expect("load");
+        let ShapeKind::Group { children } = &back.symbols[0].shape.kind else {
+            panic!()
+        };
+        assert!(empty(&children[0]));
+        assert!(matches!(
+            back.symbols[1].shape.kind,
+            ShapeKind::SymbolInstance { index: 2 }
+        ));
+        let ShapeKind::Group { children } = &back.symbols[2].shape.kind else {
+            panic!()
+        };
+        assert!(empty(&children[0]));
+        assert!(matches!(
+            children[1].kind,
+            ShapeKind::SymbolInstance { index: 0 }
+        ));
+        assert!(matches!(
+            back.symbols[3].shape.kind,
+            ShapeKind::SymbolInstance { index: 2 }
+        ));
+        assert_eq!(
+            back.pages[0].layers[0].shapes,
+            doc.pages[0].layers[0].shapes
+        );
+
+        // Each symbol draws the one before twice: 2^40 objects.
+        let mut bomb = Document::default();
+        bomb.symbols.push(sym(group(Vec::new())));
+        for i in 1..40 {
+            bomb.symbols
+                .push(sym(group(vec![inst(1, i - 1), inst(2, i - 1)])));
+        }
+        bomb.break_symbol_loops();
+        let kept = |s: &Symbol| match &s.shape.kind {
+            ShapeKind::Group { children } => children.iter().all(|c| !empty(c)),
+            _ => true,
+        };
+        // Symbol k stands for about 2^(k+2) objects: 18 is the first past
+        // a million, so 19 loses its instances of it, and 20 draws the
+        // little left of 19.
+        assert!(bomb.symbols[..19].iter().all(kept));
+        assert!(!kept(&bomb.symbols[19]));
+        assert!(kept(&bomb.symbols[20]));
     }
 
     #[test]
