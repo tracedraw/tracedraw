@@ -3418,7 +3418,9 @@ impl Renderer<'_> {
             StrokeDash::new(arr, 0.0)
         };
         let sk = SkStroke {
-            width: width_px,
+            // An outline wider than the reach covers the picture all the
+            // same, and its edges overflowed the rasteriser.
+            width: width_px.min(MAX_REACH as f32),
             miter_limit: stroke.miter_ratio() as f32,
             line_cap: match stroke.cap {
                 LCap::Butt => LineCap::Butt,
@@ -3602,7 +3604,7 @@ fn paint_shown(
             StrokeDash::new(arr, 0.0)
         };
         let line = SkStroke {
-            width: true_px.max(1.0),
+            width: true_px.clamp(1.0, MAX_REACH as f32),
             miter_limit: stroke.miter_ratio() as f32,
             line_cap: match stroke.cap {
                 LCap::Butt => LineCap::Butt,
@@ -5075,7 +5077,19 @@ pub fn sk_color_alpha(c: Color, opacity: f32) -> SkColor {
     SkColor::from_rgba8(r, g, b, (opacity.clamp(0.0, 1.0) * 255.0).round() as u8)
 }
 
+/// How far from the target a path may reach, pixels, before it is cut
+/// at this distance: the rasteriser overflowed on an object millions of
+/// pixels long (a rectangle typed 1,000 km tall ended the program, and
+/// a smaller one drew nothing). Far beyond any picture drawn.
+const MAX_REACH: f64 = (1u32 << 20) as f64;
+
 pub fn to_sk_path(path: &BezPath) -> Option<SkPath> {
+    let b = bbox(path);
+    let path = &if b.x0 < -MAX_REACH || b.y0 < -MAX_REACH || b.x1 > MAX_REACH || b.y1 > MAX_REACH {
+        cut_to_reach(path)
+    } else {
+        path.clone()
+    };
     let mut pb = PathBuilder::new();
     for el in path.elements() {
         match el {
@@ -5094,6 +5108,194 @@ pub fn to_sk_path(path: &BezPath) -> Option<SkPath> {
         }
     }
     pb.finish()
+}
+
+/// `path` cut to the square of [`MAX_REACH`] around the target, its curves
+/// flattened: a closed outline cut as a polygon (so what it fills inside
+/// the square stays the same), an open one as a line, its pieces outside
+/// left out (so a stroke along it stays the same).
+fn cut_to_reach(path: &BezPath) -> BezPath {
+    use tracedraw_core::geometry::CubicBez;
+    let m = MAX_REACH;
+    let mut out = BezPath::new();
+    let flush = |pts: &mut Vec<Point>, closed: bool, out: &mut BezPath| {
+        pts.retain(|p| p.x.is_finite() && p.y.is_finite());
+        if pts.len() >= 2 {
+            if closed {
+                let poly = clip_polygon(pts, m);
+                if poly.len() >= 3 {
+                    out.move_to(poly[0]);
+                    for p in &poly[1..] {
+                        out.line_to(*p);
+                    }
+                    out.close_path();
+                }
+            } else {
+                let mut pen = false;
+                for w in pts.windows(2) {
+                    match clip_segment(w[0], w[1], m) {
+                        Some((a, b, cut_start, cut_end)) => {
+                            if !pen || cut_start {
+                                out.move_to(a);
+                            }
+                            out.line_to(b);
+                            pen = !cut_end;
+                        }
+                        None => pen = false,
+                    }
+                }
+            }
+        }
+        pts.clear();
+    };
+    let mut pts: Vec<Point> = Vec::new();
+    let mut last = Point::ZERO;
+    for el in path.elements() {
+        match *el {
+            PathEl::MoveTo(p) => {
+                flush(&mut pts, false, &mut out);
+                pts.push(p);
+                last = p;
+            }
+            PathEl::LineTo(p) => {
+                pts.push(p);
+                last = p;
+            }
+            PathEl::QuadTo(c, p) => {
+                let c1 = last + (c - last) * (2.0 / 3.0);
+                let c2 = p + (c - p) * (2.0 / 3.0);
+                curve_points(CubicBez::new(last, c1, c2, p), m, &mut pts);
+                last = p;
+            }
+            PathEl::CurveTo(c1, c2, p) => {
+                curve_points(CubicBez::new(last, c1, c2, p), m, &mut pts);
+                last = p;
+            }
+            PathEl::ClosePath => {
+                let start = pts.first().copied();
+                flush(&mut pts, true, &mut out);
+                if let Some(s) = start {
+                    pts.push(s);
+                    last = s;
+                }
+            }
+        }
+    }
+    flush(&mut pts, false, &mut out);
+    out
+}
+
+/// The points of the curve `c` after its start, as lines: the pieces of
+/// it far from the square from -`m` to `m` as one line each (a curve lies
+/// within its control points, so a piece whose control points are all
+/// outside one side of the square, and the line across it, stay outside
+/// it), the pieces near it flattened. Halving the curve until a piece is
+/// near or far keeps a curve billions of pixels long to a few thousand
+/// lines (flattening it whole asked for more lines than memory holds).
+fn curve_points(c: tracedraw_core::geometry::CubicBez, m: f64, pts: &mut Vec<Point>) {
+    use tracedraw_core::geometry::ParamCurve as _;
+    let mut todo = vec![(c, 0u32)];
+    while let Some((c, depth)) = todo.pop() {
+        let ps = [c.p0, c.p1, c.p2, c.p3];
+        if ps.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()) {
+            pts.push(c.p3);
+            continue;
+        }
+        let (x0, x1) = ps
+            .iter()
+            .fold((f64::MAX, f64::MIN), |(a, b), p| (a.min(p.x), b.max(p.x)));
+        let (y0, y1) = ps
+            .iter()
+            .fold((f64::MAX, f64::MIN), |(a, b), p| (a.min(p.y), b.max(p.y)));
+        let far = x1 < -m || x0 > m || y1 < -m || y0 > m;
+        if far || depth > 1200 {
+            pts.push(c.p3);
+        } else if (x1 - x0).max(y1 - y0) <= 4.0 * m {
+            let mut piece = BezPath::new();
+            piece.move_to(c.p0);
+            piece.curve_to(c.p1, c.p2, c.p3);
+            tracedraw_core::geometry::flatten(&piece, 0.25, &mut |el| {
+                if let PathEl::LineTo(p) = el {
+                    pts.push(p);
+                }
+            });
+        } else {
+            let (a, b) = c.subdivide();
+            todo.push((b, depth + 1));
+            todo.push((a, depth + 1));
+        }
+    }
+}
+
+/// The polygon `pts` cut to the square from -`m` to `m` (Sutherland and
+/// Hodgman, one side of the square at a time).
+fn clip_polygon(pts: &[Point], m: f64) -> Vec<Point> {
+    let mut poly = pts.to_vec();
+    // Inside test and crossing point for each side.
+    type Side = (fn(Point, f64) -> bool, fn(Point, Point, f64) -> Point);
+    let sides: [Side; 4] = [
+        (|p, m| p.x >= -m, |a, b, m| at_x(a, b, -m)),
+        (|p, m| p.x <= m, |a, b, m| at_x(a, b, m)),
+        (|p, m| p.y >= -m, |a, b, m| at_y(a, b, -m)),
+        (|p, m| p.y <= m, |a, b, m| at_y(a, b, m)),
+    ];
+    for (inside, cross) in sides {
+        if poly.is_empty() {
+            break;
+        }
+        let mut next = Vec::with_capacity(poly.len() + 4);
+        let mut prev = *poly.last().unwrap();
+        for &p in &poly {
+            match (inside(prev, m), inside(p, m)) {
+                (true, true) => next.push(p),
+                (true, false) => next.push(cross(prev, p, m)),
+                (false, true) => {
+                    next.push(cross(prev, p, m));
+                    next.push(p);
+                }
+                (false, false) => {}
+            }
+            prev = p;
+        }
+        poly = next;
+    }
+    poly
+}
+
+fn at_x(a: Point, b: Point, x: f64) -> Point {
+    let t = (x - a.x) / (b.x - a.x);
+    Point::new(x, a.y + (b.y - a.y) * t)
+}
+
+fn at_y(a: Point, b: Point, y: f64) -> Point {
+    let t = (y - a.y) / (b.y - a.y);
+    Point::new(a.x + (b.x - a.x) * t, y)
+}
+
+/// The part of the segment from `a` to `b` inside the square from -`m` to
+/// `m` (Liang and Barsky), and whether its start and its end were cut.
+fn clip_segment(a: Point, b: Point, m: f64) -> Option<(Point, Point, bool, bool)> {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let (mut t0, mut t1) = (0.0f64, 1.0f64);
+    for (p, q) in [(-dx, a.x + m), (dx, m - a.x), (-dy, a.y + m), (dy, m - a.y)] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return None;
+            }
+        } else {
+            let r = q / p;
+            if p < 0.0 {
+                t0 = t0.max(r);
+            } else {
+                t1 = t1.min(r);
+            }
+        }
+    }
+    if t0 > t1 {
+        return None;
+    }
+    let at = |t: f64| Point::new(a.x + dx * t, a.y + dy * t);
+    Some((at(t0), at(t1), t0 > 0.0, t1 < 1.0))
 }
 
 /// Rasterise a fill over `bounds` (page mm) at `dpi`, y up mapped to image
@@ -5528,6 +5730,75 @@ mod tests {
             .filter(|&(x, y)| u32::from(px(&faded, x, y).0) > u32::from(px(&plain, x, y).0) + 40)
             .count();
         assert!(lighter > 50, "{lighter} pixels of the object faded");
+    }
+
+    /// An object reaching millions of pixels past the picture (a site
+    /// plan two kilometres across seen at the closest zoom, or a size
+    /// typed far too large) draws its part on the picture: its outline
+    /// overflowed the rasteriser, which panicked inside a destructor and
+    /// ended the program, or drew nothing.
+    #[test]
+    fn objects_far_larger_than_the_picture_draw() {
+        let big = 2_000_000.0; // 2 km in millimetres
+        let blue = Color::Rgb {
+            r: 0.0,
+            g: 0.0,
+            b: 1.0,
+        };
+        let mut shapes = Vec::new();
+        for (i, kind) in [
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, -big / 2.0, big, big / 2.0),
+                radius: 5.0,
+                corners: None,
+            },
+            ShapeKind::Ellipse {
+                rect: Rect::new(0.0, -big / 2.0, big, big / 2.0),
+                arc: None,
+            },
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut s = Shape::new(ShapeId(i as u64 + 1), kind);
+            s.fill = Fill::Solid(blue);
+            s.stroke = Some(Stroke::new(Color::BLACK, 0.05));
+            shapes.push(s);
+        }
+        // A huge outline width too.
+        let mut wide = Shape::new(
+            ShapeId(9),
+            ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 20.0, 20.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        wide.fill = Fill::None;
+        wide.stroke = Some(Stroke::new(Color::BLACK, 4.0e9));
+        for one in shapes.into_iter().chain([wide]) {
+            let (doc, page) = doc_with(vec![one]);
+            // 400 pixels a millimetre (the closest zoom), the object's left
+            // edge (page x 0, y 0) in the middle of the picture.
+            let opts = RenderOptions {
+                width: 200,
+                height: 200,
+                view: ViewTransform {
+                    zoom: 400.0,
+                    origin_x: 100.0,
+                    origin_y: 100.0,
+                    stretch_y: 1.0,
+                },
+                ..Default::default()
+            };
+            let pm = render_page(&doc, page, &opts).expect("drawn");
+            let inside = pm.pixel(150, 50).unwrap();
+            let outside = pm.pixel(50, 50).unwrap();
+            assert!(inside.alpha() > 200, "inside: {inside:?}");
+            if doc.pages[0].layers[0].shapes[0].id != ShapeId(9) {
+                assert!(outside.alpha() < 50, "outside: {outside:?}");
+            }
+        }
     }
 
     fn doc_with(shapes: Vec<Shape>) -> (Document, PageId) {

@@ -10,6 +10,7 @@ full, row-by-row status.
 - `.cdr` (version 16 and later): a fountain transparency whose nodes are not stored as greys, or whose nodes the object's style does not list, opens graded instead of solid or evenly see-through (#3095).
 - `.cdr`: an object embedded as a wrapped file (Object Packager, such as a `.crv3d` project) has no picture to show; it now keeps its place as a grey box named after the file instead of being dropped (#3083).
 - Macro editor (Alt+F11): Ctrl+S in the code saves the macro again; since 0.47.0 it opened Save Drawing instead and the code lost the keyboard.
+- Drawing: an object reaching millions of pixels past the picture (a site plan a couple of kilometres across at the closest zoom, a size typed far too large, a huge outline width) no longer ends TraceDraw; the rasteriser overflowed and the program aborted, or the object drew nothing. Its outline is now cut a million pixels around the picture, so its visible part draws as before.
 - Print: Fit to page scales the page to fill the paper inside its margins, larger or smaller, and what is put partly off a page stays cut at its edge, where it was drawn, on facing pages too. It pulled such objects onto the page and shrank the page's other objects with them. Printing the selection, Fit to page still shrinks it to fit the page (#2678).
 - Saving as `.cdr`: a filled curve set to fill with the nonzero rule (Fill winding), such as converted lettering, keeps its smooth and symmetrical nodes when none of its parts overlap; since 0.48.0 every such curve came back with all its nodes cusps.
 
