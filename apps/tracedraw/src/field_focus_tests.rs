@@ -132,3 +132,37 @@ fn editing_keys_stay_in_a_bar_field() {
     assert_eq!(shape_count(&app), 1, "nothing pasted or cut");
     assert!(app.doc().find_shape(id).expect("rect").shadow.is_some());
 }
+
+/// Ctrl+S in the code of the macro editor (Alt+F11) saves the macro, as
+/// its Save button says, and the code keeps the keyboard. Since #2893
+/// the code gave the keyboard up and Ctrl+S went to the drawing: the
+/// Save Drawing dialog opened and the macro stayed unsaved.
+#[test]
+fn ctrl_s_in_the_macro_code_saves_the_macro() {
+    let (ctx, mut app, _) = setup();
+    let dir = std::env::temp_dir().join(format!("tracedraw-ctrl-s-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    app.macros.dir = Some(dir.clone());
+    app.open_macro_editor();
+    assert!(app.macros.editor.is_some(), "{}", app.status);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let code = egui::Id::new("macro_code_edit");
+    ctx.memory_mut(|m| m.request_focus(code));
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Text("'".into())],
+        Modifiers::NONE,
+    );
+    assert!(app.macros.editor.as_ref().expect("editor").dirty, "typed");
+    tap(&ctx, &mut app, egui::Key::S, Modifiers::COMMAND);
+    assert!(
+        matches!(app.dialog, crate::ui::dialogs::Dialog::None),
+        "{:?}",
+        app.dialog
+    );
+    assert!(!app.macros.editor.as_ref().expect("editor").dirty, "saved");
+    assert_eq!(ctx.memory(|m| m.focused()), Some(code));
+    let _ = std::fs::remove_dir_all(&dir);
+}

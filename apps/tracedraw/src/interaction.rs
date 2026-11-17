@@ -4545,8 +4545,11 @@ impl App {
         // command runs in the next frame, on what the field changed. The
         // video of #2893 typed in the bar, then pressed Ctrl+K, and
         // nothing happened. The keys that edit the field's text stay its
-        // own (see `field_editing_key`).
-        if !dialog_open && ctx.egui_wants_keyboard_input() {
+        // own (see `field_editing_key`). The code of the macro editor
+        // keeps the keyboard and its own Ctrl+S, which saves the macro
+        // (see ui/macros_ui.rs).
+        let in_macro_code = ctx.memory(|m| m.focused()) == Some(egui::Id::new("macro_code_edit"));
+        if !dialog_open && !in_macro_code && ctx.egui_wants_keyboard_input() {
             let commands: Vec<egui::Event> = ctx.input(|i| {
                 i.events
                     .iter()
