@@ -102,8 +102,10 @@ fn rgb_array(c: Color) -> String {
 const PROCS: &str = "/m {moveto} def /l {lineto} def /c {curveto} def /h {closepath} def";
 
 pub fn page_to_eps(doc: &Document, page_index: usize) -> String {
-    // Pictures in clip frames without the pixels their frames hide.
-    let doc = &*crate::picture_crop::trim_framed_pictures(doc, Some(page_index));
+    // As the other vector exports see it: open curves' fills as the
+    // screen shows them, pictures in clip frames without the pixels their
+    // frames hide.
+    let doc = &*crate::for_export(doc, Some(page_index));
     let Some(page) = doc.pages.get(page_index) else {
         return String::new();
     };
@@ -134,8 +136,10 @@ pub fn page_to_eps(doc: &Document, page_index: usize) -> String {
 /// 3.0): each page sets its size with `setpagedevice` and ends with
 /// `showpage`. `.prn` print files are written the same way.
 pub fn document_to_ps(doc: &Document) -> String {
-    // Pictures in clip frames without the pixels their frames hide.
-    let doc = &*crate::picture_crop::trim_framed_pictures(doc, None);
+    // As the other vector exports see it: open curves' fills as the
+    // screen shows them, pictures in clip frames without the pixels their
+    // frames hide.
+    let doc = &*crate::for_export(doc, None);
     let pt = |mm: f64| mm * MM_PT;
     let (mw, mh) = doc.pages.iter().fold((0.0f64, 0.0f64), |(w, h), p| {
         (w.max(pt(p.size.width)), h.max(pt(p.size.height)))
@@ -760,6 +764,41 @@ mod tests {
         prn.extend_from_slice(ps.as_bytes());
         let back = crate::eps_import::parse(&prn, &mut ids).expect("reads");
         assert_eq!(back.pages().len(), 2);
+    }
+
+    #[test]
+    fn an_open_curve_keeps_its_fill_hidden_as_on_screen() {
+        // A filled open curve shows no fill on screen, in SVG, PDF and
+        // EMF; EPS, PostScript and AI filled it.
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let mut p = tracedraw_core::BezPath::new();
+        p.move_to((20.0, 20.0));
+        p.curve_to((40.0, 80.0), (60.0, 0.0), (80.0, 50.0));
+        let mut curve = Shape::new(
+            tracedraw_core::ShapeId(1),
+            ShapeKind::Path {
+                path: p,
+                closed: false,
+            },
+        );
+        curve.fill = Fill::Solid(Color::rgb8(200, 30, 30));
+        curve.stroke = Some(tracedraw_core::Stroke::new(Color::BLACK, 0.5));
+        doc.layer_mut(layer).unwrap().shapes.push(curve);
+        // Written as the same curve with no fill.
+        let mut unfilled = doc.clone();
+        unfilled.pages[0].layers[0].shapes[0].fill = Fill::None;
+        assert_eq!(page_to_eps(&doc, 0), page_to_eps(&unfilled, 0));
+        assert_eq!(document_to_ps(&doc), document_to_ps(&unfilled));
+        assert_eq!(
+            crate::ai::page_to_ai8(&doc, 0),
+            crate::ai::page_to_ai8(&unfilled, 0)
+        );
+        // With Fill open curves on, the fill is drawn and written.
+        doc.metadata.fill_open_curves = true;
+        unfilled.metadata.fill_open_curves = true;
+        assert_ne!(page_to_eps(&doc, 0), page_to_eps(&unfilled, 0));
+        assert!(page_to_eps(&doc, 0).contains("0.784 0.118 0.118"));
     }
 
     #[test]

@@ -207,6 +207,9 @@ fn circle(c: Point, r: f64) -> BezPath {
 /// A classic Illustrator (version 8, PostScript-based) file of page
 /// `page_index` of `doc`; empty when there is no such page.
 pub fn page_to_ai8(doc: &Document, page_index: usize) -> String {
+    // As the other vector exports see it: an open curve's fill as the
+    // screen shows it (none, unless the document fills open curves).
+    let doc = &*crate::for_export(doc, Some(page_index));
     let Some(page) = doc.pages.get(page_index) else {
         return String::new();
     };
