@@ -57,8 +57,10 @@ configurações, e **Aplicar** as guarda para a próxima vez.
 ## Layout {#layout}
 
 - **Como no documento**, **Ajustar à página** ou **Escala** em porcentagem.
-  **Ajustar à página** também reduz objetos maiores que a página (ou a
-  seleção, quando só ela é impressa) para que saiam inteiros nela.
+  **Ajustar à página** aumenta ou reduz a página para ocupar o papel dentro
+  das margens; o que você deixou em parte fora da página continua cortado na
+  borda, como na tela. Quando só a seleção é impressa, ela é reduzida para
+  caber na página.
 - **Limite de sangria**: até onde além da página os objetos são impressos
   (4 mm de início, ou a sangria do próprio desenho).
 - **Margens do papel** (esquerda, direita, superior, inferior, 0 de início)

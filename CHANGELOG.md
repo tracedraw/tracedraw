@@ -4,6 +4,10 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Print: Fit to page scales the page to fill the paper inside its margins, larger or smaller, and what is put partly off a page stays cut at its edge, where it was drawn, on facing pages too. It pulled such objects onto the page and shrank the page's other objects with them. Printing the selection, Fit to page still shrinks it to fit the page (#2678).
+
 ## 0.48.0 (2026-11-16)
 
 - Saving to CorelDRAW (`.cdr`): curves that fill with the nonzero rule (Fill winding on), such as converted or traced lettering whose parts overlap and text fitted to a path or bent, go out as the outline of the area they fill. CorelDRAW still showed holes where the parts overlapped, although the file marked them Fill winding; they now look the same there in every version, and TraceDraw opens them nonzero again (#2733).

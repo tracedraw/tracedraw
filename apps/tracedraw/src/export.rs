@@ -1427,66 +1427,6 @@ fn fit_contents_to_page(page: &mut tracedraw_core::document::Page, all: bool) {
     }
 }
 
-/// Fit to page on facing pages (#2678): the objects of each spread that
-/// run off it shrink to fit inside it, centred on it, as
-/// [`fit_contents_to_page`] does for a page, with the spread's pages
-/// side by side. An object across the spine but inside the spread stays
-/// as it is, so each page prints its part of it.
-fn fit_contents_to_spreads(doc: &mut Document) {
-    const EPS: f64 = 1e-6;
-    let Some(start) = doc.facing() else {
-        return;
-    };
-    for spread in tracedraw_core::spreads::spreads(doc.pages.len(), start) {
-        let (placed, area) = doc.place_spread(spread);
-        let shows =
-            |b: &Rect| b.x0 <= area.x1 && b.x1 >= area.x0 && b.y0 <= area.y1 && b.y1 >= area.y0;
-        // Each page's objects in the spread's coordinates.
-        let on_spread = |at: tracedraw_core::geometry::Point, b: Rect| b + at.to_vec2();
-        let Some(b) = placed
-            .iter()
-            .filter_map(|(i, at)| doc.pages.get(*i).map(|p| (p, *at)))
-            .flat_map(|(p, at)| {
-                p.layers
-                    .iter()
-                    .flat_map(|l| &l.shapes)
-                    .map(move |s| on_spread(at, s.bounds()))
-            })
-            .filter(|b| b.width().is_finite() && b.height().is_finite() && shows(b))
-            .reduce(|a, b| a.union(b))
-        else {
-            continue;
-        };
-        let inside = b.x0 >= area.x0 - EPS
-            && b.y0 >= area.y0 - EPS
-            && b.x1 <= area.x1 + EPS
-            && b.y1 <= area.y1 + EPS;
-        if inside {
-            continue;
-        }
-        let k = (area.width() / b.width().max(EPS))
-            .min(area.height() / b.height().max(EPS))
-            .min(1.0);
-        let t = Affine::translate(area.center().to_vec2())
-            * Affine::scale(k)
-            * Affine::translate(-b.center().to_vec2());
-        for (i, at) in &placed {
-            let Some(page) = doc.pages.get_mut(*i) else {
-                continue;
-            };
-            // The spread's fit in the page's own coordinates.
-            let local = Affine::translate(-at.to_vec2()) * t * Affine::translate(at.to_vec2());
-            for layer in page.layers.iter_mut() {
-                for s in layer.shapes.iter_mut() {
-                    if shows(&on_spread(*at, s.bounds())) {
-                        s.transform_by(local);
-                    }
-                }
-            }
-        }
-    }
-}
-
 /// The area `shapes` print on: their outlines (half the outline's width
 /// beyond the path) and live effects included, at least a sliver each
 /// way (a line has no height). `None` for no shapes.
@@ -1643,18 +1583,10 @@ pub fn print_sheets(app: &App, st: &PrintState) -> Document {
     let src = app.engine.document();
     // Facing pages: each page printed with what its facing page holds
     // across the spine and in the bleed beside it (#1972); not for the
-    // selection alone. With Fit to page what runs off a spread shrinks
-    // to fit the spread first, so an object across the spine stays split
-    // between its two pages: fitted page by page, it shrank onto its own
-    // page and left the facing one empty (#2678).
+    // selection alone.
     let selection = st.range == 3 && !app.selection.is_empty();
-    let fit_spreads = st.fit_to_page && !selection && src.facing().is_some();
-    let mut doc = if selection || (st.fit_to_page && !fit_spreads) {
+    let mut doc = if selection {
         src.clone()
-    } else if fit_spreads {
-        let mut fitted = src.clone();
-        fit_contents_to_spreads(&mut fitted);
-        fitted.with_spread_overhangs(src.metadata.bleed)
     } else {
         src.with_spread_overhangs(src.metadata.bleed)
     };
@@ -1688,12 +1620,15 @@ pub fn print_sheets(app: &App, st: &PrintState) -> Document {
             page.background = None;
         }
     }
-    // Fit to page: objects running off the page (the selection, when
-    // that is printed) shrink to fit inside it, centred, rather than
-    // being cut at its edge (#534).
-    if st.fit_to_page && !fit_spreads {
+    // Fit to page with the selection printed: the selection shrinks to
+    // fit the page, centred, rather than being cut at its edge (#534).
+    // Printing pages, Fit to page scales the page itself to the paper
+    // (`imposition::Options::fit`) and what runs off a page stays cut at
+    // its edge, as on screen: pulling it in shrank the page's own objects
+    // and moved them off their place (#2678).
+    if st.fit_to_page && selection {
         for page in doc.pages.iter_mut() {
-            fit_contents_to_page(page, st.range == 3);
+            fit_contents_to_page(page, true);
         }
     }
     for page in doc.pages.iter_mut() {
@@ -2155,6 +2090,7 @@ pub fn print_layout(app: &App, st: &PrintState, doc: &Document) -> crate::imposi
         cell_rotation: st.cell_rotation.clone(),
         cell_order: st.cell_order.clone(),
         stretch_fit: st.stretch_fit,
+        fit: st.fit_to_page,
         booklet: st.booklet(),
         marks: crate::imposition::Marks {
             crop: st.crop_marks,
@@ -5278,10 +5214,9 @@ mod tests {
     }
 
     /// Fit to page on facing pages (#2678): an object across the spine
-    /// inside its spread prints split between the two pages, as without
-    /// Fit to page; one running off the spread shrinks to fit the spread,
-    /// still split. Fitted page by page, it shrank onto its own page and
-    /// the facing page printed empty.
+    /// prints split between the two pages, as without Fit to page.
+    /// Fitted page by page, it shrank onto its own page and the facing
+    /// page printed empty.
     #[test]
     fn fit_to_page_keeps_an_object_across_the_spine_on_both_pages() {
         fn shapes(s: &tracedraw_core::Shape, out: &mut Vec<tracedraw_core::Shape>) {
@@ -5334,31 +5269,78 @@ mod tests {
             1,
             "the facing page has its part"
         );
-        // Off the spread's right edge: it shrinks to the spread, and the
-        // facing page still has its part.
-        let r = |w: f64| Rect::new(size.width - 20.0, 10.0, size.width + w, 40.0);
-        app.select(vec![id]);
-        let mut doc = app.doc().clone();
-        if let Some(s) = doc.find_shape_mut(id) {
-            s.kind = ShapeKind::Rect {
-                rect: r(size.width * 2.0),
+    }
+
+    /// Fit to page scales the page to the paper and leaves what runs off
+    /// a page cut at its edge, where it was drawn (#2678): an object put
+    /// partly off the page on purpose, or past the outer edge of a
+    /// spread, keeps its place and size instead of being pulled onto the
+    /// page and shrunk with the page's other objects.
+    #[test]
+    fn fit_to_page_leaves_what_runs_off_the_page_where_it_is() {
+        // The rectangles printed on page `k`, inside any clip frame.
+        fn rects(doc: &Document, k: usize) -> Vec<Rect> {
+            fn walk(s: &tracedraw_core::Shape, out: &mut Vec<Rect>) {
+                match &s.kind {
+                    ShapeKind::ClipFrame { contents, .. } => {
+                        contents.iter().for_each(|c| walk(c, out))
+                    }
+                    ShapeKind::Rect { .. } => out.push(s.bounds()),
+                    _ => {}
+                }
+            }
+            let mut out = Vec::new();
+            for s in doc.pages[k].layers.iter().flat_map(|l| &l.shapes) {
+                walk(s, &mut out);
+            }
+            out
+        }
+        let mut app = App::headless();
+        let size = app.page_size();
+        let rect = |app: &mut App, r: Rect| {
+            app.new_shape(ShapeKind::Rect {
+                rect: r,
                 radius: 0.0,
                 corners: None,
-            };
+            })
+            .expect("rect")
+        };
+        rect(&mut app, Rect::new(20.0, 20.0, 60.0, 60.0));
+        let off = Rect::new(size.width - 30.0, 100.0, size.width + 70.0, 150.0);
+        rect(&mut app, off);
+        let st = PrintState {
+            fit_to_page: true,
+            ..PrintState::default()
+        };
+        let printed = print_sheets(&app, &st);
+        let on_page = rects(&printed, 0);
+        assert!(
+            on_page.contains(&off),
+            "not pulled onto the page: {on_page:?}"
+        );
+        assert!(on_page.contains(&Rect::new(20.0, 20.0, 60.0, 60.0)));
+        // The page is what fits the paper: Fit to page goes to the layout.
+        assert!(print_layout(&app, &st, &printed).fit);
+        // Facing pages: past the outer edge of the spread, the same.
+        for _ in 0..2 {
+            app.add_page();
         }
-        let mut fitted = doc.clone();
-        fit_contents_to_spreads(&mut fitted);
-        let b = fitted.find_shape(id).expect("rect").bounds();
-        assert!(b.x1 <= 2.0 * size.width + 1e-6, "{b:?}");
-        assert!(b.x1 > size.width, "still across the spine: {b:?}");
-        assert!(b.width() < size.width * 2.0 + 20.0);
-        // Page 1 stands alone: inside it, untouched.
-        assert_eq!(fitted.pages[0], doc.pages[0]);
+        app.set_facing_pages(true, tracedraw_core::spreads::PageSide::Right);
+        app.page = app.doc().pages[2].id;
+        let outer = Rect::new(size.width - 30.0, 10.0, size.width + 40.0, 40.0);
+        rect(&mut app, outer);
+        let printed = print_sheets(&app, &st);
+        let on_page = rects(&printed, 2);
+        assert!(
+            on_page.contains(&outer),
+            "kept past the spread's edge: {on_page:?}"
+        );
     }
 
     /// A blend prints as it is drawn when the print moves or recolours
     /// its objects: with Fit to page (the end object running off the
-    /// page), with the selection printed as the page, and as a negative,
+    /// page, left where it is), with the selection printed as the page,
+    /// and as a negative,
     /// the steps lie between the start and the end as printed and their
     /// colours run between the printed colours. The steps were evaluated
     /// from the copy of the end object the blend keeps, which the print
@@ -5446,16 +5428,13 @@ mod tests {
                 end.1
             );
         };
+        // Fit to page scales the page, so the end stays where it is.
         let fit = PrintState {
             fit_to_page: true,
             ..PrintState::default()
         };
         let p = printed_blend(&print_sheets(&app, &fit));
-        assert!(
-            p.1 .0.x1 <= 210.0 + 1e-6,
-            "shrunk onto the page: {:?}",
-            p.1 .0
-        );
+        assert!(p.1 .0.x1 > 210.0, "left where drawn: {:?}", p.1 .0);
         between(&p);
         let selection = PrintState {
             range: 3,
