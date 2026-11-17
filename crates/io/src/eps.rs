@@ -338,6 +338,14 @@ impl Writer<'_> {
             }
             return;
         }
+        // Characters with a fill or outline of their own: one text a look,
+        // as the other exports write it. All went out in the object's fill.
+        if let Some(parts) = shape.text_parts() {
+            for p in &parts {
+                self.shape(p, parent);
+            }
+            return;
+        }
         // An outline set behind the fill: the outline first, then the
         // fill over it, as the drawing window draws it.
         if shape.stroke.as_ref().is_some_and(|st| st.behind_fill)
@@ -884,5 +892,44 @@ mod tests {
         assert!(eps.contains("119 119 8 [119 0 0 -119 0 119]"), "{eps}");
         // Red pixels from the tile appear in the hex data.
         assert!(eps.contains("ff0000ff0000"));
+    }
+}
+
+#[cfg(test)]
+mod text_look_tests {
+    use super::*;
+    use tracedraw_core::document::{ParagraphStyle, TextAlign, TextSpan};
+    use tracedraw_core::geometry::Point;
+
+    /// Characters coloured apart keep their colours in EPS and PostScript,
+    /// as on screen and in the other exports; all went out in the text's
+    /// own fill.
+    #[test]
+    fn characters_keep_their_own_colours() {
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let mut red = TextSpan::new("Red ", "DejaVu Sans", 36.0);
+        red.fill = Some(Fill::Solid(Color::rgb8(220, 0, 0)));
+        let mut green = TextSpan::new("Green", "DejaVu Sans", 36.0);
+        green.fill = Some(Fill::Solid(Color::rgb8(0, 160, 0)));
+        let mut text = Shape::new(
+            tracedraw_core::ShapeId(1),
+            ShapeKind::Text {
+                spans: vec![red, green],
+                origin: Point::new(20.0, 40.0),
+                frame: None,
+                align: TextAlign::Left,
+                para: ParagraphStyle::default(),
+                on_path: None,
+            },
+        );
+        text.fill = Fill::Solid(Color::rgb8(20, 20, 160));
+        text.stroke = None;
+        doc.layer_mut(layer).unwrap().shapes.push(text);
+        for out in [page_to_eps(&doc, 0), document_to_ps(&doc)] {
+            assert!(out.contains("0.863 0 0"), "red\n{out}");
+            assert!(out.contains("0 0.627 0"), "green\n{out}");
+            assert!(!out.contains("0.078 0.078 0.627"), "{out}");
+        }
     }
 }

@@ -10,6 +10,7 @@ full, row-by-row status.
 - `.cdr` (version 16 and later): a fountain transparency whose nodes are not stored as greys, or whose nodes the object's style does not list, opens graded instead of solid or evenly see-through (#3095).
 - EPS, PostScript and AI exports leave out the fill of an open curve, as the drawing window and the SVG, PDF and EMF exports do (unless Fill open curves is on): a filled curve left open came out filled in those files, closed by a straight line from its end back to its start.
 - `.cdr`: an object embedded as a wrapped file (Object Packager, such as a `.crv3d` project) has no picture to show; it now keeps its place as a grey box named after the file instead of being dropped (#3083).
+- EPS and PostScript: characters with a colour or outline of their own keep it. The whole text came out in the object's colour.
 - EMF and WMF export: a clip frame keeps its own fill, beneath its contents as on screen. The frame came out empty round its contents.
 - Macro editor (Alt+F11): Ctrl+S in the code saves the macro again; since 0.47.0 it opened Save Drawing instead and the code lost the keyboard.
 - Print: Fit to page scales the page to fill the paper inside its margins, larger or smaller, and what is put partly off a page stays cut at its edge, where it was drawn, on facing pages too. It pulled such objects onto the page and shrank the page's other objects with them. Printing the selection, Fit to page still shrinks it to fit the page (#2678).
