@@ -5962,7 +5962,11 @@ fn decode_bitmap(
     let mut r = Reader::new(d, v < 6);
     r.pos = h.body;
     let mut palette: Vec<[u8; 3]> = Vec::new();
-    if bpp < 24 && h.model != 5 && h.model != 6 {
+    // Model 99 is a grey picture of one byte per pixel with no palette,
+    // as transparency bitmaps and masks are stored (#2691); a palette is
+    // only read where the chunk has room for it before the pixels.
+    let palette_room = d.len().saturating_sub(h.body) >= h.size as usize + 4;
+    if bpp < 24 && h.model != 5 && h.model != 6 && h.model != BITMAP_GREY_MASK && palette_room {
         r.skip(2);
         let n = r.u16().unwrap_or(0) as usize;
         let n = n.min(r.remaining() / 3).min(256);
@@ -6217,6 +6221,10 @@ fn bitmap_mask(d: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
 
 /// The bitmap colour model of CMYK images.
 const BITMAP_CMYK: u32 = 3;
+
+/// The bitmap colour model of grey pictures with no palette: the masks
+/// of pictures and the pictures of bitmap transparencies (#2691).
+const BITMAP_GREY_MASK: u32 = 99;
 
 /// One CMYK pixel (ink bytes, 255 = full ink) as opaque RGBA: through
 /// `lut` when given, else one minus the ink times one minus the black.
@@ -10467,6 +10475,44 @@ pub(crate) mod tests {
         assert!(pictures
             .iter()
             .all(|p| tracedraw_core::SharedBytes::ptr_eq(p, pictures[0])));
+    }
+
+    /// A picture of colour model 99 (one grey byte per pixel, no palette),
+    /// as a bitmap transparency stores its picture, is read as greys; it
+    /// was dropped, so a picture fill naming it had no image and its
+    /// object came in opaque (#2691, a version 22 file).
+    #[test]
+    fn grey_model_99_bitmaps_have_no_palette() {
+        // 2 x 2, model 99, 8 bpp, stride 4: bottom row 10, 200; top 0, 255.
+        let mut bmp = u32s(&[5]);
+        bmp.extend_from_slice(&[0; 50]);
+        bmp.extend_from_slice(&u32s(&[BITMAP_GREY_MASK, 1, 2, 2, 1, 8, 4, 8]));
+        bmp.extend_from_slice(&[0; 32]);
+        bmp.extend_from_slice(&[10, 200, 0, 0, 0, 255, 0, 0]);
+        let mut c = i32s(&[0, 0, 254000, 254000]);
+        c.extend_from_slice(&[0; 32]);
+        c.extend_from_slice(&u32s(&[5]));
+        c.extend_from_slice(&[0; 20]);
+        c.extend_from_slice(&u32s(&[0]));
+        let obj = list(
+            b"obj ",
+            &chunk(b"loda", &loda(OBJ_BITMAP, &[(ARG_COORDS, c)])),
+        );
+        let body = [
+            chunk(b"mcfg", &mcfg(13, 2_540_000, 2_540_000)),
+            chunk(b"bmp ", &bmp),
+            list(b"page", &list(b"layr", &obj)),
+        ]
+        .concat();
+        let (doc, rep) = parse(&riff(b"CDRD", &body), 13);
+        assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+        let ShapeKind::Bitmap { png, .. } = &first_shape(&doc).kind else {
+            panic!("a bitmap");
+        };
+        let raw = raw_rows(png);
+        // Top row first: 0 and 255, then 10 and 200, as opaque greys.
+        assert_eq!(&raw[1..9], &[0, 0, 0, 255, 255, 255, 255, 255]);
+        assert_eq!(&raw[10..18], &[10, 10, 10, 255, 200, 200, 200, 255]);
     }
 
     #[test]
