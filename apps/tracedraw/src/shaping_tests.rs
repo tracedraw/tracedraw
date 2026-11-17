@@ -604,3 +604,68 @@ fn combine_inside_a_group_keeps_the_result_in_the_group() {
     let back: Vec<ShapeId> = children_of(&app, group).iter().map(|k| k.id).collect();
     assert_eq!(back, vec![a, b, c]);
 }
+
+/// Simplify with a group at the bottom: each object of the group loses
+/// what is above it, the objects in front of it in the group included,
+/// and the group stays a group with their own fills. It became one curve
+/// with the group's fill (none, so it showed only in Wireframe) and a
+/// hole where its objects overlapped.
+#[test]
+fn simplify_keeps_a_group_and_its_fills() {
+    let mut app = App::headless();
+    let red = rect(&mut app, 0.0, 0.0, 10.0, 10.0);
+    let green = rect(&mut app, 5.0, 0.0, 15.0, 10.0);
+    app.run(tracedraw_core::Command::SetFill {
+        shapes: vec![green],
+        fill: Fill::Solid(Color::rgb8(0, 255, 0)),
+    });
+    app.select(vec![red, green]);
+    app.group_selection();
+    let group = app.selection[0];
+    let bar = rect(&mut app, 12.0, 0.0, 20.0, 10.0);
+    app.select(vec![group, bar]);
+    app.shaping(Shaping::Simplify);
+    let kids = children_of(&app, group);
+    assert_eq!(kids.len(), 2, "{kids:?}");
+    // Red (0, 0)-(10, 10) under green: (0, 0)-(5, 10); green (5, 0)-(15,
+    // 10) under the bar: (5, 0)-(12, 10).
+    let areas: Vec<f64> = kids.iter().map(shape_area).collect();
+    assert!(
+        near(areas[0], 50.0, 1e-6) && near(areas[1], 70.0, 1e-6),
+        "{areas:?}"
+    );
+    assert_eq!(kids[0].fill, Fill::Solid(Color::rgb8(255, 0, 0)));
+    assert_eq!(kids[1].fill, Fill::Solid(Color::rgb8(0, 255, 0)));
+    // One step back gives the group as it was.
+    app.undo();
+    let kids = children_of(&app, group);
+    let areas: Vec<f64> = kids.iter().map(shape_area).collect();
+    assert_eq!(areas, vec![100.0, 100.0]);
+}
+
+/// Simplify reads each object by the area it fills: a curve filled with
+/// the nonzero rule whose inner contour turns the same way as its outer
+/// one has no hole there, and it got one.
+#[test]
+fn simplify_keeps_a_nonzero_curve_solid() {
+    let mut app = App::headless();
+    let mut square = polygon(&[(0.0, 0.0), (30.0, 0.0), (30.0, 30.0), (0.0, 30.0)]);
+    square.extend(
+        polygon(&[(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)])
+            .elements()
+            .iter()
+            .copied(),
+    );
+    let id = curve(&mut app, square);
+    app.run(tracedraw_core::Command::SetFillRule {
+        shapes: vec![id],
+        rule: tracedraw_core::shaping::FillRule::NonZero,
+    });
+    let bar = rect(&mut app, 25.0, 25.0, 40.0, 40.0);
+    app.select(vec![id, bar]);
+    app.shaping(Shaping::Simplify);
+    let s = app.doc().shape_on_page(id).expect("the curve");
+    // 900 filled, less the 5 x 5 corner under the bar.
+    let area = shape_area(&s);
+    assert!(near(area, 875.0, 1e-6), "{area}");
+}

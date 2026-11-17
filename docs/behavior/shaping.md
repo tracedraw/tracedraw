@@ -28,7 +28,7 @@ its result are one undo step. Checked by
 | Weld | 2 | one object covering all of them | nothing |
 | Trim | 2 | the target without what the sources cover | the sources |
 | Intersect | 2 | the area all of them share | the sources and the target |
-| Simplify | 1 | each object without what objects above it cover | the objects, changed in place |
+| Simplify | 1 | each object without what objects above it cover; a group's objects each by itself (the objects in front of it in the group cut it too), the group kept with their own fills; each object read by the area it fills, so a curve filled with the nonzero rule, or text, gets no holes where its contours overlap | the objects, changed in place |
 | Front Minus Back | 2 | the front object without the ones behind (its attributes) | nothing |
 | Back Minus Front | 2 | the back object without the ones in front (its attributes) | nothing |
 | Boundary | 1 | an outline around the selection, with no fill and the target's outline (a hairline if it has none), as in CorelDRAW (#2640) | every object |

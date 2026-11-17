@@ -1158,6 +1158,77 @@ fn group_leaves(s: &Shape) -> Vec<Shape> {
     out
 }
 
+/// What Simplify leaves of an object.
+enum Simplified {
+    /// Nothing changed (an open curve, or a group of them).
+    Same,
+    /// Nothing is left.
+    Gone,
+    Kind(ShapeKind),
+}
+
+/// What Simplify leaves of `s` (under `parent`, the identity for an
+/// object of the layer): each of its objects, a group's in
+/// [`group_leaves`] order, takes the next outline of `cuts` (page space;
+/// `None` for an open curve, which stays as it is). Objects of a group
+/// left with nothing go out of it.
+fn simplified(
+    s: &Shape,
+    parent: tracedraw_core::geometry::Affine,
+    cuts: &mut impl Iterator<Item = Option<tracedraw_core::BezPath>>,
+) -> Simplified {
+    let t = parent * s.transform;
+    if let ShapeKind::Group { children } = &s.kind {
+        let mut kept = Vec::new();
+        let mut changed = false;
+        for c in children {
+            match simplified(c, t, cuts) {
+                Simplified::Same => kept.push(c.clone()),
+                Simplified::Gone => changed = true,
+                Simplified::Kind(kind) => {
+                    let mut c = c.clone();
+                    c.kind = kind;
+                    kept.push(c);
+                    changed = true;
+                }
+            }
+        }
+        return if kept.is_empty() {
+            Simplified::Gone
+        } else if changed {
+            Simplified::Kind(ShapeKind::Group { children: kept })
+        } else {
+            Simplified::Same
+        };
+    }
+    let Some(p) = cuts.next().flatten() else {
+        return Simplified::Same;
+    };
+    if p.elements().is_empty() {
+        return Simplified::Gone;
+    }
+    let local = t.inverse() * p;
+    Simplified::Kind(match &s.kind {
+        // A clip frame's frame takes the outline left; what it holds
+        // stays inside (#1748).
+        ShapeKind::ClipFrame { frame, contents } => {
+            let mut frame = (**frame).clone();
+            frame.kind = ShapeKind::Path {
+                path: frame.transform.inverse() * local,
+                closed: true,
+            };
+            ShapeKind::ClipFrame {
+                frame: Box::new(frame),
+                contents: contents.clone(),
+            }
+        }
+        _ => ShapeKind::Path {
+            path: local,
+            closed: true,
+        },
+    })
+}
+
 /// The area an object covers on the page, as an outline read with the
 /// even-odd rule, for the shaping operations: text and curves set to the
 /// nonzero rule (#1919) without holes where their contours overlap, and
@@ -1514,31 +1585,50 @@ impl App {
                     .skip(1)
                     .fold(paths[0].clone(), |acc, p| overlay(&acc, p, Op::Intersect)),
                 Shaping::Simplify => {
-                    // Each object loses what is covered by objects above it.
-                    let mut cmds = Vec::new();
-                    for (i, s) in ordered.iter().enumerate() {
-                        let mut p = s.page_path();
-                        for above in &paths[i + 1..] {
-                            p = overlay(&p, above, Op::Trim);
+                    // Each object loses what is covered by objects above
+                    // it, read by the area it fills (a curve filled with
+                    // the nonzero rule, and text, have no holes where
+                    // their contours overlap). The objects of a group are
+                    // cut one by one and stay a group with their own
+                    // fills: the group became one curve with no fill and a
+                    // hole where its objects overlapped.
+                    let mut leaves: Vec<Shape> = Vec::new();
+                    for s in &ordered {
+                        let l = group_leaves(s);
+                        if l.is_empty() {
+                            leaves.push(s.clone());
+                        } else {
+                            leaves.extend(l);
                         }
-                        let p = simplify(&p);
-                        let local = s.transform.inverse() * p;
-                        let kind = match &s.kind {
-                            // A clip frame's frame takes the outline left;
-                            // what it holds stays inside (#1748).
-                            ShapeKind::ClipFrame { frame, contents } => {
-                                let mut frame = (**frame).clone();
-                                frame.kind = ShapeKind::Path {
-                                    path: frame.transform.inverse() * local,
-                                    closed: true,
-                                };
-                                ShapeKind::ClipFrame {
-                                    frame: Box::new(frame),
-                                    contents: contents.clone(),
-                                }
+                    }
+                    // An open curve covers nothing: it neither cuts nor is
+                    // cut.
+                    let areas: Vec<Option<tracedraw_core::BezPath>> = leaves
+                        .iter()
+                        .map(|l| (!open(l)).then(|| shaping_area(l)))
+                        .collect();
+                    let mut cuts = areas.iter().enumerate().map(|(i, a)| {
+                        a.as_ref().map(|a| {
+                            let mut p = a.clone();
+                            for above in areas[i + 1..].iter().flatten() {
+                                p = overlay(&p, above, Op::Trim);
                             }
-                            _ => ShapeKind::Path {
-                                path: local,
+                            simplify(&p)
+                        })
+                    });
+                    let mut cmds = Vec::new();
+                    for s in &ordered {
+                        let kind = match simplified(
+                            s,
+                            tracedraw_core::geometry::Affine::IDENTITY,
+                            &mut cuts,
+                        ) {
+                            Simplified::Same => continue,
+                            Simplified::Kind(kind) => kind,
+                            // An object covered all over keeps its place,
+                            // with nothing left of its outline.
+                            Simplified::Gone => ShapeKind::Path {
+                                path: tracedraw_core::BezPath::new(),
                                 closed: true,
                             },
                         };
