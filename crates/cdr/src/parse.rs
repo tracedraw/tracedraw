@@ -484,6 +484,9 @@ struct Ctx<'a> {
     /// The metafile pictures embedded objects were last drawn as, by
     /// storage name (`ole2` chunks), for those without a picture above.
     embedded_metafiles: HashMap<String, Vec<u8>>,
+    /// Labels of embedded packages (wrapped files with no picture), by
+    /// storage name.
+    embedded_packages: HashMap<String, String>,
     /// The object just read drew a metafile: its objects need ids from
     /// the document's source.
     pending_renumber: bool,
@@ -605,6 +608,7 @@ impl<'a> Ctx<'a> {
             bitmaps: HashMap::new(),
             embedded: HashMap::new(),
             embedded_metafiles: HashMap::new(),
+            embedded_packages: HashMap::new(),
             pending_renumber: false,
             pattern_tiles: HashMap::new(),
             vector_patterns: HashMap::new(),
@@ -757,6 +761,8 @@ pub(crate) fn parse_document_kept_data(
             ctx.embedded.extend(pictures);
             let metafiles = crate::ole::embedded_metafiles(ctx.data(c));
             ctx.embedded_metafiles.extend(metafiles);
+            let packages = crate::ole::embedded_packages(ctx.data(c));
+            ctx.embedded_packages.extend(packages);
         }
     });
     ctx.read_bitmaps(&bitmaps);
@@ -3355,6 +3361,28 @@ impl<'a> Ctx<'a> {
                 tracedraw_core::document::metafile::play(m, &mut ids)
             });
             let Some((mut shapes, size)) = drawn else {
+                // A package (a wrapped file, #3083) has no picture: keep
+                // its place as a grey box named after the file.
+                if let Some(label) = self.embedded_packages.get(name).cloned() {
+                    let rect = rect()?;
+                    let mut ids = tracedraw_core::id::IdSource::default();
+                    let mut b = Shape::new(
+                        ids.shape(),
+                        ShapeKind::Rect {
+                            rect,
+                            radius: 0.0,
+                            corners: None,
+                        },
+                    );
+                    b.fill = Fill::Solid(Color::rgb8(0xEE, 0xEE, 0xEE));
+                    b.stroke = Some(Stroke::hairline(Color::rgb8(0x80, 0x80, 0x80)));
+                    b.name = Some(label.clone());
+                    self.report.warn(format!(
+                        "embedded file \"{label}\" has no picture; shown as a box"
+                    ));
+                    self.pending_renumber = true;
+                    return Some(ShapeKind::Group { children: vec![b] });
+                }
                 self.report.warn(format!(
                     "embedded object \"{name}\" has no picture we can show"
                 ));
@@ -15448,6 +15476,46 @@ pub(crate) mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn embedded_packages_keep_their_place_as_a_box() {
+        // #3083: a wrapped file (Object Packager) with no picture.
+        let mut coords = i32s(&[200_000, 100_000]);
+        coords.extend_from_slice(&i32s(&[-100_000, 50_000, 100_000, -50_000]));
+        let name: Vec<u8> = "Embedding 3"
+            .encode_utf16()
+            .chain([0])
+            .flat_map(|u| u.to_le_bytes())
+            .collect();
+        let obj = list(
+            b"obj ",
+            &chunk(
+                b"loda",
+                &loda(OBJ_EMBEDDED, &[(ARG_NAME, name), (ARG_COORDS, coords)]),
+            ),
+        );
+        let ole = crate::ole::tests::compound_named(
+            "\u{1}Ole10Native",
+            &crate::ole::tests::package("New.crv3d"),
+        );
+        let body = [
+            chunk(b"mcfg", &mcfg(12, 2_540_000, 2_540_000)),
+            chunk(b"ole2", &ole),
+            list(b"page", &list(b"layr", &obj)),
+        ]
+        .concat();
+        let (doc, rep) = parse(&riff(b"CDRC", &body), 12);
+        assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+        let ShapeKind::Group { children } = &first_shape(&doc).kind else {
+            panic!("{:?}", first_shape(&doc).kind);
+        };
+        let ShapeKind::Rect { rect, .. } = &children[0].kind else {
+            panic!("{:?}", children[0].kind);
+        };
+        assert!((rect.width() - 20.0).abs() < 1e-9 && (rect.height() - 10.0).abs() < 1e-9);
+        assert_eq!(children[0].name.as_deref(), Some("New.crv3d"));
+        assert!(rep.warnings.iter().any(|w| w.contains("New.crv3d")));
     }
 
     #[test]
