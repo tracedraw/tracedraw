@@ -164,6 +164,16 @@ pictures and the end objects of its blends included), so the member grows
 with them; a member that inflates past 64 MB is not read, and its
 objects open as drawn.
 
+What the writer cannot write yet goes out with stand-ins any program
+shows: a pattern, texture, PostScript or mesh fill as one colour, a
+fountain with repeats, inversion, the shaped kind, midpoints or free
+nodes as the nearest plain fountain, an outline fill as the outline
+colour, and a line's arrowheads as curves of their own just above it,
+filled with the outline colour. From version 14 the same member keeps
+these objects as they were, so opened again in TraceDraw the fill, the
+arrowheads, the outline fill and overprint are all back; files of
+versions 7 to 13 open with the stand-ins.
+
 ## Open drawings keep their files (Windows, #2130)
 
 On Windows the file of every open drawing (the front tab's and the

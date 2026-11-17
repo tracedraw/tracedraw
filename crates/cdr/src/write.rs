@@ -5671,6 +5671,45 @@ impl<'a> Writer<'a> {
             plain.raster_fx = None;
             return self.drawn_as(s, vec![plain], 0, None, centre, depth);
         }
+        // An object holding what these files cannot hold yet (a pattern,
+        // texture, PostScript or mesh fill, fountain options, an outline
+        // fill, arrowheads, overprint) goes out with stand-ins: the fill
+        // as one colour or the nearest plain fountain, the arrowheads as
+        // curves above the line in the outline's colour, which `outl`
+        // has no place for. From version 14 the package's own member
+        // keeps the object, so it opens here as it was saved.
+        if self.drawing_effects == 0 && s.effects.is_empty() && crate::kept_effects::not_held(s) {
+            let shadow = s.shadow.as_ref().and_then(|_| self.shadow_picture(s));
+            let mut plain = s.clone();
+            plain.shadow = None;
+            let mut heads = Vec::new();
+            if let Some(st) = plain.stroke.as_mut() {
+                if crate::kept_effects::has_arrowheads(st) {
+                    for head in tracedraw_core::arrowhead_paths(&s.page_path(), st) {
+                        let mut h = Shape::new(
+                            // No object of the drawing: the line keeps its
+                            // static id.
+                            tracedraw_core::ShapeId(u64::MAX),
+                            ShapeKind::Path {
+                                path: head,
+                                closed: true,
+                            },
+                        );
+                        h.fill = Fill::Solid(st.color);
+                        h.stroke = None;
+                        h.visible = s.visible;
+                        h.locked = s.locked;
+                        h.overprint_fill = s.overprint_outline;
+                        heads.push(h);
+                    }
+                    st.start_arrow = tracedraw_core::Arrowhead::None;
+                    st.end_arrow = tracedraw_core::Arrowhead::None;
+                }
+            }
+            let mut all = vec![plain];
+            all.extend(heads);
+            return self.drawn_as(s, all, 0, shadow, centre, depth);
+        }
         // An object with live effects goes out as what they draw, and its
         // drop shadow as a picture of it beneath it (the caller's, or one
         // drawn here). From version 14 the package's own member keeps the

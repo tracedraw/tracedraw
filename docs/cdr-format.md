@@ -404,6 +404,16 @@ the values those files have.
 | Not written | Text fitted to a path (its letters are written as curves), effects (evaluated first and written as what they draw; a blend of versions 7 and 8 as one plain group of its start object and its steps as curves, the end object staying an object of its own, #946; from version 9 a blend is written live, see the Blend row above, #1192; from version 14 the package's `tracedraw/blends.json` restores a blend's settings, #986, and `tracedraw/effects.json` the other objects with effects, #1031), drop shadows (written as a picture of the shadow, a bitmap object with transparency beneath the object: the one the caller rendered, as the app and the command line do, or else one the writer draws from the object's outline at 150 dpi; none for a hidden object, one for a whole paragraph text; from version 14 the object comes back with its shadow in TraceDraw, #1031; the shadow of an object with a blend is not written, the blend going out alone), embedded fonts before version 16, the document palette, the style sheet member, outline fills (the outline colour is written) | |
 | Gradient options with no field in `fild` (repeat, cycles, bilinear, invert, the shaped type) | written as the closest plain gradient (`Fountain::to_plain`): the options worked into at most 64 stops and edge pad 0; a shaped gradient as type 4 (square) with its stops reversed. The record layout is unchanged; a gradient without the options is written byte for byte as before | our own model; no file knowledge involved |
 
+What the writer has no record for goes out with stand-ins (2026-11-17):
+a pattern, texture, PostScript or mesh fill as one colour, a fountain
+with options a plain one lacks (or with free nodes) as the nearest plain
+fountain, an outline fill as the outline colour, and a line's
+arrowheads, which `outl` is written without, as curves of their own
+just above the line, filled with the outline colour. From version 14
+`tracedraw/effects.json` holds an entry for each such object too (its
+`source` the object itself, overprint included), so TraceDraw opens it
+as it was saved.
+
 Every version written opens again in this crate (`write/tests.rs`:
 shapes, groups, bitmaps, clipped bitmaps, pages, text runs, alignment,
 corner shapes and stars in each version, and the record sizes above).
