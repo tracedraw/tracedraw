@@ -9601,15 +9601,29 @@ impl App {
             return;
         }
         // A drawing read already off the interface's thread (#2849).
-        let opened_read = match self.opened_read.take() {
-            Some((p, read)) if p == path && ext == "tdraw" => Some(read),
+        let opened_read: Option<crate::opening::OpenRead> = match self.opened_read.take() {
+            Some((p, read)) if p == path && matches!(ext.as_str(), "tdraw" | "cdr" | "cmx") => {
+                Some(read)
+            }
             _ => None,
         };
         // A large drawing is read off the interface's thread, with a
         // window that shows how far it got (#2849); the open ends when
-        // it is read ([`App::poll_opening`]).
-        if ext == "tdraw" && opened_read.is_none() {
-            if let Some(size) = crate::opening::wants_background(&path) {
+        // it is read ([`App::poll_opening`]). A `.cdr` or `.cmx` always:
+        // 76 000 objects in a 5 MB file froze the window just the same
+        // as a large picture did.
+        // A damaged `.cdr` opened anyway is read here, where the flag that
+        // says so is set (#4332).
+        if matches!(ext.as_str(), "tdraw" | "cdr" | "cmx")
+            && opened_read.is_none()
+            && !(ext == "cdr" && self.open_damaged_anyway)
+        {
+            let from = if ext == "tdraw" {
+                crate::opening::BACKGROUND_FROM
+            } else {
+                0
+            };
+            if let Some(size) = crate::opening::wants_background_from(&path, from) {
                 if let Some(old) = self.opening.take() {
                     old.cancel();
                 }
@@ -10014,8 +10028,30 @@ impl App {
                     (o.doc, msg)
                 })
         } else if ext == "cmx" {
-            Self::open_cdr(&path)
-                .map(|(doc, report)| {
+            match opened_read {
+                Some(Ok(crate::opening::OpenedFile::Cdr(mut doc, report))) => {
+                    for w in &report.warnings {
+                        log::warn!("cmx: {w}");
+                    }
+                    unread = report.skipped_objects;
+                    // Text that continues in other frames flows on into them (#4104).
+                    crate::textflow::link_and_flow_marked_frames(&mut doc);
+                    let msg = crate::i18n::trf(
+                        "status.opened_pages",
+                        &[
+                            ("format", "CMX"),
+                            ("pages", &report.pages.to_string()),
+                            ("objects", &report.shapes.to_string()),
+                        ],
+                    );
+                    Ok((doc, msg))
+                }
+                Some(Ok(crate::opening::OpenedFile::Damaged { message, .. })) => Err(message),
+                Some(Ok(crate::opening::OpenedFile::Tdraw(..))) => {
+                    Err("the opened file is not a CMX file".into())
+                }
+                Some(Err(e)) => Err(e),
+                None => Self::open_cdr(&path).map(|(doc, report)| {
                     for w in &report.warnings {
                         log::warn!("cmx: {w}");
                     }
@@ -10031,56 +10067,52 @@ impl App {
                             ],
                         ),
                     )
-                })
-                .map_err(|e| e.to_string())
+                }),
+            }
         } else if ext == "cdr" {
             let anyway = std::mem::take(&mut self.open_damaged_anyway);
-            Self::open_cdr_with(&path, anyway)
-                .map_err(|(e, why)| {
-                    damaged = why;
-                    e
-                })
-                .map(|(doc, report)| {
-                    let ver = report.version.map(|v| v.name()).unwrap_or_default();
-                    for w in &report.warnings {
-                        log::warn!("cdr: {w}");
-                    }
-                    unread = report.skipped_objects;
-                    cdr_version = report.version.map(|v| writable_cdr_version(v.0));
-                    opened_version = report.version.map(|v| v.0);
-                    let mut msg = crate::i18n::trf(
-                        "status.opened_cdr",
-                        &[
-                            ("version", &ver.to_string()),
-                            ("pages", &report.pages.to_string()),
-                            ("objects", &report.shapes.to_string()),
-                            ("skipped", &report.skipped_objects.to_string()),
-                        ],
-                    );
-                    // Opened anyway though damaged: said (#4332).
-                    if anyway {
-                        msg.push(' ');
-                        msg.push_str(&crate::i18n::tr("status.opened_damaged"));
-                    }
-                    // An older version than TraceDraw saves: say which
-                    // version Save will write.
-                    if let (Some(v), Some(w)) = (report.version, cdr_version) {
-                        if v.0 != w {
-                            msg.push(' ');
-                            msg.push_str(&crate::i18n::trf(
-                                "status.cdr_saves_as",
-                                &[("version", &w.to_string())],
-                            ));
-                        }
-                    }
-                    (doc, msg)
-                })
-                .map_err(|e| e.to_string())
-        } else if let Some(read) = opened_read {
-            read.map(|(d, known)| {
-                tdraw_version = Some(known);
-                (d, crate::i18n::tr("status.opened"))
+            let read = match opened_read {
+                Some(Ok(crate::opening::OpenedFile::Cdr(mut doc, report))) => {
+                    // Text that continues in other frames flows on into them (#4104).
+                    crate::textflow::link_and_flow_marked_frames(&mut doc);
+                    Ok((doc, *report))
+                }
+                // Refused as damaged on the worker: why, for the window
+                // that offers to open it anyway (#4332).
+                Some(Ok(crate::opening::OpenedFile::Damaged { message, why })) => {
+                    Err((message, Some(why)))
+                }
+                Some(Ok(crate::opening::OpenedFile::Tdraw(..))) => {
+                    Err(("the opened file is not a .cdr file".into(), None))
+                }
+                Some(Err(e)) => Err((e, None)),
+                None => Self::open_cdr_with(&path, anyway),
+            };
+            read.map_err(|(e, why)| {
+                damaged = why;
+                e
             })
+            .map(|(doc, report)| {
+                Self::cdr_opened(
+                    doc,
+                    report,
+                    anyway,
+                    &mut unread,
+                    &mut cdr_version,
+                    &mut opened_version,
+                )
+            })
+        } else if let Some(read) = opened_read {
+            match read {
+                Ok(crate::opening::OpenedFile::Tdraw(d, known)) => {
+                    tdraw_version = Some(known);
+                    Ok((d, crate::i18n::tr("status.opened")))
+                }
+                Ok(crate::opening::OpenedFile::Cdr(..) | crate::opening::OpenedFile::Damaged { .. }) => {
+                    Err("the opened file is not a drawing of TraceDraw's own".into())
+                }
+                Err(e) => Err(e),
+            }
         } else {
             crate::files::read(&path)
                 .and_then(|bytes| tracedraw_core::document::tdraw_text(&bytes))
@@ -11720,6 +11752,56 @@ impl App {
         }
     }
 
+    /// Free physical RAM in bytes; 0 when the OS will not say.
+    fn free_ram() -> u64 {
+        crate::opening::free_ram()
+    }
+
+    /// The document and the status line an opened `.cdr` leaves, from
+    /// what the reader reported.
+    fn cdr_opened(
+        doc: tracedraw_core::Document,
+        report: tracedraw_cdr::ParseReport,
+        anyway: bool,
+        unread: &mut usize,
+        cdr_version: &mut Option<u16>,
+        opened_version: &mut Option<u16>,
+    ) -> (tracedraw_core::Document, String) {
+        let ver = report.version.map(|v| v.name()).unwrap_or_default();
+        for w in &report.warnings {
+            log::warn!("cdr: {w}");
+        }
+        *unread = report.skipped_objects;
+        *cdr_version = report.version.map(|v| writable_cdr_version(v.0));
+        *opened_version = report.version.map(|v| v.0);
+        let mut msg = crate::i18n::trf(
+            "status.opened_cdr",
+            &[
+                ("version", &ver.to_string()),
+                ("pages", &report.pages.to_string()),
+                ("objects", &report.shapes.to_string()),
+                ("skipped", &report.skipped_objects.to_string()),
+            ],
+        );
+        // Opened anyway though damaged: said (#4332).
+        if anyway {
+            msg.push(' ');
+            msg.push_str(&crate::i18n::tr("status.opened_damaged"));
+        }
+        // An older version than TraceDraw saves: say which version Save
+        // will write.
+        if let (Some(v), Some(w)) = (report.version, *cdr_version) {
+            if v.0 != w {
+                msg.push(' ');
+                msg.push_str(&crate::i18n::trf(
+                    "status.cdr_saves_as",
+                    &[("version", &w.to_string())],
+                ));
+            }
+        }
+        (doc, msg)
+    }
+
     /// Read a `.cdr` file through the file layer (uploads in a browser).
     pub(crate) fn open_cdr(
         path: &std::path::Path,
@@ -11737,6 +11819,7 @@ impl App {
         (tracedraw_core::Document, tracedraw_cdr::ParseReport),
         (String, Option<String>),
     > {
+        tracedraw_cdr::set_open_ram(Self::free_ram());
         let bytes = crate::files::read(path).map_err(|e| (e.to_string(), None))?;
         let title = path
             .file_stem()

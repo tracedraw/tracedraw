@@ -255,7 +255,7 @@ pub fn external_member(bytes: &[u8], container: &Container, name: &str) -> Optio
             // inflates to and stops there.
             let declared = f.size();
             let limit = member_limit(declared);
-            let mut out = Vec::new();
+            let mut out = Vec::with_capacity(declared.min(MAX_STREAM) as usize);
             let read = match f.take(limit).read_to_end(&mut out) {
                 Ok(_) => true,
                 // A damaged data stream: what was read, when asked for.

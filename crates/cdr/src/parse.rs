@@ -16,6 +16,7 @@ use crate::container::Version;
 use crate::riff::{Chunk, Tree};
 use crate::text::{self, RunStyle, StyleRec};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tracedraw_core::{
     document::{
         Corners, EllipseArc, Layer, LeadingUnit, Page, ParagraphStyle, Shape, ShapeKind, TextAlign,
@@ -68,6 +69,56 @@ const FILE_BLEND_STEPS: u32 = 100_000;
 /// pages of 20 m and more, and a larger value means a misread record. The
 /// CMX reader takes the same bound.
 const MAX_PAGE_MM: f64 = 100_000.0;
+
+/// Free physical RAM the app saw before opening, bytes; 0 = unknown.
+pub static FREE_RAM: AtomicU64 = AtomicU64::new(0);
+
+pub fn set_free_ram(bytes: u64) {
+    FREE_RAM.store(bytes, Ordering::Relaxed);
+}
+
+/// How much the file's pictures may shrink so they fit the RAM the caller
+/// saw and the 32 768 px pixmap side. 1.0 = draw as stored.
+fn plan_bitmap_scale(datas: &[&[u8]], v: u16, free_ram: u64) -> f64 {
+    let mut px = 0u64;
+    let mut max_side = 0u64;
+    let mut n = 0usize;
+    for d in datas {
+        if let Some(h) = bitmap_header(d, v) {
+            n += 1;
+            px = px.saturating_add(h.width as u64 * h.height as u64);
+            max_side = max_side.max(h.width.max(h.height) as u64);
+        }
+    }
+    if px == 0 {
+        return 1.0;
+    }
+    // Unknown RAM: assume 2 GiB free (a small desktop).
+    let free = if free_ram >= 512 << 20 {
+        free_ram
+    } else {
+        2 << 30
+    };
+    // Pictures together may take 35% of free RAM, 96 MiB at least,
+    // 1536 MiB at most.
+    let budget = (free * 35 / 100).clamp(96 << 20, 1536 << 20);
+    let rgba = px.saturating_mul(4);
+    let mut k = if rgba > budget {
+        (budget as f64 / rgba as f64).sqrt()
+    } else {
+        1.0
+    };
+    // The renderer's pixmap limit is 32 768 on a side (8192 is only the
+    // screen window of the Pixels view, not the stored bitmap).
+    if max_side as f64 * k > 32_768.0 {
+        k = 32_768.0 / max_side as f64;
+    }
+    let k = k.clamp(0.02, 1.0);
+    if k < 1.0 {
+        log::warn!("bitmaps: {n} picture(s), {px} px, sampling to {k:.2} (free {free} bytes)");
+    }
+    k
+}
 /// CDR coordinate unit (version 6 and later) to millimetres.
 const UNIT_MM: f64 = 25.4 / 254000.0;
 /// Coordinate unit of versions before 6 (1/1000 inch) to millimetres.
@@ -6591,7 +6642,8 @@ impl<'a> Ctx<'a> {
             });
         }
         let lut = self.cmyk_lut.as_ref();
-        for decoded in parallel_map(&datas, |d| decode_bitmap(d, v, lut)) {
+        let scale = plan_bitmap_scale(&datas, v, FREE_RAM.load(Ordering::Relaxed));
+        for decoded in parallel_map(&datas, |d| decode_bitmap(d, v, lut, scale)) {
             match decoded {
                 Some(Ok((id, def))) => {
                     self.bitmaps.insert(id, def);
@@ -6674,10 +6726,25 @@ fn decode_bitmap(
     d: &[u8],
     v: u16,
     lut: Option<&tracedraw_core::icc::CmykLut>,
+    scale: f64,
 ) -> Option<Result<(u32, BitmapDef), String>> {
     let h = bitmap_header(d, v)?;
     let (image_id, width, height, bpp) = (h.id, h.width, h.height, h.bpp);
-    if width == 0 || height == 0 || width > 32_768 || height > 32_768 {
+    if width == 0 || height == 0 {
+        return Some(Err(format!(
+            "bitmap {image_id}: size {width}x{height} rejected"
+        )));
+    }
+    // A scale under 1 samples the picture down as it is read, so a
+    // 1600 mm scan does not allocate its full RGBA first. Large sources
+    // are then allowed: the output is the smaller one.
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale.min(1.0)
+    } else {
+        1.0
+    };
+    let full = scale >= 1.0;
+    if full && (width > 32_768 || height > 32_768) {
         return Some(Err(format!(
             "bitmap {image_id}: size {width}x{height} rejected"
         )));
@@ -6715,68 +6782,184 @@ fn decode_bitmap(
         )));
     }
     let cmyk = h.model == BITMAP_CMYK && bpp == 32;
-    let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
+    let out_w = if full {
+        width
+    } else {
+        ((width as f64 * scale).ceil() as u32).clamp(1, width)
+    };
+    let out_h = if full {
+        height
+    } else {
+        ((height as f64 * scale).ceil() as u32).clamp(1, height)
+    };
+    let step_x = width as f64 / out_w as f64;
+    let step_y = height as f64 / out_h as f64;
+    let (w_out, h_out) = (out_w as usize, out_h as usize);
+    let total_px = w_out.checked_mul(h_out)?;
+    let mut rgba = vec![0u8; total_px.checked_mul(4)?];
     // A CMYK image's inks, plane after plane (cyan, magenta, yellow,
-    // black), for separations (#1659).
-    let plane = width as usize * height as usize;
-    let mut planes = if cmyk {
-        vec![0u8; plane * 4]
+    // black), for separations (#1659). Sampled pictures skip the planes.
+    let plane = (width as usize).checked_mul(height as usize)?;
+    let mut planes = if cmyk && full {
+        vec![0u8; plane.checked_mul(4)?]
     } else {
         Vec::new()
     };
-    for row in 0..height as usize {
-        // Bottom-up rows.
-        let src = &pixels[(height as usize - 1 - row) * stride..][..stride];
-        for x in 0..width as usize {
-            let px: [u8; 4] = match bpp {
-                32 if cmyk => {
-                    let ink = [src[x * 4], src[x * 4 + 1], src[x * 4 + 2], src[x * 4 + 3]];
-                    let at = row * width as usize + x;
-                    for (i, v) in ink.iter().enumerate() {
-                        if let Some(p) = planes.get_mut(i * plane + at) {
-                            *p = *v;
+    let xs: Vec<usize> = (0..w_out)
+        .map(|ox| if full { ox } else { (ox as f64 * step_x) as usize })
+        .collect();
+    let palette_ref = &palette[..];
+    let xs_ref = &xs[..];
+    let fill_band = |y_start: usize,
+                     band_rgba: &mut [u8],
+                     mut band_planes: Option<[&mut [u8]; 4]>| {
+        let row_bytes = w_out * 4;
+        let rows = band_rgba.len() / row_bytes;
+        let w_src = width as usize;
+        for local_y in 0..rows {
+            let oy = y_start + local_y;
+            let sy = if full { oy } else { (oy as f64 * step_y) as usize };
+            // Bottom-up rows.
+            let src = &pixels[(height as usize - 1 - sy) * stride..][..stride];
+            let dst_row = &mut band_rgba[local_y * row_bytes..(local_y + 1) * row_bytes];
+            for (ox, (&x, dst)) in xs_ref
+                .iter()
+                .zip(dst_row.chunks_exact_mut(4))
+                .enumerate()
+            {
+                let px: [u8; 4] = match bpp {
+                    32 if cmyk => {
+                        let ink = [src[x * 4], src[x * 4 + 1], src[x * 4 + 2], src[x * 4 + 3]];
+                        if let Some(planes) = band_planes.as_mut() {
+                            let at = local_y * w_src + ox;
+                            for (plane_slice, &v) in planes.iter_mut().zip(ink.iter()) {
+                                if let Some(p) = plane_slice.get_mut(at) {
+                                    *p = v;
+                                }
+                            }
+                        }
+                        cmyk_pixel(ink, lut)
+                    }
+                    32 => [src[x * 4 + 2], src[x * 4 + 1], src[x * 4], 255],
+                    24 => [src[x * 3 + 2], src[x * 3 + 1], src[x * 3], 255],
+                    8 => {
+                        let i = src[x] as usize;
+                        match palette_ref.get(i) {
+                            Some(c) => [c[0], c[1], c[2], 255],
+                            None => [src[x], src[x], src[x], 255],
                         }
                     }
-                    cmyk_pixel(ink, lut)
-                }
-                32 => [src[x * 4 + 2], src[x * 4 + 1], src[x * 4], 255],
-                24 => [src[x * 3 + 2], src[x * 3 + 1], src[x * 3], 255],
-                8 => {
-                    let i = src[x] as usize;
-                    match palette.get(i) {
-                        Some(c) => [c[0], c[1], c[2], 255],
-                        None => [src[x], src[x], src[x], 255],
-                    }
-                }
-                _ => {
-                    let bit = (src[x / 8] >> (7 - (x % 8))) & 1;
-                    match palette.get(bit as usize) {
-                        Some(c) => [c[0], c[1], c[2], 255],
-                        None => {
-                            let g = if bit == 0 { 0 } else { 255 };
-                            [g, g, g, 255]
+                    _ => {
+                        let bit = (src[x / 8] >> (7 - (x % 8))) & 1;
+                        match palette_ref.get(bit as usize) {
+                            Some(c) => [c[0], c[1], c[2], 255],
+                            None => {
+                                let g = if bit == 0 { 0 } else { 255 };
+                                [g, g, g, 255]
+                            }
                         }
                     }
+                };
+                dst.copy_from_slice(&px);
+            }
+        }
+    };
+    #[cfg(not(target_arch = "wasm32"))]
+    let bands = if total_px >= 4_000_000 && h_out >= 4 {
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+            .clamp(4, 8)
+            .min(h_out)
+    } else {
+        1
+    };
+    #[cfg(target_arch = "wasm32")]
+    let bands = 1usize;
+    #[cfg(not(target_arch = "wasm32"))]
+    if bands > 1 {
+        let band_rows = h_out.div_ceil(bands);
+        let row_bytes = w_out * 4;
+        if cmyk && full {
+            let w_src = width as usize;
+            let (cp, rest) = planes.split_at_mut(plane);
+            let (mp, rest) = rest.split_at_mut(plane);
+            let (yp, kp) = rest.split_at_mut(plane);
+            std::thread::scope(|scope| {
+                for (bi, ((((r_band, c_band), m_band), y_band), k_band)) in rgba
+                    .chunks_mut(band_rows * row_bytes)
+                    .zip(cp.chunks_mut(band_rows * w_src))
+                    .zip(mp.chunks_mut(band_rows * w_src))
+                    .zip(yp.chunks_mut(band_rows * w_src))
+                    .zip(kp.chunks_mut(band_rows * w_src))
+                    .enumerate()
+                {
+                    let y0 = bi * band_rows;
+                    scope.spawn(move || {
+                        fill_band(y0, r_band, Some([c_band, m_band, y_band, k_band]));
+                    });
                 }
-            };
-            rgba.extend_from_slice(&px);
+            });
+        } else {
+            std::thread::scope(|scope| {
+                for (bi, r_band) in rgba.chunks_mut(band_rows * row_bytes).enumerate() {
+                    let y0 = bi * band_rows;
+                    scope.spawn(move || {
+                        fill_band(y0, r_band, None);
+                    });
+                }
+            });
+        }
+    } else if cmyk && full {
+        let (cp, rest) = planes.split_at_mut(plane);
+        let (mp, rest) = rest.split_at_mut(plane);
+        let (yp, kp) = rest.split_at_mut(plane);
+        fill_band(0, &mut rgba, Some([cp, mp, yp, kp]));
+    } else {
+        fill_band(0, &mut rgba, None);
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = bands;
+        if cmyk && full {
+            let (cp, rest) = planes.split_at_mut(plane);
+            let (mp, rest) = rest.split_at_mut(plane);
+            let (yp, kp) = rest.split_at_mut(plane);
+            fill_band(0, &mut rgba, Some([cp, mp, yp, kp]));
+        } else {
+            fill_band(0, &mut rgba, None);
         }
     }
-    if let Some(alpha) = bitmap_mask(d, width, height) {
-        for (px, a) in rgba.chunks_exact_mut(4).zip(alpha) {
-            px[3] = a;
+    if full {
+        if let Some(alpha) = bitmap_mask(d, width, height) {
+            for (px, a) in rgba.chunks_exact_mut(4).zip(alpha) {
+                px[3] = a;
+            }
+        }
+    } else if let Some(alpha) = bitmap_mask(d, width, height) {
+        for oy in 0..out_h as usize {
+            let sy = (oy as f64 * step_y) as usize;
+            for ox in 0..out_w as usize {
+                let x = (ox as f64 * step_x) as usize;
+                let at = (oy * out_w as usize + ox) * 4 + 3;
+                if let Some(a) = alpha.get(sy * width as usize + x) {
+                    if let Some(slot) = rgba.get_mut(at) {
+                        *slot = *a;
+                    }
+                }
+            }
         }
     }
-    let png = encode_png(width, height, &rgba);
-    let inks = cmyk.then(|| {
+    let png = encode_png(out_w, out_h, &rgba);
+    let inks = (cmyk && full).then(|| {
         let planes = encode_gray_png(width, height.saturating_mul(4), &planes);
         tracedraw_core::picture_inks::PictureInks::cmyk(&png, planes.into())
     });
     Some(Ok((
         image_id,
         BitmapDef {
-            width_px: width,
-            height_px: height,
+            width_px: out_w,
+            height_px: out_h,
             png: png.into(),
             cmyk,
             inks,
@@ -11425,7 +11608,7 @@ pub(crate) mod tests {
         let ink: Vec<u8> = (0..100u8).map(|i| i | 1).collect();
         bmp.splice(40..40, ink);
         bmp[20..24].copy_from_slice(&(32u32 + 100).to_le_bytes());
-        match decode_bitmap(&bmp, 20, None) {
+        match decode_bitmap(&bmp, 20, None, 1.0) {
             Some(Ok((id, def))) => {
                 assert_eq!(id, 34);
                 assert_eq!((def.width_px, def.height_px), (2, 2));
@@ -11629,6 +11812,36 @@ pub(crate) mod tests {
         let (doc, _) =
             parse_document_with(&tree, &riff(b"CDRD", &body), Version(13), Some(b"junk"));
         assert!(matches!(first_shape(&doc).kind, ShapeKind::Bitmap { .. }));
+    }
+
+    #[test]
+    fn large_cmyk_bitmap_decodes_in_bands_with_inks_intact() {
+        let (w, h): (u32, u32) = (2000, 2001);
+        let byte_len = w as usize * h as usize * 4;
+        let mut bmp = u32s(&[99]);
+        bmp.extend_from_slice(&[0; 50]);
+        bmp.extend_from_slice(&u32s(&[BITMAP_CMYK, 0, w, h, 0, 32, 0, byte_len as u32]));
+        bmp.extend_from_slice(&[0; 32]);
+        let mut pixels = vec![0u8; byte_len];
+        pixels[0..4].copy_from_slice(&[255, 0, 0, 0]);
+        let top_last = ((h as usize - 1) * w as usize + (w as usize - 1)) * 4;
+        pixels[top_last..top_last + 4].copy_from_slice(&[0, 255, 0, 0]);
+        bmp.extend_from_slice(&pixels);
+        let lut = tracedraw_core::icc::CmykLut::with_points(3, |[c, m, _, k]| {
+            Some([(1.0 - c) * (1.0 - k), (1.0 - m) * (1.0 - k), 1.0 - k])
+        })
+        .unwrap();
+        let (_, def) = decode_bitmap(&bmp, 13, Some(&lut), 1.0)
+            .expect("header")
+            .expect("decoded");
+        assert_eq!((def.width_px, def.height_px), (w, h));
+        let inks = def.inks.as_ref().expect("inks kept");
+        assert!(inks.fits(&def.png));
+        let pm = tiny_skia::Pixmap::decode_png(&def.png).expect("png");
+        let top = pm.pixel(w - 1, 0).expect("top").demultiply();
+        assert_eq!([top.red(), top.green(), top.blue()], [255, 0, 255]);
+        let bot = pm.pixel(0, h - 1).expect("bot").demultiply();
+        assert_eq!([bot.red(), bot.green(), bot.blue()], [0, 255, 255]);
     }
 
     #[test]
@@ -14132,7 +14345,10 @@ pub(crate) mod tests {
                 assert_eq!(spans[0].tracking_pct, 0.0);
                 // The distance in points: 1.5 times 1.15 times 36 pt.
                 assert_eq!(para.leading_unit, LeadingUnit::Points);
-                assert!((para.leading_pct - 36.0 * 1.15 * 1.5).abs() < 1e-3, "{para:?}");
+                assert!(
+                    (para.leading_pct - 36.0 * 1.15 * 1.5).abs() < 1e-3,
+                    "{para:?}"
+                );
             }
             other => panic!("{other:?}"),
         }
@@ -18386,7 +18602,11 @@ pub(crate) mod tests {
         assert_eq!(s.opacity, 1.0);
         let f = mask(&s).unwrap_or_else(|| panic!("{:?}", s.effects));
         assert_eq!(f.stops.len(), 3, "{:?}", f.stops);
-        assert!((grey(f.stops[1].color) - 128.0 / 255.0).abs() < 0.02, "{:?}", f.stops);
+        assert!(
+            (grey(f.stops[1].color) - 128.0 / 255.0).abs() < 0.02,
+            "{:?}",
+            f.stops
+        );
     }
 
     /// #2960: an object's vector pattern transparency read from its
