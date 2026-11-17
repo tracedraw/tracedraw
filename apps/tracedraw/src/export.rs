@@ -1631,18 +1631,31 @@ pub fn print_sheets(app: &App, st: &PrintState) -> Document {
             fit_contents_to_page(page, true);
         }
     }
-    for page in doc.pages.iter_mut() {
-        for layer in page.layers.iter_mut() {
-            for s in layer.shapes.iter_mut() {
-                if st.spot_to_cmyk {
-                    map_colors(s, &spot_as_cmyk);
-                }
-                if st.text_black {
-                    text_in_black(s);
-                }
-                if st.overprint_black {
-                    overprint_black(s);
-                }
+    // The master layers' objects print on the pages too, and the pages'
+    // backgrounds: they were left out, so a spot ink there stayed a spot
+    // ink and text there kept its colour.
+    if st.spot_to_cmyk {
+        for page in doc.pages.iter_mut() {
+            if let Some(bg) = &mut page.background {
+                map_fill_colors(bg, &spot_as_cmyk);
+            }
+        }
+    }
+    let layers = doc
+        .pages
+        .iter_mut()
+        .flat_map(|p| p.layers.iter_mut())
+        .chain(doc.master.iter_mut());
+    for layer in layers {
+        for s in layer.shapes.iter_mut() {
+            if st.spot_to_cmyk {
+                map_colors(s, &spot_as_cmyk);
+            }
+            if st.text_black {
+                text_in_black(s);
+            }
+            if st.overprint_black {
+                overprint_black(s);
             }
         }
     }
@@ -1828,6 +1841,10 @@ fn text_in_black(s: &mut tracedraw_core::Shape) {
             for sp in spans.iter_mut() {
                 if sp.fill.is_some() {
                     sp.fill = Some(Fill::Solid(Color::BLACK));
+                }
+                // A character's own outline too: it kept its colour.
+                if let Some(st) = &mut sp.outline {
+                    st.color = Color::BLACK;
                 }
             }
         }
@@ -2122,32 +2139,27 @@ pub fn map_colors(
     s: &mut tracedraw_core::Shape,
     f: &dyn Fn(tracedraw_core::Color) -> tracedraw_core::Color,
 ) {
-    fn fill(
-        x: &mut tracedraw_core::Fill,
-        f: &dyn Fn(tracedraw_core::Color) -> tracedraw_core::Color,
-    ) {
-        use tracedraw_core::{Fill, Pattern};
-        match x {
-            Fill::Solid(c) => *c = f(*c),
-            Fill::Fountain(g) => g.stops.iter_mut().for_each(|s| s.color = f(s.color)),
-            Fill::Mesh(m) => m.nodes.iter_mut().for_each(|n| n.color = f(n.color)),
-            Fill::Pattern(Pattern::TwoColor { front, back, .. }) => {
-                *front = f(*front);
-                *back = f(*back);
-            }
-            _ => {}
-        }
-    }
+    let fill = map_fill_colors;
     fill(&mut s.fill, f);
     if let Some(st) = &mut s.stroke {
         st.color = f(st.color);
     }
     // The copy of its end object a blend keeps: the steps run to the
-    // end's colour as mapped (#1541).
+    // end's colour as mapped (#1541). The colours of the other effects
+    // (a contour's last step, an extrusion's shades, glows, shadows and
+    // the rest) and of the drop shadow go too: they were left as they
+    // were, so a contour or a shadow printed in colour on every plate of
+    // the separations and kept its spot ink with Convert spot colours to
+    // CMYK.
     for e in s.effects.iter_mut() {
         if let tracedraw_core::live::Effect::Blend { end, .. } = e {
             map_colors(end, f);
+        } else {
+            map_colors_within(e, f);
         }
+    }
+    if let Some(sh) = &mut s.shadow {
+        sh.color = f(sh.color);
     }
     match &mut s.kind {
         ShapeKind::Group { children } => children.iter_mut().for_each(|c| map_colors(c, f)),
@@ -2160,9 +2172,77 @@ pub fn map_colors(
                 if let Some(x) = &mut sp.fill {
                     fill(x, f);
                 }
+                if let Some(x) = &mut sp.background {
+                    fill(x, f);
+                }
+                if let Some(st) = &mut sp.outline {
+                    st.color = f(st.color);
+                }
             }
         }
         _ => {}
+    }
+}
+
+/// The colours of a fill mapped through `f`.
+fn map_fill_colors(
+    x: &mut tracedraw_core::Fill,
+    f: &dyn Fn(tracedraw_core::Color) -> tracedraw_core::Color,
+) {
+    use tracedraw_core::{Fill, Pattern};
+    match x {
+        Fill::Solid(c) => *c = f(*c),
+        Fill::Fountain(g) => g.stops.iter_mut().for_each(|s| s.color = f(s.color)),
+        Fill::Mesh(m) => m.nodes.iter_mut().for_each(|n| n.color = f(n.color)),
+        Fill::Pattern(Pattern::TwoColor { front, back, .. }) => {
+            *front = f(*front);
+            *back = f(*back);
+        }
+        _ => {}
+    }
+}
+
+/// Every colour `x` holds, wherever it keeps one, mapped through `f`,
+/// found by walking its serialized form (as `grayscale_doc` does), so no
+/// effect's colour is missed.
+fn map_colors_within<T: serde::Serialize + serde::de::DeserializeOwned>(
+    x: &mut T,
+    f: &dyn Fn(tracedraw_core::Color) -> tracedraw_core::Color,
+) {
+    fn walk(v: &mut serde_json::Value, f: &dyn Fn(tracedraw_core::Color) -> tracedraw_core::Color) {
+        use serde_json::Value;
+        match v {
+            Value::Array(a) => a.iter_mut().for_each(|v| walk(v, f)),
+            Value::Object(m) => {
+                if m.get("model").is_some_and(Value::is_string) {
+                    if let Ok(c) =
+                        serde_json::from_value::<tracedraw_core::Color>(Value::Object(m.clone()))
+                    {
+                        // Only the colour's own keys go: it can share its
+                        // object with the tag of what holds it.
+                        if let (Ok(Value::Object(was)), Ok(Value::Object(new))) =
+                            (serde_json::to_value(c), serde_json::to_value(f(c)))
+                        {
+                            for k in was.keys() {
+                                m.remove(k);
+                            }
+                            m.extend(new);
+                        }
+                        return;
+                    }
+                }
+                m.values_mut().for_each(|v| walk(v, f));
+            }
+            _ => {}
+        }
+    }
+    let Ok(mut v) = serde_json::to_value(&*x) else {
+        return;
+    };
+    walk(&mut v, f);
+    match serde_json::from_value(v) {
+        Ok(back) => *x = back,
+        Err(e) => log::warn!("colours of an effect: {e}"),
     }
 }
 
@@ -5560,6 +5640,250 @@ mod tests {
         assert_eq!(doc.inks, vec![ink]);
         let text = String::from_utf8_lossy(&tracedraw_io::pdf::document_to_pdf(&doc)).to_string();
         assert!(text.contains("/Separation /Spot_1_W "), "no separation");
+    }
+
+    /// The colour models a printed sheet still holds, wherever it keeps a
+    /// colour.
+    fn colour_models(pages: &[tracedraw_core::document::Page]) -> Vec<String> {
+        fn walk(v: &serde_json::Value, out: &mut Vec<String>) {
+            match v {
+                serde_json::Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+                serde_json::Value::Object(m) => {
+                    if let Some(serde_json::Value::String(s)) = m.get("model") {
+                        out.push(s.clone());
+                    }
+                    m.values().for_each(|x| walk(x, out));
+                }
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        walk(&serde_json::to_value(pages).unwrap(), &mut out);
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// A drawing for the print options: one 100 mm page, the app on it.
+    fn print_app(build: &dyn Fn(&mut tracedraw_core::Document)) -> crate::app::App {
+        let mut doc =
+            tracedraw_core::Document::new("Print", tracedraw_core::Size::new(100.0, 100.0));
+        build(&mut doc);
+        let mut app = crate::app::App::headless();
+        app.engine = tracedraw_core::Engine::new(doc);
+        if let Some(p) = app.doc().pages.first() {
+            app.page = p.id;
+        }
+        app
+    }
+
+    fn square(
+        doc: &mut tracedraw_core::Document,
+        c: tracedraw_core::Color,
+    ) -> tracedraw_core::Shape {
+        let mut s = tracedraw_core::Shape::new(
+            doc.ids_mut().shape(),
+            tracedraw_core::ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(10.0, 10.0, 30.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        s.fill = tracedraw_core::Fill::Solid(c);
+        s.stroke = None;
+        s
+    }
+
+    fn orange(doc: &mut tracedraw_core::Document) -> tracedraw_core::Color {
+        let ink = tracedraw_core::document::Ink {
+            id: 7,
+            name: "Orange".into(),
+            cmyk: [0.0, 0.5, 1.0, 0.0],
+        };
+        let c = ink.color(1.0);
+        doc.inks.push(ink);
+        c
+    }
+
+    /// Convert spot colours to CMYK reaches every spot ink that prints: on
+    /// a master layer, as the page's background, as a drop shadow's colour
+    /// and as a contour's last colour. They stayed spot inks.
+    #[test]
+    fn spot_to_cmyk_reaches_master_layers_backgrounds_and_effects() {
+        use tracedraw_core::{Color, Fill, Layer};
+        let st = crate::ui::dialogs::PrintState {
+            spot_to_cmyk: true,
+            ..Default::default()
+        };
+        let cases: Vec<(&str, Box<dyn Fn(&mut tracedraw_core::Document)>)> = vec![
+            (
+                "master layer",
+                Box::new(|d| {
+                    let c = orange(d);
+                    let s = square(d, c);
+                    let mut m = Layer::master(d.ids_mut().layer(), "Master", Default::default());
+                    m.shapes.push(s);
+                    d.master.push(m);
+                }),
+            ),
+            (
+                "background",
+                Box::new(|d| {
+                    let c = orange(d);
+                    d.pages[0].background = Some(Fill::Solid(c));
+                }),
+            ),
+            (
+                "shadow",
+                Box::new(|d| {
+                    let c = orange(d);
+                    let mut s = square(
+                        d,
+                        Color::Cmyk {
+                            c: 1.0,
+                            m: 0.0,
+                            y: 0.0,
+                            k: 0.0,
+                        },
+                    );
+                    s.shadow = Some(tracedraw_core::document::Shadow {
+                        color: c,
+                        ..Default::default()
+                    });
+                    d.pages[0].layers[0].shapes.push(s);
+                }),
+            ),
+            (
+                "contour",
+                Box::new(|d| {
+                    let c = orange(d);
+                    let mut s = square(
+                        d,
+                        Color::Cmyk {
+                            c: 1.0,
+                            m: 0.0,
+                            y: 0.0,
+                            k: 0.0,
+                        },
+                    );
+                    s.effects.push(contour_to(c));
+                    d.pages[0].layers[0].shapes.push(s);
+                }),
+            ),
+        ];
+        for (name, build) in cases {
+            let app = print_app(&*build);
+            let sheets = super::print_sheets(&app, &st);
+            let models = colour_models(&sheets.pages);
+            assert!(!models.contains(&"spot".to_string()), "{name}: {models:?}");
+        }
+    }
+
+    fn contour_to(c: tracedraw_core::Color) -> tracedraw_core::live::Effect {
+        tracedraw_core::live::Effect::Contour {
+            steps: 2,
+            offset: 2.0,
+            outside: true,
+            to_center: false,
+            fill_to: c,
+            outline_to: None,
+            fill_end_to: None,
+            color_blend: 0,
+            corners: None,
+            accel_objects: 0.0,
+            accel_colors: 0.0,
+        }
+    }
+
+    /// Separations: a contour's steps and a drop shadow print as the
+    /// coverage of each plate's ink, as the object does. Their colours
+    /// were kept, so the steps blended to magenta in colour on every
+    /// plate, and the magenta plate counted no ink for them.
+    #[test]
+    fn separations_split_the_colours_of_effects() {
+        use tracedraw_core::Color;
+        let magenta = Color::Cmyk {
+            c: 0.0,
+            m: 1.0,
+            y: 0.0,
+            k: 0.0,
+        };
+        let app = print_app(&|d| {
+            let mut s = square(
+                d,
+                Color::Cmyk {
+                    c: 1.0,
+                    m: 0.0,
+                    y: 0.0,
+                    k: 0.0,
+                },
+            );
+            s.effects.push(contour_to(magenta));
+            let mut t = square(d, Color::WHITE);
+            t.transform = tracedraw_core::geometry::Affine::translate((50.0, 50.0));
+            t.shadow = Some(tracedraw_core::document::Shadow {
+                color: Color::Cmyk {
+                    c: 0.0,
+                    m: 0.0,
+                    y: 1.0,
+                    k: 0.0,
+                },
+                ..Default::default()
+            });
+            d.pages[0].layers[0].shapes.extend([s, t]);
+        });
+        let st = crate::ui::dialogs::PrintState {
+            separations: true,
+            ..Default::default()
+        };
+        let sheets = super::print_sheets(&app, &st);
+        let page = &sheets.pages[0];
+        for (plate, _) in super::plates(&sheets) {
+            let p = super::plate_page(page, plate);
+            assert_eq!(
+                colour_models(std::slice::from_ref(&p)),
+                vec!["gray"],
+                "{plate:?}"
+            );
+        }
+        // The contour's magenta and the shadow's yellow are inks of their
+        // plates.
+        assert!(super::plate_has_ink(page, super::Plate::Process(1)));
+        assert!(super::plate_has_ink(page, super::Plate::Process(2)));
+    }
+
+    /// Print all text in black reaches text on a master layer and a
+    /// character's own outline.
+    #[test]
+    fn text_in_black_reaches_master_layers_and_character_outlines() {
+        use tracedraw_core::{Color, Fill, Layer, Stroke};
+        let mut app = crate::app::App::headless();
+        tracedraw_text::install();
+        app.start_text(tracedraw_core::geometry::Point::new(10.0, 20.0), None);
+        app.text_insert("Ab");
+        let t = app.text_edit.as_ref().expect("editing").shape;
+        app.finish_text();
+        let mut doc = app.doc().clone();
+        let mut s = doc.find_shape(t).expect("text").clone();
+        s.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        if let tracedraw_core::ShapeKind::Text { spans, .. } = &mut s.kind {
+            spans[0].fill = Some(Fill::Solid(Color::rgb8(0, 0, 255)));
+            spans[0].outline = Some(Stroke::new(Color::rgb8(0, 255, 0), 0.2));
+        }
+        doc.pages[0].layers[0].shapes.clear();
+        let mut m = Layer::master(doc.ids_mut().layer(), "Master", Default::default());
+        m.shapes.push(s);
+        doc.master.push(m);
+        app.engine = tracedraw_core::Engine::new(doc);
+        let st = crate::ui::dialogs::PrintState {
+            text_black: true,
+            ..Default::default()
+        };
+        let sheets = super::print_sheets(&app, &st);
+        let json = serde_json::to_string(&sheets.pages).unwrap();
+        for colour in ["\"r\":1.0", "\"g\":1.0", "\"b\":1.0"] {
+            assert!(!json.contains(colour), "{colour} left");
+        }
     }
 }
 
