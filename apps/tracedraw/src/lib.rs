@@ -298,6 +298,11 @@ mod winit_cursor_pixels;
 #[cfg(test)]
 #[path = "../../../vendor/eframe/src/web/pen_pressure.rs"]
 mod eframe_web_pen_pressure;
+// The input the patched eframe keeps while the window is minimized,
+// with its tests (vendor/README.md, #3058).
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "../../../vendor/eframe/src/native/pending_input.rs"]
+mod eframe_pending_input;
 // The queue of files macOS asks to open, of the same copy (#646).
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "../../../vendor/winit/src/opened_files.rs"]

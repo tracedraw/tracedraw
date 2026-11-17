@@ -141,6 +141,16 @@ change marked `TraceDraw:` in a comment.
   (`splash::open_main_window`). TraceDraw's tests include and run it
   (`splash::eframe_monitor_place::tests`). When moving to a newer
   eframe, check whether it centres with the monitor's position.
+- Change: input kept while the window is minimized
+  (`native/pending_input.rs`, used by `native/epi_integration.rs`'s
+  `prepare_raw_input`) takes the newer input's hovered files whole
+  instead of appending them (#3058). egui-winit hands the full list with
+  every input, so `RawInput::append` doubled the list kept from the last
+  frame at every frame the window was minimized; on Windows, where the
+  files of a drop that never reached the program stay listed, the copies
+  counted as a new drag and the file was imported again at every
+  restore. `apps/tracedraw/src/lib.rs` includes the file so that its
+  test runs (`eframe_pending_input::tests`).
 - Drop the copy and the `[patch.crates-io]` entry when the workspace moves
   to egui/eframe 0.37 or later: what holds that back is the egui 0.37
   API migration across the app. The fixed-function painter has no
