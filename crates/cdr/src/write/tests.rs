@@ -3334,6 +3334,66 @@ fn a_page_background_colour_round_trips_from_version_21() {
     }
 }
 
+/// From version 16 a hidden layer goes out with its objects and its
+/// state as flags, so do a locked layer and one kept from print, as
+/// files of version 27 hold them (#2850); before, a hidden layer goes
+/// out empty and the other states plain.
+#[test]
+fn layer_state_and_hidden_layer_objects_are_kept_from_version_16() {
+    let mut doc = doc_with(Vec::new());
+    let mut ids = doc.ids().clone();
+    let shape = |ids: &mut tracedraw_core::id::IdSource, x: f64| {
+        let mut r = Shape::new(
+            ids.shape(),
+            ShapeKind::Rect {
+                rect: Rect::new(x, 10.0, x + 20.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        r.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        r
+    };
+    doc.pages[0].layers[0].shapes = vec![shape(&mut ids, 10.0)];
+    let mut hidden = Layer::new(ids.layer(), "Hidden");
+    hidden.visible = false;
+    hidden.shapes = vec![shape(&mut ids, 40.0), shape(&mut ids, 70.0)];
+    let mut locked = Layer::new(ids.layer(), "Locked");
+    locked.locked = true;
+    locked.shapes = vec![shape(&mut ids, 100.0)];
+    let mut no_print = Layer::new(ids.layer(), "No print");
+    no_print.printable = false;
+    no_print.shapes = vec![shape(&mut ids, 130.0)];
+    doc.pages[0].layers.extend([hidden, locked, no_print]);
+    doc.set_ids(ids);
+    for v in versions() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, rep) = crate::open_bytes(&bytes, "back").expect("reads back");
+        assert_eq!(rep.skipped_objects, 0, "{v}: {:?}", rep.warnings);
+        let layer = |name: &str| {
+            back.pages[0]
+                .layers
+                .iter()
+                .find(|l| l.name == name)
+                .unwrap_or_else(|| panic!("{v}: no layer {name}"))
+                .clone()
+        };
+        let (h, l, p) = (layer("Hidden"), layer("Locked"), layer("No print"));
+        assert_eq!(layer("Ink").shapes.len(), 1, "{v}");
+        if v < 16 {
+            assert!(h.shapes.is_empty(), "{v}");
+            continue;
+        }
+        assert!(!h.visible, "{v}");
+        assert_eq!(h.shapes.len(), 2, "{v}");
+        assert!(h.shapes.iter().all(|s| s.visible), "{v}");
+        assert!(l.locked && l.visible && l.printable, "{v}");
+        assert_eq!(l.shapes.len(), 1, "{v}");
+        assert!(!p.printable && p.visible && !p.locked, "{v}");
+        assert_eq!(p.shapes.len(), 1, "{v}");
+    }
+}
+
 #[test]
 fn hidden_objects_are_kept_hidden_from_version_21() {
     let mut ids = tracedraw_core::id::IdSource::default();

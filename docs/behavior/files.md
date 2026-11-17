@@ -151,6 +151,11 @@ version decides who can open a file:
 
 What each version's file holds is in `docs/cdr-format.md`, Writing.
 
+Layers keep their state from version 16: a hidden layer is saved
+hidden with its objects, and a locked layer or one kept from printing
+keeps that, as the program's own files hold them. Before version 16 a
+hidden layer is saved empty.
+
 Live effects and drop shadows are saved as what they draw (a distorted
 rectangle as its curve, a contour as its steps, a shadow as a picture
 of it beneath the object), which any program shows. From version 14

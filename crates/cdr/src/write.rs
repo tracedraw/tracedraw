@@ -355,6 +355,23 @@ const CLIP_CONTAINER_FLAG: u8 = 0x10;
 /// The flags of a drawing's own layer (byte 3: a layer; byte 0 the kind,
 /// byte 2 set on a master layer).
 const PLAIN_LAYER_FLAGS: [u8; 4] = [0, 0, 0, 0x98];
+/// The flags of a drawing's own layer from version 16: bit 0 of byte 1
+/// hides it, 0x10 in byte 0 locks it and 0x08 keeps it from print and
+/// export, as files of version 27 hold them (`docs/cdr-format.md`,
+/// "Modern saved states", #2850).
+fn layer_state_flags(l: &tracedraw_core::document::Layer) -> [u8; 4] {
+    let mut f = PLAIN_LAYER_FLAGS;
+    if l.locked {
+        f[0] |= 0x10;
+    }
+    if !l.printable {
+        f[0] |= 0x08;
+    }
+    if !l.visible {
+        f[1] |= 1;
+    }
+    f
+}
 /// Layer kinds stored as the `loda` object type of a layer.
 const LAYER_PLAIN: u32 = 0;
 const LAYER_GRID: u32 = 0x0b;
@@ -4723,8 +4740,22 @@ impl<'a> Writer<'a> {
         if v.zip() {
             // Front to back, as files list them.
             for layer in page.layers.iter().rev() {
-                let objects = self.layer_objects(layer, centre, &mut content);
-                layers.push(self.layer(PLAIN_LAYER_FLAGS, LAYER_PLAIN, &layer.name, objects));
+                // From version 16 a layer's state is a flag, as the
+                // files' own layers carry it (#2850): a hidden layer
+                // keeps its objects. Before, it goes out empty.
+                let (flags, objects) = if v.style_strings() {
+                    let objects = self.objects(&layer.shapes, centre, 0);
+                    if let (true, Some(b)) = (layer.visible, objects.bounds) {
+                        content = Some(content.map_or(b, |c| c.union(b)));
+                    }
+                    (layer_state_flags(layer), objects.nodes)
+                } else {
+                    (
+                        PLAIN_LAYER_FLAGS,
+                        self.layer_objects(layer, centre, &mut content),
+                    )
+                };
+                layers.push(self.layer(flags, LAYER_PLAIN, &layer.name, objects));
             }
         } else {
             let slots = std::mem::take(&mut self.layer_slots);
