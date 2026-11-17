@@ -2675,11 +2675,16 @@ pub fn find_shapes(
             _ => {}
         }
     }
+    // Only top-level objects are selectable: a text found inside a group
+    // or a frame selects the object it is in (it was left out, so Find
+    // found no grouped text).
     for s in page.layers.iter().flat_map(|l| &l.shapes) {
-        walk(s, needle, kind, match_case, whole_word, &mut out);
+        let mut hits = Vec::new();
+        walk(s, needle, kind, match_case, whole_word, &mut hits);
+        if !hits.is_empty() {
+            out.push(s.id);
+        }
     }
-    // Only top-level ids are selectable; keep those.
-    out.retain(|id| app.doc().shape(*id).is_ok());
     out
 }
 
@@ -2691,46 +2696,61 @@ pub fn replace_text(
     whole_word: bool,
     all: bool,
 ) {
-    let ids = find_shapes(app, needle, 0, match_case, whole_word);
-    let ids: Vec<ShapeId> = if all {
-        ids
-    } else {
-        ids.into_iter().take(1).collect()
+    let Ok(page) = app.doc().page(app.page) else {
+        return;
     };
-    let mut cmds = Vec::new();
-    for id in ids {
-        let Some(s) = app.doc().find_shape(id).cloned() else {
-            continue;
-        };
-        if let ShapeKind::Text {
-            spans,
-            origin,
-            frame,
-            align,
-            para,
-            on_path,
-        } = s.kind
-        {
-            let new_spans: Vec<TextSpan> = spans
-                .into_iter()
-                .map(|sp| TextSpan {
-                    text: replace_in(&sp.text, needle, replacement, match_case, whole_word),
-                    ..sp
-                })
-                .collect();
-            cmds.push(Command::SetShapeKind {
-                shape: id,
-                kind: ShapeKind::Text {
-                    spans: new_spans,
-                    origin,
-                    frame,
-                    align,
-                    para,
-                    on_path,
-                },
-            });
+    // The texts that hold `needle`, inside groups and frames too, each
+    // with its runs changed: Find and Replace found the texts of a group
+    // and replaced nothing in them.
+    let mut changed: Vec<(ShapeId, ShapeKind)> = Vec::new();
+    fn walk(
+        s: &tracedraw_core::Shape,
+        find: &dyn Fn(&[TextSpan]) -> Option<Vec<TextSpan>>,
+        out: &mut Vec<(ShapeId, ShapeKind)>,
+    ) {
+        match &s.kind {
+            ShapeKind::Text {
+                spans,
+                origin,
+                frame,
+                align,
+                para,
+                on_path,
+            } => {
+                if let Some(spans) = find(spans) {
+                    out.push((
+                        s.id,
+                        ShapeKind::Text {
+                            spans,
+                            origin: *origin,
+                            frame: *frame,
+                            align: *align,
+                            para: para.clone(),
+                            on_path: on_path.clone(),
+                        },
+                    ));
+                }
+            }
+            ShapeKind::Group { children } => children.iter().for_each(|c| walk(c, find, out)),
+            ShapeKind::ClipFrame { frame, contents } => {
+                walk(frame, find, out);
+                contents.iter().for_each(|c| walk(c, find, out));
+            }
+            _ => {}
         }
     }
+    let find =
+        |spans: &[TextSpan]| replace_in_spans(spans, needle, replacement, match_case, whole_word);
+    for s in page.layers.iter().flat_map(|l| &l.shapes) {
+        walk(s, &find, &mut changed);
+    }
+    if !all {
+        changed.truncate(1);
+    }
+    let cmds: Vec<Command> = changed
+        .into_iter()
+        .map(|(shape, kind)| Command::SetShapeKind { shape, kind })
+        .collect();
     if !cmds.is_empty() {
         if let Err(e) = app.engine.run_batch("Replace", &cmds) {
             app.status = e.to_string();
@@ -2738,55 +2758,97 @@ pub fn replace_text(
     }
 }
 
-pub(crate) fn replace_in(
+/// `text` with `needle` replaced (see [`replace_in_spans`]).
+#[cfg(test)]
+fn replace_in(
     text: &str,
     needle: &str,
     replacement: &str,
     match_case: bool,
     whole_word: bool,
 ) -> String {
-    if needle.is_empty() {
-        return text.to_string();
+    let span = [TextSpan::new(text, "", 12.0)];
+    match replace_in_spans(&span, needle, replacement, match_case, whole_word) {
+        Some(mut spans) => spans.pop().map(|s| s.text).unwrap_or_default(),
+        None => text.to_string(),
     }
-    if whole_word {
-        let mut out = String::new();
-        let mut word = String::new();
-        let flush = |word: &mut String, out: &mut String| {
-            if !word.is_empty() {
-                let eq = if match_case {
-                    word == needle
-                } else {
-                    word.to_lowercase() == needle.to_lowercase()
-                };
-                out.push_str(if eq { replacement } else { word });
-                word.clear();
-            }
-        };
-        for c in text.chars() {
-            if c.is_alphanumeric() {
-                word.push(c);
-            } else {
-                flush(&mut word, &mut out);
-                out.push(c);
-            }
-        }
-        flush(&mut word, &mut out);
-        return out;
+}
+
+/// The runs of a text with every `needle` in them replaced, `None` when
+/// there is none. The runs are searched as one text, so a word in two
+/// looks (half of it bold) is found and replaced too; the replacement
+/// takes the look of the run its match starts in, and a run left with no
+/// letters goes. Letters match one for one, ignoring case unless
+/// `match_case`; with `whole_word` a match has no letter or digit right
+/// before or after it. The positions were taken from the text made lower
+/// case, which can be longer or shorter than the text ("İ" is three bytes
+/// lower case and two as typed), so a Turkish "İ" before a match cut the
+/// text in the wrong place, or past its end, which closed TraceDraw.
+pub(crate) fn replace_in_spans(
+    spans: &[TextSpan],
+    needle: &str,
+    replacement: &str,
+    match_case: bool,
+    whole_word: bool,
+) -> Option<Vec<TextSpan>> {
+    let want: Vec<char> = needle.chars().collect();
+    if want.is_empty() {
+        return None;
     }
-    if match_case {
-        return text.replace(needle, replacement);
-    }
-    let lower = text.to_lowercase();
-    let nl = needle.to_lowercase();
-    let mut out = String::new();
+    // Every letter of the text with the run it is in.
+    let letters: Vec<(char, usize)> = spans
+        .iter()
+        .enumerate()
+        .flat_map(|(k, sp)| sp.text.chars().map(move |c| (c, k)))
+        .collect();
+    let same = |a: char, b: char| a == b || (!match_case && a.to_lowercase().eq(b.to_lowercase()));
+    let word = |at: Option<&(char, usize)>| at.is_some_and(|(c, _)| c.is_alphanumeric());
+    let mut found: Vec<usize> = Vec::new();
     let mut i = 0;
-    while let Some(pos) = lower[i..].find(&nl) {
-        out.push_str(&text[i..i + pos]);
-        out.push_str(replacement);
-        i += pos + nl.len();
+    while i + want.len() <= letters.len() {
+        let hit = want
+            .iter()
+            .enumerate()
+            .all(|(k, w)| same(letters[i + k].0, *w))
+            && !(whole_word
+                && (word(i.checked_sub(1).and_then(|p| letters.get(p)))
+                    || word(letters.get(i + want.len()))));
+        if hit {
+            found.push(i);
+            i += want.len();
+        } else {
+            i += 1;
+        }
     }
-    out.push_str(&text[i..]);
-    out
+    if found.is_empty() {
+        return None;
+    }
+    let mut texts: Vec<String> = vec![String::new(); spans.len()];
+    let mut next = found.into_iter().peekable();
+    let mut i = 0;
+    while i < letters.len() {
+        if next.next_if_eq(&i).is_some() {
+            texts[letters[i].1].push_str(replacement);
+            i += want.len();
+        } else {
+            texts[letters[i].1].push(letters[i].0);
+            i += 1;
+        }
+    }
+    let mut out: Vec<TextSpan> = spans
+        .iter()
+        .zip(texts)
+        .filter(|(sp, t)| !t.is_empty() || sp.text.is_empty())
+        .map(|(sp, text)| TextSpan { text, ..sp.clone() })
+        .collect();
+    if out.is_empty() {
+        // All of it replaced by nothing: the first run stays, empty.
+        out.extend(spans.first().map(|sp| TextSpan {
+            text: String::new(),
+            ..sp.clone()
+        }));
+    }
+    Some(out)
 }
 
 // ----- find and replace by properties -----------------------------------------
@@ -4774,6 +4836,85 @@ mod tests {
         let (h, r) = parse_csv(&decode_text(ansi));
         assert_eq!(h, vec!["Name", "Price"]);
         assert_eq!(r[0], vec!["João", "5 €"]);
+    }
+
+    /// Find and Replace searches the runs of a text as one text, finds and
+    /// replaces texts inside groups, and ignores case letter for letter: a
+    /// word in two looks was found and left as it was, a grouped text was
+    /// not found and not replaced, and a Turkish "İ" (longer lower case)
+    /// before a match cut the text in the wrong place or past its end,
+    /// which closed TraceDraw.
+    #[test]
+    fn replace_finds_words_across_runs_in_groups_and_after_a_dotted_capital_i() {
+        assert_eq!(
+            replace_in("\u{130}\u{130}x", "x", "y", false, false),
+            "\u{130}\u{130}y"
+        );
+        assert_eq!(
+            replace_in("\u{130}stanbul", "STAN", "-", false, false),
+            "\u{130}-bul"
+        );
+        let mut app = App::headless();
+        let mut bold = TextSpan::new("lo wor", "Arial", 12.0);
+        bold.bold = true;
+        let text = |spans: Vec<TextSpan>| ShapeKind::Text {
+            spans,
+            origin: tracedraw_core::Point::new(10.0, 10.0),
+            frame: None,
+            align: tracedraw_core::TextAlign::Left,
+            para: Default::default(),
+            on_path: None,
+        };
+        let split = app
+            .new_shape(text(vec![
+                TextSpan::new("hel", "Arial", 12.0),
+                bold,
+                TextSpan::new("ld", "Arial", 12.0),
+            ]))
+            .expect("text");
+        let inner = app
+            .new_shape(text(vec![TextSpan::new("say hello", "Arial", 12.0)]))
+            .expect("text");
+        let other = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![inner, other]);
+        app.group_selection();
+        let group = app.selection[0];
+        assert_eq!(
+            find_shapes(&app, "HELLO", 0, false, true),
+            vec![split, group]
+        );
+        replace_text(&mut app, "hello", "bye", false, true, true);
+        let runs = |id| match &app.doc().find_shape(id).expect("text").kind {
+            ShapeKind::Text { spans, .. } => spans
+                .iter()
+                .map(|s| (s.text.clone(), s.bold))
+                .collect::<Vec<_>>(),
+            _ => Vec::new(),
+        };
+        assert_eq!(
+            runs(split),
+            vec![
+                ("bye".to_string(), false),
+                (" wor".to_string(), true),
+                ("ld".to_string(), false)
+            ]
+        );
+        assert_eq!(runs(inner), vec![("say bye".to_string(), false)]);
+        // Whole words only: "hello" in "helloworld" stays.
+        assert!(replace_in_spans(
+            &[TextSpan::new("helloworld", "A", 1.0)],
+            "hello",
+            "x",
+            false,
+            true
+        )
+        .is_none());
     }
 
     #[test]
