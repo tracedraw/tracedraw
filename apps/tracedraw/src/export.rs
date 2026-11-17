@@ -1874,7 +1874,7 @@ fn sheet_pixels(
     id: tracedraw_core::PageId,
     dpi: f64,
 ) -> Option<(Vec<u8>, u32, u32)> {
-    let pm = tracedraw_render::render_page_image(doc, id, dpi)?;
+    let pm = tracedraw_render::render_page_export_image(doc, id, dpi)?;
     let mut white = tiny_skia::Pixmap::new(pm.width(), pm.height())?;
     white.fill(tiny_skia::Color::WHITE);
     white.draw_pixmap(

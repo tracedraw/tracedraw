@@ -869,7 +869,7 @@ fn main() -> ExitCode {
                 match doc
                     .pages
                     .get(page_index())
-                    .and_then(|p| tracedraw_render::render_page_image(&doc, p.id, dpi))
+                    .and_then(|p| tracedraw_render::render_page_export_image(&doc, p.id, dpi))
                 {
                     Some(pm) => pm
                         .save_png(output)

@@ -378,6 +378,37 @@ fn community_macro_export_every_page_as_png() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A page exported by a macro at a resolution where its size is not a
+/// whole number of pixels fills every pixel of the picture, as File >
+/// Export has since #2866: the right column and the top row were left
+/// light.
+#[test]
+fn macro_export_fills_the_picture_to_its_edges() {
+    let mut app = App::headless();
+    let dir = std::env::temp_dir().join(format!("tracedraw-vg-edges-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("dir");
+    let file = dir.join("page.png");
+    let src = format!(
+        "ActiveDocument.Unit = cdrMillimeter;
+         ActivePage.SetSize(210, 297);
+         const r = ActiveLayer.CreateRectangle2(0, 0, 210, 297);
+         r.Fill.UniformColor.RGBAssign(0, 0, 0);
+         r.Outline.SetNoOutline();
+         ActiveDocument.ExportBitmap({file:?}, cdrPNG, cdrCurrentPage, cdrRGBColorImage, 0, 0, 96, 96).Finish();",
+        file = file.display().to_string()
+    );
+    run(&mut app, &src);
+    let img = image::open(&file).expect("png written").to_rgba8();
+    assert_eq!((img.width(), img.height()), (794, 1123));
+    let (w, h) = img.dimensions();
+    for (x, y) in [(w - 1, h / 2), (w / 2, 0), (w - 1, 0), (0, h - 1), (0, 0)] {
+        let p = img.get_pixel(x, y);
+        assert!(p[0] < 8 && p[1] < 8 && p[2] < 8, "({x}, {y}) is {p:?}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn nodes_segments_and_curve_building() {
     let mut app = App::headless();

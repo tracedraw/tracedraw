@@ -993,7 +993,7 @@ impl HostInner {
                     } else {
                         96.0
                     };
-                    let pm = tracedraw_render::render_page_image(doc, page, dpi)
+                    let pm = tracedraw_render::render_page_export_image(doc, page, dpi)
                         .ok_or("render failed")?;
                     let img =
                         image::RgbaImage::from_raw(pm.width(), pm.height(), pm.data().to_vec())
