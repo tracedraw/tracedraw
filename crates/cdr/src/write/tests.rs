@@ -1883,6 +1883,48 @@ fn chosen_node_types_round_trip_in_the_continuity_bits() {
     assert!(back.pages[0].layers[0].shapes[0].node_types.is_empty());
 }
 
+/// A filled curve that fills nonzero but whose contours do not overlap
+/// keeps its chosen node types and its nodes in every version: since
+/// 0.48 every nonzero curve went out through the overlap merge (#2733),
+/// which writes plain nodes, so its smooth and symmetrical nodes came
+/// back as cusps.
+#[test]
+fn a_nonzero_curve_without_overlaps_keeps_its_node_types() {
+    use tracedraw_core::nodes::NodeType;
+    use tracedraw_core::shaping::FillRule;
+    let mut p = BezPath::new();
+    p.move_to((0.0, 0.0));
+    p.curve_to((10.0, 10.0), (20.0, 10.0), (30.0, 0.0));
+    p.curve_to((40.0, -10.0), (50.0, -10.0), (60.0, 0.0));
+    p.line_to((60.0, -30.0));
+    p.line_to((0.0, -30.0));
+    p.close_path();
+    let mut doc = Document::new("w", Size::new(200.0, 100.0));
+    let mut ids = doc.ids().clone();
+    let mut c = Shape::new(
+        ids.shape(),
+        ShapeKind::Path {
+            path: p.clone(),
+            closed: true,
+        },
+    );
+    c.fill = Fill::Solid(Color::BLACK);
+    c.fill_rule = FillRule::NonZero;
+    c.node_types = [(1, NodeType::Smooth)].into();
+    doc.pages[0].layers[0].shapes = vec![c];
+    doc.set_ids(ids);
+    for v in versions() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, rep) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let s = &back.pages[0].layers[0].shapes[0];
+        let ShapeKind::Path { path, .. } = &s.kind else {
+            panic!("{v}: {:?} {:?}", s.kind, rep.warnings);
+        };
+        assert_eq!(path.elements().len(), p.elements().len(), "{v}: {path:?}");
+        assert_eq!(s.node_types, [(1, NodeType::Smooth)].into(), "{v}");
+    }
+}
+
 #[test]
 fn version_16_and_later_files_are_a_complete_package() {
     use std::io::Read;
