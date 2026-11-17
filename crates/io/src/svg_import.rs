@@ -567,8 +567,18 @@ fn convert_image(img: &usvg::Image, to_page: Affine, ids: &mut IdSource) -> Opti
     };
     let t = to_page * to_affine(img.abs_transform());
     let sz = img.size();
-    let r = Rect::new(0.0, 0.0, sz.width() as f64, sz.height() as f64);
-    let rect = t.transform_rect_bbox(r);
+    let (w, h) = (sz.width() as f64, sz.height() as f64);
+    let r = Rect::new(0.0, 0.0, w, h);
+    // Upright (the page's Y flip and scales alone): the box on the page.
+    // Turned, slanted or mirrored: the picture in its own box, placed by
+    // the transform, top row up; the box round it lost the turn.
+    let c = t.as_coeffs();
+    let upright = c[1].abs() < 1e-9 && c[2].abs() < 1e-9 && c[0] > 0.0 && c[3] < 0.0;
+    let (rect, place) = if upright {
+        (t.transform_rect_bbox(r), Affine::IDENTITY)
+    } else {
+        (r, t * Affine::new([1.0, 0.0, 0.0, -1.0, 0.0, h]))
+    };
     let mut shape = Shape::new(
         ShapeId(ids.shape().0),
         ShapeKind::Bitmap {
@@ -579,6 +589,7 @@ fn convert_image(img: &usvg::Image, to_page: Affine, ids: &mut IdSource) -> Opti
             fx: None,
         },
     );
+    shape.transform = place;
     shape.stroke = None;
     if !img.id().is_empty() {
         shape.name = Some(img.id().to_string());
@@ -688,6 +699,76 @@ mod tests {
         assert_eq!(element_depth(text), 2);
         // The svg, three groups and a self-closing rect.
         assert_eq!(element_depth(&nested(3)), 4);
+    }
+
+    /// A turned, slanted or mirrored picture comes in turned: it came in
+    /// upright, stretched over the box round it. An upright one keeps
+    /// its box on the page with no transform.
+    #[test]
+    fn a_turned_picture_keeps_its_turn() {
+        use tracedraw_core::Document;
+        let png = crate::svg::encode_png(
+            2,
+            2,
+            &[
+                255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255,
+            ],
+        );
+        for place in [
+            Affine::IDENTITY,
+            Affine::rotate_about(0.4, Point::new(60.0, 55.0)),
+            Affine::new([1.0, 0.0, 0.5, 1.0, 0.0, 0.0]),
+            Affine::new([-1.0, 0.0, 0.0, 1.0, 150.0, 0.0]),
+        ] {
+            let mut doc = Document::new("t", tracedraw_core::Size::new(200.0, 150.0));
+            let mut b = Shape::new(
+                ShapeId(1),
+                ShapeKind::Bitmap {
+                    rect: Rect::new(30.0, 30.0, 90.0, 80.0),
+                    width_px: 2,
+                    height_px: 2,
+                    png: png.clone().into(),
+                    fx: None,
+                },
+            );
+            b.stroke = None;
+            b.transform = place;
+            let want = b.page_path();
+            doc.pages[0].layers[0].shapes.push(b);
+            let svg = crate::svg::page_to_svg(&doc, 0);
+            let mut ids = IdSource::default();
+            let out = parse(&svg, &mut ids).unwrap();
+            let mut s = &out.shapes[0];
+            while let ShapeKind::Group { children } = &s.kind {
+                s = &children[0];
+            }
+            assert!(matches!(s.kind, ShapeKind::Bitmap { .. }), "{:?}", s.kind);
+            if place == Affine::IDENTITY {
+                assert_eq!(s.transform, Affine::IDENTITY);
+            }
+            // The same corners, the picture's top-left one first.
+            let corners = |p: &BezPath| -> Vec<Point> {
+                p.elements()
+                    .iter()
+                    .filter_map(|e| e.end_point())
+                    .take(4)
+                    .collect()
+            };
+            let got = s.page_path();
+            let (a, g) = (corners(&want), corners(&got));
+            let near = |p: &Point| g.iter().any(|q| (*p - *q).hypot() < 0.01);
+            assert!(a.iter().all(near), "{place:?}: {a:?} vs {g:?}");
+            // The top-left pixel (red) where it was: the corner the
+            // picture's local top-left goes to.
+            let top_left = |s: &Shape| {
+                let ShapeKind::Bitmap { rect, .. } = &s.kind else {
+                    unreachable!()
+                };
+                s.transform * Point::new(rect.x0, rect.y1)
+            };
+            let tl = (top_left(s) - place * Point::new(30.0, 80.0)).hypot();
+            assert!(tl < 0.01, "{place:?}: top-left off by {tl}");
+        }
     }
 }
 
