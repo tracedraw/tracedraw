@@ -2826,6 +2826,12 @@ impl EmfWriter<'_> {
                 }
             }
             ShapeKind::ClipFrame { frame, contents } => {
+                // The frame's own fill, beneath the contents.
+                if !matches!(frame.fill, Fill::None) {
+                    let mut fill_only = (**frame).clone();
+                    fill_only.stroke = None;
+                    self.shape(&fill_only, transform);
+                }
                 let clip = transform * frame.local_path();
                 self.record(33, &[]);
                 self.path(&clip);
@@ -2834,7 +2840,7 @@ impl EmfWriter<'_> {
                     self.shape(ch, transform);
                 }
                 self.record(34, &[-1]);
-                // The frame's own fill and outline, over the contents.
+                // The frame's own outline, over the contents.
                 let mut f = (**frame).clone();
                 f.fill = Fill::None;
                 self.shape(&f, transform);
@@ -3459,6 +3465,13 @@ impl WmfWriter<'_> {
                 }
             }
             ShapeKind::ClipFrame { frame, contents } => {
+                // The frame's own fill beneath the contents, its outline
+                // over them.
+                if !matches!(frame.fill, Fill::None) {
+                    let mut fill_only = (**frame).clone();
+                    fill_only.stroke = None;
+                    self.shape(&fill_only, transform);
+                }
                 for ch in contents {
                     self.shape(ch, transform);
                 }
@@ -3660,6 +3673,77 @@ mod wmf_export_tests {
                 assert_eq!(pm.pixels()[1].blue(), 255);
             }
             k => panic!("{k:?}"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod clip_frame_export_tests {
+    use super::*;
+    use tracedraw_core::{geometry::Rect, Document};
+
+    /// A clip frame's own fill goes in beneath its contents, as the
+    /// drawing shows it; it was left out, so the frame showed empty
+    /// round its contents.
+    #[test]
+    fn a_clip_frames_fill_goes_in_beneath_its_contents() {
+        let mut doc = Document::new("t", Size::new(100.0, 100.0));
+        let mut ids = doc.ids().clone();
+        let mut frame = Shape::new(
+            ids.shape(),
+            ShapeKind::Ellipse {
+                rect: Rect::new(10.0, 10.0, 90.0, 90.0),
+                arc: None,
+            },
+        );
+        frame.fill = Fill::Solid(Color::rgb8(255, 255, 0));
+        frame.stroke = Some(Stroke::new(Color::BLACK, 0.5));
+        let mut inside = Shape::new(
+            ids.shape(),
+            ShapeKind::Rect {
+                rect: Rect::new(50.0, 0.0, 100.0, 100.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        inside.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        inside.stroke = None;
+        let mut clip = Shape::new(
+            ids.shape(),
+            ShapeKind::ClipFrame {
+                frame: Box::new(frame),
+                contents: vec![inside],
+            },
+        );
+        clip.fill = Fill::None;
+        clip.stroke = None;
+        doc.pages[0].layers[0].shapes.push(clip);
+        doc.set_ids(ids);
+        fn fills(shapes: &[Shape], out: &mut Vec<Fill>) {
+            for s in shapes {
+                match &s.kind {
+                    ShapeKind::Group { children } => fills(children, out),
+                    ShapeKind::ClipFrame { contents, .. } => fills(contents, out),
+                    _ if s.fill != Fill::None => out.push(s.fill.clone()),
+                    _ => {}
+                }
+            }
+        }
+        for bytes in [page_to_emf(&doc, 0), page_to_wmf(&doc, 0)] {
+            let mut ids2 = IdSource::default();
+            let imp = parse(&bytes, &mut ids2).expect("re-read");
+            let mut got = Vec::new();
+            fills(&imp.shapes, &mut got);
+            let yellow = got
+                .iter()
+                .position(|f| *f == Fill::Solid(Color::rgb8(255, 255, 0)));
+            let red = got
+                .iter()
+                .position(|f| *f == Fill::Solid(Color::rgb8(255, 0, 0)));
+            assert!(
+                matches!((yellow, red), (Some(y), Some(r)) if y < r),
+                "{got:?}"
+            );
         }
     }
 }
