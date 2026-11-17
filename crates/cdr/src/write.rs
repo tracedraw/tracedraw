@@ -1714,6 +1714,12 @@ fn fountain_type(kind: FountainKind) -> u8 {
     }
 }
 
+/// [`fild`] for the reader's tests: a fill record of version `v`.
+#[cfg(test)]
+pub(crate) fn fild_of_version(v: u16, id: u32, fill: &Fill) -> Vec<u8> {
+    fild(Ver(v), id, fill)
+}
+
 /// `fild`: a fill record. See `docs/cdr-format.md` for both layouts.
 fn fild(v: Ver, id: u32, fill: &Fill) -> Vec<u8> {
     let fill = match fill {

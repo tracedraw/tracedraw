@@ -2489,11 +2489,15 @@ pub(crate) fn object_transparency_mask(style: &str) -> Option<(tracedraw_core::F
             return None;
         };
         let mut parts = s.split(',');
-        if !parts.next()?.starts_with("GRAY") {
-            return None;
+        if parts.next()?.starts_with("GRAY") {
+            let v: f32 = parts.nth(1)?.trim().parse().ok()?;
+            return Some((v / 255.0).clamp(0.0, 1.0));
         }
-        let v: f32 = parts.nth(1)?.trim().parse().ok()?;
-        Some((v / 255.0).clamp(0.0, 1.0))
+        // A node given in another model (RGB, CMYK) counts by its
+        // lightness, as the record's fountain does (#3095: only greys
+        // were read, and such a transparency opened solid).
+        let [r, g, b] = parse_color_spec(&s)?.to_rgb_f32_builtin();
+        Some((r * 0.2126 + g * 0.7152 + b * 0.0722).clamp(0.0, 1.0))
     };
     let (mut first, mut last) = (grey("primaryColor")?, grey("secondaryColor")?);
     // The section's start and end amounts run the nodes' transparency

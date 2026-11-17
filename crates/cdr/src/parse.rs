@@ -4515,13 +4515,20 @@ impl<'a> Ctx<'a> {
         // A pattern transparency in the style string (a fill type other
         // than uniform or fountain) is the pattern its record names, not
         // the mean of its two amounts (#2960).
-        if mask.is_none()
-            && style_string
-                .as_deref()
-                .and_then(text::object_transparency_fill_type)
-                .is_some_and(|t| !matches!(t, 0..=2))
-        {
+        let style_fill_type = style_string
+            .as_deref()
+            .and_then(text::object_transparency_fill_type);
+        if mask.is_none() && style_fill_type.is_some_and(|t| !matches!(t, 0..=2)) {
             if let Some(RecordTransparency::Mask(m @ (Fill::Pattern(_), _))) = &record_transparency
+            {
+                mask = Some(m.clone());
+            }
+        }
+        // A fountain transparency the style string names without nodes
+        // this reader takes is the fountain its record names, not the
+        // mean of its two amounts drawn uniform (#3095).
+        if mask.is_none() && style_fill_type == Some(2) {
+            if let Some(RecordTransparency::Mask(m @ (Fill::Fountain(_), _))) = &record_transparency
             {
                 mask = Some(m.clone());
             }
@@ -16650,6 +16657,89 @@ pub(crate) mod tests {
         let own = r#"{"transparency":{"fill":{"type":"1"},"uniformTransparency":"0.2"}}"#;
         let s = rect(own, transparency_record_v16(0, 40.0, 1));
         assert!((s.opacity - 0.8).abs() < 1e-9, "{}", s.opacity);
+    }
+
+    /// #3095: a fountain transparency in a version 18 file, each kind
+    /// (linear, radial, conical, square), with nodes in greys, in another
+    /// model, or not given in the style string at all (then the record's
+    /// fountain): a graded mask every time, never the object drawn
+    /// uniform or solid.
+    #[test]
+    fn fountain_transparencies_of_every_kind_and_node_model() {
+        use tracedraw_core::live::Effect;
+        let v = 18u16;
+        let ramp = Fill::Fountain(Fountain {
+            stops: vec![
+                Stop::new(0.0, Color::rgb8(255, 255, 255)),
+                Stop::new(0.5, Color::rgb8(128, 128, 128)),
+                Stop::new(1.0, Color::rgb8(0, 0, 0)),
+            ],
+            ..Default::default()
+        });
+        let read = |style: &str| {
+            let style = [u32s(&[1, style.len() as u32]), style.as_bytes().to_vec()].concat();
+            let args = vec![
+                (ARG_OPACITY, transparency_record_v16(1, 0.0, 5)),
+                (ARG_STYLE_STRING, style),
+                (ARG_COORDS, f64s(&[254_000.0, 254_000.0, 1.0, 1.0])),
+            ];
+            let obj = list(b"obj ", &chunk(b"loda", &loda(OBJ_RECT, &args)));
+            let body = [
+                chunk(b"mcfg", &mcfg(v, 2_540_000, 2_540_000)),
+                chunk(b"fild", &crate::write::fild_of_version(v, 5, &ramp)),
+                list(b"page", &list(b"layr", &obj)),
+            ]
+            .concat();
+            let (doc, rep) = parse(&riff(b"CDRJ", &body), v);
+            assert_eq!(rep.shapes, 1, "{:?}", rep.warnings);
+            first_shape(&doc).clone()
+        };
+        let mask = |s: &Shape| {
+            s.effects.iter().find_map(|e| match e {
+                Effect::Transparency {
+                    mask: Fill::Fountain(f),
+                    ..
+                } => Some(f.clone()),
+                _ => None,
+            })
+        };
+        let grey = |c: Color| c.to_rgb_f32_builtin()[1];
+        let fill = r#""fill":{"type":"1","primaryColor":"RGB255,USER,102,97,143,100,00000000-0000-0000-0000-000000000000"}"#;
+        let node = |model: &str, v: u8| match model {
+            "GRAY" => format!("GRAY255,USER,{v},100,00000000-0000-0000-0000-000000000000"),
+            _ => format!("RGB255,USER,{v},{v},{v},100,00000000-0000-0000-0000-000000000000"),
+        };
+        for (code, kind) in [
+            (1, FountainKind::Linear),
+            (2, FountainKind::Radial),
+            (3, FountainKind::Conical),
+            (4, FountainKind::Square),
+        ] {
+            for model in ["GRAY", "RGB"] {
+                let style = format!(
+                    r#"{{"transparency":{{"fill":{{"type":"2","fountainType":"{code}","angle":"0","primaryColor":"{}","secondaryColor":"{}","xScale":"1","yScale":"1","xCenterOffset":"0","yCenterOffset":"0"}},"startTransparency":"0","endTransparency":"1"}},{fill}}}"#,
+                    node(model, 255),
+                    node(model, 0),
+                );
+                let s = read(&style);
+                assert_eq!(s.opacity, 1.0, "{model} {code}");
+                let f = mask(&s).unwrap_or_else(|| panic!("{model} {code}: {:?}", s.effects));
+                assert_eq!(f.kind, kind, "{model} {code}");
+                // Graded from clear to opaque (a radial run is stored
+                // from its rim, so its stops come the other way round).
+                let (a, b) = (grey(f.stops[0].color), grey(f.stops.last().unwrap().color));
+                assert!((a - b).abs() > 0.99, "{model} {code}: {:?}", f.stops);
+            }
+        }
+        // The style string names a fountain but gives no nodes: the
+        // record's fountain, mid node and all, not 50 % uniform.
+        let s = read(&format!(
+            r#"{{"transparency":{{"fill":{{"type":"2"}},"startTransparency":"0","endTransparency":"1"}},{fill}}}"#
+        ));
+        assert_eq!(s.opacity, 1.0);
+        let f = mask(&s).unwrap_or_else(|| panic!("{:?}", s.effects));
+        assert_eq!(f.stops.len(), 3, "{:?}", f.stops);
+        assert!((grey(f.stops[1].color) - 128.0 / 255.0).abs() < 0.02, "{:?}", f.stops);
     }
 
     /// #2960: an object's vector pattern transparency read from its
