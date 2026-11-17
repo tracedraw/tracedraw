@@ -951,6 +951,37 @@ fn runs_lines_and_alignment_round_trip() {
     }
 }
 
+/// A line break inside a paragraph (Shift+Enter, U+2028) reads back as
+/// a line break from version 12: it came back as a paragraph break, so
+/// the line after it took the first-line indent, the space before and a
+/// bullet of its own (d#2238). Before 12 (Windows-1252 letters) it goes
+/// out as a paragraph break, and the other letters keep their accents.
+#[test]
+fn a_line_break_inside_a_paragraph_round_trips() {
+    let mut doc = doc_with(Vec::new());
+    let mut ids = doc.ids().clone();
+    doc.pages[0].layers[0].shapes = vec![text_shape(
+        &mut ids,
+        vec![TextSpan::new("oné\u{2028}two\nthree", "Arial", 12.0)],
+        TextAlign::Left,
+    )];
+    doc.set_ids(ids);
+    for v in versions() {
+        let (back, rep) =
+            crate::open_bytes(&document_to_cdr_version(&doc, v), "back").expect("reads back");
+        let ShapeKind::Text { spans, .. } = &back.pages[0].layers[0].shapes[0].kind else {
+            panic!("{v}: {:?}", rep.warnings);
+        };
+        let text: String = spans.iter().map(|s| s.text.as_str()).collect();
+        let want = if v >= 12 {
+            "oné\u{2028}two\nthree"
+        } else {
+            "oné\ntwo\nthree"
+        };
+        assert_eq!(text, want, "{v}: {spans:?}");
+    }
+}
+
 /// Paragraphs of one text with alignments of their own keep them in
 /// every version.
 #[test]

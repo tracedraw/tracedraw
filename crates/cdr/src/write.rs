@@ -6311,6 +6311,23 @@ impl<'a> Writer<'a> {
     ) -> Vec<u8> {
         let v = self.v;
         let n = v.0;
+        // Before 12 the letters are Windows-1252, which has no line
+        // separator: a line break inside a paragraph (U+2028) goes out as
+        // a paragraph break, the nearest the format holds, instead of a
+        // "?" that also turned every other letter beyond ASCII into one.
+        let broken: Vec<TextSpan>;
+        let spans = if !v.unicode() && spans.iter().any(|s| s.text.contains('\u{2028}')) {
+            broken = spans
+                .iter()
+                .map(|s| TextSpan {
+                    text: s.text.replace('\u{2028}', "\n"),
+                    ..s.clone()
+                })
+                .collect();
+            &broken[..]
+        } else {
+            spans
+        };
         // As files of versions 7 to 15 hold artistic text: -1, -1, 0, -1,
         // 8, a number growing with the version (2 in 7, 4 in 8 (both
         // variants), 4 in 9, 5 in 10 and 11, 6 in 12, 8 in 13, 9 in 14, 11

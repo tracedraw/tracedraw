@@ -11,6 +11,7 @@ full, row-by-row status.
 - `.cdr`: an object embedded as a wrapped file (Object Packager, such as a `.crv3d` project) has no picture to show; it now keeps its place as a grey box named after the file instead of being dropped (#3083).
 - Macro editor (Alt+F11): Ctrl+S in the code saves the macro again; since 0.47.0 it opened Save Drawing instead and the code lost the keyboard.
 - Print: Fit to page scales the page to fill the paper inside its margins, larger or smaller, and what is put partly off a page stays cut at its edge, where it was drawn, on facing pages too. It pulled such objects onto the page and shrank the page's other objects with them. Printing the selection, Fit to page still shrinks it to fit the page (#2678).
+- Saving as `.cdr` and opening it again keeps a line break made with Shift+Enter as a line break: it came back as a new paragraph, so the line after it took the first-line indent, the space before and a bullet of its own. A file for CorelDRAW 7 to 11 gets a paragraph break there instead of a "?", which had also turned every accented letter of the text into one.
 - Saving as `.cdr`: a filled curve set to fill with the nonzero rule (Fill winding), such as converted lettering, keeps its smooth and symmetrical nodes when none of its parts overlap; since 0.48.0 every such curve came back with all its nodes cusps.
 
 ## 0.48.0 (2026-11-16)

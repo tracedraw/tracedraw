@@ -1875,15 +1875,18 @@ fn read_txsm_16(d: &[u8], v: u16, charset: u8, warn: &mut dyn FnMut(String)) -> 
     Some(out)
 }
 
-/// Text with its line breaks as `\n`: files end lines with a carriage
-/// return (`\r`, version 21 artistic text), a CR LF pair, a line or
-/// paragraph separator or a vertical tab.
+/// Text with its paragraph ends as `\n`: files end lines with a carriage
+/// return (`\r`, version 21 artistic text), a CR LF pair, a paragraph
+/// separator or a vertical tab. A line separator (U+2028) stays: it is
+/// the line break inside a paragraph (Shift+Enter), which TraceDraw
+/// writes as it is, so a saved break came back as a new paragraph, with
+/// the first-line indent, the space before and a bullet of its own.
 pub(crate) fn line_breaks(text: &str) -> String {
-    if !text.contains(['\r', '\u{2028}', '\u{2029}', '\u{0B}']) {
+    if !text.contains(['\r', '\u{2029}', '\u{0B}']) {
         return text.to_string();
     }
     text.replace("\r\n", "\n")
-        .replace(['\r', '\u{2028}', '\u{2029}', '\u{0B}'], "\n")
+        .replace(['\r', '\u{2029}', '\u{0B}'], "\n")
 }
 
 /// Minimal JSON value for the version 16+ style strings.
@@ -3217,7 +3220,7 @@ mod tests {
         assert_eq!(line_breaks("Fazendo\rum bolo"), "Fazendo\num bolo");
         assert_eq!(
             line_breaks("a\r\nb\u{2028}c\u{2029}d\u{0B}e"),
-            "a\nb\nc\nd\ne"
+            "a\nb\u{2028}c\nd\ne"
         );
         assert_eq!(line_breaks("plain"), "plain");
     }
