@@ -1548,7 +1548,7 @@ fn lens(app: &mut App, ui: &mut Ui) {
                 Some(lens) => {
                     if app.lens.frozen {
                         app.push_effect(Effect::Lens(lens), true);
-                        app.flatten_effects();
+                        app.freeze_lens();
                     } else {
                         app.push_effect(Effect::Lens(lens), true);
                     }
