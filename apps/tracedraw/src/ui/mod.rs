@@ -2536,6 +2536,33 @@ mod tests {
         // switch.
         tap(&mut app, ctrl);
         assert!(!app.touch_mods.any(), "{:?}", app.touch_mods);
+        // Two quick taps lock it down until the next tap, as a phone
+        // keyboard's Shift (#3101, #3102); taps far apart do not.
+        for _ in 0..10 {
+            timed(&mut app, Vec::new());
+        }
+        tap(&mut app, ctrl);
+        for _ in 0..10 {
+            timed(&mut app, Vec::new());
+        }
+        tap(&mut app, ctrl);
+        assert!(!app.touch_mods.any(), "slow taps: {:?}", app.touch_mods);
+        tap(&mut app, ctrl);
+        assert!(app.touch_mods.ctrl, "double tap locks: {:?}", app.touch_mods);
+        assert!(ctx.input(|i| i.modifiers.ctrl));
+        // Locked: it stays down while another finger taps.
+        let at = app.view.to_screen(Point::new(150.0, 220.0));
+        timed(&mut app, vec![finger(9, egui::TouchPhase::Start, at)]);
+        timed(&mut app, vec![finger(9, egui::TouchPhase::End, at)]);
+        timed(&mut app, Vec::new());
+        assert!(app.touch_mods.ctrl);
+        // The next tap lets it go, and does not start a double tap.
+        tap(&mut app, ctrl);
+        assert!(!app.touch_mods.any(), "{:?}", app.touch_mods);
+        tap(&mut app, ctrl);
+        assert!(!app.touch_mods.any(), "{:?}", app.touch_mods);
+        tap(&mut app, ctrl);
+        assert!(app.touch_mods.ctrl, "{:?}", app.touch_mods);
     }
 
     /// Ctrl held from the keys on the drawing by one finger while another

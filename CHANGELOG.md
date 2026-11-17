@@ -21,6 +21,7 @@ full, row-by-row status.
 - Saving as `.cdr` and opening it again keeps a line break made with Shift+Enter as a line break: it came back as a new paragraph, so the line after it took the first-line indent, the space before and a bullet of its own. A file for CorelDRAW 7 to 11 gets a paragraph break there instead of a "?", which had also turned every accented letter of the text into one.
 - Saving as `.cdr`: a filled curve set to fill with the nonzero rule (Fill winding), such as converted lettering, keeps its smooth and symmetrical nodes when none of its parts overlap; since 0.48.0 every such curve came back with all its nodes cusps.
 - Files dragged onto the window on Windows: a file dropped once was imported again every time the window was minimized and brought back, until TraceDraw was restarted. The input kept while the window was minimized listed the dragged files again at every frame, and the copies counted as a new drag (#3058).
+- Touch keys on the drawing: two quick taps on Shift, Ctrl or Alt lock the key down until the next tap, as on a phone keyboard. Since 0.47 a tap only pressed and let go the key, so it worked only while a finger held it (#3101, #3102).
 
 ## 0.48.0 (2026-11-16)
 
