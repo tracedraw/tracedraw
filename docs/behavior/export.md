@@ -323,8 +323,12 @@ and in presets:
   and edit the words. The glyphs keep the places the text engine gave
   them: characters that share a direction and slant go into one
   `<text>` whose transform is the first one's place, each run of one
-  span, font and size a `<tspan>` with an `x` and a `y` for every
-  character (the further characters of a ligature where it starts),
+  span, font and size on one line a `<tspan>` with an `x` and a `y` for
+  every character (the further characters of a ligature where it
+  starts), the characters in the order they are typed (Hebrew and
+  Arabic went in backwards, in the order the glyphs are drawn), no
+  white space between the tags (kept, the indent before the first
+  `<tspan>` was text),
   `font-family` the span's family, `font-size` in millimetres, bold and
   italic as `font-weight` and `font-style`, `xml:space="preserve"`.
   Fill, outline, spot colour names and transparency are the object's.

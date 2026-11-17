@@ -6316,6 +6316,7 @@ fn place_glyph(collect: bool, a: Affine, g: &Glyph, out: &mut GlyphLayout) {
             transform: a * src.local,
             text: src.text.clone(),
             span: g.span,
+            char_idx: g.char_idx,
             path,
             exact: src.exact,
         }),

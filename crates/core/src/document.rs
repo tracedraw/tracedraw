@@ -160,6 +160,10 @@ pub mod text_outline {
         pub text: String,
         /// The span it belongs to.
         pub span: usize,
+        /// The number of the first character it stands for among the
+        /// characters of the whole text (in the order they are typed;
+        /// glyphs come in the order they are drawn, left to right).
+        pub char_idx: usize,
         /// Its outline as drawn, layout space (mm).
         pub path: BezPath,
         /// False when the drawn outline is not the font's own glyph

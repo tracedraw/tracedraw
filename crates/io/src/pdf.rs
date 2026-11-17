@@ -4851,6 +4851,7 @@ pub(crate) mod text_tests {
     fn glyphs(req: &TextRequest) -> GlyphLayout {
         let mut out = GlyphLayout::default();
         let mut pen = 0.0;
+        let mut char_idx = 0;
         for (si, span) in req.spans.iter().enumerate() {
             let gf = font(&span.font_family);
             let face = ttf_parser::Face::parse(&gf.data, 0).expect("test font");
@@ -4867,9 +4868,11 @@ pub(crate) mod text_tests {
                     transform: t,
                     text: c.to_string(),
                     span: si,
+                    char_idx,
                     path: t * Affine::scale(1.0 / upem) * sink.0,
                     exact: !span.bold,
                 });
+                char_idx += 1;
                 pen += face
                     .glyph_hor_advance(ttf_parser::GlyphId(gid))
                     .unwrap_or(0) as f64

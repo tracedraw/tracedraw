@@ -14,6 +14,9 @@
 //! text's `x`/`y` and at every `tspan` with an `x`; `dx`/`dy` shift the
 //! characters that follow. Only the first value of a coordinate list is
 //! read; the characters after it are laid out by the text engine.
+//! A `tspan` placing each of its characters right after one that did,
+//! on the same baseline, goes on with the chunk (the next run of a laid
+//! out line).
 
 use std::collections::HashMap;
 
@@ -65,8 +68,13 @@ pub(crate) struct Chunk {
 }
 
 impl Chunk {
+    /// No characters, or only white space: nothing to see (the line
+    /// breaks and indents between the tags of a text with
+    /// `xml:space="preserve"`).
     fn is_empty(&self) -> bool {
-        self.spans.iter().all(|s| s.text.is_empty())
+        self.spans
+            .iter()
+            .all(|s| s.text.chars().all(char::is_whitespace))
     }
 }
 
@@ -418,6 +426,30 @@ impl Ctx<'_, '_> {
         px.is_finite().then_some(px)
     }
 
+    /// Every value of a coordinate list attribute, in px (none when one
+    /// cannot be read).
+    fn coords(&self, n: Node, name: &str, font_px: f64, percent_of: f64) -> Vec<f64> {
+        let Some(v) = n.attribute(name) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for l in svgtypes::LengthListParser::from(v) {
+            let Ok(l) = l else {
+                return Vec::new();
+            };
+            let px = if l.unit == svgtypes::LengthUnit::Percent {
+                l.number * percent_of / 100.0
+            } else {
+                l.number * unit_px(l.unit, font_px)
+            };
+            if !px.is_finite() {
+                return Vec::new();
+            }
+            out.push(px);
+        }
+        out
+    }
+
     /// The first value of a coordinate list attribute, in px.
     fn first_coord(&self, n: Node, name: &str, font_px: f64, percent_of: f64) -> Option<f64> {
         let v = n.attribute(name)?;
@@ -505,6 +537,9 @@ struct Reader<'c, 'a, 'input> {
     /// The last character added was a space, or none was added to this
     /// chunk yet (white space collapsing).
     after_space: bool,
+    /// The last element placed every character of its own (a `tspan`
+    /// with an `x` for each): the least and greatest `x` and its `y`.
+    placed: Option<(f64, f64, f64)>,
 }
 
 fn read_text(text: Node, ctx: &Ctx) -> SvgText {
@@ -514,6 +549,7 @@ fn read_text(text: Node, ctx: &Ctx) -> SvgText {
         dx: 0.0,
         dy: 0.0,
         after_space: true,
+        placed: None,
     };
     r.element(text, true);
     let preserve = xml_space_preserve(text);
@@ -578,7 +614,38 @@ impl Reader<'_, '_, '_> {
         let y = ctx.first_coord(el, "y", fs, vh);
         let dx = ctx.first_coord(el, "dx", fs, vw).unwrap_or(0.0);
         let dy = ctx.first_coord(el, "dy", fs, vh).unwrap_or(0.0);
-        if is_text || x.is_some() {
+        // A `tspan` that places each of its characters (as TraceDraw and
+        // other programs write laid out text, a `tspan` for each run of
+        // one style) right after the characters of one that did, on the
+        // same baseline, goes on with its text: it is the next run of the
+        // line, not a text of its own. Each run came in as a text of its
+        // own.
+        let own: Vec<&str> = el.children().filter_map(|c| c.text()).collect();
+        let chars: usize = own.iter().map(|t| t.chars().count()).sum();
+        let xs = if is_text || chars == 0 || el.children().any(|c| c.is_element()) {
+            Vec::new()
+        } else {
+            ctx.coords(el, "x", fs, vw)
+        };
+        let placed = (xs.len() == chars).then(|| {
+            let lo = xs.iter().copied().fold(f64::INFINITY, f64::min);
+            let hi = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+            (lo, hi, y)
+        });
+        let goes_on = match (placed, self.placed) {
+            (Some((lo, hi, Some(y))), Some((plo, phi, py))) => {
+                (y - py).abs() <= fs * 0.01 + 1e-6
+                    && dx == 0.0
+                    && dy == 0.0
+                    && (lo - phi).max(plo - hi) <= fs * 2.0
+            }
+            _ => false,
+        };
+        self.placed = match placed {
+            Some((lo, hi, Some(y))) => Some((lo, hi, y)),
+            _ => None,
+        };
+        if !goes_on && (is_text || x.is_some()) {
             // A new chunk: `y` continues the current line when not given.
             let prev_y = self.chunks.last().map_or(0.0, |c| c.y - c.baseline);
             let start_y = y.unwrap_or(prev_y + self.dy) + dy;
@@ -620,7 +687,16 @@ impl Reader<'_, '_, '_> {
         let preserve = xml_space_preserve(el);
         for child in el.children() {
             if child.is_text() {
-                if let Some(t) = child.text() {
+                // The line break and indent between the tags of a text
+                // written as lines of markup: kept white space of no
+                // character, which drew nothing and came in as spaces.
+                let between_tags = |t: &str| {
+                    t.contains('\n')
+                        && t.trim().is_empty()
+                        && (child.prev_sibling().is_some_and(|n| n.is_element())
+                            || child.next_sibling().is_some_and(|n| n.is_element()))
+                };
+                if let Some(t) = child.text().filter(|t| !(preserve && between_tags(t))) {
                     self.push(t, &span, preserve);
                 }
             } else if ["tspan", "a", "textPath"]
@@ -790,7 +866,18 @@ fn as_lines(chunks: &[&Chunk]) -> Option<(Vec<TextSpan>, f64)> {
         if let Some(last) = spans.last_mut() {
             last.text.push_str(&"\n".repeat(lines as usize));
         }
-        spans.extend(c.spans.iter().cloned());
+        // A line that goes on in the style the one before ended in goes
+        // on in its span.
+        let mut rest = c.spans.iter();
+        if let (Some(last), Some(next)) = (spans.last_mut(), c.spans.first()) {
+            let mut a = last.clone();
+            a.text.clone_from(&next.text);
+            if a == *next {
+                last.text.push_str(&next.text);
+                rest.next();
+            }
+        }
+        spans.extend(rest.cloned());
     }
     Some((spans, step))
 }
@@ -1037,6 +1124,35 @@ mod tests {
         let o = origin(t[0]);
         assert!(close(o.x, 20.0) && close(o.y, 70.0), "{o:?}");
         assert_eq!(t[0].stroke, None);
+    }
+
+    /// Laid out text as TraceDraw and other programs write it: a `tspan`
+    /// for each run with a place for each character. The runs of a line
+    /// go on as one text (each run came in as a text of its own); runs
+    /// placed apart on the same baseline stay apart; the line break and
+    /// indent between the tags, kept as text, are left out (they came in
+    /// as texts of spaces).
+    #[test]
+    fn runs_placed_letter_by_letter_go_on_as_one_text() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
+      <text transform="matrix(1 0 0 1 10 50)" xml:space="preserve" font-size="10"><tspan x="0 6 12" y="0 0 0">Wor</tspan><tspan x="18 24" y="0 0" font-weight="bold">ld</tspan><tspan x="30 33 39" y="0 0 0">!ab</tspan></text>
+      <text xml:space="preserve" font-size="10"><tspan x="10 16" y="80 80">ab</tspan><tspan x="150 156" y="80 80">cd</tspan></text>
+      <text transform="matrix(1 0 0 1 10 20)" xml:space="preserve" font-size="10">
+        <tspan x="0 6" y="0 0">ef</tspan>
+      </text>
+      <text transform="matrix(1 0 0 1 10 90)" xml:space="preserve" font-size="10">
+        <tspan x="0" y="0">g</tspan>
+        <tspan x="6" y="0" font-style="italic">h</tspan>
+      </text>
+    </svg>"##;
+        let shapes = import(svg);
+        let t = texts(&shapes);
+        assert_eq!(
+            t.iter().map(|s| content(s)).collect::<Vec<_>>(),
+            ["World!ab", "ab", "cd", "ef", "gh"],
+            "{shapes:#?}"
+        );
+        assert!(spans(t[0]).iter().any(|s| s.bold && s.text == "ld"));
     }
 
     #[test]
