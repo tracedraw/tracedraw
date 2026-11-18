@@ -4060,6 +4060,22 @@ impl App {
             sketch: self.sketch,
             knife: self.knife,
             segment_freehand: self.segment_freehand,
+            media: crate::settings::MediaPrefs {
+                mode: self.media_mode,
+                preset: self.media_preset,
+                width: self.media_width,
+                angle: self.media_angle,
+                spacing: self.media_spacing,
+                pressure: self.media_pressure,
+                smoothing: self.media_smoothing,
+            },
+            balloon: crate::settings::BalloonPrefs {
+                style: self.balloon_style,
+                width: self.balloon_width,
+                bend: self.balloon_bend,
+            },
+            action_lines: self.action_lines,
+            painterly: self.painterly,
         }
     }
 
@@ -4133,6 +4149,33 @@ impl App {
             ..t.knife
         };
         self.segment_freehand = t.segment_freehand;
+        // The ranges of their bars.
+        let m = &t.media;
+        self.media_mode = m.mode;
+        self.media_preset = m.preset.min(64);
+        self.media_width = finite(m.width, 0.2, 50.0, 3.0);
+        self.media_angle = finite(m.angle, 0.0, 180.0, 45.0);
+        self.media_spacing = finite(m.spacing, 1.0, 50.0, 8.0);
+        self.media_pressure = finite(m.pressure, 0.0, 1.0, 0.5);
+        self.media_smoothing = finite(m.smoothing, 0.0, 100.0, 25.0);
+        self.balloon_style = t.balloon.style;
+        self.balloon_width = finite(t.balloon.width, 5.0, 100.0, 30.0);
+        self.balloon_bend = finite(t.balloon.bend, -100.0, 100.0, 0.0);
+        let a = t.action_lines;
+        self.action_lines = crate::action_lines::ActionLines {
+            count: a.count.clamp(2, 500),
+            length_var: finite(a.length_var, 0.0, 100.0, 70.0),
+            inner: finite(a.inner, 0.0, 90.0, 30.0),
+            width: finite(a.width, 0.0, 1000.0, 0.0),
+            width_var: finite(a.width_var, 0.0, 100.0, 50.0),
+            spacing_var: finite(a.spacing_var, 0.0, 100.0, 0.0),
+            angle: finite(a.angle, -360.0, 360.0, 0.0),
+            ..a
+        };
+        self.painterly = crate::painterly_tool::PainterlySettings {
+            size: finite(t.painterly.size, 0.1, 200.0, 5.0),
+            ..t.painterly
+        };
         self.sketch = crate::recognize::SketchSettings {
             join_distance: finite(t.sketch.join_distance, 0.0, 1000.0, 5.0),
             smoothing: t.sketch.smoothing.min(5),
@@ -12085,6 +12128,65 @@ mod tests {
         app.text_default_font = "Gone".into();
         app.keep_default_font_installed();
         assert_eq!(app.text_default_font, "Georgia");
+    }
+
+    /// The bars of the Brush Strokes, Speech Balloon, Action Lines and
+    /// Painterly Brush tools went back to a first start's settings at
+    /// every start, while the other tools kept theirs: they are kept now,
+    /// through the preferences file and an export of them.
+    #[test]
+    fn brush_strokes_balloon_action_lines_and_painterly_survive_a_restart() {
+        use crate::balloons::BalloonStyle;
+        use crate::media::MediaMode;
+        let mut app = App::headless();
+        app.media_mode = MediaMode::Sprayer;
+        app.media_preset = 2;
+        app.media_width = 7.5;
+        app.media_angle = 30.0;
+        app.media_spacing = 12.0;
+        app.media_pressure = 0.8;
+        app.media_smoothing = 60.0;
+        app.balloon_style = BalloonStyle::Shout;
+        app.balloon_width = 55.0;
+        app.balloon_bend = -40.0;
+        app.action_lines.count = 40;
+        app.action_lines.radial = true;
+        app.action_lines.width = 1.5;
+        app.action_lines.taper = crate::action_lines::Taper::default();
+        app.action_lines.seed = 7;
+        app.painterly.size = 12.0;
+        app.painterly.brush = tracedraw_core::painterly::Painterly::new(
+            tracedraw_core::painterly::PainterlyBrush::Fur,
+        );
+        app.sync_settings();
+        // Written and read back as the preferences file is.
+        let text = serde_json::to_string(&app.settings).expect("saved");
+        let read: crate::settings::Settings = serde_json::from_str(&text).expect("read");
+        let mut next = App::headless();
+        next.apply_settings(read.upgrade());
+        assert_eq!(next.media_mode, MediaMode::Sprayer);
+        assert_eq!(next.media_preset, 2);
+        assert_eq!(next.media_width, 7.5);
+        assert_eq!(next.media_angle, 30.0);
+        assert_eq!(next.media_spacing, 12.0);
+        assert_eq!(next.media_pressure, 0.8);
+        assert_eq!(next.media_smoothing, 60.0);
+        assert_eq!(next.balloon_style, BalloonStyle::Shout);
+        assert_eq!(next.balloon_width, 55.0);
+        assert_eq!(next.balloon_bend, -40.0);
+        assert_eq!(next.action_lines, app.action_lines);
+        assert_eq!(next.painterly, app.painterly);
+        // A file edited by hand is brought into the bars' ranges.
+        let mut odd = crate::settings::ToolPrefs::default();
+        odd.media.width = 1e9;
+        odd.balloon.width = -3.0;
+        odd.action_lines.count = 0;
+        odd.painterly.size = f64::NAN;
+        next.apply_tool_prefs(&odd);
+        assert_eq!(next.media_width, 50.0);
+        assert_eq!(next.balloon_width, 5.0);
+        assert_eq!(next.action_lines.count, 2);
+        assert_eq!(next.painterly.size, 5.0);
     }
 
     #[test]

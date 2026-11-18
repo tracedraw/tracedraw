@@ -1783,6 +1783,68 @@ pub struct ToolPrefs {
     pub knife: crate::knife::KnifeSettings,
     /// Segment Delete's drag is a freehand stroke, not a box (#1150).
     pub segment_freehand: bool,
+    /// The Brush Strokes tool's mode and settings: they went back to
+    /// the first start's at every start, as did the next three.
+    pub media: MediaPrefs,
+    /// The Speech Balloon tool's style, tail width and bend.
+    pub balloon: BalloonPrefs,
+    /// The Action Lines tool's settings.
+    pub action_lines: crate::action_lines::ActionLines,
+    /// The Painterly Brush tool's brush and size.
+    pub painterly: crate::painterly_tool::PainterlySettings,
+}
+
+/// The Brush Strokes tool's bar, kept between sessions.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MediaPrefs {
+    pub mode: crate::media::MediaMode,
+    pub preset: usize,
+    /// mm.
+    pub width: f64,
+    /// Calligraphic nib angle, degrees.
+    pub angle: f64,
+    /// Sprayer spacing, mm.
+    pub spacing: f64,
+    /// Expression: how much the width follows the pressure, 0 to 1.
+    pub pressure: f64,
+    /// Freehand smoothing of the stroke, 0 to 100.
+    pub smoothing: f64,
+}
+
+impl Default for MediaPrefs {
+    fn default() -> Self {
+        MediaPrefs {
+            mode: crate::media::MediaMode::Calligraphic,
+            preset: 0,
+            width: 3.0,
+            angle: 45.0,
+            spacing: 8.0,
+            pressure: 0.5,
+            smoothing: 25.0,
+        }
+    }
+}
+
+/// The Speech Balloon tool's bar, kept between sessions.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BalloonPrefs {
+    pub style: crate::balloons::BalloonStyle,
+    /// Tail width, percent of the body's smaller side.
+    pub width: f64,
+    /// Tail bend, -100 to 100.
+    pub bend: f64,
+}
+
+impl Default for BalloonPrefs {
+    fn default() -> Self {
+        BalloonPrefs {
+            style: Default::default(),
+            width: 30.0,
+            bend: 0.0,
+        }
+    }
 }
 
 impl Default for ToolPrefs {
@@ -1831,6 +1893,10 @@ impl Default for ToolPrefs {
             sketch: Default::default(),
             knife: Default::default(),
             segment_freehand: false,
+            media: Default::default(),
+            balloon: Default::default(),
+            action_lines: Default::default(),
+            painterly: Default::default(),
         }
     }
 }
