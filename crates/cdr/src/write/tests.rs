@@ -10228,3 +10228,43 @@ fn arrowheads_go_out_as_curves_and_open_again_on_the_line() {
         assert_eq!(read[0].stroke, line.stroke, "{v}");
     }
 }
+
+/// An emoji or a mathematical letter (beyond U+FFFF) is two letters of a
+/// file, a surrogate pair of marked UTF-16 units, from version 12. They
+/// went out as "?", and read back, every run after such a letter started
+/// one letter late (it took the letter before it), in every version.
+#[test]
+fn letters_beyond_u_ffff_round_trip_with_their_runs() {
+    let mut ids = tracedraw_core::id::IdSource::default();
+    let mut bold = TextSpan::new("B\u{1F600}b", "Arial", 20.0);
+    bold.bold = true;
+    let spans = vec![
+        TextSpan::new("a\u{1F600}\u{1D538}", "Arial", 12.0),
+        bold,
+        TextSpan::new(
+            "\u{e9}\u{1F44D}\u{1F3FD} family \u{1F468}\u{200d}\u{1F467}z",
+            "Arial",
+            12.0,
+        ),
+    ];
+    let t = text_shape(&mut ids, spans.clone(), TextAlign::Left);
+    let doc = doc_with(vec![t]);
+    for v in 12u16..=*crate::write::versions().end() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, _) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let runs: Vec<(String, bool)> = back
+            .pages
+            .iter()
+            .flat_map(|p| &p.layers)
+            .flat_map(|l| &l.shapes)
+            .filter_map(|s| match &s.kind {
+                ShapeKind::Text { spans, .. } => Some(spans),
+                _ => None,
+            })
+            .flatten()
+            .map(|sp| (sp.text.clone(), sp.bold))
+            .collect();
+        let want: Vec<(String, bool)> = spans.iter().map(|sp| (sp.text.clone(), sp.bold)).collect();
+        assert_eq!(runs, want, "{v}");
+    }
+}

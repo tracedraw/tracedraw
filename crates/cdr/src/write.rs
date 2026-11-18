@@ -2914,7 +2914,7 @@ fn stlt(v: Ver, uses: StyleUses) -> Vec<u8> {
     let name = |t: &mut Buf, s: &str| {
         let s = if v.redirects() { "" } else { s };
         if v.unicode() {
-            t.u32(s.chars().count() as u32).bytes(&utf16(s));
+            t.u32(s.encode_utf16().count() as u32).bytes(&utf16(s));
         } else {
             let b = cp1252(s).unwrap_or_else(|| s.bytes().filter(|c| c.is_ascii()).collect());
             t.u32(b.len() as u32 + 1).bytes(&b).u8(0);
@@ -6328,7 +6328,7 @@ impl<'a> Writer<'a> {
         let mut records: Vec<(usize, Option<String>)> = vec![(1, None)];
         let mut record_of_run = Vec::with_capacity(runs.len());
         for sp in runs {
-            let letters = sp.text.chars().count();
+            let letters = sp.text.encode_utf16().count();
             let own = json(sp);
             let k = if letters == 0 || Some(&own) == base.as_ref() {
                 0
@@ -6518,7 +6518,7 @@ impl<'a> Writer<'a> {
                     }
                 };
                 if let Some(r) = records.get_mut(index) {
-                    r.3 += sp.text.chars().count() + end;
+                    r.3 += sp.text.encode_utf16().count() + end;
                 }
                 record_of_run.push(index);
             }
@@ -6564,9 +6564,12 @@ impl<'a> Writer<'a> {
             for (ri, sp) in runs.iter().enumerate() {
                 text.push_str(&sp.text);
                 let number = record_of_run.get(ri).copied().unwrap_or(0).min(127) as u8;
-                record_of_letter.extend(std::iter::repeat_n(number, sp.text.chars().count()));
+                record_of_letter
+                    .extend(std::iter::repeat_n(number, sp.text.encode_utf16().count()));
             }
-            let chars = text.chars().count();
+            // A letter is a UTF-16 unit: a letter beyond U+FFFF (an emoji,
+            // a mathematical letter) is two, a surrogate pair.
+            let chars = text.encode_utf16().count();
             if v.unicode() {
                 // From version 12 a letter of U+0000 to U+00FF is one byte
                 // (its code point) unless bit 0 of the first byte of its
@@ -6577,7 +6580,12 @@ impl<'a> Writer<'a> {
                 // dashes, the euro) go out marked too (#2124).
                 let mut descriptions = Buf::default();
                 let mut bytes = Vec::new();
-                for (i, c) in text.chars().enumerate() {
+                let units = text.chars().flat_map(|c| {
+                    let mut pair = [0u16; 2];
+                    let n = c.encode_utf16(&mut pair).len();
+                    (0..n).map(move |k| (c, pair[k]))
+                });
+                for (i, (c, unit)) in units.enumerate() {
                     let number = record_of_letter.get(i).copied().unwrap_or(0);
                     match text_byte(c) {
                         Some(b) => {
@@ -6585,11 +6593,6 @@ impl<'a> Writer<'a> {
                             bytes.push(b);
                         }
                         None => {
-                            let unit = if (c as u32) <= 0xffff {
-                                c as u16
-                            } else {
-                                b'?' as u16
-                            };
                             descriptions.u8(1).u8(0).u8(number << 1).zeros(5);
                             bytes.extend_from_slice(&unit.to_le_bytes());
                         }
@@ -6767,7 +6770,7 @@ impl<'a> Writer<'a> {
             let mut index = Vec::new();
             for (sp, k) in runs.iter().zip(&looks.record_of_run) {
                 text.push_str(&sp.text);
-                index.extend(std::iter::repeat_n(*k, sp.text.chars().count()));
+                index.extend(std::iter::repeat_n(*k, sp.text.encode_utf16().count()));
             }
             t.u32(index.len() as u32);
             // The letters are one byte each from version 16 (files saved
@@ -6779,9 +6782,15 @@ impl<'a> Writer<'a> {
             // dashes and euro Windows-1252 puts in 0x80 to 0x9f, #2124):
             // bit 0 of its record's flags marks it as a UTF-16 unit of two
             // bytes, as from version 12 (#368). A letter beyond the 16-bit
-            // range goes out as "?".
+            // range is two letters, a surrogate pair of marked units; it
+            // went out as "?" (an emoji, a mathematical letter).
             let mut bytes = Vec::new();
-            for (c, k) in text.chars().zip(&index) {
+            let units = text.chars().flat_map(|c| {
+                let mut pair = [0u16; 2];
+                let n = c.encode_utf16(&mut pair).len();
+                (0..n).map(move |k| (c, pair[k]))
+            });
+            for ((c, unit), k) in units.zip(&index) {
                 let one = if v.0 >= 16 { text_byte(c) } else { None };
                 let wide = one.is_none();
                 t.u16(u16::from(wide && v.0 >= 16))
@@ -6789,14 +6798,7 @@ impl<'a> Writer<'a> {
                     .zeros(5);
                 match one {
                     Some(b) => bytes.push(b),
-                    None => {
-                        let unit = if (c as u32) <= 0xffff {
-                            c as u16
-                        } else {
-                            u16::from(b'?')
-                        };
-                        bytes.extend_from_slice(&unit.to_le_bytes());
-                    }
+                    None => bytes.extend_from_slice(&unit.to_le_bytes()),
                 }
             }
             t.u32(bytes.len() as u32).bytes(&bytes).u8(0);
