@@ -7013,6 +7013,105 @@ fn clipped_away_contents_are_not_hit() {
     assert_eq!(app.hit_test(Point::new(35.0, y)), Some(clip));
 }
 
+/// #3354: with the Shape tool a rounded rectangle's corner node takes a
+/// press half as far again as the pick distance, so a press beside it
+/// drags the corner instead of missing it; farther off it takes nothing.
+#[test]
+fn a_press_beside_a_corner_node_drags_the_corner() {
+    let (ctx, mut app, _) = setup();
+    let reach = app.settings.nodes.pick_px() as f32;
+    let mut grabbed = |app: &mut App, off: f32, dir: egui::Vec2| {
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(100.0, 100.0, 160.0, 140.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        crate::ui::propbar::edit_corners(app, crate::ui::propbar::CornerEdit::Size(0, 5.0));
+        app.set_tool(Tool::Shape);
+        app.select(vec![id]);
+        frame(&ctx, app, Vec::new(), Modifiers::NONE);
+        let s = app.doc().find_shape(id).cloned().expect("rect");
+        let (_, q) = crate::kind_nodes::nodes(&s)[0];
+        let at = app.view.to_screen(q) + dir.normalized() * off;
+        drag(
+            &ctx,
+            app,
+            at,
+            at + egui::vec2(15.0, 15.0),
+            Modifiers::NONE,
+            Vec::new(),
+        );
+        let r = app
+            .doc()
+            .find_shape(id)
+            .and_then(|s| s.page_corners())
+            .expect("corners")
+            .radii[0];
+        app.set_tool(Tool::Pick);
+        app.select(vec![id]);
+        app.delete_selection();
+        (r - 5.0).abs() > 0.5
+    };
+    for dir in [
+        egui::vec2(1.0, 1.0),
+        egui::vec2(-1.0, -1.0),
+        egui::vec2(1.0, 0.0),
+        egui::vec2(0.0, 1.0),
+    ] {
+        assert!(grabbed(&mut app, 0.0, dir), "on the node");
+        assert!(
+            grabbed(&mut app, reach * 1.3, dir),
+            "{dir:?}: beside the node, past the plain pick distance"
+        );
+        assert!(!grabbed(&mut app, reach * 2.5, dir), "{dir:?}: far off");
+    }
+}
+
+/// #3354: Relative corner scaling set from the Shape tool's bar decides
+/// what a later resize does to the corners: on, they grow with the
+/// rectangle; off, they keep their size on the page.
+#[test]
+fn relative_corner_scaling_set_with_the_shape_tool_changes_a_resize() {
+    use crate::ui::propbar::{edit_corners, CornerEdit};
+    let mut radii = Vec::new();
+    for relative in [true, false] {
+        let (_, mut app, _) = setup();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(100.0, 100.0, 160.0, 140.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        edit_corners(&mut app, CornerEdit::Size(0, 5.0));
+        app.set_tool(Tool::Shape);
+        app.select(vec![id]);
+        edit_corners(&mut app, CornerEdit::Scaling(relative));
+        let c = app
+            .doc()
+            .find_shape(id)
+            .and_then(|s| s.page_corners())
+            .expect("corners");
+        assert_eq!(c.fixed, !relative, "the toggle reached the rectangle");
+        app.set_tool(Tool::Pick);
+        app.select(vec![id]);
+        app.transform_selection(Affine::scale(2.0));
+        radii.push(
+            app.doc()
+                .find_shape(id)
+                .and_then(|s| s.page_corners())
+                .expect("corners")
+                .radii[0],
+        );
+    }
+    assert!(close(radii[0], 10.0), "relative: {radii:?}");
+    assert!(close(radii[1], 5.0), "fixed: {radii:?}");
+}
+
 #[test]
 fn new_rounded_rectangles_keep_circular_corners_when_stretched() {
     use crate::ui::propbar::{edit_corners, CornerEdit};

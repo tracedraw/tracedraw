@@ -182,10 +182,26 @@ pub fn node_at(s: &Shape, p: Point, tol: f64) -> Option<KindNode> {
     handles(s)
         .into_iter()
         .map(|(n, q)| (n, (q - p).hypot()))
-        .filter(|(_, d)| *d <= tol)
+        .filter(|(n, d)| *d <= tol * reach(*n))
         .min_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(n, _)| n)
 }
+
+/// How far past the pick distance a node takes a press, as a share of
+/// it. A rectangle's corner and edge nodes sit on its outline with
+/// nothing else to press near them, and a press beside one missed it
+/// (#3354): they reach half as far again. The nearest node still wins,
+/// so two close corner nodes keep apart.
+fn reach(n: KindNode) -> f64 {
+    match n {
+        KindNode::Corner { .. } | KindNode::Edge { .. } => CORNER_REACH,
+        _ => 1.0,
+    }
+}
+
+/// The share of the pick distance a rectangle's corner or edge node
+/// reaches (#3354).
+pub const CORNER_REACH: f64 = 1.5;
 
 /// Point of the ellipse inscribed in `rect` at a parametric angle.
 fn on_ellipse(rect: Rect, deg: f64) -> Point {
