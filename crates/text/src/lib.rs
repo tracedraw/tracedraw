@@ -4152,7 +4152,9 @@ impl FontSystem {
         let mut starts: Vec<usize> = infos.iter().map(|i| i.cluster as usize).collect();
         starts.sort_unstable();
         starts.dedup();
-        let mut claimed: Vec<usize> = Vec::new();
+        // (Looked up by halves and in a set: a search from the start for
+        // each glyph made a long text take seconds to lay out.)
+        let mut claimed: std::collections::HashSet<usize> = std::collections::HashSet::new();
         let size_mm = size_pt * PT_MM;
         let hyphen_glyph = {
             let gid = face.glyph_index('-');
@@ -4203,7 +4205,9 @@ impl FontSystem {
             if let Some(w) = widen {
                 gp = w * gp;
             }
-            let cluster = chars.iter().position(|(i, _)| *i == info.cluster as usize);
+            let cluster = chars
+                .binary_search_by_key(&(info.cluster as usize), |(i, _)| *i)
+                .ok();
             let ch = cluster
                 .and_then(|k| chars.get(k))
                 .map(|(_, c)| *c)
@@ -4235,9 +4239,8 @@ impl FontSystem {
             }
             let start = info.cluster as usize;
             let cluster_end = starts
-                .iter()
+                .get(starts.partition_point(|c| *c <= start))
                 .copied()
-                .find(|c| *c > start)
                 .unwrap_or(text.len());
             let further = claimed.contains(&start);
             let joins = further
@@ -4253,7 +4256,7 @@ impl FontSystem {
             let cluster_text = if further {
                 String::new()
             } else {
-                claimed.push(start);
+                claimed.insert(start);
                 text.get(start..cluster_end).unwrap_or("").to_string()
             };
             // As the outline above: slanted, widened, then moved into the

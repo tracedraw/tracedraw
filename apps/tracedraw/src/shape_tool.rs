@@ -1522,8 +1522,7 @@ impl App {
             if let Err(e) = self.engine.run_batch("Delete Nodes", &cmds) {
                 self.status = e.to_string();
             }
-            self.selection
-                .retain(|id| self.engine.document().find_shape(*id).is_some());
+            self.engine.document().retain_existing(&mut self.selection);
         }
         // The chosen nodes of a curve go together: neighbouring ones
         // become one curve keeping the outline's shape (#675).

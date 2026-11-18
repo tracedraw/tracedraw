@@ -7046,13 +7046,13 @@ impl App {
         for g in groups {
             self.run(Command::Ungroup { group: g });
         }
+        let mut have: std::collections::HashSet<ShapeId> = members.iter().copied().collect();
         for id in self.added_top_level_ids(&before) {
-            if !members.contains(&id) {
+            if have.insert(id) {
                 members.push(id);
             }
         }
-        let doc = self.doc();
-        members.retain(|id| doc.find_shape(*id).is_some());
+        self.doc().retain_existing(&mut members);
         self.select(members);
     }
 
@@ -7708,8 +7708,7 @@ impl App {
                 false
             }
         };
-        self.selection
-            .retain(|id| self.engine.document().find_shape(*id).is_some());
+        self.engine.document().retain_existing(&mut self.selection);
         if undone {
             self.settle_page_after_history(at);
             self.clip_edit_across(step, true);
@@ -7750,8 +7749,7 @@ impl App {
                 false
             }
         };
-        self.selection
-            .retain(|id| self.engine.document().find_shape(*id).is_some());
+        self.engine.document().retain_existing(&mut self.selection);
         if redone {
             self.settle_page_after_history(at);
             self.clip_edit_across(self.engine.last_step_id(), false);

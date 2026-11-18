@@ -394,12 +394,8 @@ impl App {
         // last one picked when they were picked from the top down: select
         // the one that is left. The selection named a part combined away,
         // so nothing was selected after Combine.
-        let doc = self.doc();
-        let kept: Vec<_> = shapes
-            .iter()
-            .copied()
-            .filter(|id| doc.find_shape(*id).is_some())
-            .collect();
+        let mut kept = shapes.clone();
+        self.doc().retain_existing(&mut kept);
         self.selection = kept;
     }
 

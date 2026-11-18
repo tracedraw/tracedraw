@@ -2812,6 +2812,15 @@ pub(crate) fn corners_apart(corners: &[Point; 4]) -> [Point; 4] {
 /// folded into it, so it keeps one set of corners. Drawn as it was in the
 /// group; other group effects are not carried.
 pub fn take_group_perspectives(member: &mut Shape, group_path: &BezPath, group: &[Effect]) {
+    // Nothing to take, and nothing to copy: the group's outline was
+    // copied for each of its objects, which made Ungroup of a group of
+    // thousands take seconds.
+    if !group
+        .iter()
+        .any(|e| matches!(e, Effect::Perspective { .. }))
+    {
+        return;
+    }
     let t = member.transform;
     if t.determinant().abs() < 1e-12 {
         return;

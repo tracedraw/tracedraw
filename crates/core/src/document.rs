@@ -5996,8 +5996,16 @@ pub struct Document {
 /// place among its objects of the object [`Document::find_shape`] found
 /// last. Only a hint: a lookup checks the object there first and walks
 /// the drawing when it is not the one, so a stale hint costs nothing.
+///
+/// It also keeps where each object on a layer was when the drawing was
+/// last walked ([`FindHint::tops`]), checked on use like the hint: the
+/// objects of a large selection looked up out of drawing order
+/// (Distribute, Align) each walked the drawing again.
 #[derive(Debug, Default)]
-pub struct FindHint(std::sync::atomic::AtomicU64);
+pub struct FindHint(
+    std::sync::atomic::AtomicU64,
+    std::sync::Mutex<std::collections::HashMap<ShapeId, (u32, u32)>>,
+);
 
 impl FindHint {
     fn get(&self) -> (usize, usize) {
@@ -6011,11 +6019,33 @@ impl FindHint {
     }
 }
 
+impl FindHint {
+    /// Where the object on a layer `id` was last seen, if it was.
+    fn top(&self, id: ShapeId) -> Option<(usize, usize)> {
+        let map = self.1.lock().ok()?;
+        map.get(&id).map(|&(k, i)| (k as usize, i as usize))
+    }
+
+    /// Note where each object on the layers `layers` is now.
+    fn note_tops<'a>(&self, layers: impl Iterator<Item = &'a Layer>) {
+        let Ok(mut map) = self.1.lock() else {
+            return;
+        };
+        map.clear();
+        for (k, layer) in layers.enumerate() {
+            for (i, s) in layer.shapes.iter().enumerate() {
+                map.insert(s.id, (k as u32, i as u32));
+            }
+        }
+    }
+}
+
 impl Clone for FindHint {
     fn clone(&self) -> Self {
-        FindHint(std::sync::atomic::AtomicU64::new(
-            self.0.load(std::sync::atomic::Ordering::Relaxed),
-        ))
+        FindHint(
+            std::sync::atomic::AtomicU64::new(self.0.load(std::sync::atomic::Ordering::Relaxed)),
+            Default::default(),
+        )
     }
 }
 
@@ -6670,13 +6700,70 @@ impl Document {
                 }
             }
         }
-        for (k, layer) in self.all_layers().enumerate() {
-            if let Some(i) = layer.shapes.iter().position(|s| find_in(s, id).is_some()) {
+        // Where it was when the drawing was last walked, if it is still
+        // there.
+        if let Some((k, i)) = self.find_hint.top(id) {
+            if self
+                .all_layers()
+                .nth(k)
+                .and_then(|l| l.shapes.get(i))
+                .is_some_and(|s| s.id == id)
+            {
                 self.find_hint.set(k, i);
                 return Some((k, i));
             }
         }
+        for (k, layer) in self.all_layers().enumerate() {
+            if let Some(i) = layer.shapes.iter().position(|s| find_in(s, id).is_some()) {
+                self.find_hint.set(k, i);
+                // An object on a layer that was not where it was last
+                // seen: note where they all are now, for the next ones.
+                if layer.shapes[i].id == id {
+                    self.find_hint.note_tops(self.all_layers());
+                }
+                return Some((k, i));
+            }
+        }
         None
+    }
+
+    /// Keep in `ids` only the objects still in the drawing (on a layer or
+    /// inside a group or clip frame), in their order. A long list is
+    /// checked against one walk of the drawing: looking up thousands of
+    /// objects that are gone (after Undo of a Duplicate) walked it once
+    /// for each.
+    pub fn retain_existing(&self, ids: &mut Vec<ShapeId>) {
+        if ids.len() <= 16 {
+            ids.retain(|id| self.find_shape(*id).is_some());
+            return;
+        }
+        let mut all = std::collections::HashSet::new();
+        fn walk(s: &Shape, all: &mut std::collections::HashSet<ShapeId>, depth: usize) {
+            all.insert(s.id);
+            if depth > 512 {
+                return;
+            }
+            match &s.kind {
+                ShapeKind::Group { children } => {
+                    for c in children {
+                        walk(c, all, depth + 1);
+                    }
+                }
+                ShapeKind::ClipFrame { frame, contents } => {
+                    walk(frame, all, depth + 1);
+                    for c in contents {
+                        walk(c, all, depth + 1);
+                    }
+                }
+                _ => {}
+            }
+        }
+        for layer in self.all_layers() {
+            for s in &layer.shapes {
+                walk(s, &mut all, 0);
+            }
+        }
+        ids.retain(|id| all.contains(id));
     }
 
     /// Find any shape to change it, including children of groups and clip
@@ -6755,13 +6842,17 @@ impl Document {
             }
             found
         }
+        // Only the object on a layer that holds it is walked: walking the
+        // drawing from its start for each of thousands of objects (Convert
+        // to Curves before Combine) took seconds.
+        let Some((k, i)) = self.locate_top(id) else {
+            return Vec::new();
+        };
         let mut path = Vec::new();
-        for s in self.all_layers().flat_map(|l| &l.shapes) {
-            if walk(s, id, &mut path) {
-                return path;
-            }
+        match self.all_layers().nth(k).and_then(|l| l.shapes.get(i)) {
+            Some(top) if walk(top, id, &mut path) => path,
+            _ => Vec::new(),
         }
-        Vec::new()
     }
 
     /// The object lies inside a group or a clip frame (not on a layer).
