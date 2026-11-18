@@ -556,12 +556,20 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
             let split = full.right() - crate::window_buttons::WIDTH;
             let left = egui::Rect::from_min_max(full.min, egui::pos2(split, full.bottom()));
             let right = egui::Rect::from_min_max(egui::pos2(split, full.top()), full.max);
+            ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {
+                menus::menu_bar(app, ui)
+            });
+            // The bar takes the whole width it is given: the empty part
+            // starts after its last title. Taken from the bar's width it
+            // was always empty, so the bar never moved the window (#3134).
             let used = ui
-                .scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {
-                    menus::menu_bar(app, ui);
-                    ui.min_rect().right()
+                .ctx()
+                .data(|d| {
+                    d.get_temp::<(Vec<egui::Rect>, usize)>(egui::Id::new(menus::MENU_BAR_LAYOUT))
                 })
-                .inner;
+                .and_then(|(titles, _)| titles.iter().map(|r| r.right()).reduce(f32::max))
+                .unwrap_or(left.left())
+                .clamp(left.left(), split);
             let gap = egui::Rect::from_min_max(
                 egui::pos2(used, full.top()),
                 egui::pos2(split, full.bottom()),
