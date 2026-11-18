@@ -9773,7 +9773,12 @@ impl App {
             return;
         }
         let library = is_symbol_library_path(&path);
-        self.import_document_with(Self::open_cdr(&path).map(|(doc, _)| doc), library);
+        let read = Self::open_cdr(&path).map(|(doc, _)| doc);
+        let carried = read.as_ref().ok().map(|d| d.cmyk_profile.clone());
+        self.import_document_with(read, library);
+        if let Some(carried) = carried {
+            self.warn_import_profile(carried.as_ref());
+        }
         if library {
             self.open_docker(DockerTab::Symbols);
         }
