@@ -29394,3 +29394,80 @@ fn a_balloon_picked_with_its_tool_takes_the_style_clicked_on_the_bar() {
     assert_eq!(after.tip, before.tip, "same tail tip");
     assert_eq!(app.selection, vec![id], "still selected");
 }
+
+/// With the wheel zooming, Ctrl+wheel and Shift+wheel scroll the drawing
+/// sideways and Alt+wheel up and down, without zooming (#3087): Alt+wheel
+/// scrolled sideways, and egui took Ctrl+wheel for a zoom.
+#[test]
+fn ctrl_and_shift_wheel_scroll_sideways_alt_wheel_up_and_down() {
+    let (ctx, mut app, _) = setup();
+    assert!(app.settings.wheel_zooms);
+    let at = Pos2::new(700.0, 500.0);
+    let mut t = 10.0;
+    let mut step = |app: &mut App, events: Vec<Event>, modifiers: Modifiers| {
+        t += 1.0 / 60.0;
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                Pos2::ZERO,
+                egui::vec2(1600.0, 1000.0),
+            )),
+            events: std::iter::once(Event::ModifiersChanged(modifiers))
+                .chain(events)
+                .collect(),
+            time: Some(t),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+        out.textures_delta.clear();
+    };
+    step(&mut app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+    step(&mut app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+    for (name, modifiers, sideways) in [
+        ("Ctrl", Modifiers::CTRL, true),
+        ("Shift", Modifiers::SHIFT, true),
+        ("Alt", Modifiers::ALT, false),
+    ] {
+        let zoom = app.view.zoom;
+        let origin = app.view.origin;
+        let wheel = Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, -1.0),
+            phase: egui::TouchPhase::Move,
+            modifiers,
+        };
+        step(&mut app, vec![wheel], modifiers);
+        for _ in 0..30 {
+            step(&mut app, Vec::new(), modifiers);
+        }
+        assert!(
+            (app.view.zoom - zoom).abs() < 1e-9,
+            "{name}+wheel does not zoom: {zoom} -> {}",
+            app.view.zoom
+        );
+        let moved = app.view.origin - origin;
+        if sideways {
+            assert!(
+                moved.x.abs() > 1.0 && moved.y.abs() < 1e-6,
+                "{name}: {moved:?}"
+            );
+        } else {
+            assert!(
+                moved.y.abs() > 1.0 && moved.x.abs() < 1e-6,
+                "{name}: {moved:?}"
+            );
+        }
+    }
+    // The plain wheel still zooms.
+    let zoom = app.view.zoom;
+    let wheel = Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: egui::vec2(0.0, 1.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::NONE,
+    };
+    step(&mut app, vec![wheel], Modifiers::NONE);
+    for _ in 0..60 {
+        step(&mut app, Vec::new(), Modifiers::NONE);
+    }
+    assert!(app.view.zoom > zoom * 1.1);
+}

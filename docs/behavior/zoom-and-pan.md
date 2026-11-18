@@ -40,9 +40,11 @@
 
 - Default (Options > Tools > Default action for mouse wheel: Zoom): the
   wheel zooms by the zoom step per notch about the pointer, in a glide
-  over a few frames, not in one jump; Ctrl+wheel scrolls vertically;
-  Alt+wheel scrolls horizontally (#766,
-  `pick_drag_tests::a_wheel_notch_zooms_in_a_glide`).
+  over a few frames, not in one jump (#766,
+  `pick_drag_tests::a_wheel_notch_zooms_in_a_glide`). Ctrl+wheel and
+  Shift+wheel scroll horizontally; Alt+wheel scrolls vertically. A
+  touchpad's fine steps or a pinch with Ctrl held still zoom (#3087,
+  `pick_drag_tests::ctrl_and_shift_wheel_scroll_sideways_alt_wheel_up_and_down`).
 - Zoom step (Options > Tools > Zoom/Pan > Zoom per wheel notch, #895):
   1 to 100 %, 15 % at first (a factor of 1.15 a notch). A notch is a line of the
   wheel on the desktop, three lines or 100 pixels in the browser

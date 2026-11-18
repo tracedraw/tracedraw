@@ -1068,8 +1068,8 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
     let painter = ui.painter_at(canvas_rect);
 
     // Wheel: with the default setting the wheel zooms about the
-    // pointer, Ctrl+wheel scrolls vertically and Alt+wheel
-    // horizontally; with the scroll setting the wheel scrolls,
+    // pointer, Ctrl+wheel and Shift+wheel scroll horizontally and
+    // Alt+wheel vertically (#3087); with the scroll setting the wheel scrolls,
     // Shift+wheel horizontally and Ctrl+wheel zooms. Pinch zooms.
     // Edit Fill and Outline Pen leave the wheel to the drawing outside
     // them, so it can be zoomed to see the change; nothing else of the
@@ -1092,6 +1092,13 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
         // egui leaves unsmoothed) apply at once.
         let mut zoom_glide_notches = 0.0f32;
         let mut zoom_now_notches = 0.0f32;
+        // The wheel's own turn in points: egui takes Ctrl+wheel for a
+        // zoom and gives no scroll for it.
+        let mut wheel_points = egui::Vec2::ZERO;
+        // Whether this frame's wheel turned in notches (a mouse wheel),
+        // not in a touchpad's fine steps, and whether it held a pinch.
+        let mut wheel_notched = false;
+        let mut pinched = false;
         let (scroll, notches, any_notches, zoom_delta, mods) = ui.input(|i| {
             // Wheel notches this frame (the smoothed delta is spread
             // over several frames, so the zoom steps come from the
@@ -1108,11 +1115,16 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                         ..
                     } => {
                         if *phase == egui::TouchPhase::Move {
-                            let points = match u {
-                                egui::MouseWheelUnit::Point => delta.y,
-                                egui::MouseWheelUnit::Line => delta.y * line,
-                                egui::MouseWheelUnit::Page => delta.y * height,
+                            let scale = match u {
+                                egui::MouseWheelUnit::Point => 1.0,
+                                egui::MouseWheelUnit::Line => line,
+                                egui::MouseWheelUnit::Page => height,
                             };
+                            wheel_points += *delta * scale;
+                            if *u != egui::MouseWheelUnit::Point || delta.length() >= 8.0 {
+                                wheel_notched = true;
+                            }
+                            let points = delta.y * scale;
                             let n = points / smooth_wheel_notch(*u, line, height, web);
                             if *u == egui::MouseWheelUnit::Point && delta.length() < 8.0 {
                                 zoom_now_notches += n;
@@ -1125,6 +1137,10 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                         // sideways.
                         any_notches += (delta.x + delta.y) / per;
                         delta.y / per
+                    }
+                    egui::Event::Zoom(_) => {
+                        pinched = true;
+                        0.0
                     }
                     _ => 0.0,
                 })
@@ -1159,7 +1175,7 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
             // to the middle of the view, and the pointer with it, and the
             // zoom (its whole glide) goes about the middle.
             let wheel_zooms = if app.settings.wheel_zooms {
-                !mods.alt && !mods.ctrl
+                !mods.alt && !mods.ctrl && !mods.shift
             } else {
                 mods.ctrl
             };
@@ -1176,13 +1192,42 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
             } else {
                 h
             };
-            if zoom_delta != 1.0 {
+            // Ctrl+wheel scrolls sideways (#3087): egui makes a mouse
+            // wheel's turn with Ctrl a zoom, spread over a few frames, and
+            // the drawing zoomed as with the plain wheel. A touchpad's
+            // fine steps with Ctrl (a pinch on some systems) still zoom.
+            let ctrl_pans = app.settings.wheel_zooms && mods.ctrl && !pinched;
+            let pan_id = egui::Id::new("ctrl_wheel_pans");
+            if ctrl_pans && wheel_points != egui::Vec2::ZERO {
+                ui.ctx().data_mut(|d| d.insert_temp(pan_id, wheel_notched));
+            }
+            let ctrl_pans = ctrl_pans
+                && ui
+                    .ctx()
+                    .data(|d| d.get_temp::<bool>(pan_id))
+                    .unwrap_or(false);
+            if ctrl_pans {
+                if wheel_points != egui::Vec2::ZERO {
+                    app.view.pan(if wheel_points.y != 0.0 {
+                        egui::vec2(wheel_points.y, wheel_points.x)
+                    } else {
+                        wheel_points
+                    });
+                }
+            } else if zoom_delta != 1.0 {
                 app.view.zoom_at(h, zoom_delta);
             } else if app.settings.wheel_zooms {
+                // Alt+wheel scrolls up and down, Shift+wheel sideways (the
+                // system may send it sideways already); Alt+wheel scrolled
+                // sideways (#3087).
                 if mods.alt && scroll != egui::Vec2::ZERO {
-                    app.view.pan(egui::vec2(scroll.y, scroll.x));
-                } else if mods.ctrl && scroll != egui::Vec2::ZERO {
                     app.view.pan(scroll);
+                } else if mods.shift && scroll != egui::Vec2::ZERO {
+                    app.view.pan(if scroll.y != 0.0 {
+                        egui::vec2(scroll.y, scroll.x)
+                    } else {
+                        scroll
+                    });
                 } else if !mods.shift && (zoom_glide_notches != 0.0 || zoom_now_notches != 0.0) {
                     // A notch zooms in one glide over a few frames instead
                     // of one jump; its frames multiply to the step a
