@@ -1875,6 +1875,30 @@ fn read_txsm_16(d: &[u8], v: u16, charset: u8, warn: &mut dyn FnMut(String)) -> 
     Some(out)
 }
 
+/// How many line breaks a text's spans start with.
+pub(crate) fn leading_breaks(spans: &[tracedraw_core::TextSpan]) -> usize {
+    spans
+        .iter()
+        .flat_map(|s| s.text.chars())
+        .take_while(|c| *c == '\n')
+        .count()
+}
+
+/// Drop the first `n` characters of a text's spans, and the spans left
+/// empty.
+pub(crate) fn drop_leading_chars(spans: &mut Vec<tracedraw_core::TextSpan>, mut n: usize) {
+    for s in spans.iter_mut() {
+        if n == 0 {
+            break;
+        }
+        let len = s.text.chars().count();
+        let k = n.min(len);
+        s.text = s.text.chars().skip(k).collect();
+        n -= k;
+    }
+    spans.retain(|s| !s.text.is_empty());
+}
+
 /// Text with its paragraph ends as `\n`: files end lines with a carriage
 /// return (`\r`, version 21 artistic text), a CR LF pair, a paragraph
 /// separator or a vertical tab. A line separator (U+2028) stays: it is

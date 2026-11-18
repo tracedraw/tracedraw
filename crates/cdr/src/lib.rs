@@ -183,10 +183,21 @@ pub fn open_bytes_keeping(
             p.covers_drawing = true;
             Some(p)
         };
+        // RIFF files from version 4 to 13 carry a `DISP` picture of the
+        // drawing fitted into a square.
+        let disp = || {
+            let mut found = None;
+            root.root.walk(&mut |c, _| {
+                if c.is(b"DISP") && found.is_none() {
+                    found = Some(c.clone());
+                }
+            });
+            spot::Preview::from_disp(root.data(&riff, &found?))
+        };
         let preview = if container.version.0 < 4 {
             thumbnail()
         } else {
-            container::page_preview(bytes, &container)
+            container::page_preview(bytes, &container).or_else(disp)
         };
         if let Some(preview) = preview {
             let n = spot::colours_from_preview(&mut doc_report.0, &preview);
