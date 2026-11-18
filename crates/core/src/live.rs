@@ -908,9 +908,14 @@ impl Shape {
             }
         }
         let ev = evaluate(self);
+        // A body that draws the object among its faces leaves the object
+        // itself an empty path, whose box is a point at the page's origin:
+        // taken in, the box of extruded text reached the page's corner
+        // (#3227).
         std::iter::once(&ev.main)
             .chain(ev.below.iter())
             .chain(ev.above.iter())
+            .filter(|s| !s.is_empty_path())
             .map(Shape::bounds)
             .filter(|b| {
                 b.x0.is_finite() && b.y0.is_finite() && b.x1.is_finite() && b.y1.is_finite()
@@ -5087,6 +5092,35 @@ mod tests {
         let json = serde_json::to_string(&mapped).expect("json");
         let back: BlendOptions = serde_json::from_str(&json).expect("reads");
         assert_eq!(back, mapped);
+    }
+
+    /// A bevelled extrusion draws the object among its faces and leaves
+    /// the object itself empty: its box is the faces' box, not one that
+    /// reaches the page's origin (#3227).
+    #[test]
+    fn bevelled_extrusion_box_stays_round_the_object() {
+        let mut s = rect_shape();
+        s.transform_by(Affine::translate((100.0, 80.0)));
+        s.effects.push(Effect::Extrude {
+            depth: Vec2::new(6.0, 6.0),
+            vanishing: Some(Point::new(150.0, 150.0)),
+            amount: 0.02,
+            shade_from: None,
+            shade_to: None,
+            light_angle: 135.0,
+            light_intensity: 50.0,
+            bevel: 1.0,
+            kind: Some(crate::extrude::ExtrudeKind::SmallBack),
+            on_object: true,
+            solid: None,
+            space: Default::default(),
+        });
+        assert!(evaluate(&s).main.is_empty_path());
+        let b = s.visual_bounds();
+        assert!(
+            b.x0 > 99.0 && b.y0 > 79.0 && b.x1 < 125.0 && b.y1 < 105.0,
+            "{b:?}"
+        );
     }
 
     #[test]
