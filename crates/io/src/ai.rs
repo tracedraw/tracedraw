@@ -546,6 +546,14 @@ impl Writer<'_> {
         // Text is filled by winding, the rest even-odd.
         let subs = if filled && !matches!(shape.kind, ShapeKind::Text { .. }) {
             orient_for_nonzero(subs)
+        } else if let Some(cut) = shape
+            .stroke
+            .as_ref()
+            .filter(|_| !filled)
+            .and_then(|s| tracedraw_core::arrowhead_stroke_path(&shape.page_path(), s))
+        {
+            // An unfilled line with arrowheads ends under them (#2981).
+            subpaths(&(parent * cut))
         } else {
             subs
         };

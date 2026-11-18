@@ -509,7 +509,13 @@ fn write_unlinked(
         return;
     }
     let path = transform * shape.local_path();
-    let d = path_data(&path);
+    // An unfilled line with arrowheads ends under them, as drawn (#2981).
+    let cut = shape
+        .stroke
+        .as_ref()
+        .filter(|_| matches!(shape.fill, tracedraw_core::Fill::None))
+        .and_then(|s| tracedraw_core::arrowhead_stroke_path(&shape.page_path(), s));
+    let d = path_data(&cut.map(|c| parent * c).unwrap_or_else(|| path.clone()));
     let bounds = path.bounding_box();
 
     let fill_attr = format!(

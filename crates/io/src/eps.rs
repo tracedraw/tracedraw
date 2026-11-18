@@ -574,7 +574,11 @@ impl Writer<'_> {
                 let _ = writeln!(self.out, "[] 0 setdash");
             }
             let _ = writeln!(self.out, "{} setmiterlimit", f(s.miter_ratio()));
-            self.path_ops(&path);
+            // A line with arrowheads ends under them, as drawn (#2981).
+            match tracedraw_core::arrowhead_stroke_path(&shape.page_path(), s) {
+                Some(cut) => self.path_ops(&(parent * cut)),
+                None => self.path_ops(&path),
+            }
             let _ = writeln!(self.out, "stroke");
             // Arrowheads (presets and custom): the page-space path already
             // carries the shape's own transform, so only the parent applies.
