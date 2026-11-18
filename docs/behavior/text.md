@@ -1688,7 +1688,14 @@ stand-in next to each missing family: "Arial (Liberation Sans)".
   `ops2::tests::text_on_a_straight_line_stands_on_it_from_the_start`,
   `ops2::tests::the_text_tool_on_a_paths_outline_starts_text_on_it`).
 - Change Case opens a dialog with Sentence case, lowercase, UPPERCASE,
-  Title Case and tOGGLE cASE; it needs a text selected.
+  Title Case and tOGGLE cASE; it needs a text selected. The runs of a
+  text (its parts in their own fonts, sizes, colours or bold) change as
+  one text: a bold word in the middle of a sentence keeps its small
+  letter in Sentence case, and a word in two looks takes one capital in
+  Title Case. Each run was changed as a text of its own, so Sentence case
+  gave "The big Dog Runs." A word starts after any white space, a line
+  break or a tab too
+  (`ops2::tests::the_runs_of_a_text_change_case_as_one_text`).
 
 ## Font Sampler
 
