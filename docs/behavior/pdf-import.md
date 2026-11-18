@@ -313,6 +313,17 @@ their own crypt filter and signature contents are left alone.
   `pictures_are_reduced_only_when_asked_on_the_desktop`.
 - Garbage and truncated input return an error, never a panic.
 
+- Hebrew and Arabic read in Text mode come back in the order they are
+  typed. A PDF draws such text as it shows, its glyphs left to right on
+  the page, and the text kept that order, so "שלום" came in as "םולש",
+  from TraceDraw's own PDF exports too. A line that holds letters written
+  right to left goes through the Unicode bidirectional algorithm: its
+  Hebrew and Arabic words turn around, the Latin words and numbers among
+  them read as before, and a letter keeps the points or vowel marks after
+  it. Text that an `ActualText` gives is in typed order already and stays
+  as it is (`pdf_import::tests::hebrew_and_arabic_from_a_pdf_come_back_in_typed_order`).
+  A line of right-to-left text that starts with a Latin word on the page
+  is taken as left-to-right text, as other PDF readers take it.
 - Devanagari text (Hindi, Marathi, Nepali, ...) read in Text mode comes
   back in the order it is typed: a PDF draws the short i sign (ि) before
   the consonant cluster it belongs to and the reph (र्) after its

@@ -4428,6 +4428,7 @@ dependencies = [
  "tracedraw-render",
  "tracedraw-text",
  "ttf-parser",
+ "unicode-bidi",
  "usvg",
  "web-time",
  "zip",
