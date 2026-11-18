@@ -52,11 +52,11 @@ impl App {
         if self.pending_palette_sample {
             // The document palette's eyedropper: the colour under the
             // pointer joins the palette; Ctrl keeps sampling.
-            let more = response.ctx.input(|i| i.modifiers.ctrl);
+            let (more, outline) = response
+                .ctx
+                .input(|i| (i.modifiers.ctrl, i.modifiers.shift));
             self.pending_palette_sample = more;
-            if let Some(c) = self.sample_color_at(p, false) {
-                self.add_to_document_palette(c);
-            }
+            self.sample_into_document_palette(p, outline);
             return true;
         }
         if self.pending_merge_frame {

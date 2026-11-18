@@ -227,6 +227,24 @@ impl App {
         crate::ui::palette::name_of(self, c)
     }
 
+    /// The document palette's eyedropper clicked at `p`: the colour
+    /// there joins the palette, the outline's with Shift held, as the
+    /// Colour Eyedropper reads it. Only the fill was read, so an
+    /// outline colour could not be taken (#3093).
+    pub fn sample_into_document_palette(&mut self, p: Point, outline: bool) {
+        if let Some(c) = self.sample_color_at(p, outline) {
+            self.add_to_document_palette(c);
+        }
+    }
+
+    /// Does a colour eyedropper wait to sample, so the colour under the
+    /// pointer is shown beside it: the Colour Eyedropper in Select mode,
+    /// or the document palette's eyedropper, which showed nothing
+    /// (#3093). A colour picker's eyedropper is asked for apart.
+    pub fn color_readout_wanted(&self, resample: bool) -> bool {
+        self.eyedropper_sampling(resample) || self.pending_palette_sample
+    }
+
     /// Does the Colour Eyedropper wait to sample (Select mode)?
     pub fn eyedropper_sampling(&self, resample: bool) -> bool {
         self.tool == crate::tools::Tool::ColorEyedropper
@@ -1311,6 +1329,35 @@ mod tests {
             .cloned()
             .expect("read");
         assert!(r.lines[0].starts_with("R:"), "{:?}", r.lines);
+    }
+
+    /// #3093: the document palette's eyedropper shows the readout while
+    /// it waits, and takes the outline's colour with Shift.
+    #[test]
+    fn the_palette_eyedropper_reads_outlines_and_shows_the_colour() {
+        let mut app = App::headless();
+        let layer = app.active_layer().expect("a layer");
+        let id = app.engine.new_shape_id();
+        let mut s = tracedraw_core::Shape::new(
+            id,
+            ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(0.0, 0.0, 20.0, 20.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        s.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        s.stroke = Some(tracedraw_core::Stroke::new(Color::rgb8(0, 0, 255), 1.0));
+        app.run(tracedraw_core::Command::AddShape { layer, shape: s });
+        assert!(!app.color_readout_wanted(false));
+        app.pending_palette_sample = true;
+        assert!(app.color_readout_wanted(false));
+        let inside = Point::new(10.0, 10.0);
+        app.sample_into_document_palette(inside, false);
+        app.sample_into_document_palette(inside, true);
+        let pal = &app.doc().palette;
+        assert!(pal.contains(&Color::rgb8(255, 0, 0)), "{pal:?}");
+        assert!(pal.contains(&Color::rgb8(0, 0, 255)), "{pal:?}");
     }
 
     /// The readout names a palette colour and gives its values in the

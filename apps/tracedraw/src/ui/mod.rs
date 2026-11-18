@@ -1284,7 +1284,7 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
         // pointer beside it (#990).
         let picker = crate::ui::color_picker::picking(ui.ctx());
         if let (true, Some(at), Some(p)) = (
-            (picker || app.eyedropper_sampling(ctrl)) && !primary && !middle,
+            (picker || app.color_readout_wanted(ctrl)) && !primary && !middle,
             pos,
             app.pointer_page,
         ) {
