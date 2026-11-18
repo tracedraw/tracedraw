@@ -15,7 +15,8 @@ use tracedraw_core::{
 
 /// What a drag with the Free Transform tool does. Modifier keys override
 /// the mode: Alt scales, Ctrl skews, Shift reflects.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum FreeTransformMode {
     Rotation,
     Reflection,
@@ -4017,6 +4018,16 @@ impl App {
     /// The tool settings now (see [`crate::settings::ToolPrefs`]).
     pub fn tool_prefs(&self) -> crate::settings::ToolPrefs {
         crate::settings::ToolPrefs {
+            common_shape: self.common_shape.key().to_string(),
+            my_shape: self.my_shape,
+            eyedropper_groups: self.eyedropper_groups,
+            eyedropper_sample: self.eyedropper_sample,
+            free_transform_mode: self.free_transform_mode,
+            node_lasso: self.node_lasso,
+            node_lasso_keeps: self.node_lasso_keeps,
+            blend_rotation: self.blend_rotation,
+            blend_accel_objects: self.blend_accel_objects,
+            blend_accel_colors: self.blend_accel_colors,
             polygon_points: self.polygon_points,
             star_sharpness: self.star_sharpness,
             star_complex: self.star_complex,
@@ -4073,6 +4084,25 @@ impl App {
                 or
             }
         };
+        // A shape key this version does not know keeps the current one.
+        if let Some(s) = crate::tools2::CommonShape::ALL
+            .iter()
+            .find(|s| s.key() == t.common_shape)
+        {
+            self.common_shape = *s;
+        }
+        self.my_shape = t.my_shape;
+        self.eyedropper_groups = t.eyedropper_groups;
+        self.eyedropper_sample = match t.eyedropper_sample {
+            2 | 5 => t.eyedropper_sample,
+            _ => 1,
+        };
+        self.free_transform_mode = t.free_transform_mode;
+        self.node_lasso = t.node_lasso;
+        self.node_lasso_keeps = t.node_lasso_keeps;
+        self.blend_rotation = finite(t.blend_rotation, -3600.0, 3600.0, 0.0);
+        self.blend_accel_objects = finite(t.blend_accel_objects, -1.0, 1.0, 0.0);
+        self.blend_accel_colors = finite(t.blend_accel_colors, -1.0, 1.0, 0.0);
         self.polygon_points = t.polygon_points.clamp(3, 500);
         // Negative: inverted stars (#1331).
         self.star_sharpness = finite(t.star_sharpness, -1.0, 1.0, 0.5);
@@ -12191,6 +12221,52 @@ mod tests {
             old.snap.dynamic,
             crate::live_guides::DynamicOptions::default()
         );
+    }
+
+    /// The Common Shapes tool's shape, the eyedroppers' groups and sample
+    /// box, the Free Transform mode, the Shape tool's freehand marquee and
+    /// the Blend tool's rotation and acceleration went back to a first
+    /// start's at every start: they are kept now.
+    #[test]
+    fn common_shapes_eyedropper_free_transform_and_blend_choices_survive_a_restart() {
+        let mut app = App::headless();
+        app.common_shape = crate::tools2::CommonShape::ALL[3];
+        app.my_shape = Some(42);
+        app.eyedropper_groups.size = true;
+        app.eyedropper_groups.fill = false;
+        app.eyedropper_sample = 5;
+        app.free_transform_mode = FreeTransformMode::Skew;
+        app.node_lasso = true;
+        app.node_lasso_keeps = true;
+        app.blend_rotation = 90.0;
+        app.blend_accel_objects = 0.4;
+        app.blend_accel_colors = -0.3;
+        app.sync_settings();
+        let text = serde_json::to_string(&app.settings).expect("saved");
+        let read: crate::settings::Settings = serde_json::from_str(&text).expect("read");
+        let mut next = App::headless();
+        next.apply_settings(read.upgrade());
+        assert_eq!(next.common_shape, crate::tools2::CommonShape::ALL[3]);
+        assert_eq!(next.my_shape, Some(42));
+        assert_eq!(next.eyedropper_groups, app.eyedropper_groups);
+        assert_eq!(next.eyedropper_sample, 5);
+        assert_eq!(next.free_transform_mode, FreeTransformMode::Skew);
+        assert!(next.node_lasso && next.node_lasso_keeps);
+        assert_eq!(next.blend_rotation, 90.0);
+        assert_eq!(next.blend_accel_objects, 0.4);
+        assert_eq!(next.blend_accel_colors, -0.3);
+        // A file edited by hand: an unknown shape keeps the current one,
+        // and values outside the bars come back into them.
+        let mut odd = next.tool_prefs();
+        odd.common_shape = "no.such.shape".into();
+        odd.eyedropper_sample = 3;
+        odd.blend_accel_objects = 7.0;
+        odd.blend_rotation = f64::NAN;
+        next.apply_tool_prefs(&odd);
+        assert_eq!(next.common_shape, crate::tools2::CommonShape::ALL[3]);
+        assert_eq!(next.eyedropper_sample, 1);
+        assert_eq!(next.blend_accel_objects, 1.0);
+        assert_eq!(next.blend_rotation, 0.0);
     }
 
     /// The preferences are saved when something changed, not every

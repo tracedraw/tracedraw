@@ -253,7 +253,8 @@ impl App {
 }
 
 /// Which groups the Attributes eyedropper copies.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct AttrGroups {
     pub outline: bool,
     pub fill: bool,

@@ -1724,6 +1724,26 @@ impl Default for SnapPrefs {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ToolPrefs {
+    /// The Common Shapes tool's shape, by the key of its name, and the
+    /// shape of My shapes picked instead: the choice went back to the
+    /// arrow at every start, as did the next ones.
+    pub common_shape: String,
+    pub my_shape: Option<u64>,
+    /// The Attributes eyedropper's groups and the colour eyedropper's
+    /// sample box (1, 2 or 5 pixels).
+    pub eyedropper_groups: crate::eyedropper::AttrGroups,
+    pub eyedropper_sample: u32,
+    /// The Free Transform tool's mode.
+    pub free_transform_mode: crate::app::FreeTransformMode,
+    /// The Shape tool's freehand marquee, and its Shift adding to the
+    /// nodes chosen.
+    pub node_lasso: bool,
+    pub node_lasso_keeps: bool,
+    /// The Blend tool's rotation and object and colour acceleration
+    /// (-1 to 1) for new blends; its steps were kept already.
+    pub blend_rotation: f64,
+    pub blend_accel_objects: f64,
+    pub blend_accel_colors: f64,
     pub polygon_points: u32,
     pub star_sharpness: f64,
     pub star_complex: bool,
@@ -1788,6 +1808,16 @@ pub struct ToolPrefs {
 impl Default for ToolPrefs {
     fn default() -> Self {
         ToolPrefs {
+            common_shape: crate::tools2::CommonShape::RightArrow.key().into(),
+            my_shape: None,
+            eyedropper_groups: Default::default(),
+            eyedropper_sample: 1,
+            free_transform_mode: crate::app::FreeTransformMode::Rotation,
+            node_lasso: false,
+            node_lasso_keeps: false,
+            blend_rotation: 0.0,
+            blend_accel_objects: 0.0,
+            blend_accel_colors: 0.0,
             polygon_points: 5,
             star_sharpness: 0.5,
             star_complex: false,
