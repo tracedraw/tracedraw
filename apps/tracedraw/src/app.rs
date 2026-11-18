@@ -8785,12 +8785,14 @@ impl App {
         out
     }
 
-    /// The file name of a drawing's auto-backup in the folder: in a
-    /// browser inside the session's own folder, so two tabs never write
-    /// over each other's.
+    /// The file name of a drawing's auto-backup in the folder: inside the
+    /// session's own folder, so two tabs or two TraceDraws running at
+    /// once never write over each other's backups (both had
+    /// `AutoBackup_of_Untitled-1.tdraw`, and the one that closed cleanly
+    /// deleted the other's).
     fn backup_file(&self, slot: Option<usize>) -> String {
         let name = self.backup_name(slot);
-        match self.session.as_ref().filter(|_| crate::files::WEB) {
+        match self.session.as_ref() {
             Some(s) => format!("{}/{name}", s.id()),
             None => name,
         }
@@ -8975,6 +8977,14 @@ impl App {
         for path in &opened {
             let _ = crate::files::remove(path);
         }
+        for (f, path) in found
+            .iter()
+            .flat_map(|f| f.backups.iter().map(move |b| (f, b)))
+        {
+            if let Some(dir) = f.marker.parent() {
+                crate::recovery::remove_empty_folders(path, dir);
+            }
+        }
         crate::recovery::dismiss(found, false);
     }
 
@@ -9111,10 +9121,27 @@ impl App {
     /// `AutoBackup_of_<drawing name>.tdraw` for the active drawing (`None`)
     /// or another open one.
     fn backup_name(&self, slot: Option<usize>) -> String {
-        let title = match slot {
-            None => self.drawing_title(self.active_doc),
-            Some(i) => self.drawing_title(i),
-        };
+        let i = slot.unwrap_or(self.active_doc);
+        let stem = self.backup_stem(i);
+        // Two drawings of the same name (files of one name in two
+        // folders, `logo.tdraw` beside `logo.cdr`) get a backup each: the
+        // later ones are numbered.
+        let key = stem.to_lowercase();
+        let earlier = self
+            .dirty_documents()
+            .into_iter()
+            .filter(|&j| j < i && self.backup_stem(j).to_lowercase() == key)
+            .count();
+        if earlier == 0 {
+            format!("AutoBackup_of_{stem}.tdraw")
+        } else {
+            format!("AutoBackup_of_{stem} ({}).tdraw", earlier + 1)
+        }
+    }
+
+    /// The name drawing `i`'s auto-backup is called after.
+    fn backup_stem(&self, i: usize) -> String {
+        let title = self.drawing_title(i);
         // The name in its own script, accents and vowel marks included
         // (the tab of a recovered drawing shows it again); only what no
         // file name can hold changes, the same on every system.
@@ -9128,7 +9155,7 @@ impl App {
         )
         .trim_start_matches('.')
         .to_string();
-        format!("AutoBackup_of_{stem}.tdraw")
+        stem
     }
 
     /// Ctrl+8 and Ctrl+2: the selected text (or the text being edited)
@@ -12599,6 +12626,102 @@ mod tests {
         assert!(!backup.exists());
         assert!(app.session.as_ref().expect("session").backups().is_empty());
         app.end_session();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Two TraceDraws running at once with one auto-backup folder keep
+    /// their own backups: each one's first new drawing is Untitled-1, and
+    /// both backed it up as `AutoBackup_of_Untitled-1.tdraw`, so the
+    /// second overwrote the first's and the first, closing cleanly,
+    /// deleted the backup the second counted on.
+    #[test]
+    fn two_programs_at_once_keep_their_own_backups() {
+        let dir = std::env::temp_dir().join(format!("tracedraw-two-{}", crate::recovery::new_id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let now = crate::recovery::now_secs();
+        let start = |dir: &std::path::Path| {
+            let mut app = App::headless();
+            app.settings.backup.auto_dir = Some(dir.to_path_buf());
+            app.session_tick(now);
+            app
+        };
+        let mut a = start(&dir);
+        let mut b = start(&dir);
+        assert_eq!(a.drawing_title(a.active_doc), b.drawing_title(b.active_doc));
+        rect_shape(&mut a, Rect::new(0.0, 0.0, 10.0, 10.0), true);
+        rect_shape(&mut b, Rect::new(0.0, 0.0, 20.0, 10.0), true);
+        rect_shape(&mut b, Rect::new(0.0, 0.0, 30.0, 10.0), true);
+        assert!(a.backup_now() && b.backup_now());
+        // The first closes cleanly; the second then ends without closing.
+        a.end_session();
+        let found = crate::recovery::find(&dir, now + crate::recovery::STALE_SECS + 10, None);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].backups.len(), 1, "the second's backup is there");
+        let mut next = start(&dir);
+        next.recover(&found);
+        assert_eq!(
+            next.doc().pages[0].layers[0].shapes.len(),
+            2,
+            "the second's drawing"
+        );
+        // Nothing is left behind, not even the sessions' folders.
+        drop(b);
+        next.end_session();
+        assert!(files_in(&dir).is_empty(), "{:?}", files_in(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Two open drawings of the same name get an auto-backup each: they
+    /// shared one, so only the drawing backed up last came back.
+    #[test]
+    fn two_drawings_of_one_name_get_a_backup_each() {
+        let dir =
+            std::env::temp_dir().join(format!("tracedraw-same-{}", crate::recovery::new_id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let now = crate::recovery::now_secs();
+        let mut app = App::headless();
+        app.settings.backup.auto_dir = Some(dir.clone());
+        app.session_tick(now);
+        for (folder, w) in [("one", 10.0), ("two", 20.0)] {
+            let file = std::path::PathBuf::from(format!("/nowhere/{folder}/logo.tdraw"));
+            app.open_document(tracedraw_core::Document::default(), Some(file));
+            rect_shape(&mut app, Rect::new(0.0, 0.0, w, 10.0), true);
+        }
+        assert!(app.backup_now());
+        let mut names: Vec<String> = app
+            .session
+            .as_ref()
+            .expect("session")
+            .backups()
+            .iter()
+            .map(|b| b.rsplit('/').next().unwrap_or(b).to_string())
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            vec!["AutoBackup_of_logo (2).tdraw", "AutoBackup_of_logo.tdraw"]
+        );
+        app.leave_session();
+        let found = crate::recovery::find(&dir, now + 1, None);
+        assert_eq!(found.iter().map(|f| f.backups.len()).sum::<usize>(), 2);
+        let mut next = App::headless();
+        next.settings.backup.auto_dir = Some(dir.clone());
+        next.recover(&found);
+        let mut widths: Vec<f64> = next
+            .docs
+            .iter()
+            .enumerate()
+            .filter_map(|(i, _)| next.tab_engine(i))
+            .filter_map(|e| {
+                e.document().pages[0].layers[0]
+                    .shapes
+                    .first()
+                    .map(|s| s.page_path())
+            })
+            .map(|p| tracedraw_core::geometry::Shape::bounding_box(&p).width())
+            .collect();
+        widths.sort_by(f64::total_cmp);
+        assert_eq!(widths, vec![10.0, 20.0], "both drawings came back");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

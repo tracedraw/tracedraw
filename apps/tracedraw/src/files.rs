@@ -351,7 +351,7 @@ pub fn write(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> std::io::Result
     if let Some(uri) = document_uri(path) {
         return crate::android::documents::write(&uri, bytes.as_ref());
     }
-    std::fs::write(path, bytes)
+    replace_with(path, |w| std::io::Write::write_all(w, bytes.as_ref()))
 }
 
 /// Write a file as `fill` makes it, without holding the whole file in
@@ -368,9 +368,83 @@ pub fn write_with(
         fill(&mut bytes)?;
         return write(path, bytes);
     }
-    let mut w = std::io::BufWriter::new(std::fs::File::create(path)?);
-    fill(&mut w)?;
-    std::io::Write::flush(&mut w)
+    replace_with(path, fill)
+}
+
+/// Write the file `path` as `fill` makes it, never losing the file that
+/// was there when the write fails half way (a full disk, an error while
+/// the drawing is written, the program stopped): the new file is made
+/// whole under a `.part` name beside it first, and only then takes the
+/// old one's place. A file that was there is written over in place from
+/// the `.part` file, so it keeps its permissions and links and an open
+/// drawing's hold on it (`file_hold`) stays; should that copy fail, the
+/// `.part` file stays with the whole new file and the error names it. A
+/// new file is the `.part` file renamed. Where no `.part` file can be
+/// made (a folder that takes no new files, a device), the file is
+/// written directly, as before.
+fn replace_with(
+    path: &Path,
+    fill: impl FnOnce(&mut dyn std::io::Write) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    use std::io::Write as _;
+    let direct = |fill: &mut dyn FnMut(&mut dyn std::io::Write) -> std::io::Result<()>| {
+        let mut w = std::io::BufWriter::new(std::fs::File::create(path)?);
+        fill(&mut w)?;
+        w.flush()
+    };
+    let mut fill = Some(fill);
+    let mut once = |w: &mut dyn std::io::Write| match fill.take() {
+        Some(f) => f(w),
+        None => Ok(()),
+    };
+    let existing = std::fs::metadata(path).ok();
+    if existing.as_ref().is_some_and(|m| !m.is_file()) {
+        return direct(&mut once);
+    }
+    let mut part = path.as_os_str().to_owned();
+    part.push(".part");
+    let part = PathBuf::from(part);
+    let Ok(file) = std::fs::File::create(&part) else {
+        return direct(&mut once);
+    };
+    let written = (|| {
+        let mut w = std::io::BufWriter::new(file);
+        once(&mut w)?;
+        w.flush()?;
+        w.get_ref().sync_all()
+    })();
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&part);
+        return Err(e);
+    }
+    if existing.is_none() {
+        return match std::fs::rename(&part, path) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                let _ = std::fs::remove_file(&part);
+                Err(e)
+            }
+        };
+    }
+    let copied = std::fs::File::open(&part).and_then(|mut from| {
+        let mut to = std::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(path)?;
+        std::io::copy(&mut from, &mut to)?;
+        to.flush()?;
+        to.sync_all()
+    });
+    match copied {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&part);
+            Ok(())
+        }
+        Err(e) => Err(std::io::Error::new(
+            e.kind(),
+            format!("{e}; the whole file is in {}", part.display()),
+        )),
+    }
 }
 
 /// Write a file as `fill` makes it, creating its folder first
@@ -1911,6 +1985,45 @@ pub mod test_save {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A write that fails half way (a full disk, an error while the
+    /// drawing is written) leaves the file it was replacing as it was:
+    /// it was written over from the start and left cut short. A write
+    /// that succeeds replaces it and leaves no `.part` file; a new file
+    /// is made the same way.
+    #[test]
+    fn a_failed_write_keeps_the_file_it_was_replacing() {
+        let dir =
+            std::env::temp_dir().join(format!("tracedraw-replace-{}", crate::recovery::new_id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let path = dir.join("drawing.tdraw");
+        std::fs::write(&path, b"the old drawing").expect("old");
+        let failed = write_with(&path, |w| {
+            w.write_all(b"half of the new")?;
+            Err(std::io::Error::other("no space left on device"))
+        });
+        assert!(failed.is_err());
+        assert_eq!(std::fs::read(&path).expect("read"), b"the old drawing");
+        let names = |dir: &Path| -> Vec<String> {
+            let mut v: Vec<String> = std::fs::read_dir(dir)
+                .expect("list")
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect();
+            v.sort();
+            v
+        };
+        assert_eq!(names(&dir), vec!["drawing.tdraw"], "no .part left");
+        write_with(&path, |w| w.write_all(b"the new drawing")).expect("save");
+        assert_eq!(std::fs::read(&path).expect("read"), b"the new drawing");
+        write(&path, b"shorter").expect("write");
+        assert_eq!(std::fs::read(&path).expect("read"), b"shorter");
+        let new = dir.join("new.cdr");
+        write(&new, b"made").expect("new");
+        assert_eq!(std::fs::read(&new).expect("read"), b"made");
+        assert_eq!(names(&dir), vec!["drawing.tdraw", "new.cdr"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// Names in every script stay as typed; only direction marks, control
     /// characters and what the system refuses change.
