@@ -425,7 +425,10 @@ fn convert_path(p: &usvg::Path, to_page: Affine, ids: &mut IdSource) -> Option<S
     let bounds = bbox(&path);
     let mut shape = Shape::new(ShapeId(ids.shape().0), ShapeKind::Path { path, closed });
     shape.fill = match p.fill() {
-        Some(f) => convert_paint(f.paint(), f.opacity().get() as f64, bounds, to_page),
+        // A gradient's points are in the path's user space: placed on the
+        // page by the path's own transform as well (the viewBox scale and
+        // the groups'), not by the page flip alone.
+        Some(f) => convert_paint(f.paint(), f.opacity().get() as f64, bounds, t),
         None => Fill::None,
     };
     shape.stroke = p.stroke().map(|s| convert_stroke(s, t));
@@ -635,6 +638,53 @@ mod tests {
         assert!((st.width - 2.0 * PX_TO_MM).abs() < 1e-6);
         assert_eq!(children[0].name.as_deref(), Some("r"));
         assert_eq!(children[1].fill, Fill::Solid(Color::rgb8(0, 255, 0)));
+    }
+
+    /// A radial gradient centred on its object comes in centred, in a
+    /// file measured in millimetres and in one whose object is moved by
+    /// a transform: the centre was placed without the viewBox scale and
+    /// the transforms, and landed in a corner of the object.
+    #[test]
+    fn a_radial_gradient_keeps_its_centre() {
+        let grad = r##"<defs><radialGradient id="g" gradientUnits="userSpaceOnUse" cx="50" cy="40" r="30"><stop offset="0" stop-color="#ff0"/><stop offset="1" stop-color="#080"/></radialGradient></defs>"##;
+        for body in [
+            r##"<path d="M20 60L80 60L80 20L20 20Z" fill="url(#g)"/>"##,
+            r##"<g transform="translate(30 10) scale(0.5 2)"><path d="M20 60L80 60L80 20L20 20Z" fill="url(#g)"/></g>"##,
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="150mm" viewBox="0 0 200 150">{grad}{body}</svg>"##
+            );
+            let mut ids = IdSource::default();
+            let out = parse(&svg, &mut ids).unwrap();
+            let mut s = &out.shapes[0];
+            while let ShapeKind::Group { children } = &s.kind {
+                s = &children[0];
+            }
+            let Fill::Fountain(f) = &s.fill else {
+                panic!("{:?}", s.fill);
+            };
+            assert_eq!(f.kind, FountainKind::Radial);
+            assert!(
+                f.offset.x.abs() < 0.01 && f.offset.y.abs() < 0.01,
+                "{body}: centre off by {:?}",
+                f.offset
+            );
+        }
+        // Off centre: a quarter of the width to the right of the middle.
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="150mm" viewBox="0 0 200 150">{}<path d="M5 60L65 60L65 20L5 20Z" fill="url(#g)"/></svg>"##,
+            grad
+        );
+        let mut ids = IdSource::default();
+        let out = parse(&svg, &mut ids).unwrap();
+        let Fill::Fountain(f) = &out.shapes[0].fill else {
+            panic!("{:?}", out.shapes[0].fill);
+        };
+        assert!(
+            (f.offset.x - 0.5).abs() < 0.01 && f.offset.y.abs() < 0.01,
+            "{:?}",
+            f.offset
+        );
     }
 
     /// Objects inside `<a>` come in with the link's address, a lone
