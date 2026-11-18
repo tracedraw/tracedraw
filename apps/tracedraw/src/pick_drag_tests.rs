@@ -5722,6 +5722,31 @@ fn alignment_guides_line_up_a_moved_object_and_show_the_line() {
     let _ = other;
 }
 
+/// Q held on its own turns all snapping off for as long as it is held, a
+/// drag included, and on again when it is let go; Alt+Q stays as it
+/// was. While a text is typed, Q is a letter and changes nothing (#3072).
+#[test]
+fn holding_q_turns_snapping_off_until_it_is_let_go() {
+    let (ctx, mut app, id) = setup();
+    app.snap.guides = true;
+    assert!(app.snap_enabled() && !app.snaps_off());
+    let none = Modifiers::NONE;
+    frame(&ctx, &mut app, vec![key(egui::Key::Q, none)], none);
+    assert!(app.snaps_off() && !app.snap_enabled());
+    assert!(!app.snap.off, "Alt+Q is not turned on");
+    // Still held over the next frames and through a drag.
+    let b = bounds(&app, id);
+    let from = app.view.to_screen(b.center());
+    let to = app.view.to_screen(b.center() + Vec2::new(3.0, 0.0));
+    drag(&ctx, &mut app, from, to, none, Vec::new());
+    frame(&ctx, &mut app, Vec::new(), none);
+    assert!(app.snaps_off());
+    frame(&ctx, &mut app, vec![key_up(egui::Key::Q, none)], none);
+    frame(&ctx, &mut app, Vec::new(), none);
+    assert!(!app.snaps_off() && app.snap_enabled());
+    assert_eq!(app.tool, Tool::Pick, "Q picks no tool");
+}
+
 /// With alignment guides on, a rectangle drawn near the size of another
 /// object takes its width and height.
 #[test]

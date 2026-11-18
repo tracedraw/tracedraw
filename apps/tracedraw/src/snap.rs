@@ -238,7 +238,7 @@ impl App {
     /// The pieces of `still` within the snapping radius of `p`: what a
     /// node dragged there snaps to of its own curves.
     pub(crate) fn still_near<'a>(&self, still: &'a StillGeometry, p: Point) -> Vec<&'a Geo> {
-        if self.snap.off || !self.snaps_to_objects() || !self.snap_enabled() {
+        if self.snaps_off() || !self.snaps_to_objects() || !self.snap_enabled() {
             return Vec::new();
         }
         let tol = self.snap_tolerance();
@@ -756,7 +756,7 @@ impl App {
     /// excluded objects that stays put meanwhile (a node being dragged
     /// snaps to the other nodes and segments of its own curve, #673).
     pub fn snap_point_with(&self, p: Point, exclude: &[ShapeId], own: &[&Geo]) -> Point {
-        if self.snap.off {
+        if self.snaps_off() {
             return p;
         }
         let enabled = self.snap_enabled();
@@ -867,7 +867,7 @@ impl App {
     /// exactly (#2352); the point it takes is marked with its name. Else
     /// it snaps as the pointer does (guidelines, the grid, the page).
     pub fn snap_pivot(&self, p: Point) -> Point {
-        if self.snap.off {
+        if self.snaps_off() {
             return p;
         }
         let tol = self.snap_tolerance();
@@ -1022,7 +1022,7 @@ impl App {
         d: Vec2,
         start: Option<&StillGeometry>,
     ) -> Vec2 {
-        if self.snap.off {
+        if self.snaps_off() {
             return d;
         }
         let enabled = self.snap_enabled();
@@ -1126,11 +1126,11 @@ impl App {
     }
 
     pub fn alignment_guides_on(&self) -> bool {
-        self.snap.alignment_guides && !self.snap.off
+        self.snap.alignment_guides && !self.snaps_off()
     }
 
     pub fn dynamic_guides_on(&self) -> bool {
-        self.snap.dynamic_guides && !self.snap.off
+        self.snap.dynamic_guides && !self.snaps_off()
     }
 
     fn set_overlay(
@@ -1425,8 +1425,14 @@ impl App {
         Vec2::new(d.x + best_dx.unwrap_or(0.0), d.y + best_dy.unwrap_or(0.0))
     }
 
+    /// All snapping off: Alt+Q, or Q held down on its own for the
+    /// moment (#3072).
+    pub fn snaps_off(&self) -> bool {
+        self.snap.off || self.snap_held_off
+    }
+
     pub fn snap_enabled(&self) -> bool {
-        !self.snap.off
+        !self.snaps_off()
             && (self.snap.grid
                 || self.snap.guides
                 || self.snaps_to_objects()

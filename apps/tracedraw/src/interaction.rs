@@ -4635,6 +4635,9 @@ impl App {
         // The pen's pressure, which the raw input hook read from this
         // frame's touch events, before the tools see the pointer (#850).
         self.pen_pressure = crate::pen::pressure(ctx);
+        // Q held on its own: snapping off for as long as it is held,
+        // set again below when the drawing has the keyboard (#3072).
+        self.snap_held_off = false;
         // A macro's message, input box, modal form or error owns the
         // keyboard (see ui/macros_ui.rs); Esc stops a running macro.
         if self.macros.modal() {
@@ -4723,6 +4726,13 @@ impl App {
         if ctx.egui_wants_keyboard_input() {
             return;
         }
+        // Q held with no modifier while the drawing has the keyboard (no
+        // text being typed, no dialog): snapping is off until it is let
+        // go, for one move or node drag placed freely without turning
+        // Alt+Q on and off (#3072).
+        self.snap_held_off = self.text_edit.is_none()
+            && !dialog_open
+            && ctx.input(|i| i.key_down(Key::Q) && i.modifiers.is_none());
         // Text typing has priority; the zoom keys, which type nothing,
         // still zoom (#1699).
         if self.text_edit.is_some() && !dialog_open {

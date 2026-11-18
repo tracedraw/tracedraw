@@ -1229,6 +1229,8 @@ pub struct App {
     /// reached the program on Windows (#2686).
     pub file_drag: crate::drop_files::FileDrag,
     pub duplicate_offset: Vec2,
+    /// Q held down on its own: all snapping off while it is held (#3072).
+    pub snap_held_off: bool,
     /// The last Duplicate: each original and its copy. While the copies
     /// are the selection, the next Duplicate repeats what was done to
     /// them since (moved, scaled, turned), as the reference program's
@@ -3037,6 +3039,7 @@ impl App {
             // scaled or turned; the next one repeats that (#1494).
             duplicate_offset: Vec2::ZERO,
             last_duplicate: Vec::new(),
+            snap_held_off: false,
             forgotten_duplicate: None,
             selection_steps: Default::default(),
             last_guide_duplicate: None,
