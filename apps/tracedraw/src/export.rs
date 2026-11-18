@@ -277,6 +277,22 @@ fn page_file(
                 }
                 ExportColorMode::Rgb => {}
             }
+            let p = doc.page(pid).map_err(|e| e.to_string())?;
+            let fit = tracedraw_render::ViewTransform::whole_page(
+                p.size.width,
+                p.size.height,
+                st.render_dpi() / 25.4,
+            );
+            let pixels = u64::from(fit.0) * u64::from(fit.1);
+            // A large picture is drawn and written a strip at a time, so
+            // it is never whole in memory (#3039).
+            if matches!(ext, "png" | "tif") && pixels > STREAMED_PIXELS {
+                let transparent = st.transparent && ext == "png";
+                return streamed_picture(doc, pid, fit, ext, transparent, st.dpi, STRIP_PIXELS);
+            }
+            if pixels > tracedraw_render::MAX_PIXELS {
+                return Err(too_large(fit.0, fit.1));
+            }
             let mut pm = tracedraw_render::render_page_export_image(doc, pid, st.render_dpi())
                 .ok_or("render failed")?;
             if st.transparent && matches!(ext, "png" | "webp" | "gif") {
@@ -307,6 +323,148 @@ fn page_file(
             record_dpi(bytes, ext, st.dpi)
         }
     })
+}
+
+/// Pages of more pixels than this are exported as PNG or TIFF a strip at
+/// a time (#3039).
+const STREAMED_PIXELS: u64 = 1 << 26;
+
+/// The most pixels of one strip of a picture written a strip at a time
+/// (64 MB of RGBA).
+const STRIP_PIXELS: u64 = 1 << 24;
+
+/// Why a picture of `w` x `h` pixels was not made.
+fn too_large(w: u32, h: u32) -> String {
+    format!(
+        "The picture ({w} x {h} pixels) is too large for this format: \
+         export it as PNG or TIFF, or at a lower resolution"
+    )
+}
+
+/// The page `pid` as a PNG or TIFF (`ext`) file of `w` x `h` pixels drawn
+/// through `view`, saying it was made at `dpi`: drawn and encoded strips
+/// of at most `strip_pixels` pixels at a time, the same pixels as the page
+/// drawn whole, on white or (`transparent`, PNG only) on nothing. The
+/// page drawn whole took four times the picture's size in memory and
+/// failed above a billion pixels, so a banner of 180 ft exported at 50 or
+/// 72 dpi was not made (#3039). A TIFF of more than 4 GB is a BigTIFF.
+fn streamed_picture(
+    doc: &Document,
+    pid: tracedraw_core::PageId,
+    (w, h, view): (u32, u32, tracedraw_render::ViewTransform),
+    ext: &str,
+    transparent: bool,
+    dpi: f64,
+    strip_pixels: u64,
+) -> Result<Vec<u8>, String> {
+    let opts = tracedraw_render::RenderOptions {
+        width: w,
+        height: h,
+        view,
+        ..Default::default()
+    };
+    // Whole multiples of 16 rows, as the coarse grid of procedural fills.
+    let rows =
+        ((strip_pixels / u64::from(w)) / 16 * 16).clamp(16, u64::from(h).div_ceil(16) * 16) as u32;
+    let channels: usize = if transparent { 4 } else { 3 };
+    // Each strip's pixels, demultiplied, `channels` bytes each.
+    let strip = |y0: u32| -> Result<Vec<u8>, String> {
+        let band = rows.min(h - y0);
+        let objects = tracedraw_render::render_page_rows(doc, pid, &opts, y0, y0 + band)
+            .ok_or_else(|| too_large(w, h))?;
+        let pm = if transparent {
+            objects
+        } else {
+            let mut pm = tiny_skia::Pixmap::new(w, band).ok_or_else(|| too_large(w, h))?;
+            pm.fill(tiny_skia::Color::WHITE);
+            pm.draw_pixmap(
+                0,
+                0,
+                objects.as_ref(),
+                &Default::default(),
+                tiny_skia::Transform::identity(),
+                None,
+            );
+            pm
+        };
+        let mut out = Vec::with_capacity(pm.pixels().len() * channels);
+        for p in pm.pixels() {
+            let d = p.demultiply();
+            out.extend_from_slice(&[d.red(), d.green(), d.blue(), d.alpha()][..channels]);
+        }
+        Ok(out)
+    };
+    let dpi = if dpi.is_finite() && dpi >= 1.0 {
+        dpi
+    } else {
+        96.0
+    };
+    let mut file = std::io::Cursor::new(Vec::new());
+    if ext == "png" {
+        let mut enc = png::Encoder::new(&mut file, w, h);
+        enc.set_color(if transparent {
+            png::ColorType::Rgba
+        } else {
+            png::ColorType::Rgb
+        });
+        enc.set_depth(png::BitDepth::Eight);
+        let per_metre = (dpi / 0.0254).round().min(f64::from(i32::MAX)) as u32;
+        enc.set_pixel_dims(Some(png::PixelDimensions {
+            xppu: per_metre,
+            yppu: per_metre,
+            unit: png::Unit::Meter,
+        }));
+        let mut writer = enc.write_header().map_err(|e| e.to_string())?;
+        let mut stream = writer.stream_writer().map_err(|e| e.to_string())?;
+        let mut y0 = 0;
+        while y0 < h {
+            std::io::Write::write_all(&mut stream, &strip(y0)?).map_err(|e| e.to_string())?;
+            y0 += rows;
+        }
+        stream.finish().map_err(|e| e.to_string())?;
+        writer.finish().map_err(|e| e.to_string())?;
+    } else {
+        use tiff::encoder::{colortype, Rational, TiffEncoder, TiffKind};
+        fn write<K: TiffKind>(
+            mut enc: TiffEncoder<&mut std::io::Cursor<Vec<u8>>, K>,
+            (w, h, rows, dpi): (u32, u32, u32, f64),
+            strip: &dyn Fn(u32) -> Result<Vec<u8>, String>,
+        ) -> Result<(), String> {
+            let mut image = enc
+                .new_image::<colortype::RGB8>(w, h)
+                .map_err(|e| e.to_string())?;
+            image.resolution(
+                tiff::tags::ResolutionUnit::Inch,
+                Rational {
+                    n: (dpi * 100.0).round() as u32,
+                    d: 100,
+                },
+            );
+            image.rows_per_strip(rows).map_err(|e| e.to_string())?;
+            let mut y0 = 0;
+            while y0 < h {
+                image.write_strip(&strip(y0)?).map_err(|e| e.to_string())?;
+                y0 += rows;
+            }
+            image.finish().map_err(|e| e.to_string())
+        }
+        let dims = (w, h, rows, dpi);
+        // Classic TIFF counts its bytes in 32 bits.
+        if u64::from(w) * u64::from(h) * 3 > u64::from(u32::MAX) - (1 << 20) {
+            write(
+                TiffEncoder::new_big(&mut file).map_err(|e| e.to_string())?,
+                dims,
+                &strip,
+            )?;
+        } else {
+            write(
+                TiffEncoder::new(&mut file).map_err(|e| e.to_string())?,
+                dims,
+                &strip,
+            )?;
+        }
+    }
+    Ok(file.into_inner())
 }
 
 /// The output intent's profile for a PDF/X file: the CMYK profile picked
@@ -4087,6 +4245,96 @@ mod tests {
         };
         assert!(estimated_size(&app, &svg, &pm).is_some());
         assert!(keeps_alpha("png") && !keeps_alpha("jpg"));
+    }
+
+    /// #3039: a page drawn and written a strip at a time is the same
+    /// picture as the page drawn whole, as PNG (on white or transparent)
+    /// and TIFF, with the resolution recorded; blurred shadows that reach
+    /// across strips included.
+    #[test]
+    fn a_picture_written_a_strip_at_a_time_is_the_page_drawn_whole() {
+        use tracedraw_core::{Color, Fill};
+        let mut app = App::headless();
+        let circle = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: Rect::new(20.0, 20.0, 120.0, 90.0),
+                arc: None,
+            })
+            .expect("circle");
+        app.run(Command::SetFill {
+            shapes: vec![circle],
+            fill: Fill::Solid(Color::rgb8(220, 0, 30)),
+        });
+        app.run(Command::SetShadow {
+            shapes: vec![circle],
+            shadow: Some(tracedraw_core::Shadow {
+                offset: tracedraw_core::geometry::Vec2::new(6.0, -6.0),
+                opacity: 0.8,
+                blur: 3.0,
+                ..Default::default()
+            }),
+        });
+        app.new_shape(ShapeKind::Rect {
+            rect: Rect::new(60.0, 100.0, 180.0, 160.0),
+            radius: 4.0,
+            corners: None,
+        });
+        let (doc, _) = export_document(&app, &ExportState::default());
+        let pid = doc.pages[0].id;
+        for (format, ext, transparent) in [(2, "png", false), (2, "png", true), (5, "tif", false)] {
+            let st = ExportState {
+                format,
+                dpi: 40.0,
+                transparent,
+                ..ExportState::default()
+            };
+            let whole = page_file(&doc, 0, ext, &st, None).expect(ext);
+            let p = doc.page(pid).unwrap();
+            let fit = tracedraw_render::ViewTransform::whole_page(
+                p.size.width,
+                p.size.height,
+                st.render_dpi() / 25.4,
+            );
+            // Strips of 16 rows: many of them, each blurred shadow drawn
+            // across several.
+            let strips = streamed_picture(&doc, pid, fit, ext, transparent, st.dpi, 16).expect(ext);
+            let a = image::load_from_memory(&whole).expect(ext).to_rgba8();
+            let b = image::load_from_memory(&strips).expect(ext).to_rgba8();
+            assert_eq!(a.dimensions(), (fit.0, fit.1), "{ext}");
+            assert_eq!(a.dimensions(), b.dimensions(), "{ext}");
+            // Only the smoothing of some edge pixels may differ a little,
+            // as between the bands the page is drawn in on several cores.
+            let diff = |x: &image::Rgba<u8>, y: &image::Rgba<u8>| {
+                x.0.iter()
+                    .zip(y.0)
+                    .map(|(u, v)| u.abs_diff(v))
+                    .max()
+                    .unwrap_or(0)
+            };
+            let worst = a.pixels().zip(b.pixels()).map(|(x, y)| diff(x, y)).max();
+            let off = a
+                .pixels()
+                .zip(b.pixels())
+                .filter(|(x, y)| diff(x, y) > 2)
+                .count();
+            assert!(
+                worst <= Some(32),
+                "{ext} transparent {transparent}: {worst:?}"
+            );
+            assert!(
+                off * 100 < a.pixels().len(),
+                "{ext} transparent {transparent}: {off} pixels differ"
+            );
+            assert!(
+                a.pixels().any(|q| q.0 == [220, 0, 30, 255]),
+                "{ext}: the circle"
+            );
+            if ext == "png" {
+                let (x, y) = crate::image_dpi::resolution(&strips).expect("dpi");
+                assert!((x - 40.0).abs() < 0.1 && (y - 40.0).abs() < 0.1, "{x} {y}");
+            }
+        }
+        assert!(too_large(1, 2).contains("PNG or TIFF"));
     }
 
     /// A bitmap export records the resolution of the dialog, and the
