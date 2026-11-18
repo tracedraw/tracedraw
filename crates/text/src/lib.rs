@@ -1216,6 +1216,9 @@ fn cp1252_remapped(face: &ttf_parser::Face, text: &str) -> Option<String> {
 /// such as ஷ there, #1937), and so does U+F020 to U+F0FF, where text
 /// from other programs keeps a symbol font's codes.
 pub(crate) fn face_glyph(face: &ttf_parser::Face, c: char) -> Option<ttf_parser::GlyphId> {
+    if !has_outlines(face) {
+        return None;
+    }
     let symbol = |c: char| {
         // The code typed, or the place the symbol map keeps it at, as
         // text from other programs holds it (U+F084 for 0x84).
@@ -1236,6 +1239,38 @@ pub(crate) fn face_glyph(face: &ttf_parser::Face, c: char) -> Option<ttf_parser:
         .or_else(|| cp1252_twin(c).and_then(|t| face.glyph_index(t)))
         .or_else(|| symbol(c))
         .or_else(|| cp1252_twin(c).and_then(symbol))
+        .filter(|g| !picture_only(face, *g))
+}
+
+/// The glyph is only a picture (a colour font's bitmap with an empty
+/// outline, as in sbix fonts that carry a glyf table of blanks).
+fn picture_only(face: &ttf_parser::Face, g: ttf_parser::GlyphId) -> bool {
+    struct Any(bool);
+    impl ttf_parser::OutlineBuilder for Any {
+        fn move_to(&mut self, _: f32, _: f32) {
+            self.0 = true;
+        }
+        fn line_to(&mut self, _: f32, _: f32) {}
+        fn quad_to(&mut self, _: f32, _: f32, _: f32, _: f32) {}
+        fn curve_to(&mut self, _: f32, _: f32, _: f32, _: f32, _: f32, _: f32) {}
+        fn close(&mut self) {}
+    }
+    let t = face.tables();
+    if t.cbdt.is_none() && t.sbix.is_none() {
+        return false;
+    }
+    let mut any = Any(false);
+    face.outline_glyph(g, &mut any);
+    !any.0 && face.glyph_raster_image(g, u16::MAX).is_some()
+}
+
+/// The face draws its letters as outlines. A colour font made only of
+/// pictures (Noto Color Emoji: CBDT, no glyf or CFF table) has none: text
+/// in it was drawn as nothing, on screen, in print and in PDF files, so
+/// its letters are taken from a font that draws them.
+pub(crate) fn has_outlines(face: &ttf_parser::Face) -> bool {
+    let t = face.tables();
+    t.glyf.is_some() || t.cff.is_some() || t.cff2.is_some()
 }
 
 /// A letter of a symbol-encoded family as the character it draws; others
@@ -3907,7 +3942,8 @@ impl FontSystem {
             db.with_face_data(id, |d, i| {
                 ttf_parser::Face::parse(d, i)
                     .ok()
-                    .and_then(|f| f.glyph_index(c))
+                    .filter(has_outlines)
+                    .and_then(|f| f.glyph_index(c).filter(|g| !picture_only(&f, *g)))
                     .is_some()
             })
             .unwrap_or(false)
@@ -9404,6 +9440,42 @@ mod tests {
         }
         out.extend_from_slice(&body);
         out
+    }
+
+    /// Text set in a colour font made only of pictures (as Noto Color
+    /// Emoji: CBDT, no glyf table) was drawn as nothing on screen, in
+    /// print and in PDF files: its letters come from a font that draws
+    /// them now.
+    #[test]
+    fn text_in_a_picture_only_font_is_drawn_from_another_font() {
+        let utf16 = |s: &str| -> Vec<u8> { s.encode_utf16().flat_map(u16::to_be_bytes).collect() };
+        // Its outlines' table renamed to the colour bitmaps' one (the
+        // tables sorted again by the new name table).
+        let mut font = SELAWIK.to_vec();
+        let n = usize::from(u16::from_be_bytes([font[4], font[5]]));
+        for (from, to) in [(b"glyf", b"CBDT"), (b"loca", b"CBLC"), (b"gvar", b"zvar")] {
+            if let Some(at) = (0..n)
+                .map(|i| 12 + 16 * i)
+                .find(|at| &font[*at..*at + 4] == from)
+            {
+                font[at..at + 4].copy_from_slice(to);
+            }
+        }
+        let pictures = with_names(
+            &font,
+            &[
+                (3, 1, 0x409, 1, utf16("Picture Emoji")),
+                (3, 1, 0x409, 2, utf16("Regular")),
+                (3, 1, 0x409, 4, utf16("Picture Emoji")),
+                (3, 1, 0x409, 6, utf16("PictureEmoji")),
+            ],
+        );
+        let f = system_with(&[&pictures, QUICKSAND]);
+        assert!(f.has_family("Picture Emoji"), "{:?}", f.families());
+        let layout = f.outline(&[TextSpan::new("Hello", "Picture Emoji", 24.0)]);
+        let b = layout.path.bounding_box();
+        assert!(layout.path.elements().len() > 10, "nothing drawn");
+        assert!(b.width() > 10.0, "{b:?}");
     }
 
     /// A font that names its family in Chinese only in the GBK code page
