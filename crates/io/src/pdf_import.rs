@@ -908,6 +908,11 @@ struct TextRun {
     /// Filled and outlined (render mode 2 or 6): the way a word processor
     /// draws bold in a font that has no bold face (#2569).
     stroked_bold: bool,
+    /// Drawn filled (render modes 0, 2, 4 and 6).
+    filled: bool,
+    /// The outline it is drawn with: render mode 1 or 5, or 2 or 6 in
+    /// an outline colour of its own ([`text_outline`]).
+    outline: Option<Stroke>,
 }
 
 /// A Devanagari consonant (with the nukta forms).
@@ -4087,15 +4092,24 @@ impl<'a> Importer<'a> {
             *text_matrix *= Affine::translate((advance, 0.0));
             if !path.elements().is_empty() {
                 let mut shape = self.new_shape(ShapeKind::Path { path, closed: true });
-                shape.fill = Fill::Solid(gs.fill.unwrap_or(Color::BLACK));
+                shape.fill = if text_filled(gs) {
+                    Fill::Solid(gs.fill.unwrap_or(Color::BLACK))
+                } else {
+                    Fill::None
+                };
                 // Filled and outlined text (bold made up for a font with
-                // no bold face) keeps its outline, so it stays bold.
-                shape.stroke = gs.stroke.filter(|_| fake_bold(gs)).map(|c| {
-                    let w = (gs.line_width * Self::scale_of(gs.ctm)).max(Stroke::HAIRLINE);
-                    let mut st = Stroke::new(c, w);
-                    st.join = LineJoin::Round;
-                    st
-                });
+                // no bold face) keeps its outline, so it stays bold; text
+                // with an outline of its own keeps that outline.
+                shape.stroke = gs
+                    .stroke
+                    .filter(|_| fake_bold(gs))
+                    .map(|c| {
+                        let w = (gs.line_width * Self::scale_of(gs.ctm)).max(Stroke::HAIRLINE);
+                        let mut st = Stroke::new(c, w);
+                        st.join = LineJoin::Round;
+                        st
+                    })
+                    .or_else(|| text_outline(gs));
                 shape.opacity = gs.fill_alpha;
                 let clip = gs.clip.clone();
                 self.push(shape, &clip);
@@ -4157,6 +4171,8 @@ impl<'a> Importer<'a> {
             Some(r) => {
                 std::rc::Rc::ptr_eq(&r.font, &font)
                     && r.stroked_bold == fake_bold(gs)
+                    && r.filled == text_filled(gs)
+                    && r.outline == text_outline(gs)
                     && (r.size_pt - size_pt).abs() < 1e-6
                     && r.fill == gs.fill
                     && (same_line(&r.matrix, &trm, r.end_x, gs.font_size)
@@ -4205,6 +4221,8 @@ impl<'a> Importer<'a> {
                     reph_glyph: false,
                     xs: Some(Vec::new()),
                     stroked_bold: fake_bold(gs),
+                    filled: text_filled(gs),
+                    outline: text_outline(gs),
                 });
             }
         } else if let (Some(r), Some((new_end, len))) = (run.as_mut(), along) {
@@ -4338,10 +4356,11 @@ impl<'a> Importer<'a> {
         });
         shape.transform = transform;
         shape.fill = match r.fill {
+            _ if !r.filled => Fill::None,
             Some(c) => Fill::Solid(c),
             None => Fill::Solid(Color::BLACK),
         };
-        shape.stroke = None;
+        shape.stroke = r.outline;
         shape.opacity = r.alpha;
         let _ = r.font.type3_matrix;
         self.line_widths.insert(shape.id, r.reach * scale);
@@ -4356,7 +4375,37 @@ impl<'a> Importer<'a> {
 /// Text drawn filled and outlined (render mode 2, or 6 with clipping) with
 /// an outline: how bold is made up for a font with no bold face.
 fn fake_bold(gs: &GState) -> bool {
-    matches!(gs.render_mode, 2 | 6) && gs.stroke.is_some() && gs.line_width > 0.0
+    matches!(gs.render_mode, 2 | 6)
+        && gs.stroke.is_some()
+        && gs.line_width > 0.0
+        && gs.stroke == gs.fill
+}
+
+/// Text drawn filled: render modes 0, 2, 4 and 6 (3 and 7 draw nothing,
+/// 1 and 5 only outline).
+fn text_filled(gs: &GState) -> bool {
+    matches!(gs.render_mode, 0 | 2 | 4 | 6)
+}
+
+/// The outline text is drawn with: outlined only (render mode 1 or 5),
+/// or filled and outlined (2 or 6) in an outline colour other than the
+/// fill's, as TraceDraw writes text with an outline. Filled and outlined
+/// in its fill colour is bold made up ([`fake_bold`]), not an outline.
+fn text_outline(gs: &GState) -> Option<Stroke> {
+    let outlined = match gs.render_mode {
+        1 | 5 => true,
+        2 | 6 => !fake_bold(gs),
+        _ => false,
+    };
+    let c = gs.stroke.filter(|_| outlined)?;
+    let scale = Importer::scale_of(gs.ctm);
+    let mut st = Stroke::new(c, (gs.line_width * scale).max(Stroke::HAIRLINE));
+    st.cap = gs.cap;
+    st.join = gs.join;
+    if !gs.dash.is_empty() && st.width > 0.0 {
+        st.dash = gs.dash.iter().map(|d| d * scale / st.width).collect();
+    }
+    Some(st)
 }
 
 /// Same baseline and direction, continuing after the previous advance.
@@ -7007,6 +7056,42 @@ mod tests {
             (texts[2].0, texts[2].1, texts[2].2),
             ("Plain", false, false)
         );
+    }
+
+    /// Text with an outline of its own colour (render mode 2, as the PDF
+    /// export writes outlined text) keeps the outline and is not made
+    /// bold; text drawn outlined only (mode 1) comes in unfilled. Both
+    /// came in filled, without an outline.
+    #[test]
+    fn outlined_text_keeps_its_outline() {
+        let font =
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
+        let bytes = one_page(
+            "BT /F1 12 Tf 1 0 0 rg 0 0 1 RG 0.5 w 2 Tr 20 60 Td (Both) Tj ET \
+             BT /F1 12 Tf 0 0 1 RG 0.5 w 1 Tr 20 30 Td (Outline) Tj ET",
+            "<< /Font << /F1 5 0 R >> >>",
+            &[font.to_string()],
+        );
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let texts: Vec<&Shape> = imp.pages[0]
+            .shapes
+            .iter()
+            .filter(|s| matches!(s.kind, ShapeKind::Text { .. }))
+            .collect();
+        assert_eq!(texts.len(), 2);
+        let ShapeKind::Text { spans, .. } = &texts[0].kind else {
+            unreachable!()
+        };
+        assert_eq!(spans[0].text, "Both");
+        assert!(!spans[0].bold);
+        assert_eq!(texts[0].fill, Fill::Solid(Color::rgb8(255, 0, 0)));
+        let st = texts[0].stroke.as_ref().expect("the outline is kept");
+        assert_eq!(st.color, Color::rgb8(0, 0, 255));
+        assert!((st.width - 0.5 * PT_MM).abs() < 1e-6, "{}", st.width);
+        assert_eq!(texts[1].fill, Fill::None);
+        let st = texts[1].stroke.as_ref().expect("outline only");
+        assert_eq!(st.color, Color::rgb8(0, 0, 255));
     }
 
     /// A one-page file with a rectangle, a text run and a title, as the
