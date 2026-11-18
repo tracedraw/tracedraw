@@ -446,7 +446,10 @@ fn color_op_in(c: Color, fill: bool, cmyk_only: bool) -> String {
         c
     };
     match c {
-        Color::Gray { v } if cmyk_only => {
+        // Gray as gray in every file, not only CMYK ones: written as RGB
+        // it printed on all four plates (a rich gray) instead of black
+        // only.
+        Color::Gray { v } => {
             format!("{} {}", f(v as f64), if fill { "g" } else { "G" })
         }
         Color::Cmyk { c, m, y, k } => format!(
@@ -665,12 +668,12 @@ impl PageWriter<'_> {
     /// takes the stitching function too: its bands are the function's
     /// constant segments, exact where a sampled function's values would
     /// be interpolated between.
-    fn fountain_function(&mut self, ft: &tracedraw_core::Fountain) -> String {
+    fn fountain_function(&mut self, ft: &tracedraw_core::Fountain, cmyk: bool) -> String {
         if ft.has_blend_options() && !ft.stepped() {
-            let id = sampled_function_in(ft, self.pdf);
+            let id = sampled_function_in(ft, self.pdf, cmyk);
             return format!("{id} 0 R");
         }
-        stitching_function_in(ft, self.pdf.cmyk_only)
+        stitching_function_in(ft, cmyk)
     }
 
     /// Paint `path` (page space, mm) with `fill` spread over `bounds`:
@@ -703,7 +706,9 @@ impl PageWriter<'_> {
                 let _ = writeln!(self.content, "{fill_op}");
             }
             Fill::Fountain(ft) if ft.kind != FountainKind::Shaped => {
-                let func = self.fountain_function(ft);
+                let cmyk = self.pdf.cmyk_only || print_colours_only(ft);
+                let space = if cmyk { "/DeviceCMYK" } else { "/DeviceRGB" };
+                let func = self.fountain_function(ft, cmyk);
                 // Nodes placed freely (Interactive Fill): a unit shading
                 // drawn through the fill's own frame.
                 if let Some(frame) = ft.frame(bounds) {
@@ -711,12 +716,12 @@ impl PageWriter<'_> {
                     let shading = if ft.kind == FountainKind::Radial {
                         format!(
                             "<< /ShadingType 3 /ColorSpace {} /Coords [0 0 0 0 0 1] /Function {} /Extend [true true] >>",
-                            self.pdf.color_space(), func
+                            space, func
                         )
                     } else {
                         format!(
                             "<< /ShadingType 2 /ColorSpace {} /Coords [0 0 1 0] /Function {} /Extend [true true] >>",
-                            self.pdf.color_space(), func
+                            space, func
                         )
                     };
                     let name = format!("Sh{}", self.shadings.len());
@@ -746,7 +751,7 @@ impl PageWriter<'_> {
                             * MM_PT;
                         format!(
                             "<< /ShadingType 3 /ColorSpace {} /Coords [{} {} 0 {} {} {}] /Function {} /Extend [true true] >>",
-                            self.pdf.color_space(), f(cx), f(cy), f(cx), f(cy), f(r), func
+                            space, f(cx), f(cy), f(cx), f(cy), f(r), func
                         )
                     }
                     // Conical and square fountains have no PDF shading type;
@@ -767,7 +772,7 @@ impl PageWriter<'_> {
                         );
                         format!(
                             "<< /ShadingType 2 /ColorSpace {} /Coords [{} {} {} {}] /Function {} /Extend [true true] >>",
-                            self.pdf.color_space(), f(x0), f(y0), f(x1), f(y1), func
+                            space, f(x0), f(y0), f(x1), f(y1), func
                         )
                     }
                 };
@@ -1997,7 +2002,7 @@ pub const SAMPLED_FUNCTION_SIZE: usize = 64;
 /// object: [`SAMPLED_FUNCTION_SIZE`] colours spaced evenly from 0 to 1,
 /// one byte per component, the viewer blending between them. Returns the
 /// object's number.
-fn sampled_function_in(ft: &tracedraw_core::Fountain, pdf: &mut Pdf) -> usize {
+fn sampled_function_in(ft: &tracedraw_core::Fountain, pdf: &mut Pdf, cmyk: bool) -> usize {
     let stops = ft.resolved_stops();
     let n = SAMPLED_FUNCTION_SIZE;
     let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
@@ -2005,7 +2010,7 @@ fn sampled_function_in(ft: &tracedraw_core::Fountain, pdf: &mut Pdf) -> usize {
     for i in 0..n {
         let pos = i as f64 / (n - 1) as f64;
         let c = tracedraw_core::style::sample_stop(&stops, pos).color;
-        if pdf.cmyk_only {
+        if cmyk {
             if let Color::Cmyk { c, m, y, k } = c.convert_to("CMYK") {
                 data.extend_from_slice(&[byte(c), byte(m), byte(y), byte(k)]);
             } else {
@@ -2016,7 +2021,7 @@ fn sampled_function_in(ft: &tracedraw_core::Fountain, pdf: &mut Pdf) -> usize {
             data.extend_from_slice(&c.to_rgb8());
         }
     }
-    let range = if pdf.cmyk_only {
+    let range = if cmyk {
         "[0 1 0 1 0 1 0 1]"
     } else {
         "[0 1 0 1 0 1]"
@@ -2025,6 +2030,19 @@ fn sampled_function_in(ft: &tracedraw_core::Fountain, pdf: &mut Pdf) -> usize {
         &format!("/FunctionType 0 /Domain [0 1] /Range {range} /Size [{n}] /BitsPerSample 8"),
         &data,
     )
+}
+
+/// Every colour of the fountain is a print colour (CMYK, gray, a spot
+/// ink or registration): its shading goes in CMYK in every file. In RGB a
+/// CMYK blend, black to white for one, printed on all four plates.
+fn print_colours_only(ft: &tracedraw_core::Fountain) -> bool {
+    !ft.stops.is_empty()
+        && ft.stops.iter().all(|s| {
+            matches!(
+                s.color,
+                Color::Cmyk { .. } | Color::Gray { .. } | Color::Spot { .. } | Color::Registration
+            )
+        })
 }
 
 /// PDF stitching function over the fountain's stops (type 3 wrapping type 2
@@ -4917,6 +4935,91 @@ pub(crate) mod text_tests {
 
     fn black() -> Fill {
         Fill::Solid(Color::BLACK)
+    }
+
+    /// A gray fill and outline go to every PDF as gray (`g`, `G`), so
+    /// they print on the black plate only, as in PDF/X-1a: plain PDF and
+    /// PDF/X-4 wrote them as RGB.
+    #[test]
+    fn gray_is_written_as_gray_in_every_pdf() {
+        let doc = doc_with(
+            vec![TextSpan::new("ab", "Quicksand", 24.0)],
+            Fill::Solid(Color::Gray { v: 0.25 }),
+            Some(Stroke {
+                color: Color::Gray { v: 0.5 },
+                width: 1.0,
+                ..Default::default()
+            }),
+        );
+        for standard in [PdfStandard::None, PdfStandard::X4, PdfStandard::X1a] {
+            let opts = PdfOptions {
+                standard,
+                ..Default::default()
+            };
+            let text = inflated(&document_to_pdf_with(&doc, &opts));
+            assert!(text.contains("0.25 g"), "{standard:?}: {text}");
+            assert!(text.contains("0.5 G"), "{standard:?}: {text}");
+            assert!(!text.contains("0.251 0.251 0.251 rg"), "{standard:?}");
+        }
+    }
+
+    /// A fountain of print colours (CMYK, gray, spot) goes in as a CMYK
+    /// shading in plain PDF and PDF/X-4 too, so black to white prints on
+    /// the black plate only; an RGB fountain stays RGB.
+    #[test]
+    fn a_cmyk_fountain_is_a_cmyk_shading_in_every_pdf() {
+        let rect_with = |fill: Fill| {
+            let mut doc = Document::new("t", tracedraw_core::Size::new(100.0, 50.0));
+            let layer = doc.pages[0].layers[0].id;
+            let id = doc.ids_mut().shape();
+            let mut s = Shape::new(
+                id,
+                ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, 100.0, 50.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            s.fill = fill;
+            s.stroke = None;
+            doc.layer_mut(layer).unwrap().shapes.push(s);
+            doc
+        };
+        let k = Color::Cmyk {
+            c: 0.0,
+            m: 0.0,
+            y: 0.0,
+            k: 1.0,
+        };
+        let white = Color::Cmyk {
+            c: 0.0,
+            m: 0.0,
+            y: 0.0,
+            k: 0.0,
+        };
+        let cmyk = rect_with(Fill::linear(k, white, 0.0));
+        let rgb = rect_with(Fill::linear(
+            Color::rgb8(255, 0, 0),
+            Color::rgb8(0, 0, 255),
+            0.0,
+        ));
+        for standard in [PdfStandard::None, PdfStandard::X4] {
+            let opts = PdfOptions {
+                standard,
+                ..Default::default()
+            };
+            let text = inflated(&document_to_pdf_with(&cmyk, &opts));
+            assert!(
+                text.contains("/ShadingType 2 /ColorSpace /DeviceCMYK"),
+                "{standard:?}: {text}"
+            );
+            assert!(text.contains("/C0 [0 0 0 1] /C1 [0 0 0 0]"), "{text}");
+            let text = inflated(&document_to_pdf_with(&rgb, &opts));
+            assert!(
+                text.contains("/ShadingType 2 /ColorSpace /DeviceRGB"),
+                "{standard:?}: {text}"
+            );
+        }
     }
 
     /// Overprint goes to the file as a graphics state with `OP` (the
