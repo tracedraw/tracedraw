@@ -2629,10 +2629,15 @@ fn the_pointer_shows_moves_for_objects_and_guidelines() {
     assert!(close(page_bounds(&app, c).y0 - before.y0, 30.0));
     assert_eq!(cursor(&app, to), moving);
     assert_eq!(cursor(&app, on_a), arrow);
-    // An unselected object over a guideline: the arrow, not the arrows
-    // across the guideline, as the object takes the press.
+    // A guideline over an unselected object: the arrows across the
+    // guideline, as it takes the press (guidelines lie above the layers,
+    // #2640); over the selected object the move arrows.
     app.add_guide(tracedraw_core::document::Guide::horizontal(110.0));
-    assert_eq!(cursor(&app, on_a), arrow);
+    assert_eq!(
+        cursor(&app, on_a),
+        ToolCursor::System(egui::CursorIcon::ResizeVertical)
+    );
+    assert_eq!(cursor(&app, to), moving);
     app.select(Vec::new());
     app.delete_guide(0);
     // Guidelines: arrows across them; a locked one keeps the arrow.
@@ -28055,6 +28060,77 @@ fn a_guideline_over_a_picture_is_dragged_and_the_picture_stays() {
     // A selected picture takes the press as before, to move it.
     app.select(vec![img]);
     let on = app.view.to_screen(Point::new(pic.center().x, moved));
+    assert_eq!(cursor(&app, on), ToolCursor::System(egui::CursorIcon::Move));
+}
+
+#[test]
+fn a_guideline_over_a_shape_or_a_group_is_dragged_and_they_stay() {
+    // #2640 (tested in 0.48): a guideline across a filled shape or a
+    // group showed no arrows and took no press, as only pictures let a
+    // guideline win. Guidelines lie above the layers, as in CorelDRAW:
+    // over any object that is not selected the guideline moves.
+    let (ctx, mut app, _) = setup();
+    let fill = tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(200, 30, 30));
+    let a = app
+        .new_shape(ShapeKind::Rect {
+            rect: Rect::new(20.0, 20.0, 80.0, 60.0),
+            radius: 0.0,
+            corners: None,
+        })
+        .expect("rect");
+    app.select(vec![a]);
+    app.apply_fill(fill.clone());
+    let b = app
+        .new_shape(ShapeKind::Ellipse {
+            rect: Rect::new(100.0, 20.0, 160.0, 60.0),
+            arc: None,
+        })
+        .expect("ellipse");
+    app.select(vec![b]);
+    app.apply_fill(fill);
+    let c = app
+        .new_shape(ShapeKind::Ellipse {
+            rect: Rect::new(100.0, 70.0, 160.0, 90.0),
+            arc: None,
+        })
+        .expect("ellipse");
+    app.select(vec![b, c]);
+    app.group_selection();
+    let group = app.selection[0];
+    assert!(matches!(
+        app.doc().find_shape(group).map(|s| &s.kind),
+        Some(ShapeKind::Group { .. })
+    ));
+    app.select(Vec::new());
+    let y = 40.0;
+    app.add_guide(tracedraw_core::document::Guide::horizontal(y));
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let cursor = |app: &App, at: Pos2| for_tool(app, false, false, false, Some(at));
+    let guide_y = |app: &App| match app.page_guides()[0].line {
+        tracedraw_core::document::GuideLine::Horizontal { y } => y,
+        ref other => panic!("guideline turned into {other:?}"),
+    };
+    let mut y_now = y;
+    for (id, x) in [(a, 50.0), (group, 130.0)] {
+        let before = page_bounds(&app, id);
+        let at = app.view.to_screen(Point::new(x, y_now));
+        assert_eq!(
+            cursor(&app, at),
+            ToolCursor::System(egui::CursorIcon::ResizeVertical),
+            "the guideline's arrows over {id:?}"
+        );
+        let to = app.view.to_screen(Point::new(x, y_now + 5.0));
+        drag(&ctx, &mut app, at, to, Modifiers::NONE, Vec::new());
+        assert_eq!(page_bounds(&app, id), before, "{id:?} stays");
+        assert!((guide_y(&app) - (y_now + 5.0)).abs() < 0.5);
+        y_now = guide_y(&app);
+        app.select(Vec::new());
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    // Over a selected object the press still moves the selection.
+    app.select(vec![a]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let on = app.view.to_screen(Point::new(50.0, y_now));
     assert_eq!(cursor(&app, on), ToolCursor::System(egui::CursorIcon::Move));
 }
 
