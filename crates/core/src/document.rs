@@ -4371,9 +4371,11 @@ impl Shape {
                 path: crate::shaping::nonzero_as_even_odd(&self.local_path()),
                 closed: true,
             }),
+            // An open arc stays an open curve, its arrowheads with it; it
+            // was closed and lost them (#2983).
             _ => Some(ShapeKind::Path {
                 path: self.local_path(),
-                closed: true,
+                closed: !self.kind.is_open_curve(),
             }),
         }
     }
@@ -7849,6 +7851,49 @@ mod tests {
             deep.len(),
             flat.len()
         );
+    }
+
+    /// An open arc converted to curves stays an open curve, so its
+    /// arrowheads stay; it came out closed, without them (#2983).
+    #[test]
+    fn an_open_arc_converted_to_curves_keeps_its_arrowheads() {
+        let mut arc = Shape::new(
+            ShapeId(1),
+            ShapeKind::Ellipse {
+                rect: Rect::new(0.0, 0.0, 40.0, 30.0),
+                arc: Some(EllipseArc {
+                    start_deg: 0.0,
+                    end_deg: 200.0,
+                    pie: false,
+                }),
+            },
+        );
+        let mut st = crate::style::Stroke::new(crate::Color::BLACK, 1.0);
+        st.end_arrow = crate::style::Arrowhead::Arrow;
+        arc.stroke = Some(st.clone());
+        let heads = crate::style::arrowhead_paths(&arc.page_path(), &st).len();
+        assert_eq!(heads, 1);
+        let got = arc
+            .converted_to_curves(&[], &mut || ShapeId(2))
+            .expect("converted");
+        assert!(
+            matches!(got.kind, ShapeKind::Path { closed: false, .. }),
+            "{:?}",
+            got.kind
+        );
+        assert_eq!(
+            crate::style::arrowhead_paths(&got.page_path(), &st).len(),
+            heads
+        );
+        // A pie stays closed.
+        let mut pie = arc.clone();
+        if let ShapeKind::Ellipse { arc: Some(a), .. } = &mut pie.kind {
+            a.pie = true;
+        }
+        let got = pie
+            .converted_to_curves(&[], &mut || ShapeId(3))
+            .expect("pie");
+        assert!(matches!(got.kind, ShapeKind::Path { closed: true, .. }));
     }
 
     /// Variable font axis values (#870) are set, replaced and taken off
