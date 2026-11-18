@@ -514,6 +514,10 @@ pub struct Settings {
     /// on and one with it off, to compare them.
     #[serde(default)]
     pub benchmarks: Vec<crate::benchmark::Measured>,
+    /// Help > Benchmark asked for a start with or without the graphics
+    /// card: open the benchmark at the next start and run this test.
+    #[serde(default)]
+    pub benchmark_resume: Option<crate::benchmark::Level>,
     /// Options > Tools > Zoom/Pan: how much one wheel notch zooms, in
     /// percent (15 by default); see [`Settings::wheel_zoom_factor`].
     #[serde(default = "default_wheel_zoom_step")]
@@ -2137,6 +2141,7 @@ impl Default for Settings {
             smooth_zoom: true,
             light_zoom: false,
             benchmarks: Vec::new(),
+            benchmark_resume: None,
             wheel_zoom_step: default_wheel_zoom_step(),
             pan_right_click_out: false,
             pan_inertia: false,

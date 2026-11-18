@@ -667,6 +667,12 @@ impl App {
             self.quit_after_closing = false;
             // Cancel also cancels Restart after an update.
             self.installer.disarm();
+            // And the benchmark's start with or without the graphics card.
+            #[cfg(not(target_arch = "wasm32"))]
+            if crate::gpu::take_restart_after_exit().is_some() {
+                self.settings.benchmark_resume = None;
+                self.settings.save();
+            }
         }
     }
 

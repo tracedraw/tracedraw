@@ -612,6 +612,12 @@ pub fn run() -> eframe::Result<()> {
                 log::error!("{what}");
                 startup_log::no_window(&what);
             }
+        } else if let Some(next) = gpu::take_restart_after_exit() {
+            // Help > Benchmark: with or without the graphics card.
+            log::info!("starting again with {next:?} for the benchmark");
+            if !gpu::restart_with(next, &args) {
+                log::error!("TraceDraw could not start again with {next:?}");
+            }
         }
         return Ok(());
     };

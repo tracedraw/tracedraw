@@ -498,6 +498,13 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     // without closing left. An idle window still checks in, with a frame
     // a minute, so another window never takes it for gone.
     app.session_tick(crate::recovery::now_secs());
+    // Help > Benchmark started TraceDraw again with or without the
+    // graphics card: its test runs again in this start.
+    if app.settings.benchmark_resume.is_some()
+        && matches!(app.dialog, crate::ui::dialogs::Dialog::None)
+    {
+        crate::ui::benchmark::resume(app);
+    }
     if app.session.is_some() {
         ctx.request_repaint_after(std::time::Duration::from_secs(
             crate::recovery::HEARTBEAT_SECS,
