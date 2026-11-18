@@ -2071,23 +2071,22 @@ impl<'a> Ctx<'a> {
         self.add_arrowhead(id, &pts, &types);
     }
 
-    /// Classifies an arrowhead outline into a preset, or keeps it as a
-    /// custom head.
+    /// Keeps an arrowhead outline as the file draws it: its own size and
+    /// placement (127 000 head units are one outline width, as the CMX
+    /// heads of `rarw`), open subpaths turned into the area a pen of one
+    /// outline width sweeps so they draw as lines, not filled shapes.
     fn add_arrowhead(&mut self, id: u32, pts: &[Point], types: &[u8]) {
         let (path, _) = build_path(pts, types);
-        let mut head = classify_arrowhead(&path, pts, types);
+        let shape = crate::cmx::stroke_open_subpaths(&path, crate::cmx::HEAD_UNITS_PER_WIDTH);
+        let head = Arrowhead::from_placed_path(
+            &shape,
+            format!("Arrowhead {id}"),
+            crate::cmx::HEAD_UNITS_PER_WIDTH,
+        );
         if head == Arrowhead::None {
-            // Not one of our presets: keep the outline itself as a custom
-            // arrowhead (assumed: the file draws the tip towards +x on a
-            // line running left to right, like our custom heads).
-            let unit = if self.v16() { UNIT16_MM } else { UNIT_MM };
-            let mm = Affine::scale(unit) * path;
-            head = Arrowhead::from_shape_path(&mm, format!("Arrowhead {id}"));
-            if head == Arrowhead::None {
-                self.report.warn(format!(
-                    "arrowhead {id}: unreadable outline; drawn without arrowhead"
-                ));
-            }
+            self.report.warn(format!(
+                "arrowhead {id}: unreadable outline; drawn without arrowhead"
+            ));
         }
         self.arrows.insert(id, head);
     }
@@ -6823,71 +6822,6 @@ fn bounds_of(pts: &[Point]) -> Option<Rect> {
         r.y1 = r.y1.max(p.y);
     }
     Some(r)
-}
-
-/// Sort an arrowhead outline into one of our presets by its shape: a
-/// closed curve made only of Bezier segments is a circle; three corners
-/// make an arrow (filled) or an open arrow (not closed); four corners make
-/// a square (axis-aligned, near 1:1), a bar (thin) or a diamond (rotated).
-pub(crate) fn classify_arrowhead(path: &BezPath, pts: &[Point], types: &[u8]) -> Arrowhead {
-    use tracedraw_core::geometry::Shape as _;
-    if path.elements().is_empty() {
-        return Arrowhead::None;
-    }
-    let closed = types.iter().any(|t| t & 0x08 != 0 && t >> 6 != 0);
-    let has_curve = types.iter().any(|t| t >> 6 == 0b10);
-    // Corners: end points of lines and moves, ignoring repeats.
-    let mut corners: Vec<Point> = Vec::new();
-    for (p, t) in pts.iter().zip(types) {
-        if t >> 6 == 0b11 {
-            continue;
-        }
-        if corners.iter().all(|c| (*c - *p).hypot() > 1e-6) {
-            corners.push(*p);
-        }
-    }
-    let bounds = path.bounding_box();
-    if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
-        return Arrowhead::None;
-    }
-    if has_curve {
-        let all_curves = !types.iter().any(|t| *t >> 6 == 0b01);
-        if all_curves && closed {
-            return Arrowhead::Circle;
-        }
-        // Curved arrowheads with straight parts keep their own outline.
-        return Arrowhead::None;
-    }
-    match corners.len() {
-        3 => {
-            if closed {
-                Arrowhead::Arrow
-            } else {
-                Arrowhead::OpenArrow
-            }
-        }
-        4 => {
-            // Axis-aligned when every corner shares x or y with two others.
-            let aligned = corners.iter().all(|c| {
-                corners
-                    .iter()
-                    .filter(|o| (o.x - c.x).abs() < 1e-6 || (o.y - c.y).abs() < 1e-6)
-                    .count()
-                    >= 3
-            });
-            let aspect = bounds.width() / bounds.height();
-            if aligned {
-                if !(0.35..=1.0 / 0.35).contains(&aspect) {
-                    Arrowhead::Bar
-                } else {
-                    Arrowhead::Square
-                }
-            } else {
-                Arrowhead::Diamond
-            }
-        }
-        _ => Arrowhead::None,
-    }
 }
 
 /// Point type byte: bits 7..6 are the operation (`00` move to, `01` line
@@ -14575,54 +14509,56 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn arrowheads_are_classified_from_their_outline() {
+    fn arrowheads_keep_the_outline_and_size_the_file_gives() {
+        // Head space: one unit is four outline widths, a width 127 000
+        // file units, so 508 000 file units make one head-space unit.
+        let u = 508_000.0;
         let triangle = arrw(
             5,
-            &[(0, 0), (100, 50), (0, 100), (0, 0)],
+            &[(0, 0), (-100, 50), (-100, -50), (0, 0)],
             &[0x08, 0x40, 0x40, 0x48],
         );
         let diamond = arrw(
             6,
-            &[(50, 0), (100, 50), (50, 100), (0, 50), (50, 0)],
+            &[(-50, 0), (-100, 50), (-50, 100), (0, 50), (-50, 0)],
             &[0x08, 0x40, 0x40, 0x40, 0x48],
         );
         let square = arrw(
             7,
-            &[(0, 0), (100, 0), (100, 100), (0, 100), (0, 0)],
+            &[(0, 0), (-100, 0), (-100, 100), (0, 100), (0, 0)],
             &[0x08, 0x40, 0x40, 0x40, 0x48],
         );
         let bar = arrw(
             8,
-            &[(0, 0), (10, 0), (10, 100), (0, 100), (0, 0)],
+            &[(0, 0), (-10, 0), (-10, 100), (0, 100), (0, 0)],
             &[0x08, 0x40, 0x40, 0x40, 0x48],
         );
         // Circle: four Bezier segments.
         let circle = arrw(
             9,
             &[
-                (100, 50),
-                (100, 78),
-                (78, 100),
-                (50, 100),
-                (22, 100),
-                (0, 78),
                 (0, 50),
+                (0, 78),
+                (-22, 100),
+                (-50, 100),
+                (-78, 100),
+                (-100, 78),
+                (-100, 50),
+                (-100, 22),
+                (-78, 0),
+                (-50, 0),
+                (-22, 0),
                 (0, 22),
-                (22, 0),
-                (50, 0),
-                (78, 0),
-                (100, 22),
-                (100, 50),
+                (0, 50),
             ],
             &[
                 0x08, 0xC0, 0xC0, 0x80, 0xC0, 0xC0, 0x80, 0xC0, 0xC0, 0x80, 0xC0, 0xC0, 0x88,
             ],
         );
-        let open = arrw(10, &[(0, 0), (100, 50), (0, 100)], &[0x00, 0x40, 0x40]);
-        // A five-cornered head is no preset: it is kept as a custom outline.
+        let open = arrw(10, &[(0, 0), (-100, 50), (-100, -50)], &[0x00, 0x40, 0x40]);
         let pentagon = arrw(
             11,
-            &[(0, 0), (60, 0), (100, 50), (60, 100), (0, 100), (0, 0)],
+            &[(0, 0), (-60, 0), (-100, 50), (-60, 100), (0, 100), (0, 0)],
             &[0x08, 0x40, 0x40, 0x40, 0x40, 0x48],
         );
         let main = riff(
@@ -14655,18 +14591,39 @@ pub(crate) mod tests {
             let s = ctx.outlines[&id].stroke.clone().expect("stroke");
             (s.start_arrow, s.end_arrow)
         };
-        assert_eq!(arrows(1), (Arrowhead::Arrow, Arrowhead::Diamond));
-        assert_eq!(arrows(2), (Arrowhead::Square, Arrowhead::Bar));
-        assert_eq!(arrows(3), (Arrowhead::Circle, Arrowhead::OpenArrow));
+        let bounds = |a: &Arrowhead| match a {
+            Arrowhead::Custom { path, .. } => {
+                use tracedraw_core::geometry::Shape as _;
+                path.bounding_box()
+            }
+            other => panic!("{other:?}"),
+        };
+        // Every head keeps its own outline, placed as the file draws it:
+        // tip at the origin, body towards -x, its own size in widths.
+        for id in 1..=3 {
+            let (s, e) = arrows(id);
+            assert!(s.is_custom() && e.is_custom(), "{id}: {s:?} {e:?}");
+        }
+        let b = bounds(&arrows(1).0);
+        assert!(b.x1.abs() < 1e-9 && (b.x0 + 100.0 / u).abs() < 1e-9, "{b:?}");
+        assert!((b.height() - 100.0 / u).abs() < 1e-9, "{b:?}");
+        let b = bounds(&arrows(2).1);
+        assert!((b.width() - 10.0 / u).abs() < 1e-9, "{b:?}");
+        // An open head becomes the area a pen of one width sweeps: half a
+        // width (63 500 units) beyond its ends. The round pen is a polygon,
+        // so its reach is a hair inside the exact half width.
+        let b = bounds(&arrows(3).1);
+        assert!(
+            (b.height() - (100.0 + 127_000.0) / u).abs() < 1e-4,
+            "{b:?}"
+        );
         assert_eq!(arrows(4), (Arrowhead::None, Arrowhead::None));
         match arrows(5).0 {
             Arrowhead::Custom { path, name } => {
                 use tracedraw_core::geometry::Shape as _;
                 assert_eq!(name, "Arrowhead 11");
                 let b = path.bounding_box();
-                // Normalised: one unit tall, tip at x = 0, body towards -x.
-                assert!((b.height() - 1.0).abs() < 1e-9, "{b:?}");
-                assert!(b.x1.abs() < 1e-9 && (b.x0 + 1.0).abs() < 1e-9, "{b:?}");
+                assert!(b.x1.abs() < 1e-9 && (b.x0 + 100.0 / u).abs() < 1e-9, "{b:?}");
             }
             other => panic!("{other:?}"),
         }
@@ -14721,7 +14678,19 @@ pub(crate) mod tests {
         for c in tree.root.find_all(b"arrx") {
             ctx.read_arrowhead_x(c);
         }
-        assert_eq!(ctx.arrows.get(&1), Some(&Arrowhead::Arrow));
+        // Kept as the file draws it: tip at the origin, body towards -x,
+        // its own size (508 000 file units are one head-space unit).
+        match ctx.arrows.get(&1) {
+            Some(Arrowhead::Custom { path, name }) => {
+                use tracedraw_core::geometry::Shape as _;
+                assert_eq!(name, "Arrowhead 1");
+                let b = path.bounding_box();
+                assert!(b.x1.abs() < 1e-9, "{b:?}");
+                assert!((b.x0 + 1_333_253.0 / 508_000.0).abs() < 1e-9, "{b:?}");
+                assert!((b.height() - 714_488.0 / 508_000.0).abs() < 1e-9, "{b:?}");
+            }
+            other => panic!("{other:?}"),
+        }
         assert!(!ctx.arrows.contains_key(&2));
         assert!(ctx
             .report
@@ -15300,8 +15269,25 @@ pub(crate) mod tests {
             let s = ctx.outlines[&id].stroke.clone().expect("stroke");
             (s.start_arrow, s.end_arrow)
         };
-        assert_eq!(arrows(1), (Arrowhead::Arrow, Arrowhead::None));
-        assert_eq!(arrows(2), (Arrowhead::None, Arrowhead::Arrow));
+        // The file's own triangle, kept at its own size: tip at the
+        // origin, 777 494 units long, 777 494 tall (508 000 units to a
+        // head-space unit).
+        let placed = |a: &Arrowhead| match a {
+            Arrowhead::Custom { path, .. } => {
+                use tracedraw_core::geometry::Shape as _;
+                let b = path.bounding_box();
+                assert!(b.x1.abs() < 1e-9, "{b:?}");
+                assert!((b.x0 + 777_494.0 / 508_000.0).abs() < 1e-9, "{b:?}");
+                assert!((b.height() - 777_494.0 / 508_000.0).abs() < 1e-9, "{b:?}");
+            }
+            other => panic!("{other:?}"),
+        };
+        let (s, e) = arrows(1);
+        placed(&s);
+        assert_eq!(e, Arrowhead::None);
+        let (s, e) = arrows(2);
+        assert_eq!(s, Arrowhead::None);
+        placed(&e);
         assert!(ctx.report.warnings.is_empty(), "{:?}", ctx.report.warnings);
     }
 
