@@ -409,7 +409,10 @@ impl<'a> Player<'a> {
         if let Some(clip) = self.dc.clip.clone() {
             let cb = clip.bounding_box();
             let sb = shape.bounds();
-            if cb.width() <= 0.0 || cb.height() <= 0.0 || sb.intersect(cb).area() <= 0.0 {
+            // Overlap by extent, not area: a level or plumb line has
+            // bounds of no area and is still inside the clip (#3104).
+            let overlaps = sb.x0 <= cb.x1 && sb.x1 >= cb.x0 && sb.y0 <= cb.y1 && sb.y1 >= cb.y0;
+            if cb.width() <= 0.0 || cb.height() <= 0.0 || !overlaps {
                 return;
             }
             let inside = cb.x0 <= sb.x0 + 1e-6
@@ -2279,6 +2282,55 @@ mod tests {
             "{:?}",
             imp.size
         );
+    }
+
+    /// #3104: AutoCAD's copy is a metafile of straight lines drawn with a
+    /// clip rectangle set. A level or plumb line has bounds of no area,
+    /// and the clip test took that as "outside the clip", so every line
+    /// was dropped, the metafile read as empty and the paste fell back
+    /// to the settings text copied beside it.
+    #[test]
+    fn level_and_plumb_lines_inside_a_clip_are_kept() {
+        let mut ids = IdSource::default();
+        let poly16 = |pts: &[(i16, i16)]| {
+            let mut r = Vec::new();
+            le32(&mut r, 87);
+            le32(&mut r, (8 + 16 + 4 + pts.len() * 4) as i32);
+            for v in [0, 0, 0, 0] {
+                le32(&mut r, v);
+            }
+            le32(&mut r, pts.len() as i32);
+            for (x, y) in pts {
+                le16(&mut r, *x);
+                le16(&mut r, *y);
+            }
+            r
+        };
+        let f = emf_file(&[
+            // MM_ANISOTROPIC, window flipped as a CAD drawing's y axis.
+            rec(17, &[8]),
+            rec(9, &[10_000, -5_000]),
+            rec(10, &[0, 5_000]),
+            rec(11, &[1000, 500]),
+            rec(12, &[0, 0]),
+            // Clip to the whole drawing.
+            rec(30, &[0, 0, 10_000, 5_000]),
+            // Geometric pen of no width, black.
+            rec(95, &[1, 0, 0, 0, 0, 0x10000, 0, 0, 0, 0]),
+            rec(37, &[1]),
+            rec(37, &[0x8000_0005u32 as i32]),
+            // A rectangle drawn as four lines, and one diagonal.
+            poly16(&[(1000, 1000), (9000, 1000)]),
+            poly16(&[(9000, 1000), (9000, 4000)]),
+            poly16(&[(9000, 4000), (1000, 4000)]),
+            poly16(&[(1000, 4000), (1000, 1000)]),
+            poly16(&[(1000, 1000), (9000, 4000)]),
+        ]);
+        let imp = parse(&f, &mut ids).unwrap();
+        assert_eq!(imp.shapes.len(), 5, "{:?}", imp.warnings);
+        for s in &imp.shapes {
+            assert!(s.stroke.is_some(), "each line is stroked");
+        }
     }
 }
 

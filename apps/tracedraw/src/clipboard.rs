@@ -1695,6 +1695,90 @@ mod tests {
         assert!(is_bitmap(&app));
     }
 
+    /// #3104: a copy in AutoCAD puts a metafile of the drawing on the
+    /// clipboard beside text (its settings), and no picture. The metafile
+    /// is level and plumb lines drawn under a clip rectangle; those were
+    /// dropped as outside the clip, the metafile read as empty and the
+    /// paste gave the text. The drawing's lines are pasted, not the text.
+    #[test]
+    fn a_metafile_copied_with_text_pastes_the_drawing_not_the_text() {
+        fn le(v: &mut Vec<u8>, xs: &[i32]) {
+            for x in xs {
+                v.extend_from_slice(&x.to_le_bytes());
+            }
+        }
+        fn rec(ty: i32, body: &[i32]) -> Vec<u8> {
+            let mut r = Vec::new();
+            le(&mut r, &[ty, 8 + 4 * body.len() as i32]);
+            le(&mut r, body);
+            r
+        }
+        fn line16(a: (i16, i16), b: (i16, i16)) -> Vec<u8> {
+            let mut r = Vec::new();
+            le(&mut r, &[87, 8 + 16 + 4 + 8, 0, 0, 0, 0, 2]);
+            for v in [a.0, a.1, b.0, b.1] {
+                r.extend_from_slice(&v.to_le_bytes());
+            }
+            r
+        }
+        // Header: bounds 1000 x 500 px, frame 100 x 50 mm, 1000 x 500 px
+        // for 100 x 50 mm of device.
+        let mut emf = Vec::new();
+        le(&mut emf, &[1, 108, 0, 0, 999, 499, 0, 0, 10_000, 5_000]);
+        emf.extend_from_slice(b" EMF");
+        le(
+            &mut emf,
+            &[0x10000, 0, 0, 0x0001_0010, 0, 0, 0, 1000, 500, 100, 50],
+        );
+        emf.resize(108, 0);
+        let records = [
+            rec(17, &[8]),
+            rec(9, &[10_000, -5_000]),
+            rec(10, &[0, 5_000]),
+            rec(11, &[1000, 500]),
+            rec(30, &[0, 0, 10_000, 5_000]),
+            rec(95, &[1, 0, 0, 0, 0, 0x10000, 0, 0, 0, 0]),
+            rec(37, &[1]),
+            line16((1000, 1000), (9000, 1000)),
+            line16((9000, 1000), (9000, 4000)),
+            line16((9000, 4000), (1000, 4000)),
+            line16((1000, 4000), (1000, 1000)),
+            rec(14, &[0, 0, 0]),
+        ];
+        for r in &records {
+            emf.extend_from_slice(r);
+        }
+        let n = emf.len() as i32;
+        emf[48..52].copy_from_slice(&n.to_le_bytes());
+        let mut app = App::headless();
+        app.paste_from(ClipboardContent {
+            text: Some("LTSCALE 1.0000 DIMSCALE 1.0000 UNITS Millimeters".into()),
+            vector: Some(emf),
+            ..Default::default()
+        });
+        fn lines(s: &tracedraw_core::document::Shape) -> usize {
+            match &s.kind {
+                ShapeKind::Group { children } => children.iter().map(lines).sum(),
+                ShapeKind::ClipFrame { contents, .. } => contents.iter().map(lines).sum(),
+                ShapeKind::Text { .. } => 0,
+                _ => usize::from(s.stroke.is_some()),
+            }
+        }
+        let shapes: Vec<_> = app.doc().all_layers().flat_map(|l| &l.shapes).collect();
+        assert!(
+            !shapes
+                .iter()
+                .any(|s| matches!(s.kind, ShapeKind::Text { .. })),
+            "the drawing, not the settings text"
+        );
+        assert_eq!(
+            shapes.iter().copied().map(lines).sum::<usize>(),
+            4,
+            "the four lines"
+        );
+        assert!(!app.selection.is_empty(), "selected");
+    }
+
     /// Paste in View with nothing copied here pastes what another program
     /// copied (a picture), centred on the visible area, as Edit > Paste
     /// does; before, it pasted only a copy made here.
