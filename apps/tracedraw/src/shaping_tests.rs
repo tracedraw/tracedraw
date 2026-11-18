@@ -669,3 +669,45 @@ fn simplify_keeps_a_nonzero_curve_solid() {
     let area = shape_area(&s);
     assert!(near(area, 875.0, 1e-6), "{area}");
 }
+
+/// Create Boundary with a picture selected, alone or with a curve, the
+/// picture as target: a plain outline with no fill round what is
+/// selected, as for other objects. It gave the picture cropped to the
+/// outline, a second picture (#3253).
+#[test]
+fn boundary_of_a_picture_is_an_outline() {
+    let picture = |app: &mut App| {
+        app.new_shape(ShapeKind::Bitmap {
+            rect: Rect::new(30.0, 0.0, 70.0, 40.0),
+            width_px: 2,
+            height_px: 2,
+            png: Vec::<u8>::new().into(),
+            fx: None,
+        })
+        .expect("picture")
+    };
+    let with_curve = |app: &mut App| {
+        let r = rect(app, 0.0, 0.0, 40.0, 40.0);
+        vec![r, picture(app)]
+    };
+    let alone = |app: &mut App| vec![picture(app)];
+    for (name, build, area) in [
+        (
+            "with a curve",
+            &with_curve as &dyn Fn(&mut App) -> Vec<ShapeId>,
+            2800.0,
+        ),
+        ("alone", &alone as &dyn Fn(&mut App) -> Vec<ShapeId>, 1600.0),
+    ] {
+        let (got, made, _) = run(build, Shaping::Boundary, &as_built).expect(name);
+        assert_eq!(made.len(), 1, "{name}");
+        assert!(
+            matches!(made[0].kind, ShapeKind::Path { closed: true, .. }),
+            "{name}: {:?}",
+            made[0].kind
+        );
+        assert!(matches!(made[0].fill, Fill::None), "{name}");
+        assert!(made[0].stroke.is_some(), "{name}: an outline");
+        assert!(near(got, area, 1.0), "{name}: area {got}");
+    }
+}

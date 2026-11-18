@@ -3637,6 +3637,15 @@ fn command_items(app: &App, category: Option<&str>, filter: &str) -> Vec<Command
     out
 }
 
+/// The commands the Commands page lists: [`command_items`] in
+/// alphabetical order, as CorelDRAW lists them. In menu order a command
+/// was slow to find in a long category (#3212).
+fn listed_commands(app: &App, category: Option<&str>, filter: &str) -> Vec<CommandItem> {
+    let mut out = command_items(app, category, filter);
+    out.sort_by_cached_key(|c| c.name.to_lowercase());
+    out
+}
+
 const LIST_W: f32 = 240.0;
 const LIST_H: f32 = 330.0;
 const ROW_H: f32 = 24.0;
@@ -3717,7 +3726,7 @@ fn commands_page(app: &mut App, ui: &mut Ui) {
     });
     ui.add_space(4.0);
     let filter = app.shortcut_editor.filter.trim().to_lowercase();
-    let items = command_items(app, app.shortcut_editor.category.as_deref(), &filter);
+    let items = listed_commands(app, app.shortcut_editor.category.as_deref(), &filter);
     if app
         .shortcut_editor
         .selected
@@ -6051,6 +6060,13 @@ mod tests {
         assert!(text.iter().any(|c| c.id == "menu.table.create_new_table"));
         assert!(text.iter().any(|c| c.id == "menu.text.grammar"));
         assert!(command_items(&app, Some("menu.table"), "").is_empty());
+        // Listed in alphabetical order (#3212).
+        for category in [None, Some("menu.file"), Some("menu.text"), Some(TOOLBOX)] {
+            let list = listed_commands(&app, category, "");
+            assert_eq!(list.len(), command_items(&app, category, "").len());
+            let names: Vec<String> = list.iter().map(|c| c.name.to_lowercase()).collect();
+            assert!(names.windows(2).all(|w| w[0] <= w[1]), "{names:?}");
+        }
         // A user's key shows beside the built-in one (#822).
         let open = file
             .iter()

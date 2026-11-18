@@ -1696,7 +1696,13 @@ impl App {
         };
         let id = self.engine.new_shape_id();
         let leaves = group_leaves(&attrs);
-        let pictures = picture_contents(&attrs);
+        // Create Boundary only draws an outline round the selection: a
+        // picture as target gave the picture cropped to it (#3253).
+        let pictures = if op == Shaping::Boundary {
+            None
+        } else {
+            picture_contents(&attrs)
+        };
         // A clip frame keeps what it holds: the result is a clip frame
         // whose frame takes the result's shape with the frame's own fill
         // and outline; a Weld also gathers what every clip frame welded

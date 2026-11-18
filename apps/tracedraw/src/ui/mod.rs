@@ -1397,10 +1397,38 @@ pub(crate) fn view_navigator(app: &mut App, ui: &mut Ui, corner: egui::Rect, can
             ));
         }
     }
-    let area_rect = egui::Rect::from_min_max(
+    let mut area_rect = egui::Rect::from_min_max(
         egui::pos2(corner.max.x - thumb_w - 8.0, corner.min.y - thumb_h - 8.0),
         egui::pos2(corner.max.x, corner.min.y),
     );
+    // Opened with its key, it comes up at the pointer, as in CorelDRAW,
+    // with the spot of the view's centre under the pointer so the view
+    // does not jump: it always came up in the corner (#3086). The place
+    // is kept while it is open, so moving over it pans.
+    let at_id = egui::Id::new("navigator_at_pointer");
+    if key_held {
+        let kept = ui.ctx().data(|d| d.get_temp::<egui::Pos2>(at_id));
+        let at = kept.or_else(|| {
+            let pointer = ui
+                .input(|i| i.pointer.latest_pos())
+                .filter(|p| canvas.contains(*p))?;
+            let vis = app.view.visible_page_rect(canvas);
+            let cx = (((vis.x0 + vis.x1) / 2.0 - page.x0) / page.width()) as f32 * thumb_w;
+            let cy = ((page.y1 - (vis.y0 + vis.y1) / 2.0) / page.height()) as f32 * thumb_h;
+            let m = egui::Frame::popup(ui.style()).total_margin();
+            let min = pointer - egui::vec2(cx + m.left, cy + m.top);
+            let size = egui::vec2(thumb_w + m.sum().x, thumb_h + m.sum().y);
+            let max = (canvas.max - size).max(canvas.min);
+            let min = min.clamp(canvas.min, max);
+            ui.ctx().data_mut(|d| d.insert_temp(at_id, min));
+            Some(min)
+        });
+        if let Some(min) = at {
+            area_rect = egui::Rect::from_min_size(min, area_rect.size());
+        }
+    } else {
+        ui.ctx().data_mut(|d| d.remove::<egui::Pos2>(at_id));
+    }
     // Shown only because View > Navigator opened it (no button or key
     // held): the picture follows clicks, not the pointer passing over.
     let pinned_only =

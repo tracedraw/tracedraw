@@ -1033,6 +1033,16 @@ mod tests {
         frame(&mut app, vec![key(Key::N, true, Modifiers::SHIFT)]);
         assert!(!app.navigator_open);
         frame(&mut app, vec![key(Key::N, false, Modifiers::SHIFT)]);
+        // Held with the pointer over the drawing: it comes up at the
+        // pointer, not in the corner (#3086).
+        let at = egui::pos2(500.0, 380.0);
+        frame(&mut app, vec![Event::PointerMoved(at)]);
+        frame(&mut app, vec![key(Key::N, true, Modifiers::NONE)]);
+        frame(&mut app, Vec::new());
+        let r = popup(&ctx).expect("the Navigator");
+        assert!(r.contains(at), "{r:?} round {at:?}");
+        frame(&mut app, vec![key(Key::N, false, Modifiers::NONE)]);
+        assert!(!app.navigator_open);
         // The menu row: open until Esc.
         assert!(crate::ui::menus::run_command(
             &mut app,

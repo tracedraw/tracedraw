@@ -2175,6 +2175,23 @@ pub fn node_run(
     None
 }
 
+/// Every node of the subpath holding node `a`, in its order (the Shape
+/// tool's Ctrl+Shift+click). `None` when `a` is not a node of `path`.
+pub fn subpath_nodes(path: &BezPath, a: usize) -> Option<Vec<usize>> {
+    for sub in split_segments(path) {
+        let mut ring: Vec<usize> = vec![sub.start_index];
+        for (_, _, to, _) in &sub.segs {
+            if *to != sub.start_index {
+                ring.push(*to);
+            }
+        }
+        if ring.contains(&a) {
+            return Some(ring);
+        }
+    }
+    None
+}
+
 /// Join two end nodes with a straight segment (the Shape tool's Extend
 /// Curve to Close): the two ends of one open subpath close it; ends of two
 /// open subpaths make one subpath. `None` when either is not an end of an

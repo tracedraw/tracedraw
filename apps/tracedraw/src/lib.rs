@@ -500,6 +500,7 @@ pub fn run() -> eframe::Result<()> {
             .with_resizable(true)
             .with_title("TraceDraw")
             .with_app_id(splash::APP_ID)
+            .with_icon(splash::window_icon())
     } else {
         splash::main_window_builder(&settings, plain)
     };
