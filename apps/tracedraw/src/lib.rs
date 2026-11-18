@@ -1122,6 +1122,11 @@ impl eframe::App for Shell {
         if app.sync_mcp_link(ui.ctx()) {
             ui.ctx().request_repaint();
         }
+        // Fonts being installed off the interface's thread (d#3200).
+        if app.poll_font_installs() {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
+        }
         // A large drawing being opened off the interface's thread (#2849).
         if app.poll_opening() {
             ui.ctx()

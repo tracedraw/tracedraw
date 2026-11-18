@@ -1481,6 +1481,11 @@ pub struct App {
     /// Families the font lists show: installed, carried by drawings, and
     /// (browser build) offered by the page's font folder.
     pub font_families: Vec<String>,
+    /// Font files being installed off the interface's thread: the Font
+    /// Manager's fonts at the start and the fonts of a folder just added
+    /// (a library of tens of thousands of fonts kept the window from
+    /// opening for a minute, or froze it for hours, d#2166, d#3200).
+    pub font_installs: Vec<std::sync::mpsc::Receiver<Vec<String>>>,
     /// What the Font Manager loaded and drew.
     pub font_catalog: crate::ui::font_manager::Catalog,
     /// The font lists' pictures of family names in their own fonts.
@@ -3152,6 +3157,7 @@ impl App {
             corner_cache: Default::default(),
             wireframe: false,
             font_families: tracedraw_text::fonts().available_families(),
+            font_installs: Vec::new(),
             font_catalog: Default::default(),
             font_previews: Default::default(),
             font_generation: tracedraw_text::fonts().generation(),
@@ -3745,16 +3751,47 @@ impl App {
     /// Apply persisted settings (language, workspace, snapping, units).
     pub fn load_settings(&mut self) {
         self.apply_settings(crate::settings::Settings::load());
-        // Fonts installed for TraceDraw in the Font Manager.
-        if !crate::ui::font_manager::install_saved(&self.settings.font_manager).is_empty() {
-            self.font_families = tracedraw_text::fonts().available_families();
+        // Fonts installed for TraceDraw in the Font Manager, read off the
+        // interface's thread: the window opens meanwhile (d#3200).
+        if let Some(job) =
+            crate::ui::font_manager::install_saved_in_background(&self.settings.font_manager)
+        {
+            self.font_installs.push(job);
         }
+    }
+
+    /// Take the fonts installed off the interface's thread once they are
+    /// in: the font lists name them, and the open drawing's missing fonts
+    /// and the font for new text are checked again. Whether some are
+    /// still being installed.
+    pub fn poll_font_installs(&mut self) -> bool {
+        if self.font_installs.is_empty() {
+            return false;
+        }
+        let before = self.font_installs.len();
+        self.font_installs
+            .retain(|rx| matches!(rx.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)));
+        if self.font_installs.len() == before {
+            return true;
+        }
+        self.font_families = tracedraw_text::fonts().available_families();
+        if self.font_installs.is_empty() {
+            if !crate::files::WEB {
+                self.keep_default_font_installed();
+            }
+            self.check_missing_fonts();
+        }
+        !self.font_installs.is_empty()
     }
 
     /// A font for new text that is no longer installed gives way to Arial,
     /// or the first font there is: text typed in it was drawn with a
     /// stand-in while the bars named the missing font (#504).
     pub fn keep_default_font_installed(&mut self) {
+        // The fonts of the Font Manager are still coming in.
+        if !self.font_installs.is_empty() {
+            return;
+        }
         let installed = |f: &str| self.font_families.iter().any(|g| g.eq_ignore_ascii_case(f));
         if self.font_families.is_empty() || installed(&self.text_default_font) {
             return;

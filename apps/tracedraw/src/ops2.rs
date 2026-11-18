@@ -5615,6 +5615,12 @@ impl App {
     /// are neither installed nor carried by a drawing (Font Manager,
     /// missing-font substitution notice).
     pub fn check_missing_fonts(&mut self) {
+        // Fonts still being installed are not missing: the check runs
+        // again once they are in (`poll_font_installs`).
+        if !self.font_installs.is_empty() {
+            self.missing_fonts.clear();
+            return;
+        }
         let missing: Vec<String> = self
             .doc()
             .font_families_used()
