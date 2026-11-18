@@ -45,15 +45,24 @@ pub fn group_visible(app: &App, gi: usize) -> bool {
         .any(|id| id == group.tools[0].id())
 }
 
-/// The tooltip of a tool: its name and shortcut in bold, then what it does.
-pub fn tool_tooltip(ui: &mut Ui, tool: Tool) {
-    let head = if tool.shortcut_label().is_empty() {
+/// The keys that pick `tool` now, joined: the user's from Options >
+/// Customization > Commands, else its built-in one. The toolbox showed
+/// the built-in key alone, so a key given to another tool still showed
+/// on the tool that lost it, and not on the one that took it (#3099).
+pub fn tool_keys(app: &App, tool: Tool) -> String {
+    crate::shortcuts::keys_for(&app.settings.shortcuts, tool.id(), tool.shortcut()).join(", ")
+}
+
+/// The tooltip of a tool: its name and shortcut (`keys`, see
+/// [`tool_keys`]) in bold, then what it does.
+pub fn tool_tooltip(ui: &mut Ui, tool: Tool, keys: &str) {
+    let head = if keys.is_empty() {
         crate::i18n::trf("toolbox.tool_title", &[("t", &tool.name())])
     } else {
         format!(
             "{} ({})",
             crate::i18n::trf("toolbox.tool_title", &[("t", &tool.name())]),
-            tool.shortcut_label()
+            keys
         )
     };
     ui.set_max_width(260.0);
@@ -587,7 +596,8 @@ fn tool_button(
     }
     // No tooltip while a flyout is open: it would cover the list.
     let resp = if app.flyout_open.is_none() {
-        resp.on_hover_ui(|ui| tool_tooltip(ui, shown))
+        let keys = tool_keys(app, shown);
+        resp.on_hover_ui(|ui| tool_tooltip(ui, shown, &keys))
     } else {
         resp
     };
@@ -764,16 +774,17 @@ fn flyout(app: &mut App, ui: &mut Ui, gi: usize, button: Rect, dock: crate::ui::
                             egui::FontId::proportional(12.0),
                             Tokens::text(),
                         );
-                        if !t.shortcut_label().is_empty() {
+                        let keys = tool_keys(app, *t);
+                        if !keys.is_empty() {
                             ui.painter().text(
                                 Pos2::new(r.max.x - 8.0, r.center().y),
                                 egui::Align2::RIGHT_CENTER,
-                                t.shortcut_label(),
+                                &keys,
                                 egui::FontId::proportional(12.0),
                                 Tokens::text(),
                             );
                         }
-                        if rr.on_hover_ui(|ui| tool_tooltip(ui, *t)).clicked() {
+                        if rr.on_hover_ui(|ui| tool_tooltip(ui, *t, &keys)).clicked() {
                             app.choose_tool(*t);
                             close = true;
                         }
@@ -888,6 +899,25 @@ pub fn reset_toolbox(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #3099: the toolbox names the keys a tool has now. A key given to
+    /// another tool in Options leaves the tool that lost it without one,
+    /// and the tool that took it shows it beside its own.
+    #[test]
+    fn the_toolbox_shows_the_keys_set_in_options() {
+        let mut app = App::headless();
+        assert_eq!(tool_keys(&app, Tool::Zoom), "Z");
+        assert_eq!(tool_keys(&app, Tool::Rectangle), "F6");
+        // What Options > Customization > Commands keeps when Zoom's Z is
+        // given to the Rectangle tool.
+        app.settings.shortcuts = vec![
+            ("zoom".into(), String::new()),
+            ("rectangle".into(), "F6".into()),
+            ("rectangle".into(), "Z".into()),
+        ];
+        assert_eq!(tool_keys(&app, Tool::Zoom), "");
+        assert_eq!(tool_keys(&app, Tool::Rectangle), "F6, Z");
+    }
 
     fn flyout_pointer_frame(
         ctx: &egui::Context,

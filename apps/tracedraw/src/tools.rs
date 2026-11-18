@@ -412,10 +412,6 @@ impl Tool {
         })
     }
 
-    pub fn shortcut_label(self) -> &'static str {
-        self.shortcut().unwrap_or("")
-    }
-
     /// Parse a shortcut label like "Shift+F12" into (key, shift).
     pub fn parse_shortcut(label: &str) -> Option<(Key, bool)> {
         let shift = label.to_lowercase().contains("shift+");
