@@ -69,7 +69,9 @@ default) shows the pictures alone, the name in the tab's tip (#2902,
 `ui::dockers::tests::tabs_keep_their_names_unless_icons_only_is_chosen`). The open panel's tab
 `#B2B2B2`; the three-dot button under the tabs lists every panel in the
 groups of Window > Panels with a box ticked at each one in the column
-(ticking opens the panel in front, unticking closes it). The pointer
+(ticking opens the panel in front, unticking closes it). Both that
+list and Window > Panels show each panel's tab picture before its name
+(#3221, `ui::menus::tests::window_panels_show_the_panels_pictures`). The pointer
 over a tab shows a close cross in a slot at the tab's top; a click on
 it closes that panel (as the title bar's close and the tab's menu do),
 a click lower on the tab brings the panel to the front

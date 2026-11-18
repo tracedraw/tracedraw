@@ -253,7 +253,7 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
                         let pic = pic
                             .as_ref()
                             .map(|f| f as &dyn Fn(&egui::Painter, egui::Rect));
-                        if crate::ui::menus::check_pic(ui, tab.key(), open, pic) {
+                        if crate::ui::menus::check_pic(ui, tab.key(), "", open, pic) {
                             if open {
                                 app.close_docker(tab);
                             } else {
@@ -689,7 +689,7 @@ pub fn floating_dockers(app: &mut App, ctx: &egui::Context) {
     }
 }
 
-type TabIcon = fn(&egui::Painter, egui::Rect);
+pub(crate) type TabIcon = fn(&egui::Painter, egui::Rect);
 
 /// A docker tab's height: the close slot, the picture (`icon_h`) and the
 /// name running downwards (`name_w` long), or no name when `compact`.
@@ -711,7 +711,7 @@ fn icons_only(tabs: &[DockerTab], chosen: bool) -> bool {
 }
 
 /// The small picture above a docker tab's name.
-fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
+pub(crate) fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
     match tab {
         DockerTab::Hints => Some(|p, r| {
             // A pointer with a question mark.
