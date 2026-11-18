@@ -1649,11 +1649,24 @@ fn convert_fields(app: &App, ui: &mut Ui, o: &mut crate::bitmap_modes::ConvertOp
             "dialog.anti_aliasing",
             "dialog.convert_anti_alias_desc",
         ));
-    ui.checkbox(&mut o.transparent, tr("dialog.transparent_background"))
-        .rich_tip(crate::ui::tips::pair(
-            "dialog.transparent_background",
-            "dialog.convert_transparent_desc",
-        ));
+    // Black and white is 1-bit and has no alpha: the box shows off and
+    // can't be ticked (#3204).
+    let tip = crate::ui::tips::pair(
+        "dialog.transparent_background",
+        "dialog.convert_transparent_desc",
+    );
+    let can_see_through = o.mode != ConvertMode::BlackWhite;
+    let mut shown = o.keeps_transparency();
+    let r = ui
+        .add_enabled(
+            can_see_through,
+            egui::Checkbox::new(&mut shown, tr("dialog.transparent_background")),
+        )
+        .rich_tip(&tip)
+        .rich_disabled_tip(&tip);
+    if can_see_through && r.changed() {
+        o.transparent = shown;
+    }
     // The size of the bitmap made: drop shadows and outlines count (#2351).
     if let Some(b) = app.convert_to_bitmap_area() {
         let w = (b.width() / 25.4 * o.dpi).ceil().max(1.0) as u64;

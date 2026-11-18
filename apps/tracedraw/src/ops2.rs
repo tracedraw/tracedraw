@@ -2719,7 +2719,8 @@ impl App {
         let Some(tmp) = self.selection_alone(area) else {
             return;
         };
-        let Some((png, w, h)) = render_alone_png(&tmp, dpi, o.transparent, o.anti_alias) else {
+        let Some((png, w, h)) = render_alone_png(&tmp, dpi, o.keeps_transparency(), o.anti_alias)
+        else {
             return;
         };
         let bounds = area;
@@ -7145,6 +7146,49 @@ mod tests {
                 "{c:?} {e:?}"
             );
         }
+    }
+
+    #[test]
+    fn black_and_white_with_a_transparent_background_stays_one_bit() {
+        // #3204: Black and White with Transparent background ticked gave a
+        // grey PNG with alpha, which other programs open as grayscale.
+        use crate::bitmap_modes::{ConvertMode, ConvertOptions};
+        let o = ConvertOptions {
+            dpi: 72.0,
+            mode: ConvertMode::BlackWhite,
+            transparent: true,
+            ..Default::default()
+        };
+        assert!(!o.keeps_transparency());
+        assert!(ConvertOptions {
+            mode: ConvertMode::Grayscale,
+            ..o
+        }
+        .keeps_transparency());
+        let mut app = App::headless();
+        // An ellipse leaves its box's corners empty.
+        let id = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: Rect::new(0.0, 0.0, 20.0, 20.0),
+                arc: None,
+            })
+            .expect("ellipse");
+        app.run(Command::SetFill {
+            shapes: vec![id],
+            fill: Fill::Solid(Color::rgb8(0, 0, 0)),
+        });
+        app.select(vec![id]);
+        app.convert_to_bitmap_with(&o);
+        let s = app.selected_shapes().into_iter().next().expect("bitmap");
+        let ShapeKind::Bitmap { png, .. } = &s.kind else {
+            panic!("not a bitmap");
+        };
+        // IHDR: bit depth 1, colour type 0 (grey, no alpha).
+        assert_eq!((png[24], png[25]), (1, 0));
+        let img = crate::bitmap_fx::decode(png).expect("png");
+        assert_eq!(*img.get_pixel(0, 0), image::Rgba([255, 255, 255, 255]));
+        let mid = img.get_pixel(img.width() / 2, img.height() / 2);
+        assert_eq!(*mid, image::Rgba([0, 0, 0, 255]));
     }
 
     #[test]

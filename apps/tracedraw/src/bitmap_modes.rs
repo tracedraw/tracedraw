@@ -95,6 +95,13 @@ impl ConvertOptions {
     pub fn bytes(&self, w: u64, h: u64) -> u64 {
         (w * self.mode.bits()).div_ceil(8) * h
     }
+
+    /// Whether the bitmap keeps a see-through background. A 1-bit bitmap
+    /// has no alpha, so black and white always comes out on white: with
+    /// alpha it was stored as grayscale (#3204).
+    pub fn keeps_transparency(&self) -> bool {
+        self.transparent && self.mode != ConvertMode::BlackWhite
+    }
 }
 
 /// The rendered pixels in the chosen colour mode: black and white by a
