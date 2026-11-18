@@ -2152,7 +2152,19 @@ pub fn delete_current(app: &mut App) {
 
 fn delete_layer(app: &mut App, layer: LayerId) {
     app.selection.clear();
+    // A frame of a linked chain on the layer leaves its text to the
+    // frames left, as a deleted frame does (#1986).
+    let ids: Vec<ShapeId> = app
+        .doc()
+        .layer(layer)
+        .map(|l| l.shapes.iter().map(|s| s.id).collect())
+        .unwrap_or_default();
+    let flow = app.flow_around_deleted(&ids);
+    let revision = app.engine.revision();
     app.run(Command::DeleteLayer { layer });
+    if app.engine.revision() != revision {
+        app.amend_flow("Delete Layer", flow);
+    }
     if app.picked_layer == Some(layer) {
         app.picked_layer = None;
     }

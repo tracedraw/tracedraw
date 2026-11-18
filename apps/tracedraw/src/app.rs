@@ -10478,18 +10478,30 @@ impl App {
     }
 
     /// The document navigator's insert buttons: a page like the current
-    /// one, before or after it, made current.
+    /// one, before or after it, made current, in one undo step.
     pub fn insert_page(&mut self, after: bool) {
         let idx = self.page_index();
         let size = self.page_size();
-        self.run(self.localized_page(size));
-        let Some(new) = self.doc().pages.last().map(|p| p.id) else {
+        let Command::AddPage { name, size, layer } = self.localized_page(size) else {
             return;
         };
-        let to = if after { idx + 1 } else { idx };
-        if to + 1 < self.doc().pages.len() {
-            self.run(Command::MovePage { page: new, to });
-        }
+        let old: Vec<PageId> = self.doc().pages.iter().map(|p| p.id).collect();
+        self.run(Command::InsertPage {
+            at: if after { idx + 1 } else { idx },
+            name,
+            size,
+            layer,
+            shapes: Vec::new(),
+        });
+        let Some(new) = self
+            .doc()
+            .pages
+            .iter()
+            .map(|p| p.id)
+            .find(|id| !old.contains(id))
+        else {
+            return;
+        };
         self.page = new;
         self.selection.clear();
         self.fit_pending = true;
@@ -10500,20 +10512,114 @@ impl App {
     pub fn duplicate_page(&mut self, before: bool, contents: bool) {
         let page = self.page;
         let old: Vec<_> = self.doc().pages.iter().map(|p| p.id).collect();
+        let originals = self.page_shapes(page);
+        let revision = self.engine.revision();
         self.run(Command::DuplicatePage {
             page,
             before,
             contents,
         });
         let new = self.doc().pages.iter().position(|p| !old.contains(&p.id));
+        if let Some(i) = new.filter(|_| contents && self.engine.revision() != revision) {
+            let id = self.doc().pages[i].id;
+            let cmds = self.relink_page_copies(&originals, &self.page_shapes(id));
+            if !cmds.is_empty() {
+                if let Err(e) = self.engine.amend_batch("Duplicate Page", &cmds) {
+                    self.status = e.to_string();
+                }
+            }
+        }
         if let Some(i) = new {
             self.goto_page(i);
         }
     }
 
+    /// The objects on the layers of `page`, bottom layer first.
+    fn page_shapes(&self, page: PageId) -> Vec<Shape> {
+        self.doc()
+            .page(page)
+            .map(|p| {
+                p.layers
+                    .iter()
+                    .flat_map(|l| l.shapes.iter().cloned())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The commands that make the objects of a duplicated page `copies`
+    /// (made of `originals`, member by member) link among themselves: a
+    /// copied chain of linked text frames is a chain of the copies and a
+    /// copied blend ends at the copy of its end object. They named the
+    /// original page's objects, so the copied frames ran on into the
+    /// original chain and a copied blend drew its steps to the original
+    /// end object.
+    fn relink_page_copies(&self, originals: &[Shape], copies: &[Shape]) -> Vec<Command> {
+        fn strip(s: &mut Shape) {
+            crate::textflow::without_links(&mut s.data);
+            match &mut s.kind {
+                ShapeKind::Group { children } => children.iter_mut().for_each(strip),
+                ShapeKind::ClipFrame { frame, contents } => {
+                    strip(frame);
+                    contents.iter_mut().for_each(strip);
+                }
+                _ => {}
+            }
+        }
+        fn changes(was: &Shape, now: &Shape, out: &mut Vec<Command>) {
+            if was.data != now.data {
+                out.push(Command::SetObjectData {
+                    shape: now.id,
+                    data: now.data.clone(),
+                });
+            }
+            if was.effects != now.effects {
+                out.push(Command::SetEffects {
+                    shape: now.id,
+                    effects: now.effects.clone(),
+                });
+            }
+            match (&was.kind, &now.kind) {
+                (ShapeKind::Group { children: a }, ShapeKind::Group { children: b }) => {
+                    a.iter().zip(b).for_each(|(x, y)| changes(x, y, out));
+                }
+                (
+                    ShapeKind::ClipFrame {
+                        frame: fa,
+                        contents: a,
+                    },
+                    ShapeKind::ClipFrame {
+                        frame: fb,
+                        contents: b,
+                    },
+                ) => {
+                    changes(fa, fb, out);
+                    a.iter().zip(b).for_each(|(x, y)| changes(x, y, out));
+                }
+                _ => {}
+            }
+        }
+        if originals.len() != copies.len() {
+            return Vec::new();
+        }
+        let mut fixed = copies.to_vec();
+        fixed.iter_mut().for_each(strip);
+        crate::textflow::relink_copies(originals, &mut fixed);
+        let mut out = Vec::new();
+        for (was, now) in copies.iter().zip(&fixed) {
+            changes(was, now, &mut out);
+        }
+        out
+    }
+
     pub fn delete_page(&mut self) {
         let page = self.page;
+        let flow = self.flow_around_deleted_pages(&[page]);
+        let revision = self.engine.revision();
         self.run(Command::DeletePage { page });
+        if self.engine.revision() != revision {
+            self.amend_flow("Delete Page", flow);
+        }
         if let Some(p) = self.doc().pages.first() {
             self.page = p.id;
         }
@@ -10535,10 +10641,12 @@ impl App {
             .iter()
             .map(|&page| Command::DeletePage { page })
             .collect();
+        let flow = self.flow_around_deleted_pages(&ids[a..=b]);
         if let Err(e) = self.engine.run_batch("Delete Page", &cmds) {
             self.status = e.to_string();
             return;
         }
+        self.amend_flow("Delete Page", flow);
         self.renumber_default_pages();
         let next = ids
             .get(b + 1)
@@ -10548,6 +10656,34 @@ impl App {
         }
         self.selection.clear();
         self.fit_pending = true;
+    }
+
+    /// The commands that keep the text of linked frame chains running
+    /// through the pages `pages` when they are deleted: the frames left
+    /// take it, as when the frames themselves are deleted (#1986). The
+    /// text the deleted frames showed was lost with the page.
+    pub(crate) fn flow_around_deleted_pages(&self, pages: &[PageId]) -> Vec<Command> {
+        let ids: Vec<ShapeId> = pages
+            .iter()
+            .flat_map(|p| self.page_shapes(*p))
+            .map(|s| s.id)
+            .collect();
+        self.flow_around_deleted(&ids)
+    }
+
+    /// Run `flow` (from [`Self::flow_around_deleted`]) in the step just
+    /// made.
+    pub(crate) fn amend_flow(&mut self, label: &'static str, flow: Vec<Command>) {
+        if flow.is_empty() {
+            return;
+        }
+        if let Err(e) = self.engine.amend_batch(label, &flow) {
+            self.status = e.to_string();
+            return;
+        }
+        if let Some(rec) = &mut self.recording {
+            rec.extend(flow);
+        }
     }
 
     /// Page > Delete Page asks which pages, the current one first.

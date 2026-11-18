@@ -1474,6 +1474,16 @@ mod tests {
         assert_eq!(ids.len(), 3);
         assert_eq!(ids[1], first);
         assert_eq!(ids[2], second);
+        // One undo step each: one Undo takes the page away, where it was
+        // a page added at the end and then moved, two steps.
+        let names: Vec<String> = app.doc().pages.iter().map(|p| p.name.clone()).collect();
+        assert_eq!(app.engine.undo_label(), Some("Insert Page"));
+        app.undo();
+        let left: Vec<_> = app.doc().pages.iter().map(|p| p.id).collect();
+        assert_eq!(left, vec![first, second]);
+        app.redo();
+        let back: Vec<String> = app.doc().pages.iter().map(|p| p.name.clone()).collect();
+        assert_eq!(back, names);
     }
 
     #[test]

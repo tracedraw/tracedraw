@@ -604,8 +604,8 @@ on its own line, which is why the lines are joined first.
   afterwards flows on into the empty one (picked first, the empty frame
   took the whole text and the frame it came from was left empty;
   `textflow::tests::linking_to_an_empty_frame_keeps_the_source_text_whatever_the_order`).
-- Deleting a frame of a chain (Delete, Cut, or a group or clip frame
-  holding it) removes only the frame: the frames left are linked to one
+- Deleting a frame of a chain (Delete, Cut, a group or clip frame
+  holding it, or the page or layer it is on) removes only the frame: the frames left are linked to one
   another in their order and the chain's whole text flows anew over them,
   so the frame after the deleted one shows what it showed and the last
   frame takes the rest (with the overflow mark when it does not fit). A
@@ -617,7 +617,8 @@ on its own line, which is why the lines are joined first.
   `deleting_the_last_frame_of_a_chain_keeps_its_text`,
   `deleting_a_frame_of_a_chain_of_two_leaves_one_frame_with_all_the_text`,
   `cutting_a_frame_of_a_chain_keeps_its_text`,
-  `deleting_a_group_holding_a_frame_of_a_chain_keeps_its_text`).
+  `deleting_a_group_holding_a_frame_of_a_chain_keeps_its_text`,
+  `deleting_a_page_or_layer_holding_a_frame_of_a_chain_keeps_its_text`).
 - Text > Convert keeps the letters in place both ways: the new frame
   (paragraph text) is the text's own box plus 2 mm, and the new text is
   moved so that its first letter sits where the old one's did, in the

@@ -387,6 +387,58 @@ mod tests {
         assert!((after.x0 - 100.0).abs() < 1e-9, "{after:?}");
     }
 
+    /// A page duplicated with its contents: the copied blend ends at the
+    /// copy of its end object, on the new page. It named the original
+    /// page's end object, so moving the copy of the end did nothing and
+    /// the copied steps followed the original instead.
+    #[test]
+    fn a_duplicated_page_blends_to_its_own_end_object() {
+        let mut app = App::headless();
+        let start = square(&mut app, 0.0, Color::rgb8(250, 220, 0));
+        let end = square(&mut app, 100.0, Color::rgb8(0, 160, 80));
+        app.select(vec![start, end]);
+        app.blend_selection(3, 0.0, 0.0, 0.0);
+        app.refresh_blends();
+        app.duplicate_page(false, true);
+        let copies: Vec<ShapeId> = app.doc().pages[1].layers[0]
+            .shapes
+            .iter()
+            .map(|s| s.id)
+            .collect();
+        let blend_of = |app: &App, id: ShapeId| {
+            app.doc().find_shape(id).and_then(|s| {
+                s.effects.iter().find_map(|e| match e {
+                    Effect::Blend { end_id, end, .. } => Some((*end_id, end.bounds())),
+                    _ => None,
+                })
+            })
+        };
+        let copy_start = copies
+            .iter()
+            .copied()
+            .find(|id| blend_of(&app, *id).is_some())
+            .expect("the copied blend");
+        let copy_end = copies
+            .iter()
+            .copied()
+            .find(|id| *id != copy_start)
+            .expect("the copied end");
+        assert_eq!(
+            blend_of(&app, copy_start).map(|b| b.0),
+            Some(Some(copy_end))
+        );
+        app.run(Command::TransformShapes {
+            shapes: vec![copy_end],
+            transform: Affine::translate((0.0, 100.0)),
+        });
+        app.refresh_blends();
+        let (_, end_box) = blend_of(&app, copy_start).expect("blend");
+        assert!((end_box.y0 - 100.0).abs() < 1e-9, "{end_box:?}");
+        assert_eq!(blend_of(&app, start).map(|b| b.0), Some(Some(end)));
+        let (_, original) = blend_of(&app, start).expect("blend");
+        assert!(original.y0.abs() < 1e-9, "the original is as it was");
+    }
+
     /// The steps sit between the two objects: with the end object below
     /// the start one (a front object blended to one behind it, as in
     /// #232) they are drawn below the start, from the end's side up, and
