@@ -1,5 +1,14 @@
 # Pages
 
+## Undo and Redo of the page shown
+
+When Undo or Redo takes away the page shown (Undo of Insert Page or of
+Duplicate Page, Redo of Delete Page), the page now at its place becomes
+current, or the last page when it was the last one, and the selection is
+cleared. The view no longer stays on a page that is gone, where nothing
+could be drawn (
+`app::tests::undo_of_the_page_shown_moves_to_a_page_that_is_there`).
+
 ## Duplicate Page
 
 Page > Duplicate Page..., the page tab menu's Duplicate Page... and the

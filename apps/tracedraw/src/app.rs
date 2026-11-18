@@ -7644,6 +7644,7 @@ impl App {
             return;
         }
         let step = self.engine.last_step_id();
+        let at = self.page_index_now();
         let undone = match self.engine.undo() {
             Ok(l) => {
                 self.status = crate::i18n::trf("status.undo_n", &[("l", l)]);
@@ -7657,6 +7658,7 @@ impl App {
         self.selection
             .retain(|id| self.engine.document().find_shape(*id).is_some());
         if undone {
+            self.settle_page_after_history(at);
             self.clip_edit_across(step, true);
             // A curve taken up by an earlier undo goes; undoing a Pen or
             // Bezier step takes its curve up again (#631). A curve being
@@ -7684,6 +7686,7 @@ impl App {
         if self.redo_selection_step() {
             return;
         }
+        let at = self.page_index_now();
         let redone = match self.engine.redo() {
             Ok(l) => {
                 self.status = crate::i18n::trf("status.redo_n", &[("l", l)]);
@@ -7697,6 +7700,7 @@ impl App {
         self.selection
             .retain(|id| self.engine.document().find_shape(*id).is_some());
         if redone {
+            self.settle_page_after_history(at);
             self.clip_edit_across(self.engine.last_step_id(), false);
             if self.curve.as_ref().is_some_and(|c| c.resumed) {
                 self.curve = None;
@@ -7705,6 +7709,34 @@ impl App {
                 self.resume_pen_step(self.engine.last_step_id(), false);
             }
         }
+    }
+
+    /// Where the current page stands among the drawing's pages.
+    fn page_index_now(&self) -> usize {
+        self.doc()
+            .pages
+            .iter()
+            .position(|p| p.id == self.page)
+            .unwrap_or(0)
+    }
+
+    /// After Undo or Redo: when the step took away the page shown (Undo
+    /// of Insert Page, Redo of Delete Page), the page now at its place
+    /// becomes current, the last one past the end. The view stayed on a
+    /// page that no longer existed, blank, and nothing drawn there was
+    /// made.
+    fn settle_page_after_history(&mut self, at: usize) {
+        if self.doc().page(self.page).is_ok() {
+            return;
+        }
+        let n = self.doc().pages.len();
+        if n == 0 {
+            return;
+        }
+        let idx = at.min(n - 1);
+        self.page = self.doc().pages[idx].id;
+        self.selection.clear();
+        self.fit_pending = true;
     }
 
     // ----- files -------------------------------------------------------------
@@ -11915,6 +11947,43 @@ mod tests {
         app.delete_pages(3, 4);
         assert_eq!(app.doc().pages.len(), 3);
         assert_eq!(app.page, ids[2], "the page before them");
+    }
+
+    /// Undo of Insert Page while the new page is shown, and Redo of
+    /// Delete Page: the page now at its place is current, so drawing goes
+    /// on. The view stayed on the page taken away, and a rectangle drawn
+    /// there was never made.
+    #[test]
+    fn undo_of_the_page_shown_moves_to_a_page_that_is_there() {
+        let mut app = App::headless();
+        app.add_page();
+        app.add_page();
+        let ids: Vec<_> = app.doc().pages.iter().map(|p| p.id).collect();
+        assert_eq!(app.page, ids[2]);
+        app.undo();
+        assert_eq!(app.page, ids[1], "the last page left");
+        let rect = ShapeKind::Rect {
+            rect: Rect::new(10.0, 10.0, 60.0, 40.0),
+            radius: 0.0,
+            corners: None,
+        };
+        let id = app.new_shape(rect.clone()).expect("drawn on the page shown");
+        let page = app.doc().page(ids[1]).expect("page");
+        assert!(page
+            .layers
+            .iter()
+            .any(|l| l.shapes.iter().any(|s| s.id == id)));
+        // Redo of Delete Page from the page after it.
+        app.add_page();
+        let ids: Vec<_> = app.doc().pages.iter().map(|p| p.id).collect();
+        app.goto_page(1);
+        app.delete_pages(1, 1);
+        app.undo();
+        app.goto_page(1);
+        assert_eq!(app.page, ids[1]);
+        app.redo();
+        assert_eq!(app.page, ids[2], "the page now in its place");
+        assert!(app.new_shape(rect).is_some());
     }
 
     /// A font for new text that is not installed (uninstalled since it
