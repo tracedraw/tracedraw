@@ -68,7 +68,7 @@ selected (the default outline) nothing is previewed.
 | Share attributes | off | the end takes the start's head and settings and follows them |
 | Nib stretch | 1.0 | 0.1 to 1: the calligraphic nib's thickness across its axis |
 | Nib angle | 0 | degrees |
-| Behind fill | off | the outline is drawn under the fill |
+| Behind fill | off | the outline is drawn under the fill; on a PowerClip frame, under its fill and its contents (on screen, in print and in PDF, SVG, EPS and AI exports) |
 | Scale with object | off | the width follows the object's scale factor `sqrt(|det|)` |
 
 ## Arrowhead editor

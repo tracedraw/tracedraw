@@ -514,6 +514,14 @@ impl Writer<'_> {
             }
             ShapeKind::ClipFrame { frame, contents } => {
                 self.line("u");
+                // An outline behind the frame's fill goes beneath the fill
+                // and the contents (#3110).
+                let behind = frame.stroke.as_ref().is_some_and(|st| st.behind_fill);
+                let mut outline = (**frame).clone();
+                outline.fill = Fill::None;
+                if behind {
+                    self.shape(&outline, transform);
+                }
                 let mut fill_only = (**frame).clone();
                 fill_only.stroke = None;
                 self.shape(&fill_only, transform);
@@ -526,9 +534,9 @@ impl Writer<'_> {
                     }
                     self.line("Q");
                 }
-                let mut outline = (**frame).clone();
-                outline.fill = Fill::None;
-                self.shape(&outline, transform);
+                if !behind {
+                    self.shape(&outline, transform);
+                }
                 self.line("U");
                 return;
             }

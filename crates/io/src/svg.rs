@@ -434,7 +434,14 @@ fn write_unlinked(
         return;
     }
     if let ShapeKind::ClipFrame { frame, contents } = &shape.kind {
-        // Frame fill, then the contents clipped to the frame, then its outline.
+        // Frame fill, then the contents clipped to the frame, then its
+        // outline; an outline behind the fill goes beneath both (#3110).
+        let behind = frame.stroke.as_ref().is_some_and(|st| st.behind_fill);
+        let mut outline = (**frame).clone();
+        outline.fill = Fill::None;
+        if behind {
+            write_shape(&outline, symbols, transform, out, defs, ctx, indent);
+        }
         let mut fill_only = (**frame).clone();
         fill_only.stroke = None;
         write_shape(&fill_only, symbols, transform, out, defs, ctx, indent);
@@ -453,9 +460,7 @@ fn write_unlinked(
             write_shape(c, symbols, transform, out, defs, ctx, indent + 1);
         }
         let _ = writeln!(out, "{pad}</g>");
-        let mut outline = (**frame).clone();
-        outline.fill = Fill::None;
-        if outline.stroke.is_some() {
+        if outline.stroke.is_some() && !behind {
             write_shape(&outline, symbols, transform, out, defs, ctx, indent);
         }
         return;
@@ -1229,6 +1234,51 @@ pub(crate) mod tests {
                 outline.iter().all(|o| *o == (target != 0)),
                 "{target}: {svg}"
             );
+        }
+    }
+
+    /// A clip frame's outline behind its fill is written before the fill
+    /// and the contents, so it lies beneath them (#3110); another
+    /// outline after them.
+    #[test]
+    fn a_clip_frame_outline_behind_its_fill_is_written_first() {
+        for behind in [true, false] {
+            let mut doc = Document::default();
+            let layer = doc.pages[0].layers[0].id;
+            let mut contents = Shape::new(
+                doc.ids_mut().shape(),
+                ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, 40.0, 40.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            contents.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+            let mut frame = Shape::new(
+                doc.ids_mut().shape(),
+                ShapeKind::Rect {
+                    rect: Rect::new(5.0, 5.0, 35.0, 35.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            frame.fill = Fill::Solid(Color::rgb8(0, 0, 255));
+            let mut st = Stroke::new(Color::rgb8(0, 255, 0), 4.0);
+            st.behind_fill = behind;
+            frame.stroke = Some(st);
+            let clip = Shape::new(
+                doc.ids_mut().shape(),
+                ShapeKind::ClipFrame {
+                    frame: Box::new(frame),
+                    contents: vec![contents],
+                },
+            );
+            doc.layer_mut(layer).unwrap().shapes.push(clip);
+            let svg = page_to_svg(&doc, 0);
+            let at = |s: &str| svg.find(s).unwrap_or_else(|| panic!("{s}: {svg}"));
+            let outline = at("stroke=\"#00ff00\"");
+            assert_eq!(outline < at("fill=\"#0000ff\""), behind, "{svg}");
+            assert_eq!(outline < at("fill=\"#ff0000\""), behind, "{svg}");
         }
     }
 

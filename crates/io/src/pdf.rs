@@ -1174,6 +1174,14 @@ impl PageWriter<'_> {
             return;
         }
         if let ShapeKind::ClipFrame { frame, contents } = &shape.kind {
+            // An outline behind the frame's fill goes beneath the fill and
+            // the contents (#3110); any other over them.
+            let behind = frame.stroke.as_ref().is_some_and(|st| st.behind_fill);
+            let mut outline = (**frame).clone();
+            outline.fill = Fill::None;
+            if behind {
+                self.shape(&outline, transform);
+            }
             let mut fill_only = (**frame).clone();
             fill_only.stroke = None;
             self.shape(&fill_only, transform);
@@ -1194,9 +1202,7 @@ impl PageWriter<'_> {
                 self.shape(c, transform);
             }
             self.content.push_str("Q\n");
-            let mut outline = (**frame).clone();
-            outline.fill = Fill::None;
-            if outline.stroke.is_some() {
+            if outline.stroke.is_some() && !behind {
                 self.shape(&outline, transform);
             }
             return;

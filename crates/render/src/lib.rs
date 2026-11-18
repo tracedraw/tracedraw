@@ -1280,18 +1280,29 @@ impl Renderer<'_> {
                     self.draw_object_shadow(sh, frame, transform, &page_path);
                 }
             }
-            // Frame's fill first, contents clipped to the frame, then the frame's outline.
+            // Frame's fill first, contents clipped to the frame, then the
+            // frame's outline; an outline behind the fill goes first of
+            // all, beneath the fill and the contents. It came over both,
+            // so a text frame with a wide outline behind its fill showed
+            // the outline's colour where its fill was (#3110).
+            let behind = frame.stroke.as_ref().is_some_and(|st| st.behind_fill);
+            let outline = || {
+                let mut outline_only = (**frame).clone();
+                outline_only.fill = Fill::None;
+                outline_only.shadow = None;
+                outline_only.opacity = shape.opacity;
+                outline_only
+            };
+            if behind {
+                self.draw_shape(&outline(), transform);
+            }
             let mut frame_fill_only = (**frame).clone();
             frame_fill_only.stroke = None;
             frame_fill_only.shadow = None;
             frame_fill_only.opacity = shape.opacity;
             self.draw_clip_frame_inside(shape, &frame_fill_only, contents, transform);
-            if frame.stroke.is_some() {
-                let mut outline_only = (**frame).clone();
-                outline_only.fill = Fill::None;
-                outline_only.shadow = None;
-                outline_only.opacity = shape.opacity;
-                self.draw_shape(&outline_only, transform);
+            if frame.stroke.is_some() && !behind {
+                self.draw_shape(&outline(), transform);
             }
             return;
         }
@@ -6879,6 +6890,33 @@ mod tests {
             "no content lines to the right of the frame"
         );
         assert_eq!(px(&pm, 50, 60), (255, 255, 255), "no fill");
+    }
+
+    /// A clip frame whose outline is behind its fill draws the outline
+    /// beneath the fill and the contents, as text in a PowerClip with a
+    /// wide outline behind its fill is drawn in the file of #3110: the
+    /// outline came over both, so the frame showed the outline's colour
+    /// where its fill and contents were.
+    #[test]
+    fn a_clip_frame_outline_behind_its_fill_goes_beneath() {
+        let mut frame = rect(1, Rect::new(20.0, 20.0, 60.0, 60.0), Color::rgb8(0, 0, 255));
+        let mut st = tracedraw_core::Stroke::new(Color::BLACK, 30.0);
+        st.behind_fill = true;
+        frame.stroke = Some(st);
+        let content = rect(2, Rect::new(24.0, 24.0, 32.0, 32.0), Color::rgb8(255, 0, 0));
+        let clip = Shape::new(
+            ShapeId(3),
+            ShapeKind::ClipFrame {
+                frame: Box::new(frame),
+                contents: vec![content],
+            },
+        );
+        let (doc, page) = doc_with(vec![clip]);
+        let pm = render_page_image_with(&doc, page, 25.4, &RenderOptions::default()).unwrap();
+        // Page y 40 is row 60 of the 100 px picture.
+        assert_eq!(px(&pm, 40, 60), (0, 0, 255), "the fill, over the outline");
+        assert_eq!(px(&pm, 28, 72), (255, 0, 0), "the contents, over the outline");
+        assert_eq!(px(&pm, 12, 60), (0, 0, 0), "the outline, past the frame");
     }
 
     /// A picture in the Wireframe view is a grey box crossed corner to

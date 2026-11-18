@@ -377,6 +377,14 @@ impl Writer<'_> {
                 return;
             }
             ShapeKind::ClipFrame { frame, contents } => {
+                // An outline behind the frame's fill goes beneath the fill
+                // and the contents (#3110).
+                let behind = frame.stroke.as_ref().is_some_and(|st| st.behind_fill);
+                let mut outline = (**frame).clone();
+                outline.fill = Fill::None;
+                if behind {
+                    self.shape(&outline, transform);
+                }
                 let mut fill_only = (**frame).clone();
                 fill_only.stroke = None;
                 self.shape(&fill_only, transform);
@@ -387,9 +395,9 @@ impl Writer<'_> {
                     self.shape(c, transform);
                 }
                 let _ = writeln!(self.out, "grestore");
-                let mut outline = (**frame).clone();
-                outline.fill = Fill::None;
-                self.shape(&outline, transform);
+                if !behind {
+                    self.shape(&outline, transform);
+                }
                 return;
             }
             ShapeKind::Bitmap { rect, png, .. } => {
