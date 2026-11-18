@@ -339,6 +339,13 @@ pub struct Editor {
     pub message: Option<String>,
     /// The caret's line, for F5 (Run Sub).
     pub caret_line: u32,
+    /// The compatibility check's last report, and whether its panel shows.
+    pub report: Option<crate::macro_convert::Report>,
+    pub show_report: bool,
+    /// The JavaScript tab: shown, its text, and the function Run starts.
+    pub js_tab: bool,
+    pub js: String,
+    pub js_run: String,
 }
 
 impl MacroState {
@@ -560,6 +567,9 @@ impl App {
                 );
                 self.macros.chosen = Some((i, None, None));
                 self.show_macro_manager();
+                // The compatibility report of what was loaded.
+                self.edit_macro(i, "", None);
+                self.check_macro_editor();
             }
             Err(e) => self.status = trf("macros.load_failed", &[("e", &e)]),
         }
@@ -980,11 +990,26 @@ impl App {
         let (name, source) = m
             .map(|m| (m.name.clone(), m.source.clone()))
             .unwrap_or_default();
+        // The report and the JavaScript tab stay while moving around the
+        // same project.
+        let kept = self
+            .macros
+            .editor
+            .take()
+            .filter(|e| e.project == project)
+            .map(|e| (e.report, e.show_report, e.js_tab, e.js, e.js_run, e.find))
+            .unwrap_or_default();
         self.macros.editor = Some(Editor {
             project,
             module: name,
             source,
             goto_line: line,
+            report: kept.0,
+            show_report: kept.1,
+            js_tab: kept.2 && line.is_none(),
+            js: kept.3,
+            js_run: kept.4,
+            find: kept.5,
             ..Default::default()
         });
     }

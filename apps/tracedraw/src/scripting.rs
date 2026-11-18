@@ -19,6 +19,7 @@
 mod extra;
 pub mod vba_run;
 mod vg;
+pub mod vg_catalog;
 
 use crate::app::App;
 use boa_engine::{

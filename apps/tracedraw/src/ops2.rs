@@ -4039,6 +4039,15 @@ impl App {
     }
 
     pub fn run_script(&mut self, src: &str) {
+        // A script converted from a macro runs on the macros' object
+        // model, as a macro (docs/behavior/vba.md, "Converting macros").
+        if src.trim_start().starts_with(tracedraw_vba::convert::JS_MARKER) {
+            match tracedraw_vba::convert::js_run_name(src) {
+                Some(name) => self.run_macro_js(src, &name, "Scripts".into()),
+                None => self.scripts_output.push(tr("convert.nothing_to_run")),
+            }
+            return;
+        }
         let result = crate::scripting::run(self, src);
         match result {
             Ok(out) => {
