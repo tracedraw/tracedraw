@@ -14,6 +14,7 @@ full, row-by-row status.
 - EPS and PostScript: characters with a colour or outline of their own keep it. The whole text came out in the object's colour.
 - SVG export with editable text: the file opened again in TraceDraw gave back its lines on one line, each part in its own style as a separate text and invisible texts of spaces; Hebrew and Arabic were written in the file backwards (in the order the glyphs are drawn), for other programs too. The characters now go in as typed, a line at a time, and such files open as one text with its lines and styles.
 - EMF and WMF export: a clip frame keeps its own fill, beneath its contents as on screen. The frame came out empty round its contents.
+- Exports: the contour steps of a filled open curve keep their fill in SVG, PDF, EMF, EPS and AI, as on screen. They came out empty.
 - Find and Replace: with Match case off, a Turkish "İ" before the text searched cut the text in the wrong place or closed TraceDraw; a word in two looks (half of it bold) was found but not replaced; text inside a group was neither found nor replaced. All three work now.
 - Saving as `.cdr`: a line's arrowheads are no longer dropped. They go out as curves just above the line, filled with the outline colour, so CorelDRAW and every version from 7 on show them. From version 14, TraceDraw opens the line again with its arrowheads.
 - SVG import: a turned, slanted or mirrored picture keeps its turn. It came in upright, stretched over the box round it, also when TraceDraw's own SVG export had written it.
