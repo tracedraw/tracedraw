@@ -1573,8 +1573,29 @@ fn parse_wmf(b: &[u8], ids: &mut IdSource) -> Result<Imported, String> {
         return Err("bad WMF header".into());
     }
     off += 18;
-    // Without a placeable header the window extent (first records) gives the
-    // size; scan ahead for it.
+    // The first records: the window extent (the size of a metafile
+    // without a placeable header), whether a viewport is set, and the
+    // map mode.
+    let mut scaled = false;
+    {
+        let mut o = off;
+        let mut n = 0;
+        while o + 6 <= b.len() && n < 64 {
+            n += 1;
+            let size = u32_at(b, o) as usize * 2;
+            let fnc = u16_at(b, o + 4);
+            if size < 6 {
+                break;
+            }
+            match fnc {
+                0x020C => window = (i16_at(b, o + 8) as f64, i16_at(b, o + 6) as f64),
+                0x020E => viewport_set = true,
+                0x0103 => scaled = matches!(u16_at(b, o + 6), 7 | 8),
+                _ => {}
+            }
+            o += size;
+        }
+    }
     let (page_w, page_h, dev) = match placeable {
         Some((bbox, inch)) => {
             let w_units = (bbox[2] as f64 - bbox[0] as f64).abs().max(1.0);
@@ -1595,26 +1616,7 @@ fn parse_wmf(b: &[u8], ids: &mut IdSource) -> Result<Imported, String> {
             )
         }
         None => {
-            let mut ext = (0i16, 0i16);
-            let mut o = off;
-            let mut n = 0;
-            while o + 6 <= b.len() && n < 64 {
-                n += 1;
-                let size = u32_at(b, o) as usize * 2;
-                let fnc = u16_at(b, o + 4);
-                if size < 6 {
-                    break;
-                }
-                if fnc == 0x020C {
-                    ext = (i16_at(b, o + 8), i16_at(b, o + 6));
-                }
-                if fnc == 0x020E {
-                    viewport_set = true;
-                }
-                o += size;
-            }
-            let (w, h) = ((ext.0 as f64).abs().max(1.0), (ext.1 as f64).abs().max(1.0));
-            window = (ext.0 as f64, ext.1 as f64);
+            let (w, h) = (window.0.abs().max(1.0), window.1.abs().max(1.0));
             // Assume 96 dpi logical pixels. The window origin is taken
             // off when logical units become device pixels, so the device
             // starts at 0 (it was taken off twice).
@@ -1641,6 +1643,15 @@ fn parse_wmf(b: &[u8], ids: &mut IdSource) -> Result<Imported, String> {
     // it a speck.
     if placeable.is_none() && !viewport_set && window.0 != 0.0 && window.1 != 0.0 {
         pl.dc.viewport_ext = window;
+    }
+    // A placeable metafile in a scaling map mode without a viewport of
+    // its own maps its window onto its frame, as Windows plays it.
+    if let (Some((bbox, _)), false, true) = (placeable, viewport_set, scaled) {
+        pl.dc.viewport_org = (bbox[0] as f64, bbox[1] as f64);
+        pl.dc.viewport_ext = (
+            bbox[2] as f64 - bbox[0] as f64,
+            bbox[3] as f64 - bbox[1] as f64,
+        );
     }
     // WMF logical units map straight to the placeable units: the window
     // transform is applied by SETWINDOWORG/EXT when present.
@@ -2209,6 +2220,48 @@ mod tests {
             ShapeKind::Text { spans, .. } => assert_eq!(spans[0].text, "ok"),
             k => panic!("{k:?}"),
         }
+    }
+
+    /// A placeable metafile in MM_ANISOTROPIC whose window (100 x 50
+    /// units from 10, 10) is not its frame (1 x 0.5 inch) is drawn over
+    /// the whole frame, as Windows plays it (#3246).
+    #[test]
+    fn a_placeable_anisotropic_wmf_maps_its_window_onto_its_frame() {
+        let mut ids = IdSource::default();
+        let mut f = Vec::new();
+        le32(&mut f, 0x9AC6_CDD7u32 as i32);
+        le16(&mut f, 0);
+        for v in [0i16, 0, 1440, 720] {
+            le16(&mut f, v);
+        }
+        le16(&mut f, 1440);
+        le32(&mut f, 0);
+        le16(&mut f, 0);
+        le16(&mut f, 1);
+        le16(&mut f, 9);
+        le16(&mut f, 0x300);
+        le32(&mut f, 0);
+        le16(&mut f, 2);
+        le32(&mut f, 0);
+        le16(&mut f, 0);
+        f.extend_from_slice(&wmf_rec(0x0103, &[8]));
+        f.extend_from_slice(&wmf_rec(0x020B, &[10, 10]));
+        f.extend_from_slice(&wmf_rec(0x020C, &[50, 100]));
+        f.extend_from_slice(&wmf_rec(0x02FC, &[0, (0x8000u16 as i16), 0, 0]));
+        f.extend_from_slice(&wmf_rec(0x012D, &[0]));
+        // The whole window: bottom, right, top, left.
+        f.extend_from_slice(&wmf_rec(0x041B, &[60, 110, 10, 10]));
+        f.extend_from_slice(&wmf_rec(0, &[]));
+        let imp = parse(&f, &mut ids).expect("parse");
+        assert_eq!(imp.shapes.len(), 1, "{:?}", imp.warnings);
+        let b = imp.shapes[0].bounds();
+        assert!(
+            b.x0.abs() < 1e-6
+                && b.y0.abs() < 1e-6
+                && (b.x1 - 25.4).abs() < 1e-6
+                && (b.y1 - 12.7).abs() < 1e-6,
+            "{b:?}"
+        );
     }
 
     /// The picture an embedded object keeps (#1131): no placeable
@@ -3247,7 +3300,10 @@ pub fn page_to_wmf(doc: &tracedraw_core::Document, page_index: usize) -> Vec<u8>
         page_h: h,
         symbols: &doc.symbols,
     };
-    wr.rec(0x0103, &[1]); // SETMAPMODE MM_TEXT
+    // MM_ANISOTROPIC: the window below maps onto the frame of the
+    // placeable header. In MM_TEXT programs such as Word took the twips
+    // for screen pixels and showed only a corner of the page (#3246).
+    wr.rec(0x0103, &[8]); // SETMAPMODE MM_ANISOTROPIC
     wr.rec(0x0102, &[1]); // SETBKMODE TRANSPARENT
     wr.rec(0x020B, &[0, 0]); // SETWINDOWORG
     wr.rec(0x020C, &[wr.tw(h), wr.tw(w)]); // SETWINDOWEXT (y, x)
@@ -3714,6 +3770,18 @@ impl WmfWriter<'_> {
 mod wmf_export_tests {
     use super::*;
     use tracedraw_core::{geometry::Rect, Document};
+
+    /// The export maps its twips onto the frame (MM_ANISOTROPIC), so
+    /// programs that place it (Word, PowerPoint) show the whole page
+    /// rather than its top left corner at one twip a pixel (#3246).
+    #[test]
+    fn wmf_export_is_anisotropic() {
+        let doc = Document::new("t", Size::new(100.0, 50.0));
+        let wmf = page_to_wmf(&doc, 0);
+        // The first record after the placeable (22) and standard (18)
+        // headers: SETMAPMODE MM_ANISOTROPIC.
+        assert_eq!(&wmf[40..48], &[4, 0, 0, 0, 0x03, 0x01, 8, 0]);
+    }
 
     /// A drawing with coordinates that are not numbers (a division by
     /// zero somewhere, an import with a number too large to hold) still
