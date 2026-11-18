@@ -30,6 +30,10 @@ thread_local! {
     static PICKED: RefCell<HashMap<String, PathBuf>> = RefCell::new(HashMap::new());
     /// Uploaded files by synthetic path (browser only).
     static STORE: RefCell<HashMap<PathBuf, Vec<u8>>> = RefCell::new(HashMap::new());
+    /// Uploads whose job ran but that the app still reads on a later
+    /// frame (an import waiting for its place, a PDF question), freed
+    /// once nothing does (#3231).
+    static LINGERING: RefCell<Vec<PathBuf>> = const { RefCell::new(Vec::new()) };
 }
 
 /// True in the browser build: no file system, downloads instead of saves.
@@ -1405,8 +1409,29 @@ pub fn run_finished(app: &mut App) {
     let jobs: Vec<(Job, PathBuf)> = FINISHED.with(|f| std::mem::take(&mut *f.borrow_mut()));
     for (job, path) in jobs {
         job(app, path.clone());
-        forget(&path);
+        linger(path);
     }
+    // An upload is freed once the app no longer reads it: File > Import
+    // reads it again when the placement cursor is clicked or a PDF's
+    // question is answered, frames after its job ran (#3231).
+    let lingering: Vec<PathBuf> = LINGERING.with(|l| std::mem::take(&mut *l.borrow_mut()));
+    for path in lingering {
+        if app.reads_later(&path) {
+            linger(path);
+        } else {
+            forget(&path);
+        }
+    }
+}
+
+/// Free `path` on a frame when the app no longer reads it.
+fn linger(path: PathBuf) {
+    LINGERING.with(|l| {
+        let mut l = l.borrow_mut();
+        if !l.contains(&path) {
+            l.push(path);
+        }
+    });
 }
 
 /// The paths whose extension is one of `exts` (lower case; any case in
@@ -1897,8 +1922,8 @@ impl Dialog {
             let job: Job = Box::new(move |app: &mut App, _| {
                 let rest = paths.clone();
                 then(app, paths);
-                for p in rest.iter().skip(1) {
-                    forget(p);
+                for p in rest.into_iter().skip(1) {
+                    linger(p);
                 }
             });
             FINISHED.with(|f| f.borrow_mut().push((job, first)));
@@ -2142,6 +2167,61 @@ mod tests {
         run_finished(&mut app);
         assert_eq!(app.status, "got /upload/t.txt");
         assert!(STORE.with(|s| s.borrow().get(&path).is_none()));
+    }
+
+    /// An upload File > Import still reads on a later frame (the file
+    /// waiting for its place, the ones picked with it, a PDF's question)
+    /// stays until nothing does; it was freed as soon as the picker's job
+    /// ran, so the import found nothing in a browser (#3231).
+    #[test]
+    fn an_upload_stays_while_an_import_still_reads_it() {
+        let mut app = App::headless();
+        let first = PathBuf::from("/upload/two-pages.ai");
+        let second = PathBuf::from("/upload/second.pdf");
+        store(&first, b"%PDF-1.4".to_vec());
+        store(&second, b"%PDF-1.4".to_vec());
+        let paths = vec![first.clone(), second.clone()];
+        FINISHED.with(|f| {
+            f.borrow_mut().push((
+                Box::new(move |app: &mut App, _| {
+                    app.import_placing = Some(crate::import_place::ImportPlacing {
+                        path: paths[0].clone(),
+                        drag_from: None,
+                    });
+                    app.import_queue = paths[1..].iter().cloned().collect();
+                    linger(paths[1].clone());
+                }),
+                first.clone(),
+            ))
+        });
+        let kept = |p: &PathBuf| STORE.with(|s| s.borrow().contains_key(p));
+        run_finished(&mut app);
+        run_finished(&mut app);
+        assert!(kept(&first) && kept(&second));
+        // Placed: the PDF asks how to read its text, then reads it again.
+        app.import_placing = None;
+        app.dialog =
+            crate::ui::dialogs::Dialog::PdfText(crate::ui::pdf_import_dialog::PdfTextState {
+                path: first.clone(),
+                import: true,
+                curves: false,
+                paragraphs: false,
+                picture: false,
+                dpi: 300.0,
+                page_size: None,
+                all_pages: true,
+                range: "1".into(),
+                reduce_pictures: true,
+                dont_ask: false,
+            });
+        run_finished(&mut app);
+        assert!(kept(&first) && kept(&second));
+        app.dialog = crate::ui::dialogs::Dialog::None;
+        run_finished(&mut app);
+        assert!(!kept(&first) && kept(&second));
+        app.import_queue.clear();
+        run_finished(&mut app);
+        assert!(!kept(&second));
     }
 
     /// A document the Android picker returned is named by its URI and its
