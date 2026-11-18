@@ -763,6 +763,49 @@ mod tests {
         let _ = (s.red_b, s.red_e);
     }
 
+    /// The object's context menu offers Select Similar too, and its Fill
+    /// item selects the objects of the same fill (#3203).
+    #[test]
+    fn the_context_menu_selects_similar_objects() {
+        let ctx = egui::Context::default();
+        let frame = |app: &mut App, target: Option<usize>| {
+            if let Some(t) = target {
+                crate::ui::menus::replay::start(t);
+            }
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 900.0),
+                )),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                let mut close = false;
+                crate::ui::context::object_menu(app, ui, &mut close);
+            });
+            out.textures_delta.clear();
+            crate::ui::menus::replay::finish()
+        };
+        let fresh = || {
+            let mut s = scene();
+            s.app.select(vec![s.red_a]);
+            s
+        };
+        let mut s = fresh();
+        let (_, rows) = frame(&mut s.app, Some(usize::MAX));
+        let mut found = false;
+        for t in 0..rows {
+            let mut s = fresh();
+            let (hit, _) = frame(&mut s.app, Some(t));
+            if hit.as_deref() == Some("menu.edit.similar_fill") {
+                found = true;
+                assert_eq!(s.app.selection.len(), 3);
+                assert!(s.app.selection.contains(&s.red_b));
+            }
+        }
+        assert!(found, "Select Similar > Fill is in the context menu");
+    }
+
     fn fill_of(app: &App, id: ShapeId) -> Option<Fill> {
         app.doc().find_shape(id).map(|s| s.fill.clone())
     }
