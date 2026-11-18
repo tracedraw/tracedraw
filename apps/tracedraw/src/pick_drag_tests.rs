@@ -29099,3 +29099,54 @@ fn control_handle_heads_follow_the_handle_size() {
     // A press still takes the whole head at every size.
     assert!(prefs.handle_pick_px() >= prefs.pick_px());
 }
+
+/// #3352: with the Speech Balloon tool, a balloon already on the page is
+/// clicked to select it, then another style is clicked on the property
+/// bar: the selected balloon takes the style at once, in the same place.
+#[test]
+fn a_balloon_picked_with_its_tool_takes_the_style_clicked_on_the_bar() {
+    use crate::balloons::{Balloon, BalloonStyle};
+    let (ctx, mut app, _) = setup();
+    app.set_tool(Tool::Balloon);
+    app.create_box_shape(Point::new(80.0, 60.0), Point::new(140.0, 100.0));
+    let (id, before, _) = app.selected_balloons()[0];
+    app.select(Vec::new());
+    let none = Modifiers::NONE;
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), none);
+    }
+    // A click inside the balloon's body picks it.
+    let inside = app.view.to_screen(Point::new(110.0, 80.0));
+    click_at(&ctx, &mut app, inside, none);
+    assert_eq!(app.selection, vec![id], "the balloon is picked");
+    // Where the bar draws the Thought style.
+    let find = |ctx: &egui::Context, app: &mut App, events: Vec<Event>| {
+        let mut input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                Pos2::ZERO,
+                egui::vec2(1600.0, 1000.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        crate::pen::filter_raw_input(ctx, &mut input);
+        let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+        out.textures_delta.clear();
+        out.shapes.iter().find_map(|c| match &c.shape {
+            egui::epaint::Shape::Text(t)
+                if t.galley.text() == crate::i18n::tr("balloon.thought") =>
+            {
+                Some(t.visual_bounding_rect().center())
+            }
+            _ => None,
+        })
+    };
+    let at = find(&ctx, &mut app, Vec::new()).expect("the Thought style on the bar");
+    click_at(&ctx, &mut app, at, none);
+    let s = app.doc().find_shape(id).expect("balloon");
+    let after = Balloon::of(s).expect("still a balloon");
+    assert_eq!(after.style, BalloonStyle::Thought, "the picked balloon");
+    assert_eq!(after.body, before.body, "same box");
+    assert_eq!(after.tip, before.tip, "same tail tip");
+    assert_eq!(app.selection, vec![id], "still selected");
+}

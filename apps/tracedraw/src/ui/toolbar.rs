@@ -4416,6 +4416,57 @@ mod tests {
     use super::*;
     use crate::ui::dialogs::Dialog;
 
+    /// #3352: with the Speech Balloon tool and a balloon selected, a
+    /// click on another style in the property bar turns that balloon to
+    /// the style, keeping its box and the tip of its tail.
+    #[test]
+    fn a_style_clicked_on_the_bar_changes_the_selected_balloon() {
+        use crate::balloons::{Balloon, BalloonStyle};
+        let mut app = App::headless();
+        app.set_tool(Tool::Balloon);
+        app.create_box_shape(
+            tracedraw_core::geometry::Point::new(10.0, 50.0),
+            tracedraw_core::geometry::Point::new(50.0, 70.0),
+        );
+        let (id, before, _) = app.selected_balloons()[0];
+        let ctx = crate::theme::ui_context();
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(6000.0, 60.0));
+        let run = |app: &mut App, events: Vec<egui::Event>| {
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(screen),
+                    events,
+                    ..Default::default()
+                },
+                |ui| property_bar(app, ui),
+            );
+            out.textures_delta.clear();
+            out.shapes.iter().find_map(|c| match &c.shape {
+                egui::epaint::Shape::Text(t) if t.galley.text() == tr("balloon.thought") => {
+                    Some(t.visual_bounding_rect().center())
+                }
+                _ => None,
+            })
+        };
+        run(&mut app, Vec::new());
+        let at = run(&mut app, Vec::new()).expect("the Thought style on the bar");
+        let press = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        run(&mut app, vec![egui::Event::PointerMoved(at)]);
+        run(&mut app, vec![press(true)]);
+        run(&mut app, vec![press(false)]);
+        run(&mut app, Vec::new());
+        let s = app.doc().find_shape(id).expect("balloon");
+        let after = Balloon::of(s).expect("still a balloon");
+        assert_eq!(after.style, BalloonStyle::Thought, "the selected balloon");
+        assert_eq!(after.body, before.body, "same box");
+        assert_eq!(after.tip, before.tip, "same tail tip");
+    }
+
     /// #1892: with a drawing tool and nothing selected, the property bar
     /// shows the outline of the next object (width, line style,
     /// arrowheads) and follows the defaults when they change.
