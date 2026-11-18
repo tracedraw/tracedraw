@@ -1098,6 +1098,25 @@ pub fn zoom_toolbar(app: &mut App, ui: &mut Ui) {
     });
 }
 
+/// A toolbar the user made (#3264): the buttons dragged onto it, menu
+/// commands named in words when they have no picture; while it has none,
+/// a line saying how to give it some (which is also where they drop).
+pub fn custom_toolbar(app: &mut App, ui: &mut Ui, slot: u8) {
+    let bar = crate::ui::bar_items::ItemBar::Custom(slot);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 1.0;
+        ui.set_min_height(std_btn());
+        if crate::ui::bar_items::items(app, bar).is_empty() {
+            ui.label(
+                egui::RichText::new(tr("bars.custom_bar_empty"))
+                    .color(Tokens::text_dim())
+                    .size(11.0),
+            );
+        }
+        crate::ui::bar_items::draw_bar(app, ui, bar, draw_item);
+    });
+}
+
 /// Window > Toolbars > Transform.
 pub fn transform_toolbar(app: &mut App, ui: &mut Ui) {
     ui.horizontal(|ui| {

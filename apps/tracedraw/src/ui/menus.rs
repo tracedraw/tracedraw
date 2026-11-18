@@ -4747,6 +4747,16 @@ pub(crate) fn toolbars_list(app: &mut App, ui: &mut Ui) {
     if check(ui, "menu.window.toolbar_time_tracker", "", tracker) {
         app.settings.time_tracker.show_bar = !tracker;
     }
+    // The toolbars the user made, by their names (#3264).
+    let slots: Vec<u8> = app.settings.bars.custom.iter().map(|c| c.slot).collect();
+    for slot in slots {
+        let bar = crate::ui::bars::Bar::Custom(slot);
+        let on = bar.visible(app);
+        let id = format!("menu.window.toolbar_{}", bar.id());
+        if check_label(ui, &bar.name(app), &id, on) {
+            bar.set_visible(app, !on);
+        }
+    }
 }
 
 fn window_menu(app: &mut App, ui: &mut Ui) {

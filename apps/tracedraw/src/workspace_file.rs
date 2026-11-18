@@ -244,10 +244,27 @@ impl WorkspaceFile {
             }
             bars.toolbox_hidden.truncate(MAX_LIST);
             bars.toolbox_hidden.retain(|id| short_text(id));
+            // The toolbars the user made (#3264): each slot once, a
+            // short name.
+            l.custom
+                .retain(|c| (c.slot as usize) < crate::ui::bars::MAX_CUSTOM);
+            let mut seen = std::collections::BTreeSet::new();
+            l.custom.retain(|c| seen.insert(c.slot));
+            for c in &mut l.custom {
+                if !short_text(&c.name) {
+                    c.name.clear();
+                }
+            }
+            let custom: Vec<&str> = l
+                .custom
+                .iter()
+                .map(|c| crate::ui::bars::Bar::Custom(c.slot).id())
+                .collect();
             bars.bar_items.retain(|bar, _| {
                 crate::ui::bar_items::ItemBar::ALL
                     .iter()
                     .any(|b| b.id() == bar)
+                    || custom.contains(&bar.as_str())
             });
             for list in bars.bar_items.values_mut() {
                 list.truncate(MAX_LIST);

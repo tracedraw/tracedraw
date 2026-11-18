@@ -9175,7 +9175,7 @@ fn space_toggles_between_the_tool_and_the_pick_tool() {
     let toolbox = ctx
         .read_response(egui::Id::new((
             "bar_background",
-            crate::ui::bars::Bar::Toolbox as u8,
+            crate::ui::bars::Bar::Toolbox.salt(),
         )))
         .map(|r| r.rect)
         .expect("the toolbox");
@@ -17547,7 +17547,7 @@ fn a_right_click_on_any_toolbar_keeps_the_bar_menu_open() {
     use crate::ui::bars::{Bar, Dock};
     let (ctx, mut app, _) = setup();
     let background = |ctx: &egui::Context, bar: Bar| {
-        ctx.read_response(egui::Id::new(("bar_background", bar as u8)))
+        ctx.read_response(egui::Id::new(("bar_background", bar.salt())))
             .map(|r| r.rect)
             .expect("the bar's background")
     };

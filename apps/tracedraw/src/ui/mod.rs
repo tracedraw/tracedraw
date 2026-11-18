@@ -1811,6 +1811,78 @@ mod tests {
         frame(&ctx, &mut app);
     }
 
+    /// #3264: a toolbar the user makes in Options > Customization >
+    /// Command Bars is drawn in a row of its own, empty at first; a menu
+    /// command without a picture dragged onto it from the Commands page
+    /// sits on it named in words and runs with a click; the Command Bars
+    /// page's New and Delete make and take it away.
+    #[test]
+    fn a_toolbar_the_user_makes_holds_commands_without_pictures() {
+        use crate::ui::bar_items::{apply_drop, items, ItemBar, ItemDrag};
+        use crate::ui::bars::Bar;
+        let ctx = crate::theme::ui_context();
+        let mut app = mixed_app();
+        app.show_welcome = false;
+        frame(&ctx, &mut app);
+        let Some(Bar::Custom(slot)) = app.settings.bars.add_custom("Mine") else {
+            panic!("a toolbar made");
+        };
+        let bar = ItemBar::Custom(slot);
+        frame(&ctx, &mut app);
+        frame(&ctx, &mut app);
+        let drawn = |app: &App| {
+            app.shown_bar_slots
+                .iter()
+                .find(|s| s.bar == bar)
+                .cloned()
+                .expect("the new toolbar is drawn")
+        };
+        assert!(drawn(&app).items.is_empty(), "made empty");
+        assert!(drawn(&app).rect.width() >= 40.0, "with room to drop on");
+        // Page Border has no picture of its own (#3211).
+        let key = "menu.view.page_border";
+        assert!(!crate::ui::menus::has_menu_picture(key));
+        apply_drop(
+            &mut app,
+            &ItemDrag {
+                item: key.into(),
+                from: None,
+            },
+            Some((bar, 0)),
+        );
+        assert_eq!(items(&app, bar), vec![key.to_string()]);
+        frame(&ctx, &mut app);
+        frame(&ctx, &mut app);
+        let r = drawn(&app).items[0];
+        assert!(
+            r.width() > 40.0,
+            "named in words, wider than a picture button: {r:?}"
+        );
+        let shown = app.show_page_border;
+        frame_with(&ctx, &mut app, vec![egui::Event::PointerMoved(r.center())]);
+        frame_with(
+            &ctx,
+            &mut app,
+            vec![button(r.center(), true, egui::PointerButton::Primary)],
+        );
+        frame_with(
+            &ctx,
+            &mut app,
+            vec![button(r.center(), false, egui::PointerButton::Primary)],
+        );
+        frame(&ctx, &mut app);
+        assert_ne!(app.show_page_border, shown, "the button runs Page Border");
+        // Hidden from Window > Toolbars, it is not drawn.
+        Bar::Custom(slot).set_visible(&mut app, false);
+        frame(&ctx, &mut app);
+        assert!(app.shown_bar_slots.iter().all(|s| s.bar != bar));
+        // Deleted, it goes with its buttons.
+        crate::ui::options::delete_custom_bar(&mut app, slot);
+        assert!(app.settings.bars.custom.is_empty());
+        assert!(!app.settings.bar_items.contains_key(Bar::Custom(slot).id()));
+        frame(&ctx, &mut app);
+    }
+
     /// The Touch workspace with a finger only (#1611): the Standard
     /// toolbar's Delete deletes the selection, its Panels button shows
     /// the dockers the workspace starts without, and a finger held on an

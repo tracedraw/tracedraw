@@ -4,6 +4,8 @@
 //! moves there, and dragged off the bars goes away; a command or a tool
 //! dragged from the Commands page onto a bar joins it (#563). Bars Reset
 //! (Options > Command Bars, or a bar's menu) brings the first buttons back.
+//! The toolbars the user makes (Command Bars, New) take buttons the same
+//! way, menu commands without a picture too, named in words (#3264).
 
 use crate::app::App;
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
@@ -13,6 +15,8 @@ use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 pub enum ItemBar {
     Standard,
     Zoom,
+    /// A toolbar the user made, by its slot (`bars::CUSTOM_IDS`, #3264).
+    Custom(u8),
 }
 
 /// A separator between buttons.
@@ -73,6 +77,7 @@ const ZOOM: [&str; 10] = [
 ];
 
 impl ItemBar {
+    /// The built-in bars whose buttons can be changed.
     pub const ALL: [ItemBar; 2] = [ItemBar::Standard, ItemBar::Zoom];
 
     /// The key the bar's list is kept under in the settings.
@@ -80,6 +85,7 @@ impl ItemBar {
         match self {
             ItemBar::Standard => "standard",
             ItemBar::Zoom => "zoom",
+            ItemBar::Custom(n) => crate::ui::bars::Bar::Custom(n).id(),
         }
     }
 
@@ -88,6 +94,8 @@ impl ItemBar {
         match self {
             ItemBar::Standard => &STANDARD,
             ItemBar::Zoom => &ZOOM,
+            // Made empty: the user drags its buttons onto it.
+            ItemBar::Custom(_) => &[],
         }
     }
 }
