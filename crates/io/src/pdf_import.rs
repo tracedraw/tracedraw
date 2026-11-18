@@ -4335,6 +4335,14 @@ impl<'a> Importer<'a> {
             }
             from = part.end;
         }
+        // Hebrew and Arabic: back from the order the glyphs are drawn in,
+        // left to right on the page, to the order they are typed. Text an
+        // ActualText gave is in typed order already.
+        let text = if r.typed.is_empty() {
+            rtl_typed_order(&text)
+        } else {
+            text
+        };
         // The characters' places hold only while the text is as drawn.
         let text_chars = if text == r.text {
             text.chars().count()
@@ -4370,6 +4378,62 @@ impl<'a> Importer<'a> {
         }
         self.push(shape, &r.clip);
     }
+}
+
+/// `visual`, a line of text in the order its glyphs are drawn (left to
+/// right on the page), in the order it is typed: the words of Hebrew and
+/// Arabic (letters written right to left) turned around, with the Latin
+/// words and the numbers among them kept as they read, as the Unicode
+/// bidirectional algorithm lays typed text out (applied to the drawn
+/// text, it gives it back as typed). A letter keeps the marks after it
+/// (Hebrew points, Arabic vowels). Text with no such letters is left as
+/// it is. A PDF draws such text so, and Hebrew came in reversed: "שלום"
+/// drawn ם ו ל ש came in as "םולש".
+fn rtl_typed_order(visual: &str) -> String {
+    use unicode_bidi::{bidi_class, BidiClass, BidiInfo};
+    let rtl = |c: char| matches!(bidi_class(c), BidiClass::R | BidiClass::AL);
+    if !visual.chars().any(rtl) {
+        return visual.to_string();
+    }
+    let info = BidiInfo::new(visual, None);
+    // Each letter with the marks after it, at the letter's level.
+    let mut clusters: Vec<(u8, &str)> = Vec::new();
+    let mut start = 0;
+    for (i, c) in visual.char_indices().skip(1) {
+        if bidi_class(c) != BidiClass::NSM {
+            clusters.push((
+                info.levels.get(start).map_or(0, |l| l.number()),
+                &visual[start..i],
+            ));
+            start = i;
+        }
+    }
+    clusters.push((
+        info.levels.get(start).map_or(0, |l| l.number()),
+        &visual[start..],
+    ));
+    // From the highest level down to the lowest odd one, every run of
+    // clusters at that level or higher turns around.
+    let highest = clusters.iter().map(|c| c.0).max().unwrap_or(0);
+    let lowest = clusters.iter().map(|c| c.0).min().unwrap_or(0);
+    let lowest_odd = lowest | 1;
+    let mut level = highest;
+    while level >= lowest_odd && level > 0 {
+        let mut i = 0;
+        while i < clusters.len() {
+            if clusters[i].0 >= level {
+                let from = i;
+                while i < clusters.len() && clusters[i].0 >= level {
+                    i += 1;
+                }
+                clusters[from..i].reverse();
+            } else {
+                i += 1;
+            }
+        }
+        level -= 1;
+    }
+    clusters.iter().map(|c| c.1).collect()
 }
 
 /// Text drawn filled and outlined (render mode 2, or 6 with clipping) with
@@ -5769,6 +5833,69 @@ mod tests {
             assert_eq!(devanagari_logical_order(typed, false), typed);
             assert_eq!(devanagari_logical_order(typed, true), typed);
         }
+    }
+
+    /// Hebrew and Arabic drawn as PDFs draw them, left to right on the
+    /// page, come back in the order they are typed: the words turned
+    /// around, Latin words and numbers among them as they read, points
+    /// staying on their letters. Hebrew came in reversed.
+    #[test]
+    fn hebrew_and_arabic_from_a_pdf_come_back_in_typed_order() {
+        let cases = [
+            (
+                "\u{5DD}\u{5DC}\u{5D5}\u{5E2} \u{5DD}\u{5D5}\u{5DC}\u{5E9}",
+                "\u{5E9}\u{5DC}\u{5D5}\u{5DD} \u{5E2}\u{5D5}\u{5DC}\u{5DD}",
+            ),
+            (
+                "Hebrew \u{5DD}\u{5D5}\u{5DC}\u{5E9}",
+                "Hebrew \u{5E9}\u{5DC}\u{5D5}\u{5DD}",
+            ),
+            (
+                "123 \u{5DD}\u{5D5}\u{5DC}\u{5E9}",
+                "\u{5E9}\u{5DC}\u{5D5}\u{5DD} 123",
+            ),
+            // שָׁלוֹם with its points: drawn ם, וֹ, ל, שָׁ.
+            (
+                "\u{5DD}\u{5D5}\u{5B9}\u{5DC}\u{5E9}\u{5B8}\u{5C1}",
+                "\u{5E9}\u{5B8}\u{5C1}\u{5DC}\u{5D5}\u{5B9}\u{5DD}",
+            ),
+            // مرحبا
+            (
+                "\u{627}\u{628}\u{62D}\u{631}\u{645}",
+                "\u{645}\u{631}\u{62D}\u{628}\u{627}",
+            ),
+        ];
+        for (drawn, typed) in cases {
+            assert_eq!(rtl_typed_order(drawn), typed, "{drawn}");
+        }
+        for plain in [
+            "abc def",
+            "\u{915}\u{93F}\u{924}\u{93E}\u{92C}",
+            "12.5 %",
+            "",
+        ] {
+            assert_eq!(rtl_typed_order(plain), plain);
+        }
+        // A file: a simple font whose codes A to D are ש ל ו ם, drawing
+        // "שלום" as its glyphs go on the page, ם first.
+        let cmap = "/CIDInit /ProcSet findresource begin begincmap 1 begincodespacerange <00> <FF> endcodespacerange 4 beginbfchar <41> <05E9> <42> <05DC> <43> <05D5> <44> <05DD> endbfchar endcmap";
+        let font = "<< /Type /Font /Subtype /TrueType /BaseFont /Arial /FirstChar 65 /LastChar 68 /Widths [500 500 500 500] /ToUnicode 6 0 R >>".to_string();
+        let bytes = one_page(
+            "BT /F1 12 Tf 20 50 Td (DCBA) Tj ET",
+            "<< /Font << /F1 5 0 R >> >>",
+            &[font, stream("", cmap)],
+        );
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let texts: Vec<String> = imp.pages[0]
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.kind {
+                ShapeKind::Text { spans, .. } => Some(spans[0].text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, vec!["\u{5E9}\u{5DC}\u{5D5}\u{5DD}".to_string()]);
     }
 
     /// A simple font whose codes A to O stand for Devanagari glyphs the
