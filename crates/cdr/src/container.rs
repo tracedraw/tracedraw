@@ -146,7 +146,14 @@ pub fn embedded_fonts(
         match member.get(at..).map(crate::eot::read) {
             Some(Ok(font)) => {
                 if !fonts.iter().any(|f| f.data.as_slice() == font.data) {
-                    fonts.push(tracedraw_core::DocumentFont::new(font.family, font.data));
+                    // A face embedded under its vertical name (`@` and the
+                    // name, a version 22 file of #3217) is the face of
+                    // that name: vertical text names it without the `@`.
+                    let family = match font.family.strip_prefix('@') {
+                        Some(name) if !name.is_empty() => name.to_string(),
+                        _ => font.family,
+                    };
+                    fonts.push(tracedraw_core::DocumentFont::new(family, font.data));
                 }
             }
             Some(Err(e)) => notes.push(format!("embedded font in {name}: {e}")),

@@ -528,11 +528,30 @@ impl RunStyle {
 
     /// The style with its East Asian font in place of the Latin one, for
     /// the letters set in it.
+    ///
+    /// A Latin font in its vertical form (named with a leading `@`) makes
+    /// the text vertical, whatever East Asian font the run names: a
+    /// version 22 file of #3217 sets one column in `@站酷文艺体` for Latin
+    /// letters and `站酷文艺体`, `Arial` and `@宋体` for the ideographs of
+    /// its three runs, and the program that wrote it draws the whole
+    /// column with its ideographs upright. The East Asian font then takes
+    /// the `@` too, so the text reads as vertical (see
+    /// `vertical_font_text`); the face itself is found without it.
     pub fn for_east_asian(&self) -> RunStyle {
         let Some(a) = &self.asian else {
             return self.clone();
         };
-        self.with_script_font(a)
+        let mut s = self.with_script_font(a);
+        let latin_vertical = self
+            .family
+            .as_deref()
+            .is_some_and(|f| f.starts_with('@') && f.len() > 1);
+        if latin_vertical {
+            if let Some(f) = s.family.as_mut().filter(|f| !f.starts_with('@')) {
+                f.insert(0, '@');
+            }
+        }
+        s
     }
 
     /// The style with its right-to-left font in place of the Latin one,
@@ -3280,6 +3299,28 @@ mod tests {
         assert_eq!(s.bold, Some(true));
         assert_eq!(parse_style_string("").size_pt, None);
         assert_eq!(parse_style_string("{broken").size_pt, None);
+    }
+
+    /// A Latin font in its vertical form (`@`) gives the East Asian font
+    /// of the run the `@` too, as the ideographs of a version 22 column
+    /// of #3217 are set in faces named without it under an `@` Latin face.
+    #[test]
+    fn a_vertical_latin_font_makes_the_east_asian_one_vertical() {
+        for (east, read) in [
+            ("站酷文艺体", "@站酷文艺体"),
+            ("Arial", "@Arial"),
+            ("@宋体", "@宋体"),
+        ] {
+            let s = parse_style_string(&format!(
+                r#"{{"character":{{"latin":{{"font":"@站酷文艺体"}},"farEast":{{"font":"{east}"}}}}}}"#
+            ));
+            assert_eq!(s.for_east_asian().family.as_deref(), Some(read), "{east}");
+        }
+        // Under a horizontal Latin face the East Asian one stays as named.
+        let s = parse_style_string(
+            r#"{"character":{"latin":{"font":"Arial"},"farEast":{"font":"SimSun"}}}"#,
+        );
+        assert_eq!(s.for_east_asian().family.as_deref(), Some("SimSun"));
     }
 
     #[test]
