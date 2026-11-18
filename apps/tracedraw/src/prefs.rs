@@ -254,6 +254,9 @@ pub struct FormatPrefs {
     /// File > Export goes straight to the file with the last choices
     /// ("Do not show filter dialog").
     pub skip_export_dialog: bool,
+    /// File > Export starts with Selected only ticked when objects are
+    /// selected (#3208).
+    pub export_selected_only: bool,
     /// PDF and AI files: text read in as curves from the fonts the file
     /// embeds (else as editable text, #386).
     pub pdf_text_as_curves: bool,
@@ -296,6 +299,7 @@ impl Default for FormatPrefs {
             cdr_version: tracedraw_cdr::write::NEWEST_VERSION,
             save_new_as_cdr: false,
             skip_export_dialog: false,
+            export_selected_only: false,
             pdf_text_as_curves: false,
             pdf_text_paragraphs: true,
             pdf_ask_text: true,

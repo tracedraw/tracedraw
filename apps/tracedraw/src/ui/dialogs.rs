@@ -4549,11 +4549,7 @@ pub fn export_format_of(path: &std::path::Path) -> Option<usize> {
 /// exported to last, else the drawing's own (#1817).
 fn export_save_dialog(app: &App, st: &ExportState) -> crate::files::Dialog {
     let (name, ext) = EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)];
-    let stem = app
-        .file
-        .as_ref()
-        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-        .unwrap_or_else(|| "Graphic1".into());
+    let stem = app.export_stem();
     let mut dialog = crate::files::Dialog::new().add_filter(name, &export_extensions(ext));
     for (other, e) in EXPORT_FORMATS.iter() {
         if *e != ext {
@@ -5221,11 +5217,30 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                 if !scripted && EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)].1 == "plt" {
                     plt_export_fields(ui, st);
                 }
-                ui.checkbox(&mut st.selection_only, tr("dialog.selected_only"))
-                    .rich_tip(crate::ui::tips::pair(
-                        "dialog.selected_only",
-                        "dialog.export_selected_desc",
-                    ));
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut st.selection_only, tr("dialog.selected_only"))
+                        .rich_tip(crate::ui::tips::pair(
+                            "dialog.selected_only",
+                            "dialog.export_selected_desc",
+                        ));
+                    // Selected only from the start of every export with
+                    // objects selected (#3208).
+                    let mut always = app.settings.formats.export_selected_only;
+                    if ui
+                        .checkbox(&mut always, tr("dialog.selected_only_default"))
+                        .rich_tip(crate::ui::tips::pair(
+                            "dialog.selected_only_default",
+                            "dialog.selected_only_default_tip",
+                        ))
+                        .changed()
+                    {
+                        app.settings.formats.export_selected_only = always;
+                        if always {
+                            st.selection_only = true;
+                        }
+                        app.settings.save();
+                    }
+                });
                 if !st.selection_only {
                     export_range_fields(app, ui, st);
                 }
@@ -5385,11 +5400,7 @@ pub fn export_dialog_ok(app: &mut App, st: &ExportState) {
             write(app, path, st);
             return;
         }
-        let stem = app
-            .file
-            .as_ref()
-            .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-            .unwrap_or_else(|| "Graphic1".into());
+        let stem = app.export_stem();
         let ext = exts.first().cloned().unwrap_or_default();
         let patterns: Vec<&str> = exts.iter().map(String::as_str).collect();
         let st2 = st.clone();

@@ -5037,6 +5037,29 @@ impl App {
 
     /// The active drawing's name: its file's name without the extension,
     /// else the document title (an Untitled name for a new drawing).
+    /// The name an export of the drawing starts with (its extension
+    /// added): the drawing's file, else the file it was read from (a
+    /// `.cdr`, a PDF), else its title, else Graphic1 (#3254, #3208). A
+    /// drawing opened from a `.cdr` has no file of its own until it is
+    /// saved as `.tdraw`, so its exports were offered as Graphic1.
+    pub fn export_stem(&self) -> String {
+        let stem_of = |p: &std::path::Path| {
+            crate::files::plain_path(p)
+                .file_stem()
+                .map(|s| s.to_string_lossy().trim().to_string())
+                .filter(|s| !s.is_empty())
+        };
+        self.file
+            .as_deref()
+            .and_then(stem_of)
+            .or_else(|| self.opened_from.as_deref().and_then(stem_of))
+            .or_else(|| {
+                let t = self.doc().title.trim();
+                (!t.is_empty() && !is_untitled_name(t)).then(|| t.to_string())
+            })
+            .unwrap_or_else(|| "Graphic1".into())
+    }
+
     pub fn document_name(&self) -> String {
         // Imported files (.cdr, .svg) have no native path yet; their title
         // comes from the document.
@@ -9416,6 +9439,11 @@ impl App {
         st.remember = true;
         st.target = None;
         st.dont_show = self.settings.formats.skip_export_dialog;
+        // Selected only from the start, when the options say so and
+        // something is selected (#3208).
+        if self.settings.formats.export_selected_only && !self.selection.is_empty() {
+            st.selection_only = true;
+        }
         let skip = self.settings.formats.skip_export_dialog && !show_options;
         if EXPORT_FILE_FIRST {
             choose_export_file(self, st, skip);
@@ -10843,6 +10871,23 @@ impl App {
 
 /// Give a copied shape (and any children) fresh ids.
 /// Re-number a shape tree with fresh engine ids (for other modules).
+/// Whether `title` is a name a new drawing gets by itself ("Untitled",
+/// or the numbered name of `doc.untitled_n` in the interface language),
+/// not one the drawing was given.
+fn is_untitled_name(title: &str) -> bool {
+    if title == "Untitled" {
+        return true;
+    }
+    let pattern = crate::i18n::trf("doc.untitled_n", &[("n", "\u{0}")]);
+    let Some((before, after)) = pattern.split_once('\u{0}') else {
+        return false;
+    };
+    title
+        .strip_prefix(before)
+        .and_then(|rest| rest.strip_suffix(after))
+        .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+}
+
 pub fn reid_pub(s: Shape, id: ShapeId, engine: &mut Engine) -> Shape {
     reid(s, id, engine)
 }
@@ -11652,6 +11697,59 @@ mod tests {
         app.duplicate();
         let g = app.selection[0];
         assert!(near(t(&app, g), t(&app, f)));
+    }
+
+    /// The name an export starts with: the drawing's file, else the
+    /// `.cdr` it was opened from (it has no file of its own until saved),
+    /// else its title, else Graphic1 (#3254, #3208).
+    #[test]
+    fn exports_are_named_after_the_drawing_or_the_file_it_came_from() {
+        let mut app = App::headless();
+        app.file = None;
+        app.opened_from = None;
+        app.run(Command::SetTitle {
+            title: String::new(),
+        });
+        assert_eq!(app.export_stem(), "Graphic1");
+        let auto = App::untitled_name();
+        app.run(Command::SetTitle { title: auto });
+        assert_eq!(app.export_stem(), "Graphic1", "a new drawing's own name");
+        app.run(Command::SetTitle {
+            title: "Poster".into(),
+        });
+        assert_eq!(app.export_stem(), "Poster");
+        app.opened_from = Some(PathBuf::from("/work/MyDesign.cdr"));
+        assert_eq!(app.export_stem(), "MyDesign");
+        app.file = Some(PathBuf::from("/work/Saved as.tdraw"));
+        assert_eq!(app.export_stem(), "Saved as");
+        // Selected only from the start when the options say so and there
+        // is a selection.
+        app.settings.formats.export_selected_only = true;
+        app.settings.formats.skip_export_dialog = false;
+        app.export_with_options();
+        if let crate::ui::dialogs::Dialog::Export(st) = &app.dialog {
+            assert!(!st.selection_only, "nothing selected");
+        }
+        app.dialog = crate::ui::dialogs::Dialog::None;
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        let _ = crate::files::test_save::asked();
+        app.export_with_options();
+        if let crate::ui::dialogs::Dialog::Export(st) = &app.dialog {
+            assert!(st.selection_only);
+        } else {
+            // The Save dialog comes first on the desktop; its answer opens
+            // the options, which start with Selected only.
+            let asked = crate::files::test_save::asked();
+            assert_eq!(asked.len(), 1);
+            assert_eq!(asked[0].file_name(), Some("Saved as.svg"));
+        }
     }
 
     /// A deselect by accident: Undo right after it selects the copies of
