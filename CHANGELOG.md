@@ -11,6 +11,7 @@ full, row-by-row status.
 - `.cdr` (version 16 and later): a fountain transparency whose nodes are not stored as greys, or whose nodes the object's style does not list, opens graded instead of solid or evenly see-through (#3095).
 - EPS, PostScript and AI exports leave out the fill of an open curve, as the drawing window and the SVG, PDF and EMF exports do (unless Fill open curves is on): a filled curve left open came out filled in those files, closed by a straight line from its end back to its start.
 - `.cdr`: an object embedded as a wrapped file (Object Packager, such as a `.crv3d` project) has no picture to show; it now keeps its place as a grey box named after the file instead of being dropped (#3083).
+- DXF: open curves no longer come out filled, and layers set not to print are left out, as in the other exports.
 - EPS and PostScript: characters with a colour or outline of their own keep it. The whole text came out in the object's colour.
 - SVG export with editable text: the file opened again in TraceDraw gave back its lines on one line, each part in its own style as a separate text and invisible texts of spaces; Hebrew and Arabic were written in the file backwards (in the order the glyphs are drawn), for other programs too. The characters now go in as typed, a line at a time, and such files open as one text with its lines and styles.
 - EMF and WMF export: a clip frame keeps its own fill, beneath its contents as on screen. The frame came out empty round its contents.

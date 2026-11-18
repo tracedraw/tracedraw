@@ -1669,6 +1669,10 @@ fn decode_unicode_escapes(s: &str) -> String {
 /// dictionary. Without them AutoCAD stopped at the end of the tables
 /// ("DXF read error") and Affinity refused the file (#2394).
 pub fn page_to_dxf(doc: &Document, page_index: usize) -> String {
+    // As the other vector exports see it: an open curve's fill as the
+    // screen shows it (none, unless the document fills open curves), the
+    // layers set not to print left out.
+    let doc = &*crate::for_export(doc, Some(page_index));
     let Some(page) = doc.pages.get(page_index) else {
         return String::new();
     };
@@ -2391,5 +2395,52 @@ mod tests {
         assert_eq!(fmt(f64::NAN), "0");
         assert_eq!(fmt(f64::INFINITY), "0");
         assert_eq!(fmt(-1.5), "-1.5");
+    }
+}
+
+#[cfg(test)]
+mod export_view_tests {
+    use super::*;
+    use tracedraw_core::document::{Layer, Shape, ShapeKind};
+    use tracedraw_core::{Color, Fill};
+
+    fn curve(id: u64, closed: bool) -> Shape {
+        let mut p = tracedraw_core::BezPath::new();
+        p.move_to((20.0, 20.0));
+        p.curve_to((40.0, 80.0), (60.0, 0.0), (80.0, 50.0));
+        if closed {
+            p.close_path();
+        }
+        let mut s = Shape::new(
+            tracedraw_core::ShapeId(id),
+            ShapeKind::Path { path: p, closed },
+        );
+        s.fill = Fill::Solid(Color::rgb8(200, 30, 30));
+        s.stroke = Some(tracedraw_core::Stroke::new(Color::BLACK, 0.5));
+        s
+    }
+
+    /// A filled open curve shows no fill on screen, in SVG, PDF, EPS and
+    /// EMF; DXF filled it with a hatch. A layer set not to print is left
+    /// out, as the other exports leave it.
+    #[test]
+    fn dxf_sees_the_page_as_the_other_exports_do() {
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        doc.layer_mut(layer).unwrap().shapes.push(curve(1, false));
+        let out = page_to_dxf(&doc, 0);
+        assert!(!out.contains("HATCH"), "{out}");
+        assert!(out.contains("SPLINE") || out.contains("POLYLINE"), "{out}");
+        // With Fill open curves on, the fill is written.
+        doc.metadata.fill_open_curves = true;
+        assert!(page_to_dxf(&doc, 0).contains("HATCH"));
+        doc.metadata.fill_open_curves = false;
+        // A closed curve on a layer that does not print: not drawn.
+        let mut hidden = Layer::new(doc.ids_mut().layer(), "Notes");
+        hidden.printable = false;
+        hidden.shapes.push(curve(2, true));
+        doc.pages[0].layers.push(hidden);
+        let out = page_to_dxf(&doc, 0);
+        assert!(!out.contains("HATCH"), "{out}");
     }
 }
