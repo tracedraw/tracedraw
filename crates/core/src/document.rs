@@ -4365,6 +4365,29 @@ impl Shape {
             }
             // A B-spline keeps its outline; the control points go.
             ShapeKind::Path { .. } => Some(self.kind.clone()),
+            // Characters with a fill or outline of their own: a group of
+            // curves, one a look, each in its own colours. All took the
+            // object's fill (#3107).
+            ShapeKind::Text { .. } if self.text_parts().is_some() => {
+                let children: Vec<Shape> = self
+                    .text_parts()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|p| {
+                        let path = crate::shaping::nonzero_as_even_odd(&p.local_path());
+                        if path.elements().is_empty() {
+                            return None;
+                        }
+                        let mut c = Shape::new(next_id(), ShapeKind::Path { path, closed: true });
+                        c.fill = p.fill;
+                        c.stroke = p.stroke;
+                        c.overprint_fill = p.overprint_fill;
+                        c.overprint_outline = p.overprint_outline;
+                        Some(c)
+                    })
+                    .collect();
+                Some(ShapeKind::Group { children })
+            }
             // Text fills with the nonzero rule, curves with even-odd: the
             // overlapping strokes of a glyph would leave holes (#800).
             ShapeKind::Text { .. } => Some(ShapeKind::Path {
