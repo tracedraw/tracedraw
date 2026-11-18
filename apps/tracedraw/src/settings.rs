@@ -640,6 +640,11 @@ pub struct Settings {
     /// (#1477).
     #[serde(default = "default_true")]
     pub objects_all_pages: bool,
+    /// Objects panel > Edit Across Layers: a click, a marquee and Select
+    /// All reach the objects of every layer; off, those of the active
+    /// layer alone (#3276).
+    #[serde(default = "default_true")]
+    pub edit_across_layers: bool,
     /// Page size changes apply to every page (the page bar's All pages
     /// and the Page Size dialog's Apply to all pages). Off by default so
     /// a new size changes only the current page, and kept between
@@ -2303,6 +2308,7 @@ impl Default for Settings {
             object_thumb_size: default_object_thumb(),
             master_in_front: [false; 3],
             objects_all_pages: true,
+            edit_across_layers: true,
             page_size_all: false,
             font_sample_px: default_font_sample(),
             workspace_parts: crate::workspace_file::WorkspaceParts::default(),

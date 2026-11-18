@@ -47,6 +47,8 @@ const PLUS_GREEN: Color32 = Color32::from_rgb(0x1E, 0x9E, 0x3C);
 /// What the docker asks for after drawing.
 #[derive(Default)]
 struct Actions {
+    /// Edit Across Layers turned on or off (#3276).
+    across: Option<bool>,
     visible: Option<(LayerId, bool)>,
     printable: Option<(LayerId, bool)>,
     locked: Option<(LayerId, bool)>,
@@ -859,6 +861,20 @@ fn layer_rows(
             act.locked = Some((layer.id, locked));
             ui.close();
         }
+        // Off: a click, a marquee and Select All take the objects of the
+        // active layer alone (#3276).
+        let mut across = app.settings.edit_across_layers;
+        if ui
+            .checkbox(&mut across, tr("docker.edit_across_layers"))
+            .rich_tip(crate::ui::tips::pair(
+                "docker.edit_across_layers",
+                "docker.edit_across_layers_tip",
+            ))
+            .clicked()
+        {
+            act.across = Some(across);
+            ui.close();
+        }
         ui.separator();
         if ui
             .add_enabled(
@@ -989,7 +1005,7 @@ fn layer_targets(app: &App) -> Vec<(Option<String>, LayerId, String)> {
 /// context menu (#2601): Rename, and Move to Layer for the selection
 /// (or the object when it is not selected).
 pub(crate) fn row_menu_items(app: &mut App, ui: &mut Ui, id: ShapeId, close: &mut bool) {
-    use crate::ui::menus::{item, item_label, sub};
+    use crate::ui::menus::{item, sub};
     let Some(name) = app.doc().find_shape(id).map(object_label) else {
         return;
     };
@@ -1006,27 +1022,53 @@ pub(crate) fn row_menu_items(app: &mut App, ui: &mut Ui, id: ShapeId, close: &mu
     let targets = layer_targets(app);
     let mut to = None;
     sub(ui, "docker.move_to_layer", |ui| {
-        let mut heading: Option<Option<String>> = None;
-        for (page, layer, name) in &targets {
-            if heading.as_ref() != Some(page) {
-                if heading.is_some() {
-                    crate::ui::menus::sep(ui);
-                }
-                ui.label(
-                    egui::RichText::new(page.clone().unwrap_or_else(|| tr("docker.master_page")))
-                        .strong(),
-                );
-                heading = Some(page.clone());
-            }
-            if item_label(ui, name, "", own != Some(*layer)) {
-                to = Some(*layer);
-            }
+        if let Some(l) = layer_list(ui, &targets, |l| own != Some(l)) {
+            to = Some(l);
+        }
+    });
+    // Copies on another layer, the originals staying where they are
+    // (#3277).
+    let mut copy_to = None;
+    sub(ui, "docker.copy_to_layer", |ui| {
+        if let Some(l) = layer_list(ui, &targets, |_| true) {
+            copy_to = Some(l);
         }
     });
     if let Some(layer) = to {
         *close = true;
         move_to_layer(app, &ids, layer);
     }
+    if let Some(layer) = copy_to {
+        *close = true;
+        copy_to_layer(app, &ids, layer);
+    }
+}
+
+/// The layers of [`layer_targets`] under their page names; the one
+/// clicked, if any. `enabled` greys out the layers that cannot be picked.
+pub(crate) fn layer_list(
+    ui: &mut Ui,
+    targets: &[(Option<String>, LayerId, String)],
+    enabled: impl Fn(LayerId) -> bool,
+) -> Option<LayerId> {
+    let mut picked = None;
+    let mut heading: Option<Option<String>> = None;
+    for (page, layer, name) in targets {
+        if heading.as_ref() != Some(page) {
+            if heading.is_some() {
+                crate::ui::menus::sep(ui);
+            }
+            ui.label(
+                egui::RichText::new(page.clone().unwrap_or_else(|| tr("docker.master_page")))
+                    .strong(),
+            );
+            heading = Some(page.clone());
+        }
+        if crate::ui::menus::item_label(ui, name, "", enabled(*layer)) {
+            picked = Some(*layer);
+        }
+    }
+    picked
 }
 
 /// The text naming the pages a master layer shows on.
@@ -1860,6 +1902,76 @@ pub fn move_to_layer(app: &mut App, ids: &[ShapeId], layer: LayerId) {
     app.select(moved);
 }
 
+/// Objects panel > Edit Across Layers on or off, kept in the settings;
+/// off, the selected objects of other layers than the active one are
+/// let go (#3276).
+pub fn set_edit_across_layers(app: &mut App, on: bool) {
+    app.settings.edit_across_layers = on;
+    app.settings.save();
+    if !on {
+        let active = app.active_layer();
+        let keep: Vec<ShapeId> = app
+            .selection
+            .iter()
+            .copied()
+            .filter(|id| active.is_some() && layer_holding(app, *id) == active)
+            .collect();
+        if keep != app.selection {
+            app.select(keep);
+        }
+    }
+}
+
+/// Copies of the top-level objects `ids` put on top of `layer` (a layer
+/// of any page or of the master page) at the same place on the page,
+/// keeping their order; the originals stay. One undo step; the copies
+/// are selected, on the page they are on (#3277).
+pub fn copy_to_layer(app: &mut App, ids: &[ShapeId], layer: LayerId) {
+    let doc = app.doc();
+    let mut found: Vec<(usize, usize, Shape)> = Vec::new();
+    for (rank, l) in doc.all_layers().enumerate() {
+        for (i, s) in l.shapes.iter().enumerate() {
+            if ids.contains(&s.id) {
+                found.push((rank, i, s.clone()));
+            }
+        }
+    }
+    if found.is_empty() {
+        return;
+    }
+    found.sort_by_key(|(rank, i, _)| (*rank, *i));
+    let originals: Vec<Shape> = found.into_iter().map(|(_, _, s)| s).collect();
+    let mut copies: Vec<Shape> = originals
+        .iter()
+        .map(|s| {
+            let id = app.engine.new_shape_id();
+            crate::app::reid_pub(s.clone(), id, &mut app.engine)
+        })
+        .collect();
+    crate::textflow::relink_copies(&originals, &mut copies);
+    let new_ids: Vec<ShapeId> = copies.iter().map(|s| s.id).collect();
+    let cmds: Vec<Command> = copies
+        .into_iter()
+        .map(|shape| Command::AddShape { layer, shape })
+        .collect();
+    if let Err(e) = app.engine.run_batch("Copy to Layer", &cmds) {
+        app.status = e.to_string();
+        return;
+    }
+    let page = app
+        .doc()
+        .pages
+        .iter()
+        .position(|p| p.layers.iter().any(|l| l.id == layer));
+    if let Some(i) = page {
+        if app.doc().pages.get(i).map(|p| p.id) != Some(app.page) {
+            app.goto_page(i);
+        }
+    }
+    app.picked_layer = Some(layer);
+    app.select(new_ids);
+}
+
 /// The look of `from` given to the new layer `to`, its objects moved
 /// over, and `from` deleted (kept, empty, when it is its page's last).
 fn hand_over(app: &mut App, from: &Layer, to: LayerId, keep: bool) {
@@ -2516,6 +2628,9 @@ fn apply(app: &mut App, ui: &Ui, mut act: Actions) {
     }
     if let Some((layer, locked)) = act.locked {
         app.run(Command::SetLayerLocked { layer, locked });
+    }
+    if let Some(on) = act.across {
+        set_edit_across_layers(app, on);
     }
     if let Some((id, visible)) = act.object_visible {
         // The eye of one of several selected objects hides or shows them
@@ -3664,6 +3779,79 @@ pub(crate) mod tests {
         assert_ne!(app.active_layer(), app.doc().master.last().map(|l| l.id));
         app.picked_layer = app.doc().master.first().map(|l| l.id);
         assert_eq!(app.active_layer(), app.picked_layer);
+    }
+
+    /// Edit Across Layers off: a click and Select All take the objects of
+    /// the active layer alone, and the selected objects of other layers
+    /// are let go; on again, every layer is in reach (#3276).
+    #[test]
+    fn edit_across_layers_off_keeps_picking_to_the_active_layer() {
+        let mut app = without_desktop();
+        let first = app.doc().pages[0].layers[0].id;
+        app.picked_layer = Some(first);
+        let a = app.new_shape(rect_kind()).expect("a");
+        app.run(Command::SetFill {
+            shapes: vec![a],
+            fill: tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(200, 0, 0)),
+        });
+        new_layer(&mut app);
+        let second = app.picked_layer.expect("new layer");
+        let b = app.new_shape(rect_kind()).expect("b");
+        app.run(Command::SetFill {
+            shapes: vec![b],
+            fill: tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(0, 0, 200)),
+        });
+        let p = tracedraw_core::geometry::Point::new(5.0, 5.0);
+        // On: the topmost object under the pointer, on the upper layer.
+        assert!(app.settings.edit_across_layers);
+        assert_eq!(app.hit_test(p), Some(b));
+        app.select(vec![a, b]);
+        // Off with the first layer active: its object alone.
+        app.picked_layer = Some(first);
+        set_edit_across_layers(&mut app, false);
+        assert_eq!(app.selection, vec![a], "b let go");
+        assert_eq!(app.hit_test(p), Some(a));
+        assert_eq!(app.selectable_ids(), vec![a]);
+        app.picked_layer = Some(second);
+        assert_eq!(app.hit_test(p), Some(b));
+        assert_eq!(app.selectable_ids(), vec![b]);
+        set_edit_across_layers(&mut app, true);
+        app.picked_layer = Some(first);
+        assert_eq!(app.hit_test(p), Some(b));
+        assert_eq!(app.selectable_ids().len(), 2);
+    }
+
+    /// Copy to Layer puts copies on the other layer at the same place,
+    /// in the same order, and keeps the originals where they were; the
+    /// copies are selected; one undo step takes them away (#3277).
+    #[test]
+    fn copy_to_layer_leaves_the_originals_and_selects_the_copies() {
+        let mut app = without_desktop();
+        let first = app.doc().pages[0].layers[0].id;
+        app.picked_layer = Some(first);
+        let a = app.new_shape(rect_kind()).expect("a");
+        let b = app.new_shape(rect_kind()).expect("b");
+        app.run(Command::TransformShapes {
+            shapes: vec![b],
+            transform: tracedraw_core::geometry::Affine::translate((20.0, 5.0)),
+        });
+        new_layer(&mut app);
+        let second = app.picked_layer.expect("new layer");
+        assert_ne!(first, second);
+        copy_to_layer(&mut app, &[b, a], second);
+        let layer = |app: &App, id| app.doc().layer(id).expect("layer").shapes.clone();
+        let originals: Vec<ShapeId> = layer(&app, first).iter().map(|s| s.id).collect();
+        assert_eq!(originals, vec![a, b], "the originals stay");
+        let copies = layer(&app, second);
+        assert_eq!(copies.len(), 2);
+        assert!(copies.iter().all(|c| c.id != a && c.id != b));
+        let tb = app.doc().find_shape(b).expect("b").transform;
+        assert_eq!(copies[1].transform, tb, "same place, same order");
+        let ids: Vec<ShapeId> = copies.iter().map(|c| c.id).collect();
+        assert_eq!(app.selection, ids);
+        app.undo();
+        assert!(layer(&app, second).is_empty());
+        assert_eq!(layer(&app, first).len(), 2);
     }
 
     /// #1132, #1477: the in-front choice per kind of master layer moves

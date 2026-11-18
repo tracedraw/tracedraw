@@ -365,7 +365,7 @@ impl App {
         self.page_layers()
             .into_iter()
             .rev()
-            .filter(|l| l.visible && !l.locked)
+            .filter(|l| l.visible && !l.locked && self.layer_in_reach(l.id))
             .flat_map(|l| l.shapes.iter().rev())
             .find(|s| s.visible && !self.outside_clip_edit(s.id) && self.shape_hit(s, p, tol))
             .filter(|s| s.locked)
@@ -602,7 +602,7 @@ impl App {
             .page_layers()
             .into_iter()
             .rev()
-            .filter(|l| l.visible && !l.locked)
+            .filter(|l| l.visible && !l.locked && self.layer_in_reach(l.id))
             .flat_map(|l| l.shapes.iter().rev())
             .filter(|s| !s.locked && s.visible && !self.outside_clip_edit(s.id))
         {
@@ -660,7 +660,7 @@ impl App {
         }
         self.page_layers()
             .into_iter()
-            .filter(|l| l.visible && !l.locked)
+            .filter(|l| l.visible && !l.locked && self.layer_in_reach(l.id))
             .flat_map(|l| l.shapes.iter())
             .find(|e| e.id == end)
             .filter(|e| {
@@ -694,7 +694,7 @@ impl App {
         self.page_layers()
             .into_iter()
             .rev()
-            .filter(|l| l.visible && !l.locked)
+            .filter(|l| l.visible && !l.locked && self.layer_in_reach(l.id))
             .flat_map(|l| l.shapes.iter().rev())
             .filter(|s| !s.locked && s.visible && !self.outside_clip_edit(s.id))
             .find_map(|s| {
@@ -1096,7 +1096,7 @@ impl App {
         let end_shape = self
             .page_layers()
             .into_iter()
-            .filter(|l| l.visible && !l.locked)
+            .filter(|l| l.visible && !l.locked && self.layer_in_reach(l.id))
             .flat_map(|l| l.shapes.iter())
             .find(|e| e.id == end && e.visible && !e.locked)
             .cloned();
@@ -1165,7 +1165,7 @@ impl App {
             .page_layers()
             .into_iter()
             .rev()
-            .filter(|l| l.visible && !l.locked)
+            .filter(|l| l.visible && !l.locked && self.layer_in_reach(l.id))
             .flat_map(|l| l.shapes.iter().rev())
             .filter(|s| {
                 !s.locked && s.visible && !self.outside_clip_edit(s.id) && self.shape_hit(s, p, tol)
@@ -1204,7 +1204,7 @@ impl App {
         for s in self
             .page_layers()
             .into_iter()
-            .filter(|l| l.visible && !l.locked)
+            .filter(|l| l.visible && !l.locked && self.layer_in_reach(l.id))
             .flat_map(|l| &l.shapes)
             .filter(|s| s.visible && !s.locked && !self.outside_clip_edit(s.id))
         {

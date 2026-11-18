@@ -174,7 +174,7 @@ impl App {
     pub fn selectable_ids(&self) -> Vec<ShapeId> {
         self.page_layers()
             .into_iter()
-            .filter(|l| !l.locked)
+            .filter(|l| !l.locked && self.layer_in_reach(l.id))
             .flat_map(|l| &l.shapes)
             // A locked object is never taken, nor a group holding one,
             // which would carry it along (#2901).
@@ -188,7 +188,7 @@ impl App {
     fn selectable_shapes(&self) -> Vec<&Shape> {
         self.page_layers()
             .into_iter()
-            .filter(|l| !l.locked)
+            .filter(|l| !l.locked && self.layer_in_reach(l.id))
             .flat_map(|l| &l.shapes)
             .filter(|s| !holds_locked(s) && !self.outside_clip_edit(s.id))
             .collect()

@@ -5482,6 +5482,13 @@ impl App {
     /// else the page's topmost visible, unlocked layer (hidden layers
     /// cannot take new objects); with none visible, the topmost unlocked
     /// one.
+    /// Whether a click, a marquee or Select All may take the objects of
+    /// `layer`: any layer with Edit Across Layers on, else the active
+    /// layer alone (#3276).
+    pub fn layer_in_reach(&self, layer: LayerId) -> bool {
+        self.settings.edit_across_layers || self.active_layer() == Some(layer)
+    }
+
     pub fn active_layer(&self) -> Option<LayerId> {
         if let Some(id) = self.picked_layer {
             if self
