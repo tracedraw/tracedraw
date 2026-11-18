@@ -6815,7 +6815,16 @@ impl Document {
     /// further at each group inside a group, so a curve node took 0.5 to
     /// 1.3 KB and a drawing with many nodes in nested groups ran to
     /// hundreds of megabytes. Every reader takes either layout.
-    pub fn write_json_version<W: std::io::Write>(&self, w: W, version: u32) -> Result<()> {
+    pub fn write_json_version<W: std::io::Write>(&self, mut w: W, version: u32) -> Result<()> {
+        if self.nesting() <= SHALLOW_NESTING {
+            return self.write_json_here(w, version);
+        }
+        let json = self.deep_json(|d, buf| d.write_json_here(buf, version))?;
+        w.write_all(&json).map_err(serde_json::Error::io)?;
+        Ok(())
+    }
+
+    fn write_json_here<W: std::io::Write>(&self, w: W, version: u32) -> Result<()> {
         use crate::finite::{Finite, FiniteSerializer};
         if (version as usize) >= DOWN_STEPS.len() {
             #[derive(Serialize)]
@@ -6860,14 +6869,83 @@ impl Document {
             return self.write_json_version(w, version);
         }
         let mut gz = flate2::write::GzEncoder::new(w, flate2::Compression::new(TDRAW_GZIP_LEVEL));
-        self.write_packed(&mut gz)?;
+        if self.nesting() <= SHALLOW_NESTING {
+            self.write_packed_here(&mut gz)?;
+        } else {
+            let json = self.deep_json(|d, buf| d.write_packed_here(buf))?;
+            use std::io::Write as _;
+            gz.write_all(&json).map_err(serde_json::Error::io)?;
+        }
         gz.finish().map_err(serde_json::Error::io)?;
         Ok(())
     }
 
+    /// The JSON `write` makes of a deeply nested drawing (groups inside
+    /// groups past [`SHALLOW_NESTING`]), made on a thread with room for
+    /// it ([`on_deep_stack`]): any thread's stack has room for a shallow
+    /// one, not for a few thousand groups inside groups. A drawing nested
+    /// deeper than a file may be ([`MAX_JSON_DEPTH`]) is not written:
+    /// the error says so, instead of a file that would refuse to open.
+    fn deep_json(
+        &self,
+        write: impl FnOnce(&Document, &mut Vec<u8>) -> Result<()> + Send,
+    ) -> Result<Vec<u8>> {
+        let json = on_deep_stack(|| {
+            let mut buf = Vec::new();
+            write(self, &mut buf).map(|()| buf)
+        })?;
+        let depth = json_depth_of(&json);
+        if depth > MAX_JSON_DEPTH {
+            return Err(<serde_json::Error as serde::ser::Error>::custom(format!(
+                "the drawing nests {depth} levels deep (groups inside groups); a file holds at most {MAX_JSON_DEPTH}, so it would not open again: ungroup some of it"
+            ))
+            .into());
+        }
+        Ok(json)
+    }
+
+    /// How deep objects nest in the drawing: 1 for objects on a layer, one
+    /// more for each group or clip frame they are inside.
+    pub fn nesting(&self) -> usize {
+        let mut deepest = 0;
+        let mut stack: Vec<(&Shape, usize)> = Vec::new();
+        let layers = self
+            .pages
+            .iter()
+            .flat_map(|p| &p.layers)
+            .chain(&self.master);
+        for l in layers {
+            stack.extend(l.shapes.iter().map(|s| (s, 1)));
+        }
+        stack.extend(self.symbols.iter().map(|sym| (&sym.shape, 1)));
+        while let Some((s, d)) = stack.pop() {
+            deepest = deepest.max(d);
+            match &s.kind {
+                ShapeKind::Group { children } => {
+                    stack.extend(children.iter().map(|c| (c, d + 1)));
+                }
+                ShapeKind::ClipFrame { frame, contents } => {
+                    stack.push((frame, d + 1));
+                    stack.extend(contents.iter().map(|c| (c, d + 1)));
+                }
+                _ => {}
+            }
+        }
+        deepest
+    }
+
     /// The packed JSON of the current format, uncompressed: the drawing
     /// with references for its pictures and fonts, then their table.
-    pub fn write_packed<W: std::io::Write>(&self, w: W) -> Result<()> {
+    pub fn write_packed<W: std::io::Write>(&self, mut w: W) -> Result<()> {
+        if self.nesting() <= SHALLOW_NESTING {
+            return self.write_packed_here(w);
+        }
+        let json = self.deep_json(|d, buf| d.write_packed_here(buf))?;
+        w.write_all(&json).map_err(serde_json::Error::io)?;
+        Ok(())
+    }
+
+    fn write_packed_here<W: std::io::Write>(&self, w: W) -> Result<()> {
         use crate::finite::FiniteSerializer;
         #[derive(Serialize)]
         struct Packed<'a> {
@@ -6976,13 +7054,20 @@ impl Document {
 }
 
 /// How many brackets (`{` and `[`) of a `.tdraw` file may be open at
-/// once. A group inside a group nests four levels, so this is some 250
-/// groups inside groups, far beyond what a drawing holds (the `.cdr`
-/// reader stops at 64) and read, migrated and drawn well within the
-/// stack of every platform. The JSON reader's own limit is 128 levels,
-/// about 30 groups inside groups, which drawings do reach: such a
-/// drawing saved and then refused to open, and was lost.
-pub const MAX_JSON_DEPTH: usize = 1024;
+/// once. A group inside a group nests three levels, so this is some
+/// 5,000 groups inside groups, read on a thread with room for it
+/// ([`DEEP_STACK`]). The JSON reader's own limit is 128 levels, about 30
+/// groups inside groups, which drawings do reach: such a drawing saved
+/// and then refused to open, and was lost. The limit was then 1024
+/// levels, some 330 groups inside groups, which the Group command goes
+/// past as easily: the drawing saved and would not open again. A drawing
+/// nested past this one is not saved (see `Document::deep_json`).
+pub const MAX_JSON_DEPTH: usize = 16384;
+
+/// Objects nested no deeper than this ([`Document::nesting`]) are
+/// written on the caller's thread: some 30 groups inside groups, within
+/// [`SHALLOW_JSON_DEPTH`].
+const SHALLOW_NESTING: usize = 30;
 
 /// JSON nested no deeper than this is read on the caller's thread; any
 /// thread's stack (1 MB at the least) has room for it.
@@ -7028,10 +7113,15 @@ fn json_value(s: &str) -> Result<serde_json::Value> {
 /// once, brackets inside strings not counted. Text that is not JSON
 /// gives some number; the reader then says what is wrong with it.
 fn json_depth(s: &str) -> usize {
+    json_depth_of(s.as_bytes())
+}
+
+/// [`json_depth`] of JSON bytes.
+fn json_depth_of(s: &[u8]) -> usize {
     let (mut depth, mut deepest) = (0usize, 0usize);
     let mut in_string = false;
     let mut escaped = false;
-    for b in s.bytes() {
+    for &b in s {
         if in_string {
             match b {
                 _ if escaped => escaped = false,
@@ -7367,8 +7457,9 @@ mod tests {
     }
 
     /// A drawing of more groups nested in one another than a thread's
-    /// stack had room for opens (it ended the program), and one nested
-    /// past the most a file may hold says so.
+    /// stack had room for opens (it ended the program), one of 1,500
+    /// saves and opens again, and one nested past the most a file may
+    /// hold is not saved and says so.
     #[test]
     fn deeply_nested_groups_open() {
         use super::{Document, Shape, ShapeKind, MAX_JSON_DEPTH};
@@ -7389,20 +7480,42 @@ mod tests {
             }
             doc.pages[0].layers[0].shapes.push(s);
             doc.set_ids(ids);
-            super::on_deep_stack(|| doc.to_json().expect("written"))
+            doc
         };
-        // Read on a small stack, as on any worker thread.
-        let json = nested(300);
-        let read = std::thread::Builder::new()
-            .stack_size(1024 * 1024)
-            .spawn(move || Document::from_json(&json).map(|d| d.pages[0].layers[0].shapes.len()))
-            .unwrap()
-            .join()
-            .unwrap();
-        assert_eq!(read.ok(), Some(1));
-        let too_deep = nested(MAX_JSON_DEPTH);
-        let err = Document::from_json(&too_deep).expect_err("too deep");
-        assert!(err.to_string().contains("levels deep"), "{err}");
+        // Written and read on a small stack, as on any worker thread.
+        let small = |f: Box<dyn FnOnce() -> Option<usize> + Send>| {
+            std::thread::Builder::new()
+                .stack_size(1024 * 1024)
+                .spawn(f)
+                .unwrap()
+                .join()
+                .unwrap()
+        };
+        let doc = nested(300);
+        let json = small(Box::new(move || {
+            let json = doc.to_json().ok()?;
+            Document::from_json(&json).ok()?;
+            Some(json.len())
+        }));
+        assert!(json.is_some());
+        // A drawing of 1,500 groups inside groups, which the Group command
+        // makes, saves and opens again, packed too: past 330 or so it saved
+        // and would not open (the file nested past the 1024 levels read).
+        let doc = nested(1500);
+        let opened = small(Box::new(move || {
+            let mut packed = Vec::new();
+            doc.write_tdraw_version(&mut packed, super::TDRAW_FORMAT_VERSION)
+                .ok()?;
+            let back = Document::from_tdraw_bytes(&packed).ok()?;
+            Some(back.nesting())
+        }));
+        assert_eq!(opened, Some(1501));
+        // Nested past what a file holds: not written, and the error says why.
+        let doc = nested(MAX_JSON_DEPTH / 3 + 10);
+        let err = super::on_deep_stack(|| doc.to_json().expect_err("too deep").to_string());
+        assert!(err.contains("would not open again"), "{err}");
+        let mut packed = Vec::new();
+        assert!(doc.write_tdraw_version(&mut packed, 2).is_err());
     }
 
     /// Bullet numbers (#1443): written as numbers, letters or Roman
