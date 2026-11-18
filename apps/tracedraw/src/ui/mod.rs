@@ -37,6 +37,7 @@ pub mod crop_bar;
 pub mod cursors;
 pub mod curve_edit;
 pub mod defaults_dialog;
+pub mod detached;
 pub mod dialogs;
 pub mod dimension_bar;
 pub mod distort_bar;
@@ -325,6 +326,9 @@ pub fn root(app: &mut App, ui: &mut Ui) {
     } else {
         root_frame(app, ui);
     }
+    // The drawings in windows of their own (#2904).
+    let ctx = ui.ctx().clone();
+    detached::show(app, &ctx);
     // An import that asked a question first goes where it was placed.
     app.finish_waiting_import_placement();
     // The next of several files picked with File > Import (#2695).
@@ -861,10 +865,14 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         .frame(Frame::NONE)
         .show(ui, |ui| {
             let full = ui.available_rect_before_wrap();
-            if app.window_layout == windows::WindowLayout::Tabs || app.docs.is_empty() {
-                drawing_window(app, ui, full);
-            } else {
+            if app.window_layout != windows::WindowLayout::Tabs && !app.docs.is_empty() {
                 windows::arranged(app, ui, full);
+            } else if detached::is_detached(app, app.active_doc) {
+                // The active drawing is in its own window (#2904): this
+                // one shows its own drawing as it was left.
+                main_window_parked(app, ui, full);
+            } else {
+                drawing_window(app, ui, full);
             }
         });
     crate::frame_mark("the drawing");
@@ -994,6 +1002,23 @@ fn smooth_wheel_notch(unit: egui::MouseWheelUnit, line_speed: f32, height: f32, 
         (egui::MouseWheelUnit::Page, true) => wheel_notch(unit, web) * height,
     };
     points.max(1.0)
+}
+
+/// The main window's drawing while the active one is in a window of its
+/// own (#2904): its page as its view left it; a click makes it active.
+fn main_window_parked(app: &mut App, ui: &mut Ui, full: egui::Rect) {
+    match detached::main_doc(app) {
+        Some(m) => {
+            let resp = ui.interact(full, egui::Id::new("main_window_parked"), Sense::click());
+            windows::paint_parked(app, ui, m, full);
+            if resp.clicked() {
+                app.switch_document(m);
+            }
+        }
+        None => {
+            ui.painter().rect_filled(full, 0.0, Tokens::panel());
+        }
+    }
 }
 
 /// The active drawing's window in `full`: rulers, the canvas with its
