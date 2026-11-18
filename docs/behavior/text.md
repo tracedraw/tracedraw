@@ -1695,7 +1695,11 @@ stand-in next to each missing family: "Arial (Liberation Sans)".
   Title Case. Each run was changed as a text of its own, so Sentence case
   gave "The big Dog Runs." A word starts after any white space, a line
   break or a tab too
-  (`ops2::tests::the_runs_of_a_text_change_case_as_one_text`).
+  (`ops2::tests::the_runs_of_a_text_change_case_as_one_text`). Several
+  selected texts change in one undo step, and texts already in the case
+  asked for are left alone: with none to change there is no step, so
+  Undo never does nothing
+  (`ops2::tests::change_case_is_one_step_and_no_step_when_nothing_changes`).
 
 ## Font Sampler
 

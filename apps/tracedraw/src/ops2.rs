@@ -3750,6 +3750,11 @@ impl App {
         let Some(kind) = crate::text_path::fit_kind(text, curve, at) else {
             return;
         };
+        // Fitted again just as it was: no step that undoes nothing.
+        if kind == text.kind {
+            self.selection = vec![text.id];
+            return;
+        }
         self.run(Command::SetShapeKind {
             shape: text.id,
             kind,
@@ -3825,7 +3830,12 @@ impl App {
         }
     }
 
+    /// Text > Change Case on the selected texts, all of them in one undo
+    /// step; texts already in that case are left alone, and when none
+    /// changes there is no step to undo. Each text was a step of its own,
+    /// and a text already in the case still gave an Undo that did nothing.
     pub fn change_case(&mut self, mode: CaseMode) {
+        let mut cmds = Vec::new();
         for s in self.text_shapes() {
             let ShapeKind::Text {
                 mut spans,
@@ -3840,10 +3850,13 @@ impl App {
             };
             let runs: Vec<&str> = spans.iter().map(|sp| sp.text.as_str()).collect();
             let changed = apply_case_runs(&runs, mode);
+            if changed.iter().map(String::as_str).eq(runs.iter().copied()) {
+                continue;
+            }
             for (sp, text) in spans.iter_mut().zip(changed) {
                 sp.text = text;
             }
-            self.run(Command::SetShapeKind {
+            cmds.push(Command::SetShapeKind {
                 shape: s.id,
                 kind: ShapeKind::Text {
                     spans,
@@ -3854,6 +3867,15 @@ impl App {
                     on_path,
                 },
             });
+        }
+        match cmds.len() {
+            0 => {}
+            1 => self.run(cmds.remove(0)),
+            _ => {
+                if let Err(e) = self.run_batch_keeping_lines("Edit Object", &cmds) {
+                    log::warn!("change case: {e}");
+                }
+            }
         }
     }
 
@@ -6554,6 +6576,13 @@ mod tests {
             )
         });
         assert!(fitted);
+        // Fitted again to the same path, just as it is: no step that
+        // undoes nothing.
+        let steps = app.engine.history_labels().0.len();
+        app.selection = vec![text, path];
+        app.fit_text_to_path();
+        assert_eq!(app.engine.history_labels().0.len(), steps);
+        assert_eq!(app.selection, vec![text]);
     }
 
     use kurbo::ParamCurve as _;
@@ -6867,6 +6896,51 @@ mod tests {
             assert_eq!(texts(&app), want, "{mode:?}");
             app.undo();
         }
+    }
+
+    /// Change Case on several texts is one undo step, and a text already
+    /// in that case gives no step: each text was a step of its own, and
+    /// Upper on capitals left an Undo that did nothing.
+    #[test]
+    fn change_case_is_one_step_and_no_step_when_nothing_changes() {
+        let mut app = App::headless();
+        let text = |app: &mut App, s: &str, y: f64| {
+            app.new_shape(ShapeKind::Text {
+                spans: vec![TextSpan::new(s, "Arial", 12.0)],
+                origin: tracedraw_core::Point::new(10.0, y),
+                frame: None,
+                align: tracedraw_core::TextAlign::Left,
+                para: Default::default(),
+                on_path: None,
+            })
+            .expect("text")
+        };
+        let a = text(&mut app, "one", 10.0);
+        let b = text(&mut app, "two", 30.0);
+        let c = text(&mut app, "THREE", 50.0);
+        let steps = |app: &App| app.engine.history_labels().0.len();
+        let words = |app: &App| -> Vec<String> {
+            [a, b, c]
+                .iter()
+                .map(|id| match &app.doc().find_shape(*id).expect("text").kind {
+                    ShapeKind::Text { spans, .. } => spans[0].text.clone(),
+                    _ => String::new(),
+                })
+                .collect()
+        };
+        app.select(vec![a, b, c]);
+        let n = steps(&app);
+        app.change_case(CaseMode::Upper);
+        assert_eq!(words(&app), ["ONE", "TWO", "THREE"]);
+        assert_eq!(steps(&app), n + 1, "one step for every text");
+        app.change_case(CaseMode::Upper);
+        assert_eq!(steps(&app), n + 1, "nothing changed, no step");
+        app.undo();
+        assert_eq!(words(&app), ["one", "two", "THREE"]);
+        app.select(vec![c]);
+        let n = steps(&app);
+        app.change_case(CaseMode::Upper);
+        assert_eq!(steps(&app), n);
     }
 
     /// #2220: a ring with a shadow converted to a bitmap went to the top
