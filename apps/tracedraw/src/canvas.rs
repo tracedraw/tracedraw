@@ -3345,6 +3345,42 @@ fn pattern_line(painter: &Painter, a: Pos2, b: Pos2, color: Color32, pattern: &[
 /// Selected guidelines are red.
 const GUIDE_SELECTED: Color32 = Color32::from_rgb(0xFF, 0x00, 0x00);
 
+/// A guideline what is being dragged snapped to (#3073).
+const GUIDE_SNAPPED: Color32 = Color32::from_rgb(0x00, 0x78, 0xD7);
+
+/// A guideline what is being dragged lies on: a solid line two pixels
+/// wide across the drawing window.
+fn draw_snapped_guide(
+    app: &App,
+    painter: &Painter,
+    rect: ERect,
+    line: tracedraw_core::document::GuideLine,
+) {
+    use tracedraw_core::document::GuideLine;
+    let stroke = EStroke::new(2.0, GUIDE_SNAPPED);
+    match line {
+        GuideLine::Horizontal { y } => {
+            let sy = app.view.to_screen(Point::new(0.0, y)).y;
+            if sy >= rect.top() && sy <= rect.bottom() {
+                painter.line_segment(
+                    [Pos2::new(rect.left(), sy), Pos2::new(rect.right(), sy)],
+                    stroke,
+                );
+            }
+        }
+        GuideLine::Vertical { x } => {
+            let sx = app.view.to_screen(Point::new(x, 0.0)).x;
+            if sx >= rect.left() && sx <= rect.right() {
+                painter.line_segment(
+                    [Pos2::new(sx, rect.top()), Pos2::new(sx, rect.bottom())],
+                    stroke,
+                );
+            }
+        }
+        GuideLine::Angled { .. } => {}
+    }
+}
+
 /// One guideline across the drawing window.
 fn draw_guide_line(
     app: &App,
@@ -3440,6 +3476,11 @@ pub fn draw_guides(app: &App, painter: &Painter, rect: ERect) {
             to_color32(app.guide_color(g))
         };
         draw_guide_line(app, painter, rect, g.line, color, g.style.pattern());
+    }
+    // The guidelines what is being dragged snapped to, highlighted
+    // (#3073).
+    for line in app.snapped_guides() {
+        draw_snapped_guide(app, painter, rect, line);
     }
     // The other pages' guidelines in the Multipage View, each within its
     // page (#1448).

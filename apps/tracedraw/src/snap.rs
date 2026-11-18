@@ -1431,6 +1431,47 @@ impl App {
         self.snap.off || self.snap_held_off
     }
 
+    /// The guidelines what is being dragged lies on: the edges and
+    /// centre of the selection being moved or scaled, or of the box
+    /// being drawn, with Snap to Guidelines on. The drawing window
+    /// shows them highlighted, so a snap to a guideline is seen in a
+    /// cluttered drawing (#3073).
+    pub fn snapped_guides(&self) -> Vec<GuideLine> {
+        use crate::app::Drag;
+        if self.snaps_off() || !self.snap.guides {
+            return Vec::new();
+        }
+        let b = match &self.drag {
+            Drag::Move {
+                start_bounds,
+                total,
+                ..
+            } => *start_bounds + *total,
+            Drag::Scale { start_bounds, .. } => match self.preview_transform_of(&self.drag) {
+                Some(t) => t.transform_rect_bbox(*start_bounds),
+                None => return Vec::new(),
+            },
+            Drag::Box { start, current, .. } | Drag::ThreePointBase { start, current } => {
+                Rect::from_points(*start, *current)
+            }
+            _ => return Vec::new(),
+        };
+        let Ok(guides) = self.doc().guides_on_page(self.page) else {
+            return Vec::new();
+        };
+        let on = |v: f64, edges: [f64; 3]| edges.iter().any(|e| (e - v).abs() < 1e-6);
+        let (xs, ys) = ([b.x0, b.x1, b.center().x], [b.y0, b.y1, b.center().y]);
+        guides
+            .iter()
+            .map(|g| g.line)
+            .filter(|line| match *line {
+                GuideLine::Vertical { x } => on(x, xs),
+                GuideLine::Horizontal { y } => on(y, ys),
+                GuideLine::Angled { .. } => false,
+            })
+            .collect()
+    }
+
     pub fn snap_enabled(&self) -> bool {
         !self.snaps_off()
             && (self.snap.grid
@@ -2269,6 +2310,53 @@ mod tests {
         app.drag = scale(Rect::new(10.0, 20.0, 30.0, 30.0), 25.0);
         let (q, axes) = app.snap_scale_handle(Point::new(49.0, 25.0));
         assert_eq!((q, axes), (Point::new(49.0, 25.0), (false, false)));
+    }
+
+    /// An object moved onto guidelines shows them highlighted: the ones
+    /// its edges or centre lie on, and only while Snap to Guidelines is
+    /// on (#3073).
+    #[test]
+    fn guidelines_an_object_snapped_to_are_highlighted() {
+        use crate::app::Drag;
+        let mut app = app();
+        let page = app.page;
+        for guide in [
+            Guide::vertical(50.0),
+            Guide::horizontal(100.0),
+            Guide::vertical(80.0),
+        ] {
+            app.run(Command::AddGuide { page, guide });
+        }
+        let id = rect(&mut app, 10.0, 10.0, 30.0, 30.0);
+        app.select(vec![id]);
+        let b = app.selection_bounds().expect("bounds");
+        let moved = |total: Vec2| Drag::Move {
+            start: Point::ZERO,
+            last: Point::ZERO,
+            total,
+            start_bounds: b,
+            source: None,
+            start_geometry: None,
+        };
+        // The left edge onto x = 50, the top onto y = 100.
+        app.drag = moved(Vec2::new(50.0 - b.x0, 100.0 - b.y1));
+        assert_eq!(
+            app.snapped_guides(),
+            vec![
+                GuideLine::Vertical { x: 50.0 },
+                GuideLine::Horizontal { y: 100.0 }
+            ]
+        );
+        // Off the guidelines: none.
+        app.drag = moved(Vec2::new(3.0, 3.0));
+        assert!(app.snapped_guides().is_empty());
+        // Snap to Guidelines off: none.
+        app.drag = moved(Vec2::new(50.0 - b.x0, 100.0 - b.y1));
+        app.snap.guides = false;
+        assert!(app.snapped_guides().is_empty());
+        app.snap.guides = true;
+        app.drag = Drag::None;
+        assert!(app.snapped_guides().is_empty());
     }
 
     /// A corner keeping the proportions, snapped onto a vertical

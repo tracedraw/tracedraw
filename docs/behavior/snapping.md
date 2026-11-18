@@ -46,6 +46,12 @@ in black on a white halo, with the mode's name beside it in the
 selection colour, also haloed in white (no box), so both read on any
 drawing.
 
+While an object is moved or scaled, or a box shape drawn, with Snap to
+Guidelines on, each horizontal or vertical guideline its edges or centre
+lie on is drawn over in blue, solid and two pixels wide, so a snap to a
+guideline shows in a crowded drawing (#3073,
+`snap::tests::guidelines_an_object_snapped_to_are_highlighted`).
+
 Only objects whose bounds come within the radius of the pointer are
 looked at. An intersection is found on chords an eighth of the radius
 long, cut from the segments near the pointer, and then refined onto both
