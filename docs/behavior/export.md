@@ -149,6 +149,19 @@ Preferences saved before are brought back to off once (upgrade 7,
   the pixels, not that resolution (#617,
   `export::tests::bitmap_exports_record_their_resolution_and_scale`,
   `export::tests::the_export_size_is_typed_in_pixels_or_lengths`).
+- Large pictures: a PNG or TIFF of more than 2^26 pixels (8192 x 8192)
+  in RGB is drawn and written a strip of about 16 million pixels at a
+  time, so the export takes about the file's size in memory (a TIFF is
+  not compressed: three bytes a pixel). It is the page drawn whole; only
+  the smoothing of some edge pixels may differ a little, as between the
+  bands drawn on several cores. Before, the page was drawn whole, which
+  took about four times the picture's size in memory and failed above a
+  billion pixels: a banner of 180 x 10 ft exported at 30 dpi but not at
+  50 or 72 dpi (#3039,
+  `export::tests::a_picture_written_a_strip_at_a_time_is_the_page_drawn_whole`).
+  A TIFF of more than 4 GB is written as a BigTIFF. Other formats, and
+  CMYK or grayscale, still draw the page whole; above a billion pixels
+  the export stops and says to use PNG or TIFF or a lower resolution.
 - File size: vector formats (SVG, EPS, PostScript, PDF, AI) are written in memory and
   measured; bitmap formats are estimated by encoding the preview the same
   way and scaling by the pixel count of the export (times the pages
