@@ -919,9 +919,19 @@ pub fn sample_stop(stops: &[Stop], t: f64) -> Stop {
         (Some(a), Some(b)) => {
             let span = (b.pos - a.pos).max(1e-9);
             let k = ((t - a.pos) / span).clamp(0.0, 1.0) as f32;
+            // At a stop its own colour, as chosen (a CMYK or spot colour
+            // stays one), not the mix's RGB: a PDF's shading took its
+            // colours from here and turned them to RGB and back.
+            let color = if k >= 1.0 {
+                b.color
+            } else if k <= 0.0 {
+                a.color
+            } else {
+                lerp_color(a.color, b.color, k)
+            };
             Stop {
                 pos: t,
-                color: lerp_color(a.color, b.color, k),
+                color,
                 mid: 0.5,
                 opacity: a.opacity + (b.opacity - a.opacity) * k,
             }

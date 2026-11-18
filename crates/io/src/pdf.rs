@@ -547,6 +547,23 @@ fn pdf_name(s: &str) -> String {
 }
 
 impl PageWriter<'_> {
+    /// The Separation colour space object of the drawing's spot ink
+    /// `ink` (its name, its process stand-in as the alternate), made the
+    /// first time; `None` for an ink the drawing does not list.
+    fn spot_space(&mut self, ink: u32) -> Option<usize> {
+        if let Some(id) = self.pdf.spot_spaces.get(&ink) {
+            return Some(*id);
+        }
+        let i = self.inks.iter().find(|i| i.id == ink)?;
+        let [cc, m, y, k] = i.cmyk.map(|v| f(v.clamp(0.0, 1.0) as f64));
+        let id = self.pdf.add_str(format!(
+            "[/Separation {} /DeviceCMYK << /FunctionType 2 /Domain [0 1] /C0 [0 0 0 0] /C1 [{cc} {m} {y} {k}] /N 1 >>]",
+            pdf_name(&i.name)
+        ));
+        self.pdf.spot_spaces.insert(ink, id);
+        Some(id)
+    }
+
     /// The operator setting colour `c`: a spot ink of the drawing on a
     /// Separation colour space of its own (its name, its process stand-in
     /// as the alternate), the others as before.
@@ -574,19 +591,7 @@ impl PageWriter<'_> {
             };
         }
         if let Color::Spot { ink, tint, .. } = c {
-            if let Some(i) = self.inks.iter().find(|i| i.id == ink) {
-                let id = match self.pdf.spot_spaces.get(&ink) {
-                    Some(id) => *id,
-                    None => {
-                        let [cc, m, y, k] = i.cmyk.map(|v| f(v.clamp(0.0, 1.0) as f64));
-                        let id = self.pdf.add_str(format!(
-                            "[/Separation {} /DeviceCMYK << /FunctionType 2 /Domain [0 1] /C0 [0 0 0 0] /C1 [{cc} {m} {y} {k}] /N 1 >>]",
-                            pdf_name(&i.name)
-                        ));
-                        self.pdf.spot_spaces.insert(ink, id);
-                        id
-                    }
-                };
+            if let Some(id) = self.spot_space(ink) {
                 let name = format!("CS{ink}");
                 if !self.spaces.iter().any(|(n, _)| *n == name) {
                     self.spaces.push((name.clone(), id));
@@ -707,8 +712,20 @@ impl PageWriter<'_> {
             }
             Fill::Fountain(ft) if ft.kind != FountainKind::Shaped => {
                 let cmyk = self.pdf.cmyk_only || print_colours_only(ft);
-                let space = if cmyk { "/DeviceCMYK" } else { "/DeviceRGB" };
-                let func = self.fountain_function(ft, cmyk);
+                let mut space = if cmyk { "/DeviceCMYK" } else { "/DeviceRGB" }.to_string();
+                let mut func = String::new();
+                // Tints of one spot ink (to white or another tint): a
+                // shading on the ink's own separation, so it prints on
+                // the ink's plate; it went in as its process stand-in.
+                if let Some(ink) = one_spot_ink(ft) {
+                    if let Some(id) = self.spot_space(ink) {
+                        space = format!("{id} 0 R");
+                        func = stitching_function_with(ft, &|c| format!("[{}]", f(spot_tint(c))));
+                    }
+                }
+                if func.is_empty() {
+                    func = self.fountain_function(ft, cmyk);
+                }
                 // Nodes placed freely (Interactive Fill): a unit shading
                 // drawn through the fill's own frame.
                 if let Some(frame) = ft.frame(bounds) {
@@ -2054,7 +2071,50 @@ fn print_colours_only(ft: &tracedraw_core::Fountain) -> bool {
 /// PDF stitching function over the fountain's stops (type 3 wrapping type 2
 /// segments), or a single type 2 function for two stops.
 fn stitching_function_in(ft: &tracedraw_core::Fountain, cmyk_only: bool) -> String {
-    let rgb_array = |c: Color| color_array(c, cmyk_only);
+    stitching_function_with(ft, &|c| color_array(c, cmyk_only))
+}
+
+/// A fountain of tints of one spot ink: every colour is that ink, or a
+/// colour of no ink at all (white). Not one whose colours follow a hue
+/// path or a smooth blend, which a spot tint cannot.
+fn one_spot_ink(ft: &tracedraw_core::Fountain) -> Option<u32> {
+    if ft.has_blend_options() && !ft.stepped() {
+        return None;
+    }
+    let mut ink = None;
+    for s in &ft.stops {
+        match s.color {
+            Color::Spot { ink: i, .. } => match ink {
+                None => ink = Some(i),
+                Some(j) if j == i => {}
+                Some(_) => return None,
+            },
+            c if spot_tint(c) == 0.0 => {}
+            _ => return None,
+        }
+    }
+    ink
+}
+
+/// The tint of a stop in a fountain of one spot ink: the ink's tint, 0
+/// for white (no ink).
+fn spot_tint(c: Color) -> f64 {
+    match c {
+        Color::Spot { tint, .. } if tint.is_finite() => tint.clamp(0.0, 1.0) as f64,
+        Color::Cmyk { c, m, y, k } if c == 0.0 && m == 0.0 && y == 0.0 && k == 0.0 => 0.0,
+        Color::Gray { v } if v >= 1.0 => 0.0,
+        Color::Rgb { r, g, b } if r >= 1.0 && g >= 1.0 && b >= 1.0 => 0.0,
+        _ => -1.0,
+    }
+}
+
+/// The stitching function over the fountain's stops, each colour written
+/// by `array`.
+fn stitching_function_with(
+    ft: &tracedraw_core::Fountain,
+    array: &dyn Fn(Color) -> String,
+) -> String {
+    let rgb_array = array;
     // One run of stops with the edge pad, repeats, mirror and inversion
     // worked in.
     let mut stops: Vec<(f64, Color)> = ft
@@ -5025,6 +5085,106 @@ pub(crate) mod text_tests {
                 text.contains("/ShadingType 2 /ColorSpace /DeviceRGB"),
                 "{standard:?}: {text}"
             );
+        }
+    }
+
+    /// A fountain of tints of one spot ink (to white) goes in as a
+    /// shading on the ink's Separation, so it prints on the ink's plate:
+    /// it went in as its process stand-in, in PDF/X-1a too.
+    #[test]
+    fn a_spot_tint_fountain_is_a_shading_on_its_separation() {
+        let mut doc = Document::new("t", tracedraw_core::Size::new(100.0, 50.0));
+        doc.inks.push(tracedraw_core::document::Ink {
+            id: 7,
+            name: "PANTONE 485 C".into(),
+            cmyk: [0.0, 0.95, 1.0, 0.0],
+        });
+        let spot = doc.inks[0].color(1.0);
+        let layer = doc.pages[0].layers[0].id;
+        for (i, end) in [doc.inks[0].color(0.2), Color::WHITE]
+            .into_iter()
+            .enumerate()
+        {
+            let id = doc.ids_mut().shape();
+            let x = 50.0 * i as f64;
+            let mut s = Shape::new(
+                id,
+                ShapeKind::Rect {
+                    rect: Rect::new(x, 0.0, x + 40.0, 50.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            s.fill = Fill::linear(spot, end, 0.0);
+            s.stroke = None;
+            doc.layer_mut(layer).unwrap().shapes.push(s);
+        }
+        for standard in [PdfStandard::None, PdfStandard::X1a] {
+            let opts = PdfOptions {
+                standard,
+                ..Default::default()
+            };
+            let text = inflated(&document_to_pdf_with(&doc, &opts));
+            let sep = text
+                .find("[/Separation /PANTONE#20485#20C")
+                .expect("separation");
+            let obj = text[..sep]
+                .rfind(" 0 obj")
+                .map(|e| {
+                    let start = text[..e].rfind('\n').map_or(0, |n| n + 1);
+                    text[start..e].to_string()
+                })
+                .expect("object");
+            assert!(
+                text.contains(&format!("/ShadingType 2 /ColorSpace {obj} 0 R")),
+                "{standard:?}: {text}"
+            );
+            assert!(text.contains("/C0 [1] /C1 [0.2]"), "{text}");
+            assert!(text.contains("/C0 [1] /C1 [0]"), "{text}");
+        }
+    }
+
+    /// The colours of a CMYK fountain's stops go in as chosen: every stop
+    /// after the first was mixed through RGB and turned back to CMYK, so
+    /// 100 % cyan came out as a four-colour mix.
+    #[test]
+    fn a_cmyk_fountain_keeps_its_stop_colours() {
+        let mut doc = Document::new("t", tracedraw_core::Size::new(100.0, 50.0));
+        let layer = doc.pages[0].layers[0].id;
+        let id = doc.ids_mut().shape();
+        let mut s = Shape::new(
+            id,
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 100.0, 50.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let cmyk = |c, m, y, k| Color::Cmyk { c, m, y, k };
+        let mut ft = tracedraw_core::Fountain::two(
+            FountainKind::Linear,
+            cmyk(0.0, 0.0, 0.0, 1.0),
+            cmyk(0.0, 1.0, 0.0, 0.0),
+            0.0,
+        );
+        ft.stops.insert(
+            1,
+            tracedraw_core::style::Stop::new(0.5, cmyk(1.0, 0.0, 0.0, 0.0)),
+        );
+        s.fill = Fill::Fountain(ft);
+        s.stroke = None;
+        doc.layer_mut(layer).unwrap().shapes.push(s);
+        for standard in [PdfStandard::None, PdfStandard::X1a] {
+            let opts = PdfOptions {
+                standard,
+                ..Default::default()
+            };
+            let text = inflated(&document_to_pdf_with(&doc, &opts));
+            assert!(
+                text.contains("/C0 [0 0 0 1] /C1 [1 0 0 0]"),
+                "{standard:?}: {text}"
+            );
+            assert!(text.contains("/C0 [1 0 0 0] /C1 [0 1 0 0]"), "{text}");
         }
     }
 
