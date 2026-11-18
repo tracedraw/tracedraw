@@ -3832,8 +3832,10 @@ impl App {
             else {
                 continue;
             };
-            for sp in spans.iter_mut() {
-                sp.text = apply_case(&sp.text, mode);
+            let runs: Vec<&str> = spans.iter().map(|sp| sp.text.as_str()).collect();
+            let changed = apply_case_runs(&runs, mode);
+            for (sp, text) in spans.iter_mut().zip(changed) {
+                sp.text = text;
             }
             self.run(Command::SetShapeKind {
                 shape: s.id,
@@ -5175,48 +5177,69 @@ pub fn placement_on(
     (tracedraw_core::TextAlign::Center, total / 2.0)
 }
 
-pub fn apply_case(text: &str, mode: CaseMode) -> String {
-    match mode {
-        CaseMode::Lower => text.to_lowercase(),
-        CaseMode::Upper => text.to_uppercase(),
-        CaseMode::Toggle => text
-            .chars()
-            .map(|c| {
-                if c.is_uppercase() {
-                    c.to_lowercase().collect::<String>()
-                } else {
-                    c.to_uppercase().collect::<String>()
+/// [`apply_case_runs`] for one text.
+#[cfg(test)]
+fn apply_case(text: &str, mode: CaseMode) -> String {
+    apply_case_runs(&[text], mode).pop().unwrap_or_default()
+}
+
+/// [`apply_case`] for the runs of one text, each in its own look, as one
+/// text: a sentence or a word goes on from one run into the next. Each run
+/// was changed as a text of its own, so a bold word in the middle of a
+/// sentence took a capital in Sentence case ("The big Dog runs."), and in
+/// Title Case a word in two looks took a capital in the middle. A word
+/// starts after any white space (a line break or a tab too, not only a
+/// space).
+pub fn apply_case_runs(runs: &[&str], mode: CaseMode) -> Vec<String> {
+    // Sentence: the next letter starts a sentence. Title: the next
+    // character starts a word.
+    let mut start = true;
+    runs.iter()
+        .map(|text| match mode {
+            CaseMode::Lower => text.to_lowercase(),
+            CaseMode::Upper => text.to_uppercase(),
+            CaseMode::Toggle => text
+                .chars()
+                .map(|c| {
+                    if c.is_uppercase() {
+                        c.to_lowercase().collect::<String>()
+                    } else {
+                        c.to_uppercase().collect::<String>()
+                    }
+                })
+                .collect(),
+            CaseMode::Title => {
+                let mut out = String::new();
+                for c in text.chars() {
+                    if c.is_whitespace() {
+                        out.push(c);
+                        start = true;
+                    } else if start {
+                        out.extend(c.to_uppercase());
+                        start = false;
+                    } else {
+                        out.extend(c.to_lowercase());
+                    }
                 }
-            })
-            .collect(),
-        CaseMode::Title => text
-            .split(' ')
-            .map(|w| {
-                let mut cs = w.chars();
-                match cs.next() {
-                    Some(f) => f.to_uppercase().collect::<String>() + &cs.as_str().to_lowercase(),
-                    None => String::new(),
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" "),
-        CaseMode::Sentence => {
-            let mut out = String::new();
-            let mut start = true;
-            for c in text.chars() {
-                if start && c.is_alphabetic() {
-                    out.extend(c.to_uppercase());
-                    start = false;
-                } else {
-                    out.extend(c.to_lowercase());
-                }
-                if matches!(c, '.' | '!' | '?' | '\n') {
-                    start = true;
-                }
+                out
             }
-            out
-        }
-    }
+            CaseMode::Sentence => {
+                let mut out = String::new();
+                for c in text.chars() {
+                    if start && c.is_alphabetic() {
+                        out.extend(c.to_uppercase());
+                        start = false;
+                    } else {
+                        out.extend(c.to_lowercase());
+                    }
+                    if matches!(c, '.' | '!' | '?' | '\n') {
+                        start = true;
+                    }
+                }
+                out
+            }
+        })
+        .collect()
 }
 
 impl App {
@@ -6788,6 +6811,56 @@ mod tests {
         );
         assert_eq!(apply_case("hello world", CaseMode::Title), "Hello World");
         assert_eq!(apply_case("aBc", CaseMode::Toggle), "AbC");
+    }
+
+    /// The runs of a text, each in its own look, change case as one text:
+    /// a bold word in the middle of a sentence stays small in Sentence
+    /// case, a word in two looks takes one capital in Title Case, and a
+    /// word after a line break takes its capital too. Each run was a
+    /// sentence of its own: "The big Dog Runs."
+    #[test]
+    fn the_runs_of_a_text_change_case_as_one_text() {
+        let mut app = App::headless();
+        let mut bold = TextSpan::new("dog", "Arial", 12.0);
+        bold.bold = true;
+        let id = app
+            .new_shape(ShapeKind::Text {
+                spans: vec![
+                    TextSpan::new("the big ", "Arial", 12.0),
+                    bold,
+                    TextSpan::new(" ru", "Arial", 12.0),
+                    TextSpan::new("ns.\nsecond line", "Arial", 12.0),
+                ],
+                origin: tracedraw_core::Point::new(10.0, 10.0),
+                frame: None,
+                align: tracedraw_core::TextAlign::Left,
+                para: Default::default(),
+                on_path: None,
+            })
+            .expect("text");
+        let texts = |app: &App| match &app.doc().find_shape(id).expect("text").kind {
+            ShapeKind::Text { spans, .. } => spans.iter().map(|s| s.text.clone()).collect(),
+            _ => Vec::new(),
+        };
+        for (mode, want) in [
+            (
+                CaseMode::Sentence,
+                ["The big ", "dog", " ru", "ns.\nSecond line"],
+            ),
+            (
+                CaseMode::Title,
+                ["The Big ", "Dog", " Ru", "ns.\nSecond Line"],
+            ),
+            (
+                CaseMode::Upper,
+                ["THE BIG ", "DOG", " RU", "NS.\nSECOND LINE"],
+            ),
+        ] {
+            app.select(vec![id]);
+            app.change_case(mode);
+            assert_eq!(texts(&app), want, "{mode:?}");
+            app.undo();
+        }
     }
 
     /// #2220: a ring with a shadow converted to a bitmap went to the top
