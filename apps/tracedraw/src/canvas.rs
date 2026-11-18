@@ -2772,10 +2772,9 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
             }
         }
     }
-    // The first node of each selected object's subpaths, a small hollow
-    // square, as the reference program marks a selection with the Pick
-    // tool: it shows where each outline starts and that the object is
-    // picked (#1145).
+    // Node marks: for one selected shape show every node, so the points
+    // that define its outline are visible. For multiple shapes retain the
+    // first-node marks used to tell the objects apart (#1145).
     if matches!(app.tool, Tool::Pick | Tool::FreeformPick) {
         for p in pick_node_marks(&shapes) {
             let p = view.to_screen(match preview {
@@ -2812,23 +2811,56 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
 const PICK_NODE_MARKS_MAX: usize = 1000;
 
 /// Where the Pick tool marks the selected `shapes` (#1145), in page
-/// space: the first node of each subpath of a curve, and the first node
-/// of a rectangle (its first corner), an ellipse (its start), a polygon
-/// or a B-spline. Groups, texts, pictures and other objects show none;
-/// nor does a selection of more than [`PICK_NODE_MARKS_MAX`] subpaths.
+/// space. A single object shows all its nodes; a multiple selection shows
+/// one first-node mark per object. Bitmaps use their corners and clip
+/// frames use their frame's nodes, without marking their contents. Groups,
+/// texts and other objects without nodes show none; selections with more
+/// than [`PICK_NODE_MARKS_MAX`] marks show none.
 pub(crate) fn pick_node_marks(shapes: &[tracedraw_core::Shape]) -> Vec<Point> {
     let mut out = Vec::new();
+    let limit = if shapes.len() == 1 {
+        PICK_NODE_MARKS_MAX + 1
+    } else {
+        1
+    };
     for s in shapes {
+        let mut s = s;
+        let mut parent = Affine::IDENTITY;
+        while let ShapeKind::ClipFrame { frame, .. } = &s.kind {
+            parent = parent * s.transform;
+            s = frame;
+        }
+        let transform = parent * s.transform;
         match &s.kind {
             ShapeKind::Path { path, .. } if s.spline.is_none() => {
                 out.extend(
                     tracedraw_core::nodes::nodes(path)
                         .into_iter()
-                        .filter(|n| n.is_start)
-                        .map(|n| s.transform * n.pos),
+                        .take(limit)
+                        .map(|n| transform * n.pos),
                 );
             }
-            _ => out.extend(crate::kind_nodes::nodes(s).first().map(|(_, p)| *p)),
+            ShapeKind::Bitmap { rect, .. } => {
+                out.extend(
+                    [
+                        Point::new(rect.x0, rect.y1),
+                        Point::new(rect.x1, rect.y1),
+                        Point::new(rect.x0, rect.y0),
+                        Point::new(rect.x1, rect.y0),
+                    ]
+                    .into_iter()
+                    .take(limit)
+                    .map(|p| transform * p),
+                );
+            }
+            _ => {
+                out.extend(
+                    crate::kind_nodes::nodes(s)
+                        .into_iter()
+                        .take(limit)
+                        .map(|(_, p)| parent * p),
+                );
+            }
         }
         if out.len() > PICK_NODE_MARKS_MAX {
             return Vec::new();
@@ -5897,10 +5929,9 @@ mod tests {
         assert_eq!(drop_frame_hints((false, false), false).len(), 3);
     }
 
-    /// #1145: with the Pick tool a selected object marks the first node
-    /// of each of its subpaths (the outer and inner ring of a letter O
-    /// each), as the reference program does; an ellipse its start, a
-    /// rectangle its first corner; a group nothing.
+    /// #1145, #3258: a single selected object marks all its nodes; a
+    /// multiple selection marks only each object's first node, even for
+    /// compound paths. A group has no marks.
     #[test]
     fn the_pick_tool_marks_where_the_selected_outlines_start() {
         use tracedraw_core::ShapeKind;
@@ -5936,11 +5967,33 @@ mod tests {
         };
         assert_eq!(
             marks(&app, curve),
-            vec![Point::new(0.0, 0.0), Point::new(10.0, 5.0)]
+            vec![
+                Point::new(0.0, 0.0),
+                Point::new(50.0, 0.0),
+                Point::new(50.0, 30.0),
+                Point::new(10.0, 5.0),
+                Point::new(40.0, 5.0),
+                Point::new(40.0, 20.0),
+            ]
         );
         assert_eq!(marks(&app, ring).len(), 1);
-        assert_eq!(marks(&app, rect).len(), 1);
+        let rect_marks = marks(&app, rect);
+        assert_eq!(rect_marks.len(), 4);
+        for corner in [
+            Point::new(200.0, 0.0),
+            Point::new(240.0, 0.0),
+            Point::new(240.0, 40.0),
+            Point::new(200.0, 40.0),
+        ] {
+            assert!(rect_marks.contains(&corner), "missing {corner:?}");
+        }
+
         app.select(vec![curve, ring]);
+        let selected = app.selected_rc();
+        assert_eq!(
+            pick_node_marks(selected.as_slice()),
+            vec![Point::new(0.0, 0.0), Point::new(120.0, 40.0),]
+        );
         app.group_selection();
         let group = app.selection[0];
         assert!(marks(&app, group).is_empty());
@@ -5982,6 +6035,195 @@ mod tests {
         }
         let n: usize = out.shapes.iter().map(|c| arcs(&c.shape)).sum();
         assert_eq!(n, 8, "four edge arcs, each drawn twice");
+    }
+
+    #[test]
+    fn the_pick_tool_marks_a_transformed_bitmaps_four_corners() {
+        use tracedraw_core::{Shape, ShapeId};
+        let mut bitmap = Shape::new(
+            ShapeId(1),
+            ShapeKind::Bitmap {
+                rect: Rect::new(10.0, 20.0, 40.0, 60.0),
+                width_px: 1,
+                height_px: 1,
+                png: Vec::new().into(),
+                fx: None,
+            },
+        );
+        // Rotate a quarter turn, scale each axis and translate.
+        bitmap.transform = Affine::new([0.0, 2.0, -3.0, 0.0, 100.0, 200.0]);
+        assert_eq!(
+            pick_node_marks(std::slice::from_ref(&bitmap)),
+            vec![
+                Point::new(-80.0, 220.0),
+                Point::new(-80.0, 280.0),
+                Point::new(40.0, 220.0),
+                Point::new(40.0, 280.0),
+            ]
+        );
+        let mut other = bitmap.clone();
+        other.id = ShapeId(2);
+        other.transform = Affine::translate((8.0, -4.0));
+        assert_eq!(
+            pick_node_marks(&[bitmap, other]),
+            vec![Point::new(-80.0, 220.0), Point::new(18.0, 56.0)]
+        );
+    }
+
+    #[test]
+    fn the_pick_tool_marks_a_clip_frames_outline_without_its_contents() {
+        use tracedraw_core::{Shape, ShapeId};
+        let mut path = BezPath::new();
+        path.move_to((0.0, 0.0));
+        path.line_to((30.0, 0.0));
+        path.line_to((10.0, 20.0));
+        path.close_path();
+        let mut outline = Shape::new(ShapeId(1), ShapeKind::Path { path, closed: true });
+        outline.transform = Affine::translate((5.0, 7.0));
+        let content = Shape::new(
+            ShapeId(2),
+            ShapeKind::Rect {
+                rect: Rect::new(-100.0, -100.0, 100.0, 100.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let mut clip = Shape::new(
+            ShapeId(3),
+            ShapeKind::ClipFrame {
+                frame: Box::new(outline),
+                contents: vec![content],
+            },
+        );
+        clip.transform = Affine::new([0.0, 2.0, -3.0, 0.0, 100.0, 200.0]);
+        let expected = vec![
+            Point::new(79.0, 210.0),
+            Point::new(79.0, 270.0),
+            Point::new(19.0, 230.0),
+        ];
+        assert_eq!(pick_node_marks(std::slice::from_ref(&clip)), expected);
+        let mut nested = Shape::new(
+            ShapeId(4),
+            ShapeKind::ClipFrame {
+                frame: Box::new(clip),
+                contents: Vec::new(),
+            },
+        );
+        nested.transform = Affine::translate((8.0, -4.0));
+        let other = Shape::new(
+            ShapeId(5),
+            ShapeKind::Ellipse {
+                rect: Rect::new(0.0, 0.0, 40.0, 40.0),
+                arc: None,
+            },
+        );
+        assert_eq!(
+            pick_node_marks(&[nested.clone(), other]),
+            vec![Point::new(87.0, 206.0), Point::new(20.0, 40.0)]
+        );
+        assert_eq!(
+            pick_node_marks(&[nested]),
+            expected
+                .into_iter()
+                .map(|p| p + tracedraw_core::geometry::Vec2::new(8.0, -4.0))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn the_pick_tool_marks_each_selected_bitmap_and_clip_frame_once() {
+        use tracedraw_core::{Shape, ShapeId};
+        let rect = Shape::new(
+            ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(10.0, 20.0, 40.0, 60.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let frame = Shape::new(
+            ShapeId(2),
+            ShapeKind::ClipFrame {
+                frame: Box::new(rect.clone()),
+                contents: Vec::new(),
+            },
+        );
+        let bitmap = Shape::new(
+            ShapeId(3),
+            ShapeKind::Bitmap {
+                rect: Rect::new(50.0, 20.0, 80.0, 60.0),
+                width_px: 1,
+                height_px: 1,
+                png: Vec::new().into(),
+                fx: None,
+            },
+        );
+        assert_eq!(
+            pick_node_marks(std::slice::from_ref(&frame)),
+            vec![
+                Point::new(10.0, 60.0),
+                Point::new(40.0, 60.0),
+                Point::new(10.0, 20.0),
+                Point::new(40.0, 20.0),
+            ]
+        );
+        assert_eq!(
+            pick_node_marks(&[frame.clone(), bitmap.clone()]),
+            vec![Point::new(10.0, 60.0), Point::new(50.0, 60.0)]
+        );
+        let mut filled = frame.clone();
+        filled.id = ShapeId(4);
+        filled.transform = Affine::translate((100.0, 0.0));
+        if let ShapeKind::ClipFrame { contents, .. } = &mut filled.kind {
+            contents.push(bitmap.clone());
+        }
+        assert_eq!(
+            pick_node_marks(&[rect, frame, bitmap, filled]),
+            vec![
+                Point::new(10.0, 60.0),
+                Point::new(10.0, 60.0),
+                Point::new(50.0, 60.0),
+                Point::new(110.0, 60.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_pick_tool_limits_marks_for_single_and_multiple_selections() {
+        use tracedraw_core::{Shape, ShapeId};
+        let mut path = BezPath::new();
+        path.move_to((0.0, 0.0));
+        for i in 1..PICK_NODE_MARKS_MAX {
+            path.line_to((i as f64, 0.0));
+        }
+        let mut curve = Shape::new(
+            ShapeId(1),
+            ShapeKind::Path {
+                path,
+                closed: false,
+            },
+        );
+        assert_eq!(
+            pick_node_marks(std::slice::from_ref(&curve)).len(),
+            PICK_NODE_MARKS_MAX
+        );
+        if let ShapeKind::Path { path, .. } = &mut curve.kind {
+            path.line_to((PICK_NODE_MARKS_MAX as f64, 0.0));
+        }
+        assert!(pick_node_marks(std::slice::from_ref(&curve)).is_empty());
+        let mut selected: Vec<_> = (0..PICK_NODE_MARKS_MAX)
+            .map(|i| {
+                let mut shape = curve.clone();
+                shape.id = ShapeId(i as u64 + 1);
+                shape.transform = Affine::translate((i as f64, 0.0));
+                shape
+            })
+            .collect();
+        let marks = pick_node_marks(&selected);
+        assert_eq!(marks.len(), PICK_NODE_MARKS_MAX);
+        assert_eq!(marks.last(), Some(&Point::new(999.0, 0.0)));
+        selected.push(curve);
+        assert!(pick_node_marks(&selected).is_empty());
     }
 
     /// #1906: View > Page > Page Border and Page Shadow are two options:

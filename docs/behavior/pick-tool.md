@@ -78,13 +78,23 @@ The text flow tabs hang 3.5 points past the handles, whatever their
 size. A corner or side handle scales from where it was
 grabbed, so the box follows the pointer without a jump. Objects chosen
 inside a group show round handles. The centre mark is a small cross.
-The first node of each subpath of a selected object shows too, a
-small hollow square (5 points, white with a dark edge): both rings of a
-letter O, an ellipse's start, a rectangle's first corner; groups, texts
-and pictures show none, nor does a selection of more than 1000
-subpaths. So a selected object is told from the others at a glance and
-where its outline starts shows, as in the reference program (#1145,
-`canvas::tests::the_pick_tool_marks_where_the_selected_outlines_start`).
+The nodes of a selected object show as small hollow squares (5 points,
+white with a dark edge). A single selection marks every node, including
+all four rectangle corners and each point of a polygon or curve. A
+bitmap marks its four transformed corners, and a clip frame marks the
+nodes of its own outline, whether empty or filled, without marking the
+clipped contents. An ellipse marks its start. With several objects
+selected, each object keeps exactly one mark at its first node, including
+pictures and clip frames. Compound paths also keep just one mark per
+object, regardless of their number of subpaths.
+Groups and texts show none, nor does a selection with more than 1000
+marks. This makes every point of one selected outline visible while
+keeping larger selections clear (#1145, #3258,
+`canvas::tests::the_pick_tool_marks_where_the_selected_outlines_start`,
+`canvas::tests::the_pick_tool_marks_a_transformed_bitmaps_four_corners`,
+`canvas::tests::the_pick_tool_marks_a_clip_frames_outline_without_its_contents`,
+`canvas::tests::the_pick_tool_marks_each_selected_bitmap_and_clip_frame_once`,
+`canvas::tests::the_pick_tool_limits_marks_for_single_and_multiple_selections`).
 
 In rotate mode the handles are black arrows 2 points thick with solid
 heads, their centres 9 points out from the box: a curved double arrow
