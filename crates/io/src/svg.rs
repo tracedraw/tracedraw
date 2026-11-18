@@ -201,6 +201,68 @@ fn drop_links(shape: &mut Shape) {
     }
 }
 
+/// The resolution drop shadows are drawn at.
+const SHADOW_DPI: f64 = 300.0;
+
+/// The drop shadow of `shape` (placed by `parent`, which holds the page's
+/// Y flip) as the drawing window draws it: the blurred silhouette in the
+/// shadow's colour and opacity as a picture (SVG filters blur differently
+/// in each viewer, and many leave them out), merged by the shadow's merge
+/// mode. The object is written over it by the caller.
+fn write_drop_shadow(
+    shape: &Shape,
+    parent: Affine,
+    out: &mut String,
+    defs: &mut String,
+    ctx: &mut SvgCtx,
+    indent: usize,
+) {
+    let Some(sh) = shape.shadow.filter(|sh| sh.opacity > 0.0) else {
+        return;
+    };
+    if shape.opacity <= 0.0 {
+        return;
+    }
+    // Page space: the flip undone (it is its own inverse).
+    let mut placed = shape.clone();
+    placed.transform = ctx.flip * parent * shape.transform;
+    let area = sh.bounds(placed.bounds());
+    // Within 40 million pixels.
+    let area_in2 = (area.width() / 25.4) * (area.height() / 25.4);
+    let dpi = SHADOW_DPI
+        .min((40.0e6 / area_in2.max(1e-9)).sqrt())
+        .max(1.0);
+    let Some((rect, pm)) = tracedraw_render::render_shadow_image(&placed, dpi) else {
+        return;
+    };
+    let Ok(png) = pm.encode_png() else {
+        return;
+    };
+    let mut pic = Shape::new(
+        shape.id,
+        ShapeKind::Bitmap {
+            rect,
+            width_px: pm.width(),
+            height_px: pm.height(),
+            png: png.into(),
+            fx: None,
+        },
+    );
+    pic.fill = Fill::None;
+    pic.stroke = None;
+    let pad = "  ".repeat(indent);
+    let blend = svg_blend_mode(sh.merge);
+    let _ = match blend {
+        Some(b) => writeln!(
+            out,
+            "{pad}<g data-shadow=\"1\" style=\"mix-blend-mode:{b}\">"
+        ),
+        None => writeln!(out, "{pad}<g data-shadow=\"1\">"),
+    };
+    write_unlinked(&pic, &[], ctx.flip, out, defs, ctx, indent + 1);
+    let _ = writeln!(out, "{pad}</g>");
+}
+
 fn write_unlinked(
     shape: &Shape,
     symbols: &[tracedraw_core::Symbol],
@@ -212,6 +274,13 @@ fn write_unlinked(
 ) {
     if !shape.visible {
         return;
+    }
+    // The drop shadow beneath the object and all its effects draw, once.
+    if shape.shadow.is_some() {
+        write_drop_shadow(shape, parent, out, defs, ctx, indent);
+        let mut rest = shape.clone();
+        rest.shadow = None;
+        return write_unlinked(&rest, symbols, parent, out, defs, ctx, indent);
     }
     let pad = "  ".repeat(indent);
     if !shape.effects.is_empty() {
@@ -1404,6 +1473,64 @@ pub(crate) mod tests {
         };
         assert!(svg_of(true).contains("stroke-width=\"2.5\""));
         assert!(svg_of(false).contains("stroke-width=\"10\""));
+    }
+
+    /// A drop shadow goes out as a picture beneath its object, where the
+    /// window draws it; it was left out. Read back, the picture is there,
+    /// offset down and to the right of the object, and the object over it.
+    #[test]
+    fn a_drop_shadow_goes_out_beneath_its_object() {
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let id = doc.ids_mut().shape();
+        let mut s = Shape::new(
+            id,
+            ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 60.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        s.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        s.stroke = None;
+        s.transform = Affine::translate((5.0, 100.0));
+        s.shadow = Some(tracedraw_core::document::Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(4.0, -4.0),
+            ..Default::default()
+        });
+        let mut g = Shape::new(
+            doc.ids_mut().shape(),
+            ShapeKind::Group { children: vec![s] },
+        );
+        g.transform = Affine::translate((20.0, 0.0));
+        doc.layer_mut(layer).unwrap().shapes.push(g);
+        let svg = page_to_svg(&doc, 0);
+        let shadow = svg.find("data-shadow").expect("the shadow is written");
+        let object = svg.find("fill=\"#ff0000\"").expect("the object");
+        assert!(shadow < object, "the shadow goes beneath the object");
+        assert_eq!(svg.matches("data-shadow").count(), 1, "{svg}");
+        let mut ids = tracedraw_core::id::IdSource::default();
+        let back = crate::svg_import::parse(&svg, &mut ids).expect("reads back");
+        let mut leaves = Vec::new();
+        fn walk<'a>(s: &'a Shape, out: &mut Vec<&'a Shape>) {
+            match &s.kind {
+                ShapeKind::Group { children } => children.iter().for_each(|c| walk(c, out)),
+                _ => out.push(s),
+            }
+        }
+        back.shapes.iter().for_each(|s| walk(s, &mut leaves));
+        assert_eq!(leaves.len(), 2, "{leaves:?}");
+        assert!(matches!(leaves[0].kind, ShapeKind::Bitmap { .. }));
+        let (pic, obj) = (leaves[0].bounds(), leaves[1].bounds());
+        // The object at (35, 110)-(85, 140); the shadow 4 mm right and
+        // down, feathered round it.
+        assert!(
+            (obj.x0 - 35.0).abs() < 0.01 && (obj.y0 - 110.0).abs() < 0.01,
+            "{obj:?}"
+        );
+        assert!(pic.center().x > obj.center().x + 2.0, "{pic:?}");
+        assert!(pic.center().y < obj.center().y - 2.0, "{pic:?}");
+        assert!(pic.x1 >= obj.x1 + 4.0 && pic.y0 <= obj.y0 - 4.0, "{pic:?}");
     }
 
     #[test]
