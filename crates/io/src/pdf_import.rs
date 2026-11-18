@@ -2587,7 +2587,32 @@ impl<'a> Importer<'a> {
         } else {
             None
         };
-        shape.opacity = if fill { gs.fill_alpha } else { gs.stroke_alpha };
+        // A paint at alpha 0 draws nothing (Canva puts such see-through
+        // boxes over its pictures, #2640). Leave that part out so the shape
+        // is not an invisible object on the page, and keep the other part
+        // at its own alpha.
+        let has_fill = !matches!(shape.fill, Fill::None);
+        let fill_gone = has_fill && gs.fill_alpha <= 0.0;
+        let stroke_gone = shape.stroke.is_some() && gs.stroke_alpha <= 0.0;
+        if fill_gone {
+            shape.fill = Fill::None;
+        }
+        if stroke_gone {
+            shape.stroke = None;
+        }
+        if (fill_gone || stroke_gone) && matches!(shape.fill, Fill::None) && shape.stroke.is_none()
+        {
+            return;
+        }
+        shape.opacity = if has_fill && !fill_gone {
+            gs.fill_alpha
+        } else if shape.stroke.is_some() {
+            gs.stroke_alpha
+        } else if fill {
+            gs.fill_alpha
+        } else {
+            gs.stroke_alpha
+        };
         self.push(shape, &gs.clip);
     }
 
@@ -6179,6 +6204,30 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn paint_at_alpha_zero_leaves_no_invisible_object() {
+        // Canva lays see-through boxes (ca 0) over its pictures (#2640).
+        let bytes = one_page(
+            "0 0 0 rg 0 0 50 50 re f /G0 gs 60 0 40 40 re f \
+             1 0 0 RG 5 w 0 60 40 40 re B /G1 gs 0 0 1 rg 60 60 30 30 re B",
+            "<< /ExtGState << /G0 << /ca 0 >> /G1 << /ca 1 /CA 0 >> >> >>",
+            &[],
+        );
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let p = &imp.pages[0];
+        assert_eq!(p.shapes.len(), 3, "{:?}", imp.warnings);
+        assert!(matches!(p.shapes[0].fill, Fill::Solid(_)));
+        // Fill at alpha 0 and a red outline: only the outline, seen.
+        assert!(matches!(p.shapes[1].fill, Fill::None));
+        assert!(p.shapes[1].stroke.is_some());
+        assert!((p.shapes[1].opacity - 1.0).abs() < 1e-9);
+        // Outline at alpha 0: only the blue fill.
+        assert!(matches!(p.shapes[2].fill, Fill::Solid(_)));
+        assert!(p.shapes[2].stroke.is_none());
+        assert!((p.shapes[2].opacity - 1.0).abs() < 1e-9);
     }
 
     /// A circle as four curves, counter-clockwise from its right end, for
