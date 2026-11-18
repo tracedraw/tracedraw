@@ -4796,6 +4796,18 @@ fn window_menu(app: &mut App, ui: &mut Ui) {
                 set_layout(app, WindowLayout::Tabs);
             }
         }
+        // #2904: a drawing in a window of its own, for another monitor.
+        let detached = has && crate::ui::detached::is_detached(app, app.active_doc);
+        let can = has && !detached && crate::ui::detached::can_detach(ui.ctx());
+        if item(ui, "menu.window.detach_window", "", can) {
+            app.show_welcome = false;
+            let ctx = ui.ctx().clone();
+            crate::ui::detached::detach_active(app, &ctx);
+        }
+        if item(ui, "menu.window.attach_window", "", detached) {
+            let i = app.active_doc;
+            crate::ui::detached::attach(app, i);
+        }
     }
     sep(ui);
     sub(ui, "menu.window.workspace", |ui| {
