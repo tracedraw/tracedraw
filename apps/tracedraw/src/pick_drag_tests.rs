@@ -7461,6 +7461,61 @@ fn freehand_clicks_add_nodes_and_a_double_click_ends_the_line() {
     assert_eq!(pts_of(&app).len(), 2);
 }
 
+/// Freehand by clicks: a click on the first node of a line of three nodes
+/// or more closes it, where the pointer shows the close mark (#2339); it
+/// added a node there and the line went on, so a closed shape took a
+/// double-click. A double-click there closes it once and starts nothing.
+#[test]
+fn a_freehand_click_on_the_first_node_closes_the_line() {
+    for double in [false, true] {
+        let (ctx, mut app, _id) = setup();
+        app.set_tool(Tool::Freehand);
+        let view = app.view.clone();
+        let at = |x: f64, y: f64| view.to_screen(Point::new(x, y));
+        let before = shape_count(&app);
+        for q in [at(100.0, 100.0), at(160.0, 100.0), at(160.0, 160.0)] {
+            click_at(&ctx, &mut app, q, Modifiers::NONE);
+            for _ in 0..30 {
+                frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+            }
+        }
+        // A little off the first node, within reach.
+        let first = at(100.5, 100.3);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(first)], Modifiers::NONE);
+        let clicks = if double { 2 } else { 1 };
+        for _ in 0..clicks {
+            for down in [true, false] {
+                frame(
+                    &ctx,
+                    &mut app,
+                    vec![button(first, down, PointerButton::Primary, Modifiers::NONE)],
+                    Modifiers::NONE,
+                );
+            }
+        }
+        for _ in 0..30 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        assert!(app.curve.is_none(), "double {double}: {:?}", app.curve);
+        assert_eq!(shape_count(&app), before + 1, "double {double}");
+        let s = app
+            .doc()
+            .find_shape(app.selection[0])
+            .expect("the closed line")
+            .clone();
+        let ShapeKind::Path { path, closed } = &s.kind else {
+            panic!("a curve: {:?}", s.kind);
+        };
+        assert!(*closed, "double {double}");
+        let corners = path
+            .elements()
+            .iter()
+            .filter(|e| matches!(e, tracedraw_core::geometry::PathEl::LineTo(_)))
+            .count();
+        assert_eq!(corners, 2, "three nodes, no extra one: {path:?}");
+    }
+}
+
 /// Space ends the curve being drawn with any of the line tools, as a
 /// right click or Enter does, with the nodes placed so far (d#2595).
 #[test]

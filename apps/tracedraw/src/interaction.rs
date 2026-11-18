@@ -3322,6 +3322,23 @@ impl App {
             return;
         }
         if response.clicked_by(PointerButton::Primary) && self.tool == Tool::Freehand {
+            // A click on the first node of a line of three nodes or more
+            // closes it, as the pointer's close mark says; it added a
+            // node there and the line went on (#2339). The second click
+            // of a double-click on it starts nothing.
+            let reach = self.curve_end_reach_px() / self.view.zoom as f64;
+            let closes = self.curve.as_ref().is_some_and(|c| {
+                c.closes_at_first() && c.nodes.first().is_some_and(|n| (n.0 - p).hypot() <= reach)
+            });
+            if closes {
+                if let Some(c) = self.curve.take() {
+                    self.close_curve(c);
+                }
+                return;
+            }
+            if double && self.curve.is_none() {
+                return;
+            }
             let p = self.curve_point(self.snap_point(p), self.constrain_held(&mods));
             let c = self.curve.get_or_insert_with(|| CurveInProgress {
                 nodes: Vec::new(),
