@@ -4659,6 +4659,39 @@ impl Shape {
     }
 
     pub fn bounds(&self) -> Rect {
+        self.bounds_under(Affine::IDENTITY)
+    }
+
+    /// [`Shape::bounds`] with `outer` applied on top of the shape's own
+    /// transformation. A group passes its transformation down instead of
+    /// copying each member with it: the copy took the member's whole
+    /// subtree, so groups nested deep were copied once per level, which
+    /// on a drawing of a million nested objects ran out of memory (#3340).
+    fn bounds_under(&self, outer: Affine) -> Rect {
+        match &self.kind {
+            ShapeKind::Group { children } => {
+                // A member that draws nothing (an empty curve, such as a
+                // dimension's arrowheads when it has none) takes no room:
+                // its box would stretch the group's to the origin (#996).
+                let t = outer * self.transform;
+                children
+                    .iter()
+                    .filter(|c| !c.is_empty_path())
+                    .map(|c| c.bounds_under(t))
+                    .reduce(|a, b| a.union(b))
+                    .unwrap_or_else(|| (outer * self.page_path()).bounding_box())
+            }
+            _ if outer == Affine::IDENTITY => self.own_bounds(),
+            _ => {
+                let mut c = self.clone();
+                c.transform = outer * c.transform;
+                c.own_bounds()
+            }
+        }
+    }
+
+    /// [`Shape::bounds`] of an object that is not a group.
+    fn own_bounds(&self) -> Rect {
         match &self.kind {
             ShapeKind::Text {
                 origin,
@@ -4685,19 +4718,6 @@ impl Shape {
             }
             ShapeKind::Text { .. } => self
                 .text_bounds()
-                .unwrap_or_else(|| self.page_path().bounding_box()),
-            // A member that draws nothing (an empty curve, such as a
-            // dimension's arrowheads when it has none) takes no room:
-            // its box would stretch the group's to the origin (#996).
-            ShapeKind::Group { children } => children
-                .iter()
-                .filter(|c| !c.is_empty_path())
-                .map(|c| {
-                    let mut c = c.clone();
-                    c.transform = self.transform * c.transform;
-                    c.bounds()
-                })
-                .reduce(|a, b| a.union(b))
                 .unwrap_or_else(|| self.page_path().bounding_box()),
             _ => self.page_path().bounding_box(),
         }
@@ -7808,6 +7828,69 @@ mod tests {
         assert_eq!(group.visual_bounds(), group.bounds());
         group.transform = Affine::translate((-20.0, 5.0));
         assert_eq!(group.bounds(), Rect::new(80.0, 305.0, 130.0, 315.0));
+    }
+
+    /// The box of groups nested deep takes each level's transformation
+    /// and is worked out without copying the members: each level copied
+    /// all of its members, so a drawing of a million objects in blocks
+    /// nested fifteen deep ran out of memory on opening.
+    #[test]
+    fn the_box_of_groups_nested_deep_is_quick_and_right() {
+        use crate::geometry::{Affine, Rect};
+        let square = |id: u64, x: f64| {
+            Shape::new(
+                ShapeId(id),
+                ShapeKind::Rect {
+                    rect: Rect::new(x, 0.0, x + 1.0, 1.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            )
+        };
+        let mut id = 0;
+        let mut inner = square(0, 0.0);
+        for _ in 0..200 {
+            let mut children: Vec<Shape> = (0..50)
+                .map(|i| {
+                    id += 1;
+                    square(id, f64::from(i))
+                })
+                .collect();
+            children.push(inner);
+            id += 1;
+            inner = Shape::new(ShapeId(id), ShapeKind::Group { children });
+            inner.transform = Affine::translate((1.0, 2.0));
+        }
+        let t = std::time::Instant::now();
+        let b = inner.bounds();
+        assert!(t.elapsed().as_secs() < 2, "{:?}", t.elapsed());
+        // The innermost row moved 200 times, the outermost once.
+        assert_eq!(b, Rect::new(1.0, 2.0, 250.0, 401.0));
+        // Scaled and turned levels compose as before.
+        let mut outer = Shape::new(
+            ShapeId(9_000),
+            ShapeKind::Group {
+                children: vec![square(9_001, 0.0)],
+            },
+        );
+        outer.transform = Affine::scale(2.0);
+        let mut top = Shape::new(
+            ShapeId(9_002),
+            ShapeKind::Group {
+                children: vec![outer],
+            },
+        );
+        top.transform =
+            Affine::translate((10.0, 0.0)) * Affine::rotate(std::f64::consts::FRAC_PI_2);
+        let b = top.bounds();
+        assert!(
+            (b.x0 - 8.0).abs() < 1e-9 && (b.x1 - 10.0).abs() < 1e-9,
+            "{b:?}"
+        );
+        assert!(
+            (b.y0 - 0.0).abs() < 1e-9 && (b.y1 - 2.0).abs() < 1e-9,
+            "{b:?}"
+        );
     }
 
     #[test]

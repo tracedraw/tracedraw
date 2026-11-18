@@ -73,7 +73,12 @@ pub fn ellipse_arc_path(rect: Rect, start_deg: f64, end_deg: f64, pie: bool) -> 
     } else {
         path.move_to(start);
     }
-    arc.append_iter(0.1).for_each(|el| path.push(el));
+    // A tolerance of 0.1 mm, or a millionth of the radius on a huge arc:
+    // the number of pieces grows with radius over tolerance, so an arc
+    // with a radius of 1e300 from a damaged file asked for more pieces
+    // than memory holds (#3338).
+    let tolerance = (radii.x.abs().max(radii.y.abs()) * 1e-6).max(0.1);
+    arc.append_iter(tolerance).for_each(|el| path.push(el));
     if pie {
         path.close_path();
     }
@@ -880,5 +885,29 @@ mod tests {
                 "{n} {sharp}: {b:?}"
             );
         }
+    }
+
+    /// An arc with a huge radius, as a damaged file gives, is a handful of
+    /// curves: the pieces once grew with the radius and an arc of 1e300
+    /// asked for more than memory holds. An arc of drawing size keeps its
+    /// pieces as they were.
+    #[test]
+    fn an_arc_of_huge_radius_is_a_handful_of_curves() {
+        for r in [1e300, 1e60, f64::INFINITY, f64::NAN] {
+            let p = ellipse_arc_path(Rect::new(-r, -r, r, r), 0.0, 270.0, false);
+            assert!(p.elements().len() < 64, "{r}: {}", p.elements().len());
+        }
+        let small = ellipse_arc_path(Rect::new(-50.0, -50.0, 50.0, 50.0), 0.0, 270.0, false);
+        let pieces = |r: f64| {
+            let arc = kurbo::Arc::new(
+                Point::ZERO,
+                kurbo::Vec2::new(r, r),
+                0.0,
+                1.5 * std::f64::consts::PI,
+                0.0,
+            );
+            arc.append_iter(0.1).count()
+        };
+        assert_eq!(small.elements().len(), 1 + pieces(50.0));
     }
 }

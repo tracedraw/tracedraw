@@ -118,6 +118,8 @@ pub fn parse(svg: &str, ids: &mut IdSource) -> std::result::Result<Imported, Str
             "the file nests {depth} elements deep; at most {MAX_ELEMENT_DEPTH} are read"
         ));
     }
+    let split = split_style_sheets(svg);
+    let svg: &str = &split;
     let opt = usvg::Options::default();
     // Text elements become marker paths that usvg places; should the
     // changed source not read, the file is read as it is, without text.
@@ -151,6 +153,123 @@ pub fn parse(svg: &str, ids: &mut IdSource) -> std::result::Result<Imported, Str
         shapes,
         size: Size::new(size.width() as f64 * PX_TO_MM, height_px * PX_TO_MM),
     })
+}
+
+/// Style sheets longer than this are cut into several (see
+/// [`split_style_sheets`]).
+const LONG_STYLE_SHEET: usize = 16 * 1024;
+
+/// Cut each long `<style>` element of `svg` into several in a row, each
+/// holding whole rules. The style sheet reader works out the line and
+/// column of every place it gives up on a value, as it does at the end
+/// of every declaration, by counting from the start of the sheet: a
+/// sheet of 20 000 rules took 9 seconds to read, twice per import, and
+/// one of 200 000 seemed to hang (#3341). Short sheets cost little, and
+/// the rules keep their order, so the cascade is the same. A source
+/// that cannot be read, or holds no long sheet, is given back unchanged.
+fn split_style_sheets(svg: &str) -> std::borrow::Cow<'_, str> {
+    use std::borrow::Cow;
+    if svg.len() < LONG_STYLE_SHEET || !svg.contains("style") {
+        return Cow::Borrowed(svg);
+    }
+    let opt = roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..Default::default()
+    };
+    let Ok(doc) = roxmltree::Document::parse_with_options(svg, opt) else {
+        return Cow::Borrowed(svg);
+    };
+    let mut edits: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+    for n in doc.descendants().filter(|n| n.has_tag_name("style")) {
+        let mut kids = n.children();
+        let (Some(text), None) = (kids.next(), kids.next()) else {
+            continue;
+        };
+        let Some(css) = text
+            .text()
+            .filter(|t| text.is_text() && t.len() > LONG_STYLE_SHEET)
+        else {
+            continue;
+        };
+        let range = n.range();
+        let element = &svg[range.clone()];
+        let tag_from = n
+            .attributes()
+            .next_back()
+            .map_or(range.start, |a| a.range_value().end);
+        let (Some(open_end), Some(close_at)) = (svg[tag_from..].find('>'), element.rfind("</"))
+        else {
+            continue;
+        };
+        let open = &svg[range.start..tag_from + open_end + 1];
+        let close = &element[close_at..];
+        // About the square root of the sheet's length: each piece costs
+        // its own length per declaration, and each also sorts the rules
+        // read so far.
+        let piece = ((2.0 * css.len() as f64).sqrt() as usize).max(4096);
+        let mut out = String::with_capacity(element.len() + 64);
+        for chunk in css_pieces(css, piece) {
+            out.push_str(open);
+            for c in chunk.chars() {
+                match c {
+                    '&' => out.push_str("&amp;"),
+                    '<' => out.push_str("&lt;"),
+                    '>' => out.push_str("&gt;"),
+                    c => out.push(c),
+                }
+            }
+            out.push_str(close);
+        }
+        edits.push((range, out));
+    }
+    if edits.is_empty() {
+        return Cow::Borrowed(svg);
+    }
+    let mut out = String::with_capacity(svg.len() + 1024);
+    let mut at = 0;
+    for (range, text) in edits {
+        out.push_str(&svg[at..range.start]);
+        out.push_str(&text);
+        at = range.end;
+    }
+    out.push_str(&svg[at..]);
+    Cow::Owned(out)
+}
+
+/// `css` cut after rules that close at the outermost level once a piece
+/// is at least `piece` bytes long; braces in comments and strings do not
+/// count.
+fn css_pieces(css: &str, piece: usize) -> Vec<&str> {
+    let b = css.as_bytes();
+    let (mut pieces, mut start, mut depth, mut i) = (Vec::new(), 0, 0usize, 0);
+    while i < b.len() {
+        match b[i] {
+            b'/' if b.get(i + 1) == Some(&b'*') => {
+                i = css[i + 2..].find("*/").map_or(b.len(), |e| i + 2 + e + 2);
+                continue;
+            }
+            q @ (b'"' | b'\'') => {
+                i += 1;
+                while i < b.len() && b[i] != q {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+            }
+            b'{' => depth += 1,
+            b'}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 && i + 1 - start >= piece {
+                    pieces.push(&css[start..i + 1]);
+                    start = i + 1;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    if start < b.len() {
+        pieces.push(&css[start..]);
+    }
+    pieces
 }
 
 /// What every node is converted with.
@@ -819,6 +938,61 @@ mod tests {
             let tl = (top_left(s) - place * Point::new(30.0, 80.0)).hypot();
             assert!(tl < 0.01, "{place:?}: top-left off by {tl}");
         }
+    }
+
+    /// A long style sheet reads in a moment and still styles the drawing:
+    /// it is read in pieces of whole rules, in order, so a later rule
+    /// still beats an earlier one. A sheet of 20 000 rules took 9 seconds
+    /// to read, twice per import.
+    #[test]
+    fn a_long_style_sheet_reads_quickly_and_keeps_its_cascade() {
+        let mut css = String::from("@media print { .c1 { fill: #ff0000 } }\n/* } { */\n");
+        for i in 0..20_000 {
+            css += &format!(".c{i} {{ fill: #{:06x} }}\n", i * 7);
+        }
+        css += "svg > rect.k { fill: #abcdef }\n.c5 { fill: #123456 }\n";
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><style><![CDATA[{css}]]></style>
+            <rect class="c5" width="10" height="10"/><rect class="c19999" x="20" width="10" height="10"/>
+            <rect class="c1" x="40" width="10" height="10"/><rect class="k" x="60" width="10" height="10"/></svg>"#
+        );
+        let t = std::time::Instant::now();
+        let out = parse(&svg, &mut IdSource::default()).unwrap();
+        assert!(t.elapsed().as_secs() < 30, "{:?}", t.elapsed());
+        let fills: Vec<&Fill> = out.shapes.iter().map(|s| &s.fill).collect();
+        assert_eq!(
+            fills,
+            [
+                &Fill::Solid(Color::rgb8(0x12, 0x34, 0x56)),
+                &Fill::Solid(Color::rgb8(0x02, 0x22, 0xd9)),
+                &Fill::Solid(Color::rgb8(0, 0, 7)),
+                &Fill::Solid(Color::rgb8(0xab, 0xcd, 0xef)),
+            ]
+        );
+    }
+
+    /// Style sheets are cut only after rules that close at the outermost
+    /// level, never inside a block, a comment or a string.
+    #[test]
+    fn style_sheets_are_cut_between_whole_rules() {
+        let css = "a { x: 1 } @media p { b { y: 2 } } /* } */ c[d=\"}\"] { z: 3 } e { w: 4 }";
+        let pieces = css_pieces(css, 1);
+        assert_eq!(pieces.concat(), css);
+        assert_eq!(
+            pieces,
+            [
+                "a { x: 1 }",
+                " @media p { b { y: 2 } }",
+                " /* } */ c[d=\"}\"] { z: 3 }",
+                " e { w: 4 }"
+            ]
+        );
+        assert_eq!(css_pieces(css, 1000), [css]);
+        let short = "<svg xmlns=\"http://www.w3.org/2000/svg\"><style>a{fill:red}</style></svg>";
+        assert!(matches!(
+            split_style_sheets(short),
+            std::borrow::Cow::Borrowed(_)
+        ));
     }
 }
 

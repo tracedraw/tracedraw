@@ -28,7 +28,9 @@ reads every `<text>` element itself, following SVG 1.1:
 | `display="none"`, `visibility="hidden"` | the text is left out |
 
 Properties come from the `style` attribute, then the most specific
-`<style>` rule (later rules win ties), then the presentation attribute,
+`<style>` rule (later rules win ties; a sheet longer than 16 KB is read
+in pieces of whole rules, in order, so 20,000 rules read in a fraction of
+a second instead of 17 seconds, #3341), then the presentation attribute,
 then the parent. White space collapses (newlines removed, tabs to spaces,
 runs of spaces to one, none at the start or end of a chunk) unless
 `xml:space="preserve"`, which keeps every space, but for the line breaks

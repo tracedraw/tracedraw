@@ -1084,8 +1084,11 @@ fn parse_emf(b: &[u8], ids: &mut IdSource) -> Result<Imported, String> {
     })
 }
 
+/// The points a record claims, no more than it holds: a damaged count
+/// of millions in a short record would otherwise be walked in full for
+/// every record of the file (#3339).
 fn points32(r: &[u8], off: usize, n: usize) -> Vec<(f64, f64)> {
-    (0..n)
+    (0..n.min(r.len().saturating_sub(off) / 8))
         .filter(|i| off + i * 8 + 8 <= r.len())
         .map(|i| {
             (
@@ -1097,7 +1100,7 @@ fn points32(r: &[u8], off: usize, n: usize) -> Vec<(f64, f64)> {
 }
 
 fn points16(r: &[u8], off: usize, n: usize) -> Vec<(f64, f64)> {
-    (0..n)
+    (0..n.min(r.len().saturating_sub(off) / 4))
         .filter(|i| off + i * 4 + 4 <= r.len())
         .map(|i| {
             (
@@ -1109,7 +1112,7 @@ fn points16(r: &[u8], off: usize, n: usize) -> Vec<(f64, f64)> {
 }
 
 fn utf16_at(r: &[u8], off: usize, chars: usize) -> String {
-    let units: Vec<u16> = (0..chars)
+    let units: Vec<u16> = (0..chars.min(r.len().saturating_sub(off) / 2))
         .filter(|i| off + i * 2 + 2 <= r.len())
         .map(|i| u16_at(r, off + i * 2))
         .take_while(|u| *u != 0)
@@ -1149,7 +1152,7 @@ impl Player<'_> {
             }
             // POLYPOLYLINE / POLYPOLYGON: bounds, nPolys, cpts, counts, points.
             7 | 8 | 90 | 91 => {
-                let npolys = count(24).min(100_000);
+                let npolys = count(24).min(r.len().saturating_sub(32) / 4);
                 let total = count(28);
                 let counts: Vec<usize> = (0..npolys).map(|i| count(32 + i * 4)).collect();
                 let pts_off = 32 + npolys * 4;
@@ -1589,6 +1592,39 @@ impl Player<'_> {
 
 // ---------------------------------------------------------------- WMF
 
+/// The slots of a WMF object table. A new object takes the lowest free
+/// slot, as GDI does; the free slots are kept in a heap, as looking for
+/// the lowest one along the table made a file of many objects take
+/// seconds per megabyte (#3339). WMF numbers its objects in 16 bits.
+#[derive(Default)]
+struct WmfTable {
+    used: Vec<bool>,
+    free: std::collections::BinaryHeap<std::cmp::Reverse<usize>>,
+}
+
+impl WmfTable {
+    fn take(&mut self) -> Option<usize> {
+        while let Some(std::cmp::Reverse(i)) = self.free.pop() {
+            if !self.used[i] {
+                self.used[i] = true;
+                return Some(i);
+            }
+        }
+        if self.used.len() > usize::from(u16::MAX) {
+            return None;
+        }
+        self.used.push(true);
+        Some(self.used.len() - 1)
+    }
+
+    fn release(&mut self, i: usize) {
+        if self.used.get(i) == Some(&true) {
+            self.used[i] = false;
+            self.free.push(std::cmp::Reverse(i));
+        }
+    }
+}
+
 fn parse_wmf(b: &[u8], ids: &mut IdSource) -> Result<Imported, String> {
     let mut off = 0;
     let (mut window, mut viewport_set) = ((0.0, 0.0), false);
@@ -1688,7 +1724,7 @@ fn parse_wmf(b: &[u8], ids: &mut IdSource) -> Result<Imported, String> {
     // WMF logical units map straight to the placeable units: the window
     // transform is applied by SETWINDOWORG/EXT when present.
     let mut n = 0;
-    let mut wmf_objects: Vec<Option<Obj>> = Vec::new();
+    let mut wmf_objects = WmfTable::default();
     while off + 6 <= b.len() && n < MAX_RECORDS {
         n += 1;
         let size = u32_at(b, off) as usize * 2;
@@ -1711,22 +1747,16 @@ fn parse_wmf(b: &[u8], ids: &mut IdSource) -> Result<Imported, String> {
 }
 
 impl Player<'_> {
-    fn wmf_add_object(&mut self, objs: &mut Vec<Option<Obj>>, o: Obj) {
-        // The lowest free slot is reused, as GDI does.
-        let idx = match objs.iter().position(|x| x.is_none()) {
-            Some(i) => {
-                objs[i] = Some(o.clone());
-                i
+    fn wmf_add_object(&mut self, objs: &mut WmfTable, o: Obj) {
+        match objs.take() {
+            Some(idx) => {
+                self.objects.insert(idx as u32, o);
             }
-            None => {
-                objs.push(Some(o.clone()));
-                objs.len() - 1
-            }
-        };
-        self.objects.insert(idx as u32, o);
+            None => self.warn("more objects than a metafile can number; the rest skipped"),
+        }
     }
 
-    fn wmf_record(&mut self, fnc: u16, r: &[u8], objs: &mut Vec<Option<Obj>>) {
+    fn wmf_record(&mut self, fnc: u16, r: &[u8], objs: &mut WmfTable) {
         let p = 6; // parameters start after size(4) and function(2)
         let w = |i: usize| i16_at(r, p + i * 2) as f64;
         match fnc {
@@ -1753,9 +1783,7 @@ impl Player<'_> {
             0x012D => self.select_object(u16_at(r, p) as u32),
             0x01F0 => {
                 let i = u16_at(r, p) as usize;
-                if i < objs.len() {
-                    objs[i] = None;
-                }
+                objs.release(i);
                 self.objects.remove(&(i as u32));
             }
             0x02FA => {
@@ -1816,7 +1844,7 @@ impl Player<'_> {
             0x0214 => self.move_to(w(1), w(0)),
             0x0213 => self.line_to(w(1), w(0)),
             0x0324 | 0x0325 => {
-                let n = (u16_at(r, p) as usize).min(MAX_POINTS);
+                let n = (u16_at(r, p) as usize).min(r.len().saturating_sub(p + 2) / 4);
                 let pts: Vec<(f64, f64)> = (0..n)
                     .filter(|i| p + 2 + i * 4 + 4 <= r.len())
                     .map(|i| {
@@ -1834,13 +1862,14 @@ impl Player<'_> {
                 }
             }
             0x0538 => {
-                let npolys = (u16_at(r, p) as usize).min(100_000);
+                let npolys = (u16_at(r, p) as usize).min(r.len().saturating_sub(p + 2) / 2);
                 let counts: Vec<usize> = (0..npolys)
                     .map(|i| u16_at(r, p + 2 + i * 2) as usize)
                     .collect();
                 let mut o = p + 2 + npolys * 2;
                 let mut polys = Vec::new();
                 for c in counts {
+                    let c = c.min(r.len().saturating_sub(o) / 4);
                     let pts: Vec<(f64, f64)> = (0..c)
                         .filter(|i| o + i * 4 + 4 <= r.len())
                         .map(|i| (i16_at(r, o + i * 4) as f64, i16_at(r, o + 2 + i * 4) as f64))
@@ -2416,6 +2445,79 @@ mod tests {
         for s in &imp.shapes {
             assert!(s.stroke.is_some(), "each line is stroked");
         }
+    }
+
+    /// A damaged file of short records that each claim millions of
+    /// points opens at once: a record gives no more points than it holds.
+    /// Each of these records was walked two million points long.
+    #[test]
+    fn huge_point_counts_in_short_records_open_at_once() {
+        let mut records = vec![rec(3, &[0, 0, 0, 0, -1]); 20_000];
+        records.extend(vec![rec(8, &[0, 0, 0, 0, -1, -1]); 20_000]);
+        records.extend(vec![rec(87, &[0, 0, 0, 0, -1]); 20_000]);
+        let file = emf_file(&records);
+        let t = std::time::Instant::now();
+        let imp = parse(&file, &mut IdSource::default()).expect("parse");
+        assert!(t.elapsed().as_secs() < 10, "{:?}", t.elapsed());
+        assert!(imp.shapes.is_empty());
+        // A record that holds its points still gives all of them.
+        let tri = rec(3, &[0, 0, 0, 0, 3, 100, 100, 300, 100, 200, 300]);
+        let imp = parse(&emf_file(&[tri]), &mut IdSource::default()).expect("parse");
+        assert_eq!(imp.shapes.len(), 1);
+        let b = imp.shapes[0].bounds();
+        assert!((b.width() - 20.0).abs() < 1e-6, "{b:?}");
+    }
+
+    /// A placeable WMF of one by half an inch holding `records`.
+    fn wmf_file(records: &[Vec<u8>]) -> Vec<u8> {
+        let mut f = Vec::new();
+        le32(&mut f, 0x9AC6_CDD7u32 as i32);
+        le16(&mut f, 0);
+        for v in [0i16, 0, 1440, 720] {
+            le16(&mut f, v);
+        }
+        le16(&mut f, 1440);
+        le32(&mut f, 0);
+        le16(&mut f, 0);
+        for v in [1i16, 9, 0x300, 0, 0, 2, 0, 0, 0] {
+            le16(&mut f, v);
+        }
+        for r in records {
+            f.extend_from_slice(r);
+        }
+        f.extend_from_slice(&wmf_rec(0, &[]));
+        f
+    }
+
+    /// Objects take the lowest free slot of the table, and a file of tens
+    /// of thousands of them opens at once: looking for the free slot along
+    /// the table took seconds per megabyte. Short records claiming the
+    /// most points a WMF can number open at once too.
+    #[test]
+    fn a_metafile_of_many_objects_and_huge_counts_opens_at_once() {
+        let brush = |lo: u16, hi: u16| wmf_rec(0x02FC, &[0, lo as i16, hi as i16, 0]);
+        let mut records = vec![
+            brush(0x00ff, 0), // 0: red
+            brush(0xff00, 0), // 1: green
+            wmf_rec(0x01F0, &[0]),
+            brush(0, 0x00ff), // 0 again: blue
+            wmf_rec(0x012D, &[0]),
+            wmf_rec(0x041B, &[360, 720, 0, 0]),
+        ];
+        records.extend(vec![brush(0, 0); 70_000]);
+        records.extend(vec![wmf_rec(0x0324, &[-1]); 20_000]);
+        records.extend(vec![wmf_rec(0x0538, &[-1, -1, -1]); 20_000]);
+        let file = wmf_file(&records);
+        let t = std::time::Instant::now();
+        let imp = parse(&file, &mut IdSource::default()).expect("parse");
+        assert!(t.elapsed().as_secs() < 10, "{:?}", t.elapsed());
+        assert_eq!(imp.shapes.len(), 1, "{:?}", imp.warnings);
+        assert_eq!(imp.shapes[0].fill, Fill::Solid(Color::rgb8(0, 0, 255)));
+        assert!(
+            imp.warnings.iter().any(|w| w.contains("more objects")),
+            "{:?}",
+            imp.warnings
+        );
     }
 }
 
