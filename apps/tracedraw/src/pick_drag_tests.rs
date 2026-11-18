@@ -301,6 +301,86 @@ fn repeat_replays_the_last_group_of_actions_on_one_selection() {
     assert!(close(bounds(&app, a).y0, a_box.y0), "A not moved");
 }
 
+/// A copy left by a right click during a turn about a moved centre (or
+/// during a move), then Ctrl+D: each new copy takes the same step again,
+/// round the same point, as after a Duplicate turned by hand; every copy
+/// used to land on top of the last one (#3272).
+#[test]
+fn ctrl_d_after_a_copy_left_by_a_drag_repeats_its_step() {
+    let (ctx, mut app, id) = setup();
+    let none = Modifiers::NONE;
+    let ctrl_d = |ctx: &egui::Context, app: &mut App| {
+        frame(
+            ctx,
+            app,
+            vec![key(egui::Key::D, Modifiers::COMMAND)],
+            Modifiers::COMMAND,
+        );
+        frame(
+            ctx,
+            app,
+            vec![key_up(egui::Key::D, Modifiers::COMMAND)],
+            none,
+        );
+        frame(ctx, app, Vec::new(), none);
+    };
+    let t = |app: &App, s: ShapeId| app.doc().find_shape(s).expect("shape").transform;
+    let near = |x: Affine, y: Affine| {
+        x.as_coeffs()
+            .iter()
+            .zip(y.as_coeffs())
+            .all(|(p, q)| (p - q).abs() < 1e-6)
+    };
+    // Rotate mode, the centre moved onto a corner, then a turn with a
+    // right click on the way: a turned copy.
+    app.rotate_mode = true;
+    frame(&ctx, &mut app, Vec::new(), none);
+    let pivot = app.view.to_screen(app.rotation_center().expect("centre"));
+    let corner = app.view.to_screen(Point::new(10.0, 10.0));
+    drag(&ctx, &mut app, pivot, corner, none, Vec::new());
+    let ne = handle(&app, Handle::NE);
+    let centre = app.view.to_screen(app.rotation_center().expect("centre"));
+    let r = ne - centre;
+    let to = centre + egui::vec2(r.x * 0.9 - r.y * 0.4, r.y * 0.9 + r.x * 0.4);
+    let right = |p: Pos2, down: bool| button(p, down, PointerButton::Secondary, none);
+    let mid = ne + (to - ne) * 0.5;
+    drag(
+        &ctx,
+        &mut app,
+        ne,
+        to,
+        none,
+        vec![right(mid, true), right(mid, false)],
+    );
+    assert_eq!(shape_count(&app), 2);
+    let first = app.selection[0];
+    assert_ne!(first, id);
+    let step = t(&app, first) * t(&app, id).inverse();
+    assert!(!near(step, Affine::IDENTITY), "turned");
+    // Ctrl+D: the next copy is turned as far again, not on top.
+    ctrl_d(&ctx, &mut app);
+    assert_eq!(shape_count(&app), 3);
+    let second = app.selection[0];
+    assert!(second != first && second != id);
+    assert!(
+        near(t(&app, second), step * t(&app, first)),
+        "{:?}",
+        t(&app, second)
+    );
+    ctrl_d(&ctx, &mut app);
+    let third = app.selection[0];
+    assert!(near(t(&app, third), step * t(&app, second)));
+    // Another object picked: Ctrl+D is the plain Duplicate again.
+    app.select(vec![id]);
+    frame(&ctx, &mut app, Vec::new(), none);
+    ctrl_d(&ctx, &mut app);
+    let plain = app.selection[0];
+    assert!(near(
+        t(&app, plain),
+        Affine::translate(app.duplicate_offset) * t(&app, id)
+    ));
+}
+
 /// Repeat after a copy made with a right click during a drag makes
 /// another copy, as far again from the last one (#363).
 #[test]

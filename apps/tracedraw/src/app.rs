@@ -5219,9 +5219,20 @@ impl App {
         let rotating = self.rotate_mode;
         // One step: the copies and their move (#471).
         let mark = self.engine.begin_group();
-        self.duplicate_in_place();
+        let saved = self.duplicate_offset;
+        self.duplicate_offset = Vec2::ZERO;
+        self.last_duplicate.clear();
+        self.duplicate();
+        self.duplicate_offset = saved;
+        let pairs = std::mem::take(&mut self.last_duplicate);
         self.transform_selection(t);
         self.engine.end_group(mark, "Duplicate");
+        // The copies are a Duplicate moved (turned, scaled) by `t`: while
+        // they stay selected, Ctrl+D makes the next copy by the same step,
+        // as after a Duplicate moved by hand. A copy left by a drag or a
+        // turn about a centre, then Ctrl+D, put each new copy on top of
+        // the last one (#3272).
+        self.last_duplicate = pairs;
         // A copy turned in rotate mode stays in it, its centre of rotation
         // in sight for the next turn (#2353).
         self.rotate_mode = rotating;
