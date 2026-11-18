@@ -63,7 +63,10 @@ frame is edited node by node, and the clip frame stays one
   ungrouped stays in as its members, drawn in full, and objects drawn or
   pasted while editing go in too (a paste that would land wholly outside
   the frame's box is centred on the frame, so it shows in it, #2044,
-  `pick_drag_tests::a_paste_while_editing_a_clip_frame_lands_inside_the_frame`);
+  `pick_drag_tests::a_paste_while_editing_a_clip_frame_lands_inside_the_frame`;
+  so does SVG, vector data, a picture or text another program copied,
+  in the paste's own step,
+  `clipboard::tests::pastes_from_other_programs_land_inside_an_edited_clip_frame`);
   the members of an ungrouped group were
   left out and faded, and Finish emptied the frame (#537,
   `a_group_inside_a_clip_frame_being_edited_drags_and_ungroups`).

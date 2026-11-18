@@ -45,6 +45,63 @@ fn with_blend(effects: &[Effect], b: Option<Effect>) -> Vec<Effect> {
 }
 
 impl App {
+    /// Blends among `pasted` (inside groups and clip frames too) whose end
+    /// object did not come along and is not in this drawing, the same
+    /// object, keep their steps as they are, linked to no end object.
+    /// Pasted in another drawing they named whatever object had the end's
+    /// number there and blended into it at the next change.
+    pub(crate) fn unlink_foreign_blend_ends(&self, pasted: &mut [Shape]) {
+        fn ids(s: &Shape, out: &mut Vec<ShapeId>) {
+            out.push(s.id);
+            match &s.kind {
+                ShapeKind::Group { children } => children.iter().for_each(|c| ids(c, out)),
+                ShapeKind::ClipFrame { frame, contents } => {
+                    ids(frame, out);
+                    contents.iter().for_each(|c| ids(c, out));
+                }
+                _ => {}
+            }
+        }
+        fn walk(s: &mut Shape, keep: &dyn Fn(ShapeId, &Shape) -> bool) {
+            for e in &mut s.effects {
+                if let Effect::Blend {
+                    end,
+                    end_id: Some(id),
+                    ..
+                } = e
+                {
+                    if !keep(*id, end) {
+                        if let Effect::Blend { end_id, .. } = e {
+                            *end_id = None;
+                        }
+                    }
+                }
+            }
+            match &mut s.kind {
+                ShapeKind::Group { children } => children.iter_mut().for_each(|c| walk(c, keep)),
+                ShapeKind::ClipFrame { frame, contents } => {
+                    walk(frame, keep);
+                    contents.iter_mut().for_each(|c| walk(c, keep));
+                }
+                _ => {}
+            }
+        }
+        let mut along = Vec::new();
+        for s in pasted.iter() {
+            ids(s, &mut along);
+        }
+        let keep = |id: ShapeId, end: &Shape| {
+            along.contains(&id)
+                || self
+                    .doc()
+                    .find_shape(id)
+                    .is_some_and(|here| here.uid.is_some() && here.uid == end.uid)
+        };
+        for s in pasted.iter_mut() {
+            walk(s, &keep);
+        }
+    }
+
     /// Whether `a` is drawn below `b` on the page: an earlier layer, or
     /// earlier in the order the page is painted, at any depth (inside
     /// groups and clip frames too, the frame before its contents). False
@@ -259,6 +316,75 @@ mod tests {
     fn steps_of(app: &App, id: ShapeId) -> Vec<Shape> {
         let s = app.doc().find_shape(id).cloned().expect("start");
         tracedraw_core::live::evaluate(&s).above
+    }
+
+    /// A blend copied with its end object (Paste, Duplicate) ends at the
+    /// copy of the end: it named the original's end, so the copy moved
+    /// away drew its steps back to the original. Pasted in another
+    /// drawing, a blend whose end did not come along keeps its steps and
+    /// no end object: it named whatever object had that number there and
+    /// blended into it.
+    #[test]
+    fn copied_blends_end_at_their_own_copies() {
+        let end_of = |app: &App, id: ShapeId| {
+            app.doc().find_shape(id).and_then(|s| {
+                s.effects.iter().find_map(|e| match e {
+                    Effect::Blend { end_id, end, .. } => Some((*end_id, end.bounds())),
+                    _ => None,
+                })
+            })
+        };
+        let blend = |app: &mut App| {
+            let start = square(app, 0.0, Color::rgb8(250, 220, 0));
+            let end = square(app, 100.0, Color::rgb8(0, 160, 80));
+            app.select(vec![start, end]);
+            app.blend_selection(3, 0.0, 0.0, 0.0);
+            app.refresh_blends();
+            (start, end)
+        };
+        for duplicate in [false, true] {
+            let mut app = App::headless();
+            let (start, end) = blend(&mut app);
+            app.select(vec![start, end]);
+            if duplicate {
+                app.duplicate();
+            } else {
+                app.copy();
+                app.paste();
+            }
+            let copies = app.selection.clone();
+            assert_eq!(copies.len(), 2);
+            app.run(Command::TransformShapes {
+                shapes: copies.clone(),
+                transform: Affine::translate((0.0, 100.0)),
+            });
+            app.refresh_blends();
+            let (copy_start, copy_end) = (copies[0], copies[1]);
+            let (to, end_box) = end_of(&app, copy_start).expect("a blend");
+            assert_eq!(to, Some(copy_end), "duplicate {duplicate}");
+            let moved_end = app.doc().find_shape(copy_end).expect("end").bounds();
+            assert!((end_box.y0 - moved_end.y0).abs() < 1e-9, "{end_box:?}");
+            // The original is as it was.
+            assert_eq!(end_of(&app, start).expect("blend").0, Some(end));
+        }
+        // The start alone, pasted in another drawing whose objects have
+        // the same numbers.
+        let mut app = App::headless();
+        let (start, _) = blend(&mut app);
+        app.select(vec![start]);
+        app.copy();
+        app.new_document();
+        for x in [200.0, 220.0, 240.0, 260.0, 280.0] {
+            square(&mut app, x, Color::rgb8(0, 0, 0));
+        }
+        app.paste();
+        let pasted = app.selection[0];
+        let (to, end_box) = end_of(&app, pasted).expect("the steps stay");
+        assert_eq!(to, None);
+        app.refresh_blends();
+        let (to, after) = end_of(&app, pasted).expect("still there");
+        assert_eq!((to, after), (None, end_box));
+        assert!((after.x0 - 100.0).abs() < 1e-9, "{after:?}");
     }
 
     /// The steps sit between the two objects: with the end object below

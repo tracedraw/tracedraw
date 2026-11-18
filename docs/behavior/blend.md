@@ -115,6 +115,15 @@ the same undo step:
 - the end object deleted: the blend goes with it (Undo brings both
   back).
 
+A blend copied with its end object (Copy and Paste, Duplicate, Step and
+Repeat, a `.tdraw` imported) ends at the copy of the end, so the copies
+are a blend of their own; they still named the original's end, and the
+copy moved away drew its steps back to the original. A start object
+pasted without its end in another drawing keeps its steps as they were
+and names no end object; it named whatever object had the end's number
+there and blended into it
+(`blend_link::tests::copied_blends_end_at_their_own_copies`).
+
 Selecting either object picks the blend for the bar and the Blend
 panel. Selected, each object shows its own box and handles: the start
 object's box is the object itself (its other live effects included),

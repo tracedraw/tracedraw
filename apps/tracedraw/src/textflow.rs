@@ -51,7 +51,10 @@ pub fn without_links(data: &mut Vec<(String, String)>) {
 /// with the same structure (groups and clip frames copied member by
 /// member, in order): a link to a frame copied along points to its copy,
 /// so a chain copied whole stays a chain of the copies; a link to any
-/// other frame stays out.
+/// other frame stays out. A blend whose end object was copied along ends
+/// at that copy: it still named the original's end, so a pasted or
+/// duplicated blend drew its steps back to the original, and in another
+/// drawing to whatever object had that number there.
 pub fn relink_copies(originals: &[Shape], copies: &mut [Shape]) {
     fn map_ids(o: &Shape, c: &Shape, map: &mut HashMap<ShapeId, ShapeId>) {
         map.insert(o.id, c.id);
@@ -83,6 +86,16 @@ pub fn relink_copies(originals: &[Shape], copies: &mut [Shape]) {
         for key in [NEXT, PREV] {
             if let Some(to) = data_id(&o.data, key).and_then(|id| map.get(&id)) {
                 c.data = with_key(std::mem::take(&mut c.data), key, Some(*to));
+            }
+        }
+        for e in &mut c.effects {
+            if let tracedraw_core::live::Effect::Blend {
+                end_id: Some(end), ..
+            } = e
+            {
+                if let Some(to) = map.get(end) {
+                    *end = *to;
+                }
             }
         }
         match (&o.kind, &mut c.kind) {

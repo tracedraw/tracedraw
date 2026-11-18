@@ -69,7 +69,8 @@ alone goes there.
      (`clipboard::tests::vectors_another_program_copied_paste_as_objects`);
   3. SVG text: its objects;
   4. an image: a bitmap object;
-  5. other text: artistic text in the middle of the page.
+  5. other text: artistic text in the middle of the page, one step to
+     undo with its fill and outline (`clipboard::tests::pasted_text_is_one_step`).
 
 Ctrl+Shift+V pastes the objects copied here in the middle of the view.
 Paste on the page's context menu centres what it pastes where the menu

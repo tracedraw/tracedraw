@@ -6767,6 +6767,7 @@ impl App {
             cmds.push(Command::AddSymbol { symbol });
         }
         crate::textflow::relink_copies(&cb.shapes, &mut copies);
+        self.unlink_foreign_blend_ends(&mut copies);
         // Copies of connected objects still in the drawing come with
         // their connectors (#476).
         // Only objects of this drawing count (the same id and identity):
@@ -6809,28 +6810,60 @@ impl App {
     /// showed nothing once the edit was finished. Objects that would lie
     /// wholly outside the frame's box are centred on it, together;
     /// objects reaching into the frame stay where they were copied.
-    fn bring_into_edited_frame(&self, pasted: &mut [Shape]) {
-        if !self.editing_clip_contents() {
-            return;
-        }
-        let Some(frame) = self
-            .clip_frame_edit
-            .as_ref()
-            .and_then(|(frame, _)| self.doc().find_shape(*frame))
-            .map(|f| f.bounds())
-        else {
-            return;
-        };
+    pub(crate) fn bring_into_edited_frame(&self, pasted: &mut [Shape]) {
         let Some(all) = pasted.iter().map(|s| s.bounds()).reduce(|a, b| a.union(b)) else {
             return;
         };
-        let finite = |r: Rect| [r.x0, r.y0, r.x1, r.y1].iter().all(|v| v.is_finite());
-        if !finite(frame) || !finite(all) || all.intersect(frame).area() > 0.0 {
+        let Some(d) = self.edited_frame_shift(all) else {
             return;
-        }
-        let d = frame.center() - all.center();
+        };
         for s in pasted {
             s.transform_by(Affine::translate(d));
+        }
+    }
+
+    /// How far objects of box `all` move to land in the clip frame whose
+    /// contents are edited (see [`App::bring_into_edited_frame`]): `None`
+    /// when no frame is edited or they reach into it already.
+    fn edited_frame_shift(&self, all: Rect) -> Option<kurbo::Vec2> {
+        if !self.editing_clip_contents() {
+            return None;
+        }
+        let frame = self
+            .clip_frame_edit
+            .as_ref()
+            .and_then(|(frame, _)| self.doc().find_shape(*frame))
+            .map(|f| f.bounds())?;
+        let finite = |r: Rect| [r.x0, r.y0, r.x1, r.y1].iter().all(|v| v.is_finite());
+        if !finite(frame) || !finite(all) || all.intersect(frame).area() > 0.0 {
+            return None;
+        }
+        Some(frame.center() - all.center())
+    }
+
+    /// Objects `ids` just pasted from another program (a picture, text)
+    /// while a clip frame's contents are edited go where the frame shows
+    /// them, in the step that pasted them, as copies made here do
+    /// (#2044): they came in at the page centre or where the other
+    /// program had them, and the frame cut them away whole.
+    pub(crate) fn bring_pasted_into_edited_frame(&mut self, ids: &[ShapeId]) {
+        let Some(all) = ids
+            .iter()
+            .filter_map(|id| self.doc().find_shape(*id))
+            .map(|s| s.bounds())
+            .reduce(|a, b| a.union(b))
+        else {
+            return;
+        };
+        let Some(d) = self.edited_frame_shift(all) else {
+            return;
+        };
+        let cmd = Command::TransformShapes {
+            shapes: ids.to_vec(),
+            transform: Affine::translate(d),
+        };
+        if let Err(e) = self.engine.amend(&cmd) {
+            self.status = e.to_string();
         }
     }
 
