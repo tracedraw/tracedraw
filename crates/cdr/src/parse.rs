@@ -16,6 +16,7 @@ use crate::container::Version;
 use crate::riff::{Chunk, Tree};
 use crate::text::{self, RunStyle, StyleRec};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tracedraw_core::{
     document::{
         Corners, EllipseArc, Layer, LeadingUnit, Page, ParagraphStyle, Shape, ShapeKind, TextAlign,
@@ -68,6 +69,55 @@ const FILE_BLEND_STEPS: u32 = 100_000;
 /// pages of 20 m and more, and a larger value means a misread record. The
 /// CMX reader takes the same bound.
 const MAX_PAGE_MM: f64 = 100_000.0;
+
+/// Free physical RAM the app saw before opening, bytes; 0 = unknown.
+pub static FREE_RAM: AtomicU64 = AtomicU64::new(0);
+
+pub fn set_free_ram(bytes: u64) {
+    FREE_RAM.store(bytes, Ordering::Relaxed);
+}
+
+/// How much the file's pictures may shrink so they fit the RAM the caller
+/// saw and the 8192 px texture side. 1.0 = draw as stored.
+fn plan_bitmap_scale(datas: &[&[u8]], v: u16, free_ram: u64) -> f64 {
+    let mut px = 0u64;
+    let mut max_side = 0u64;
+    let mut n = 0usize;
+    for d in datas {
+        if let Some(h) = bitmap_header(d, v) {
+            n += 1;
+            px = px.saturating_add(h.width as u64 * h.height as u64);
+            max_side = max_side.max(h.width.max(h.height) as u64);
+        }
+    }
+    if px == 0 {
+        return 1.0;
+    }
+    // Unknown RAM: assume 2 GiB free (a small desktop).
+    let free = if free_ram >= 512 << 20 {
+        free_ram
+    } else {
+        2 << 30
+    };
+    // Pictures together may take 35% of free RAM, 96 MiB at least,
+    // 1536 MiB at most.
+    let budget = (free * 35 / 100).clamp(96 << 20, 1536 << 20);
+    let rgba = px.saturating_mul(4);
+    let mut k = if rgba > budget {
+        (budget as f64 / rgba as f64).sqrt()
+    } else {
+        1.0
+    };
+    // The pixels view's texture is 8192 on a side.
+    if max_side as f64 * k > 8192.0 {
+        k = 8192.0 / max_side as f64;
+    }
+    let k = k.clamp(0.02, 1.0);
+    if k < 1.0 {
+        log::warn!("bitmaps: {n} picture(s), {px} px, sampling to {k:.2} (free {free} bytes)");
+    }
+    k
+}
 /// CDR coordinate unit (version 6 and later) to millimetres.
 const UNIT_MM: f64 = 25.4 / 254000.0;
 /// Coordinate unit of versions before 6 (1/1000 inch) to millimetres.
@@ -5906,7 +5956,8 @@ impl<'a> Ctx<'a> {
             });
         }
         let lut = self.cmyk_lut.as_ref();
-        for decoded in parallel_map(&datas, |d| decode_bitmap(d, v, lut)) {
+        let scale = plan_bitmap_scale(&datas, v, FREE_RAM.load(Ordering::Relaxed));
+        for decoded in parallel_map(&datas, |d| decode_bitmap(d, v, lut, scale)) {
             match decoded {
                 Some(Ok((id, def))) => {
                     self.bitmaps.insert(id, def);
@@ -5976,10 +6027,25 @@ fn decode_bitmap(
     d: &[u8],
     v: u16,
     lut: Option<&tracedraw_core::icc::CmykLut>,
+    scale: f64,
 ) -> Option<Result<(u32, BitmapDef), String>> {
     let h = bitmap_header(d, v)?;
     let (image_id, width, height, bpp) = (h.id, h.width, h.height, h.bpp);
-    if width == 0 || height == 0 || width > 32_768 || height > 32_768 {
+    if width == 0 || height == 0 {
+        return Some(Err(format!(
+            "bitmap {image_id}: size {width}x{height} rejected"
+        )));
+    }
+    // A scale under 1 samples the picture down as it is read, so a
+    // 1600 mm scan does not allocate its full RGBA first. Large sources
+    // are then allowed: the output is the smaller one.
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale.min(1.0)
+    } else {
+        1.0
+    };
+    let full = scale >= 1.0;
+    if full && (width > 32_768 || height > 32_768) {
         return Some(Err(format!(
             "bitmap {image_id}: size {width}x{height} rejected"
         )));
@@ -6017,26 +6083,50 @@ fn decode_bitmap(
         )));
     }
     let cmyk = h.model == BITMAP_CMYK && bpp == 32;
-    let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
+    let out_w = if full {
+        width
+    } else {
+        ((width as f64 * scale).ceil() as u32).clamp(1, width)
+    };
+    let out_h = if full {
+        height
+    } else {
+        ((height as f64 * scale).ceil() as u32).clamp(1, height)
+    };
+    let step_x = width as f64 / out_w as f64;
+    let step_y = height as f64 / out_h as f64;
+    let mut rgba = Vec::with_capacity(out_w as usize * out_h as usize * 4);
     // A CMYK image's inks, plane after plane (cyan, magenta, yellow,
-    // black), for separations (#1659).
+    // black), for separations (#1659). Sampled pictures skip the planes.
     let plane = width as usize * height as usize;
-    let mut planes = if cmyk {
+    let mut planes = if cmyk && full {
         vec![0u8; plane * 4]
     } else {
         Vec::new()
     };
-    for row in 0..height as usize {
+    for oy in 0..out_h as usize {
+        let sy = if full {
+            oy
+        } else {
+            (oy as f64 * step_y) as usize
+        };
         // Bottom-up rows.
-        let src = &pixels[(height as usize - 1 - row) * stride..][..stride];
-        for x in 0..width as usize {
+        let src = &pixels[(height as usize - 1 - sy) * stride..][..stride];
+        for ox in 0..out_w as usize {
+            let x = if full {
+                ox
+            } else {
+                (ox as f64 * step_x) as usize
+            };
             let px: [u8; 4] = match bpp {
                 32 if cmyk => {
                     let ink = [src[x * 4], src[x * 4 + 1], src[x * 4 + 2], src[x * 4 + 3]];
-                    let at = row * width as usize + x;
-                    for (i, v) in ink.iter().enumerate() {
-                        if let Some(p) = planes.get_mut(i * plane + at) {
-                            *p = *v;
+                    if full {
+                        let at = oy * width as usize + ox;
+                        for (i, v) in ink.iter().enumerate() {
+                            if let Some(p) = planes.get_mut(i * plane + at) {
+                                *p = *v;
+                            }
                         }
                     }
                     cmyk_pixel(ink, lut)
@@ -6064,21 +6154,36 @@ fn decode_bitmap(
             rgba.extend_from_slice(&px);
         }
     }
-    if let Some(alpha) = bitmap_mask(d, width, height) {
-        for (px, a) in rgba.chunks_exact_mut(4).zip(alpha) {
-            px[3] = a;
+    if full {
+        if let Some(alpha) = bitmap_mask(d, width, height) {
+            for (px, a) in rgba.chunks_exact_mut(4).zip(alpha) {
+                px[3] = a;
+            }
+        }
+    } else if let Some(alpha) = bitmap_mask(d, width, height) {
+        for oy in 0..out_h as usize {
+            let sy = (oy as f64 * step_y) as usize;
+            for ox in 0..out_w as usize {
+                let x = (ox as f64 * step_x) as usize;
+                let at = (oy * out_w as usize + ox) * 4 + 3;
+                if let Some(a) = alpha.get(sy * width as usize + x) {
+                    if let Some(slot) = rgba.get_mut(at) {
+                        *slot = *a;
+                    }
+                }
+            }
         }
     }
-    let png = encode_png(width, height, &rgba);
-    let inks = cmyk.then(|| {
+    let png = encode_png(out_w, out_h, &rgba);
+    let inks = (cmyk && full).then(|| {
         let planes = encode_gray_png(width, height.saturating_mul(4), &planes);
         tracedraw_core::picture_inks::PictureInks::cmyk(&png, planes.into())
     });
     Some(Ok((
         image_id,
         BitmapDef {
-            width_px: width,
-            height_px: height,
+            width_px: out_w,
+            height_px: out_h,
             png: png.into(),
             cmyk,
             inks,
@@ -12961,7 +13066,10 @@ pub(crate) mod tests {
                 assert_eq!(spans[0].tracking_pct, 0.0);
                 // The distance in points: 1.5 times 1.15 times 36 pt.
                 assert_eq!(para.leading_unit, LeadingUnit::Points);
-                assert!((para.leading_pct - 36.0 * 1.15 * 1.5).abs() < 1e-3, "{para:?}");
+                assert!(
+                    (para.leading_pct - 36.0 * 1.15 * 1.5).abs() < 1e-3,
+                    "{para:?}"
+                );
             }
             other => panic!("{other:?}"),
         }
@@ -16867,7 +16975,11 @@ pub(crate) mod tests {
         assert_eq!(s.opacity, 1.0);
         let f = mask(&s).unwrap_or_else(|| panic!("{:?}", s.effects));
         assert_eq!(f.stops.len(), 3, "{:?}", f.stops);
-        assert!((grey(f.stops[1].color) - 128.0 / 255.0).abs() < 0.02, "{:?}", f.stops);
+        assert!(
+            (grey(f.stops[1].color) - 128.0 / 255.0).abs() < 0.02,
+            "{:?}",
+            f.stops
+        );
     }
 
     /// #2960: an object's vector pattern transparency read from its

@@ -502,7 +502,10 @@ pub enum Drag {
     /// A press on an edge of a polygon or star (Shape tool): the first
     /// move turns it into a curve and bends the edge grabbed (page point
     /// the press began at); a plain click converts nothing.
-    PolygonEdge { shape: ShapeId, from: Point },
+    PolygonEdge {
+        shape: ShapeId,
+        from: Point,
+    },
     /// Dragging a node transform handle (Shape tool).
     NodeTransform {
         handle: Handle,
@@ -5944,9 +5947,9 @@ impl App {
             }
             let holds = match &s.kind {
                 // Every child walked, not only up to the first locked one.
-                ShapeKind::Group { children } => children
-                    .iter()
-                    .fold(false, |held, c| walk(c, out) | held),
+                ShapeKind::Group { children } => {
+                    children.iter().fold(false, |held, c| walk(c, out) | held)
+                }
                 ShapeKind::ClipFrame { frame, contents } => contents
                     .iter()
                     .fold(walk(frame, out), |held, c| walk(c, out) | held),
@@ -8000,15 +8003,24 @@ impl App {
             return;
         }
         // A drawing read already off the interface's thread (#2849).
-        let opened_read = match self.opened_read.take() {
-            Some((p, read)) if p == path && ext == "tdraw" => Some(read),
+        let opened_read: Option<crate::opening::OpenRead> = match self.opened_read.take() {
+            Some((p, read)) if p == path && matches!(ext.as_str(), "tdraw" | "cdr" | "cmx") => {
+                Some(read)
+            }
             _ => None,
         };
         // A large drawing is read off the interface's thread, with a
         // window that shows how far it got (#2849); the open ends when
-        // it is read ([`App::poll_opening`]).
-        if ext == "tdraw" && opened_read.is_none() {
-            if let Some(size) = crate::opening::wants_background(&path) {
+        // it is read ([`App::poll_opening`]). A `.cdr` or `.cmx` always:
+        // 76 000 objects in a 5 MB file froze the window just the same
+        // as a large picture did.
+        if matches!(ext.as_str(), "tdraw" | "cdr" | "cmx") && opened_read.is_none() {
+            let from = if ext == "tdraw" {
+                crate::opening::BACKGROUND_FROM
+            } else {
+                0
+            };
+            if let Some(size) = crate::opening::wants_background_from(&path, from) {
                 if let Some(old) = self.opening.take() {
                     old.cancel();
                 }
@@ -8390,63 +8402,78 @@ impl App {
                     (o.doc, msg)
                 })
         } else if ext == "cmx" {
-            Self::open_cdr(&path)
-                .map(|(doc, report)| {
+            match opened_read {
+                Some(Ok(crate::opening::OpenedFile::Cdr(doc, report))) => {
                     for w in &report.warnings {
                         log::warn!("cmx: {w}");
                     }
                     unread = report.skipped_objects;
-                    (
-                        doc,
-                        crate::i18n::trf(
-                            "status.opened_pages",
-                            &[
-                                ("format", "CMX"),
-                                ("pages", &report.pages.to_string()),
-                                ("objects", &report.shapes.to_string()),
-                            ],
-                        ),
-                    )
-                })
-                .map_err(|e| e.to_string())
-        } else if ext == "cdr" {
-            Self::open_cdr(&path)
-                .map(|(doc, report)| {
-                    let ver = report.version.map(|v| v.name()).unwrap_or_default();
-                    for w in &report.warnings {
-                        log::warn!("cdr: {w}");
-                    }
-                    unread = report.skipped_objects;
-                    cdr_version = report.version.map(|v| writable_cdr_version(v.0));
-                    opened_version = report.version.map(|v| v.0);
-                    let mut msg = crate::i18n::trf(
-                        "status.opened_cdr",
+                    let msg = crate::i18n::trf(
+                        "status.opened_pages",
                         &[
-                            ("version", &ver.to_string()),
+                            ("format", "CMX"),
                             ("pages", &report.pages.to_string()),
                             ("objects", &report.shapes.to_string()),
-                            ("skipped", &report.skipped_objects.to_string()),
                         ],
                     );
-                    // An older version than TraceDraw saves: say which
-                    // version Save will write.
-                    if let (Some(v), Some(w)) = (report.version, cdr_version) {
-                        if v.0 != w {
-                            msg.push(' ');
-                            msg.push_str(&crate::i18n::trf(
-                                "status.cdr_saves_as",
-                                &[("version", &w.to_string())],
-                            ));
+                    Ok((doc, msg))
+                }
+                Some(Err(e)) => Err(e),
+                _ => Self::open_cdr(&path)
+                    .map(|(doc, report)| {
+                        for w in &report.warnings {
+                            log::warn!("cmx: {w}");
                         }
-                    }
+                        unread = report.skipped_objects;
+                        (
+                            doc,
+                            crate::i18n::trf(
+                                "status.opened_pages",
+                                &[
+                                    ("format", "CMX"),
+                                    ("pages", &report.pages.to_string()),
+                                    ("objects", &report.shapes.to_string()),
+                                ],
+                            ),
+                        )
+                    })
+                    .map_err(|e| e.to_string()),
+            }
+        } else if ext == "cdr" {
+            match opened_read {
+                Some(Ok(crate::opening::OpenedFile::Cdr(doc, report))) => {
+                    let (doc, msg) = Self::cdr_opened(
+                        doc,
+                        *report,
+                        &mut unread,
+                        &mut cdr_version,
+                        &mut opened_version,
+                    );
+                    Ok((doc, msg))
+                }
+                Some(Err(e)) => Err(e),
+                _ => Self::open_cdr(&path).map(|(doc, report)| {
+                    let (doc, msg) = Self::cdr_opened(
+                        doc,
+                        report,
+                        &mut unread,
+                        &mut cdr_version,
+                        &mut opened_version,
+                    );
                     (doc, msg)
-                })
-                .map_err(|e| e.to_string())
+                }),
+            }
         } else if let Some(read) = opened_read {
-            read.map(|(d, known)| {
-                tdraw_version = Some(known);
-                (d, crate::i18n::tr("status.opened"))
-            })
+            match read {
+                Ok(crate::opening::OpenedFile::Tdraw(d, known)) => {
+                    tdraw_version = Some(known);
+                    Ok((d, crate::i18n::tr("status.opened")))
+                }
+                Ok(crate::opening::OpenedFile::Cdr(..)) => {
+                    Err("the opened file is not a drawing of TraceDraw's own".into())
+                }
+                Err(e) => Err(e),
+            }
         } else {
             crate::files::read(&path)
                 .and_then(|bytes| tracedraw_core::document::tdraw_text(&bytes))
@@ -9878,10 +9905,56 @@ impl App {
         }
     }
 
+    /// Free physical RAM in bytes; 0 when the OS will not say.
+    fn free_ram() -> u64 {
+        crate::opening::free_ram()
+    }
+
+    /// The document and the status line an opened `.cdr` leaves, from
+    /// what the reader reported. `unread`, `cdr_version` and
+    /// `opened_version` are the open's own, filled from the report.
+    fn cdr_opened(
+        doc: tracedraw_core::Document,
+        report: tracedraw_cdr::ParseReport,
+        unread: &mut usize,
+        cdr_version: &mut Option<u16>,
+        opened_version: &mut Option<u16>,
+    ) -> (tracedraw_core::Document, String) {
+        let ver = report.version.map(|v| v.name()).unwrap_or_default();
+        for w in &report.warnings {
+            log::warn!("cdr: {w}");
+        }
+        *unread = report.skipped_objects;
+        *cdr_version = report.version.map(|v| writable_cdr_version(v.0));
+        *opened_version = report.version.map(|v| v.0);
+        let mut msg = crate::i18n::trf(
+            "status.opened_cdr",
+            &[
+                ("version", &ver.to_string()),
+                ("pages", &report.pages.to_string()),
+                ("objects", &report.shapes.to_string()),
+                ("skipped", &report.skipped_objects.to_string()),
+            ],
+        );
+        // An older version than TraceDraw saves: say which version Save
+        // will write.
+        if let (Some(v), Some(w)) = (report.version, *cdr_version) {
+            if v.0 != w {
+                msg.push(' ');
+                msg.push_str(&crate::i18n::trf(
+                    "status.cdr_saves_as",
+                    &[("version", &w.to_string())],
+                ));
+            }
+        }
+        (doc, msg)
+    }
+
     /// Read a `.cdr` file through the file layer (uploads in a browser).
     fn open_cdr(
         path: &std::path::Path,
     ) -> std::result::Result<(tracedraw_core::Document, tracedraw_cdr::ParseReport), String> {
+        tracedraw_cdr::set_open_ram(Self::free_ram());
         let bytes = crate::files::read(path).map_err(|e| e.to_string())?;
         let title = path
             .file_stem()
@@ -10684,12 +10757,10 @@ pub fn fill_description(fill: &Fill) -> String {
             tracedraw_core::FountainKind::Square => tr("fill.square_fountain"),
             tracedraw_core::FountainKind::Shaped => tr("fill.shaped_fountain"),
         },
-        Fill::Pattern(tracedraw_core::Pattern::TwoColor { tile, .. }) => {
-            trf(
-                "fill.two_color_pattern",
-                &[("t", &crate::ui::dockers::pattern_tile_name(*tile))],
-            )
-        }
+        Fill::Pattern(tracedraw_core::Pattern::TwoColor { tile, .. }) => trf(
+            "fill.two_color_pattern",
+            &[("t", &crate::ui::dockers::pattern_tile_name(*tile))],
+        ),
         Fill::Pattern(tracedraw_core::Pattern::Bitmap { .. }) => tr("fill.bitmap_pattern"),
         Fill::Pattern(tracedraw_core::Pattern::Vector { .. }) => tr("fill.vector_pattern"),
         Fill::Texture(_) => tr("fill.texture_fill"),
@@ -11851,20 +11922,29 @@ mod tests {
         app.open_docker(DockerTab::Objects);
         app.stack_docker(DockerTab::Properties, DockerPlace::Right);
         assert_eq!(app.docker_tab, DockerTab::Objects);
-        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(
+            app.docker_below(DockerPlace::Right),
+            Some(DockerTab::Properties)
+        );
         assert!(app.docker_shown(DockerTab::Objects) && app.docker_shown(DockerTab::Properties));
         // Opening the lower one keeps both; its toggle takes it out of
         // the lower part only.
         app.open_docker(DockerTab::Properties);
         assert_eq!(app.docker_tab, DockerTab::Objects);
-        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(
+            app.docker_below(DockerPlace::Right),
+            Some(DockerTab::Properties)
+        );
         app.docker_stacks[0].split = 0.7;
         // Saved and read back.
         let setup = app.docker_setup();
         assert_eq!(setup.stacks.len(), 1);
         let mut next = App::headless();
         next.set_docker_setup(&setup);
-        assert_eq!(next.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(
+            next.docker_below(DockerPlace::Right),
+            Some(DockerTab::Properties)
+        );
         assert!((next.docker_stacks[0].split - 0.7).abs() < 1e-6);
         app.toggle_docker(DockerTab::Properties);
         assert_eq!(app.docker_below(DockerPlace::Right), None);
@@ -11873,7 +11953,10 @@ mod tests {
         // Brought to the front, it leaves the lower part.
         app.stack_docker(DockerTab::Properties, DockerPlace::Right);
         app.open_docker(DockerTab::Hints);
-        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(
+            app.docker_below(DockerPlace::Right),
+            Some(DockerTab::Properties)
+        );
         app.set_docker_column(DockerPlace::Right, true, Some(DockerTab::Properties));
         assert_eq!(app.docker_below(DockerPlace::Right), None);
         // A docker from another column joins this one, under the front.
@@ -11889,19 +11972,28 @@ mod tests {
         // The front docker itself goes below: the next tab comes up.
         app.stack_docker(DockerTab::Properties, DockerPlace::Right);
         assert_ne!(app.docker_tab, DockerTab::Properties);
-        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(
+            app.docker_below(DockerPlace::Right),
+            Some(DockerTab::Properties)
+        );
         // A second column that empties into the edge column keeps its
         // stack.
         let mut side = App::headless();
         side.move_docker(DockerTab::Properties, DockerPlace::RightInner, None);
         side.move_docker(DockerTab::Undo, DockerPlace::RightInner, None);
         side.stack_docker(DockerTab::Properties, DockerPlace::RightInner);
-        assert_eq!(side.docker_below(DockerPlace::RightInner), Some(DockerTab::Properties));
+        assert_eq!(
+            side.docker_below(DockerPlace::RightInner),
+            Some(DockerTab::Properties)
+        );
         for t in side.open_dockers.clone() {
             side.close_docker(t);
         }
         assert_eq!(side.docker_tab, DockerTab::Undo);
-        assert_eq!(side.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(
+            side.docker_below(DockerPlace::Right),
+            Some(DockerTab::Properties)
+        );
         assert_eq!(side.docker_below(DockerPlace::RightInner), None);
     }
 
