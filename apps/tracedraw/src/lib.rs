@@ -32,6 +32,7 @@ mod autocorrect;
 mod barcode;
 pub mod benchmark;
 mod bg_remove;
+mod bg_subject;
 mod bitmap_file;
 mod bitmap_fx;
 mod bitmap_modes;

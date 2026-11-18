@@ -516,15 +516,51 @@ impl Default for BgRemoveState {
     }
 }
 
+/// The brush's radius as a fraction of the picture's larger side.
+fn bg_brush_radius(st: &BgRemoveState) -> f32 {
+    (st.brush_size / 100.0).clamp(0.001, 0.5)
+}
+
+/// The settings the preview shows: the dialog's, with the stroke being
+/// painted as their last stroke, so the result follows the brush at once
+/// (the stroke joins the dialog's settings when the pointer is let go).
+pub fn bg_preview_settings(st: &BgRemoveState) -> crate::bg_remove::BgSettings {
+    let mut settings = st.settings.clone();
+    if let (Some(restore), false) = (st.brush, st.stroke.is_empty()) {
+        settings.strokes.push(crate::bg_remove::BgStroke {
+            restore,
+            radius: bg_brush_radius(st),
+            points: st.stroke.clone(),
+        });
+    }
+    settings
+}
+
+/// The Erase brush's colour, and the Restore brush's.
+fn bg_brush_colour(restore: bool) -> Color32 {
+    if restore {
+        Color32::from_rgb(40, 180, 70)
+    } else {
+        Color32::from_rgb(220, 40, 40)
+    }
+}
+
 /// Paint with the brush on the preview: points under the held pointer
-/// join the stroke being painted (shown over the panes until let go),
-/// which becomes one of the settings' strokes when the pointer is let
-/// go; a ring shows the brush's size under the pointer.
-fn bg_brush_paint(ui: &Ui, st: &mut BgRemoveState, live: &before_after::Live) {
+/// join the stroke being painted, which becomes one of the settings'
+/// strokes when the pointer is let go. The result shows the stroke as it
+/// is painted (the dialog adds it to the settings it previews); the
+/// other panes show it as a tint, and a ring in the brush's colour shows
+/// its size under the pointer.
+fn bg_brush_paint(
+    ui: &Ui,
+    st: &mut BgRemoveState,
+    live: &before_after::Live,
+    result: Option<usize>,
+) {
     let Some(restore) = st.brush else {
         return;
     };
-    let radius = (st.brush_size / 100.0).clamp(0.001, 0.5);
+    let radius = bg_brush_radius(st);
     let v = &live.view;
     if let Some(at) = v.held {
         let p = [at.x, at.y];
@@ -537,31 +573,39 @@ fn bg_brush_paint(ui: &Ui, st: &mut BgRemoveState, live: &before_after::Live) {
             st.stroke.push(p);
         }
     }
-    let colour = if restore {
-        Color32::from_rgba_unmultiplied(40, 180, 70, 110)
-    } else {
-        Color32::from_rgba_unmultiplied(220, 40, 40, 110)
-    };
+    let colour = bg_brush_colour(restore);
+    let tint = colour.gamma_multiply(0.45);
     let painter = ui.painter();
     let back = (4 - v.turns % 4) % 4;
-    for r in &v.image_rects {
+    let hover = ui.ctx().pointer_hover_pos();
+    for (pane, r) in v.image_rects.iter().enumerate() {
         let side = r.width().max(r.height());
         let rad = radius * side;
-        let on_screen = |p: &[f32; 2]| {
-            let d = before_after::unturn(egui::vec2(p[0], p[1]), back);
-            r.min + d * r.size()
-        };
-        let pts: Vec<egui::Pos2> = st.stroke.iter().map(on_screen).collect();
-        for w in pts.windows(2) {
-            painter.line_segment([w[0], w[1]], egui::Stroke::new(rad * 2.0, colour));
+        if Some(pane) != result {
+            let on_screen = |p: &[f32; 2]| {
+                let d = before_after::unturn(egui::vec2(p[0], p[1]), back);
+                r.min + d * r.size()
+            };
+            let pts: Vec<egui::Pos2> = st.stroke.iter().map(on_screen).collect();
+            let painter = painter.with_clip_rect(r.intersect(painter.clip_rect()));
+            // One path, so the tint is even where the stroke turns.
+            if let [only] = pts.as_slice() {
+                painter.circle_filled(*only, rad, tint);
+            } else if pts.len() > 1 {
+                painter.add(egui::Shape::line(pts, egui::Stroke::new(rad * 2.0, tint)));
+            }
         }
-        for p in &pts {
-            painter.circle_filled(*p, rad, colour);
+        if let Some(h) = hover.filter(|h| r.expand(rad).contains(*h)) {
+            // The brush's ring: dark and light so it shows on any
+            // picture, then the brush's colour, and its centre.
+            painter.circle_stroke(h, rad + 1.5, egui::Stroke::new(1.0, Color32::BLACK));
+            painter.circle_stroke(h, rad - 1.5, egui::Stroke::new(1.0, Color32::WHITE));
+            painter.circle_stroke(h, rad, egui::Stroke::new(2.0, colour));
+            painter.circle_filled(h, 1.5, colour);
         }
-        if let Some(h) = ui.ctx().pointer_hover_pos().filter(|h| r.contains(*h)) {
-            painter.circle_stroke(h, rad, egui::Stroke::new(1.0, Color32::BLACK));
-            painter.circle_stroke(h, rad + 1.0, egui::Stroke::new(1.0, Color32::WHITE));
-        }
+    }
+    if hover.is_some_and(|h| v.image_rects.iter().any(|r| r.contains(h))) {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
     }
     if v.let_go && !st.stroke.is_empty() {
         st.settings.strokes.push(crate::bg_remove::BgStroke {
@@ -641,7 +685,7 @@ pub fn remove_background_dialog(
 ) {
     use crate::bg_remove::remove_background;
     before_after::window(ctx, tr("dialog.remove_background_title")).show(ctx, |ui| {
-        let settings = st.settings.clone();
+        let settings = bg_preview_settings(st);
         before_after::columns(ui, RIGHT_W, BOTTOM_H, |left, right| {
             let p = preview(
                 left,
@@ -658,7 +702,8 @@ pub fn remove_background_dialog(
                 st.stroke.clear();
             }
             if let (Some(_), Some(p)) = (st.brush, &p) {
-                bg_brush_paint(left, st, p);
+                let view = before_after::state(ctx, egui::Id::new("bg_remove_preview")).view;
+                bg_brush_paint(left, st, p, before_after::result_pane(view));
             }
             // A click on a picture takes the colour under it from the
             // picture as it was, so a removed pixel can be picked too.
@@ -973,7 +1018,7 @@ fn bg_brushes(ui: &mut Ui, st: &mut BgRemoveState) {
             (true, "dialog.bg_brush_restore", "bg_brush_restore"),
         ] {
             let on = st.brush == Some(restore) && st.picking;
-            let b = ui.selectable_label(on, tr(key));
+            let b = bg_brush_button(ui, on, restore, &tr(key));
             before_after::mark(ui, mark, b.rect);
             if b.rich_tip(crate::ui::tips::pair(key, &format!("{key}_tip")))
                 .clicked()
@@ -1008,6 +1053,42 @@ fn bg_brushes(ui: &mut Ui, st: &mut BgRemoveState) {
     {
         st.settings.strokes.clear();
     }
+}
+
+/// A brush's button: its round tip in the brush's colour with a minus
+/// (Erase) or a plus (Restore), and its name; framed and pressed in
+/// while the brush is on.
+fn bg_brush_button(ui: &mut Ui, on: bool, restore: bool, label: &str) -> egui::Response {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), font, ui.visuals().text_color());
+    let size = egui::vec2(galley.size().x + 36.0, 24.0);
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    crate::ui::propbar::frame(ui, rect, resp.hovered(), on);
+    if !on && !resp.hovered() {
+        // A button at rest still reads as one.
+        ui.painter().rect_stroke(
+            rect,
+            3.0,
+            egui::Stroke::new(1.0, crate::theme::Tokens::border()),
+            egui::StrokeKind::Inside,
+        );
+    }
+    let p = ui.painter();
+    let c = egui::pos2(rect.left() + 14.0, rect.center().y);
+    p.circle_filled(c, 7.0, bg_brush_colour(restore));
+    let sign = egui::Stroke::new(2.0, Color32::WHITE);
+    p.line_segment([c - egui::vec2(4.0, 0.0), c + egui::vec2(4.0, 0.0)], sign);
+    if restore {
+        p.line_segment([c - egui::vec2(0.0, 4.0), c + egui::vec2(0.0, 4.0)], sign);
+    }
+    p.galley(
+        egui::pos2(rect.left() + 27.0, rect.center().y - galley.size().y / 2.0),
+        galley,
+        ui.visuals().text_color(),
+    );
+    resp
 }
 
 /// Fill background: off leaves it transparent; on, a colour at the top

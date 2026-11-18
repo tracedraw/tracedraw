@@ -20487,6 +20487,58 @@ fn remove_background_brushes_paint_on_the_preview() {
     );
 }
 
+/// While a stroke is painted the preview's settings hold it as their
+/// last stroke, so the result shows it before the pointer is let go;
+/// the dialog's own settings (and their undo steps) get it on release
+/// (#3422).
+#[test]
+fn remove_background_shows_the_stroke_being_painted() {
+    use crate::ui::bitmap_dialogs::{bg_preview_settings, BgRemoveState};
+    let mut st = BgRemoveState::default();
+    assert_eq!(bg_preview_settings(&st), st.settings);
+    st.brush = Some(false);
+    st.picking = true;
+    st.brush_size = 10.0;
+    // A brush that has painted nothing yet changes nothing.
+    assert_eq!(bg_preview_settings(&st), st.settings);
+    st.stroke = vec![[0.2, 0.5], [0.4, 0.5]];
+    let shown = bg_preview_settings(&st);
+    assert!(st.settings.strokes.is_empty());
+    assert_eq!(shown.strokes.len(), 1);
+    assert!(!shown.strokes[0].restore);
+    assert_eq!(shown.strokes[0].points, st.stroke);
+    assert!((shown.strokes[0].radius - 0.1).abs() < 1.0e-6);
+    // The picture follows: the painted part of the subject is gone.
+    let img = image::RgbaImage::from_fn(100, 100, |x, y| {
+        if (25..75).contains(&x) && (25..75).contains(&y) {
+            image::Rgba([200, 30, 30, 255])
+        } else {
+            image::Rgba([250, 250, 250, 255])
+        }
+    });
+    let before = crate::bg_remove::remove_background(&img, &st.settings, 1.0);
+    let during = crate::bg_remove::remove_background(&img, &shown, 1.0);
+    assert_eq!(before.get_pixel(35, 50).0[3], 255);
+    assert_eq!(during.get_pixel(35, 50).0[3], 0);
+    assert_eq!(during.get_pixel(65, 65).0[3], 255);
+    // The pressed brush is drawn as such: the dialog marks its buttons.
+    let (ctx, mut app) = bg_three_setup();
+    click_at(
+        &ctx,
+        &mut app,
+        preview_rect(&ctx, "bg_brush_restore").center(),
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert_eq!(bg_state(&app).brush, Some(true));
+    let (erase, restore) = (
+        preview_rect(&ctx, "bg_brush_erase"),
+        preview_rect(&ctx, "bg_brush_restore"),
+    );
+    assert!(erase.width() > 40.0 && restore.width() > 40.0);
+    assert!(erase.right() <= restore.left(), "{erase:?} {restore:?}");
+}
+
 fn bg_state(app: &App) -> crate::ui::bitmap_dialogs::BgRemoveState {
     match &app.dialog {
         crate::ui::dialogs::Dialog::RemoveBackground(st) => st.clone(),
