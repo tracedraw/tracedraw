@@ -4466,6 +4466,7 @@ dependencies = [
 name = "tracedraw-thumbnailer"
 version = "0.48.0"
 dependencies = [
+ "tracedraw-cdr",
  "tracedraw-core",
  "tracedraw-render",
  "tracedraw-text",

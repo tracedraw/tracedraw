@@ -662,9 +662,9 @@ fn main() -> ExitCode {
                 eprintln!("{input}: no page");
                 return ExitCode::FAILURE;
             };
-            let long = page.size.width.max(page.size.height).max(1e-3);
-            let dpi = size / long * 25.4;
-            let Some(pm) = tracedraw_render::render_page_image(&doc, page.id, dpi) else {
+            // The page with what lies beside it on the desktop, as the
+            // Windows thumbnails and the Welcome Screen show it (#3082).
+            let Some(pm) = tracedraw_render::render_whole_page_image(&doc, page.id, size) else {
                 eprintln!("{input}: nothing to draw");
                 return ExitCode::FAILURE;
             };
