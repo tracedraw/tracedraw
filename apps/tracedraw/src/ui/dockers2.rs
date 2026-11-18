@@ -2713,6 +2713,27 @@ fn links(app: &mut App, ui: &mut Ui) {
     }
 }
 
+/// How many instances of symbol `index` the drawing holds, on every
+/// page and master layer, inside groups and clip frames too (#3248): an
+/// instance in a group was not counted, so a symbol whose copies were all
+/// grouped said 0.
+pub(crate) fn symbol_uses(doc: &tracedraw_core::Document, index: usize) -> usize {
+    fn count(s: &tracedraw_core::document::Shape, index: usize) -> usize {
+        match &s.kind {
+            ShapeKind::SymbolInstance { index: i } => usize::from(*i == index),
+            ShapeKind::Group { children } => children.iter().map(|c| count(c, index)).sum(),
+            ShapeKind::ClipFrame { frame, contents } => {
+                count(frame, index) + contents.iter().map(|c| count(c, index)).sum::<usize>()
+            }
+            _ => 0,
+        }
+    }
+    doc.all_layers()
+        .flat_map(|l| &l.shapes)
+        .map(|s| count(s, index))
+        .sum()
+}
+
 fn symbols(app: &mut App, ui: &mut Ui) {
     let has = !app.selection.is_empty();
     ui.horizontal(|ui| {
@@ -2776,12 +2797,7 @@ fn symbols(app: &mut App, ui: &mut Ui) {
             {
                 app.edit_symbol(i);
             }
-            let uses = app
-                .doc()
-                .all_layers()
-                .flat_map(|l| &l.shapes)
-                .filter(|s| matches!(s.kind, ShapeKind::SymbolInstance { index } if index == i))
-                .count();
+            let uses = symbol_uses(app.doc(), i);
             dim(ui, trf("docker.instances_n", &[("n", &uses.to_string())]));
         });
     }
@@ -3885,5 +3901,56 @@ mod corners_docker_tests {
         ));
         click(&mut app, "dialog.preview");
         assert!(app.settings.corners_preview, "and back on");
+    }
+}
+
+#[cfg(test)]
+mod symbol_docker_tests {
+    use super::*;
+
+    /// The Symbols panel counts every instance of a symbol, those inside
+    /// a group or a clip frame too (#3248): grouped instances were not
+    /// counted, so a symbol whose copies were all grouped said 0.
+    #[test]
+    fn grouped_symbol_instances_are_counted() {
+        let mut app = App::headless();
+        let square = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("square");
+        app.select(vec![square]);
+        app.create_symbol_from_selection();
+        assert_eq!(symbol_uses(app.doc(), 0), 1);
+        let mut copies = Vec::new();
+        for _ in 0..4 {
+            app.insert_symbol_instance(0);
+            copies.push(app.selection[0]);
+        }
+        assert_eq!(symbol_uses(app.doc(), 0), 5);
+        app.select(copies[..3].to_vec());
+        app.group_selection();
+        assert_eq!(symbol_uses(app.doc(), 0), 5, "three of them in a group");
+        // One inside a clip frame.
+        let frame = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(0.0, 0.0, 300.0, 300.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("frame");
+        app.place_inside(vec![copies[3]], frame);
+        assert_eq!(symbol_uses(app.doc(), 0), 5, "one in a clip frame");
+        let all: Vec<ShapeId> = app.doc().pages[0].layers[0]
+            .shapes
+            .iter()
+            .map(|s| s.id)
+            .collect();
+        app.select(all);
+        app.group_selection();
+        assert_eq!(symbol_uses(app.doc(), 0), 5, "groups in a group");
+        assert_eq!(symbol_uses(app.doc(), 1), 0);
     }
 }
