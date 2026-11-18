@@ -78,7 +78,9 @@ what the program paints; no external PostScript engine is involved.
 
 6 million operations, 200 nested procedure levels, 50 000 operand
 stack entries, 64 MB strings; past any of them the import stops with a
-warning and keeps what was painted. LZW filters and font programs are
+warning and keeps what was painted. A loop whose procedure is a plain
+name (`/a loop`, found in damaged files) counts against the
+operations too, so it stops like any other. LZW filters and font programs are
 not run (warnings). Unknown operators are reported once and ignored.
 
 ## Checks

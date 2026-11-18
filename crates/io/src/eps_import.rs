@@ -1468,6 +1468,9 @@ impl<'a> Interp<'a> {
                 self.exec_obj(Obj::Array(items.clone(), true))
             }
             other => {
+                // Pushing counts as a step too, or `/a loop` (a literal
+                // name as its procedure) loops for ever.
+                self.ops += 1;
                 self.push(other.clone());
                 Flow::Normal
             }
@@ -5077,6 +5080,16 @@ mod tests {
         assert!(parse(b"hello world", &mut ids).is_err());
         let imp = parse(b"%!PS\n{ } loop\n", &mut ids).expect("parse");
         assert!(imp.warnings.iter().any(|w| w.contains("too long")));
+        // A literal name as the procedure of `loop` or `repeat` (a
+        // damaged file) stops too: it never ended.
+        for p in [
+            &b"%!PS\n/a loop\n"[..],
+            b"%!PS\n1000000000 /a repeat\n",
+            b"%!PS\n/m loop {moveto} def 10 10 m\n",
+        ] {
+            let imp = parse(p, &mut ids).expect("parse");
+            assert!(imp.warnings.iter().any(|w| w.contains("too long")), "{:?}", imp.warnings);
+        }
         let imp = parse(b"%!PS\n/r { r } def r\n", &mut ids).expect("parse");
         assert!(imp.warnings.iter().any(|w| w.contains("deeply")));
         let imp = parse(
