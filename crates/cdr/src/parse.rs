@@ -137,7 +137,7 @@ pub(crate) const ARG_CLIP_CONTENTS: u32 = 8005;
 const ARG_PAGE_SIZE: u32 = 19130;
 /// A symbol definition's record in its `sytr` group's `loda`: an
 /// identifier and the symbol's name (#2177, a version 15 file).
-const ARG_SYMBOL: u32 = 19201;
+pub(crate) const ARG_SYMBOL: u32 = 19201;
 /// Master page `loda` argument holding the document's page background.
 const ARG_PAGE_BACKGROUND: u32 = 17000;
 /// Object argument 16016: 1 hides the object (version 21).

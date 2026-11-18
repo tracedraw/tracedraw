@@ -28,8 +28,8 @@
 
 use crate::parse::{
     ARG_CLIP_CONTENTS, ARG_COORDS, ARG_FILL, ARG_GUIDE_LINE, ARG_NAME, ARG_OPACITY, ARG_OUTLINE,
-    ARG_STYLE, ARG_STYLE_STRING, OBJ_ARTISTIC_TEXT, OBJ_BITMAP, OBJ_CURVE, OBJ_ELLIPSE, OBJ_GUIDE,
-    OBJ_PARAGRAPH_TEXT, OBJ_RECT,
+    ARG_STYLE, ARG_STYLE_STRING, ARG_SYMBOL, OBJ_ARTISTIC_TEXT, OBJ_BITMAP, OBJ_CURVE, OBJ_ELLIPSE,
+    OBJ_GUIDE, OBJ_PARAGRAPH_TEXT, OBJ_RECT,
 };
 use std::collections::HashMap;
 use std::io::Write as _;
@@ -3924,6 +3924,14 @@ struct Writer<'a> {
     clip_groups: Vec<Node>,
     clip_container: Option<u32>,
     clip_depth: usize,
+    /// Live symbols (version 14 on, #3250): the definitions written, the
+    /// groups of the document's `LIST sytr`; each symbol's number (its
+    /// group's `spnd`) and the box its definition covers, by its index in
+    /// the document's symbols; the symbols being written (one that draws
+    /// itself goes out drawn).
+    symbol_groups: Vec<Node>,
+    symbol_numbers: HashMap<usize, (u32, Rect)>,
+    symbols_writing: Vec<usize>,
     /// The faces the text uses, with their font files (see
     /// [`Previews::fonts`]), and what [`fonts::split_family`] said for
     /// each family named with a weight.
@@ -4065,6 +4073,9 @@ impl<'a> Writer<'a> {
             clip_groups: Vec::new(),
             clip_container: None,
             clip_depth: 0,
+            symbol_groups: Vec::new(),
+            symbol_numbers: HashMap::new(),
+            symbols_writing: Vec::new(),
             next_object: 1,
             graded: std::collections::HashMap::new(),
             next_fill: 1,
@@ -4434,6 +4445,21 @@ impl<'a> Writer<'a> {
         // a version 27 file has them.
         if !self.clip_groups.is_empty() {
             docl.push(list(b"clpt", std::mem::take(&mut self.clip_groups)));
+        }
+        // The symbols' definitions and the table naming each symbol's
+        // group (#3250): entries of a zero, the symbol's number and its
+        // group's `spnd` (the same number here), as the reader takes them.
+        if !self.symbol_groups.is_empty() {
+            docl.push(list(b"sytr", std::mem::take(&mut self.symbol_groups)));
+            let mut numbers: Vec<u32> = self.symbol_numbers.values().map(|(n, _)| *n).collect();
+            numbers.sort_unstable();
+            let mut table = Vec::with_capacity(numbers.len() * 12);
+            for n in numbers {
+                table.extend_from_slice(&0u32.to_le_bytes());
+                table.extend_from_slice(&n.to_le_bytes());
+                table.extend_from_slice(&n.to_le_bytes());
+            }
+            docl.push(chunk(b"sblk", table));
         }
         if !v.zip() {
             // RIFF files (before version 14) end the document tables
@@ -5181,6 +5207,85 @@ impl<'a> Writer<'a> {
         Placed { nodes, bounds }
     }
 
+    /// The number of symbol `index` (#3250), its definition written
+    /// into the document's `LIST sytr` the first time: a group numbered
+    /// by its `spnd`, the symbol's name in argument 19201 (a UTF-16 name
+    /// at byte 548, as the reader takes it), the definition's objects at
+    /// their own place. `None` when the symbol is missing, draws nothing
+    /// or draws itself; the instance then goes out drawn.
+    fn symbol_number(&mut self, index: usize, centre: Point, depth: usize) -> Option<(u32, Rect)> {
+        if let Some(found) = self.symbol_numbers.get(&index) {
+            return Some(*found);
+        }
+        if self.symbols_writing.contains(&index) {
+            return None;
+        }
+        let symbol = self.symbols.get(index)?;
+        let (shape, name) = (symbol.shape.clone(), symbol.name.clone());
+        self.symbols_writing.push(index);
+        let inner = self.objects(std::slice::from_ref(&shape), centre, depth + 1);
+        self.symbols_writing.pop();
+        let b = inner.bounds?;
+        let number = self.next_spnd;
+        self.next_spnd += 1;
+        let mut record = vec![0u8; 548];
+        for u in name.encode_utf16().take(255).chain([0]) {
+            record.extend_from_slice(&u.to_le_bytes());
+        }
+        // 1580 bytes, as the definitions of the version 15 file seen.
+        record.resize(record.len().max(1580), 0);
+        let mut body = vec![chunk(b"spnd", number.to_le_bytes().to_vec())];
+        body.extend(self.head([0, 0, 0, 0x10], b, 0.0, centre));
+        body.push(list(
+            b"lgob",
+            vec![chunk(
+                b"loda",
+                loda(0, vec![(ARG_PROPS, vec![0; 4]), (ARG_SYMBOL, record)]),
+            )],
+        ));
+        body.extend(inner.nodes);
+        self.symbol_groups.push(list(b"grp ", body));
+        self.symbol_numbers.insert(index, (number, b));
+        Some((number, b))
+    }
+
+    /// A live symbol instance (version 14 on, #3250): a `LIST symb`
+    /// naming its symbol's number, its `trfd` placing the definition as
+    /// the instance's transform does (about the page centre, the file's
+    /// origin), its name as a group's.
+    fn symbol_instance(
+        &mut self,
+        s: &Shape,
+        index: usize,
+        centre: Point,
+        depth: usize,
+    ) -> Option<Placed> {
+        let (number, def_box) = self.symbol_number(index, centre, depth)?;
+        let to_file = Affine::translate(-centre.to_vec2());
+        let own = to_file * s.transform * to_file.inverse();
+        let b = s.transform.transform_rect_bbox(def_box);
+        let id = self.next_object;
+        self.next_object += 1;
+        let mut args = vec![(ARG_ID, id.to_le_bytes().to_vec()), (ARG_PROPS, vec![0; 4])];
+        if let Some(n) = s.name.as_deref().filter(|n| !n.is_empty()) {
+            args.push((ARG_NAME, name_bytes(self.v, n)));
+        }
+        let mut body = vec![chunk(b"spnd", number.to_le_bytes().to_vec())];
+        // The flags of the instances of the version 15 file seen.
+        body.extend(self.head([0, 0, 8, 0x20], b, 0.0, centre));
+        body.push(list(
+            b"lgob",
+            vec![
+                chunk(b"loda", loda(0, args)),
+                list(b"trfl", vec![chunk(b"trfd", trfd(self.v, own))]),
+            ],
+        ));
+        Some(Placed {
+            nodes: vec![list(b"symb", body)],
+            bounds: Some(b),
+        })
+    }
+
     /// A group list of `children`, named `name` (argument 1000 of its
     /// `loda`, as files name groups).
     fn group(
@@ -5896,6 +6001,20 @@ impl<'a> Writer<'a> {
                         // A group's transparency is written on each object
                         // it holds.
                         c.absorb_opacity(s.opacity);
+                        c
+                    })
+                    .collect();
+                return self.group(&kids, s.name.as_deref(), centre, depth);
+            }
+            ShapeKind::SymbolInstance { index } if v.zip() && s.effects.is_empty() => {
+                if let Some(placed) = self.symbol_instance(s, *index, centre, depth) {
+                    return placed;
+                }
+                let kids: Vec<Shape> = s
+                    .expand(self.symbols)
+                    .into_iter()
+                    .map(|mut c| {
+                        c.absorb(s.transform);
                         c
                     })
                     .collect();

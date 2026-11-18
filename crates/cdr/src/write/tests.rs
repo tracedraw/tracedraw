@@ -10268,3 +10268,97 @@ fn letters_beyond_u_ffff_round_trip_with_their_runs() {
         assert_eq!(runs, want, "{v}");
     }
 }
+
+/// A drawing's symbols are saved as symbols (#3250): the definition once
+/// in the document's `LIST sytr` and the table naming it, each instance
+/// a `LIST symb` placing it. Opened again, the symbol is there with its
+/// name and the instances stand where they stood; they used to be
+/// written as groups of the definition's objects.
+#[test]
+fn symbols_are_saved_as_symbols_and_their_instances() {
+    use tracedraw_core::document::Symbol;
+    let mut doc = Document::new("w", Size::new(200.0, 100.0));
+    let mut ids = doc.ids().clone();
+    let mut def = Shape::new(
+        tracedraw_core::id::ShapeId(0),
+        ShapeKind::Ellipse {
+            rect: Rect::new(-10.0, -5.0, 10.0, 5.0),
+            arc: None,
+        },
+    );
+    def.fill = Fill::Solid(Color::rgb8(200, 30, 30));
+    def.stroke = None;
+    doc.symbols.push(Symbol {
+        name: "Logo".into(),
+        shape: def,
+    });
+    let placements = [
+        Affine::translate((40.0, 30.0)),
+        Affine::translate((120.0, 60.0)) * Affine::rotate(0.5),
+        Affine::translate((160.0, 20.0)) * Affine::scale_non_uniform(2.0, 0.5),
+    ];
+    for t in placements {
+        let mut inst = Shape::new(ids.shape(), ShapeKind::SymbolInstance { index: 0 });
+        inst.transform = t;
+        inst.fill = Fill::None;
+        inst.stroke = None;
+        doc.pages[0].layers[0].shapes.push(inst);
+    }
+    doc.set_ids(ids);
+    let before: Vec<Rect> = doc.pages[0].layers[0]
+        .shapes
+        .iter()
+        .map(|s| {
+            s.expand(&doc.symbols)
+                .iter()
+                .map(|c| {
+                    let mut c = c.clone();
+                    c.absorb(s.transform);
+                    c.bounds()
+                })
+                .reduce(|a, b| a.union(b))
+                .expect("drawn")
+        })
+        .collect();
+    for v in [14, 27] {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, _) = crate::open_bytes(&bytes, "w.cdr").expect("reopens");
+        assert_eq!(back.symbols.len(), 1, "version {v}");
+        assert_eq!(back.symbols[0].name, "Logo", "version {v}");
+        let shapes: Vec<&Shape> = back
+            .pages
+            .iter()
+            .flat_map(|p| &p.layers)
+            .flat_map(|l| &l.shapes)
+            .collect();
+        assert_eq!(shapes.len(), 3, "version {v}");
+        let mut after: Vec<Rect> = Vec::new();
+        for s in &shapes {
+            assert!(
+                matches!(s.kind, ShapeKind::SymbolInstance { index: 0 }),
+                "version {v}: {:?}",
+                s.kind
+            );
+            let b = s
+                .expand(&back.symbols)
+                .iter()
+                .map(|c| {
+                    let mut c = c.clone();
+                    c.absorb(s.transform);
+                    c.bounds()
+                })
+                .reduce(|a, b| a.union(b))
+                .expect("drawn");
+            after.push(b);
+        }
+        for b in &before {
+            assert!(
+                after.iter().any(|a| (a.x0 - b.x0).abs() < 0.05
+                    && (a.y0 - b.y0).abs() < 0.05
+                    && (a.x1 - b.x1).abs() < 0.05
+                    && (a.y1 - b.y1).abs() < 0.05),
+                "version {v}: {b:?} not among {after:?}"
+            );
+        }
+    }
+}
