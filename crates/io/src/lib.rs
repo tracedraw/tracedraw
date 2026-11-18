@@ -42,6 +42,18 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Whether the nonzero fill rule can fill `path` differently from
+/// even-odd: only when it has more than one subpath. Importers set
+/// [`FillRule::NonZero`](tracedraw_core::shaping::FillRule) only then,
+/// so a plain shape stays as it always was.
+pub(crate) fn nonzero_matters(path: &tracedraw_core::geometry::BezPath) -> bool {
+    path.elements()
+        .iter()
+        .filter(|e| matches!(e, tracedraw_core::geometry::PathEl::MoveTo(_)))
+        .count()
+        > 1
+}
+
 /// The document as vector exports should see it: unless the document
 /// fills open curves, an open curve's fill is kept for its closed subpaths
 /// only (the curve becomes a group of the filled closed part and the
