@@ -1576,7 +1576,65 @@ impl<'a> Interp<'a> {
         } else {
             None
         };
+        // An outline painted over the fill just painted, on the same path
+        // (`gsave fill grestore stroke`, Illustrator's `B`), is that
+        // object's outline, not an object of its own.
+        if !fill && shape.stroke.is_some() {
+            let stroke = shape.stroke.clone();
+            if let (ShapeKind::Path { path: p, .. }, Some(last)) =
+                (&shape.kind, self.unoutlined_fill())
+            {
+                if matches!(&last.kind, ShapeKind::Path { path: q, .. } if q == p) {
+                    last.stroke = stroke;
+                    return;
+                }
+            }
+        }
         self.emit(shape);
+    }
+
+    /// The object painted last, when it is a filled path without an
+    /// outline (in a clip frame of its own when clipped) that no group
+    /// or page has begun since.
+    fn unoutlined_fill(&mut self) -> Option<&mut Shape> {
+        let floor = self
+            .group_starts
+            .last()
+            .copied()
+            .into_iter()
+            .chain(self.pages.last().map(|p| p.0))
+            .max()
+            .unwrap_or(0);
+        if self.shapes.len() <= floor {
+            return None;
+        }
+        let clip = self.gs.clip.as_ref();
+        let last = self.shapes.last_mut()?;
+        let framed = match &last.kind {
+            ShapeKind::ClipFrame { frame, contents } => {
+                let same = contents.len() == 1
+                    && matches!((&frame.kind, clip),
+                        (ShapeKind::Path { path, .. }, Some(c)) if path == c);
+                if !same {
+                    return None;
+                }
+                true
+            }
+            _ => false,
+        };
+        fn unoutlined(s: &mut Shape) -> Option<&mut Shape> {
+            (matches!(s.kind, ShapeKind::Path { .. })
+                && s.stroke.is_none()
+                && !matches!(s.fill, Fill::None))
+            .then_some(s)
+        }
+        if !framed {
+            return unoutlined(last);
+        }
+        match &mut last.kind {
+            ShapeKind::ClipFrame { contents, .. } => unoutlined(&mut contents[0]),
+            _ => None,
+        }
     }
 
     fn user_to_device(&self, p: Point) -> Point {
@@ -4896,7 +4954,8 @@ mod tests {
             "{:?}",
             imp.size
         );
-        assert_eq!(imp.shapes.len(), 3, "{:?}", imp.warnings);
+        // The outline stroked over the fill is that object's outline.
+        assert_eq!(imp.shapes.len(), 2, "{:?}", imp.warnings);
         assert_eq!(
             imp.shapes[0].fill,
             Fill::Solid(Color::Rgb {
@@ -4905,7 +4964,7 @@ mod tests {
                 b: 1.0
             })
         );
-        let s = imp.shapes[1].stroke.as_ref().expect("stroke");
+        let s = imp.shapes[0].stroke.as_ref().expect("stroke");
         assert_eq!(
             s.color,
             Color::Rgb {
@@ -4915,7 +4974,7 @@ mod tests {
             }
         );
         assert!((s.width - 4.0 * PT_MM).abs() < 1e-9);
-        let b = imp.shapes[2].bounds();
+        let b = imp.shapes[1].bounds();
         assert!(
             (b.x0 - 100.0 * PT_MM).abs() < 1e-6 && (b.y1 - 80.0 * PT_MM).abs() < 1e-6,
             "{b:?}"
@@ -5186,5 +5245,32 @@ mod tests {
         );
         // A group of one object is the object.
         assert!(matches!(imp.shapes[4].kind, ShapeKind::Path { .. }));
+    }
+
+    /// An outline stroked over the fill just painted, on the same path,
+    /// is that object's outline: `gsave fill grestore stroke`, and a
+    /// classic Illustrator file's `B` (also inside a clipping group). A
+    /// stroke of another path, or one after a group began, stays an
+    /// object of its own.
+    #[test]
+    fn an_outline_over_its_fill_is_one_object() {
+        let imp = run("%!PS-Adobe-3.0\n%%Creator: tracer\n%AI5_FileFormat 3\n\
+             %%BoundingBox: 0 0 200 100\n%%EndComments\n\
+             0 1 1 0 k 0 0 1 0 K 2 w 10 10 m 60 10 L 60 40 L 10 40 L b\n\
+             q 0 0 m 100 0 L 100 50 L 0 50 L h W n\n\
+             1 0 0 0 k 20 20 m 140 20 L 140 60 L 20 60 L b Q\n\
+             0 0 0 1 k 150 10 m 190 10 L 190 40 L f 150 10 m 190 40 L S\n\
+             0.5 g 10 70 m 30 70 L 30 90 L f u 10 70 m 30 70 L 30 90 L s U\n");
+        assert_eq!(imp.shapes.len(), 6, "{:?}", imp.shapes);
+        let outlined = |s: &Shape| s.stroke.is_some() && !matches!(s.fill, Fill::None);
+        assert!(outlined(&imp.shapes[0]), "{:?}", imp.shapes[0]);
+        let ShapeKind::ClipFrame { contents, .. } = &imp.shapes[1].kind else {
+            panic!("clipped: {:?}", imp.shapes[1].kind)
+        };
+        assert!(outlined(&contents[0]), "{:?}", contents[0]);
+        // Another path's stroke and a stroke inside a group stay apart.
+        assert!(imp.shapes[2].stroke.is_none() && imp.shapes[3].stroke.is_some());
+        assert!(imp.shapes[4].stroke.is_none());
+        assert!(imp.shapes[5].stroke.is_some() && matches!(imp.shapes[5].fill, Fill::None));
     }
 }

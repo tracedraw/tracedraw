@@ -51,7 +51,13 @@ what the program paints; no external PostScript engine is involved.
   line width, caps, joins, dashes scaled by the CTM; `clip`, `eoclip`,
   `rectclip`, `initclip`, `clippath`; all matrix operators;
   `gsave`/`grestore` restore the current path too, so
-  `gsave fill grestore stroke` strokes the same path.
+  `gsave fill grestore stroke` strokes the same path. Such an outline,
+  stroked over the fill just painted on the same path (a classic
+  Illustrator file's `b` and `B` too, also in a clipping group), is
+  that object's outline: one object with its fill and outline, not a
+  filled object with an outline object over it. A stroke of another
+  path, or one after a group or a page began, stays an object of its
+  own.
 - Images: `image`, `imagemask` and `colorimage` in the Level 1 operand
   form and the Level 2 dictionary form, 1 to 16 bits, 1/3/4 components,
   single or multiple data sources (read row by row in turn), Decode
