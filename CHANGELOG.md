@@ -6,6 +6,10 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Fields of the bars and panels (sizes, positions and the others): pressing Ctrl no longer takes the keyboard away from the field, so Ctrl+V pastes into it instead of onto the drawing, and Ctrl+A, Ctrl+C and Ctrl+Z work in it. Ctrl itself arrives as a key press, on Windows with Ctrl already held, and was taken for a command shortcut (#3198).
+- While a text is being typed: Ctrl+Z (and Alt+Backspace) undoes the typing and Ctrl+Shift+Z redoes it, the text staying in editing; Ctrl+Shift+T opens Edit Text, Ctrl+S saves. These keys did nothing until the editing was left (#3108, #3266).
+- While a text is being typed, the commands and tools given a function key in Options > Customization > Commands, F13 to F24 of large keyboards among them, or a Ctrl key the typing does not use, now run; the typing swallowed those keys (#3251).
+- Alt pressed and let go alone lights the menu bar on Windows too, where Alt arrives as a key press of its own after the change of the modifiers.
 - Lens docker: Apply with Frozen keeps what the lens shows, as a picture inside the object, and the object keeps that look when moved. It used to drop the lens, and the object went back to its own colour (#3097).
 - Pictures of a page made by a macro (Document.ExportBitmap, Export), by Print as bitmap and by `tracedraw-cli convert` to PNG fill every pixel, as File > Export has since 0.48.0: they still had a light line along the top and right edge when the page was not a whole number of pixels at the resolution (#2866).
 - `.cdr` (version 16 and later): a fountain transparency whose nodes are not stored as greys, or whose nodes the object's style does not list, opens graded instead of solid or evenly see-through (#3095).

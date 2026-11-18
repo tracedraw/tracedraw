@@ -166,3 +166,145 @@ fn ctrl_s_in_the_macro_code_saves_the_macro() {
     assert_eq!(ctx.memory(|m| m.focused()), Some(code));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Ctrl itself arrives as a key press (on Windows with Ctrl already
+/// held): the field keeps the keyboard, and the Ctrl+V after it pastes
+/// into the field, not on the drawing (#3198).
+#[test]
+fn ctrl_alone_keeps_the_keyboard_in_a_bar_field() {
+    let (ctx, mut app, id) = typed_in_the_width_field();
+    for k in [egui::Key::ControlLeft, egui::Key::ControlRight] {
+        frame(
+            &ctx,
+            &mut app,
+            vec![key(k, Modifiers::COMMAND)],
+            Modifiers::COMMAND,
+        );
+        frame(&ctx, &mut app, Vec::new(), Modifiers::COMMAND);
+        assert!(ctx.egui_wants_keyboard_input(), "{k:?}: the field keeps it");
+    }
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Paste("5".into())],
+        Modifiers::COMMAND,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![key_up(egui::Key::ControlLeft, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert!(ctx.egui_wants_keyboard_input(), "still typing");
+    assert_eq!(shape_count(&app), 1, "nothing pasted on the drawing");
+    tap(&ctx, &mut app, egui::Key::Enter, Modifiers::NONE);
+    assert!(
+        close(bounds(&app, id).width(), 605.0),
+        "the paste went into the field: {:?}",
+        bounds(&app, id)
+    );
+}
+
+/// A text with "Hello" typed and left, then edited again with " world"
+/// typed at its end: two undo steps.
+fn editing_hello_world() -> (egui::Context, App, ShapeId) {
+    let (ctx, mut app, _) = setup();
+    app.set_tool(Tool::Text);
+    app.start_text(Point::new(20.0, 80.0), None);
+    app.text_insert("Hello");
+    let id = app.text_edit.as_ref().expect("editing").shape;
+    app.finish_text();
+    app.begin_text_edit(id);
+    app.text_insert(" world");
+    assert_eq!(app.edit_text(), "Hello world");
+    (ctx, app, id)
+}
+
+/// Ctrl+Z while a text is being typed undoes the typing and the text is
+/// edited on; Ctrl+Shift+Z brings it back (#3108: Ctrl+Z did nothing
+/// until the editing was left).
+#[test]
+fn ctrl_z_while_typing_undoes_and_the_text_is_edited_on() {
+    let (ctx, mut app, id) = editing_hello_world();
+    tap(&ctx, &mut app, egui::Key::Z, Modifiers::COMMAND);
+    assert_eq!(
+        app.text_edit.as_ref().map(|t| t.shape),
+        Some(id),
+        "still editing"
+    );
+    assert_eq!(app.edit_text(), "Hello");
+    tap(
+        &ctx,
+        &mut app,
+        egui::Key::Z,
+        Modifiers::COMMAND | Modifiers::SHIFT,
+    );
+    assert_eq!(app.text_edit.as_ref().map(|t| t.shape), Some(id));
+    assert_eq!(app.edit_text(), "Hello world");
+    // Typing goes on at the caret, into a step of its own.
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Text("!".into())],
+        Modifiers::NONE,
+    );
+    assert_eq!(app.edit_text(), "Hello world!");
+    tap(&ctx, &mut app, egui::Key::Z, Modifiers::COMMAND);
+    assert_eq!(app.edit_text(), "Hello world");
+    // Alt+Backspace undoes too; undoing the text's creation ends the
+    // editing.
+    tap(&ctx, &mut app, egui::Key::Backspace, Modifiers::ALT);
+    assert_eq!(app.edit_text(), "Hello");
+    tap(&ctx, &mut app, egui::Key::Z, Modifiers::COMMAND);
+    assert!(app.text_edit.is_none());
+    assert!(app.doc().find_shape(id).is_none());
+}
+
+/// Ctrl+Shift+T while a text is being typed with the Text tool opens
+/// Edit Text for it (#3266).
+#[test]
+fn ctrl_shift_t_while_typing_opens_edit_text() {
+    let (ctx, mut app, id) = editing_hello_world();
+    tap(
+        &ctx,
+        &mut app,
+        egui::Key::T,
+        Modifiers::COMMAND | Modifiers::SHIFT,
+    );
+    match &app.dialog {
+        crate::ui::dialogs::Dialog::EditText { shape, text, .. } => {
+            assert_eq!(*shape, id);
+            assert_eq!(text, "Hello world");
+        }
+        d => panic!("{d:?}"),
+    }
+    assert_eq!(app.doc().find_shape(id).map(|_| ()), Some(()));
+}
+
+/// A tool or a command given F13 to F24 (Options > Customization >
+/// Commands) is picked or runs while a text is being typed; the
+/// typing's own Ctrl keys stay its own (#3251).
+#[test]
+fn keys_f13_to_f24_given_a_command_work_while_typing() {
+    let (ctx, mut app, id) = editing_hello_world();
+    app.settings
+        .shortcuts
+        .push((Tool::Rectangle.id().to_string(), "F13".into()));
+    app.settings
+        .shortcuts
+        .push(("menu.view.rulers".to_string(), "Shift+F21".into()));
+    // Ctrl+B is the typing's bold, Ctrl+K (no use in typing) nothing.
+    tap(&ctx, &mut app, egui::Key::K, Modifiers::COMMAND);
+    assert_eq!(app.edit_text(), "Hello world");
+    assert!(app.text_edit.is_some());
+    tap(&ctx, &mut app, egui::Key::F13, Modifiers::NONE);
+    assert_eq!(app.tool, Tool::Rectangle);
+    assert!(app.text_edit.is_none(), "the editing ended for the tool");
+    assert!(app.doc().find_shape(id).is_some());
+    app.set_tool(Tool::Text);
+    app.begin_text_edit(id);
+    let rulers = app.show_rulers;
+    tap(&ctx, &mut app, egui::Key::F21, Modifiers::SHIFT);
+    assert_eq!(app.show_rulers, !rulers, "the command ran");
+    assert_eq!(app.edit_text(), "Hello world");
+}

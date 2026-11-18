@@ -589,6 +589,11 @@ fn alt_alone(ctx: &Context, st: &mut State) -> bool {
                 }
                 st.alt_down = m.alt;
             }
+            // Alt itself arrives as a key press too (after the change of
+            // the modifiers on Windows): it is not another key.
+            Event::Key {
+                key, pressed: true, ..
+            } if crate::shortcuts::is_modifier(*key) => {}
             Event::Key { pressed: true, .. }
             | Event::PointerButton { pressed: true, .. }
             | Event::MouseWheel { .. }
@@ -643,11 +648,13 @@ fn bar_keys(ctx: &Context, st: &mut State, titles: &Titles, at: usize) {
             }
             open(st, i);
         } else if ctx.input(|i| {
-            i.events
-                .iter()
-                .any(|e| matches!(e, Event::Key { pressed: true, .. }))
+            i.events.iter().any(|e| {
+                matches!(e, Event::Key { key, pressed: true, .. }
+                    if !crate::shortcuts::is_modifier(*key))
+            })
         }) {
-            // Any other key (a shortcut) leaves the bar and does its work.
+            // Any other key (a shortcut) leaves the bar and does its work;
+            // Shift, Ctrl or Alt alone do not.
             st.bar = None;
         }
     }
@@ -1387,6 +1394,32 @@ mod tests {
             crate::ui::dialogs::Dialog::NewDocument(_)
         ));
         assert!(!egui::Popup::is_any_open(&ctx));
+    }
+
+    /// Alt arrives as a key press of its own too, after the change of the
+    /// modifiers (Windows): pressed and let go alone it still lights the
+    /// menu bar, and Shift alone does not let the bar go (#3198).
+    #[test]
+    fn alt_as_a_key_press_still_lights_the_menu_bar() {
+        let ctx = crate::theme::ui_context();
+        let mut app = app_with_shapes();
+        keys(&ctx, &mut app, Vec::new());
+        window(
+            &ctx,
+            &mut app,
+            vec![press(Key::AltLeft, Modifiers::ALT)],
+            Modifiers::ALT,
+        );
+        window(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        assert_eq!(bar_focus(&ctx), Some(0));
+        window(
+            &ctx,
+            &mut app,
+            vec![press(Key::ShiftLeft, Modifiers::SHIFT)],
+            Modifiers::SHIFT,
+        );
+        window(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        assert_eq!(bar_focus(&ctx), Some(0), "Shift alone keeps the bar lit");
     }
 
     /// On a window too narrow for the whole menu bar, Alt and the access

@@ -4468,6 +4468,127 @@ impl App {
         }
     }
 
+    /// The command keys while a text is being edited, which type nothing
+    /// and which the typing has no use for (see [`text_command_key`]):
+    /// Undo (Ctrl+Z, Alt+Backspace) and Redo (Ctrl+Shift+Z) of the
+    /// typing, after which the text is edited on (#3108), Edit Text
+    /// (Ctrl+Shift+T, #3266), Save (Ctrl+S) and Save As (Ctrl+Shift+S),
+    /// and the commands and tools the user gave such a key (Options >
+    /// Customization > Commands), the keys F13 to F24 of a large keyboard
+    /// among them (#3251). The typing saw none of them and they did
+    /// nothing. The keys are taken from the input; true when one ran, and
+    /// the typing then waits for the next frame.
+    pub(crate) fn text_command_keys(&mut self, ctx: &egui::Context) -> bool {
+        let presses: Vec<(Key, Modifiers)> = ctx.input(|i| {
+            i.events
+                .iter()
+                .filter_map(|e| match e {
+                    egui::Event::Key {
+                        key,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } if text_command_key(*key, *modifiers) => Some((*key, *modifiers)),
+                    _ => None,
+                })
+                .collect()
+        });
+        if presses.is_empty() {
+            return false;
+        }
+        ctx.input_mut(|i| {
+            i.events.retain(|e| {
+                !matches!(e, egui::Event::Key { key, pressed: true, modifiers, .. }
+                    if text_command_key(*key, *modifiers))
+            })
+        });
+        let cmd = Modifiers::COMMAND;
+        for (key, mods) in presses {
+            let text = crate::shortcuts::format(mods, key);
+            let own = self
+                .settings
+                .shortcuts
+                .iter()
+                .find(|(_, v)| crate::shortcuts::same(v, &text))
+                .map(|(id, _)| id.clone());
+            if let Some(id) = own {
+                if id.starts_with("menu.") && id != crate::ui::NAVIGATOR_KEY {
+                    self.pending_command = Some(id);
+                    return true;
+                }
+                if let Some(t) = Tool::ALL.iter().find(|t| t.id() == id) {
+                    self.choose_tool(*t);
+                    return true;
+                }
+                continue;
+            }
+            if self.builtin_key_overridden(ctx, key, mods) {
+                continue;
+            }
+            let is = |k: Key, m: Modifiers| key == k && mods.matches_exact(m);
+            if is(Key::Z, cmd) || is(Key::Backspace, Modifiers::ALT) {
+                self.text_undo_redo(false);
+            } else if is(Key::Z, cmd | Modifiers::SHIFT) {
+                self.text_undo_redo(true);
+            } else if is(Key::T, cmd | Modifiers::SHIFT) {
+                self.open_edit_text_dialog();
+            } else if is(Key::S, cmd) {
+                self.save(false);
+            } else if is(Key::S, cmd | Modifiers::SHIFT) {
+                self.save(true);
+            } else {
+                continue;
+            }
+            return true;
+        }
+        false
+    }
+
+    /// Undo (`redo` false) or Redo while a text is being edited: the step
+    /// goes as Edit > Undo takes it, and the text is edited on, the caret
+    /// where it was (at the end of the text when it was at its end, or
+    /// when the text got shorter than its place). A new text with no
+    /// characters yet goes, which is its undo; a text the step took away
+    /// ends the editing.
+    pub(crate) fn text_undo_redo(&mut self, redo: bool) {
+        let Some(te) = self.text_edit.clone() else {
+            return;
+        };
+        let at_end = te.caret == te.anchor
+            && te.caret
+                == self
+                    .edit_spans()
+                    .map_or(0, |s| tracedraw_core::spans_char_count(&s));
+        self.finish_text();
+        if self.doc().find_shape(te.shape).is_none() {
+            return;
+        }
+        if redo {
+            self.redo();
+        } else {
+            self.undo();
+        }
+        let len = match self.doc().find_shape(te.shape).map(|s| &s.kind) {
+            Some(tracedraw_core::document::ShapeKind::Text { spans, .. }) => {
+                tracedraw_core::spans_char_count(spans)
+            }
+            _ => return,
+        };
+        // A caret at the end stays at the end (typing goes on after what
+        // came back); elsewhere it stays where it was.
+        self.text_edit = Some(if at_end {
+            crate::app::TextEdit::at_end(te.shape, len)
+        } else {
+            crate::app::TextEdit {
+                caret: te.caret.min(len),
+                anchor: te.anchor.min(len),
+                ..crate::app::TextEdit::at_end(te.shape, len)
+            }
+        });
+        self.select(vec![te.shape]);
+        self.sync_text_defaults_from(te.shape);
+    }
+
     /// The built-in shortcut `key` with `mods` is another command's by
     /// the user's choice, or was removed (Options > Customization >
     /// Commands).
@@ -4545,9 +4666,12 @@ impl App {
         // command runs in the next frame, on what the field changed. The
         // video of #2893 typed in the bar, then pressed Ctrl+K, and
         // nothing happened. The keys that edit the field's text stay its
-        // own (see `field_editing_key`). The code of the macro editor
-        // keeps the keyboard and its own Ctrl+S, which saves the macro
-        // (see ui/macros_ui.rs).
+        // own (see `field_editing_key`), and Ctrl itself, which arrives
+        // as a key press too (on Windows with Ctrl already held), is no
+        // command: it took the keyboard from the field, and the Ctrl+V
+        // after it pasted on the drawing (#3198). The code of the macro
+        // editor keeps the keyboard and its own Ctrl+S, which saves the
+        // macro (see ui/macros_ui.rs).
         let in_macro_code = ctx.memory(|m| m.focused()) == Some(egui::Id::new("macro_code_edit"));
         if !dialog_open && !in_macro_code && ctx.egui_wants_keyboard_input() {
             let commands: Vec<egui::Event> = ctx.input(|i| {
@@ -4559,7 +4683,12 @@ impl App {
                             pressed: true,
                             modifiers,
                             ..
-                        } => modifiers.command && !modifiers.alt && !field_editing_key(*key),
+                        } => {
+                            modifiers.command
+                                && !modifiers.alt
+                                && !field_editing_key(*key)
+                                && !crate::shortcuts::is_modifier(*key)
+                        }
                         _ => false,
                     })
                     .cloned()
@@ -4597,6 +4726,9 @@ impl App {
                 return;
             }
             self.text_view_keys(ctx);
+            if self.text_command_keys(ctx) {
+                return;
+            }
             self.text_keyboard(ctx);
             return;
         }
@@ -5546,6 +5678,98 @@ impl App {
             }
         }
     }
+}
+
+/// Whether a key press is a command while a text is being edited: it
+/// types nothing and the typing has no use for it. The function keys
+/// (F1 to F35, with any modifiers; F2 to F4 zoom first, see
+/// `text_view_keys`), Alt+Backspace, and Ctrl (Cmd) with a key the
+/// typing does not take (the typing keeps Ctrl+Space, the size and
+/// spacing keys, the caret keys, select all, the alignment and style
+/// keys, the clipboard keys and the editing keys). AltGr (Ctrl+Alt)
+/// types characters and is never a command.
+fn text_command_key(key: Key, mods: Modifiers) -> bool {
+    if crate::shortcuts::is_modifier(key) {
+        return false;
+    }
+    let function = matches!(
+        key,
+        Key::F1
+            | Key::F2
+            | Key::F3
+            | Key::F4
+            | Key::F5
+            | Key::F6
+            | Key::F7
+            | Key::F8
+            | Key::F9
+            | Key::F10
+            | Key::F11
+            | Key::F12
+            | Key::F13
+            | Key::F14
+            | Key::F15
+            | Key::F16
+            | Key::F17
+            | Key::F18
+            | Key::F19
+            | Key::F20
+            | Key::F21
+            | Key::F22
+            | Key::F23
+            | Key::F24
+            | Key::F25
+            | Key::F26
+            | Key::F27
+            | Key::F28
+            | Key::F29
+            | Key::F30
+            | Key::F31
+            | Key::F32
+            | Key::F33
+            | Key::F34
+            | Key::F35
+    );
+    if function {
+        return true;
+    }
+    if key == Key::Backspace && mods.matches_exact(Modifiers::ALT) {
+        return true;
+    }
+    let ctrl = mods.command && !crate::text_editing::altgr(&mods);
+    ctrl && !matches!(
+        key,
+        Key::Space
+            | Key::Num8
+            | Key::Num2
+            | Key::Period
+            | Key::Comma
+            | Key::A
+            | Key::L
+            | Key::E
+            | Key::R
+            | Key::J
+            | Key::H
+            | Key::N
+            | Key::B
+            | Key::I
+            | Key::U
+            | Key::C
+            | Key::V
+            | Key::X
+            | Key::Backspace
+            | Key::Delete
+            | Key::ArrowLeft
+            | Key::ArrowRight
+            | Key::ArrowUp
+            | Key::ArrowDown
+            | Key::Home
+            | Key::End
+            | Key::Insert
+            | Key::Enter
+            | Key::Tab
+            | Key::Escape
+    )
 }
 
 /// A key that, with Ctrl (Command on macOS), edits the text of a field:
