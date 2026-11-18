@@ -2284,6 +2284,59 @@ mod tests {
 
 // ---------------------------------------------------------------- EMF export
 
+/// Whether a text goes into a metafile as text records (a font and
+/// EXTTEXTOUT): one line of artistic text in one look, filled with one
+/// colour and not outlined, turned and scaled alike both ways at most.
+/// A text records cannot show (a paragraph laid out in its frame, text
+/// on a path, mirrored or slanted, outlined, unfilled or filled with a
+/// gradient, characters of several looks, spaced, shifted, turned or in
+/// capitals made up) goes in as the curves the drawing shows.
+fn text_as_records(shape: &Shape, transform: Affine) -> bool {
+    let ShapeKind::Text {
+        spans,
+        frame: None,
+        on_path: None,
+        para,
+        ..
+    } = &shape.kind
+    else {
+        return false;
+    };
+    let Some(first) = spans.first() else {
+        return false;
+    };
+    let c = transform.as_coeffs();
+    let det = c[0] * c[3] - c[1] * c[2];
+    let (a, b) = (c[0].hypot(c[1]), c[2].hypot(c[3]));
+    let upright = det > 0.0
+        && (c[0] * c[2] + c[1] * c[3]).abs() <= 1e-6 * a * b
+        && (a - b).abs() <= 1e-6 * a.max(b);
+    upright
+        && !para.vertical
+        && matches!(shape.fill, Fill::Solid(_))
+        && shape.stroke.as_ref().is_none_or(|st| st.width <= 0.0)
+        && spans.iter().all(|s| {
+            !s.text.contains(['\n', '\r', '\u{2028}', '\u{2029}'])
+                && !s.layout_only
+                && s.fill.is_none()
+                && s.outline.is_none()
+                && s.background.is_none()
+                && s.font_family == first.font_family
+                && s.size_pt == first.size_pt
+                && s.bold == first.bold
+                && s.italic == first.italic
+                && s.underline == first.underline
+                && s.strikethrough == first.strikethrough
+                && s.tracking_pct == 0.0
+                && s.baseline_shift_pt == 0.0
+                && s.offset_x_pct == 0.0
+                && s.width_pct == 100.0
+                && s.angle_deg == 0.0
+                && !s.all_caps
+                && !s.enclosed
+        })
+}
+
 /// Write one page as an enhanced metafile. One logical unit is 0.01 mm
 /// (MM_TEXT on a 2540 dpi device), paths are written as GDI paths with
 /// geometric pens and solid brushes, fountain fills as clipped bands,
@@ -2850,7 +2903,9 @@ impl EmfWriter<'_> {
                 origin,
                 align,
                 ..
-            } => self.text(shape, transform, spans, *origin, *align),
+            } if text_as_records(shape, transform) => {
+                self.text(shape, transform, spans, *origin, *align)
+            }
             ShapeKind::Bitmap { rect, png, .. } => {
                 self.bitmap(transform, *rect, png);
                 if let Some(st) = &shape.stroke {
@@ -2859,6 +2914,14 @@ impl EmfWriter<'_> {
                 }
             }
             _ => {
+                // Text whose characters have looks of their own: each
+                // look drawn as curves.
+                if let Some(parts) = shape.text_parts() {
+                    for part in &parts {
+                        self.shape(part, parent);
+                    }
+                    return;
+                }
                 let path = transform * shape.local_path();
                 let even_odd = shape
                     .data
@@ -2886,6 +2949,76 @@ impl EmfWriter<'_> {
 mod export_tests {
     use super::*;
     use tracedraw_core::{geometry::Rect, Document};
+
+    /// Only text a font record can show goes in as text: a paragraph in
+    /// its frame went in as one long line, mirrored text upside down,
+    /// and an outlined, unfilled or gradient-filled text lost its look.
+    /// Those go in as the curves the drawing shows.
+    #[test]
+    fn text_records_cannot_show_goes_in_as_curves() {
+        let text = |f: &dyn Fn(&mut Shape)| {
+            let mut doc = Document::new("t", Size::new(100.0, 50.0));
+            let mut ids = doc.ids().clone();
+            let mut t = Shape::new(
+                ids.shape(),
+                ShapeKind::Text {
+                    spans: vec![TextSpan::new("Hello world", "Arial", 24.0)],
+                    origin: Point::new(10.0, 30.0),
+                    frame: None,
+                    align: TextAlign::Left,
+                    para: ParagraphStyle::default(),
+                    on_path: None,
+                },
+            );
+            t.fill = Fill::Solid(Color::rgb8(200, 0, 0));
+            t.stroke = None;
+            f(&mut t);
+            doc.pages[0].layers[0].shapes.push(t);
+            doc.set_ids(ids);
+            let mut ids2 = IdSource::default();
+            let emf = parse(&page_to_emf(&doc, 0), &mut ids2).expect("emf");
+            let wmf = parse(&page_to_wmf(&doc, 0), &mut ids2).expect("wmf");
+            [emf, wmf].map(|imp| {
+                imp.shapes
+                    .iter()
+                    .any(|s| matches!(s.kind, ShapeKind::Text { .. }))
+            })
+        };
+        assert_eq!(text(&|_| {}), [true, true], "plain text stays text");
+        assert_eq!(
+            text(&|t| t.transform = Affine::rotate(0.5)),
+            [true, true],
+            "turned text stays text"
+        );
+        let curves: [(&str, &dyn Fn(&mut Shape)); 6] = [
+            ("paragraph", &|t| {
+                if let ShapeKind::Text { frame, .. } = &mut t.kind {
+                    *frame = Some(Size::new(30.0, 20.0));
+                }
+            }),
+            ("mirrored", &|t| {
+                t.transform = Affine::new([-1.0, 0.0, 0.0, 1.0, 100.0, 0.0])
+            }),
+            ("slanted", &|t| {
+                t.transform = Affine::new([1.0, 0.0, 0.4, 1.0, 0.0, 0.0])
+            }),
+            ("outlined", &|t| {
+                t.stroke = Some(Stroke::new(Color::BLACK, 0.5))
+            }),
+            ("unfilled", &|t| {
+                t.fill = Fill::None;
+                t.stroke = Some(Stroke::new(Color::BLACK, 0.5));
+            }),
+            ("two lines", &|t| {
+                if let ShapeKind::Text { spans, .. } = &mut t.kind {
+                    spans[0].text = "Hello\nworld".into();
+                }
+            }),
+        ];
+        for (name, f) in curves {
+            assert_eq!(text(f), [false, false], "{name}");
+        }
+    }
 
     #[test]
     fn bitmaps_round_trip_with_their_placement() {
@@ -2971,6 +3104,8 @@ mod export_tests {
             },
         );
         t.fill = Fill::Solid(Color::rgb8(0, 128, 0));
+        // Not outlined: an outlined text goes in as curves.
+        t.stroke = None;
         let mut e = Shape::new(
             ids.shape(),
             ShapeKind::Ellipse {
@@ -3484,7 +3619,9 @@ impl WmfWriter<'_> {
                 origin,
                 align,
                 ..
-            } => self.text(shape, transform, spans, *origin, *align),
+            } if text_as_records(shape, transform) => {
+                self.text(shape, transform, spans, *origin, *align)
+            }
             ShapeKind::Bitmap { rect, png, .. } => {
                 self.bitmap(transform, *rect, png);
                 if let Some(st) = &shape.stroke {
@@ -3493,6 +3630,14 @@ impl WmfWriter<'_> {
                 }
             }
             _ => {
+                // Text whose characters have looks of their own: each
+                // look drawn as curves.
+                if let Some(parts) = shape.text_parts() {
+                    for part in &parts {
+                        self.shape(part, parent);
+                    }
+                    return;
+                }
                 let path = transform * shape.local_path();
                 let even_odd = shape
                     .data
@@ -3553,6 +3698,8 @@ mod wmf_export_tests {
                 },
             );
             t.fill = Fill::Solid(Color::rgb8(0, 128, 0));
+            // Not outlined: an outlined text goes in as curves.
+            t.stroke = None;
             let mut e = Shape::new(
                 ids.shape(),
                 ShapeKind::Ellipse {
@@ -3608,6 +3755,8 @@ mod wmf_export_tests {
             },
         );
         t.fill = Fill::Solid(Color::rgb8(0, 128, 0));
+        // Not outlined: an outlined text goes in as curves.
+        t.stroke = None;
         let png = crate::svg::encode_png(2, 1, &[255, 0, 0, 255, 0, 0, 255, 255]);
         let mut b = Shape::new(
             ids.shape(),
