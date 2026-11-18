@@ -737,12 +737,44 @@ impl<'a> Player<'a> {
         };
         let a = self.to_page(x, y);
         let b = self.to_page(x + w, y + h);
-        let rect = Rect::from_points(a, b);
-        if rect.width() <= 0.0 || rect.height() <= 0.0 {
-            return;
-        }
+        // The other two corners: the picture turned or slanted by the
+        // world transform keeps its turn, not the box round it.
+        let right = self.to_page(x + w, y);
+        let below = self.to_page(x, y + h);
         let png = crate::svg::encode_png(pw, ph, &rgba);
         if png.is_empty() {
+            return;
+        }
+        let tol = 1e-6 * (1.0 + (b - a).hypot());
+        if (right.y - a.y).abs() > tol || (below.x - a.x).abs() > tol {
+            let (across, down) = (right - a, a - below);
+            let (bw, bh) = (across.hypot(), down.hypot());
+            if bw <= 0.0 || bh <= 0.0 {
+                return;
+            }
+            // Local box (bw x bh, y up); its top-left corner goes to `a`.
+            let mut s = self.new_shape(ShapeKind::Bitmap {
+                rect: Rect::new(0.0, 0.0, bw, bh),
+                width_px: pw,
+                height_px: ph,
+                png: png.into(),
+                fx: None,
+            });
+            s.transform = Affine::new([
+                across.x / bw,
+                across.y / bw,
+                down.x / bh,
+                down.y / bh,
+                below.x,
+                below.y,
+            ]);
+            s.fill = Fill::None;
+            s.stroke = None;
+            self.emit(s);
+            return;
+        }
+        let rect = Rect::from_points(a, b);
+        if rect.width() <= 0.0 || rect.height() <= 0.0 {
             return;
         }
         // The image's top-left corner is at `a`; when the mapping puts it
@@ -2785,9 +2817,20 @@ impl EmfWriter<'_> {
         if w == 0 || h == 0 {
             return;
         }
-        // World transform: local mm to logical units.
+        // World transform: the picture's pixels (y down) to its box, to
+        // the page, to logical units. The box goes in the transform, not
+        // in the record's whole-number destination, which held it to the
+        // nearest millimetre.
         let dev = Affine::new([100.0, 0.0, 0.0, -100.0, 0.0, self.page_h * 100.0]);
-        let m = dev * transform;
+        let px = Affine::new([
+            rect.width() / w as f64,
+            0.0,
+            0.0,
+            -rect.height() / h as f64,
+            rect.x0,
+            rect.y1,
+        ]);
+        let m = dev * transform * px;
         let c = m.as_coeffs();
         self.record(33, &[]);
         let mut body = Vec::new();
@@ -2814,14 +2857,13 @@ impl EmfWriter<'_> {
                 bits.extend_from_slice(&[p.blue(), p.green(), p.red(), p.alpha()]);
             }
         }
-        // Destination in local (world) units: the rect, y flipped by the
-        // world transform itself, so pass the rect in mm with y up as is.
+        // Destination in world units: the picture's own pixels.
         let mut body = Vec::new();
         for v in [0, 0, -1, -1] {
             push_i32(&mut body, v);
         }
-        push_i32(&mut body, rect.x0.round() as i32);
-        push_i32(&mut body, rect.y1.round() as i32);
+        push_i32(&mut body, 0);
+        push_i32(&mut body, 0);
         push_i32(&mut body, 0);
         push_i32(&mut body, 0);
         push_i32(&mut body, w as i32);
@@ -2834,8 +2876,8 @@ impl EmfWriter<'_> {
         push_i32(&mut body, bits.len() as i32);
         push_i32(&mut body, 0);
         push_i32(&mut body, 0x00CC0020);
-        push_i32(&mut body, rect.width().round().max(1.0) as i32);
-        push_i32(&mut body, -(rect.height().round().max(1.0) as i32));
+        push_i32(&mut body, w as i32);
+        push_i32(&mut body, h as i32);
         body.extend_from_slice(&bmi);
         body.extend_from_slice(&bits);
         self.record_bytes(81, &body);
@@ -3076,6 +3118,62 @@ mod export_tests {
         let tl = s.transform * Point::new(10.0, 40.0);
         let br = s.transform * Point::new(50.0, 20.0);
         assert!(tl.x < br.x && tl.y > br.y, "{tl:?} {br:?}");
+    }
+
+    /// A turned or slanted picture keeps its turn, and a picture off the
+    /// whole millimetre keeps its place and size: the picture came back
+    /// upright, squeezed into a strip, and every picture's box was held
+    /// to the nearest millimetre.
+    #[test]
+    fn pictures_keep_their_turn_and_their_place() {
+        let png = crate::svg::encode_png(
+            2,
+            2,
+            &[
+                255, 0, 0, 255, 0, 0, 255, 255, 0, 255, 0, 255, 255, 255, 255, 255,
+            ],
+        );
+        for place in [
+            Affine::IDENTITY,
+            Affine::rotate_about(0.4, Point::new(40.0, 40.0)),
+            Affine::new([1.0, 0.0, 0.5, 1.0, -10.0, 0.0]),
+            Affine::new([-1.0, 0.0, 0.0, 1.0, 100.0, 0.0]),
+        ] {
+            let mut doc = Document::new("t", Size::new(100.0, 80.0));
+            let mut b = Shape::new(
+                doc.ids_mut().shape(),
+                ShapeKind::Bitmap {
+                    rect: Rect::new(20.4, 20.3, 60.7, 50.6),
+                    width_px: 2,
+                    height_px: 2,
+                    png: png.clone().into(),
+                    fx: None,
+                },
+            );
+            b.fill = Fill::None;
+            b.stroke = None;
+            b.transform = place;
+            // The picture's top-left, top-right and bottom-left corners.
+            let corners = |s: &Shape| {
+                let ShapeKind::Bitmap { rect, .. } = &s.kind else {
+                    panic!("{:?}", s.kind)
+                };
+                [
+                    s.transform * Point::new(rect.x0, rect.y1),
+                    s.transform * Point::new(rect.x1, rect.y1),
+                    s.transform * Point::new(rect.x0, rect.y0),
+                ]
+            };
+            let want = corners(&b);
+            doc.pages[0].layers[0].shapes.push(b);
+            let mut ids = IdSource::default();
+            let imp = parse(&page_to_emf(&doc, 0), &mut ids).expect("re-read");
+            assert_eq!(imp.shapes.len(), 1);
+            let got = corners(&imp.shapes[0]);
+            for (w, g) in want.iter().zip(&got) {
+                assert!((*w - *g).hypot() < 0.02, "{place:?}: {want:?} vs {got:?}");
+            }
+        }
     }
 
     #[test]
