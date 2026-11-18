@@ -149,6 +149,9 @@ pub fn star_sharpness_for_ratio(ratio: f64) -> f64 {
     }
 }
 
+/// The most points a polygon or star has (the tools' limit too).
+pub const POLYGON_MAX_POINTS: u32 = 500;
+
 /// The fewest points a complex star has.
 pub const COMPLEX_STAR_MIN_POINTS: u32 = 5;
 
@@ -165,7 +168,7 @@ pub fn complex_star_max_sharpness(points: u32) -> u32 {
 /// the count the star is several closed subpaths (two triangles for six
 /// points). Filled even-odd, the middle stays empty.
 pub fn complex_star_path(rect: Rect, points: u32, sharpness: u32) -> BezPath {
-    let n = points.clamp(COMPLEX_STAR_MIN_POINTS, 500) as usize;
+    let n = points.clamp(COMPLEX_STAR_MIN_POINTS, POLYGON_MAX_POINTS) as usize;
     let step = sharpness.clamp(1, complex_star_max_sharpness(n as u32)) as usize + 1;
     let verts: Vec<Point> = {
         let c = rect.center();
@@ -203,7 +206,10 @@ fn polygon_unit_vertices(
     sharpness: f64,
     twist: f64,
 ) -> impl Iterator<Item = (f64, f64)> {
-    let points = points.max(3) as usize;
+    // The tools and bars go to 500 points; a file or a macro giving
+    // millions (or 4 billion) made drawing it take minutes or ask for more
+    // memory than there is, ending the program.
+    let points = points.clamp(3, POLYGON_MAX_POINTS) as usize;
     let twist = if twist.is_finite() {
         twist.clamp(-std::f64::consts::PI, std::f64::consts::PI)
     } else {
@@ -808,6 +814,19 @@ mod tests {
             PathEl::MoveTo(q) => assert!((q.x - 5.0).abs() < 1e-9 && (q.y - 10.0).abs() < 1e-9),
             ref e => panic!("{e:?}"),
         }
+    }
+
+    #[test]
+    fn polygons_of_billions_of_points_draw_the_most_points() {
+        // A file or a macro asked for 4 billion points: drawing the
+        // polygon ran out of memory and ended the program.
+        let r = Rect::new(0.0, 0.0, 10.0, 10.0);
+        for (sharpness, twist, per_point) in [(0.0, 0.0, 1), (0.5, 0.0, 2), (0.0, 0.3, 2)] {
+            let p = twisted_polygon_path(r, u32::MAX, sharpness, twist);
+            let n = POLYGON_MAX_POINTS as usize * per_point;
+            assert_eq!(p.elements().len(), n + 1, "{sharpness} {twist}");
+        }
+        assert_eq!(polygon_path(r, 7, 0.0).elements().len(), 8);
     }
 
     #[test]
