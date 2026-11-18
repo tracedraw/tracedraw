@@ -6252,6 +6252,31 @@ impl App {
     /// of the curve the line goes on from, so the curve is closed and a
     /// redo of this step ends it, as a close by hand does (#1846).
     pub(crate) fn finish_curve_as(&mut self, closes: bool) {
+        // A curve whose last node lies on its first (placed there by a
+        // snap, or a click just outside the reach that closes it) is
+        // closed: finished open, its two ends met with the line's caps
+        // and that corner came out cut off where the others came to a
+        // point (#3219).
+        if !closes {
+            if let Some(c) = self.curve.as_ref().filter(|c| !c.bspline) {
+                let ends_on_first = c.nodes.len() >= 4
+                    && c.nodes
+                        .first()
+                        .zip(c.nodes.last())
+                        .is_some_and(|(a, b)| (a.0 - b.0).hypot() < 1e-6 && b.1.is_none());
+                if ends_on_first {
+                    let line = c.path(None);
+                    if !self.would_join(&line) {
+                        if let Some(mut c) = self.curve.take() {
+                            c.nodes.pop();
+                            c.closing = None;
+                            self.close_curve(c);
+                        }
+                        return;
+                    }
+                }
+            }
+        }
         let history = std::mem::take(&mut self.curve_steps.undo);
         self.curve_steps.clear();
         let Some(c) = self.curve.take() else { return };

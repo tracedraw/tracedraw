@@ -3671,7 +3671,7 @@ impl App {
 
     /// The curve being drawn, closed onto its first node, becomes a
     /// curve object and is selected.
-    fn close_curve(&mut self, c: CurveInProgress) {
+    pub(crate) fn close_curve(&mut self, c: CurveInProgress) {
         let history = std::mem::take(&mut self.curve_steps.undo);
         self.curve_steps.clear();
         let path = c.path_closed(None, true);

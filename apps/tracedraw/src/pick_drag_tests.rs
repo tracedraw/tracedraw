@@ -1754,6 +1754,71 @@ fn ctrl_keeps_lines_to_the_constrain_angle() {
     );
 }
 
+/// #3219: a polyline whose last node is placed on its first (by a snap
+/// to the node, or a click just outside the reach that closes it) and
+/// then finished is closed, so its corner there is joined like the
+/// others instead of two capped ends; one with an end elsewhere stays
+/// open.
+#[test]
+fn a_line_finished_on_its_first_node_is_closed() {
+    let (ctx, mut app, first) = setup();
+    app.select(vec![first]);
+    app.delete_selection();
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    app.set_tool(Tool::Polyline);
+    let pts = [
+        Point::new(40.0, 120.0),
+        Point::new(150.0, 60.0),
+        Point::new(180.0, 130.0),
+        Point::new(40.0, 120.0),
+    ];
+    let start = |app: &mut App, pts: &[Point]| {
+        app.curve = Some(crate::app::CurveInProgress {
+            nodes: pts.iter().map(|p| (*p, None)).collect(),
+            ..Default::default()
+        });
+        app.finish_curve();
+    };
+    start(&mut app, &pts);
+    let shape = app
+        .doc()
+        .all_layers()
+        .flat_map(|l| &l.shapes)
+        .last()
+        .cloned()
+        .expect("a curve");
+    let ShapeKind::Path { path, closed } = &shape.kind else {
+        panic!("{:?}", shape.kind)
+    };
+    assert!(closed, "{path:?}");
+    let els = path.elements();
+    assert!(
+        matches!(
+            els.last(),
+            Some(tracedraw_core::geometry::PathEl::ClosePath)
+        ),
+        "{els:?}"
+    );
+    // Three corners, the first not doubled.
+    assert_eq!(els.len(), 4, "{els:?}");
+    // Ending elsewhere, it stays open.
+    let mut open = pts;
+    open[3] = Point::new(60.0, 125.0);
+    start(&mut app, &open);
+    let ShapeKind::Path { closed, .. } = &app
+        .doc()
+        .all_layers()
+        .flat_map(|l| &l.shapes)
+        .last()
+        .expect("a curve")
+        .kind
+    else {
+        panic!()
+    };
+    assert!(!closed);
+    let _ = last_path(&app);
+}
+
 /// Two filled 20 x 20 mm squares grouped (at x 100 and 140, y 100) and a
 /// third square on its own at (100, 150), nothing selected.
 fn grouped() -> (egui::Context, App, [ShapeId; 3], ShapeId) {
