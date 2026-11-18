@@ -229,7 +229,10 @@ stand for a distance in the world (`drawing_scale.rs`):
   (opens the Guidelines panel with the guideline's values). A double
   click on a guideline (where no object is) does the same: the panel
   opens with that guideline selected alone and its values in the
-  fields (`App::open_guide_properties`).
+  fields (`App::open_guide_properties`). The second click of the
+  double click was taken as a click on the guideline and went no
+  further, so the guideline was only selected (#3008,
+  `pick_drag_tests::a_double_click_on_a_guideline_opens_the_guidelines_panel`).
 - Property bar: with guidelines selected and no object, the bar shows
   the one selected guideline's type and its x, y and angle (counted
   from the ruler origin, as the panel shows them); a value typed there
