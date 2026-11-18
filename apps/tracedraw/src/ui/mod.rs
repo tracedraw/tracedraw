@@ -104,6 +104,7 @@ pub mod print_preview;
 pub mod propbar;
 pub mod publish_pdf;
 pub mod recolor;
+pub mod replace_color;
 pub mod rulers;
 pub mod save_as;
 pub mod screen_margins;

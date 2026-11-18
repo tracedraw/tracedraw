@@ -4647,6 +4647,9 @@ fn tools_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.tools.recolor", "", !app.selection.is_empty()) {
         app.recolor_dialog();
     }
+    if item(ui, "menu.tools.replace_color", "", app.has_document()) {
+        app.replace_color_dialog();
+    }
     sep(ui);
     sub(ui, "menu.tools.scripts", |ui| {
         if item(ui, "menu.tools.scripts_docker", "", true) {

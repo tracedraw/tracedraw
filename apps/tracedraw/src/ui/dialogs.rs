@@ -1475,6 +1475,8 @@ pub enum Dialog {
     ConvertColors(crate::ui::convert_colors::ConvertColorsState),
     /// Tools > Recolor.
     Recolor(crate::ui::recolor::RecolorState),
+    /// Tools > Replace Color (#2858).
+    ReplaceColor(crate::ui::replace_color::ReplaceColorState),
     FontManager(FontManagerState),
     /// Launch > TraceCut, Tools > TraceCut.
     TraceCut(Box<crate::tracecut::TraceCutState>),
@@ -3407,6 +3409,7 @@ pub fn show(app: &mut App, ctx: &Context) {
         Dialog::BorderGrommet(st) => border_grommet_dialog(app, ctx, st, &mut close),
         Dialog::ConvertColors(st) => crate::ui::convert_colors::dialog(app, ctx, st, &mut close),
         Dialog::Recolor(st) => crate::ui::recolor::dialog(app, ctx, st, &mut close),
+        Dialog::ReplaceColor(st) => crate::ui::replace_color::dialog(app, ctx, st, &mut close),
         Dialog::ColorManagement(st) => {
             crate::ui::color_management::dialog(app, ctx, st, &mut close)
         }
