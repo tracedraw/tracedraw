@@ -141,6 +141,18 @@ fn resample(data: &[u8], channels: u8, w: u32, h: u32, nw: u32, nh: u32) -> Opti
             FilterType::Triangle,
         )
         .into_raw(),
+        // CMYK: each ink on its own.
+        4 => {
+            let planes = (0..4)
+                .map(|c| {
+                    let plane: Vec<u8> = data.iter().skip(c).step_by(4).copied().collect();
+                    resample(&plane, 1, w, h, nw, nh)
+                })
+                .collect::<Option<Vec<_>>>()?;
+            (0..(nw * nh) as usize)
+                .flat_map(|i| planes.iter().map(move |p| p[i]))
+                .collect()
+        }
         _ => return None,
     };
     Some(out)
@@ -1251,6 +1263,9 @@ impl PageWriter<'_> {
         {
             if let Some((mut rgb, alpha)) = decode_png_rgb_alpha(png) {
                 let name = format!("Im{}", self.images.len());
+                // Composited over white below when the file has no soft
+                // masks: the ink channels would keep the clear parts.
+                let blended = alpha.is_some() && !self.pdf.allow_alpha;
                 let alpha = if self.pdf.allow_alpha {
                     alpha
                 } else {
@@ -1266,9 +1281,22 @@ impl PageWriter<'_> {
                     None
                 };
                 let opts = self.pdf.images;
-                let kind = image_kind(&rgb);
+                // A CMYK picture goes in with the ink bytes it was read
+                // with (#1659): its screen pixels made it RGB, or in a
+                // CMYK file a new mix of inks, so black ink alone came
+                // out on four plates.
+                let inks = (!blended)
+                    .then(|| process_inks(shape, png, *width_px, *height_px))
+                    .flatten();
+                let kind = if inks.is_some() {
+                    ImageKind::Color
+                } else {
+                    image_kind(&rgb)
+                };
                 // Gray and black-and-white pictures go in with one channel.
-                let (mut data, mut channels): (Vec<u8>, u8) = if kind == ImageKind::Color {
+                let (mut data, mut channels): (Vec<u8>, u8) = if let Some(cmyk) = inks {
+                    (cmyk, 4)
+                } else if kind == ImageKind::Color {
                     (rgb, 3)
                 } else {
                     (rgb.chunks_exact(3).map(|p| p[0]).collect(), 1)
@@ -1322,6 +1350,8 @@ impl PageWriter<'_> {
                     .unwrap_or_default();
                 let cs = if channels == 1 {
                     "/DeviceGray"
+                } else if channels == 4 {
+                    "/DeviceCMYK"
                 } else {
                     self.pdf.color_space()
                 };
@@ -2124,6 +2154,33 @@ fn rasterise_fill(
     Some((pm.encode_png().ok()?, w, h))
 }
 
+/// The C, M, Y and K bytes of a CMYK picture, interleaved a pixel at a
+/// time, from the ink channels it keeps (`Shape::picture_inks`) while
+/// they still fit its pixels; `None` for other pictures, and for ones
+/// with spot ink channels.
+fn process_inks(shape: &Shape, png: &[u8], w: u32, h: u32) -> Option<Vec<u8>> {
+    use tracedraw_core::picture_inks::PictureInk;
+    let inks = shape.picture_inks.as_deref()?;
+    if !inks.fits(png) || inks.inks != (0..4).map(PictureInk::Process).collect::<Vec<_>>() {
+        return None;
+    }
+    let planes = image::load_from_memory(&inks.png).ok()?.to_luma8();
+    let n = (w as usize).checked_mul(h as usize)?;
+    if planes.width() != w || planes.height() as usize != h as usize * 4 {
+        return None;
+    }
+    let raw = planes.into_raw();
+    if raw.len() < n * 4 {
+        return None;
+    }
+    let raw = &raw;
+    Some(
+        (0..n)
+            .flat_map(|i| (0..4).map(move |c| raw[c * n + i]))
+            .collect(),
+    )
+}
+
 /// RGB samples and, when any pixel is not opaque, the alpha channel.
 fn decode_png_rgb_alpha(png: &[u8]) -> Option<(Vec<u8>, Option<Vec<u8>>)> {
     let pm = tiny_skia::Pixmap::decode_png(png).ok()?;
@@ -2893,6 +2950,80 @@ fn xmp_packet(text: &XmpText, std_: PdfStandard, date: &str) -> String {
 mod tests {
     use super::*;
     use tracedraw_core::geometry::Rect;
+
+    /// A CMYK picture (a `.cdr`, PSD or TIFF CMYK image keeping its ink
+    /// bytes, #1659) goes in as a DeviceCMYK image of those bytes in
+    /// every PDF: black ink alone stays on the black plate. Its RGB
+    /// screen pixels went in instead (or, in PDF/X-1a, inks made again
+    /// from them).
+    #[test]
+    fn a_cmyk_picture_goes_in_with_its_own_inks() {
+        let (w, h) = (2u32, 2u32);
+        let png = |img: image::DynamicImage| {
+            let mut out = std::io::Cursor::new(Vec::new());
+            img.write_to(&mut out, image::ImageFormat::Png)
+                .expect("png");
+            out.into_inner()
+        };
+        // Screen pixels: a dark gray; inks: black only, at four strengths.
+        let pixels = png(image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            w,
+            h,
+            image::Rgb([60, 60, 60]),
+        )));
+        let k = [255u8, 200, 150, 100];
+        let mut planes = vec![0u8; (w * h * 4) as usize];
+        planes[(w * h * 3) as usize..].copy_from_slice(&k);
+        let planes = png(image::DynamicImage::ImageLuma8(
+            image::GrayImage::from_raw(w, h * 4, planes).expect("planes"),
+        ));
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let id = doc.ids_mut().shape();
+        let mut s = Shape::new(
+            id,
+            ShapeKind::Bitmap {
+                rect: Rect::new(10.0, 10.0, 30.0, 30.0),
+                width_px: w,
+                height_px: h,
+                png: pixels.clone().into(),
+                fx: Default::default(),
+            },
+        );
+        s.cmyk_bitmap = true;
+        s.picture_inks = Some(Box::new(tracedraw_core::picture_inks::PictureInks::cmyk(
+            &pixels,
+            planes.into(),
+        )));
+        doc.layer_mut(layer).unwrap().shapes.push(s);
+        let want: Vec<u8> = k.iter().flat_map(|k| [0, 0, 0, *k]).collect();
+        for standard in [PdfStandard::None, PdfStandard::X1a] {
+            let opts = PdfOptions {
+                standard,
+                ..Default::default()
+            };
+            let bytes = document_to_pdf_with(&doc, &opts);
+            let pdf = lopdf::Document::load_mem(&bytes).expect("parses");
+            let image = pdf
+                .objects
+                .values()
+                .filter_map(|o| o.as_stream().ok())
+                .find(|st| {
+                    st.dict
+                        .get(b"Subtype")
+                        .and_then(|v| v.as_name())
+                        .is_ok_and(|n| n == b"Image")
+                })
+                .expect("image");
+            assert_eq!(
+                image.dict.get(b"ColorSpace").and_then(|v| v.as_name()).ok(),
+                Some(&b"DeviceCMYK"[..]),
+                "{standard:?}"
+            );
+            let data = image.decompressed_content().expect("data");
+            assert_eq!(data, want, "{standard:?}");
+        }
+    }
 
     /// A 600 x 600 pixel picture placed 25.4 mm wide (600 dpi): kept as
     /// it is at first; downsampled to 150 dpi (150 x 150) when asked; JPEG
