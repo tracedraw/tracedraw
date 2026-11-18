@@ -9699,6 +9699,29 @@ pub(crate) mod tests {
         })
     }
 
+    /// Help > Benchmark: Options opens the Options window at the page with
+    /// hardware acceleration, instead of the Benchmark window putting
+    /// itself back over it (#3351).
+    #[test]
+    fn benchmark_options_opens_the_options_window() {
+        use egui::accesskit::Role;
+        let mut app = App::headless();
+        let ctx = crate::theme::ui_context();
+        app.dialog = Dialog::Benchmark;
+        frame_widgets(&ctx, &mut app, Vec::new());
+        let w = frame_widgets(&ctx, &mut app, Vec::new());
+        let options = tr("menu.tools.options");
+        let (_, _, enabled, id) = w
+            .iter()
+            .find(|(r, l, _, _)| *r == Role::Button && *l == options)
+            .cloned()
+            .expect("an Options button");
+        assert!(enabled);
+        frame_widgets(&ctx, &mut app, vec![click(id)]);
+        assert!(matches!(app.dialog, Dialog::Options), "{:?}", app.dialog);
+        assert_eq!(app.options_page, OptionsPage::General);
+    }
+
     /// The update progress dialog: a progress bar and Cancel while the
     /// file downloads, Cancel greyed while it is checked, Restart Now and
     /// Later when the update is ready, Try Again and the website after a

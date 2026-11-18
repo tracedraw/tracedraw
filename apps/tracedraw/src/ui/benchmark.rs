@@ -371,8 +371,11 @@ pub fn dialog(app: &mut App, ctx: &Context, close: &mut bool) {
                     app.status = tr("benchmark.copied");
                 }
             }
+            // Options takes the place of this window: the dialogs show
+            // one at a time, and a window left open would put itself back
+            // over the one it opened (#3351).
             if ui
-                .button(tr("menu.tools.options"))
+                .add_enabled(!running, egui::Button::new(tr("menu.tools.options")))
                 .rich_tip(crate::ui::tips::pair(
                     "menu.tools.options",
                     "benchmark.compare_how",
@@ -380,6 +383,7 @@ pub fn dialog(app: &mut App, ctx: &Context, close: &mut bool) {
                 .clicked()
             {
                 app.open_options_page(crate::ui::dialogs::OptionsPage::General);
+                *close = true;
             }
             if ui
                 .add_enabled(!running, egui::Button::new(tr("dialog.close")))

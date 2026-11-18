@@ -4003,6 +4003,24 @@ fn inner_shadow_bar(app: &mut App, ui: &mut Ui) {
     let has_selection = !app.selection.is_empty();
     let (mut offset, mut st) = current.unwrap_or((CVec2::new(2.0, -2.0), app.inner_shadow));
     let mut changed = false;
+    // Apply where the Drop Shadow bar has it, after the tool buttons, and
+    // always there (greyed while the object has one), so it is not lost
+    // past the end of a narrow bar (#3353).
+    ui.label(
+        egui::RichText::new(tr("effect.inner_shadow"))
+            .color(Tokens::text_dim())
+            .size(11.0),
+    );
+    let apply = ui
+        .add_enabled(
+            has_selection && current.is_none(),
+            egui::Button::new(tr("docker.apply")),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "docker.apply",
+            "toolbar.apply_inner_shadow_desc",
+        ))
+        .clicked();
     let mut dx = offset.x;
     let mut dy = offset.y;
     changed |= dim_labelled_as(
@@ -4088,18 +4106,10 @@ fn inner_shadow_bar(app: &mut App, ui: &mut Ui) {
             app.push_effect(effect.clone(), true);
         }
     }
-    vsep(ui);
-    if current.is_none()
-        && ui
-            .add_enabled(
-                has_selection,
-                egui::Button::new(tr("toolbar.apply_inner_shadow")),
-            )
-            .rich_tip(crate::ui::tips::keyed("toolbar.apply_inner_shadow"))
-            .clicked()
-    {
+    if apply {
         app.push_effect(effect.clone(), true);
     }
+    vsep(ui);
     if ui
         .add_enabled(
             current.is_some(),
@@ -4608,6 +4618,48 @@ mod tests {
         );
         assert_eq!(app.nudge_mm, 1.5);
         assert_eq!(app.settings.micro_nudge_mm, 0.125);
+    }
+
+    /// The Inner Shadow bar has Apply where the Drop Shadow bar has it,
+    /// right after the tool buttons; it gives the selected object an
+    /// inner shadow and stays on the bar, greyed, once it has one (#3353).
+    #[test]
+    fn the_inner_shadow_bar_applies_like_the_drop_shadow_bar() {
+        use crate::tools::Tool;
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.set_tool(Tool::InnerShadow);
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(10.0, 10.0, 40.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape");
+        app.select(vec![id]);
+        frame(&ctx, &mut app, Vec::new());
+        let texts = frame(&ctx, &mut app, Vec::new());
+        let find = |texts: &[(String, egui::Rect)], v: &str| {
+            texts.iter().find(|(t, _)| t == v).map(|(_, r)| *r)
+        };
+        let apply = find(&texts, &tr("docker.apply")).expect("Apply on the bar");
+        let offset = find(&texts, &tr("docker.offset")).expect("the offset");
+        assert!(apply.max.x < offset.min.x, "Apply before the settings");
+        assert!(app.selected_inner_shadow_at().is_none());
+        let at = apply.center();
+        let button = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(&ctx, &mut app, vec![egui::Event::PointerMoved(at)]);
+        frame(&ctx, &mut app, vec![button(true)]);
+        frame(&ctx, &mut app, vec![button(false)]);
+        assert!(app.selected_inner_shadow_at().is_some(), "applied");
+        let texts = frame(&ctx, &mut app, Vec::new());
+        assert!(find(&texts, &tr("docker.apply")).is_some(), "still there");
     }
 
     /// Both shadow bars start with the Drop Shadow and Inner Shadow tools'
