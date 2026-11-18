@@ -387,9 +387,20 @@ impl App {
         }
         // Make everything a curve first so Combine has paths to merge.
         self.convert_to_curves();
-        let keep = shapes.last().copied();
-        self.run(Command::Combine { shapes });
-        self.selection = keep.into_iter().collect();
+        self.run(Command::Combine {
+            shapes: shapes.clone(),
+        });
+        // The result keeps the id of the part on top, which is not the
+        // last one picked when they were picked from the top down: select
+        // the one that is left. The selection named a part combined away,
+        // so nothing was selected after Combine.
+        let doc = self.doc();
+        let kept: Vec<_> = shapes
+            .iter()
+            .copied()
+            .filter(|id| doc.find_shape(*id).is_some())
+            .collect();
+        self.selection = kept;
     }
 
     /// [`Self::combine`] on objects of one group: made curves, then one
@@ -3271,6 +3282,30 @@ mod curves_and_target_tests {
         let (path, closed) = result(&app);
         assert_eq!(moves(&path), 2);
         assert!(!closed, "combined open curves stay open");
+    }
+
+    /// Combine of objects picked from the top down (Shift+click on the
+    /// top one first): the result is selected. The selection named the
+    /// last one picked, which Combine took away, so nothing was selected.
+    #[test]
+    fn combine_selects_the_result_whatever_the_picking_order() {
+        let mut app = App::headless();
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: Rect::new(x, 10.0, x + 20.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let bottom = rect(&mut app, 10.0);
+        let middle = rect(&mut app, 40.0);
+        let top = rect(&mut app, 70.0);
+        app.select(vec![top, middle, bottom]);
+        app.combine();
+        assert_eq!(app.selection, vec![top], "the result, on top");
+        assert!(app.doc().find_shape(top).is_some());
+        assert_eq!(app.selected_shapes().len(), 1);
     }
 
     /// #1324, discussion #2415: Convert to Curves on a group (menu, right

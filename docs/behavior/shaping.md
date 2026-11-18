@@ -75,6 +75,9 @@ Combine of open curves gives one open curve with a subpath for each;
 a closed object combined with them keeps its subpaths closed, so they
 still fill and Break Apart gives them back as closed curves
 (`command::tests::combining_open_curves_keeps_them_open`).
+The combined object is selected afterwards, in whatever order the parts
+were picked; picked from the top down, nothing was left selected
+(`ops::curves_and_target_tests::combine_selects_the_result_whatever_the_picking_order`).
 
 When the object whose attributes the result takes is a group: Trim, Front
 Minus Back and Back Minus Front cut each object of the group on its own,
