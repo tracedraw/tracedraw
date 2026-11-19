@@ -1416,6 +1416,25 @@ fn warp_shape(main: &mut Shape, effect: &Effect) {
             mapping,
         } => {
             if let Some(frame) = crate::envelope::Frame::from_parts(nodes, handles, corners) {
+                // Pictures bend through the same map, their pixels
+                // resampled (#3608); the outlines of the rest bend after.
+                let b = main.local_path().bounding_box();
+                if let Some(map) = crate::envelope::point_map(b, &frame, *mapping) {
+                    let key = {
+                        use std::hash::{Hash, Hasher};
+                        let mut h = std::collections::hash_map::DefaultHasher::new();
+                        for p in nodes.iter().chain(handles.iter().flatten()) {
+                            (p.x.to_bits(), p.y.to_bits()).hash(&mut h);
+                        }
+                        corners.hash(&mut h);
+                        mapping.id().hash(&mut h);
+                        [b.x0, b.y0, b.x1, b.y1].map(f64::to_bits).hash(&mut h);
+                        h.finish()
+                    };
+                    warp_pictures(main, None, &|pic, m| {
+                        crate::bitmap_warp::bend(pic, m, key, &map)
+                    });
+                }
                 reshape(main, &|p, b| {
                     crate::envelope::apply_in(p, b, &frame, *keep_lines, *mapping)
                 });
@@ -1425,7 +1444,9 @@ fn warp_shape(main: &mut Shape, effect: &Effect) {
             // Pictures first, through the same map: their pixels are
             // resampled (#2691); the outlines of the rest bend.
             let b = main.local_path().bounding_box();
-            perspective_pictures(main, None, b, corners);
+            warp_pictures(main, None, &|pic, m| {
+                crate::bitmap_warp::perspective(pic, m, b, corners)
+            });
             reshape(main, &|p, b| perspective_in(p, b, corners));
         }
         _ => {}
@@ -1434,22 +1455,26 @@ fn warp_shape(main: &mut Shape, effect: &Effect) {
 
 /// The pictures of `shape` (it, or the ones inside it), in the space
 /// `parent` maps them into (`None`: the shape's own space, the top of the
-/// warp), put in the perspective that takes box `b` of that space onto
-/// `corners` (#2691). A warped picture covers the box the warp takes it
-/// to, transparent outside, in the top shape's space.
-fn perspective_pictures(shape: &mut Shape, parent: Option<Affine>, b: Rect, corners: &[Point; 4]) {
+/// warp), put through the warp `f` of that space: a perspective (#2691)
+/// or an envelope (#3608). A warped picture covers the box the warp
+/// takes it to, transparent outside, in the top shape's space.
+fn warp_pictures(
+    shape: &mut Shape,
+    parent: Option<Affine>,
+    f: &dyn Fn(&crate::bitmap_warp::Picture, Affine) -> Option<crate::bitmap_warp::Picture>,
+) {
     let t = parent.map(|p| p * shape.transform);
     let m = t.unwrap_or(Affine::IDENTITY);
     match &mut shape.kind {
         ShapeKind::Group { children } => {
             for c in children.iter_mut() {
-                perspective_pictures(c, Some(m), b, corners);
+                warp_pictures(c, Some(m), f);
             }
         }
         ShapeKind::ClipFrame { frame, contents } => {
-            perspective_pictures(frame, Some(m), b, corners);
+            warp_pictures(frame, Some(m), f);
             for c in contents.iter_mut() {
-                perspective_pictures(c, Some(m), b, corners);
+                warp_pictures(c, Some(m), f);
             }
         }
         ShapeKind::Bitmap {
@@ -1465,7 +1490,7 @@ fn perspective_pictures(shape: &mut Shape, parent: Option<Affine>, b: Rect, corn
                 height_px: *height_px,
                 png: png.clone(),
             };
-            if let Some(out) = crate::bitmap_warp::perspective(&pic, m, b, corners) {
+            if let Some(out) = f(&pic, m) {
                 shape.kind = ShapeKind::Bitmap {
                     rect: out.rect,
                     width_px: out.width_px,
@@ -1930,9 +1955,9 @@ fn reshape(shape: &mut Shape, f: &dyn Fn(&BezPath, Rect) -> BezPath) {
                 reshape_inside(c, Affine::IDENTITY, b, f);
             }
         }
-        // A picture has no outline to bend: a perspective resamples it
-        // ahead (`perspective_pictures`); the other warps leave it as it
-        // is. It became an empty frame, so the picture went (#2691).
+        // A picture has no outline to bend: a perspective or an envelope
+        // resamples it ahead (`warp_pictures`); the other warps leave it
+        // as it is. It became an empty frame, so the picture went (#2691).
         ShapeKind::Bitmap { .. } => {}
         _ => {
             let p = f(&shape.local_path(), b);
@@ -5343,6 +5368,58 @@ mod tests {
         let back = serde_json::to_value(&e).expect("json");
         assert!(back.get("handles").is_none() && back.get("corners").is_none());
         assert_eq!(back.get("mapping").and_then(|m| m.as_str()), Some("putty"));
+    }
+
+    /// An envelope bends a picture too, alone or in a group: its top
+    /// rises with the top of the frame, where it used to stay as it was
+    /// while the outlines around it bent (#3608).
+    #[test]
+    fn envelope_bends_pictures_alone_and_in_groups() {
+        let px: Vec<u8> = std::iter::repeat([200u8, 40, 40, 255])
+            .take(20 * 20)
+            .flatten()
+            .collect();
+        let png = crate::bitmap_warp::encode_rgba(20, 20, &px).expect("png");
+        let picture = Shape::new(
+            crate::ShapeId(7),
+            ShapeKind::Bitmap {
+                rect: Rect::new(0.0, 0.0, 20.0, 20.0),
+                width_px: 20,
+                height_px: 20,
+                png: png.into(),
+                fx: None,
+            },
+        );
+        let group = Shape::new(
+            crate::ShapeId(8),
+            ShapeKind::Group {
+                children: vec![picture.clone()],
+            },
+        );
+        for mut s in [picture, group] {
+            let mut nodes = crate::envelope::default_nodes(s.bounds());
+            nodes[5].y += 10.0;
+            s.effects.push(Effect::Envelope {
+                nodes,
+                keep_lines: false,
+                handles: Vec::new(),
+                corners: Vec::new(),
+                mapping: crate::envelope::Mapping::Putty,
+            });
+            let main = evaluate(&s).main;
+            let pic = match &main.kind {
+                ShapeKind::Group { children } => children[0].clone(),
+                _ => main.clone(),
+            };
+            let ShapeKind::Bitmap { rect, .. } = pic.kind else {
+                panic!("still a picture: {:?}", pic.kind);
+            };
+            assert!((rect.y1 - 30.0).abs() < 0.5, "{rect:?}");
+            assert!(
+                rect.x0.abs() < 1e-6 && (rect.x1 - 20.0).abs() < 1e-6,
+                "{rect:?}"
+            );
+        }
     }
 
     /// An envelope on a group reshapes each object from the box of them
