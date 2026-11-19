@@ -417,7 +417,8 @@ impl Writer<'_> {
             return;
         }
         let bounds = path.bounding_box();
-        let even_odd = !matches!(shape.kind, ShapeKind::Text { .. });
+        let even_odd = !matches!(shape.kind, ShapeKind::Text { .. })
+            && shape.fill_rule != tracedraw_core::shaping::FillRule::NonZero;
         match &shape.fill {
             Fill::None => {}
             Fill::Solid(c) => {

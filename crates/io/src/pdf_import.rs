@@ -2647,6 +2647,10 @@ impl<'a> Importer<'a> {
         };
         if even_odd && fill {
             shape.data.push(("fill.rule".into(), "evenodd".into()));
+        } else if fill && crate::nonzero_matters(path) {
+            // `f`, `B` and `b` fill by the nonzero rule: overlapping
+            // letters of a text in curves stay filled (#3224).
+            shape.fill_rule = tracedraw_core::shaping::FillRule::NonZero;
         }
         shape.stroke = if stroke {
             gs.stroke.map(|c| {
@@ -5889,6 +5893,32 @@ mod tests {
         ];
         objs.extend(extra.iter().cloned());
         pdf(&objs)
+    }
+
+    /// `f` fills by the nonzero rule, `f*` by even-odd: two overlapping
+    /// squares in one path stay filled where they overlap with `f`, as
+    /// a letter in curves does (#3224). A one-subpath fill stays as is.
+    #[test]
+    fn nonzero_fills_keep_their_overlaps() {
+        use tracedraw_core::shaping::FillRule;
+        let bytes = one_page(
+            "0 g 10 10 m 50 10 l 50 50 l 10 50 l h 30 30 m 70 30 l 70 70 l 30 70 l h f \
+             20 20 m 60 20 l 60 60 l 20 60 l h 40 40 m 80 40 l 80 80 l 40 80 l h f* \
+             10 10 m 50 10 l 50 50 l h f",
+            "<< >>",
+            &[],
+        );
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let shapes = &imp.pages[0].shapes;
+        assert_eq!(shapes.len(), 3, "{:?}", imp.warnings);
+        assert_eq!(shapes[0].fill_rule, FillRule::NonZero);
+        assert_eq!(shapes[1].fill_rule, FillRule::EvenOdd);
+        assert!(shapes[1]
+            .data
+            .iter()
+            .any(|(k, v)| k == "fill.rule" && v == "evenodd"));
+        assert_eq!(shapes[2].fill_rule, FillRule::EvenOdd);
     }
 
     #[test]

@@ -387,6 +387,7 @@ impl<'a> Player<'a> {
         if matches!(fill_v, Fill::None) && stroke_v.is_none() {
             return;
         }
+        let nonzero = crate::nonzero_matters(&path);
         let closed = path
             .elements()
             .iter()
@@ -399,6 +400,9 @@ impl<'a> Player<'a> {
         s.stroke = stroke_v;
         if fill && self.dc.polyfill_even_odd {
             s.data.push(("fill.rule".into(), "evenodd".into()));
+        } else if fill && nonzero {
+            // WINDING polygon fill mode is the nonzero rule (#3224).
+            s.fill_rule = tracedraw_core::shaping::FillRule::NonZero;
         }
         self.emit(s);
     }
@@ -3172,11 +3176,12 @@ impl EmfWriter<'_> {
                     return;
                 }
                 let path = transform * shape.local_path();
-                let even_odd = shape
-                    .data
-                    .iter()
-                    .any(|(k, v)| k == "fill.rule" && v == "evenodd")
-                    || !matches!(shape.kind, ShapeKind::Text { .. });
+                let even_odd = shape.fill_rule != tracedraw_core::shaping::FillRule::NonZero
+                    && (shape
+                        .data
+                        .iter()
+                        .any(|(k, v)| k == "fill.rule" && v == "evenodd")
+                        || !matches!(shape.kind, ShapeKind::Text { .. }));
                 // An unfilled line with arrowheads ends under them (#2981).
                 let path = shape
                     .stroke
@@ -3955,10 +3960,14 @@ impl WmfWriter<'_> {
                     return;
                 }
                 let path = transform * shape.local_path();
-                let even_odd = shape
-                    .data
-                    .iter()
-                    .any(|(k, v)| k == "fill.rule" && v == "evenodd");
+                // As drawn: curves even-odd, text and nonzero curves
+                // nonzero (#3224).
+                let even_odd = shape.fill_rule != tracedraw_core::shaping::FillRule::NonZero
+                    && (shape
+                        .data
+                        .iter()
+                        .any(|(k, v)| k == "fill.rule" && v == "evenodd")
+                        || !matches!(shape.kind, ShapeKind::Text { .. }));
                 let fill = match &shape.fill {
                     Fill::None => None,
                     other => other.preview_color().or(Some(Color::Gray { v: 0.5 })),
@@ -4063,6 +4072,56 @@ mod wmf_export_tests {
             let wmf = page_to_wmf(&doc, 0);
             assert!(is_wmf(&wmf));
         }
+    }
+
+    /// A curve fills even-odd and a nonzero curve nonzero, in the WMF
+    /// as on screen, and the reader takes WINDING mode back as the
+    /// nonzero rule (#3224).
+    #[test]
+    fn wmf_fill_rule_round_trips() {
+        use tracedraw_core::shaping::FillRule;
+        let mut doc = Document::new("t", Size::new(100.0, 50.0));
+        let mut ids = doc.ids().clone();
+        let two_squares = || {
+            let mut path = tracedraw_core::geometry::BezPath::new();
+            for (x, y) in [(10.0, 10.0), (20.0, 20.0)] {
+                path.move_to((x, y));
+                path.line_to((x + 20.0, y));
+                path.line_to((x + 20.0, y + 20.0));
+                path.line_to((x, y + 20.0));
+                path.close_path();
+            }
+            path
+        };
+        let mut even = Shape::new(
+            ids.shape(),
+            ShapeKind::Path {
+                path: two_squares(),
+                closed: true,
+            },
+        );
+        even.fill = Fill::Solid(Color::BLACK);
+        even.stroke = None;
+        let mut nonzero = even.clone();
+        nonzero.id = ids.shape();
+        nonzero.fill_rule = FillRule::NonZero;
+        doc.pages[0].layers[0].shapes.extend([even, nonzero]);
+        doc.set_ids(ids);
+        let wmf = page_to_wmf(&doc, 0);
+        let mut ids = IdSource::default();
+        let back = parse(&wmf, &mut ids).expect("parse");
+        let filled: Vec<&Shape> = back
+            .shapes
+            .iter()
+            .filter(|s| !matches!(s.fill, Fill::None))
+            .collect();
+        assert_eq!(filled.len(), 2, "{:?}", back.warnings);
+        assert_eq!(filled[0].fill_rule, FillRule::EvenOdd);
+        assert!(filled[0]
+            .data
+            .iter()
+            .any(|(k, v)| k == "fill.rule" && v == "evenodd"));
+        assert_eq!(filled[1].fill_rule, FillRule::NonZero);
     }
 
     #[test]

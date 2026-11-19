@@ -1542,6 +1542,7 @@ impl<'a> Interp<'a> {
         if path.elements().is_empty() {
             return;
         }
+        let nonzero = crate::nonzero_matters(&path);
         let closed = path
             .elements()
             .iter()
@@ -1560,6 +1561,9 @@ impl<'a> Interp<'a> {
         };
         if fill && even_odd {
             shape.data.push(("fill.rule".into(), "evenodd".into()));
+        } else if fill && nonzero {
+            // `fill` uses the nonzero rule, `eofill` even-odd (#3224).
+            shape.fill_rule = tracedraw_core::shaping::FillRule::NonZero;
         }
         shape.stroke = if stroke {
             let scale = self.device_scale();
@@ -4884,6 +4888,19 @@ mod tests {
     fn run(ps: &str) -> Imported {
         let mut ids = IdSource::default();
         parse(ps.as_bytes(), &mut ids).expect("parse")
+    }
+
+    /// `fill` is nonzero and `eofill` even-odd (#3224).
+    #[test]
+    fn fill_is_nonzero_and_eofill_even_odd() {
+        use tracedraw_core::shaping::FillRule;
+        let sq = "newpath 10 10 moveto 50 10 lineto 50 50 lineto 10 50 lineto closepath 30 30 moveto 70 30 lineto 70 70 lineto 30 70 lineto closepath";
+        let imp = run(&format!(
+            "%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 200 100\n{sq} fill\n{sq} eofill\nshowpage\n"
+        ));
+        assert_eq!(imp.shapes.len(), 2, "{:?}", imp.warnings);
+        assert_eq!(imp.shapes[0].fill_rule, FillRule::NonZero);
+        assert_eq!(imp.shapes[1].fill_rule, FillRule::EvenOdd);
     }
 
     #[test]
