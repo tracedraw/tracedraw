@@ -132,6 +132,7 @@ pub fn name_with_extension(name: &str, mime: &str) -> String {
         "image/gif" => "gif",
         "image/bmp" => "bmp",
         "image/webp" => "webp",
+        "image/jxl" => "jxl",
         "image/tiff" => "tiff",
         "image/svg+xml" => "svg",
         "text/plain" => "txt",
@@ -225,6 +226,7 @@ pub fn mime_for_extension(ext: &str) -> &'static str {
         "gif" => "image/gif",
         "bmp" => "image/bmp",
         "webp" => "image/webp",
+        "jxl" => "image/jxl",
         "tif" | "tiff" => "image/tiff",
         "svg" => "image/svg+xml",
         "txt" => "text/plain",
@@ -1385,6 +1387,9 @@ pub fn decode_picture(bytes: &[u8]) -> image::ImageResult<image::DynamicImage> {
 /// stands upright, #2167).
 pub fn decode_picture_within(bytes: &[u8], limit: u64) -> image::ImageResult<image::DynamicImage> {
     use image::ImageDecoder;
+    if is_jxl(bytes) {
+        return decode_jxl(bytes, limit);
+    }
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format()?;
     let mut limits = image::Limits::default();
     limits.max_alloc = Some(limit);
@@ -1398,6 +1403,24 @@ pub fn decode_picture_within(bytes: &[u8], limit: u64) -> image::ImageResult<ima
     let mut img = image::DynamicImage::from_decoder(decoder)?;
     img.apply_orientation(orientation);
     Ok(img)
+}
+
+/// A JPEG XL file: the bare codestream or the ISO container (#3210).
+pub fn is_jxl(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0xff, 0x0a]) || bytes.starts_with(b"\0\0\0\x0cJXL \r\n\x87\n")
+}
+
+/// Decode a JPEG XL file within `limit` bytes (#3210). The codestream's
+/// own orientation is applied by the decoder; an Exif orientation in the
+/// file is not applied again, as the format says.
+fn decode_jxl(bytes: &[u8], limit: u64) -> image::ImageResult<image::DynamicImage> {
+    use image::ImageDecoder;
+    let mut decoder = jxl_oxide::integration::JxlDecoder::new(std::io::Cursor::new(bytes))?;
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(limit);
+    decoder.set_limits(limits.clone())?;
+    limits.reserve(decoder.total_bytes())?;
+    image::DynamicImage::from_decoder(decoder)
 }
 
 /// Whether the Exif orientation of picture file `bytes` turns it a

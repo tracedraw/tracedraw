@@ -57,6 +57,11 @@ png = "0.18"
 # same versions the image crate reads JPEG with.
 zune-jpeg = "0.5"
 zune-core = { version = "0.5", default-features = false }
+# JPEG XL pictures (#3210, #3063), both in pure Rust: reading with
+# jxl-oxide through the image crate's decoder interface, and writing
+# lossless with zune-jpegxl. No thread pools, so the browser build works.
+jxl-oxide = { version = "0.12", default-features = false, features = ["image"] }
+zune-jpegxl = { version = "0.5", default-features = false, features = ["std"] }
 log.workspace = true
 env_logger.workspace = true
 flate2 = "1"

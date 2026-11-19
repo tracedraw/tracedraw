@@ -963,15 +963,16 @@ pub const OPEN_EXTENSIONS: &[&str] = &[
 ];
 
 /// The picture files a drawing is made of when they are opened (#2600).
-pub const PICTURE_EXTENSIONS: &[&str] =
-    &["png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff"];
+pub const PICTURE_EXTENSIONS: &[&str] = &[
+    "png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff", "jxl",
+];
 
 /// The extensions File > Import reads (besides those of installed script
 /// filters).
 pub const IMPORT_EXTENSIONS: &[&str] = &[
     "cdr", "cdt", "cdrt", "csl", "cmx", "tdraw", "svg", "svgz", "pdf", "ai", "eps", "ps", "prn",
     "dxf", "psd", "psb", "emf", "wmf", "plt", "hpgl", "hgl", "txt", "rtf", "docx", "xlsx", "csv",
-    "tsv", "pmd", "pm6", "p65", "png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff",
+    "tsv", "pmd", "pm6", "p65", "png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff", "jxl",
 ];
 
 /// The memory the undo steps of one drawing may hold before the oldest
@@ -10011,7 +10012,9 @@ impl App {
             .add_filter("Photoshop (*.psd, *.psb)", &["psd", "psb"])
             .add_filter(
                 crate::i18n::tr("file.images"),
-                &["png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff"],
+                &[
+                    "png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff", "jxl",
+                ],
             )
             .pick_files(self, |app, paths| app.import_picked_many(paths));
     }

@@ -295,7 +295,7 @@ fn page_file(
             }
             let mut pm = tracedraw_render::render_page_export_image(doc, pid, st.render_dpi())
                 .ok_or("render failed")?;
-            if st.transparent && matches!(ext, "png" | "webp" | "gif") {
+            if st.transparent && matches!(ext, "png" | "webp" | "gif" | "jxl") {
                 // Re-render on a transparent background.
                 let p = doc.page(pid).map_err(|e| e.to_string())?;
                 let (w, h, view) = tracedraw_render::ViewTransform::whole_page(
@@ -679,7 +679,7 @@ fn crc32(data: &[u8]) -> u32 {
 
 /// True when the export format `ext` keeps transparency.
 pub fn keeps_alpha(ext: &str) -> bool {
-    matches!(ext, "png" | "webp" | "gif")
+    matches!(ext, "png" | "webp" | "gif" | "jxl")
 }
 
 /// What the export will look like: the page (or the selection) of `st`
@@ -758,7 +758,7 @@ pub fn estimated_size(app: &App, st: &ExportState, preview: &tiny_skia::Pixmap) 
         "ps" | "prn" => Some(tracedraw_io::eps::document_to_ps(&doc).len()),
         "ai" if st.classic_ai() => Some(tracedraw_io::ai::page_to_ai8(&doc, 0).len() * pages),
         "pdf" | "ai" => Some(tracedraw_io::pdf::document_to_pdf(&doc).len()),
-        "png" | "jpg" | "bmp" | "tif" | "webp" | "gif" | "psd" => {
+        "png" | "jpg" | "bmp" | "tif" | "webp" | "gif" | "psd" | "jxl" => {
             let enc = if ext == "psd" { "tif" } else { ext };
             let (w, h) = (preview.width(), preview.height());
             let bytes = match st.color_mode_for(ext) {
@@ -879,6 +879,40 @@ fn webp_lossy_pure(img: &image::RgbaImage, quality: u8) -> Option<Vec<u8>> {
     }
 }
 
+/// A JPEG XL file of `img`, lossless (#3063): RGB when it is opaque,
+/// RGBA otherwise. The encoder takes no picture of one pixel across or
+/// down, so such a picture is widened to two by repeating it.
+pub fn encode_jxl(img: &image::RgbaImage) -> Result<Vec<u8>, String> {
+    use zune_core::{bit_depth::BitDepth, colorspace::ColorSpace, options::EncoderOptions};
+    let img = if img.width() < 2 || img.height() < 2 {
+        image::imageops::resize(
+            img,
+            img.width().max(2),
+            img.height().max(2),
+            image::imageops::FilterType::Nearest,
+        )
+    } else {
+        img.clone()
+    };
+    let (w, h) = (img.width() as usize, img.height() as usize);
+    let opaque = img.pixels().all(|p| p.0[3] == 255);
+    let (data, space) = if opaque {
+        let rgb: Vec<u8> = img
+            .pixels()
+            .flat_map(|p| [p.0[0], p.0[1], p.0[2]])
+            .collect();
+        (rgb, ColorSpace::RGB)
+    } else {
+        (img.into_raw(), ColorSpace::RGBA)
+    };
+    let options = EncoderOptions::new(w, h, space, BitDepth::Eight);
+    let mut out = Vec::new();
+    zune_jpegxl::JxlSimpleEncoder::new(&data, options)
+        .encode(&mut out)
+        .map_err(|e| format!("JPEG XL: {e:?}"))?;
+    Ok(out)
+}
+
 /// Encode a rendered page in the bitmap format `ext`; WebP lossless
 /// (`lossless`, colours rounded below quality 100) or lossy at the
 /// quality (#592).
@@ -895,6 +929,9 @@ fn encode_raster_with(
         rgba.extend_from_slice(&[d.red(), d.green(), d.blue(), d.alpha()]);
     }
     let img = image::RgbaImage::from_raw(w, h, rgba).ok_or("image buffer")?;
+    if ext == "jxl" {
+        return encode_jxl(&img);
+    }
     let dynimg = image::DynamicImage::ImageRgba8(img);
     let format = match ext {
         "png" => image::ImageFormat::Png,
@@ -5526,6 +5563,27 @@ mod tests {
         assert_eq!(back.get_pixel(200, 10).0[3], 255);
         // Nothing to encode: no lossy file.
         assert!(webp_lossy_pure(&image::RgbaImage::new(0, 0), 50).is_none());
+    }
+
+    /// #3063: JPEG XL is in the Export list, keeps transparency, and a
+    /// page written as JPEG XL reads back with the same pixels.
+    #[test]
+    fn a_page_exports_as_lossless_jpeg_xl() {
+        assert!(crate::ui::dialogs::EXPORT_FORMATS
+            .iter()
+            .any(|(_, e)| *e == "jxl"));
+        assert!(keeps_alpha("jxl"));
+        let mut pm = tiny_skia::Pixmap::new(40, 30).expect("pixmap");
+        for (i, p) in pm.pixels_mut().iter_mut().enumerate() {
+            let (x, y) = ((i % 40) as u8, (i / 40) as u8);
+            *p = tiny_skia::PremultipliedColorU8::from_rgba(x * 6, y * 8, 200, 255).expect("px");
+        }
+        let bytes = encode_raster_with(&pm, "jxl", 80, false).expect("jxl");
+        let back = crate::files::decode_picture(&bytes)
+            .expect("reads")
+            .to_rgba8();
+        assert_eq!(back.dimensions(), (40, 30));
+        assert_eq!(back.get_pixel(39, 29).0, [39 * 6, 29 * 8, 200, 255]);
     }
 
     #[test]

@@ -119,6 +119,7 @@ Preferences saved before are brought back to off once (upgrade 7,
 | JPEG | resolution, quality (1 to 100), colour mode (RGB, CMYK, Grayscale; see Colour mode below) |
 | TIFF | resolution, colour mode |
 | BMP, PSD | resolution |
+| JPEG XL | resolution, transparent background; always lossless, so it takes no quality (#3063) |
 | PDF | Export all text as curves (off at first: every text becomes filled outlines, so the file needs no fonts and cannot be searched; #1382, `export::tests::export_pdf_text_as_curves_holds_no_font`), standard (PDF 1.4, PDF/X-1a, PDF/X-3, PDF/X-4), bleed, output condition for PDF/X; the author, subject and keywords come from the drawing's properties (File > Export as PDF has bookmarks and protection, see `publish-to-pdf.md`) |
 | AI | Compatibility: PDF-compatible (the default) or Illustrator 8 (EPS-based); see "AI files" below (#1728) |
 | PLT | Scale (100 %), Plotter origin (bottom left of page or centre of page), Plotter units per inch (1016), Curve resolution (0.02 mm), HPGL/2 pen colours and widths (on), One pen for every outline (off); see `plt.md`, "Export choices" (#2652) |
@@ -259,6 +260,17 @@ of JPEG and TIFF and the PDF
 choices (standard, bleed, output condition). Presets are kept in the preferences
 (`formats.export_presets`; #547,
 `prefs::tests::export_presets_save_apply_rename_and_delete`).
+
+## JPEG XL
+
+JPEG XL (`.jxl`, #3063) is written lossless by `zune-jpegxl` (pure Rust,
+MIT OR Apache-2.0 OR Zlib): 8 bits, RGB when the picture is opaque and
+RGBA otherwise, every pixel kept. There is no pure Rust lossy encoder
+with a licence the program can take, so the quality field does not
+apply. A picture of one pixel across or down is written two pixels
+across or down, the encoder's smallest
+(`export::tests::a_page_exports_as_lossless_jpeg_xl`,
+`bitmap_file::tests::jpeg_xl_files_export_and_import_losslessly`).
 
 ## WebP
 

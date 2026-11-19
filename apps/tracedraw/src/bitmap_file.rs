@@ -1721,6 +1721,45 @@ mod tests {
         }
     }
 
+    /// #3210, #3063: a JPEG XL file written by the export (lossless,
+    /// opaque or with transparency, down to one pixel) is imported and
+    /// opened with every pixel as it was.
+    #[test]
+    fn jpeg_xl_files_export_and_import_losslessly() {
+        let d = dir("jxl");
+        let mut app = App::headless();
+        let mut img = image::RgbaImage::new(37, 23);
+        for (x, y, p) in img.enumerate_pixels_mut() {
+            *p = image::Rgba([(x * 7) as u8, (y * 11) as u8, (x ^ y) as u8, 255]);
+        }
+        let mut clear = img.clone();
+        for (x, _, p) in clear.enumerate_pixels_mut() {
+            p.0[3] = (x * 6) as u8;
+        }
+        for (name, pic) in [("opaque.jxl", &img), ("clear.jxl", &clear)] {
+            let bytes = crate::export::encode_jxl(pic).expect("jxl");
+            assert!(crate::files::is_jxl(&bytes), "{name}");
+            let s = imported(&mut app, &d, name, &bytes);
+            assert_eq!(size_px(&s), (37, 23), "{name}");
+            for (x, y) in [(0, 0), (5, 3), (36, 22), (20, 11)] {
+                assert_eq!(pixel(&s, x, y), pic.get_pixel(x, y).0, "{name} ({x}, {y})");
+            }
+            // Read as a picture too (File > Open of a picture).
+            let read = read(&bytes).expect("reads");
+            assert_eq!(read.rgba.get_pixel(20, 11), pic.get_pixel(20, 11));
+        }
+        // One pixel across: written two across, the same colour.
+        let one = image::RgbaImage::from_pixel(1, 5, image::Rgba([9, 99, 199, 255]));
+        let bytes = crate::export::encode_jxl(&one).expect("jxl");
+        let back = crate::files::decode_picture(&bytes)
+            .expect("decodes")
+            .to_rgba8();
+        assert_eq!(back.dimensions(), (2, 5));
+        assert!(back.pixels().all(|p| p.0 == [9, 99, 199, 255]));
+        // Not a JPEG XL file: an error, not a picture.
+        assert!(crate::files::decode_picture(&[0xff, 0x0a, 1, 2, 3]).is_err());
+    }
+
     /// #2167: File > Import reads every common kind of PNG and JPEG:
     /// 8 and 16 bits, grey, with and without alpha, a palette with a
     /// transparent entry, baseline, progressive and CMYK JPEG.

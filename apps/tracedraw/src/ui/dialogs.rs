@@ -396,7 +396,7 @@ pub const SVG_TEXT_KEYS: [&str; 3] = [
     "dialog.svg_text_fonts",
 ];
 
-pub const EXPORT_FORMATS: [(&str, &str); 18] = [
+pub const EXPORT_FORMATS: [(&str, &str); 19] = [
     ("SVG", "svg"),
     ("PDF", "pdf"),
     ("PNG", "png"),
@@ -415,6 +415,7 @@ pub const EXPORT_FORMATS: [(&str, &str); 18] = [
     ("PSD", "psd"),
     ("PostScript", "ps"),
     ("PRN", "prn"),
+    ("JPEG XL", "jxl"),
 ];
 
 /// The kinds of AI file the export writes, as translation keys: the
@@ -437,6 +438,7 @@ pub fn export_patterns(ext: &str) -> &'static str {
         "png" => "*.png",
         "bmp" => "*.bmp",
         "webp" => "*.webp",
+        "jxl" => "*.jxl",
         "gif" => "*.gif",
         "eps" => "*.eps",
         "ai" => "*.ai",
