@@ -1622,6 +1622,39 @@ pub fn roughen_stroke(
     amount: f64,
     spacing: f64,
 ) -> BezPath {
+    roughen_stroke_edge(base, centers, radius, amount, spacing, RoughEdge::Jagged)
+}
+
+/// The edge the Roughen tool makes where the nib goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum RoughEdge {
+    /// Spikes in and out at random, joined by straight lines.
+    #[default]
+    Jagged,
+    /// Sharp points sticking out of the shape, every other point pushed
+    /// out and the ones between left on the outline.
+    Thorns,
+    /// Points pulled into the shape with round lobes between them that
+    /// come back out to the outline, as the edge of a petal or a doily.
+    Petals,
+    /// Soft waves in and out at random, the outline staying smooth.
+    Crumple,
+}
+
+/// [`roughen_stroke`] with the edge `edge`: Jagged as there; Thorns and
+/// Petals push away from and into the shape (a closed subpath's inside,
+/// else away from the nib's centre), Thorns at every other point with
+/// straight lines, Petals at every point with lobes as tall as the push
+/// between them; Crumple pushes in or out at random like Jagged with
+/// the outline going smoothly through the pushed points.
+pub fn roughen_stroke_edge(
+    base: &BezPath,
+    centers: &[Point],
+    radius: f64,
+    amount: f64,
+    spacing: f64,
+    edge: RoughEdge,
+) -> BezPath {
     use crate::geometry::Shape as _;
     use kurbo::{ParamCurve as _, ParamCurveArclen as _, ParamCurveDeriv as _, PathSeg};
     let spacing = if spacing.is_finite() {
@@ -1665,6 +1698,14 @@ pub fn roughen_stroke(
             }
         }
         best
+    };
+    // The nearest nib's centre to a place.
+    let nearest = |p: Point| -> Point {
+        centers
+            .iter()
+            .copied()
+            .min_by(|a, b| (p - *a).hypot2().total_cmp(&(p - *b).hypot2()))
+            .unwrap_or(p)
     };
     // Whether a place lies within a nib of the box `b`.
     let near = |b: kurbo::Rect| -> bool {
@@ -1724,11 +1765,15 @@ pub fn roughen_stroke(
         // and where the next point falls.
         let mut s0 = 0.0;
         let mut next = spacing;
+        // The last pushed point, its lobe's pull and the outline's way
+        // there, while a run of pushed points goes on.
+        let mut prev: Option<(Point, Vec2, Vec2)> = None;
         for seg in sub.segments() {
             let len = seg.arclen(0.01);
             let near = meets(seg.bounding_box()) && near(seg.bounding_box());
-            // The points on this segment: (t, place, pushed).
-            let mut pts: Vec<(f64, Point, bool)> = Vec::new();
+            // The points on this segment: (t, place, pushed, a Petals
+            // lobe's pull out, the way the outline ran there).
+            let mut pts: Vec<(f64, Point, bool, Vec2, Vec2)> = Vec::new();
             while next < s0 + len - 1e-9 {
                 if near {
                     let t = seg.inv_arclen(next - s0, 0.01).clamp(0.0, 1.0);
@@ -1743,37 +1788,77 @@ pub fn roughen_stroke(
                         // A number from -1 to 1 that depends on the place only.
                         let h = ((p.x * 12.9898 + p.y * 78.233).sin() * 43758.5453).fract();
                         let r = 2.0 * h.abs() - 1.0;
-                        pts.push((t, p + normal * (r * amount * w), true));
+                        // Away from the shape: out of a closed subpath,
+                        // else away from the nib's centre.
+                        let out = if closed {
+                            let probe = p + normal * (amount.abs() * 0.01).max(1e-4);
+                            if sub.winding(probe) != 0 {
+                                -normal
+                            } else {
+                                normal
+                            }
+                        } else if normal.dot(p - nearest(p)) < 0.0 {
+                            -normal
+                        } else {
+                            normal
+                        };
+                        let odd = (next / spacing).round() as i64 % 2 != 0;
+                        let push = match edge {
+                            RoughEdge::Jagged => normal * (r * amount * w),
+                            RoughEdge::Thorns if odd => out * (amount * w),
+                            RoughEdge::Thorns => Vec2::ZERO,
+                            RoughEdge::Petals => -out * (amount * w),
+                            RoughEdge::Crumple => normal * (r * amount * w),
+                        };
+                        let bulge = out * (amount * w / 0.75);
+                        pts.push((t, p + push, true, bulge, tan / l));
                     } else {
-                        pts.push((t, p, false));
+                        pts.push((t, p, false, Vec2::ZERO, Vec2::ZERO));
                     }
                 }
                 next += spacing;
             }
             s0 += len;
-            if !pts.iter().any(|(_, _, pushed)| *pushed) {
+            if !pts.iter().any(|(_, _, pushed, _, _)| *pushed) {
                 els.push(seg.as_path_el());
+                // A Petals or Crumple run ends at an unpushed stretch.
+                prev = None;
                 continue;
             }
             // Unpushed points keep the segment exactly between them;
-            // from and to a pushed point the outline runs straight.
+            // from and to a pushed point the outline runs straight
+            // (Jagged, Thorns), or, from one pushed point to the next, in
+            // a lobe (Petals) or smoothly (Crumple).
             let mut exact_from = Some(0.0);
             let (mut prev_t, mut prev_pushed) = (0.0, false);
-            for (t, p, pushed) in pts
-                .into_iter()
-                .chain(std::iter::once((1.0, seg.end(), false)))
-            {
+            for (t, p, pushed, bulge, way) in pts.into_iter().chain(std::iter::once((
+                1.0,
+                seg.end(),
+                false,
+                Vec2::ZERO,
+                Vec2::ZERO,
+            ))) {
                 if pushed || prev_pushed {
                     if let Some(t0) = exact_from.take() {
                         if prev_t > t0 + 1e-12 {
                             els.push(seg.subsegment(t0..prev_t).as_path_el());
                         }
                     }
-                    els.push(PathEl::LineTo(p));
+                    match (edge, prev.filter(|_| pushed)) {
+                        (RoughEdge::Petals, Some((q, qb, _))) => {
+                            els.push(PathEl::CurveTo(q + qb, p + bulge, p));
+                        }
+                        (RoughEdge::Crumple, Some((q, _, qw))) => {
+                            let d = (p - q).hypot() / 3.0;
+                            els.push(PathEl::CurveTo(q + qw * d, p - way * d, p));
+                        }
+                        _ => els.push(PathEl::LineTo(p)),
+                    }
                     if !pushed {
                         exact_from = Some(t);
                     }
                 }
+                prev = pushed.then_some((p, bulge, way));
                 prev_t = t;
                 prev_pushed = pushed;
             }
@@ -2285,6 +2370,68 @@ mod tests {
             roughen_stroke(&sq, &[Point::new(f64::NAN, 0.0)], 5.0, 1.5, 1.0),
             sq
         );
+    }
+
+    /// The Roughen edges over the top of a square: Thorns stick out of
+    /// it only, Petals go into it only with curved lobes that come back
+    /// to the side, Crumple goes both ways in curves; each the same
+    /// stroke after stroke, and the far sides as they were.
+    #[test]
+    fn the_roughen_edges_go_their_ways() {
+        let sq = Rect::new(0.0, 0.0, 40.0, 40.0).to_path(0.01);
+        let way: Vec<Point> = (0..=20)
+            .map(|k| Point::new(10.0 + k as f64, 40.0))
+            .collect();
+        let edge = |e| roughen_stroke_edge(&sq, &way, 5.0, 1.5, 1.0, e);
+        let curves = |p: &BezPath| {
+            p.elements()
+                .iter()
+                .filter(|e| matches!(e, PathEl::CurveTo(..)))
+                .count()
+        };
+        assert_eq!(
+            edge(RoughEdge::Jagged),
+            roughen_stroke(&sq, &way, 5.0, 1.5, 1.0)
+        );
+        // Thorns: out of the top only, as far as the spike size.
+        let thorns = edge(RoughEdge::Thorns);
+        let b = thorns.bounding_box();
+        assert!(b.y1 > 40.5 && b.y1 <= 41.5 + 1e-9, "{b:?}");
+        assert!(node_points(&thorns)
+            .iter()
+            .all(|p| p.y >= 40.0 - 1e-9 || p.y <= 1e-9 || p.x <= 1e-9 || p.x >= 40.0 - 1e-9));
+        assert_eq!(curves(&thorns), 0);
+        // Petals: into the square only, the lobes curved, coming back up
+        // to the side and no further.
+        let petals = edge(RoughEdge::Petals);
+        let b = petals.bounding_box();
+        assert!((b.y1 - 40.0).abs() < 0.05, "{b:?}");
+        let tips: Vec<Point> = node_points(&petals)
+            .into_iter()
+            .filter(|p| p.y < 39.5 && p.y > 30.0)
+            .collect();
+        assert!(tips.len() >= 10, "{tips:?}");
+        assert!(curves(&petals) >= 10);
+        // Crumple: in and out, in curves.
+        let crumple = edge(RoughEdge::Crumple);
+        let ys: Vec<f64> = node_points(&crumple)
+            .into_iter()
+            .filter(|p| p.x > 12.0 && p.x < 28.0)
+            .map(|p| p.y)
+            .collect();
+        assert!(
+            ys.iter().any(|y| *y > 40.2) && ys.iter().any(|y| *y < 39.8),
+            "{ys:?}"
+        );
+        assert!(curves(&crumple) >= 10);
+        for e in [RoughEdge::Thorns, RoughEdge::Petals, RoughEdge::Crumple] {
+            let mut back = way.clone();
+            back.extend(way.iter().rev().copied());
+            assert_eq!(roughen_stroke_edge(&sq, &back, 5.0, 1.5, 1.0, e), edge(e));
+            assert!(edge(e)
+                .elements()
+                .contains(&PathEl::LineTo(Point::new(40.0, 0.0))));
+        }
     }
 
     /// Strokes over an outline an earlier stroke made jagged pushed

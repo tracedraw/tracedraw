@@ -110,5 +110,11 @@ The [[tool.graph_paper]] tool (<kbd>D</kbd>) draws a grid of cells: a group of
 rectangles that fill the box exactly. Set the **rows** and **columns** (4 by
 3 at first) on the property bar. Hold <kbd>Ctrl</kbd> for square cells.
 
+Choose **Radial** on the property bar (**Cells** goes back) for a radial grid:
+**Rings** (5 at first) evenly spaced from the middle out to the edge of the
+box, crossed by **Spokes** (8 at first) from the middle to the outer ring, the
+first pointing up. It is one group of ellipses and lines, the outer ring at
+the back; hold <kbd>Ctrl</kbd> for round rings.
+
 The default points, revolutions, rows and columns are also on the tool pages
 of the options; see [Tool options](../customize/tool-options.md).

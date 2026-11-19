@@ -302,6 +302,9 @@ pub struct OptionsSnapshot {
     spiral_logarithmic: bool,
     graph_rows: u32,
     graph_cols: u32,
+    graph_radial: bool,
+    graph_rings: u32,
+    graph_spokes: u32,
     table_rows: u32,
     table_cols: u32,
     eraser_width: f64,
@@ -357,6 +360,9 @@ impl OptionsSnapshot {
             spiral_logarithmic: app.spiral_logarithmic,
             graph_rows: app.graph_rows,
             graph_cols: app.graph_cols,
+            graph_radial: app.graph_radial,
+            graph_rings: app.graph_rings,
+            graph_spokes: app.graph_spokes,
             table_rows: app.table_rows,
             table_cols: app.table_cols,
             eraser_width: app.eraser_width,
@@ -423,6 +429,9 @@ impl OptionsSnapshot {
         app.spiral_logarithmic = self.spiral_logarithmic;
         app.graph_rows = self.graph_rows;
         app.graph_cols = self.graph_cols;
+        app.graph_radial = self.graph_radial;
+        app.graph_rings = self.graph_rings;
+        app.graph_spokes = self.graph_spokes;
         app.table_rows = self.table_rows;
         app.table_cols = self.table_cols;
         app.eraser_width = self.eraser_width;
@@ -5079,6 +5088,19 @@ fn graph_paper_page(app: &mut App, ui: &mut Ui) {
             },
         );
 
+        ui.end_row();
+        // The radial grid (rings and spokes).
+        row_label(ui, "");
+        ui.checkbox(&mut app.graph_radial, tr("toolbar.graph_radial"))
+            .rich_tip(crate::ui::tips::keyed("toolbar.graph_radial"));
+        ui.end_row();
+        row_label(ui, &format!("{}:", tr("toolbar.rings")));
+        ui.add(crate::ui::field::NumField::new(&mut app.graph_rings).range(1..=99))
+            .rich_tip(crate::ui::tips::keyed("toolbar.rings"));
+        ui.end_row();
+        row_label(ui, &format!("{}:", tr("toolbar.spokes")));
+        ui.add(crate::ui::field::NumField::new(&mut app.graph_spokes).range(0..=360))
+            .rich_tip(crate::ui::tips::keyed("toolbar.spokes"));
         ui.end_row();
     });
 }

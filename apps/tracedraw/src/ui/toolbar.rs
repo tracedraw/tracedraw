@@ -1790,12 +1790,37 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 }
             }
             Tool::GraphPaper => {
-                dim_labelled(ui, "toolbar.rows", |ui| {
-                    ui.add(crate::ui::field::NumField::new(&mut app.graph_rows).range(1..=99))
-                });
-                dim_labelled(ui, "toolbar.columns", |ui| {
-                    ui.add(crate::ui::field::NumField::new(&mut app.graph_cols).range(1..=99))
-                });
+                if ui
+                    .selectable_label(!app.graph_radial, tr("toolbar.graph_cells"))
+                    .rich_tip(crate::ui::tips::keyed("toolbar.graph_cells"))
+                    .clicked()
+                {
+                    app.graph_radial = false;
+                }
+                if ui
+                    .selectable_label(app.graph_radial, tr("toolbar.graph_radial"))
+                    .rich_tip(crate::ui::tips::keyed("toolbar.graph_radial"))
+                    .clicked()
+                {
+                    app.graph_radial = true;
+                }
+                if app.graph_radial {
+                    dim_labelled(ui, "toolbar.rings", |ui| {
+                        ui.add(crate::ui::field::NumField::new(&mut app.graph_rings).range(1..=99))
+                    });
+                    dim_labelled(ui, "toolbar.spokes", |ui| {
+                        ui.add(
+                            crate::ui::field::NumField::new(&mut app.graph_spokes).range(0..=360),
+                        )
+                    });
+                } else {
+                    dim_labelled(ui, "toolbar.rows", |ui| {
+                        ui.add(crate::ui::field::NumField::new(&mut app.graph_rows).range(1..=99))
+                    });
+                    dim_labelled(ui, "toolbar.columns", |ui| {
+                        ui.add(crate::ui::field::NumField::new(&mut app.graph_cols).range(1..=99))
+                    });
+                }
             }
             Tool::ActionLines => action_lines_bar(app, ui),
             Tool::CommonShapes => common_shapes_bar(app, ui),

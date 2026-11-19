@@ -1352,6 +1352,10 @@ pub struct App {
     pub table_border: Option<Stroke>,
     pub graph_rows: u32,
     pub graph_cols: u32,
+    /// Graph Paper as a radial grid: rings and spokes.
+    pub graph_radial: bool,
+    pub graph_rings: u32,
+    pub graph_spokes: u32,
     /// The Action Lines tool's settings (#1617).
     pub action_lines: crate::action_lines::ActionLines,
     /// The Shape Generator panel's settings (#3412, #3413).
@@ -3194,6 +3198,9 @@ impl App {
             table_border: Some(Stroke::hairline(Color::BLACK)),
             graph_rows: 4,
             graph_cols: 3,
+            graph_radial: false,
+            graph_rings: 5,
+            graph_spokes: 8,
             action_lines: Default::default(),
             shape_gen: Default::default(),
             balloon_style: Default::default(),
@@ -4215,6 +4222,9 @@ impl App {
             table_cols: self.table_cols,
             graph_rows: self.graph_rows,
             graph_cols: self.graph_cols,
+            graph_radial: self.graph_radial,
+            graph_rings: self.graph_rings,
+            graph_spokes: self.graph_spokes,
             blend_steps: self.blend_steps,
             contour: self.contour,
             eraser_width: self.eraser_width,
@@ -4317,6 +4327,9 @@ impl App {
         self.table_cols = t.table_cols.clamp(1, 1000);
         self.graph_rows = t.graph_rows.clamp(1, 1000);
         self.graph_cols = t.graph_cols.clamp(1, 1000);
+        self.graph_radial = t.graph_radial;
+        self.graph_rings = t.graph_rings.clamp(1, 1000);
+        self.graph_spokes = t.graph_spokes.clamp(0, 1000);
         self.blend_steps = t.blend_steps.clamp(1, 999);
         self.contour = t.contour.clamped();
         self.eraser_width = finite(t.eraser_width, 0.025, 2540.0, 6.35);
@@ -6449,8 +6462,13 @@ impl App {
         }
     }
 
-    /// Graph Paper: a grid of `graph_rows` x `graph_cols` rectangles, grouped.
+    /// Graph Paper: a grid of `graph_rows` x `graph_cols` rectangles, grouped;
+    /// or, set to radial, `graph_rings` rings and `graph_spokes` spokes.
     pub fn create_graph_paper(&mut self, rect: Rect) {
+        if self.graph_radial {
+            self.create_radial_grid(rect);
+            return;
+        }
         let (rows, cols) = (self.graph_rows.max(1), self.graph_cols.max(1));
         let Some(layer) = self.active_layer() else {
             return;
@@ -6483,6 +6501,62 @@ impl App {
                 ids.push(id);
                 cmds.push(Command::AddShape { layer, shape: s });
             }
+        }
+        cmds.push(Command::Group { shapes: ids });
+        let _ = self.engine.run_batch("Graph Paper", &cmds);
+        if let Some(id) = self
+            .doc()
+            .page(self.page)
+            .ok()
+            .and_then(|p| p.layers.iter().find(|l| l.id == layer))
+            .and_then(|l| l.shapes.last())
+            .map(|s| s.id)
+        {
+            self.select(vec![id]);
+        }
+    }
+
+    /// Graph Paper set to radial: `graph_rings` ellipses evenly spaced from
+    /// the middle of `rect` to its edge, the outer one at the back, and
+    /// `graph_spokes` lines from the middle to the outer ring, the first
+    /// pointing up; grouped, one undo step.
+    pub fn create_radial_grid(&mut self, rect: Rect) {
+        let Some(layer) = self.active_layer() else {
+            return;
+        };
+        let stroke = self
+            .default_stroke()
+            .or_else(|| Some(Stroke::hairline(Color::BLACK)));
+        let mut cmds = Vec::new();
+        let mut ids = Vec::new();
+        let mut add = |app: &mut Self, kind: ShapeKind, fill: Fill| {
+            let id = app.engine.new_shape_id();
+            let mut s = Shape::new(id, kind);
+            s.fill = fill;
+            s.stroke = stroke.clone();
+            ids.push(id);
+            cmds.push(Command::AddShape { layer, shape: s });
+        };
+        let fill = self.default_fill();
+        for r in crate::tools2::radial_rings(rect, self.graph_rings) {
+            add(
+                self,
+                ShapeKind::Ellipse { rect: r, arc: None },
+                fill.clone(),
+            );
+        }
+        for (a, b) in crate::tools2::radial_spokes(rect, self.graph_spokes) {
+            let mut path = tracedraw_core::geometry::BezPath::new();
+            path.move_to(a);
+            path.line_to(b);
+            add(
+                self,
+                ShapeKind::Path {
+                    path,
+                    closed: false,
+                },
+                Fill::None,
+            );
         }
         cmds.push(Command::Group { shapes: ids });
         let _ = self.engine.run_batch("Graph Paper", &cmds);

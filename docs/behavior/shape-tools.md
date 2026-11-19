@@ -200,6 +200,14 @@ just drawn), the text staying open for typing (#3258,
 
 - Rows x columns: default 4 x 3. The result is a group of rows x columns
   rectangles that fill the box exactly.
+- Radial (Cells or Radial on the bar, also on the tool's options page,
+  kept in the preferences): Rings (5) ellipses about the box's middle,
+  ring `i` of `n` (outermost first) `(n - i) / n` of the box across,
+  then Spokes (8, 0 to 360) open lines from the middle to the outer
+  ring at `90° + 360° k / spokes`; one group, filled and outlined as the
+  cells are (the spokes unfilled), one undo step "Graph Paper". The
+  preview shows the rings and spokes (`tools2::radial_grid_path`,
+  `tools2::tests::graph_paper_draws_a_radial_grid`).
 
 ## Common shapes
 

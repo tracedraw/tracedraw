@@ -1833,6 +1833,10 @@ pub struct ToolPrefs {
     pub table_cols: u32,
     pub graph_rows: u32,
     pub graph_cols: u32,
+    /// Graph Paper as a radial grid, its rings and spokes.
+    pub graph_radial: bool,
+    pub graph_rings: u32,
+    pub graph_spokes: u32,
     pub blend_steps: u32,
     /// The Contour tool's and panel's values.
     pub contour: crate::contour_tool::ContourSettings,
@@ -1977,6 +1981,9 @@ impl Default for ToolPrefs {
             table_cols: 4,
             graph_rows: 4,
             graph_cols: 3,
+            graph_radial: false,
+            graph_rings: 5,
+            graph_spokes: 8,
             blend_steps: 20,
             contour: Default::default(),
             eraser_width: 6.35,
