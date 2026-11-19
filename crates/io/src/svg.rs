@@ -298,13 +298,15 @@ fn write_unlinked(
         }
         let mut main = ev.main.clone();
         main.effects.clear();
-        // Lens and non-uniform transparency have no SVG equivalent here;
-        // approximate with the average opacity of the mask. The merge
-        // mode goes out as the CSS blend mode when one matches it.
+        // A lens has no SVG equivalent here; a transparency that varies
+        // goes out as a luminance mask painted with the mask's own fill,
+        // a flat one as the object's opacity. The merge mode goes out as
+        // the CSS blend mode when one matches it.
         let mut blend = None;
         // The transparency's opacity and its target (the fill, the
         // outline or the whole object, live test of 0.41).
         let mut fade: Option<(f64, u8)> = None;
+        let mut mask_fill: Option<&Fill> = None;
         for e in &shape.effects {
             match e {
                 tracedraw_core::live::Effect::Transparency {
@@ -313,6 +315,7 @@ fn write_unlinked(
                     target,
                 } => {
                     fade = Some((average_luminance(mask) as f64, *target));
+                    mask_fill = Some(mask).filter(|m| crate::pdf::varies(m));
                     blend = svg_blend_mode(*merge);
                 }
                 tracedraw_core::live::Effect::Lens(tracedraw_core::live::Lens::Transparency {
@@ -336,6 +339,20 @@ fn write_unlinked(
             if !faded {
                 write_shape(&part, symbols, parent, out, defs, ctx, indent + 1);
                 continue;
+            }
+            // A mask that varies (a fountain, a pattern) as an SVG mask
+            // over the part: white keeps it, black clears it, as the
+            // drawing window applies it. The flat average stood in for it.
+            if let Some(mask) = mask_fill {
+                if let Some(id) = transparency_mask(&part, mask, symbols, parent, defs, ctx) {
+                    let style = blend
+                        .map(|b| format!(" style=\"mix-blend-mode:{b}\""))
+                        .unwrap_or_default();
+                    let _ = writeln!(out, "{pad}  <g mask=\"url(#{id})\"{style}>");
+                    write_shape(&part, symbols, parent, out, defs, ctx, indent + 2);
+                    let _ = writeln!(out, "{pad}  </g>");
+                    continue;
+                }
             }
             if let Some((opacity, _)) = fade {
                 part.opacity *= opacity;
@@ -688,6 +705,49 @@ fn write_unlinked(
     if wrapped {
         let _ = writeln!(out, "{pad}</g>");
     }
+}
+
+/// A luminance mask, in `defs`, painting `mask` as it lies over `part`:
+/// the fill's frame is the part's own box, padded out far past it so an
+/// outline is covered too. `None` for a part with no size.
+fn transparency_mask(
+    part: &Shape,
+    mask: &Fill,
+    symbols: &[tracedraw_core::Symbol],
+    parent: Affine,
+    defs: &mut String,
+    ctx: &mut SvgCtx,
+) -> Option<String> {
+    use tracedraw_core::geometry::Shape as _;
+    let transform = parent * part.transform;
+    let page_path = transform * part.local_path();
+    let bounds = if page_path.elements().is_empty() {
+        let mut placed = part.clone();
+        placed.transform = transform;
+        placed.bounds()
+    } else {
+        page_path.bounding_box()
+    };
+    if !(bounds.width() > 0.0 || bounds.height() > 0.0) || !bounds.area().is_finite() {
+        return None;
+    }
+    let grow = bounds.width().max(bounds.height()).max(1.0);
+    let area = bounds.inflate(grow, grow);
+    let paint = paint_value(mask, bounds, transform, symbols, defs, ctx);
+    let id = ctx.next("tmask");
+    let _ = writeln!(
+        defs,
+        "    <mask id=\"{id}\" maskUnits=\"userSpaceOnUse\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\">\n      <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{paint}\"/>\n    </mask>",
+        fmt(area.x0),
+        fmt(area.y0),
+        fmt(area.width()),
+        fmt(area.height()),
+        fmt(area.x0),
+        fmt(area.y0),
+        fmt(area.width()),
+        fmt(area.height()),
+    );
+    Some(id)
 }
 
 /// The outline as the drawing window draws it under `transform`, and the
