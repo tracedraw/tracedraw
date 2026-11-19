@@ -1052,3 +1052,72 @@ mod tests {
         assert!(mix[1] && !mix[0] && !mix[5]);
     }
 }
+
+#[cfg(test)]
+mod picture_tests {
+    use crate::app::App;
+    use crate::effects_ui::TransparencySettings;
+    use crate::mixed::TransparencyField as F;
+    use tracedraw_core::document::ShapeKind;
+    use tracedraw_core::geometry::Rect;
+    use tracedraw_core::live::MergeMode;
+    use tracedraw_core::{Color, Command, Fill};
+
+    /// #3565: a picture (PNG or JPEG) over a red square takes the
+    /// Properties docker's uniform transparency and its merge mode.
+    #[test]
+    fn a_picture_takes_transparency_and_merge_mode() {
+        let mut app = App::headless();
+        let r = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 200.0, 200.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .unwrap();
+        let red = Fill::Solid(Color::rgb8(255, 0, 0));
+        app.run(Command::SetFill {
+            shapes: vec![r],
+            fill: red,
+        });
+        let dir = std::env::temp_dir().join(format!("td-3565-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for ext in ["png", "jpg"] {
+            let path = dir.join(format!("blue.{ext}"));
+            image::RgbImage::from_pixel(100, 100, image::Rgb([0, 0, 255]))
+                .save(&path)
+                .unwrap();
+            app.import_bitmap(&path);
+            let id = app.selection[0];
+            let b = app.doc().find_shape(id).unwrap().bounds();
+            let middle = |app: &App| {
+                let page = app.doc().pages[0].id;
+                let img = tracedraw_render::render_page_image(app.doc(), page, 25.4).unwrap();
+                let y = img.height() as f64 - b.center().y;
+                let c = img
+                    .pixel(b.center().x as u32, y as u32)
+                    .unwrap()
+                    .demultiply();
+                (c.red(), c.blue())
+            };
+            assert!(middle(&app).0 < 5, "{ext}: the picture hides the red");
+            let mut set = TransparencySettings::default();
+            set.set_kind(0);
+            app.patch_transparency(&set, &[F::Kind]);
+            let (r, b2) = middle(&app);
+            assert!(
+                (120..=135).contains(&r) && (120..=135).contains(&b2),
+                "{ext}: half"
+            );
+            set.merge = MergeMode::Multiply;
+            app.patch_transparency(&set, &[F::Merge]);
+            let (r, b2) = middle(&app);
+            assert!(
+                (120..=135).contains(&r) && b2 < 5,
+                "{ext}: blue times red is black"
+            );
+            app.run(Command::DeleteShapes { shapes: vec![id] });
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
