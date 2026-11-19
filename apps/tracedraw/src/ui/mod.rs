@@ -124,6 +124,7 @@ pub mod text_bar;
 pub mod text_docker;
 pub mod text_path_bar;
 pub mod time_tracker;
+pub mod workflow;
 pub mod trace_dialog;
 pub mod trace_progress;
 pub mod tracecut;

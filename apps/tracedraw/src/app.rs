@@ -1157,6 +1157,9 @@ pub struct App {
     /// The trace of the selected bitmaps running off the interface
     /// thread, shown in its progress window (`trace_job.rs`).
     pub trace_job: Option<crate::trace_job::TraceJob>,
+    /// The Workflow window's steps, wires and results, kept while it is
+    /// closed (`ui/workflow.rs`).
+    pub workflow: Box<crate::ui::workflow::WorkflowState>,
     /// The digits typed with Alt held while editing text, for a character
     /// by its number (#447; the system does it on Windows).
     pub alt_code: String,
@@ -3142,6 +3145,7 @@ impl App {
             last_trace: None,
             trace_live: Default::default(),
             trace_job: None,
+            workflow: Default::default(),
             alt_code: String::new(),
             alt_composed: None,
             current_colors: (Color::BLACK, Color::WHITE),

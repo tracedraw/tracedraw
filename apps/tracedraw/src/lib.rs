@@ -257,6 +257,7 @@ mod theme;
 mod thesaurus;
 mod thumbnails;
 mod time_tracker;
+mod flow;
 #[cfg(any(target_os = "linux", test))]
 mod title_bar;
 mod tools;

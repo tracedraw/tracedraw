@@ -1548,6 +1548,8 @@ pub enum Dialog {
     /// settings or an auto-backup (#1414).
     StorageRefused(crate::storage_full::Refusal),
     TimeTracker(crate::ui::time_tracker::TrackerDialog),
+    /// Tools > Workflow; its state is `App::workflow`.
+    Workflow,
     Preflight(crate::ui::preflight_dialog::PreflightState),
     PublishPdf(Box<crate::ui::publish_pdf::PublishState>),
     PdfPassword(crate::ui::pdf_password::PdfPasswordState),
@@ -2136,6 +2138,7 @@ pub fn show(app: &mut App, ctx: &Context) {
             crate::ui::bitmap_dialogs::remove_background_dialog(app, ctx, st, &mut close)
         }
         Dialog::TimeTracker(st) => crate::ui::time_tracker::dialog(app, ctx, st, &mut close),
+        Dialog::Workflow => crate::ui::workflow::dialog(app, ctx, &mut close),
         Dialog::TableCount(st) => crate::ui::table_bar::count_dialog(app, ctx, st, &mut close),
         Dialog::Preflight(st) => crate::ui::preflight_dialog::dialog(app, ctx, st, &mut close),
         Dialog::PublishPdf(st) => crate::ui::publish_pdf::dialog(app, ctx, st, &mut close),
@@ -9084,6 +9087,7 @@ pub(crate) mod tests {
                 horizontal: true,
                 vertical: false,
             },
+            Dialog::Workflow,
             Dialog::BitmapBw(Default::default()),
             Dialog::BitmapDuotone(Default::default()),
             Dialog::BitmapPaletted(Default::default()),

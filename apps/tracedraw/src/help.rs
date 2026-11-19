@@ -134,6 +134,7 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::MacrosDesktopOnly => "get-started/browser-version#differences",
         Dialog::StorageRefused(_) => "get-started/browser-version",
         Dialog::TimeTracker(_) => "customize/time-tracker",
+        Dialog::Workflow => "customize/scripts#workflow",
         Dialog::Preflight(_) => "printing/preflight",
         Dialog::PublishPdf(_) => "file-formats/publish-pdf",
         Dialog::PdfPassword(_) => "file-formats/publish-pdf#password",
