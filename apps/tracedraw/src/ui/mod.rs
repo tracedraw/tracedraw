@@ -140,6 +140,7 @@ pub mod toolbox;
 pub mod transform_docker;
 pub mod transparency_docker;
 pub mod shape_gen_docker;
+pub mod symbol_scatter_docker;
 pub mod vector_mosaic_docker;
 pub mod welcome;
 pub mod window_bars;

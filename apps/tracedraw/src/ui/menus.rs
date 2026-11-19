@@ -4061,6 +4061,7 @@ fn effects_menu(app: &mut App, ui: &mut Ui) {
         ("menu.effects.lens", "Alt+F3", DockerTab::Lens),
         ("menu.effects.picture_mosaic", "", DockerTab::PictureMosaic),
         ("menu.effects.vector_mosaic", "", DockerTab::VectorMosaic),
+        ("menu.effects.symbol_scatter", "", DockerTab::SymbolScatter),
     ] {
         if check(ui, key, shortcut, effect_docker_open(app, tab)) {
             app.open_docker(tab);

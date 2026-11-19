@@ -272,6 +272,7 @@ mod upscale;
 #[cfg(not(target_arch = "wasm32"))]
 mod upscale_net;
 mod variable_outline;
+mod symbol_scatter;
 mod vector_mosaic;
 mod view;
 mod view_motion;

@@ -914,7 +914,7 @@ pub(crate) fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
         DockerTab::Coordinates => {
             Some(|p, r| action_pic(p, r, crate::ui::icons::Action::ShowRulers))
         }
-        DockerTab::VectorMosaic | DockerTab::PictureMosaic => {
+        DockerTab::VectorMosaic | DockerTab::PictureMosaic | DockerTab::SymbolScatter => {
             Some(|p, r| glyph_pic(p, r, Glyph::Mosaic))
         }
         // The Graph Paper tool's picture, reused until the panel gets its

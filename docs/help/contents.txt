@@ -80,6 +80,7 @@ effects/index
   effects/perspective
   effects/copy-and-clone
   effects/mosaics
+  effects/symbol-scatter
   effects/bitmap-effects
 text/index
   text/adding-text
