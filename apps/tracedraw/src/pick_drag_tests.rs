@@ -29330,6 +29330,31 @@ fn a_clicked_handle_moves_with_the_arrow_keys() {
     );
     assert_eq!(app.node_selection, vec![(curve, 0)], "the node stays chosen");
     assert!(app.chosen_handle().is_none(), "no ring after a drag");
+    // While the button is held on the handle the ring stays on it, moved
+    // or not, and goes once the button is let go (#3141).
+    let from = app.view.to_screen(ctrl1(&app));
+    frame(&ctx, &mut app, vec![Event::PointerMoved(from)], Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(from, true, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    for i in 1..=4 {
+        let at = from + egui::vec2(10.0 * i as f32, 0.0);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+        let (_, tip) = app.chosen_handle_ends().expect("the ring stays while held");
+        assert!((tip - ctrl1(&app)).hypot() < 1e-9, "on the handle dragged");
+    }
+    let to = from + egui::vec2(40.0, 0.0);
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(to, false, PointerButton::Primary, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(app.chosen_handle_ends().is_none(), "gone once let go");
 }
 
 /// Options > Tools > Pick, "Ctrl and Shift keys", Windows standard

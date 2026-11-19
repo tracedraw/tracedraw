@@ -1462,8 +1462,18 @@ impl App {
     /// The chosen control handle's node and tip, on the page: the ring
     /// goes round the handle's head, which points from the node to the
     /// tip (#3041).
+    /// While a handle is dragged the ring stays on it, as long as the
+    /// button is held, and goes when it is let go (#3141).
     pub(crate) fn chosen_handle_ends(&self) -> Option<(Point, Point)> {
-        let key = self.chosen_handle()?;
+        let dragged = match self.drag {
+            Drag::Handle {
+                shape,
+                index,
+                which,
+            } if self.tool == crate::tools::Tool::Shape => Some((shape, index, which)),
+            _ => None,
+        };
+        let key = dragged.or_else(|| self.chosen_handle())?;
         let (path, _, t) = self.path_of(key.0)?;
         let n = nodes::nodes(&path).into_iter().find(|n| n.index == key.1)?;
         Some((t * n.pos, self.handle_point(key)?))
