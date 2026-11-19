@@ -10455,7 +10455,7 @@ impl App {
     }
 
     /// Parse a text document (TXT, RTF, DOCX) by extension.
-    fn parse_text_file(
+    pub(crate) fn parse_text_file(
         path: &std::path::Path,
     ) -> Result<tracedraw_io::text_import::ImportedText, String> {
         let ext = path

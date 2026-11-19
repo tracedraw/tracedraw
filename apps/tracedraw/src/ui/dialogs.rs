@@ -1391,6 +1391,8 @@ pub enum Dialog {
         /// The object's own solid fill: the colour of characters that
         /// have none of their own.
         ink: Option<tracedraw_core::Color>,
+        /// The text's alignment, set in the box and kept on OK (#3270).
+        align: tracedraw_core::TextAlign,
     },
     DocumentProperties(Box<crate::ui::doc_properties::DocPropsState>),
     /// Save on a drawing opened from a `.cdr` version TraceDraw does not
@@ -2519,6 +2521,7 @@ pub fn show(app: &mut App, ctx: &Context) {
             text,
             spans,
             ink,
+            align,
         } => {
             let title = tr("menu.text.edit_text");
             let title = title
@@ -2541,13 +2544,45 @@ pub fn show(app: &mut App, ctx: &Context) {
                 }
                 hit
             });
-            window(ctx, title).show(ctx, |ui| {
-                edit_text_box(ui, text, spans, *ink);
+            let mut asked = EditTextAsk::Nothing;
+            // The box is sized by the user (#3270).
+            window(ctx, title)
+                .resizable(egui::vec2(640.0, 440.0), egui::vec2(460.0, 300.0))
+                .show(ctx, |ui| {
+                asked = edit_text_box(ui, text, spans, *ink, align);
                 if ok_cancel(ui, &mut close) || alt_ok {
                     close = true;
-                    app.set_text_spans(*shape, spans.clone());
+                    app.set_edit_text(*shape, spans.clone(), *align);
                 }
             });
+            match asked {
+                EditTextAsk::Nothing => {}
+                // Import Text: a text file's characters go in at the end
+                // of the box, in the look of the character before them.
+                EditTextAsk::Import => crate::files::Dialog::new()
+                    .add_filter("Text (*.txt, *.rtf, *.docx)", &["txt", "rtf", "docx"])
+                    .pick_file(app, |app, path| {
+                        match crate::app::App::parse_text_file(&path) {
+                            Ok(t) => {
+                                if let Dialog::EditText { text, .. } = &mut app.dialog {
+                                    text.push_str(&t.text());
+                                }
+                            }
+                            Err(e) => {
+                                app.status =
+                                    crate::i18n::trf("status.import_failed", &[("e", &e)])
+                            }
+                        }
+                    }),
+                // Spell Check: the text as it stands in the box, then
+                // Writing Tools on its Spell Check page.
+                EditTextAsk::Spell => {
+                    app.set_edit_text(*shape, spans.clone(), *align);
+                    app.dialog =
+                        Dialog::WritingTools(crate::ui::writing_tools::WritingToolsState::on_tab(0));
+                    return;
+                }
+            }
         }
         Dialog::Options => crate::ui::options::options_dialog(app, ctx, &mut close),
         Dialog::OutlinePen(st) => crate::ui::outline_pen::dialog(app, ctx, st, &mut close),
@@ -10498,7 +10533,9 @@ fn edit_text_box(
     text: &mut String,
     spans: &mut Vec<tracedraw_core::TextSpan>,
     ink: Option<tracedraw_core::Color>,
-) {
+    align: &mut tracedraw_core::TextAlign,
+) -> EditTextAsk {
+    let mut asked = EditTextAsk::Nothing;
     use tracedraw_core::{spans_apply, spans_char_count, LineStyle};
     let id = egui::Id::new("edit_text_dialog_box");
     crate::ops2::retext_keeping_styles(spans, text);
@@ -10585,22 +10622,112 @@ fn edit_text_box(
             ui.weak(&first.font_family);
         });
     }
+    // The second row (#3270): the text's alignment, the case of the
+    // selected characters, the box's zoom, the marks of spaces and tabs,
+    // Import Text and Spell Check.
+    let zoom_id = egui::Id::new("edit_text_dialog_zoom");
+    let marks_id = egui::Id::new("edit_text_dialog_marks");
+    let mut zoom = ui.ctx().data(|d| d.get_temp::<f32>(zoom_id)).unwrap_or(1.0);
+    let mut marks = ui.ctx().data(|d| d.get_temp::<bool>(marks_id)).unwrap_or(false);
+    ui.horizontal_wrapped(|ui| {
+        use tracedraw_core::TextAlign as A;
+        for (a, key) in [
+            (A::None, "edit_text.align_none"),
+            (A::Left, "edit_text.align_left"),
+            (A::Center, "edit_text.align_center"),
+            (A::Right, "edit_text.align_right"),
+            (A::Justify, "edit_text.align_justify"),
+        ] {
+            if ui
+                .selectable_label(*align == a, tr(key))
+                .rich_tip(crate::ui::tips::pair(key, "edit_text.align_tip"))
+                .clicked()
+            {
+                *align = a;
+            }
+        }
+        ui.separator();
+        let mut case = None;
+        crate::ui::keynav::ComboBox::from_id_salt("edit_text_case")
+            .selected_text(tr("edit_text.case"))
+            .width(110.0)
+            .show_ui(ui, |ui| {
+                use crate::ops2::CaseMode as C;
+                for (m, key) in [
+                    (C::Sentence, "menu.text.case_sentence"),
+                    (C::Lower, "menu.text.case_lower"),
+                    (C::Upper, "menu.text.case_upper"),
+                    (C::Title, "menu.text.case_title"),
+                    (C::Toggle, "menu.text.case_toggle"),
+                ] {
+                    if ui.selectable_label(false, tr(key)).clicked() {
+                        case = Some(m);
+                    }
+                }
+            })
+            .response
+            .rich_tip(crate::ui::tips::pair("edit_text.case", "edit_text.case_tip"));
+        if let Some(m) = case {
+            edit_text_change_case(spans, from, to, m);
+            *text = tracedraw_core::spans_text(spans);
+        }
+        ui.separator();
+        if ui
+            .add_enabled(zoom > 0.51, egui::Button::new("\u{2212}"))
+            .rich_tip(crate::ui::tips::pair("edit_text.zoom_out", "edit_text.zoom_tip"))
+            .clicked()
+        {
+            zoom = (zoom / 1.25).max(0.5);
+        }
+        ui.label(format!("{:.0} %", zoom * 100.0));
+        if ui
+            .add_enabled(zoom < 3.99, egui::Button::new("+"))
+            .rich_tip(crate::ui::tips::pair("edit_text.zoom_in", "edit_text.zoom_tip"))
+            .clicked()
+        {
+            zoom = (zoom * 1.25).min(4.0);
+        }
+        ui.separator();
+        ui.checkbox(&mut marks, tr("edit_text.marks"))
+            .rich_tip(crate::ui::tips::pair("edit_text.marks", "edit_text.marks_tip"));
+        ui.separator();
+        if ui
+            .button(tr("edit_text.import"))
+            .rich_tip(crate::ui::tips::pair("edit_text.import", "edit_text.import_tip"))
+            .clicked()
+        {
+            asked = EditTextAsk::Import;
+        }
+        if ui
+            .button(tr("edit_text.spell"))
+            .rich_tip(crate::ui::tips::pair("edit_text.spell", "edit_text.spell_tip"))
+            .clicked()
+        {
+            asked = EditTextAsk::Spell;
+        }
+    });
+    ui.ctx().data_mut(|d| {
+        d.insert_temp(zoom_id, zoom);
+        d.insert_temp(marks_id, marks);
+    });
     let shown = spans.clone();
     let mut layouter = |ui: &Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
         let mut sp = shown.clone();
         crate::ops2::retext_keeping_styles(&mut sp, buf.as_str());
-        let mut job = edit_text_job(&sp, ink);
+        let mut job = edit_text_job_zoomed(&sp, ink, zoom, marks);
         job.wrap.max_width = wrap;
         ui.fonts_mut(|f| f.layout_job(job))
     };
+    // The text fills the box as the user sizes it.
+    let width = ui.available_width().max(300.0);
     egui::ScrollArea::vertical()
         .id_salt("edit_text_scroll")
-        .max_height(360.0)
+        .max_height((ui.available_height() - 40.0).max(120.0))
         .show(ui, |ui| {
             ui.add(
                 egui::TextEdit::multiline(text)
                     .id(id)
-                    .desired_width(480.0)
+                    .desired_width(width)
                     .desired_rows(10)
                     // Tab types a tab into the text, as on the page, and
                     // does not move to the OK button (#3372).
@@ -10612,6 +10739,116 @@ fn edit_text_box(
             );
         });
     crate::ops2::retext_keeping_styles(spans, text);
+    asked
+}
+
+/// What the Edit Text box asks of the program (#3270).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EditTextAsk {
+    Nothing,
+    /// Import Text: a text file's characters into the box.
+    Import,
+    /// Spell Check: keep the text and open Writing Tools.
+    Spell,
+}
+
+/// Change Case on characters `from..to` of the Edit Text box's spans,
+/// each keeping its look; a sentence or a word goes on from one span
+/// into the next (#3270).
+fn edit_text_change_case(
+    spans: &mut [tracedraw_core::TextSpan],
+    from: usize,
+    to: usize,
+    mode: crate::ops2::CaseMode,
+) {
+    // The part of each span inside the selection, as byte ranges.
+    let mut parts = Vec::new();
+    let mut at = 0usize;
+    for (i, s) in spans.iter().enumerate() {
+        let n = s.text.chars().count();
+        let (a, b) = (from.max(at), to.min(at + n));
+        if a < b {
+            let byte = |c: usize| {
+                s.text
+                    .char_indices()
+                    .nth(c - at)
+                    .map(|(k, _)| k)
+                    .unwrap_or(s.text.len())
+            };
+            parts.push((i, byte(a), byte(b)));
+        }
+        at += n;
+    }
+    let runs: Vec<&str> = parts
+        .iter()
+        .map(|&(i, a, b)| &spans[i].text[a..b])
+        .collect();
+    let changed = crate::ops2::apply_case_runs(&runs, mode);
+    for (&(i, a, b), new) in parts.iter().zip(changed).rev() {
+        spans[i].text.replace_range(a..b, &new);
+    }
+}
+
+/// [`edit_text_job`] at the box's zoom (#3270), with spaces drawn as
+/// middle dots and tabs as arrows when the marks are on: one character
+/// for one, so the cursor keeps its place.
+fn edit_text_job_zoomed(
+    spans: &[tracedraw_core::TextSpan],
+    ink: Option<tracedraw_core::Color>,
+    zoom: f32,
+    marks: bool,
+) -> egui::text::LayoutJob {
+    let mut job = edit_text_job(spans, ink);
+    if (zoom - 1.0).abs() > 1e-3 {
+        for s in &mut job.sections {
+            s.format.font_id.size *= zoom;
+        }
+    }
+    if marks {
+        let grey = egui::Color32::from_gray(150);
+        let mut text = String::with_capacity(job.text.len());
+        let mut sections = Vec::new();
+        for s in &job.sections {
+            let part = &job.text[s.byte_range.start.0..s.byte_range.end.0];
+            let mut run = String::new();
+            let flush = |run: &mut String, text: &mut String, fmt: &egui::TextFormat, sections: &mut Vec<egui::text::LayoutSection>| {
+                if run.is_empty() {
+                    return;
+                }
+                let start = text.len();
+                text.push_str(run);
+                sections.push(egui::text::LayoutSection {
+                    leading_space: 0.0,
+                    byte_range: egui::text::ByteIndex(start)..egui::text::ByteIndex(text.len()),
+                    format: fmt.clone(),
+                });
+                run.clear();
+            };
+            for c in part.chars() {
+                let mark = match c {
+                    ' ' => Some('\u{00B7}'),
+                    '\t' => Some('\u{2192}'),
+                    _ => None,
+                };
+                match mark {
+                    Some(m) => {
+                        flush(&mut run, &mut text, &s.format, &mut sections);
+                        run.push(m);
+                        let fmt = egui::TextFormat {
+                            color: grey,
+                            ..s.format.clone()
+                        };
+                        flush(&mut run, &mut text, &fmt, &mut sections);
+                    }
+                    None => run.push(c),
+                }
+            }
+            flush(&mut run, &mut text, &s.format, &mut sections);
+        }
+        job.text = text;
+        job.sections = sections;
+    }
+    job
 }
 
 /// The span holding character `at` (the last one at the end).
@@ -10865,4 +11102,122 @@ pub(crate) fn page_look_editor(ui: &mut egui::Ui, look: &mut crate::settings::Pa
         .header_response
         .rich_tip(tip("options.page_look"));
     *look = look.sanitized();
+}
+
+#[cfg(test)]
+mod edit_text_tests {
+    use super::*;
+    use tracedraw_core::{Point, ShapeKind, TextAlign, TextSpan};
+
+    fn text_app(spans: Vec<TextSpan>) -> (App, tracedraw_core::ShapeId) {
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Text {
+                spans,
+                origin: Point::new(10.0, 10.0),
+                frame: None,
+                align: TextAlign::Left,
+                para: Default::default(),
+                on_path: None,
+            })
+            .expect("text");
+        (app, id)
+    }
+
+    /// OK with a new alignment sets it with the characters, as one undo
+    /// step "Edit Text" (#3270).
+    #[test]
+    fn ok_keeps_the_alignment_set_in_the_box() {
+        let (mut app, id) = text_app(vec![TextSpan::new("Hello", "Sans", 12.0)]);
+        app.select(vec![id]);
+        app.open_edit_text_dialog();
+        let Dialog::EditText { align, .. } = &app.dialog else {
+            panic!("no dialog");
+        };
+        assert_eq!(*align, TextAlign::Left);
+        let depth = app.engine.history_labels().0.len();
+        app.set_edit_text(id, vec![TextSpan::new("Hello!", "Sans", 12.0)], TextAlign::Center);
+        assert_eq!(app.engine.history_labels().0.len(), depth + 1);
+        assert_eq!(app.engine.undo_label(), Some("Edit Text"));
+        let ShapeKind::Text { spans, align, .. } = app.doc().find_shape(id).expect("text").kind.clone()
+        else {
+            panic!("text");
+        };
+        assert_eq!((tracedraw_core::spans_text(&spans), align), ("Hello!".to_string(), TextAlign::Center));
+        app.undo();
+        let ShapeKind::Text { spans, align, .. } = app.doc().find_shape(id).expect("text").kind.clone()
+        else {
+            panic!("text");
+        };
+        assert_eq!((tracedraw_core::spans_text(&spans), align), ("Hello".to_string(), TextAlign::Left));
+    }
+
+    /// Change Case in the box changes only the selected characters, each
+    /// keeping its look, across spans (#3270).
+    #[test]
+    fn change_case_in_the_box_keeps_each_look() {
+        let mut bold = TextSpan::new("hello ", "Sans", 20.0);
+        bold.bold = true;
+        let mut spans = vec![bold, TextSpan::new("world", "Sans", 12.0)];
+        edit_text_change_case(&mut spans, 3, 8, crate::ops2::CaseMode::Upper);
+        let got: Vec<(&str, bool)> = spans.iter().map(|s| (s.text.as_str(), s.bold)).collect();
+        assert_eq!(got, vec![("helLO ", true), ("WOrld", false)]);
+    }
+
+    /// The zoom scales the box's characters only; the marks draw spaces
+    /// and tabs one character for one, so the cursor keeps its place
+    /// (#3270).
+    #[test]
+    fn zoom_and_marks_keep_the_characters_in_place() {
+        let spans = vec![
+            TextSpan::new("a b", "Sans", 10.0),
+            TextSpan::new("\tc", "Sans", 20.0),
+        ];
+        let plain = edit_text_job_zoomed(&spans, None, 1.0, false);
+        let big = edit_text_job_zoomed(&spans, None, 2.0, false);
+        let size = |j: &egui::text::LayoutJob| -> Vec<f32> {
+            j.sections.iter().map(|s| s.format.font_id.size).collect()
+        };
+        let doubled: Vec<f32> = size(&plain).iter().map(|s| s * 2.0).collect();
+        assert_eq!(size(&big), doubled);
+        let marked = edit_text_job_zoomed(&spans, None, 1.0, true);
+        assert_eq!(marked.text, "a\u{00B7}b\u{2192}c");
+        assert_eq!(marked.text.chars().count(), plain.text.chars().count());
+        for s in &marked.sections {
+            assert!(marked.text.is_char_boundary(s.byte_range.start.0));
+            assert!(marked.text.is_char_boundary(s.byte_range.end.0));
+        }
+        assert_eq!(marked.sections.last().map(|s| s.byte_range.end.0), Some(marked.text.len()));
+    }
+
+    /// The box draws with its second row at any zoom and with the marks
+    /// on (#3270).
+    #[test]
+    fn the_box_draws_with_zoom_and_marks() {
+        let (mut app, id) = text_app(vec![TextSpan::new("One two\tthree", "Sans", 12.0)]);
+        app.select(vec![id]);
+        app.open_edit_text_dialog();
+        app.show_welcome = false;
+        let ctx = crate::theme::ui_context();
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("edit_text_dialog_zoom"), 2.0f32);
+            d.insert_temp(egui::Id::new("edit_text_dialog_marks"), true);
+        });
+        for _ in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 900.0),
+                )),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| crate::ui::root(&mut app, ui));
+            out.textures_delta.clear();
+        }
+        let Dialog::EditText { text, .. } = &app.dialog else {
+            panic!("no dialog");
+        };
+        // The marks are drawn, never typed into the text.
+        assert_eq!(text, "One two\tthree");
+    }
 }

@@ -3073,6 +3073,10 @@ impl App {
                 text: tracedraw_core::spans_text(spans),
                 spans: spans.clone(),
                 ink,
+                align: match &s.kind {
+                    ShapeKind::Text { align, .. } => *align,
+                    _ => Default::default(),
+                },
             };
         }
     }
@@ -3090,6 +3094,47 @@ impl App {
         let mut spans = spans;
         retext_keeping_styles(&mut spans, text);
         self.set_text_spans(id, spans);
+    }
+
+    /// OK in the Edit Text box: its characters and the alignment set in
+    /// it (#3270), as one undo step "Edit Text".
+    pub fn set_edit_text(
+        &mut self,
+        id: ShapeId,
+        spans: Vec<TextSpan>,
+        align: tracedraw_core::TextAlign,
+    ) {
+        let Some(ShapeKind::Text {
+            spans: old,
+            origin,
+            frame,
+            align: old_align,
+            para,
+            on_path,
+        }) = self.doc().find_shape(id).map(|s| s.kind.clone())
+        else {
+            return;
+        };
+        if align == old_align {
+            self.set_text_spans(id, spans);
+            return;
+        }
+        let spans = tracedraw_core::document::merge_equal_spans(spans);
+        let spans = if spans.is_empty() { old } else { spans };
+        let kind = ShapeKind::Text {
+            spans,
+            origin,
+            frame,
+            align,
+            para,
+            on_path,
+        };
+        if let Err(e) = self
+            .engine
+            .run_with_label(&Command::SetShapeKind { shape: id, kind }, "Edit Text")
+        {
+            self.status = e.to_string();
+        }
     }
 
     /// The text object `id` gets the characters and formatting `spans`,

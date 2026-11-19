@@ -301,6 +301,20 @@ formatting of the character before it, and linked frames reflow
 `ops2::text_dialog_tests::char_edits_keep_what_both_texts_share`).
 A double click on a text still edits it in place.
 
+The dialog is a window the user sizes, the box filling it (#3270), with
+a second row under the formatting row: the text's alignment (No align,
+Left, Centre, Right, Justify), set with OK in the same undo step; Change
+case (Sentence case, lowercase, UPPERCASE, Title Case, tOGGLE cASE) on
+the selected characters, all of them without a selection, each keeping
+its formatting; a zoom of the box from 50 to 400 % (the text on the page
+keeps its size); Show marks, spaces as grey dots and tabs as grey arrows,
+one character for one so the cursor keeps its place (paragraph ends are
+not marked); Import Text, which adds the characters of a TXT, RTF or
+DOCX file at the end of the box; and Spell Check, which keeps the box's
+text and opens Writing Tools on its Spell Check page
+(`ui::dialogs::edit_text_tests`). The box shows the characters in its
+own font, not the text's.
+
 ## Editing in place
 
 Clicking text with the Text tool (or double-clicking it with the Pick
