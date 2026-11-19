@@ -482,9 +482,21 @@ pub fn simplify(points: &[Point], tolerance: f64) -> Vec<Point> {
     out
 }
 
-/// Axis-aligned bounds of a path after an affine transform.
+/// Axis-aligned bounds of a path after an affine transform: the box of
+/// each mapped segment, as the box of the mapped path computes it, but
+/// without copying the path. An object's box is asked for on every
+/// pointer move (snapping, picking) and on every render, and the copy
+/// was its cost on large drawings.
 pub fn transformed_bounds(path: &BezPath, transform: Affine) -> Rect {
-    (transform * path.clone()).bounding_box()
+    let mut bbox: Option<Rect> = None;
+    for seg in path.segments() {
+        let b = kurbo::ParamCurveExtrema::bounding_box(&(transform * seg));
+        bbox = Some(match bbox {
+            Some(bb) => bb.union(b),
+            None => b,
+        });
+    }
+    bbox.unwrap_or_default()
 }
 
 /// [`bspline_path`] with the control points `fixed` says (one flag a

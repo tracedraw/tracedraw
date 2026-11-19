@@ -282,13 +282,19 @@ impl App {
             }
         }
         if s.objects && bounds {
+            let big: Option<std::collections::HashSet<ShapeId>> =
+                (exclude.len() > 16).then(|| exclude.iter().copied().collect());
+            let excluded = |id: &ShapeId| match &big {
+                Some(s) => s.contains(id),
+                None => exclude.contains(id),
+            };
             for sh in self
                 .page_layers()
                 .into_iter()
                 .filter(|l| l.visible)
                 .flat_map(|l| &l.shapes)
             {
-                if exclude.contains(&sh.id) {
+                if excluded(&sh.id) {
                     continue;
                 }
                 let b = self.snap_bounds(sh);
@@ -524,13 +530,21 @@ impl App {
             snap_points::page_geometry(self.page_rect(), &mut g);
         }
         if self.snaps_to_objects() {
+            // A drag can carry a whole large drawing's ids: a Vec's
+            // contains made every ask here quadratic in it (#3559).
+            let big: Option<std::collections::HashSet<ShapeId>> =
+                (exclude.len() > 16).then(|| exclude.iter().copied().collect());
+            let excluded = |id: &ShapeId| match &big {
+                Some(s) => s.contains(id),
+                None => exclude.contains(id),
+            };
             for sh in self
                 .page_layers()
                 .into_iter()
                 .filter(|l| l.visible)
                 .flat_map(|l| &l.shapes)
             {
-                if exclude.contains(&sh.id) || !sh.visible {
+                if excluded(&sh.id) || !sh.visible {
                     continue;
                 }
                 if !self.snap_bounds(sh).inflate(tol, tol).contains(p) {
@@ -643,9 +657,12 @@ impl App {
     /// The box of `s` (an object of the drawing) for snapping: a symbol
     /// instance's is its symbol's, placed by the instance (see
     /// [`Self::snap_shape`]). It is asked for every object of the page on
-    /// every pointer move, so an instance's box is measured once per
-    /// change of the drawing and kept with the other measured boxes.
+    /// every pointer move, so the box is measured once per change of the
+    /// drawing and kept with the other measured boxes (#3559).
     fn snap_bounds(&self, s: &Shape) -> Rect {
+        if let Some(b) = self.plain_bounds_cached(s) {
+            return b;
+        }
         if !matches!(s.kind, ShapeKind::SymbolInstance { .. }) {
             return s.bounds();
         }
@@ -1942,6 +1959,45 @@ mod tests {
         let t = app.snap_turn_grab(center, grab, near, &[id]);
         assert!((t - cross).hypot() > 0.1, "{t:?}");
         assert!(((t - center).hypot() - r).abs() < 1e-9);
+    }
+
+    /// A moved object snaps at its new place at once: the boxes snapping
+    /// reads are measured once per revision of the drawing, and a move
+    /// bumps the revision, so no stale box survives (#3559).
+    #[test]
+    fn snapped_bounds_follow_a_moved_object() {
+        let mut app = app();
+        app.settings.snap.threshold_px = 3.0;
+        let id = rect(&mut app, 100.0, 100.0, 110.0, 110.0);
+        // Measured now: this ask fills the cache.
+        let p = app.snap_point(Point::new(101.0, 101.0));
+        assert_eq!(p, Point::new(100.0, 100.0), "the near corner");
+        app.run(Command::TransformShapes {
+            shapes: vec![id],
+            transform: Affine::translate(Vec2::new(50.0, 0.0)),
+        });
+        let p = app.snap_point(Point::new(101.0, 101.0));
+        assert_eq!(p, Point::new(101.0, 101.0), "no snap where it was");
+        let p = app.snap_point(Point::new(151.0, 101.0));
+        assert_eq!(p, Point::new(150.0, 100.0), "snaps where it is");
+    }
+
+    /// An excluded selection of thousands costs a set membership per
+    /// object, not a scan of the whole exclusion per object (#3559).
+    #[test]
+    fn snapping_with_a_large_exclusion_still_finds_others() {
+        let mut app = app();
+        app.settings.snap.threshold_px = 3.0;
+        let mut excluded = Vec::new();
+        for i in 0..2000u32 {
+            let x = 400.0 + f64::from(i) * 15.0;
+            excluded.push(rect(&mut app, x, 0.0, x + 10.0, 10.0));
+        }
+        rect(&mut app, 100.0, 100.0, 110.0, 110.0);
+        let p = app.snap_point_excluding(Point::new(101.0, 101.0), &excluded);
+        assert_eq!(p, Point::new(100.0, 100.0), "the kept object snaps");
+        let p = app.snap_point_excluding(Point::new(406.0, 6.0), &excluded);
+        assert_eq!(p, Point::new(406.0, 6.0), "the excluded one does not");
     }
 
     #[test]

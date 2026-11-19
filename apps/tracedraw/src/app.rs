@@ -1510,7 +1510,9 @@ pub struct App {
     /// frame; it is made once when the drag ends.
     pub node_drag_shown: Option<NodeDragShown>,
     /// The visual bounds of objects with live effects, for the document
-    /// revision they were measured at (see [`App::visual_bounds`]).
+    /// revision they were measured at (see [`App::visual_bounds`]);
+    /// plain objects' geometric bounds measured once per change of the
+    /// drawing share it (see [`App::plain_bounds_cached`], #3559).
     pub visual_cache: std::cell::RefCell<(u64, std::collections::HashMap<ShapeId, Rect>)>,
     /// The Edit Fill dialog's fill is shown on the selection as an engine
     /// preview (#436).
@@ -6079,13 +6081,10 @@ impl App {
         lines
     }
 
-    /// `s` with every symbol instance it is or holds (in groups and clip
-    /// frames) replaced by its symbol's objects, placed as the instance
-    /// places them: what the outlines drawn over a selection follow. A
-    /// bare instance only knows a 10 x 10 placeholder box, which the
-    /// selection outline and the Shape tool's frame showed instead of
-    /// the symbol (#3437). `None` when `s` holds no instance.
-    pub fn with_symbols_drawn(&self, s: &Shape) -> Option<Shape> {
+    /// `s` is or holds (in groups and clip frames) a symbol instance;
+    /// what [`App::with_symbols_drawn`] answers for, without building
+    /// the drawn shape. Deepest eight levels, as there.
+    pub(crate) fn holds_symbol_instance(s: &Shape) -> bool {
         const DEEPEST: usize = 8;
         fn holds(s: &Shape, depth: usize) -> bool {
             depth <= DEEPEST
@@ -6098,7 +6097,18 @@ impl App {
                     _ => false,
                 }
         }
+        holds(s, 0)
+    }
+
+    /// `s` with every symbol instance it is or holds (in groups and clip
+    /// frames) replaced by its symbol's objects, placed as the instance
+    /// places them: what the outlines drawn over a selection follow. A
+    /// bare instance only knows a 10 x 10 placeholder box, which the
+    /// selection outline and the Shape tool's frame showed instead of
+    /// the symbol (#3437). `None` when `s` holds no instance.
+    pub fn with_symbols_drawn(&self, s: &Shape) -> Option<Shape> {
         fn drawn(s: &Shape, symbols: &[tracedraw_core::document::Symbol], depth: usize) -> Shape {
+            const DEEPEST: usize = 8;
             if depth > DEEPEST {
                 return s.clone();
             }
@@ -6136,7 +6146,29 @@ impl App {
                 _ => s.clone(),
             }
         }
-        holds(s, 0).then(|| drawn(s, &self.doc().symbols, 0))
+        Self::holds_symbol_instance(s).then(|| drawn(s, &self.doc().symbols, 0))
+    }
+
+    /// The geometric bounds of `s`, a top-level object of the current
+    /// page straight from `page_layers`, measured once per change of the
+    /// drawing (#3559): hit testing and snapping ask for the box of
+    /// every object of the page on every pointer move. `None` when the
+    /// box is not the object's own — live effects and symbol instances
+    /// draw something else (see [`Self::visual_bounds`]) — so callers
+    /// fall back to asking it. Never call with a shape that is not in
+    /// the drawing: an effect's preview part carries its source's id,
+    /// and the cache would answer with the source's box.
+    pub(crate) fn plain_bounds_cached(&self, s: &Shape) -> Option<Rect> {
+        if s.has_live_effects() || Self::holds_symbol_instance(s) {
+            return None;
+        }
+        let revision = self.engine.revision();
+        let mut cache = self.visual_cache.try_borrow_mut().ok()?;
+        if cache.0 != revision {
+            cache.0 = revision;
+            cache.1.clear();
+        }
+        Some(*cache.1.entry(s.id).or_insert_with(|| s.bounds()))
     }
 
     /// The bounds of what `s` (in page space) draws, its live effects

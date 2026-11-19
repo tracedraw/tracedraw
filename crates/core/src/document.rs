@@ -1077,6 +1077,14 @@ pub fn axis_scale(t: Affine) -> (f64, f64) {
     (a.hypot(b), c.hypot(d))
 }
 
+/// True when `t` has no turn or skew (moves, scales and mirrors only):
+/// it maps an axis-aligned box onto the exact axis-aligned box of what
+/// it transforms, so the box can be mapped instead of the outline.
+fn axis_aligned(t: Affine) -> bool {
+    let [_, b, c, _, _, _] = t.as_coeffs();
+    b == 0.0 && c == 0.0
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ShapeKind {
@@ -1195,6 +1203,27 @@ impl ShapeKind {
             ShapeKind::Path { closed, .. } => !closed,
             ShapeKind::Ellipse { arc: Some(a), .. } => !a.pie,
             _ => false,
+        }
+    }
+
+    /// The box this kind knows without an outline: a rectangle whose
+    /// edges are not bowed (its corners stay inside the rect, a bulged
+    /// edge reaches past it, #2188), a whole ellipse (an arc or pie
+    /// covers part of it), a bitmap, a table and a symbol instance's
+    /// placeholder box (what `local_path` draws for one). `None` for
+    /// the kinds whose box the outline gives.
+    fn known_box(&self) -> Option<Rect> {
+        match self {
+            ShapeKind::Rect { rect, corners, .. }
+                if corners.as_ref().is_none_or(|c| !c.has_bulge()) =>
+            {
+                Some(*rect)
+            }
+            ShapeKind::Ellipse { rect, arc: None } => Some(*rect),
+            ShapeKind::Bitmap { rect, .. } => Some(*rect),
+            ShapeKind::Table(t) => Some(t.rect),
+            ShapeKind::SymbolInstance { .. } => Some(Rect::new(0.0, 0.0, 10.0, 10.0)),
+            _ => None,
         }
     }
 
@@ -4742,6 +4771,30 @@ impl Shape {
         self.bounds_under(Affine::IDENTITY)
     }
 
+    /// The exact box of the shape in its own (local) coordinates. Kinds
+    /// that know their box answer without an outline; a curve's box is
+    /// read off its stored path, not off a copy of it.
+    pub fn local_bounds(&self) -> Rect {
+        match &self.kind {
+            ShapeKind::Path { path, .. } => path.bounding_box(),
+            ShapeKind::Group { children } => {
+                // A member that draws nothing takes no room, as in
+                // [`Shape::bounds_under`] (#996).
+                children
+                    .iter()
+                    .filter(|c| !c.is_empty_path())
+                    .map(|c| c.bounds())
+                    .reduce(|a, b| a.union(b))
+                    .unwrap_or_else(|| self.local_path().bounding_box())
+            }
+            ShapeKind::ClipFrame { frame, .. } => frame.bounds(),
+            _ => match self.kind.known_box() {
+                Some(r) => r,
+                None => self.local_path().bounding_box(),
+            },
+        }
+    }
+
     /// [`Shape::bounds`] with `outer` applied on top of the shape's own
     /// transformation. A group passes its transformation down instead of
     /// copying each member with it: the copy took the member's whole
@@ -4805,7 +4858,13 @@ impl Shape {
                 .text_bounds()
                 .unwrap_or_else(|| self.page_path().bounding_box()),
             ShapeKind::Path { path, .. } => path_bounds_under(path, self.transform),
-            _ => self.page_path().bounding_box(),
+            // A rectangle, a whole ellipse, a bitmap, a table or a
+            // symbol's box is known without an outline; a move, scale or
+            // mirror (no turn or skew) maps the box exactly.
+            _ => match self.kind.known_box().filter(|_| axis_aligned(self.transform)) {
+                Some(r) => self.transform.transform_rect_bbox(r),
+                None => self.page_path().bounding_box(),
+            },
         }
     }
 
@@ -8040,6 +8099,302 @@ mod tests {
         assert!(
             (b.y0 - 0.0).abs() < 1e-9 && (b.y1 - 2.0).abs() < 1e-9,
             "{b:?}"
+        );
+    }
+
+    /// The quick box paths (`ShapeKind::known_box`,
+    /// `geometry::transformed_bounds`, `Shape::local_bounds`) give the
+    /// boxes the outline gives (#3559): snapping, picking and the
+    /// renderer's culling read a box for every object on every pointer
+    /// move and every render, and must see the same boxes as before.
+    #[test]
+    fn the_quick_box_matches_the_outlines_box() {
+        use crate::geometry::{Affine, BezPath, Rect};
+        let mut curve = BezPath::new();
+        curve.move_to((1.0, 2.0));
+        curve.curve_to((10.0, 20.0), (30.0, -5.0), (40.0, 8.0));
+        curve.line_to((5.0, 9.0));
+        curve.close_path();
+        let rect = Rect::new(0.0, 0.0, 10.0, 6.0);
+        let shapes: Vec<Shape> = vec![
+            Shape::new(
+                ShapeId(1),
+                ShapeKind::Rect {
+                    rect,
+                    radius: 0.0,
+                    corners: None,
+                },
+            ),
+            Shape::new(
+                ShapeId(2),
+                ShapeKind::Rect {
+                    rect,
+                    radius: 1.5,
+                    corners: None,
+                },
+            ),
+            Shape::new(
+                ShapeId(3),
+                ShapeKind::Rect {
+                    rect,
+                    radius: 0.0,
+                    corners: Some(Corners {
+                        radii: [1.0, 0.0, 2.0, 0.0],
+                        kind: CornerKind::Scallop,
+                        ..Corners::default()
+                    }),
+                },
+            ),
+            // A bowed edge reaches past the rect: no quick box (#2188).
+            Shape::new(
+                ShapeId(4),
+                ShapeKind::Rect {
+                    rect,
+                    radius: 0.0,
+                    corners: Some(Corners {
+                        bulge: [0.5, 0.0, 0.0, 0.0],
+                        ..Corners::default()
+                    }),
+                },
+            ),
+            Shape::new(ShapeId(5), ShapeKind::Ellipse { rect, arc: None }),
+            Shape::new(
+                ShapeId(6),
+                ShapeKind::Ellipse {
+                    rect,
+                    arc: Some(EllipseArc {
+                        start_deg: 10.0,
+                        end_deg: 250.0,
+                        pie: true,
+                        inner: 0.0,
+                    }),
+                },
+            ),
+            Shape::new(
+                ShapeId(7),
+                ShapeKind::Ellipse {
+                    rect,
+                    arc: Some(EllipseArc {
+                        start_deg: 10.0,
+                        end_deg: 250.0,
+                        pie: false,
+                        inner: 0.0,
+                    }),
+                },
+            ),
+            Shape::new(
+                ShapeId(8),
+                ShapeKind::Polygon {
+                    rect,
+                    points: 5,
+                    sharpness: 0.0,
+                    complex: None,
+                    twist: 0.0,
+                    bend: 0.0,
+                },
+            ),
+            Shape::new(
+                ShapeId(9),
+                ShapeKind::Polygon {
+                    rect,
+                    points: 7,
+                    sharpness: 0.5,
+                    complex: None,
+                    twist: 0.2,
+                    bend: 0.3,
+                },
+            ),
+            Shape::new(
+                ShapeId(10),
+                ShapeKind::Path {
+                    path: curve.clone(),
+                    closed: true,
+                },
+            ),
+            Shape::new(
+                ShapeId(11),
+                ShapeKind::Path {
+                    path: curve,
+                    closed: false,
+                },
+            ),
+            Shape::new(
+                ShapeId(12),
+                ShapeKind::Bitmap {
+                    rect,
+                    width_px: 2,
+                    height_px: 2,
+                    png: Vec::new().into(),
+                    fx: None,
+                },
+            ),
+            Shape::new(ShapeId(13), ShapeKind::SymbolInstance { index: 0 }),
+            Shape::new(
+                ShapeId(14),
+                ShapeKind::Table(Table {
+                    rect,
+                    col_widths: vec![5.0, 5.0],
+                    row_heights: vec![6.0],
+                    cells: Vec::new(),
+                    border: None,
+                    cell_fill: Fill::None,
+                    padding: 0.0,
+                    margins: None,
+                    spacing: None,
+                }),
+            ),
+        ];
+        // A clip frame's box is its frame's, a group's its members'.
+        let frame = shapes[0].clone();
+        let clip = Shape::new(
+            ShapeId(15),
+            ShapeKind::ClipFrame {
+                frame: Box::new(frame),
+                contents: Vec::new(),
+            },
+        );
+        let mut moved = shapes[9].clone();
+        moved.transform = Affine::translate((3.0, -2.0)) * Affine::rotate(0.4);
+        let group = Shape::new(
+            ShapeId(16),
+            ShapeKind::Group {
+                children: vec![shapes[0].clone(), moved],
+            },
+        );
+        let transforms = [
+            Affine::IDENTITY,
+            Affine::translate((17.0, -4.0)),
+            Affine::scale_non_uniform(2.0, 0.5),
+            Affine::scale(-1.0),
+            Affine::rotate(0.7),
+            Affine::skew(0.3, -0.1),
+            Affine::translate((5.0, 6.0)) * Affine::rotate(1.1) * Affine::scale_non_uniform(3.0, 0.25),
+        ];
+        for s in shapes.iter().chain([&clip, &group]) {
+            // The local box is the box of the local outline, up to the
+            // wobble of the outline's curve fitting (a rounded corner's
+            // outline starts a hair outside its own rectangle).
+            let from_outline = s.local_path().bounding_box();
+            let local = s.local_bounds();
+            assert!(
+                (local.x0 - from_outline.x0).abs() < 1e-9
+                    && (local.y0 - from_outline.y0).abs() < 1e-9
+                    && (local.x1 - from_outline.x1).abs() < 1e-9
+                    && (local.y1 - from_outline.y1).abs() < 1e-9,
+                "local box of {s:?}: {local:?} vs outline {from_outline:?}"
+            );
+            for t in transforms {
+                let mut m = s.clone();
+                m.transform = t * m.transform;
+                let from_outline = m.page_path().bounding_box();
+                let b = m.bounds();
+                assert!(
+                    (b.x0 - from_outline.x0).abs() < 1e-9
+                        && (b.y0 - from_outline.y0).abs() < 1e-9
+                        && (b.x1 - from_outline.x1).abs() < 1e-9
+                        && (b.y1 - from_outline.y1).abs() < 1e-9,
+                    "{:?} under {t:?}: {b:?} vs outline {from_outline:?}",
+                    s.kind
+                );
+            }
+        }
+    }
+
+    /// Round numbers map exactly: the quick box is bit-for-bit the
+    /// rectangle the shape was given, where the outline's curve fitting
+    /// wobbles by a hair under a move (#3559).
+    #[test]
+    fn the_quick_box_is_exact_on_whole_numbers() {
+        use crate::geometry::{Affine, Rect};
+        let mut s = Shape::new(
+            ShapeId(1),
+            ShapeKind::Ellipse {
+                rect: Rect::new(0.0, 0.0, 10.0, 6.0),
+                arc: None,
+            },
+        );
+        for (t, want) in [
+            (Affine::IDENTITY, Rect::new(0.0, 0.0, 10.0, 6.0)),
+            (Affine::translate((17.0, -4.0)), Rect::new(17.0, -4.0, 27.0, 2.0)),
+            (Affine::scale_non_uniform(2.0, 0.5), Rect::new(0.0, 0.0, 20.0, 3.0)),
+            (Affine::scale(-1.0), Rect::new(-10.0, -6.0, 0.0, 0.0)),
+        ] {
+            s.transform = t;
+            let b = s.bounds();
+            assert_eq!(b, want, "{t:?}");
+            // The outline's own box stays within a hair of it.
+            let from_outline = s.page_path().bounding_box();
+            assert!(
+                (b.x0 - from_outline.x0).abs() < 1e-9
+                    && (b.y0 - from_outline.y0).abs() < 1e-9
+                    && (b.x1 - from_outline.x1).abs() < 1e-9
+                    && (b.y1 - from_outline.y1).abs() < 1e-9,
+                "{t:?}: {b:?} vs outline {from_outline:?}"
+            );
+        }
+    }
+
+    /// The cost of [`Shape::bounds`] against the way it was found before
+    /// (build the page outline, then box it) on a drawing's worth of
+    /// shapes: run with `cargo test --release -p tracedraw-core --
+    /// --ignored bounds_cost --nocapture` (#3559).
+    #[test]
+    #[ignore]
+    fn bounds_cost_against_the_outline_way() {
+        use crate::geometry::{Affine, BezPath, Rect};
+        let mut curve = BezPath::new();
+        curve.move_to((0.0, 0.0));
+        for i in 1..40 {
+            let x = f64::from(i);
+            curve.curve_to((x, 2.0), (x + 0.3, -2.0), (x + 1.0, 0.0));
+        }
+        let mut shapes = Vec::new();
+        for i in 0..80_000u64 {
+            let mut s = match i % 3 {
+                0 => Shape::new(
+                    ShapeId(i),
+                    ShapeKind::Rect {
+                        rect: Rect::new(0.0, 0.0, 10.0, 6.0),
+                        radius: 1.5,
+                        corners: None,
+                    },
+                ),
+                1 => Shape::new(
+                    ShapeId(i),
+                    ShapeKind::Ellipse {
+                        rect: Rect::new(0.0, 0.0, 10.0, 6.0),
+                        arc: None,
+                    },
+                ),
+                _ => Shape::new(
+                    ShapeId(i),
+                    ShapeKind::Path {
+                        path: curve.clone(),
+                        closed: false,
+                    },
+                ),
+            };
+            s.transform = Affine::translate((f64::from(i as u32) * 0.01, 3.0))
+                * Affine::scale_non_uniform(1.5, 0.75);
+            shapes.push(s);
+        }
+        let t = std::time::Instant::now();
+        let mut area = 0.0;
+        for s in &shapes {
+            let b = s.bounds();
+            area += b.width() * b.height();
+        }
+        let quick = t.elapsed();
+        let t = std::time::Instant::now();
+        let mut area2 = 0.0;
+        for s in &shapes {
+            let b = s.page_path().bounding_box();
+            area2 += b.width() * b.height();
+        }
+        let outline = t.elapsed();
+        eprintln!(
+            "80k shapes: bounds() {quick:?}, page_path().bounding_box() {outline:?} ({:.1}x), areas {area:.3} {area2:.3}",
+            outline.as_secs_f64() / quick.as_secs_f64().max(1e-9)
         );
     }
 
