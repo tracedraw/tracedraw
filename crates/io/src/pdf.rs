@@ -2031,7 +2031,7 @@ fn fades_as_one(part: &Shape) -> bool {
 
 /// A transparency mask that is not one level all over (a fountain with
 /// stops of different greys, a pattern, a texture...).
-fn varies(mask: &Fill) -> bool {
+pub(crate) fn varies(mask: &Fill) -> bool {
     match mask {
         Fill::None | Fill::Solid(_) => false,
         Fill::Fountain(ft) => {
