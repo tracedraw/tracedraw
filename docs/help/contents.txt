@@ -81,6 +81,7 @@ effects/index
   effects/copy-and-clone
   effects/mosaics
   effects/symbol-scatter
+  effects/frame-generator
   effects/bitmap-effects
 text/index
   text/adding-text

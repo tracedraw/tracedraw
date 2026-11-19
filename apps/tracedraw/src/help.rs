@@ -239,6 +239,7 @@ pub fn docker_topic(t: DockerTab) -> &'static str {
         DockerTab::PictureMosaic => "effects/mosaics#picture-mosaic",
         DockerTab::ShapeGenerator => "objects/shape-generator",
         DockerTab::SymbolScatter => "effects/symbol-scatter",
+        DockerTab::FrameGenerator => "effects/frame-generator",
         DockerTab::Shelf => "objects/shelf",
         DockerTab::Export => "web-graphics/export-docker",
         DockerTab::Comments => "objects/comments",
