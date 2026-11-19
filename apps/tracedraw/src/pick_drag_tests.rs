@@ -18150,6 +18150,58 @@ fn a_right_click_on_any_toolbar_keeps_the_bar_menu_open() {
     );
 }
 
+/// A right click on a toolbox button opens the toolbox's menu with the
+/// tool's Properties first: it opens Options > Customization > Commands
+/// at that tool, on its Shortcut Keys tab, where a key is given to it
+/// (#3326).
+#[test]
+fn a_right_click_on_a_tool_button_opens_its_properties() {
+    use crate::ui::bars::Bar;
+    let (ctx, mut app, _) = setup();
+    let toolbox = ctx
+        .read_response(egui::Id::new(("bar_background", Bar::Toolbox.salt())))
+        .map(|r| r.rect)
+        .expect("the toolbox");
+    let props = crate::i18n::tr("bars.button_properties");
+    let find = |shapes: &[egui::Shape]| {
+        shapes.iter().find_map(|s| match s {
+            egui::Shape::Text(t) if t.galley.text() == props => Some(t.pos + egui::vec2(4.0, 4.0)),
+            _ => None,
+        })
+    };
+    let at = egui::pos2(toolbox.center().x, toolbox.top() + 30.0);
+    assert!(right_click_menu(&ctx, &mut app, at, false)
+        .iter()
+        .all(|s| *s));
+    let entry = find(&frame_shapes(&ctx, &mut app, Vec::new())).expect("the tool's Properties");
+    let none = Modifiers::NONE;
+    frame(&ctx, &mut app, vec![Event::PointerMoved(entry)], none);
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(entry, true, PointerButton::Primary, none)],
+        none,
+    );
+    frame(
+        &ctx,
+        &mut app,
+        vec![button(entry, false, PointerButton::Primary, none)],
+        none,
+    );
+    assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::Options));
+    assert_eq!(app.options_page, crate::ui::options::OptionsPage::Commands);
+    let picked = app
+        .shortcut_editor
+        .selected
+        .clone()
+        .expect("a command picked");
+    assert!(
+        crate::tools::Tool::ALL.iter().any(|t| t.id() == picked),
+        "{picked} is a tool"
+    );
+    assert!(app.shortcut_editor.keys_tab);
+}
+
 /// A dimension without arrowheads drawn across the page with its tool
 /// and dragged with the Pick tool keeps its selection box around its
 /// line and label, moved sideways and upwards (#996).

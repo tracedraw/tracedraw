@@ -398,6 +398,10 @@ pub struct Settings {
     /// there is a touch screen (#1691).
     #[serde(default = "default_true")]
     pub touch_selection_bar: bool,
+    /// Options > Display: the same bars with a mouse too, where no finger
+    /// touched the screen (#3456). Off at first.
+    #[serde(default)]
+    pub selection_bar_mouse: bool,
     #[serde(default = "default_true")]
     pub preview_page_border: bool,
     /// Options > Document > Page size: how the page's shadow and border
@@ -2352,6 +2356,7 @@ impl Default for Settings {
             node_tracking: false,
             touch_keys: true,
             touch_selection_bar: true,
+            selection_bar_mouse: false,
             preview_page_border: true,
             page_look: PageLook::default(),
             constrain_angle: default_constrain_angle(),

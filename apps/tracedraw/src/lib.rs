@@ -262,6 +262,8 @@ mod touch_modifiers;
 mod touch_taps;
 mod trace;
 mod trace_blend;
+#[cfg(test)]
+mod trace_bench;
 mod trace_fine;
 mod trace_fit;
 mod trace_fonts;

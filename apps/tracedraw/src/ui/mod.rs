@@ -2303,6 +2303,17 @@ mod tests {
         app.select(vec![a]);
         timed(&mut app, Vec::new());
         assert!(app.touch_bar_shown.is_empty() || crate::files::ANDROID);
+        // With a mouse too, when asked (#3456): the column shows with no
+        // finger, and goes when the option is off again.
+        app.settings.selection_bar_mouse = true;
+        timed(&mut app, Vec::new());
+        assert!(app
+            .touch_bar_shown
+            .iter()
+            .any(|(c, _)| *c == BarCommand::Duplicate));
+        app.settings.selection_bar_mouse = false;
+        timed(&mut app, Vec::new());
+        assert!(app.touch_bar_shown.is_empty() || crate::files::ANDROID);
         let on_a = app.view.to_screen(Point::new(35.0, 25.0));
         tap(&mut app, on_a);
         assert_eq!(app.selection, vec![a]);

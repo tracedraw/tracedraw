@@ -1250,6 +1250,17 @@ fn display_page(app: &mut App, ui: &mut Ui) {
             "options.touch_selection_bar",
             "options.touch_selection_bar_tip",
         ));
+        // Android has no mouse of its own: the bars show there already.
+        if !crate::files::ANDROID {
+            ui.checkbox(
+                &mut app.settings.selection_bar_mouse,
+                tr("options.selection_bar_mouse"),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "options.selection_bar_mouse",
+                "options.selection_bar_mouse_tip",
+            ));
+        }
     });
     chrome::section(ui, &tr("options.full_screen_preview"));
     ui.indent("fsp", |ui| {
