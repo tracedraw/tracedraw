@@ -40,6 +40,16 @@ preview counts the curves.
   [Voronoi cells](#voronoi).
 - [[shapegen.kind_stipple]] and [[shapegen.kind_halftone]]: dots and marks
   sized by a picture's tones, see [Pictures as dots](#tones).
+- [[shapegen.kind_spirograph]]: a wheel rolling inside or outside a ring
+  ([[shapegen.spiro_fixed]], [[shapegen.spiro_rolling]],
+  [[shapegen.spiro_pen]]), Lissajous figures, roses and mandalas.
+- [[shapegen.kind_guilloche]]: rings bent by two waves, each turned by the
+  [[shapegen.guil_twist]] so the lines weave, as on banknotes.
+- [[shapegen.kind_fractal]]: a branching tree, the Koch snowflake, the
+  Sierpinski arrowhead, the dragon curve, a plant or your own L-system,
+  see [L-systems](#lsystems).
+- [[shapegen.kind_tiling]]: Penrose rhombs, which never repeat, and star
+  patterns on squares or hexagons shaped by the [[shapegen.tile_angle]].
 
 Generators that make random choices have a [[shapegen.seed]]: the same seed
 always gives the same result, and [[shapegen.new_seed]] picks another one.
@@ -109,3 +119,14 @@ stay inside its outline. Without a selection a round ramp stands in.
   one per ink, each in its own group.
 
 [[shapegen.invert]] puts the marks in the light places instead.
+
+## L-systems {#lsystems}
+
+An L-system starts from the [[shapegen.frac_axiom]] and replaces every
+symbol by its rule, once per level. The result is drawn by a turtle: F, G,
+A and B draw a step, f moves without drawing, + and - turn by the angle,
+[ and ] keep and come back to a place (for branches), | turns round. Write
+the [[shapegen.frac_rules]] as `F=F+F--F+F`, one per line or separated by
+semicolons. [[shapegen.frac_edit]] copies a built-in fractal into a
+custom one to change it. Very deep levels stop growing at 400,000
+symbols.

@@ -100,3 +100,38 @@ the settings) and `ui/shape_gen_docker.rs`. Issues #3412 and #3413.
   cell along each row and join the band's top and bottom edges, thickness
   cell x lerp(min, max, ink). CMYK screens at 15, 75, 0 and 45 degrees,
   filled with 100 % of each ink, grouped per ink.
+
+## Curves and tilings (`shape_gen_curves.rs`)
+
+- Spirograph, fractals: drawn at any size, then scaled to fit the box,
+  centred, keeping proportions.
+- Wheel inside a ring (hypotrochoid): x = (R - r) cos t + d cos((R - r) t /
+  r), y = (R - r) sin t - d sin((R - r) t / r); outside (epitrochoid) with
+  R + r and a minus. t runs 2 pi r' / gcd(R', r') where R' and r' are the
+  radii in tenths of a millimetre (at most 400 turns); samples (|R -+ r| / r
+  + 1) x 48 per turn, joined by Catmull-Rom cubics.
+- Lissajous: (sin(a t + phase), sin(b t)), t to 2 pi. Rose: r = cos(n / d
+  angle) with n / d reduced, angle to pi d when n d is odd, else 2 pi d.
+- Mandala: rings of N petals between r_i and r_(i+1), every other ring
+  turned half a sector; the seed picks each ring's petal (teardrop, lobe
+  or leaf) and width; a circle at each ring's base.
+- Guilloche: ring k radius base_k + A1 sin(w1 a + k twist) + A2 sin(w2 a -
+  2 k twist), base from the inner to the outer radius.
+- Tree: segment, then two branches at -+ angle (times 1 -+ jitter) and
+  length x ratio (times 1 -+ jitter / 2), down the levels.
+- L-systems: presets Koch F--F--F, F=F+F--F+F, 60 degrees; Sierpinski A,
+  A=B-A-B, B=A+B+A, 60; dragon FX, X=X+YF+, Y=-FX-Y, 90; plant X,
+  X=F+[[X]-X]-F[-FX]+X, F=FF, 25. Rules parse as one symbol = text,
+  separated by ; , or new lines; others are skipped. Growth stops at
+  400,000 symbols (the last level that fits is drawn). Each branch or
+  pen-up starts a new open curve.
+- Penrose: a wheel of ten half-rhomb triangles of radius the half diagonal
+  x 1.05, subdivided by the golden ratio until the edge is at most the
+  tile size (at most 11 levels); halves of the same kind sharing a base
+  are joined into rhombs, then cut to the box (Sutherland-Hodgman). Thin
+  rhombs light (E8), thick dark (4E) when filled.
+- Star patterns: square cells of the tile size (or pointy-top hexagons of
+  that edge); from each edge's middle a ray toward each corner at the
+  contact angle to the edge, stopped where it meets the neighbouring
+  edge's ray; segments turned by Rotation about the box's middle and
+  clipped to the box.

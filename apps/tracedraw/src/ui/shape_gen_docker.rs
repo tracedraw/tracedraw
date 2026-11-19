@@ -14,6 +14,7 @@ use crate::shape_gen::{
     TruchetStyle, Warp,
 };
 use crate::shape_gen_cells::{Gradient, HtShape, PointMode};
+use crate::shape_gen_curves::{FractalType, SpiroType, TilingType};
 use crate::theme::Tokens;
 use crate::ui::docker_form::{indented, row, section, wide_button};
 use crate::ui::tips::RichTip;
@@ -1104,11 +1105,291 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                         .rich_tip(crate::ui::tips::keyed("shapegen.invert"));
                 });
             }
+            GenKind::Spirograph => {
+                row(ui, &tr("shapegen.spiro_type"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_spiro",
+                        &mut s.spiro_type,
+                        &SpiroType::ALL,
+                        SpiroType::key,
+                        "shapegen.spiro_type",
+                    );
+                });
+                match s.spiro_type {
+                    SpiroType::Hypotrochoid | SpiroType::Epitrochoid => {
+                        row(ui, &tr("shapegen.spiro_fixed"), |ui| {
+                            slider(
+                                ui,
+                                &mut s.spiro_fixed,
+                                1.0..=200.0,
+                                1,
+                                "",
+                                "shapegen.spiro_fixed",
+                            )
+                        });
+                        row(ui, &tr("shapegen.spiro_rolling"), |ui| {
+                            slider(
+                                ui,
+                                &mut s.spiro_rolling,
+                                0.5..=200.0,
+                                1,
+                                "",
+                                "shapegen.spiro_rolling",
+                            )
+                        });
+                        row(ui, &tr("shapegen.spiro_pen"), |ui| {
+                            slider(
+                                ui,
+                                &mut s.spiro_pen,
+                                0.0..=200.0,
+                                1,
+                                "",
+                                "shapegen.spiro_pen",
+                            )
+                        });
+                    }
+                    SpiroType::Lissajous => {
+                        row(ui, &tr("shapegen.liss_a"), |ui| {
+                            count(ui, &mut s.liss_a, 1..=30, "shapegen.liss_a")
+                        });
+                        row(ui, &tr("shapegen.liss_b"), |ui| {
+                            count(ui, &mut s.liss_b, 1..=30, "shapegen.liss_b")
+                        });
+                        row(ui, &tr("shapegen.liss_phase"), |ui| {
+                            slider(
+                                ui,
+                                &mut s.liss_phase,
+                                -180.0..=180.0,
+                                0,
+                                "\u{b0}",
+                                "shapegen.liss_phase",
+                            )
+                        });
+                    }
+                    SpiroType::Rose => {
+                        row(ui, &tr("shapegen.rose_n"), |ui| {
+                            count(ui, &mut s.rose_n, 1..=30, "shapegen.rose_n")
+                        });
+                        row(ui, &tr("shapegen.rose_d"), |ui| {
+                            count(ui, &mut s.rose_d, 1..=30, "shapegen.rose_d")
+                        });
+                    }
+                    SpiroType::Mandala => {
+                        row(ui, &tr("shapegen.mandala_fold"), |ui| {
+                            count(ui, &mut s.mandala_fold, 3..=64, "shapegen.mandala_fold")
+                        });
+                        row(ui, &tr("shapegen.mandala_rings"), |ui| {
+                            count(ui, &mut s.mandala_rings, 1..=12, "shapegen.mandala_rings")
+                        });
+                        seed_row(ui, s);
+                    }
+                }
+            }
+            GenKind::Guilloche => {
+                row(ui, &tr("shapegen.guil_lines"), |ui| {
+                    count(ui, &mut s.guil_lines, 1..=500, "shapegen.guil_lines")
+                });
+                row(ui, &tr("shapegen.min_radius"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.guil_inner,
+                        0.0,
+                        2500.0,
+                        "shapegen.min_radius",
+                    )
+                });
+                row(ui, &tr("shapegen.max_radius"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.guil_outer,
+                        0.0,
+                        2500.0,
+                        "shapegen.max_radius",
+                    )
+                });
+                row(ui, &tr("shapegen.guil_waves"), |ui| {
+                    count(ui, &mut s.guil_waves, 0..=200, "shapegen.guil_waves")
+                });
+                row(ui, &tr("shapegen.amplitude"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.guil_amp,
+                        0.0,
+                        500.0,
+                        "shapegen.amplitude",
+                    )
+                });
+                row(ui, &tr("shapegen.guil_waves2"), |ui| {
+                    count(ui, &mut s.guil_waves2, 0..=200, "shapegen.guil_waves2")
+                });
+                row(ui, &tr("shapegen.guil_amp2"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.guil_amp2,
+                        0.0,
+                        500.0,
+                        "shapegen.guil_amp2",
+                    )
+                });
+                row(ui, &tr("shapegen.guil_twist"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.guil_twist,
+                        -90.0..=90.0,
+                        1,
+                        "\u{b0}",
+                        "shapegen.guil_twist",
+                    )
+                });
+            }
+            GenKind::Fractal => {
+                row(ui, &tr("shapegen.frac_type"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_frac",
+                        &mut s.frac_type,
+                        &FractalType::ALL,
+                        FractalType::key,
+                        "shapegen.frac_type",
+                    );
+                });
+                row(ui, &tr("shapegen.frac_depth"), |ui| {
+                    count(ui, &mut s.frac_depth, 0..=14, "shapegen.frac_depth")
+                });
+                if matches!(s.frac_type, FractalType::Tree | FractalType::Custom) {
+                    row(ui, &tr("shapegen.frac_angle"), |ui| {
+                        slider(
+                            ui,
+                            &mut s.frac_angle,
+                            -180.0..=180.0,
+                            1,
+                            "\u{b0}",
+                            "shapegen.frac_angle",
+                        )
+                    });
+                }
+                match s.frac_type {
+                    FractalType::Tree => {
+                        row(ui, &tr("shapegen.frac_ratio"), |ui| {
+                            slider(
+                                ui,
+                                &mut s.frac_ratio,
+                                0.3..=0.95,
+                                2,
+                                "",
+                                "shapegen.frac_ratio",
+                            )
+                        });
+                        row(ui, &tr("shapegen.frac_jitter"), |ui| {
+                            slider(
+                                ui,
+                                &mut s.frac_jitter,
+                                0.0..=100.0,
+                                0,
+                                " %",
+                                "shapegen.frac_jitter",
+                            )
+                        });
+                        if s.frac_jitter > 0.0 {
+                            seed_row(ui, s);
+                        }
+                    }
+                    FractalType::Custom => {
+                        row(ui, &tr("shapegen.frac_axiom"), |ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut s.frac_axiom).desired_width(150.0),
+                            )
+                            .rich_tip(crate::ui::tips::keyed("shapegen.frac_axiom"));
+                        });
+                        row(ui, &tr("shapegen.frac_rules"), |ui| {
+                            ui.add(
+                                egui::TextEdit::multiline(&mut s.frac_rules)
+                                    .desired_rows(2)
+                                    .desired_width(150.0),
+                            )
+                            .rich_tip(crate::ui::tips::keyed("shapegen.frac_rules"));
+                        });
+                    }
+                    t => {
+                        if ui
+                            .button(tr("shapegen.frac_edit"))
+                            .rich_tip(crate::ui::tips::keyed("shapegen.frac_edit"))
+                            .clicked()
+                        {
+                            let (a, r, ang) = crate::shape_gen_curves::preset_text(t);
+                            s.frac_axiom = a;
+                            s.frac_rules = r;
+                            s.frac_angle = ang;
+                            s.frac_type = FractalType::Custom;
+                        }
+                    }
+                }
+            }
+            GenKind::Tiling => {
+                row(ui, &tr("shapegen.tile_type"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_tiling",
+                        &mut s.tile_type,
+                        &TilingType::ALL,
+                        TilingType::key,
+                        "shapegen.tile_type",
+                    );
+                });
+                row(ui, &tr("shapegen.tile"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.tile_size,
+                        0.2,
+                        1000.0,
+                        "shapegen.tile",
+                    )
+                });
+                if s.tile_type == TilingType::Penrose {
+                    indented(ui, |ui| {
+                        ui.checkbox(&mut s.tile_fill, tr("shapegen.tile_fill"))
+                            .rich_tip(crate::ui::tips::keyed("shapegen.tile_fill"));
+                    });
+                } else {
+                    row(ui, &tr("shapegen.tile_angle"), |ui| {
+                        slider(
+                            ui,
+                            &mut s.tile_angle,
+                            20.0..=85.0,
+                            1,
+                            "\u{b0}",
+                            "shapegen.tile_angle",
+                        )
+                    });
+                    row(ui, &tr("shapegen.rotation"), |ui| {
+                        slider(
+                            ui,
+                            &mut s.tile_rotation,
+                            -180.0..=180.0,
+                            1,
+                            "\u{b0}",
+                            "shapegen.rotation",
+                        )
+                    });
+                }
+            }
         }
         if !matches!(
             s.kind,
             GenKind::IsoBlocks | GenKind::Tessellation | GenKind::Stipple | GenKind::Halftone
-        ) && !(s.kind == GenKind::Truchet && s.truchet_style == TruchetStyle::Filled)
+        ) && !(s.kind == GenKind::Tiling && s.tile_fill && s.tile_type == TilingType::Penrose)
+            && !(s.kind == GenKind::Truchet && s.truchet_style == TruchetStyle::Filled)
             && !(s.kind == GenKind::DotGrid && s.filled)
         {
             row(ui, &tr("shapegen.line_width"), |ui| {

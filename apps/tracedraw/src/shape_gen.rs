@@ -47,10 +47,14 @@ pub enum GenKind {
     Voronoi,
     Stipple,
     Halftone,
+    Spirograph,
+    Guilloche,
+    Fractal,
+    Tiling,
 }
 
 impl GenKind {
-    pub const ALL: [GenKind; 11] = [
+    pub const ALL: [GenKind; 15] = [
         GenKind::DotGrid,
         GenKind::Truchet,
         GenKind::Tessellation,
@@ -62,6 +66,10 @@ impl GenKind {
         GenKind::Voronoi,
         GenKind::Stipple,
         GenKind::Halftone,
+        GenKind::Spirograph,
+        GenKind::Guilloche,
+        GenKind::Fractal,
+        GenKind::Tiling,
     ];
     pub fn key(self) -> &'static str {
         match self {
@@ -76,6 +84,10 @@ impl GenKind {
             GenKind::Voronoi => "shapegen.kind_voronoi",
             GenKind::Stipple => "shapegen.kind_stipple",
             GenKind::Halftone => "shapegen.kind_halftone",
+            GenKind::Spirograph => "shapegen.kind_spirograph",
+            GenKind::Guilloche => "shapegen.kind_guilloche",
+            GenKind::Fractal => "shapegen.kind_fractal",
+            GenKind::Tiling => "shapegen.kind_tiling",
         }
     }
     /// Whether the generator works from the panel's picked selection (an
@@ -388,6 +400,62 @@ pub struct ShapeGenSettings {
     pub ht_max: f64,
     /// Four screens, one per ink.
     pub ht_cmyk: bool,
+
+    // Spirograph.
+    pub spiro_type: crate::shape_gen_curves::SpiroType,
+    /// Fixed and rolling circle radii and the pen's distance from the
+    /// rolling circle's middle, mm (the drawing is then fitted).
+    pub spiro_fixed: f64,
+    pub spiro_rolling: f64,
+    pub spiro_pen: f64,
+    /// Lissajous frequencies, 1 to 30, and phase, degrees.
+    pub liss_a: u32,
+    pub liss_b: u32,
+    pub liss_phase: f64,
+    /// Rose petals n / d, 1 to 30 each.
+    pub rose_n: u32,
+    pub rose_d: u32,
+    /// Mandala symmetry, 3 to 64, and rings, 1 to 12.
+    pub mandala_fold: u32,
+    pub mandala_rings: u32,
+
+    // Guilloche.
+    pub guil_lines: u32,
+    /// mm.
+    pub guil_inner: f64,
+    pub guil_outer: f64,
+    /// Waves round a ring, 0 to 200, and their height, mm.
+    pub guil_waves: u32,
+    pub guil_amp: f64,
+    pub guil_waves2: u32,
+    pub guil_amp2: f64,
+    /// Degrees each ring's waves are turned from the last.
+    pub guil_twist: f64,
+
+    // Fractal.
+    pub frac_type: crate::shape_gen_curves::FractalType,
+    /// Levels, 0 to 14.
+    pub frac_depth: u32,
+    /// Turn, degrees.
+    pub frac_angle: f64,
+    /// Tree: each branch's length against its parent's, 0.3 to 0.95.
+    pub frac_ratio: f64,
+    /// Tree: random change of angle and length, 0 to 100 %.
+    pub frac_jitter: f64,
+    /// Custom L-system: axiom and rules (`F=F+F;X=...`).
+    pub frac_axiom: String,
+    pub frac_rules: String,
+
+    // Tiling.
+    pub tile_type: crate::shape_gen_curves::TilingType,
+    /// Edge of a rhomb or cell, mm.
+    pub tile_size: f64,
+    /// Star patterns: angle between a ray and its edge, degrees.
+    pub tile_angle: f64,
+    /// Star patterns: grid rotation, degrees.
+    pub tile_rotation: f64,
+    /// Penrose: thin and thick rhombs filled light and dark.
+    pub tile_fill: bool,
 }
 
 impl Default for ShapeGenSettings {
@@ -478,6 +546,37 @@ impl Default for ShapeGenSettings {
             ht_min: 0.0,
             ht_max: 110.0,
             ht_cmyk: false,
+            spiro_type: crate::shape_gen_curves::SpiroType::Hypotrochoid,
+            spiro_fixed: 40.0,
+            spiro_rolling: 15.0,
+            spiro_pen: 12.0,
+            liss_a: 3,
+            liss_b: 2,
+            liss_phase: 90.0,
+            rose_n: 5,
+            rose_d: 1,
+            mandala_fold: 12,
+            mandala_rings: 4,
+            guil_lines: 40,
+            guil_inner: 20.0,
+            guil_outer: 46.0,
+            guil_waves: 18,
+            guil_amp: 3.0,
+            guil_waves2: 5,
+            guil_amp2: 2.0,
+            guil_twist: 4.0,
+            frac_type: crate::shape_gen_curves::FractalType::Tree,
+            frac_depth: 6,
+            frac_angle: 25.0,
+            frac_ratio: 0.72,
+            frac_jitter: 0.0,
+            frac_axiom: "F".to_string(),
+            frac_rules: "F=F[+F]F[-F]F".to_string(),
+            tile_type: crate::shape_gen_curves::TilingType::Penrose,
+            tile_size: 8.0,
+            tile_angle: 67.5,
+            tile_rotation: 0.0,
+            tile_fill: false,
         }
     }
 }
@@ -658,6 +757,38 @@ impl ShapeGenSettings {
         s.ht_angle = clampf(s.ht_angle, -360.0, 360.0, d.ht_angle);
         s.ht_min = clampf(s.ht_min, 0.0, 200.0, 0.0);
         s.ht_max = clampf(s.ht_max, 0.0, 200.0, d.ht_max).max(s.ht_min);
+        s.spiro_fixed = clampf(s.spiro_fixed, 1.0, 1000.0, d.spiro_fixed);
+        s.spiro_rolling = clampf(s.spiro_rolling, 0.5, 1000.0, d.spiro_rolling);
+        s.spiro_pen = clampf(s.spiro_pen, 0.0, 1000.0, d.spiro_pen);
+        s.liss_a = s.liss_a.clamp(1, 30);
+        s.liss_b = s.liss_b.clamp(1, 30);
+        s.liss_phase = clampf(s.liss_phase, -360.0, 360.0, d.liss_phase);
+        s.rose_n = s.rose_n.clamp(1, 30);
+        s.rose_d = s.rose_d.clamp(1, 30);
+        s.mandala_fold = s.mandala_fold.clamp(3, 64);
+        s.mandala_rings = s.mandala_rings.clamp(1, 12);
+        s.guil_lines = s.guil_lines.clamp(1, 500);
+        s.guil_inner = clampf(s.guil_inner, 0.0, 2500.0, d.guil_inner);
+        s.guil_outer = clampf(s.guil_outer, 0.0, 2500.0, d.guil_outer);
+        s.guil_waves = s.guil_waves.min(200);
+        s.guil_amp = clampf(s.guil_amp, 0.0, 500.0, d.guil_amp);
+        s.guil_waves2 = s.guil_waves2.min(200);
+        s.guil_amp2 = clampf(s.guil_amp2, 0.0, 500.0, d.guil_amp2);
+        s.guil_twist = clampf(s.guil_twist, -90.0, 90.0, d.guil_twist);
+        s.frac_depth = s.frac_depth.min(14);
+        s.frac_angle = clampf(s.frac_angle, -180.0, 180.0, d.frac_angle);
+        s.frac_ratio = clampf(s.frac_ratio, 0.3, 0.95, d.frac_ratio);
+        s.frac_jitter = clampf(s.frac_jitter, 0.0, 100.0, 0.0);
+        if s.frac_type == crate::shape_gen_curves::FractalType::Tree {
+            // Two branches per level: 2^15 segments at most.
+            s.frac_depth = s.frac_depth.min(14);
+        }
+        s.frac_axiom = s.frac_axiom.chars().take(200).collect();
+        s.frac_rules = s.frac_rules.chars().take(1000).collect();
+        s.tile_size = clampf(s.tile_size, (side / 200.0).max(0.2), 1000.0, d.tile_size)
+            .max((side / 200.0).max(0.2));
+        s.tile_angle = clampf(s.tile_angle, 20.0, 85.0, d.tile_angle);
+        s.tile_rotation = clampf(s.tile_rotation, -360.0, 360.0, 0.0);
         s
     }
 }
@@ -678,6 +809,10 @@ pub fn generate(settings: &ShapeGenSettings) -> Generated {
         GenKind::Voronoi => crate::shape_gen_cells::voronoi(&s, &mut out),
         GenKind::Stipple => crate::shape_gen_cells::stipple(&s, &mut out),
         GenKind::Halftone => crate::shape_gen_cells::halftone(&s, &mut out),
+        GenKind::Spirograph => crate::shape_gen_curves::spirograph(&s, &mut out),
+        GenKind::Guilloche => crate::shape_gen_curves::guilloche(&s, &mut out),
+        GenKind::Fractal => crate::shape_gen_curves::fractal(&s, &mut out),
+        GenKind::Tiling => crate::shape_gen_curves::tiling(&s, &mut out),
     }
     out
 }
