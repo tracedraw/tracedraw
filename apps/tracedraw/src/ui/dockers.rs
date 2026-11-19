@@ -4365,6 +4365,23 @@ pub fn kind_id(k: &ShapeKind) -> &'static str {
     }
 }
 
+/// What an object is, with what makes it more than its kind: a
+/// symmetry (#2997) or an object clone (#2877).
+pub fn tagged_kind(s: &tracedraw_core::document::Shape, kind: String) -> String {
+    let mut kind = kind;
+    if s
+        .effects
+        .iter()
+        .any(|e| matches!(e, tracedraw_core::live::Effect::Symmetry { .. }))
+    {
+        kind = trf("status.symmetry_kind", &[("k", &kind)]);
+    }
+    if crate::object_clone::clone_link(&s.data).is_some() {
+        kind = trf("status.clone_kind", &[("k", &kind)]);
+    }
+    kind
+}
+
 pub fn kind_name(k: &ShapeKind) -> String {
     match k {
         ShapeKind::Rect { .. } => tr("kind.rectangle"),

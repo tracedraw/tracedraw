@@ -502,6 +502,11 @@ pub struct Settings {
     /// (off by default: the point stays under the pointer).
     #[serde(default)]
     pub wheel_zoom_centers: bool,
+    /// Options > Tools > Zoom/Pan > Ctrl+wheel zooms: while the wheel
+    /// zooms, Ctrl+wheel zooms too instead of scrolling sideways (off by
+    /// default, #3473; #3087).
+    #[serde(default)]
+    pub ctrl_wheel_zooms: bool,
     /// Options > Tools > Zoom/Pan > Smooth zoom: a wheel notch zooms in
     /// a short glide, shorter for faster wheel turns (on by default);
     /// off, each notch zooms at once (#1648, #895).
@@ -2310,6 +2315,7 @@ impl Default for Settings {
             zoom_right_click_out: true,
             zoom_relative_1to1: true,
             wheel_zoom_centers: false,
+            ctrl_wheel_zooms: false,
             smooth_zoom: true,
             light_zoom: false,
             benchmarks: Vec::new(),

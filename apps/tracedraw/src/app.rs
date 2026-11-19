@@ -7919,6 +7919,26 @@ impl App {
         self.run(Command::SwapColors { shapes });
     }
 
+    /// Object > Thicker Outline and Thinner Outline (#2905): the
+    /// selection's outline one step up or down the outline width list,
+    /// as the wheel over the width box steps it, in the outline's unit.
+    /// Thinner stops at the hairline (it never takes the outline off);
+    /// thicker gives an object without an outline a hairline. Each object
+    /// keeps its own colour and the rest of its outline.
+    pub fn step_outline_width(&mut self, up: bool) {
+        if self.selection.is_empty() {
+            return;
+        }
+        let width = self
+            .first_paint_target()
+            .and_then(|s| s.stroke.as_ref().map(|k| k.width));
+        if let Some(Some(w)) =
+            crate::ui::propbar::outline_width_step(width, up, self.outline_units())
+        {
+            self.apply_outline_width(w);
+        }
+    }
+
     pub fn apply_outline_width(&mut self, width: f64) {
         let shapes = self.selected_shapes();
         if shapes.is_empty() {

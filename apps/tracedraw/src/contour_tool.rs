@@ -392,7 +392,7 @@ impl App {
             let has = s.effects.iter().any(is_contour);
             if (!has && !add)
                 || (add && has)
-                || matches!(s.kind, ShapeKind::Bitmap { .. } | ShapeKind::Group { .. })
+                || matches!(s.kind, ShapeKind::Bitmap { .. })
             {
                 continue;
             }
@@ -448,7 +448,7 @@ impl App {
         if self
             .doc()
             .find_shape(id)
-            .is_none_or(|s| matches!(s.kind, ShapeKind::Bitmap { .. } | ShapeKind::Group { .. }))
+            .is_none_or(|s| matches!(s.kind, ShapeKind::Bitmap { .. }))
         {
             return false;
         }
@@ -594,6 +594,40 @@ mod tests {
         let shape = app.doc().find_shape(id).expect("square");
         let ev = tracedraw_core::live::evaluate(shape);
         assert!(!ev.below.is_empty() && !ev.above.is_empty());
+    }
+
+    /// A group takes a contour (#3245): Apply on a selected group puts
+    /// the contour on the group, drawn round its objects, and a drag on
+    /// the group starts one.
+    #[test]
+    fn a_group_takes_a_contour() {
+        let mut app = App::headless();
+        let a = square(&mut app);
+        let b = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(30.0, 0.0, 50.0, 20.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("second");
+        app.select(vec![a, b]);
+        app.group_selection();
+        let g = app.selection[0];
+        assert!(matches!(
+            app.doc().find_shape(g).expect("group").kind,
+            ShapeKind::Group { .. }
+        ));
+        app.contour.direction = ContourDirection::Outside;
+        app.add_contour();
+        assert!(contour_of(&app, g).is_some(), "the group has a contour");
+        let shape = app.doc().find_shape(g).expect("group");
+        let ev = tracedraw_core::live::evaluate(shape);
+        assert!(!ev.below.is_empty(), "drawn round the group");
+        // Cleared, then started again by a drag on the group.
+        app.clear_contour();
+        assert!(contour_of(&app, g).is_none());
+        assert!(app.begin_contour(Point::new(10.0, 10.0)));
+        assert_eq!(app.selection, vec![g]);
     }
 
     #[test]

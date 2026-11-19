@@ -36,7 +36,7 @@
 
 - 使用任何工具時，按住滑鼠中鍵並拖曳。
 - 選擇 [[tool.pan]] 工具（<kbd>H</kbd>）並拖曳。
-- <kbd>Ctrl</kbd>+滾輪可上下捲動，<kbd>Alt</kbd>+滾輪可左右捲動。
+- <kbd>Ctrl</kbd>+滾輪與 <kbd>Shift</kbd>+滾輪可左右捲動，<kbd>Alt</kbd>+滾輪可上下捲動。若要以 <kbd>Ctrl</kbd>+滾輪縮放，請在 [[options.zoom_pan]] 頁面勾選 [[options.ctrl_wheel_zooms]]。
 - 使用捲軸，其範圍涵蓋頁面及其周圍一個頁面大小的區域。
 - 按住捲軸之間角落的「導覽器」按鈕或 <kbd>N</kbd> 鍵，並將指標移到頁面縮圖上。[[menu.view > menu.view.navigator]] 會讓縮圖保持開啟直到按一下：按一下縮圖即前往該處，按其他地方或 <kbd>Esc</kbd> 則關閉。
 - <kbd>PgUp</kbd> 和 <kbd>PgDn</kbd> 可前往上一頁和下一頁。

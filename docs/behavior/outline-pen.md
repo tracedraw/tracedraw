@@ -169,6 +169,15 @@ the Outline Pen dialog offer one list, round values in that unit: points 0.25, 0
 `ui::outline_pen::tests::the_width_list_matches_the_property_bar`
 checks the dialog's list is the same (#967).
 
+Object > Thicker Outline and Thinner Outline step the selection's
+outline one width up or down that list, as the wheel over the width box
+does (past the widest in steps of the last gap). They have no key at
+first; one is given in Options > Customization > Commands. Thinner
+stops at the hairline and never takes the outline off; Thicker gives an
+object without an outline a hairline. Each object keeps its colour and
+the rest of its outline, in one undo step (#2905,
+`ui::propbar::tests::outline_width_commands_step_the_selection`).
+
 ## Mitre limit
 
 A mitred corner sharper than the mitre limit angle is bevelled. The

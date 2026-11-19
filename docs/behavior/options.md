@@ -102,7 +102,9 @@ when zooming with the mouse wheel, off: a wheel notch first brings the
 spot under the pointer to the middle of the canvas and moves the pointer
 there (not in the browser, which cannot move it), then zooms about the
 middle, plain wheel or Ctrl+wheel as the mouse wheel action says
-(`settings.wheel_zoom_centers`); mouse wheel action; Calibrate Zoom... opens the ruler
+(`settings.wheel_zoom_centers`); mouse wheel action, and under it Ctrl+wheel
+zooms (off: Ctrl+wheel scrolls sideways while the wheel zooms; on, it
+zooms too, #3473, `settings.ctrl_wheel_zooms`); Calibrate Zoom... opens the ruler
 calibration on the Display page; Pan tool section: right mouse button of
 the Pan tool, zoom out or context menu (at first,
 `settings.pan_right_click_out`)), Freehand/Bézier (Freehand

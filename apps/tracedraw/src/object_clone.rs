@@ -697,6 +697,54 @@ mod tests {
         assert_eq!(app.status, tr("status.clone_of_clone"));
     }
 
+    /// The status bar and the Objects docker say what a clone, its master
+    /// and a symmetry are (#2877, #2997): before, each read as the plain
+    /// object it is made of.
+    #[test]
+    fn clones_masters_and_symmetries_say_what_they_are() {
+        use crate::i18n::trf;
+        let mut app = App::headless();
+        let master = rect(&mut app, 10.0);
+        let kind = crate::ui::dockers::kind_name(&app.doc().find_shape(master).expect("m").kind);
+        let a = cloned(&mut app, master);
+        let _b = cloned(&mut app, master);
+        app.select(vec![a]);
+        let info = crate::ui::status::object_info(&app);
+        assert!(
+            info.contains(&trf("status.clone_kind", &[("k", &kind)])),
+            "{info}"
+        );
+        let clone = app.doc().find_shape(a).expect("clone").clone();
+        assert_eq!(
+            crate::ui::objects_docker::object_label(&clone),
+            trf("status.clone_kind", &[("k", &kind)])
+        );
+        app.select(vec![master]);
+        let info = crate::ui::status::object_info(&app);
+        assert!(info.contains("(2"), "two clones follow the master: {info}");
+        // A symmetry.
+        let other = rect(&mut app, 80.0);
+        app.run(Command::SetEffects {
+            shape: other,
+            effects: vec![tracedraw_core::live::Effect::Symmetry {
+                center: tracedraw_core::geometry::Point::new(100.0, 20.0),
+                angle: 90.0,
+                lines: 1,
+            }],
+        });
+        app.select(vec![other]);
+        let info = crate::ui::status::object_info(&app);
+        assert!(
+            info.contains(&trf("status.symmetry_kind", &[("k", &kind)])),
+            "{info}"
+        );
+        let sym = app.doc().find_shape(other).expect("sym").clone();
+        assert_eq!(
+            crate::ui::objects_docker::object_label(&sym),
+            trf("status.symmetry_kind", &[("k", &kind)])
+        );
+    }
+
     #[test]
     fn a_group_clone_follows_the_group_with_ids_of_its_own() {
         let mut app = App::headless();

@@ -22,7 +22,9 @@ Com o painel:
 
 ![O painel Contorno](../../img/effects-contour.png)
 
-Grupos e bitmaps não recebem contorno concêntrico.
+Um grupo recebe um contorno concêntrico em volta de todos os seus objetos
+juntos, nas cores do primeiro objeto. Bitmaps não recebem contorno
+concêntrico.
 
 ## Alças no desenho {#handles}
 

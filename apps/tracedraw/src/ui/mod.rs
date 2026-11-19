@@ -1068,7 +1068,8 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
     let painter = ui.painter_at(canvas_rect);
 
     // Wheel: with the default setting the wheel zooms about the
-    // pointer, Ctrl+wheel and Shift+wheel scroll horizontally and
+    // pointer, Ctrl+wheel and Shift+wheel scroll horizontally (Ctrl+wheel
+    // zooms with Ctrl+wheel zooms ticked, #3473) and
     // Alt+wheel vertically (#3087); with the scroll setting the wheel scrolls,
     // Shift+wheel horizontally and Ctrl+wheel zooms. Pinch zooms.
     // Edit Fill and Outline Pen leave the wheel to the drawing outside
@@ -1195,8 +1196,12 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
             // Ctrl+wheel scrolls sideways (#3087): egui makes a mouse
             // wheel's turn with Ctrl a zoom, spread over a few frames, and
             // the drawing zoomed as with the plain wheel. A touchpad's
-            // fine steps with Ctrl (a pinch on some systems) still zoom.
-            let ctrl_pans = app.settings.wheel_zooms && mods.ctrl && !pinched;
+            // fine steps with Ctrl (a pinch on some systems) still zoom,
+            // and so does every Ctrl+wheel with Ctrl+wheel zooms (#3473).
+            let ctrl_pans = app.settings.wheel_zooms
+                && !app.settings.ctrl_wheel_zooms
+                && mods.ctrl
+                && !pinched;
             let pan_id = egui::Id::new("ctrl_wheel_pans");
             if ctrl_pans && wheel_points != egui::Vec2::ZERO {
                 ui.ctx().data_mut(|d| d.insert_temp(pan_id, wheel_notched));

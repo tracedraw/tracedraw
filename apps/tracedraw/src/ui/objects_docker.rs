@@ -170,7 +170,7 @@ enum Look {
 pub fn object_label(s: &Shape) -> String {
     match s.name.as_deref().map(str::trim) {
         Some(n) if !n.is_empty() => n.to_string(),
-        _ => kind_name(&s.kind),
+        _ => crate::ui::dockers::tagged_kind(s, kind_name(&s.kind)),
     }
 }
 

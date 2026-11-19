@@ -158,6 +158,20 @@ pub fn object_info(app: &App) -> String {
             if app.is_effect_clone(s.id) {
                 kind = format!("{kind} ({})", tr("status.effect_clone"));
             }
+            // A symmetry and an object clone say so, and a clone's master
+            // how many clones follow it (#2997, #2877).
+            kind = crate::ui::dockers::tagged_kind(s, kind);
+            let clones = app
+                .object_clones()
+                .iter()
+                .filter(|(_, m)| *m == s.id)
+                .count();
+            if clones > 0 {
+                kind = trf(
+                    "status.clone_master_kind",
+                    &[("k", &kind), ("n", &clones.to_string())],
+                );
+            }
             if tracedraw_core::linked_text::link_of(s).is_some() {
                 let n = app.doc().content_linked_with(s.id).len();
                 if n > 0 {

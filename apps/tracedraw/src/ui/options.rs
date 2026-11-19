@@ -962,7 +962,9 @@ fn highlight_setting(app: &mut App, ui: &mut Ui, from: usize) {
 /// A label right-aligned in a grid's first column.
 pub(crate) fn row_label(ui: &mut Ui, text: &str) {
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        ui.label(text);
+        // A drag on the label slides the number field of its row (#3044).
+        let resp = ui.add(egui::Label::new(text).sense(egui::Sense::DRAG));
+        crate::ui::field::label_slides(ui, &resp);
     });
 }
 
@@ -4588,6 +4590,18 @@ fn zoom_pan_page(app: &mut App, ui: &mut Ui) {
             "options.wheel_scroll",
             "options.wheel_scroll_tip",
         ));
+        // Ctrl+wheel zooms like the plain wheel instead of scrolling
+        // sideways (#3473).
+        ui.add_enabled_ui(app.settings.wheel_zooms, |ui| {
+            ui.checkbox(
+                &mut app.settings.ctrl_wheel_zooms,
+                tr("options.ctrl_wheel_zooms"),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "options.ctrl_wheel_zooms",
+                "options.ctrl_wheel_zooms_tip",
+            ));
+        });
     });
     ui.separator();
     // The ruler calibration lives on the Display page; this opens it there.

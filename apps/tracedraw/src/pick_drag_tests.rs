@@ -29854,6 +29854,54 @@ fn ctrl_and_shift_wheel_scroll_sideways_alt_wheel_up_and_down() {
     assert!(app.view.zoom > zoom * 1.1);
 }
 
+/// Options > Tools > Zoom/Pan > Ctrl+wheel zooms (#3473): ticked, a
+/// Ctrl+wheel turn zooms about the pointer as the plain wheel does,
+/// without scrolling; unticked it scrolls sideways (#3087).
+#[test]
+fn ctrl_wheel_zooms_when_the_option_is_ticked() {
+    let (ctx, mut app, _) = setup();
+    assert!(app.settings.wheel_zooms && !app.settings.ctrl_wheel_zooms);
+    app.settings.ctrl_wheel_zooms = true;
+    let at = Pos2::new(700.0, 500.0);
+    let mut t = 10.0;
+    let mut step = |app: &mut App, events: Vec<Event>, modifiers: Modifiers| {
+        t += 1.0 / 60.0;
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                Pos2::ZERO,
+                egui::vec2(1600.0, 1000.0),
+            )),
+            events: std::iter::once(Event::ModifiersChanged(modifiers))
+                .chain(events)
+                .collect(),
+            time: Some(t),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+        out.textures_delta.clear();
+    };
+    step(&mut app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+    step(&mut app, vec![Event::PointerMoved(at)], Modifiers::NONE);
+    let zoom = app.view.zoom;
+    let under = app.view.to_page(at);
+    let wheel = Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: egui::vec2(0.0, 1.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::CTRL,
+    };
+    step(&mut app, vec![wheel], Modifiers::CTRL);
+    for _ in 0..30 {
+        step(&mut app, Vec::new(), Modifiers::CTRL);
+    }
+    assert!(app.view.zoom > zoom * 1.01, "zoomed in: {zoom} -> {}", app.view.zoom);
+    let still = app.view.to_page(at);
+    assert!(
+        (still.x - under.x).abs() < 1e-2 && (still.y - under.y).abs() < 1e-2,
+        "about the pointer: {under:?} -> {still:?}"
+    );
+}
+
 /// The steps of #3349 with the mouse and keys: Ctrl+D, the copy moved,
 /// turned or scaled by dragging (or nudged with the arrows), then Ctrl+D
 /// again and again: each new copy takes the same step from the last,

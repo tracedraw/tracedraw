@@ -57,8 +57,10 @@ Double-cliquez sur le bouton de l'outil pour zoomer sur tous les objets.
 - Maintenez le bouton du milieu de la souris et faites glisser, avec
   n'importe quel outil.
 - Choisissez l'outil [[tool.pan]] (<kbd>H</kbd>) et faites glisser.
-- <kbd>Ctrl</kbd>+molette fait défiler verticalement, <kbd>Alt</kbd>+molette
-  horizontalement.
+- <kbd>Ctrl</kbd>+molette et <kbd>Maj</kbd>+molette font défiler
+  horizontalement, <kbd>Alt</kbd>+molette verticalement. Pour zoomer avec
+  <kbd>Ctrl</kbd>+molette, cochez [[options.ctrl_wheel_zooms]] dans la page
+  [[options.zoom_pan]].
 - Utilisez les barres de défilement, qui couvrent la page et une taille de
   page autour d'elle.
 - Maintenez le bouton Navigateur, dans le coin entre les barres de

@@ -21,7 +21,8 @@ With the panel:
 
 ![The Contour panel](../../img/effects-contour.png)
 
-Groups and bitmaps cannot take a contour.
+A group takes one contour round all its objects together, in the colours of
+its first object. Bitmaps cannot take a contour.
 
 An open curve's contour runs round both sides of it: each step is a closed
 band, cut straight across at the curve's ends.

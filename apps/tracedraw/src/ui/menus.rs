@@ -3903,6 +3903,14 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
             outside: true,
         };
     }
+    // The outline one step wider or narrower, for a key of one's own
+    // (#2905).
+    if item(ui, "menu.object.outline_thicker", "", has) {
+        app.step_outline_width(true);
+    }
+    if item(ui, "menu.object.outline_thinner", "", has) {
+        app.step_outline_width(false);
+    }
     if item(ui, "menu.object.join_curves", "", true) {
         app.show_dockers = true;
         app.docker_tab = crate::app::DockerTab::JoinCurves;

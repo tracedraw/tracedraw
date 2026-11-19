@@ -270,6 +270,13 @@ left-right cursor), slides the value: one step every 4 pixels, right or
 up higher, left or down lower, with the same Shift and Ctrl steps,
 within the range (#1303,
 `ui::field::tests::dragging_the_arrows_or_the_label_slides_the_value`).
+A label drawn apart from its field slides it the same way: a bar's
+picture before a field (the outline width, the angle), a short text
+label before one ("X:") and a dialog's row label in the column left of
+its field; the field takes up the drag of the label just left of it on
+its line. A label with no number field after it slides nothing and
+shows no left-right cursor (#3044,
+`ui::field::tests::a_label_drawn_apart_slides_its_field`).
 The wheel steps once a notch; parts of a notch from a touchpad or a fine
 wheel add up to one step. The wheel over a field (or the outline width
 box, the font list, the page tabs) belongs to it: the bar or panel

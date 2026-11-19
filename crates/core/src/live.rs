@@ -1752,6 +1752,45 @@ fn has_loose_end(path: &BezPath) -> bool {
 /// object's transformation applied and brought back to its local
 /// coordinates, so a scaled or stretched object keeps the distance the
 /// user typed (#754).
+/// The object of a group whose fill and outline its contour steps take
+/// (#3245): the first one inside it with a fill, else the first with an
+/// outline; a group has neither of its own.
+fn group_style(shape: &Shape) -> Option<&Shape> {
+    fn leaves<'a>(s: &'a Shape, out: &mut Vec<&'a Shape>) {
+        match &s.kind {
+            ShapeKind::Group { children } => children.iter().for_each(|c| leaves(c, out)),
+            ShapeKind::ClipFrame { frame, .. } => leaves(frame, out),
+            _ => out.push(s),
+        }
+    }
+    let mut all = Vec::new();
+    leaves(shape, &mut all);
+    all.iter()
+        .find(|s| !matches!(s.fill, Fill::None))
+        .or_else(|| all.iter().find(|s| s.stroke.is_some()))
+        .copied()
+}
+
+/// The area a group covers, in the group's space: the union of what its
+/// objects cover, so where they overlap the contour goes round them all
+/// as one (#3245).
+fn group_area(shape: &Shape) -> BezPath {
+    let ShapeKind::Group { children } = &shape.kind else {
+        return shape.local_path();
+    };
+    let mut acc = BezPath::new();
+    for c in children {
+        let part = crate::shaping::overlay_with(
+            &c.page_path(),
+            &BezPath::new(),
+            crate::shaping::Op::Weld,
+            area_rule(c),
+        );
+        acc = crate::shaping::overlay(&acc, &part, crate::shaping::Op::Weld);
+    }
+    acc
+}
+
 fn contour(shape: &Shape, rule: crate::shaping::FillRule, p: &ContourParams) -> Vec<Shape> {
     let to_page = shape.transform;
     let to_local = if to_page.determinant().abs() > 1e-12 {
@@ -1759,9 +1798,21 @@ fn contour(shape: &Shape, rule: crate::shaping::FillRule, p: &ContourParams) -> 
     } else {
         return Vec::new();
     };
-    let base = to_page * shape.local_path();
-    let from_fill = shape.fill.preview_color().unwrap_or(Color::WHITE);
-    let from_outline = shape.stroke.as_ref().map(|s| s.color);
+    // A group: its objects' area as one, read even-odd as the union is,
+    // and the look of the first object in it (#3245).
+    let group = matches!(shape.kind, ShapeKind::Group { .. });
+    let (base, rule) = if group {
+        (to_page * group_area(shape), crate::shaping::FillRule::EvenOdd)
+    } else {
+        (to_page * shape.local_path(), rule)
+    };
+    let style = if group {
+        group_style(shape).unwrap_or(shape)
+    } else {
+        shape
+    };
+    let from_fill = style.fill.preview_color().unwrap_or(Color::WHITE);
+    let from_outline = style.stroke.as_ref().map(|s| s.color);
     let sign = if p.outside && !p.to_center { 1.0 } else { -1.0 };
     let offset = if p.offset.is_finite() {
         p.offset.abs().max(1e-3)
@@ -1818,7 +1869,11 @@ fn contour(shape: &Shape, rule: crate::shaping::FillRule, p: &ContourParams) -> 
             s.effects.clear();
             s.shadow = None;
             s.kind = ShapeKind::Path { path, closed: true };
-            match &shape.fill {
+            if group {
+                s.fill = style.fill.clone();
+                s.stroke = style.stroke.clone();
+            }
+            match &style.fill {
                 Fill::None => {}
                 // A fountain stays a fountain (#1265): each stop goes
                 // toward the last step's colour at its place between the
@@ -3856,6 +3911,59 @@ mod tests {
     /// at once, the outside ones behind the object and the inside ones in
     /// front, as the one-sided contours draw them; it is saved and read
     /// back, and a contour of an older file (no `both`) stays one-sided.
+    #[test]
+    fn a_group_takes_a_contour_round_all_its_objects() {
+        // #3245: two overlapping squares in a group, outlined round both
+        // as one area, in the colour of the first; before, a group took
+        // no contour.
+        let mut a = rect_shape();
+        a.id = crate::ShapeId(2);
+        let mut b = rect_shape();
+        b.id = crate::ShapeId(3);
+        b.fill = Fill::Solid(Color::rgb8(0, 0, 255));
+        b.transform = Affine::translate((10.0, 10.0));
+        let mut g = Shape::new(
+            crate::ShapeId(4),
+            ShapeKind::Group {
+                children: vec![a, b],
+            },
+        );
+        g.effects.push(Effect::Contour {
+            steps: 2,
+            offset: 1.0,
+            outside: true,
+            to_center: false,
+            both: false,
+            fill_to: Color::WHITE,
+            outline_to: None,
+            fill_end_to: None,
+            color_blend: 0,
+            corners: Some(crate::shaping::Join::Miter),
+            accel_objects: 0.0,
+            accel_colors: 0.0,
+        });
+        let ev = evaluate(&g);
+        assert_eq!(ev.below.len(), 2, "two steps");
+        // The outer step goes round both squares: from -2 to 32.
+        let outer = ev.below[0].page_path().bounding_box();
+        assert!((outer.x0 + 2.0).abs() < 1e-6 && (outer.x1 - 32.0).abs() < 1e-6, "{outer:?}");
+        assert!((outer.y0 + 2.0).abs() < 1e-6 && (outer.y1 - 32.0).abs() < 1e-6, "{outer:?}");
+        // One ring round the union: the corner where the squares meet
+        // inside (15, 15) is covered, the empty corner (25, 5) of the box
+        // only by the band near the edge, not its middle.
+        let ring = ev.below[0].page_path();
+        assert!(ring.contains(Point::new(15.0, 15.0)));
+        assert!(!ring.contains(Point::new(26.0, 4.0)), "it follows the L shape");
+        // The steps take the first square's fill towards white.
+        match &ev.below[1].fill {
+            Fill::Solid(c) => {
+                let [r, _, b] = c.to_rgb8();
+                assert!(r > b, "reddish: {c:?}");
+            }
+            f => panic!("{f:?}"),
+        }
+    }
+
     #[test]
     fn a_contour_can_go_inside_and_outside_at_once() {
         let effect = |outside: bool, both: bool| Effect::Contour {

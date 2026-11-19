@@ -96,8 +96,13 @@ step count, side and end colours, and the steps the file stores go
   inside one (To centre and Both stay as they are); the distance from the start
   is `steps * offset` (the steps kept, the offset following). The
   contour is drawn live while dragging; one undo step.
-- A click selects the object under the pointer (or nothing). Groups and
-  bitmaps get no contour.
+- A click selects the object under the pointer (or nothing). Bitmaps get
+  no contour.
+- A group takes a contour (#3245): the steps go round the area its
+  objects cover as one (their union, so overlapping objects make one
+  outline), in the fill and outline of the first object in it that has a
+  fill (else an outline) (`live::tests::a_group_takes_a_contour_round_all_its_objects`,
+  `contour_tool::tests::a_group_takes_a_contour`).
 
 ## Handles
 

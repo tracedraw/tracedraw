@@ -50,6 +50,11 @@
   Shift+wheel scroll horizontally; Alt+wheel scrolls vertically. A
   touchpad's fine steps or a pinch with Ctrl held still zoom (#3087,
   `pick_drag_tests::ctrl_and_shift_wheel_scroll_sideways_alt_wheel_up_and_down`).
+  Options > Tools > Zoom/Pan > Ctrl+wheel zooms (off at first,
+  `settings.ctrl_wheel_zooms`) makes Ctrl+wheel zoom about the pointer as
+  the plain wheel does, for those used to zooming that way (#3473,
+  `pick_drag_tests::ctrl_wheel_zooms_when_the_option_is_ticked`); it
+  applies only while the wheel zooms.
 - Zoom step (Options > Tools > Zoom/Pan > Zoom per wheel notch, #895):
   1 to 100 %, 15 % at first (a factor of 1.15 a notch). A notch is a line of the
   wheel on the desktop, three lines or 100 pixels in the browser

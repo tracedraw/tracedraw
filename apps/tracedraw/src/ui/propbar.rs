@@ -1325,7 +1325,9 @@ pub fn sep(ui: &mut Ui) {
 
 /// A small label picture before a field.
 pub(crate) fn label_pic(ui: &mut Ui, pic: Pic, tip: &str) {
-    let (rect, resp) = ui.allocate_exact_size(Vec2::new(16.0, ROW), Sense::hover());
+    // A drag on the picture slides the field after it (#3044).
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(16.0, ROW), Sense::DRAG);
+    crate::ui::field::label_slides(ui, &resp);
     draw_pic(
         ui.painter(),
         Rect::from_center_size(rect.center(), Vec2::splat(13.0)),
@@ -1365,7 +1367,8 @@ pub(crate) fn tip_text_row<R>(
 
 /// A label picture without a tip of its own.
 fn draw_label_pic(ui: &mut Ui, pic: Pic) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(16.0, ROW), Sense::hover());
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(16.0, ROW), Sense::DRAG);
+    crate::ui::field::label_slides(ui, &resp);
     draw_pic(
         ui.painter(),
         Rect::from_center_size(rect.center(), Vec2::splat(13.0)),
@@ -1376,10 +1379,11 @@ fn draw_label_pic(ui: &mut Ui, pic: Pic) {
 
 /// A text label before a field ("X:", "Units:").
 pub(crate) fn label_text(ui: &mut Ui, text: &str) {
-    ui.add_sized(
+    let resp = ui.add_sized(
         [16.0, ROW],
-        egui::Label::new(egui::RichText::new(text).size(12.0)),
+        egui::Label::new(egui::RichText::new(text).size(12.0)).sense(Sense::DRAG),
     );
+    crate::ui::field::label_slides(ui, &resp);
 }
 
 /// A distance field in the ruler unit, through the drawing scale (a
@@ -4374,6 +4378,65 @@ mod tests {
         let pt = Units::Points;
         let p20 = outline_width_step(Some(pt.to_mm(16.0)), true, pt).flatten();
         assert!((pt.from_mm(p20.expect("20 pt")) - 20.0).abs() < 1e-9);
+    }
+
+    /// Object > Thicker Outline and Thinner Outline step the selection's
+    /// outline through the width list as the wheel does (#2905), keep its
+    /// colour, give an object without an outline a hairline and stop at
+    /// the hairline going down.
+    #[test]
+    fn outline_width_commands_step_the_selection() {
+        let mut app = App::headless();
+        app.set_outline_units(Units::Points);
+        let id = app
+            .new_shape(tracedraw_core::document::ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(10.0, 10.0, 40.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.run(tracedraw_core::Command::SetStroke {
+            shapes: vec![id],
+            stroke: None,
+        });
+        app.select(vec![id]);
+        let width = |app: &App| {
+            app.doc()
+                .find_shape(id)
+                .expect("rect")
+                .stroke
+                .as_ref()
+                .map(|s| s.width)
+        };
+        app.step_outline_width(true);
+        assert_eq!(width(&app), Some(tracedraw_core::Stroke::HAIRLINE));
+        let red = tracedraw_core::Color::rgb8(200, 0, 0);
+        let mut k = app.doc().find_shape(id).expect("rect").stroke.clone().expect("outline");
+        k.color = red;
+        app.run(tracedraw_core::Command::SetStroke {
+            shapes: vec![id],
+            stroke: Some(k),
+        });
+        let mut w = width(&app);
+        for _ in 0..4 {
+            app.step_outline_width(true);
+            let next = outline_width_step(w, true, Units::Points).expect("a step");
+            assert_eq!(width(&app), next);
+            w = next;
+        }
+        assert_eq!(
+            app.doc().find_shape(id).expect("rect").stroke.as_ref().map(|s| s.color),
+            Some(red),
+            "its colour kept"
+        );
+        for _ in 0..20 {
+            app.step_outline_width(false);
+        }
+        assert_eq!(width(&app), Some(tracedraw_core::Stroke::HAIRLINE), "down to a hairline");
+        // Nothing selected: nothing changes.
+        app.select(Vec::new());
+        app.step_outline_width(true);
+        assert_eq!(width(&app), Some(tracedraw_core::Stroke::HAIRLINE));
     }
 
     /// The outline width box in a property bar longer than the window:
