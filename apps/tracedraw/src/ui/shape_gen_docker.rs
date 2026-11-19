@@ -3,7 +3,9 @@
 //! what Create makes, the curve count, and Create, Update (a generated
 //! group selected: made again in its place), Load (its settings back into
 //! the panel), Make Pattern Fill and, for the cone template, Wrap
-//! Selection.
+//! Selection. Voronoi sites can be dragged, added and deleted right in the
+//! preview; Voronoi, stippling and halftone can pick the selection as
+//! their outline or picture.
 
 use crate::app::App;
 use crate::i18n::{tr, trf};
@@ -11,6 +13,7 @@ use crate::shape_gen::{
     generate, CellShape, GenKind, Generated, IsoLayout, Paint, ShapeGenSettings, Tess,
     TruchetStyle, Warp,
 };
+use crate::shape_gen_cells::{Gradient, HtShape, PointMode};
 use crate::theme::Tokens;
 use crate::ui::docker_form::{indented, row, section, wide_button};
 use crate::ui::tips::RichTip;
@@ -25,18 +28,25 @@ struct PreviewData {
     cut: bool,
     /// Width over height of the drawing.
     aspect: f32,
+    /// The box the preview fits (x0, y1 and its longer side), to map
+    /// the pointer back to the drawing.
+    frame: (f64, f64, f64),
+    /// Voronoi sites in the drawing's coordinates.
+    sites: Vec<(f64, f64)>,
 }
 
 /// The most curves the preview draws (Create makes them all).
 const PREVIEW_MAX: usize = 6000;
 
 fn build_preview(g: &Generated) -> PreviewData {
-    let Some(b) = g.bounds() else {
+    let Some(b) = g.frame.or_else(|| g.bounds()) else {
         return PreviewData {
             curves: Vec::new(),
             count: 0,
             cut: g.cut,
             aspect: 1.0,
+            frame: (0.0, 1.0, 1.0),
+            sites: Vec::new(),
         };
     };
     let side = b.width().max(b.height()).max(1e-9);
@@ -76,6 +86,8 @@ fn build_preview(g: &Generated) -> PreviewData {
         count: g.items.len(),
         cut: g.cut,
         aspect: (b.width() / b.height().max(1e-9)) as f32,
+        frame: (b.x0, b.y1, side),
+        sites: g.sites.iter().map(|p| (p.x, p.y)).collect(),
     }
 }
 
@@ -112,9 +124,33 @@ fn convex(pts: &[Pos2]) -> bool {
     true
 }
 
-fn draw_preview(ui: &mut Ui, data: &PreviewData) {
+/// Where the preview drew the drawing: its corner and the size of the
+/// longer side on screen.
+#[derive(Clone, Copy)]
+struct PreviewMap {
+    o: Pos2,
+    side: f32,
+}
+
+impl PreviewMap {
+    fn to_screen(self, data: &PreviewData, x: f64, y: f64) -> Pos2 {
+        let (x0, y1, side) = data.frame;
+        self.o
+            + Vec2::new(
+                ((x - x0) / side) as f32 * self.side,
+                ((y1 - y) / side) as f32 * self.side,
+            )
+    }
+    fn to_drawing(self, data: &PreviewData, p: Pos2) -> (f64, f64) {
+        let (x0, y1, side) = data.frame;
+        let v = (p - self.o) / self.side.max(1e-3);
+        (x0 + v.x as f64 * side, y1 - v.y as f64 * side)
+    }
+}
+
+fn draw_preview(ui: &mut Ui, data: &PreviewData, sense: Sense) -> (egui::Response, PreviewMap) {
     let w = ui.available_width().clamp(120.0, 320.0);
-    let (r, _) = ui.allocate_exact_size(Vec2::new(w, w), Sense::hover());
+    let (r, resp) = ui.allocate_exact_size(Vec2::new(w, w), sense);
     let painter = ui.painter_at(r);
     painter.rect_filled(r, 0.0, Color32::WHITE);
     painter.rect_stroke(
@@ -123,9 +159,6 @@ fn draw_preview(ui: &mut Ui, data: &PreviewData) {
         Stroke::new(1.0, Tokens::border()),
         egui::StrokeKind::Inside,
     );
-    if data.curves.is_empty() {
-        return;
-    }
     let inner = r.shrink(8.0);
     let side = inner.width();
     // Centred: the drawing's longer side fills the box.
@@ -135,6 +168,7 @@ fn draw_preview(ui: &mut Ui, data: &PreviewData) {
         (side * data.aspect, side)
     };
     let o = inner.center() - Vec2::new(dw / 2.0, dh / 2.0);
+    let pm = PreviewMap { o, side };
     let map = |p: Pos2| o + Vec2::new(p.x * side, p.y * side);
     let ink = Color32::from_gray(0x20);
     let line = Stroke::new(1.0, ink);
@@ -146,6 +180,10 @@ fn draw_preview(ui: &mut Ui, data: &PreviewData) {
             Paint::Face(0) => Some(Color32::from_gray(0xE8)),
             Paint::Face(1) => Some(Color32::from_gray(0x9C)),
             Paint::Face(_) => Some(Color32::from_gray(0x4E)),
+            Paint::Ink(0) => Some(Color32::from_rgba_unmultiplied(0x00, 0xAE, 0xEF, 0xB0)),
+            Paint::Ink(1) => Some(Color32::from_rgba_unmultiplied(0xEC, 0x00, 0x8C, 0xB0)),
+            Paint::Ink(2) => Some(Color32::from_rgba_unmultiplied(0xFF, 0xE6, 0x00, 0xB0)),
+            Paint::Ink(_) => Some(Color32::from_rgba_unmultiplied(0x10, 0x10, 0x10, 0xB0)),
         };
         match fill {
             Some(f) if *closed && convex(&pts) => {
@@ -161,6 +199,87 @@ fn draw_preview(ui: &mut Ui, data: &PreviewData) {
             }
             _ => {
                 painter.add(egui::Shape::line(pts, line));
+            }
+        }
+    }
+    (resp, pm)
+}
+
+/// Voronoi sites edited in the preview: drag one to move it, double
+/// click to add one, right click one to delete it. The first edit takes
+/// the generated sites as the panel's own points.
+fn edit_sites(app: &mut App, data: &PreviewData, resp: &egui::Response, pm: PreviewMap) {
+    let s = &mut app.shape_gen;
+    let (w, h) = (s.width.max(1e-9), s.height.max(1e-9));
+    let painter = resp
+        .ctx
+        .layer_painter(resp.layer_id)
+        .with_clip_rect(resp.rect);
+    let hit = |p: Pos2| -> Option<usize> {
+        data.sites
+            .iter()
+            .enumerate()
+            .map(|(k, (x, y))| (k, pm.to_screen(data, *x, *y).distance(p)))
+            .filter(|(_, d)| *d <= 8.0)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(k, _)| k)
+    };
+    let take = |s: &mut ShapeGenSettings| {
+        if s.vor_points.is_empty() {
+            s.vor_points = data
+                .sites
+                .iter()
+                .map(|(x, y)| [(x / w).clamp(0.0, 1.0), (y / h).clamp(0.0, 1.0)])
+                .collect();
+        }
+    };
+    let norm = |p: Pos2| {
+        let (x, y) = pm.to_drawing(data, p);
+        [(x / w).clamp(0.0, 1.0), (y / h).clamp(0.0, 1.0)]
+    };
+    let id = resp.id.with("dragged_site");
+    if let Some(p) = resp.hover_pos() {
+        if let Some(k) = hit(p) {
+            let (x, y) = data.sites[k];
+            painter.circle_stroke(
+                pm.to_screen(data, x, y),
+                5.0,
+                Stroke::new(1.5, Tokens::selected_row_line()),
+            );
+        }
+    }
+    if resp.drag_started() {
+        let k = resp.interact_pointer_pos().and_then(hit);
+        resp.ctx.data_mut(|d| d.insert_temp(id, k));
+        if k.is_some() {
+            take(s);
+        }
+    }
+    if resp.dragged() {
+        let k: Option<usize> = resp.ctx.data(|d| d.get_temp(id)).flatten();
+        if let (Some(k), Some(p)) = (k, resp.interact_pointer_pos()) {
+            if let Some(slot) = s.vor_points.get_mut(k) {
+                *slot = norm(p);
+            }
+        }
+    }
+    if resp.drag_stopped() {
+        resp.ctx
+            .data_mut(|d| d.insert_temp::<Option<usize>>(id, None));
+    }
+    if resp.double_clicked() {
+        if let Some(p) = resp.interact_pointer_pos() {
+            take(s);
+            if s.vor_points.len() < crate::shape_gen_cells::MAX_SITES {
+                s.vor_points.push(norm(p));
+            }
+        }
+    }
+    if resp.secondary_clicked() {
+        if let Some(k) = resp.interact_pointer_pos().and_then(hit) {
+            take(s);
+            if k < s.vor_points.len() && s.vor_points.len() > 1 {
+                s.vor_points.remove(k);
             }
         }
     }
@@ -254,6 +373,38 @@ fn seed_row(ui: &mut Ui, s: &mut ShapeGenSettings) {
     });
 }
 
+/// The picked selection: what it is, Use Selection and Clear.
+fn source_row(app: &mut App, ui: &mut Ui) {
+    let s = &app.shape_gen;
+    let text = if s.source_center.is_some() {
+        tr("shapegen.source_picked")
+    } else if s.kind.uses_tone() {
+        tr("shapegen.source_none_tone")
+    } else {
+        tr("shapegen.source_none")
+    };
+    ui.label(egui::RichText::new(text).color(Tokens::text_dim()));
+    let picked = s.source_center.is_some();
+    let can = !app.selection.is_empty() && app.shape_gen_selected().is_none();
+    ui.horizontal(|ui| {
+        if ui
+            .add_enabled(can, egui::Button::new(tr("shapegen.use_selection")))
+            .rich_tip(crate::ui::tips::keyed("shapegen.use_selection"))
+            .clicked()
+        {
+            app.shape_gen_use_selection();
+        }
+        if picked
+            && ui
+                .button(tr("shapegen.clear_source"))
+                .rich_tip(crate::ui::tips::keyed("shapegen.clear_source"))
+                .clicked()
+        {
+            app.shape_gen_clear_source();
+        }
+    });
+}
+
 pub fn shape_generator(app: &mut App, ui: &mut Ui) {
     ui.spacing_mut().slider_width = 110.0;
     let units = app.units;
@@ -270,7 +421,8 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                 "shapegen.kind",
             );
         });
-        if s.kind.uses_box() && s.kind != GenKind::IsoBlocks {
+        let picked = s.kind.uses_source() && s.source_center.is_some();
+        if s.kind.uses_box() && s.kind != GenKind::IsoBlocks && !picked {
             row(ui, &tr("shapegen.width"), |ui| {
                 length(
                     ui,
@@ -734,9 +886,229 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                 };
                 ui.label(egui::RichText::new(text).color(Tokens::text_dim()));
             }
+            GenKind::Voronoi => {
+                row(ui, &tr("shapegen.points"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_points",
+                        &mut s.vor_mode,
+                        &PointMode::ALL,
+                        PointMode::key,
+                        "shapegen.points",
+                    );
+                });
+                row(ui, &tr("shapegen.spacing"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.vor_spacing,
+                        0.1,
+                        1000.0,
+                        "shapegen.spacing",
+                    )
+                });
+                if matches!(s.vor_mode, PointMode::Hex | PointMode::Square) {
+                    row(ui, &tr("shapegen.jitter"), |ui| {
+                        slider(
+                            ui,
+                            &mut s.vor_jitter,
+                            0.0..=100.0,
+                            0,
+                            " %",
+                            "shapegen.jitter",
+                        )
+                    });
+                }
+                row(ui, &tr("shapegen.relax"), |ui| {
+                    count(ui, &mut s.vor_relax, 0..=50, "shapegen.relax")
+                });
+                row(ui, &tr("shapegen.gradient"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_gradient",
+                        &mut s.vor_gradient,
+                        &Gradient::ALL,
+                        Gradient::key,
+                        "shapegen.gradient",
+                    );
+                });
+                if s.vor_gradient != Gradient::None {
+                    row(ui, &tr("shapegen.grad_strength"), |ui| {
+                        slider(
+                            ui,
+                            &mut s.vor_grad_strength,
+                            0.0..=100.0,
+                            0,
+                            " %",
+                            "shapegen.grad_strength",
+                        )
+                    });
+                    if s.vor_gradient == Gradient::Linear {
+                        row(ui, &tr("shapegen.grad_angle"), |ui| {
+                            slider(
+                                ui,
+                                &mut s.vor_grad_angle,
+                                -180.0..=180.0,
+                                0,
+                                "\u{b0}",
+                                "shapegen.grad_angle",
+                            )
+                        });
+                    }
+                    indented(ui, |ui| {
+                        ui.checkbox(&mut s.vor_grad_edge, tr("shapegen.grad_edge"))
+                            .rich_tip(crate::ui::tips::keyed("shapegen.grad_edge"));
+                    });
+                }
+                row(ui, &tr("shapegen.inset"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.vor_inset,
+                        0.0,
+                        100.0,
+                        "shapegen.inset",
+                    )
+                });
+                row(ui, &tr("shapegen.corner_radius"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.vor_round,
+                        0.0,
+                        100.0,
+                        "shapegen.corner_radius",
+                    )
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.vor_cells, tr("shapegen.show_cells"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.show_cells"));
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.vor_show_sites, tr("shapegen.show_sites"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.show_sites"));
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.vor_delaunay, tr("shapegen.show_delaunay"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.show_delaunay"));
+                });
+                if s.vor_points.is_empty() {
+                    seed_row(ui, s);
+                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .button(tr("shapegen.relax_once"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.relax_once"))
+                        .clicked()
+                    {
+                        s.vor_points = crate::shape_gen_cells::voronoi_relax_once(s);
+                    }
+                    if !s.vor_points.is_empty()
+                        && ui
+                            .button(tr("shapegen.reset_points"))
+                            .rich_tip(crate::ui::tips::keyed("shapegen.reset_points"))
+                            .clicked()
+                    {
+                        s.vor_points.clear();
+                    }
+                });
+            }
+            GenKind::Stipple => {
+                row(ui, &tr("shapegen.dots"), |ui| {
+                    count(ui, &mut s.st_dots, 10..=20_000, "shapegen.dots")
+                });
+                row(ui, &tr("shapegen.st_iter"), |ui| {
+                    count(ui, &mut s.st_iter, 0..=100, "shapegen.st_iter")
+                });
+                row(ui, &tr("shapegen.st_min"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.st_min,
+                        0.0,
+                        50.0,
+                        "shapegen.st_min",
+                    )
+                });
+                row(ui, &tr("shapegen.st_max"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.st_max,
+                        0.01,
+                        50.0,
+                        "shapegen.st_max",
+                    )
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.st_by_tone, tr("shapegen.st_by_tone"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.st_by_tone"));
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.invert, tr("shapegen.invert"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.invert"));
+                });
+                seed_row(ui, s);
+            }
+            GenKind::Halftone => {
+                row(ui, &tr("shapegen.ht_shape"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_ht_shape",
+                        &mut s.ht_shape,
+                        &HtShape::ALL,
+                        HtShape::key,
+                        "shapegen.ht_shape",
+                    );
+                });
+                row(ui, &tr("shapegen.ht_cell"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.ht_cell,
+                        0.1,
+                        500.0,
+                        "shapegen.ht_cell",
+                    )
+                });
+                if !s.ht_cmyk {
+                    row(ui, &tr("shapegen.ht_angle"), |ui| {
+                        slider(
+                            ui,
+                            &mut s.ht_angle,
+                            -180.0..=180.0,
+                            1,
+                            "\u{b0}",
+                            "shapegen.ht_angle",
+                        )
+                    });
+                }
+                row(ui, &tr("shapegen.ht_min"), |ui| {
+                    slider(ui, &mut s.ht_min, 0.0..=200.0, 0, " %", "shapegen.ht_min")
+                });
+                row(ui, &tr("shapegen.ht_max"), |ui| {
+                    slider(ui, &mut s.ht_max, 0.0..=200.0, 0, " %", "shapegen.ht_max")
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.ht_cmyk, tr("shapegen.ht_cmyk"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.ht_cmyk"));
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.invert, tr("shapegen.invert"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.invert"));
+                });
+            }
         }
-        if !matches!(s.kind, GenKind::IsoBlocks | GenKind::Tessellation)
-            && !(s.kind == GenKind::Truchet && s.truchet_style == TruchetStyle::Filled)
+        if !matches!(
+            s.kind,
+            GenKind::IsoBlocks | GenKind::Tessellation | GenKind::Stipple | GenKind::Halftone
+        ) && !(s.kind == GenKind::Truchet && s.truchet_style == TruchetStyle::Filled)
             && !(s.kind == GenKind::DotGrid && s.filled)
         {
             row(ui, &tr("shapegen.line_width"), |ui| {
@@ -758,9 +1130,22 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
             });
         }
     }
+    if app.shape_gen.kind.uses_source() {
+        source_row(app, ui);
+    }
     section(ui, None);
     let data = preview_for(ui, &app.shape_gen.sanitized());
-    draw_preview(ui, &data);
+    let editing = app.shape_gen.kind == GenKind::Voronoi;
+    let sense = if editing {
+        Sense::click_and_drag()
+    } else {
+        Sense::hover()
+    };
+    let (resp, pm) = draw_preview(ui, &data, sense);
+    if editing {
+        let resp = resp.rich_tip(crate::ui::tips::keyed("shapegen.edit_points"));
+        edit_sites(app, &data, &resp, pm);
+    }
     let n = if data.cut {
         trf(
             "shapegen.count_cut",

@@ -36,6 +36,10 @@ preview counts the curves.
   heights flat, random, a pyramid or a wave, with three shaded faces.
 - [[shapegen.kind_cone]]: the flat template of a cone, a tapered cylinder or
   a cylinder, see [Cone templates](#cone).
+- [[shapegen.kind_voronoi]]: cells round scattered sites, see
+  [Voronoi cells](#voronoi).
+- [[shapegen.kind_stipple]] and [[shapegen.kind_halftone]]: dots and marks
+  sized by a picture's tones, see [Pictures as dots](#tones).
 
 Generators that make random choices have a [[shapegen.seed]]: the same seed
 always gives the same result, and [[shapegen.new_seed]] picks another one.
@@ -68,3 +72,40 @@ To put a design on the object, draw it flat as a strip and select it, then
 click [[shapegen.wrap]]: the template is drawn and the strip is bent onto
 it, its width going round the object [[shapegen.cone_repeat]] times and its
 top along the top edge, so it rolls up straight on the real object.
+
+## Voronoi cells {#voronoi}
+
+Each cell holds the part of the area nearer to its site than to any other.
+Place the sites with [[shapegen.points]] and [[shapegen.spacing]] (grid
+sites move by the [[shapegen.jitter]]), then even the cells out with
+[[shapegen.relax]] steps or the [[shapegen.relax_once]] button. A
+[[shapegen.gradient]] makes the cells smaller toward the middle or along a
+direction. For cutting, [[shapegen.inset]] leaves a gap between cells and
+[[shapegen.corner_radius]] rounds them. [[shapegen.show_cells]],
+[[shapegen.show_sites]] and [[shapegen.show_delaunay]] choose what is drawn.
+
+Edit the sites right in the preview: drag one to move it and watch its
+neighbours follow, double-click to add one, right-click one to delete it.
+Sites placed by hand are kept with the settings; [[shapegen.reset_points]]
+goes back to generated ones.
+
+To fill a shape, select it and click [[shapegen.use_selection]]: the cells
+fill its outline and its holes stay empty, and Create puts the result over
+it.
+
+## Pictures as dots {#tones}
+
+Select a picture or any objects and click [[shapegen.use_selection]]: the
+selection is drawn to a picture whose darkness sizes the marks, and marks
+stay inside its outline. Without a selection a round ramp stands in.
+
+- [[shapegen.kind_stipple]] spreads [[shapegen.dots]] by darkness and
+  spaces them evenly over [[shapegen.st_iter]] steps; with
+  [[shapegen.st_by_tone]] dark places get bigger dots.
+- [[shapegen.kind_halftone]] puts a [[shapegen.ht_shape]] in every
+  [[shapegen.ht_cell]] of a screen turned by [[shapegen.ht_angle]], sized
+  between [[shapegen.ht_min]] and [[shapegen.ht_max]]; Lines draws bands
+  that thicken where it is dark. [[shapegen.ht_cmyk]] makes four screens,
+  one per ink, each in its own group.
+
+[[shapegen.invert]] puts the marks in the light places instead.

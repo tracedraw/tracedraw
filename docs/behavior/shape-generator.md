@@ -60,3 +60,43 @@ the settings) and `ui/shape_gen_docker.rs`. Issues #3412 and #3413.
   outline grown by the bleed. Wrap maps the selection's box: across to the
   angle (repeated Repeats times round), down to the radius from the top
   edge's to the bottom edge's; lines are cut short first so they bend.
+
+## Cells and tones (`shape_gen_cells.rs`)
+
+- Picked selection (Use Selection): its box sets Width and Height and the
+  place Create and Update use (`source_center`); its closed curves are
+  welded into the outline (`boundary`, box coordinates, holes by even-odd);
+  for stippling and halftone the selection is drawn alone to a PNG of
+  about 240 px on the longer side, kept as base64 (`tone`). Transparent
+  pixels (alpha under half) and places outside the outline get no mark.
+  Without a picture the tone is a radial ramp, dark in the middle.
+- Voronoi sites: Random n = area / spacing^2; Uniform one per spacing
+  square; Hex and Square lattices moved by jitter x spacing. A gradient
+  keeps each site with probability d = max(0.03, 1 - strength t), t the
+  distance from the middle over the half diagonal (radial) or the place
+  along the direction (linear), reversed for small cells at the edge.
+  Sites outside the outline are dropped; at most 20,000.
+- Relaxation: with no gradient and no outline, exact Lloyd (each site to
+  its cell's area centroid); else weighted Lloyd on a raster of 24 samples
+  per site (20,000 to 250,000), weights d^2 inside the outline (sites settle
+  at a density following the square root of the weight), 0 outside.
+  Panel points (`vor_points`, 0 to 1 across the box) replace the generated
+  sites and are never relaxed automatically; Relax applies one step and
+  keeps the result as panel points.
+- Cells: the box clipped by the perpendicular bisector of each neighbour in
+  order of distance, neighbours found ring by ring in a bucket grid, until
+  the ring's distance is at least twice the farthest corner. Inset clips by
+  every edge moved in by half the inset (so neighbours are an inset apart);
+  corners are filleted with radius r (less on short edges) as one cubic;
+  then the cell is intersected with the outline (inset by the inset).
+  Delaunay edges join sites whose cells share a bisector edge.
+- Stippling: first dots by rejection with darkness as the chance, then
+  weighted Lloyd on the picture's pixels (or a 200 x 200 raster) for the
+  steps; dot diameter lerp(smallest, largest, darkness) or the largest.
+- Halftone: lattice of the cell size turned by the angle about the box's
+  middle; darkness from 1 - luma over white; ink amounts CMY from the
+  colour with K = 1 - max(R, G, B). Mark size cell x lerp(min, max,
+  sqrt(ink)) so the area follows the ink; Lines sample every third of a
+  cell along each row and join the band's top and bottom edges, thickness
+  cell x lerp(min, max, ink). CMYK screens at 15, 75, 0 and 45 degrees,
+  filled with 100 % of each ink, grouped per ink.

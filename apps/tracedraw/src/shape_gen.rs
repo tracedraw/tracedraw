@@ -44,10 +44,13 @@ pub enum GenKind {
     FieldLines,
     IsoBlocks,
     ConeTemplate,
+    Voronoi,
+    Stipple,
+    Halftone,
 }
 
 impl GenKind {
-    pub const ALL: [GenKind; 8] = [
+    pub const ALL: [GenKind; 11] = [
         GenKind::DotGrid,
         GenKind::Truchet,
         GenKind::Tessellation,
@@ -56,6 +59,9 @@ impl GenKind {
         GenKind::FieldLines,
         GenKind::IsoBlocks,
         GenKind::ConeTemplate,
+        GenKind::Voronoi,
+        GenKind::Stipple,
+        GenKind::Halftone,
     ];
     pub fn key(self) -> &'static str {
         match self {
@@ -67,7 +73,22 @@ impl GenKind {
             GenKind::FieldLines => "shapegen.kind_field_lines",
             GenKind::IsoBlocks => "shapegen.kind_iso_blocks",
             GenKind::ConeTemplate => "shapegen.kind_cone",
+            GenKind::Voronoi => "shapegen.kind_voronoi",
+            GenKind::Stipple => "shapegen.kind_stipple",
+            GenKind::Halftone => "shapegen.kind_halftone",
         }
+    }
+    /// Whether the generator works from the panel's picked selection (an
+    /// outline to fill, or a picture's tones).
+    pub fn uses_source(self) -> bool {
+        matches!(
+            self,
+            GenKind::Voronoi | GenKind::Stipple | GenKind::Halftone
+        )
+    }
+    /// Whether it reads the picked picture's tones.
+    pub fn uses_tone(self) -> bool {
+        matches!(self, GenKind::Stipple | GenKind::Halftone)
     }
     /// Whether the generator draws inside the Width x Height box (the
     /// cone template takes its size from its own measures).
@@ -307,6 +328,66 @@ pub struct ShapeGenSettings {
     pub cone_pieces: u32,
     /// How many times the wrapped strip goes round, 1 to 24.
     pub cone_repeat: u32,
+
+    // Picked selection (Voronoi, stippling, halftone).
+    /// Where Create puts the result: the middle of the selection picked,
+    /// page space.
+    pub source_center: Option<[f64; 2]>,
+    /// The picked selection's outline, in the box (its bottom left at the
+    /// origin): Voronoi fills it, marks stay inside it.
+    pub boundary: Option<BezPath>,
+    /// The picked selection drawn to a PNG covering the box, base64.
+    pub tone: Option<String>,
+    /// Light places take the marks instead of dark ones.
+    pub invert: bool,
+
+    // Voronoi.
+    pub vor_mode: crate::shape_gen_cells::PointMode,
+    /// Distance between sites, mm.
+    pub vor_spacing: f64,
+    /// Lattice sites moved at random, 0 to 100 % of the spacing.
+    pub vor_jitter: f64,
+    /// Relaxation steps applied to generated sites, 0 to 50.
+    pub vor_relax: u32,
+    pub vor_gradient: crate::shape_gen_cells::Gradient,
+    /// 0 to 100 %.
+    pub vor_grad_strength: f64,
+    /// Direction of a linear gradient, degrees.
+    pub vor_grad_angle: f64,
+    /// Small cells at the edge (or the far end) instead of the middle.
+    pub vor_grad_edge: bool,
+    /// Space cut between cells, mm.
+    pub vor_inset: f64,
+    /// Corner radius, mm.
+    pub vor_round: f64,
+    pub vor_cells: bool,
+    pub vor_show_sites: bool,
+    pub vor_delaunay: bool,
+    /// Sites placed in the panel, 0 to 1 across the box; when any, they
+    /// replace the generated ones.
+    pub vor_points: Vec<[f64; 2]>,
+
+    // Stippling.
+    pub st_dots: u32,
+    /// Relaxation steps, 0 to 100.
+    pub st_iter: u32,
+    /// Dot diameters, mm.
+    pub st_min: f64,
+    pub st_max: f64,
+    /// Dots sized by tone, or all at the largest size.
+    pub st_by_tone: bool,
+
+    // Halftone.
+    /// Screen cell, mm.
+    pub ht_cell: f64,
+    /// Screen angle, degrees.
+    pub ht_angle: f64,
+    pub ht_shape: crate::shape_gen_cells::HtShape,
+    /// Mark size at no ink and at full ink, % of the cell.
+    pub ht_min: f64,
+    pub ht_max: f64,
+    /// Four screens, one per ink.
+    pub ht_cmyk: bool,
 }
 
 impl Default for ShapeGenSettings {
@@ -368,6 +449,35 @@ impl Default for ShapeGenSettings {
             cone_bleed: 0.0,
             cone_pieces: 1,
             cone_repeat: 1,
+            source_center: None,
+            boundary: None,
+            tone: None,
+            invert: false,
+            vor_mode: crate::shape_gen_cells::PointMode::Random,
+            vor_spacing: 8.0,
+            vor_jitter: 50.0,
+            vor_relax: 3,
+            vor_gradient: crate::shape_gen_cells::Gradient::None,
+            vor_grad_strength: 70.0,
+            vor_grad_angle: 0.0,
+            vor_grad_edge: false,
+            vor_inset: 0.0,
+            vor_round: 0.0,
+            vor_cells: true,
+            vor_show_sites: false,
+            vor_delaunay: false,
+            vor_points: Vec::new(),
+            st_dots: 2000,
+            st_iter: 20,
+            st_min: 0.3,
+            st_max: 1.2,
+            st_by_tone: true,
+            ht_cell: 3.0,
+            ht_angle: 45.0,
+            ht_shape: crate::shape_gen_cells::HtShape::Circle,
+            ht_min: 0.0,
+            ht_max: 110.0,
+            ht_cmyk: false,
         }
     }
 }
@@ -382,6 +492,9 @@ pub enum Paint {
     /// A shaded cube face (0 top, 1 left, 2 right): filled grey with a
     /// thin outline.
     Face(u8),
+    /// A halftone screen's ink (0 cyan, 1 magenta, 2 yellow, 3 black):
+    /// filled with it, each ink grouped on its own.
+    Ink(u8),
 }
 
 #[derive(Debug, Clone)]
@@ -398,10 +511,15 @@ pub struct Generated {
     pub items: Vec<GenItem>,
     /// True when [`MAX_ITEMS`] cut the result.
     pub cut: bool,
+    /// The box the drawing belongs to when it is not its curves' bounds
+    /// (cells, marks): the preview and placement use it.
+    pub frame: Option<Rect>,
+    /// Voronoi sites, for editing them in the panel.
+    pub sites: Vec<Point>,
 }
 
 impl Generated {
-    fn push(&mut self, path: BezPath, closed: bool, paint: Paint) {
+    pub(crate) fn push(&mut self, path: BezPath, closed: bool, paint: Paint) {
         if self.items.len() >= MAX_ITEMS {
             self.cut = true;
             return;
@@ -412,7 +530,7 @@ impl Generated {
             paint,
         });
     }
-    fn full(&self) -> bool {
+    pub(crate) fn full(&self) -> bool {
         self.items.len() >= MAX_ITEMS
     }
     /// The bounding box of every curve.
@@ -494,6 +612,52 @@ impl ShapeGenSettings {
         s.cone_bleed = clampf(s.cone_bleed, 0.0, 100.0, 0.0);
         s.cone_pieces = s.cone_pieces.clamp(1, 8);
         s.cone_repeat = s.cone_repeat.clamp(1, 24);
+        s.source_center = s
+            .source_center
+            .filter(|c| c[0].is_finite() && c[1].is_finite());
+        s.boundary = s.boundary.take().filter(|b| {
+            use tracedraw_core::geometry::Shape as _;
+            !b.elements().is_empty() && {
+                let r = b.bounding_box();
+                r.x0.is_finite() && r.y0.is_finite() && r.x1.is_finite() && r.y1.is_finite()
+            }
+        });
+        s.tone = s
+            .tone
+            .take()
+            .filter(|t| !t.is_empty() && t.len() < 8_000_000);
+        let side = s.width.max(s.height);
+        s.vor_spacing = clampf(
+            s.vor_spacing,
+            (side / 150.0).max(0.1),
+            1000.0,
+            d.vor_spacing,
+        )
+        .max((side / 150.0).max(0.1));
+        s.vor_jitter = clampf(s.vor_jitter, 0.0, 100.0, d.vor_jitter);
+        s.vor_relax = s.vor_relax.min(50);
+        s.vor_grad_strength = clampf(s.vor_grad_strength, 0.0, 100.0, d.vor_grad_strength);
+        s.vor_grad_angle = clampf(s.vor_grad_angle, -360.0, 360.0, 0.0);
+        s.vor_inset = clampf(s.vor_inset, 0.0, 100.0, 0.0);
+        s.vor_round = clampf(s.vor_round, 0.0, 100.0, 0.0);
+        s.vor_points
+            .retain(|p| p[0].is_finite() && p[1].is_finite());
+        for p in &mut s.vor_points {
+            p[0] = p[0].clamp(0.0, 1.0);
+            p[1] = p[1].clamp(0.0, 1.0);
+        }
+        s.vor_points.truncate(crate::shape_gen_cells::MAX_SITES);
+        s.st_dots = s
+            .st_dots
+            .clamp(10, crate::shape_gen_cells::MAX_SITES as u32);
+        s.st_iter = s.st_iter.min(100);
+        s.st_min = clampf(s.st_min, 0.0, 50.0, d.st_min);
+        s.st_max = clampf(s.st_max, 0.01, 50.0, d.st_max).max(s.st_min);
+        s.ht_cell = clampf(s.ht_cell, (side / 300.0).max(0.1), 500.0, d.ht_cell)
+            .max((side / 300.0).max(0.1));
+        s.ht_angle = clampf(s.ht_angle, -360.0, 360.0, d.ht_angle);
+        s.ht_min = clampf(s.ht_min, 0.0, 200.0, 0.0);
+        s.ht_max = clampf(s.ht_max, 0.0, 200.0, d.ht_max).max(s.ht_min);
         s
     }
 }
@@ -511,6 +675,9 @@ pub fn generate(settings: &ShapeGenSettings) -> Generated {
         GenKind::FieldLines => field_lines(&s, &mut out),
         GenKind::IsoBlocks => iso_blocks(&s, &mut out),
         GenKind::ConeTemplate => cone_template(&s, &mut out),
+        GenKind::Voronoi => crate::shape_gen_cells::voronoi(&s, &mut out),
+        GenKind::Stipple => crate::shape_gen_cells::stipple(&s, &mut out),
+        GenKind::Halftone => crate::shape_gen_cells::halftone(&s, &mut out),
     }
     out
 }
@@ -568,7 +735,7 @@ fn fade(t: f64) -> f64 {
     t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
 }
 
-fn lerp(a: f64, b: f64, t: f64) -> f64 {
+pub(crate) fn lerp(a: f64, b: f64, t: f64) -> f64 {
     a + (b - a) * t
 }
 
@@ -640,7 +807,7 @@ pub fn smooth_through(pts: &[Point], closed: bool) -> BezPath {
     path
 }
 
-fn polygon(pts: &[Point]) -> BezPath {
+pub(crate) fn polygon(pts: &[Point]) -> BezPath {
     let mut path = BezPath::new();
     if let Some((first, rest)) = pts.split_first() {
         path.move_to(*first);
@@ -1720,7 +1887,8 @@ impl crate::app::App {
     ) -> Option<tracedraw_core::Shape> {
         use tracedraw_core::{Fill, Shape, ShapeKind};
         let bounds = g.bounds()?;
-        let shift = Affine::translate(center - bounds.center());
+        let anchor = g.frame.unwrap_or(bounds);
+        let shift = Affine::translate(center - anchor.center());
         let color = self.shape_gen_color();
         let line = self.shape_gen_line_stroke(s);
         let mut children: Vec<Shape> = Vec::new();
@@ -1741,6 +1909,10 @@ impl crate::app::App {
                     shape.stroke = Some(tracedraw_core::Stroke::hairline(
                         tracedraw_core::Color::BLACK,
                     ));
+                }
+                Paint::Ink(k) => {
+                    shape.fill = Fill::Solid(crate::shape_gen_cells::ink_color(k));
+                    shape.stroke = None;
                 }
             }
             shape
@@ -1773,6 +1945,33 @@ impl crate::app::App {
         if children.is_empty() {
             return None;
         }
+        // Each ink's marks in a group of their own, named after it.
+        let has_ink = g.items.iter().any(|i| matches!(i.paint, Paint::Ink(_)));
+        if has_ink {
+            let ink_of = |c: &Shape| -> Option<u8> {
+                (0..4u8).find(|k| c.fill == Fill::Solid(crate::shape_gen_cells::ink_color(*k)))
+            };
+            let mut by_ink: Vec<Vec<Shape>> = vec![Vec::new(); 4];
+            let mut rest = Vec::new();
+            for c in children {
+                match ink_of(&c) {
+                    Some(k) => by_ink[k as usize].push(c),
+                    None => rest.push(c),
+                }
+            }
+            for (k, kids) in by_ink.into_iter().enumerate() {
+                if kids.is_empty() {
+                    continue;
+                }
+                let id = self.engine.new_shape_id();
+                let mut sub = Shape::new(id, ShapeKind::Group { children: kids });
+                sub.fill = Fill::None;
+                sub.stroke = None;
+                sub.name = Some(crate::i18n::tr(crate::shape_gen_cells::ink_key(k as u8)));
+                rest.push(sub);
+            }
+            children = rest;
+        }
         let gid = self.engine.new_shape_id();
         let mut group = Shape::new(gid, ShapeKind::Group { children });
         group.fill = Fill::None;
@@ -1804,7 +2003,10 @@ impl crate::app::App {
     pub fn shape_gen_create(&mut self) -> Option<tracedraw_core::ShapeId> {
         let s = self.shape_gen.sanitized();
         let g = generate(&s);
-        let center = self.shape_gen_place();
+        let center = match s.source_center {
+            Some(c) if s.kind.uses_source() => Point::new(c[0], c[1]),
+            _ => self.shape_gen_place(),
+        };
         self.shape_gen_add(&s, &g, center, None, "Shape Generator")
     }
 
@@ -1812,8 +2014,11 @@ impl crate::app::App {
     /// settings, in the same place (one undo step).
     pub fn shape_gen_update(&mut self) -> Option<tracedraw_core::ShapeId> {
         let (old, _) = self.shape_gen_selected()?;
-        let center = self.selection_bounds()?.center();
         let s = self.shape_gen.sanitized();
+        let center = match s.source_center {
+            Some(c) if s.kind.uses_source() => Point::new(c[0], c[1]),
+            _ => self.selection_bounds()?.center(),
+        };
         let g = generate(&s);
         self.shape_gen_add(&s, &g, center, Some(old), "Shape Generator")
     }
@@ -1862,6 +2067,80 @@ impl crate::app::App {
             )
         };
         Some(gid)
+    }
+
+    /// Use Selection: the selection becomes the panel's source. Its box
+    /// sets Width and Height and where Create puts the result, its closed
+    /// curves (welded, holes kept) the outline Voronoi fills and marks
+    /// stay in, and for stippling and halftone it is drawn to a picture
+    /// whose tones size the marks. False with nothing selected.
+    pub fn shape_gen_use_selection(&mut self) -> bool {
+        use tracedraw_core::{Shape, ShapeKind};
+        let Some(bounds) = self.selection_bounds() else {
+            return false;
+        };
+        if bounds.width() <= 1e-6 || bounds.height() <= 1e-6 {
+            return false;
+        }
+        fn walk(shape: &Shape, t: Affine, out: &mut Vec<BezPath>) {
+            match &shape.kind {
+                ShapeKind::Group { children } => {
+                    for c in children {
+                        walk(c, t * shape.transform, out);
+                    }
+                }
+                ShapeKind::Path { closed: false, .. }
+                | ShapeKind::Bitmap { .. }
+                | ShapeKind::ClipFrame { .. }
+                | ShapeKind::Table(_)
+                | ShapeKind::SymbolInstance { .. } => {}
+                _ => out.push(t * shape.page_path()),
+            }
+        }
+        let mut paths = Vec::new();
+        for shape in self.selected_shapes() {
+            walk(&shape, Affine::IDENTITY, &mut paths);
+        }
+        let to_box = Affine::translate(Vec2::new(-bounds.x0, -bounds.y0));
+        let mut outline: Option<BezPath> = None;
+        for p in paths {
+            let p = to_box * p;
+            outline = Some(match outline {
+                None => tracedraw_core::shaping::overlay(
+                    &p,
+                    &BezPath::new(),
+                    tracedraw_core::shaping::Op::Weld,
+                ),
+                Some(o) => {
+                    tracedraw_core::shaping::overlay(&o, &p, tracedraw_core::shaping::Op::Weld)
+                }
+            });
+        }
+        let s = &mut self.shape_gen;
+        s.width = bounds.width();
+        s.height = bounds.height();
+        s.source_center = Some([bounds.center().x, bounds.center().y]);
+        s.boundary = outline.filter(|o| !o.elements().is_empty());
+        s.vor_points.clear();
+        s.tone = None;
+        if self.shape_gen.kind.uses_tone() {
+            // About 240 pixels along the longer side.
+            let dpi = 240.0 / (bounds.width().max(bounds.height()) / 25.4);
+            if let Some((png, _, _, _)) = self.render_selection_png(dpi.clamp(1.0, 2400.0), true) {
+                use base64::Engine as _;
+                self.shape_gen.tone = Some(base64::engine::general_purpose::STANDARD.encode(png));
+            }
+        }
+        true
+    }
+
+    /// Clear the picked selection: back to the box and the stand-in ramp.
+    pub fn shape_gen_clear_source(&mut self) {
+        let s = &mut self.shape_gen;
+        s.source_center = None;
+        s.boundary = None;
+        s.tone = None;
+        s.vor_points.clear();
     }
 
     /// Cone template: the template made in the middle of the window and
@@ -2315,5 +2594,92 @@ mod tests {
         next.apply_tool_prefs(&odd);
         assert_eq!(next.shape_gen.poles, 1);
         assert_eq!(next.shape_gen.width, ShapeGenSettings::default().width);
+    }
+
+    fn black_disc(app: &mut crate::app::App) -> tracedraw_core::ShapeId {
+        let id = app
+            .new_shape(tracedraw_core::ShapeKind::Ellipse {
+                rect: Rect::new(10.0, 10.0, 70.0, 70.0),
+                arc: None,
+            })
+            .expect("disc");
+        app.run(tracedraw_core::Command::SetFill {
+            shapes: vec![id],
+            fill: tracedraw_core::Fill::Solid(tracedraw_core::Color::BLACK),
+        });
+        app.select(vec![id]);
+        id
+    }
+
+    #[test]
+    fn halftone_of_a_picked_disc_lands_on_it_inside_its_outline() {
+        let mut app = crate::app::App::headless();
+        black_disc(&mut app);
+        app.shape_gen = ShapeGenSettings {
+            kind: GenKind::Halftone,
+            ht_cell: 3.0,
+            ..ShapeGenSettings::default()
+        };
+        assert!(app.shape_gen_use_selection());
+        assert!(app.shape_gen.tone.is_some());
+        assert!(app.shape_gen.boundary.is_some());
+        assert!((app.shape_gen.width - 60.0).abs() < 1e-6);
+        app.shape_gen_create().expect("made");
+        let g = app.selected_shapes().into_iter().next().expect("group");
+        let tracedraw_core::ShapeKind::Group { children } = &g.kind else {
+            panic!("a group");
+        };
+        // Black everywhere inside: full dots over the disc's area.
+        assert!(children.len() > 250, "{}", children.len());
+        let mid = Point::new(40.0, 40.0);
+        for c in children {
+            use tracedraw_core::geometry::Shape as _;
+            let b = c.page_path().bounding_box();
+            assert!((b.center() - mid).hypot() < 31.0, "{b:?}");
+        }
+    }
+
+    #[test]
+    fn cmyk_marks_are_grouped_per_ink() {
+        let mut app = crate::app::App::headless();
+        black_disc(&mut app);
+        app.shape_gen = ShapeGenSettings {
+            kind: GenKind::Halftone,
+            ht_cell: 4.0,
+            ht_cmyk: true,
+            ..ShapeGenSettings::default()
+        };
+        app.shape_gen_use_selection();
+        app.shape_gen_create().expect("made");
+        let g = app.selected_shapes().into_iter().next().expect("group");
+        let tracedraw_core::ShapeKind::Group { children } = &g.kind else {
+            panic!("a group");
+        };
+        // Black only: one ink group.
+        assert_eq!(children.len(), 1);
+        assert!(matches!(
+            children[0].kind,
+            tracedraw_core::ShapeKind::Group { .. }
+        ));
+    }
+
+    #[test]
+    fn voronoi_fills_a_picked_shape_and_clear_forgets_it() {
+        let mut app = crate::app::App::headless();
+        black_disc(&mut app);
+        app.shape_gen = ShapeGenSettings {
+            kind: GenKind::Voronoi,
+            vor_spacing: 6.0,
+            ..ShapeGenSettings::default()
+        };
+        app.shape_gen_use_selection();
+        assert!(app.shape_gen.tone.is_none(), "cells need no picture");
+        let g = generate(&app.shape_gen);
+        use tracedraw_core::geometry::Shape as _;
+        let area: f64 = g.items.iter().map(|i| i.path.area().abs()).sum();
+        let disc = std::f64::consts::PI * 30.0 * 30.0;
+        assert!((area - disc).abs() < disc * 0.03, "{area} {disc}");
+        app.shape_gen_clear_source();
+        assert!(app.shape_gen.boundary.is_none() && app.shape_gen.source_center.is_none());
     }
 }
