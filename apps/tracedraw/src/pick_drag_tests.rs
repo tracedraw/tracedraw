@@ -29813,3 +29813,33 @@ fn ctrl_d_repeats_a_move_turn_or_scale_done_to_the_copy_with_the_mouse() {
         assert!(near(t(&app, third), step * t(&app, second)), "{how}: third");
     }
 }
+
+/// #3008: a double click on a guideline opens the Guidelines panel on it,
+/// one placed in code or dragged out of the ruler. The first click took
+/// the guideline and the second ended there too, so it was only selected.
+#[test]
+fn a_double_click_on_a_guideline_opens_the_guidelines_panel() {
+    use tracedraw_core::document::Guide;
+    let (ctx, mut app, _id) = setup();
+    app.add_guide(Guide::horizontal(150.0));
+    app.show_dockers = false;
+    let on_h = app.view.to_screen(Point::new(100.0, 150.0));
+    double_click_at(&ctx, &mut app, on_h);
+    assert!(app.show_dockers);
+    assert_eq!(app.docker_tab, crate::app::DockerTab::Guidelines);
+    assert_eq!(app.guide_form_for, Some(0));
+    assert_eq!(app.selected_guides, vec![0]);
+    assert!(app.guide_rotate.is_none(), "not left in rotate mode");
+
+    // Dragged out of the ruler above the drawing window.
+    let (_, mut app, _id) = setup();
+    app.show_dockers = false;
+    let top = egui::pos2(app.canvas_rect.center().x, app.canvas_rect.top() - 8.0);
+    let to = egui::pos2(top.x, app.canvas_rect.center().y + 60.0);
+    drag(&ctx, &mut app, top, to, Modifiers::NONE, Vec::new());
+    assert_eq!(app.page_guides().len(), 1, "a guideline from the ruler");
+    double_click_at(&ctx, &mut app, egui::pos2(to.x - 150.0, to.y));
+    assert!(app.show_dockers);
+    assert_eq!(app.docker_tab, crate::app::DockerTab::Guidelines);
+    assert_eq!(app.guide_form_for, Some(0));
+}

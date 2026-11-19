@@ -2563,6 +2563,15 @@ impl App {
             if (self.guide_rotate.is_some() || self.hit_test(p).is_none())
                 && self.click_guide(p, mods.shift)
             {
+                // The second click of a double click: the Guidelines panel
+                // on it. The click took the guideline and the double click
+                // further down was never reached, so it only selected the
+                // guideline (#3008).
+                if response.double_clicked_by(PointerButton::Primary) && !mods.shift {
+                    if let Some(i) = self.pick_guide_at(p) {
+                        self.open_guide_properties(i);
+                    }
+                }
                 return;
             }
             self.deselect_guides();
