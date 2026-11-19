@@ -72,6 +72,21 @@ the right.
   pasted while its contents are edited, or moved onto another page of
   the Multipage View go where they did before
   (`pick_drag_tests::objects_put_beside_the_page_go_on_the_desktop_when_it_takes_them`).
+- PowerClips (#3053): a PowerClip's row has an arrow, as a group's,
+  that opens it to its contents, one step further in, front first. A
+  click on a content's row takes the contents out for editing (Edit
+  Contents, as Object > PowerClip > Edit Contents does) with that object
+  selected, so it can be moved, edited or put in another order among the
+  contents in the list; Finish Editing puts them back. A row dragged and
+  let go in the middle third of another object's row puts the objects it
+  carries inside that object as a PowerClip, as Place Inside Frame does
+  (the object becomes the frame; a PowerClip takes them into its
+  contents), one undo step, the PowerClip selected and opened in the
+  list; the row is framed while the drop would do so. The upper and
+  lower parts of the row still put them in front or behind, a group's
+  middle still takes them into the group, and a locked object, a group
+  or an object inside a group takes none
+  (`ui::objects_docker::drag_tests::a_row_dropped_in_the_middle_of_another_powerclips_it`).
 - Double-click a layer to rename it; double-click an object to name it
   (Rename Object; an empty name goes back to the description).
 - Double-click the page node, or pick Rename in its context menu, to

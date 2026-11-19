@@ -1382,6 +1382,8 @@ fn object_rows(app: &App, ui: &mut Ui, s: &Shape, depth: usize, act: &mut Action
         .then(|| ui.interact(rect, id, Sense::click_and_drag()));
     let children: Option<&Vec<Shape>> = match &s.kind {
         ShapeKind::Group { children } => Some(children),
+        // A PowerClip opens to its contents, front first (#3053).
+        ShapeKind::ClipFrame { contents, .. } if !contents.is_empty() => Some(contents),
         _ => None,
     };
     let expanded = app.objects_open_groups.contains(&s.id);
@@ -1410,7 +1412,12 @@ fn object_row(
     act: &mut Actions,
 ) {
     let mut x = rect.left() + 3.0 + depth as f32 * INDENT;
-    if matches!(s.kind, ShapeKind::Group { .. }) {
+    let opens = match &s.kind {
+        ShapeKind::Group { .. } => true,
+        ShapeKind::ClipFrame { contents, .. } => !contents.is_empty(),
+        _ => false,
+    };
+    if opens {
         let (ar, a) = hot(
             ui,
             rect,
@@ -2326,6 +2333,9 @@ enum RowDrop {
     Into(ShapeId),
     /// On the top of a layer.
     Layer(LayerId),
+    /// Into the object as a PowerClip: the object becomes the frame, or
+    /// the objects join a PowerClip's contents (#3053).
+    Clip(ShapeId),
 }
 
 /// The objects a dragged row carries, bottom first as they are drawn: the
@@ -2379,6 +2389,7 @@ fn drop_commands(app: &App, ids: &[ShapeId], drop: RowDrop) -> Vec<Command> {
         RowDrop::Object { reference, .. } => doc.is_nested(reference) || !all_on_layers(app, ids),
         RowDrop::Into(_) => true,
         RowDrop::Layer(_) => !all_on_layers(app, ids),
+        RowDrop::Clip(_) => return Vec::new(),
     };
     if nested {
         return nested_drop_commands(app, ids, drop);
@@ -2394,7 +2405,7 @@ fn drop_commands(app: &App, ids: &[ShapeId], drop: RowDrop) -> Vec<Command> {
             }
         }
         RowDrop::Layer(l) => l,
-        RowDrop::Into(_) => return Vec::new(),
+        RowDrop::Into(_) | RowDrop::Clip(_) => return Vec::new(),
     };
     if doc.all_layers().any(|l| l.id == layer && l.locked) {
         return Vec::new();
@@ -2424,6 +2435,7 @@ fn nested_drop_commands(app: &App, ids: &[ShapeId], drop: RowDrop) -> Vec<Comman
     let target_layer = match drop {
         RowDrop::Object { reference: t, .. } | RowDrop::Into(t) => layer_holding(app, t),
         RowDrop::Layer(l) => Some(l),
+        RowDrop::Clip(_) => return Vec::new(),
     };
     let Some(layer) = target_layer else {
         return Vec::new();
@@ -2444,6 +2456,7 @@ fn nested_drop_commands(app: &App, ids: &[ShapeId], drop: RowDrop) -> Vec<Comman
             shapes: ids.to_vec(),
             group,
         },
+        RowDrop::Clip(_) => return Vec::new(),
         RowDrop::Layer(l) => {
             let top = doc
                 .all_layers()
@@ -2463,7 +2476,7 @@ fn nested_drop_commands(app: &App, ids: &[ShapeId], drop: RowDrop) -> Vec<Comman
     // The target, or a group holding it, among the objects dragged: it
     // cannot go inside itself.
     let target = match drop {
-        RowDrop::Object { reference: t, .. } | RowDrop::Into(t) => Some(t),
+        RowDrop::Object { reference: t, .. } | RowDrop::Into(t) | RowDrop::Clip(t) => Some(t),
         RowDrop::Layer(_) => None,
     };
     if let Some(t) = target {
@@ -2480,8 +2493,12 @@ fn nested_drop_commands(app: &App, ids: &[ShapeId], drop: RowDrop) -> Vec<Comman
 /// step; they stay selected, and their layer becomes the active one, on
 /// its page.
 fn drop_rows(app: &mut App, ids: &[ShapeId], drop: RowDrop) {
+    if let RowDrop::Clip(frame) = drop {
+        clip_rows(app, ids, frame);
+        return;
+    }
     let layer = match drop {
-        RowDrop::Object { reference, .. } | RowDrop::Into(reference) => {
+        RowDrop::Object { reference, .. } | RowDrop::Into(reference) | RowDrop::Clip(reference) => {
             layer_holding(app, reference)
         }
         RowDrop::Layer(l) => Some(l),
@@ -2508,6 +2525,66 @@ fn drop_rows(app: &mut App, ids: &[ShapeId], drop: RowDrop) {
     }
     app.picked_layer = Some(layer);
     app.select(ids.to_vec());
+}
+
+/// Whether rows carrying `ids` can be dropped into `target` as a
+/// PowerClip (#3053): the target lies on a layer (not in a group), is no
+/// group, is not locked nor on a locked layer, and is not among them; the
+/// objects carried lie on layers and are not locked.
+fn can_clip_into(app: &App, ids: &[ShapeId], target: ShapeId) -> bool {
+    let doc = app.doc();
+    let Ok((_, t)) = doc.shape(target) else {
+        return false;
+    };
+    if t.locked || matches!(t.kind, ShapeKind::Group { .. }) || ids.contains(&target) {
+        return false;
+    }
+    if layer_holding(app, target)
+        .is_some_and(|l| doc.all_layers().any(|x| x.id == l && x.locked))
+    {
+        return false;
+    }
+    !ids.is_empty() && ids.iter().all(|id| doc.shape(*id).is_ok_and(|(_, s)| !s.locked))
+}
+
+/// Rows let go in the middle of another object's row (#3053): the objects
+/// go inside it as a PowerClip, as Place Inside Frame puts them (the
+/// object becomes the frame, or they join a PowerClip's contents), one
+/// undo step; the PowerClip is selected and opened in the list.
+fn clip_rows(app: &mut App, ids: &[ShapeId], frame: ShapeId) {
+    if !can_clip_into(app, ids, frame) {
+        return;
+    }
+    app.place_inside(ids.to_vec(), frame);
+    if app.doc().find_shape(frame).is_some_and(|s| matches!(s.kind, ShapeKind::ClipFrame { .. })) {
+        app.objects_open_groups.insert(frame);
+        app.select(vec![frame]);
+    }
+}
+
+/// A click on the row of `id`, an object inside a PowerClip (#3053):
+/// the PowerClip's contents are taken out for editing (Edit Contents), so
+/// the object can be moved, edited and put in another order among the
+/// contents, and the object is selected. False when `id` is in no
+/// PowerClip.
+fn select_clip_content(app: &mut App, id: ShapeId) -> bool {
+    let doc = app.doc();
+    let Some(frame) = doc.ancestors(id).last().copied() else {
+        return false;
+    };
+    let in_contents = doc.find_shape(frame).is_some_and(|f| match &f.kind {
+        ShapeKind::ClipFrame { contents, .. } => contents.iter().any(|c| c.id == id),
+        _ => false,
+    });
+    if !in_contents || doc.shape(frame).is_err() {
+        return false;
+    }
+    app.select(vec![frame]);
+    app.edit_clip_frame();
+    if app.doc().shape(id).is_ok() {
+        app.select(vec![id]);
+    }
+    true
 }
 
 /// An object row dragged along the list: a line shows where it goes. Let
@@ -2574,6 +2651,14 @@ fn drag_rows(
             if group && (p.y - r.center().y).abs() < r.height() / 4.0 {
                 return Some((RowDrop::Into(*sid), r.center().y, *r));
             }
+            // Another object's row: its middle third puts the objects
+            // inside it as a PowerClip (#3053).
+            if !group
+                && (p.y - r.center().y).abs() < r.height() / 6.0
+                && can_clip_into(app, &dragged_objects(app, dragged), *sid)
+            {
+                return Some((RowDrop::Clip(*sid), r.center().y, *r));
+            }
             let in_front = p.y < r.center().y;
             let y = if in_front { r.top() } else { r.bottom() };
             let drop = RowDrop::Object {
@@ -2589,8 +2674,8 @@ fn drag_rows(
     });
     if down {
         match target {
-            // Into a group: its row is framed.
-            Some((RowDrop::Into(_), _, r)) => {
+            // Into a group or a PowerClip: its row is framed.
+            Some((RowDrop::Into(_) | RowDrop::Clip(_), _, r)) => {
                 ui.painter().rect_stroke(
                     r.shrink(1.0),
                     3.0,
@@ -2785,7 +2870,7 @@ fn apply(app: &mut App, ui: &Ui, mut act: Actions) {
     if let Some(layer) = act.master_to_page {
         master_to_page(app, layer);
     }
-    if let Some(id) = act.select {
+    if let Some(id) = act.select.filter(|id| !select_clip_content(app, *id)) {
         let (shift, ctrl) = ui.input(|i| (i.modifiers.shift, i.modifiers.command));
         let key = egui::Id::new("objects_docker_anchor");
         let anchor: Option<ShapeId> = ui.data(|d| d.get_temp(key));
@@ -4548,5 +4633,71 @@ mod drag_tests {
         );
         assert_eq!(order(&app, 0), [c, a, g]);
         assert_eq!(children(&app, g), [b]);
+    }
+
+    /// PowerClips in the list (#3053): a row let go in the middle of
+    /// another object's row puts the object inside it as a PowerClip, one
+    /// undo step; the PowerClip's row opens to its contents, and a click
+    /// on a content's row takes the contents out for editing with that
+    /// object selected. A group's middle still takes objects into the
+    /// group, and a locked object takes none.
+    #[test]
+    fn a_row_dropped_in_the_middle_of_another_powerclips_it() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let a = app.new_shape(rect_kind()).expect("a");
+        let b = app.new_shape(rect_kind()).expect("b");
+        let c = app.new_shape(rect_kind()).expect("c");
+        app.select(Vec::new());
+        frame(&ctx, &mut app, Vec::new());
+        let (ra, rc) = (object_row(&ctx, a), object_row(&ctx, c));
+        // c into the middle of a's row: a becomes the frame.
+        drag(&ctx, &mut app, rc.center(), ra.center());
+        let frame_kind = |app: &App| app.doc().find_shape(a).map(|s| s.kind.clone());
+        let Some(ShapeKind::ClipFrame { contents, .. }) = frame_kind(&app) else {
+            panic!("a PowerClip: {:?}", frame_kind(&app));
+        };
+        assert_eq!(contents.iter().map(|s| s.id).collect::<Vec<_>>(), [c]);
+        assert_eq!(order(&app, 0), [a, b]);
+        assert_eq!(app.selection, vec![a]);
+        // Its row opens to its contents, one step in.
+        frame(&ctx, &mut app, Vec::new());
+        let (ra, rcin) = (object_row(&ctx, a), object_row(&ctx, c));
+        assert!(rcin.top() >= ra.bottom() - 0.5, "{ra:?} {rcin:?}");
+        // A click on the content's row: Edit Contents, the object chosen.
+        let click = |pos| {
+            vec![
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ]
+        };
+        frame(&ctx, &mut app, vec![egui::Event::PointerMoved(rcin.center())]);
+        frame(&ctx, &mut app, click(rcin.center()));
+        assert!(app.clip_frame_edit.is_some(), "editing the contents");
+        assert_eq!(app.selection, vec![c]);
+        app.finish_clip_frame_edit();
+        // One undo step undid the PowerClip itself.
+        let mut app2 = App::headless();
+        let x = app2.new_shape(rect_kind()).expect("x");
+        let y = app2.new_shape(rect_kind()).expect("y");
+        clip_rows(&mut app2, &[y], x);
+        assert!(matches!(app2.doc().find_shape(x).unwrap().kind, ShapeKind::ClipFrame { .. }));
+        app2.undo();
+        assert!(matches!(app2.doc().find_shape(x).unwrap().kind, ShapeKind::Rect { .. }));
+        assert_eq!(order(&app2, 0), [x, y]);
+        // A locked object and a group take nothing as a PowerClip.
+        app2.run(Command::SetLocked { shapes: vec![x], locked: true });
+        assert!(!can_clip_into(&app2, &[y], x));
+        assert!(!can_clip_into(&app2, &[y], y), "not into itself");
     }
 }
