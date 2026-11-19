@@ -411,7 +411,9 @@ struct Key {
     /// still needs a new render when the view stays put.
     offset: egui::Vec2,
     size: (u32, u32),
-    preview: Option<(Vec<ShapeId>, [f64; 6])>,
+    /// The dragged objects as a set: the order the selection was made in
+    /// must not invalidate the picture, and the render asks membership.
+    preview: Option<(std::collections::HashSet<ShapeId>, [f64; 6])>,
     wireframe: bool,
     simulate_overprints: bool,
     complex_effects: bool,
@@ -564,7 +566,9 @@ impl Raster {
             zoom: view.zoom,
             offset: view.origin - rect.min,
             size: (w, h),
-            preview: preview.as_ref().map(|(s, t)| (s.clone(), t.as_coeffs())),
+            preview: preview
+                .as_ref()
+                .map(|(s, t)| (s.iter().copied().collect(), t.as_coeffs())),
             wireframe,
             simulate_overprints,
             complex_effects,

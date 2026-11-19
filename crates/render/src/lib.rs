@@ -85,13 +85,58 @@ impl ViewTransform {
     }
 }
 
-/// Objects to draw displaced by a transform (live drag preview). The ids
-/// are a set: every object of the page is looked up in it each frame, so
-/// a drag of tens of thousands of objects stays quick (#3601).
+/// Objects to draw displaced by a transform (live drag preview).
+/// `shapes` is a set: a frame asks membership of it once per object,
+/// so a Vec made a drag of a large selection quadratic (#3559, step 5).
 #[derive(Debug, Clone, Default)]
 pub struct Preview {
     pub shapes: std::collections::HashSet<ShapeId>,
     pub transform: Affine,
+}
+
+/// The page-space box of every object of a page, worked out once for a
+/// render and shared by its bands: a band's culling asks every object's
+/// box, and before this cache each of the bands (one per core) walked
+/// the whole page's paths again (#3559).
+type PageBounds = std::collections::HashMap<ShapeId, Rect>;
+
+/// [`PageBounds`] of the page's drawable layers: each shape's box with
+/// the transforms of the groups and clip frames holding it taken in,
+/// the same value [`Renderer::reach`] would compute for it.
+#[cfg(not(target_arch = "wasm32"))]
+fn page_bounds_cache(doc: &Document, page: PageId) -> PageBounds {
+    fn walk(s: &Shape, parent: Affine, map: &mut PageBounds) {
+        let b = if parent == Affine::IDENTITY {
+            s.bounds()
+        } else {
+            parent.transform_rect_bbox(s.bounds())
+        };
+        map.insert(s.id, b);
+        let t = parent * s.transform;
+        match &s.kind {
+            ShapeKind::Group { children } => {
+                for c in children {
+                    walk(c, t, map);
+                }
+            }
+            ShapeKind::ClipFrame { frame, contents } => {
+                walk(frame, t, map);
+                for c in contents {
+                    walk(c, t, map);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut map = PageBounds::new();
+    if let Ok(layers) = doc.layers_drawn_for_page(page) {
+        for layer in layers {
+            for s in &layer.shapes {
+                walk(s, Affine::IDENTITY, &mut map);
+            }
+        }
+    }
+    map
 }
 
 /// Runs bitmap effects over straight (not premultiplied) RGBA pixels of
@@ -332,6 +377,9 @@ pub fn render_page_progressive(
     };
     let middle = |b: &(u32, u32, u32, u32)| (b.0 + b.1) / 2;
     bands.sort_by_key(|b| middle(b).abs_diff(first));
+    // Every band's culling asks every object's box: work the boxes out
+    // once here instead of once per band (#3559).
+    let boxes = page_bounds_cache(doc, page);
     let next = AtomicUsize::new(0);
     let done: std::sync::Mutex<Vec<(u32, Pixmap)>> = std::sync::Mutex::new(Vec::new());
     std::thread::scope(|sc| {
@@ -347,7 +395,8 @@ pub fn render_page_progressive(
                 let mut o = opts.clone();
                 o.height = ry1 - ry0;
                 o.view.origin_y = opts.view.origin_y - ry0 as f64;
-                let Some(part) = render_page_whole(doc, page, &o, Some(cancel)) else {
+                let Some(part) = render_page_whole_in(doc, page, &o, Some(cancel), Some(&boxes))
+                else {
                     return;
                 };
                 if cancelled() {
@@ -637,6 +686,9 @@ fn render_page_in_bands(
         return None;
     }
     let bands = band_layout(h, cores, blur_margin(blur_mm, opts.view.zoom))?;
+    // Every band's culling asks every object's box: work the boxes out
+    // once here instead of once per band (#3559).
+    let boxes = page_bounds_cache(doc, page);
     let parts: Vec<Option<Pixmap>> = std::thread::scope(|sc| {
         let handles: Vec<_> = bands
             .iter()
@@ -644,7 +696,8 @@ fn render_page_in_bands(
                 let mut o = opts.clone();
                 o.height = ry1 - ry0;
                 o.view.origin_y = opts.view.origin_y - ry0 as f64;
-                sc.spawn(move || render_page_whole(doc, page, &o, cancel))
+                let boxes = &boxes;
+                sc.spawn(move || render_page_whole_in(doc, page, &o, cancel, Some(boxes)))
             })
             .collect();
         handles
@@ -724,6 +777,18 @@ fn render_page_whole(
     opts: &RenderOptions,
     cancel: Option<&std::sync::atomic::AtomicBool>,
 ) -> Option<Pixmap> {
+    render_page_whole_in(doc, page, opts, cancel, None)
+}
+
+/// [`render_page_whole`] with the page's object boxes already worked
+/// out (`bounds`), shared by the bands of one render (#3559).
+fn render_page_whole_in(
+    doc: &Document,
+    page: PageId,
+    opts: &RenderOptions,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+    bounds: Option<&PageBounds>,
+) -> Option<Pixmap> {
     let mut pixmap = Pixmap::new(opts.width.max(1), opts.height.max(1))?;
     let page = doc.page(page).ok()?;
     let screen = opts.view.affine();
@@ -736,6 +801,7 @@ fn render_page_whole(
         flags,
         symbols: &doc.symbols,
         preview: opts.preview.as_ref(),
+        bounds,
         origin: (0, 0),
         cancel,
     };
@@ -854,6 +920,11 @@ struct Renderer<'a> {
     /// Objects drawn displaced (the live drag preview), on a layer or
     /// inside a group or a clip frame.
     preview: Option<&'a Preview>,
+    /// The page-space box of every object of the page, worked out once
+    /// for a render in bands ([`page_bounds_cache`]): each band's
+    /// culling asks every object's box, and without it all bands paid
+    /// that walk again (#3559). `None` on single-pass renders.
+    bounds: Option<&'a PageBounds>,
     /// Where `pixmap` lies on the target it is laid on, in pixels: a
     /// semi-transparent object's layer covers only what it reaches, and
     /// pattern tiles stay where they fall on the target (#1335).
@@ -876,6 +947,7 @@ impl Renderer<'_> {
             flags: self.flags,
             symbols: self.symbols,
             preview: self.preview,
+            bounds: self.bounds,
             origin: self.origin,
             cancel: self.cancel,
         }
@@ -923,7 +995,7 @@ impl Renderer<'_> {
             }
             _ => {}
         }
-        let Some(b) = Self::reach(shape, parent) else {
+        let Some(b) = Self::reach(shape, parent, self.bounds) else {
             return false;
         };
         b.x1 < visible.x0 || b.x0 > visible.x1 || b.y1 < visible.y0 || b.y0 > visible.y1
@@ -953,12 +1025,14 @@ impl Renderer<'_> {
     /// Where a plain object (no group or clip frame) inside `parent` can
     /// paint, page mm: its bounds grown by what its outline may reach.
     /// `None` when its bounds are not finite. Effects, shadows, symbols
-    /// and the drag preview reach further; callers leave those out.
-    fn reach(shape: &Shape, parent: Affine) -> Option<Rect> {
-        let b = if parent == Affine::IDENTITY {
-            shape.bounds()
-        } else {
-            parent.transform_rect_bbox(shape.bounds())
+    /// and the drag preview reach further; callers leave those out. The
+    /// box comes from the render's shared [`PageBounds`] when there is
+    /// one (#3559).
+    fn reach(shape: &Shape, parent: Affine, cached: Option<&PageBounds>) -> Option<Rect> {
+        let b = match cached.and_then(|c| c.get(&shape.id)) {
+            Some(b) => *b,
+            None if parent == Affine::IDENTITY => shape.bounds(),
+            None => parent.transform_rect_bbox(shape.bounds()),
         };
         if !b.x0.is_finite() || !b.y0.is_finite() || !b.x1.is_finite() || !b.y1.is_finite() {
             return None;
@@ -1013,7 +1087,7 @@ impl Renderer<'_> {
         {
             return whole;
         }
-        let Some(page) = Self::reach(shape, parent) else {
+        let Some(page) = Self::reach(shape, parent, self.bounds) else {
             return whole;
         };
         let r = self.screen.transform_rect_bbox(page).inflate(grow, grow);
@@ -2044,7 +2118,7 @@ impl Renderer<'_> {
         rule: FillRule,
     ) {
         let b = page_path.bounding_box();
-        let extent = Self::reach(shape, parent).map_or(b, |r| r.union(b));
+        let extent = Self::reach(shape, parent, self.bounds).map_or(b, |r| r.union(b));
         let object = parent * shape.transform;
         let Some((layer_at, mut layer, screen)) = self.shadow_target_over(sh, b, extent) else {
             return;
@@ -3741,6 +3815,7 @@ impl Renderer<'_> {
                 },
                 symbols: self.symbols,
                 preview: None,
+                bounds: None,
                 origin: (0, 0),
                 cancel: None,
             };
@@ -4061,7 +4136,7 @@ fn cast_boxes(shape: &Shape, parent: Affine) -> Option<(Rect, Rect)> {
     let extent = match shape.kind {
         ShapeKind::Group { .. } | ShapeKind::ClipFrame { .. } => extent,
         _ if shape.stroke.is_none() => extent,
-        _ => Renderer::reach(shape, parent).map_or(extent, |r| r.union(extent)),
+        _ => Renderer::reach(shape, parent, None).map_or(extent, |r| r.union(extent)),
     };
     (b.width().is_finite() && b.height().is_finite()).then_some((b, extent))
 }
@@ -5736,6 +5811,7 @@ pub fn render_fill_image(fill: &Fill, bounds: Rect, dpi: f64) -> Option<Pixmap> 
         flags: Flags::default(),
         symbols: &[],
         preview: None,
+        bounds: None,
         origin: (0, 0),
         cancel: None,
     };
@@ -5779,6 +5855,7 @@ pub fn render_fill_image_in(fill: &Fill, path: &BezPath, dpi: f64) -> Option<Pix
         flags: Flags::default(),
         symbols: &[],
         preview: None,
+        bounds: None,
         origin: (0, 0),
         cancel: None,
     };
@@ -5821,6 +5898,7 @@ pub fn render_pattern_cell(p: &tracedraw_core::Pattern, dpi: f64) -> Option<(Pix
         flags: Flags::default(),
         symbols: &[],
         preview: None,
+        bounds: None,
         origin: (0, 0),
         cancel: None,
     };
@@ -6656,6 +6734,80 @@ mod tests {
         s
     }
 
+    /// The drag preview answers membership once per object drawn: a Vec
+    /// there made a drag of a large selection quadratic in the number of
+    /// objects on the page. Run with `cargo test --release -p
+    /// tracedraw-render -- --ignored preview_membership --nocapture`
+    /// (#3559, step 5).
+    #[test]
+    #[ignore]
+    fn preview_membership_cost_on_a_large_drawing() {
+        let n = 8000u64;
+        let shapes: Vec<Shape> = (0..n)
+            .map(|i| {
+                let (x, y) = ((i % 100) as f64 * 12.0, (i / 100) as f64 * 12.0);
+                rect(i + 100, Rect::new(x, y, x + 10.0, y + 10.0), Color::rgb8(255, 0, 0))
+            })
+            .collect();
+        let (doc, page) = doc_with(shapes);
+        let opts = RenderOptions {
+            width: 64,
+            height: 64,
+            view: ViewTransform {
+                zoom: 1.0,
+                origin_x: 0.0,
+                origin_y: 64.0,
+                stretch_y: 1.0,
+            },
+            preview: Some(Preview {
+                shapes: (100..100 + n).map(tracedraw_core::ShapeId).collect(),
+                transform: Affine::translate((0.0, 1.0)),
+            }),
+            ..RenderOptions::default()
+        };
+        let t = std::time::Instant::now();
+        let pm = render_page(&doc, page, &opts).unwrap();
+        let elapsed = t.elapsed();
+        assert_eq!(pm.width(), 64);
+        eprintln!("render with a preview of {n} objects: {elapsed:?}");
+    }
+
+    /// A render in bands asks every object's box once for all bands
+    /// together, not once per band (#3559). Run with `cargo test
+    /// --release -p tracedraw-render --lib -- --ignored banded_render
+    /// --nocapture`.
+    #[test]
+    #[ignore]
+    fn banded_render_asks_boxes_once() {
+        let n = 8000u64;
+        let shapes: Vec<Shape> = (0..n)
+            .map(|i| {
+                let (x, y) = ((i % 100) as f64 * 12.0, (i / 100) as f64 * 12.0);
+                rect(i + 100, Rect::new(x, y, x + 10.0, y + 10.0), Color::rgb8(255, 0, 0))
+            })
+            .collect();
+        let (doc, page) = doc_with(shapes);
+        let opts = RenderOptions {
+            width: 1600,
+            height: 1600,
+            view: ViewTransform {
+                zoom: 1.5,
+                origin_x: 0.0,
+                origin_y: 2400.0,
+                stretch_y: 1.0,
+            },
+            ..RenderOptions::default()
+        };
+        // A warm-up, then the measured run.
+        let pm = render_page(&doc, page, &opts).expect("render");
+        assert_eq!(pm.width(), 1600);
+        let t = std::time::Instant::now();
+        let pm = render_page(&doc, page, &opts).expect("render");
+        let elapsed = t.elapsed();
+        assert_eq!(pm.width(), 1600);
+        eprintln!("banded render of {n} objects: {elapsed:?}");
+    }
+
     /// A semi-transparent object draws into a layer only as large as
     /// what it can reach (#1335), and the page comes out as with a layer
     /// the size of the window: plain, outlined with arrowheads, with a
@@ -6771,6 +6923,7 @@ mod tests {
                     flags: Flags::from_options(&opts),
                     symbols: &[],
                     preview: None,
+                    bounds: None,
                     origin: (0, 0),
                     cancel: None,
                 };
@@ -6791,6 +6944,7 @@ mod tests {
                 flags: Flags::from_options(&opts),
                 symbols: &[],
                 preview: None,
+                bounds: None,
                 origin: (0, 0),
                 cancel: None,
             }
@@ -11340,6 +11494,7 @@ mod culling_tests {
             flags: Flags::from_options(&opts),
             symbols: &[],
             preview: None,
+            bounds: None,
             origin: (0, 0),
             cancel: None,
         };
@@ -11577,6 +11732,7 @@ mod band_tests {
             flags: Flags::from_options(&opts),
             symbols: &doc.symbols,
             preview: None,
+            bounds: None,
             origin: (0, 0),
             cancel: None,
         };
