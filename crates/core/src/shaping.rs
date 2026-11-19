@@ -678,6 +678,21 @@ impl SegmentGrid {
     }
 }
 
+/// `path` with the curves of `sources` put back along it, as a combine
+/// does: the flattening of `path` where it follows a source outline
+/// becomes that stretch of the source, whole. A path made by several
+/// combines in turn (the Shape Builder's parts, cut by every object and
+/// then merged) keeps a node wherever an earlier one cut a curve, even
+/// where the cut is gone; laid back onto the objects it came from, each
+/// stretch along one of them is one piece again (#3587).
+pub fn onto_sources(path: &BezPath, sources: &[&BezPath]) -> BezPath {
+    let polygon = from_shapes(vec![contours(path)]);
+    if polygon.elements().is_empty() {
+        return path.clone();
+    }
+    recover_curves(&polygon, sources)
+}
+
 /// `result`, a polygon path made from the flattened `sources`, with the
 /// sources' curves put back: a vertex lying on a source outline is placed
 /// on it, and a stretch of consecutive vertices along one source subpath
