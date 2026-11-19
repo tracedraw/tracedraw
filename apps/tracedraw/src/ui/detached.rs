@@ -185,9 +185,12 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             continue;
         };
         let title = app.document_tab_title(i);
-        let mut builder = ViewportBuilder::default()
-            .with_title(format!("TraceDraw - {title}"))
-            .with_app_id(crate::splash::APP_ID)
+        let builder = ViewportBuilder::default().with_title(format!("TraceDraw - {title}"));
+        // The splash, which names the application to the window system,
+        // is not in the browser build (it broke that build).
+        #[cfg(not(target_arch = "wasm32"))]
+        let builder = builder.with_app_id(crate::splash::APP_ID);
+        let mut builder = builder
             .with_inner_size(d.size)
             .with_min_inner_size(MIN_SIZE);
         if let Some(at) = d.at {
