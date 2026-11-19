@@ -569,6 +569,7 @@ mod tests {
                         start_deg: 200.0,
                         end_deg: 90.0,
                         pie,
+                        inner: 0.0,
                     }),
                 },
             );

@@ -330,6 +330,9 @@ impl App {
             Tool::Rectangle => self.rect_corners.path(r, (1.0, 1.0)),
             Tool::Ellipse => match &self.ellipse_arc {
                 None => ellipse_path(r),
+                Some(a) if a.pie && a.inner > 0.0 => {
+                    tracedraw_core::geometry::ellipse_ring_path(r, a.start_deg, a.end_deg, a.inner)
+                }
                 Some(a) => ellipse_arc_path(r, a.start_deg, a.end_deg, a.pie),
             },
             Tool::Polygon => polygon_path(

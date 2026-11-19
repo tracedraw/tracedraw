@@ -1257,6 +1257,10 @@ pub struct EllipseArc {
     pub end_deg: f64,
     /// Pie (wedge closed through the centre) or open arc.
     pub pie: bool,
+    /// A pie's thickness as a ring: the inner edge at this share of the
+    /// radii, 0 to 0.99 (0 a plain pie, through the centre).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub inner: f64,
 }
 
 /// Drop shadow attached to an object (the Drop Shadow tool).
@@ -4086,6 +4090,9 @@ impl Shape {
             },
             ShapeKind::Ellipse { rect, arc } => match arc {
                 None => geometry::ellipse_path(*rect),
+                Some(a) if a.pie && a.inner > 0.0 => {
+                    geometry::ellipse_ring_path(*rect, a.start_deg, a.end_deg, a.inner)
+                }
                 Some(a) => geometry::ellipse_arc_path(*rect, a.start_deg, a.end_deg, a.pie),
             },
             ShapeKind::Polygon {
@@ -8258,6 +8265,7 @@ mod tests {
                     start_deg: 0.0,
                     end_deg: 200.0,
                     pie: false,
+                    inner: 0.0,
                 }),
             },
         );
