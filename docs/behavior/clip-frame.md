@@ -108,6 +108,21 @@ frame is edited node by node, and the clip frame stays one
   (`compensate_unlocked_clip_frames` undoes the transform on them). The
   contents put back are part of the transform: one Undo takes back both
   (`ops2::tests::transforming_an_unlocked_clip_frame_is_one_undo`).
+- Draw Inside (#3407, `draw_inside.rs`): a button at the end of the
+  property bar of the tools that draw (the curve tools, Brush Strokes,
+  Painterly Brush, Sketch, Shape Recognition, Rectangle, Ellipse,
+  Polygon, Star, Spiral, Common Shapes). With one closed shape selected
+  (a rectangle, polygon or star, an ellipse or pie, a closed curve, or a
+  clip frame) it starts editing the shape's contents, as Edit Contents
+  does: everything else on the page stays out of reach and what is drawn
+  goes in when the editing ends, by pressing the button again (it shows
+  on meanwhile) or Finish Editing Contents, as Place Inside Frame puts
+  it there (a plain shape becomes a clip frame; nothing drawn leaves it
+  as it was). With no closed shape selected, or more than one object,
+  the button is greyed out and its tip, like the status line when it is
+  pressed, says one closed shape is needed
+  (`draw_inside::tests::what_is_drawn_inside_goes_into_the_shape`,
+  `draw_inside::tests::draw_inside_needs_one_closed_shape`).
 
 ## The clip frame bar
 

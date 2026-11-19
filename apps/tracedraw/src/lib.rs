@@ -74,6 +74,7 @@ mod doc_stats;
 mod documents;
 mod drawing_scale;
 mod drop_files;
+mod draw_inside;
 mod drop_menu;
 mod effect_line;
 #[cfg(test)]

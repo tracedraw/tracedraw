@@ -537,6 +537,21 @@ same function (`export::print_sheets`).
   - Gap (default 0, 0 to 100 mm): the space between the two pages of a
     spread, centred on the fold; a fitted sheet grows by it. No bleed is
     kept between the two pages.
+  - Pages per side (#3380, `Booklet::up`): 2 (default, the layout
+    above), 4 or 8. With 4 or 8 each sheet is a large sheet for offset
+    presses, 2 x 2 or 4 x 2 pages a side, that folds into a signature of
+    8 or 16 pages: folded across the rows (the top half behind) and
+    across the columns (the left half behind), 8 pages first across the
+    columns, the last fold the spine. The pages of the top row stand
+    upside down (heads to the fold). 8 pages, front: 5 4 over 8 1; back
+    (turned over side to side): 3 6 over 2 7. 16 pages, front: 5 12 9 8
+    over 4 13 16 1; back: 7 10 11 6 over 2 15 14 3
+    (`imposition::folded_sides`, worked out by folding the sheet).
+    Saddle stitch nests the signatures (the first holds the first and
+    the last pages), perfect binding gathers them in order (one sheet a
+    signature: Sheets per signature and Creep do not show). The page
+    count is rounded up to a multiple of 8 or 16; the fold mark goes on
+    the middle of the sheet.
   - Under the sketch: the pages, the blank pages added and the sheets of
     paper (each printed on both sides), and for perfect binding the
     signatures (`imposition::booklet_info`). The page range (Pages) picks
@@ -613,6 +628,7 @@ With any mark on, a 12 mm margin (plus the bleed) surrounds the pages.
 
 - `imposition::tests::booklets_pair_the_pages_for_folding`
 - `imposition::tests::perfect_binding_folds_each_signature_on_its_own`
+- `imposition::tests::large_sheets_fold_into_signatures_of_8_and_16_pages`
 - `imposition::tests::booklet_gap_and_creep_move_the_pages`
 - `ui::dialogs::booklet_fields_tests::the_binding_pictures_choose_and_the_summary_counts`
 - `ui::dialogs::booklet_fields_tests::the_summary_counts_the_pages_of_the_range`

@@ -593,6 +593,9 @@ pub struct PrintState {
     pub booklet_binding: usize,
     /// Sheets in each signature of a perfect-bound booklet.
     pub signature_sheets: u32,
+    /// Booklet pages on each side of a sheet: 0 two, 1 four, 2 eight
+    /// (#3380).
+    pub booklet_up: usize,
     /// Saddle-stitch creep compensation at the innermost sheet, mm.
     pub creep: f64,
     /// Space between the two pages of a booklet spread, mm (#947).
@@ -787,6 +790,11 @@ impl PrintState {
             signature_sheets: self.signature_sheets,
             creep: self.creep,
             gap: self.booklet_gap,
+            up: match self.booklet_up {
+                1 => 4,
+                2 => 8,
+                _ => 2,
+            },
         }
     }
 
@@ -960,6 +968,7 @@ impl Default for PrintState {
             layout_preset_request: None,
             booklet_binding: 0,
             signature_sheets: 4,
+            booklet_up: 0,
             creep: 0.0,
             booklet_gap: 0.0,
             preflight: None,
@@ -6317,13 +6326,28 @@ fn booklet_fields(ui: &mut Ui, st: &mut PrintState) {
 }
 
 fn booklet_rows(ui: &mut Ui, st: &mut PrintState) {
-    if st.booklet_binding == 1 {
+    // Pages on each side of the sheet: one fold, or a large sheet folded
+    // into a signature of 8 or 16 pages (#3380).
+    let ups = ["print.booklet_up_2", "print.booklet_up_4", "print.booklet_up_8"];
+    ui.label(tr("print.booklet_up"))
+        .rich_tip(crate::ui::tips::keyed("print.booklet_up"));
+    egui::ComboBox::from_id_salt("print_booklet_up")
+        .selected_text(tr(ups[st.booklet_up.min(2)]))
+        .show_ui(ui, |ui| {
+            for (i, key) in ups.iter().enumerate() {
+                ui.selectable_value(&mut st.booklet_up, i, tr(key));
+            }
+        })
+        .response
+        .rich_tip(crate::ui::tips::keyed("print.booklet_up"));
+    ui.end_row();
+    if st.booklet_binding == 1 && st.booklet_up == 0 {
         ui.label(tr("print.signature_sheets"))
             .rich_tip(crate::ui::tips::keyed("print.signature_sheets"));
         ui.add(crate::ui::field::NumField::new(&mut st.signature_sheets).range(1..=32))
             .rich_tip(crate::ui::tips::keyed("print.signature_sheets"));
         ui.end_row();
-    } else {
+    } else if st.booklet_up == 0 {
         ui.label(tr("print.creep"))
             .rich_tip(crate::ui::tips::keyed("print.creep"));
         ui.add(
@@ -10181,6 +10205,19 @@ mod booklet_fields_tests {
         let o = crate::export::print_layout(&app, &st, app.doc());
         assert_eq!(o.booklet.binding, crate::imposition::Binding::PerfectBound);
         assert_eq!(o.layout, crate::imposition::Layout::Booklet);
+        // Pages per side (#3380): 4 a side folds a sheet into a signature
+        // of 8 pages, so 6 pages take one sheet; sheets per signature and
+        // creep do not apply.
+        assert!(has(&texts, &tr("print.booklet_up")));
+        assert!(has(&texts, &tr("print.booklet_up_2")));
+        st.booklet_up = 1;
+        let texts = run(&mut st, Vec::new());
+        assert!(has(&texts, &tr("print.booklet_up_4")));
+        assert!(!has(&texts, &tr("print.signature_sheets")));
+        assert!(!has(&texts, &tr("print.creep")));
+        let o = crate::export::print_layout(&app, &st, app.doc());
+        assert_eq!(o.booklet.up, 4);
+        assert_eq!(crate::imposition::booklet_info(6, &o.booklet).sheets, 1);
     }
 
     /// The summary under the sketch counts the pages that print, not the

@@ -215,6 +215,17 @@ pub enum Effect {
         angle: f64,
         opacity: f64,
     },
+    /// Sprayer (#3435): objects of one of the sprayer's shapes (`preset`:
+    /// circles, stars, squares, hearts, leaves) in `color` along the
+    /// object's path, about `size` mm across and `spacing` mm apart, drawn
+    /// above it as one group. The path stays editable and the objects
+    /// follow it; Break Effect Apart leaves the group.
+    Spray {
+        preset: u8,
+        size: f64,
+        spacing: f64,
+        color: Color,
+    },
     /// Gaussian blur (#1141): the object drawn blurred by `radius` mm.
     /// Drawn by the renderer.
     GaussianBlur { radius: f64 },
@@ -1036,6 +1047,143 @@ fn overlay(main: &Shape, fill: Fill, line: Color, opacity: f64) -> Option<Shape>
     Some(s)
 }
 
+/// The sprayer's object number `k` of shape `preset` centred on `c`,
+/// `size` across (#3435).
+pub fn spray_object(preset: u8, c: Point, size: f64, k: usize) -> BezPath {
+    let r = size / 2.0;
+    let rect = Rect::new(c.x - r, c.y - r, c.x + r, c.y + r);
+    match preset {
+        0 => crate::geometry::ellipse_path(rect),
+        1 => crate::geometry::polygon_path(rect, 5, 0.5),
+        2 => crate::geometry::rect_path(rect, 0.0),
+        3 => {
+            // Heart: two circles and a triangle, welded.
+            let top = crate::geometry::ellipse_path(Rect::new(c.x - r, c.y, c.x, c.y + r));
+            let top2 = crate::geometry::ellipse_path(Rect::new(c.x, c.y, c.x + r, c.y + r));
+            let tri = crate::effects::polygon(&[
+                Point::new(c.x - r, c.y + r * 0.5),
+                Point::new(c.x + r, c.y + r * 0.5),
+                Point::new(c.x, c.y - r),
+            ]);
+            let a = crate::shaping::overlay(&top, &top2, crate::shaping::Op::Weld);
+            crate::shaping::overlay(&a, &tri, crate::shaping::Op::Weld)
+        }
+        _ => {
+            // Leaf: a lens shape turned with the index.
+            let mut p = BezPath::new();
+            p.move_to((c.x - r, c.y));
+            p.curve_to(
+                (c.x - r * 0.3, c.y + r),
+                (c.x + r * 0.3, c.y + r),
+                (c.x + r, c.y),
+            );
+            p.curve_to(
+                (c.x + r * 0.3, c.y - r),
+                (c.x - r * 0.3, c.y - r),
+                (c.x - r, c.y),
+            );
+            p.close_path();
+            Affine::rotate_about((k as f64 * 0.7).sin() * 0.8, c) * p
+        }
+    }
+}
+
+/// The sprayer's objects along `path` (its own space): one every
+/// `spacing` along each part, from its start, the size varying a little
+/// from one to the next (#3435).
+pub fn spray_paths(path: &BezPath, preset: u8, size: f64, spacing: f64) -> Vec<BezPath> {
+    let spacing = if spacing.is_finite() {
+        spacing.max(0.5)
+    } else {
+        1.0
+    };
+    let size = if size.is_finite() {
+        size.max(0.01)
+    } else {
+        1.0
+    };
+    let mut parts: Vec<Vec<Point>> = Vec::new();
+    crate::geometry::flatten(path, 0.05, &mut |el| match el {
+        PathEl::MoveTo(p) => parts.push(vec![p]),
+        PathEl::LineTo(p) => {
+            if let Some(part) = parts.last_mut() {
+                part.push(p);
+            }
+        }
+        PathEl::ClosePath => {
+            if let Some(part) = parts.last_mut() {
+                if let Some(&first) = part.first() {
+                    part.push(first);
+                }
+            }
+        }
+        _ => {}
+    });
+    let mut out = Vec::new();
+    let mut k = 0usize;
+    for pts in parts.iter().filter(|p| p.len() >= 2) {
+        let mut cum = vec![0.0];
+        for w in pts.windows(2) {
+            cum.push(cum.last().copied().unwrap_or(0.0) + (w[1] - w[0]).hypot());
+        }
+        let total = cum.last().copied().unwrap_or(0.0);
+        let mut s = 0.0;
+        while s <= total + 1e-9 && out.len() < 20_000 {
+            let i = cum
+                .partition_point(|c| *c <= s)
+                .saturating_sub(1)
+                .min(pts.len() - 2);
+            let seg = pts[i + 1] - pts[i];
+            let len = seg.hypot().max(1e-9);
+            let u = ((s - cum[i]) / len).clamp(0.0, 1.0);
+            let c = pts[i] + seg * u;
+            let d = size * (0.7 + 0.3 * ((k as f64 * 1.3).sin().abs()));
+            let p = spray_object(preset, c, d, k);
+            if !p.elements().is_empty() {
+                out.push(p);
+            }
+            s += spacing;
+            k += 1;
+        }
+    }
+    out
+}
+
+/// The group of objects a sprayer effect draws along `main` (#3435).
+fn spray_group(main: &Shape, preset: u8, size: f64, spacing: f64, color: Color) -> Option<Shape> {
+    let path = match &main.kind {
+        ShapeKind::Group { .. }
+        | ShapeKind::ClipFrame { .. }
+        | ShapeKind::Table(_)
+        | ShapeKind::SymbolInstance { .. }
+        | ShapeKind::Bitmap { .. } => return None,
+        _ => main.local_path(),
+    };
+    let children: Vec<Shape> = spray_paths(&path, preset, size, spacing)
+        .into_iter()
+        .map(|p| {
+            let mut c = Shape::new(
+                main.id,
+                ShapeKind::Path {
+                    path: p,
+                    closed: true,
+                },
+            );
+            c.fill = Fill::Solid(color);
+            c.stroke = None;
+            c.name = Some("Sprayed object".into());
+            c
+        })
+        .collect();
+    if children.is_empty() {
+        return None;
+    }
+    let mut g = Shape::new(main.id, ShapeKind::Group { children });
+    g.transform = main.transform;
+    g.name = Some("Sprayed objects".into());
+    Some(g)
+}
+
 /// Result of evaluating a shape's effect stack.
 #[derive(Clone)]
 pub struct Evaluated {
@@ -1364,6 +1512,14 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
                     *angle,
                 );
                 above.extend(overlay(&main, Fill::Fountain(f), *to, *opacity));
+            }
+            Effect::Spray {
+                preset,
+                size,
+                spacing,
+                color,
+            } => {
+                above.extend(spray_group(&main, *preset, *size, *spacing, *color));
             }
             Effect::FillOpacity { .. } => {}
             Effect::Lens(_)

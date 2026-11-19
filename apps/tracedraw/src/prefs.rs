@@ -367,6 +367,9 @@ pub struct LayoutPreset {
     pub margins: [f64; 4],
     pub booklet_binding: usize,
     pub signature_sheets: u32,
+    /// Booklet pages per sheet side: 0 two, 1 four, 2 eight (#3380).
+    #[serde(default)]
+    pub booklet_up: usize,
     pub creep: f64,
     pub booklet_gap: f64,
     pub bleed: bool,
@@ -600,6 +603,7 @@ impl LayoutPreset {
             margins: st.margins,
             booklet_binding: st.booklet_binding,
             signature_sheets: st.signature_sheets,
+            booklet_up: st.booklet_up,
             creep: st.creep,
             booklet_gap: st.booklet_gap,
             bleed: st.bleed,
@@ -663,6 +667,7 @@ impl LayoutPreset {
         }
         st.booklet_binding = self.booklet_binding.min(1);
         st.signature_sheets = self.signature_sheets.clamp(1, 32);
+        st.booklet_up = self.booklet_up.min(2);
         st.creep = num(self.creep, 0.0, 20.0, 0.0);
         st.booklet_gap = num(self.booklet_gap, 0.0, 100.0, 0.0);
         st.bleed = self.bleed;

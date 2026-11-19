@@ -469,3 +469,72 @@ fn enter_prints_from_the_print_dialog() {
     assert_eq!(asked.len(), 1, "Enter printed to a PDF file");
     assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::None));
 }
+
+/// One frame, giving back the texts it put on the system clipboard.
+fn frame_copied(
+    ctx: &egui::Context,
+    app: &mut App,
+    events: Vec<Event>,
+    modifiers: Modifiers,
+) -> Vec<String> {
+    let mut all = vec![Event::ModifiersChanged(modifiers)];
+    all.extend(events);
+    let mut input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            Pos2::ZERO,
+            egui::vec2(1600.0, 1000.0),
+        )),
+        events: all,
+        ..Default::default()
+    };
+    crate::pen::filter_raw_input(ctx, &mut input);
+    crate::interaction::release_chorded_left(ctx, &mut input);
+    let out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+    out.platform_output
+        .commands
+        .iter()
+        .filter_map(|c| match c {
+            egui::OutputCommand::CopyText(t) => Some(t.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Ctrl+C in the width field of the property bar copies its number, not
+/// the object, also when Ctrl itself arrives as a key press first (on
+/// Windows) (#3460).
+#[test]
+fn ctrl_c_in_a_size_field_copies_the_number() {
+    let (ctx, mut app, id) = setup();
+    let texts = texts_drawn(&ctx, &mut app, Vec::new());
+    let at = text_at(&texts, "50.0 mm").expect("the width field");
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    assert!(ctx.egui_wants_keyboard_input(), "the field has the keyboard");
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::A, Modifiers::COMMAND)],
+        Modifiers::COMMAND,
+    );
+    let copied = frame_copied(
+        &ctx,
+        &mut app,
+        vec![
+            key(egui::Key::ControlLeft, Modifiers::COMMAND),
+            key(egui::Key::C, Modifiers::COMMAND),
+            Event::Copy,
+        ],
+        Modifiers::COMMAND,
+    );
+    assert_eq!(copied, vec!["50.0 mm".to_string()]);
+    assert!(app.clipboard.is_none(), "the object was not copied");
+    assert!(ctx.egui_wants_keyboard_input(), "the field keeps it");
+    frame(
+        &ctx,
+        &mut app,
+        vec![key_up(egui::Key::ControlLeft, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert_eq!(shape_count(&app), 1);
+    assert_eq!(app.selection, vec![id]);
+}

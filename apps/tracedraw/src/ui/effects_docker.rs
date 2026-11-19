@@ -34,6 +34,7 @@ pub fn effect_key(e: &Effect) -> &'static str {
         Effect::GaussianBlur { .. } => "effect.gaussian_blur",
         Effect::FillOpacity { .. } => "effect.fill_opacity",
         Effect::Symmetry { .. } => "effect.symmetry",
+        Effect::Spray { .. } => "media.sprayer",
         Effect::Lens(_) => "effect.lens",
         Effect::Transparency { .. } => "effect.transparency",
     }

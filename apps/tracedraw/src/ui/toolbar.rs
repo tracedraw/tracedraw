@@ -2046,6 +2046,8 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 }
             }
         }
+        // Draw Inside on the bars of the tools that draw (#3407).
+        crate::draw_inside::draw_inside_toggle(app, ui);
     });
 }
 
