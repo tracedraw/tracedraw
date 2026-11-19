@@ -361,6 +361,15 @@ their own crypt filter and signature contents are left alone.
   An empty `ActualText` or one of soft hyphens leaves the glyphs (a
   hyphen drawn at a line end) their own characters
   (`pdf_import::tests::hindi_drawn_apart_or_with_actual_text_comes_in_as_typed_words`).
+  An `ActualText` that starts with a tab or space, over a space glyph and
+  then a letter the tab stop moved on, keeps its letter: the space stays
+  in the first text and the rest goes to the letter's text, so पृष्ठ after
+  a tab no longer came in as िृष्ठ. A short i sign right after a letter
+  an `ActualText` gave is typed after that letter and stays there: a word
+  processor's Hindi PDF that gives some letters by `ActualText` and the
+  rest in typed order showed निदेशालय, विभाग and अनिल as नदिेशालय, वभिाग
+  and अनलि (#3177,
+  `pdf_import::tests::hindi_typed_after_an_actual_text_letter_keeps_its_i_signs`).
 - Hindi written by Export as PDF with its font comes back as the typed
   words, shaped to the glyphs of the original: all 59 words of the
   Devanagari corpus (35 came back wrong before, with letters doubled,

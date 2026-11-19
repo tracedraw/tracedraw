@@ -4298,17 +4298,31 @@ impl<'a> Importer<'a> {
             if let Some(mut r) = run.take() {
                 // An ActualText whose glyphs go on in another text: both
                 // texts keep their glyphs' own characters.
+                // Only spaces shown so far, for an ActualText that starts
+                // with a space or tab (a tab stop, then the word): the
+                // spaces stay here and the rest of it goes to the glyphs
+                // in the next text (#3177).
                 if given == Some(true) {
                     if let Some(a) = self.actual.as_mut() {
-                        a.broken = true;
                         if let Some(at) = a.at {
                             r.xs = None;
                             r.text.truncate(at);
                             r.text.push_str(&a.own);
                             r.typed.retain(|t| t.start < at);
                         }
+                        let rest = a.text.trim_start();
+                        if a.own.trim().is_empty() && !rest.is_empty() && rest.len() < a.text.len()
+                        {
+                            a.text = rest.to_string();
+                            a.shown = false;
+                            a.at = None;
+                            a.own.clear();
+                            given = Some(false);
+                        } else {
+                            a.broken = true;
+                            given = None;
+                        }
                     }
-                    given = None;
                 }
                 self.flush_run(r);
             }
@@ -4432,11 +4446,28 @@ impl<'a> Importer<'a> {
             .chain(std::iter::once(&(r.text.len()..r.text.len())))
         {
             if let Some(between) = r.text.get(from..part.start) {
-                text.push_str(&devanagari_typed_order(
-                    &devanagari_compose(between),
-                    r.reph_glyph,
-                    r.font.drawn_order,
-                ));
+                let between = devanagari_compose(between);
+                // A short i sign right after the letter an ActualText
+                // gave is typed after it: the text after an ActualText
+                // is read with that letter before it (#3177).
+                let before = text
+                    .chars()
+                    .last()
+                    .filter(|c| deva_consonant(*c) || *c == DEVA_NUKTA);
+                let ordered = match before {
+                    Some(b) if between.starts_with(DEVA_SIGN_I) => {
+                        let with = devanagari_typed_order(
+                            &format!("{b}{between}"),
+                            r.reph_glyph,
+                            r.font.drawn_order,
+                        );
+                        with.strip_prefix(b).map(str::to_string).unwrap_or_else(|| {
+                            devanagari_typed_order(&between, r.reph_glyph, r.font.drawn_order)
+                        })
+                    }
+                    _ => devanagari_typed_order(&between, r.reph_glyph, r.font.drawn_order),
+                };
+                text.push_str(&ordered);
             }
             if let Some(given) = r.text.get(part.clone()) {
                 text.push_str(&devanagari_compose(given));
@@ -6360,6 +6391,38 @@ mod tests {
         );
         // क्ष from one glyph, with the e sign: क्षे.
         assert_eq!(deva_page("BT /F1 12 Tf 10 50 Td (NK) Tj ET", ""), ["क्षे"]);
+    }
+
+    /// A word processor's Hindi PDF that gives some letters by ActualText
+    /// and the rest by the glyphs' own characters, already in typed order
+    /// (#3177): the short i sign after such a letter stays on it, and an
+    /// ActualText that starts with a tab keeps its letter when the tab
+    /// stop puts that letter in another text.
+    #[test]
+    fn hindi_typed_after_an_actual_text_letter_keeps_its_i_signs() {
+        // किताब: क by ActualText, then ि त ा ब as typed.
+        assert_eq!(
+            deva_page(
+                "BT /F1 12 Tf 10 50 Td /Span << /ActualText <FEFF0915> >> BDC (E) Tj EMC (BCDE) Tj ET",
+                ""
+            ),
+            ["किताब"]
+        );
+        // The same with the i sign drawn first and no ActualText still
+        // goes back to typed order.
+        assert_eq!(
+            deva_page("BT /F1 12 Tf 10 50 Td (BACDE) Tj ET", ""),
+            ["किताब"]
+        );
+        // A tab, then बु: the tab and ब in one ActualText over a space
+        // glyph and a glyph whose own character is the i sign.
+        assert_eq!(
+            deva_page(
+                "BT /F1 12 Tf 10 50 Td (A) Tj /Span << /ActualText <FEFF0009092C> >> BDC ( ) Tj 100 0 Td (B) Tj EMC (H) Tj ET",
+                ""
+            ),
+            ["क ", "बु"]
+        );
     }
 
     #[test]
