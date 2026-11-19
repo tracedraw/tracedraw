@@ -468,6 +468,18 @@ fn convert_group(g: &usvg::Group, cx: &Cx, ids: &mut IdSource) -> Option<Shape> 
     if opacity < 1.0 {
         shape.opacity *= opacity;
     }
+    if let Some(mask) = g
+        .mask()
+        .and_then(|m| mask_fill(m, &shape, to_page * to_affine(g.abs_transform())))
+    {
+        shape
+            .effects
+            .push(tracedraw_core::live::Effect::Transparency {
+                mask,
+                merge: Default::default(),
+                target: 2,
+            });
+    }
     if !name.is_empty() {
         shape.name = Some(name.to_string());
     }
@@ -475,6 +487,55 @@ fn convert_group(g: &usvg::Group, cx: &Cx, ids: &mut IdSource) -> Option<Shape> 
         shape.link = Some(link.href.clone());
     }
     Some(shape)
+}
+
+/// A luminance mask that paints one fill, a gradient or a flat colour, over
+/// `shape` as that fill: it comes in as the shape's transparency, white
+/// keeping it, black clearing it. The fill's frame is the shape's own box.
+/// Any other mask is left out, as before.
+fn mask_fill(mask: &usvg::Mask, shape: &Shape, to_page: Affine) -> Option<Fill> {
+    if mask.kind() != usvg::MaskType::Luminance || mask.mask().is_some() {
+        return None;
+    }
+    fn paths<'a>(g: &'a usvg::Group, out: &mut Vec<&'a usvg::Path>) -> bool {
+        for n in g.children() {
+            match n {
+                usvg::Node::Path(p) => out.push(p),
+                usvg::Node::Group(g)
+                    if g.clip_path().is_none()
+                        && g.mask().is_none()
+                        && g.opacity().get() >= 1.0 =>
+                {
+                    if !paths(g, out) {
+                        return false;
+                    }
+                }
+                _ => return false,
+            }
+        }
+        true
+    }
+    let mut found = Vec::new();
+    if !paths(mask.root(), &mut found) {
+        return None;
+    }
+    let [p] = found.as_slice() else {
+        return None;
+    };
+    if p.stroke().is_some() || !p.is_visible() {
+        return None;
+    }
+    let f = p.fill()?;
+    if f.opacity().get() < 1.0 {
+        return None;
+    }
+    let fill = convert_paint(
+        f.paint(),
+        1.0,
+        shape.bounds(),
+        to_page * to_affine(p.abs_transform()),
+    );
+    matches!(fill, Fill::Solid(_) | Fill::Fountain(_)).then_some(fill)
 }
 
 fn group_of(children: Vec<Shape>, ids: &mut IdSource) -> Shape {
@@ -1077,5 +1138,109 @@ mod clip_tests {
             panic!("expected a path");
         };
         assert!(!path.elements().iter().any(|e| matches!(e, PathEl::ClosePath)));
+    }
+}
+
+#[cfg(test)]
+mod mask_tests {
+    use super::*;
+    use tracedraw_core::live::Effect;
+
+    fn faded(imp: &Imported) -> &Shape {
+        let [first] = imp.shapes.as_slice() else {
+            panic!("{:#?}", imp.shapes);
+        };
+        let mut s = first;
+        // The export's group round an object with effects.
+        while let ShapeKind::Group { children } = &s.kind {
+            let [c] = children.as_slice() else {
+                panic!("{:#?}", imp.shapes);
+            };
+            s = c;
+        }
+        s
+    }
+
+    /// A luminance mask painted with a gradient fades the object it
+    /// masks: it comes in as the object's transparency. The object came
+    /// in solid, the mask left out.
+    #[test]
+    fn a_gradient_mask_comes_in_as_a_transparency() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm" viewBox="0 0 100 50">
+            <defs>
+              <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="10" y1="0" x2="90" y2="0">
+                <stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/>
+              </linearGradient>
+              <mask id="m" maskUnits="userSpaceOnUse" x="-100" y="-100" width="300" height="300">
+                <rect x="-100" y="-100" width="300" height="300" fill="url(#g)"/>
+              </mask>
+            </defs>
+            <g mask="url(#m)"><rect x="10" y="10" width="80" height="30" fill="#c81e1e"/></g>
+        </svg>"##;
+        let mut ids = IdSource::default();
+        let imp = parse(svg, &mut ids).expect("parse");
+        let s = faded(&imp);
+        let Some(Effect::Transparency { mask, target, .. }) = s.effects.first() else {
+            panic!("{:?}", s.effects);
+        };
+        assert_eq!(*target, 2);
+        let Fill::Fountain(f) = mask else {
+            panic!("{mask:?}");
+        };
+        assert!(f.angle.abs() < 1.0, "{}", f.angle);
+        assert_eq!(f.stops.first().unwrap().color.to_rgb8(), [255, 255, 255]);
+        assert_eq!(f.stops.last().unwrap().color.to_rgb8(), [0, 0, 0]);
+    }
+
+    /// A transparency that fades across an object goes out to SVG as a
+    /// mask, not as one flat opacity, and comes back as the same fade.
+    #[test]
+    fn a_fading_transparency_goes_out_and_back() {
+        let mut doc = tracedraw_core::Document::default();
+        let mut sq = Shape::new(
+            ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(20.0, 20.0, 120.0, 80.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        sq.fill = Fill::Solid(tracedraw_core::Color::rgb8(200, 30, 30));
+        sq.stroke = None;
+        sq.effects.push(Effect::Transparency {
+            mask: Fill::Fountain(Fountain {
+                kind: FountainKind::Linear,
+                stops: vec![
+                    tracedraw_core::Stop::new(0.0, tracedraw_core::Color::rgb8(255, 255, 255)),
+                    tracedraw_core::Stop::new(1.0, tracedraw_core::Color::rgb8(0, 0, 0)),
+                ],
+                angle: 90.0,
+                ..Default::default()
+            }),
+            merge: Default::default(),
+            target: 2,
+        });
+        doc.pages[0].layers[0].shapes.push(sq);
+        let svg = crate::svg::page_to_svg(&doc, 0);
+        assert!(svg.contains("<mask id=\"tmask"), "{svg}");
+        assert!(!svg.contains("opacity=\"0.5"), "{svg}");
+        let mut ids = IdSource::default();
+        let imp = parse(&svg, &mut ids).expect("parse");
+        let s = faded(&imp);
+        assert_eq!(
+            s.fill,
+            Fill::Solid(tracedraw_core::Color::rgb8(200, 30, 30))
+        );
+        assert!((s.opacity - 1.0).abs() < 1e-9, "{}", s.opacity);
+        let Some(Effect::Transparency {
+            mask: Fill::Fountain(f),
+            ..
+        }) = s.effects.first()
+        else {
+            panic!("{:?}", s.effects);
+        };
+        assert!((f.angle - 90.0).abs() < 1.0, "{}", f.angle);
+        assert_eq!(f.stops.first().unwrap().color.to_rgb8(), [255, 255, 255]);
+        assert_eq!(f.stops.last().unwrap().color.to_rgb8(), [0, 0, 0]);
     }
 }
