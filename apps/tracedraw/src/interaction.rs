@@ -4546,13 +4546,7 @@ impl App {
         let cmd = Modifiers::COMMAND;
         for (key, mods) in presses {
             let text = crate::shortcuts::format(mods, key);
-            let own = self
-                .settings
-                .shortcuts
-                .iter()
-                .find(|(_, v)| crate::shortcuts::same(v, &text))
-                .map(|(id, _)| id.clone());
-            if let Some(id) = own {
+            if let Some(id) = self.own_shortcut(&text) {
                 if id.starts_with("menu.") && id != crate::ui::NAVIGATOR_KEY {
                     self.pending_command = Some(id);
                     return true;
@@ -4628,6 +4622,24 @@ impl App {
         });
         self.select(vec![te.shape]);
         self.sync_text_defaults_from(te.shape);
+    }
+
+    /// The command or tool the user gave the keys `text` (Options >
+    /// Customization > Commands): with the Shape tool, the Node editing
+    /// table's first, then the main table's (#3243).
+    fn own_shortcut(&self, text: &str) -> Option<String> {
+        let find = |table: &[(String, String)]| {
+            table
+                .iter()
+                .find(|(_, v)| crate::shortcuts::same(v, text))
+                .map(|(id, _)| id.clone())
+        };
+        if self.tool == Tool::Shape {
+            if let Some(id) = find(&self.settings.node_shortcuts) {
+                return Some(id);
+            }
+        }
+        find(&self.settings.shortcuts)
     }
 
     /// The built-in shortcut `key` with `mods` is another command's by
@@ -4910,13 +4922,7 @@ impl App {
         // shortcut over (#1595).
         for (key, mods) in &presses {
             let text = crate::shortcuts::format(*mods, *key);
-            let Some(id) = self
-                .settings
-                .shortcuts
-                .iter()
-                .find(|(_, v)| crate::shortcuts::same(v, &text))
-                .map(|(id, _)| id.clone())
-            else {
+            let Some(id) = self.own_shortcut(&text) else {
                 continue;
             };
             // The Navigator's key works while held (`ui::view_navigator`).

@@ -3444,6 +3444,10 @@ pub struct ShortcutEditor {
     /// The General tab's list of pictures to choose a command's icon
     /// from is open (#2100).
     pub icon_picker: bool,
+    /// The page shows the Node editing table (`Settings::node_shortcuts`,
+    /// keys that hold only with the Shape tool) instead of the main one
+    /// (#3243).
+    pub node_table: bool,
 }
 
 /// The Commands page's category for the toolbox's tools.
@@ -3481,15 +3485,18 @@ fn set_menu_shortcut(app: &mut App, id: &str, text: &str) {
         .shortcuts
         .retain(|(k, v)| k == id || !same(v, text));
     // Built-in holders without keys of their own: the key was theirs
-    // alone, so they are left without one.
+    // alone, so they are left without one. The Node editing table takes
+    // nothing from them: its key holds over theirs with the Shape tool
+    // only (#3243).
+    let node = app.shortcut_editor.node_table;
     let mut lost: Vec<String> = Vec::new();
-    for e in &app.shortcut_editor.entries {
+    for e in app.shortcut_editor.entries.iter().filter(|_| !node) {
         if e.key != id && same(&e.shortcut, text) && user_shortcut(app, &e.key).is_none() {
             others.push(command_label(e));
             lost.push(e.key.clone());
         }
     }
-    for t in crate::tools::Tool::ALL {
+    for t in crate::tools::Tool::ALL.iter().filter(|_| !node) {
         if t.id() != id
             && user_shortcut(app, t.id()).is_none()
             && t.shortcut().is_some_and(|s| same(s, text))
@@ -3503,7 +3510,7 @@ fn set_menu_shortcut(app: &mut App, id: &str, text: &str) {
     }
     // The keys it had stay (a command may have several, #822): a built-in
     // key joins the user's list first so that it keeps working.
-    if user_shortcut(app, id).is_none() {
+    if user_shortcut(app, id).is_none() && !node {
         if let Some(b) = built_in_keys(app, id) {
             app.settings.shortcuts.push((id.to_string(), b));
         }
@@ -3654,6 +3661,55 @@ const ROW_H: f32 = 24.0;
 /// list of commands (with their pictures); beside it the picked
 /// command's General and Shortcut Keys tabs.
 fn commands_page(app: &mut App, ui: &mut Ui) {
+    // The shortcut table shown (#3243): Main, or Node editing, whose keys
+    // hold only while the Shape tool is chosen. The page edits the table
+    // shown as `Settings::shortcuts` while it draws.
+    ui.horizontal(|ui| {
+        ui.label(tr("options.shortcut_table"));
+        let mut node = app.shortcut_editor.node_table;
+        let name = |n: bool| {
+            tr(if n {
+                "options.shortcut_table_node"
+            } else {
+                "options.shortcut_table_main"
+            })
+        };
+        crate::ui::keynav::ComboBox::from_id_salt("shortcut_table")
+            .selected_text(name(node))
+            .width(200.0)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut node, false, name(false));
+                ui.selectable_value(&mut node, true, name(true));
+            })
+            .response
+            .rich_tip(crate::ui::tips::pair(
+                "options.shortcut_table",
+                "options.shortcut_table_tip",
+            ));
+        if node != app.shortcut_editor.node_table {
+            app.shortcut_editor.node_table = node;
+            app.shortcut_editor.capture = None;
+            app.shortcut_editor.note = None;
+            app.shortcut_editor.confirm_reset_all = false;
+        }
+    });
+    if app.shortcut_editor.node_table {
+        ui.label(
+            egui::RichText::new(tr("options.shortcut_table_node_hint"))
+                .color(Tokens::text_dim())
+                .size(11.0),
+        );
+        std::mem::swap(&mut app.settings.shortcuts, &mut app.settings.node_shortcuts);
+        commands_page_body(app, ui);
+        std::mem::swap(&mut app.settings.shortcuts, &mut app.settings.node_shortcuts);
+    } else {
+        commands_page_body(app, ui);
+    }
+}
+
+/// The Commands page for the table shown, which is `Settings::shortcuts`
+/// while it draws.
+fn commands_page_body(app: &mut App, ui: &mut Ui) {
     if app.shortcut_editor.entries.is_empty() {
         let ctx = ui.ctx().clone();
         app.shortcut_editor.entries = crate::ui::menus::commands(app, &ctx);
@@ -4058,7 +4114,9 @@ fn command_icon(app: &mut App, ui: &mut Ui, c: &CommandItem) {
 /// The keys that run `c` now: the user's, else the built-in ones. The
 /// user's may be empty: the command's shortcut was removed.
 fn current_keys(app: &App, c: &CommandItem) -> Vec<String> {
-    crate::shortcuts::keys_for(&app.settings.shortcuts, &c.id, Some(&c.built_in))
+    // The Node editing table lists its own keys only (#3243).
+    let built_in = (!app.shortcut_editor.node_table).then_some(c.built_in.as_str());
+    crate::shortcuts::keys_for(&app.settings.shortcuts, &c.id, built_in)
 }
 
 /// Shortcut Keys: the key waiting for a press, the current keys with
@@ -4201,7 +4259,7 @@ fn remove_key(app: &mut App, c: &CommandItem, key: &str) {
 /// overridden by an empty shortcut, so its keys no longer run it.
 fn remove_shortcut(app: &mut App, c: &CommandItem) {
     app.settings.shortcuts.retain(|(k, _)| k != &c.id);
-    if !c.built_in.is_empty() {
+    if !c.built_in.is_empty() && !app.shortcut_editor.node_table {
         app.settings.shortcuts.push((c.id.clone(), String::new()));
     }
     app.shortcut_editor.note = None;
@@ -6444,6 +6502,84 @@ mod tests {
             egui::Modifiers::COMMAND,
             egui::Key::H
         ));
+    }
+
+    /// The Node editing table (#3243): a key set there holds only with
+    /// the Shape tool, over the main one, and takes nothing from the
+    /// main table; it is kept with the workspace's shortcuts.
+    #[test]
+    fn a_node_editing_key_holds_only_with_the_shape_tool() {
+        use egui::{Key, Modifiers};
+        let mut app = app_with_commands();
+        // Ctrl+D given to the Ellipse tool in the Node editing table, as
+        // the page sets it.
+        app.shortcut_editor.node_table = true;
+        std::mem::swap(&mut app.settings.shortcuts, &mut app.settings.node_shortcuts);
+        set_menu_shortcut(&mut app, "ellipse", "Ctrl+D");
+        std::mem::swap(&mut app.settings.shortcuts, &mut app.settings.node_shortcuts);
+        app.shortcut_editor.node_table = false;
+        assert_eq!(
+            app.settings.node_shortcuts,
+            vec![("ellipse".to_string(), "Ctrl+D".to_string())]
+        );
+        assert!(app.settings.shortcuts.is_empty());
+        let ctx = crate::theme::ui_context();
+        app.show_welcome = false;
+        let id = app
+            .new_shape(tracedraw_core::document::ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(10.0, 10.0, 40.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        let count = |app: &App| {
+            app.doc().pages[0]
+                .layers
+                .iter()
+                .map(|l| l.shapes.len())
+                .sum::<usize>()
+        };
+        // With the Pick tool Ctrl+D duplicates, as it does built in.
+        app.select(vec![id]);
+        let before = count(&app);
+        frame(&ctx, &mut app, vec![key(Key::D, Modifiers::COMMAND)]);
+        assert_eq!(count(&app), before + 1);
+        assert_eq!(app.tool, crate::tools::Tool::Pick);
+        // With the Shape tool it picks the Ellipse tool, and copies nothing.
+        frame(
+            &ctx,
+            &mut app,
+            vec![egui::Event::Key {
+                key: Key::D,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: Modifiers::COMMAND,
+            }],
+        );
+        app.choose_tool(crate::tools::Tool::Shape);
+        app.select(vec![id]);
+        let before = count(&app);
+        frame(&ctx, &mut app, vec![key(Key::D, Modifiers::COMMAND)]);
+        assert_eq!(app.tool, crate::tools::Tool::Ellipse);
+        assert_eq!(count(&app), before);
+        // The table goes with the workspace's shortcuts.
+        let file = app.export_workspace(Default::default());
+        let mut to = App::headless();
+        to.import_workspace(&file, Default::default());
+        assert_eq!(to.settings.node_shortcuts, app.settings.node_shortcuts);
+        // Delete in the table leaves no empty key behind.
+        let ellipse = command_items(&app, None, "")
+            .into_iter()
+            .find(|c| c.id == "ellipse")
+            .expect("ellipse");
+        app.shortcut_editor.node_table = true;
+        std::mem::swap(&mut app.settings.shortcuts, &mut app.settings.node_shortcuts);
+        assert_eq!(current_keys(&app, &ellipse), ["Ctrl+D"]);
+        remove_shortcut(&mut app, &ellipse);
+        assert!(current_keys(&app, &ellipse).is_empty());
+        std::mem::swap(&mut app.settings.shortcuts, &mut app.settings.node_shortcuts);
+        assert!(app.settings.node_shortcuts.is_empty());
     }
 
     /// A shortcut given to a command is taken from the command or tool

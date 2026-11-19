@@ -363,6 +363,16 @@ name.
   shortcuts does, which gives back every built-in shortcut, tool keys
   included. Shortcuts are kept in the preferences (`shortcuts`: the
   menu item's key or tool id and the keys, empty for none).
+- Shortcut table (#3243), above the list: Main, or Node editing (Shape
+  tool). Keys set in the Node editing table hold only while the Shape
+  tool is chosen, and are looked at before the main table's and the
+  built-in keys, so one key can run one command on objects and another
+  on nodes; a key not set there does what it does with any other tool.
+  The table takes no key from other commands (its list shows its own
+  keys only), Delete just takes a key out of it, and Reset gives it back
+  empty. The menus show the main keys. It is kept in the preferences
+  (`node_shortcuts`) and goes with a workspace file's shortcuts
+  (`ui::options::tests::a_node_editing_key_holds_only_with_the_shape_tool`).
 - Tools are listed under the toolbox on the same page and take keys as
   commands do: a key alone or with Ctrl, Alt and Shift. Alt and a
   letter you give a command or tool runs it instead of opening the

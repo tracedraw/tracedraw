@@ -167,6 +167,10 @@ pub struct WorkspaceFile {
     /// Menu command keys and tool ids with their shortcuts.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shortcuts: Option<Vec<(String, String)>>,
+    /// The Node editing table's shortcuts (with the shortcuts part,
+    /// #3243).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_shortcuts: Option<Vec<(String, String)>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bars: Option<BarsPart>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -244,6 +248,9 @@ impl WorkspaceFile {
         }
         if let Some(list) = self.shortcuts.take() {
             self.shortcuts = Some(clean_shortcuts(list));
+        }
+        if let Some(list) = self.node_shortcuts.take() {
+            self.node_shortcuts = Some(clean_shortcuts(list));
         }
         if let Some(bars) = &mut self.bars {
             let d = BarLayout::default();
@@ -379,6 +386,8 @@ impl App {
             version: VERSION,
             base: parts.bars.then(|| s.workspace.clone()),
             shortcuts: parts.shortcuts.then(|| s.shortcuts.clone()),
+            node_shortcuts: (parts.shortcuts && !s.node_shortcuts.is_empty())
+                .then(|| s.node_shortcuts.clone()),
             bars: parts.bars.then(|| BarsPart {
                 layout: s.bars.clone(),
                 shown: self.shown_bars(),
@@ -440,6 +449,8 @@ impl App {
             self.settings.shortcuts = list.clone();
             // A file written before a command key was renamed.
             crate::settings::migrate_command_keys(&mut self.settings.shortcuts);
+            self.settings.node_shortcuts = file.node_shortcuts.clone().unwrap_or_default();
+            crate::settings::migrate_command_keys(&mut self.settings.node_shortcuts);
             self.shortcut_editor.note = None;
             self.shortcut_editor.capture = None;
             applied.push(PART_SHORTCUTS);

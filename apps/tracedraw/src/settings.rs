@@ -170,6 +170,12 @@ pub struct Settings {
     pub default_dpi: f64,
     pub snap: SnapPrefs,
     pub shortcuts: Vec<(String, String)>,
+    /// The Node editing shortcut table (#3243): menu command keys and
+    /// tool ids with keys that hold only while the Shape tool is chosen,
+    /// looked at before [`Settings::shortcuts`]; a key not in it does
+    /// what it does elsewhere.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub node_shortcuts: Vec<(String, String)>,
     /// Pictures the user chose for menu commands (#2100): the command's
     /// key and the picture's source, another command's key or a tool
     /// ("tool:" and its id). Shown in the menus and on toolbar buttons.
@@ -2252,6 +2258,7 @@ impl Default for Settings {
             default_dpi: 300.0,
             snap: SnapPrefs::default(),
             shortcuts: Vec::new(),
+            node_shortcuts: Vec::new(),
             command_icons: Vec::new(),
             bitmap_editor: String::new(),
             last_dir: None,
@@ -2549,6 +2556,7 @@ impl Settings {
         self.upgrades = self.upgrades.max(UPGRADES);
         self.migrate_ai();
         migrate_command_keys(&mut self.shortcuts);
+        migrate_command_keys(&mut self.node_shortcuts);
         self
     }
 
