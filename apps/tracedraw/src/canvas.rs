@@ -3412,6 +3412,24 @@ fn draw_snapped_guide(
     }
 }
 
+/// The part of a slanted guideline inside `rect` (screen space). The
+/// line is drawn out both ways from the point of it nearest the window's
+/// middle, past the window's corners: drawn out a fixed length from the
+/// point the guideline was made at, it fell short of the window once the
+/// view was zoomed in far from that point, and the guideline vanished
+/// (#3337, #3342).
+fn angled_guide_on_screen(
+    view: &crate::view::View,
+    line: tracedraw_core::document::GuideLine,
+    rect: ERect,
+) -> Option<(Pos2, Pos2)> {
+    let (o, d) = line.point_and_direction();
+    let mid = view.to_page(rect.center());
+    let at = o + d * (mid - o).dot(d);
+    let reach = (rect.width().hypot(rect.height()) / view.zoom.max(1e-6)) as f64 + 1.0;
+    clip_segment(view.to_screen(at - d * reach), view.to_screen(at + d * reach), rect)
+}
+
 /// One guideline across the drawing window.
 fn draw_guide_line(
     app: &App,
@@ -3449,12 +3467,7 @@ fn draw_guide_line(
             }
         }
         GuideLine::Angled { .. } => {
-            // Extend far beyond the viewport in both directions.
-            let (o, d) = line.point_and_direction();
-            let far = 100_000.0 / view.zoom.max(0.01) as f64;
-            let s0 = view.to_screen(o - d * far);
-            let s1 = view.to_screen(o + d * far);
-            if let Some((c0, c1)) = clip_segment(s0, s1, rect) {
+            if let Some((c0, c1)) = angled_guide_on_screen(view, line, rect) {
                 pattern_line(painter, c0, c1, color, pattern);
             }
         }
@@ -4040,6 +4053,32 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A slanted guideline crossing the window is drawn at any zoom, far
+    /// from the point it was made at too (#3337, #3342).
+    #[test]
+    fn a_slanted_guideline_shows_at_every_zoom() {
+        use tracedraw_core::document::GuideLine;
+        let line = GuideLine::Angled {
+            x: 0.0,
+            y: 0.0,
+            angle: 45.0,
+        };
+        let rect = ERect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0));
+        for zoom in [0.05f32, 1.0, 50.0, 2000.0, 20_000.0] {
+            for along in [0.0, 300.0, 5000.0] {
+                // The window's middle on the line, `along` mm from its point.
+                let mid = Point::new(along, along);
+                let view = crate::view::View {
+                    zoom,
+                    origin: Pos2::new(400.0 - mid.x as f32 * zoom, 300.0 + mid.y as f32 * zoom),
+                };
+                let seg = super::angled_guide_on_screen(&view, line, rect);
+                let (a, b) = seg.unwrap_or_else(|| panic!("zoom {zoom}, {along} mm: not drawn"));
+                assert!(a.distance(b) > 500.0, "zoom {zoom}, {along} mm: {a:?} {b:?}");
+            }
+        }
+    }
 
     /// The ring round a chosen control handle sits on the handle's head,
     /// half a head back from its tip towards the node, not on the tip

@@ -761,6 +761,10 @@ fn place_name(place: Place, path: &Path) -> String {
         Place::Pictures => tr("dialog.place_pictures"),
         Place::Root => path.display().to_string(),
         Place::Drive => files::drive_name(path),
+        Place::Cloud => path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.display().to_string()),
     }
 }
 
@@ -904,7 +908,8 @@ fn folder_bar(ui: &mut Ui, st: &mut SaveAsState) {
                 st.open_dir(up);
             }
         }
-        let width = ui.available_width() - 120.0;
+        // Room at the right for New folder and Browse.
+        let width = ui.available_width() - 220.0;
         let bar = ui.add(
             egui::TextEdit::singleline(&mut st.dir_text)
                 .id(egui::Id::new("save_as_path"))
@@ -920,6 +925,19 @@ fn folder_bar(ui: &mut Ui, st: &mut SaveAsState) {
         }
         if ui.button(tr("dialog.new_folder")).clicked() {
             st.new_folder();
+        }
+        // The system's own folder window, for the places only it knows
+        // (Windows libraries, Quick access, cloud folders, #3416).
+        if let files::FolderAction::PickFolder(token) = files::FolderUse::SaveDrawing.action() {
+            if ui
+                .button(tr("options.browse"))
+                .rich_tip(tr("options.browse_tip"))
+                .clicked()
+            {
+                if let Some(dir) = files::pick_folder_from(token, Some(&st.dir)) {
+                    st.open_dir(dir);
+                }
+            }
         }
     });
 }

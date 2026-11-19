@@ -8249,6 +8249,7 @@ folder.files_web = "Prohlížeč nemůže číst složku: vyberte místo toho so
 folder.files_android = "Vyberte soubory systémovým výběrem místo složky, více najednou." # mt
 folder.backup_web = "Prohlížeč uchovává zálohy v úložišti stránky: složku nelze vybrat." # mt
 folder.backup_android = "V Androidu zůstávají zálohy ve vlastní složce aplikace: jinou složku nelze vybrat." # mt
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "Vybráno souborů: {n}" # mt
 palette.new = "Nová paleta..." # mt
 palette.new_tip = "Vytvoří vlastní prázdnou paletu a hned ji zobrazí ve vlastním pruhu dole. Přetáhněte na pruh barvy a naplňte ji." # mt

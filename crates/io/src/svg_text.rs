@@ -627,6 +627,36 @@ impl Reader<'_, '_, '_> {
         } else {
             ctx.coords(el, "x", fs, vw)
         };
+        // Characters placed one by one that jump apart (more than four
+        // ems, on or back) are words set where each belongs, as
+        // schematic programs write all the pin names of a drawing in one
+        // `tspan`: each word is a text of its own at its own place. They
+        // came in as one run of words at the first one's place (#3322).
+        // Right-to-left text jumps too, its runs set in reading order,
+        // so it is left whole.
+        let rtl = own.iter().flat_map(|t| t.chars()).any(|c| {
+            matches!(c as u32, 0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF)
+        });
+        if chars > 1 && xs.len() == chars && !rtl {
+            let breaks: Vec<usize> = (1..chars)
+                .filter(|&i| (xs[i] - xs[i - 1]).abs() > fs * 4.0)
+                .collect();
+            if !breaks.is_empty() {
+                self.placed = None;
+                let text: String = own.concat();
+                let all: Vec<char> = text.chars().collect();
+                let span = self.style(el, fs);
+                let preserve = xml_space_preserve(el);
+                let mut from = 0;
+                for to in breaks.into_iter().chain([chars]) {
+                    self.new_chunk(el, xs[from] + dx, y.map(|y| y + dy), fs);
+                    let word: String = all[from..to].iter().collect();
+                    self.push(&word, &span, preserve);
+                    from = to;
+                }
+                return;
+            }
+        }
         let placed = (xs.len() == chars).then(|| {
             let lo = xs.iter().copied().fold(f64::INFINITY, f64::min);
             let hi = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
@@ -646,35 +676,13 @@ impl Reader<'_, '_, '_> {
             _ => None,
         };
         if !goes_on && (is_text || x.is_some()) {
-            // A new chunk: `y` continues the current line when not given.
-            let prev_y = self.chunks.last().map_or(0.0, |c| c.y - c.baseline);
-            let start_y = y.unwrap_or(prev_y + self.dy) + dy;
-            let align = match ctx.inherited(el, "text-anchor").as_deref() {
-                Some("middle") => TextAlign::Center,
-                Some("end") => TextAlign::Right,
-                _ => TextAlign::Left,
-            };
-            let base = ctx
-                .inherited(el, "dominant-baseline")
-                .map_or(0.0, |v| baseline_offset(&v))
-                + ctx
-                    .own(el, "alignment-baseline")
-                    .map_or(0.0, |v| baseline_offset(&v));
-            if !xml_space_preserve(el) {
+            self.new_chunk(el, x.unwrap_or(0.0) + dx, y.map(|y| y + dy), fs);
+            if y.is_none() {
+                // `y` continues the current line, shifted by `dy`.
                 if let Some(c) = self.chunks.last_mut() {
-                    trim_end(&mut c.spans);
+                    c.y += dy;
                 }
             }
-            self.chunks.push(Chunk {
-                x: x.unwrap_or(0.0) + dx,
-                y: start_y + base * fs,
-                align,
-                baseline: base * fs,
-                spans: Vec::new(),
-            });
-            self.dx = 0.0;
-            self.dy = 0.0;
-            self.after_space = true;
         } else {
             if let Some(y) = y {
                 let c = self.chunks.last().map_or(0.0, |c| c.y - c.baseline);
@@ -706,6 +714,40 @@ impl Reader<'_, '_, '_> {
                 self.element(child, false);
             }
         }
+    }
+
+    /// A new chunk of `el` starting at `x` and on the baseline `y`
+    /// (`None`: the current line's, the `dy` since its start counted).
+    fn new_chunk(&mut self, el: Node, x: f64, y: Option<f64>, fs: f64) {
+        let ctx = self.ctx;
+        let prev_y = self.chunks.last().map_or(0.0, |c| c.y - c.baseline);
+        let start_y = y.unwrap_or(prev_y + self.dy);
+        let align = match ctx.inherited(el, "text-anchor").as_deref() {
+            Some("middle") => TextAlign::Center,
+            Some("end") => TextAlign::Right,
+            _ => TextAlign::Left,
+        };
+        let base = ctx
+            .inherited(el, "dominant-baseline")
+            .map_or(0.0, |v| baseline_offset(&v))
+            + ctx
+                .own(el, "alignment-baseline")
+                .map_or(0.0, |v| baseline_offset(&v));
+        if !xml_space_preserve(el) {
+            if let Some(c) = self.chunks.last_mut() {
+                trim_end(&mut c.spans);
+            }
+        }
+        self.chunks.push(Chunk {
+            x,
+            y: start_y + base * fs,
+            align,
+            baseline: base * fs,
+            spans: Vec::new(),
+        });
+        self.dx = 0.0;
+        self.dy = 0.0;
+        self.after_space = true;
     }
 
     /// The span style of an element's own characters.
@@ -1268,6 +1310,21 @@ mod tests {
             r#"<svg xmlns="http://www.w3.org/2000/svg"><text>a & b</text></svg>"#,
         ] {
             let _ = parse(svg, &mut IdSource::default());
+        }
+    }
+
+    #[test]
+    fn words_set_one_by_one_in_a_tspan_come_in_where_each_belongs() {
+        // Like the schematic attached to #3322: every pin name of the
+        // drawing in one tspan, each character placed on its own.
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><text font-size="10" y="20"><tspan x="10 16 22 100 106 112 40 46 52">GNDVCCOUT</tspan></text></svg>"##;
+        let shapes = import(svg);
+        let t = texts(&shapes);
+        let words: Vec<String> = t.iter().map(|s| content(s)).collect();
+        assert_eq!(words, ["GND", "VCC", "OUT"], "{shapes:#?}");
+        let xs: Vec<f64> = t.iter().map(|s| origin(s).x / MM).collect();
+        for (got, want) in xs.iter().zip([10.0, 100.0, 40.0]) {
+            assert!((got - want).abs() < 1.0, "{xs:?}");
         }
     }
 }

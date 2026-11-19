@@ -8259,6 +8259,7 @@ folder.files_web = "A browser cannot read a folder: choose the files instead, se
 folder.files_android = "Choose the files with the system's picker instead of a folder, several at once."
 folder.backup_web = "A browser keeps backups in the page's storage: no folder can be chosen."
 folder.backup_android = "On Android backups stay in the app's own folder: no other folder can be chosen."
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "{n} files chosen"
 palette.new = "New Palette..."
 palette.new_tip = "Make an empty palette of your own and show it at once in a bar of its own at the bottom. Drop colors on the bar to fill it."

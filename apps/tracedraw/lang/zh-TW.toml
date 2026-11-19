@@ -8249,6 +8249,7 @@ folder.files_web = "瀏覽器無法讀取資料夾：請改為選擇檔案，可
 folder.files_android = "請用系統的選擇器選擇檔案而不是資料夾，可一次選擇多個。" # mt
 folder.backup_web = "瀏覽器將備份保存在頁面儲存空間中：無法選擇資料夾。" # mt
 folder.backup_android = "在 Android 上備份保存在應用程式自己的資料夾中：無法選擇其他資料夾。" # mt
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "已選擇 {n} 個檔案" # mt
 palette.new = "新增調色盤..." # mt
 palette.new_tip = "建立一個空的自訂調色盤，並立即在底部以獨立的列顯示。將顏色拖放到列上即可加入。" # mt

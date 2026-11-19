@@ -8249,6 +8249,7 @@ folder.files_web = "Een browser kan geen map lezen: kies in plaats daarvan de be
 folder.files_android = "Kies de bestanden met de kiezer van het systeem in plaats van een map, meerdere tegelijk." # mt
 folder.backup_web = "Een browser bewaart back-ups in de opslag van de pagina: er kan geen map worden gekozen." # mt
 folder.backup_android = "Op Android blijven back-ups in de eigen map van de app: er kan geen andere map worden gekozen." # mt
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "{n} bestanden gekozen" # mt
 palette.new = "Nieuw palet..." # mt
 palette.new_tip = "Maakt een leeg eigen palet en toont het meteen in een eigen balk onderaan. Sleep kleuren op de balk om het te vullen." # mt

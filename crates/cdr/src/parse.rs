@@ -439,6 +439,9 @@ struct BitmapDef {
     cmyk: bool,
     /// A CMYK image's ink bytes, which separations print (#1659).
     inks: Option<tracedraw_core::picture_inks::PictureInks>,
+    /// A black and white (1-bit) image: its two palette colours, which
+    /// the object's outline and fill colour replace (#3410).
+    mono: Option<[[u8; 3]; 2]>,
 }
 
 // One entry of a `loda` argument table (type, payload start and end) and
@@ -509,6 +512,8 @@ struct Ctx<'a> {
     pending_cmyk: bool,
     /// The ink channels of the CMYK image it shows.
     pending_inks: Option<tracedraw_core::picture_inks::PictureInks>,
+    /// The palette of the 1-bit picture of the bitmap object just read.
+    pending_mono: Option<[[u8; 3]; 2]>,
     /// Groups of `LIST clpt` by their `spnd` number: the contents of clip
     /// containers.
     clip_groups: HashMap<u32, &'a Chunk>,
@@ -619,6 +624,7 @@ impl<'a> Ctx<'a> {
             pending_crop: None,
             pending_cmyk: false,
             pending_inks: None,
+            pending_mono: None,
             clip_groups: HashMap::new(),
             pending_clip: None,
             symbol_defs: HashMap::new(),
@@ -4971,6 +4977,9 @@ impl<'a> Ctx<'a> {
                                 shape.picture_inks = Some(Box::new(inks));
                             }
                         }
+                        if let Some(palette) = self.pending_mono.take() {
+                            colour_mono_bitmap(&mut shape, palette);
+                        }
                         if let Some(crop) = self.pending_crop.take() {
                             shape = crop_to_clip_frame(shape, crop, ids);
                         }
@@ -5817,6 +5826,7 @@ impl<'a> Ctx<'a> {
                 };
                 self.pending_cmyk = bm.cmyk;
                 self.pending_inks = bm.inks.clone();
+                self.pending_mono = bm.mono;
                 Some(ShapeKind::Bitmap {
                     rect,
                     width_px: bm.width_px,
@@ -5871,6 +5881,7 @@ impl<'a> Ctx<'a> {
                 };
                 self.pending_cmyk = bm.cmyk;
                 self.pending_inks = bm.inks.clone();
+                self.pending_mono = bm.mono;
                 Some(ShapeKind::Bitmap {
                     rect,
                     width_px: bm.width_px,
@@ -6083,8 +6094,58 @@ fn decode_bitmap(
             png: png.into(),
             cmyk,
             inks,
+            mono: (bpp == 1).then(|| {
+                let at = |i: usize, dflt: u8| palette.get(i).copied().unwrap_or([dflt; 3]);
+                [at(0, 0), at(1, 255)]
+            }),
         },
     )))
+}
+
+/// A black and white (1-bit) picture takes the colours its object was
+/// given, as the other program colours such a picture: the outline
+/// colour for its dark pixels, the fill colour for its light ones, each
+/// kept from the picture when not set. Neither is drawn as an outline
+/// or a fill of its own: a coloured 1-bit picture opened black, framed
+/// by an outline of the colour it had (#3410).
+fn colour_mono_bitmap(shape: &mut Shape, palette: [[u8; 3]; 2]) {
+    let ShapeKind::Bitmap { png, .. } = &mut shape.kind else {
+        return;
+    };
+    let ink = shape.stroke.as_ref().map(|s| s.color.to_rgb8());
+    let paper = match &shape.fill {
+        Fill::Solid(c) => Some(c.to_rgb8()),
+        _ => None,
+    };
+    shape.stroke = None;
+    shape.fill = Fill::None;
+    if ink.is_none() && paper.is_none() {
+        return;
+    }
+    let luma = |c: [u8; 3]| 299 * c[0] as u32 + 587 * c[1] as u32 + 114 * c[2] as u32;
+    // The darker palette colour is the picture's ink.
+    let dark = usize::from(luma(palette[1]) < luma(palette[0]));
+    let mut to = palette;
+    if let Some(c) = ink {
+        to[dark] = c;
+    }
+    if let Some(c) = paper {
+        to[1 - dark] = c;
+    }
+    let Ok(pm) = tiny_skia::Pixmap::decode_png(png) else {
+        return;
+    };
+    let mut rgba = Vec::with_capacity(pm.data().len());
+    for p in pm.pixels() {
+        let c = p.demultiply();
+        let rgb = [c.red(), c.green(), c.blue()];
+        let near = |q: [u8; 3]| -> u32 {
+            (0..3).map(|i| (rgb[i] as i32 - q[i] as i32).unsigned_abs()).sum()
+        };
+        let i = usize::from(near(palette[1]) < near(palette[0]));
+        rgba.extend_from_slice(&[to[i][0], to[i][1], to[i][2], c.alpha()]);
+    }
+    *png = encode_png(pm.width(), pm.height(), &rgba).into();
 }
 
 /// `f` over `items` in order, on up to four threads where the platform
@@ -8018,6 +8079,54 @@ fn grey_mask(f: &tracedraw_core::Fountain) -> Fill {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    /// A black and white picture coloured in the other program (yellow
+    /// outline, blue fill) opens with those colours in its pixels and no
+    /// outline round it; one with neither keeps its black and white
+    /// (#3410).
+    #[test]
+    fn a_coloured_one_bit_picture_keeps_its_colours() {
+        let png = encode_png(2, 1, &[0, 0, 0, 255, 255, 255, 255, 255]);
+        let picture = |stroke: Option<Color>, fill: Fill| {
+            let mut s = Shape::new(
+                tracedraw_core::ShapeId(1),
+                ShapeKind::Bitmap {
+                    rect: Rect::new(0.0, 0.0, 2.0, 1.0),
+                    width_px: 2,
+                    height_px: 1,
+                    png: png.clone().into(),
+                    fx: None,
+                },
+            );
+            s.stroke = stroke.map(|c| tracedraw_core::Stroke {
+                color: c,
+                ..Default::default()
+            });
+            s.fill = fill;
+            colour_mono_bitmap(&mut s, [[0, 0, 0], [255, 255, 255]]);
+            let ShapeKind::Bitmap { png, .. } = &s.kind else {
+                panic!("not a picture")
+            };
+            let pm = tiny_skia::Pixmap::decode_png(png).expect("png");
+            let px: Vec<[u8; 3]> = pm
+                .pixels()
+                .iter()
+                .map(|p| [p.red(), p.green(), p.blue()])
+                .collect();
+            (s, px)
+        };
+        let yellow = Color::rgb8(255, 230, 0);
+        let blue = Color::rgb8(0, 0, 200);
+        let (s, px) = picture(Some(yellow), Fill::Solid(blue));
+        assert_eq!(px, vec![[255, 230, 0], [0, 0, 200]]);
+        assert!(s.stroke.is_none() && matches!(s.fill, Fill::None));
+        // The outline colour alone: the paper stays white.
+        let (_, px) = picture(Some(yellow), Fill::None);
+        assert_eq!(px, vec![[255, 230, 0], [255, 255, 255]]);
+        let (s, px) = picture(None, Fill::None);
+        assert_eq!(px, vec![[0, 0, 0], [255, 255, 255]]);
+        assert!(s.stroke.is_none());
+    }
 
     /// The indent record of #2669: left 1.5 mm, first line 1 mm from the
     /// frame, right 0. The first line starts at 1 mm (left + first-line

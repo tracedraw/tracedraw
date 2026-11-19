@@ -533,9 +533,16 @@ fn convert_path(p: &usvg::Path, to_page: Affine, ids: &mut IdSource) -> Option<S
         return None;
     }
     let t = to_page * to_affine(p.abs_transform());
-    let path = bez_path(p.data(), t);
+    let mut path = bez_path(p.data(), t);
     if path.elements().is_empty() {
         return None;
+    }
+    // A filled path with no outline whose shapes are left open is filled
+    // all the same, as if each were closed: schematic programs write the
+    // filled pin shapes so, which came in with no fill (#3322). With an
+    // outline the open ends stay open, the outline not drawn across them.
+    if p.fill().is_some() && p.stroke().is_none() {
+        path = closed_subpaths(&path);
     }
     let closed = path
         .elements()
@@ -555,6 +562,30 @@ fn convert_path(p: &usvg::Path, to_page: Affine, ids: &mut IdSource) -> Option<S
         shape.name = Some(p.id().to_string());
     }
     Some(shape)
+}
+
+/// `path` with every shape in it closed.
+fn closed_subpaths(path: &BezPath) -> BezPath {
+    let mut out = BezPath::new();
+    let mut open = false;
+    for el in path.elements() {
+        match el {
+            PathEl::MoveTo(_) if open => {
+                out.close_path();
+                open = false;
+            }
+            PathEl::ClosePath => open = false,
+            _ => {}
+        }
+        out.push(*el);
+        if !matches!(el, PathEl::ClosePath) {
+            open = true;
+        }
+    }
+    if open {
+        out.close_path();
+    }
+    out
 }
 
 fn bbox(path: &BezPath) -> Rect {
@@ -1026,5 +1057,25 @@ mod clip_tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn a_filled_open_path_with_no_outline_is_closed() {
+        // The pin shapes of the schematic attached to #3322: filled, no
+        // outline, no `Z`.
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0V5H3L5 2.5 3 0" fill="#ff0000"/><path d="M0 0L5 5" fill="#00ff00" stroke="#000"/></svg>"##;
+        let out = parse(svg, &mut IdSource::default()).unwrap();
+        assert_eq!(out.shapes.len(), 2);
+        let ShapeKind::Path { path, closed } = &out.shapes[0].kind else {
+            panic!("expected a path");
+        };
+        assert!(*closed);
+        assert!(matches!(path.elements().last(), Some(PathEl::ClosePath)));
+        assert_eq!(out.shapes[0].fill, Fill::Solid(Color::rgb8(255, 0, 0)));
+        // With an outline the open end stays open.
+        let ShapeKind::Path { path, .. } = &out.shapes[1].kind else {
+            panic!("expected a path");
+        };
+        assert!(!path.elements().iter().any(|e| matches!(e, PathEl::ClosePath)));
     }
 }

@@ -2907,6 +2907,12 @@ impl App {
         if !crate::files::WEB {
             app.keep_default_font_installed();
         }
+        // The system's printers are read now, off the interface's thread,
+        // so the first File > Print finds them: reading them took seconds
+        // each time the dialog opened (#3337).
+        if !crate::files::WEB && !crate::files::ANDROID {
+            app.fetch_printers(crate::printers::system_printers);
+        }
         app
     }
 
@@ -9686,7 +9692,11 @@ impl App {
             st.printer = crate::printers::starting_printer(st.printer.as_deref(), &st.printers);
         }
         st.looking_for_printers = true;
-        self.fetch_printers(crate::printers::system_printers);
+        // The list read when the application started may still be on its
+        // way (or waiting to be taken): no second read meanwhile.
+        if self.printer_fetch.is_none() {
+            self.fetch_printers(crate::printers::system_printers);
+        }
         self.dialog = crate::ui::dialogs::Dialog::Print(st);
     }
 

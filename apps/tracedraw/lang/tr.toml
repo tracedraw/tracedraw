@@ -8249,6 +8249,7 @@ folder.files_web = "Tarayıcı bir klasörü okuyamaz: bunun yerine dosyaları s
 folder.files_android = "Klasör yerine dosyaları sistemin seçicisiyle seçin, birden çok aynı anda." # mt
 folder.backup_web = "Tarayıcı yedekleri sayfanın depolamasında tutar: klasör seçilemez." # mt
 folder.backup_android = "Android'de yedekler uygulamanın kendi klasöründe kalır: başka klasör seçilemez." # mt
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "{n} dosya seçildi" # mt
 palette.new = "Yeni Palet..." # mt
 palette.new_tip = "Kendinize ait boş bir palet oluşturur ve hemen altta kendi çubuğunda gösterir. Doldurmak için çubuğa renk bırakın." # mt

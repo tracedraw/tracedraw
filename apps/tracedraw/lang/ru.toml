@@ -8249,6 +8249,7 @@ folder.files_web = "Браузер не может прочитать папку
 folder.files_android = "Выберите файлы системным выбором вместо папки, несколько сразу." # mt
 folder.backup_web = "Браузер хранит резервные копии в хранилище страницы: папку выбрать нельзя." # mt
 folder.backup_android = "На Android резервные копии остаются в папке приложения: другую папку выбрать нельзя." # mt
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "Выбрано файлов: {n}" # mt
 palette.new = "Новая палитра..." # mt
 palette.new_tip = "Создаёт свою пустую палитру и сразу показывает её на отдельной панели внизу. Перетащите цвета на панель, чтобы заполнить её." # mt

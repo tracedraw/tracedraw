@@ -1961,10 +1961,16 @@ fn case_radio_keys(
 }
 
 /// Names of the dialogs' multi-line fields, where Enter inserts a line.
-const MULTILINE_NAMES: [&str; 2] = ["dialog_multiline_qr", "dialog_multiline_notes"];
+/// The multi-line fields of dialogs, where Enter starts a new line and
+/// does not press OK; the box of Text > Edit Text is one (#3370).
+const MULTILINE_NAMES: [&str; 3] = [
+    "dialog_multiline_qr",
+    "dialog_multiline_notes",
+    "edit_text_dialog_box",
+];
 
 pub(crate) fn multiline_id(i: usize) -> egui::Id {
-    egui::Id::new(MULTILINE_NAMES[i.min(MULTILINE_NAMES.len() - 1)])
+    egui::Id::new(MULTILINE_NAMES[i.min(1)])
 }
 
 /// Enter was pressed this frame and no multi-line text field holds it.
@@ -2507,9 +2513,25 @@ pub fn show(app: &mut App, ctx: &Context) {
                 .trim_end_matches('\u{2026}')
                 .trim()
                 .to_string();
+            // Alt+O is OK, as the access key of the button is in other
+            // programs; it neither opens the Object menu nor types an
+            // "o" into the text (#3370).
+            let alt_ok = ctx.input_mut(|i| {
+                let hit = i.events.iter().any(|e| {
+                    matches!(e, egui::Event::Key { key: egui::Key::O, pressed: true, modifiers, .. }
+                        if modifiers.alt && !modifiers.ctrl && !modifiers.shift)
+                });
+                if hit {
+                    i.events.retain(|e| {
+                        !matches!(e, egui::Event::Text(_) | egui::Event::Key { key: egui::Key::O, .. })
+                    });
+                }
+                hit
+            });
             window(ctx, title).show(ctx, |ui| {
                 edit_text_box(ui, text, spans, *ink);
-                if ok_cancel(ui, &mut close) {
+                if ok_cancel(ui, &mut close) || alt_ok {
+                    close = true;
                     app.set_text_spans(*shape, spans.clone());
                 }
             });
@@ -6403,11 +6425,19 @@ fn print_dialog(app: &mut App, ctx: &Context, st: &mut PrintState, close: &mut b
                 // printer waits for it (#614).
                 let waiting =
                     st.destination == 0 && st.looking_for_printers && st.printers.is_empty();
+                // Enter prints, as Print is the dialog's default button
+                // (Ctrl+P then Enter, #3337), unless a box being typed in
+                // or an open list takes it.
+                let enter = !waiting
+                    && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.is_none())
+                    && !ui.memory(|m| m.focused().is_some())
+                    && !egui::Popup::is_any_open(ui.ctx());
                 if ui
                     .add_enabled(!waiting, egui::Button::new(tr("dialog.print")))
                     .rich_tip(crate::ui::tips::pair("dialog.print", "print.print_desc"))
                     .rich_disabled_tip(crate::ui::tips::pair("dialog.print", "print.print_desc"))
                     .clicked()
+                    || enter
                 {
                     match crate::export::print(app, st) {
                         Ok(msg) if !msg.is_empty() => app.status = msg,
@@ -10406,6 +10436,9 @@ fn edit_text_box(
                     .id(id)
                     .desired_width(480.0)
                     .desired_rows(10)
+                    // Tab types a tab into the text, as on the page, and
+                    // does not move to the OK button (#3372).
+                    .lock_focus(true)
                     // A white page: dark characters stay readable in the
                     // dark theme.
                     .background_color(egui::Color32::WHITE)

@@ -308,3 +308,146 @@ fn keys_f13_to_f24_given_a_command_work_while_typing() {
     assert_eq!(app.show_rulers, !rulers, "the command ran");
     assert_eq!(app.edit_text(), "Hello world");
 }
+
+/// Edit > Find and Replace: a word copied elsewhere and pasted with
+/// Ctrl+V goes into the Find field (and the Replace field), not on the
+/// drawing (#3331).
+#[test]
+fn paste_goes_into_the_find_and_replace_fields() {
+    let (ctx, mut app, _) = setup();
+    app.show_dockers = true;
+    app.docker_tab = crate::app::DockerTab::FindReplace;
+    app.find_state.find = "abc".into();
+    app.find_state.replace = "xyz".into();
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    for (field, kind) in [("abc", 0), ("xyz", 0), ("abc", 1)] {
+        app.find_state.kind = kind;
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        let texts = texts_drawn(&ctx, &mut app, Vec::new());
+        let at = text_at(&texts, field).unwrap_or_else(|| panic!("the {field} field"));
+        click_at(&ctx, &mut app, at, Modifiers::NONE);
+        assert!(ctx.egui_wants_keyboard_input(), "{field}: the field has the keyboard");
+        frame(&ctx, &mut app, vec![key(egui::Key::End, Modifiers::NONE)], Modifiers::NONE);
+        frame(
+            &ctx,
+            &mut app,
+            vec![key(egui::Key::ControlLeft, Modifiers::COMMAND)],
+            Modifiers::COMMAND,
+        );
+        frame(
+            &ctx,
+            &mut app,
+            vec![key(egui::Key::V, Modifiers::COMMAND), Event::Paste("Q".into())],
+            Modifiers::COMMAND,
+        );
+        frame(
+            &ctx,
+            &mut app,
+            vec![key_up(egui::Key::ControlLeft, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        assert_eq!(shape_count(&app), 1, "{field}: nothing pasted on the drawing");
+        let got = if field == "xyz" { &app.find_state.replace } else { &app.find_state.find };
+        assert_eq!(got, &format!("{field}Q"), "the paste went into the field");
+        app.find_state.find = "abc".into();
+        app.find_state.replace = "xyz".into();
+        tap(&ctx, &mut app, egui::Key::Escape, Modifiers::NONE);
+    }
+}
+
+/// Text > Edit Text: Enter starts a new line and Tab types a tab, and
+/// the box stays open; Alt+O is OK, with no "o" typed and no Object
+/// menu opened behind the box (#3370, #3372).
+#[test]
+fn edit_text_box_takes_enter_and_tab_and_alt_o_is_ok() {
+    let (ctx, mut app, id) = editing_hello_world();
+    app.finish_text();
+    app.select(vec![id]);
+    app.open_edit_text_dialog();
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    ctx.memory_mut(|m| m.request_focus(egui::Id::new("edit_text_dialog_box")));
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    frame(&ctx, &mut app, vec![key(egui::Key::End, Modifiers::COMMAND)], Modifiers::COMMAND);
+    tap(&ctx, &mut app, egui::Key::Enter, Modifiers::NONE);
+    frame(&ctx, &mut app, vec![Event::Text("x".into())], Modifiers::NONE);
+    tap(&ctx, &mut app, egui::Key::Tab, Modifiers::NONE);
+    frame(&ctx, &mut app, vec![Event::Text("y".into())], Modifiers::NONE);
+    match &app.dialog {
+        crate::ui::dialogs::Dialog::EditText { text, .. } => {
+            assert_eq!(text, "Hello world\nx\ty")
+        }
+        d => panic!("the box closed: {d:?}"),
+    }
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::O, Modifiers::ALT), Event::Text("o".into())],
+        Modifiers::ALT,
+    );
+    frame(&ctx, &mut app, vec![key_up(egui::Key::O, Modifiers::NONE)], Modifiers::NONE);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::None), "OK closed it");
+    let shape = app.doc().find_shape(id).expect("text");
+    let tracedraw_core::ShapeKind::Text { spans, .. } = &shape.kind else {
+        panic!("not a text")
+    };
+    assert_eq!(tracedraw_core::spans_text(spans), "Hello world\nx\ty");
+    assert!(!egui::Popup::is_any_open(&ctx), "no menu opened");
+}
+
+/// Bitmaps > Resample: a width typed and left by clicking the percent
+/// box stays, and the percent box shows the percent it gives (#3332).
+#[test]
+fn resample_width_typed_stays_when_another_box_is_clicked() {
+    let (ctx, mut app, _) = setup();
+    app.dialog = crate::ui::dialogs::Dialog::Resample(crate::resample::ResampleState::new(
+        (400, 200),
+        (101.6, 50.8),
+    ));
+    for _ in 0..3 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let texts = texts_drawn(&ctx, &mut app, Vec::new());
+    let width = text_at(&texts, "400 px").unwrap_or_else(|| panic!("width box: {texts:?}"));
+    click_at(&ctx, &mut app, width, Modifiers::NONE);
+    assert!(ctx.egui_wants_keyboard_input());
+    frame(&ctx, &mut app, vec![Event::Text("200".into())], Modifiers::NONE);
+    let percent = text_at(&texts, "100.0 %").expect("percent box");
+    click_at(&ctx, &mut app, percent, Modifiers::NONE);
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let texts = texts_drawn(&ctx, &mut app, Vec::new());
+    assert!(
+        texts.iter().any(|(t, _)| t == "50.0 %"),
+        "the percent box follows: {texts:?}"
+    );
+    // Leaving the percent box, untouched, keeps the width.
+    tap(&ctx, &mut app, egui::Key::Tab, Modifiers::NONE);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let crate::ui::dialogs::Dialog::Resample(st) = &app.dialog else {
+        panic!("the dialog closed")
+    };
+    assert_eq!((st.w, st.h), (200, 100));
+}
+
+/// File > Print and Enter prints, as the Print button is the dialog's
+/// default (#3337, #3342).
+#[test]
+fn enter_prints_from_the_print_dialog() {
+    let (ctx, mut app, _) = setup();
+    app.print();
+    if let crate::ui::dialogs::Dialog::Print(st) = &mut app.dialog {
+        st.destination = 1;
+    }
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let _ = crate::files::test_save::asked();
+    tap(&ctx, &mut app, egui::Key::Enter, Modifiers::NONE);
+    let asked = crate::files::test_save::asked();
+    assert_eq!(asked.len(), 1, "Enter printed to a PDF file");
+    assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::None));
+}

@@ -2435,8 +2435,12 @@ pub fn menu_bar(app: &mut App, ui: &mut Ui) {
         .filter(|(m, _)| m.alt && !(m.ctrl || m.command || m.shift))
         .map(|(_, k)| k)
         .collect();
+    // A dialog keeps Alt and its letters: Alt+O in Text > Edit Text
+    // opened the Object menu behind it (#3370).
+    let dialog_open = !matches!(app.dialog, crate::ui::dialogs::Dialog::None);
     let blocked = move |c: char| {
         capturing
+            || dialog_open
             || (symmetry_e && c == 'e')
             || access::key_of(c).is_some_and(|k| user_alt_keys.contains(&k))
     };

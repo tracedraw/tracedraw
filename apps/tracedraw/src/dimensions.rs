@@ -171,6 +171,10 @@ pub struct DimensionStyle {
     /// The colour of the lines and arrowheads, and of the label (#475).
     pub line_color: Color,
     pub text_color: Color,
+    /// The label's text background, set on it with the Text tool: kept
+    /// when the dimension is drawn again (#3347).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_background: Option<Fill>,
     /// The lines' width, mm; 0 for a hairline.
     pub line_width: f64,
     pub arrows: ArrowStyle,
@@ -275,6 +279,7 @@ impl Default for DimensionStyle {
             font: String::new(),
             line_color: Color::BLACK,
             text_color: Color::BLACK,
+            text_background: None,
             line_width: 0.0,
             arrows: ArrowStyle::Filled,
             round_ends: false,
@@ -710,6 +715,9 @@ impl Dimension {
                     if sp.size_pt.is_finite() && (sp.size_pt - size).abs() > 1e-9 {
                         next.style.text_size = sp.size_pt.clamp(1.0, 500.0);
                     }
+                    // The text background set on the label stays when its
+                    // colour changes or the object it measures moves.
+                    next.style.text_background = sp.background.clone();
                 }
                 if let Fill::Solid(c) = l.fill {
                     next.style.text_color = c;
@@ -748,6 +756,9 @@ impl Dimension {
                 on_path: None,
             },
         );
+        if let ShapeKind::Text { spans, .. } = &mut label.kind {
+            spans[0].background = self.style.text_background.clone();
+        }
         label.fill = Fill::Solid(self.style.text_color);
         label.stroke = None;
         // The label's own box: its width and how far it reaches below and
@@ -1061,7 +1072,7 @@ pub fn group_of(
     g
 }
 
-fn with_data(mut data: Vec<(String, String)>, d: &Dimension) -> Vec<(String, String)> {
+pub(crate) fn with_data(mut data: Vec<(String, String)>, d: &Dimension) -> Vec<(String, String)> {
     data.retain(|(k, _)| k != DATA_KEY);
     if let Ok(v) = serde_json::to_string(d) {
         data.push((DATA_KEY.into(), v));
@@ -2056,6 +2067,59 @@ mod tests {
         app.settings.treat_all_filled = false;
         assert_eq!(app.hit_test(p), Some(circle));
         assert_eq!(app.hit_test(Point::new(40.0, 40.0)), Some(dim));
+    }
+
+    /// An object and its dimension duplicated (Ctrl+D) or copied and
+    /// pasted together: the copied dimension measures the copied object
+    /// and follows it, and the first one stays with the original (#3345).
+    #[test]
+    fn a_dimension_copied_with_its_object_measures_the_copy() {
+        for paste in [false, true] {
+            let mut app = App::headless();
+            app.view.zoom = 1.0;
+            let rect = app
+                .new_shape(ShapeKind::Rect {
+                    rect: Rect::new(10.0, 10.0, 50.0, 30.0),
+                    radius: 0.0,
+                    corners: None,
+                })
+                .expect("rect");
+            app.create_dimension(
+                Point::new(10.0, 10.0),
+                Point::new(50.0, 10.0),
+                Point::new(30.0, 0.0),
+            );
+            let dim = app.selection[0];
+            app.select(vec![rect, dim]);
+            if paste {
+                app.copy();
+                app.paste();
+            } else {
+                app.duplicate();
+            }
+            app.bake_dimensions();
+            let copies = app.selection.clone();
+            assert_eq!(copies.len(), 2, "{copies:?}");
+            let dim_copy = *copies
+                .iter()
+                .find(|id| Dimension::of(app.doc().find_shape(**id).expect("copy")).is_some())
+                .expect("the dimension's copy");
+            let rect_copy = *copies.iter().find(|id| **id != dim_copy).expect("rect copy");
+            let d = Dimension::of(app.doc().find_shape(dim_copy).expect("copy")).expect("data");
+            assert_eq!(d.anchors.len(), 2, "{:?}", d.anchors);
+            assert!(d.anchors.iter().all(|a| a.shape == rect_copy), "{:?}", d.anchors);
+            // Twice as wide: the copy's dimension follows, the first stays.
+            app.run(Command::TransformShapes {
+                shapes: vec![rect_copy],
+                transform: Affine::scale_non_uniform(2.0, 1.0),
+            });
+            app.bake_dimensions();
+            let d = Dimension::of(app.doc().find_shape(dim_copy).expect("copy")).expect("data");
+            assert!((d.value() - 80.0).abs() < 1e-6, "paste {paste}: {}", d.value());
+            let d0 = Dimension::of(app.doc().find_shape(dim).expect("dim")).expect("data");
+            assert!((d0.value() - 40.0).abs() < 1e-6, "{}", d0.value());
+            assert!(d0.anchors.iter().all(|a| a.shape == rect));
+        }
     }
 
     /// A dimension drawn between two nodes of an object holds to them:
@@ -3109,6 +3173,46 @@ mod tests {
         // An empty label not being typed is the measured one.
         type_label(&mut app, id, " ");
         assert_eq!(label_of(&app, id), "40.00 mm");
+    }
+
+    /// A text background set on the label with the Text tool stays when
+    /// the label's colour changes and when the dimension is moved (#3347).
+    #[test]
+    fn the_label_keeps_its_text_background() {
+        let mut app = App::headless();
+        let id = forty(&mut app);
+        let lid = label_id(&app, id);
+        let black = Fill::Solid(Color::BLACK);
+        let background = |app: &App| {
+            let lid = label_id(app, id);
+            match &app.doc().find_shape(lid).expect("label").kind {
+                ShapeKind::Text { spans, .. } => spans[0].background.clone(),
+                other => panic!("{other:?}"),
+            }
+        };
+        let mut spans = match &app.doc().find_shape(lid).expect("label").kind {
+            ShapeKind::Text { spans, .. } => spans.clone(),
+            other => panic!("{other:?}"),
+        };
+        spans[0].background = Some(black.clone());
+        app.set_text_spans(lid, spans);
+        app.bake_dimensions();
+        assert_eq!(dimension(&app, id).style.text_background, Some(black.clone()));
+        let white = Color::WHITE;
+        app.run(Command::SetFill {
+            shapes: vec![label_id(&app, id)],
+            fill: Fill::Solid(white),
+        });
+        app.bake_dimensions();
+        assert_eq!(dimension(&app, id).style.text_color, white);
+        assert_eq!(background(&app), Some(black.clone()), "after the colour");
+        app.run(Command::TransformShapes {
+            shapes: vec![id],
+            transform: Affine::translate((0.0, 15.0)),
+        });
+        app.bake_dimensions();
+        assert_eq!(background(&app), Some(black), "after a move");
+        assert_eq!(dimension(&app, id).style.text_color, white);
     }
 
     /// The label noted when an edit of an older dimension began is for

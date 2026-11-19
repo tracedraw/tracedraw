@@ -8249,6 +8249,7 @@ folder.files_web = "Ein Browser kann keinen Ordner lesen: Wählen Sie stattdesse
 folder.files_android = "Wählen Sie die Dateien statt eines Ordners mit der Auswahl des Systems, mehrere auf einmal." # mt
 folder.backup_web = "Ein Browser speichert Sicherungen im Speicher der Seite: Es kann kein Ordner gewählt werden." # mt
 folder.backup_android = "Unter Android bleiben Sicherungen im eigenen Ordner der App: Es kann kein anderer Ordner gewählt werden." # mt
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "{n} Dateien gewählt" # mt
 palette.new = "Neue Palette..." # mt
 palette.new_tip = "Erstellt eine leere eigene Palette und zeigt sie sofort in einer eigenen Leiste unten. Farben auf die Leiste ziehen, um sie zu füllen." # mt

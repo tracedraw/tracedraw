@@ -8249,6 +8249,7 @@ folder.files_web = "浏览器无法读取文件夹：请改为选择文件，可
 folder.files_android = "请用系统的选择器选择文件而不是文件夹，可一次选择多个。" # mt
 folder.backup_web = "浏览器将备份保存在页面存储中：无法选择文件夹。" # mt
 folder.backup_android = "在 Android 上备份保存在应用自己的文件夹中：无法选择其他文件夹。" # mt
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "已选择 {n} 个文件" # mt
 palette.new = "新建调色板..." # mt
 palette.new_tip = "创建一个空的自定义调色板，并立即在底部以独立的栏显示。将颜色拖放到栏上即可添加。" # mt

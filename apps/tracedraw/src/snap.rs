@@ -352,24 +352,32 @@ impl App {
     /// Snap an x value (a vertical guideline being dragged) to everything
     /// but guidelines.
     pub fn snap_x_without_guides(&self, x: f64) -> f64 {
-        self.snap_guide_axis(x, true)
+        self.snap_guide_axis(x, true, None)
+    }
+
+    /// [`App::snap_x_without_guides`] for a guideline dragged with the
+    /// pointer at `y` (or a horizontal one, [`App::snap_y_without_guides`],
+    /// with the pointer at `x`): the objects nearest the pointer along
+    /// the guideline come first (#3359).
+    pub fn snap_guide_near(&self, v: f64, x_axis: bool, pointer: f64) -> f64 {
+        self.snap_guide_axis(v, x_axis, Some(pointer))
     }
 
     /// Snap a y value (a horizontal guideline being dragged) to everything
     /// but guidelines.
     pub fn snap_y_without_guides(&self, y: f64) -> f64 {
-        self.snap_guide_axis(y, false)
+        self.snap_guide_axis(y, false, None)
     }
 
     /// A guideline being dragged at `v` (an x with `x_axis`, else a y):
     /// onto the objects' points and the places where it touches their
     /// outlines (marked as the pointer's snaps are, #2004), else the
     /// page's and the objects' boxes, the grid or the pixels.
-    fn snap_guide_axis(&self, v: f64, x_axis: bool) -> f64 {
+    fn snap_guide_axis(&self, v: f64, x_axis: bool, pointer: Option<f64>) -> f64 {
         if !self.snap_enabled() {
             return v;
         }
-        if let Some((c, t)) = self.axis_stop(v, x_axis, None, &[]) {
+        if let Some((c, t)) = self.axis_stop_near(v, x_axis, None, &[], pointer) {
             self.snap_mark.set(Some(t));
             return c;
         }
@@ -394,11 +402,31 @@ impl App {
         span: Option<(f64, f64)>,
         exclude: &[ShapeId],
     ) -> Option<(f64, Target)> {
+        self.axis_stop_near(v, x_axis, span, exclude, None)
+    }
+
+    /// [`App::axis_stop`] with the pointer at `pointer` along the line
+    /// (a y for a vertical line, `x_axis`): the stops of the objects the
+    /// pointer is over, or nearest to, win over those of objects farther
+    /// along the line, however close those line up. Dragging a guideline
+    /// onto a rectangle among others about level with it snapped it to
+    /// one far from the pointer (#3359).
+    fn axis_stop_near(
+        &self,
+        v: f64,
+        x_axis: bool,
+        span: Option<(f64, f64)>,
+        exclude: &[ShapeId],
+        pointer: Option<f64>,
+    ) -> Option<(f64, Target)> {
         if !self.snaps_to_objects() || !v.is_finite() {
             return None;
         }
         let tol = self.snap_tolerance();
         let mut g = Vec::new();
+        // Each object's stops and how far the pointer is from the object
+        // along the line (0 over it or within the snapping radius).
+        let mut stops: Vec<(f64, (f64, Point, snap_points::SnapMode))> = Vec::new();
         for sh in self
             .page_layers()
             .into_iter()
@@ -424,13 +452,26 @@ impl App {
                     continue;
                 }
             }
+            let away = pointer.map_or(0.0, |q| {
+                let d = if q < o0 { o0 - q } else if q > o1 { q - o1 } else { 0.0 };
+                (d - tol).max(0.0)
+            });
+            g.clear();
             snap_points::object_geometry(&self.snap_shape(sh), &text_baselines, &mut g);
+            stops.extend(
+                snap_points::axis_stops(&g, &self.settings.snap.modes, x_axis, span, tol)
+                    .into_iter()
+                    .map(|s| (away, s)),
+            );
         }
-        snap_points::axis_stops(&g, &self.settings.snap.modes, x_axis, span, tol)
+        stops
             .into_iter()
-            .filter(|(c, _, _)| (c - v).abs() <= tol)
-            .min_by(|a, b| (a.0 - v).abs().total_cmp(&(b.0 - v).abs()))
-            .map(|(c, point, mode)| {
+            .filter(|(_, (c, _, _))| (c - v).abs() <= tol)
+            .min_by(|(wa, a), (wb, b)| {
+                wa.total_cmp(wb)
+                    .then((a.0 - v).abs().total_cmp(&(b.0 - v).abs()))
+            })
+            .map(|(_, (c, point, mode))| {
                 (
                     c,
                     Target {
@@ -1633,6 +1674,34 @@ mod tests {
         assert!(mode(&app, 130.0, 110.0).is_none());
         app.snap.objects = false;
         assert!(mode(&app, 130.0, 120.5).is_none());
+    }
+
+    /// A horizontal guideline dragged onto one of a row of rectangles
+    /// about level with each other lands on the top of the one the
+    /// pointer is over, not on a closer-lined-up top far away (#3359).
+    #[test]
+    fn a_dragged_guideline_snaps_to_the_object_under_the_pointer() {
+        let mut app = app();
+        app.settings.snap.threshold_px = 3.0;
+        // Tops at 60, 61 and 59.
+        rect(&mut app, 10.0, 20.0, 40.0, 60.0);
+        rect(&mut app, 110.0, 20.0, 140.0, 61.0);
+        rect(&mut app, 210.0, 20.0, 240.0, 59.0);
+        // The pointer over the middle one at y 60.2: its top, 61, though
+        // the first one's 60 is nearer the pointer's height.
+        assert!((app.snap_guide_near(60.2, false, 125.0) - 61.0).abs() < 1e-9);
+        // Over the last one: 59.
+        assert!((app.snap_guide_near(60.2, false, 225.0) - 59.0).abs() < 1e-9);
+        // Over the first one: 60.
+        assert!((app.snap_guide_near(60.2, false, 25.0) - 60.0).abs() < 1e-9);
+        // Between objects, the nearest object along the line counts.
+        assert!((app.snap_guide_near(60.2, false, 190.0) - 59.0).abs() < 1e-9);
+        // Without the pointer the nearest top along the axis, as before.
+        assert!((app.snap_y_without_guides(60.2) - 60.0).abs() < 1e-9);
+        // A vertical guideline: the rectangle the pointer is beside.
+        rect(&mut app, 39.0, 100.0, 80.0, 130.0);
+        assert!((app.snap_guide_near(39.6, true, 115.0) - 39.0).abs() < 1e-9);
+        assert!((app.snap_guide_near(39.6, true, 40.0) - 40.0).abs() < 1e-9);
     }
 
     /// A guideline dragged near a node of a curve lands on the node, not

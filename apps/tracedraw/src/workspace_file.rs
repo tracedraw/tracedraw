@@ -94,6 +94,11 @@ pub struct BarsPart {
     pub status_info: StatusInfo,
     /// The buttons of the Standard and Zoom toolbars, when changed.
     pub bar_items: std::collections::BTreeMap<String, Vec<String>>,
+    /// The dockers open, their columns, the one in front of each and the
+    /// floating ones with their windows: a workspace brings its panels
+    /// back (#3350). Absent in files written before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dockers: Option<crate::settings::DockerSetup>,
 }
 
 /// The interface's look.
@@ -296,6 +301,25 @@ impl WorkspaceFile {
                 list.truncate(MAX_LIST);
                 list.retain(|id| short_text(id));
             }
+            if let Some(d) = &mut bars.dockers {
+                for list in [
+                    &mut d.open,
+                    &mut d.left,
+                    &mut d.inner,
+                    &mut d.left_inner,
+                ] {
+                    list.truncate(MAX_LIST);
+                    list.retain(|k| short_text(k));
+                }
+                d.stacks.truncate(MAX_LIST);
+                d.stacks
+                    .retain(|st| st.split.is_finite() && short_text(&st.tab));
+                d.floating.truncate(MAX_LIST);
+                d.floating.retain(|f| {
+                    short_text(&f.tab)
+                        && f.pos.iter().chain(&f.size).all(|v| v.is_finite() && v.abs() <= MAX_POSITION)
+                });
+            }
         }
         if let Some(bars) = &mut self.palette_bars {
             bars.truncate(MAX_LIST);
@@ -363,6 +387,7 @@ impl App {
                 show_outline_flyout: s.show_outline_flyout,
                 status_info: s.status_info,
                 bar_items: s.bar_items.clone(),
+                dockers: Some(self.docker_setup()),
             }),
             palette: parts.palette.then_some(s.palette),
             palette_bars: parts.palette.then(|| s.palette_bars.clone()),
@@ -405,6 +430,10 @@ impl App {
             self.settings.show_outline_flyout = b.show_outline_flyout;
             self.settings.status_info = b.status_info;
             self.settings.bar_items = b.bar_items.clone();
+            if let Some(dockers) = &b.dockers {
+                self.set_docker_setup(dockers);
+                self.settings.dockers = Some(self.docker_setup());
+            }
             applied.push(PART_BARS);
         }
         if let (true, Some(list)) = (parts.shortcuts, &file.shortcuts) {
@@ -597,6 +626,35 @@ mod tests {
         assert_eq!(again.settings.shortcuts, from.settings.shortcuts);
         assert!(again.status.contains("mine.tdws"), "{}", again.status);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A docker open when the workspace was exported, closed since, is
+    /// open again when the workspace is imported, in front (#3350).
+    #[test]
+    fn a_workspace_brings_its_dockers_back() {
+        use crate::app::DockerTab;
+        let mut app = App::headless();
+        app.open_docker(DockerTab::FindReplace);
+        app.open_docker(DockerTab::StepAndRepeat);
+        assert!(app.show_dockers);
+        let file = WorkspaceFile::from_bytes(&app.export_workspace(WorkspaceParts::ALL).to_bytes())
+            .expect("reads back");
+        app.close_docker(DockerTab::StepAndRepeat);
+        app.close_docker(DockerTab::FindReplace);
+        assert!(!app.open_dockers.contains(&DockerTab::FindReplace));
+        app.import_workspace(&file, WorkspaceParts::ALL);
+        assert!(app.show_dockers, "the dockers shown");
+        assert!(app.open_dockers.contains(&DockerTab::FindReplace), "{:?}", app.open_dockers);
+        assert!(app.open_dockers.contains(&DockerTab::StepAndRepeat));
+        assert_eq!(app.docker_tab, DockerTab::StepAndRepeat);
+        // A file written before dockers were kept leaves them as they are.
+        let mut old = file.clone();
+        if let Some(b) = &mut old.bars {
+            b.dockers = None;
+        }
+        app.close_docker(DockerTab::StepAndRepeat);
+        app.import_workspace(&old, WorkspaceParts::ALL);
+        assert!(!app.open_dockers.contains(&DockerTab::StepAndRepeat));
     }
 
     /// The appearance part carries the whole of Customization >

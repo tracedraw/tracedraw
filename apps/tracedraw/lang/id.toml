@@ -8249,6 +8249,7 @@ folder.files_web = "Peramban tidak dapat membaca folder: pilih berkasnya saja, b
 folder.files_android = "Pilih berkas dengan pemilih sistem sebagai ganti folder, beberapa sekaligus." # mt
 folder.backup_web = "Peramban menyimpan cadangan di penyimpanan halaman: folder tidak dapat dipilih." # mt
 folder.backup_android = "Di Android cadangan tetap di folder aplikasi sendiri: folder lain tidak dapat dipilih." # mt
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "{n} berkas dipilih" # mt
 palette.new = "Palet Baru..." # mt
 palette.new_tip = "Membuat palet kosong milik Anda dan langsung menampilkannya di bilahnya sendiri di bawah. Jatuhkan warna ke bilah untuk mengisinya." # mt

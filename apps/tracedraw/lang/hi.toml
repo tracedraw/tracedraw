@@ -8249,6 +8249,7 @@ folder.files_web = "ब्राउज़र फ़ोल्डर नहीं 
 folder.files_android = "फ़ोल्डर के बजाय सिस्टम के पिकर से फ़ाइलें चुनें, एक साथ कई।" # mt
 folder.backup_web = "ब्राउज़र बैकअप पेज के स्टोरेज में रखता है: कोई फ़ोल्डर नहीं चुना जा सकता।" # mt
 folder.backup_android = "Android पर बैकअप ऐप के अपने फ़ोल्डर में रहते हैं: कोई दूसरा फ़ोल्डर नहीं चुना जा सकता।" # mt
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "{n} फ़ाइलें चुनी गईं" # mt
 palette.new = "नया पैलेट..." # mt
 palette.new_tip = "अपना एक खाली पैलेट बनाएँ और उसे तुरंत नीचे उसकी अपनी पट्टी में दिखाएँ। भरने के लिए पट्टी पर रंग छोड़ें।" # mt

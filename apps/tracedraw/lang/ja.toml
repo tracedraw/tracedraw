@@ -8249,6 +8249,7 @@ folder.files_web = "ブラウザーはフォルダーを読み込めません。
 folder.files_android = "フォルダーの代わりにシステムのピッカーでファイルを選んでください (複数可)。" # mt
 folder.backup_web = "ブラウザーはバックアップをページのストレージに保存します。フォルダーは選べません。" # mt
 folder.backup_android = "Android ではバックアップはアプリのフォルダーに保存されます。他のフォルダーは選べません。" # mt
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "{n} 個のファイルを選択" # mt
 palette.new = "新しいパレット..." # mt
 palette.new_tip = "空の自分用パレットを作り、すぐに下部の専用バーに表示します。バーに色をドロップして追加します。" # mt

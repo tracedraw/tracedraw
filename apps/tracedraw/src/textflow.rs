@@ -88,6 +88,21 @@ pub fn relink_copies(originals: &[Shape], copies: &mut [Shape]) {
                 c.data = with_key(std::mem::take(&mut c.data), key, Some(*to));
             }
         }
+        // A dimension copied with the object it measures measures the
+        // copy: its anchors named the original, so the copied dimension
+        // followed the original rectangle and not its own (#3345).
+        if let Some(mut d) = crate::dimensions::Dimension::of(o) {
+            let mut moved = false;
+            for a in &mut d.anchors {
+                if let Some(to) = map.get(&a.shape) {
+                    a.shape = *to;
+                    moved = true;
+                }
+            }
+            if moved {
+                c.data = crate::dimensions::with_data(std::mem::take(&mut c.data), &d);
+            }
+        }
         for e in &mut c.effects {
             if let tracedraw_core::live::Effect::Blend {
                 end_id: Some(end), ..

@@ -831,11 +831,11 @@ impl App {
                 let d = p - press;
                 let (line, delta) = match start.line {
                     GuideLine::Horizontal { y } => {
-                        let ny = self.snap_y_without_guides(y + d.y);
+                        let ny = self.snap_guide_near(y + d.y, false, p.x);
                         (GuideLine::Horizontal { y: ny }, Vec2::new(d.x, ny - y))
                     }
                     GuideLine::Vertical { x } => {
-                        let nx = self.snap_x_without_guides(x + d.x);
+                        let nx = self.snap_guide_near(x + d.x, true, p.y);
                         (GuideLine::Vertical { x: nx }, Vec2::new(nx - x, d.y))
                     }
                     GuideLine::Angled { x, y, angle } => {

@@ -228,7 +228,25 @@ impl<N: Numeric> NumField<'_, N> {
         let id = ui.next_auto_id().with("num_field");
         let shown = self.text();
         // While typing, the text lives in memory until it is applied.
-        let stored = ui.data(|d| d.get_temp::<String>(id));
+        let mut stored = ui.data(|d| d.get_temp::<String>(id));
+        // A box focused and not typed into follows its value: in Bitmaps >
+        // Resample, a width typed and left for the percent box changed
+        // the percent after that box took the focus, which kept the old
+        // percent and put it back when left (#3332).
+        let shown_id = id.with("shown");
+        let was_shown = ui.data(|d| d.get_temp::<String>(shown_id));
+        if stored.is_some() && stored == was_shown && was_shown.as_ref() != Some(&shown) {
+            stored = Some(shown.clone());
+            ui.data_mut(|d| d.insert_temp(shown_id, shown.clone()));
+            if let Some(mut state) = TextEdit::load_state(ui.ctx(), id) {
+                let all = egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(0),
+                    egui::text::CCursor::new(shown.chars().count()),
+                );
+                state.cursor.set_char_range(Some(all));
+                state.store(ui.ctx(), id);
+            }
+        }
         let mut buf = stored.clone().unwrap_or_else(|| shown.clone());
         // A drag on the label slides the value (#1303). The label is no
         // stop for Tab, which goes from box to box (#1537).
@@ -403,9 +421,13 @@ impl<N: Numeric> NumField<'_, N> {
         resp.flags.set(egui::response::Flags::CHANGED, false);
         select_all_when_focused(ui, &resp, stored.is_none(), &buf);
         if resp.has_focus() {
+            if stored.is_none() {
+                ui.data_mut(|d| d.insert_temp(shown_id, shown.clone()));
+            }
             ui.data_mut(|d| d.insert_temp(id, buf.clone()));
         } else if stored.is_some() || resp.lost_focus() {
             ui.data_mut(|d| d.remove::<String>(id));
+            ui.data_mut(|d| d.remove::<String>(shown_id));
             let escaped = ui.input(|i| i.key_pressed(egui::Key::Escape));
             if !escaped && buf != shown {
                 if let Some(mut v) = parse(&buf, self.unit_mm) {

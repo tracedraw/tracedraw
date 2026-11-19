@@ -8249,6 +8249,7 @@ folder.files_web = "Un browser non può leggere una cartella: scegli invece i fi
 folder.files_android = "Scegli i file con il selettore del sistema invece di una cartella, più di uno alla volta." # mt
 folder.backup_web = "Un browser conserva i backup nella memoria della pagina: non si può scegliere una cartella." # mt
 folder.backup_android = "Su Android i backup restano nella cartella dell'app: non si può scegliere un'altra cartella." # mt
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "{n} file scelti" # mt
 palette.new = "Nuova tavolozza..." # mt
 palette.new_tip = "Crea una tavolozza vuota tua e la mostra subito in una barra propria in basso. Trascina colori sulla barra per riempirla." # mt

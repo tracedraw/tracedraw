@@ -8249,6 +8249,7 @@ folder.files_web = "Un navegador no puede leer una carpeta: elija los archivos, 
 folder.files_android = "Elija los archivos con el selector del sistema en lugar de una carpeta, varios a la vez." # mt
 folder.backup_web = "Un navegador guarda las copias de seguridad en el almacenamiento de la página: no se puede elegir una carpeta." # mt
 folder.backup_android = "En Android las copias de seguridad quedan en la carpeta de la app: no se puede elegir otra carpeta." # mt
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "{n} archivos elegidos" # mt
 palette.new = "Nueva paleta..." # mt
 palette.new_tip = "Crea una paleta vacía propia y la muestra al instante en una barra propia abajo. Suelta colores en la barra para llenarla." # mt

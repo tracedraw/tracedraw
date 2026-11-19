@@ -8249,6 +8249,7 @@ folder.files_web = "Przeglądarka nie może odczytać folderu: wybierz zamiast t
 folder.files_android = "Wybierz pliki systemowym selektorem zamiast folderu, kilka naraz." # mt
 folder.backup_web = "Przeglądarka przechowuje kopie zapasowe w pamięci strony: nie można wybrać folderu." # mt
 folder.backup_android = "Na Androidzie kopie zapasowe zostają w folderze aplikacji: nie można wybrać innego folderu." # mt
+folder.save_desktop = "The system's folder window opens in the desktop version only."
 folder.picked_n = "Wybrano plików: {n}" # mt
 palette.new = "Nowa paleta..." # mt
 palette.new_tip = "Tworzy własną pustą paletę i od razu pokazuje ją na osobnym pasku na dole. Upuść kolory na pasek, aby ją wypełnić." # mt
