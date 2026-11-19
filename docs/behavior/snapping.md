@@ -86,7 +86,12 @@ most 16 segments each with its bounds, as for a node drag below (#1765,
 `snap::tests::a_move_snaps_to_where_the_selection_started`,
 `pick_drag_tests::a_move_snaps_to_where_the_selection_started`). A scale
 handle being dragged snaps like the pointer of a drawing tool, leaving
-out the selection's own points. When that finds nothing on the axis a
+out the selection as it changes; once the point of the box it stands for
+has gone further than the snapping radius from where it was grabbed, it
+also snaps to the selection's own nodes, midpoints, quadrants, centres
+and edges where they stood at the start, as a move does: a rectangle's
+right side dragged in stops where its centre was (#3074,
+`snap::tests::a_scale_handle_snaps_to_where_the_selection_stood`). When that finds nothing on the axis a
 side moves, the side stops, as a guideline does, on the points of other
 objects it meets along its length (from end to end for a side handle,
 from the fixed corner to the pointer for a corner) and on their lines (a

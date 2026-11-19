@@ -947,7 +947,9 @@ impl App {
     /// Where the point of the selection box that a scale handle stands for
     /// goes for `raw` (the pointer less its grab), and whether snapping
     /// put it there on the x and on the y axis (#2004). The point snaps as
-    /// the pointer does, to everything but the selection; a side it moves
+    /// the pointer does, to everything but the selection as it changes,
+    /// and, once it has left its start, to the selection's own nodes and
+    /// edges where they stood (#3074); a side it moves
     /// that found nothing then stops on the points of other objects (a
     /// node, a midpoint, a centre) and on their lines (a straight side
     /// along it, the outermost point of a curve) that it meets along its
@@ -960,12 +962,19 @@ impl App {
             anchor,
             start_bounds,
             mods,
+            start_geometry,
             ..
         } = &self.drag
         else {
             return (raw, (false, false));
         };
-        let mut q = self.snap_point_excluding(raw, &self.selection);
+        // Once away from its start, the selection's own nodes and edges
+        // where they stood count as another object's (#3074).
+        let own = match start_geometry {
+            Some(g) => self.still_near(g, raw),
+            None => Vec::new(),
+        };
+        let mut q = self.snap_point_with(raw, &self.selection, &own);
         let (moves_x, moves_y) = match handle {
             Handle::E | Handle::W => (true, false),
             Handle::N | Handle::S => (false, true),
@@ -2058,6 +2067,43 @@ mod tests {
         assert!((d.x - 50.0).abs() < 1e-9, "{d:?}");
     }
 
+    /// A scale handle snaps to the selection's own nodes, midpoints and
+    /// centre where they stood when it was grabbed, once it has left its
+    /// start (#3074): before, it left the selection out altogether.
+    #[test]
+    fn a_scale_handle_snaps_to_where_the_selection_stood() {
+        use crate::app::{Drag, Handle};
+        let mut app = app();
+        app.settings.snap.threshold_px = 3.0;
+        let id = rect(&mut app, 20.0, 20.0, 60.0, 40.0);
+        app.select(vec![id]);
+        let b = app.selection_bounds().unwrap();
+        let drag = |g: Option<std::rc::Rc<StillGeometry>>| Drag::Scale {
+            handle: Handle::E,
+            anchor: Point::new(b.x0, b.center().y),
+            start_bounds: b,
+            current: Point::new(b.x1, b.center().y),
+            grab: Vec2::ZERO,
+            mods: Default::default(),
+            snapped: (false, false),
+            start_geometry: g,
+        };
+        // Without its start geometry the right side passes the middle of
+        // the box freely.
+        app.drag = drag(None);
+        let raw = Point::new(40.6, 30.4);
+        let (q, _) = app.snap_scale_handle(raw);
+        assert!((q.x - 40.6).abs() < 1e-9, "{q:?}");
+        // With it, the side stops on where the box's centre was.
+        app.drag = drag(Some(std::rc::Rc::new(app.selection_start_geometry())));
+        let (q, (sx, _)) = app.snap_scale_handle(raw);
+        assert_eq!(q.x, 40.0, "{q:?}");
+        assert!(sx);
+        // And on where its top right corner was, dragged past it and back.
+        let (q, _) = app.snap_scale_handle(Point::new(60.5, 39.6));
+        assert_eq!(q, Point::new(60.0, 40.0));
+    }
+
     /// A move snaps to where the selection itself was when it began (its
     /// nodes, midpoints, centre and edges), once it has left the snapping
     /// radius of its start; before that nothing of its own attracts it,
@@ -2204,6 +2250,7 @@ mod tests {
             grab: Vec2::ZERO,
             mods: Default::default(),
             snapped: (false, false),
+            start_geometry: None,
         };
         let q = app.snap_point_excluding(Point::new(49.0, 21.0), &[id]);
         assert_eq!(q, Point::new(50.0, 21.0));
@@ -2370,6 +2417,7 @@ mod tests {
             grab: Vec2::ZERO,
             mods: Default::default(),
             snapped: (false, false),
+            start_geometry: None,
         };
         app.drag = scale(b, 20.0);
         let (q, axes) = app.snap_scale_handle(Point::new(49.0, 20.0));
@@ -2454,6 +2502,7 @@ mod tests {
                 grab: Vec2::ZERO,
                 mods: Default::default(),
                 snapped: (false, false),
+                start_geometry: None,
             };
             let (q, snapped) = app.snap_scale_handle(Point::new(49.5, y));
             assert_eq!(snapped, (true, false), "{y}");

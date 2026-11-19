@@ -49,6 +49,7 @@ mod clipboard;
 mod clone_effect;
 mod color_drop;
 mod color_policy;
+mod combine_files;
 mod color_styles;
 mod comments;
 mod common_shapes;

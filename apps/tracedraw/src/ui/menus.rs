@@ -1405,7 +1405,7 @@ pub(crate) mod replay {
 
     /// Items that would block on a native file chooser, start another
     /// program (an editor or the web browser) or close the window.
-    const SKIP: [&str; 19] = [
+    const SKIP: [&str; 21] = [
         "menu.tools.plugin_install",
         "menu.object.insert_object_add",
         "menu.object.insert_object_file",
@@ -1419,6 +1419,8 @@ pub(crate) mod replay {
         "menu.file.save_as",
         "menu.file.save_as_template",
         "menu.file.import",
+        "menu.file.combine_files",
+        "menu.file.save_pages_as_files",
         "menu.file.exit",
         "menu.bitmaps.edit_bitmap",
         "menu.tools.scripts_run",
@@ -2778,6 +2780,14 @@ fn file_menu(app: &mut App, ui: &mut Ui) {
     todo_sub(ui, "menu.file.acquire_image");
     if item(ui, "menu.file.import", "Ctrl+I", doc) {
         app.import();
+    }
+    // The pages of other drawings added, and each page saved as a
+    // drawing of its own (#3358).
+    if item(ui, "menu.file.combine_files", "", doc) {
+        app.combine_files();
+    }
+    if item(ui, "menu.file.save_pages_as_files", "", doc) {
+        app.save_pages_as_files();
     }
     if item(ui, "menu.file.export", "Ctrl+E", doc) {
         // Shift held shows the options even when they are set not to show.

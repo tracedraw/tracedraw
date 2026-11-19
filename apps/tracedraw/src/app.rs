@@ -410,6 +410,11 @@ pub enum Drag {
         /// snapped axis alone, so the side stays on what it snapped to
         /// (#2004).
         snapped: (bool, bool),
+        /// Where the selection stood when the handle was grabbed, built
+        /// once the handle has left the snapping radius of its start: the
+        /// handle then snaps to the selection's own nodes and edges as
+        /// they were, as a move does (#3074, #1765).
+        start_geometry: Option<std::rc::Rc<crate::snap::StillGeometry>>,
     },
     /// Skewing the selection with a side handle in rotate mode: the
     /// opposite side stays (the centre line with Shift).
@@ -10308,7 +10313,7 @@ impl App {
     }
 
     /// Read a `.cdr` file through the file layer (uploads in a browser).
-    fn open_cdr(
+    pub(crate) fn open_cdr(
         path: &std::path::Path,
     ) -> std::result::Result<(tracedraw_core::Document, tracedraw_cdr::ParseReport), String> {
         let bytes = crate::files::read(path).map_err(|e| e.to_string())?;
@@ -11410,7 +11415,7 @@ pub(crate) fn is_template_path(path: &std::path::Path) -> bool {
 
 /// `sym` with no object identities, for comparing symbols of two
 /// drawings (each drawing gives the objects identities of its own).
-fn symbol_without_uids(
+pub(crate) fn symbol_without_uids(
     mut sym: tracedraw_core::document::Symbol,
 ) -> tracedraw_core::document::Symbol {
     fn clear(s: &mut Shape) {

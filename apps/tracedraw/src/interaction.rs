@@ -1786,6 +1786,7 @@ impl App {
             grab,
             mods: crate::app::HandleMods::of(mods),
             snapped: (false, false),
+            start_geometry: None,
         };
     }
 
@@ -2799,11 +2800,27 @@ impl App {
                     && self.snap.objects
                     && (p - *start).hypot() > self.snap_tolerance()
             }
+            // A scale handle likewise, once the point it stands for has
+            // left where it started (#3074).
+            Drag::Scale {
+                handle,
+                start_bounds,
+                grab,
+                start_geometry: None,
+                ..
+            } => {
+                self.snap_enabled()
+                    && self.snap.objects
+                    && (p - *grab - handle_point(*start_bounds, *handle)).hypot()
+                        > self.snap_tolerance()
+            }
             _ => false,
         };
         if away {
             let g = std::rc::Rc::new(self.selection_start_geometry());
-            if let Drag::Move { start_geometry, .. } = &mut self.drag {
+            if let Drag::Move { start_geometry, .. } | Drag::Scale { start_geometry, .. } =
+                &mut self.drag
+            {
                 *start_geometry = Some(g);
             }
         }
@@ -2925,7 +2942,9 @@ impl App {
                 ..
             } => {
                 // The handle snaps to other objects, guidelines, the grid
-                // and the page, never to the selection's own points.
+                // and the page, and to where the selection stood once away
+                // from its start (#3074), never to the selection as it
+                // changes.
                 *current = snapped_handle;
                 *snapped = scale_snapped;
                 *m = crate::app::HandleMods::of(mods);

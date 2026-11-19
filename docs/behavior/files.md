@@ -234,6 +234,26 @@ The open drawings are compared with the holds once a frame (paths only);
 a file is opened only when a drawing was opened, closed or saved under
 another name.
 
+## Combine Files and Save Pages as Files (#3358)
+
+- File > Combine Files... picks one or more drawings (`.tdraw`, `.cdr`,
+  `.cdt`, `.cdrt`, `.cmx`) and adds every page of each, in the order
+  picked, after the last page of the open drawing: the page's name and
+  size, and its objects (the objects of all its layers, in their order, on
+  one layer named as its first). The symbols those objects show come
+  along, carried fonts too, and imported colours follow the colour
+  management policy of File > Import. All of it is one undo step; the
+  first page added becomes the current page and the status bar says how
+  many pages came from how many files. A file that cannot be read is left
+  out and named on the status bar.
+- File > Save Pages as Files... asks for a file name and saves each page
+  as a TraceDraw drawing beside it, named after it with the page number
+  (`Poster-1.tdraw`, `Poster-2.tdraw`). Each holds that page with its
+  layers, guides and background, and what the drawing keeps for all its
+  pages (symbols, styles, colours, inks, fonts). The open drawing stays as
+  it was, unsaved changes and all.
+- `combine_files::tests::pages_saved_as_files_combine_back`
+
 ## Checks
 
 - `files::tests::a_failed_write_keeps_the_file_it_was_replacing`
