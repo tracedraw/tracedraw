@@ -1981,12 +1981,43 @@ impl Json {
     }
 }
 
-/// Lenient recursive-descent JSON parser (depth and size bounded).
-fn parse_json(s: &str) -> Option<Json> {
-    let chars: Vec<char> = s.chars().collect();
-    let mut pos = 0usize;
-    let v = json_value(&chars, &mut pos, 0)?;
-    Some(v)
+/// Lenient recursive-descent JSON parser (depth and size bounded). An
+/// object's style string is asked for each of its sections in turn (the
+/// mitre limit, the winding, the transparency...), and many objects share
+/// one, so the strings parsed last are kept, each parsed once (#3200: a
+/// drawing of 50 000 objects opened half a second slower than in 0.42,
+/// most of it parsing the same strings again).
+fn parse_json(s: &str) -> Option<std::rc::Rc<Json>> {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::rc::Rc;
+    /// Strings kept; past it the cache starts again.
+    const KEEP: usize = 4096;
+    /// Longer strings (a whole text's styles) are parsed each time.
+    const LONGEST: usize = 64 * 1024;
+    thread_local! {
+        static PARSED: RefCell<HashMap<String, Option<Rc<Json>>>> = RefCell::new(HashMap::new());
+    }
+    let parse = || {
+        let chars: Vec<char> = s.chars().collect();
+        let mut pos = 0usize;
+        json_value(&chars, &mut pos, 0).map(Rc::new)
+    };
+    if s.len() > LONGEST {
+        return parse();
+    }
+    if let Some(hit) = PARSED.with(|p| p.borrow().get(s).cloned()) {
+        return hit;
+    }
+    let v = parse();
+    PARSED.with(|p| {
+        let mut p = p.borrow_mut();
+        if p.len() >= KEEP {
+            p.clear();
+        }
+        p.insert(s.to_string(), v.clone());
+    });
+    v
 }
 
 fn json_ws(c: &[char], pos: &mut usize) {
@@ -2380,7 +2411,8 @@ fn apply_paragraph_object(s: &mut RunStyle, items: &[(String, Json)]) {
 /// outline its program shows with a limit of 29 degrees, #384).
 pub(crate) fn object_miter_limit(style: &str) -> Option<f64> {
     let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
-    let Json::Obj(items) = parse_json(t)? else {
+    let json = parse_json(t)?;
+    let Json::Obj(items) = &*json else {
         return None;
     };
     let Json::Obj(outline) = &items.iter().find(|(k, _)| k == "outline")?.1 else {
@@ -2406,7 +2438,8 @@ pub(crate) fn object_miter_limit(style: &str) -> Option<f64> {
 /// "0" (even-odd). `None` without it.
 pub(crate) fn object_fill_winding(style: &str) -> Option<bool> {
     let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
-    let Json::Obj(items) = parse_json(t)? else {
+    let json = parse_json(t)?;
+    let Json::Obj(items) = &*json else {
         return None;
     };
     let Json::Obj(fill) = &items.iter().find(|(k, _)| k == "fill")?.1 else {
@@ -2430,7 +2463,8 @@ pub(crate) fn object_fill_winding(style: &str) -> Option<bool> {
 /// transparency drawn uniform, assumed). `None` for an empty section.
 pub(crate) fn object_opacity(style: &str) -> Option<f64> {
     let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
-    let Json::Obj(items) = parse_json(t)? else {
+    let json = parse_json(t)?;
+    let Json::Obj(items) = &*json else {
         return None;
     };
     let Json::Obj(tr) = &items.iter().find(|(k, _)| k == "transparency")?.1 else {
@@ -2455,7 +2489,8 @@ pub(crate) fn object_opacity(style: &str) -> Option<f64> {
 /// the style string (#1706).
 pub(crate) fn object_transparency_is_uniform_fill(style: &str) -> bool {
     let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
-    let Some(Json::Obj(items)) = parse_json(t) else {
+    let json = parse_json(t);
+    let Some(Json::Obj(items)) = json.as_deref() else {
         return false;
     };
     let Some((_, Json::Obj(tr))) = items.iter().find(|(k, _)| k == "transparency") else {
@@ -2475,7 +2510,8 @@ pub(crate) fn object_transparency_is_uniform_fill(style: &str) -> bool {
 /// and textures, as in fill sections (#2960).
 pub(crate) fn object_transparency_fill_type(style: &str) -> Option<i64> {
     let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
-    let Json::Obj(items) = parse_json(t)? else {
+    let json = parse_json(t)?;
+    let Json::Obj(items) = &*json else {
         return None;
     };
     let (_, Json::Obj(tr)) = items.iter().find(|(k, _)| k == "transparency")? else {
@@ -2493,7 +2529,8 @@ pub(crate) fn object_transparency_fill_type(style: &str) -> Option<i64> {
 /// holds (#1706, #2960).
 pub(crate) fn object_transparency_is_empty(style: &str) -> bool {
     let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
-    let Some(Json::Obj(items)) = parse_json(t) else {
+    let json = parse_json(t);
+    let Some(Json::Obj(items)) = json.as_deref() else {
         return false;
     };
     matches!(
@@ -2510,7 +2547,8 @@ pub(crate) fn object_transparency_is_empty(style: &str) -> bool {
 /// object as Normal.
 pub(crate) fn object_transparency_merge_code(style: &str) -> Option<i64> {
     let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
-    let Some(Json::Obj(items)) = parse_json(t) else {
+    let json = parse_json(t);
+    let Some(Json::Obj(items)) = json.as_deref() else {
         return None;
     };
     let (_, Json::Obj(tr)) = items.iter().find(|(k, _)| k == "transparency")? else {
@@ -2537,13 +2575,14 @@ pub(crate) fn object_transparency_merge_code(style: &str) -> Option<i64> {
 pub(crate) fn object_transparency_mask(style: &str) -> Option<(tracedraw_core::Fill, u8)> {
     use tracedraw_core::{Color, Fill, Fountain, FountainKind, Stop};
     let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
-    let Json::Obj(items) = parse_json(t)? else {
+    let json = parse_json(t)?;
+    let Json::Obj(items) = &*json else {
         return None;
     };
     let field = |obj: &[(String, Json)], key: &str| -> Option<Json> {
         obj.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
     };
-    let Json::Obj(tr) = field(&items, "transparency")? else {
+    let Json::Obj(tr) = field(items, "transparency")? else {
         return None;
     };
     let Json::Obj(fill) = field(&tr, "fill")? else {
@@ -2648,7 +2687,8 @@ pub(crate) fn object_transparency_mask(style: &str) -> Option<(tracedraw_core::F
 /// columns assumed listed alike, as TraceDraw writes them).
 pub(crate) fn frame_columns(style: &str) -> Option<(u32, f64)> {
     let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
-    let Json::Obj(items) = parse_json(t)? else {
+    let json = parse_json(t)?;
+    let Json::Obj(items) = &*json else {
         return None;
     };
     let Json::Obj(frame) = &items.iter().find(|(k, _)| k == "frame")?.1 else {
@@ -2676,7 +2716,8 @@ pub(crate) fn frame_columns(style: &str) -> Option<(u32, f64)> {
 /// 21 file with one column; several columns assumed alike).
 pub(crate) fn frame_width_units(style: &str) -> Option<f64> {
     let t = style.trim_matches(|c: char| c == '\0' || c.is_whitespace());
-    let Json::Obj(items) = parse_json(t)? else {
+    let json = parse_json(t)?;
+    let Json::Obj(items) = &*json else {
         return None;
     };
     let Json::Obj(frame) = &items.iter().find(|(k, _)| k == "frame")?.1 else {
@@ -2816,6 +2857,21 @@ mod tests {
     }
 
     use super::*;
+
+    /// A style string asked for several sections is parsed once; a
+    /// string that is not JSON stays unread every time (#3200).
+    #[test]
+    fn a_style_string_is_parsed_once() {
+        let st = r#"{"fill":{"winding":"1"},"outline":{"miterLimit":"45"},"transparency":{}}"#;
+        let a = parse_json(st).expect("parsed");
+        let b = parse_json(st).expect("parsed");
+        assert!(std::rc::Rc::ptr_eq(&a, &b));
+        assert_eq!(object_fill_winding(st), Some(true));
+        assert_eq!(object_miter_limit(st), Some(45.0));
+        assert!(object_transparency_is_empty(st));
+        assert!(parse_json("{not json").is_none());
+        assert!(parse_json("{not json").is_none());
+    }
 
     /// Style strings of version 17 on are UTF-8: a font named in Chinese
     /// keeps its name; bytes that are not UTF-8 read in the code page of
