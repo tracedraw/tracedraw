@@ -1153,6 +1153,48 @@ mod tests {
         assert!(kurbo::Shape::contains(&pp, Point::new(12.0, 10.0)));
     }
 
+    /// A thick line's end goes under its arrowhead when it becomes an
+    /// object, as it is drawn: the head's tip stays a point. The whole
+    /// line was welded to the head, so its square end stood out past the
+    /// narrow tip (#3604).
+    #[test]
+    fn convert_outline_to_object_keeps_the_arrow_tip() {
+        let mut app = App::headless();
+        let mut line = BezPath::new();
+        line.move_to((10.0, 10.0));
+        line.line_to((110.0, 10.0));
+        let id = app
+            .new_shape(ShapeKind::Path {
+                path: line,
+                closed: false,
+            })
+            .expect("line");
+        let mut st = Stroke::new(tracedraw_core::Color::BLACK, 4.0);
+        st.end_arrow = tracedraw_core::style::Arrowhead::Arrow;
+        app.select(vec![id]);
+        app.run(Command::SetStroke {
+            shapes: vec![id],
+            stroke: Some(st.clone()),
+        });
+        let shape = app.doc().find_shape(id).cloned().expect("line");
+        let heads = tracedraw_core::style::arrowhead_paths(&shape.page_path(), &st);
+        let head = heads.first().expect("a head").clone();
+        let tip = kurbo::Shape::bounding_box(&head).x1;
+        // Just short of the tip, at the line's edge: outside the head.
+        let edge = Point::new(tip - 0.3, 10.0 + 1.8);
+        assert!(!kurbo::Shape::contains(&head, edge));
+        app.convert_outline_to_object();
+        let out = app
+            .doc()
+            .find_shape(app.selection[0])
+            .cloned()
+            .expect("object");
+        let pp = out.page_path();
+        assert!(!kurbo::Shape::contains(&pp, edge), "the line's end shows");
+        assert!(kurbo::Shape::contains(&pp, Point::new(tip - 0.3, 10.0)));
+        assert!(kurbo::Shape::contains(&pp, Point::new(40.0, 11.8)));
+    }
+
     /// An open line's arrowheads come with its outline when it becomes an
     /// object: the head beside the line is filled, as it was drawn
     /// (#2983).
@@ -1192,7 +1234,21 @@ mod tests {
                             b.y0 + b.height() * j as f64 / 40.0,
                         )
                     })
-                    .find(|p| (p.y - 10.0).abs() > 0.8 && kurbo::Shape::contains(h, *p))
+                    // Well inside the head, not on its edge.
+                    .find(|p| {
+                        (p.y - 10.0).abs() > 0.8
+                            && [
+                                (0.0, 0.0),
+                                (0.05, 0.05),
+                                (-0.05, -0.05),
+                                (0.05, -0.05),
+                                (-0.05, 0.05),
+                            ]
+                            .iter()
+                            .all(|(dx, dy)| {
+                                kurbo::Shape::contains(h, Point::new(p.x + dx, p.y + dy))
+                            })
+                    })
                     .expect("a point of the head beside the line")
             })
             .collect();
@@ -2106,6 +2162,10 @@ fn outline_band_path(s: &Shape, st: &Stroke) -> Option<BezPath> {
         // curves with as few nodes as keep its shape (#622).
         return Some(tracedraw_core::fit::fit_path(&band, OUTLINE_FIT_TOLERANCE));
     }
+    // The line is cut back under its arrowheads, as it is drawn (#2981):
+    // uncut, its square end stood out past the narrow tip of the head
+    // once the two were welded (#3604).
+    let pp = tracedraw_core::style::arrowhead_stroke_path(&pp, st).unwrap_or(pp);
     // A dashed outline: each dash becomes a closed shape of its
     // own, the gaps kept (#490). The pattern is in widths, as the
     // renderer draws it.
