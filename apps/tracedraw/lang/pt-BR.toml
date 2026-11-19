@@ -9172,6 +9172,7 @@ toolbar.mod_alt = "Manter Alt" # mt
 toolbar.mod_alt_desc = "Para o dedo: segure Alt com um dedo enquanto outro dedo toca ou arrasta; a tecla é solta quando o dedo sai da tela. Um toque então escolhe o objeto atrás do que está por cima, e um retângulo de seleção escolhe todo objeto que toca. Toque duas vezes rápido para travá-la até o próximo toque." # mt
 folder.tree_android = "Escolha a pasta com o seletor do sistema; as imagens nela são usadas." # mt
 status.import_place = "Importando {name}: clique para posicionar, arraste para definir o tamanho, Espaço para centralizar na página, Esc para cancelar." # mt
+status.import_grid = "{cols} × {rows}: enquanto arrasta, as setas mudam as colunas e linhas em que os arquivos entram." # mt
 options.import_with_cursor = "Posicionar arquivos importados com o cursor de importação" # mt
 options.import_with_cursor_tip = "Depois de Arquivo > Importar o ponteiro vira um canto: clique para pôr ali o canto superior esquerdo do arquivo no tamanho original, arraste uma caixa para encaixá-lo nela ou pressione Espaço para centralizá-lo na página. Desligado, o arquivo entra na hora." # mt
 options.import_link_pictures = "Vincular imagens importadas aos arquivos" # mt

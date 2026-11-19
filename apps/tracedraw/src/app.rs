@@ -1889,6 +1889,11 @@ pub struct App {
     /// and the selection before the latest one, so all of them end up
     /// selected together.
     pub import_batch: Option<crate::import_place::ImportBatch>,
+    /// Columns and rows the drag placing several files lays them out in
+    /// (the arrow keys change them while it lasts).
+    pub import_grid: (u32, u32),
+    /// The grid cells the files still to come in go to, in order.
+    pub import_cells: std::collections::VecDeque<tracedraw_core::geometry::Rect>,
     /// Weld, Trim or Intersect waiting for a click on the target, with
     /// what it leaves of the source and the target (#562).
     pub pending_shaping: Option<(crate::ops::Shaping, bool, bool)>,
@@ -3456,6 +3461,8 @@ impl App {
             import_place_waiting: None,
             import_queue: Default::default(),
             import_batch: None,
+            import_grid: (1, 1),
+            import_cells: Default::default(),
             autofit_preview: None,
             last_export: None,
             last_bg_remove: None,

@@ -9172,6 +9172,7 @@ toolbar.mod_alt = "Alt'ı basılı tut" # mt
 toolbar.mod_alt_desc = "Parmak için: Diğer parmak dokunurken veya sürüklerken Alt tuşunu bir parmakla basılı tutun; parmak kalkınca bırakılır. Bu sırada dokunma en üstteki nesnenin arkasındakini seçer, seçim çerçevesi dokunduğu her nesneyi seçer." # mt
 folder.tree_android = "Klasörü sistemin seçicisiyle seçin; içindeki resimler kullanılır." # mt
 status.import_place = "{name} içe aktarılıyor: yerleştirmek için tıklayın, boyutlandırmak için sürükleyin, sayfada ortalamak için Boşluk, iptal için Esc." # mt
+status.import_grid = "{cols} × {rows}: sürüklerken ok tuşları dosyaların gireceği sütun ve satırları değiştirir." # mt
 options.import_with_cursor = "İçe aktarılan dosyaları içe aktarma imleciyle yerleştir" # mt
 options.import_with_cursor_tip = "Dosya > İçe Aktar sonrasında işaretçi bir köşeye dönüşür: dosyanın sol üst köşesini kendi boyutunda oraya koymak için tıklayın, sığdırmak için bir kutu sürükleyin veya sayfada ortalamak için Boşluk'a basın. Kapalıyken dosya hemen gelir." # mt
 options.import_link_pictures = "İçe aktarılan resimleri dosyalarına bağla" # mt

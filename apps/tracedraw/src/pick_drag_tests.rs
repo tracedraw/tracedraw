@@ -29262,6 +29262,57 @@ fn several_imported_files_are_placed_one_after_another() {
     assert_eq!(app.selection.len(), 1);
 }
 
+/// Several files picked at once, placed with a drag: the arrow keys
+/// pressed during it lay them out in columns and rows, each file fitted
+/// in its own cell; a drag without them still sizes only the first.
+#[test]
+fn a_drag_with_the_arrows_lays_several_imported_files_out_in_a_grid() {
+    let (ctx, mut app, _id) = setup();
+    let files: Vec<_> = ["grid-a", "grid-b", "grid-c", "grid-d"]
+        .iter()
+        .map(|t| import_square_svg(t))
+        .collect();
+    let n = shape_count(&app);
+    app.import_picked_many(files.clone());
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(app.import_placing.is_some());
+    let from = app.view.to_screen(Point::new(20.0, 220.0));
+    let to = app.view.to_screen(Point::new(120.0, 120.0));
+    let arrows = vec![
+        key(egui::Key::ArrowRight, Modifiers::NONE),
+        key_up(egui::Key::ArrowRight, Modifiers::NONE),
+        key(egui::Key::ArrowUp, Modifiers::NONE),
+        key_up(egui::Key::ArrowUp, Modifiers::NONE),
+    ];
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, arrows);
+    for _ in 0..6 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    assert!(app.import_placing.is_none(), "no file waits");
+    assert!(app.import_cells.is_empty());
+    assert_eq!(shape_count(&app), n + 4, "all four came in");
+    assert_eq!(app.selection.len(), 4, "selected together");
+    // Each 50 x 50 cell holds one file, in its middle.
+    let doc = app.doc();
+    let mut centres: Vec<Point> = app
+        .selection
+        .iter()
+        .filter_map(|id| doc.find_shape(*id).map(|s| s.bounds().center()))
+        .collect();
+    centres.sort_by(|a, b| b.y.total_cmp(&a.y).then(a.x.total_cmp(&b.x)));
+    let want = [
+        Point::new(45.0, 195.0),
+        Point::new(95.0, 195.0),
+        Point::new(45.0, 145.0),
+        Point::new(95.0, 145.0),
+    ];
+    for (c, w) in centres.iter().zip(want) {
+        assert!((*c - w).hypot() < 1.0, "{centres:?}");
+    }
+    let b = app.selection_bounds().expect("bounds");
+    assert!(b.width() > 90.0 && b.height() > 90.0, "{b:?}");
+}
+
 /// Without the placement cursor, several files picked at once all come
 /// in, selected together (discussion #2695).
 #[test]

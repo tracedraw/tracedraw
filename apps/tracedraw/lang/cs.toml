@@ -9172,6 +9172,7 @@ toolbar.mod_alt = "Držet Alt" # mt
 toolbar.mod_alt_desc = "Pro prst: držte Alt jedním prstem, zatímco druhý prst klepe nebo táhne; pustí se, když prst zvednete. Klepnutí pak vybere objekt za tím nahoře a výběrový rámeček vybere každý objekt, kterého se dotkne." # mt
 folder.tree_android = "Vyberte složku systémovým výběrem; použijí se obrázky v ní." # mt
 status.import_place = "Import {name}: kliknutím umístěte, tažením určete velikost, mezerníkem vystředíte na stránce, Esc zruší." # mt
+status.import_grid = "{cols} × {rows}: během tažení mění šipky počet sloupců a řádků, do kterých soubory přijdou." # mt
 options.import_with_cursor = "Umísťovat importované soubory kurzorem importu" # mt
 options.import_with_cursor_tip = "Po Soubor > Importovat se ukazatel změní v roh: kliknutím tam umístíte levý horní roh souboru v jeho velikosti, tažením rámečku jej do něj vložíte, mezerníkem jej vystředíte na stránce. Vypnuto: soubor přijde hned." # mt
 options.import_link_pictures = "Propojit importované obrázky s jejich soubory" # mt

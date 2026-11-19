@@ -9172,6 +9172,7 @@ toolbar.mod_alt = "Alt vasthouden" # mt
 toolbar.mod_alt_desc = "Voor een vinger: houd Alt met één vinger ingedrukt terwijl een andere vinger tikt of sleept; de toets laat los als de vinger omhooggaat. Een tik kiest dan het object achter het bovenste, en een selectiekader kiest elk object dat het raakt." # mt
 folder.tree_android = "Kies de map met de kiezer van het systeem; de afbeeldingen erin worden gebruikt." # mt
 status.import_place = "{name} importeren: klik om te plaatsen, sleep om de grootte te bepalen, Spatie om op de pagina te centreren, Esc om te annuleren." # mt
+status.import_grid = "{cols} × {rows}: tijdens het slepen veranderen de pijltjestoetsen de kolommen en rijen van de bestanden." # mt
 options.import_with_cursor = "Geïmporteerde bestanden plaatsen met de importcursor" # mt
 options.import_with_cursor_tip = "Na Bestand > Importeren wordt de aanwijzer een hoek: klik om de linkerbovenhoek van het bestand daar op ware grootte te zetten, sleep een kader om het erin te passen of druk op Spatie om het op de pagina te centreren. Uit komt het bestand meteen binnen." # mt
 options.import_link_pictures = "Geïmporteerde afbeeldingen aan hun bestanden koppelen" # mt

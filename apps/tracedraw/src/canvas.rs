@@ -235,6 +235,18 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     // The box a drag sizes File > Import's file to (#1936).
     if let Some(r) = app.import_placement_box() {
         haloed_rect(painter, view.rect_to_screen(r), Tokens::SELECTION);
+        // Several files: the cells they go to.
+        let cells = app.import_placement_cells();
+        if cells.len() > 1 {
+            for c in cells {
+                painter.rect_stroke(
+                    view.rect_to_screen(c),
+                    0.0,
+                    EStroke::new(1.0, Tokens::SELECTION),
+                    egui::StrokeKind::Inside,
+                );
+            }
+        }
     }
     draw_import_tag(app, painter);
     // Rubber bands and in-progress tools.
