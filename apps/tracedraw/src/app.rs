@@ -466,6 +466,9 @@ pub enum Drag {
     /// Dragging a corner widget (Shape tool): the corners round as it
     /// moves (#635).
     CornerWidget(Box<crate::corner_widgets::CornerDrag>),
+    /// Dragging a handle of a live Fit Objects to Path (Pick tool): the
+    /// spacing or the turn of all the objects.
+    FitPathHandle(Box<crate::fit_live::HandleDrag>),
     /// Dragging a control handle (Shape tool).
     Handle {
         shape: ShapeId,
@@ -2211,6 +2214,14 @@ pub struct App {
     /// The document revision blends were last brought up to date with
     /// their end objects (see [`App::refresh_blends`]).
     pub blends_checked: u64,
+    /// The drawing's revision when the live fits last followed their
+    /// paths and objects (see [`App::refresh_live_fits`]).
+    pub live_fits_checked: u64,
+    /// The selected live fit's handles, for the revision and selection
+    /// they were worked out for.
+    #[allow(clippy::type_complexity)]
+    pub live_handle_cache:
+        std::cell::RefCell<Option<((u64, Vec<ShapeId>), Option<crate::fit_live::LiveHandles>)>>,
     /// Rounded connectors' corner radius, mm.
     pub connector_radius: f64,
     /// The document revision connectors were last checked at (see
@@ -3569,6 +3580,8 @@ impl App {
             callout_style: Default::default(),
             callouts_checked: 0,
             blends_checked: 0,
+            live_fits_checked: 0,
+            live_handle_cache: Default::default(),
             connector_radius: 3.0,
             connectors_checked: u64::MAX,
             connector_radius_step: None,

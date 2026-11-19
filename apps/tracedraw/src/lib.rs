@@ -98,6 +98,7 @@ mod shape_gen_cells;
 mod shape_gen_curves;
 mod fill_tool;
 mod pattern_fill_tool;
+mod fit_live;
 mod fit_path;
 mod focus;
 mod formula;
@@ -1190,6 +1191,8 @@ impl eframe::App for Shell {
         app.refresh_callouts();
         // Blends follow their end objects.
         app.refresh_blends();
+        // Live fits follow their paths and objects.
+        app.refresh_live_fits();
         // The window's state is kept once it has settled; until then it
         // is maximized when it should start so, and checked (#787).
         #[cfg(not(target_arch = "wasm32"))]

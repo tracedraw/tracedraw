@@ -180,6 +180,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     draw_contour_handles(app, painter);
     draw_offset_shadow_handle(app, painter);
     draw_blend_controls(app, painter);
+    draw_live_fit_handles(app, painter);
 
     // Rotate by Two Lines: the lines clicked so far, the last to the
     // pointer (#2870).
@@ -1804,6 +1805,56 @@ fn draw_contour_handles(app: &App, painter: &Painter) {
         EStroke::new(1.0, Tokens::SELECTION),
         egui::StrokeKind::Outside,
     );
+}
+
+/// Pick tool, a live Fit Objects to Path selected: a diamond on the
+/// second object's point on the path (the spacing) and, under the path's
+/// middle, a ring joined to a dot there (the turn of all the objects);
+/// while one is dragged, its value in a tag beside the pointer.
+fn draw_live_fit_handles(app: &App, painter: &Painter) {
+    let Some(h) = app.live_fit_handles() else {
+        return;
+    };
+    let view = &app.view;
+    let dragged = match &app.drag {
+        Drag::FitPathHandle(d) => Some(d),
+        _ => None,
+    };
+    let stroke = EStroke::new(1.0, Tokens::SELECTION);
+    let fill = |on: bool| {
+        if on {
+            Tokens::SELECTION
+        } else {
+            Color32::WHITE
+        }
+    };
+    if let Some(p) = h.spacing {
+        let c = view.to_screen(p);
+        let r = 5.0;
+        let on =
+            dragged.is_some_and(|d| matches!(d.kind, crate::fit_live::HandleKind::Spacing { .. }));
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                c + egui::vec2(0.0, -r),
+                c + egui::vec2(r, 0.0),
+                c + egui::vec2(0.0, r),
+                c + egui::vec2(-r, 0.0),
+            ],
+            fill(on),
+            stroke,
+        ));
+    }
+    let mid = view.to_screen(h.centre);
+    let turn = view.to_screen(app.live_turn_handle(&h));
+    painter.line_segment([mid, turn], stroke);
+    painter.circle_filled(mid, 2.0, Tokens::SELECTION);
+    let on = dragged.is_some_and(|d| matches!(d.kind, crate::fit_live::HandleKind::Turn { .. }));
+    painter.circle(turn, 4.5, fill(on), stroke);
+    if let Some(d) = dragged.filter(|d| !d.shown.is_empty()) {
+        if let Some(at) = painter.ctx().pointer_latest_pos() {
+            crate::corner_widgets::tag(painter, at + egui::vec2(14.0, 14.0), &d.shown);
+        }
+    }
 }
 
 /// Block Shadow and Inner Shadow tools: the selected shadow's line from

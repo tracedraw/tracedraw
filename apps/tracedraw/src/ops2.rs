@@ -2246,6 +2246,10 @@ impl App {
             self.status = e.to_string();
             return;
         }
+        // Live: the path keeps the fit, which follows it from now on.
+        if self.fit_path.live {
+            self.link_live_fit(&shapes, &plan, &placed);
+        }
         if group {
             if let Some(g) = self.doc().ancestors(grouped[0]).first().copied() {
                 self.select(vec![g]);

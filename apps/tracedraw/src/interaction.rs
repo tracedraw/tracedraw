@@ -2431,6 +2431,10 @@ impl App {
             if self.symmetry_edit.is_some() && self.symmetry_press(p) {
                 return;
             }
+            // A live fit's spacing or turn handle.
+            if self.begin_live_fit_handle(p) {
+                return;
+            }
             // Rotate mode: the centre of rotation moves.
             if self.pivot_at(screen) {
                 self.drag = Drag::Pivot;
@@ -2800,6 +2804,10 @@ impl App {
         }
         if matches!(self.drag, Drag::SymmetryLines { .. }) {
             self.symmetry_drag_to(p, mods.ctrl || mods.command);
+            return;
+        }
+        if matches!(self.drag, Drag::FitPathHandle(_)) {
+            self.live_fit_handle_drag_to(p, mods.ctrl || mods.command);
             return;
         }
         if matches!(
@@ -4379,6 +4387,7 @@ impl App {
             | Drag::Node { .. }
             | Drag::KindNode { .. }
             | Drag::CornerWidget(_)
+            | Drag::FitPathHandle(_)
             | Drag::Handle { .. }
             | Drag::None => {}
         }

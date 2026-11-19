@@ -3363,7 +3363,10 @@ fn fit_to_path(app: &mut App, ui: &mut Ui) {
     };
     let u = app.units;
     app.fit_path_follow_selection();
-    let mut f = app.fit_path;
+    // A live fit selected (its path, an object or a copy): the panel
+    // shows its settings and a change refits at once.
+    let live = app.live_fit_for_selection();
+    let mut f = live.as_ref().map_or(app.fit_path, |(_, l)| l.settings);
     let field = |ui: &mut Ui, key: &str, mm: &mut f64, min: f64| {
         ui.horizontal(|ui| {
             ui.label(tr(key));
@@ -3424,7 +3427,11 @@ fn fit_to_path(app: &mut App, ui: &mut Ui) {
 
     // What is fitted: the objects (all but the last selected) and the path.
     ui.strong(tr("docker.fit_to_path_objects"));
-    let objects = app.selection.len().saturating_sub(1);
+    let objects = live
+        .as_ref()
+        .map_or(app.selection.len().saturating_sub(1), |(_, l)| {
+            l.members.len()
+        });
     dim(
         ui,
         trf(
@@ -3437,7 +3444,13 @@ fn fit_to_path(app: &mut App, ui: &mut Ui) {
         &mut f.keep_originals,
         "docker.fit_to_path_keep_originals",
     );
-    check(ui, &mut f.group, "docker.fit_to_path_group");
+    // Live sits beside Group all objects, so the panel keeps its height.
+    ui.horizontal(|ui| {
+        if live.is_none() {
+            check(ui, &mut f.group, "docker.fit_to_path_group");
+        }
+        check(ui, &mut f.live, "docker.fit_to_path_live");
+    });
     ui.add_space(4.0);
     ui.strong(tr("docker.fit_to_path_path"));
     if app.selection.len() >= 2 {
@@ -3765,6 +3778,17 @@ fn fit_to_path(app: &mut App, ui: &mut Ui) {
     }
     ui.checkbox(&mut f.reverse, tr("docker.fit_to_path_reverse"))
         .rich_tip(crate::ui::tips::keyed("docker.fit_to_path_reverse"));
+    if let Some((path, l)) = live {
+        // Live off lets the objects go where they are.
+        if f != l.settings {
+            if f.live {
+                app.set_live_fit_settings(path, f);
+            } else {
+                app.release_live_fit(path);
+            }
+        }
+        return;
+    }
     if f != app.fit_path {
         app.fit_path_edited = true;
     }
