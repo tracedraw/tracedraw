@@ -141,6 +141,12 @@ softly, the **transparency** of the selected node, and **Clear mesh**, which
 removes the mesh fill. Changing the rows and columns of a mesh keeps its
 colors.
 
+For a quick colorful background, choose a color set in the **Colors** list
+(Aurora, Sunset, Ocean, Candy, Forest, Neon or the document palette) and
+click **Shuffle**: every selected object gets a random mesh of those colors,
+with its nodes nudged off the grid. Click again for another mix, or undo to
+go back.
+
 ## Pattern and texture fills {#pattern-texture}
 
 - A [[docker.fill_pattern]] fill repeats a tile: two colors, a vector

@@ -2238,6 +2238,11 @@ pub struct App {
     pub area_fill_outline_edges: bool,
     pub mesh_rows: u32,
     pub mesh_cols: u32,
+    /// Mesh Fill bar: the colours Shuffle draws from (an index into
+    /// [`crate::mesh_tool::MESH_PALETTES`], past its end the document
+    /// palette) and the next mix it makes.
+    pub mesh_palette: usize,
+    pub mesh_seed: u64,
     /// Shape tool elastic mode: dragging one node pulls its neighbours.
     pub elastic_mode: bool,
     /// Shape tool: the node transform mode on the property bar.
@@ -3535,6 +3540,8 @@ impl App {
             area_fill_outline_edges: false,
             mesh_rows: 2,
             mesh_cols: 2,
+            mesh_palette: 0,
+            mesh_seed: 1,
             elastic_mode: false,
             node_transform: Default::default(),
             reflect_nodes: (false, false),

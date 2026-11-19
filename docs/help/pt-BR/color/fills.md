@@ -148,6 +148,12 @@ suavidade, a **transparência** do nó selecionado e **Limpar malha**, que remov
 o preenchimento de malha. Mudar as linhas e colunas de uma malha mantém as
 cores.
 
+Para um fundo colorido rápido, escolha um conjunto na lista **Cores**
+(Aurora, Pôr do sol, Oceano, Doce, Floresta, Neon ou a paleta do documento)
+e clique em **Embaralhar**: cada objeto selecionado ganha uma malha aleatória
+com essas cores, com os nós deslocados da grade. Clique de novo para outra
+mistura, ou desfaça para voltar.
+
 ## Preenchimentos de padrão e textura {#pattern-texture}
 
 - Um preenchimento [[docker.fill_pattern]] repete um ladrilho: duas cores, um
