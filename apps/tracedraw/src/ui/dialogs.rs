@@ -1486,6 +1486,12 @@ pub enum Dialog {
     PasteSpecial(PasteSpecialState),
     /// Bitmaps > Picture Captions (#2180).
     PictureCaptions(crate::captions::Captions),
+    /// Image > Turn Object in 3D with AI (`ai_photo.rs`).
+    AiTurn(crate::ai_photo::TurnState),
+    /// Image > Sketch to Curves with AI.
+    AiSketch(crate::ai_photo::SketchState),
+    /// Image > Remove Object with AI.
+    AiRemove(crate::ai_photo::RemoveState),
     Barcode(BarcodeState),
     /// Object > Insert > Formula (#2183).
     Formula(crate::ui::formula_dialog::FormulaState),
@@ -3571,6 +3577,9 @@ pub fn show(app: &mut App, ctx: &Context) {
         }
         Dialog::Encode(st) => encode_dialog(app, ctx, st, &mut close),
         Dialog::PictureCaptions(st) => crate::captions::dialog(app, ctx, st, &mut close),
+        Dialog::AiTurn(st) => crate::ai_photo::turn_dialog(app, ctx, st, &mut close),
+        Dialog::AiSketch(st) => crate::ai_photo::sketch_dialog(app, ctx, st, &mut close),
+        Dialog::AiRemove(st) => crate::ai_photo::remove_dialog(app, ctx, st, &mut close),
         Dialog::BorderGrommet(st) => border_grommet_dialog(app, ctx, st, &mut close),
         Dialog::ConvertColors(st) => crate::ui::convert_colors::dialog(app, ctx, st, &mut close),
         Dialog::Recolor(st) => crate::ui::recolor::dialog(app, ctx, st, &mut close),
@@ -9211,6 +9220,9 @@ pub(crate) mod tests {
             Dialog::CustomHyphens(Default::default()),
             Dialog::Encode(EncodeState::default()),
             Dialog::PictureCaptions(Default::default()),
+            Dialog::AiTurn(Default::default()),
+            Dialog::AiSketch(Default::default()),
+            Dialog::AiRemove(Default::default()),
             Dialog::BorderGrommet(crate::border_grommet::BorderGrommetState::default()),
             Dialog::ColorManagement(Default::default()),
             Dialog::FontManager(FontManagerState::default()),

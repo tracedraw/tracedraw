@@ -394,6 +394,7 @@ pub(crate) fn object_menu(app: &mut App, ui: &mut Ui, close: &mut bool) {
         ) {
             app.ai_vectorize();
         }
+        crate::ai_photo::menu_items(app, ui, |ui, key, on, tip| ci_tip(ui, close, key, on, tip));
         if ci(
             ui,
             close,

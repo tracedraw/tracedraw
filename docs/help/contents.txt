@@ -108,6 +108,7 @@ bitmaps/index
   bitmaps/bitmap-mask
   bitmaps/remove-background
   bitmaps/picture-captions
+  bitmaps/ai-photo
 printing/index
   printing/print
   printing/booklet

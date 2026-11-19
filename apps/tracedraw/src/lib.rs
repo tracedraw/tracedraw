@@ -18,6 +18,7 @@
 mod action_lines;
 mod ai;
 mod ai_image;
+mod ai_photo;
 mod ai_retry;
 mod ai_vectorize;
 mod anchors;

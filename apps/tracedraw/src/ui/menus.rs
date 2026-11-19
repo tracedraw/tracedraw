@@ -4238,6 +4238,8 @@ fn bitmaps_menu(app: &mut App, ui: &mut Ui) {
     ) {
         app.ai_vectorize();
     }
+    // Shown only while AI features are on (`ai_photo.rs`).
+    crate::ai_photo::menu_items(app, ui, |ui, key, on, tip| item_tip(ui, key, "", on, tip));
     let styled = app.ai_image_ready() && !app.selection.is_empty() && !app.ai_image.busy();
     sub(ui, "menu.bitmaps.ai_art_styles", |ui| {
         for (i, (key, _)) in crate::ai_image::ART_STYLES.iter().enumerate() {
