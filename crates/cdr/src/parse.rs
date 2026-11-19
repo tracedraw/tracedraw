@@ -6866,6 +6866,7 @@ fn contour_effect(
         offset,
         outside,
         to_center: false,
+        both: false,
         fill_to,
         outline_to,
         fill_end_to: None,

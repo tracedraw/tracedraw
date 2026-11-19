@@ -45,7 +45,8 @@ só passo.
 A barra de propriedades e o painel mostram as configurações do contorno
 selecionado e o mudam na hora.
 
-- **Até o centro**, **Interno** ou **Externo** (de início).
+- **Até o centro**, **Interno**, **Externo** (de início) ou **Ambos**, dentro
+  e fora ao mesmo tempo.
 - **Passos**: 3 de início, até 999. Até o centro faz quantos couberem.
 - **Deslocamento**: a distância entre os passos (2 mm de início).
 - **Cantos**: em ponta (de início), redondos ou chanfrados.
@@ -56,7 +57,8 @@ selecionado e o mudam na hora.
 - **Aceleração de objeto** e **aceleração de cor** (-100 a 100%) concentram os
   passos ou as cores perto do objeto ou do último passo.
 
-Os passos externos são desenhados atrás do objeto, os internos na frente dele.
+Os passos externos são desenhados atrás do objeto, os internos na frente dele;
+com **Ambos** você tem os dois ao mesmo tempo.
 
 **Limpar contorno** remove o contorno concêntrico; **Separar** transforma os
 passos em objetos.

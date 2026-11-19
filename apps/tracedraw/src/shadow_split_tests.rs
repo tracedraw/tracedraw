@@ -250,6 +250,7 @@ fn a_block_shadow_survives_break_apart_of_a_curve_of_pieces() {
             offset: 3.0,
             outside: true,
             to_center: false,
+            both: false,
             fill_to: Color::BLACK,
             outline_to: None,
             fill_end_to: None,

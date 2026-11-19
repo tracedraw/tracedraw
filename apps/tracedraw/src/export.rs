@@ -6382,6 +6382,7 @@ mod tests {
             offset: 2.0,
             outside: true,
             to_center: false,
+            both: false,
             fill_to: c,
             outline_to: None,
             fill_end_to: None,

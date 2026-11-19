@@ -25,6 +25,12 @@ pub enum Effect {
         /// true = outside, false = inside; `to_center` ignores `steps`.
         outside: bool,
         to_center: bool,
+        /// Steps on both sides of a closed outline at once, as many
+        /// inside as outside, with the same spacing and colours (#3085);
+        /// `outside` and `to_center` are then not read. Older files have
+        /// none (one side).
+        #[serde(default, skip_serializing_if = "is_false")]
+        both: bool,
         fill_to: Color,
         outline_to: Option<Color>,
         /// The last step's colour for the end of a fountain fill (#1265):
@@ -1191,6 +1197,7 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
                 offset,
                 outside,
                 to_center,
+                both,
                 fill_to,
                 outline_to,
                 fill_end_to,
@@ -1199,28 +1206,36 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
                 accel_objects,
                 accel_colors,
             } => {
-                let shapes = contour(
-                    &main,
-                    area_rule(shape),
-                    &ContourParams {
-                        steps: *steps,
-                        offset: *offset,
-                        outside: *outside,
-                        to_center: *to_center,
-                        fill_to: *fill_to,
-                        outline_to: *outline_to,
-                        fill_end_to: *fill_end_to,
-                        color_blend: *color_blend,
-                        corners: corners.unwrap_or(crate::shaping::Join::Round),
-                        accel_objects: *accel_objects,
-                        accel_colors: *accel_colors,
-                    },
-                );
-                if *outside {
-                    // Outermost first so the object stays on top.
-                    below.extend(shapes.into_iter().rev());
+                let params = |outside: bool, to_center: bool| ContourParams {
+                    steps: *steps,
+                    offset: *offset,
+                    outside,
+                    to_center,
+                    fill_to: *fill_to,
+                    outline_to: *outline_to,
+                    fill_end_to: *fill_end_to,
+                    color_blend: *color_blend,
+                    corners: corners.unwrap_or(crate::shaping::Join::Round),
+                    accel_objects: *accel_objects,
+                    accel_colors: *accel_colors,
+                };
+                // Both sides: the outside steps behind the object and the
+                // inside ones in front, each as a one-sided contour draws
+                // them (#3085).
+                let sides: &[bool] = if *both {
+                    &[true, false]
                 } else {
-                    above.extend(shapes);
+                    std::slice::from_ref(outside)
+                };
+                for &out in sides {
+                    let shapes =
+                        contour(&main, area_rule(shape), &params(out, *to_center && !*both));
+                    if out {
+                        // Outermost first so the object stays on top.
+                        below.extend(shapes.into_iter().rev());
+                    } else {
+                        above.extend(shapes);
+                    }
                 }
             }
             Effect::Blend {
@@ -1615,6 +1630,10 @@ fn mix(a: Color, b: Color, t: f64, mode: u8) -> Color {
         s1 + (s2 - s1) * t,
         v1 + (v2 - v1) * t,
     )
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -3581,6 +3600,7 @@ mod tests {
             offset: 1.0,
             outside: false,
             to_center: false,
+            both: false,
             fill_to: Color::BLACK,
             outline_to: None,
             fill_end_to: None,
@@ -3637,6 +3657,7 @@ mod tests {
             offset: 20.0,
             outside: false,
             to_center: false,
+            both: false,
             fill_to: Color::WHITE,
             outline_to: None,
             fill_end_to: None,
@@ -3700,6 +3721,7 @@ mod tests {
             offset,
             outside: true,
             to_center: false,
+            both: false,
             fill_to: Color::WHITE,
             outline_to: None,
             fill_end_to: None,
@@ -3751,6 +3773,7 @@ mod tests {
             offset: 2.0,
             outside: true,
             to_center: false,
+            both: false,
             fill_to: Color::WHITE,
             outline_to: None,
             fill_end_to: None,
@@ -3793,6 +3816,7 @@ mod tests {
             offset: 2.0,
             outside: true,
             to_center: false,
+            both: false,
             fill_to: Color::WHITE,
             outline_to: None,
             fill_end_to: end,
@@ -3828,6 +3852,70 @@ mod tests {
         assert!(outer.iter().all(|c| *c == Color::WHITE.to_rgb8()), "{outer:?}");
     }
 
+    /// #3085: a contour on both sides draws its steps inside and outside
+    /// at once, the outside ones behind the object and the inside ones in
+    /// front, as the one-sided contours draw them; it is saved and read
+    /// back, and a contour of an older file (no `both`) stays one-sided.
+    #[test]
+    fn a_contour_can_go_inside_and_outside_at_once() {
+        let effect = |outside: bool, both: bool| Effect::Contour {
+            steps: 3,
+            offset: 2.0,
+            outside,
+            to_center: false,
+            both,
+            fill_to: Color::WHITE,
+            outline_to: None,
+            fill_end_to: None,
+            color_blend: 0,
+            corners: Some(crate::shaping::Join::Miter),
+            accel_objects: 0.0,
+            accel_colors: 0.0,
+        };
+        let with = |e: Effect| {
+            let mut s = rect_shape();
+            s.effects.push(e);
+            evaluate(&s)
+        };
+        let out = with(effect(true, false));
+        let inn = with(effect(false, false));
+        let both = with(effect(true, true));
+        assert_eq!(both.below.len(), 3);
+        assert_eq!(both.above.len(), 3);
+        let paths = |v: &[Shape]| v.iter().map(Shape::local_path).collect::<Vec<_>>();
+        assert_eq!(paths(&both.below), paths(&out.below));
+        assert_eq!(paths(&both.above), paths(&inn.above));
+        // `outside` is not read with both sides on.
+        let both_in = with(effect(false, true));
+        assert_eq!(paths(&both_in.below), paths(&out.below));
+        assert_eq!(paths(&both_in.above), paths(&inn.above));
+        // Saved with the flag, read back the same.
+        let json = serde_json::to_string(&effect(true, true)).expect("json");
+        assert!(json.contains("\"both\":true"), "{json}");
+        let back: Effect = serde_json::from_str(&json).expect("back");
+        assert_eq!(back, effect(true, true));
+        // One side: no flag written, so older versions read it as before;
+        // an older file without it reads as one side.
+        let json = serde_json::to_string(&effect(true, false)).expect("json");
+        assert!(!json.contains("both"), "{json}");
+        let back: Effect = serde_json::from_str(&json).expect("back");
+        assert_eq!(back, effect(true, false));
+        // A whole document through the .tdraw format.
+        let mut doc = crate::Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let mut s = rect_shape();
+        s.effects.push(effect(true, true));
+        doc.layer_mut(layer).expect("layer").shapes.push(s);
+        let mut packed = Vec::new();
+        doc.write_tdraw_version(&mut packed, crate::document::TDRAW_FORMAT_VERSION)
+            .expect("write");
+        let back = crate::Document::from_tdraw_bytes(&packed).expect("read");
+        assert_eq!(
+            back.pages[0].layers[0].shapes[0].effects,
+            vec![effect(true, true)]
+        );
+    }
+
     #[test]
     fn contour_outside_three_steps() {
         let mut s = rect_shape();
@@ -3836,6 +3924,7 @@ mod tests {
             offset: 2.0,
             outside: true,
             to_center: false,
+            both: false,
             fill_to: Color::WHITE,
             outline_to: None,
             fill_end_to: None,
@@ -3868,6 +3957,7 @@ mod tests {
             offset: 2.0,
             outside: false,
             to_center: true,
+            both: false,
             fill_to: Color::WHITE,
             outline_to: None,
             fill_end_to: None,
@@ -4243,6 +4333,7 @@ mod tests {
             offset: 2.0,
             outside: true,
             to_center: false,
+            both: false,
             fill_to: Color::WHITE,
             outline_to: None,
             fill_end_to: None,
@@ -5358,6 +5449,7 @@ mod warped_extrusion_tests {
             offset: 2.0,
             outside: true,
             to_center: false,
+            both: false,
             fill_to: Color::WHITE,
             outline_to: None,
             fill_end_to: None,
@@ -5582,6 +5674,7 @@ mod symmetry_tests {
                 offset: 2.0,
                 outside: true,
                 to_center: false,
+                both: false,
                 fill_to: crate::color::Color::WHITE,
                 outline_to: None,
                 fill_end_to: None,

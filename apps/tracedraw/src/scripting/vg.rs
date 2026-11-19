@@ -1485,6 +1485,7 @@ impl HostInner {
                     offset,
                     outside: direction == 2,
                     to_center: direction == 0,
+                    both: false,
                     fill_to,
                     outline_to: None,
                     fill_end_to: None,

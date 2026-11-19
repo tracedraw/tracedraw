@@ -3609,6 +3609,7 @@ mod tests {
             offset: 1.5,
             outside: true,
             to_center: false,
+            both: false,
             fill_to: Color::WHITE,
             outline_to: None,
             fill_end_to: None,
