@@ -3894,18 +3894,29 @@ impl App {
         else {
             return;
         };
-        let Some(kind) = crate::text_path::fit_kind(text, curve, at) else {
+        let Some((kind, transform)) = crate::text_path::fit(text, curve, at) else {
             return;
         };
         // Fitted again just as it was: no step that undoes nothing.
-        if kind == text.kind {
+        if kind == text.kind && transform == text.transform {
             self.selection = vec![text.id];
             return;
         }
-        self.run(Command::SetShapeKind {
+        let mut cmds = vec![Command::SetShapeKind {
             shape: text.id,
             kind,
-        });
+        }];
+        // A squeezed text's squeeze went into its letters (#3485): the
+        // transform keeps the rest.
+        if transform != text.transform {
+            cmds.push(Command::TransformShapes {
+                shapes: vec![text.id],
+                transform: transform * text.transform.inverse(),
+            });
+        }
+        if let Err(e) = self.engine.run_batch("Fit Text to Path", &cmds) {
+            self.status = e.to_string();
+        }
         self.selection = vec![text.id];
     }
 

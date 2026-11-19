@@ -159,6 +159,9 @@ Or click the outline of a path with the [[tool.text]] tool and type. Text on a
 closed shape stands on its outside, centered on its top; clicked on the bottom
 of an ellipse, it starts there.
 
+A text you made narrower or wider with a side handle keeps its letters'
+shape on the path: the change goes into the character width.
+
 With text on a path selected (also with the [[tool.pick]] tool), the property
 bar shows the path's fields first, then the usual text fields:
 

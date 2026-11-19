@@ -1628,6 +1628,13 @@ stand-in next to each missing family: "Arial (Liberation Sans)".
   at once. Otherwise the status bar asks for a click on the path (a
   right-click cancels): the selected text goes on it, or with no text
   selected an empty text starts on the path, ready to type.
+- A text squeezed or stretched on one axis (a side handle of the Pick
+  tool) keeps its letters' shape on the path: the squeeze goes into the
+  character width (`width_pct`, times the x axis's length over the y
+  axis's) and the transform keeps only the even scale, the turn and the
+  place, one undo step with the fit; before, the letters standing on
+  the sides of a circle were squeezed across (#3485,
+  `text_path::tests::a_squeezed_text_keeps_its_letters_on_a_circle`).
 - While it waits, the pointer over a path or within 150 screen pixels of
   one shows the selected text where a click puts it: its letters
   outlined in blue, the line they stand on dashed, a dashed line from

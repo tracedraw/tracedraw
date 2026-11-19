@@ -160,6 +160,9 @@ Ou clique no contorno de um caminho com a ferramenta [[tool.text]] e digite. O
 texto em uma forma fechada fica do lado de fora dela, centralizado no alto;
 clicado na parte de baixo de uma elipse, ele começa ali.
 
+Um texto que você estreitou ou alargou com uma alça lateral mantém a forma das
+letras no caminho: a mudança vai para a largura dos caracteres.
+
 Com texto em um caminho selecionado (também com a ferramenta [[tool.pick]]), a
 barra de propriedades mostra primeiro os campos do caminho e depois os campos
 de texto de sempre:
