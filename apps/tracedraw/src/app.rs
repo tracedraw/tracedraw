@@ -1341,6 +1341,8 @@ pub struct App {
     pub graph_cols: u32,
     /// The Action Lines tool's settings (#1617).
     pub action_lines: crate::action_lines::ActionLines,
+    /// The Shape Generator panel's settings (#3412, #3413).
+    pub shape_gen: crate::shape_gen::ShapeGenSettings,
     /// Speech Balloon tool (#2179): the style, the tail's width (percent
     /// of the body's smaller side) and bend for new balloons, and the
     /// balloon whose tail tip is being dragged.
@@ -2441,6 +2443,7 @@ pub enum DockerTab {
     Coordinates,
     VectorMosaic,
     PictureMosaic,
+    ShapeGenerator,
     Shelf,
     Export,
     Comments,
@@ -2451,7 +2454,7 @@ pub enum DockerTab {
 }
 
 impl DockerTab {
-    pub const ALL: [DockerTab; 44] = [
+    pub const ALL: [DockerTab; 45] = [
         DockerTab::Properties,
         DockerTab::Objects,
         DockerTab::Hints,
@@ -2492,6 +2495,7 @@ impl DockerTab {
         DockerTab::Coordinates,
         DockerTab::VectorMosaic,
         DockerTab::PictureMosaic,
+        DockerTab::ShapeGenerator,
         DockerTab::Shelf,
         DockerTab::Effects,
         DockerTab::Macros,
@@ -2521,6 +2525,7 @@ impl DockerTab {
             DockerTab::AlignDistribute,
             DockerTab::StepAndRepeat,
             DockerTab::FitToPath,
+            DockerTab::ShapeGenerator,
         ],
         &[
             DockerTab::Shaping,
@@ -2602,6 +2607,7 @@ impl DockerTab {
             DockerTab::Coordinates => "docker.coordinates",
             DockerTab::VectorMosaic => "docker.vector_mosaic",
             DockerTab::PictureMosaic => "docker.picture_mosaic",
+            DockerTab::ShapeGenerator => "docker.shape_generator",
             DockerTab::Shelf => "docker.shelf",
             DockerTab::Export => "docker.export",
             DockerTab::Comments => "docker.comments",
@@ -3120,6 +3126,7 @@ impl App {
             graph_rows: 4,
             graph_cols: 3,
             action_lines: Default::default(),
+            shape_gen: Default::default(),
             balloon_style: Default::default(),
             balloon_width: 30.0,
             balloon_bend: 0.0,
@@ -4167,6 +4174,7 @@ impl App {
                 bend: self.balloon_bend,
             },
             action_lines: self.action_lines,
+            shape_gen: self.shape_gen.clone(),
             painterly: self.painterly,
         }
     }
@@ -4284,6 +4292,7 @@ impl App {
             angle: finite(a.angle, -360.0, 360.0, 0.0),
             ..a
         };
+        self.shape_gen = t.shape_gen.sanitized();
         self.painterly = crate::painterly_tool::PainterlySettings {
             size: finite(t.painterly.size, 0.1, 200.0, 5.0),
             ..t.painterly

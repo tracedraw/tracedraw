@@ -89,6 +89,7 @@ mod file_hold;
 mod file_presence;
 mod files;
 mod fill_page;
+mod shape_gen;
 mod fill_tool;
 mod pattern_fill_tool;
 mod fit_path;

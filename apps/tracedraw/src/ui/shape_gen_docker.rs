@@ -1,0 +1,820 @@
+//! The Shape Generator docker (Window > Panels, Object > Create, #3412,
+//! #3413): the generator list, its settings, a live preview of exactly
+//! what Create makes, the curve count, and Create, Update (a generated
+//! group selected: made again in its place), Load (its settings back into
+//! the panel), Make Pattern Fill and, for the cone template, Wrap
+//! Selection.
+
+use crate::app::App;
+use crate::i18n::{tr, trf};
+use crate::shape_gen::{
+    generate, CellShape, GenKind, Generated, IsoLayout, Paint, ShapeGenSettings, Tess,
+    TruchetStyle, Warp,
+};
+use crate::theme::Tokens;
+use crate::ui::docker_form::{indented, row, section, wide_button};
+use crate::ui::tips::RichTip;
+use egui::{Color32, Pos2, Sense, Stroke, Ui, Vec2};
+use std::sync::Arc;
+use tracedraw_core::geometry::PathEl;
+
+/// The preview's curves, flattened and fitted into a unit box.
+struct PreviewData {
+    curves: Vec<(Vec<Pos2>, bool, Paint)>,
+    count: usize,
+    cut: bool,
+    /// Width over height of the drawing.
+    aspect: f32,
+}
+
+/// The most curves the preview draws (Create makes them all).
+const PREVIEW_MAX: usize = 6000;
+
+fn build_preview(g: &Generated) -> PreviewData {
+    let Some(b) = g.bounds() else {
+        return PreviewData {
+            curves: Vec::new(),
+            count: 0,
+            cut: g.cut,
+            aspect: 1.0,
+        };
+    };
+    let side = b.width().max(b.height()).max(1e-9);
+    let tol = side / 500.0;
+    let mut curves = Vec::new();
+    for it in g.items.iter().take(PREVIEW_MAX) {
+        let mut cur: Vec<Pos2> = Vec::new();
+        let mut closed = false;
+        let mut push = |cur: &mut Vec<Pos2>, closed: bool| {
+            if cur.len() > 1 {
+                curves.push((std::mem::take(cur), closed, it.paint));
+            }
+            cur.clear();
+        };
+        tracedraw_core::geometry::flatten(&it.path, tol, &mut |el| match el {
+            PathEl::MoveTo(p) => {
+                push(&mut cur, closed);
+                closed = false;
+                // y up in the model, down on screen; 0 to 1 over the
+                // longer side.
+                cur.push(Pos2::new(
+                    ((p.x - b.x0) / side) as f32,
+                    ((b.y1 - p.y) / side) as f32,
+                ));
+            }
+            PathEl::LineTo(p) => cur.push(Pos2::new(
+                ((p.x - b.x0) / side) as f32,
+                ((b.y1 - p.y) / side) as f32,
+            )),
+            PathEl::ClosePath => closed = true,
+            _ => {}
+        });
+        push(&mut cur, closed);
+    }
+    PreviewData {
+        curves,
+        count: g.items.len(),
+        cut: g.cut,
+        aspect: (b.width() / b.height().max(1e-9)) as f32,
+    }
+}
+
+/// The preview for `s`, kept while the settings stay the same.
+fn preview_for(ui: &Ui, s: &ShapeGenSettings) -> Arc<PreviewData> {
+    let id = egui::Id::new("shape_gen_preview");
+    let cached: Option<(ShapeGenSettings, Arc<PreviewData>)> = ui.ctx().data(|d| d.get_temp(id));
+    if let Some((key, data)) = cached {
+        if &key == s {
+            return data;
+        }
+    }
+    let data = Arc::new(build_preview(&generate(s)));
+    ui.ctx()
+        .data_mut(|d| d.insert_temp(id, (s.clone(), data.clone())));
+    data
+}
+
+fn convex(pts: &[Pos2]) -> bool {
+    if pts.len() < 3 {
+        return false;
+    }
+    let mut sign = 0.0f32;
+    for i in 0..pts.len() {
+        let (a, b, c) = (pts[i], pts[(i + 1) % pts.len()], pts[(i + 2) % pts.len()]);
+        let cross = (b - a).x * (c - b).y - (b - a).y * (c - b).x;
+        if cross.abs() > 1e-7 {
+            if sign != 0.0 && cross.signum() != sign {
+                return false;
+            }
+            sign = cross.signum();
+        }
+    }
+    true
+}
+
+fn draw_preview(ui: &mut Ui, data: &PreviewData) {
+    let w = ui.available_width().clamp(120.0, 320.0);
+    let (r, _) = ui.allocate_exact_size(Vec2::new(w, w), Sense::hover());
+    let painter = ui.painter_at(r);
+    painter.rect_filled(r, 0.0, Color32::WHITE);
+    painter.rect_stroke(
+        r,
+        0.0,
+        Stroke::new(1.0, Tokens::border()),
+        egui::StrokeKind::Inside,
+    );
+    if data.curves.is_empty() {
+        return;
+    }
+    let inner = r.shrink(8.0);
+    let side = inner.width();
+    // Centred: the drawing's longer side fills the box.
+    let (dw, dh) = if data.aspect >= 1.0 {
+        (side, side / data.aspect.max(1e-3))
+    } else {
+        (side * data.aspect, side)
+    };
+    let o = inner.center() - Vec2::new(dw / 2.0, dh / 2.0);
+    let map = |p: Pos2| o + Vec2::new(p.x * side, p.y * side);
+    let ink = Color32::from_gray(0x20);
+    let line = Stroke::new(1.0, ink);
+    for (pts, closed, paint) in &data.curves {
+        let pts: Vec<Pos2> = pts.iter().map(|p| map(*p)).collect();
+        let fill = match paint {
+            Paint::Line => None,
+            Paint::Solid => Some(ink),
+            Paint::Face(0) => Some(Color32::from_gray(0xE8)),
+            Paint::Face(1) => Some(Color32::from_gray(0x9C)),
+            Paint::Face(_) => Some(Color32::from_gray(0x4E)),
+        };
+        match fill {
+            Some(f) if *closed && convex(&pts) => {
+                let edge = if matches!(paint, Paint::Face(_)) {
+                    Stroke::new(0.6, Color32::BLACK)
+                } else {
+                    Stroke::NONE
+                };
+                painter.add(egui::Shape::convex_polygon(pts, f, edge));
+            }
+            _ if *closed => {
+                painter.add(egui::Shape::closed_line(pts, line));
+            }
+            _ => {
+                painter.add(egui::Shape::line(pts, line));
+            }
+        }
+    }
+}
+
+/// A length field in the document's unit holding millimetres.
+fn length(
+    ui: &mut Ui,
+    app_units: crate::app::Units,
+    precision: usize,
+    mm: &mut f64,
+    lo: f64,
+    hi: f64,
+    key: &str,
+) {
+    let mut v = app_units.world_from_mm(*mm);
+    let r = ui
+        .add(
+            crate::ui::field::NumField::new(&mut v)
+                .range(app_units.world_from_mm(lo)..=app_units.world_from_mm(hi))
+                .length_decimals(precision)
+                .unit_mm(app_units.world_to_mm(1.0))
+                .suffix(format!(" {}", app_units.short()))
+                .width(80.0),
+        )
+        .rich_tip(crate::ui::tips::keyed(key));
+    if r.changed() {
+        let x = app_units.world_to_mm(v);
+        if x.is_finite() {
+            *mm = x.clamp(lo, hi);
+        }
+    }
+}
+
+fn slider(
+    ui: &mut Ui,
+    v: &mut f64,
+    range: std::ops::RangeInclusive<f64>,
+    decimals: usize,
+    suffix: &str,
+    key: &str,
+) {
+    ui.add(
+        crate::ui::Slider::new(v, range)
+            .max_decimals(decimals)
+            .suffix(suffix),
+    )
+    .rich_tip(crate::ui::tips::keyed(key));
+}
+
+fn count(ui: &mut Ui, v: &mut u32, range: std::ops::RangeInclusive<u32>, key: &str) {
+    ui.add(crate::ui::field::NumField::new(v).range(range).width(80.0))
+        .rich_tip(crate::ui::tips::keyed(key));
+}
+
+fn combo<T: Copy + PartialEq>(
+    ui: &mut Ui,
+    id: &str,
+    v: &mut T,
+    all: &[T],
+    key_of: fn(T) -> &'static str,
+    tip: &str,
+) {
+    crate::ui::keynav::ComboBox::from_id_salt(id)
+        .selected_text(tr(key_of(*v)))
+        .width(ui.available_width().clamp(120.0, 190.0))
+        .show_ui(ui, |ui| {
+            for k in all {
+                ui.selectable_value(v, *k, tr(key_of(*k)));
+            }
+        })
+        .response
+        .rich_tip(crate::ui::tips::keyed(tip));
+}
+
+fn seed_row(ui: &mut Ui, s: &mut ShapeGenSettings) {
+    row(ui, &tr("shapegen.seed"), |ui| {
+        ui.add(
+            crate::ui::field::NumField::new(&mut s.seed)
+                .range(0..=999_999)
+                .width(80.0),
+        )
+        .rich_tip(crate::ui::tips::keyed("shapegen.seed"));
+        if ui
+            .button(tr("shapegen.new_seed"))
+            .rich_tip(crate::ui::tips::keyed("shapegen.new_seed"))
+            .clicked()
+        {
+            s.seed = (s.seed.wrapping_mul(1_103_515_245).wrapping_add(12_345) >> 8) % 1_000_000;
+        }
+    });
+}
+
+pub fn shape_generator(app: &mut App, ui: &mut Ui) {
+    ui.spacing_mut().slider_width = 110.0;
+    let units = app.units;
+    let precision = app.settings.precision.min(10) as usize;
+    {
+        let s = &mut app.shape_gen;
+        row(ui, &tr("shapegen.kind"), |ui| {
+            combo(
+                ui,
+                "shapegen_kind",
+                &mut s.kind,
+                &GenKind::ALL,
+                GenKind::key,
+                "shapegen.kind",
+            );
+        });
+        if s.kind.uses_box() && s.kind != GenKind::IsoBlocks {
+            row(ui, &tr("shapegen.width"), |ui| {
+                length(
+                    ui,
+                    units,
+                    precision,
+                    &mut s.width,
+                    1.0,
+                    5000.0,
+                    "shapegen.width",
+                );
+            });
+            row(ui, &tr("shapegen.height"), |ui| {
+                length(
+                    ui,
+                    units,
+                    precision,
+                    &mut s.height,
+                    1.0,
+                    5000.0,
+                    "shapegen.height",
+                );
+            });
+        }
+        section(ui, None);
+        match s.kind {
+            GenKind::DotGrid => {
+                row(ui, &tr("shapegen.cells"), |ui| {
+                    count(ui, &mut s.cells, 2..=200, "shapegen.cells")
+                });
+                row(ui, &tr("shapegen.cell_shape"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_cell",
+                        &mut s.cell_shape,
+                        &CellShape::ALL,
+                        CellShape::key,
+                        "shapegen.cell_shape",
+                    );
+                });
+                row(ui, &tr("shapegen.cell_size"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.cell_size,
+                        5.0..=100.0,
+                        0,
+                        " %",
+                        "shapegen.cell_size",
+                    )
+                });
+                row(ui, &tr("shapegen.scale_ratio"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.scale_ratio,
+                        0.0..=400.0,
+                        0,
+                        " %",
+                        "shapegen.scale_ratio",
+                    )
+                });
+                row(ui, &tr("shapegen.falloff"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.falloff,
+                        10.0..=200.0,
+                        0,
+                        " %",
+                        "shapegen.falloff",
+                    )
+                });
+                row(ui, &tr("shapegen.warp"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_warp",
+                        &mut s.warp,
+                        &Warp::ALL,
+                        Warp::key,
+                        "shapegen.warp",
+                    );
+                });
+                if s.warp != Warp::None {
+                    row(ui, &tr("shapegen.warp_strength"), |ui| {
+                        slider(
+                            ui,
+                            &mut s.warp_strength,
+                            -100.0..=100.0,
+                            0,
+                            "",
+                            "shapegen.warp_strength",
+                        )
+                    });
+                }
+                if s.cell_shape != CellShape::Circle {
+                    row(ui, &tr("shapegen.roundness"), |ui| {
+                        slider(
+                            ui,
+                            &mut s.roundness,
+                            0.0..=100.0,
+                            0,
+                            " %",
+                            "shapegen.roundness",
+                        )
+                    });
+                    row(ui, &tr("shapegen.cell_rotation"), |ui| {
+                        slider(
+                            ui,
+                            &mut s.cell_rotation,
+                            -180.0..=180.0,
+                            1,
+                            "\u{b0}",
+                            "shapegen.cell_rotation",
+                        )
+                    });
+                }
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.elliptical, tr("shapegen.elliptical"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.elliptical"));
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.filled, tr("shapegen.filled"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.filled"));
+                });
+            }
+            GenKind::Truchet => {
+                row(ui, &tr("shapegen.tile"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.tile,
+                        0.5,
+                        1000.0,
+                        "shapegen.tile",
+                    )
+                });
+                row(ui, &tr("shapegen.truchet_style"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_truchet",
+                        &mut s.truchet_style,
+                        &TruchetStyle::ALL,
+                        TruchetStyle::key,
+                        "shapegen.truchet_style",
+                    );
+                });
+                if s.truchet_style == TruchetStyle::Arcs {
+                    row(ui, &tr("shapegen.bands"), |ui| {
+                        count(ui, &mut s.bands, 1..=12, "shapegen.bands")
+                    });
+                }
+                seed_row(ui, s);
+            }
+            GenKind::Tessellation => {
+                row(ui, &tr("shapegen.tess"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_tess",
+                        &mut s.tess,
+                        &Tess::ALL,
+                        Tess::key,
+                        "shapegen.tess",
+                    );
+                });
+                row(ui, &tr("shapegen.tile"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.tile,
+                        0.5,
+                        1000.0,
+                        "shapegen.tile",
+                    )
+                });
+                row(ui, &tr("shapegen.gap"), |ui| {
+                    length(ui, units, precision, &mut s.gap, 0.0, 500.0, "shapegen.gap")
+                });
+                row(ui, &tr("shapegen.rotation"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.rotation,
+                        -180.0..=180.0,
+                        1,
+                        "\u{b0}",
+                        "shapegen.rotation",
+                    )
+                });
+            }
+            GenKind::LineWaves => {
+                row(ui, &tr("shapegen.lines"), |ui| {
+                    count(ui, &mut s.lines, 2..=1000, "shapegen.lines")
+                });
+                row(ui, &tr("shapegen.wave_width"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.wave_width,
+                        5.0..=200.0,
+                        0,
+                        " %",
+                        "shapegen.wave_width",
+                    )
+                });
+                row(ui, &tr("shapegen.amplitude"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.amplitude,
+                        0.0,
+                        1000.0,
+                        "shapegen.amplitude",
+                    )
+                });
+                row(ui, &tr("shapegen.noise_x"), |ui| {
+                    slider(ui, &mut s.noise_x, 0.1..=20.0, 1, "", "shapegen.noise_x")
+                });
+                row(ui, &tr("shapegen.noise_y"), |ui| {
+                    slider(ui, &mut s.noise_y, 0.0..=1.0, 3, "", "shapegen.noise_y")
+                });
+                row(ui, &tr("shapegen.spread"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.spread,
+                        -1000.0,
+                        1000.0,
+                        "shapegen.spread",
+                    )
+                });
+                row(ui, &tr("shapegen.sharpness"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.sharpness,
+                        0.5..=12.0,
+                        1,
+                        "",
+                        "shapegen.sharpness",
+                    )
+                });
+                row(ui, &tr("shapegen.fade"), |ui| {
+                    slider(ui, &mut s.fade, 0.0..=1.0, 2, "", "shapegen.fade")
+                });
+                row(ui, &tr("shapegen.softness"), |ui| {
+                    slider(ui, &mut s.softness, 0.0..=100.0, 0, "", "shapegen.softness")
+                });
+                seed_row(ui, s);
+            }
+            GenKind::Rings => {
+                row(ui, &tr("shapegen.rings"), |ui| {
+                    count(ui, &mut s.rings, 1..=500, "shapegen.rings")
+                });
+                row(ui, &tr("shapegen.min_radius"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.min_radius,
+                        0.1,
+                        2500.0,
+                        "shapegen.min_radius",
+                    )
+                });
+                row(ui, &tr("shapegen.max_radius"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.max_radius,
+                        0.1,
+                        2500.0,
+                        "shapegen.max_radius",
+                    )
+                });
+                row(ui, &tr("shapegen.ring_amplitude"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.ring_amplitude,
+                        0.0,
+                        1000.0,
+                        "shapegen.ring_amplitude",
+                    )
+                });
+                row(ui, &tr("shapegen.ring_detail"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.ring_detail,
+                        0.5..=12.0,
+                        1,
+                        "",
+                        "shapegen.ring_detail",
+                    )
+                });
+                row(ui, &tr("shapegen.ring_drift"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.ring_drift,
+                        0.0..=1.0,
+                        2,
+                        "",
+                        "shapegen.ring_drift",
+                    )
+                });
+                seed_row(ui, s);
+            }
+            GenKind::FieldLines => {
+                row(ui, &tr("shapegen.poles"), |ui| {
+                    count(ui, &mut s.poles, 1..=20, "shapegen.poles")
+                });
+                row(ui, &tr("shapegen.line_spacing"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.line_spacing,
+                        0.2,
+                        500.0,
+                        "shapegen.line_spacing",
+                    )
+                });
+                row(ui, &tr("shapegen.flow"), |ui| {
+                    slider(ui, &mut s.flow, 0.0..=100.0, 0, "", "shapegen.flow")
+                });
+                row(ui, &tr("shapegen.swirl"), |ui| {
+                    slider(
+                        ui,
+                        &mut s.swirl,
+                        -90.0..=90.0,
+                        0,
+                        "\u{b0}",
+                        "shapegen.swirl",
+                    )
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.show_poles, tr("shapegen.show_poles"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.show_poles"));
+                });
+                seed_row(ui, s);
+            }
+            GenKind::IsoBlocks => {
+                row(ui, &tr("shapegen.iso_layout"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_iso",
+                        &mut s.iso_layout,
+                        &IsoLayout::ALL,
+                        IsoLayout::key,
+                        "shapegen.iso_layout",
+                    );
+                });
+                row(ui, &tr("shapegen.iso_cols"), |ui| {
+                    count(ui, &mut s.iso_cols, 1..=60, "shapegen.iso_cols")
+                });
+                row(ui, &tr("shapegen.iso_rows"), |ui| {
+                    count(ui, &mut s.iso_rows, 1..=60, "shapegen.iso_rows")
+                });
+                row(ui, &tr("shapegen.iso_height"), |ui| {
+                    count(ui, &mut s.iso_height, 1..=30, "shapegen.iso_height")
+                });
+                row(ui, &tr("shapegen.iso_size"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.iso_size,
+                        0.5,
+                        500.0,
+                        "shapegen.iso_size",
+                    )
+                });
+                row(ui, &tr("shapegen.iso_gap"), |ui| {
+                    slider(ui, &mut s.iso_gap, 0.0..=80.0, 0, " %", "shapegen.iso_gap")
+                });
+                if s.iso_layout == IsoLayout::Random {
+                    seed_row(ui, s);
+                }
+            }
+            GenKind::ConeTemplate => {
+                row(ui, &tr("shapegen.cone_top"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.cone_top,
+                        0.0,
+                        5000.0,
+                        "shapegen.cone_top",
+                    )
+                });
+                row(ui, &tr("shapegen.cone_bottom"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.cone_bottom,
+                        0.0,
+                        5000.0,
+                        "shapegen.cone_bottom",
+                    )
+                });
+                row(ui, &tr("shapegen.cone_height"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.cone_height,
+                        0.5,
+                        5000.0,
+                        "shapegen.cone_height",
+                    )
+                });
+                row(ui, &tr("shapegen.cone_tab"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.cone_tab,
+                        0.0,
+                        500.0,
+                        "shapegen.cone_tab",
+                    )
+                });
+                row(ui, &tr("shapegen.cone_bleed"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.cone_bleed,
+                        0.0,
+                        100.0,
+                        "shapegen.cone_bleed",
+                    )
+                });
+                row(ui, &tr("shapegen.cone_pieces"), |ui| {
+                    count(ui, &mut s.cone_pieces, 1..=8, "shapegen.cone_pieces")
+                });
+                row(ui, &tr("shapegen.cone_repeat"), |ui| {
+                    count(ui, &mut s.cone_repeat, 1..=24, "shapegen.cone_repeat")
+                });
+                // The measures, to check before cutting.
+                let l = crate::shape_gen::cone_layout(s);
+                let len = |mm: f64| format!("{:.1} {}", units.world_from_mm(mm), units.short());
+                let text = match l.radii {
+                    Some(r) => trf(
+                        "shapegen.cone_measures",
+                        &[
+                            ("slant", &len(l.slant)),
+                            ("top", &len(r.top)),
+                            ("bottom", &len(r.bottom)),
+                            ("angle", &format!("{:.1}\u{b0}", l.angle)),
+                        ],
+                    ),
+                    None => trf(
+                        "shapegen.cylinder_measures",
+                        &[
+                            ("width", &len(l.circumference_top)),
+                            ("height", &len(l.slant)),
+                        ],
+                    ),
+                };
+                ui.label(egui::RichText::new(text).color(Tokens::text_dim()));
+            }
+        }
+        if !matches!(s.kind, GenKind::IsoBlocks | GenKind::Tessellation)
+            && !(s.kind == GenKind::Truchet && s.truchet_style == TruchetStyle::Filled)
+            && !(s.kind == GenKind::DotGrid && s.filled)
+        {
+            row(ui, &tr("shapegen.line_width"), |ui| {
+                length(
+                    ui,
+                    units,
+                    precision,
+                    &mut s.line_width,
+                    0.0,
+                    50.0,
+                    "shapegen.line_width",
+                )
+            });
+        }
+        if !matches!(s.kind, GenKind::IsoBlocks | GenKind::ConeTemplate) {
+            indented(ui, |ui| {
+                ui.checkbox(&mut s.combine, tr("shapegen.combine"))
+                    .rich_tip(crate::ui::tips::keyed("shapegen.combine"));
+            });
+        }
+    }
+    section(ui, None);
+    let data = preview_for(ui, &app.shape_gen.sanitized());
+    draw_preview(ui, &data);
+    let n = if data.cut {
+        trf(
+            "shapegen.count_cut",
+            &[("max", &crate::shape_gen::MAX_ITEMS.to_string())],
+        )
+    } else {
+        trf("shapegen.count", &[("n", &data.count.to_string())])
+    };
+    ui.label(egui::RichText::new(n).color(Tokens::text_dim()));
+    let selected = app.shape_gen_selected();
+    let has_doc = app.active_layer().is_some();
+    if wide_button(
+        ui,
+        &tr("shapegen.create"),
+        has_doc && data.count > 0,
+        &crate::ui::tips::keyed("shapegen.create"),
+    ) {
+        app.shape_gen_create();
+    }
+    if let Some((_, saved)) = &selected {
+        ui.horizontal(|ui| {
+            if ui
+                .button(tr("shapegen.update"))
+                .rich_tip(crate::ui::tips::keyed("shapegen.update"))
+                .clicked()
+            {
+                app.shape_gen_update();
+            }
+            if ui
+                .button(tr("shapegen.load"))
+                .rich_tip(crate::ui::tips::keyed("shapegen.load"))
+                .clicked()
+            {
+                app.shape_gen = saved.clone();
+            }
+        });
+    }
+    if app.shape_gen.kind == GenKind::ConeTemplate {
+        let can = has_doc && !app.selection.is_empty() && selected.is_none();
+        if wide_button(
+            ui,
+            &tr("shapegen.wrap"),
+            can,
+            &crate::ui::tips::keyed("shapegen.wrap"),
+        ) {
+            app.shape_gen_wrap_selection();
+        }
+    } else if wide_button(
+        ui,
+        &tr("shapegen.make_pattern"),
+        has_doc && data.count > 0,
+        &crate::ui::tips::keyed("shapegen.make_pattern"),
+    ) && app.shape_gen_create().is_some()
+    {
+        app.dialog = crate::ui::dialogs::Dialog::CreatePattern { vector: true };
+    }
+}

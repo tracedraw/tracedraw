@@ -917,6 +917,11 @@ pub(crate) fn tab_icon(tab: DockerTab) -> Option<TabIcon> {
         DockerTab::VectorMosaic | DockerTab::PictureMosaic => {
             Some(|p, r| glyph_pic(p, r, Glyph::Mosaic))
         }
+        // The Graph Paper tool's picture, reused until the panel gets its
+        // own (a new picture waits for the maintainer's choice).
+        DockerTab::ShapeGenerator => {
+            Some(|p, r| tool_pic(p, r, crate::tools::Tool::GraphPaper))
+        }
         DockerTab::Shelf => Some(|p, r| {
             // An open tray holding a sheet.
             let c = r.center();

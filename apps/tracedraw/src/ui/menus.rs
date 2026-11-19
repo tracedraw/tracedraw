@@ -1829,7 +1829,8 @@ mod tests {
             [
                 "menu.object.create_arrowhead",
                 "menu.object.create_pattern",
-                "menu.object.add_common_shape"
+                "menu.object.add_common_shape",
+                "menu.object.shape_generator"
             ]
         );
         assert!(find("menu.table.create_new_table").is_some());
@@ -3438,6 +3439,16 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
             !app.selection.is_empty(),
         ) {
             app.add_selection_as_common_shape();
+        }
+        // Patterns, line art, iso blocks and cone templates from
+        // settings (#3412, #3413).
+        if check(
+            ui,
+            "menu.object.shape_generator",
+            "",
+            effect_docker_open(app, DockerTab::ShapeGenerator),
+        ) {
+            app.open_docker(DockerTab::ShapeGenerator);
         }
     });
     sub(ui, "menu.object.insert", |ui| {
