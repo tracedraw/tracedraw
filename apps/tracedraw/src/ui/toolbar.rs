@@ -1690,6 +1690,26 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                 {
                     app.eraser_square = true;
                 }
+                // On pictures: a soft edge and how much it takes (#3043).
+                for (key, v) in [
+                    ("toolbar.eraser_hardness", &mut app.eraser_hardness),
+                    ("toolbar.eraser_strength", &mut app.eraser_strength),
+                ] {
+                    let mut pct = (*v * 100.0).round();
+                    if dim_labelled(ui, key, |ui| {
+                        ui.add(
+                            crate::ui::field::NumField::new(&mut pct)
+                                .speed(1.0)
+                                .range(0.0..=100.0)
+                                .max_decimals(0)
+                                .suffix(" %"),
+                        )
+                    })
+                    .changed()
+                    {
+                        *v = (pct / 100.0).clamp(0.0, 1.0);
+                    }
+                }
                 ui.label(
                     egui::RichText::new(tr("hint.bar_eraser"))
                         .color(Tokens::text_dim())

@@ -1620,6 +1620,9 @@ pub struct TimeTrackerPrefs {
     pub show_bar: bool,
     /// The clock stops counting this many minutes after the last input.
     pub idle_minutes: u32,
+    /// The toolbar in its mini form: the stopwatch, the task's time, the
+    /// record button and its light only, to sit beside other bars (#3261).
+    pub mini: bool,
 }
 
 impl Default for TimeTrackerPrefs {
@@ -1627,6 +1630,7 @@ impl Default for TimeTrackerPrefs {
         TimeTrackerPrefs {
             show_bar: false,
             idle_minutes: 5,
+            mini: false,
         }
     }
 }
@@ -1826,6 +1830,10 @@ pub struct ToolPrefs {
     pub contour: crate::contour_tool::ContourSettings,
     pub eraser_width: f64,
     pub eraser_square: bool,
+    /// On pictures (#3043): the share of the nib erased fully, and how
+    /// much it erases at most.
+    pub eraser_hardness: f64,
+    pub eraser_strength: f64,
     pub text_font: String,
     pub text_size_pt: f64,
     pub text_hyphenation: bool,
@@ -1965,6 +1973,8 @@ impl Default for ToolPrefs {
             contour: Default::default(),
             eraser_width: 6.35,
             eraser_square: false,
+            eraser_hardness: 0.5,
+            eraser_strength: 1.0,
             text_font: "Arial".into(),
             text_size_pt: 24.0,
             text_hyphenation: false,

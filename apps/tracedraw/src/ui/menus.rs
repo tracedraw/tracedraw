@@ -767,7 +767,7 @@ fn menu_pic(key: &str) -> Option<crate::ui::propbar::Pic> {
         "menu.object.shaping" => Pic::Weld,
         "menu.object.transformations" => Pic::Position,
         "menu.object.tf_position" => Pic::Position,
-        "menu.object.tf_rotate" => Pic::Rotate,
+        "menu.object.tf_rotate" | "menu.object.rotate_by_lines" => Pic::Rotate,
         "menu.object.tf_scale" => Pic::ScaleMirror,
         "menu.object.tf_size" => Pic::SizeBox,
         "menu.object.tf_skew" => Pic::SkewBox,
@@ -3699,6 +3699,11 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         }
         if item(ui, "menu.object.mirror_v", "", has) {
             app.mirror(false);
+        }
+        // A base line on the selection turned to a target line's angle
+        // (#2870).
+        if item(ui, "menu.object.rotate_by_lines", "", has) {
+            app.start_rotate_by_lines();
         }
     });
     if item(ui, "menu.object.clear_transformations", "", has) {

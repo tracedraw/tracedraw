@@ -1393,6 +1393,11 @@ pub struct App {
     /// Eraser nib: thickness in mm and shape.
     pub eraser_width: f64,
     pub eraser_square: bool,
+    /// The Eraser on pictures (#3043): hardness, the share of the nib's
+    /// radius erased fully before the edge fades out (0 to 1), and
+    /// strength, how much of a pixel it erases at most (0 to 1).
+    pub eraser_hardness: f64,
+    pub eraser_strength: f64,
     pub shadow_default: tracedraw_core::Shadow,
     pub text_font: String,
     pub text_size_pt: f64,
@@ -2101,6 +2106,9 @@ pub struct App {
     pub pending_blend_path: bool,
     /// Text > Fit Text to Path waits for a click on the path.
     pub pending_text_path: bool,
+    /// Rotate by Two Lines waits for its clicks: the points given so far,
+    /// the base line's two ends then the target line's (#2870).
+    pub pending_rotate_lines: Option<Vec<Point>>,
     /// The document palette's eyedropper waits for a click on the drawing.
     pub pending_palette_sample: bool,
     pub envelope_keep_lines: bool,
@@ -3188,6 +3196,8 @@ impl App {
             brush_radius: 10.0,
             eraser_width: 6.35,
             eraser_square: false,
+            eraser_hardness: 0.5,
+            eraser_strength: 1.0,
             shadow_default: tracedraw_core::Shadow::default(),
             text_font: "Arial".into(),
             text_size_pt: 24.0,
@@ -3504,6 +3514,7 @@ impl App {
             bevel_synced_to: None,
             pending_blend_path: false,
             pending_text_path: false,
+            pending_rotate_lines: None,
             pending_palette_sample: false,
             envelope_keep_lines: false,
             media_mode: crate::media::MediaMode::Calligraphic,
@@ -4182,6 +4193,8 @@ impl App {
             contour: self.contour,
             eraser_width: self.eraser_width,
             eraser_square: self.eraser_square,
+            eraser_hardness: self.eraser_hardness,
+            eraser_strength: self.eraser_strength,
             text_font: self.text_default_font.clone(),
             text_size_pt: self.text_default_size,
             text_hyphenation: self.text_hyphenation,
@@ -4279,6 +4292,8 @@ impl App {
         self.contour = t.contour.clamped();
         self.eraser_width = finite(t.eraser_width, 0.025, 2540.0, 6.35);
         self.eraser_square = t.eraser_square;
+        self.eraser_hardness = finite(t.eraser_hardness, 0.0, 1.0, 0.5);
+        self.eraser_strength = finite(t.eraser_strength, 0.0, 1.0, 1.0);
         if !t.text_font.trim().is_empty() {
             self.text_font = t.text_font.clone();
         }

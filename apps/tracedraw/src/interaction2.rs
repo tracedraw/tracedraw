@@ -27,6 +27,7 @@ impl App {
             || self.pending_clone_effect.is_some()
             || self.pending_blend_path
             || self.pending_text_path
+            || self.pending_rotate_lines.is_some()
             || self.pending_palette_sample;
         if !waiting {
             return false;
@@ -42,11 +43,18 @@ impl App {
             self.pending_clone_effect = None;
             self.pending_blend_path = false;
             self.pending_text_path = false;
+            self.pending_rotate_lines = None;
             self.pending_palette_sample = false;
             self.status = tr("status.cancelled");
             return true;
         }
         if !response.clicked_by(PointerButton::Primary) {
+            return true;
+        }
+        if self.pending_rotate_lines.is_some() {
+            // Rotate by Two Lines: each click snaps as a drawing click.
+            let q = self.snap_point(p);
+            self.rotate_lines_click(q);
             return true;
         }
         if self.pending_palette_sample {

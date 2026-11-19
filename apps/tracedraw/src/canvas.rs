@@ -181,6 +181,23 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     draw_offset_shadow_handle(app, painter);
     draw_blend_controls(app, painter);
 
+    // Rotate by Two Lines: the lines clicked so far, the last to the
+    // pointer (#2870).
+    if let Some(pts) = &app.pending_rotate_lines {
+        let mut pts = pts.clone();
+        if let Some(p) = app.pointer_page {
+            pts.push(app.snap_point(p));
+        }
+        for line in pts.chunks(2) {
+            let screen: Vec<Pos2> = line.iter().map(|q| view.to_screen(*q)).collect();
+            if screen.len() == 2 {
+                haloed_polyline(painter, &screen, false, Tokens::SELECTION);
+            }
+            for q in &screen {
+                painter.circle_filled(*q, 3.0, Tokens::SELECTION);
+            }
+        }
+    }
     // Fit Text to Path waiting for its path: the text on the one near.
     if app.pending_text_path {
         if let Some(p) = app.pointer_page {

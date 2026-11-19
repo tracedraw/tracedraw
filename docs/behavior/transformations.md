@@ -57,6 +57,20 @@ positive), scales in percent.
 - With nothing selected the fields, the boxes, Copies and Apply are pale;
   the page buttons stay usable.
 
+## Rotate by Two Lines (#2870)
+
+Object > Transformations > Rotate by Two Lines (with something
+selected, `rotate_lines.rs`) waits for four clicks, each snapped as a
+drawing click: the two ends of a base line on the selection, then the
+two ends of a target line anywhere. The clicked lines show on the
+canvas, the last to the pointer, and the status line says which line
+comes next. After the fourth click the selection turns about the base
+line's first end by the angle from the base line to the target line
+(first end to second, the shorter way round), one "Rotate" undo step.
+A line whose ends are the same point turns nothing; a right click
+cancels
+(`rotate_lines::tests::the_base_line_takes_the_target_lines_angle`).
+
 ## Checks
 
 - `ui::transform_docker::tests::position_moves_by_an_offset_or_to_a_point`

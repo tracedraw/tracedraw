@@ -302,6 +302,9 @@ impl Bar {
             Bar::Text => vec2(760.0, 36.0 + TITLE_H + 4.0),
             Bar::Zoom => vec2(420.0, 36.0 + TITLE_H + 4.0),
             Bar::Transform => vec2(820.0, 36.0 + TITLE_H + 4.0),
+            Bar::TimeTracker if app.settings.time_tracker.mini => {
+                vec2(190.0, 36.0 + TITLE_H + 4.0)
+            }
             Bar::TimeTracker => vec2(520.0, 36.0 + TITLE_H + 4.0),
             // Room for its buttons (a few more for those named in words),
             // and for its name.
