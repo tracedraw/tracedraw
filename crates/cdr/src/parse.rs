@@ -2003,7 +2003,7 @@ impl<'a> Ctx<'a> {
             };
             pts.push(Point::new(f64::from(x), f64::from(y)));
         }
-        self.add_arrowhead(id, &pts, &types);
+        self.add_placed_arrowhead(id, &pts, &types);
     }
 
     /// `arrw` of versions 3 and 4: the id (u32; version 4 a u16 and the
@@ -2074,11 +2074,30 @@ impl<'a> Ctx<'a> {
             };
             pts.push(Point::new(f64::from(x), f64::from(y)));
         }
-        self.add_arrowhead(id, &pts, &types);
+        self.add_placed_arrowhead(id, &pts, &types);
     }
 
-    /// Classifies an arrowhead outline into a preset, or keeps it as a
-    /// custom head.
+    /// An arrowhead outline in head units (versions 5 and later, `arrw`
+    /// and `arrx`): 127 000 to one outline width, the line's end at the
+    /// origin, the line coming in from -x. Kept as the file draws it, its
+    /// shape, size and place, open parts stroked one outline width wide,
+    /// as the exchange format's heads are; it was sorted into one of our
+    /// presets, redrawn at our size (#3436).
+    fn add_placed_arrowhead(&mut self, id: u32, pts: &[Point], types: &[u8]) {
+        let units = crate::cmx::HEAD_UNITS_PER_WIDTH;
+        let (path, _) = build_path(pts, types);
+        let shape = crate::cmx::stroke_open_subpaths(&path, units);
+        let head = Arrowhead::from_placed_path(&shape, format!("Arrowhead {id}"), units);
+        if head == Arrowhead::None {
+            self.report.warn(format!(
+                "arrowhead {id}: unreadable outline; drawn without arrowhead"
+            ));
+        }
+        self.arrows.insert(id, head);
+    }
+
+    /// Classifies an arrowhead outline of versions 3 and 4 (whose head
+    /// units are not known) into a preset, or keeps it as a custom head.
     fn add_arrowhead(&mut self, id: u32, pts: &[Point], types: &[u8]) {
         let (path, _) = build_path(pts, types);
         let mut head = classify_arrowhead(&path, pts, types);
@@ -14768,7 +14787,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn arrowheads_are_classified_from_their_outline() {
+    fn arrowheads_keep_their_own_outline_size_and_place() {
         let triangle = arrw(
             5,
             &[(0, 0), (100, 50), (0, 100), (0, 0)],
@@ -14848,21 +14867,35 @@ pub(crate) mod tests {
             let s = ctx.outlines[&id].stroke.clone().expect("stroke");
             (s.start_arrow, s.end_arrow)
         };
-        assert_eq!(arrows(1), (Arrowhead::Arrow, Arrowhead::Diamond));
-        assert_eq!(arrows(2), (Arrowhead::Square, Arrowhead::Bar));
-        assert_eq!(arrows(3), (Arrowhead::Circle, Arrowhead::OpenArrow));
-        assert_eq!(arrows(4), (Arrowhead::None, Arrowhead::None));
-        match arrows(5).0 {
-            Arrowhead::Custom { path, name } => {
-                use tracedraw_core::geometry::Shape as _;
-                assert_eq!(name, "Arrowhead 11");
-                let b = path.bounding_box();
-                // Normalised: one unit tall, tip at x = 0, body towards -x.
-                assert!((b.height() - 1.0).abs() < 1e-9, "{b:?}");
-                assert!(b.x1.abs() < 1e-9 && (b.x0 + 1.0).abs() < 1e-9, "{b:?}");
-            }
+        // Each head is the file's own outline, at the file's size and
+        // place (#3436): head units over 127 000 per outline width, in
+        // head space of 4 outline widths a unit. They were sorted into
+        // presets drawn at our size.
+        use tracedraw_core::geometry::Shape as _;
+        let unit = 127_000.0 * tracedraw_core::style::HEAD_SIZE_PER_WIDTH;
+        let custom = |a: Arrowhead| match a {
+            Arrowhead::Custom { path, name } => (path.bounding_box(), name),
             other => panic!("{other:?}"),
-        }
+        };
+        let (b, name) = custom(arrows(1).0);
+        assert_eq!(name, "Arrowhead 5");
+        assert!(
+            b.x0.abs() < 1e-12 && (b.x1 - 100.0 / unit).abs() < 1e-12,
+            "{b:?}"
+        );
+        assert!(
+            b.y0.abs() < 1e-12 && (b.y1 - 100.0 / unit).abs() < 1e-12,
+            "{b:?}"
+        );
+        assert_eq!(custom(arrows(1).1).1, "Arrowhead 6");
+        assert_eq!(custom(arrows(2).0).1, "Arrowhead 7");
+        assert_eq!(custom(arrows(2).1).1, "Arrowhead 8");
+        assert_eq!(custom(arrows(3).0).1, "Arrowhead 9");
+        // An open head is stroked one outline width wide.
+        let (b, _) = custom(arrows(3).1);
+        assert!((b.x1 - (100.0 + 63_500.0) / unit).abs() < 1e-3, "{b:?}");
+        assert_eq!(arrows(4), (Arrowhead::None, Arrowhead::None));
+        assert_eq!(custom(arrows(5).0).1, "Arrowhead 11");
         assert!(ctx
             .report
             .warnings
@@ -14914,7 +14947,7 @@ pub(crate) mod tests {
         for c in tree.root.find_all(b"arrx") {
             ctx.read_arrowhead_x(c);
         }
-        assert_eq!(ctx.arrows.get(&1), Some(&Arrowhead::Arrow));
+        assert!(ctx.arrows.get(&1).is_some_and(Arrowhead::is_custom));
         assert!(!ctx.arrows.contains_key(&2));
         assert!(ctx
             .report
@@ -15493,8 +15526,8 @@ pub(crate) mod tests {
             let s = ctx.outlines[&id].stroke.clone().expect("stroke");
             (s.start_arrow, s.end_arrow)
         };
-        assert_eq!(arrows(1), (Arrowhead::Arrow, Arrowhead::None));
-        assert_eq!(arrows(2), (Arrowhead::None, Arrowhead::Arrow));
+        assert!(arrows(1).0.is_custom() && arrows(1).1 == Arrowhead::None);
+        assert!(arrows(2).0 == Arrowhead::None && arrows(2).1.is_custom());
         assert!(ctx.report.warnings.is_empty(), "{:?}", ctx.report.warnings);
     }
 

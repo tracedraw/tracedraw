@@ -51,6 +51,8 @@ pub struct DocSlot {
     pub cdr_unsaved_version: Option<u16>,
     pub tdraw_version: Option<u32>,
     pub fit_pending: bool,
+    /// Each page's view in this window (`App::page_views`).
+    pub page_views: std::collections::HashMap<PageId, View>,
     /// The view of Options > Display > View when a drawing opens is
     /// still to be set (#1134).
     pub open_view_pending: bool,
@@ -95,6 +97,7 @@ impl Default for DocSlot {
             cdr_unsaved_version: None,
             tdraw_version: None,
             fit_pending: false,
+            page_views: Default::default(),
             open_view_pending: false,
             page_numbers: PageNumberSettings::default(),
             missing_fonts: Vec::new(),
@@ -126,6 +129,7 @@ impl App {
         std::mem::swap(&mut self.view, &mut slot.view);
         std::mem::swap(&mut self.selection, &mut slot.selection);
         std::mem::swap(&mut self.fit_pending, &mut slot.fit_pending);
+        std::mem::swap(&mut self.page_views, &mut slot.page_views);
         std::mem::swap(&mut self.open_view_pending, &mut slot.open_view_pending);
         std::mem::swap(&mut self.picked_layer, &mut slot.picked_layer);
         std::mem::swap(self.raster.get_mut(), &mut slot.raster);

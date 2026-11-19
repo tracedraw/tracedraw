@@ -317,6 +317,11 @@ pub struct HandleMods {
     /// proportions; side handles scale the letters of paragraph texts
     /// and tables with their frames (#1553).
     pub free: bool,
+    /// Ctrl and Alt together on a corner handle: width and height grow
+    /// or shrink by the same distance, an even border round the
+    /// selection (with Shift on every side) instead of by the same
+    /// ratio (#3330).
+    pub even: bool,
 }
 
 impl HandleMods {
@@ -325,6 +330,7 @@ impl HandleMods {
             from_center: mods.shift,
             steps: mods.ctrl,
             free: mods.alt,
+            even: mods.ctrl && mods.alt,
         }
     }
 }
@@ -1195,6 +1201,9 @@ pub struct App {
     /// Missing Fonts dialog is turned off (Warnings, #1243).
     pub status_opens_options: Option<(String, crate::ui::dialogs::OptionsPage)>,
     pub fit_pending: bool,
+    /// The view each page of the drawing was last shown with in this
+    /// window, so going back to a page shows it as it was left (#3434).
+    pub page_views: std::collections::HashMap<PageId, crate::view::View>,
     /// Set the view of Options > Display > View when a drawing opens
     /// with the next fit (a drawing just opened or made, #1134).
     pub open_view_pending: bool,
@@ -1870,6 +1879,8 @@ pub struct App {
     pub objects_master_closed: bool,
     /// Objects docker: the cached thumbnails of the objects.
     pub object_thumbs: crate::object_thumbs::ObjectThumbs,
+    /// Symbols docker: the cached pictures of the symbols (#3249).
+    pub symbol_thumbs: crate::object_thumbs::ObjectThumbs,
     /// When `autosave_settings` last wrote the preferences, and the
     /// preferences as last saved or looked at (JSON), to save them only
     /// when they changed.
@@ -3035,6 +3046,7 @@ impl App {
             status: String::new(),
             status_opens_options: None,
             fit_pending: true,
+            page_views: Default::default(),
             open_view_pending: true,
             units: Units::Millimeters,
             nudge_mm: 2.54,
@@ -3348,6 +3360,7 @@ impl App {
             settings_pending: false,
             objects_closed_pages: Default::default(),
             object_thumbs: Default::default(),
+            symbol_thumbs: Default::default(),
             objects_master_closed: false,
             picked_layer: None,
             navigator_tex: None,
@@ -5828,7 +5841,13 @@ impl App {
             let mut line: Vec<Point> = Vec::new();
             let mut start = None;
             let mut done = Vec::new();
-            tracedraw_core::geometry::flatten(&s.page_path(), tolerance, &mut |el| {
+            // A symbol instance: the symbol's outline, not its
+            // placeholder box (#3437).
+            let path = match self.with_symbols_drawn(s) {
+                Some(d) => d.page_path(),
+                None => s.page_path(),
+            };
+            tracedraw_core::geometry::flatten(&path, tolerance, &mut |el| {
                 use tracedraw_core::geometry::PathEl;
                 match el {
                     PathEl::MoveTo(p) => {
@@ -5866,6 +5885,66 @@ impl App {
         lines
     }
 
+    /// `s` with every symbol instance it is or holds (in groups and clip
+    /// frames) replaced by its symbol's objects, placed as the instance
+    /// places them: what the outlines drawn over a selection follow. A
+    /// bare instance only knows a 10 x 10 placeholder box, which the
+    /// selection outline and the Shape tool's frame showed instead of
+    /// the symbol (#3437). `None` when `s` holds no instance.
+    pub fn with_symbols_drawn(&self, s: &Shape) -> Option<Shape> {
+        const DEEPEST: usize = 8;
+        fn holds(s: &Shape, depth: usize) -> bool {
+            depth <= DEEPEST
+                && match &s.kind {
+                    ShapeKind::SymbolInstance { .. } => true,
+                    ShapeKind::Group { children } => children.iter().any(|c| holds(c, depth + 1)),
+                    ShapeKind::ClipFrame { contents, .. } => {
+                        contents.iter().any(|c| holds(c, depth + 1))
+                    }
+                    _ => false,
+                }
+        }
+        fn drawn(s: &Shape, symbols: &[tracedraw_core::document::Symbol], depth: usize) -> Shape {
+            if depth > DEEPEST {
+                return s.clone();
+            }
+            match &s.kind {
+                ShapeKind::SymbolInstance { index } => match symbols.get(*index) {
+                    Some(def) => {
+                        let mut d = drawn(&def.shape, symbols, depth + 1);
+                        d.absorb(s.transform);
+                        d.id = s.id;
+                        d
+                    }
+                    None => s.clone(),
+                },
+                ShapeKind::Group { children } => {
+                    let mut g = s.clone();
+                    g.kind = ShapeKind::Group {
+                        children: children
+                            .iter()
+                            .map(|c| drawn(c, symbols, depth + 1))
+                            .collect(),
+                    };
+                    g
+                }
+                ShapeKind::ClipFrame { frame, contents } => {
+                    let mut c = s.clone();
+                    c.kind = ShapeKind::ClipFrame {
+                        frame: frame.clone(),
+                        contents: contents
+                            .iter()
+                            .map(|k| drawn(k, symbols, depth + 1))
+                            .collect(),
+                    };
+                    c
+                }
+                _ => s.clone(),
+            }
+        }
+        holds(s, 0).then(|| drawn(s, &self.doc().symbols, 0))
+    }
+
     /// The bounds of what `s` (in page space) draws, its live effects
     /// included; measured once per change of the drawing.
     pub fn visual_bounds(&self, s: &Shape) -> Rect {
@@ -5878,6 +5957,14 @@ impl App {
                     &def.shape.page_path(),
                     s.transform,
                 );
+            }
+        }
+        // A group or clip frame holding one: the box of what it draws, so
+        // a click or a marquee over the symbol's objects picks the group
+        // (#3437).
+        if !matches!(s.kind, ShapeKind::SymbolInstance { .. }) {
+            if let Some(drawn) = self.with_symbols_drawn(s) {
+                return drawn.bounds();
             }
         }
         if !s.has_live_effects() {
@@ -10953,11 +11040,44 @@ impl App {
             }
             return;
         }
-        if let Some(p) = self.doc().pages.get(idx) {
-            self.page = p.id;
-            self.selection.clear();
-            self.fit_pending = true;
+        let Some(new) = id else {
+            return;
+        };
+        // The zoom stays: the page is shown as it was left, else at the
+        // same zoom, centred in the window; it was fitted to the window
+        // each time (#3434).
+        if new != self.page {
+            self.page_views.insert(self.page, self.view);
         }
+        self.page = new;
+        self.selection.clear();
+        match self.page_views.get(&new) {
+            Some(v) => self.view = *v,
+            None => self.centre_page_at_zoom(),
+        }
+    }
+
+    /// Show the current page in the middle of the window at the zoom it
+    /// has; fitted when the window has no size yet.
+    pub fn centre_page_at_zoom(&mut self) {
+        let c = self.canvas_rect.center();
+        if !(self.canvas_rect.width() > 0.0 && self.canvas_rect.height() > 0.0) {
+            self.fit_pending = true;
+            return;
+        }
+        let page = self.page_rect().center();
+        let z = self.view.zoom;
+        self.view.origin = egui::pos2(c.x - page.x as f32 * z, c.y + page.y as f32 * z);
+    }
+
+    /// Run `f` (a change of the page's size or orientation) keeping the
+    /// zoom and the page's centre where it is on screen; the page was
+    /// fitted to the window again (#3434).
+    pub fn keeping_page_centre(&mut self, f: impl FnOnce(&mut Self)) {
+        let before = self.view.to_screen(self.page_rect().center());
+        f(self);
+        let after = self.view.to_screen(self.page_rect().center());
+        self.view.origin += before - after;
     }
 
     /// View > Printable Area's margins on a page `width` x `height` mm:

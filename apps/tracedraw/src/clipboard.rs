@@ -114,6 +114,16 @@ fn image_sample(img: &image::RgbaImage) -> u64 {
     h.finish()
 }
 
+/// Whether a copy on Windows puts its SVG source on the clipboard as
+/// text beside the picture formats: only when there is no picture
+/// (`picture` false). A spreadsheet takes text before a metafile, so a
+/// copy pasted in a sheet came in as SVG source in its cells, where the
+/// drawing was meant (#3461); the SVG itself stays under `image/svg+xml`.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn svg_text_beside(picture: bool) -> bool {
+    !picture
+}
+
 /// The system's clipboard change count: Windows counts every change, so
 /// a paste can tell nothing changed without reading the clipboard.
 #[cfg(windows)]
@@ -650,26 +660,29 @@ impl App {
         }
     }
 
-    /// Windows (#1539): the copy as an enhanced metafile, a PDF and SVG
-    /// beside its SVG text, all at once: CorelDRAW and office programs
-    /// paste the metafile (or the PDF) as objects, with their colours,
-    /// outlines and text, where they took the SVG text as text before.
-    /// The metafile and the PDF are the size of the selection.
+    /// Windows (#1539): the copy as an enhanced metafile, a PDF and SVG,
+    /// all at once: CorelDRAW and office programs paste the metafile (or
+    /// the PDF) as objects, with their colours, outlines and text. The
+    /// metafile and the PDF are the size of the selection. The SVG text
+    /// goes too only when there is no metafile ([`svg_text_beside`]).
     #[cfg(windows)]
     fn offer_copy(&self, svg: &str) -> bool {
         use crate::win_clipboard::Item;
         let mut items = vec![Item::Named("image/svg+xml", svg.as_bytes().to_vec())];
-        if let Some(alone) = self
+        let alone = self
             .selection_bounds()
-            .and_then(|b| self.selection_alone(b))
-        {
+            .and_then(|b| self.selection_alone(b));
+        let picture = alone.is_some();
+        if let Some(alone) = alone {
             items.push(Item::Metafile(tracedraw_io::emf::page_to_emf(&alone, 0)));
             items.push(Item::Named(
                 "Portable Document Format",
                 tracedraw_io::pdf::document_to_pdf(&alone),
             ));
         }
-        items.push(Item::Text(svg.to_string()));
+        if svg_text_beside(picture) {
+            items.push(Item::Text(svg.to_string()));
+        }
         crate::win_clipboard::write(items)
     }
 
@@ -1527,6 +1540,15 @@ mod eframe_paste_gate;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A copy with its picture formats leaves the SVG text off the
+    /// clipboard, so a spreadsheet pastes the picture, not SVG source in
+    /// its cells; without a picture the text is all there is (#3461).
+    #[test]
+    fn svg_text_goes_only_without_a_picture() {
+        assert!(!svg_text_beside(true));
+        assert!(svg_text_beside(false));
+    }
 
     /// Text another program copied pastes as one step to undo: the text,
     /// its fill and its outline were three, so the first two Undos took

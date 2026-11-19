@@ -1422,6 +1422,37 @@ mod tests {
 
     /// The rotation centre of a guideline in rotate mode can be dragged,
     /// snapping to an object's node; the guideline then turns about it,
+    /// #3424: a guideline over an object that is not selected is picked
+    /// by a click as by a press (the click went to the object, so the
+    /// guideline could be dragged but not selected there); over the
+    /// selected object the click stays the object's.
+    #[test]
+    fn a_click_on_a_guideline_over_an_object_selects_the_guideline() {
+        let mut app = app();
+        let id = app
+            .new_shape(tracedraw_core::ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(10.0, 10.0, 90.0, 90.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("a rectangle");
+        app.add_guide(Guide::horizontal(50.0));
+        let p = Point::new(30.0, 50.0);
+        assert_eq!(app.hit_test(p), Some(id));
+        // Selected, the object keeps the click.
+        app.select(vec![id]);
+        assert!(!app.guide_wins_press(p));
+        // Not selected, the guideline takes press and click alike.
+        app.select(Vec::new());
+        assert!(app.guide_wins_press(p));
+        assert!(app.press_guide(p, false));
+        app.finish_guide_move(egui::pos2(30.0, 50.0));
+        assert!(app.guide_wins_press(p));
+        assert!(app.click_guide(p, false));
+        assert_eq!(app.selected_guides, vec![0]);
+        assert!(app.selection.is_empty());
+    }
+
     /// keeping its distance from it (#1850).
     #[test]
     fn a_guides_rotation_centre_drags_and_snaps_to_a_node() {

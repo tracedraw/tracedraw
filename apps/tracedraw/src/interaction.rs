@@ -2560,9 +2560,9 @@ impl App {
                 self.toggle_rotate_mode();
                 return;
             }
-            if (self.guide_rotate.is_some() || self.hit_test(p).is_none())
-                && self.click_guide(p, mods.shift)
-            {
+            // A guideline over an object takes the click as it takes the
+            // press, unless the object is selected (#3424).
+            if self.guide_wins_press(p) && self.click_guide(p, mods.shift) {
                 // The second click of a double click: the Guidelines panel
                 // on it. The click took the guideline and the double click
                 // further down was never reached, so it only selected the
@@ -4369,7 +4369,19 @@ impl App {
                         sy = (anchor.y - current.y) / h;
                     }
                 }
-                if handle.is_corner() && !self.rotate_mode && !mods.free {
+                let even = handle.is_corner() && !self.rotate_mode && mods.even;
+                if even {
+                    // Ctrl+Alt: the width and the height change by the
+                    // same distance, where the pointer falls along the
+                    // diagonal, so the selection gains (or loses) an even
+                    // border, on every side from the centre (#3330).
+                    let d = ((sx.abs() - 1.0) * w + (sy.abs() - 1.0) * h) / 2.0;
+                    if w + d <= 1e-6 || h + d <= 1e-6 {
+                        return None;
+                    }
+                    sx = sx.signum() * (w + d) / w;
+                    sy = sy.signum() * (h + d) / h;
+                } else if handle.is_corner() && !self.rotate_mode && !mods.free {
                     // Corners scale proportionally (Alt: freely): by where
                     // the pointer falls along the box's diagonal, so the
                     // corner follows the pointer and a wide, low box (a
@@ -4387,7 +4399,7 @@ impl App {
                     sx = s * sx.signum();
                     sy = s * sy.signum();
                 }
-                if mods.steps {
+                if mods.steps && !even {
                     // Ctrl: whole steps of 100 %, so crossing the other
                     // side gives the mirror image at the same size.
                     let step = |v: f64| v.signum() * v.abs().round().max(1.0);

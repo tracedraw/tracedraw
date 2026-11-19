@@ -57,7 +57,10 @@ Text tool keep their clicks.
 - Drag a corner handle to resize in proportion, a side handle to stretch in
   one direction. Hold <kbd>Shift</kbd> to resize from the center,
   <kbd>Ctrl</kbd> to resize in steps of 100% (crossing the other side
-  mirrors the object), <kbd>Alt</kbd> to resize freely.
+  mirrors the object), <kbd>Alt</kbd> to resize freely, or
+  <kbd>Ctrl</kbd>+<kbd>Alt</kbd> on a corner to add the same distance to the
+  width and the height, an even border (with <kbd>Shift</kbd> too, on
+  every side).
 - Click a selected object again to show the rotation handles: drag a curved
   corner arrow to rotate, a side arrow to skew. Hold <kbd>Ctrl</kbd> for steps
   of 15 degrees. Drag the ring in the middle to turn about another point;

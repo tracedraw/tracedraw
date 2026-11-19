@@ -887,6 +887,47 @@ pub fn draw_other_pages(
 mod tests {
     use super::*;
 
+    /// #3434: going to another page keeps the zoom (the page centred at
+    /// it the first time), going back shows a page as it was left, and
+    /// turning the page keeps the zoom and its centre on screen; each
+    /// was fitted to the window.
+    #[test]
+    fn pages_keep_the_zoom_when_gone_to_and_turned() {
+        let mut app = App::headless();
+        app.show_welcome = false;
+        app.canvas_rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
+        app.add_page();
+        app.page = app.doc().pages[0].id;
+        app.fit_pending = false;
+        app.view.zoom = 0.7;
+        app.view.origin = egui::pos2(-40.0, 900.0);
+        let first_view = app.view;
+        app.goto_page(1);
+        assert!(!app.fit_pending);
+        assert_eq!(app.view.zoom, 0.7);
+        let centre = app.view.to_screen(app.page_rect().center());
+        assert!((centre - app.canvas_rect.center()).length() < 1e-3);
+        // Panned on the second page, then back and forth.
+        app.view.origin += egui::vec2(25.0, -10.0);
+        let second_view = app.view;
+        app.goto_page(0);
+        assert_eq!(
+            (app.view.zoom, app.view.origin),
+            (first_view.zoom, first_view.origin)
+        );
+        app.goto_page(1);
+        assert_eq!(app.view.origin, second_view.origin);
+        // Turned to landscape: the same zoom, the centre where it was.
+        let size = app.page_size();
+        let before = app.view.to_screen(app.page_rect().center());
+        crate::ui::propbar::turn_pages(&mut app, size);
+        assert_eq!(app.page_size().width, size.height);
+        assert!(!app.fit_pending);
+        assert_eq!(app.view.zoom, 0.7);
+        let after = app.view.to_screen(app.page_rect().center());
+        assert!((after - before).length() < 1e-3);
+    }
+
     /// The space between pages of a drawing that sets none.
     const GAP_MM: f64 = tracedraw_core::document::DEFAULT_PAGE_SPACING;
     use tracedraw_core::geometry::Point;

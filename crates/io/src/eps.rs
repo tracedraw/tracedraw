@@ -98,6 +98,40 @@ fn rgb_array(c: Color) -> String {
     )
 }
 
+/// The Document Structuring Conventions comments that name the drawing's
+/// spot inks (`%%DocumentCustomColors`, each ink's process stand-in in
+/// `%%CMYKCustomColor`) with the process inks used: a RIP that builds its
+/// list of spot channels from the header found none, and printed a spot
+/// ink as its stand-in in process inks (#3458).
+fn custom_color_comments(out: &mut String, inks: &[tracedraw_core::document::Ink]) {
+    let inks: Vec<_> = inks.iter().filter(|i| !i.name.is_empty()).collect();
+    let _ = writeln!(out, "%%DocumentProcessColors: Cyan Magenta Yellow Black");
+    if inks.is_empty() {
+        return;
+    }
+    for (n, i) in inks.iter().enumerate() {
+        let key = if n == 0 {
+            "%%DocumentCustomColors:"
+        } else {
+            "%%+"
+        };
+        let _ = writeln!(out, "{key} {}", ps_string(&i.name));
+    }
+    for (n, i) in inks.iter().enumerate() {
+        let key = if n == 0 { "%%CMYKCustomColor:" } else { "%%+" };
+        let [c, m, y, k] = i.cmyk;
+        let _ = writeln!(
+            out,
+            "{key} {} {} {} {} {}",
+            f(c as f64),
+            f(m as f64),
+            f(y as f64),
+            f(k as f64),
+            ps_string(&i.name)
+        );
+    }
+}
+
 /// The short path operators the page bodies use.
 const PROCS: &str = "/m {moveto} def /l {lineto} def /c {curveto} def /h {closepath} def";
 
@@ -123,6 +157,7 @@ pub fn page_to_eps(doc: &Document, page_index: usize) -> String {
     );
     let _ = writeln!(out, "%%HiResBoundingBox: 0 0 {} {}", f(w), f(h));
     let _ = writeln!(out, "%%LanguageLevel: 3");
+    custom_color_comments(&mut out, &doc.inks);
     let _ = writeln!(out, "%%EndComments");
     let _ = writeln!(out, "{PROCS}");
     let _ = writeln!(out, "gsave");
@@ -157,6 +192,7 @@ pub fn document_to_ps(doc: &Document) -> String {
     );
     let _ = writeln!(out, "%%HiResBoundingBox: 0 0 {} {}", f(mw), f(mh));
     let _ = writeln!(out, "%%LanguageLevel: 3");
+    custom_color_comments(&mut out, &doc.inks);
     let _ = writeln!(out, "%%EndComments");
     let _ = writeln!(out, "%%BeginProlog");
     let _ = writeln!(out, "{PROCS}");
@@ -645,6 +681,20 @@ mod tests {
             k: 0.0,
         };
         assert!(!color_op_with(lost, &doc.inks).contains("Separation"));
+        // The header names the ink and its stand-in, in EPS and in
+        // PostScript, before the comments end (#3458).
+        for out in [eps.clone(), document_to_ps(&doc)] {
+            let head = &out[..out.find("%%EndComments").expect("comments end")];
+            assert!(head.contains("%%DocumentProcessColors: Cyan Magenta Yellow Black"));
+            assert!(
+                head.contains("%%DocumentCustomColors: (CutContour)\n"),
+                "{head}"
+            );
+            assert!(
+                head.contains("%%CMYKCustomColor: 0 1 0 0 (CutContour)\n"),
+                "{head}"
+            );
+        }
     }
 
     #[test]

@@ -874,6 +874,7 @@ mod tests {
                 from_center: false,
                 steps: false,
                 free: true,
+                even: false,
             },
             snapped: (false, false),
         };

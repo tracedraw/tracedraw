@@ -1061,6 +1061,44 @@ fn handle_modifiers_shape_the_scale() {
         both,
     );
     assert!(close(at(t, 40.0, 10.0).x, -20.0));
+    // Ctrl+Alt on a corner: width and height grow by the same distance
+    // (#3330): the pointer 10 right and 6 up of the corner adds 8 to
+    // both, 48 x 28; with Shift 8 on every side, 56 x 36 about the
+    // centre; dragged inwards both lose the same.
+    let even = HandleMods {
+        steps: true,
+        free: true,
+        even: true,
+        ..none
+    };
+    let t = scale(
+        Handle::NE,
+        Point::new(0.0, 0.0),
+        Point::new(50.0, 26.0),
+        even,
+    );
+    assert!(close(at(t, 40.0, 20.0).x, 48.0) && close(at(t, 40.0, 20.0).y, 28.0));
+    assert!(close(at(t, 0.0, 0.0).x, 0.0) && close(at(t, 0.0, 0.0).y, 0.0));
+    let t = scale(
+        Handle::NE,
+        Point::new(0.0, 0.0),
+        Point::new(48.0, 28.0),
+        HandleMods {
+            from_center: true,
+            ..even
+        },
+    );
+    assert!(close(at(t, 40.0, 20.0).x, 48.0) && close(at(t, 40.0, 20.0).y, 28.0));
+    assert!(close(at(t, 0.0, 0.0).x, -8.0) && close(at(t, 0.0, 0.0).y, -8.0));
+    let t = scale(
+        Handle::NE,
+        Point::new(0.0, 0.0),
+        Point::new(35.0, 15.0),
+        even,
+    );
+    assert!(close(at(t, 40.0, 20.0).x, 35.0) && close(at(t, 40.0, 20.0).y, 15.0));
+    assert!(HandleMods::of(Modifiers::CTRL | Modifiers::ALT).even);
+    assert!(!HandleMods::of(Modifiers::ALT).even);
     // A corner keeps the proportions unless Alt frees it, by where the
     // pointer falls along the box's diagonal (#383): (2 * 40² + 1 * 20²) /
     // (40² + 20²) = 1.8; on the diagonal the corner follows the pointer.

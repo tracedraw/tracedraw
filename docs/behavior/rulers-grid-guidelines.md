@@ -53,6 +53,12 @@ Show rulers, and a button that puts the origin back at the page corner.
 Document Setup > Rulers > Drawing scale makes a distance on the page
 stand for a distance in the world (`drawing_scale.rs`):
 
+The typical scales are also a list beside Units on the page bar (the
+Pick tool with nothing selected) and on the Dimension tools' bar; Custom
+there opens Document Setup > Rulers. The page bar had none, though the
+scale is the whole drawing's (#3450,
+`ui::propbar::tests::the_page_bar_shows_the_drawing_scale`).
+
 - Typical scales: 1:1 (default), 1:2, 1:5, 1:10, 1:20, 1:25, 1:50, 1:75,
   1:100, 1:200, 1:250, 1:500, 1:1000, 1:2000, 1:2500, 1:5000, 1:10000,
   2:1, 5:1, 10:1, and 1/16, 1/8, 1/4, 1/2 and 3/4 in = 1 ft, 1 in = 1 ft,
@@ -161,11 +167,15 @@ stand for a distance in the world (`drawing_scale.rs`):
   step "Move Guidelines"; a right click during the drag leaves copies
   where it ends and the guidelines where they were ("Copy Guidelines",
   the copies selected); dropped outside the window they all go (#376).
-- A guideline across an unselected picture takes the press: the pointer
-  shows the arrows across it and a drag moves the guideline, not the
-  picture (pictures often fill the page behind the guidelines). Other
-  unselected objects, and a selected picture, still take the press
+- A guideline across an unselected object (a picture, a shape, a group)
+  takes the press and the click: the pointer shows the arrows across it,
+  a drag moves the guideline and a click selects it, not the object
+  (pictures often fill the page behind the guidelines). Over a selected
+  object the press and the click stay the selection's
   (#2640, `pick_drag_tests::a_guideline_over_a_picture_is_dragged_and_the_picture_stays`).
+  The click went to the object, so the guideline could be dragged there
+  but not selected (#3424,
+  `guides::tests::a_click_on_a_guideline_over_an_object_selects_the_guideline`).
 - Edit > Duplicate (Ctrl+D) with guidelines and no objects selected
   copies them, moved by the duplicate offset (unlocked), the copies
   selected; the Guidelines docker's Duplicate does the same, and its

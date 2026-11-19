@@ -61,7 +61,9 @@ ferramenta Texto mantêm os cliques delas.
   para esticar em uma direção. Mantenha <kbd>Shift</kbd> para redimensionar a
   partir do centro, <kbd>Ctrl</kbd> para redimensionar em passos de 100%
   (passar do outro lado espelha o objeto), <kbd>Alt</kbd> para redimensionar
-  livremente.
+  livremente, ou <kbd>Ctrl</kbd>+<kbd>Alt</kbd> em um canto para somar a mesma
+  distância à largura e à altura, uma borda igual (com <kbd>Shift</kbd>
+  também, em todos os lados).
 - Clique de novo em um objeto selecionado para mostrar as alças de rotação:
   arraste uma seta curva de canto para girar, uma seta lateral para inclinar.
   Mantenha <kbd>Ctrl</kbd> para passos de 15 graus. Arraste o anel do meio para

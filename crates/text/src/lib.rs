@@ -5264,7 +5264,19 @@ impl FontSystem {
                     // So is a line ended by a line break (Shift+Enter).
                     let last = (line.last_in_para || glyphs.iter().any(|g| g.ch == LINE_BREAK))
                         && align == TextAlign::Justify;
-                    if last || !avail.is_finite() {
+                    // A paragraph running right to left (set so, or by
+                    // its first strong letter) ends at the right: its
+                    // last line is set from the right edge (#3216).
+                    let rtl = ps.direction.is_right_to_left()
+                        || glyphs
+                            .iter()
+                            .filter(|g| !g.ch.is_whitespace())
+                            .map(|g| g.level)
+                            .min()
+                            .is_some_and(|l| l % 2 == 1);
+                    if last && rtl && avail.is_finite() {
+                        ((avail - total_w).max(0.0), Vec::new())
+                    } else if last || !avail.is_finite() {
                         (0.0, Vec::new())
                     } else {
                         (0.0, justify_extras(glyphs, avail - total_w))
@@ -6783,6 +6795,54 @@ mod tests {
         );
         assert_eq!(line.starts[..], line.edges[..3]);
         assert_eq!(line.ends[..], line.edges[1..]);
+    }
+
+    /// #3216: a justified paragraph running right to left sets its last
+    /// line from the right edge, as a left-to-right one sets it from the
+    /// left; set so, or by its Hebrew letters.
+    #[test]
+    fn a_justified_right_to_left_paragraph_ends_at_the_right() {
+        if !has_fonts() {
+            return;
+        }
+        use tracedraw_core::TextDirection;
+        let width = 40.0;
+        let lay = |text: &str, para: &ParagraphStyle| {
+            fonts().layout(&TextRequest {
+                spans: &[span(text)],
+                frame: Some(Size::new(width, 100.0)),
+                align: TextAlign::Justify,
+                para,
+                on_path: None,
+            })
+        };
+        let words = "ab cd ef gh ij kl mn op qr st uv wx yz ab cd";
+        let ltr = ParagraphStyle::default();
+        let rtl = ParagraphStyle {
+            direction: TextDirection::RightToLeft,
+            ..ParagraphStyle::default()
+        };
+        let span_of = |l: &LineBox| {
+            let lo = l.edges.iter().copied().fold(f64::INFINITY, f64::min);
+            let hi = l.edges.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+            (lo, hi)
+        };
+        let l = lay(words, &ltr);
+        if l.glyphs == 0 || l.lines.len() < 2 {
+            return;
+        }
+        let (lo, hi) = span_of(l.lines.last().unwrap());
+        assert!(lo.abs() < 1e-6 && hi < width - 1.0, "{lo} {hi}");
+        let r = lay(words, &rtl);
+        let (lo, hi) = span_of(r.lines.last().unwrap());
+        assert!((hi - width).abs() < 1e-3 && lo > 1.0, "{lo} {hi}");
+        // Hebrew letters make the paragraph right to left by themselves.
+        let hebrew = "\u{5D0}\u{5D1} \u{5D2}\u{5D3} ".repeat(8);
+        let h = lay(&hebrew, &ltr);
+        if h.lines.len() > 1 {
+            let (lo, hi) = span_of(h.lines.last().unwrap());
+            assert!((hi - width).abs() < 1e-3 && lo > 1.0, "{lo} {hi}");
+        }
     }
 
     /// A paragraph set to run right to left (#2670): Latin letters keep

@@ -5606,6 +5606,55 @@ impl App {
     }
 }
 
+impl App {
+    /// The Symbols docker's Cancel beside Finish (#3437): the objects put
+    /// on the page to edit symbol `index` go away and the symbol keeps
+    /// the objects it had; one undo step, after which undo goes back into
+    /// the edit as it was.
+    pub fn cancel_symbol_edit(&mut self) {
+        if self.symbol_edit_index().is_none() {
+            return;
+        }
+        let contents = self.clip_edit_contents();
+        let Some((instance, outside)) = self.clip_frame_edit.take() else {
+            return;
+        };
+        let before = self.engine.last_step_id();
+        if !contents.is_empty() {
+            if let Err(e) = self.engine.run_batch(
+                "Cancel Editing Symbol",
+                &[Command::DeleteShapes { shapes: contents }],
+            ) {
+                self.status = e.to_string();
+                self.clip_frame_edit = Some((instance, outside));
+                return;
+            }
+        }
+        self.mark_clip_edit_step(before, instance, &outside, false);
+        self.select(vec![instance]);
+        self.status = String::new();
+    }
+
+    /// The Symbols docker's Duplicate (#3437): a new symbol drawing the
+    /// same objects as symbol `index` (copies of them, with ids of their
+    /// own), named after it, with no instance placed; one undo step.
+    pub fn duplicate_symbol(&mut self, index: usize) {
+        let Some(sym) = self.doc().symbols.get(index).cloned() else {
+            return;
+        };
+        let engine = &mut self.engine;
+        let mut shape = sym.shape.with_fresh_ids(&mut || engine.new_shape_id());
+        shape.id = ShapeId(0);
+        let name = trf("docker.symbol_copy_name", &[("name", &sym.name)]);
+        let _ = self.engine.run_with_label(
+            &Command::AddSymbol {
+                symbol: tracedraw_core::Symbol { name, shape },
+            },
+            "Duplicate Symbol",
+        );
+    }
+}
+
 /// Whether `t` can be undone (an instance scaled to nothing cannot).
 fn invertible(t: Affine) -> bool {
     let d = t.determinant();
@@ -6197,6 +6246,98 @@ mod tests {
         app.finish_clip_frame_edit();
         assert_eq!(app.symbol_edit_index(), Some(0));
         assert_eq!(app.status, tr("status.symbol_holds_itself"));
+    }
+
+    /// #3437: a selected instance is outlined by its symbol's objects,
+    /// not a 10 x 10 placeholder, and a group holding one is picked over
+    /// them; Cancel beside Finish leaves the symbol as it was; Duplicate
+    /// adds a copy of the symbol, named after it, with no instance.
+    #[test]
+    fn symbol_instances_outline_their_objects_cancel_and_duplicate() {
+        let mut app = App::headless();
+        let a = symbol_of(&mut app, kurbo::Rect::new(40.0, 50.0, 100.0, 80.0));
+        app.select(vec![a]);
+        let lines = app.selected_outlines();
+        let xs: Vec<f64> = lines.iter().flatten().map(|p| p.x).collect();
+        let ys: Vec<f64> = lines.iter().flatten().map(|p| p.y).collect();
+        let lo = |v: &[f64]| v.iter().copied().fold(f64::INFINITY, f64::min);
+        let hi = |v: &[f64]| v.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            (lo(&xs) - 40.0).abs() < 1e-6 && (hi(&xs) - 100.0).abs() < 1e-6,
+            "{xs:?}"
+        );
+        assert!(
+            (lo(&ys) - 50.0).abs() < 1e-6 && (hi(&ys) - 80.0).abs() < 1e-6,
+            "{ys:?}"
+        );
+        // Grouped with a small square far from it: the group's box takes
+        // in the symbol's objects, and a click on them picks the group.
+        let other = app
+            .new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(150.0, 150.0, 155.0, 155.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![a, other]);
+        app.group_selection();
+        let g = app.selection[0];
+        let s = app.doc().find_shape(g).cloned().expect("group");
+        let b = app.visual_bounds(&s);
+        assert!(
+            (b.x0 - 40.0).abs() < 1e-6 && (b.y0 - 50.0).abs() < 1e-6,
+            "{b:?}"
+        );
+        assert_eq!(app.hit_test(Point::new(98.0, 78.0)), Some(g));
+        app.undo();
+        // Cancel: the objects put on the page go, the symbol is as it was.
+        let before = app.doc().symbols[0].clone();
+        app.edit_symbol_instance(a);
+        let copy = app.selection[0];
+        app.run(Command::TransformShapes {
+            shapes: vec![copy],
+            transform: Affine::scale(2.0),
+        });
+        app.cancel_symbol_edit();
+        assert!(app.clip_frame_edit.is_none());
+        assert!(app.doc().find_shape(copy).is_none());
+        assert_eq!(app.doc().symbols[0], before);
+        assert_eq!(app.selection, vec![a]);
+        // Undo goes back into the edit, the objects as they were left.
+        app.undo();
+        assert_eq!(app.symbol_edit_index(), Some(0));
+        assert!(app.doc().find_shape(copy).is_some());
+        app.cancel_symbol_edit();
+        // Duplicate: a second symbol drawing the same, no instance placed.
+        let count = |app: &App| {
+            app.doc()
+                .all_layers()
+                .map(|l| l.shapes.len())
+                .sum::<usize>()
+        };
+        let shapes = count(&app);
+        app.duplicate_symbol(0);
+        assert_eq!(app.doc().symbols.len(), 2);
+        assert_eq!(
+            app.doc().symbols[1].name,
+            trf("docker.symbol_copy_name", &[("name", &before.name)])
+        );
+        assert_eq!(
+            app.doc().symbols[1].shape.page_path(),
+            app.doc().symbols[0].shape.page_path()
+        );
+        assert_eq!(count(&app), shapes);
+        // #3249: the Symbols docker draws a picture of each symbol, once.
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                crate::ui::dockers2::show(&mut app, ui, crate::app::DockerTab::Symbols);
+            });
+            out.textures_delta.clear();
+        }
+        assert_eq!(app.symbol_thumbs.renders, 2);
+        app.undo();
+        assert_eq!(app.doc().symbols.len(), 1);
     }
 
     /// New Symbol is one step to undo: the symbol goes with its instance.

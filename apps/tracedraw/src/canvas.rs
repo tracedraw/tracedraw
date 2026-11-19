@@ -3142,8 +3142,10 @@ fn draw_nodes(app: &App, painter: &Painter) {
             // Rectangles, ellipses and polygons show their own nodes.
             let own = crate::kind_nodes::nodes(&s);
             if own.is_empty() {
+                // The box of what it draws: a symbol instance's own box
+                // is a placeholder square (#3437).
                 painter.rect_stroke(
-                    view.rect_to_screen(s.bounds()),
+                    view.rect_to_screen(app.visual_bounds(&s)),
                     0.0,
                     EStroke::new(1.0, Tokens::SELECTION),
                     epaint::StrokeKind::Outside,

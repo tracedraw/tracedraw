@@ -83,6 +83,17 @@ Checked by `ui::propbar::tests::the_page_size_list_offers_a_custom_size`,
 `ui::dialogs::tests::page_size_presets_are_distinct_and_keep_their_names`,
 `ui::dialogs::tests::a_page_size_finds_its_name`.
 
+## The zoom when going to another page or turning it
+
+Going to another page (its tab, Page Up and Page Down, the navigator)
+keeps the zoom: a page shown before comes back as it was left in that
+window, zoom and position; one not shown yet is centred in the window at
+the zoom in use. Portrait and Landscape on the property bar keep the
+zoom and the page's centre where it was on screen. Each fitted the page
+to the window (#3434,
+`multipage::tests::pages_keep_the_zoom_when_gone_to_and_turned`);
+Zoom to Page (Shift+F4) still does.
+
 ## Page Spacing
 
 Page > Page Spacing, after Page Layout: a submenu of presets (0, 5, 10,

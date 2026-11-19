@@ -1719,14 +1719,12 @@ pub fn page_bar(app: &mut App, ui: &mut Ui) {
     let portrait = size.height >= size.width;
     if pic_button(ui, Pic::Portrait, &tr("dialog.portrait"), true, portrait).clicked() && !portrait
     {
-        resize_pages(app, Size::new(size.height, size.width));
-        app.fit_pending = true;
+        turn_pages(app, size);
     }
     if pic_button(ui, Pic::Landscape, &tr("dialog.landscape"), true, !portrait).clicked()
         && portrait
     {
-        resize_pages(app, Size::new(size.height, size.width));
-        app.fit_pending = true;
+        turn_pages(app, size);
     }
     sep(ui);
     if pic_button(
@@ -1766,6 +1764,7 @@ pub fn page_bar(app: &mut App, ui: &mut Ui) {
         .response
         .rich_tip(crate::ui::tips::keyed("toolbar.units"));
     app.units = u;
+    crate::ui::dimension_bar::drawing_scale_combo(app, ui, "page_drawing_scale");
     sep(ui);
     nudge_part(app, ui);
     sep(ui);
@@ -1833,6 +1832,12 @@ pub fn nudge_part(app: &mut App, ui: &mut Ui) {
 
 /// Resize the current page, or every page when "all pages" is on, as one
 /// undo step.
+/// Portrait or Landscape on the property bar: the pages turned, the zoom
+/// and the page's centre on screen kept (#3434).
+pub fn turn_pages(app: &mut App, size: Size) {
+    app.keeping_page_centre(|app| resize_pages(app, Size::new(size.height, size.width)));
+}
+
 pub fn resize_pages(app: &mut App, size: Size) {
     let pages: Vec<_> = if app.settings.page_size_all {
         app.doc().pages.iter().map(|p| p.id).collect()
@@ -4102,6 +4107,43 @@ mod tests {
     /// The page bar draws with its Fit page to drawing button on a page
     /// with objects and on an empty one (where the button is pale), and
     /// the icon is on the 16-grid like the others (#236).
+    /// #3450: the page bar (nothing selected) has the drawing scale
+    /// beside Units, as the scale is the whole drawing's; it was only on
+    /// the Dimension tools' bar.
+    #[test]
+    fn the_page_bar_shows_the_drawing_scale() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let p = crate::drawing_scale::PRESETS
+            .iter()
+            .find(|p| p.label == "1:100")
+            .copied()
+            .expect("1:100");
+        app.set_drawing_scale_preset(&p);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(3000.0, 60.0),
+            )),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| {
+            ui.horizontal(|ui| page_bar(&mut app, ui));
+        });
+        out.textures_delta.clear();
+        let mut texts = Vec::new();
+        fn walk(s: &egui::Shape, texts: &mut Vec<String>) {
+            match s {
+                egui::Shape::Text(t) => texts.push(t.galley.text().to_string()),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, texts)),
+                _ => {}
+            }
+        }
+        out.shapes.iter().for_each(|c| walk(&c.shape, &mut texts));
+        assert!(texts.iter().any(|t| t == "1:100"), "{texts:?}");
+        assert!(texts.contains(&tr("dimension.drawing_scale")), "{texts:?}");
+    }
+
     #[test]
     fn the_page_bar_draws_with_its_fit_page_button() {
         let ctx = crate::theme::ui_context();

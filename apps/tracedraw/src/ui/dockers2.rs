@@ -2761,8 +2761,13 @@ fn symbols(app: &mut App, ui: &mut Ui) {
         .map(|(i, s)| (i, s.name.clone()))
         .collect();
     let editing = app.symbol_edit_index();
+    let mut thumbs = std::mem::take(&mut app.symbol_thumbs);
+    thumbs.begin_frame();
+    let drawing = (app.engine.instance(), app.engine.revision());
     for (i, name) in syms {
         ui.horizontal(|ui| {
+            // What the symbol draws, beside its name (#3249).
+            symbol_picture(app, ui, &mut thumbs, drawing, i);
             ui.label(&name);
             if ui
                 .small_button(tr("docker.insert"))
@@ -2784,6 +2789,15 @@ fn symbols(app: &mut App, ui: &mut Ui) {
                 {
                     app.finish_clip_frame_edit();
                 }
+                // Cancel: the edit ends and the symbol stays as it was
+                // (#3437).
+                if ui
+                    .small_button(tr("docker.cancel_symbol_edit"))
+                    .rich_tip(tr("docker.cancel_symbol_edit_tip"))
+                    .clicked()
+                {
+                    app.cancel_symbol_edit();
+                }
             } else if ui
                 .add_enabled(
                     app.clip_frame_edit.is_none(),
@@ -2797,12 +2811,73 @@ fn symbols(app: &mut App, ui: &mut Ui) {
             {
                 app.edit_symbol(i);
             }
+            // A copy of the symbol, placed nowhere (#3437).
+            if ui
+                .add_enabled(
+                    app.clip_frame_edit.is_none(),
+                    egui::Button::new(tr("docker.duplicate_symbol")).small(),
+                )
+                .rich_tip(tr("docker.duplicate_symbol_tip"))
+                .clicked()
+            {
+                app.duplicate_symbol(i);
+            }
             let uses = symbol_uses(app.doc(), i);
             dim(ui, trf("docker.instances_n", &[("n", &uses.to_string())]));
         });
     }
+    thumbs.trim(crate::object_thumbs::MAX_BYTES / 4);
+    if thumbs.waiting {
+        ui.ctx().request_repaint();
+    }
+    app.symbol_thumbs = thumbs;
     if app.doc().symbols.is_empty() {
         dim(ui, tr("docker.symbols_hint"));
+    }
+}
+
+/// The side of a symbol's picture in the Symbols docker, points.
+const SYMBOL_PICTURE: f32 = 28.0;
+
+/// Symbol `index`'s definition drawn in a white tile (#3249): drawn once
+/// per change of the symbol, whatever its instances.
+fn symbol_picture(
+    app: &App,
+    ui: &mut Ui,
+    thumbs: &mut crate::object_thumbs::ObjectThumbs,
+    drawing: (u64, u64),
+    index: usize,
+) {
+    let (r, _) = ui.allocate_exact_size(egui::Vec2::splat(SYMBOL_PICTURE), egui::Sense::hover());
+    let p = ui.painter();
+    p.rect_filled(r, 2.0, egui::Color32::WHITE);
+    p.rect_stroke(
+        r,
+        2.0,
+        egui::Stroke::new(1.0, Tokens::border()),
+        egui::StrokeKind::Inside,
+    );
+    // An instance of it at the origin stands for the symbol; its own key,
+    // apart from any object's.
+    let shape = tracedraw_core::Shape::new(
+        ShapeId(u64::MAX - index as u64),
+        ShapeKind::SymbolInstance { index },
+    );
+    let ppp = ui.ctx().pixels_per_point().max(0.5);
+    let inner = r.shrink(2.0);
+    let px = (inner.width() * ppp).round().max(4.0) as u32;
+    if let crate::object_thumbs::Thumb::Picture(id, [w, h]) =
+        thumbs.get(ui.ctx(), app.doc(), drawing, &shape, px)
+    {
+        let size = egui::Vec2::new(w as f32, h as f32) / ppp;
+        let fit = (inner.width() / size.x.max(size.y).max(1.0)).min(1.0);
+        let at = egui::Rect::from_center_size(inner.center(), size * fit);
+        ui.painter().image(
+            id,
+            at,
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
+            egui::Color32::WHITE,
+        );
     }
 }
 
