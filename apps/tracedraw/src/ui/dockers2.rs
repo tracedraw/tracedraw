@@ -2895,6 +2895,9 @@ fn symbol_picture(
     }
 }
 
+/// The side of a page's miniature in the Pages docker, points (#2932).
+const PAGE_THUMB: f32 = 44.0;
+
 fn pages(app: &mut App, ui: &mut Ui) {
     let pages: Vec<(tracedraw_core::PageId, String, tracedraw_core::Size)> = app
         .doc()
@@ -2934,9 +2937,26 @@ fn pages(app: &mut App, ui: &mut Ui) {
             app.page_sorter = !app.page_sorter;
         }
     });
+    let revision = app.engine.revision();
     for (i, (id, name, size)) in pages.iter().enumerate() {
         ui.horizontal(|ui| {
             let active = *id == app.page;
+            // The page's miniature, so a page is found by what it shows,
+            // not by its number alone (#2932).
+            let (r, resp) =
+                ui.allocate_exact_size(egui::vec2(PAGE_THUMB, PAGE_THUMB), egui::Sense::click());
+            if active {
+                ui.painter()
+                    .rect_filled(r.expand(2.0), 2.0, crate::theme::Tokens::tool_active());
+            }
+            let thumb = crate::ui::preview::page_thumb(ui, app.doc(), revision, *id, PAGE_THUMB);
+            crate::ui::preview::paint_page_thumb(ui, r.shrink(2.0), thumb, *size);
+            if resp
+                .rich_tip_with(|| format!("{name}\n{}", tr("docker.page_list_desc")))
+                .clicked()
+            {
+                app.goto_page(i);
+            }
             if ui
                 .selectable_label(active, format!("{}. {name}", i + 1))
                 .rich_tip_with(|| format!("{name}\n{}", tr("docker.page_list_desc")))

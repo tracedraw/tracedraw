@@ -103,6 +103,21 @@ dragged the mark stays. Over the handles framing the selected nodes
 tool's: resize arrows, or the turning arrow at the corners and the slant
 arrows at the sides, also while they are dragged.
 
+## Bulge
+
+The property bar's Bulge (after To Curve) bows the segments ending at
+the chosen nodes into arcs on any curve, a rectangle converted to curves,
+a polygon, a freehand or Bezier curve alike, as a live rectangle's Edge
+Bulge bows its sides (#3335). The field sets how much, -100 to 100 %
+(50 at first): 100 % is a quarter circle through the segment's two nodes,
+so a converted square bulged all round is the circle through its
+corners; a negative value bows inward. On a closed curve it bows outward,
+on an open one to the left of the way the curve runs. Straight segments
+and the closing line become curves first; the nodes stay where they are;
+one undo step ("Bulge") for all the chosen segments
+(`nodes::tests::bulged_segments_bow_into_quarter_circles`,
+`shape_tool::bulge_tests::a_converted_rectangle_bulges_like_a_live_one`).
+
 ## Right click
 
 A right click on a node chooses it (unless it is chosen already), on a

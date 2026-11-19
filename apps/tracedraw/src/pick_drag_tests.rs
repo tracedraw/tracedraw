@@ -30054,3 +30054,38 @@ fn a_double_click_on_a_guideline_opens_the_guidelines_panel() {
     assert_eq!(app.docker_tab, crate::app::DockerTab::Guidelines);
     assert_eq!(app.guide_form_for, Some(0));
 }
+
+/// The Guidelines panel from the keyboard (#2883): after a double click
+/// on a guideline its position field has the focus with the value
+/// selected, so typing a number and Enter moves it; Alt+A adds a
+/// guideline at the fields' values and Alt+M modifies the selected one.
+#[test]
+fn the_guidelines_panel_works_from_the_keyboard() {
+    use tracedraw_core::document::Guide;
+    let (ctx, mut app, _id) = setup();
+    app.add_guide(Guide::horizontal(150.0));
+    app.show_dockers = false;
+    let on_h = app.view.to_screen(Point::new(100.0, 150.0));
+    double_click_at(&ctx, &mut app, on_h);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    assert!(!app.guide_focus_field, "the field took the focus");
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Text("40".into()), key(egui::Key::Enter, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    frame(&ctx, &mut app, vec![key_up(egui::Key::Enter, Modifiers::NONE)], Modifiers::NONE);
+    let want = {
+        let mut f = app.guide_form;
+        f.y = 40.0 * app.units.world_mm();
+        f.line(&app)
+    };
+    assert_eq!(app.page_guides().len(), 1);
+    assert_eq!(app.page_guides()[0].line, want, "typed over, not added to");
+    // Alt+A: another guideline at the fields' values.
+    frame(&ctx, &mut app, vec![key(egui::Key::A, Modifiers::ALT)], Modifiers::ALT);
+    frame(&ctx, &mut app, vec![key_up(egui::Key::A, Modifiers::ALT)], Modifiers::NONE);
+    assert_eq!(app.page_guides().len(), 2, "Alt+A adds");
+}

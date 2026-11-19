@@ -1814,6 +1814,14 @@ impl App {
         self.for_each_selected_node("To Curve", nodes::to_curve);
     }
 
+    /// Bulge: the segments ending at the chosen nodes bow into arcs by
+    /// the bar's percentage, outward on a closed curve, as a rectangle's
+    /// Edge Bulge bows its sides; one undo step (#3335).
+    pub fn bulge_selected_segments(&mut self) {
+        let amount = self.segment_bulge / 100.0;
+        self.for_each_selected_node("Bulge", |p, i| nodes::bulge(p, i, amount));
+    }
+
     pub fn break_selected_nodes(&mut self) {
         // All of a curve's chosen nodes at once: opening a closed subpath
         // turns it to start at the break, which moves the other nodes.
@@ -2457,6 +2465,48 @@ mod constrain_tests {
         let mut d = Vec2::new(3.0, 4.0);
         constrain_axis(&mut d, None);
         assert_eq!((d.x, d.y), (3.0, 4.0));
+    }
+}
+
+#[cfg(test)]
+mod bulge_tests {
+    use super::*;
+    use tracedraw_core::geometry::Rect;
+
+    /// A rectangle converted to curves still bows (#3335): its chosen
+    /// segments bulge by the bar's percentage in one undo step, its
+    /// nodes staying, and 100 % all round makes the circle through them.
+    #[test]
+    fn a_converted_rectangle_bulges_like_a_live_one() {
+        let mut app = App::headless();
+        app.show_welcome = false;
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 20.0, 20.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .unwrap();
+        app.select(vec![id]);
+        app.convert_to_curves();
+        let before = app.doc().find_shape(id).unwrap().bounds();
+        let Some((path, _, _)) = app.path_of(id) else {
+            panic!("a curve");
+        };
+        let n = path.elements().len();
+        app.node_selection = (0..n).map(|i| (id, i)).collect();
+        app.segment_bulge = 100.0;
+        app.bulge_selected_segments();
+        assert_eq!(app.engine.undo_label(), Some("Bulge"), "one step");
+        let s = app.doc().find_shape(id).unwrap();
+        let b = s.bounds();
+        // The circle through the corners: 20 * sqrt(2) across.
+        let across = 20.0 * 2f64.sqrt();
+        assert!((b.width() - across).abs() < 0.2, "{b:?} from {before:?}");
+        assert!((b.height() - across).abs() < 0.2, "{b:?}");
+        app.engine.undo().unwrap();
+        let b = app.doc().find_shape(id).unwrap().bounds();
+        assert!((b.width() - 20.0).abs() < 1e-6, "{b:?}");
     }
 }
 

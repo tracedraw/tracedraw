@@ -1210,6 +1210,48 @@ fn balloon_bar(app: &mut App, ui: &mut Ui) {
     }
 }
 
+/// The Shape Builder's bar (#3220): Add or Delete, what a drag or a click
+/// does with the parts (Alt does the other); Keep Originals, a merge
+/// leaving the objects it came from as they were; Accept, the shapes
+/// built kept and back to the Pick tool; Cancel, the tool's steps since
+/// it was chosen undone.
+fn shape_builder_bar(app: &mut App, ui: &mut Ui) {
+    if ui
+        .selectable_label(!app.builder.delete_mode, tr("toolbar.builder_add"))
+        .rich_tip(crate::ui::tips::keyed("toolbar.builder_add"))
+        .clicked()
+    {
+        app.builder.delete_mode = false;
+    }
+    if ui
+        .selectable_label(app.builder.delete_mode, tr("toolbar.builder_delete"))
+        .rich_tip(crate::ui::tips::keyed("toolbar.builder_delete"))
+        .clicked()
+    {
+        app.builder.delete_mode = true;
+    }
+    vsep(ui);
+    ui.checkbox(&mut app.builder.keep_originals, tr("toolbar.builder_keep"))
+        .rich_tip(crate::ui::tips::keyed("toolbar.builder_keep"));
+    vsep(ui);
+    let made = app.builder.session_steps > 0;
+    if ui
+        .button(tr("toolbar.builder_accept"))
+        .rich_tip(crate::ui::tips::keyed("toolbar.builder_accept"))
+        .clicked()
+    {
+        app.builder_accept();
+    }
+    if ui
+        .add_enabled(made, egui::Button::new(tr("toolbar.builder_cancel")))
+        .rich_tip(crate::ui::tips::keyed("toolbar.builder_cancel"))
+        .rich_disabled_tip(crate::ui::tips::keyed("toolbar.builder_cancel"))
+        .clicked()
+    {
+        app.builder_cancel();
+    }
+}
+
 pub(crate) fn dim_labelled<R>(ui: &mut Ui, key: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
     dim_labelled_as(ui, key, &format!("{key}_desc"), add)
 }
@@ -1619,6 +1661,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
             Tool::Extrude => crate::ui::extrude_bar::extrude_bar(app, ui),
             Tool::Envelope => crate::ui::envelope_ui::envelope_bar(app, ui),
             Tool::Distort => crate::ui::distort_bar::distort_bar(app, ui),
+            Tool::ShapeBuilder => shape_builder_bar(app, ui),
             Tool::Eraser => {
                 let mut w = app.units.from_mm(app.eraser_width);
                 if dim_labelled(ui, "toolbar.eraser_thickness", |ui| {
@@ -1845,6 +1888,19 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
                     tr("toolbar.sample_after_apply"),
                 )
                 .rich_tip(crate::ui::tips::keyed("toolbar.sample_after_apply"));
+                // The next click anywhere in the window, the panels and
+                // bars too, samples the colour shown there (#3040).
+                if ui
+                    .selectable_label(app.eyedropper_screen, tr("toolbar.sample_screen"))
+                    .rich_tip(crate::ui::tips::keyed("toolbar.sample_screen"))
+                    .clicked()
+                {
+                    app.eyedropper_screen = !app.eyedropper_screen;
+                    if app.eyedropper_screen {
+                        app.eyedropper_apply = false;
+                        app.status = tr("status.sample_screen");
+                    }
+                }
                 vsep(ui);
                 dim_labelled(ui, "toolbar.sample_size", |ui| {
                     for n in [1u32, 2, 5] {
@@ -3048,6 +3104,23 @@ fn shape_tool_bar(app: &mut App, ui: &mut Ui) {
     }
     if button(ui, Pic::ToCurve, "toolbar.to_curve_tip", has_nodes, false) {
         app.selected_segments_to_curve();
+    }
+    // Bulge: the chosen segments bow into arcs by a percentage, on any
+    // curve, as a rectangle's Edge Bulge bows its sides (#3335).
+    dim_labelled(ui, "toolbar.segment_bulge", |ui| {
+        ui.add(
+            crate::ui::field::NumField::new(&mut app.segment_bulge)
+                .range(-100.0..=100.0)
+                .suffix(" %"),
+        )
+    });
+    if ui
+        .add_enabled(has_nodes, egui::Button::new(tr("toolbar.apply_bulge")))
+        .rich_tip(crate::ui::tips::keyed("toolbar.apply_bulge"))
+        .rich_disabled_tip(crate::ui::tips::keyed("toolbar.apply_bulge"))
+        .clicked()
+    {
+        app.bulge_selected_segments();
     }
     sep(ui);
     let current = app.current_node_type();

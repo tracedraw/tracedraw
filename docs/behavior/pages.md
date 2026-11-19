@@ -207,3 +207,14 @@ and the tallest page's height; with **Delete the emptied pages** (off at
 first) the other pages go. It is one undo step ("Gather Pages"); a
 drawing of one page has nothing to gather and says so on the status
 line (`gather_pages::tests::every_pages_objects_come_side_by_side_on_the_first`).
+
+## Page miniatures
+
+The Pages docker shows each page's miniature beside its name, and the tip
+of a page tab shows the page's miniature above its name, so a page is
+found by what it shows, not by its number alone (#2932); a click on a
+miniature goes to its page, as a click on its name does. The miniatures
+are cached and drawn again once the drawing changes, one page a frame,
+the others keeping their old picture meanwhile, so a drawing of many
+pages does not lag; View > Page Sorter still shows every page large
+(`ui::preview::tests::page_thumbs_are_drawn_one_a_frame_and_follow_changes`).

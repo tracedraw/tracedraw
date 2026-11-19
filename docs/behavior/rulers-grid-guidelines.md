@@ -267,6 +267,18 @@ guideline as soon as it is entered (Enter or leaving the field), with no
 need for Modify, which stays for a change of type and for Add's values
 (`guides::tests::typed_values_move_the_selected_guideline_and_the_panel_follows_it`).
 
+From the keyboard (#2883): after a double click on a guideline (or its
+Properties) the position field (y for a horizontal guideline, x for the
+others) has the focus with its value selected, so a number typed and
+Enter move it; Tab goes on to the next field. Enter in a field with no
+guideline selected adds one there. Alt+A is Add and Alt+M Modify while
+the panel shows. In the list Shift+click selects the guidelines listed
+from the one selected last to the one clicked (with Ctrl, added to the
+others), and the selected guidelines are the ones highlighted on the
+drawing, whose colour and style the panel sets all at once
+(`pick_drag_tests::the_guidelines_panel_works_from_the_keyboard`,
+`ui::layout_options::tests::shift_click_selects_the_guidelines_listed_between`).
+
 ### Document Setup > Guidelines
 
 Show guidelines, Snap to guidelines, the default guideline colour, the

@@ -317,6 +317,8 @@ fn set_window_title(ctx: &egui::Context, title: String) {
 
 pub fn root(app: &mut App, ui: &mut Ui) {
     let steps = app.step_merge_start();
+    // The Color Eyedropper's sample of the window's pixels (#3040).
+    app.screen_sample_frame(ui.ctx());
     // Tab and Shift+Tab stay in the window that has the focus (#1258).
     tab_focus::begin(ui.ctx());
     // The interface keeps inside the screen's safe area: clear of the
@@ -332,6 +334,8 @@ pub fn root(app: &mut App, ui: &mut Ui) {
     // The drawings in windows of their own (#2904).
     let ctx = ui.ctx().clone();
     detached::show(app, &ctx);
+    // Sample from Screen: a cover over everything takes the next click.
+    app.screen_pick_cover(&ctx);
     // An import that asked a question first goes where it was placed.
     app.finish_waiting_import_placement();
     // The next of several files picked with File > Import (#2695).

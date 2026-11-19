@@ -322,6 +322,8 @@ impl App {
         let mut form = self.guide_form;
         form.load(self, &g.line);
         self.guide_form = form;
+        // Its position is ready to be typed over (#2883).
+        self.guide_focus_field = true;
     }
 
     /// The Guidelines panel's fields follow the one selected guideline:

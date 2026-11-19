@@ -1423,6 +1423,16 @@ pub struct App {
     pub eyedropper_apply: bool,
     /// Bitmap sample box side in pixels: 1, 2 or 5.
     pub eyedropper_sample: u32,
+    /// Sample from Screen: the next click anywhere in the window samples
+    /// the colour shown there (#3040).
+    pub eyedropper_screen: bool,
+    /// The Shape tool's Bulge, percent: 100 bows a segment into a quarter
+    /// circle, negative the other way (#3335).
+    pub segment_bulge: f64,
+    /// A sample of the window's pixels on its way (#3040).
+    pub screen_sample: Option<crate::screen_sample::ScreenSample>,
+    /// Frames waited for the window's read-back.
+    pub screen_sample_frames: u32,
     /// The colour eyedroppers' readout beside the pointer (#990).
     pub eyedropper_hover: crate::eyedropper::HoverReadout,
     pub canvas_rect: egui::Rect,
@@ -1670,6 +1680,9 @@ pub struct App {
     /// The guideline whose values the Guidelines panel's fields hold
     /// (`sync_guide_form`); `None` with none or several selected.
     pub guide_form_for: Option<usize>,
+    /// The Guidelines panel's position field takes the focus, its value
+    /// selected, on the next frame (a double click on a guideline, #2883).
+    pub guide_focus_field: bool,
     /// The guideline the Guidelines panel's fields hold, as it was before
     /// a value typed there moved it: Add puts it back and adds the new
     /// one at the typed place (#3068).
@@ -3189,6 +3202,10 @@ impl App {
             eyedropper_groups: Default::default(),
             eyedropper_apply: false,
             eyedropper_sample: 1,
+            eyedropper_screen: false,
+            segment_bulge: 50.0,
+            screen_sample: None,
+            screen_sample_frames: 0,
             eyedropper_hover: Default::default(),
             canvas_rect: egui::Rect::NOTHING,
             pointer_page: None,
@@ -3285,6 +3302,7 @@ impl App {
             guide_pivots: Vec::new(),
             guide_form: Default::default(),
             guide_form_for: None,
+            guide_focus_field: false,
             guide_form_from: None,
             guide_presets: Default::default(),
             grid_frequency: false,
@@ -6182,6 +6200,11 @@ impl App {
             self.dimension_points.clear();
             self.previous_tool = self.tool;
             self.tool = tool;
+            // Cancel undoes only what the Shape Builder made since it was
+            // chosen (#3220).
+            if tool == Tool::ShapeBuilder {
+                self.builder.session_steps = 0;
+            }
             // Another tool ends a pick of Image > Color Mask (#2479).
             if tool != Tool::ColorEyedropper {
                 self.mask.picking = false;
