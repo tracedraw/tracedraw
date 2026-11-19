@@ -148,10 +148,15 @@ a click lower on the tab brings the panel to the front
   Below, ticked while the panel is the lower one, to stack it or put it
   back. Both panels draw with their own title bars, a 6 px bar between
   them that drags to share the height (each keeps at least 15 %,
-  `dockers::stack_rects`). Both tabs show as open; a click on the lower
-  one's tab, its Window menu toggle or its title's fold button
-  ("Back to its tab", `App::unstack_docker`) leaves the upper panel
-  alone in the column. Bringing the lower panel to the front, closing
+  `dockers::stack_rects`). Both tabs show as open, the lower one's tab
+  last in the strip, at the bottom as its panel is
+  (`dockers::strip_order`). A click on either tab closes the column as
+  a click on the front tab does, and the split stays: a click on either
+  again opens the column split as it was; a click on another tab brings
+  it to the front with the lower panel still under it (#3524,
+  `dockers::click_tab`). Show Below, the Window menu toggle or the lower
+  panel's fold button ("Back to its tab", `App::unstack_docker`) leaves
+  the upper panel alone in the column. Bringing the lower panel to the front, closing
   it or moving it away ends the stack (`App::settle_stacks`); opening
   it from a menu keeps both. A second column that empties into the edge
   column takes its stack with it. On a phone the column shows the front

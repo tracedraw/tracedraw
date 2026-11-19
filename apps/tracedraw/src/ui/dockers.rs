@@ -81,7 +81,7 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
     crate::ui::overflow::column(ui, &salt, |ui| {
         ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
         let (tabs, front, shown) = app.docker_column(place);
-        let tabs = tabs.to_vec();
+        let tabs = strip_order(tabs, app.docker_below(place));
         let mut laid = Vec::with_capacity(tabs.len());
         let galleys: Vec<_> = tabs
             .iter()
@@ -175,14 +175,8 @@ pub fn tab_strip(app: &mut App, ui: &mut Ui, place: DockerPlace) {
                     .is_some_and(|p| close.contains(p));
                 if on_close {
                     app.close_docker(tab);
-                } else if active && below {
-                    // The lower docker of a stacked column: it leaves the
-                    // lower part, the docker in front stays.
-                    app.unstack_docker(place);
-                } else if active {
-                    app.set_docker_column(place, false, None);
                 } else {
-                    app.set_docker_column(place, true, Some(tab));
+                    click_tab(app, place, tab);
                 }
             }
             egui::Popup::context_menu(&resp)
@@ -994,6 +988,36 @@ struct ColumnBody {
 
 fn body_id(place: DockerPlace) -> egui::Id {
     egui::Id::new(("docker_column_body", place as u8))
+}
+
+/// A click on the tab of `tab` in the strip of the column at `place`.
+/// A docker in sight (in front, or in the lower part of a split column)
+/// closes the column, the split kept for when it opens again; the lower
+/// docker of a closed split column opens it as it was; another docker
+/// comes to the front, the lower one staying under it (#3524). Show
+/// Below in the tab's menu, or the lower docker's own button, takes the
+/// lower docker out of the split.
+pub(crate) fn click_tab(app: &mut App, place: DockerPlace, tab: DockerTab) {
+    let (_, front, shown) = app.docker_column(place);
+    let below = app.docker_below(place) == Some(tab);
+    if shown && (front == tab || below) {
+        app.set_docker_column(place, false, None);
+    } else if below {
+        app.set_docker_column(place, true, None);
+    } else {
+        app.set_docker_column(place, true, Some(tab));
+    }
+}
+
+/// A column's tabs in the order its strip shows them: the docker shown
+/// in the lower part of a split column last, at the bottom of the strip
+/// as its docker is at the bottom of the column (#3524).
+pub(crate) fn strip_order(tabs: &[DockerTab], below: Option<DockerTab>) -> Vec<DockerTab> {
+    let mut v: Vec<DockerTab> = tabs.iter().copied().filter(|t| Some(*t) != below).collect();
+    if let Some(b) = below.filter(|b| tabs.contains(b)) {
+        v.push(b);
+    }
+    v
 }
 
 /// The upper and lower docker's rectangles in a column's docker part
@@ -4719,6 +4743,37 @@ pub(crate) mod tests {
         run(&mut app, vec![egui::Event::PointerMoved(to)]);
         run(&mut app, vec![press(to, false)]);
         assert!(app.docker_stacks[0].split < crate::app::DockerStack::DEFAULT_SPLIT - 0.1, "{}", app.docker_stacks[0].split);
+        // A click on either tab keeps the split (#3524): the lower one's
+        // tab sits last in the strip; a click on it closes the column, a
+        // click again opens it split as it was; another tab comes to the
+        // front with the lower one still under it.
+        let (tabs, _, _) = app.docker_column(DockerPlace::Right);
+        let order = strip_order(tabs, app.docker_below(DockerPlace::Right));
+        assert_eq!(order.last(), Some(&DockerTab::Properties));
+        assert_eq!(order.len(), tabs.len());
+        click_tab(&mut app, DockerPlace::Right, DockerTab::Properties);
+        assert!(!app.docker_column(DockerPlace::Right).2);
+        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        click_tab(&mut app, DockerPlace::Right, DockerTab::Properties);
+        assert!(app.docker_column(DockerPlace::Right).2);
+        assert_eq!(app.docker_tab, DockerTab::Objects);
+        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        click_tab(&mut app, DockerPlace::Right, DockerTab::Objects);
+        click_tab(&mut app, DockerPlace::Right, DockerTab::Objects);
+        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        if let Some(other) = app
+            .docker_column(DockerPlace::Right)
+            .0
+            .iter()
+            .copied()
+            .find(|t| *t != DockerTab::Objects && *t != DockerTab::Properties)
+        {
+            click_tab(&mut app, DockerPlace::Right, other);
+            assert_eq!(app.docker_tab, other);
+            assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+            click_tab(&mut app, DockerPlace::Right, DockerTab::Objects);
+        }
+        run(&mut app, Vec::new());
         // Its title's fold button puts it back among the tabs.
         app.unstack_docker(DockerPlace::Right);
         run(&mut app, Vec::new());
