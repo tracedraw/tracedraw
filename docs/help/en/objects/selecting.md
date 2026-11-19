@@ -12,6 +12,9 @@ freehand loop.
   filled; an unfilled one on its outline. Text, groups, tables and pictures
   count anywhere inside their box.
 - <kbd>Shift</kbd>+click adds an object to the selection or takes it out.
+  With facing pages it also adds an object of the facing page, and a drag
+  around objects takes those of both pages: they move onto the current page,
+  where they show, so you can align them together.
 - **Drag** around objects, starting on an empty spot: the objects wholly
   inside the dashed frame are selected. Hold <kbd>Alt</kbd> as you finish the
   drag to select every object the frame touches; held from the start, the

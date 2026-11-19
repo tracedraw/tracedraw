@@ -1321,7 +1321,14 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
                 .flatten()
         });
         if let Some(s) = press.filter(|s| canvas_rect.contains(*s)) {
-            app.multipage_press(s);
+            // Shift+click on the facing page's object adds it to the
+            // selection (#3488).
+            let adopted = mods.shift
+                && app.tool == crate::tools::Tool::Pick
+                && app.spread_shift_press(s);
+            if !adopted {
+                app.multipage_press(s);
+            }
         }
     }
     if two_fingers.is_none()

@@ -4269,6 +4269,8 @@ impl App {
             } => {
                 let r = Rect::from_points(start, current);
                 if r.width() > 0.1 || r.height() > 0.1 {
+                    // The facing page's objects in it too (#3488).
+                    self.adopt_spread_objects_in(r, touching);
                     self.select_in_region(crate::select_region::Region::Rect(r), touching, toggle);
                 }
             }
