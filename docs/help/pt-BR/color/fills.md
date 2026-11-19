@@ -67,7 +67,9 @@ seleção (ou dos objetos novos, sem nada selecionado).
   [[edit_fill.fill_picker]] com os gradientes prontos. À direita: o tipo, como
   ele se repete e a faixa de cores com seus nós. Clique num nó para escolhê-lo
   e arraste para movê-lo; clique duas vezes na faixa para acrescentar um nó e
-  num nó para removê-lo. A cor, a transparência, a posição e o
+  num nó para removê-lo. <kbd>Alt</kbd> e um arrasto num nó o copiam e movem a
+  cópia: dois nós da mesma cor fazem uma faixa sólida, e dois nós de cores
+  diferentes lado a lado fazem uma borda dura. A cor, a transparência, a posição e o
   [[edit_fill.midpoint]] do nó escolhido ficam sob a faixa, com
   [[edit_fill.reverse]]. [[edit_fill.transform]] tem a rotação, o centro (para
   gradientes radiais, cônicos e quadrados), a margem da borda, o espelho e a
@@ -96,7 +98,9 @@ próprio objeto.
 3. Clique duas vezes na linha entre os nós para acrescentar um nó de cor ali;
    clique duas vezes num nó de cor para removê-lo. Arraste um nó de cor ao
    longo da linha, ou a barrinha entre dois nós para mover o ponto onde as
-   cores deles se encontram no meio.
+   cores deles se encontram no meio. Segure <kbd>Alt</kbd> ao começar a
+   arrastar um nó para copiá-lo e arrastar a cópia, para faixas de cor sólida
+   com bordas duras.
 4. Clique num nó para escolhê-lo: abre-se embaixo dele uma pequena barra com
    a cor do nó (clique na amostra para o seletor de cores) e a transparência.
    Uma cor da paleta clicada com um nó escolhido vai para esse nó, e a barra

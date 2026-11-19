@@ -2184,6 +2184,17 @@ fn curve_tool_properties(app: &mut App, ui: &mut Ui) {
             app.close_selected_curves();
         }
     }
+    if app.tool == Tool::TwoPointLine {
+        // Arcs instead of straight lines, bowed one way or the other.
+        sep(ui);
+        ui.toggle_value(&mut app.line_arc, tr("toolbar.line_arc"))
+            .rich_tip(crate::ui::tips::pair("toolbar.line_arc", "toolbar.line_arc_desc"));
+        ui.add_enabled_ui(app.line_arc, |ui| {
+            ui.toggle_value(&mut app.line_arc_flip, tr("toolbar.line_arc_flip"))
+                .rich_tip(tr("toolbar.line_arc_flip_desc"))
+                .rich_disabled_tip(tr("toolbar.line_arc_flip_desc"));
+        });
+    }
     if app.tool == Tool::Freehand {
         sep(ui);
         let mut v = app.settings.curves.smoothing.min(100);

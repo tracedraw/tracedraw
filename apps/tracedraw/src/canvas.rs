@@ -172,6 +172,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     draw_drop_frame(app, painter);
     draw_drop_colour(app, painter);
     draw_symmetry_lines(app, painter, rect);
+    draw_grid_handles(app, painter);
     draw_anchors(app, painter);
     draw_fountain_handles(app, painter);
     draw_pattern_handles(app, painter);
@@ -1860,6 +1861,30 @@ fn draw_live_fit_handles(app: &App, painter: &Painter) {
 /// Block Shadow and Inner Shadow tools: the selected shadow's line from
 /// the object's middle and the square at its end (#1280), filled while it
 /// is dragged.
+/// The handles of the selected object's Grid effect: round ones for the
+/// gaps, a square one for how many cells.
+fn draw_grid_handles(app: &App, painter: &Painter) {
+    use crate::grid_handles::GridHandle;
+    let view = &app.view;
+    let line = EStroke::new(1.5, Tokens::SELECTION);
+    for (h, at) in app.grid_handles() {
+        let q = view.to_screen(at);
+        let held = matches!(&app.drag, Drag::GridHandle { handle, .. } if *handle == h);
+        let fill = if held { Tokens::SELECTION } else { Color32::WHITE };
+        match h {
+            GridHandle::GapX | GridHandle::GapY => {
+                painter.circle_filled(q, 4.5, fill);
+                painter.circle_stroke(q, 4.5, line);
+            }
+            GridHandle::Count => {
+                let r = ERect::from_center_size(q, egui::vec2(8.0, 8.0));
+                painter.rect_filled(r, 0.0, fill);
+                painter.rect_stroke(r, 0.0, line, egui::StrokeKind::Outside);
+            }
+        }
+    }
+}
+
 fn draw_offset_shadow_handle(app: &App, painter: &Painter) {
     let Some(h) = app.offset_shadow_handle() else {
         return;

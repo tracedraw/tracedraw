@@ -2153,6 +2153,10 @@ impl App {
                 }
             }
             t if t.is_box_tool() => self.box_input(response, p, mods),
+            // The 2-Point Line tool drawing arcs drags them out as a box.
+            Tool::TwoPointLine if self.line_arc && self.curve.is_none() => {
+                self.box_input(response, p, mods)
+            }
             Tool::ThreePointRectangle | Tool::ThreePointEllipse | Tool::ThreePointCurve => {
                 self.three_point_input(response, p, mods)
             }
@@ -2449,6 +2453,10 @@ impl App {
             }
             // A live fit's spacing or turn handle.
             if self.begin_live_fit_handle(p) {
+                return;
+            }
+            // A Grid effect's handles: its gaps and how many cells.
+            if self.grid_press(p) {
                 return;
             }
             // Rotate mode: the centre of rotation moves.
@@ -2824,6 +2832,10 @@ impl App {
         }
         if matches!(self.drag, Drag::FitPathHandle(_)) {
             self.live_fit_handle_drag_to(p, mods.ctrl || mods.command);
+            return;
+        }
+        if matches!(self.drag, Drag::GridHandle { .. }) {
+            self.grid_drag_to(p);
             return;
         }
         if matches!(
@@ -3255,6 +3267,7 @@ impl App {
             boxing = true;
         }
         if !boxing {
+            self.end_drag_copies();
             return;
         }
         // The shape follows the pointer while the left button is down and
@@ -3270,6 +3283,8 @@ impl App {
                 .map(|s| self.snap_point(self.view.to_page(s)))
                 .unwrap_or(p);
             self.box_follow(now, mods);
+            // C held: a copy of the shape at each move.
+            self.leave_drag_copy(&response.ctx);
         } else if !response.drag_stopped_by(PointerButton::Primary) {
             // (A drag egui still counts ends below, as every tool's does.)
             self.end_drag();
@@ -3957,13 +3972,14 @@ impl App {
             }
         }
         if response.drag_started_by(PointerButton::Primary) {
-            // A node, a slider, or the line (the whole fill moves).
+            // A node, a slider, or the line (the whole fill moves); Alt
+            // copies the node pressed and drags the copy.
             let press = response
                 .ctx
                 .input(|i| i.pointer.press_origin())
                 .map(|o| self.view.to_page(o))
                 .unwrap_or(p);
-            if self.begin_fountain_drag(p, press) {
+            if self.begin_fountain_drag_with(p, press, mods.alt) {
                 return;
             }
             if let Some(id) = self.hit_test_inside(p) {
@@ -4056,6 +4072,9 @@ impl App {
         let drag = std::mem::replace(&mut self.drag, Drag::None);
         // The page shows the drawing as it is now (#1259).
         self.node_drag_shown = None;
+        if !matches!(drag, Drag::Box { .. }) {
+            self.end_drag_copies();
+        }
         if !matches!(drag, Drag::Move { .. }) {
             self.drop_frame = None;
         }
@@ -4075,9 +4094,12 @@ impl App {
                 } else {
                     (Point::new(r.x0, r.y0), Point::new(r.x1, r.y1))
                 };
-                if !self.finish_tools2_box(a, b) {
+                if self.draws_arcs() {
+                    self.create_arc(start, current);
+                } else if !self.finish_tools2_box(a, b) {
                     self.create_box_shape(a, b);
                 }
+                self.end_drag_copies();
             }
             Drag::Connector { from, current, .. } if self.tool == Tool::Blend => {
                 if let Some(to) = self.hit_test_inside(current).filter(|id| *id != from) {
@@ -4401,6 +4423,7 @@ impl App {
             Drag::FountainHandle { .. }
             | Drag::PatternHandle { .. }
             | Drag::SymmetryLines { .. }
+            | Drag::GridHandle { .. }
             | Drag::ContourDrag { .. }
             | Drag::OffsetShadow { .. }
             | Drag::Shadow { .. }
@@ -5791,6 +5814,11 @@ impl App {
                             || (self.curve.as_ref().is_some_and(|c| c.bspline)
                                 && mods.is_none()
                                 && matches!(k, Key::C | Key::V));
+                        // C while a shape is dragged leaves copies of it.
+                        let drop_key = drop_key
+                            || (self.trail_key_busy()
+                                && mods.is_none()
+                                && k == crate::drag_copies::TRAIL_KEY);
                         // A key held picks its tool once: the presses it
                         // repeats would send Space back and forth between
                         // the Pick tool and the tool before it (#1502).

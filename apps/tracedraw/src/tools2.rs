@@ -365,6 +365,9 @@ impl App {
         from_center: bool,
     ) -> Option<BezPath> {
         use tracedraw_core::geometry::{ellipse_arc_path, ellipse_path, polygon_path};
+        if self.draws_arcs() {
+            return Some(self.arc_of_drag(start, current));
+        }
         let r = App::box_rect(start, current, from_center);
         let path = match self.tool {
             Tool::Rectangle => self.rect_corners.path(r, (1.0, 1.0)),

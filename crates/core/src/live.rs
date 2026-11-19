@@ -198,6 +198,54 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "is_false")]
         merge: bool,
     },
+    /// Transform: `copies` copies of the object, each one the one before
+    /// it scaled by `scale_x` / `scale_y` percent, mirrored (`reflect_x`
+    /// turns it over left to right, `reflect_y` top to bottom), turned by
+    /// `angle` degrees about the centre of the object's box and moved by
+    /// `move_x` / `move_y` mm. With `random`, each step takes a share of
+    /// those values picked from `seed`. With no copies the object itself
+    /// is drawn transformed. The outline keeps its width unless
+    /// `scale_strokes`. The object itself stays as it is, so the result
+    /// stays editable; Break Effect Apart makes the copies objects.
+    Transform {
+        scale_x: f64,
+        scale_y: f64,
+        #[serde(default)]
+        move_x: f64,
+        #[serde(default)]
+        move_y: f64,
+        #[serde(default)]
+        angle: f64,
+        copies: u32,
+        #[serde(default, skip_serializing_if = "is_false")]
+        reflect_x: bool,
+        #[serde(default, skip_serializing_if = "is_false")]
+        reflect_y: bool,
+        #[serde(default, skip_serializing_if = "is_false")]
+        random: bool,
+        #[serde(default)]
+        seed: u32,
+        #[serde(default, skip_serializing_if = "is_false")]
+        scale_strokes: bool,
+    },
+    /// Grid: the object repeated in `columns` × `rows` cells, to the right
+    /// and down from the object, which is the top left cell. Each cell is
+    /// the object's box with `gap_x` / `gap_y` mm between cells (less than
+    /// nothing overlaps them); every other row moves right by `shift_x`
+    /// mm and every other column down by `shift_y` mm, for brick and
+    /// honeycomb layouts. The object stays as it is and editable.
+    Grid {
+        columns: u32,
+        rows: u32,
+        #[serde(default)]
+        gap_x: f64,
+        #[serde(default)]
+        gap_y: f64,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        shift_x: f64,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        shift_y: f64,
+    },
     /// Outer shadow (#1141): a soft shadow cast beneath the object by its
     /// shape, moved by `offset`; one of a stack of them, beside the
     /// object's own drop shadow. Drawn by the renderer.
@@ -1611,6 +1659,9 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             // Mirrored last, whatever its place in the list: the copies
             // carry every other effect of the object (#2121).
             Effect::Symmetry { .. } => {}
+            // Copied after the others too, so each copy carries them.
+            Effect::Transform { .. } => {}
+            Effect::Grid { .. } => {}
             Effect::ColorOverlay { color, opacity } => {
                 above.extend(overlay(&main, Fill::Solid(*color), *color, *opacity));
             }
@@ -1662,6 +1713,23 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
                 1.0
             };
             main.opacity *= o;
+        }
+    }
+    for effect in &shape.effects {
+        if let Effect::Transform { .. } = effect {
+            transform_copies(effect, &mut below, &mut main, &mut above);
+        }
+    }
+    for effect in &shape.effects {
+        if let Effect::Grid { .. } = effect {
+            // The cell is all the object draws: what its other effects
+            // (and a Transform's copies) add too.
+            let cell = below
+                .iter()
+                .chain(&above)
+                .fold(main.bounds(), |r, s| r.union(s.bounds()));
+            let maps = grid_maps(effect, cell);
+            copy_under(&maps, false, &mut below, &main, &mut above);
         }
     }
     for effect in &shape.effects {
@@ -1976,6 +2044,252 @@ fn mix(a: Color, b: Color, t: f64, mode: u8) -> Color {
         s1 + (s2 - s1) * t,
         v1 + (v2 - v1) * t,
     )
+}
+
+/// The most copies a Transform effect draws.
+pub const MAX_TRANSFORM_COPIES: u32 = 500;
+
+/// One step of a Transform effect about `center` (page space), with each
+/// value taken at `share` of the way from none to the effect's own (1:
+/// the values as set).
+fn transform_step(e: &Effect, center: Point, share: [f64; 4]) -> Affine {
+    let Effect::Transform {
+        scale_x,
+        scale_y,
+        move_x,
+        move_y,
+        angle,
+        reflect_x,
+        reflect_y,
+        ..
+    } = *e
+    else {
+        return Affine::IDENTITY;
+    };
+    let fin = |v: f64, or: f64| if v.is_finite() { v } else { or };
+    let part = |full: f64, from: f64, k: f64| from + (full - from) * k;
+    let sign = |m: bool| if m { -1.0 } else { 1.0 };
+    let sx = part(fin(scale_x, 100.0), 100.0, share[0]) / 100.0 * sign(reflect_x);
+    let sy = part(fin(scale_y, 100.0), 100.0, share[1]) / 100.0 * sign(reflect_y);
+    let turn = fin(angle, 0.0) * share[2];
+    let d = Vec2::new(fin(move_x, 0.0), fin(move_y, 0.0)) * share[3];
+    Affine::translate(center.to_vec2() + d)
+        * Affine::rotate(turn.to_radians())
+        * Affine::scale_non_uniform(sx, sy)
+        * Affine::translate(-center.to_vec2())
+}
+
+/// The page maps of a Transform effect's copies (or, with no copies, the
+/// one map of the object itself), for an object whose box is centred on
+/// `center`: each the one before it with one more step.
+pub fn transform_maps(e: &Effect, center: Point) -> Vec<Affine> {
+    let Effect::Transform {
+        copies,
+        random,
+        seed,
+        ..
+    } = *e
+    else {
+        return Vec::new();
+    };
+    let n = copies.clamp(1, MAX_TRANSFORM_COPIES) as usize;
+    let mut state = u64::from(seed) ^ 0x9E37_79B9_7F4A_7C15;
+    let mut next = || {
+        // splitmix64
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^= z >> 31;
+        (z >> 11) as f64 / (1u64 << 53) as f64
+    };
+    let mut at = Affine::IDENTITY;
+    let mut out = Vec::with_capacity(n);
+    for _ in 0..n {
+        let share = if random {
+            [next(), next(), next(), next()]
+        } else {
+            [1.0; 4]
+        };
+        let step = transform_step(e, center, share);
+        // Every step about the object's own centre, so a move with a
+        // turn walks the copies round a circle.
+        at = step * at;
+        out.push(at);
+    }
+    out
+}
+
+/// The outline widths of `s` (its members' too) kept as they are under a
+/// scale by `f`, or scaled with it (`scale`), whatever each outline's own
+/// "scale with object" says.
+fn keep_stroke_widths(s: &mut Shape, f: f64, scale: bool) {
+    if let Some(st) = s.stroke.as_mut() {
+        if scale && !st.scale_with_object {
+            st.width *= f;
+        } else if !scale && st.scale_with_object && f > 1e-9 {
+            st.width /= f;
+        }
+    }
+    if let ShapeKind::Group { children } = &mut s.kind {
+        for c in children {
+            keep_stroke_widths(c, f, scale);
+        }
+    }
+}
+
+/// The copies of a Transform effect: the object (with what its other
+/// effects drew) copied under itself, the first copy nearest it; with no
+/// copies the object and its effects' shapes are moved instead.
+fn transform_copies(e: &Effect, below: &mut Vec<Shape>, main: &mut Shape, above: &mut [Shape]) {
+    let Effect::Transform {
+        copies,
+        scale_strokes,
+        ..
+    } = *e
+    else {
+        return;
+    };
+    let center = main.bounds().center();
+    if !(center.x.is_finite() && center.y.is_finite()) {
+        return;
+    }
+    let maps = transform_maps(e, center);
+    let place = |s: &Shape, m: Affine| place_copy(s, m, scale_strokes);
+    if copies == 0 {
+        let Some(m) = maps.first().copied() else {
+            return;
+        };
+        *main = place(main, m);
+        for s in below.iter_mut().chain(above.iter_mut()) {
+            *s = place(s, m);
+        }
+        return;
+    }
+    copy_under(&maps, scale_strokes, below, main, above);
+}
+
+/// Copies of the object (with what its other effects drew) under itself,
+/// one for each of `maps`, the first nearest it.
+fn copy_under(
+    maps: &[Affine],
+    scale_strokes: bool,
+    below: &mut Vec<Shape>,
+    main: &Shape,
+    above: &mut [Shape],
+) {
+    if maps.is_empty() {
+        return;
+    }
+    let place = |s: &Shape, m: Affine| place_copy(s, m, scale_strokes);
+    let mut original = main.clone();
+    // As the symmetry's copies: the effects the renderer draws on the
+    // object itself stay on each copy.
+    original
+        .effects
+        .retain(|e| matches!(e, Effect::Lens(_) | Effect::Transparency { .. }));
+    let mut under = Vec::new();
+    // The last copy at the bottom.
+    for m in maps.iter().rev() {
+        under.extend(below.iter().map(|s| place(s, *m)));
+        under.push(place(&original, *m));
+        under.extend(above.iter().map(|s| place(s, *m)));
+    }
+    under.append(below);
+    *below = under;
+}
+
+/// `s` moved by `m`, its fills going with it and its outline keeping its
+/// width (or scaling with it).
+fn place_copy(s: &Shape, m: Affine, scale_strokes: bool) -> Shape {
+    let mut s = s.clone();
+    s.carry_fills(m, Affine::IDENTITY);
+    s.transform = m * s.transform;
+    let [a, b, c, d, _, _] = m.as_coeffs();
+    let f = (a * d - b * c).abs().sqrt();
+    if f.is_finite() && (f - 1.0).abs() > 1e-12 {
+        keep_stroke_widths(&mut s, f, scale_strokes);
+    }
+    s
+}
+
+/// The most cells a Grid effect has on a side.
+pub const MAX_GRID_SIDE: u32 = 100;
+/// The most cells a Grid effect has in all.
+pub const MAX_GRID_CELLS: u32 = 2500;
+
+/// The columns and rows a Grid effect draws, within its limits.
+pub fn grid_size(e: &Effect) -> (u32, u32) {
+    let Effect::Grid { columns, rows, .. } = *e else {
+        return (1, 1);
+    };
+    let c = columns.clamp(1, MAX_GRID_SIDE);
+    let r = rows
+        .clamp(1, MAX_GRID_SIDE)
+        .min((MAX_GRID_CELLS / c).max(1));
+    (c, r)
+}
+
+/// Where cell (`col`, `row`) of a Grid effect is moved from the object's
+/// own place, for an object whose box is `cell` (page space, y up: rows
+/// go down).
+pub fn grid_offset(e: &Effect, cell: Rect, col: u32, row: u32) -> Vec2 {
+    let Effect::Grid {
+        gap_x,
+        gap_y,
+        shift_x,
+        shift_y,
+        ..
+    } = *e
+    else {
+        return Vec2::ZERO;
+    };
+    let fin = |v: f64| if v.is_finite() { v } else { 0.0 };
+    let step_x = cell.width() + fin(gap_x);
+    let step_y = cell.height() + fin(gap_y);
+    let dx = f64::from(col) * step_x + if row % 2 == 1 { fin(shift_x) } else { 0.0 };
+    let dy = f64::from(row) * step_y + if col % 2 == 1 { fin(shift_y) } else { 0.0 };
+    Vec2::new(dx, -dy)
+}
+
+/// The box a Grid effect's cells take for `shape`: all it draws without
+/// its grid and symmetry.
+pub fn grid_cell(shape: &Shape) -> Option<Rect> {
+    let mut own = shape.clone();
+    own.effects
+        .retain(|e| !matches!(e, Effect::Grid { .. } | Effect::Symmetry { .. }));
+    let ev = evaluate(&own);
+    let r = ev
+        .below
+        .iter()
+        .chain(&ev.above)
+        .fold(ev.main.bounds(), |r, s| r.union(s.bounds()));
+    [r.x0, r.y0, r.x1, r.y1]
+        .iter()
+        .all(|v| v.is_finite())
+        .then_some(r)
+}
+
+/// The page moves of a Grid effect's copies (every cell but the object's
+/// own), row by row, for an object whose box is `cell`.
+pub fn grid_maps(e: &Effect, cell: Rect) -> Vec<Affine> {
+    let ok = [cell.x0, cell.y0, cell.x1, cell.y1]
+        .iter()
+        .all(|v| v.is_finite());
+    if !ok {
+        return Vec::new();
+    }
+    let (cols, rows) = grid_size(e);
+    let mut out = Vec::with_capacity((cols * rows) as usize);
+    for r in 0..rows {
+        for c in 0..cols {
+            if r == 0 && c == 0 {
+                continue;
+            }
+            out.push(Affine::translate(grid_offset(e, cell, c, r)));
+        }
+    }
+    out
 }
 
 fn is_false(v: &bool) -> bool {
@@ -3464,6 +3778,147 @@ pub fn homography(src: &[Point; 4], dst: &[Point; 4]) -> Option<[f64; 8]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn transform_fx(copies: u32, angle: f64, scale: f64, random: bool) -> Effect {
+        Effect::Transform {
+            scale_x: scale,
+            scale_y: scale,
+            move_x: 0.0,
+            move_y: 0.0,
+            angle,
+            copies,
+            reflect_x: false,
+            reflect_y: false,
+            random,
+            seed: 7,
+            scale_strokes: false,
+        }
+    }
+
+    /// Grid: copies right and down from the object in cells of its box
+    /// with the gaps between; every other row shifted; the object stays
+    /// the top left cell; the cell count is kept within its limits.
+    #[test]
+    fn grid_effect_repeats_in_rows_and_columns() {
+        let mut s = Shape::new(
+            crate::ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 10.0, 5.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        s.effects = vec![Effect::Grid {
+            columns: 3,
+            rows: 2,
+            gap_x: 2.0,
+            gap_y: -1.0,
+            shift_x: 4.0,
+            shift_y: 0.0,
+        }];
+        let ev = evaluate(&s);
+        assert_eq!(ev.below.len(), 5);
+        assert_eq!(ev.main.bounds(), s.bounds());
+        let mut boxes: Vec<(f64, f64)> = ev
+            .below
+            .iter()
+            .map(|c| (c.bounds().x0, c.bounds().y0))
+            .collect();
+        boxes.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+        let mut want = vec![
+            (12.0, 0.0),
+            (24.0, 0.0),
+            (4.0, -4.0),
+            (16.0, -4.0),
+            (28.0, -4.0),
+        ];
+        want.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+        for (g, w) in boxes.iter().zip(&want) {
+            assert!(
+                (g.0 - w.0).abs() < 1e-9 && (g.1 - w.1).abs() < 1e-9,
+                "{g:?} {w:?}"
+            );
+        }
+        assert_eq!(grid_cell(&s), Some(s.bounds()));
+        let big = Effect::Grid {
+            columns: 1000,
+            rows: 1000,
+            gap_x: 0.0,
+            gap_y: 0.0,
+            shift_x: 0.0,
+            shift_y: 0.0,
+        };
+        let (c, r) = grid_size(&big);
+        assert!(c * r <= MAX_GRID_CELLS && c == MAX_GRID_SIDE);
+    }
+
+    /// Transform: copies under the object, each the one before it scaled
+    /// and turned about the object's centre, the outline keeping its
+    /// width; with no copies the object itself is moved; random steps
+    /// are the same from the same seed; the object stays as it is.
+    #[test]
+    fn transform_effect_copies_scale_and_turn() {
+        let mut s = Shape::new(
+            crate::ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let mut st = crate::Stroke::new(Color::BLACK, 1.0);
+        st.scale_with_object = true;
+        s.stroke = Some(st);
+        s.effects = vec![transform_fx(3, 90.0, 50.0, false)];
+        let ev = evaluate(&s);
+        assert_eq!(ev.below.len(), 3);
+        assert!(ev.above.is_empty());
+        assert_eq!(ev.main.transform, Affine::IDENTITY);
+        assert_eq!(ev.main.bounds(), s.bounds());
+        // The first copy (nearest the object, last below) is half size
+        // about the centre; the last a eighth.
+        let first = &ev.below[2];
+        let b = first.bounds();
+        assert!((b.width() - 5.0).abs() < 1e-6, "{b:?}");
+        assert!((b.center().x - 5.0).abs() < 1e-6 && (b.center().y - 5.0).abs() < 1e-6);
+        assert!((ev.below[0].bounds().width() - 1.25).abs() < 1e-6);
+        // The outline keeps its width on the page.
+        let w = |sh: &Shape| {
+            let c = sh.transform.as_coeffs();
+            sh.stroke.as_ref().expect("outline").width * (c[0] * c[3] - c[1] * c[2]).abs().sqrt()
+        };
+        assert!((w(first) - 1.0).abs() < 1e-9);
+        assert!(ev.below.iter().all(|c| c.effects.is_empty()));
+        // With the outlines scaling too.
+        let mut fx = transform_fx(1, 0.0, 50.0, false);
+        if let Effect::Transform { scale_strokes, .. } = &mut fx {
+            *scale_strokes = true;
+        }
+        s.effects = vec![fx];
+        assert!((w(&evaluate(&s).below[0]) - 0.5).abs() < 1e-9);
+        // No copies: the object itself is transformed.
+        s.effects = vec![transform_fx(0, 0.0, 200.0, false)];
+        let ev = evaluate(&s);
+        assert!(ev.below.is_empty());
+        assert!((ev.main.bounds().width() - 20.0).abs() < 1e-6);
+        // Random: same seed, same copies; within the set values.
+        s.effects = vec![transform_fx(5, 30.0, 80.0, true)];
+        let a = evaluate(&s);
+        let b = evaluate(&s);
+        assert_eq!(a.below.len(), 5);
+        for (x, y) in a.below.iter().zip(&b.below) {
+            assert_eq!(x.transform, y.transform);
+        }
+        let maps = transform_maps(&s.effects[0], Point::new(5.0, 5.0));
+        let [a0, b0, ..] = maps[0].as_coeffs();
+        let k = a0.hypot(b0);
+        assert!((0.8 - 1e-9..=1.0 + 1e-9).contains(&k), "{k}");
+        // Saved and read back.
+        let json = serde_json::to_string(&s.effects[0]).expect("save");
+        assert!(json.contains("\"effect\":\"transform\""), "{json}");
+        let back: Effect = serde_json::from_str(&json).expect("read");
+        assert_eq!(back, s.effects[0]);
+    }
 
     /// Colour and gradient overlays draw the object's shape over it at
     /// their opacity; fill opacity fades the object alone; the shadows,

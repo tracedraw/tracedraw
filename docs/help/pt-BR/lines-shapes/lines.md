@@ -38,6 +38,18 @@ A ferramenta [[tool.two_point_line]] desenha um segmento reto: pressione onde
 ele começa e solte onde termina, ou clique duas vezes. Mantenha
 <kbd>Ctrl</kbd> pressionado para limitá-lo a passos de 15 graus.
 
+Ative **Arco** na barra de propriedades para arrastar um quarto de
+arco: ele sai do ponto pressionado na vertical e chega na horizontal onde você
+solta (redondo, como um quarto de círculo, quando o arrasto é tão alto quanto
+largo; segure <kbd>Ctrl</kbd> para isso). **Inverter arco** curva o
+arco para o outro lado.
+
+Segure <kbd>C</kbd> enquanto arrasta um arco, ou um retângulo, elipse,
+polígono ou estrela com a ferramenta deles, para deixar uma cópia da forma a
+cada movimento do ponteiro: um leque de arcos saindo de um ponto, ou um túnel
+de retângulos, num só arrasto. As cópias e a forma solta são um único passo de
+desfazer e ficam selecionadas, prontas para agrupar, espelhar ou colorir.
+
 ## Bézier {#bezier}
 
 A ferramenta [[tool.bezier]] desenha curvas precisas, nó por nó.
