@@ -630,6 +630,14 @@ pub struct Settings {
     /// The Properties docker's sections closed ("outline", "fill" ...).
     #[serde(default)]
     pub properties_closed: Vec<String>,
+    /// The Properties docker marks a section whose values come from the
+    /// object's linked object style (#1439).
+    #[serde(default = "default_true")]
+    pub style_indicators: bool,
+    /// Transparencies saved with Save as New in the Properties docker's
+    /// transparency picker (#1439), newest last.
+    #[serde(default)]
+    pub saved_transparencies: Vec<tracedraw_core::Fill>,
     /// The Text docker's sections closed ("character", "paragraph",
     /// "frame").
     #[serde(default)]
@@ -2421,6 +2429,8 @@ impl Default for Settings {
             show_recent_fonts: true,
             recent_font_count: default_recent_font_count(),
             properties_closed: Vec::new(),
+            style_indicators: true,
+            saved_transparencies: Vec::new(),
             text_sections_closed: Vec::new(),
             text_docker_from: 0,
             text_docker_checks: false,

@@ -2504,11 +2504,52 @@ fn section_header(app: &mut App, ui: &mut Ui, id: &str, title: &str) -> bool {
         Tokens::text(),
     );
     let resp = resp.rich_tip_with(|| format!("{title}\n{}", tr("docker.section_desc")));
+    // Style indicators (#1439): a mark at the end of the bar when the
+    // section's values come from the object's linked object style; the
+    // header's menu shows or hides them.
+    if app.settings.style_indicators {
+        if let Some(name) = style_source(app, id) {
+            let r = egui::Rect::from_center_size(
+                egui::pos2(rect.right() - 10.0, rect.center().y),
+                egui::vec2(7.0, 7.0),
+            );
+            ui.painter().rect_filled(r, 1.0, Tokens::ACCENT);
+            ui.interact(r, ui.id().with(("style_mark", id)), egui::Sense::hover())
+                .rich_tip(trf("docker.style_from", &[("name", &name)]));
+        }
+    }
+    resp.context_menu(|ui| {
+        if ui
+            .checkbox(
+                &mut app.settings.style_indicators,
+                tr("docker.style_indicators"),
+            )
+            .changed()
+        {
+            app.settings.save();
+        }
+    });
     if resp.clicked() {
         toggle_section(app, id);
         return !open;
     }
     open
+}
+
+/// The name of the object style the first selected object takes the
+/// values of Properties section `id` from ("fill", "outline",
+/// "transparency"), if it is linked to one that sets them (#1439).
+pub(crate) fn style_source(app: &App, id: &str) -> Option<String> {
+    let shapes = app.selected_rc();
+    let link = shapes.first()?.style?;
+    let style = app.doc().object_styles.iter().find(|s| s.id == link)?;
+    let sets = match id {
+        "fill" => style.parts.fill,
+        "outline" => style.parts.outline,
+        "transparency" => style.parts.transparency,
+        _ => false,
+    };
+    sets.then(|| style.name.clone())
 }
 
 /// The Properties docker's rectangle part: corner style, the four corner
