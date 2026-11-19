@@ -218,3 +218,14 @@ the right.
 - `object_thumbs::tests::the_least_recently_shown_pictures_go_first`
 - `object_thumbs::tests::sizes_are_clamped`
 - `command::tests::master_layers_reorder_and_delete_down_to_none` (core)
+
+## Object Data
+
+The Object Data docker lists the fields of the first selected object
+(name and value), edits, adds and removes them. With several objects
+selected, Copy to Selection (#3262) gives the first object's fields to
+the others as one undo step ("Copy Object Data"): a field they have of
+the same name takes the value, their other fields stay, and the fields
+TraceDraw keeps for itself (names with a dot, `connector`, `hinting`)
+are not copied
+(`ui::dockers2::object_data_copy_tests::copy_to_selection_gives_the_fields_in_one_step`).

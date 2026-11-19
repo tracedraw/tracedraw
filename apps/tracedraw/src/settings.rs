@@ -318,6 +318,12 @@ pub struct Settings {
     /// the native Wayland window.
     #[serde(default = "default_true")]
     pub system_title_bar: bool,
+    /// Options > General: File > Save As (and Save of a drawing without a
+    /// file) opens the system's save dialog instead of TraceDraw's Save
+    /// Drawing dialog, the type chosen there by its filter and the
+    /// versions the Options set (#2965). On by default on macOS.
+    #[serde(default = "default_system_save_dialog")]
+    pub system_save_dialog: bool,
     /// Customization > Appearance: dialogs open in the middle of the
     /// window and stay there; off, they move by their title bar and open
     /// where they were left.
@@ -895,6 +901,12 @@ fn default_spiral_expansion() -> u32 {
     100
 }
 
+/// The system's save dialog is the default on macOS, where users expect
+/// it (#2965).
+fn default_system_save_dialog() -> bool {
+    cfg!(target_os = "macos")
+}
+
 fn default_true() -> bool {
     true
 }
@@ -1232,6 +1244,12 @@ pub struct NodePrefs {
     /// corner. Off: a drag rounds every corner, or the chosen nodes'
     /// corners, as before.
     pub corner_one_at_a_time: bool,
+    /// Nodes are outlined in a colour for their type, cusp, smooth or
+    /// symmetrical, besides their shape (#3000). Off by default.
+    pub color_by_type: bool,
+    pub cusp_rgb: [u8; 3],
+    pub smooth_rgb: [u8; 3],
+    pub symmetrical_rgb: [u8; 3],
 }
 
 impl Default for NodePrefs {
@@ -1250,6 +1268,10 @@ impl Default for NodePrefs {
             object_pick_distance: 3.0,
             corner_widgets: true,
             corner_one_at_a_time: true,
+            color_by_type: false,
+            cusp_rgb: [0xE0, 0x60, 0x00],
+            smooth_rgb: [0x10, 0x9A, 0x30],
+            symmetrical_rgb: [0x9B, 0x30, 0xD0],
         }
     }
 }
@@ -2360,6 +2382,7 @@ impl Default for Settings {
             gpu_effects: false,
             working_renderer: String::new(),
             system_title_bar: true,
+            system_save_dialog: default_system_save_dialog(),
             center_dialogs: true,
             ui_shadows: true,
             colored_icons: false,

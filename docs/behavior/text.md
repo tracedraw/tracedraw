@@ -1187,6 +1187,9 @@ alternates (`salt`), Swash (`swsh`); then Superscript and Subscript.
   space. The Interactive vertical spacing arrow, below the lower left
   corner, changes line spacing so the last baseline follows the pointer:
   `leading' = leading * (pitch - dy / (lines - 1)) / pitch`.
+  Each arrow has a head at both ends, left and right or up and down, as
+  the spacing goes both ways (#2985,
+  `canvas::node_look_tests::spacing_arrows_point_both_ways`).
 - The arrows act on every paragraph of the text, those with spacing of
   their own too, so they keep their differences: the character or word
   spacing change (in percent) is added to each paragraph's, and each

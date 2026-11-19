@@ -2576,6 +2576,18 @@ fn object_data(app: &mut App, ui: &mut Ui) {
     if changed {
         app.run(Command::SetObjectData { shape: s.id, data });
     }
+    // Copy the fields to the other selected objects (#3262).
+    if app.selected_shapes().len() > 1
+        && ui
+            .button(tr("docker.data_copy_to_selection"))
+            .rich_tip(crate::ui::tips::pair(
+                "docker.data_copy_to_selection",
+                "docker.data_copy_to_selection_tip",
+            ))
+            .clicked()
+    {
+        app.copy_object_data_to_selection();
+    }
     // Summary of a cost field across the selection.
     let total: f64 = app
         .selected_shapes()
@@ -4027,5 +4039,104 @@ mod symbol_docker_tests {
         app.group_selection();
         assert_eq!(symbol_uses(app.doc(), 0), 5, "groups in a group");
         assert_eq!(symbol_uses(app.doc(), 1), 0);
+    }
+}
+
+/// Whether the object data field `key` is one TraceDraw keeps for itself
+/// (a name with a dot, as `bitmap.link` or `anchor.1`, and the
+/// connector's and hinting's): Copy to Selection leaves those alone.
+pub(crate) fn data_field_is_internal(key: &str) -> bool {
+    key.contains('.') || matches!(key, "connector" | "hinting")
+}
+
+impl App {
+    /// Object Data's Copy to Selection (#3262): the fields of the first
+    /// selected object go to the other selected objects, as one undo
+    /// step; a field they have of the same name takes the value, their
+    /// other fields stay, and fields TraceDraw keeps for itself are not
+    /// copied.
+    pub fn copy_object_data_to_selection(&mut self) {
+        let shapes = self.selected_shapes();
+        let Some((first, rest)) = shapes.split_first() else {
+            return;
+        };
+        let fields: Vec<(String, String)> = first
+            .data
+            .iter()
+            .filter(|(k, _)| !data_field_is_internal(k))
+            .cloned()
+            .collect();
+        let cmds: Vec<Command> = rest
+            .iter()
+            .filter_map(|s| {
+                let mut data = s.data.clone();
+                for (k, v) in &fields {
+                    match data.iter_mut().find(|(f, _)| f == k) {
+                        Some(entry) => entry.1 = v.clone(),
+                        None => data.push((k.clone(), v.clone())),
+                    }
+                }
+                (data != s.data).then_some(Command::SetObjectData { shape: s.id, data })
+            })
+            .collect();
+        if cmds.is_empty() {
+            return;
+        }
+        if let Err(e) = self.engine.run_batch("Copy Object Data", &cmds) {
+            self.status = e.to_string();
+        }
+    }
+}
+
+#[cfg(test)]
+mod object_data_copy_tests {
+    use super::*;
+    use tracedraw_core::document::ShapeKind;
+    use tracedraw_core::geometry::Rect;
+
+    /// Copy to Selection gives the first object's own fields to the
+    /// others in one undo step, keeping their other fields and leaving
+    /// TraceDraw's own fields alone (#3262).
+    #[test]
+    fn copy_to_selection_gives_the_fields_in_one_step() {
+        let mut app = App::headless();
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: Rect::new(x, 0.0, x + 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let a = rect(&mut app, 0.0);
+        let b = rect(&mut app, 20.0);
+        app.run(Command::SetObjectData {
+            shape: a,
+            data: vec![
+                ("Name".into(), "Bolt".into()),
+                ("Cost".into(), "3".into()),
+                ("bitmap.link".into(), "/a.png".into()),
+            ],
+        });
+        app.run(Command::SetObjectData {
+            shape: b,
+            data: vec![("Cost".into(), "9".into()), ("Size".into(), "M4".into())],
+        });
+        app.select(vec![a, b]);
+        let depth = app.engine.history_labels().0.len();
+        app.copy_object_data_to_selection();
+        assert_eq!(app.engine.history_labels().0.len(), depth + 1);
+        let data = app.doc().find_shape(b).expect("b").data.clone();
+        assert_eq!(
+            data,
+            vec![
+                ("Cost".to_string(), "3".to_string()),
+                ("Size".to_string(), "M4".to_string()),
+                ("Name".to_string(), "Bolt".to_string()),
+            ]
+        );
+        app.undo();
+        let data = app.doc().find_shape(b).expect("b").data.clone();
+        assert_eq!(data.len(), 2);
     }
 }

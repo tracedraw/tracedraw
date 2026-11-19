@@ -3014,6 +3014,38 @@ fn draw_control_handle(painter: &Painter, node: Pos2, ctrl: Pos2, color: Color32
     ));
 }
 
+/// The arc of a rectangle's edge handle (#2978): a shallow curve across
+/// the edge's direction, bowing towards `out`, centred on `at`, about
+/// twice a node marker wide.
+fn edge_handle_arc(at: Pos2, out: egui::Vec2, size: f32) -> Vec<Pos2> {
+    let along = egui::vec2(-out.y, out.x);
+    let half = size.max(5.0);
+    (0..=8)
+        .map(|i| {
+            let t = i as f32 / 4.0 - 1.0;
+            at + along * (t * half) + out * ((1.0 - t * t) * half * 0.45)
+        })
+        .collect()
+}
+
+/// The colour of a node of type `kind` when Options > Nodes and Handles
+/// colours nodes by type (#3000); `None` when it does not.
+pub(crate) fn node_type_color(
+    prefs: &crate::settings::NodePrefs,
+    kind: tracedraw_core::nodes::NodeType,
+) -> Option<Color32> {
+    use tracedraw_core::nodes::NodeType;
+    if !prefs.color_by_type {
+        return None;
+    }
+    let [r, g, b] = match kind {
+        NodeType::Cusp => prefs.cusp_rgb,
+        NodeType::Smooth => prefs.smooth_rgb,
+        NodeType::Symmetrical => prefs.symmetrical_rgb,
+    };
+    Some(Color32::from_rgb(r, g, b))
+}
+
 /// The first node of a subpath: a triangle standing on its base, `size`
 /// across.
 fn start_node_marker(
@@ -3077,9 +3109,18 @@ fn node_marker(
     }
 }
 
-/// A text's Interactive spacing arrow: a bar and an arrow pointing right
-/// (character spacing) or down (line spacing), centred on `c`.
+/// A text's Interactive spacing arrow: a line with a head at each end,
+/// left and right (character spacing) or up and down (line spacing),
+/// centred on `c`, as the spacing goes both ways (#2985).
 fn draw_spacing_arrow(painter: &Painter, c: Pos2, horizontal: bool, color: Color32) {
+    for shape in spacing_arrow_shapes(c, horizontal, color) {
+        painter.add(shape);
+    }
+}
+
+/// The shapes of [`draw_spacing_arrow`]: its white disc, its line and its
+/// two heads.
+fn spacing_arrow_shapes(c: Pos2, horizontal: bool, color: Color32) -> Vec<epaint::Shape> {
     let s = EStroke::new(1.5, color);
     let v = |x: f32, y: f32| {
         if horizontal {
@@ -3088,14 +3129,20 @@ fn draw_spacing_arrow(painter: &Painter, c: Pos2, horizontal: bool, color: Color
             c + egui::vec2(y, x)
         }
     };
-    painter.circle_filled(c, 8.0, Color32::from_white_alpha(200));
-    painter.line_segment([v(-6.0, -4.0), v(-6.0, 4.0)], s);
-    painter.line_segment([v(-6.0, 0.0), v(5.0, 0.0)], s);
-    painter.add(epaint::PathShape::convex_polygon(
-        vec![v(7.0, 0.0), v(3.0, -3.5), v(3.0, 3.5)],
-        color,
-        EStroke::NONE,
-    ));
+    vec![
+        epaint::Shape::circle_filled(c, 8.5, Color32::from_white_alpha(200)),
+        epaint::Shape::line_segment([v(-4.0, 0.0), v(4.0, 0.0)], s),
+        epaint::Shape::convex_polygon(
+            vec![v(7.5, 0.0), v(3.5, -3.5), v(3.5, 3.5)],
+            color,
+            EStroke::NONE,
+        ),
+        epaint::Shape::convex_polygon(
+            vec![v(-7.5, 0.0), v(-3.5, 3.5), v(-3.5, -3.5)],
+            color,
+            EStroke::NONE,
+        ),
+    ]
 }
 
 /// The outline of a rectangle, ellipse or polygon the Shape tool edits,
@@ -3328,11 +3375,13 @@ fn draw_nodes(app: &App, painter: &Painter) {
                 } else {
                     None
                 };
-                // An edge's bow handle (#2188) is a small diamond, told
-                // apart from the corner nodes.
-                if let crate::kind_nodes::KindNode::Edge { .. } = node {
+                // An edge's bow handle (#2188): a small diamond on the
+                // edge's middle, told apart from the corner nodes, and an
+                // arc bowing outward just outside the edge, where it is
+                // seen and pressed (#2978).
+                if let crate::kind_nodes::KindNode::Edge { edge } = node {
                     let c = view.to_screen(p);
-                    let h = size / 2.0 + 1.0;
+                    let h = size / 2.0;
                     painter.add(egui::Shape::convex_polygon(
                         vec![
                             c + egui::vec2(0.0, -h),
@@ -3343,6 +3392,19 @@ fn draw_nodes(app: &App, painter: &Painter) {
                         Color32::WHITE,
                         EStroke::new(1.0, main),
                     ));
+                    if let Some(out) = crate::kind_nodes::edge_out(&s, edge) {
+                        let tip = view.to_screen(p + out);
+                        let dir = (tip - c).normalized();
+                        if dir.is_finite() {
+                            let at = c + dir * (prefs.pick_px() * crate::kind_nodes::EDGE_HANDLE_OUT) as f32;
+                            for (w, col) in [(3.5, Color32::WHITE), (1.5, main)] {
+                                painter.add(egui::Shape::line(
+                                    edge_handle_arc(at, dir, size),
+                                    EStroke::new(w, col),
+                                ));
+                            }
+                        }
+                    }
                     continue;
                 }
                 node_marker(painter, view.to_screen(p), size, prefs.cusp, fill, main);
@@ -3399,11 +3461,14 @@ fn draw_nodes(app: &App, painter: &Painter) {
                     draw_control_handle(painter, p, cp, main, prefs.control_head());
                 }
             }
-            let shape = match nodes::node_type_of_with(&n, &s.node_types) {
+            let kind = nodes::node_type_of_with(&n, &s.node_types);
+            let shape = match kind {
                 nodes::NodeType::Cusp => prefs.cusp,
                 nodes::NodeType::Smooth => prefs.smooth,
                 nodes::NodeType::Symmetrical => prefs.symmetrical,
             };
+            // The node's type in its colour too, when asked (#3000).
+            let outline = node_type_color(&prefs, kind).unwrap_or(main);
             let fill = if selected {
                 Some(main)
             } else if prefs.unselected_filled {
@@ -3414,9 +3479,9 @@ fn draw_nodes(app: &App, painter: &Painter) {
             if n.is_start {
                 // The first node of a subpath: a triangle a little larger
                 // than the other nodes.
-                start_node_marker(painter, p, size + 3.0, fill, main);
+                start_node_marker(painter, p, size + 3.0, fill, outline);
             } else {
-                node_marker(painter, p, size, shape, fill, main);
+                node_marker(painter, p, size, shape, fill, outline);
             }
         }
     }
@@ -4200,6 +4265,53 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
                 egui::Stroke::new(1.0, blue),
                 egui::StrokeKind::Outside,
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod node_look_tests {
+    use super::*;
+
+    /// Nodes take the colour of their type only when Options > Nodes and
+    /// Handles asks for it (#3000).
+    #[test]
+    fn nodes_are_coloured_by_type_when_asked() {
+        use tracedraw_core::nodes::NodeType;
+        let mut prefs = crate::settings::NodePrefs::default();
+        assert_eq!(node_type_color(&prefs, NodeType::Cusp), None);
+        prefs.color_by_type = true;
+        let colors: Vec<Option<Color32>> = [NodeType::Cusp, NodeType::Smooth, NodeType::Symmetrical]
+            .into_iter()
+            .map(|k| node_type_color(&prefs, k))
+            .collect();
+        let [r, g, b] = prefs.smooth_rgb;
+        assert_eq!(colors[1], Some(Color32::from_rgb(r, g, b)));
+        assert!(colors[0] != colors[1] && colors[1] != colors[2] && colors[0] != colors[2]);
+    }
+
+    /// The text spacing handles show an arrow head at each end, as the
+    /// spacing goes both ways (#2985).
+    #[test]
+    fn spacing_arrows_point_both_ways() {
+        let c = Pos2::new(100.0, 50.0);
+        for horizontal in [true, false] {
+            let heads: Vec<Pos2> = spacing_arrow_shapes(c, horizontal, Color32::BLACK)
+                .into_iter()
+                .filter_map(|s| match s {
+                    epaint::Shape::Path(p) if p.points.len() == 3 => Some(p.points[0]),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(heads.len(), 2);
+            let d0 = heads[0] - c;
+            let d1 = heads[1] - c;
+            assert!((d0 + d1).length() < 1e-3, "{heads:?}");
+            if horizontal {
+                assert!(d0.y.abs() < 1e-3 && d0.x.abs() > 5.0);
+            } else {
+                assert!(d0.x.abs() < 1e-3 && d0.y.abs() > 5.0);
+            }
         }
     }
 }

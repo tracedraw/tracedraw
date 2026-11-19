@@ -178,11 +178,38 @@ pub fn edge_handles(s: &Shape) -> Vec<(KindNode, Point)> {
         .collect()
 }
 
-/// The node of `s` within `tol` (page mm) of `p`.
+/// How far outside its edge a rectangle's edge handle shows, as a share
+/// of the pick distance (#2978): its arc sits beside the edge, where it
+/// is seen and pressed, not on the outline.
+pub const EDGE_HANDLE_OUT: f64 = 1.8;
+
+/// The outward direction, in page space, of edge `edge` of `s` at its
+/// middle (a unit vector); `None` for an object with no edge handles.
+pub fn edge_out(s: &Shape, edge: usize) -> Option<tracedraw_core::geometry::Vec2> {
+    if s.spline.is_some() || !matches!(s.kind, ShapeKind::Rect { .. }) {
+        return None;
+    }
+    let (rect, c) = s.kind.rect_corners()?;
+    let (mid, n) = c.edge_middle(edge, rect);
+    let d = s.transform * (mid + n) - s.transform * mid;
+    let len = d.hypot();
+    (len > 1e-12).then(|| d / len)
+}
+
+/// The node of `s` within `tol` (page mm) of `p`. An edge handle takes a
+/// press on the edge's middle and on its arc outside the edge (#2978).
 pub fn node_at(s: &Shape, p: Point, tol: f64) -> Option<KindNode> {
     handles(s)
         .into_iter()
-        .map(|(n, q)| (n, (q - p).hypot()))
+        .map(|(n, q)| {
+            let mut d = (q - p).hypot();
+            if let KindNode::Edge { edge } = n {
+                if let Some(out) = edge_out(s, edge) {
+                    d = d.min((q + out * (tol * EDGE_HANDLE_OUT) - p).hypot());
+                }
+            }
+            (n, d)
+        })
         .filter(|(n, d)| *d <= tol * reach(*n))
         .min_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(n, _)| n)
@@ -811,6 +838,31 @@ mod tests {
             ShapeId(1),
             ShapeKind::rect_with_corners(Rect::new(0.0, 0.0, 40.0, 20.0), corners),
         )
+    }
+
+    /// An edge handle also takes a press on its arc just outside the
+    /// edge, which points outward on every side, turned objects too
+    /// (#2978).
+    #[test]
+    fn an_edge_handle_takes_a_press_outside_its_edge() {
+        let s = rect(Corners::default());
+        let tol = 0.5;
+        let out = tol * EDGE_HANDLE_OUT;
+        for (edge, p) in [
+            (Corners::EDGE_TOP, Point::new(20.0, 20.0 + out)),
+            (Corners::EDGE_BOTTOM, Point::new(20.0, -out)),
+            (Corners::EDGE_RIGHT, Point::new(40.0 + out, 10.0)),
+            (Corners::EDGE_LEFT, Point::new(-out, 10.0)),
+        ] {
+            assert_eq!(node_at(&s, p, tol), Some(KindNode::Edge { edge }), "{edge}");
+        }
+        // Inside the rectangle, as far from the edge, is not the handle.
+        assert_eq!(node_at(&s, Point::new(20.0, 20.0 - 2.5 * out), tol), None);
+        // Turned a quarter: the top edge's arc points left.
+        let mut turned = s.clone();
+        turned.transform = Affine::rotate(std::f64::consts::FRAC_PI_2);
+        let d = edge_out(&turned, Corners::EDGE_TOP).expect("out");
+        assert!((d.x + 1.0).abs() < 1e-9 && d.y.abs() < 1e-9, "{d:?}");
     }
 
     /// The handle in the middle of an edge bows every edge by the same

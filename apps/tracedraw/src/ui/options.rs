@@ -1081,6 +1081,13 @@ fn general_page(app: &mut App, ui: &mut Ui) {
             tr("options.system_title_bar"),
         )
         .rich_tip(crate::ui::tips::keyed("options.system_title_bar"));
+        // The system's save dialog for Save As (#2965).
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+        ui.checkbox(
+            &mut app.settings.system_save_dialog,
+            tr("options.system_save_dialog"),
+        )
+        .rich_tip(crate::ui::tips::keyed("options.system_save_dialog"));
         // Minimize, Maximize and Close on the menu bar, for a window
         // without a title bar (#2574).
         #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
@@ -1689,6 +1696,45 @@ fn nodes_page(app: &mut App, ui: &mut Ui) {
         "options.unselected_nodes_filled",
         "options.unselected_nodes_filled_tip",
     ));
+    // Nodes in a colour for their type (#3000).
+    ui.checkbox(&mut n.color_by_type, tr("options.node_color_by_type"))
+        .rich_tip(crate::ui::tips::pair(
+            "options.node_color_by_type",
+            "options.node_color_by_type_tip",
+        ));
+    ui.add_enabled_ui(n.color_by_type, |ui| {
+        ui.indent("node_type_colors", |ui| {
+            ui.horizontal(|ui| {
+                let d = crate::settings::NodePrefs::default();
+                for (rgb, key, default) in [
+                    (&mut n.cusp_rgb, "options.node_cusp_color", d.cusp_rgb),
+                    (&mut n.smooth_rgb, "options.node_smooth_color", d.smooth_rgb),
+                    (
+                        &mut n.symmetrical_rgb,
+                        "options.node_symmetrical_color",
+                        d.symmetrical_rgb,
+                    ),
+                ] {
+                    ui.label(tr(key));
+                    crate::ui::tips::tip_over(
+                        ui,
+                        crate::ui::tips::pair(key, "options.node_type_color_tip"),
+                        |ui| rgb_button(ui, rgb),
+                    );
+                    if *rgb != default {
+                        if ui
+                            .small_button(tr("options.reset"))
+                            .rich_tip(crate::ui::tips::pair("options.reset", "dialog.reset_desc"))
+                            .clicked()
+                        {
+                            *rgb = default;
+                        }
+                    }
+                    ui.add_space(8.0);
+                }
+            });
+        });
+    });
 }
 
 fn clip_frame_page(app: &mut App, ui: &mut Ui) {

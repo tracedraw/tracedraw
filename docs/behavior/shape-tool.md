@@ -30,6 +30,11 @@ shows, out to its edge and the pick distance beyond (#1935,
 `pick_drag_tests::a_thick_outline_takes_a_press_on_its_segment_out_to_its_edge`).
 The arrow showing the curve's direction is off by default (Options >
 Nodes and Handles).
+Options > Nodes and Handles > Colour nodes by type (off by default,
+#3000) outlines each node in a colour for its type besides its shape:
+cusp orange, smooth green, symmetrical purple, each colour set beside
+the box; a chosen node keeps the main colour's fill
+(`canvas::node_look_tests::nodes_are_coloured_by_type_when_asked`).
 
 With several objects selected, the one picked last shows its outline in
 the node colour and the others in the secondary node colour (red by
