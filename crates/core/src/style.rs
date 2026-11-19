@@ -2985,6 +2985,29 @@ fn one() -> f64 {
 
 impl Stroke {
     pub const HAIRLINE: f64 = 0.0762;
+    /// Round dots two outline widths apart, centre to centre (#3404):
+    /// dashes of no length, which round caps draw as dots.
+    pub const ROUND_DOTS: [f64; 2] = [0.0, 2.0];
+
+    /// Whether a dash pattern has dashes of no length: dots, which only
+    /// round (or square) caps draw.
+    pub fn dash_has_dots(dash: &[f64]) -> bool {
+        let odd = dash.len() % 2 == 1;
+        dash.iter()
+            .enumerate()
+            .any(|(i, d)| *d <= 0.0 && (i % 2 == 0 || odd))
+    }
+
+    /// Take the dash pattern `dash`; dots get round caps, or they would
+    /// not show (#3404). True when the caps changed.
+    pub fn set_dash(&mut self, dash: &[f64]) -> bool {
+        self.dash = dash.to_vec();
+        if Self::dash_has_dots(dash) && self.cap == LineCap::Butt {
+            self.cap = LineCap::Round;
+            return true;
+        }
+        false
+    }
     /// Mitre limit of new outlines, degrees: a corner sharper than a
     /// right angle's half is bevelled, so a thick outline on lettering
     /// does not grow long spikes at its narrow turns (#894).
@@ -3092,6 +3115,29 @@ impl Stroke {
 
 #[cfg(test)]
 mod tests {
+    /// #3404: a pattern with dashes of no length is dots, and taking it
+    /// gives flat caps round ones; other caps and patterns are kept.
+    #[test]
+    fn dots_take_round_caps() {
+        assert!(Stroke::dash_has_dots(&Stroke::ROUND_DOTS));
+        assert!(Stroke::dash_has_dots(&[3.0, 2.0, 0.0, 2.0]));
+        // An odd pattern repeats, its gaps turning dashes.
+        assert!(Stroke::dash_has_dots(&[2.0, 0.0, 1.0]));
+        assert!(!Stroke::dash_has_dots(&[4.0, 0.0]));
+        assert!(!Stroke::dash_has_dots(&[]));
+        let mut st = Stroke::new(Color::BLACK, 1.0);
+        assert!(!st.set_dash(&[4.0, 2.0]));
+        assert_eq!(st.cap, LineCap::Butt);
+        assert!(st.set_dash(&Stroke::ROUND_DOTS));
+        assert_eq!(
+            (st.dash.as_slice(), st.cap),
+            (&[0.0, 2.0][..], LineCap::Round)
+        );
+        st.cap = LineCap::Square;
+        assert!(!st.set_dash(&Stroke::ROUND_DOTS));
+        assert_eq!(st.cap, LineCap::Square);
+    }
+
     use super::*;
 
     /// A run of width nodes, each wider than the last, widens in one

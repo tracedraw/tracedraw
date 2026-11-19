@@ -10300,6 +10300,56 @@ mod tests {
         );
     }
 
+    /// #3404: round dots, dashes of no length that round caps draw: a
+    /// row of separate dots two widths apart, centre to centre; with flat
+    /// caps they would not show, so taking the pattern gives round caps.
+    #[test]
+    fn round_dots_draw_as_separate_dots() {
+        let dots = |cap: Option<tracedraw_core::LineCap>| {
+            let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(50.0, 50.0));
+            let layer = doc.pages[0].layers[0].id;
+            let id = doc.ids_mut().shape();
+            let mut s = Shape::new(
+                id,
+                ShapeKind::Path {
+                    path: {
+                        let mut p = BezPath::new();
+                        p.move_to((5.0, 25.0));
+                        p.line_to((45.0, 25.0));
+                        p
+                    },
+                    closed: false,
+                },
+            );
+            let mut st = Stroke::new(Color::BLACK, 1.0);
+            assert!(st.set_dash(&Stroke::ROUND_DOTS), "round caps come with the dots");
+            assert_eq!(st.cap, tracedraw_core::LineCap::Round);
+            if let Some(c) = cap {
+                st.cap = c;
+            }
+            s.stroke = Some(st);
+            doc.layer_mut(layer).unwrap().shapes.push(s);
+            let page = doc.pages[0].id;
+            // 4 pixels a millimetre: dots 4 pixels wide, 8 apart.
+            let img = render_page_image(&doc, page, 101.6).unwrap();
+            let row: Vec<bool> = (30..170)
+                .map(|x| img.pixel(x, 100).unwrap().red() < 128)
+                .collect();
+            let runs = row.windows(2).filter(|w| !w[0] && w[1]).count();
+            let longest = row
+                .split(|d| !*d)
+                .map(|r| r.len())
+                .max()
+                .unwrap_or(0);
+            (runs, longest)
+        };
+        let (runs, longest) = dots(None);
+        assert!((15..=19).contains(&runs), "{runs} dots");
+        assert!((2..=6).contains(&longest), "a dot {longest} pixels long");
+        let (runs, _) = dots(Some(tracedraw_core::LineCap::Butt));
+        assert_eq!(runs, 0, "flat caps draw no dots");
+    }
+
     #[test]
     fn dashed_hairline_does_not_panic() {
         let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(50.0, 50.0));

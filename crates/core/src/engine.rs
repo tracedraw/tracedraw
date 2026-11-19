@@ -820,6 +820,143 @@ mod tests {
         assert!(z != x && z != y && z.0 > y.0, "{x:?} {y:?} {z:?}");
     }
 
+    /// #3474 follow-up: an engine whose drawing renders keep taking (and
+    /// letting go) goes through edits, ids, undo, redo, amends, groups
+    /// and previews exactly as one nobody shares it with; every drawing
+    /// taken stays as it was taken, and no id is minted twice.
+    #[test]
+    fn sharing_the_drawing_changes_nothing_of_what_the_engine_does() {
+        use crate::geometry::Affine;
+        let mut shared = Engine::default();
+        let mut alone = Engine {
+            uid_state: shared.uid_state,
+            doc: Arc::new(Document::clone(&shared.doc)),
+            ..Engine::default()
+        };
+        let layer = shared.document().pages[0].layers[0].id;
+        let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = move |n: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed % n
+        };
+        let mut held: Vec<(Arc<Document>, Document)> = Vec::new();
+        let mut minted = std::collections::HashSet::new();
+        let mut shapes: Vec<ShapeId> = Vec::new();
+        let mut group = None;
+        for step in 0..3000 {
+            // Renders take the drawing and let it go at random.
+            match next(4) {
+                0 => {
+                    let d = shared.shared_document();
+                    let copy = Document::clone(&d);
+                    held.push((d, copy));
+                }
+                1 if !held.is_empty() => {
+                    let i = next(held.len() as u64) as usize;
+                    let (d, copy) = held.swap_remove(i);
+                    assert!(*d == copy, "step {step}: a drawing taken changed");
+                }
+                _ => {}
+            }
+            let op = next(12);
+            match op {
+                0..=2 => {
+                    let a = shared.new_shape_id();
+                    let b = alone.new_shape_id();
+                    assert_eq!(a, b, "step {step}");
+                    assert!(minted.insert(a), "step {step}: {a:?} minted twice");
+                    let shape = Shape::new(
+                        a,
+                        ShapeKind::Rect {
+                            rect: Rect::new(0.0, 0.0, 5.0 + step as f64, 5.0),
+                            radius: 0.0,
+                            corners: None,
+                        },
+                    );
+                    let cmd = Command::AddShape { layer, shape };
+                    assert_eq!(shared.run(&cmd).is_ok(), alone.run(&cmd).is_ok());
+                    shapes.push(a);
+                }
+                3 => {
+                    // An id minted and never used.
+                    let a = shared.new_shape_id();
+                    assert_eq!(a, alone.new_shape_id());
+                    assert!(minted.insert(a), "step {step}: {a:?} minted twice");
+                }
+                4 if !shapes.is_empty() => {
+                    let id = shapes[next(shapes.len() as u64) as usize];
+                    let cmd = Command::TransformShapes {
+                        shapes: vec![id],
+                        transform: Affine::translate((1.0, 2.0)),
+                    };
+                    assert_eq!(shared.run(&cmd).is_ok(), alone.run(&cmd).is_ok());
+                }
+                5 if !shapes.is_empty() => {
+                    let id = shapes[next(shapes.len() as u64) as usize];
+                    let cmd = Command::DeleteShapes { shapes: vec![id] };
+                    assert_eq!(shared.run(&cmd).is_ok(), alone.run(&cmd).is_ok());
+                }
+                6 => {
+                    let _ = (shared.undo().is_ok(), alone.undo().is_ok());
+                }
+                7 => {
+                    let _ = (shared.redo().is_ok(), alone.redo().is_ok());
+                }
+                8 if !shapes.is_empty() => {
+                    let id = shapes[next(shapes.len() as u64) as usize];
+                    let cmd = Command::SetOpacity {
+                        shapes: vec![id],
+                        opacity: 0.5,
+                    };
+                    assert_eq!(shared.amend(&cmd).is_ok(), alone.amend(&cmd).is_ok());
+                }
+                9 => match group.take() {
+                    None => group = Some((shared.begin_group(), alone.begin_group())),
+                    Some((a, b)) => {
+                        shared.end_group(a, "Group");
+                        alone.end_group(b, "Group");
+                    }
+                },
+                10 => {
+                    if shared.in_preview() {
+                        if next(2) == 0 {
+                            shared.withdraw_preview();
+                            alone.withdraw_preview();
+                        } else {
+                            shared.keep_preview();
+                            alone.keep_preview();
+                        }
+                    } else {
+                        shared.begin_preview();
+                        alone.begin_preview();
+                    }
+                }
+                _ => {
+                    // A command that fails leaves both as they were.
+                    let cmd = Command::TransformShapes {
+                        shapes: vec![ShapeId(u64::MAX)],
+                        transform: Affine::IDENTITY,
+                    };
+                    assert_eq!(shared.run(&cmd).is_ok(), alone.run(&cmd).is_ok());
+                }
+            }
+            // The counters may sit aside (ids minted while shared) until
+            // the next change: compared through `ids()` below.
+            let mut x = Document::clone(shared.document());
+            let mut y = Document::clone(alone.document());
+            x.set_ids(shared.ids().clone());
+            y.set_ids(alone.ids().clone());
+            assert!(x == y, "step {step} (op {op})");
+            assert_eq!(shared.revision(), alone.revision(), "step {step}");
+            assert_eq!(shared.ids().peek_next(), alone.ids().peek_next(), "step {step}");
+        }
+        for (d, copy) in held {
+            assert!(*d == copy, "a drawing taken changed");
+        }
+    }
+
     /// Each step has an id of its own, kept through undo, redo and
     /// amend; a step undone and replaced by another is gone for good.
     #[test]

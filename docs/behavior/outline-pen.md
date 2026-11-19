@@ -57,7 +57,7 @@ selected (the default outline) nothing is previewed.
 | Caps | butt | butt, round, square |
 | Corners | mitre | mitre, round, bevel |
 | Mitre limit | 45 degrees | 1 to 179 degrees; shown with mitred corners |
-| Dash | solid | presets dashed 4:2, dotted 1:1, dash dot 6:2:1:2, and custom line styles, in multiples of the width |
+| Dash | solid | presets dashed 4:2, dotted 1:1, dash dot 6:2:1:2, round dots 0:2 (dashes of no length, which round caps draw as dots two widths apart; choosing it turns flat caps round, #3404), and custom line styles, in multiples of the width |
 | Align dashes | off | fit the dashes to the corners and ends (with a dash pattern) |
 | Position | centred | outside, centred, inside |
 | Arrowheads | none / none | start and end; presets and custom heads, filled in the outline colour |

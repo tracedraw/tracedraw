@@ -4306,6 +4306,7 @@ impl App {
                 self.finish_guide_move(at);
             }
             Drag::FountainHandle { .. }
+            | Drag::PatternHandle { .. }
             | Drag::SymmetryLines { .. }
             | Drag::ContourDrag { .. }
             | Drag::OffsetShadow { .. }

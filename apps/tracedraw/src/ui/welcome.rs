@@ -104,6 +104,10 @@ pub(crate) fn news_row_id(version: &str) -> egui::Id {
 }
 
 pub fn welcome_screen(app: &mut App, ui: &mut Ui) {
+    // A start page, not a document: its title, captions and headings
+    // are not text to select, and a drag over them selects nothing
+    // (#3206). What's New's paragraphs stay selectable to copy.
+    ui.style_mut().interaction.selectable_labels = false;
     ui.add_space(8.0);
     // The tabs go on to a second line on a narrow screen (#1691).
     ui.horizontal_wrapped(|ui| {
@@ -704,7 +708,7 @@ fn news(ui: &mut Ui) -> Option<String> {
                     .id_salt(news_row_id(r.version))
                     .default_open(i == 0)
                     .show(ui, |ui| {
-                        ui.label(tr(r.body));
+                        ui.add(egui::Label::new(tr(r.body)).selectable(true));
                         ui.add_space(2.0);
                         let url = release_page(r.version);
                         if ui
@@ -1226,6 +1230,57 @@ mod tests {
         assert_eq!(
             news_click(&ctx, link.center()),
             Some(release_page(r.version))
+        );
+    }
+
+    /// #3206: the welcome screen's title and captions are not text to
+    /// select (no text cursor over them, a drag selects nothing); a
+    /// What's New paragraph still is, to copy from.
+    #[test]
+    fn the_title_is_not_selectable_text() {
+        let mut app = App::headless();
+        app.show_welcome = true;
+        let ctx = crate::theme::ui_context();
+        let frame = |app: &mut App, events: Vec<egui::Event>| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1200.0, 2000.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                egui::CentralPanel::default().show(ui, |ui| welcome_screen(app, ui));
+            });
+            out.textures_delta.clear();
+            let texts: Vec<(String, egui::Rect)> = out
+                .shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => Some((
+                        t.galley.text().to_string(),
+                        t.galley.rect.translate(t.pos.to_vec2()),
+                    )),
+                    _ => None,
+                })
+                .collect();
+            (out.platform_output.cursor_icon, texts)
+        };
+        let cursor_over = |app: &mut App, text: &str| {
+            let (_, texts) = frame(app, Vec::new());
+            let at = find(&texts, text).expect(text).center();
+            frame(app, vec![egui::Event::PointerMoved(at)]);
+            frame(app, vec![egui::Event::PointerMoved(at)]).0
+        };
+        for tab in [WelcomeTab::GetStarted, WelcomeTab::Learn] {
+            app.welcome_tab = tab;
+            assert_ne!(cursor_over(&mut app, "TraceDraw"), egui::CursorIcon::Text);
+        }
+        app.welcome_tab = WelcomeTab::News;
+        assert_eq!(
+            cursor_over(&mut app, &tr(RELEASES[0].body)),
+            egui::CursorIcon::Text
         );
     }
 }

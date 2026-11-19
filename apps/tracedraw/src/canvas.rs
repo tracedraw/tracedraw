@@ -82,12 +82,54 @@ pub fn page_screen_rect(app: &App) -> ERect {
     ERect::from_min_max(r.min.round(), r.max.round())
 }
 
+/// Where the page's shadow lies under a paper on screen, as Options set
+/// it (#3078): the paper moved by the shadow's offset.
+pub fn page_shadow_rect(app: &App, paper: ERect) -> ERect {
+    let [x, y] = app.settings.page_look.sanitized().shadow_offset;
+    paper.expand(1.0).translate(egui::vec2(x, y))
+}
+
+/// The page's shadow under `paper`, in the colour, offset and softness
+/// Options set (#3078); the theme's flat grey shadow as it always was
+/// when nothing is set.
+pub fn paint_page_shadow(app: &App, painter: &Painter, paper: ERect) {
+    let look = app.settings.page_look.sanitized();
+    let color = look
+        .shadow_color
+        .map(|[r, g, b, a]| Color32::from_rgba_unmultiplied(r, g, b, a))
+        .unwrap_or_else(Tokens::page_shadow);
+    let at = page_shadow_rect(app, paper);
+    if look.shadow_softness < 0.5 {
+        painter.rect_filled(at, 0.0, color);
+        return;
+    }
+    let [x, y] = look.shadow_offset;
+    let shadow = epaint::Shadow {
+        offset: [x.round() as i8, y.round() as i8],
+        blur: look.shadow_softness.round() as u8,
+        spread: 1,
+        color,
+    };
+    painter.add(shadow.as_shape(paper, 0.0));
+}
+
+/// The page border's stroke as Options set it (#3078): the theme's grey
+/// one-pixel line when nothing is set.
+pub fn page_border_stroke(app: &App) -> EStroke {
+    let look = app.settings.page_look.sanitized();
+    let color = look
+        .border_color
+        .map(|[r, g, b, a]| Color32::from_rgba_unmultiplied(r, g, b, a))
+        .unwrap_or_else(Tokens::page_border);
+    EStroke::new(look.border_width, color)
+}
+
 /// True when a screen point is on the page border (within 3 px) or on
 /// its shadow: double-clicking there opens the page size options.
 pub fn on_page_frame(app: &App, s: Pos2) -> bool {
     let paper = page_screen_rect(app);
     let near_border = paper.expand(3.0).contains(s) && !paper.shrink(3.0).contains(s);
-    let shadow = paper.expand(1.0).translate(Tokens::PAGE_SHADOW_OFFSET);
+    let shadow = page_shadow_rect(app, paper);
     near_border || (shadow.contains(s) && !paper.contains(s))
 }
 
@@ -131,6 +173,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     draw_symmetry_lines(app, painter, rect);
     draw_anchors(app, painter);
     draw_fountain_handles(app, painter);
+    draw_pattern_handles(app, painter);
     draw_shadow_handles(app, painter);
     draw_shadow_edge_hint(app, painter);
     draw_contour_handles(app, painter);
@@ -751,11 +794,7 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         ERect::from_min_max(r.min.round(), r.max.round())
     };
     if app.show_page_shadow {
-        painter.rect_filled(
-            paper.expand(1.0).translate(Tokens::PAGE_SHADOW_OFFSET),
-            0.0,
-            Tokens::page_shadow(),
-        );
+        paint_page_shadow(app, painter, paper);
     }
     if others {
         crate::multipage::draw_other_papers(app, painter, rect);
@@ -765,7 +804,7 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         painter.rect_stroke(
             paper,
             0.0,
-            EStroke::new(1.0, Tokens::page_border()),
+            page_border_stroke(app),
             epaint::StrokeKind::Outside,
         );
     }
@@ -1389,6 +1428,40 @@ fn draw_symmetry_lines(app: &App, painter: &Painter, rect: ERect) {
         let q = view.to_screen(h);
         painter.circle_filled(q, 4.5, Color32::WHITE);
         painter.circle_stroke(q, 4.5, EStroke::new(1.5, blue));
+    }
+}
+
+/// Interactive Fill on a pattern fill (#3379): the first tile's outline
+/// dashed, its corner as a square and the ends of its bottom and left
+/// sides as round nodes on lines from the corner.
+fn draw_pattern_handles(app: &App, painter: &Painter) {
+    if app.tool != Tool::InteractiveFill {
+        return;
+    }
+    let Some((_, p, object)) = app.selected_pattern() else {
+        return;
+    };
+    let view = &app.view;
+    let line = EStroke::new(1.0, Tokens::SELECTION);
+    let mut outline: Vec<egui::Pos2> = crate::pattern_fill_tool::pattern_tile_outline(&p, object)
+        .iter()
+        .map(|q| view.to_screen(*q))
+        .collect();
+    if outline.iter().any(|q| !q.x.is_finite() || !q.y.is_finite()) {
+        return;
+    }
+    outline.push(outline[0]);
+    dashed_polyline(painter, &outline, line, 4.0, 3.0);
+    let hs = crate::pattern_fill_tool::pattern_handles(&p, object);
+    let [o, w, h] = hs.map(|(_, q)| view.to_screen(q));
+    painter.line_segment([o, w], line);
+    painter.line_segment([o, h], line);
+    let rect = ERect::from_center_size(o, egui::vec2(9.0, 9.0));
+    painter.rect_filled(rect, 0.0, Color32::WHITE);
+    painter.rect_stroke(rect, 0.0, line, egui::StrokeKind::Outside);
+    for q in [w, h] {
+        painter.circle_filled(q, 4.5, Color32::WHITE);
+        painter.circle_stroke(q, 4.5, line);
     }
 }
 
@@ -4339,6 +4412,100 @@ mod tests {
         let old: crate::settings::ViewPrefs =
             serde_json::from_str(r#"{"page_border": false}"#).expect("old");
         assert!(!old.page_border && old.page_shadow);
+    }
+
+    /// #3078: the page's shadow and border take the colour, offset,
+    /// softness and width Options set; unset, they look as they always
+    /// did; and the look is kept with the settings.
+    #[test]
+    fn the_page_shadow_and_border_look_as_options_set() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        app.show_welcome = false;
+        // The page's shadow and border as drawn: the flat shadow's
+        // rectangle, a soft shadow (a mesh), and the border's stroke.
+        let drawn = |app: &mut App| {
+            let mut found = (None, false, None);
+            for _ in 0..2 {
+                let input = egui::RawInput {
+                    screen_rect: Some(ERect::from_min_size(Pos2::ZERO, egui::vec2(1600.0, 1000.0))),
+                    ..Default::default()
+                };
+                let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+                out.textures_delta.clear();
+                let r = app.view.rect_to_screen(app.page_rect());
+                let paper = ERect::from_min_max(r.min.round(), r.max.round());
+                let shadow_at = page_shadow_rect(app, paper);
+                found = (None, false, None);
+                fn walk(
+                    s: &egui::Shape,
+                    paper: ERect,
+                    shadow_at: ERect,
+                    found: &mut (Option<Color32>, bool, Option<EStroke>),
+                ) {
+                    match s {
+                        egui::Shape::Vec(v) => {
+                            v.iter().for_each(|s| walk(s, paper, shadow_at, found))
+                        }
+                        egui::Shape::Rect(r) => {
+                            if r.rect == shadow_at && r.fill != Color32::TRANSPARENT {
+                                if r.blur_width > 0.0 {
+                                    found.1 = true;
+                                } else {
+                                    found.0 = Some(r.fill);
+                                }
+                            }
+                            if r.rect == paper && r.stroke.width > 0.0 {
+                                found.2 = Some(r.stroke);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                out.shapes
+                    .iter()
+                    .for_each(|c| walk(&c.shape, paper, shadow_at, &mut found));
+            }
+            found
+        };
+        let (flat, _, border) = drawn(&mut app);
+        assert_eq!(flat, Some(Tokens::page_shadow()), "the theme's shadow");
+        assert_eq!(border, Some(EStroke::new(1.0, Tokens::page_border())));
+        app.settings.page_look = crate::settings::PageLook {
+            shadow_color: Some([10, 20, 30, 128]),
+            shadow_offset: [12.0, 9.0],
+            shadow_softness: 0.0,
+            border_color: Some([200, 0, 0, 255]),
+            border_width: 3.0,
+        };
+        let (flat, _, border) = drawn(&mut app);
+        assert_eq!(flat, Some(Color32::from_rgba_unmultiplied(10, 20, 30, 128)));
+        assert_eq!(
+            border,
+            Some(EStroke::new(3.0, Color32::from_rgb(200, 0, 0))),
+            "the border's colour and width"
+        );
+        // Soft: a blurred shadow, no longer a hard rectangle.
+        app.settings.page_look.shadow_softness = 16.0;
+        let (flat, soft, _) = drawn(&mut app);
+        assert!(flat.is_none() && soft, "a soft shadow");
+        // Kept with the settings; values out of range come back usable.
+        let json = serde_json::to_string(&app.settings).expect("json");
+        let back: crate::settings::Settings = serde_json::from_str(&json).expect("back");
+        assert_eq!(back.page_look, app.settings.page_look);
+        let wild = crate::settings::PageLook {
+            shadow_offset: [f32::NAN, 1000.0],
+            shadow_softness: -4.0,
+            border_width: 0.0,
+            ..Default::default()
+        }
+        .sanitized();
+        assert_eq!(
+            wild.shadow_offset,
+            [6.0, crate::settings::PageLook::MAX_OFFSET]
+        );
+        assert_eq!(wild.shadow_softness, 0.0);
+        assert_eq!(wild.border_width, 0.5);
     }
 
     /// The parts of the window outside the pages: bands around one page,

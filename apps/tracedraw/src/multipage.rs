@@ -730,13 +730,7 @@ pub fn draw_other_papers(app: &App, painter: &Painter, rect: ERect) {
         .collect();
     if app.show_page_shadow {
         for paper in &papers {
-            painter.rect_filled(
-                paper
-                    .expand(1.0)
-                    .translate(crate::theme::Tokens::PAGE_SHADOW_OFFSET),
-                0.0,
-                crate::theme::Tokens::page_shadow(),
-            );
+            crate::canvas::paint_page_shadow(app, painter, *paper);
         }
     }
     for paper in &papers {
@@ -864,7 +858,7 @@ pub fn draw_other_pages(
                 painter.rect_stroke(
                     paper,
                     0.0,
-                    egui::Stroke::new(1.0, crate::theme::Tokens::page_border()),
+                    crate::canvas::page_border_stroke(app),
                     egui::StrokeKind::Outside,
                 );
             }

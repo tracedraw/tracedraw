@@ -4109,6 +4109,10 @@ fn outline_editor_mixed(
                 (vec![4.0, 2.0], "docker.dash_dashed"),
                 (vec![1.0, 1.0], "docker.dash_dotted"),
                 (vec![6.0, 2.0, 1.0, 2.0], "docker.dash_dash_dot"),
+                (
+                    tracedraw_core::Stroke::ROUND_DOTS.to_vec(),
+                    "docker.dash_round_dots",
+                ),
             ] {
                 if ui
                     .selectable_label(!mixed && s.dash == d, tr(n))
@@ -4118,7 +4122,10 @@ fn outline_editor_mixed(
                     ))
                     .clicked()
                 {
-                    s.dash = d;
+                    // Round dots take round caps (#3404).
+                    if s.set_dash(&d) {
+                        touched.push(StrokeField::Cap);
+                    }
                     touched.push(StrokeField::Dash);
                     changed = true;
                 }

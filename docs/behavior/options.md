@@ -496,3 +496,15 @@ system within seconds and no frame waits for the system:
 
 Menus, lists and dialogs appear at once, without fading in.
 
+## Page shadow and border look
+
+(#3078, `ui/dialogs.rs` `page_look_editor`, `Settings::page_look`) Under
+Show page border and Show page shadow in the page size options, "Page
+shadow and border look" sets how both look on screen (never in print or
+exports): the shadow's colour with its opacity, its offset right and
+down (-40 to 40 px), its softness (0 to 40 px, 0 a hard edge), the
+border's colour with its opacity and its width (0.5 to 8 px). Colours
+left unset follow the theme; Theme default puts everything back. The
+look applies to every page shown, the pages beside the current one in
+the Multipage View too, and is kept with the settings
+(`canvas::tests::the_page_shadow_and_border_look_as_options_set`).

@@ -2522,7 +2522,7 @@ pub fn outline_part(app: &mut App, ui: &mut Ui) {
                 {
                     if defaults {
                         let mut st = stroke.clone().unwrap_or_default();
-                        st.dash = d.to_vec();
+                        st.set_dash(d);
                         app.request_default_change(crate::defaults::DefaultChange::Outline(Some(
                             st,
                         )));
@@ -2535,7 +2535,8 @@ pub fn outline_part(app: &mut App, ui: &mut Ui) {
                         .iter()
                         .filter_map(|s| {
                             let mut st = s.stroke.clone()?;
-                            st.dash = d.to_vec();
+                            // Round dots take round caps (#3404).
+                            st.set_dash(d);
                             Some(Command::SetStroke {
                                 shapes: vec![s.id],
                                 stroke: Some(st),
@@ -2641,6 +2642,8 @@ pub(crate) const DASHES: &[&[f64]] = &[
     &[8.0, 3.0],
     &[6.0, 2.0, 1.0, 2.0],
     &[6.0, 2.0, 1.0, 2.0, 1.0, 2.0],
+    // Round dots (#3404): dashes of no length with round caps.
+    &tracedraw_core::Stroke::ROUND_DOTS,
 ];
 
 pub(crate) fn dash_label(d: &[f64]) -> String {
@@ -2651,7 +2654,12 @@ pub(crate) fn dash_label(d: &[f64]) -> String {
     let mut s = String::new();
     for (i, v) in d.iter().cycle().take(d.len() * 3).enumerate() {
         let n = (*v / 2.0).round().clamp(1.0, 4.0) as usize;
-        let c = if i % 2 == 0 { '\u{2015}' } else { ' ' };
+        let c = match (i % 2 == 0, *v <= 0.0) {
+            // A dash of no length is a round dot (#3404).
+            (true, true) => '\u{2022}',
+            (true, false) => '\u{2015}',
+            _ => ' ',
+        };
         for _ in 0..n {
             s.push(c);
         }

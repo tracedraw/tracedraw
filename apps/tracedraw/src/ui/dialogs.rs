@@ -4381,6 +4381,7 @@ pub(crate) fn page_size_page(app: &mut App, ui: &mut Ui) {
                 "options.show_page_shadow",
                 "options.show_page_shadow_tip",
             ));
+        page_look_editor(ui, &mut app.settings.page_look);
         ui.add_space(6.0);
         if ui
             .add_sized(
@@ -10777,4 +10778,89 @@ fn resample_file_section(
     {
         app.resample_save_as(st);
     }
+}
+
+/// How the page's shadow and border look (#3078): the shadow's colour
+/// and opacity, offset and softness, the border's colour and width, and
+/// a button back to the theme's look. Only the screen changes.
+pub(crate) fn page_look_editor(ui: &mut egui::Ui, look: &mut crate::settings::PageLook) {
+    use crate::settings::PageLook;
+    let tip = |key: &str| crate::ui::tips::pair(key, "options.page_look_tip");
+    egui::CollapsingHeader::new(tr("options.page_look"))
+        .id_salt("options_page_look")
+        .show(ui, |ui| {
+            ui.label(egui::RichText::new(tr("options.page_look_tip")).weak());
+            let theme = |c: egui::Color32| c.to_srgba_unmultiplied();
+            egui::Grid::new("options_page_look_grid")
+                .num_columns(2)
+                .spacing([12.0, 6.0])
+                .show(ui, |ui| {
+                    ui.label(tr("options.page_shadow_color"));
+                    let mut c = look
+                        .shadow_color
+                        .unwrap_or_else(|| theme(crate::theme::Tokens::page_shadow()));
+                    if ui
+                        .color_edit_button_srgba_unmultiplied(&mut c)
+                        .rich_tip(tip("options.page_shadow_color"))
+                        .changed()
+                    {
+                        look.shadow_color = Some(c);
+                    }
+                    ui.end_row();
+                    ui.label(tr("options.page_shadow_offset"));
+                    ui.horizontal(|ui| {
+                        for v in look.shadow_offset.iter_mut() {
+                            ui.add(
+                                egui::DragValue::new(v)
+                                    .range(-PageLook::MAX_OFFSET..=PageLook::MAX_OFFSET)
+                                    .speed(0.25)
+                                    .suffix(" px"),
+                            )
+                            .rich_tip(tip("options.page_shadow_offset"));
+                        }
+                    });
+                    ui.end_row();
+                    ui.label(tr("options.page_shadow_softness"));
+                    ui.add(
+                        egui::Slider::new(&mut look.shadow_softness, 0.0..=PageLook::MAX_SOFTNESS)
+                            .suffix(" px"),
+                    )
+                    .rich_tip(tip("options.page_shadow_softness"));
+                    ui.end_row();
+                    ui.label(tr("options.page_border_color"));
+                    let mut c = look
+                        .border_color
+                        .unwrap_or_else(|| theme(crate::theme::Tokens::page_border()));
+                    if ui
+                        .color_edit_button_srgba_unmultiplied(&mut c)
+                        .rich_tip(tip("options.page_border_color"))
+                        .changed()
+                    {
+                        look.border_color = Some(c);
+                    }
+                    ui.end_row();
+                    ui.label(tr("options.page_border_width"));
+                    ui.add(
+                        egui::DragValue::new(&mut look.border_width)
+                            .range(0.5..=PageLook::MAX_BORDER)
+                            .speed(0.1)
+                            .suffix(" px"),
+                    )
+                    .rich_tip(tip("options.page_border_width"));
+                    ui.end_row();
+                });
+            if ui
+                .add_enabled(
+                    !look.is_default(),
+                    egui::Button::new(tr("options.page_look_reset")),
+                )
+                .rich_tip(tip("options.page_look_reset"))
+                .clicked()
+            {
+                *look = PageLook::default();
+            }
+        })
+        .header_response
+        .rich_tip(tip("options.page_look"));
+    *look = look.sanitized();
 }

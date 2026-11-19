@@ -460,6 +460,17 @@ impl App {
     /// the pick distance, it takes the whole fill, which the drag then
     /// moves by its line. False when it is on neither.
     pub fn begin_fountain_drag(&mut self, at: Point, press: Point) -> bool {
+        // A node of a pattern fill's first tile (#3379).
+        if let Some(handle) = self
+            .pattern_handle_at(at)
+            .or_else(|| self.pattern_handle_at(press))
+        {
+            self.drag = crate::app::Drag::PatternHandle {
+                handle,
+                begun: false,
+            };
+            return true;
+        }
         let held = self
             .fountain_handle_at(at)
             .or_else(|| self.fountain_handle_at(press));
@@ -515,6 +526,15 @@ impl App {
     pub fn fountain_drag_to(&mut self, p: Point, ctrl: bool) -> bool {
         use crate::app::Drag;
         match self.drag {
+            Drag::PatternHandle { handle, begun } => {
+                let p = self.snap_point(p);
+                self.drag_pattern_handle(handle, p, begun);
+                self.drag = Drag::PatternHandle {
+                    handle,
+                    begun: true,
+                };
+                true
+            }
             Drag::FountainHandle { handle, begun } => {
                 // A node snaps as the pointer does: onto the object's own
                 // corners and centre, other objects, guidelines and the
@@ -617,6 +637,11 @@ impl App {
     /// white, #2498), the skew handle square to the axis.
     pub fn fill_from_drag(&mut self, id: ShapeId, from: Point, to: Point) {
         use tracedraw_core::geometry::Shape as _;
+        // A pattern fill (a bitmap one too) keeps its tiles and lays
+        // them along the drag, not a gradient in their place (#3379).
+        if self.pattern_from_drag(id, from, to) {
+            return;
+        }
         let Some(s) = self.doc().shape_on_page(id) else {
             return;
         };

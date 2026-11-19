@@ -565,6 +565,13 @@ pub enum Drag {
         /// The drag's undo step is recorded (the next moves join it).
         begun: bool,
     },
+    /// Moving a node of a pattern fill's first tile (Interactive Fill,
+    /// #3379).
+    PatternHandle {
+        handle: crate::pattern_fill_tool::PatternHandle,
+        /// The drag's undo step is recorded (the next moves join it).
+        begun: bool,
+    },
     /// Moving the whole fill (or transparency) by its line: the press
     /// point and the start node's place then (Interactive Fill,
     /// Transparency).

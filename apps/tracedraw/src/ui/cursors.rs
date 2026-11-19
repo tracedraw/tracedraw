@@ -432,10 +432,14 @@ pub fn for_tool_with_ctrl(
         Tool::InteractiveFill | Tool::Transparency
             if matches!(
                 app.drag,
-                Drag::FountainHandle { .. } | Drag::FountainLine { .. }
+                Drag::FountainHandle { .. }
+                    | Drag::FountainLine { .. }
+                    | Drag::PatternHandle { .. }
             ) || pos.is_some_and(|s| {
                 let p = app.view.to_page(s);
-                app.fountain_handle_at(p).is_some() || app.fountain_on_line(p)
+                app.fountain_handle_at(p).is_some()
+                    || app.fountain_on_line(p)
+                    || app.pattern_handle_at(p).is_some()
             }) =>
         {
             ToolCursor::System(egui::CursorIcon::Move)

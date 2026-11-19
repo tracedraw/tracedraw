@@ -381,6 +381,10 @@ pub struct Settings {
     pub touch_selection_bar: bool,
     #[serde(default = "default_true")]
     pub preview_page_border: bool,
+    /// Options > Document > Page size: how the page's shadow and border
+    /// look on screen (#3078).
+    #[serde(default, skip_serializing_if = "PageLook::is_default")]
+    pub page_look: PageLook,
     /// Options > Edit: Ctrl constrains rotation and line angles to
     /// multiples of this angle (degrees).
     #[serde(default = "default_constrain_angle")]
@@ -2170,6 +2174,64 @@ pub fn default_recent_font_count() -> usize {
     5
 }
 
+/// How the page's shadow and border look on the drawing window (#3078):
+/// only on screen, never printed or exported. A colour left unset follows
+/// the theme.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PageLook {
+    /// The shadow's colour with its opacity (RGBA); the theme's when unset.
+    pub shadow_color: Option<[u8; 4]>,
+    /// How far the shadow lies right and down, screen pixels.
+    pub shadow_offset: [f32; 2],
+    /// How soft the shadow's edge is, screen pixels (0 = a hard edge).
+    pub shadow_softness: f32,
+    /// The border's colour with its opacity (RGBA); the theme's when unset.
+    pub border_color: Option<[u8; 4]>,
+    /// The border's width, screen pixels.
+    pub border_width: f32,
+}
+
+impl Default for PageLook {
+    fn default() -> Self {
+        PageLook {
+            shadow_color: None,
+            shadow_offset: [6.0, 4.0],
+            shadow_softness: 0.0,
+            border_color: None,
+            border_width: 1.0,
+        }
+    }
+}
+
+impl PageLook {
+    pub const MAX_OFFSET: f32 = 40.0;
+    pub const MAX_SOFTNESS: f32 = 40.0;
+    pub const MAX_BORDER: f32 = 8.0;
+
+    pub fn is_default(&self) -> bool {
+        *self == PageLook::default()
+    }
+
+    /// Every value usable: finite and within its range.
+    pub fn sanitized(mut self) -> PageLook {
+        let fix = |v: f32, lo: f32, hi: f32, or: f32| {
+            if v.is_finite() {
+                v.clamp(lo, hi)
+            } else {
+                or
+            }
+        };
+        let d = PageLook::default();
+        for (v, o) in self.shadow_offset.iter_mut().zip(d.shadow_offset) {
+            *v = fix(*v, -Self::MAX_OFFSET, Self::MAX_OFFSET, o);
+        }
+        self.shadow_softness = fix(self.shadow_softness, 0.0, Self::MAX_SOFTNESS, 0.0);
+        self.border_width = fix(self.border_width, 0.5, Self::MAX_BORDER, 1.0);
+        self
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Settings {
@@ -2217,6 +2279,7 @@ impl Default for Settings {
             touch_keys: true,
             touch_selection_bar: true,
             preview_page_border: true,
+            page_look: PageLook::default(),
             constrain_angle: default_constrain_angle(),
             symmetry_show_lines: true,
             symmetry_full_preview: false,
