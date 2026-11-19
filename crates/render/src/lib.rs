@@ -85,10 +85,12 @@ impl ViewTransform {
     }
 }
 
-/// Objects to draw displaced by a transform (live drag preview).
+/// Objects to draw displaced by a transform (live drag preview). The ids
+/// are a set: every object of the page is looked up in it each frame, so
+/// a drag of tens of thousands of objects stays quick (#3601).
 #[derive(Debug, Clone, Default)]
 pub struct Preview {
-    pub shapes: Vec<ShapeId>,
+    pub shapes: std::collections::HashSet<ShapeId>,
     pub transform: Affine,
 }
 
@@ -6734,7 +6736,7 @@ mod tests {
         let pm = render_page(&doc, page, &opts).unwrap();
         assert_eq!(px(&pm, 15, 85), (255, 0, 0));
         opts.preview = Some(Preview {
-            shapes: vec![tracedraw_core::ShapeId(1)],
+            shapes: [tracedraw_core::ShapeId(1)].into_iter().collect(),
             transform: Affine::translate((0.0, 40.0)),
         });
         let pm = render_page(&doc, page, &opts).unwrap();

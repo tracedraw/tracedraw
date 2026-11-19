@@ -673,7 +673,10 @@ impl Raster {
             width: w,
             height: h,
             view: vt,
-            preview: preview.map(|(shapes, transform)| Preview { shapes, transform }),
+            preview: preview.map(|(shapes, transform)| Preview {
+                shapes: shapes.into_iter().collect(),
+                transform,
+            }),
             wireframe,
             simulate_overprints,
             complex_effects,
