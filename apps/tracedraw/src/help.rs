@@ -58,6 +58,7 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::PageSpacing { .. } => "pages-layout/multipage-view#page-spacing",
         Dialog::OutlineOffset { .. } => "lines-shapes/shaping#outline-offset",
         Dialog::GatherPages { .. } => "pages-layout/pages",
+        Dialog::ArrangeGrid { .. } => "objects/align-distribute#grid",
         Dialog::MultipagePages { .. } => "pages-layout/multipage-view#choose-pages",
         Dialog::InsertPage { .. } => "pages-layout/pages#insert-page",
         Dialog::DeletePage { .. } => "pages-layout/pages#delete-page",
@@ -71,7 +72,10 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::EditFill(_) => "color/fills#edit-fill",
         Dialog::TableCount(_) => "objects/tables",
         Dialog::OldCdrVersion { .. } => "get-started/open-and-save#save-as",
-        Dialog::RenameLayer { .. } | Dialog::LayerProperties(_) | Dialog::RenameObject { .. } => {
+        Dialog::RenameLayer { .. }
+        | Dialog::LayerProperties(_)
+        | Dialog::RenameObject { .. }
+        | Dialog::RenameGuide { .. } => {
             "objects/objects-and-layers#rename"
         }
         Dialog::DocumentProperties(_) => "pages-layout/document-properties",

@@ -1503,7 +1503,7 @@ pub fn guide_bar(app: &mut App, ui: &mut Ui) {
     use tracedraw_core::document::GuideLine;
     let guides = app.page_guides();
     let single = match app.selected_guides.as_slice() {
-        [i] => guides.get(*i).copied(),
+        [i] => guides.get(*i).cloned(),
         _ => None,
     };
     let Some(g) = single else {

@@ -1331,6 +1331,14 @@ pub enum Dialog {
         resize: bool,
         delete: bool,
     },
+    /// Object > Align and Distribute > Arrange in Grid (#3489): how many
+    /// objects go in a row and the gaps between the cells, in the
+    /// drawing's units.
+    ArrangeGrid {
+        columns: usize,
+        gap_x: f64,
+        gap_y: f64,
+    },
     /// Object > Outline Offset (#2622): the distance, in the drawing's
     /// units, and whether the new outline goes outside or inside.
     OutlineOffset {
@@ -1375,6 +1383,12 @@ pub enum Dialog {
     LayerProperties(crate::ui::objects_docker::LayerProps),
     RenameObject {
         shape: tracedraw_core::ShapeId,
+        name: String,
+    },
+    /// A guideline's Rename from its menu in the Objects docker (#3574):
+    /// its index among the guidelines being edited.
+    RenameGuide {
+        index: usize,
         name: String,
     },
     /// How a PDF's text is read in (#386).
@@ -2233,6 +2247,53 @@ pub fn show(app: &mut App, ctx: &Context) {
                 }
             });
         }
+        Dialog::ArrangeGrid {
+            columns,
+            gap_x,
+            gap_y,
+        } => {
+            let u = app.units;
+            window(ctx, tr("dialog.arrange_grid")).show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(tr("dialog.arrange_grid_columns"));
+                    ui.add(
+                        crate::ui::field::NumField::new(columns)
+                            .range(1..=1000)
+                            .speed(0.1),
+                    )
+                    .rich_tip(crate::ui::tips::pair(
+                        "dialog.arrange_grid_columns",
+                        "dialog.arrange_grid_columns_desc",
+                    ));
+                });
+                for (label, desc, gap) in [
+                    (
+                        "dialog.arrange_grid_gap_h",
+                        "dialog.arrange_grid_gap_h_desc",
+                        &mut *gap_x,
+                    ),
+                    (
+                        "dialog.arrange_grid_gap_v",
+                        "dialog.arrange_grid_gap_v_desc",
+                        &mut *gap_y,
+                    ),
+                ] {
+                    ui.horizontal(|ui| {
+                        ui.label(tr(label));
+                        ui.add(
+                            crate::ui::field::NumField::new(gap)
+                                .range(0.0..=u.from_mm(1000.0))
+                                .speed(0.1)
+                                .suffix(format!(" {}", u.short())),
+                        )
+                        .rich_tip(crate::ui::tips::pair(label, desc));
+                    });
+                }
+                if ok_cancel(ui, &mut close) {
+                    app.arrange_in_grid(*columns, u.to_mm(*gap_x), u.to_mm(*gap_y));
+                }
+            });
+        }
         Dialog::OutlineOffset { distance, outside } => {
             let u = app.units;
             window(ctx, tr("dialog.outline_offset")).show(ctx, |ui| {
@@ -2522,6 +2583,17 @@ pub fn show(app: &mut App, ctx: &Context) {
                         shape: *shape,
                         name: (!trimmed.is_empty()).then(|| trimmed.to_string()),
                     });
+                }
+            });
+        }
+        Dialog::RenameGuide { index, name } => {
+            window(ctx, tr("guides.rename_title")).show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(tr("dialog.object_name"));
+                    ui.text_edit_singleline(name);
+                });
+                if ok_cancel(ui, &mut close) {
+                    app.rename_guide(*index, name);
                 }
             });
         }
@@ -9043,6 +9115,11 @@ pub(crate) mod tests {
             Dialog::OutlineOffset {
                 distance: 2.0,
                 outside: true,
+            },
+            Dialog::ArrangeGrid {
+                columns: 3,
+                gap_x: 2.0,
+                gap_y: 2.0,
             },
             Dialog::GatherPages {
                 gap: 5.0,

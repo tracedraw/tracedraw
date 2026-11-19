@@ -785,7 +785,7 @@ impl App {
             // The page's own guidelines and the master page's (#1928),
             // those their eye shows (#1775).
             for g in doc.guides_on_page(page.id).unwrap_or_default().iter() {
-                let mut g = *g;
+                let mut g = g.clone();
                 g.line = shifted(g.line, r.x0, r.y0);
                 out.push((g, r));
             }

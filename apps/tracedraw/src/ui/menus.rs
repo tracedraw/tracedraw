@@ -2921,6 +2921,9 @@ fn file_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.file.document_properties", "", doc) {
         app.dialog = Dialog::DocumentProperties(Box::default());
     }
+    if item(ui, "menu.edit.copy_visible_area", "", app.drawing_shown()) {
+        app.copy_visible_area();
+    }
     sep(ui);
     if item(ui, "menu.file.exit", "Alt+F4", true) {
         app.request_exit();
@@ -3804,6 +3807,14 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
             if item(ui, key, shortcut, has) {
                 app.align(a);
             }
+        }
+        if item(ui, "menu.object.arrange_in_grid", "", app.selection.len() >= 2) {
+            let n = app.selection.len();
+            app.dialog = Dialog::ArrangeGrid {
+                columns: (n as f64).sqrt().ceil().max(1.0) as usize,
+                gap_x: app.units.from_mm(2.0),
+                gap_y: app.units.from_mm(2.0),
+            };
         }
         sep(ui);
         let three = app.selection.len() >= 3;

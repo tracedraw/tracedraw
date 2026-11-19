@@ -519,6 +519,28 @@ pub fn write_text(text: &str) -> bool {
     true
 }
 
+/// Put a picture on the system clipboard (best effort); whether it went
+/// there.
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+pub fn write_image(img: image::RgbaImage) -> bool {
+    let (w, h) = img.dimensions();
+    with_clipboard(|cb| {
+        cb.set_image(arboard::ImageData {
+            width: w as usize,
+            height: h as usize,
+            bytes: img.into_raw().into(),
+        })
+        .is_ok()
+    })
+    .unwrap_or(false)
+}
+
+/// No picture goes on the clipboard from the browser or Android builds.
+#[cfg(any(target_arch = "wasm32", target_os = "android"))]
+pub fn write_image(_img: image::RgbaImage) -> bool {
+    false
+}
+
 /// A file a browser handed over for a paste: a picture or a file copied
 /// in another application (#1403).
 #[derive(Debug, Clone, Default)]
@@ -692,6 +714,46 @@ impl App {
     )))]
     fn offer_copy(&self, _svg: &str) -> bool {
         false
+    }
+
+    /// What the drawing window shows of the current page and the desktop
+    /// around it, as a picture at the screen's size (one pixel a screen
+    /// point), white where nothing is drawn: for Edit > Copy Visible
+    /// Area (#3527). `None` before the window has a size.
+    pub fn visible_area_image(&self) -> Option<image::RgbaImage> {
+        let r = self.canvas_rect;
+        if !(r.width() >= 1.0 && r.height() >= 1.0) || !r.is_finite() {
+            return None;
+        }
+        let area = self.view.visible_page_rect(r);
+        let dpi = r.width() as f64 / area.width().max(1e-9) * 25.4;
+        let pm = tracedraw_render::render_area_image(self.doc(), self.page, area, dpi)?;
+        let mut img = image::RgbaImage::new(pm.width(), pm.height());
+        for (px, out) in pm.pixels().iter().zip(img.pixels_mut()) {
+            let c = px.demultiply();
+            *out = image::Rgba([c.red(), c.green(), c.blue(), c.alpha()]);
+        }
+        Some(img)
+    }
+
+    /// Edit > Copy Visible Area (#3527): what the drawing window shows,
+    /// as a picture on the system clipboard, for a chat or a mail; the
+    /// copy kept here for Paste stays as it was.
+    pub fn copy_visible_area(&mut self) {
+        let Some(img) = self.visible_area_image() else {
+            return;
+        };
+        let (w, h) = img.dimensions();
+        if write_image(img) {
+            self.status = trf(
+                "status.visible_area_copied",
+                &[("w", &w.to_string()), ("h", &h.to_string())],
+            );
+            // The system clipboard no longer holds the last copy made here.
+            self.mark_system_clipboard(None);
+        } else {
+            self.status = tr("status.visible_area_not_copied");
+        }
     }
 
     /// Remember what the system clipboard holds right after a copy here
@@ -1550,6 +1612,33 @@ mod tests {
     fn svg_text_goes_only_without_a_picture() {
         assert!(!svg_text_beside(true));
         assert!(svg_text_beside(false));
+    }
+
+    /// Copy Visible Area (#3527) takes the picture the drawing window
+    /// shows, at the window's size, with the shapes in it drawn.
+    #[test]
+    fn the_visible_area_is_a_picture_the_size_of_the_window() {
+        use tracedraw_core::document::ShapeKind;
+        use tracedraw_core::style::Fill;
+        let mut app = App::headless();
+        app.canvas_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 300.0));
+        let page = app.page_rect();
+        app.view.fit(page, app.canvas_rect);
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: page,
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("a layer");
+        app.select(vec![id]);
+        app.apply_fill(Fill::Solid(tracedraw_core::color::Color::BLACK));
+        let img = app.visible_area_image().expect("a picture");
+        let (w, h) = img.dimensions();
+        assert!((399..=401).contains(&w) && (299..=301).contains(&h), "{w}x{h}");
+        assert!(img.pixels().any(|p| p.0[3] == 255 && p.0[0] < 20), "the rectangle shows");
+        app.canvas_rect = egui::Rect::NOTHING;
+        assert!(app.visible_area_image().is_none());
     }
 
     /// Text another program copied pastes as one step to undo: the text,

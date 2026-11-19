@@ -109,6 +109,9 @@ struct Actions {
     /// what was done: its eye (hide or show), its padlock, or a click
     /// that selects it (#1775).
     guide_row: Option<(bool, usize, GuideRowAct)>,
+    /// A command of a Guides row's own right-click menu, on all of its
+    /// guidelines: its set (master page or not) and the command (#3578).
+    guides_cmd: Option<(bool, GuidesCmd)>,
     /// A layer moved to another page, from its menu (#1477).
     layer_to_page: Option<(LayerId, PageId)>,
     /// A layer's Properties, from its menu (#1477).
@@ -128,7 +131,10 @@ struct Actions {
 enum GuideRowAct {
     Hide(bool),
     Lock(bool),
-    Select,
+    /// A click: alone it selects the guideline; with Ctrl it is added to
+    /// or taken from the selection, with Shift the guidelines from the
+    /// last one clicked to it are selected (#3575).
+    Select { ctrl: bool, shift: bool },
     /// A command of its right-click menu (#3012).
     Menu(GuideCmd),
 }
@@ -143,6 +149,20 @@ enum GuideCmd {
     Paste,
     Lock(bool),
     Hide(bool),
+    /// Name the guideline (#3574).
+    Rename,
+}
+
+/// The commands of a Guides row's right-click menu (#3578): they act on
+/// every guideline of the row.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum GuidesCmd {
+    Cut,
+    Copy,
+    Paste,
+    /// Move them to the guidelines of all pages, or to the own
+    /// guidelines of the odd or even pages.
+    MoveTo(crate::guides::GuidesTarget),
 }
 
 /// Where a layer sits: its index in its list (0 at the bottom), how many
@@ -1126,6 +1146,52 @@ fn guides_row(
             act.goto = Some(p);
         }
     }
+    // Right-click: Cut, Copy and Paste all of the row's guidelines, and
+    // Move them to all pages, the odd pages or the even pages (#3578).
+    resp.context_menu(|ui| {
+        use crate::guides::GuidesTarget;
+        let any = !guides.is_empty();
+        let can_paste = app.clipboard.as_ref().is_some_and(|c| !c.guides.is_empty());
+        let mut pick = None;
+        for (key, enabled, cmd) in [
+            ("menu.edit.cut", any && guides.iter().any(|g| !g.locked), GuidesCmd::Cut),
+            ("menu.edit.copy", any, GuidesCmd::Copy),
+            ("menu.edit.paste", can_paste, GuidesCmd::Paste),
+        ] {
+            if ui
+                .add_enabled(enabled, egui::Button::new(tr(key)))
+                .clicked()
+            {
+                pick = Some(cmd);
+                ui.close();
+            }
+        }
+        ui.separator();
+        ui.add_enabled_ui(any, |ui| {
+            ui.menu_button(tr("guides.move_to"), |ui| {
+                for (key, target) in [
+                    ("dialog.all_pages", GuidesTarget::AllPages),
+                    ("options.scope_odd", GuidesTarget::OddPages),
+                    ("options.scope_even", GuidesTarget::EvenPages),
+                ] {
+                    let enabled = !(master && target == GuidesTarget::AllPages);
+                    if ui
+                        .add_enabled(enabled, egui::Button::new(tr(key)))
+                        .clicked()
+                    {
+                        pick = Some(GuidesCmd::MoveTo(target));
+                        ui.close();
+                    }
+                }
+            });
+        });
+        if let Some(cmd) = pick {
+            act.guides_cmd = Some((master, cmd));
+            if let Some(p) = page.filter(|p| *p != app.page) {
+                act.goto = Some(p);
+            }
+        }
+    });
     let base = match page {
         Some(p) => egui::Id::new(("objects_guides", p.raw())),
         None => egui::Id::new("objects_guides"),
@@ -1250,15 +1316,24 @@ fn guide_rows(
         } else {
             Tokens::text()
         };
+        // A named guideline shows its name, where it is beside it.
+        let shown_text = match g.name.as_deref().map(str::trim) {
+            Some(n) if !n.is_empty() => format!("{n}  ({kind} {text})"),
+            _ => format!("{kind}  {text}"),
+        };
         ui.painter().text(
             Pos2::new(x, rect.center().y),
             egui::Align2::LEFT_CENTER,
-            format!("{kind}  {text}"),
+            shown_text,
             egui::FontId::proportional(12.0),
             color,
         );
         if done.is_none() && resp.clicked() {
-            done = Some(GuideRowAct::Select);
+            let m = ui.input(|i| i.modifiers);
+            done = Some(GuideRowAct::Select {
+                ctrl: m.command,
+                shift: m.shift,
+            });
         }
         // Right-click: Delete, Cut, Copy, Paste, Lock or Unlock, Hide or
         // Show (#3012).
@@ -1281,6 +1356,7 @@ fn guide_rows(
                 ("menu.edit.paste", can_paste, GuideCmd::Paste),
                 (lock_key, true, GuideCmd::Lock(!g.locked)),
                 (hide_key, true, GuideCmd::Hide(!g.hidden)),
+                ("docker.rename", true, GuideCmd::Rename),
             ] {
                 if ui
                     .add_enabled(enabled, egui::Button::new(tr(key)))
@@ -1328,6 +1404,78 @@ fn guide_menu_command(app: &mut App, i: usize, cmd: GuideCmd) {
                 app.set_guide_hidden(g, hidden);
             }
         }
+        GuideCmd::Rename => {
+            let name = app
+                .page_guides()
+                .get(i)
+                .and_then(|g| g.name.clone())
+                .unwrap_or_default();
+            app.dialog = crate::ui::dialogs::Dialog::RenameGuide { index: i, name };
+        }
+    }
+}
+
+/// A click on a guideline's row (#3575): alone it selects that one; with
+/// Ctrl it joins the selection or leaves it; with Shift the guidelines
+/// from the last one clicked to it (in the docker's order) are selected.
+/// Hidden guidelines are never selected.
+fn select_guide_row(app: &mut App, i: usize, ctrl: bool, shift: bool) {
+    let guides = app.page_guides();
+    if guides.get(i).is_none_or(|g| g.hidden) {
+        return;
+    }
+    app.select(Vec::new());
+    app.guide_rotate = None;
+    if shift {
+        let from = app.selected_guides.last().copied().unwrap_or(i);
+        let (a, b) = (from.min(i), from.max(i));
+        let mut chosen: Vec<usize> = if ctrl {
+            app.selected_guides.clone()
+        } else {
+            Vec::new()
+        };
+        for k in a..=b {
+            if guides.get(k).is_some_and(|g| !g.hidden) && !chosen.contains(&k) {
+                chosen.push(k);
+            }
+        }
+        // The one clicked last stays the anchor of the next range.
+        chosen.retain(|k| *k != i);
+        chosen.push(i);
+        app.selected_guides = chosen;
+    } else if ctrl {
+        if app.selected_guides.contains(&i) {
+            app.selected_guides.retain(|k| *k != i);
+        } else {
+            app.selected_guides.push(i);
+        }
+    } else {
+        app.selected_guides = vec![i];
+    }
+}
+
+/// A command of a Guides row's menu (#3578), on all of the row's
+/// guidelines (the edited set is the row's already).
+fn guides_menu_command(app: &mut App, cmd: GuidesCmd) {
+    let all: Vec<usize> = (0..app.page_guides().len()).collect();
+    if all.is_empty() && cmd != GuidesCmd::Paste {
+        return;
+    }
+    match cmd {
+        GuidesCmd::Copy => {
+            app.select(Vec::new());
+            app.selected_guides = all;
+            app.copy_selected_guides();
+        }
+        GuidesCmd::Cut => {
+            app.select(Vec::new());
+            app.selected_guides = all;
+            if app.copy_selected_guides() {
+                app.delete_selected_guides();
+            }
+        }
+        GuidesCmd::Paste => app.paste(),
+        GuidesCmd::MoveTo(target) => app.move_guides_to(target),
     }
 }
 
@@ -2794,15 +2942,13 @@ fn apply(app: &mut App, ui: &Ui, mut act: Actions) {
         match what {
             GuideRowAct::Hide(hidden) => app.set_guide_hidden(i, hidden),
             GuideRowAct::Lock(locked) => app.set_guides_locked(&[i], locked),
-            GuideRowAct::Select => {
-                if app.page_guides().get(i).is_some_and(|g| !g.hidden) {
-                    app.select(Vec::new());
-                    app.selected_guides = vec![i];
-                    app.guide_rotate = None;
-                }
-            }
+            GuideRowAct::Select { ctrl, shift } => select_guide_row(app, i, ctrl, shift),
             GuideRowAct::Menu(cmd) => guide_menu_command(app, i, cmd),
         }
+    }
+    if let Some((master, cmd)) = act.guides_cmd {
+        app.choose_master_guides(master);
+        guides_menu_command(app, cmd);
     }
     if let Some((layer, page)) = act.layer_to_page {
         layer_to_page(app, layer, page);
@@ -4191,6 +4337,30 @@ pub(crate) mod tests {
 #[cfg(test)]
 mod drag_tests {
     use super::*;
+
+    /// #3575: in the docker a guideline row's click selects it alone,
+    /// Ctrl+click adds it or takes it away, Shift+click selects the run
+    /// from the last one clicked, skipping hidden ones.
+    #[test]
+    fn guideline_rows_take_ctrl_and_shift_clicks() {
+        let mut app = App::headless();
+        for x in [10.0, 20.0, 30.0, 40.0, 50.0] {
+            app.add_guide(tracedraw_core::document::Guide::vertical(x));
+        }
+        app.set_guide_hidden(3, true);
+        select_guide_row(&mut app, 1, false, false);
+        assert_eq!(app.selected_guides, vec![1]);
+        select_guide_row(&mut app, 4, false, true);
+        assert_eq!(app.selected_guides, vec![1, 2, 4], "the hidden one left out");
+        select_guide_row(&mut app, 2, true, false);
+        assert_eq!(app.selected_guides, vec![1, 4]);
+        select_guide_row(&mut app, 0, true, false);
+        assert_eq!(app.selected_guides, vec![1, 4, 0]);
+        select_guide_row(&mut app, 3, true, false);
+        assert_eq!(app.selected_guides, vec![1, 4, 0], "a hidden one is not picked");
+        select_guide_row(&mut app, 2, false, false);
+        assert_eq!(app.selected_guides, vec![2]);
+    }
 
     fn rect_kind() -> ShapeKind {
         ShapeKind::Rect {
