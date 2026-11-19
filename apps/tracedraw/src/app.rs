@@ -2218,6 +2218,9 @@ pub struct App {
     pub area_outline_mode: u8,
     pub area_outline_width: f64,
     pub area_outline_color: Color,
+    /// Smart Fill stops at the edges of the outlines as they are drawn,
+    /// their width, not at their middle line (#3321).
+    pub area_fill_outline_edges: bool,
     pub mesh_rows: u32,
     pub mesh_cols: u32,
     /// Shape tool elastic mode: dragging one node pulls its neighbours.
@@ -3505,6 +3508,7 @@ impl App {
             area_outline_mode: 0,
             area_outline_width: 0.2,
             area_outline_color: Color::BLACK,
+            area_fill_outline_edges: false,
             mesh_rows: 2,
             mesh_cols: 2,
             elastic_mode: false,
@@ -4127,6 +4131,7 @@ impl App {
             smart_outline_mode: self.area_outline_mode,
             smart_outline_width: self.area_outline_width,
             smart_outline_color: self.area_outline_color,
+            smart_outline_edges: self.area_fill_outline_edges,
             brush_radius: self.brush_radius,
             roughen_amount: self.roughen_amount,
             brush: self.brush,
@@ -4226,6 +4231,7 @@ impl App {
         self.area_outline_mode = t.smart_outline_mode.min(2);
         self.area_outline_width = finite(t.smart_outline_width, 0.0, 1000.0, 0.2);
         self.area_outline_color = t.smart_outline_color;
+        self.area_fill_outline_edges = t.smart_outline_edges;
         self.brush_radius = finite(t.brush_radius, 0.5, 500.0, 10.0);
         self.roughen_amount = finite(t.roughen_amount, 0.05, 50.0, 2.0);
         self.brush = t.brush.clamped();

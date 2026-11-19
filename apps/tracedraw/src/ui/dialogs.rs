@@ -663,6 +663,14 @@ pub struct PrintState {
     pub tile_overlap: f64,
     /// Trim marks and each tile's name in the paper's margins.
     pub tile_marks: bool,
+    /// The printer's colour profile (a file's path) the composite
+    /// output is converted to, and the intent; `None` prints the colours
+    /// as they are (#3374).
+    pub output_profile: Option<String>,
+    pub output_intent: tracedraw_core::icc::Intent,
+    /// The RGB and CMYK profiles found here, read when the Color tab
+    /// first shows.
+    pub output_profiles: Option<Vec<crate::color_policy::FoundProfile>>,
 }
 
 /// The sheets the Print dialog offers: fitted to the pages, then paper
@@ -982,6 +990,9 @@ impl Default for PrintState {
             tile: false,
             tile_overlap: 10.0,
             tile_marks: true,
+            output_profile: None,
+            output_intent: tracedraw_core::icc::Intent::Perceptual,
+            output_profiles: None,
             crop_length: crate::imposition::CropStyle::default().length,
             crop_offset: crate::imposition::CropStyle::default().offset,
             crop_width: crate::imposition::CropStyle::default().width,
@@ -3288,7 +3299,78 @@ pub fn show(app: &mut App, ctx: &Context) {
                             st.set_dpi(dpi);
                         }
                         ui.end_row();
+                        // The size on the page, in the unit chosen below (#3138).
+                        ui.label(tr("resample.size_row"));
+                        let u = st.unit;
+                        let suffix = format!(" {}", u.label());
+                        let (mut sw, mut sh) = (u.from_mm(st.size_to.0), u.from_mm(st.size_to.1));
+                        if ui
+                            .add(
+                                NumField::new(&mut sw)
+                                    .range(0.001..=1.0e7)
+                                    .fixed_decimals(2)
+                                    .suffix(&suffix)
+                                    .width(90.0),
+                            )
+                            .rich_tip(crate::ui::tips::pair(
+                                "resample.width",
+                                "resample.size_w_desc",
+                            ))
+                            .changed()
+                        {
+                            st.set_size_w(u.to_mm(sw));
+                        }
+                        if ui
+                            .add(
+                                NumField::new(&mut sh)
+                                    .range(0.001..=1.0e7)
+                                    .fixed_decimals(2)
+                                    .suffix(&suffix)
+                                    .width(90.0),
+                            )
+                            .rich_tip(crate::ui::tips::pair(
+                                "resample.height",
+                                "resample.size_h_desc",
+                            ))
+                            .changed()
+                        {
+                            st.set_size_h(u.to_mm(sh));
+                        }
+                        ui.end_row();
                     });
+                ui.horizontal(|ui| {
+                    ui.label(tr("resample.units"));
+                    crate::ui::keynav::ComboBox::from_id_salt("resample_units")
+                        .selected_text(st.unit.label())
+                        .width(120.0)
+                        .show_ui(ui, |ui| {
+                            for u in crate::app::Units::ALL {
+                                ui.selectable_value(&mut st.unit, u, u.label());
+                            }
+                        })
+                        .response
+                        .rich_tip(crate::ui::tips::keyed("resample.units"));
+                    ui.label(tr("resample.fit_to"));
+                    let mut papers = vec![(tr("resample.fit_page"), app.page_size())];
+                    let presets = paper_presets();
+                    for name in FAVOURITE_PAPERS {
+                        if let Some((_, size)) = presets.iter().find(|(n, _)| *n == name) {
+                            papers.push((name.to_string(), *size));
+                        }
+                    }
+                    crate::ui::keynav::ComboBox::from_id_salt("resample_fit")
+                        .selected_text(tr("resample.fit_pick"))
+                        .width(140.0)
+                        .show_ui(ui, |ui| {
+                            for (name, size) in &papers {
+                                if ui.selectable_label(false, name).clicked() {
+                                    st.fit_paper((size.width, size.height));
+                                }
+                            }
+                        })
+                        .response
+                        .rich_tip(crate::ui::tips::keyed("resample.fit_to"));
+                });
                 ui.checkbox(&mut st.keep_aspect, tr("resample.keep_aspect"))
                     .rich_tip(crate::ui::tips::pair(
                         "resample.keep_aspect",
@@ -6736,6 +6818,78 @@ fn print_tab_general(app: &App, ui: &mut Ui, st: &mut PrintState) -> Option<Stri
     properties
 }
 
+/// The printer's colour profile and its intent, on the Color tab (#3374):
+/// None, then the RGB and CMYK profiles found on this computer; composite
+/// output only.
+fn print_profile_row(ui: &mut Ui, st: &mut PrintState) {
+    use crate::color_policy::Space;
+    use tracedraw_core::icc::Intent;
+    let found = st
+        .output_profiles
+        .get_or_insert_with(|| {
+            crate::color_policy::system_profiles()
+                .into_iter()
+                .filter(|p| matches!(p.space, Space::Rgb | Space::Cmyk))
+                .collect()
+        })
+        .clone();
+    let on = !st.separations && !st.grayscale;
+    ui.label(tr("print.profile"));
+    ui.add_enabled_ui(on, |ui| {
+        ui.horizontal(|ui| {
+            let shown = match &st.output_profile {
+                None => tr("print.profile_none"),
+                Some(path) => found
+                    .iter()
+                    .find(|p| &p.path == path)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| {
+                        std::path::Path::new(path)
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| path.clone())
+                    }),
+            };
+            crate::ui::keynav::ComboBox::from_id_salt("print_profile")
+                .selected_text(shown)
+                .width(220.0)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut st.output_profile, None, tr("print.profile_none"));
+                    for p in &found {
+                        ui.selectable_value(&mut st.output_profile, Some(p.path.clone()), &p.name);
+                    }
+                })
+                .response
+                .rich_tip(crate::ui::tips::keyed("print.profile"))
+                .rich_disabled_tip(crate::ui::tips::keyed("print.profile"));
+            let intent_key = |i: Intent| match i {
+                Intent::Perceptual => "color_mgmt.intent_perceptual",
+                Intent::RelativeColorimetric => "color_mgmt.intent_relative",
+                Intent::Saturation => "color_mgmt.intent_saturation",
+                Intent::AbsoluteColorimetric => "color_mgmt.intent_absolute",
+            };
+            ui.add_enabled_ui(st.output_profile.is_some(), |ui| {
+                crate::ui::keynav::ComboBox::from_id_salt("print_profile_intent")
+                    .selected_text(tr(intent_key(st.output_intent)))
+                    .width(160.0)
+                    .show_ui(ui, |ui| {
+                        for i in [
+                            Intent::Perceptual,
+                            Intent::RelativeColorimetric,
+                            Intent::Saturation,
+                            Intent::AbsoluteColorimetric,
+                        ] {
+                            ui.selectable_value(&mut st.output_intent, i, tr(intent_key(i)));
+                        }
+                    })
+                    .response
+                    .rich_tip(crate::ui::tips::keyed("print.profile_intent"));
+            });
+        });
+    });
+    ui.end_row();
+}
+
 fn print_tab_color(ui: &mut Ui, st: &mut PrintState) {
     egui::Grid::new("print_color")
         .num_columns(2)
@@ -6774,6 +6928,7 @@ fn print_tab_color(ui: &mut Ui, st: &mut PrintState) {
             ui.label("");
             ui.checkbox(&mut st.spot_to_cmyk, tr("print.spot_to_cmyk"));
             ui.end_row();
+            print_profile_row(ui, st);
         });
     ui.add_space(8.0);
     ui.label(egui::RichText::new(tr("print.color_hint")).color(Tokens::text_dim()));
@@ -7747,9 +7902,10 @@ fn print_merge_dialog(app: &mut App, ctx: &Context, st: &mut PrintMergeState, cl
                 {
                     *close = true;
                 }
-                // Finish keeps the data source and opens the Print Merge
+                // Continue keeps the data source and opens the Print Merge
                 // docker, where the fields are put on the page and the
-                // merge is made, as in the reference program (#437).
+                // merge is made (#437); it read Finish, though the merge
+                // is still to be made (#3183).
                 if ui
                     .add_enabled(
                         !st.headers.is_empty(),
@@ -8635,6 +8791,13 @@ pub(crate) fn palette_entry_color(name: &str, c: Color, spot: bool) -> Color {
 
 #[cfg(test)]
 pub(crate) mod tests {
+
+    /// #3183: the Data Merge dialog's button that opens the docker reads
+    /// Continue, as the merge is still to be made there.
+    #[test]
+    fn the_data_merge_dialog_goes_on_with_continue() {
+        assert_eq!(crate::i18n::tr("merge.finish"), "Continue");
+    }
 
     /// Every page size preset has its own name and size (in either
     /// orientation), so a page's size names one preset; the favourites

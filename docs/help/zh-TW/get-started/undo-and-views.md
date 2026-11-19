@@ -19,6 +19,7 @@
 - 轉動滑鼠滾輪，即可以指標為中心放大或縮小。
 - 使用標準工具列上的縮放方塊：輸入比例，或從其清單中選擇（10% 到 1600%），或縮放至選取範圍、所有物件、頁面、頁面寬度或頁面高度。
 - [[menu.view > menu.view.zoom_in]] 和 [[menu.view.zoom_out]] 會縮放一級；[[menu.view.zoom_to_fit]]（<kbd>F4</kbd>）會顯示所有物件，[[menu.view.zoom_to_page]]（<kbd>Shift+F4</kbd>）顯示頁面，[[menu.view.zoom_to_selected]]（<kbd>Shift+F2</kbd>）顯示選取範圍。
+- [[menu.view > menu.view.zoom_1to1]] 以實際尺寸 (100%) 顯示繪圖，與列印效果一致。預設沒有按鍵，可在鍵盤設定中指定。
 - 在觸控板上以雙指捏合可縮放；在觸控螢幕上，無論使用哪個工具，都可以用兩指平移和捏合。
 
 ### 縮放工具 {#zoom-tool}

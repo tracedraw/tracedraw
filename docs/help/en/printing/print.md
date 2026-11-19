@@ -44,6 +44,12 @@ and **Apply** keeps them for the next time.
   Print Preview you can untick inks under **Print separations**; only the
   ticked inks print.
 - **Convert spot colors to CMYK** prints spot inks as their CMYK mix.
+- **Color profile** converts the colors and pictures to the printer's ICC
+  profile (RGB or CMYK, from the profiles installed on this computer), for
+  printers whose driver does not manage color, such as sublimation printers.
+  Choose the **Intent** beside it. It works with Composite output, not with
+  Grayscale or Separations. Turn off the color management of the printer's
+  driver so the colors are not converted twice.
 
 ## Composite {#composite}
 

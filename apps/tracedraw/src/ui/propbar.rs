@@ -2247,19 +2247,48 @@ pub(crate) fn parse_outline_width(text: &str, units: Units) -> Option<Option<f64
     })
 }
 
+/// The widest outline the wheel steps to, mm (what a typed width is
+/// held to).
+const OUTLINE_WHEEL_MAX_MM: f64 = 1000.0;
+
 /// The width the wheel steps to from `width` in the outline width list
 /// (no outline, hairline, then the widths of unit `u`): the next one up
-/// (wheel up) or down. `None` at the end of the list (#663).
+/// (wheel up) or down. Past the list's widest width the wheel goes on in
+/// steps of the list's last gap (16, 20, 24 pt and on), up to 1000 mm; it
+/// stopped at the widest (16 pt), so wider outlines had to be typed
+/// (#3050). `None` at the end (#663).
 pub(crate) fn outline_width_step(width: Option<f64>, up: bool, u: Units) -> Option<Option<f64>> {
     let hair = tracedraw_core::Stroke::HAIRLINE;
+    let presets = outline_width_presets(u);
     let list: Vec<Option<f64>> = [None, Some(hair)]
         .into_iter()
-        .chain(outline_width_presets(u).into_iter().map(Some))
+        .chain(presets.iter().copied().map(Some))
         .collect();
     // Where `width` falls among the list's widths (no outline below all).
     let key = |w: Option<f64>| w.map_or(-1.0, |w| w.max(hair));
     let at = key(width);
     let eps = 1e-9;
+    // Beyond the widest: a grid of the last gap, in the unit's own
+    // numbers so the steps read round.
+    let n = presets.len();
+    if n >= 2 {
+        let last = u.from_mm(presets[n - 1]);
+        let gap = last - u.from_mm(presets[n - 2]);
+        let v = u.from_mm(at.max(0.0));
+        let max = u.from_mm(OUTLINE_WHEEL_MAX_MM);
+        if gap > 0.0 && v > last - eps * last.max(1.0) {
+            let k = (v - last) / gap;
+            let on = (k - k.round()).abs() < 1e-6;
+            if up {
+                let next = last + gap * if on { k.round() + 1.0 } else { k.ceil() };
+                return (next <= max + 1e-9).then(|| Some(u.to_mm(next)));
+            }
+            let below = if on { k.round() - 1.0 } else { k.floor() };
+            if below >= 0.0 {
+                return Some(Some(u.to_mm(last + gap * below)));
+            }
+        }
+    }
     if up {
         list.into_iter().find(|w| key(*w) > at + eps)
     } else {
@@ -4304,14 +4333,39 @@ mod tests {
             let mid = (p[1] + p[2]) / 2.0;
             assert_eq!(outline_width_step(Some(mid), true, u), Some(Some(p[2])));
             assert_eq!(outline_width_step(Some(mid), false, u), Some(Some(p[1])));
-            // At the widest it stays.
+            // Past the widest it goes on in steps of the last gap, and
+            // back down the same way to the list (#3050).
             let last = *p.last().expect("widths");
-            assert_eq!(outline_width_step(Some(last), true, u), None);
-            assert_eq!(
-                outline_width_step(Some(last * 3.0), false, u),
-                Some(Some(last))
+            let gap = u.from_mm(last) - u.from_mm(p[p.len() - 2]);
+            let up1 = outline_width_step(Some(last), true, u)
+                .flatten()
+                .expect("a step past the widest");
+            assert!(
+                (u.from_mm(up1) - (u.from_mm(last) + gap)).abs() < 1e-9,
+                "{u:?}"
             );
+            let up2 = outline_width_step(Some(up1), true, u)
+                .flatten()
+                .expect("on");
+            assert!((u.from_mm(up2) - (u.from_mm(last) + 2.0 * gap)).abs() < 1e-9);
+            assert_eq!(outline_width_step(Some(up1), false, u), Some(Some(last)));
+            // Off the grid: the grid step above or below.
+            let off = u.to_mm(u.from_mm(last) + 1.5 * gap);
+            let a = outline_width_step(Some(off), true, u)
+                .flatten()
+                .expect("up");
+            assert!((a - up2).abs() < 1e-9);
+            let b = outline_width_step(Some(off), false, u)
+                .flatten()
+                .expect("down");
+            assert!((b - up1).abs() < 1e-9);
+            // At 1000 mm it stops.
+            assert_eq!(outline_width_step(Some(1000.0), true, u), None);
         }
+        // In points: 16, then 20 and 24 pt.
+        let pt = Units::Points;
+        let p20 = outline_width_step(Some(pt.to_mm(16.0)), true, pt).flatten();
+        assert!((pt.from_mm(p20.expect("20 pt")) - 20.0).abs() < 1e-9);
     }
 
     /// The outline width box in a property bar longer than the window:

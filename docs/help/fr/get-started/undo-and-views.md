@@ -35,6 +35,9 @@ avancer de nouveau. Ouvrez-le depuis [[menu.window > menu.window.dockers]].
   cran ; [[menu.view.zoom_to_fit]] (<kbd>F4</kbd>) affiche tous les objets,
   [[menu.view.zoom_to_page]] (<kbd>Shift+F4</kbd>) la page et
   [[menu.view.zoom_to_selected]] (<kbd>Shift+F2</kbd>) la sélection.
+- [[menu.view > menu.view.zoom_1to1]] affiche le dessin à sa taille réelle
+  (100 %), tel qu'il sera imprimé. Il n'a pas de touche au départ : donnez-lui
+  en une dans les options du clavier.
 - Un pincement sur le pavé tactile zoome et, sur un écran tactile, deux
   doigts déplacent la vue et zooment avec n'importe quel outil.
 

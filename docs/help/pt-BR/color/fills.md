@@ -124,6 +124,10 @@ objetos em volta ficam como estão.
 O novo objeto vai para o topo da camada ativa e fica selecionado. Um clique em
 um contorno, ou em uma área que nada cerca, não cria nada.
 
+Com **Até a borda do contorno** ligado na barra de propriedades, os contornos
+contam com a largura com que são desenhados: a área para nas bordas internas
+deles, e linhas que só se tocam pela largura ainda a fecham.
+
 ## Preenchimentos de malha {#mesh-fill}
 
 Um preenchimento de malha é uma grade de nós sobre um objeto, cada nó com cor e

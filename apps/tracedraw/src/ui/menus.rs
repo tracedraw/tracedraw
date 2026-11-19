@@ -3074,6 +3074,11 @@ fn view_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.view.zoom_to_fit", "F4", true) {
         app.zoom_to_fit();
     }
+    // Real size: the zoom box's 100%, as a command a key can be given
+    // in Options > Customization > Commands (#3103).
+    if item(ui, "menu.view.zoom_1to1", "", true) {
+        app.set_zoom_percent(100.0);
+    }
     // The key held shows the Navigator while it is down (`view_navigator`);
     // the menu row opens it until a click.
     if item(

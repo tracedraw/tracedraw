@@ -157,6 +157,18 @@ has one.
   shadow print as the coverage of each plate's ink and count as ink on
   their plates; before, they printed in colour on every plate
   (`export::tests::separations_split_the_colours_of_effects`).
+  Color profile (#3374, Color tab, beside its Intent, Perceptual at
+  first): None, then the RGB and CMYK profiles found on this computer
+  (`color_policy::system_profiles`). With one chosen, composite output
+  (not Grayscale or Separations) converts every colour of the sheets,
+  read as sRGB, to the profile's device values with black point
+  compensation: an RGB profile gives RGB colours, a CMYK one CMYK
+  colours; pictures go pixel by pixel (with a CMYK profile, back to RGB
+  from its CMYK), alpha kept, each colour worked out once. The
+  registration colour stays. The colours are reached as Grayscale
+  reaches them (`export::map_doc_colors`). The choice is kept with the
+  other print choices (`output_profile`, `output_intent`)
+  (`export::tests::a_printer_profile_converts_the_printed_colours`).
   Leave out empty plates (under Separations in the Print dialog and
   under the inks in Print Preview, off at first, kept in presets): each
   sheet's plate that takes no ink does not print; a colour counts on a

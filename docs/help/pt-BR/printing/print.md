@@ -47,6 +47,12 @@ configurações, e **Aplicar** as guarda para a próxima vez.
   separações**; só as tintas marcadas são impressas.
 - **Converter cores especiais em CMYK** imprime as tintas especiais como a
   mistura CMYK delas.
+- **Perfil de cor** converte as cores e imagens para o perfil ICC da
+  impressora (RGB ou CMYK, dos perfis instalados neste computador), para
+  impressoras cujo driver não gerencia as cores, como as de sublimação.
+  Escolha a **Intenção** ao lado. Funciona na saída Composta, não em Tons de
+  cinza nem em Separações. Desligue o gerenciamento de cor do driver da
+  impressora para as cores não serem convertidas duas vezes.
 
 ## Composta {#composite}
 

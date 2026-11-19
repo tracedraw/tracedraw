@@ -117,6 +117,10 @@ it stay as they are.
 The new object goes on top of the active layer and is selected. A click on an
 outline, or in an area that nothing encloses, makes nothing.
 
+With **Up to outline edges** on the property bar, outlines count as wide as
+they are drawn: the area stops at their inner edges, and lines that only touch
+through their width still close it.
+
 ## Mesh fills {#mesh-fill}
 
 A mesh fill is a grid of nodes over an object, each node with its own color

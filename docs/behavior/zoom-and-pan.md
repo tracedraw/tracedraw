@@ -27,6 +27,11 @@
   toolbox button keeps it until another tool is chosen. Shift+F2 zooms
   to the selection; F4 zooms to fit
   all objects; Shift+F4 zooms to the page.
+- View > Zoom 1:1 shows the drawing at its real size, the zoom box's
+  100 % (Options > Zoom/Pan's calibration counts). It has no key at
+  first; Options > Customization > Commands gives it one, Ctrl+1 for
+  instance (#3103,
+  `pick_drag_tests::field_focus_tests::zoom_1to1_takes_a_key_and_shows_the_real_size`).
 - These keys work while a text is being edited too, and the editing
   goes on: after F2's one zoom the text is edited on where it was
   (#1699, `pick_drag_tests::zoom_keys_work_while_editing_text`).

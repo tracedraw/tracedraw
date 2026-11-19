@@ -404,6 +404,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     }
     // Text selection and caret.
     if app.text_edit.is_some() {
+        draw_non_printing(painter, view, &app.non_printing_marks());
         if let Some((top, bottom, quads)) = app.text_caret_geometry() {
             for q in quads {
                 let pts: Vec<Pos2> = q.iter().map(|p| view.to_screen(*p)).collect();
@@ -415,6 +416,78 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
             }
             draw_text_caret(painter, view.to_screen(top), view.to_screen(bottom));
             ime_at_caret(app, painter, view.to_screen(top), view.to_screen(bottom));
+        }
+    }
+}
+
+/// The marks of the spaces, tabs, paragraph ends and line breaks of the
+/// text being edited (Text > Show Non-Printing Characters, #3271): a dot,
+/// an arrow, a pilcrow and a bent arrow, blue on a white edge so they
+/// show on any fill.
+fn draw_non_printing(
+    painter: &Painter,
+    view: &View,
+    marks: &[crate::text_editing::NonPrintingMark],
+) {
+    use crate::text_editing::NonPrinting;
+    const MARK: Color32 = Color32::from_rgb(40, 110, 220);
+    for m in marks {
+        let a = view.to_screen(m.from);
+        let b = view.to_screen(m.to);
+        // The line's height on screen sizes the marks.
+        let h = (m.height as f32 * view.zoom).max(4.0);
+        let w = (h * 0.06).clamp(1.0, 2.5);
+        let halo = EStroke::new(w + 2.0, Color32::WHITE);
+        let line = EStroke::new(w, MARK);
+        let both = |p: &Painter, pts: [Pos2; 2]| {
+            p.line_segment(pts, halo);
+            p.line_segment(pts, line);
+        };
+        match m.kind {
+            NonPrinting::Space => {
+                let c = a + (b - a) * 0.5;
+                painter.circle_filled(c, w + 1.0, Color32::WHITE);
+                painter.circle_filled(c, w, MARK);
+            }
+            NonPrinting::Tab => {
+                let d = b - a;
+                let len = d.length();
+                if len < 2.0 {
+                    continue;
+                }
+                let dir = d / len;
+                let n = egui::vec2(-dir.y, dir.x);
+                let head = (h * 0.15).min(len * 0.5);
+                let tip = b - dir * (w * 0.5);
+                both(painter, [a + dir * (len * 0.1), tip]);
+                both(painter, [tip, tip - dir * head + n * head * 0.6]);
+                both(painter, [tip, tip - dir * head - n * head * 0.6]);
+            }
+            NonPrinting::Paragraph => {
+                let font = egui::FontId::proportional(h * 0.7);
+                let at = a + egui::vec2(h * 0.08, 0.0);
+                painter.text(
+                    at + egui::vec2(1.0, 1.0),
+                    egui::Align2::LEFT_CENTER,
+                    "\u{b6}",
+                    font.clone(),
+                    Color32::WHITE,
+                );
+                painter.text(at, egui::Align2::LEFT_CENTER, "\u{b6}", font, MARK);
+            }
+            NonPrinting::LineBreak => {
+                // Down from the top right, then left with a head.
+                let s = h * 0.3;
+                let x0 = a.x + h * 0.1;
+                let top = egui::pos2(x0 + s, a.y - s * 0.6);
+                let corner = egui::pos2(x0 + s, a.y + s * 0.4);
+                let tip = egui::pos2(x0, a.y + s * 0.4);
+                both(painter, [top, corner]);
+                both(painter, [corner, tip]);
+                let hd = s * 0.4;
+                both(painter, [tip, tip + egui::vec2(hd, -hd)]);
+                both(painter, [tip, tip + egui::vec2(hd, hd)]);
+            }
         }
     }
 }

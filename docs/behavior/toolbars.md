@@ -334,8 +334,11 @@ for sliders stepped with the wheel (`step_merge::tests`).
   unit), line style, start and end arrowheads; then To Front, To Back and
   Convert to Curves. The mouse wheel over the closed width box steps the
   selection's outline to the next width of the list up (wheel up) or
-  down, stopping at None and at the widest; a width between two of the
-  list goes to the one above or below. One step per notch: a wheel event
+  down, stopping at None; past the list's widest width it goes on in
+  steps of the list's last gap (16, 20, 24 pt and on) up to 1000 mm,
+  where it stopped at the widest, so wider outlines had to be typed
+  (#3050). A width between two of the list goes to the one above or
+  below. One step per notch: a wheel event
   of a notch or more counts as one notch whatever its size (browsers send
   a notch as 100 points or 3 lines), parts of a notch from a touchpad or
   a fine wheel add up until they make one (50 points make a notch), and

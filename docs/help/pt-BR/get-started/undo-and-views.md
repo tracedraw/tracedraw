@@ -34,6 +34,9 @@ em [[menu.window > menu.window.dockers]].
   [[menu.view.zoom_to_fit]] (<kbd>F4</kbd>) mostra todos os objetos,
   [[menu.view.zoom_to_page]] (<kbd>Shift+F4</kbd>) a página e
   [[menu.view.zoom_to_selected]] (<kbd>Shift+F2</kbd>) a seleção.
+- [[menu.view > menu.view.zoom_1to1]] mostra o desenho no tamanho real
+  (100%), como será impresso. Ele não tem tecla de início: dê uma em
+  [Atalhos de teclado](../reference/keyboard-shortcuts.md).
 - O gesto de pinça no trackpad muda o zoom, e numa tela sensível ao toque dois
   dedos deslocam e ampliam com qualquer ferramenta.
 

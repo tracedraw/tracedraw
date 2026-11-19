@@ -10,6 +10,7 @@ enclose it stay as they are.
 |---|---|---|
 | Fill | Specify (the colour beside it), Use default (the default fill for new objects; a colour when that is none, so the area shows), None | Use default; the colour is yellow (C0 M0 Y100 K0) |
 | Outline | Specify (the width and colour beside it), Use default (the default outline for new objects), None | Use default; 0.2 mm black |
+| Up to outline edges | On: each outline counts as wide as it is drawn (#3321) | Off |
 
 The lists show their choices in that order: Specify first, then Use
 default, then None (`fill_tool_bars::SMART_ORDER`; the values kept in
@@ -20,7 +21,18 @@ The colour buttons open the colour palette's swatches and, under Other,
 a swatch that opens the colour picker beside the button for any other
 colour (see `contour.md`, #1262). The choices are kept in the preferences
 (`tools.smart_fill_mode`, `smart_fill_color`, `smart_outline_mode`,
-`smart_outline_width`, `smart_outline_color`).
+`smart_outline_width`, `smart_outline_color`, `smart_outline_edges`).
+
+With Up to outline edges on, every object with an outline wider than 0
+also adds the band its outline draws (as Convert Outline to Object makes
+it, arrowheads included) as an opaque object right above it: the band's
+edges are walls and the middle line under it is cut away (step 1's
+rule for opaque fills). So the area stops at the inner edge of the
+outlines, and lines whose middles leave a gap but whose widths overlap
+close it. A click inside a band makes nothing, as a click on a thin
+outline does. Objects with live effects count as before, by their middle
+lines
+(`pick_drag_tests::area_fill_can_stop_at_the_edges_of_wide_outlines`).
 
 ## Algorithm
 

@@ -3,13 +3,16 @@
 ## Resample {#resample}
 
 [[menu.bitmaps > menu.bitmaps.resample]] gives the selected bitmaps a new
-number of pixels; their size on the page stays.
+number of pixels and, if you want, a new size on the page.
 
 ![The Resample dialog box](../../img/bitmaps-resample-and-straighten-resample.png)
 
 1. Type the new size in **pixels**, as a **percent**, or as the
    **resolution** it gives at its size on the page. With **Maintain aspect
    ratio** on, the height follows the width.
+   To change the size on the page, type it under **Size on page** in the
+   **Units** you choose, or pick this page or a paper under **Fit to**:
+   the resolution stays and the pixels follow.
 2. Choose the method:
    - **Smooth** (photos), at first;
    - **Sharp**, a little crisper;

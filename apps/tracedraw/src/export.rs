@@ -1868,6 +1868,18 @@ pub fn print_sheets(app: &App, st: &PrintState) -> Document {
     if st.grayscale && !st.separations {
         grayscale_doc(&mut doc);
     }
+    // The printer's colour profile (#3374): composite colours and
+    // pictures as the printer needs them, for printers whose colour the
+    // driver does not manage (sublimation, for one).
+    if !st.grayscale && !st.separations {
+        if let Some(t) = st
+            .output_profile
+            .as_deref()
+            .and_then(|p| printer_transform(p, st.output_intent))
+        {
+            printer_profile_doc(&mut doc, &t);
+        }
+    }
     // Tile: each sheet (fitted to the pages, mirrored or inverted as a
     // whole) cut into tiles of the paper, a poster.
     if st.tile {
@@ -1908,10 +1920,28 @@ fn gray_of(c: tracedraw_core::Color) -> tracedraw_core::Color {
 /// pixels). The colours are found wherever the document keeps one, by
 /// walking the objects' serialized form, so no kind of object is missed.
 pub fn grayscale_doc(doc: &mut Document) {
-    fn walk(v: &mut serde_json::Value) {
+    map_doc_colors(doc, &gray_of, &|img| crate::bitmap_fx::encode_gray(img));
+}
+
+/// Every colour the sheets hold (fills, outlines, text, gradients,
+/// meshes, patterns, effects, shadows and lenses) through `color`, and
+/// every picture through `picture` (its new PNG; `None` leaves it). A
+/// CMYK picture's own inks are left out, so it prints from the new
+/// pixels. The colours are found wherever the document keeps one, by
+/// walking the objects' serialized form, so no kind of object is missed.
+pub fn map_doc_colors(
+    doc: &mut Document,
+    color: &dyn Fn(tracedraw_core::Color) -> tracedraw_core::Color,
+    picture: &dyn Fn(&image::RgbaImage) -> Option<Vec<u8>>,
+) {
+    type Maps<'a> = (
+        &'a dyn Fn(tracedraw_core::Color) -> tracedraw_core::Color,
+        &'a dyn Fn(&image::RgbaImage) -> Option<Vec<u8>>,
+    );
+    fn walk(v: &mut serde_json::Value, f: Maps) {
         use serde_json::Value;
         match v {
-            Value::Array(a) => a.iter_mut().for_each(walk),
+            Value::Array(a) => a.iter_mut().for_each(|x| walk(x, f)),
             Value::Object(m) => {
                 if m.get("model").is_some_and(Value::is_string) {
                     if let Ok(c) =
@@ -1920,13 +1950,13 @@ pub fn grayscale_doc(doc: &mut Document) {
                         // A colour can share its object with the tag of
                         // what holds it (a solid fill is `{"fill":
                         // "solid", "model": ...}`): only its own keys go.
-                        if let (Ok(Value::Object(was)), Ok(Value::Object(gray))) =
-                            (serde_json::to_value(c), serde_json::to_value(gray_of(c)))
+                        if let (Ok(Value::Object(was)), Ok(Value::Object(new))) =
+                            (serde_json::to_value(c), serde_json::to_value((f.0)(c)))
                         {
                             for k in was.keys() {
                                 m.remove(k);
                             }
-                            m.extend(gray);
+                            m.extend(new);
                         }
                         return;
                     }
@@ -1936,37 +1966,127 @@ pub fn grayscale_doc(doc: &mut Document) {
                 if let Some(Value::String(b64)) = m.get_mut("png") {
                     use base64::Engine;
                     let engine = base64::engine::general_purpose::STANDARD;
-                    let gray = engine
+                    let new = engine
                         .decode(b64.as_bytes())
                         .ok()
                         .and_then(|png| crate::bitmap_fx::decode(&png))
-                        .and_then(|img| crate::bitmap_fx::encode_gray(&img));
-                    if let Some(gray) = gray {
-                        *b64 = engine.encode(gray);
+                        .and_then(|img| (f.1)(&img));
+                    if let Some(new) = new {
+                        *b64 = engine.encode(new);
                         // The picture's effects stay as printed, not
-                        // worked out again from the colour original.
+                        // worked out again from the original.
                         m.remove("fx");
                     }
                 }
-                m.values_mut().for_each(walk);
+                m.values_mut().for_each(|x| walk(x, f));
             }
             _ => {}
         }
     }
-    fn gray<T: serde::Serialize + serde::de::DeserializeOwned>(x: &mut T) {
+    fn map<T: serde::Serialize + serde::de::DeserializeOwned>(x: &mut T, f: Maps) {
         let Ok(mut v) = serde_json::to_value(&*x) else {
             return;
         };
-        walk(&mut v);
+        walk(&mut v, f);
         match serde_json::from_value(v) {
             Ok(back) => *x = back,
-            Err(e) => log::warn!("grayscale print: {e}"),
+            Err(e) => log::warn!("print colours: {e}"),
         }
     }
     for page in doc.pages.iter_mut() {
-        gray(page);
+        map(page, (color, picture));
     }
-    gray(&mut doc.master);
+    map(&mut doc.master, (color, picture));
+}
+
+/// The colour profile of the printer the composite output is converted
+/// to (#3374): from the drawing's colours, as sRGB, to the device values
+/// of the RGB or CMYK profile at `path`. `None` when the file is not a
+/// profile that can be printed to.
+pub fn printer_transform(
+    path: &str,
+    intent: tracedraw_core::icc::Intent,
+) -> Option<tracedraw_core::icc::Transform> {
+    use tracedraw_core::icc::{ColorSpace, Profile, Transform};
+    let bytes = std::fs::read(path).ok()?;
+    let dst = Profile::parse(&bytes).ok()?;
+    if !matches!(dst.color_space(), ColorSpace::Rgb | ColorSpace::Cmyk) {
+        return None;
+    }
+    Transform::new(&Profile::srgb(), &dst, intent, true)
+}
+
+/// Every colour and picture of the sheets converted through the
+/// printer's profile `t` (#3374): a colour becomes the RGB or CMYK
+/// values the printer needs for it; pictures go through it pixel by
+/// pixel with an RGB profile (with a CMYK one they go as RGB, back from
+/// the printer's CMYK, so they print as the profile would have them).
+/// The registration colour stays: it prints on every plate.
+pub fn printer_profile_doc(doc: &mut Document, t: &tracedraw_core::icc::Transform) {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use tracedraw_core::icc::ColorSpace;
+    use tracedraw_core::Color;
+    let cmyk = t.output_space() == ColorSpace::Cmyk;
+    let device = |rgb: [u8; 3]| -> Vec<f32> {
+        t.transform(&rgb.map(|v| f32::from(v) / 255.0))
+            .into_iter()
+            .map(|v| v.clamp(0.0, 1.0))
+            .collect()
+    };
+    let color = |c: Color| -> Color {
+        if matches!(c, Color::Registration) {
+            return c;
+        }
+        let d = device(c.to_rgb8());
+        match (cmyk, d.as_slice()) {
+            (true, [c, m, y, k, ..]) => Color::Cmyk {
+                c: *c,
+                m: *m,
+                y: *y,
+                k: *k,
+            },
+            (false, [r, g, b, ..]) => {
+                let v = |x: f32| (x * 255.0).round() as u8;
+                Color::rgb8(v(*r), v(*g), v(*b))
+            }
+            _ => c,
+        }
+    };
+    // A picture's pixels, each colour worked out once.
+    let seen: RefCell<HashMap<[u8; 3], [u8; 3]>> = RefCell::new(HashMap::new());
+    let pixel = |rgb: [u8; 3]| -> [u8; 3] {
+        if let Some(out) = seen.borrow().get(&rgb) {
+            return *out;
+        }
+        let d = device(rgb);
+        let v = |x: f32| (x.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let out = match (cmyk, d.as_slice()) {
+            (false, [r, g, b, ..]) => [v(*r), v(*g), v(*b)],
+            (true, [c, m, y, k, ..]) => {
+                let [r, g, b] = Color::Cmyk {
+                    c: *c,
+                    m: *m,
+                    y: *y,
+                    k: *k,
+                }
+                .to_rgb8();
+                [r, g, b]
+            }
+            _ => rgb,
+        };
+        seen.borrow_mut().insert(rgb, out);
+        out
+    };
+    let picture = |img: &image::RgbaImage| -> Option<Vec<u8>> {
+        let mut out = img.clone();
+        for p in out.pixels_mut() {
+            let [r, g, b] = pixel([p[0], p[1], p[2]]);
+            p.0 = [r, g, b, p[3]];
+        }
+        crate::bitmap_fx::encode(&out)
+    };
+    map_doc_colors(doc, &color, &picture);
 }
 
 /// A spot ink's colour as its CMYK mix at the tint.
@@ -4925,6 +5045,94 @@ mod tests {
         assert_eq!(ids.len(), 4);
         let ps = postscript_level("%!PS-Adobe-3.0\n%%EOF\n".into(), 3);
         assert!(ps.starts_with("%!PS-Adobe-3.0\n%%LanguageLevel: 3\n"));
+    }
+
+    /// #3374: with a printer's colour profile chosen, the composite
+    /// colours and the pictures print as that profile's device values
+    /// (here a linear RGB profile: sRGB 128 grey is about 55); none
+    /// leaves them, and grayscale or separations pass it over.
+    #[test]
+    fn a_printer_profile_converts_the_printed_colours() {
+        use tracedraw_core::icc::test_profiles::{curv_gamma, matrix_trc_profile};
+        use tracedraw_core::{Color, Fill};
+        let mut app = App::headless();
+        let grey = Color::rgb8(128, 128, 128);
+        app.new_shape_styled(
+            ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(10.0, 10.0, 60.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            },
+            |s| {
+                s.name = Some("grey".into());
+                s.fill = Fill::Solid(grey);
+                s.stroke = None;
+            },
+        )
+        .expect("rect");
+        let img = image::RgbaImage::from_pixel(3, 2, image::Rgba([128, 128, 128, 200]));
+        app.new_shape(ShapeKind::Bitmap {
+            rect: tracedraw_core::geometry::Rect::new(70.0, 10.0, 100.0, 30.0),
+            width_px: 3,
+            height_px: 2,
+            png: crate::bitmap_fx::encode(&img).expect("png").into(),
+            fx: None,
+        })
+        .expect("bitmap");
+        let dir = std::env::temp_dir().join(format!("td-print-icc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let path = dir.join("linear.icc");
+        let g = || curv_gamma(1.0);
+        std::fs::write(&path, matrix_trc_profile(g(), g(), g())).expect("profile");
+        let printed = |st: &PrintState| {
+            let doc = print_sheets(&app, st);
+            fn all(shapes: &[tracedraw_core::Shape], out: &mut Vec<tracedraw_core::Shape>) {
+                for s in shapes {
+                    out.push(s.clone());
+                    match &s.kind {
+                        ShapeKind::Group { children } => all(children, out),
+                        ShapeKind::ClipFrame { frame, contents } => {
+                            all(std::slice::from_ref(&**frame), out);
+                            all(contents, out);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            let mut shapes = Vec::new();
+            for l in doc.pages.iter().flat_map(|p| p.layers.iter()) {
+                all(&l.shapes, &mut shapes);
+            }
+            let rect = shapes
+                .iter()
+                .find(|s| s.name.as_deref() == Some("grey"))
+                .expect("rect printed");
+            let fill = match &rect.fill {
+                Fill::Solid(c) => c.to_rgb8(),
+                other => panic!("{other:?}"),
+            };
+            let px = shapes
+                .iter()
+                .find_map(|s| match &s.kind {
+                    ShapeKind::Bitmap { png, .. } => crate::bitmap_fx::decode(png),
+                    _ => None,
+                })
+                .expect("picture printed")
+                .get_pixel(0, 0)
+                .0;
+            (fill, px)
+        };
+        let mut st = PrintState::default();
+        assert_eq!(printed(&st), ([128, 128, 128], [128, 128, 128, 200]));
+        st.output_profile = Some(path.display().to_string());
+        let (fill, px) = printed(&st);
+        for v in fill.into_iter().chain(px[..3].iter().copied()) {
+            assert!((50..=60).contains(&v), "{fill:?} {px:?}");
+        }
+        assert_eq!(px[3], 200, "the alpha stays");
+        st.grayscale = true;
+        assert_eq!(printed(&st).0, [128, 128, 128]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Grayscale output (#1657): every colour on the sheets, an effect's

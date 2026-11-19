@@ -33,6 +33,9 @@ later step to go forward again. Open it from
   step; [[menu.view.zoom_to_fit]] (<kbd>F4</kbd>) shows all objects,
   [[menu.view.zoom_to_page]] (<kbd>Shift+F4</kbd>) the page and
   [[menu.view.zoom_to_selected]] (<kbd>Shift+F2</kbd>) the selection.
+- [[menu.view > menu.view.zoom_1to1]] shows the drawing at its real size
+  (100%), as it will print. It has no key at first: give it one in
+  [Keyboard shortcuts](../reference/keyboard-shortcuts.md).
 - A trackpad pinch zooms, and on a touch screen two fingers pan and pinch
   with any tool.
 

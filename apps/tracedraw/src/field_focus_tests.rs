@@ -309,6 +309,24 @@ fn keys_f13_to_f24_given_a_command_work_while_typing() {
     assert_eq!(app.edit_text(), "Hello world");
 }
 
+/// View > Zoom 1:1 is a command a key can be given (#3103): pressed,
+/// the drawing shows at its real size, the zoom box's 100%.
+#[test]
+fn zoom_1to1_takes_a_key_and_shows_the_real_size() {
+    let (ctx, mut app, _) = setup();
+    app.settings
+        .shortcuts
+        .push(("menu.view.zoom_1to1".to_string(), "F22".into()));
+    app.set_zoom_percent(37.0);
+    assert!((app.zoom_percent() - 37.0).abs() < 0.01);
+    tap(&ctx, &mut app, egui::Key::F22, Modifiers::NONE);
+    assert!(
+        (app.zoom_percent() - 100.0).abs() < 0.01,
+        "{}",
+        app.zoom_percent()
+    );
+}
+
 /// Edit > Find and Replace: a word copied elsewhere and pasted with
 /// Ctrl+V goes into the Find field (and the Replace field), not on the
 /// drawing (#3331).

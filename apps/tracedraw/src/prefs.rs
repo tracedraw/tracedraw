@@ -69,6 +69,9 @@ pub struct PrintPrefs {
     /// Custom size last used.
     pub sheet_presets: Vec<(String, tracedraw_core::geometry::Size)>,
     pub custom_sheet: tracedraw_core::geometry::Size,
+    /// The printer's colour profile file and the intent by name (#3374).
+    pub output_profile: Option<String>,
+    pub output_intent: String,
 }
 
 impl Default for PrintPrefs {
@@ -107,6 +110,8 @@ impl Default for PrintPrefs {
             page_numbers: st.page_numbers,
             ps_level: st.ps_level,
             keep_size: st.keep_size,
+            output_profile: None,
+            output_intent: st.output_intent.name().to_string(),
         }
     }
 }
@@ -159,6 +164,9 @@ impl PrintPrefs {
                 PrintState::default().gutter_y,
             ),
             gaps_linked: self.gaps_linked,
+            output_profile: self.output_profile.clone(),
+            output_intent: tracedraw_core::icc::Intent::from_name(&self.output_intent)
+                .unwrap_or(tracedraw_core::icc::Intent::Perceptual),
             ..PrintState::default()
         }
     }
@@ -193,6 +201,8 @@ impl PrintPrefs {
         self.page_numbers = st.page_numbers;
         self.ps_level = st.ps_level;
         self.keep_size = st.keep_size;
+        self.output_profile = st.output_profile.clone();
+        self.output_intent = st.output_intent.name().to_string();
     }
 }
 

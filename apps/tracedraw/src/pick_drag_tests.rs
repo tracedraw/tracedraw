@@ -15345,6 +15345,60 @@ fn area_fill_keeps_the_curves_it_fills_between() {
     assert!(overlap.segments().count() <= 4, "{overlap:?}");
 }
 
+/// Area Fill with "Up to outline edges" (#3321): four lines 2 mm wide
+/// whose middles leave a 0.5 mm gap at a corner close the square all
+/// the same, the area stops at their inner edges, and a click on a wide
+/// outline fills nothing. Off, the gap lets the fill out.
+#[test]
+fn area_fill_can_stop_at_the_edges_of_wide_outlines() {
+    let mut app = App::headless();
+    app.select(Vec::new());
+    let mut ids = Vec::new();
+    for (a, b) in [
+        ((10.0, 10.0), (30.0, 10.0)),
+        ((30.0, 10.0), (30.0, 30.0)),
+        ((30.0, 30.0), (10.0, 30.0)),
+        ((10.0, 30.0), (10.0, 10.5)),
+    ] {
+        let mut path = tracedraw_core::BezPath::new();
+        path.move_to(a);
+        path.line_to(b);
+        ids.push(
+            app.new_shape(ShapeKind::Path {
+                path,
+                closed: false,
+            })
+            .expect("line"),
+        );
+    }
+    app.run(tracedraw_core::Command::SetStroke {
+        shapes: ids,
+        stroke: Some(tracedraw_core::style::Stroke::new(
+            tracedraw_core::Color::BLACK,
+            2.0,
+        )),
+    });
+    let count = |app: &App| {
+        app.doc()
+            .all_layers()
+            .map(|l| l.shapes.len())
+            .sum::<usize>()
+    };
+    let before = count(&app);
+    app.area_fill_outline_edges = false;
+    app.area_fill_at(Point::new(20.0, 20.0));
+    assert_eq!(count(&app), before, "the gap lets the fill out");
+    app.area_fill_outline_edges = true;
+    app.area_fill_at(Point::new(10.2, 20.0));
+    assert_eq!(count(&app), before, "a click on a wide outline");
+    app.area_fill_at(Point::new(20.0, 20.0));
+    assert_eq!(count(&app), before + 1);
+    let b = tracedraw_core::geometry::Shape::bounding_box(&last_path(&app));
+    for (got, want) in [(b.x0, 11.0), (b.y0, 11.0), (b.x1, 29.0), (b.y1, 29.0)] {
+        assert!((got - want).abs() < 0.01, "{b:?}");
+    }
+}
+
 /// Shift+F3 opens Text > Change Case for the selected text, and does
 /// nothing without one (#801).
 #[test]
