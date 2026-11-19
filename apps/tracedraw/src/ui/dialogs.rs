@@ -115,6 +115,9 @@ pub struct ExportState {
     pub plt_hpgl2: bool,
     pub plt_one_pen: bool,
     pub plt_resolution: f64,
+    /// DXF: the drawing unit, an index into
+    /// [`tracedraw_io::dxf::DxfUnits::ALL`] (#3583).
+    pub dxf_units: usize,
 }
 
 impl Default for ExportState {
@@ -155,6 +158,7 @@ impl Default for ExportState {
             plt_hpgl2: true,
             plt_one_pen: false,
             plt_resolution: 0.02,
+            dxf_units: 0,
         }
     }
 }
@@ -330,6 +334,17 @@ impl ExportState {
                 2 => SvgText::TextWithFonts,
                 _ => SvgText::Curves,
             },
+        }
+    }
+
+    /// The DXF export's choices (#3583).
+    pub fn dxf_options(&self) -> tracedraw_io::dxf::DxfOptions {
+        use tracedraw_io::dxf::DxfUnits;
+        tracedraw_io::dxf::DxfOptions {
+            units: DxfUnits::ALL
+                .get(self.dxf_units)
+                .copied()
+                .unwrap_or_default(),
         }
     }
 
@@ -5371,6 +5386,9 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
                 if !scripted && EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)].1 == "plt" {
                     plt_export_fields(ui, st);
                 }
+                if !scripted && EXPORT_FORMATS[st.format.min(EXPORT_FORMATS.len() - 1)].1 == "dxf" {
+                    dxf_export_fields(ui, st);
+                }
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut st.selection_only, tr("dialog.selected_only"))
                         .rich_tip(crate::ui::tips::pair(
@@ -5440,6 +5458,32 @@ fn export_dialog(app: &mut App, ctx: &Context, st: &mut ExportState, close: &mut
         if ok_cancel(ui, close) {
             export_dialog_ok(app, st);
         }
+    });
+}
+
+/// The names of the DXF export's units, in the order of
+/// [`tracedraw_io::dxf::DxfUnits::ALL`].
+pub const DXF_UNIT_KEYS: [&str; 5] = [
+    "units.millimeters",
+    "units.centimeters",
+    "units.meters",
+    "units.inches",
+    "units.feet",
+];
+
+/// The DXF export's choice in the Export dialog (#3583): the drawing
+/// unit the file's lengths are written in (millimetres unless chosen).
+fn dxf_export_fields(ui: &mut Ui, st: &mut ExportState) {
+    ui.horizontal(|ui| {
+        ui.label(tr("options.units"));
+        let k = st.dxf_units.min(DXF_UNIT_KEYS.len() - 1);
+        crate::ui::keynav::ComboBox::from_id_salt("exp_dxf_units")
+            .selected_text(tr(DXF_UNIT_KEYS[k]))
+            .show_ui(ui, |ui| {
+                for (i, key) in DXF_UNIT_KEYS.iter().enumerate() {
+                    ui.selectable_value(&mut st.dxf_units, i, tr(key));
+                }
+            });
     });
 }
 

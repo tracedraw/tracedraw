@@ -756,6 +756,9 @@ pub struct ExportPreset {
     pub plt_resolution: f64,
     /// SVG's text: as curves, as text, as text with its fonts (#2289).
     pub svg_text: usize,
+    /// DXF's drawing unit (#3583); presets saved before have none and
+    /// stay in millimetres.
+    pub dxf_units: usize,
 }
 
 impl Default for ExportPreset {
@@ -803,6 +806,7 @@ impl ExportPreset {
             plt_one_pen: st.plt_one_pen,
             plt_resolution: st.plt_resolution,
             svg_text: st.svg_text,
+            dxf_units: st.dxf_units,
         }
     }
 
@@ -838,6 +842,9 @@ impl ExportPreset {
         }
         if self.color_mode < EXPORT_COLOR_MODES.len() {
             st.color_mode = self.color_mode;
+        }
+        if self.dxf_units < crate::ui::dialogs::DXF_UNIT_KEYS.len() {
+            st.dxf_units = self.dxf_units;
         }
         self.apply_plt(st);
         self.apply_size(st);
@@ -1493,6 +1500,35 @@ mod tests {
         app.recall_export_format(&mut st, png);
         app.recall_export_format(&mut st, pdf);
         assert!(!st.all_pages);
+    }
+
+    /// The DXF export's unit is kept in a preset and comes back, and the
+    /// export writes it; presets from before and unknown units stay in
+    /// millimetres (#3583).
+    #[test]
+    fn a_preset_keeps_the_dxf_unit() {
+        use tracedraw_io::dxf::DxfUnits;
+        let st = ExportState {
+            dxf_units: 3,
+            ..ExportState::default()
+        };
+        assert_eq!(st.dxf_options().units, DxfUnits::Inches);
+        let p = ExportPreset::from_state("inches", &st);
+        let json = serde_json::to_string(&p).unwrap();
+        let back: ExportPreset = serde_json::from_str(&json).unwrap();
+        let mut fresh = ExportState::default();
+        back.apply(&mut fresh);
+        assert_eq!(fresh.dxf_options().units, DxfUnits::Inches);
+        let old: ExportPreset = serde_json::from_str(r#"{"name": "x"}"#).unwrap();
+        let mut fresh = ExportState::default();
+        old.apply(&mut fresh);
+        assert_eq!(fresh.dxf_options().units, DxfUnits::Millimeters);
+        let bad = ExportPreset {
+            dxf_units: 9,
+            ..ExportPreset::default()
+        };
+        bad.apply(&mut fresh);
+        assert_eq!(fresh.dxf_units, 0);
     }
 
     /// The AI export's kind (PDF-compatible or classic version 8) is
