@@ -3137,6 +3137,32 @@ fn appearance_page(app: &mut App, ui: &mut Ui) {
     ));
     ui.checkbox(&mut app.settings.ui_shadows, tr("options.ui_shadows"))
         .rich_tip(tr("options.ui_shadows_tip"));
+    ui.horizontal(|ui| {
+        ui.checkbox(
+            &mut app.settings.translucent_menus,
+            tr("options.translucent_menus"),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "options.translucent_menus",
+            "options.translucent_menus_tip",
+        ));
+        let mut pct = app.settings.menu_opacity * 100.0;
+        let tip = crate::ui::tips::pair("options.menu_opacity", "options.menu_opacity_tip");
+        let field = ui
+            .add_enabled(
+                app.settings.translucent_menus,
+                crate::ui::field::NumField::new(&mut pct)
+                    .range(crate::theme::MENU_OPACITY_MIN * 100.0..=100.0)
+                    .speed(1.0)
+                    .max_decimals(0)
+                    .suffix(" %"),
+            )
+            .rich_tip(tip.clone())
+            .rich_disabled_tip(tip);
+        if field.changed() {
+            app.settings.menu_opacity = (pct / 100.0).clamp(crate::theme::MENU_OPACITY_MIN, 1.0);
+        }
+    });
     ui.checkbox(&mut app.settings.colored_icons, tr("options.colored_icons"))
         .rich_tip(tr("options.colored_icons_tip"));
     ui.checkbox(

@@ -415,6 +415,12 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     crate::theme::set_button_sizes(app.settings.button_size, app.settings.toolbox_button_size);
     apply_theme(&ctx, &crate::settings::effective_theme(&app.settings));
     apply_shadows(&ctx, app.settings.ui_shadows && !software_renderer());
+    // Customization > Appearance > Translucent menus.
+    crate::theme::set_menu_opacity(
+        app.settings
+            .translucent_menus
+            .then_some(app.settings.menu_opacity),
+    );
     // Said once in the status bar: a software adapter draws the window.
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(name) = crate::gpu::take_software_note() {

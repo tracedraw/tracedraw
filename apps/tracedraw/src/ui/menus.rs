@@ -21,10 +21,11 @@ const FONT: f32 = 13.0;
 const SEPARATOR_HEIGHT: f32 = 7.0;
 
 /// The style of menu pop-ups: white, a one-pixel grey frame, square
-/// corners, rows touching.
+/// corners, rows touching. With Translucent menus on (Customization >
+/// Appearance) the body lets the window show through.
 pub(crate) fn menu_popup_style(style: &mut egui::Style) {
     egui::containers::menu::menu_style(style);
-    style.visuals.window_fill = crate::theme::Tokens::menu();
+    style.visuals.window_fill = crate::theme::menu_fill(crate::theme::Tokens::menu());
     style.visuals.window_stroke = egui::Stroke::new(1.0, crate::theme::Tokens::window_border());
     style.visuals.menu_corner_radius = egui::CornerRadius::ZERO;
     style.visuals.popup_shadow = crate::theme::shadow(egui::epaint::Shadow {
@@ -115,7 +116,11 @@ fn body_rows<R>(ui: &mut Ui, width_id: egui::Id, add: impl FnOnce(&mut Ui) -> R)
     );
     ui.painter().set(
         slot,
-        egui::Shape::rect_filled(gutter, 0.0, crate::theme::Tokens::menu_gutter()),
+        egui::Shape::rect_filled(
+            gutter,
+            0.0,
+            crate::theme::menu_fill(crate::theme::Tokens::menu_gutter()),
+        ),
     );
     r
 }

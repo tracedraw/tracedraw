@@ -333,6 +333,13 @@ pub struct Settings {
     /// draws less, for slower graphics).
     #[serde(default = "default_true")]
     pub ui_shadows: bool,
+    /// Customization > Appearance: open menus let the window show
+    /// through, at `menu_opacity` (off by default).
+    #[serde(default)]
+    pub translucent_menus: bool,
+    /// How solid translucent menus are, 0.5 to 1.
+    #[serde(default = "default_menu_opacity")]
+    pub menu_opacity: f32,
     /// Appearance: tool icons in a colour per group instead of the
     /// theme's icon colour.
     #[serde(default)]
@@ -905,6 +912,11 @@ fn default_spiral_expansion() -> u32 {
 /// it (#2965).
 fn default_system_save_dialog() -> bool {
     cfg!(target_os = "macos")
+}
+
+/// Translucent menus start at 85 % opacity.
+fn default_menu_opacity() -> f32 {
+    0.85
 }
 
 fn default_true() -> bool {
@@ -2388,6 +2400,8 @@ impl Default for Settings {
             system_save_dialog: default_system_save_dialog(),
             center_dialogs: true,
             ui_shadows: true,
+            translucent_menus: false,
+            menu_opacity: default_menu_opacity(),
             colored_icons: false,
             docker_tabs_icons_only: false,
             theme: String::new(),
