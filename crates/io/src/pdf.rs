@@ -1074,6 +1074,12 @@ impl PageWriter<'_> {
                         main.fill = Fill::Solid(*color);
                         main.opacity *= rate / 100.0;
                     }
+                    // A Cut lens changes the objects beneath on the screen only:
+                    // the lens itself shows nothing (Frozen bakes what it does).
+                    tracedraw_core::live::Effect::Lens(tracedraw_core::live::Lens::Cut { .. }) => {
+                        main.fill = Fill::None;
+                        main.opacity = 0.0;
+                    }
                     tracedraw_core::live::Effect::Lens(_) => main.opacity *= 0.5,
                     _ => {}
                 }

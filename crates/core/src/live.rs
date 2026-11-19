@@ -349,7 +349,7 @@ impl MergeMode {
     }
 }
 
-/// The eleven lens types.
+/// The lens types.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "lens", rename_all = "lowercase")]
 pub enum Lens {
@@ -396,9 +396,47 @@ pub enum Lens {
     Effects {
         effects: Vec<crate::BitmapEffect>,
     },
+    /// Cut: the objects beneath are cut across along the lens's middle
+    /// line (its long axis), each side of every cut piece grows a curved
+    /// spur along that line, and a shadow fades from the cut over the
+    /// objects on one side, as far as the lens reaches. Sizes in mm:
+    /// `spur_length` how far a spur reaches out of the object,
+    /// `spur_width` its thickness where it leaves the object, `curve`
+    /// how hollow its sides are (1 straight, higher thinner), `gap` the
+    /// width of the cut; `shadow` 0 to 100 how dark the shadow starts,
+    /// on the lens's lower side, or its upper side with `shadow_up`.
+    Cut {
+        spur_length: f64,
+        spur_width: f64,
+        #[serde(default = "two")]
+        curve: f64,
+        #[serde(default)]
+        gap: f64,
+        shadow: f64,
+        shadow_color: Color,
+        #[serde(default, skip_serializing_if = "is_false")]
+        shadow_up: bool,
+    },
+}
+
+fn two() -> f64 {
+    2.0
 }
 
 impl Lens {
+    /// The Cut lens as the Lens panel starts it.
+    pub fn default_cut() -> Lens {
+        Lens::Cut {
+            spur_length: 3.0,
+            spur_width: 3.0,
+            curve: 2.0,
+            gap: 0.3,
+            shadow: 60.0,
+            shadow_color: Color::BLACK,
+            shadow_up: false,
+        }
+    }
+
     pub fn name(&self) -> &'static str {
         match self {
             Lens::Brighten { .. } => "Brighten",
@@ -413,6 +451,7 @@ impl Lens {
             Lens::Transparency { .. } => "Transparency",
             Lens::Wireframe { .. } => "Wireframe",
             Lens::Effects { .. } => "Bitmap Effects",
+            Lens::Cut { .. } => "Cut",
         }
     }
 
@@ -517,7 +556,8 @@ impl Lens {
             Lens::FishEye { .. }
             | Lens::Magnify { .. }
             | Lens::Wireframe { .. }
-            | Lens::Effects { .. } => c,
+            | Lens::Effects { .. }
+            | Lens::Cut { .. } => c,
         }
     }
 }

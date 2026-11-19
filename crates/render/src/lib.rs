@@ -2448,6 +2448,15 @@ impl Renderer<'_> {
             }),
             _ => None,
         };
+        // Cut lens: what it needs once, before the pixels (the cut line on
+        // the screen, the pieces it crosses and their spurs' colours).
+        let cut = match lens {
+            Lens::Cut { .. } => {
+                let m = self.screen * transform;
+                CutLens::new(lens, m, shape.local_path().bounding_box(), &smooth_px)
+            }
+            _ => None,
+        };
         let mut changed: Vec<Option<tiny_skia::PremultipliedColorU8>> = vec![None; under.len()];
         for y in y0..y1 {
             for x in x0..x1 {
@@ -2469,6 +2478,10 @@ impl Renderer<'_> {
                                 None => src_px(x as i64, y as i64),
                             }
                         }
+                        None => src_px(x as i64, y as i64),
+                    },
+                    Lens::Cut { .. } => match &cut {
+                        Some(cut) => cut.color(x, y, src_px(x as i64, y as i64)),
                         None => src_px(x as i64, y as i64),
                     },
                     Lens::FishEye { rate } => {
@@ -5767,6 +5780,201 @@ fn png_is_black_white(png: &[u8]) -> bool {
     false
 }
 
+
+/// The Cut lens worked out for one drawing of it, in screen pixels: the
+/// cut line along the lens's long middle (from `origin` along `u`, `len`
+/// long, `n` across it towards the shadow), the places along it where
+/// an object beneath starts or ends (each with the way out of the object
+/// and the object's colour there), the colour of the bare background
+/// along the line, and the sizes in pixels.
+struct CutLens {
+    origin: Point,
+    u: tracedraw_core::geometry::Vec2,
+    n: tracedraw_core::geometry::Vec2,
+    edges: Vec<(f64, f64, [f32; 3])>,
+    bg: [f32; 3],
+    spur_len: f64,
+    spur_half: f64,
+    curve: f64,
+    gap_half: f64,
+    shadow: f32,
+    shadow_len: f64,
+    shadow_color: [f32; 3],
+}
+
+impl CutLens {
+    /// How different from the background a colour must be (largest channel
+    /// difference) to count as an object.
+    const INK: f32 = 0.1;
+
+    fn new(
+        lens: &tracedraw_core::live::Lens,
+        m: Affine,
+        b: tracedraw_core::geometry::Rect,
+        sample: &dyn Fn(f64, f64) -> [f32; 3],
+    ) -> Option<CutLens> {
+        let tracedraw_core::live::Lens::Cut {
+            spur_length,
+            spur_width,
+            curve,
+            gap,
+            shadow,
+            shadow_color,
+            shadow_up,
+        } = lens
+        else {
+            return None;
+        };
+        let cy = (b.y0 + b.y1) / 2.0;
+        let origin = m * Point::new(b.x0, cy);
+        let end = m * Point::new(b.x1, cy);
+        let along = end - origin;
+        let len = along.hypot();
+        if !(len.is_finite() && len >= 2.0) {
+            return None;
+        }
+        let u = along / len;
+        // Across: towards the lens's lower edge on the screen (its upper
+        // one with "shadow up").
+        let low = m * Point::new(b.x0, b.y0) - origin;
+        let high = m * Point::new(b.x0, b.y1) - origin;
+        let mut side = if low.y >= high.y { low } else { high };
+        if *shadow_up {
+            side = -side;
+        }
+        let mut n = tracedraw_core::geometry::Vec2::new(-u.y, u.x);
+        if n.dot(side) < 0.0 {
+            n = -n;
+        }
+        let shadow_len = side.dot(n).abs().max(1.0);
+        // Pixels per millimetre, from the lens's own scale.
+        let scale = m.determinant().abs().sqrt();
+        let px = |mm: f64| (mm.max(0.0) * scale).min(4000.0);
+        let differ = |p: [f32; 3], q: [f32; 3]| -> f32 {
+            (p[0] - q[0])
+                .abs()
+                .max((p[1] - q[1]).abs())
+                .max((p[2] - q[2]).abs())
+        };
+        // Samples along the line, a pixel apart.
+        let count = len.ceil() as usize + 1;
+        let samples: Vec<[f32; 3]> = (0..count)
+            .map(|i| {
+                let p = origin + u * (i as f64).min(len);
+                sample(p.x, p.y)
+            })
+            .collect();
+        // The background: the colour both ends share, or else the most
+        // common colour along the line.
+        let (first, last) = (samples[0], samples[count - 1]);
+        let bg = if differ(first, last) < Self::INK {
+            first
+        } else {
+            let mut counts: std::collections::HashMap<[u8; 3], (usize, [f32; 3])> =
+                std::collections::HashMap::new();
+            for c in &samples {
+                let key = [
+                    (c[0] * 15.0).round() as u8,
+                    (c[1] * 15.0).round() as u8,
+                    (c[2] * 15.0).round() as u8,
+                ];
+                counts.entry(key).or_insert((0, *c)).0 += 1;
+            }
+            counts
+                .values()
+                .max_by_key(|(k, _)| *k)
+                .map(|(_, c)| *c)
+                .unwrap_or([1.0, 1.0, 1.0])
+        };
+        let ink: Vec<bool> = samples.iter().map(|c| differ(*c, bg) > Self::INK).collect();
+        let mut edges = Vec::new();
+        for i in 1..count {
+            if ink[i] && !ink[i - 1] {
+                // An object starts: its spur points back along the line.
+                let c = samples[(i + 1).min(count - 1)];
+                let c = if ink[(i + 1).min(count - 1)] { c } else { samples[i] };
+                edges.push((i as f64 - 0.5, -1.0, c));
+            } else if !ink[i] && ink[i - 1] {
+                let c = if i >= 2 && ink[i - 2] { samples[i - 2] } else { samples[i - 1] };
+                edges.push((i as f64 - 0.5, 1.0, c));
+            }
+        }
+        let rgb = {
+            let [r, g, bl] = shadow_color.to_rgb8();
+            [r as f32 / 255.0, g as f32 / 255.0, bl as f32 / 255.0]
+        };
+        Some(CutLens {
+            origin,
+            u,
+            n,
+            edges,
+            bg,
+            spur_len: px(*spur_length).max(0.5),
+            spur_half: px(*spur_width) / 2.0,
+            curve: curve.clamp(0.3, 8.0),
+            gap_half: px(*gap) / 2.0,
+            shadow: (*shadow as f32 / 100.0).clamp(0.0, 1.0),
+            shadow_len,
+            shadow_color: rgb,
+        })
+    }
+
+    /// The colour of pixel (x, y), whose colour beneath is `here`.
+    fn color(&self, x: u32, y: u32, here: [f32; 3]) -> [f32; 3] {
+        let p = Point::new(x as f64 + 0.5, y as f64 + 0.5) - self.origin;
+        let a = p.dot(self.u);
+        let d = p.dot(self.n);
+        let differ = |p: [f32; 3], q: [f32; 3]| -> f32 {
+            (p[0] - q[0])
+                .abs()
+                .max((p[1] - q[1]).abs())
+                .max((p[2] - q[2]).abs())
+        };
+        let is_ink = differ(here, self.bg) > Self::INK;
+        let mix = |a: [f32; 3], b: [f32; 3], t: f32| -> [f32; 3] {
+            [
+                a[0] + (b[0] - a[0]) * t,
+                a[1] + (b[1] - a[1]) * t,
+                a[2] + (b[2] - a[2]) * t,
+            ]
+        };
+        let mut out = here;
+        let mut covered = is_ink;
+        if !is_ink && self.spur_half > 0.0 {
+            // The spur that covers this pixel most, if any: its half
+            // thickness narrows from the object's edge to a point.
+            let mut best: Option<(f32, [f32; 3])> = None;
+            for &(t, way, c) in &self.edges {
+                let dx = (a - t) * way;
+                if !(0.0..self.spur_len).contains(&dx) {
+                    continue;
+                }
+                let half = self.spur_half * (1.0 - dx / self.spur_len).powf(self.curve);
+                let cover = (half - d.abs() + 0.5).clamp(0.0, 1.0) as f32;
+                if cover > 0.0 && best.is_none_or(|(b, _)| cover > b) {
+                    best = Some((cover, c));
+                }
+            }
+            if let Some((cover, c)) = best {
+                out = mix(out, c, cover);
+                covered = cover > 0.5;
+            }
+        }
+        if covered && self.gap_half > 0.0 {
+            let cover = (self.gap_half - d.abs() + 0.5).clamp(0.0, 1.0) as f32;
+            if cover > 0.0 {
+                out = mix(out, self.bg, cover);
+            }
+        }
+        if is_ink && self.shadow > 0.0 && d > self.gap_half {
+            let t = ((d - self.gap_half) / self.shadow_len).clamp(0.0, 1.0);
+            let f = self.shadow * (1.0 - t as f32).powf(1.6);
+            out = mix(out, self.shadow_color, f);
+        }
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -6791,6 +6999,51 @@ mod tests {
             assert_eq!(px(&pm, 40, 5), (255, 0, 0), "{lens_kind:?}");
             assert_eq!(px(&pm, 10, 30), (255, 0, 0), "{lens_kind:?}");
         }
+    }
+
+    /// The Cut lens: where its middle line crosses the objects beneath
+    /// each side grows a pointed spur in the object's colour, the cut
+    /// leaves a gap, and a shadow fades over the objects (only) from the
+    /// cut to the lens's lower edge; the bare page stays as it is.
+    #[test]
+    fn cut_lens_grows_spurs_and_casts_a_shadow_below_the_cut() {
+        use tracedraw_core::live::{Effect, Lens};
+        let green = Color::rgb8(0, 128, 0);
+        let page_white = rect(1, Rect::new(0.0, 0.0, 100.0, 100.0), Color::WHITE);
+        let bar1 = rect(2, Rect::new(20.0, 10.0, 30.0, 90.0), green);
+        let bar2 = rect(3, Rect::new(50.0, 10.0, 60.0, 90.0), green);
+        let mut lens = rect(4, Rect::new(0.0, 40.0, 100.0, 60.0), Color::WHITE);
+        lens.stroke = None;
+        lens.effects.push(Effect::Lens(Lens::Cut {
+            spur_length: 6.0,
+            spur_width: 6.0,
+            curve: 2.0,
+            gap: 0.4,
+            shadow: 80.0,
+            shadow_color: Color::BLACK,
+            shadow_up: false,
+        }));
+        let (doc, page) = doc_with(vec![page_white, bar1, bar2, lens]);
+        // 10 pixels a millimetre.
+        let pm = render_page_image(&doc, page, 254.0).unwrap();
+        let at = |x: f64, y: f64| px(&pm, (x * 10.0) as u32, (y * 10.0) as u32);
+        // Spurs: green just outside both sides of a bar, beside the cut.
+        assert_eq!(at(19.0, 51.0), (0, 128, 0), "left spur");
+        assert_eq!(at(31.0, 49.0), (0, 128, 0), "right spur");
+        // A spur narrows: away from the cut it is the page again.
+        assert_eq!(at(19.0, 53.5), (255, 255, 255));
+        assert_eq!(at(15.0, 51.0), (255, 255, 255));
+        // Between the bars, past the spurs, the page is untouched.
+        assert_eq!(at(40.0, 52.0), (255, 255, 255));
+        // The cut: a thin line of page colour across the bar.
+        assert_eq!(at(25.0, 50.0), (255, 255, 255));
+        // The shadow: darkest under the cut, fading to the lens's edge,
+        // none above the cut and none outside the lens.
+        let g = |y: f64| at(25.0, y).1;
+        assert!(g(51.0) < g(55.0) && g(55.0) < g(59.0), "{} {} {}", g(51.0), g(55.0), g(59.0));
+        assert!(g(51.0) < 60, "{}", g(51.0));
+        assert_eq!(at(25.0, 45.0), (0, 128, 0));
+        assert_eq!(at(25.0, 70.0), (0, 128, 0));
     }
 
     /// #2800: Wireframe shows the objects beneath as outlines and fills

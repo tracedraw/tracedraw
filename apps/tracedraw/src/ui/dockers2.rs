@@ -1421,6 +1421,11 @@ fn lens(app: &mut App, ui: &mut Ui) {
                     if i == 9 && app.lens.color == tracedraw_core::Color::WHITE {
                         app.lens.color = tracedraw_core::Color::BLACK;
                     }
+                    // Cut starts with a black shadow at 60 %.
+                    if i == 13 && app.lens.color == tracedraw_core::Color::WHITE {
+                        app.lens.color = tracedraw_core::Color::BLACK;
+                        app.lens.rate = 60.0;
+                    }
                 }
             }
         })
@@ -1488,6 +1493,54 @@ fn lens(app: &mut App, ui: &mut Ui) {
                 color_button(ui, &mut l.color_to);
                 ui.label(tr("docker.fill"));
                 color_button(ui, &mut l.color);
+            });
+        }
+        13 => {
+            // Cut: the spurs where the lens's middle line crosses the
+            // objects beneath, the cut itself and the shadow under it.
+            ui.add(
+                crate::ui::Slider::new(&mut l.spur_length, 0.0..=50.0)
+                    .text(tr("lens.cut_spur_length"))
+                    .suffix(" mm"),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "lens.cut_spur_length",
+                "lens.cut_spur_length_desc",
+            ));
+            ui.add(
+                crate::ui::Slider::new(&mut l.spur_width, 0.0..=50.0)
+                    .text(tr("lens.cut_spur_width"))
+                    .suffix(" mm"),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "lens.cut_spur_width",
+                "lens.cut_spur_width_desc",
+            ));
+            ui.add(
+                crate::ui::Slider::new(&mut l.curve, 0.5..=6.0).text(tr("lens.cut_curve")),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "lens.cut_curve",
+                "lens.cut_curve_desc",
+            ));
+            ui.add(crate::ui::Slider::new(&mut l.gap, 0.0..=10.0).text(tr("lens.cut_gap")).suffix(" mm"))
+                .rich_tip(crate::ui::tips::pair("lens.cut_gap", "lens.cut_gap_desc"));
+            ui.add(
+                crate::ui::Slider::new(&mut l.rate, 0.0..=100.0).text(tr("lens.cut_shadow"))
+                    .suffix(" %"),
+            )
+            .rich_tip(crate::ui::tips::pair(
+                "lens.cut_shadow",
+                "lens.cut_shadow_desc",
+            ));
+            ui.horizontal(|ui| {
+                ui.label(tr("docker.color"));
+                color_button(ui, &mut l.color);
+                ui.checkbox(&mut l.shadow_up, tr("lens.cut_shadow_up"))
+                    .rich_tip(crate::ui::tips::pair(
+                        "lens.cut_shadow_up",
+                        "lens.cut_shadow_up_desc",
+                    ));
             });
         }
         12 => {
