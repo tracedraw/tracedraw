@@ -1410,6 +1410,11 @@ pub(crate) fn drawing_window(app: &mut App, ui: &mut Ui, full: egui::Rect) {
         });
         let cursor = cursors::for_tool_with_ctrl(app, shift, ctrl, primary, middle, pos);
         cursors::show(ui.ctx(), cursor, pos);
+        if app.settings.crosshair_to_edges {
+            if let Some(p) = pos.filter(|p| canvas_rect.contains(*p)) {
+                cursors::paint_edge_lines(&painter, cursor, p, canvas_rect);
+            }
+        }
         // A colour eyedropper waiting to sample: the colour under the
         // pointer beside it (#990).
         let picker = crate::ui::color_picker::picking(ui.ctx());

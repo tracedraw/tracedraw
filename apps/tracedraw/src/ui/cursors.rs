@@ -1050,6 +1050,46 @@ pub fn cross_hair_lines(p: Pos2, ppp: f32) -> [[Pos2; 2]; 2] {
     ]
 }
 
+/// Whether `cursor` is drawn with the cross hair (the Pick tool's with
+/// the cross hair option, the drawing tools' with their sign, the
+/// brushes' nib).
+pub fn has_cross_hair(cursor: ToolCursor) -> bool {
+    matches!(
+        cursor,
+        ToolCursor::Cross
+            | ToolCursor::Badge(_)
+            | ToolCursor::CurveBadge(..)
+            | ToolCursor::Nib { .. }
+    )
+}
+
+/// The two lines through `p` from edge to edge of `area`, on pixel
+/// centres (see [`cross_hair_lines`]).
+pub fn edge_lines(p: Pos2, area: egui::Rect, ppp: f32) -> [[Pos2; 2]; 2] {
+    use egui::emath::GuiRounding as _;
+    let c = p.round_to_pixel_center(ppp);
+    [
+        [Pos2::new(area.left(), c.y), Pos2::new(area.right(), c.y)],
+        [Pos2::new(c.x, area.top()), Pos2::new(c.x, area.bottom())],
+    ]
+}
+
+/// With Options > Tools > Pick > "Cross hair to the window edges": a
+/// cross hair pointer's lines carried on to the edges of the drawing
+/// window `area`, thin and light under the pointer itself (#2996).
+pub fn paint_edge_lines(painter: &Painter, cursor: ToolCursor, p: Pos2, area: egui::Rect) {
+    if !has_cross_hair(cursor) {
+        return;
+    }
+    let ink = Color32::from_rgba_unmultiplied(0, 0, 0, 160);
+    let halo = Color32::from_rgba_unmultiplied(255, 255, 255, 120);
+    for (w, color) in [(3.0, halo), (1.0, ink)] {
+        for l in edge_lines(p, area, painter.pixels_per_point()) {
+            painter.line_segment(l, Stroke::new(w, color));
+        }
+    }
+}
+
 /// The cross hair, black on a white halo: seen on any page colour (the
 /// system's inverts what is under it and can show white, #655).
 fn cross_hair(painter: &Painter, p: Pos2) {
@@ -1674,6 +1714,22 @@ fn bucket(painter: &Painter, spot: Pos2) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// With the option on, the cross hair's lines run from edge to edge
+    /// of the drawing window through the pointer; pointers without a
+    /// cross hair get none (#2996).
+    #[test]
+    fn the_cross_hair_reaches_the_window_edges() {
+        let area = egui::Rect::from_min_max(Pos2::new(40.0, 30.0), Pos2::new(840.0, 630.0));
+        let [h, v] = edge_lines(Pos2::new(200.2, 300.7), area, 1.0);
+        assert_eq!(h, [Pos2::new(40.0, 300.5), Pos2::new(840.0, 300.5)]);
+        assert_eq!(v, [Pos2::new(200.5, 30.0), Pos2::new(200.5, 630.0)]);
+        assert!(has_cross_hair(ToolCursor::Cross));
+        assert!(has_cross_hair(ToolCursor::Badge(Tool::Rectangle)));
+        assert!(!has_cross_hair(ToolCursor::IBeam));
+        assert!(!has_cross_hair(ToolCursor::System(egui::CursorIcon::Default)));
+        assert!(!crate::settings::Settings::default().crosshair_to_edges);
+    }
 
     /// On a software adapter the drawn pointers give way to the system's
     /// nearest (#616): the cross hair for the drawing tools, the I-beam

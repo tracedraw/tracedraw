@@ -525,6 +525,11 @@ pub struct Settings {
     /// Options > Tools > Pick: the Pick tool's pointer is a cross hair.
     #[serde(default)]
     pub crosshair_cursor: bool,
+    /// Options > Tools > Pick: the lines of the cross hair pointer (the
+    /// Pick tool's with the option above, and the drawing tools') run to
+    /// the edges of the drawing window. Off by default (#2996).
+    #[serde(default)]
+    pub crosshair_to_edges: bool,
     /// Options > Display > Ruler calibration: pixels per inch of the
     /// screen at the system's scaling, so that zoom 100% shows real sizes
     /// (96 by default; see `screen_points_per_inch`).
@@ -2455,6 +2460,7 @@ impl Default for Settings {
             connector_gap: 0.0,
             upgrades: UPGRADES,
             crosshair_cursor: false,
+            crosshair_to_edges: false,
             screen_ppi: default_screen_ppi(),
             zoom_right_click_out: true,
             zoom_relative_1to1: true,

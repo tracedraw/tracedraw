@@ -4643,6 +4643,14 @@ fn pick_page(app: &mut App, ui: &mut Ui) {
         "options.crosshair_cursor_tip",
     ));
     ui.checkbox(
+        &mut app.settings.crosshair_to_edges,
+        tr("options.crosshair_to_edges"),
+    )
+    .rich_tip(crate::ui::tips::pair(
+        "options.crosshair_to_edges",
+        "options.crosshair_to_edges_tip",
+    ));
+    ui.checkbox(
         &mut app.settings.treat_all_filled,
         tr("options.treat_all_filled"),
     )
