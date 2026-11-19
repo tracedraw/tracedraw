@@ -30089,3 +30089,55 @@ fn the_guidelines_panel_works_from_the_keyboard() {
     frame(&ctx, &mut app, vec![key_up(egui::Key::A, Modifiers::ALT)], Modifiers::NONE);
     assert_eq!(app.page_guides().len(), 2, "Alt+A adds");
 }
+
+/// A straight vertical or horizontal line (#3523): the three handles of
+/// each side stand apart with a gap between them, and dragging the
+/// middle handle along the line still stretches it by the drag.
+#[test]
+fn the_handles_of_a_straight_line_do_not_overlap() {
+    let (ctx, mut app, rect) = setup();
+    app.select(Vec::new());
+    let mut ids = Vec::new();
+    for (a, b) in [((40.0, 20.0), (40.0, 120.0)), ((20.0, 150.0), (120.0, 150.0))] {
+        let mut p = tracedraw_core::geometry::BezPath::new();
+        p.move_to(a);
+        p.line_to(b);
+        let id = app
+            .new_shape(ShapeKind::Path {
+                path: p,
+                closed: false,
+            })
+            .expect("line");
+        ids.push(id);
+    }
+    let _ = rect;
+    let size = app.handle_size();
+    for id in ids.clone() {
+        app.select(vec![id]);
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        let hs: Vec<Pos2> = app
+            .handle_positions(app.selection_bounds().expect("bounds"))
+            .iter()
+            .map(|(_, p)| *p)
+            .collect();
+        for (i, a) in hs.iter().enumerate() {
+            for b in &hs[i + 1..] {
+                let apart = (a.x - b.x).abs().max((a.y - b.y).abs());
+                assert!(
+                    apart >= size + crate::interaction::HANDLE_GAP - 1e-3,
+                    "{a:?} {b:?} {hs:?}"
+                );
+            }
+        }
+    }
+    // The vertical line: its bottom handle drags it 30 points longer.
+    app.select(vec![ids[0]]);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let before = bounds(&app, ids[0]);
+    let s = handle(&app, Handle::S);
+    drag(&ctx, &mut app, s, s + egui::vec2(0.0, 30.0), Modifiers::NONE, Vec::new());
+    let after = bounds(&app, ids[0]);
+    let grown = 30.0 / app.view.zoom as f64;
+    assert!(close(after.height(), before.height() + grown), "{before:?} {after:?}");
+    assert!(close(after.width(), before.width()), "{before:?} {after:?}");
+}
