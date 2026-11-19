@@ -303,6 +303,13 @@ row is not lit until the pointer moves.
   the same letter again goes on to the next name with it). Enter picks
   the row and closes the list, Esc closes it as it was. The list's
   button (a combo box's) keeps the keyboard afterwards.
+- A combo box's list is as tall as seven tenths of the window (at
+  least 200 points) before it scrolls, so a list that fits shows whole
+  with no scroll bar (#3492, `keynav::list_height`, set each frame as
+  `combo_height`). Its rows' resting frame has no edge (`list_style`):
+  egui leaves a frameless row's padding short by the edge's width, so
+  every name moved a point when the pointer lit its row (#3491,
+  `keynav::tests::a_combo_list_keeps_its_names_still_and_shows_whole`).
 - A list's button with the keyboard (reached with Tab from a field of
   the bar or dialog): Down, Up, Alt+Down, F4, Enter or Space open the
   list with its chosen row lit.

@@ -509,6 +509,12 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     if ctx.global_style().interaction.tooltip_delay != delay {
         ctx.all_styles_mut(|s| s.interaction.tooltip_delay = delay);
     }
+    // Combo box lists as tall as the window allows before they scroll
+    // (#3492).
+    let room = crate::ui::keynav::list_height(ctx.content_rect().height());
+    if ctx.global_style().spacing.combo_height != room {
+        ctx.all_styles_mut(|s| s.spacing.combo_height = room);
+    }
     // Session recovery: this session's marker, and what one that ended
     // without closing left. An idle window still checks in, with a frame
     // a minute, so another window never takes it for gone.
