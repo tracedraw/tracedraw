@@ -27,7 +27,9 @@ each one the one before it scaled (**Scale H** and
 **V**, in percent), moved, turned by **Angle** about
 the object's centre and mirrored with **Reflect X** or
 **Reflect Y**; **Copies** sets how many (0 transforms the
-object itself). **Random** gives each step a random share of those
+object itself). **Turn about H** and **V** move the point the copies turn
+about away from the centre, so a turn of 30° and 11 copies set the object
+in a ring round that point. **Random** gives each step a random share of those
 values. Outlines keep their width unless **Scale outlines** is on. A
 thick round-capped ring with an 85% scale, a 15° turn and a dozen copies
 makes a spiral of rings. The object stays as it is, so its shape, color and

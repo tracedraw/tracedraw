@@ -29,6 +29,9 @@ uma a anterior escalada (**Escala H** e **V**, em
 porcentagem), deslocada, girada por **Ângulo** em torno do centro do
 objeto e espelhada com **Refletir X** ou **Refletir Y**;
 **Cópias** define quantas (0 transforma o próprio objeto).
+**Girar em torno de H** e **V** afastam do centro o ponto em torno do qual as
+cópias giram, de modo que um giro de 30° com 11 cópias dispõe o objeto num
+anel em torno desse ponto.
 **Aleatório** dá a cada passo uma parte aleatória desses valores. Os
 contornos mantêm a espessura, a menos que **Escalar contornos** esteja
 ligado. Um anel de contorno grosso com pontas redondas, escala de 85%, giro de

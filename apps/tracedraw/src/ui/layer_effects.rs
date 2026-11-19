@@ -195,6 +195,8 @@ impl Kind {
                 random: false,
                 seed: 1,
                 scale_strokes: false,
+                pivot_x: 0.0,
+                pivot_y: 0.0,
             },
             Kind::Grid => Effect::Grid {
                 columns: 4,
@@ -750,6 +752,8 @@ fn transform_settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
         random,
         seed,
         scale_strokes,
+        pivot_x,
+        pivot_y,
     } = e
     else {
         return false;
@@ -814,6 +818,12 @@ fn transform_settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
                 "layer_fx.copies_desc",
             ))
             .changed();
+    });
+    // The point the steps turn and scale about, from the box's centre:
+    // copies round a centre of one's own (#3607).
+    ui.horizontal(|ui| {
+        changed |= signed_length(app, ui, "layer_fx.pivot_h", "layer_fx.pivot_desc", pivot_x);
+        changed |= signed_length(app, ui, "layer_fx.pivot_v", "layer_fx.pivot_desc", pivot_y);
     });
     ui.horizontal(|ui| {
         changed |= ui

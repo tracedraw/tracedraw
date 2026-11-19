@@ -201,8 +201,9 @@ pub enum Effect {
     /// Transform: `copies` copies of the object, each one the one before
     /// it scaled by `scale_x` / `scale_y` percent, mirrored (`reflect_x`
     /// turns it over left to right, `reflect_y` top to bottom), turned by
-    /// `angle` degrees about the centre of the object's box and moved by
-    /// `move_x` / `move_y` mm. With `random`, each step takes a share of
+    /// `angle` degrees about the centre of the object's box (or the point
+    /// `pivot_x` / `pivot_y` mm from it, for copies round a centre of
+    /// one's own, #3607) and moved by `move_x` / `move_y` mm. With `random`, each step takes a share of
     /// those values picked from `seed`. With no copies the object itself
     /// is drawn transformed. The outline keeps its width unless
     /// `scale_strokes`. The object itself stays as it is, so the result
@@ -227,6 +228,10 @@ pub enum Effect {
         seed: u32,
         #[serde(default, skip_serializing_if = "is_false")]
         scale_strokes: bool,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        pivot_x: f64,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        pivot_y: f64,
     },
     /// Grid: the object repeated in `columns` × `rows` cells, to the right
     /// and down from the object, which is the top left cell. Each cell is
@@ -2145,12 +2150,16 @@ fn transform_copies(e: &Effect, below: &mut Vec<Shape>, main: &mut Shape, above:
     let Effect::Transform {
         copies,
         scale_strokes,
+        pivot_x,
+        pivot_y,
         ..
     } = *e
     else {
         return;
     };
-    let center = main.bounds().center();
+    // The steps go about the box's centre, or the point set from it.
+    let fin = |v: f64| if v.is_finite() { v } else { 0.0 };
+    let center = main.bounds().center() + Vec2::new(fin(pivot_x), fin(pivot_y));
     if !(center.x.is_finite() && center.y.is_finite()) {
         return;
     }
@@ -3792,7 +3801,51 @@ mod tests {
             random,
             seed: 7,
             scale_strokes: false,
+            pivot_x: 0.0,
+            pivot_y: 0.0,
         }
+    }
+
+    /// Transform about a point of one's own (#3607): copies turned about
+    /// a centre away from the object lie round it, as the hours of a
+    /// clock, each the same size and at the same distance.
+    #[test]
+    fn transform_copies_turn_round_a_centre_of_their_own() {
+        let mut s = Shape::new(
+            crate::ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(-1.0, -41.0, 1.0, -39.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let mut fx = transform_fx(11, 30.0, 100.0, false);
+        if let Effect::Transform {
+            pivot_x, pivot_y, ..
+        } = &mut fx
+        {
+            // The clock's centre, 40 mm under the object's.
+            *pivot_x = 0.0;
+            *pivot_y = 40.0;
+        }
+        s.effects = vec![fx.clone()];
+        let ev = evaluate(&s);
+        assert_eq!(ev.below.len(), 11);
+        for c in &ev.below {
+            let b = c.bounds();
+            assert!((b.center().to_vec2().hypot() - 40.0).abs() < 1e-6, "{b:?}");
+            assert!((b.width() - b.height()).abs() < 1e-6);
+        }
+        // The sixth copy is opposite the object.
+        let six = ev.below[11 - 6].bounds().center();
+        assert!((six.y - 40.0).abs() < 1e-6 && six.x.abs() < 1e-6, "{six:?}");
+        // Saved and read back; without a pivot the field is left out.
+        let json = serde_json::to_string(&fx).expect("save");
+        assert!(json.contains("pivot_y"), "{json}");
+        let back: Effect = serde_json::from_str(&json).expect("read");
+        assert_eq!(back, fx);
+        let plain = serde_json::to_string(&transform_fx(1, 0.0, 50.0, false)).unwrap();
+        assert!(!plain.contains("pivot"), "{plain}");
     }
 
     /// Grid: copies right and down from the object in cells of its box
