@@ -42,6 +42,8 @@ pub const TRANSFORM: &[EffectSpec] = &[
     },
     super::glitch::DITHER,
     super::glitch::GRADIENT_MAP,
+    super::print::RISO,
+    super::print::NEWSPRINT,
 ];
 
 pub const CONTOUR: &[EffectSpec] = &[
