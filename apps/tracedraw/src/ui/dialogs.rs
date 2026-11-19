@@ -8074,9 +8074,35 @@ pub(crate) fn next_tab_position(tabs: &[tracedraw_core::TabStop]) -> f64 {
 /// the text from the right-hand column.
 fn columns_settings(ui: &mut Ui, p: &mut tracedraw_core::ParagraphStyle, u: Units) -> bool {
     let mut changed = false;
+    // Columns and Gutter: the labels as wide as the wider, so the two
+    // boxes line up (#3590).
+    let label_w = [tr("dialog.columns"), tr("dialog.gutter")]
+        .iter()
+        .map(|t| {
+            ui.fonts_mut(|f| {
+                f.layout_no_wrap(
+                    t.clone(),
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    egui::Color32::WHITE,
+                )
+                .size()
+                .x
+            })
+        })
+        .fold(0.0, f32::max);
+    let label = |ui: &mut Ui, text: String| {
+        ui.allocate_ui_with_layout(
+            egui::vec2(label_w, ui.spacing().interact_size.y),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.set_min_width(label_w);
+                ui.label(text);
+            },
+        );
+    };
     crate::ui::tips::tip_over(ui, crate::ui::tips::keyed("dialog.columns"), |ui| {
         ui.horizontal(|ui| {
-            ui.label(tr("dialog.columns"));
+            label(ui, tr("dialog.columns"));
             changed |= ui
                 .add(crate::ui::field::NumField::new(&mut p.columns).range(1..=8))
                 .changed();
@@ -8144,7 +8170,23 @@ fn columns_settings(ui: &mut Ui, p: &mut tracedraw_core::ParagraphStyle, u: Unit
         }
     } else {
         let tip = crate::ui::tips::keyed("dialog.gutter");
-        changed |= unit_value(ui, &tr("dialog.gutter"), &tip, &mut p.gutter, u);
+        let mut v = u.from_mm(p.gutter);
+        let r = crate::ui::tips::tip_over(ui, &tip, |ui| {
+            ui.horizontal(|ui| {
+                label(ui, tr("dialog.gutter"));
+                ui.add(
+                    crate::ui::field::NumField::new(&mut v)
+                        .speed(0.5)
+                        .suffix(format!(" {}", u.short())),
+                )
+                .changed()
+            })
+            .inner
+        });
+        if r {
+            p.gutter = u.to_mm(v);
+            changed = true;
+        }
     }
     if n > 1 && !p.vertical {
         changed |= ui

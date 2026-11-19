@@ -130,6 +130,7 @@ original, #471). Checks:
 | Ctrl+Shift+A | Paste Style From: a dialog with Outline pen, Outline color, Fill and Text properties (all ticked at first, kept), then a click on the object to copy them from to the other selected objects, one undo step; a right click or Esc cancels the wait (#1345, `pick_drag_tests::ctrl_shift_a_copies_the_ticked_properties_from_the_object_clicked`). They are read from the object clicked inside a group or clip frame and written as the Attributes Eyedropper writes them (see `eyedroppers.md`; #1550, `pick_drag_tests::copying_properties_from_a_group_takes_the_object_clicked`) |
 | Alt+F7, Alt+F8, Alt+F9, Alt+F10 | Transformations panel on Position, Rotate, Scale and Mirror, Size |
 | Ctrl+M | Merge table cells |
+| Ctrl+Shift+L | Text > Bullets On/Off: bullets on or off for the selected paragraph text, or for the paragraphs at the caret while typing; the bullet keeps its settings (#3593, `pick_drag_tests::ctrl_shift_l_turns_bullets_on_and_off`) |
 | Ctrl+Shift+F3 | Edit Contents of the selected clip frame; while its contents are edited, Finish Editing (Object > Clip to Frame, the canvas context menu; #1273, `pick_drag_tests::the_context_menu_and_a_key_edit_and_extract_clip_frame_contents`) |
 | Alt+Shift+F8, Alt+F11 | Run Macro, Macro Editor (Tools > Macros) |
 
@@ -172,8 +173,8 @@ Looked at and left without a key, because the usual key is taken:
 Redo's Ctrl+Y (Snap to Document Grid; Redo is Ctrl+Shift+Z), Paste
 Special's Ctrl+Alt+V (the windowing layer turns every Ctrl+V into a
 paste), Text > Convert's Ctrl+F8 and Spell Check's
-Ctrl+F12 (the Blend and Fonts panels, #1779) and Bullets' Ctrl+M (Merge
-Cells).
+Ctrl+F12 (the Blend and Fonts panels, #1779). Bullets' usual Ctrl+M is
+Merge Cells, so Bullets On/Off has Ctrl+Shift+L (#3593).
 
 ## Distribute keys
 

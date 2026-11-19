@@ -4518,6 +4518,16 @@ mod tests {
         let start = run(&mut app, Vec::new());
         assert!(start.is_positive(), "{start:?}");
         run(&mut app, vec![egui::Event::PointerMoved(start.center())]);
+        // Clicked into: on a bar the wheel steps only the box clicked
+        // into (#3589).
+        let click = |pressed| egui::Event::PointerButton {
+            pos: start.center(),
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        run(&mut app, vec![click(true)]);
+        run(&mut app, vec![click(false)]);
         for k in 1..=5 {
             run(
                 &mut app,

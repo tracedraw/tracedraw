@@ -29202,6 +29202,93 @@ fn the_text_bar_has_more_settings_and_a_plus_list() {
     assert!(!app.settings.bar_items.contains_key(text_bar::HIDDEN));
 }
 
+/// Paragraph text selected with the Pick tool: the object fields come
+/// first, and the Bullets button is still in view on the bar without
+/// sliding it, next to the alignment, as with the Text tool (#3586,
+/// #3592).
+#[test]
+fn bullets_stay_in_view_with_paragraph_text_picked() {
+    use crate::ui::text_bar;
+    let (ctx, mut app, _) = setup();
+    let id = paragraph_frame(&ctx, &mut app, 12);
+    let mut at = Vec::new();
+    for tool in [Tool::Pick, Tool::Text] {
+        app.set_tool(tool);
+        app.select(vec![id]);
+        for _ in 0..3 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+        let b = text_bar::bullets_rect(&ctx).expect("the Bullets button on the bar");
+        // The window is 1600 wide: in view, short of the bar's » button.
+        assert!(
+            b.left() > 0.0 && b.right() < 1600.0 - 2.0 * crate::ui::overflow::BUTTON,
+            "{tool:?}: {b:?}"
+        );
+        at.push(b);
+    }
+    assert!(at[0].left() > at[1].left(), "the object fields come first");
+}
+
+/// Ctrl+Shift+L turns bullets on and off (#3593): for the selected
+/// paragraph text, and for the paragraph at the caret while it is typed
+/// in; the bullet set for the text stays as it was.
+#[test]
+fn ctrl_shift_l_turns_bullets_on_and_off() {
+    let (ctx, mut app, _) = setup();
+    let id = paragraph_frame(&ctx, &mut app, 12);
+    let bullets = |app: &App| {
+        let s = app.doc().find_shape(id).cloned().expect("text");
+        app.paragraph_style_of(&s).expect("paragraph").1.bullets
+    };
+    let press = |ctx: &egui::Context, app: &mut App| {
+        let mods = Modifiers::COMMAND | Modifiers::SHIFT;
+        frame(
+            ctx,
+            app,
+            vec![key(egui::Key::L, mods), key_up(egui::Key::L, mods)],
+            mods,
+        );
+        frame(ctx, app, Vec::new(), Modifiers::NONE);
+    };
+    app.set_tool(Tool::Pick);
+    app.select(vec![id]);
+    assert!(!bullets(&app));
+    press(&ctx, &mut app);
+    assert!(bullets(&app), "on");
+    press(&ctx, &mut app);
+    assert!(!bullets(&app), "off");
+    // A bullet of the text's own comes back as it was.
+    app.edit_paragraph_style(id, |p| p.bullet.size_pct = 150.0);
+    press(&ctx, &mut app);
+    let s = app.doc().find_shape(id).cloned().expect("text");
+    let p = app.paragraph_style_of(&s).expect("paragraph").1;
+    assert!(
+        p.bullets && (p.bullet.size_pct - 150.0).abs() < 1e-9,
+        "{p:?}"
+    );
+    press(&ctx, &mut app);
+    // While typing: the key turns bullets on and types nothing.
+    app.set_tool(Tool::Text);
+    app.begin_text_edit(id);
+    frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    let text = |app: &App| match &app.doc().find_shape(id).expect("text").kind {
+        ShapeKind::Text { spans, .. } => spans.iter().map(|s| s.text.clone()).collect::<String>(),
+        _ => String::new(),
+    };
+    let before = text(&app);
+    press(&ctx, &mut app);
+    assert!(app.text_edit.is_some(), "still typing");
+    assert!(bullets(&app), "on at the caret");
+    assert_eq!(text(&app), before);
+    // The menu lists it with its key.
+    let entries = crate::ui::menus::commands(&mut app, &ctx);
+    let row = entries
+        .iter()
+        .find(|e| e.key == "menu.text.toggle_bullets")
+        .expect("Text > Bullets On/Off");
+    assert_eq!(row.shortcut, "Ctrl+Shift+L");
+}
+
 /// File > Import of several files at once (discussion #2695): each waits
 /// for its own click in turn, and all of them end up selected together;
 /// Esc calls off the one waiting and those after it.

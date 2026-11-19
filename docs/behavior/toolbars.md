@@ -283,8 +283,13 @@ its line. A label with no number field after it slides nothing and
 shows no left-right cursor (#3044,
 `ui::field::tests::a_label_drawn_apart_slides_its_field`).
 The wheel steps once a notch; parts of a notch from a touchpad or a fine
-wheel add up to one step. The wheel over a field (or the outline width
-box, the font list, the page tabs) belongs to it: the bar or panel
+wheel add up to one step. On a toolbar (the property bar and the other
+bars that slide, below) the wheel belongs to a field or list only once
+the user has clicked into it (it has the keyboard focus) and while the
+pointer stays on it; over any other item it slides the bar, so a turn
+meant to slide the bar changes no font or size, and Shift+wheel always
+slides the bar (#3589). The wheel over a field that has it (or the
+outline width box, the font list, the page tabs) belongs to it: the bar or panel
 around it does not slide or scroll with that notch, on the frames the
 smoothed scroll of the notch lasts as well, so the field stays under the
 pointer and notch after notch steps it (#783,
@@ -370,11 +375,15 @@ undo step, as in the number fields. With nothing selected
 
 After the font, size, bold, italic, underline, strikethrough and the
 alignment, the Text tool's bar carries the settings of the Text docker
-so it need not be opened (#1822, `ui/text_bar.rs`): range kerning,
-character width, All caps, Change Case; line, character and word
-spacing; left, first line and right indent, space before and after a
-paragraph; Tabs, Columns, Bullets, Drop Cap; the Text docker and Edit
-Text. They change the selected text as the docker does (the characters
+so it need not be opened (#1822, `ui/text_bar.rs`): Bullets and Drop
+Cap, right after the alignment; range kerning, character width, All
+caps, Change Case; line, character and word spacing; left, first line
+and right indent, space before and after a paragraph; Tabs, Columns;
+the Text docker and Edit Text. Text selected with the Pick tool shows
+the same text fields in the same order after the object fields, so
+Bullets and Drop Cap stay in view on a 1600 pixel wide window there too
+(#3586, #3592,
+`pick_drag_tests::bullets_stay_in_view_with_paragraph_text_picked`). They change the selected text as the docker does (the characters
 selected while editing, else the whole text; the paragraphs at the
 caret, else every paragraph), and are dimmed with no text to change.
 A "+" button at the bar's end lists them all, each with a box that
@@ -392,7 +401,14 @@ toolbox and the panel tabs on a side, drawn as small triangles: no
 bundled font has the triangle characters they were, and Windows showed
 empty boxes, #1780). "»" slides the bar so the first item not wholly in
 view comes first; "«" slides it back, cut between items, to the start;
-the mouse wheel over the bar (away from a number field) slides it too. The items stay as they are on
+the mouse wheel anywhere over the bar slides it too (over a field only
+when it was not clicked into, see the wheel above). Each button shows
+only while there is more of the bar its way: no "«" at the start, no "»"
+at the end (#3588), and the items cut at an end with more beyond it
+fade into the panel there, so a bar with more to see never looks
+complete (#3591,
+`ui::overflow::tests::arrows_and_fades_show_only_toward_more_of_the_bar`).
+The items stay as they are on
 the bar and work as there (the bar is drawn once). A bar that fits shows
 no buttons; the slide is worked out again when the window changes size
 (`ui::overflow::tests`).

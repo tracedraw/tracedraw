@@ -3635,6 +3635,38 @@ impl App {
         self.set_paragraph_style(id, p);
     }
 
+    /// Text > Bullets On/Off (Ctrl+Shift+L, #3593): bullets on or off for
+    /// the paragraphs at the caret of the paragraph text being edited,
+    /// else for every paragraph of the selected paragraph text. On when
+    /// the first of them has none, off when it has them. The bullet
+    /// itself stays as it was set (its character, font, size, indent), so
+    /// a text with a bullet of its own gets it back, and one that never
+    /// had one gets the default bullet. Nothing happens without paragraph
+    /// text.
+    pub fn toggle_bullets(&mut self) {
+        let targets: Vec<Shape> = match &self.text_edit {
+            Some(te) => self
+                .doc()
+                .find_shape(te.shape)
+                .cloned()
+                .into_iter()
+                .collect(),
+            None => self.selected_shapes(),
+        }
+        .into_iter()
+        .filter(|s| matches!(s.kind, ShapeKind::Text { frame: Some(_), .. }))
+        .collect();
+        let Some(first) = targets.first() else {
+            return;
+        };
+        let on = !self
+            .paragraph_style_of(first)
+            .is_some_and(|(_, p)| p.bullets);
+        for s in targets {
+            self.edit_paragraph_style(s.id, |p| p.bullets = on);
+        }
+    }
+
     /// The texts Text > Use Hyphenation acts on: the one being edited,
     /// else the selected ones.
     fn hyphenation_targets(&self) -> Vec<ShapeId> {

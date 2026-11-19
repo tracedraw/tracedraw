@@ -781,6 +781,7 @@ fn menu_pic(key: &str) -> Option<crate::ui::propbar::Pic> {
         "menu.text.tabs" => Pic::Tabs,
         "menu.text.columns" => Pic::Columns,
         "menu.text.bullets" => Pic::Bullets,
+        "menu.text.toggle_bullets" => Pic::Bullets,
         "menu.text.drop_cap" => Pic::DropCap,
         "menu.text.text_statistics" => Pic::TextStatistics,
         "menu.text.edit_text" => Pic::EditText,
@@ -4410,6 +4411,10 @@ fn text_menu(app: &mut App, ui: &mut Ui) {
     }
     if item(ui, "menu.text.bullets", "", true) {
         app.dialog = Dialog::TextBullets;
+    }
+    // Bullets on or off without the dialog (#3593).
+    if item(ui, "menu.text.toggle_bullets", "Ctrl+Shift+L", is_para) {
+        app.toggle_bullets();
     }
     if item(ui, "menu.text.drop_cap", "", true) {
         app.dialog = Dialog::TextDropCap;

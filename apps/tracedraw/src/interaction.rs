@@ -4684,6 +4684,9 @@ impl App {
                 self.text_undo_redo(true);
             } else if is(Key::T, cmd | Modifiers::SHIFT) {
                 self.open_edit_text_dialog();
+            } else if is(Key::L, cmd | Modifiers::SHIFT) {
+                // Text > Bullets On/Off at the caret (#3593).
+                self.toggle_bullets();
             } else if is(Key::S, cmd) {
                 self.save(false);
             } else if is(Key::S, cmd | Modifiers::SHIFT) {
@@ -5486,6 +5489,10 @@ impl App {
         if pressed(Key::I, cmd | Modifiers::SHIFT) {
             self.invert_selection();
         }
+        // Text > Bullets On/Off (#3593).
+        if pressed(Key::L, cmd | Modifiers::SHIFT) {
+            self.toggle_bullets();
+        }
         // Ctrl+8 and Ctrl+2: selected text one keyboard text increment
         // larger or smaller (Options > Text).
         if self
@@ -5927,6 +5934,10 @@ fn text_command_key(key: Key, mods: Modifiers) -> bool {
         return true;
     }
     let ctrl = mods.command && !crate::text_editing::altgr(&mods);
+    // Ctrl+Shift+L turns bullets on or off (#3593); Ctrl+L aligns left.
+    if ctrl && key == Key::L && mods.matches_exact(Modifiers::COMMAND | Modifiers::SHIFT) {
+        return true;
+    }
     ctrl && !matches!(
         key,
         Key::Space
