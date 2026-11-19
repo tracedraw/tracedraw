@@ -3941,6 +3941,14 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
                 app.distribute(d);
             }
         }
+        if item(ui, "menu.object.arrange_in_grid", "", app.selection.len() >= 2) {
+            let n = app.selection.len();
+            app.dialog = Dialog::ArrangeGrid {
+                columns: (n as f64).sqrt().ceil().max(1.0) as usize,
+                gap_x: app.units.from_mm(2.0),
+                gap_y: app.units.from_mm(2.0),
+            };
+        }
         sep(ui);
         if item(ui, "menu.object.align_distribute_docker", "", true) {
             app.show_dockers = true;

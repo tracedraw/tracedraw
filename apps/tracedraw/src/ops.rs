@@ -272,6 +272,49 @@ impl App {
         }
     }
 
+    /// Object > Align and Distribute > Arrange in Grid (#3489): the
+    /// selected objects, in the order they were selected, go into rows of
+    /// `columns` cells, left to right and top to bottom, starting at the
+    /// top left corner of the selection. Every cell is as wide as the
+    /// widest object and as tall as the tallest, `gap_x` and `gap_y` (mm)
+    /// apart, and each object sits at its cell's centre. One undo step.
+    pub fn arrange_in_grid(&mut self, columns: usize, gap_x: f64, gap_y: f64) {
+        let shapes = self.selected_shapes();
+        if shapes.len() < 2 || columns == 0 {
+            return;
+        }
+        let boxes: Vec<(tracedraw_core::ShapeId, Rect)> = shapes
+            .iter()
+            .map(|s| (s.id, self.align_box(s)))
+            .filter(|(_, b)| b.is_finite())
+            .collect();
+        if boxes.len() < 2 {
+            return;
+        }
+        let (gap_x, gap_y) = (gap_x.max(0.0), gap_y.max(0.0));
+        let cell_w = boxes.iter().map(|(_, b)| b.width()).fold(0.0, f64::max);
+        let cell_h = boxes.iter().map(|(_, b)| b.height()).fold(0.0, f64::max);
+        let all = boxes.iter().skip(1).fold(boxes[0].1, |a, (_, b)| a.union(*b));
+        // y grows upwards: the first row is at the top.
+        let (left, top) = (all.x0, all.y1);
+        let mut cmds = Vec::new();
+        for (i, (id, b)) in boxes.iter().enumerate() {
+            let (col, row) = ((i % columns) as f64, (i / columns) as f64);
+            let cx = left + col * (cell_w + gap_x) + cell_w / 2.0;
+            let cy = top - row * (cell_h + gap_y) - cell_h / 2.0;
+            let d = Vec2::new(cx - b.center().x, cy - b.center().y);
+            if d.hypot() > 1e-9 {
+                cmds.push(Command::TransformShapes {
+                    shapes: vec![*id],
+                    transform: Affine::translate(d),
+                });
+            }
+        }
+        if !cmds.is_empty() {
+            let _ = self.run_batch_keeping_lines("Arrange in Grid", &cmds);
+        }
+    }
+
     /// Copies of the selection right on top of it, which become the
     /// selection (a transform that leaves the originals).
     pub(crate) fn duplicate_in_place(&mut self) {
@@ -2045,6 +2088,49 @@ mod smoke_tests {
         geometry::{Point, Rect, Shape as _},
         TextAlign,
     };
+
+    /// Arrange in Grid (#3489): different objects go into rows of the
+    /// chosen number of cells, in the order they were selected, each at
+    /// the centre of a cell as big as the biggest object; one undo step.
+    #[test]
+    fn arrange_in_grid_puts_different_objects_in_rows_and_columns() {
+        let mut app = App::headless();
+        let mut ids = Vec::new();
+        for (i, (w, h)) in [(10.0, 10.0), (4.0, 6.0), (8.0, 2.0), (6.0, 8.0), (2.0, 2.0)]
+            .into_iter()
+            .enumerate()
+        {
+            let x = 30.0 * i as f64;
+            let y = if i % 2 == 0 { 100.0 } else { 40.0 };
+            ids.push(
+                app.new_shape(ShapeKind::Rect {
+                    rect: Rect::new(x, y, x + w, y + h),
+                    radius: 0.0,
+                    corners: None,
+                })
+                .expect("rect"),
+            );
+        }
+        app.select(ids.clone());
+        let steps = app.engine.history_labels().0.len();
+        app.arrange_in_grid(2, 1.0, 3.0);
+        assert_eq!(app.engine.history_labels().0.len(), steps + 1);
+        let centre = |app: &App, id| {
+            let b = app.doc().find_shape(id).expect("shape").bounds();
+            (b.center().x, b.center().y)
+        };
+        // The selection's top left corner was (0, 110); cells 10 by 10.
+        let near = |a: (f64, f64), b: (f64, f64)| {
+            (a.0 - b.0).abs() < 1e-6 && (a.1 - b.1).abs() < 1e-6
+        };
+        assert!(near(centre(&app, ids[0]), (5.0, 105.0)));
+        assert!(near(centre(&app, ids[1]), (16.0, 105.0)));
+        assert!(near(centre(&app, ids[2]), (5.0, 92.0)));
+        assert!(near(centre(&app, ids[3]), (16.0, 92.0)));
+        assert!(near(centre(&app, ids[4]), (5.0, 79.0)));
+        app.undo();
+        assert!(near(centre(&app, ids[4]), (121.0, 101.0)));
+    }
 
     /// Back Minus Front with a group at the back: each of its objects is
     /// cut and keeps its own fill, the pieces a group; the result took the

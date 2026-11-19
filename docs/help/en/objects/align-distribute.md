@@ -62,6 +62,16 @@ needed. Each align or distribute is one undo step.
 To place copies at even distances in one step, see
 [Repeat copies](step-and-repeat.md).
 
+## Arranging in a grid {#grid}
+
+[[menu.object > menu.object.align_distribute > menu.object.arrange_in_grid]]
+puts the selected objects in rows and columns, in the order you selected
+them, starting at the top left corner of the selection. Choose how many
+objects go in each row and the gaps between the columns and the rows.
+Every cell is as wide as the widest object and as tall as the tallest, and
+each object sits at the centre of its cell, so objects of different shapes
+and sizes line up. It is one undo step.
+
 ## Fit objects to a path {#fit-to-path}
 
 The [[docker.fit_to_path]] panel places objects along a line, a curve or the
