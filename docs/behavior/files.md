@@ -191,6 +191,15 @@ these objects as they were, so opened again in TraceDraw the fill, the
 arrowheads, the outline fill and overprint are all back; files of
 versions 7 to 13 open with the stand-ins.
 
+The document palette (with the names its colours go by), the spot inks,
+the colour styles and the object styles have no record written yet
+either, nor has the object style an object follows. From version 14
+the file carries them in members of its own (`tracedraw/document.json`,
+and the object's style in `tracedraw/data.json`), so opened again in
+TraceDraw they are all back and a spot colour names its ink again;
+other programs do not see them, and files of versions 7 to 13 lose
+them. A palette or ink the file itself gives wins over the member's.
+
 ## Open drawings keep their files (Windows, #2130)
 
 On Windows the file of every open drawing (the front tab's and the

@@ -2,8 +2,9 @@
 //!
 //! An object's data (the fields of Object Properties > Data, and what
 //! TraceDraw keeps there itself, such as the link of a clone to its
-//! master) has no record of its own in the file. A file of version 14 or
-//! later (a ZIP package) carries it in a member of its own, [`MEMBER`],
+//! master) has no record of its own in the file, nor has the object
+//! style an object follows. A file of version 14 or later (a ZIP
+//! package) carries them in a member of its own, [`MEMBER`],
 //! by the static id (`usdn`) each object was written with, together with
 //! the id the object had in the drawing saved. The reader gives each
 //! object found by its static id its data back, and a clone's link,
@@ -37,6 +38,10 @@ pub(crate) struct KeptData {
     pub id: u64,
     /// Its data, in order.
     pub data: Vec<(String, String)>,
+    /// The object style it follows, by the style's id; older members
+    /// have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<u32>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -80,9 +85,9 @@ fn all_shapes(doc: &Document) -> Vec<&Shape> {
 }
 
 /// The member's bytes for the objects of `doc` written with the static
-/// ids `static_ids`: those with data, and the masters their clones name
-/// (with no data of their own, so a clone finds its master again). None
-/// when no object has data.
+/// ids `static_ids`: those with data or an object style, and the
+/// masters their clones name (with no data of their own, so a clone
+/// finds its master again). None when no object has data or a style.
 pub(crate) fn encode(doc: &Document, static_ids: &HashMap<ShapeId, u32>) -> Option<Vec<u8>> {
     let shapes = all_shapes(doc);
     let masters: Vec<u64> = shapes
@@ -92,16 +97,20 @@ pub(crate) fn encode(doc: &Document, static_ids: &HashMap<ShapeId, u32>) -> Opti
         .collect();
     let mut objects: Vec<KeptData> = shapes
         .iter()
-        .filter(|s| !s.data.is_empty() || masters.contains(&s.id.raw()))
+        .filter(|s| !s.data.is_empty() || s.style.is_some() || masters.contains(&s.id.raw()))
         .filter_map(|s| {
             static_ids.get(&s.id).map(|&usdn| KeptData {
                 usdn,
                 id: s.id.raw(),
                 data: s.data.clone(),
+                style: s.style,
             })
         })
         .collect();
-    if objects.iter().all(|o| o.data.is_empty()) {
+    if objects
+        .iter()
+        .all(|o| o.data.is_empty() && o.style.is_none())
+    {
         return None;
     }
     objects.sort_by_key(|o| o.usdn);
@@ -138,13 +147,19 @@ pub(crate) fn restore(doc: &mut Document, kept: &[KeptData], ids: &HashMap<u32, 
         .filter_map(|k| ids.get(&k.usdn).map(|&id| (k.id, id)))
         .collect();
     let mut n = 0;
-    for k in kept.iter().filter(|k| !k.data.is_empty()) {
+    for k in kept
+        .iter()
+        .filter(|k| !k.data.is_empty() || k.style.is_some())
+    {
         let Some(&id) = ids.get(&k.usdn) else {
             continue;
         };
         let Some(s) = doc.find_shape_mut(id) else {
             continue;
         };
+        if s.style.is_none() {
+            s.style = k.style;
+        }
         for (key, value) in &k.data {
             if s.data.iter().any(|(have, _)| have == key) {
                 continue;

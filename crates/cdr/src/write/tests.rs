@@ -10364,3 +10364,50 @@ fn symbols_are_saved_as_symbols_and_their_instances() {
         }
     }
 }
+
+/// The document palette with its names, the spot inks, the colour styles
+/// and the object styles open again from a package, and an object keeps
+/// the object style it follows; they have no record written yet, so they
+/// used to be lost on saving. A RIFF file has no place for them.
+#[test]
+fn palette_inks_and_styles_open_again() {
+    use tracedraw_core::document::{ColorStyle, Ink, ObjectStyle, PaletteName, StyleParts};
+    let mut doc = kept_rect(Fill::Solid(Color::rgb8(200, 30, 30)));
+    doc.inks.push(Ink {
+        id: 7,
+        name: "PANTONE 185 C".into(),
+        cmyk: [0.0, 0.93, 0.79, 0.0],
+    });
+    let spot = doc.inks[0].color(0.6);
+    doc.palette = vec![Color::rgb8(1, 2, 3), spot];
+    doc.palette_names = vec![PaletteName {
+        color: Color::rgb8(1, 2, 3),
+        name: "Night".into(),
+    }];
+    doc.color_styles = vec![ColorStyle {
+        name: "Brand red".into(),
+        color: Color::rgb8(200, 30, 30),
+        harmony: None,
+    }];
+    doc.object_styles = vec![ObjectStyle {
+        name: "Card".into(),
+        fill: Fill::Solid(Color::rgb8(200, 30, 30)),
+        stroke: None,
+        id: 3,
+        parts: StyleParts::default(),
+        opacity: 1.0,
+    }];
+    doc.pages[0].layers[0].shapes[0].style = Some(3);
+    for v in [14u16, 16, 27] {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, _) = crate::open_bytes(&bytes, "back").expect("reads back");
+        assert_eq!(back.palette, doc.palette, "{v}");
+        assert_eq!(back.palette_names, doc.palette_names, "{v}");
+        assert_eq!(back.inks, doc.inks, "{v}");
+        assert_eq!(back.color_styles, doc.color_styles, "{v}");
+        assert_eq!(back.object_styles, doc.object_styles, "{v}");
+        assert_eq!(back.pages[0].layers[0].shapes[0].style, Some(3), "{v}");
+    }
+    let (back, _) = crate::open_bytes(&document_to_cdr_version(&doc, 13), "back").expect("reads");
+    assert!(back.palette.is_empty() && back.object_styles.is_empty());
+}

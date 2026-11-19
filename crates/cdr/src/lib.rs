@@ -30,6 +30,7 @@ pub mod cmx;
 pub mod container;
 mod kept_blends;
 mod kept_data;
+mod kept_document;
 mod kept_effects;
 pub mod parse;
 mod shadow_image;
@@ -207,6 +208,19 @@ pub fn open_bytes_keeping(
                 ));
             }
         }
+    }
+    // The palette, inks and styles TraceDraw keeps in a member of its
+    // own, where the file gives none (after the spot inks the file
+    // names take their look from its preview).
+    if let Some(k) = container::own_member(
+        bytes,
+        &container,
+        kept_document::MEMBER,
+        kept_document::MAX_MEMBER,
+    )
+    .and_then(|b| kept_document::decode(&b))
+    {
+        kept_document::restore(&mut doc_report.0, k);
     }
     let (fonts, notes) = container::embedded_fonts(bytes, &container);
     doc_report.0.fonts = fonts;

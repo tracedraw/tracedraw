@@ -192,6 +192,10 @@ pub fn document_to_cdr_version_with(doc: &Document, version: u16, previews: &Pre
     if let Some(b) = crate::kept_data::encode(doc, &w.static_ids) {
         own.push((crate::kept_data::MEMBER, b));
     }
+    // The palette, inks and styles, which have no record written yet.
+    if let Some(b) = crate::kept_document::encode(doc) {
+        own.push((crate::kept_document::MEMBER, b));
+    }
     let out = if v.redirects() {
         let (root, files) = pack_redirected(v, &tree);
         zip_v16(
