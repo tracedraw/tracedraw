@@ -29523,3 +29523,80 @@ fn ctrl_and_shift_wheel_scroll_sideways_alt_wheel_up_and_down() {
     }
     assert!(app.view.zoom > zoom * 1.1);
 }
+
+/// The steps of #3349 with the mouse and keys: Ctrl+D, the copy moved,
+/// turned or scaled by dragging (or nudged with the arrows), then Ctrl+D
+/// again and again: each new copy takes the same step from the last,
+/// until something else is picked. The copies stacked on the last one.
+#[test]
+fn ctrl_d_repeats_a_move_turn_or_scale_done_to_the_copy_with_the_mouse() {
+    let none = Modifiers::NONE;
+    let ctrl_d = |ctx: &egui::Context, app: &mut App| {
+        frame(ctx, app, vec![key(egui::Key::D, Modifiers::COMMAND)], Modifiers::COMMAND);
+        frame(ctx, app, vec![key_up(egui::Key::D, Modifiers::COMMAND)], none);
+        frame(ctx, app, Vec::new(), none);
+    };
+    let t = |app: &App, s: ShapeId| app.doc().find_shape(s).expect("shape").transform;
+    let near = |x: Affine, y: Affine| {
+        x.as_coeffs()
+            .iter()
+            .zip(y.as_coeffs())
+            .all(|(p, q)| (p - q).abs() < 1e-4)
+    };
+    for how in ["move", "turn", "scale", "nudge"] {
+        let (ctx, mut app, id) = setup();
+        app.duplicate_offset = Vec2::ZERO;
+        ctrl_d(&ctx, &mut app);
+        assert_eq!(shape_count(&app), 2, "{how}");
+        let first = app.selection[0];
+        assert_ne!(first, id);
+        match how {
+            "move" => {
+                let from = app.view.to_screen(Point::new(35.0, 25.0));
+                let to = app.view.to_screen(Point::new(65.0, 35.0));
+                drag(&ctx, &mut app, from, to, none, Vec::new());
+            }
+            "turn" => {
+                // A second click on the copy: the turning handles.
+                let at = app.view.to_screen(Point::new(35.0, 25.0));
+                frame(&ctx, &mut app, vec![Event::PointerMoved(at)], none);
+                frame(&ctx, &mut app, vec![button(at, true, PointerButton::Primary, none)], none);
+                frame(&ctx, &mut app, vec![button(at, false, PointerButton::Primary, none)], none);
+                frame(&ctx, &mut app, Vec::new(), none);
+                assert!(app.rotate_mode, "rotate mode");
+                let ne = handle(&app, Handle::NE);
+                let centre = app.view.to_screen(app.rotation_center().expect("centre"));
+                let r = ne - centre;
+                let to = centre + egui::vec2(r.x * 0.9 - r.y * 0.4, r.y * 0.9 + r.x * 0.4);
+                drag(&ctx, &mut app, ne, to, none, Vec::new());
+            }
+            "scale" => {
+                let e = handle(&app, Handle::E);
+                drag(&ctx, &mut app, e, e + egui::vec2(40.0, 0.0), none, Vec::new());
+            }
+            _ => {
+                for _ in 0..3 {
+                    frame(&ctx, &mut app, vec![key(egui::Key::ArrowRight, none)], none);
+                    frame(&ctx, &mut app, vec![key_up(egui::Key::ArrowRight, none)], none);
+                }
+                frame(&ctx, &mut app, Vec::new(), none);
+            }
+        }
+        assert_eq!(shape_count(&app), 2, "{how}: no copy left by the drag");
+        assert_eq!(app.selection, vec![first], "{how}: the copy stays picked");
+        let step = t(&app, first) * t(&app, id).inverse();
+        assert!(!near(step, Affine::IDENTITY), "{how}: the copy changed");
+        ctrl_d(&ctx, &mut app);
+        assert_eq!(shape_count(&app), 3, "{how}");
+        let second = app.selection[0];
+        assert!(
+            near(t(&app, second), step * t(&app, first)),
+            "{how}: {:?} not {:?}",
+            t(&app, second),
+            step * t(&app, first)
+        );
+        ctrl_d(&ctx, &mut app);
+        let third = app.selection[0];
+        assert!(near(t(&app, third), step * t(&app, second)), "{how}: third");
+    }
+}
