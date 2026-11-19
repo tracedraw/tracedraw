@@ -10210,7 +10210,12 @@ impl App {
             st.looking_for_printers = true;
             self.fetch_printers(crate::printers::system_printers);
         }
-        self.print_preview = Some(crate::ui::print_preview::PrintPreview::new(st));
+        let mut pv = crate::ui::print_preview::PrintPreview::new(st);
+        // The View button's choices as they were last left (#3603).
+        pv.rulers = self.settings.print_preview_rulers;
+        pv.strip = self.settings.print_preview_strip;
+        pv.options = self.settings.print_preview_options;
+        self.print_preview = Some(pv);
     }
 
     pub fn import(&mut self) {

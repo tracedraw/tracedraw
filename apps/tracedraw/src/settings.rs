@@ -204,6 +204,14 @@ pub struct Settings {
     /// Default action of the mouse wheel: zoom (the default) or scroll.
     #[serde(default = "default_true")]
     pub wheel_zooms: bool,
+    /// What Print Preview's View button shows, as it was last left: the
+    /// rulers, the strip of sheets and the options panel (#3603).
+    #[serde(default = "default_true")]
+    pub print_preview_rulers: bool,
+    #[serde(default = "default_true")]
+    pub print_preview_strip: bool,
+    #[serde(default = "default_true")]
+    pub print_preview_options: bool,
     /// The view a drawing opens in (#1134).
     #[serde(default)]
     pub open_view: OpenView,
@@ -2345,6 +2353,9 @@ impl Default for Settings {
             color: ColorPrefs::default(),
             show_outline_flyout: false,
             wheel_zooms: true,
+            print_preview_rulers: true,
+            print_preview_strip: true,
+            print_preview_options: true,
             open_view: OpenView::default(),
             open_zoom_percent: default_open_zoom_percent(),
             toolbox: Vec::new(),
@@ -3425,6 +3436,12 @@ mod tests {
         assert!(
             partial.wheel_zooms,
             "old settings files keep the zoom default"
+        );
+        // Print Preview shows everything, as before (#3603).
+        assert!(
+            partial.print_preview_rulers
+                && partial.print_preview_strip
+                && partial.print_preview_options
         );
         assert!(partial.zoom_relative_1to1 && !partial.wheel_zoom_centers);
         // Smooth zoom on, 15 % a notch, for settings from before (#1648).
