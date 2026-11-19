@@ -3559,6 +3559,11 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
                 if item(ui, "menu.object.insert_object_add", "", true) {
                     app.add_object_app();
                 }
+                let on = app.settings.object_apps_insert_saved;
+                if check(ui, "menu.object.insert_object_saved", "", on) {
+                    app.settings.object_apps_insert_saved = !on;
+                    app.settings.save();
+                }
                 let apps = app.settings.object_apps.clone();
                 sub_if(
                     ui,

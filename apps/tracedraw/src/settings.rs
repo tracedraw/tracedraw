@@ -814,6 +814,11 @@ pub struct Settings {
     /// The programs of Object > Insert > Insert Object, each opened with
     /// one click (#1025).
     pub object_apps: Vec<crate::insert_object::ObjectApp>,
+    /// Insert Object > Insert What It Saves: a program opened from the
+    /// list gets a blank picture to work on, and the picture comes into
+    /// the drawing when the program saves it (#3391). Off by default.
+    #[serde(default)]
+    pub object_apps_insert_saved: bool,
     /// Bitmaps > Picture Captions, as last used (#2180).
     #[serde(default)]
     pub picture_captions: crate::captions::Captions,
@@ -2505,6 +2510,7 @@ impl Default for Settings {
             fx_presets: Vec::new(),
             fx_settings_only: false,
             object_apps: Vec::new(),
+            object_apps_insert_saved: false,
             picture_captions: Default::default(),
         }
     }

@@ -1838,6 +1838,10 @@ pub struct App {
     /// modification time of each, and when they were last looked at.
     pub linked_mtimes: std::collections::HashMap<ShapeId, std::time::SystemTime>,
     pub linked_checked: Option<web_time::Instant>,
+    /// Insert Object > Insert What It Saves (#3391): the blank pictures
+    /// handed to programs, with their time stamps when handed over; one
+    /// that is saved comes into the drawing.
+    pub object_files: Vec<(std::path::PathBuf, Option<std::time::SystemTime>)>,
     /// Session recovery: this session's marker in the auto-backup folder
     /// (made on the first frame; in a browser once its storage is read).
     pub session: Option<crate::recovery::Session>,
@@ -3427,6 +3431,7 @@ impl App {
             backed_up: Default::default(),
             linked_mtimes: Default::default(),
             linked_checked: None,
+            object_files: Vec::new(),
             session: None,
             recovery_offer: Vec::new(),
             highlight_whats_new: false,

@@ -1454,7 +1454,7 @@ impl App {
             let since = now.duration_since(last);
             if since < gap {
                 if let Some(ctx) = ctx {
-                    if !self.linked_mtimes.is_empty() {
+                    if !self.linked_mtimes.is_empty() || !self.object_files.is_empty() {
                         ctx.request_repaint_after(gap - since);
                     }
                 }
@@ -1462,6 +1462,9 @@ impl App {
             }
         }
         self.linked_checked = Some(now);
+        // Insert What It Saves (#3391): a picture saved for the first
+        // time comes in, linked, and follows its file from then on.
+        self.watch_object_files();
         let linked: Vec<(ShapeId, String)> = self
             .doc()
             .all_layers()
@@ -1489,7 +1492,7 @@ impl App {
             }
         }
         if let Some(ctx) = ctx {
-            if !self.linked_mtimes.is_empty() {
+            if !self.linked_mtimes.is_empty() || !self.object_files.is_empty() {
                 ctx.request_repaint_after(gap);
             }
         }
