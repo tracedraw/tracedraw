@@ -2338,6 +2338,67 @@ fn a_drawings_cmyk_profile_is_stored_and_named() {
     assert_eq!(back.cmyk_profile.map(|p| p.data.len()), Some(data.len()));
 }
 
+/// #3425: an RGB document is saved as one (`ColorModel` Rgb in
+/// `color/color.xml`), a CMYK one as CMYK, and the mode comes back; the
+/// RGB colour of an object inside a clip frame stays RGB.
+#[test]
+fn an_rgb_drawing_is_saved_as_an_rgb_document() {
+    use std::io::Read;
+    use tracedraw_core::document::PrimaryColorMode;
+    let mut doc = Document::new("w", Size::new(200.0, 100.0));
+    let mut ids = doc.ids().clone();
+    let mut inside = Shape::new(
+        ids.shape(),
+        ShapeKind::Rect {
+            rect: Rect::new(10.0, 10.0, 90.0, 60.0),
+            radius: 0.0,
+            corners: None,
+        },
+    );
+    inside.fill = Fill::Solid(Color::rgb8(30, 160, 90));
+    inside.stroke = None;
+    let mut frame = Shape::new(
+        ids.shape(),
+        ShapeKind::Ellipse {
+            rect: Rect::new(20.0, 20.0, 70.0, 50.0),
+            arc: None,
+        },
+    );
+    frame.fill = Fill::None;
+    let pc = Shape::new(
+        ids.shape(),
+        ShapeKind::ClipFrame {
+            frame: Box::new(frame),
+            contents: vec![inside],
+        },
+    );
+    doc.pages[0].layers[0].shapes = vec![pc];
+    doc.set_ids(ids);
+    for (mode, model) in [
+        (PrimaryColorMode::Rgb, "<ColorModel>Rgb</ColorModel>"),
+        (PrimaryColorMode::Cmyk, "<ColorModel>Cmyk</ColorModel>"),
+    ] {
+        doc.metadata.primary_color_mode = mode;
+        for v in [17u16, 24] {
+            let bytes = document_to_cdr_version(&doc, v);
+            let mut z = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).expect("zip");
+            let mut color = String::new();
+            z.by_name("color/color.xml")
+                .expect("colour settings")
+                .read_to_string(&mut color)
+                .expect("text");
+            assert!(color.contains(model), "{v}: {color}");
+            let (back, _) = crate::open_bytes(&bytes, "back").expect("reads");
+            assert_eq!(back.metadata.primary_color_mode, mode, "{v}");
+            let ShapeKind::ClipFrame { contents, .. } = &back.pages[0].layers[0].shapes[0].kind
+            else {
+                panic!("{v}: {:?}", back.pages[0].layers[0].shapes[0].kind);
+            };
+            assert_eq!(contents[0].fill, Fill::Solid(Color::rgb8(30, 160, 90)), "{v}");
+        }
+    }
+}
+
 #[test]
 fn txtj_holds_the_three_line_breaking_tables() {
     let t = txtj();

@@ -225,6 +225,10 @@ pub fn open_bytes_keeping(
     let (fonts, notes) = container::embedded_fonts(bytes, &container);
     doc_report.0.fonts = fonts;
     doc_report.0.cmyk_profile = cmyk_profile;
+    // An RGB document stays one (#3425).
+    if let Some(mode) = container::primary_color_mode(bytes, &container) {
+        doc_report.0.metadata.primary_color_mode = mode;
+    }
     for n in notes {
         doc_report.1.warn(n);
     }

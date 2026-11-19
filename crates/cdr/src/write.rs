@@ -1423,10 +1423,19 @@ const DOC_PALETTE_XML: &str = "<?xml version=\"1.0\"?>\r\n<palette guid=\"3f8e2a
 
 /// `color/color.xml` naming the document's CMYK profile, when it carries
 /// one (stored under `color/profiles/cmyk/`), before the colour model, as
-/// files with profiles have it.
+/// files with profiles have it. The colour model is the document's
+/// primary colour mode: an RGB document was written as a CMYK one, and
+/// a reader showed what it could not read as an object's own colour (the
+/// contents of a clip frame under the colour eyedropper) in CMYK (#3425).
 fn color_xml(doc: &Document) -> String {
+    let xml = match doc.metadata.primary_color_mode {
+        tracedraw_core::document::PrimaryColorMode::Rgb => {
+            COLOR_XML.replacen("<ColorModel>Cmyk<", "<ColorModel>Rgb<", 1)
+        }
+        tracedraw_core::document::PrimaryColorMode::Cmyk => COLOR_XML.to_string(),
+    };
     match &doc.cmyk_profile {
-        Some(p) => COLOR_XML.replacen(
+        Some(p) => xml.replacen(
             "<ColorContext>",
             &format!(
                 "<ColorContext><ColorProfile id=\"Cmyk\">{}</ColorProfile>",
@@ -1434,7 +1443,7 @@ fn color_xml(doc: &Document) -> String {
             ),
             1,
         ),
-        None => COLOR_XML.to_string(),
+        None => xml,
     }
 }
 

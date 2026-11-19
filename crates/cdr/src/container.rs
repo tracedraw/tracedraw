@@ -13,10 +13,6 @@ use tracedraw_core::Color;
 /// this keeps a damaged size from taking all memory).
 const MAX_EMBEDDED: u64 = 64 << 20;
 
-/// The CMYK colour profile a version 14+ ZIP file carries (a member
-/// under `color/profiles/cmyk/`, seen in version 17 to 21 files next to
-/// `color/color.xml`, which names it), when it reads as an ICC profile.
-/// `None` for RIFF files and files without one.
 /// The picture of the first page a ZIP container keeps (`previews/` from
 /// version 17, `metadata/thumbnails/` before), when there is one.
 pub fn page_preview(bytes: &[u8], container: &Container) -> Option<crate::spot::Preview> {
@@ -42,6 +38,35 @@ pub fn page_preview(bytes: &[u8], container: &Container) -> Option<crate::spot::
     None
 }
 
+/// The document's primary colour mode, from the `ColorModel` of the
+/// `color/color.xml` member of a ZIP file (`Rgb` or `Cmyk`): what an
+/// RGB document saved its drawing as (#3425). `None` for RIFF files and
+/// files that do not name one.
+pub fn primary_color_mode(
+    bytes: &[u8],
+    container: &Container,
+) -> Option<tracedraw_core::document::PrimaryColorMode> {
+    use tracedraw_core::document::PrimaryColorMode;
+    if container.kind == ContainerKind::Riff {
+        return None;
+    }
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).ok()?;
+    let f = archive.by_name("color/color.xml").ok()?;
+    let mut xml = String::new();
+    f.take(MAX_PROFILE).read_to_string(&mut xml).ok()?;
+    let start = xml.find("<ColorModel>")? + "<ColorModel>".len();
+    let end = start + xml[start..].find("</ColorModel>")?;
+    match xml[start..end].trim().to_ascii_lowercase().as_str() {
+        "rgb" => Some(PrimaryColorMode::Rgb),
+        "cmyk" => Some(PrimaryColorMode::Cmyk),
+        _ => None,
+    }
+}
+
+/// The CMYK colour profile a version 14+ ZIP file carries (a member
+/// under `color/profiles/cmyk/`, seen in version 17 to 21 files next to
+/// `color/color.xml`, which names it), when it reads as an ICC profile.
+/// `None` for RIFF files and files without one.
 pub fn cmyk_profile(
     bytes: &[u8],
     container: &Container,
