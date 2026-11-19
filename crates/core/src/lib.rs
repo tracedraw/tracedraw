@@ -32,6 +32,7 @@ pub mod join;
 pub mod linked_text;
 pub mod live;
 pub mod nodes;
+pub mod outline_fx;
 pub mod painterly;
 pub mod paragraphs;
 pub mod patch;

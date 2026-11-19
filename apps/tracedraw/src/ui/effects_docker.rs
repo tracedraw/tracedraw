@@ -36,6 +36,8 @@ pub fn effect_key(e: &Effect) -> &'static str {
         Effect::Symmetry { .. } => "effect.symmetry",
         Effect::Lens(_) => "effect.lens",
         Effect::Transparency { .. } => "effect.transparency",
+        Effect::RoundCorners { .. } => "effect.round_corners",
+        Effect::Slice { .. } => "effect.slice",
     }
 }
 

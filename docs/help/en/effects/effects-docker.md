@@ -21,6 +21,27 @@ Each row of the list has:
 Every change is one undo step. Each effect is still edited with its own tool
 or panel.
 
+## Round corners and Slice {#outline-effects}
+
+Two entries of the layer effects at the top of the panel rebuild the
+outline as it is drawn while the object itself stays as it was, so a text
+can still be edited:
+
+- **[[effect.round_corners]]** rounds every corner of a curve, of the curves
+  in a group or of the letters of a text with one radius. **Up to** limits
+  it to corners sharper than an angle (180° takes every corner), and the
+  **Corners** buttons take all of them, only the outer ones or only the
+  inner ones.
+- **[[effect.slice]]** cuts the object into parallel strips. Set how many
+  strips, the angle of the cuts and the gap between them; **Shift** slides
+  each strip along its cut, one way and the other with **Alternate** or by a
+  random amount otherwise; **Turn** turns each strip a little, at random;
+  **Seed** picks another random variation; **Round** rounds the corners of
+  every strip.
+
+[[menu.object.convert_to_curves]] (or Break Apart) makes the result plain
+curves.
+
 ## Other effect commands {#commands}
 
 - [[menu.effects > menu.effects.flatten]] turns the effects of the selected

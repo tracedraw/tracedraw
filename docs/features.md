@@ -173,6 +173,7 @@ Counts: works 193, partial 9 (`.cdr` content coverage; `.cdr` tables; CMX import
 | Symbols (Object > Symbol menu, create, insert, edit in place from the Symbols panel, the right-click menu or a double-click with the Pick tool, every instance following on Finish, #1980, revert, Symbols panel, Ctrl+F3) | works |
 | Symbol libraries (`.csl`, #2709): listed by File > Open and Import; opened untitled with the Symbols panel showing their symbols; imported, every symbol they define goes to the Symbols panel (ones the drawing has already are not added twice), one undo step; read through the `.cdr` reader | partial: no real `.csl` file checked yet |
 | Copy effect (drop shadow, transparency, envelope, perspective, distortion, extrude, contour, blend settings, lens, bevel, block shadow; pinned points carried by the box), Clone effect (shadow and transparency follow the source until edited), Clear effect, Clear transformations, Symmetry (live, 1 to 12 mirror lines) | works (see `behavior/copy-effect.md`) |
+| Round corners (live, any curve, group or text: radius, only corners sharper than an angle, all or outer or inner corners) and Slice (live parallel strips: count, angle, gap, shift alternate or random with a seed, turn, rounded strip corners), entries of the layer effects; the object stays editable and Convert to Curves bakes them (see `help/en/effects/effects-docker.md`) | works |
 | Rollover | not applicable: web-page interactivity with no HTML export target |
 
 ## 7. Colour
