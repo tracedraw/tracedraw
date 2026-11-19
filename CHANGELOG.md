@@ -4,7 +4,7 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
-## Unreleased
+## 0.49.0 (2026-11-19)
 
 - Remove Background: Automatic now finds the subject of the picture instead of removing the colours seen on its edges. A person's shoulders, arms or torso that leave the picture are no longer taken for background, backdrop of another shade (a sky with clouds, a studio backdrop that darkens) goes whole, the backdrop seen through a gap (between an arm and the head) goes too, and hair keeps no fringe in the old backdrop's colour. Nothing needs tuning for it: Tolerance only says how much of the soft edge goes for Automatic, and still works as before for picked colours. The Erase and Restore brushes are buttons that show which one is on, the pointer shows the brush in its colour, and the result follows the brush while it paints. Fill background fills only what was removed (#3422).
 - Fields of the bars and panels (sizes, positions and the others): pressing Ctrl no longer takes the keyboard away from the field, so Ctrl+V pastes into it instead of onto the drawing, and Ctrl+A, Ctrl+C and Ctrl+Z work in it. Ctrl itself arrives as a key press, on Windows with Ctrl already held, and was taken for a command shortcut (#3198).
@@ -70,6 +70,57 @@ full, row-by-row status.
 - Symbols that draw themselves: a `.tdraw` file made elsewhere could hold a symbol drawing itself, directly or through another symbol, which ended the program when drawn, or symbols each drawing the one before twice, a trillion objects that never finished drawing. On opening, the instance closing the loop, or standing for more than a million objects, becomes an empty group (#3186).
 - A drawing can have a window of its own, for a second monitor: drag its tab out of the main window, or use Window > Move to Own Window. The window shows the drawing with its own tab; clicking in it makes it the drawing that tools, panels and shortcuts work on, and closing it closes only that drawing. Dragging its tab back onto the main window's tabs, its Back to Tab Bar button or Window > Back to Tab Bar puts it back among the tabs (#2904).
 - Arrowheads: the line ends under its heads, so neither its end nor a round or square cap shows past the tip or beside the head, and on a curve a head lies along the curve instead of along its last tangent, which stood it off tight curves; on screen and in PDF, SVG, EPS, AI and EMF (#2981).
+- Guidelines lie above the layers, as in CorelDRAW: one across a shape or a group that is not selected shows its arrows and moves when dragged there; only a picture let it before. Over what is selected the press still moves the selection (#2640).
+- PDF import: a fill or an outline painted fully transparent no longer makes an object nobody can see; Canva's see-through boxes over pictures came in as two invisible objects on the page. An outline under a fully transparent fill is now seen (#2640).
+- Windows: TraceDraw no longer starts `reg.exe` (and a console host with it) three times every 3 seconds for as long as it runs, to follow the system's text size, high contrast and dark mode; it reads those settings from the registry directly, which takes microseconds. On some computers that steady stream of new processes slowed down the whole system, TraceDraw and other windows alike (d#2961, d#2670, d#2729).
+- Arrowheads: Convert Outline to Object keeps a line's arrowheads in the object it makes, and Convert to Curves keeps an open arc open with its arrowheads; both came out without them (#2983).
+- Object > Insert > Formula no longer places the formula upside down; editing a formula keeps its top-left corner (#3155).
+- Convert to Bitmap in Black and White with Transparent background no longer makes a grayscale bitmap: 1-bit always comes out on white (#3204).
+- WMF export shows the whole page when placed in Word or PowerPoint, not only its top left corner; placeable metafiles of other programs that map their window onto the frame open at their size (#3246).
+- Print preview: the frame round the first sheet in the strip of sheets is no longer cut off on the left (#3242).
+- With the window buttons on, dragging the empty part of the menu bar moves the window and a double click maximizes it, as on Niri and other tiling window managers it did not (#3134).
+- `.cdr`: a text with a graphic placed in its line (a CorelDRAW version 18 drawing's two titles) is no longer skipped on opening; its letters open, the graphic itself is not drawn yet (#3181).
+- PowerClip: an outline set behind the frame's fill goes beneath the fill and the contents, on screen, in print and in PDF, SVG, EPS and AI exports. It came over them, so text in a PowerClip with a wide outline behind its fill (a CorelDRAW X8 file) showed only its outlines, not its fill (#3110).
+- CMYK pictures in a PDF (JPEG or plain samples) show as CMYK colours do, not as brighter RGB (#3225).
+- Text > Change Case on several texts is one undo step, and a text already in that case no longer leaves an Undo that does nothing; Fit Text to Path again just as it was gives no step either.
+- Help > Benchmark: Options opens the Options window; it did nothing, as the Benchmark window put itself back over it (#3351).
+- Shadow tool: Inner Shadow has Apply where Drop Shadow has it, right after the tool buttons, and it stays on the bar (greyed) once the object has one; it sat past the end of a narrow bar (#3353).
+- Extrude: the selection box of extruded text (a bevelled extrusion) no longer reaches down to the page's corner, and a region selection takes it (#3227).
+- Extrude: a shade on a bevelled extrusion runs smoothly round curved sides, without bands or stripes at each face (#3229).
+- Large drawings: Group, Ungroup, Combine, Distribute and Undo of tens of thousands of objects, and the layout of very long texts, no longer freeze the window for seconds to a minute.
+- Shape tool: a rounded rectangle's corner nodes take a press half as far again as other nodes, so a press just beside one drags the corner instead of missing it (#3354).
+- Text pasted from another program is one undo step.
+- SVG, pictures and text pasted from another program while editing a PowerClip's contents land inside the frame.
+- A copied, duplicated or imported blend ends at its own copy of the end object; pasted in another drawing it no longer blends into an unrelated object.
+- PDF: gray colours go in as gray and fountains of CMYK, gray or spot colours as CMYK shadings in every PDF (plain and PDF/X-4 too), so they print on the right plates instead of as a rich four-colour gray.
+- Pen pointer: it is the same drawing every time the app starts, with a round dot on the nib's tip, instead of, depending on which pointer was shown first, its dots coming out as squares (#2871).
+- Text: text in a colour emoji font made only of pictures (Noto Color Emoji) is drawn from a font with outlines instead of vanishing on screen, in print and in PDF files.
+- Workspace export: the Appearance part carries the theme, centered dialogs, shadows, coloured icons, icon-only docker tabs and the follow-system text size and high contrast switches.
+- Color Management: the Default tab no longer offers choices that changed nothing (RGB and Grayscale open and import policies, Spot color definition), and the Import and Paste warnings tell when an imported .cdr file has no CMYK profile or a different one.
+- TraceCut: opening the window or picking a tool loads the preset its list shows; the list named the preset chosen last while the settings stayed the defaults, so Apply worked with other numbers (d#3234).
+- Font Manager: a library of tens of thousands of fonts no longer makes TraceDraw start slowly or freeze: its fonts are installed off the interface's thread, at the start and when a folder is added, and adding or removing such a folder takes moments instead of hours (d#2166, d#3200).
+- Importing an SVG with a long style sheet no longer freezes: 20,000 rules read in 0.16 s instead of 17 s (#3341).
+- A damaged EMF or WMF with huge point counts, or tens of thousands of objects, opens at once instead of hanging (#3339).
+- An arc with a huge radius (for example in a damaged DXF) no longer runs the program out of memory (#3338).
+- Groups nested deep no longer get copied at every level to find their box; a DXF of blocks nested 15 deep opens in about a second instead of running out of memory (#3340).
+- Speech Balloon: a style, tail width or bend chosen on the property bar now also changes a balloon grouped with its words. With the group selected, the choice went only to the balloons drawn next (#3352).
+- Brush Strokes, Speech Balloon, Action Lines and Painterly Brush keep the settings of their bars after TraceDraw is closed, like the other tools.
+- Help > Benchmark is redone, all in its window: a Quick Test and an Advanced Test (real tasks on drawings of 10 000 and 50 000 objects: draw, zoom, move, save, open, PDF, and shadows with and without the graphics card), each task with a coloured bar and its time, "Comfortable up to about N objects", a zoom suggestion (Smooth, As in CorelDRAW or Light, picked there), and a button that tests with or without the graphics card by starting TraceDraw again the other way.
+- Pages: Insert Page Before and After is one undo step (it was two, and one Undo left a page at the end).
+- Duplicate Page with contents: copied linked text frames are a chain of their own and a copied blend ends at the copy of its end object; they ran on into, or followed, the original page's objects.
+- Deleting a page or a layer that holds a frame of a linked text chain no longer loses the text that frame showed: the frames left take it.
+- The Common Shapes tool's shape, the eyedroppers' groups and sample box, the Free Transform mode, the Shape tool's freehand marquee and the Blend tool's rotation and acceleration are kept after TraceDraw is closed.
+- A polyline or curve finished with its last node on its first is closed, so that corner is joined like the others instead of cut off (#3219).
+- PDF: CMYK pictures (from .cdr, PSD or CMYK TIFF/JPEG) go in with their own ink values as CMYK images, so black ink alone stays on the black plate.
+- PDF: a fountain of one spot ink goes in on that ink's separation instead of in CMYK, and every fountain stop keeps the exact colour chosen for it (a CMYK stop no longer goes through RGB).
+- Macro Editor: a Compatibility panel colours each macro green, yellow or red by what it uses and lists every issue with its line; Fix comments out what is not available with ' TODO notes; a JavaScript tab writes the project as readable JavaScript on the same object model, to run, save as .js or open in the Scripts panel (feature, Discussion #3196).
+- Holding Q turns all snapping off until it is let go (#3072).
+- Tools > Replace Color changes one colour for another in the whole drawing, an RGB colour for its CMYK version for instance, in one undo step (#2858).
+- Windows Explorer shows thumbnails of .cdr files too where no other program draws them, and the Linux thumbnailer includes what lies beside the page (#3239, #3082).
+- Freehand: drawing by clicks, a click on the first node closes the line, as with the Bezier and Pen tools; it added one more node there and the line went on (#2339).
+- File > Export suggests the name of the file the drawing came from (a .cdr not yet saved as .tdraw) instead of Graphic1, and the Export dialog has "Always" beside Selected only (#3254, #3208).
+- `.cdr`: vertical Chinese, Japanese or Korean text set in a font's vertical form (`@` and the font's name, such as `@宋体`) opens as a column of upright characters in the font without the `@`, which is found on the system or in the file. It opened as a line turned on its side and the `@` font was reported missing (#3217).
+- Saving as .cdr (version 14 and later) keeps symbols as symbols and their instances (#3250).
 
 ## 0.48.0 (2026-11-16)
 
