@@ -6920,6 +6920,19 @@ impl App {
             return;
         }
         let shapes = std::mem::take(&mut self.selection);
+        // A part of a dimension goes on its own, the rest of it staying
+        // as objects of their own (#3348).
+        if let Some(cmds) = self.dimension_part_delete_commands(&shapes) {
+            if let Err(e) = self.engine.run_batch("Delete", &cmds) {
+                self.status = e.to_string();
+                self.selection = shapes;
+                return;
+            }
+            if let Some(rec) = &mut self.recording {
+                rec.extend(cmds);
+            }
+            return;
+        }
         // A frame of a linked chain goes without its text: the frames
         // left take it, in the same step (#1986, see `textflow.rs`).
         let flow = self.flow_around_deleted(&shapes);

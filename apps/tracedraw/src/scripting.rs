@@ -448,7 +448,7 @@ fn host_for(app: &App, trust: Trust) -> HostInner {
         selection: app.selection.clone(),
         commands: Vec::new(),
         output: Vec::new(),
-        next_id: app.engine.document().ids().peek_next(),
+        next_id: app.engine.ids().peek_next(),
         trust,
         file: app.file.as_ref().map(|f| f.display().to_string()),
         vg: false,

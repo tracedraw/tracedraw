@@ -1581,6 +1581,49 @@ impl App {
         Some(cmds)
     }
 
+    /// Deleting `ids` when some are parts of a dimension (its label, its
+    /// lines or its arrowheads, picked with Ctrl+click) and not the whole
+    /// of it (#3348): the commands that break each such dimension apart
+    /// first, so its other parts stay as objects of their own, and the
+    /// shapes then to delete (those the break leaves). Deleting the part
+    /// alone did nothing: the dimension drew it again at once. `None`
+    /// when no part of a dimension is among `ids`.
+    pub(crate) fn dimension_part_delete_commands(&self, ids: &[ShapeId]) -> Option<Vec<Command>> {
+        let doc = self.doc();
+        let groups: Vec<ShapeId> = doc
+            .all_layers()
+            .flat_map(|l| &l.shapes)
+            .filter(|s| !ids.contains(&s.id) && Dimension::of(s).is_some())
+            .filter(|s| match &s.kind {
+                ShapeKind::Group { children } => children.iter().any(|c| ids.contains(&c.id)),
+                _ => false,
+            })
+            .map(|s| s.id)
+            .collect();
+        if groups.is_empty() {
+            return None;
+        }
+        let mut cmds: Vec<Command> = groups
+            .into_iter()
+            .filter_map(|g| self.dimension_break_commands(g))
+            .flatten()
+            .collect();
+        // Parts the break already removes (empty arrowheads) are not
+        // deleted twice.
+        let gone: Vec<ShapeId> = cmds
+            .iter()
+            .flat_map(|c| match c {
+                Command::DeleteShapes { shapes } => shapes.clone(),
+                _ => Vec::new(),
+            })
+            .collect();
+        let shapes: Vec<ShapeId> = ids.iter().copied().filter(|id| !gone.contains(id)).collect();
+        if !shapes.is_empty() {
+            cmds.push(Command::DeleteShapes { shapes });
+        }
+        Some(cmds)
+    }
+
     /// Dynamic dimensioning: dimensions moved, scaled, turned or skewed
     /// since the last look are drawn again with the transform in their
     /// points, and those whose label was edited in place with the edit
@@ -2444,6 +2487,51 @@ mod tests {
         let d = Dimension::of(app.doc().find_shape(dim).expect("dim")).expect("data");
         assert!(d.anchors.is_empty());
         assert!((d.value() - 40.0).abs() < 1e-9);
+    }
+
+    /// #3348: a dimension's label, picked on its own (Ctrl+click), goes
+    /// on its own with Delete and the lines stay; its lines go on their
+    /// own the same way; one Undo brings the whole dimension back.
+    #[test]
+    fn a_dimension_part_deletes_on_its_own() {
+        for part_is_label in [true, false] {
+            let mut app = App::headless();
+            app.view.zoom = 1.0;
+            app.create_dimension(
+                Point::new(10.0, 10.0),
+                Point::new(50.0, 10.0),
+                Point::new(30.0, 0.0),
+            );
+            let dim = app.selection[0];
+            let children = match &app.doc().find_shape(dim).expect("dim").kind {
+                ShapeKind::Group { children } => children.clone(),
+                _ => panic!("a group"),
+            };
+            let is_label = |c: &Shape| matches!(c.kind, ShapeKind::Text { .. });
+            let part = children
+                .iter()
+                .find(|c| is_label(c) == part_is_label && !matches!(&c.kind, ShapeKind::Path { path, .. } if path.elements().is_empty()))
+                .expect("part")
+                .id;
+            let kept: Vec<ShapeId> = children
+                .iter()
+                .filter(|c| is_label(c) != part_is_label)
+                .filter(|c| !matches!(&c.kind, ShapeKind::Path { path, .. } if path.elements().is_empty()))
+                .map(|c| c.id)
+                .collect();
+            app.select(vec![part]);
+            app.delete_selection();
+            app.bake_dimensions();
+            assert!(app.doc().find_shape(part).is_none(), "the part is gone");
+            assert!(app.doc().find_shape(dim).is_none(), "the dimension broke apart");
+            for id in &kept {
+                assert!(app.doc().find_shape(*id).is_some(), "the rest stays: {id:?}");
+            }
+            app.engine.undo().expect("undo");
+            let back = app.doc().find_shape(dim).expect("the dimension is back");
+            assert!(Dimension::of(back).is_some());
+            assert!(app.doc().find_shape(part).is_some());
+        }
     }
 
     /// The preview follows the pointer; Horizontal or Vertical keeps the

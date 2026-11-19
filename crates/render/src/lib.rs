@@ -791,6 +791,24 @@ thread_local! {
     static PATHS_DRAWN: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
+/// The largest scratch buffer (in pixels) a lens, a transparency or a
+/// blur made, on any thread (a page may be drawn in bands on several),
+/// for tests (#3439, #3441, #3442), which hold [`SCRATCH_TEST`] while
+/// they use it.
+#[cfg(test)]
+static LARGEST_SCRATCH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+#[cfg(test)]
+static SCRATCH_TEST: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Notes a scratch buffer of `w` by `h` pixels, for tests.
+#[inline]
+fn note_scratch(w: u32, h: u32) {
+    #[cfg(test)]
+    LARGEST_SCRATCH.fetch_max(w as usize * h as usize, std::sync::atomic::Ordering::Relaxed);
+    #[cfg(not(test))]
+    let _ = (w, h);
+}
+
 struct Renderer<'a> {
     pixmap: &'a mut Pixmap,
     screen: Affine,
@@ -938,6 +956,13 @@ impl Renderer<'_> {
     /// seconds to draw. The whole target for an object whose reach is
     /// not its bounds (see [`Self::out_of_sight`]).
     fn layer_area(&self, shape: &Shape, parent: Affine) -> (u32, u32, u32, u32) {
+        self.layer_area_grown(shape, parent, 0.0)
+    }
+
+    /// [`Self::layer_area`] grown by `grow` pixels each way before it is
+    /// cut to the target: what a blur of the object spreads over, which
+    /// reaches onto the target from an object just off it.
+    fn layer_area_grown(&self, shape: &Shape, parent: Affine, grow: f64) -> (u32, u32, u32, u32) {
         let (w, h) = (self.pixmap.width(), self.pixmap.height());
         let whole = (0, 0, w, h);
         if !shape.effects.is_empty()
@@ -955,7 +980,7 @@ impl Renderer<'_> {
         let Some(page) = Self::reach(shape, parent) else {
             return whole;
         };
-        let r = self.screen.transform_rect_bbox(page);
+        let r = self.screen.transform_rect_bbox(page).inflate(grow, grow);
         // One pixel more each way for the edge's anti-aliasing.
         let clamp = |v: f64, max: u32| (v.max(0.0).min(max as f64)) as u32;
         let (x0, y0) = (clamp(r.x0.floor() - 1.0, w), clamp(r.y0.floor() - 1.0, h));
@@ -2186,23 +2211,35 @@ impl Renderer<'_> {
     /// `radius` mm (three box passes), and merged over the target
     /// (#1141).
     fn draw_blurred(&mut self, shape: &Shape, parent: Affine, radius: f64) {
-        let (w, h) = (self.pixmap.width(), self.pixmap.height());
+        let px = (radius * self.zoom).round().clamp(0.0, 64.0) as i32;
+        // The layer covers the object and what its blur spreads over (3
+        // passes of `px` each way, and one more), not the whole target:
+        // a page-sized layer was made and blurred for each object
+        // (#3442). Past that the blur of nothing is nothing, and at the
+        // target's edge the layer ends there too, so each pass repeats
+        // the same edge pixels as before.
+        let (x, y, w, h) = self.layer_area_grown(shape, parent, f64::from(3 * px + 1));
+        if w == 0 || h == 0 {
+            return;
+        }
+        note_scratch(w, h);
         let Some(mut layer) = Pixmap::new(w, h) else {
             self.draw_shape(shape, parent);
             return;
         };
         {
             let mut sub = self.sub(&mut layer);
+            sub.screen = Affine::translate((-f64::from(x), -f64::from(y))) * self.screen;
+            sub.origin = (self.origin.0 + x as i32, self.origin.1 + y as i32);
             sub.draw_shape(shape, parent);
         }
-        let px = (radius * self.zoom).round().clamp(0.0, 64.0) as i32;
         if px > 0 {
             accel::box_blur(&mut layer, px, 3);
         }
         composite_layer(
             self.pixmap,
             &layer,
-            (0, 0),
+            (x as i32, y as i32),
             tracedraw_core::live::MergeMode::Normal,
         );
     }
@@ -2285,33 +2322,75 @@ impl Renderer<'_> {
             return;
         };
         let (w, h) = (self.pixmap.width(), self.pixmap.height());
-        let Some(mut mask) = tiny_skia::Mask::new(w, h) else {
-            return;
-        };
-        let rule = shape_fill_rule(shape, false);
-        mask.fill_path(&sk, rule, true, Transform::identity());
-        let source = self.pixmap.clone();
         let b = path.bounding_box();
         let center = b.center();
         let (x0, y0) = (b.x0.max(0.0) as u32, b.y0.max(0.0) as u32);
         let (x1, y1) = ((b.x1.ceil() as u32).min(w), (b.y1.ceil() as u32).min(h));
+        if x1 <= x0 || y1 <= y0 {
+            self.draw_lens_outline(shape, parent);
+            return;
+        }
+        // Only the pixels under the lens's box are worked on: the mask,
+        // what lies beneath (made opaque over white once) and the result
+        // are that size. The whole page was copied and masked for every
+        // lens, and each pixel read made opaque again 4 or 5 times (#3439).
+        let bw = x1 - x0;
+        // The mask reaches a little past the box, so the whole outline
+        // lies inside it and is filled exactly as on a page-sized mask.
+        // An outline that crosses the view's edge is cut there, and that
+        // cut only gives the same edge pixels when the mask starts where
+        // the view does, so then the mask starts at the view's corner.
+        const PAD: u32 = 32;
+        let crosses = b.x0 < 0.0 || b.y0 < 0.0 || b.x1 > w as f64 || b.y1 > h as f64;
+        let (mx0, my0) = if crosses {
+            (0, 0)
+        } else {
+            (x0.saturating_sub(PAD), y0.saturating_sub(PAD))
+        };
+        let (mw, mh) = ((x1 + PAD).min(w) - mx0, (y1 + PAD).min(h) - my0);
+        note_scratch(mw, mh);
+        let Some(mut mask) = tiny_skia::Mask::new(mw, mh) else {
+            return;
+        };
+        let rule = shape_fill_rule(shape, false);
+        mask.fill_path(
+            &sk,
+            rule,
+            true,
+            Transform::from_translate(-(mx0 as f32), -(my0 as f32)),
+        );
         let mdata = mask.data();
+        let coverage = |x: u32, y: u32| mdata[((y - my0) * mw + (x - mx0)) as usize];
+        // A pixel of the page made opaque over white (the page).
+        let opaque = |p: tiny_skia::PremultipliedColorU8| -> [f32; 3] {
+            let p = p.demultiply();
+            if p.alpha() == 0 {
+                return [1.0, 1.0, 1.0];
+            }
+            let a = p.alpha() as f32 / 255.0;
+            [
+                p.red() as f32 / 255.0 * a + (1.0 - a),
+                p.green() as f32 / 255.0 * a + (1.0 - a),
+                p.blue() as f32 / 255.0 * a + (1.0 - a),
+            ]
+        };
+        let page = self.pixmap.pixels();
+        let under: Vec<[f32; 3]> = (y0..y1)
+            .flat_map(|y| (x0..x1).map(move |x| (x, y)))
+            .map(|(x, y)| opaque(page[(y * w + x) as usize]))
+            .collect();
+        // What lies beneath: inside the box from the copy made before any
+        // pixel changes, outside it from the page, which the lens leaves
+        // as it is.
         let src_px = |x: i64, y: i64| -> [f32; 3] {
             if x < 0 || y < 0 || x >= w as i64 || y >= h as i64 {
                 return [1.0, 1.0, 1.0];
             }
-            let p = source.pixel(x as u32, y as u32).map(|p| p.demultiply());
-            match p {
-                Some(p) if p.alpha() > 0 => {
-                    let a = p.alpha() as f32 / 255.0;
-                    // Composite over white (the page).
-                    [
-                        p.red() as f32 / 255.0 * a + (1.0 - a),
-                        p.green() as f32 / 255.0 * a + (1.0 - a),
-                        p.blue() as f32 / 255.0 * a + (1.0 - a),
-                    ]
-                }
-                _ => [1.0, 1.0, 1.0],
+            let (x, y) = (x as u32, y as u32);
+            if x >= x0 && x < x1 && y >= y0 && y < y1 {
+                under[((y - y0) * bw + (x - x0)) as usize]
+            } else {
+                opaque(page[(y * w + x) as usize])
             }
         };
         // What lies beneath at a point between pixels, blended from the
@@ -2369,10 +2448,11 @@ impl Renderer<'_> {
             }),
             _ => None,
         };
-        let pixels = self.pixmap.pixels_mut();
+        let mut changed: Vec<Option<tiny_skia::PremultipliedColorU8>> = vec![None; under.len()];
         for y in y0..y1 {
             for x in x0..x1 {
-                let m = mdata[(y * w + x) as usize];
+                let at = ((y - y0) * bw + (x - x0)) as usize;
+                let m = coverage(x, y);
                 if m == 0 {
                     continue;
                 }
@@ -2430,7 +2510,7 @@ impl Renderer<'_> {
                     other => other.map_color(src_px(x as i64, y as i64)),
                 };
                 let mf = m as f32 / 255.0;
-                let old = src_px(x as i64, y as i64);
+                let old = under[at];
                 let out = [
                     old[0] + (c[0] - old[0]) * mf,
                     old[1] + (c[1] - old[1]) * mf,
@@ -2445,11 +2525,22 @@ impl Renderer<'_> {
                 .premultiply()
                 .into()
                 {
-                    pixels[(y * w + x) as usize] = px;
+                    changed[at] = Some(px);
                 }
             }
         }
-        // The lens object's own outline.
+        let pixels = self.pixmap.pixels_mut();
+        for (i, px) in changed.into_iter().enumerate() {
+            if let Some(px) = px {
+                let (x, y) = (x0 + i as u32 % bw, y0 + i as u32 / bw);
+                pixels[(y * w + x) as usize] = px;
+            }
+        }
+        self.draw_lens_outline(shape, parent);
+    }
+
+    /// The lens object's own outline.
+    fn draw_lens_outline(&mut self, shape: &Shape, parent: Affine) {
         if let Some(stroke) = &shape.stroke {
             let mut outline = shape.clone();
             outline.fill = Fill::None;
@@ -2467,10 +2558,6 @@ impl Renderer<'_> {
         mask_fill: &Fill,
         merge: tracedraw_core::live::MergeMode,
     ) {
-        let (w, h) = (self.pixmap.width(), self.pixmap.height());
-        let (Some(mut layer), Some(mut mask_pm)) = (Pixmap::new(w, h), Pixmap::new(w, h)) else {
-            return;
-        };
         // The drop shadow goes beneath, outside the mask, cast by the
         // object's shape. Drawn on the layer it went through the mask,
         // which past the object's box repeats its edge pixels: a shadow
@@ -2491,21 +2578,38 @@ impl Renderer<'_> {
             }
             None => shape,
         };
+        // The layer and the mask cover only what the object can reach,
+        // not the whole target: two page-sized buffers and a third for
+        // the mask's values were made for each such object (#3441).
+        let (ox, oy, w, h) = self.layer_area(shape, parent);
+        if w == 0 || h == 0 {
+            return;
+        }
+        note_scratch(w, h);
+        let (Some(mut layer), Some(mut mask_pm)) = (Pixmap::new(w, h), Pixmap::new(w, h)) else {
+            return;
+        };
+        let screen = Affine::translate((-(ox as f64), -(oy as f64))) * self.screen;
+        let origin = (self.origin.0 + ox as i32, self.origin.1 + oy as i32);
         {
             let mut sub = self.sub(&mut layer);
+            sub.screen = screen;
+            sub.origin = origin;
             sub.draw_shape(shape, parent);
         }
         let transform = parent * shape.transform;
         let page_path = transform * shape.local_path();
         let bounds = page_path.bounding_box();
         let rect_path = tracedraw_core::geometry::rect_path(bounds, 0.0);
-        if let Some(sk) = to_sk_path(&(self.screen * rect_path.clone())) {
+        if let Some(sk) = to_sk_path(&(screen * rect_path.clone())) {
             let mut sub = self.sub(&mut mask_pm);
+            sub.screen = screen;
+            sub.origin = origin;
             sub.flags.wireframe = false;
             match mask_fill {
                 // A shaped mask follows the object, over its whole bounds.
                 Fill::Fountain(f) if f.kind == tracedraw_core::FountainKind::Shaped => {
-                    if let Some(shape_sk) = to_sk_path(&(self.screen * page_path.clone())) {
+                    if let Some(shape_sk) = to_sk_path(&(screen * page_path.clone())) {
                         let rule = shape_fill_rule(shape, false);
                         sub.fill_shaped(f, &shape_sk, &sk, rule);
                     }
@@ -2536,22 +2640,29 @@ impl Renderer<'_> {
         // transparency there, the outline of a rounded rectangle showed
         // opaque outside the box and faded inside it, so most of it
         // seemed to stay and its corners to vanish (live test of 0.41).
-        let sb = (self.screen * rect_path).bounding_box();
+        let sb = (screen * rect_path).bounding_box();
         let inner = |lo: f64, hi: f64, n: u32| -> Option<(usize, usize)> {
             let (a, b) = (lo.ceil().max(0.0), (hi.floor() - 1.0).min(n as f64 - 1.0));
             (a.is_finite() && b.is_finite() && a <= b).then_some((a as usize, b as usize))
         };
-        let mdata: Vec<u8> = match (inner(sb.x0, sb.x1, w), inner(sb.y0, sb.y1, h)) {
-            (Some((x0, x1)), Some((y0, y1))) => (0..h as usize)
-                .flat_map(|y| (0..w as usize).map(move |x| (x, y)))
-                .map(|(x, y)| {
+        // Each pixel's mask value is read as the layer is worked on, with
+        // no third buffer of them.
+        let inside = inner(sb.x0, sb.x1, w).zip(inner(sb.y0, sb.y1, h));
+        let mask_at = |i: usize| -> u8 {
+            match inside {
+                Some(((x0, x1), (y0, y1))) => {
+                    let (x, y) = (i % w as usize, i / w as usize);
                     let (cx, cy) = (x.clamp(x0, x1), y.clamp(y0, y1));
                     mask_px.get(cy * w as usize + cx).map_or(255, lum)
-                })
-                .collect(),
-            _ => mask_px.iter().map(lum).collect(),
+                }
+                None => mask_px.get(i).map_or(255, lum),
+            }
         };
-        for (px, m) in layer.pixels_mut().iter_mut().zip(mdata) {
+        for (i, px) in layer.pixels_mut().iter_mut().enumerate() {
+            if px.alpha() == 0 {
+                continue;
+            }
+            let m = mask_at(i);
             let d = px.demultiply();
             let a = (d.alpha() as u32 * m as u32 / 255) as u8;
             if let Some(np) = tiny_skia::ColorU8::from_rgba(d.red(), d.green(), d.blue(), a)
@@ -2561,7 +2672,7 @@ impl Renderer<'_> {
                 *px = np;
             }
         }
-        composite_layer(self.pixmap, &layer, (0, 0), merge);
+        composite_layer(self.pixmap, &layer, (ox as i32, oy as i32), merge);
     }
 
     /// Fill a screen-space path with any fill type.
@@ -6650,6 +6761,38 @@ mod tests {
         assert_eq!(px(&pm, 5, 5), (255, 0, 0));
     }
 
+    /// #3439: a lens works on its own box only: no page-sized copy or
+    /// mask, and a lens partly off the page still changes what it covers
+    /// and nothing past it.
+    #[test]
+    fn lens_works_on_its_own_box_only() {
+        use tracedraw_core::live::{Effect, Lens};
+        let base = rect(1, Rect::new(0.0, 0.0, 100.0, 100.0), Color::rgb8(255, 0, 0));
+        let mut small = rect(2, Rect::new(40.0, 40.0, 50.0, 50.0), Color::WHITE);
+        small.effects.push(Effect::Lens(Lens::Invert));
+        let (doc, page) = doc_with(vec![base.clone(), small]);
+        let _one_at_a_time = SCRATCH_TEST.lock().unwrap_or_else(|e| e.into_inner());
+        LARGEST_SCRATCH.store(0, std::sync::atomic::Ordering::Relaxed);
+        let pm = render_page_image(&doc, page, 254.0).unwrap();
+        let page_px = pm.width() as usize * pm.height() as usize;
+        let largest = LARGEST_SCRATCH.load(std::sync::atomic::Ordering::Relaxed);
+        assert!(largest > 0 && largest * 20 < page_px, "{largest} of {page_px}");
+        assert_eq!(px(&pm, 450, 550), (0, 255, 255));
+        assert_eq!(px(&pm, 350, 550), (255, 0, 0));
+        // Partly off the page, and magnifying, which reads past its box.
+        for lens_kind in [Lens::Invert, Lens::Magnify { amount: 2.0 }, Lens::FishEye { rate: -500.0 }] {
+            let mut off = rect(2, Rect::new(-30.0, 80.0, 30.0, 140.0), Color::WHITE);
+            off.effects.push(Effect::Lens(lens_kind.clone()));
+            let (doc, page) = doc_with(vec![base.clone(), off]);
+            let pm = render_page_image(&doc, page, 25.4).unwrap();
+            if matches!(lens_kind, Lens::Invert) {
+                assert_eq!(px(&pm, 10, 5), (0, 255, 255));
+            }
+            assert_eq!(px(&pm, 40, 5), (255, 0, 0), "{lens_kind:?}");
+            assert_eq!(px(&pm, 10, 30), (255, 0, 0), "{lens_kind:?}");
+        }
+    }
+
     /// #2800: Wireframe shows the objects beneath as outlines and fills
     /// in its colours, the bare page as it is; Tinted grayscale turns
     /// black into the lens colour and keeps white.
@@ -6977,6 +7120,78 @@ mod tests {
         );
         assert_eq!(px(&fast, 5, 5), (255, 0, 0));
         assert_ne!(full.data(), fast.data());
+    }
+
+    /// #3441: a transparency mask and a uniform transparency work on a
+    /// layer the size of what the object reaches, not of the page; an
+    /// object partly off the page is still faded where it shows.
+    #[test]
+    fn transparency_layers_cover_only_the_object() {
+        use tracedraw_core::live::{Effect, MergeMode};
+        let page_white = rect(1, Rect::new(0.0, 0.0, 100.0, 100.0), Color::WHITE);
+        let mut masked = rect(2, Rect::new(40.0, 40.0, 50.0, 50.0), Color::BLACK);
+        masked.effects.push(Effect::Transparency {
+            mask: Fill::Solid(Color::rgb8(128, 128, 128)),
+            merge: MergeMode::Normal,
+            target: 2,
+        });
+        let mut faded = rect(3, Rect::new(60.0, 60.0, 70.0, 70.0), Color::BLACK);
+        faded.opacity = 0.5;
+        let (doc, page) = doc_with(vec![page_white.clone(), masked, faded]);
+        let _one_at_a_time = SCRATCH_TEST.lock().unwrap_or_else(|e| e.into_inner());
+        LARGEST_SCRATCH.store(0, std::sync::atomic::Ordering::Relaxed);
+        let pm = render_page_image(&doc, page, 254.0).unwrap();
+        let page_px = pm.width() as usize * pm.height() as usize;
+        let largest = LARGEST_SCRATCH.load(std::sync::atomic::Ordering::Relaxed);
+        assert!(largest > 0 && largest * 20 < page_px, "{largest} of {page_px}");
+        let grey = px(&pm, 450, 550).0;
+        assert!((100..160).contains(&grey), "masked: {grey}");
+        let grey = px(&pm, 650, 350).0;
+        assert!((100..160).contains(&grey), "faded: {grey}");
+        assert_eq!(px(&pm, 550, 450), (255, 255, 255));
+        // Partly off the page, the mask still fades what shows.
+        let mut off = rect(2, Rect::new(-20.0, 40.0, 20.0, 60.0), Color::BLACK);
+        off.effects.push(Effect::Transparency {
+            mask: Fill::linear(Color::BLACK, Color::WHITE, 0.0),
+            merge: MergeMode::Normal,
+            target: 2,
+        });
+        let (doc, page) = doc_with(vec![page_white, off]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        let (left, right) = (px(&pm, 2, 50).0, px(&pm, 18, 50).0);
+        assert!(left.abs_diff(right) > 30 && left.max(right) < 255, "{left} {right}");
+        assert_eq!(px(&pm, 25, 50), (255, 255, 255));
+    }
+
+    /// #3442: a Gaussian blur works on the object and what its blur
+    /// spreads over, not on the whole page; an object partly off the
+    /// page still blurs where it shows.
+    #[test]
+    fn gaussian_blur_works_near_the_object_only() {
+        use tracedraw_core::live::Effect;
+        let page_white = rect(1, Rect::new(0.0, 0.0, 100.0, 100.0), Color::WHITE);
+        let mut small = rect(2, Rect::new(40.0, 40.0, 50.0, 50.0), Color::BLACK);
+        small.effects.push(Effect::GaussianBlur { radius: 1.0 });
+        let (doc, page) = doc_with(vec![page_white.clone(), small]);
+        let _one_at_a_time = SCRATCH_TEST.lock().unwrap_or_else(|e| e.into_inner());
+        LARGEST_SCRATCH.store(0, std::sync::atomic::Ordering::Relaxed);
+        let pm = render_page_image(&doc, page, 254.0).unwrap();
+        let page_px = pm.width() as usize * pm.height() as usize;
+        let largest = LARGEST_SCRATCH.load(std::sync::atomic::Ordering::Relaxed);
+        assert!(largest > 0 && largest * 8 < page_px, "{largest} of {page_px}");
+        assert!(px(&pm, 450, 550).0 < 10, "the middle stays black");
+        let edge = px(&pm, 400, 550).0;
+        assert!(edge > 0 && edge < 255, "{edge}");
+        assert_eq!(px(&pm, 300, 550), (255, 255, 255));
+        // Partly off the page's left edge, it blurs where it shows.
+        let mut off = rect(2, Rect::new(-10.0, 40.0, 5.0, 60.0), Color::BLACK);
+        off.effects.push(Effect::GaussianBlur { radius: 2.0 });
+        let (doc, page) = doc_with(vec![page_white, off]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        assert!(px(&pm, 0, 50).0 < 10, "{:?}", px(&pm, 0, 50));
+        let edge = px(&pm, 6, 50).0;
+        assert!(edge > 0 && edge < 255, "{edge}");
+        assert_eq!(px(&pm, 30, 50), (255, 255, 255));
     }
 
     #[test]

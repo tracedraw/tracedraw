@@ -818,7 +818,14 @@ pub fn draw_other_pages(
                     let revision = app.engine.revision();
                     let mut snap = app.page_snapshot.borrow_mut();
                     if snap.as_ref().is_none_or(|(r, _)| *r != revision) {
-                        *snap = Some((revision, std::sync::Arc::new(doc.clone())));
+                        // The drawing as it stands, shared for nothing
+                        // when it is the one being edited (#3440).
+                        let shared = if std::ptr::eq(doc, app.engine.document()) {
+                            app.engine.shared_document()
+                        } else {
+                            std::sync::Arc::new(doc.clone())
+                        };
+                        *snap = Some((revision, shared));
                     }
                     raster.snapshot = snap.as_ref().map(|(_, d)| d.clone());
                 }

@@ -595,6 +595,12 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
             }
         }
     }
+    // The drawing as it stands is shared with the render for nothing:
+    // no copy of it on the window's thread at each change (#3440).
+    #[cfg(not(target_arch = "wasm32"))]
+    if revision == app.engine.revision() && std::ptr::eq(doc, app.engine.document()) {
+        app.raster.borrow_mut().snapshot = Some(app.engine.shared_document());
+    }
     // Shadows blurred on the graphics card when Options asks (the same
     // pixels as on the CPU, so nothing drawn needs drawing again).
     #[cfg(not(target_arch = "wasm32"))]
