@@ -103,6 +103,7 @@ On the property bar:
 1. Choose the style on the property bar: Speech, Thought, Whisper, Shout or Caption.
 2. Drag a box: the balloon fills it, its tail welded on in one curve.
 3. Drag the diamond at the tail's tip to point the tail at someone; set its width and bend on the bar.
+4. With a balloon selected, **Add Text** on the bar puts a paragraph text inside it, fitted to its body and centred, ready to type in.
 
 ## Graph Paper {#graph-paper}
 

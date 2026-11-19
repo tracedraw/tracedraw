@@ -343,11 +343,17 @@ pointed one; the angle and stray spacing).
   (within 8 pixels) points the tail elsewhere, one undo step. The bar
   shows the selected balloon's style, width and bend, and a change goes
   to the selected balloons (one undo step) and to the next ones.
+- Add Text on the bar (discussion #3522), enabled with a balloon
+  selected: a paragraph text whose frame is the middle of the body (68 %
+  of the body box for Speech and Whisper, 84 % for Caption, 58 % for
+  Thought, 50 % for Shout), centred whatever the bar's alignment for new
+  texts, the caret in it to type.
 
 ## Checks
 
 - `balloons::tests::every_style_makes_one_closed_curve_reaching_the_tip`
 - `balloons::tests::a_balloon_is_drawn_its_tip_dragged_and_its_style_changed`
+- `balloons::tests::add_text_types_inside_the_balloon`
 
 - Given a 3 mm black default outline, while a rectangle or an ellipse is
   dragged out, the outline is painted at its width and the edge line is

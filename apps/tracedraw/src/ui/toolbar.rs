@@ -1208,6 +1208,17 @@ fn balloon_bar(app: &mut App, ui: &mut Ui) {
     {
         app.set_balloon_settings(|_, _, b| *b = bend);
     }
+    // Text typed inside the selected balloon (discussion #3522).
+    if ui
+        .add_enabled(
+            !app.selected_balloons().is_empty(),
+            egui::Button::new(tr("balloon.add_text")),
+        )
+        .rich_tip(crate::ui::tips::keyed("balloon.add_text"))
+        .clicked()
+    {
+        app.add_text_in_balloon();
+    }
 }
 
 /// The Shape Builder's bar (#3220): Add or Delete, what a drag or a click
