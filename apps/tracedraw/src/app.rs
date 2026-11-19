@@ -2276,6 +2276,10 @@ pub struct App {
     /// and their numbers in its mesh. They count only while that node is
     /// still the one chosen.
     pub mesh_more_nodes: Option<((ShapeId, usize), Vec<usize>)>,
+    /// More envelope nodes chosen with the one in `selected_effect_node`
+    /// (Shift+click, a marquee; #3001): they move with it. They count
+    /// only while that node is still the one chosen.
+    pub envelope_more_nodes: Option<((ShapeId, usize), Vec<usize>)>,
     /// The Mesh Fill bar's eyedropper is on: the next click samples a
     /// colour for the chosen mesh nodes (discussion #2387).
     pub mesh_eyedropper: bool,
@@ -3544,6 +3548,7 @@ impl App {
             selected_effect_node: None,
             shadow_picked: None,
             mesh_more_nodes: None,
+            envelope_more_nodes: None,
             mesh_eyedropper: false,
             docs: Vec::new(),
             active_doc: 0,

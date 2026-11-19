@@ -3296,6 +3296,26 @@ impl App {
         }
     }
 
+    /// A last node of the Freehand line of clicks where the pointer is
+    /// (snapped and constrained as a click there would be), for Space to
+    /// end the line there (#3192). Nothing when no line has begun, the
+    /// pointer is off the drawing or on the last node already.
+    pub(crate) fn freehand_node_at_pointer(&mut self, mods: Modifiers) {
+        let Some(at) = self.pointer_page else {
+            return;
+        };
+        if self.curve.as_ref().is_none_or(|c| c.nodes.is_empty() || c.bspline) {
+            return;
+        }
+        let q = self.curve_point(self.snap_point(at), self.constrain_held(&mods));
+        let zoom = self.view.zoom as f64;
+        if let Some(c) = self.curve.as_mut() {
+            if c.nodes.last().is_some_and(|n| (n.0 - q).hypot() * zoom > 2.0) {
+                c.nodes.push((q, None));
+            }
+        }
+    }
+
     fn freehand_input(&mut self, response: &Response, p: Point, mods: Modifiers) {
         // Resting before the first click: the pointer shows the point the
         // line would start at, as it does for the next node once the line
@@ -5482,6 +5502,12 @@ impl App {
         if pressed(Key::Space, Modifiers::NONE)
             && matches!(self.tool, Tool::Bezier | Tool::Freehand)
         {
+            // A Freehand line of clicks ends where the pointer is: a last
+            // node there, unless the pointer is on the last node or off
+            // the drawing (#3192).
+            if self.tool == Tool::Freehand {
+                self.freehand_node_at_pointer(ctx.input(|i| i.modifiers));
+            }
             self.finish_curve();
         }
         // Esc with a menu or a list open only closes it.

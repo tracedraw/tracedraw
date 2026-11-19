@@ -28,8 +28,14 @@ curve with a thick outline takes its segment anywhere the outline
 shows, out to its edge and the pick distance beyond (#1935,
 `pick_drag_tests::nodes_and_handles_are_taken_on_their_whole_marker`,
 `pick_drag_tests::a_thick_outline_takes_a_press_on_its_segment_out_to_its_edge`).
-The arrow showing the curve's direction is off by default (Options >
-Nodes and Handles).
+The curve's direction shows on its end nodes (Options > Nodes and
+Handles > Show curve direction, on by default): the first node of every
+part is a triangle pointing the way the curve leaves it, and the last
+node of an open part a triangle pointing the way it arrives, both turned
+along the curve, straight or curved; off, the first node is an upright
+triangle and the last an ordinary node. Small arrow heads in the
+secondary colour beside the end nodes showed it before (#3038, #2578,
+`canvas::tests::the_end_nodes_point_along_the_curve`).
 Options > Nodes and Handles > Colour nodes by type (off by default,
 #3000) outlines each node in a colour for its type besides its shape:
 cusp orange, smooth green, symmetrical purple, each colour set beside

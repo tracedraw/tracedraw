@@ -2239,7 +2239,7 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
         return;
     }
     // The Mesh Fill tool's box or freehand loop over mesh nodes.
-    if app.tool == Tool::MeshFill {
+    if matches!(app.tool, Tool::MeshFill | Tool::Envelope) {
         draw_node_marquees(app, painter);
     }
     // While text is typed or edited only the text and its cursor show;
@@ -3046,6 +3046,33 @@ pub(crate) fn node_type_color(
     Some(Color32::from_rgb(r, g, b))
 }
 
+/// A first or last node showing the curve's direction: a triangle
+/// `size` across pointing along `d` (a unit vector on the screen), its
+/// middle on the node (#3038).
+fn direction_node_marker(
+    painter: &Painter,
+    p: Pos2,
+    size: f32,
+    d: egui::Vec2,
+    fill: Option<Color32>,
+    outline: Color32,
+) {
+    let pts = direction_triangle(p, size, d);
+    painter.add(epaint::PathShape::convex_polygon(
+        pts.to_vec(),
+        fill.unwrap_or(Color32::TRANSPARENT),
+        EStroke::new(1.0, outline),
+    ));
+}
+
+/// The corners of a direction node's triangle: the tip ahead along `d`,
+/// the base behind, `size` across.
+pub(crate) fn direction_triangle(p: Pos2, size: f32, d: egui::Vec2) -> [Pos2; 3] {
+    let h = size / 2.0;
+    let n = egui::vec2(-d.y, d.x);
+    [p + d * h * 1.1, p - d * h * 0.8 + n * h, p - d * h * 0.8 - n * h]
+}
+
 /// The first node of a subpath: a triangle standing on its base, `size`
 /// across.
 fn start_node_marker(
@@ -3191,8 +3218,8 @@ fn draw_node_marquees(app: &App, painter: &Painter) {
 /// Shape tool overlay, as Options > Nodes and Handles sets it: nodes
 /// shaped by type (cusp, smooth, symmetrical), the selected ones filled
 /// with the main colour, the others white or hollow, the first node of a
-/// curve larger, handles of the selected nodes, and an arrow in the
-/// secondary colour showing the curve's direction.
+/// curve larger, handles of the selected nodes, and the first and last
+/// nodes turned along the curve to show its direction (#3038).
 fn draw_nodes(app: &App, painter: &Painter) {
     use tracedraw_core::nodes;
     let view = &app.view;
@@ -3423,33 +3450,29 @@ fn draw_nodes(app: &App, painter: &Painter) {
             painter.add(egui::Shape::line(pts, EStroke::new(1.0, outline)));
         }
         let all = nodes::nodes(path);
-        if prefs.show_direction {
-            // A small arrow head just after the first node of every
-            // subpath, along the way the curve leaves it, and one just
-            // past the last node of an open subpath, along the way it
-            // arrives: after Break Curve each part shows its direction at
-            // both ends, as the reference program does (#2578).
-            for (at, dir, start) in nodes::direction_marks(path) {
-                let a = view.to_screen(s.transform * at);
-                let ahead = view.to_screen(s.transform * (at + dir));
-                let d = ahead - a;
-                if d.length() <= 1e-6 {
-                    continue;
-                }
-                let d = d.normalized();
-                let n = egui::vec2(-d.y, d.x);
-                let (tip, base) = if start {
-                    (a + d * (size + 9.0), a + d * (size + 3.0))
-                } else {
-                    (a + d * (size + 7.0), a + d * (size + 1.0))
-                };
-                painter.add(epaint::PathShape::convex_polygon(
-                    vec![tip, base + n * 3.5, base - n * 3.5],
-                    secondary,
-                    EStroke::NONE,
-                ));
-            }
-        }
+        // The direction (#3038, #2578): the first node of every subpath is
+        // a triangle pointing the way the curve leaves it, and the last
+        // node of an open subpath one pointing the way it arrives, so
+        // after Break Curve each part shows its direction at both ends.
+        // Small arrow heads beside the end nodes showed it before.
+        let marks: Vec<(Point, egui::Vec2, bool)> = if prefs.show_direction {
+            nodes::direction_marks(path)
+                .into_iter()
+                .filter_map(|(at, dir, start)| {
+                    let a = view.to_screen(s.transform * at);
+                    let d = view.to_screen(s.transform * (at + dir)) - a;
+                    (d.length() > 1e-6).then(|| (at, d.normalized(), start))
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let mark_of = |at: Point, start: bool| {
+            marks
+                .iter()
+                .find(|(q, _, st)| *st == start && (*q - at).hypot() < 1e-9)
+                .map(|(_, d, _)| *d)
+        };
         for n in all {
             // A chosen segment shows as the segment, not as its end node.
             let selected = app.node_selection.contains(&(s.id, n.index))
@@ -3476,7 +3499,11 @@ fn draw_nodes(app: &App, painter: &Painter) {
             } else {
                 None
             };
-            if n.is_start {
+            if let Some(d) = mark_of(n.pos, n.is_start) {
+                // A first or last node turned along the curve (#3038).
+                let across = if n.is_start { size + 3.0 } else { size + 2.0 };
+                direction_node_marker(painter, p, across, d, fill, outline);
+            } else if n.is_start {
                 // The first node of a subpath: a triangle a little larger
                 // than the other nodes.
                 start_node_marker(painter, p, size + 3.0, fill, outline);
@@ -4319,6 +4346,48 @@ mod node_look_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The direction shows on the end nodes themselves (#3038): each
+    /// first node and each last node of an open part has a direction
+    /// mark at its own place, and its triangle points that way, its tip
+    /// ahead of the node and its base behind.
+    #[test]
+    fn the_end_nodes_point_along_the_curve() {
+        use tracedraw_core::nodes;
+        let mut path = tracedraw_core::geometry::BezPath::new();
+        path.move_to((0.0, 0.0));
+        path.line_to((10.0, 0.0));
+        path.curve_to((15.0, 0.0), (20.0, 5.0), (20.0, 10.0));
+        path.move_to((40.0, 0.0));
+        path.line_to((40.0, 10.0));
+        path.line_to((50.0, 10.0));
+        path.close_path();
+        let marks = nodes::direction_marks(&path);
+        let all = nodes::nodes(&path);
+        let starts: Vec<_> = all.iter().filter(|n| n.is_start).collect();
+        assert_eq!(starts.len(), 2);
+        for n in &starts {
+            assert!(
+                marks.iter().any(|(q, _, st)| *st && (*q - n.pos).hypot() < 1e-9),
+                "a start mark on {:?}",
+                n.pos
+            );
+        }
+        // The open part's last node, arriving straight down (y grows).
+        let end = marks
+            .iter()
+            .find(|(_, _, st)| !st)
+            .expect("an end mark");
+        assert!((end.0 - tracedraw_core::geometry::Point::new(20.0, 10.0)).hypot() < 1e-9);
+        assert!(all.iter().any(|n| (n.pos - end.0).hypot() < 1e-9));
+        // The triangle: its tip ahead along the way, its base behind.
+        let p = egui::pos2(100.0, 100.0);
+        let d = egui::vec2(0.0, 1.0);
+        let [tip, b1, b2] = direction_triangle(p, 10.0, d);
+        assert!(tip.y > p.y + 4.0 && (tip.x - p.x).abs() < 1e-4, "{tip:?}");
+        assert!(b1.y < p.y && b2.y < p.y);
+        assert!((b1.x - b2.x).abs() > 9.0, "the base is across the way");
+    }
 
     /// A slanted guideline crossing the window is drawn at any zoom, far
     /// from the point it was made at too (#3337, #3342).

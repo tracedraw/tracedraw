@@ -1116,6 +1116,11 @@ impl App {
             self.choose_mesh_nodes_in(r, keeps);
             return;
         }
+        // The Envelope tool's box chooses envelope nodes (#3001).
+        if self.tool == crate::tools::Tool::Envelope {
+            self.choose_envelope_nodes_in(r, keeps);
+            return;
+        }
         if self.selected_mesh().is_some() {
             self.choose_mesh_nodes_in(r, keeps);
         }

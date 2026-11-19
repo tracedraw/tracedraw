@@ -7889,6 +7889,50 @@ fn space_ends_the_curve_of_every_line_tool() {
     }
 }
 
+/// Space ends a Freehand line of clicks where the pointer is, with a last
+/// node there (#3192): it ended at the last node clicked, leaving out the
+/// segment to the pointer.
+#[test]
+fn space_ends_a_freehand_line_at_the_pointer() {
+    let (ctx, mut app, _id) = setup();
+    app.snap.off = true;
+    app.set_tool(Tool::Freehand);
+    let view = app.view.clone();
+    let at = |x: f64, y: f64| view.to_screen(Point::new(x, y));
+    let before = shape_count(&app);
+    for p in [at(100.0, 100.0), at(160.0, 100.0)] {
+        click_at(&ctx, &mut app, p, Modifiers::NONE);
+        for _ in 0..20 {
+            frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+        }
+    }
+    let end = at(200.0, 140.0);
+    frame(&ctx, &mut app, vec![Event::PointerMoved(end)], Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Space, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert!(app.curve.is_none(), "the line ended");
+    assert_eq!(shape_count(&app), before + 1);
+    let s = app
+        .doc()
+        .find_shape(app.selection[0])
+        .expect("the line")
+        .clone();
+    let ShapeKind::Path { path, closed } = &s.kind else {
+        panic!("a curve: {:?}", s.kind);
+    };
+    assert!(!*closed, "an open line");
+    let page = s.transform * path.clone();
+    let nodes = tracedraw_core::nodes::nodes(&page);
+    assert_eq!(nodes.len(), 3, "a node at the pointer: {page:?}");
+    let last = nodes.last().expect("last").pos;
+    let want = view.to_page(end);
+    assert!((last - want).hypot() < 0.05, "{last:?} vs {want:?}");
+}
+
 #[test]
 fn the_snap_mark_shows_before_the_first_node_of_a_freehand_line() {
     // #1538: the point the line would start at was snapped but not marked.

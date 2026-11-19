@@ -184,8 +184,12 @@ delete the selection as everywhere (#1527,
   node ends the line there (the first click of the pair placed it), so a
   single straight line is a click and a double-click (#2339). A quick
   click somewhere else is the next node, not the end: egui pairs clicks
-  by time alone. Space, Enter and Esc end the line at its last node; Esc
-  drops a lone first click. A drag ends a line of clicks first, then
+  by time alone. Enter and Esc end the line at its last node; Esc
+  drops a lone first click. Space ends it at the pointer: a last node is
+  placed there (snapped, and constrained while the constrain key is held) unless the
+  pointer is within 2 screen pixels of the last node, so a line can be
+  finished without a double-click (#3192,
+  `pick_drag_tests::space_ends_a_freehand_line_at_the_pointer`). A drag ends a line of clicks first, then
   draws freehand
   (`pick_drag_tests::freehand_clicks_add_nodes_and_a_double_click_ends_the_line`).
 
