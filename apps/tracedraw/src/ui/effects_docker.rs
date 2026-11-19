@@ -22,6 +22,7 @@ pub fn effect_key(e: &Effect) -> &'static str {
         Effect::Distort(_) => "effect.distort",
         Effect::Envelope { .. } => "effect.envelope",
         Effect::Perspective { .. } => "effect.perspective",
+        Effect::MeshEnvelope { .. } => "effect.mesh_envelope",
         Effect::Extrude { .. } => "effect.extrude",
         Effect::Bevel { .. } => "effect.bevel",
         Effect::BlockShadow { .. } => "effect.block_shadow",
@@ -39,6 +40,7 @@ pub fn effect_key(e: &Effect) -> &'static str {
         Effect::Transparency { .. } => "effect.transparency",
         Effect::OffsetPath { merge: true, .. } => "effect.merge_shapes",
         Effect::OffsetPath { .. } => "effect.offset_path",
+        Effect::Combine { .. } => "effect.combine",
     }
 }
 

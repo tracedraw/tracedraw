@@ -94,6 +94,16 @@ pub enum Effect {
     },
     /// Perspective: the four corners of the bounding box moved.
     Perspective { corners: [Point; 4] },
+    /// Mesh envelope: the bounding box split into `cols` x `rows` cells
+    /// whose grid points (in local space, see
+    /// [`crate::envelope::mesh_grid`]) are moved one by one; the outline
+    /// follows smoothly (see [`crate::envelope::mesh_point`]).
+    #[serde(rename = "meshenvelope")]
+    MeshEnvelope {
+        cols: u8,
+        rows: u8,
+        points: Vec<Point>,
+    },
     /// Extrusion with optional vanishing point and shading.
     Extrude {
         depth: Vec2,
@@ -197,6 +207,15 @@ pub enum Effect {
         join: crate::shaping::Join,
         #[serde(default, skip_serializing_if = "is_false")]
         merge: bool,
+    },
+    /// Combine, live, on a group: its objects drawn as one curve, welded,
+    /// cut, intersected or excluded as `mode` says, in the paint of the
+    /// top object (Back Minus Front: the bottom one). The objects stay
+    /// as they are and can still be moved and edited inside the group.
+    #[serde(rename = "combine")]
+    Combine {
+        #[serde(default)]
+        mode: crate::shaping::CombineMode,
     },
     /// Outer shadow (#1141): a soft shadow cast beneath the object by its
     /// shape, moved by `offset`; one of a stack of them, beside the
@@ -590,6 +609,8 @@ impl Effect {
                 | Effect::Perspective { .. }
                 | Effect::Distort(_)
                 | Effect::OffsetPath { .. }
+                | Effect::MeshEnvelope { .. }
+                | Effect::Combine { .. }
         )
     }
 
@@ -821,6 +842,11 @@ fn warp_outline(e: &Effect, p: &BezPath, b: Rect) -> Option<BezPath> {
             ))
         }
         Effect::Perspective { corners } => Some(perspective_in(p, b, corners)),
+        Effect::MeshEnvelope { cols, rows, points } => {
+            Some(crate::envelope::apply_mesh(p, b, *cols, *rows, points))
+        }
+        // One curve is combined with nothing: it stays as it is.
+        Effect::Combine { .. } => Some(p.clone()),
         _ => None,
     }
 }
@@ -1053,6 +1079,19 @@ impl Shape {
 }
 
 impl Effect {
+    /// A mesh envelope of `cols` x `rows` cells laid evenly over `b`.
+    pub fn mesh_envelope_around(b: Rect, cols: u8, rows: u8) -> Effect {
+        let (cols, rows) = (
+            cols.clamp(1, crate::envelope::MESH_MAX),
+            rows.clamp(1, crate::envelope::MESH_MAX),
+        );
+        Effect::MeshEnvelope {
+            cols,
+            rows,
+            points: crate::envelope::mesh_grid(b, cols, rows),
+        }
+    }
+
     /// A fresh envelope around `b` (Putty mapping): the object stays as it
     /// is until the frame changes.
     pub fn envelope_around(b: Rect, keep_lines: bool) -> Effect {
@@ -1374,6 +1413,11 @@ fn warp_shape(main: &mut Shape, effect: &Effect) {
             perspective_pictures(main, None, b, corners);
             reshape(main, &|p, b| perspective_in(p, b, corners));
         }
+        Effect::Combine { mode } => combine_group(main, *mode),
+        Effect::MeshEnvelope { cols, rows, points } => {
+            let (cols, rows) = (*cols, *rows);
+            reshape(main, &|p, b| crate::envelope::apply_mesh(p, b, cols, rows, points));
+        }
         _ => {}
     }
 }
@@ -1443,7 +1487,9 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             Effect::Distort(_)
             | Effect::Envelope { .. }
             | Effect::Perspective { .. }
-            | Effect::OffsetPath { .. } => {
+            | Effect::OffsetPath { .. }
+            | Effect::MeshEnvelope { .. }
+            | Effect::Combine { .. } => {
                 // An extrusion before it already took it into its outline.
                 if !warped_ahead {
                     warp_shape(&mut main, effect);
@@ -1736,72 +1782,102 @@ pub fn transparency_parts(shape: &Shape, target: u8) -> Vec<(Shape, bool)> {
     }
 }
 
-/// A group (Offset Path with merge) as one curve: the outlines of all its
-/// objects, in the group's space, joined into one outline that fills
-/// with the nonzero rule, painted as the bottom object that has a fill
-/// (its fill, extra fills and outlines). False, and nothing changes, for
-/// anything but a group with an outline to join.
-fn merge_group(main: &mut Shape) -> bool {
-    fn collect(
-        s: &Shape,
-        t: Affine,
-        out: &mut BezPath,
-        paint: &mut Option<Shape>,
-    ) {
+/// The objects of a group as areas in the group's space, bottom first,
+/// each with the object it came from: each area turned outer contours
+/// one way and holes the other (see [`crate::shaping::oriented_area`]).
+/// Pictures, hidden objects and objects with no area are left out; a
+/// clip frame gives its frame.
+fn group_areas(main: &Shape) -> Vec<(BezPath, Shape)> {
+    fn collect(s: &Shape, t: Affine, out: &mut Vec<(BezPath, Shape)>) {
         let t = t * s.transform;
         match &s.kind {
             ShapeKind::Group { children } => {
                 for c in children {
-                    collect(c, t, out, paint);
+                    collect(c, t, out);
                 }
             }
-            ShapeKind::ClipFrame { frame, .. } => collect(frame, t, out, paint),
+            ShapeKind::ClipFrame { frame, .. } => collect(frame, t, out),
             ShapeKind::Bitmap { .. } => {}
             _ => {
                 if !s.visible {
                     return;
                 }
-                // Each part as the area it fills, turned outer contours
-                // one way and holes the other, so the parts add up under
-                // the nonzero rule.
                 let rule = if matches!(s.kind, ShapeKind::Text { .. }) {
                     crate::shaping::FillRule::NonZero
                 } else {
                     s.fill_rule
                 };
                 let area = crate::shaping::oriented_area(&(t * s.local_path()), rule);
-                if area.elements().is_empty() {
-                    return;
-                }
-                out.extend(area.elements().iter().copied());
-                if paint.is_none() && !matches!(s.fill, crate::style::Fill::None) {
-                    *paint = Some(s.clone());
+                if !area.elements().is_empty() {
+                    out.push((area, s.clone()));
                 }
             }
         }
     }
-    if !matches!(main.kind, ShapeKind::Group { .. }) {
+    let mut out = Vec::new();
+    if let ShapeKind::Group { children } = &main.kind {
+        for c in children {
+            collect(c, Affine::IDENTITY, &mut out);
+        }
+    }
+    out
+}
+
+/// `main` painted as `paint` (its fill, extra fills and outlines).
+fn take_paint(main: &mut Shape, paint: &Shape) {
+    main.fill = paint.fill.clone();
+    main.extra_fills = paint.extra_fills.clone();
+    main.stroke = paint.stroke.clone();
+    main.extra_strokes = paint.extra_strokes.clone();
+}
+
+/// A group (Offset Path with merge) as one curve: the outlines of all its
+/// objects, in the group's space, joined into one outline that fills
+/// with the nonzero rule, painted as the bottom object that has a fill
+/// (its fill, extra fills and outlines). False, and nothing changes, for
+/// anything but a group with an outline to join.
+fn merge_group(main: &mut Shape) -> bool {
+    let areas = group_areas(main);
+    if areas.is_empty() {
         return false;
     }
     let mut path = BezPath::new();
-    let mut paint = None;
-    if let ShapeKind::Group { children } = &main.kind {
-        for c in children {
-            collect(c, Affine::IDENTITY, &mut path, &mut paint);
-        }
+    for (a, _) in &areas {
+        path.extend(a.elements().iter().copied());
     }
-    if path.elements().is_empty() {
-        return false;
-    }
-    if let Some(p) = paint {
-        main.fill = p.fill.clone();
-        main.extra_fills = p.extra_fills.clone();
-        main.stroke = p.stroke.clone();
-        main.extra_strokes = p.extra_strokes.clone();
+    if let Some((_, p)) = areas
+        .iter()
+        .find(|(_, s)| !matches!(s.fill, crate::style::Fill::None))
+    {
+        take_paint(main, p);
     }
     main.fill_rule = crate::shaping::FillRule::NonZero;
     set_path(main, path);
     true
+}
+
+/// Live Combine on a group: its objects become one curve combined as
+/// `mode` says, painted as the top object that has a fill (Back Minus
+/// Front: the bottom one, the object cut). Nothing changes for anything
+/// but a group with objects to combine.
+fn combine_group(main: &mut Shape, mode: crate::shaping::CombineMode) {
+    let areas = group_areas(main);
+    if areas.is_empty() {
+        return;
+    }
+    let paths: Vec<BezPath> = areas.iter().map(|(a, _)| a.clone()).collect();
+    let path = crate::shaping::combine_areas(&paths, mode);
+    let filled = |s: &&(BezPath, Shape)| !matches!(s.1.fill, crate::style::Fill::None);
+    let paint = if mode == crate::shaping::CombineMode::BackMinusFront {
+        areas.first()
+    } else {
+        areas.iter().rev().find(filled).or(areas.last())
+    };
+    if let Some((_, p)) = paint {
+        take_paint(main, p);
+    }
+    main.fill_rule = crate::shaping::FillRule::EvenOdd;
+    set_path(main, path);
 }
 
 /// Reshape `shape` by `f`, which works in the shape's own space. A group
@@ -3657,6 +3733,53 @@ mod tests {
         assert!(near(center.y, 6.0), "{center:?}");
     }
     use crate::geometry::Rect;
+
+    /// Live Combine on a group: the two squares drawn as one curve, cut
+    /// or excluded, in the top square's paint (the bottom one's when the
+    /// front is cut out of the back); the objects stay in the group.
+    #[test]
+    fn a_live_combine_draws_the_group_as_one_curve() {
+        use crate::geometry::Shape as _;
+        use crate::shaping::{filled_area, CombineMode, FillRule};
+        let square = |id: u64, x: f64, color: Color| {
+            let mut c = Shape::new(
+                crate::ShapeId(id),
+                ShapeKind::Rect {
+                    rect: Rect::new(x, 0.0, x + 10.0, 10.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            );
+            c.fill = Fill::Solid(color);
+            c
+        };
+        let (green, blue) = (Color::rgb8(0, 160, 0), Color::rgb8(0, 0, 200));
+        let group = |mode| {
+            let mut g = Shape::new(
+                crate::ShapeId(9),
+                ShapeKind::Group {
+                    children: vec![square(2, 0.0, green), square(3, 5.0, blue)],
+                },
+            );
+            g.effects.push(Effect::Combine { mode });
+            g
+        };
+        let out = |mode| evaluate(&group(mode)).main;
+        let area = |s: &Shape| filled_area(&s.local_path(), FillRule::EvenOdd).round();
+        let ex = out(CombineMode::Exclude);
+        assert_eq!(area(&ex), 100.0);
+        assert_eq!(ex.fill, Fill::Solid(blue));
+        let cut = out(CombineMode::BackMinusFront);
+        assert_eq!(area(&cut), 50.0);
+        assert_eq!(cut.fill, Fill::Solid(green));
+        assert_eq!(area(&out(CombineMode::Weld)), 150.0);
+        let g = group(CombineMode::Intersect);
+        let json = serde_json::to_string(&g.effects).expect("json");
+        assert!(json.contains("\"combine\""), "{json}");
+        let back: Vec<Effect> = serde_json::from_str(&json).expect("read");
+        assert_eq!(back, g.effects);
+        assert!(matches!(g.kind, ShapeKind::Group { .. }));
+    }
 
     /// Offset Path: on one object it grows or shrinks the outline live;
     /// on a group with merge the objects become one outline in the bottom

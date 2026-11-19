@@ -36,10 +36,11 @@ pub enum Kind {
     GradientOverlay,
     GaussianBlur,
     OffsetPath,
+    Combine,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 11] = [
+    pub const ALL: [Kind; 12] = [
         Kind::Bevel,
         Kind::Outline,
         Kind::ThreeD,
@@ -51,6 +52,7 @@ impl Kind {
         Kind::GradientOverlay,
         Kind::GaussianBlur,
         Kind::OffsetPath,
+        Kind::Combine,
     ];
 
     pub fn key(self) -> &'static str {
@@ -66,6 +68,7 @@ impl Kind {
             Kind::GradientOverlay => "effect.gradient_overlay",
             Kind::GaussianBlur => "effect.gaussian_blur",
             Kind::OffsetPath => "effect.offset_path",
+            Kind::Combine => "effect.combine",
         }
     }
 
@@ -92,6 +95,7 @@ impl Kind {
                 | (Kind::GradientOverlay, Effect::GradientOverlay { .. })
                 | (Kind::GaussianBlur, Effect::GaussianBlur { .. })
                 | (Kind::OffsetPath, Effect::OffsetPath { .. })
+                | (Kind::Combine, Effect::Combine { .. })
         )
     }
 
@@ -168,6 +172,9 @@ impl Kind {
                 opacity: 0.5,
             },
             Kind::GaussianBlur => Effect::GaussianBlur { radius: 1.0 },
+            Kind::Combine => Effect::Combine {
+                mode: tracedraw_core::shaping::CombineMode::Weld,
+            },
             Kind::OffsetPath => Effect::OffsetPath {
                 distance: 1.0,
                 smooth: 0.0,
@@ -620,6 +627,31 @@ fn settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
         Effect::GaussianBlur { radius } => {
             ui.horizontal(|ui| {
                 changed |= length(app, ui, "layer_fx.radius", radius, 50.0);
+            });
+        }
+        Effect::Combine { mode } => {
+            use tracedraw_core::shaping::CombineMode;
+            // Each mode as the Combine Shapes command of the same name.
+            ui.horizontal_wrapped(|ui| {
+                for (m, key, tip) in [
+                    (CombineMode::Weld, "menu.object.weld", "layer_fx.combine_weld_desc"),
+                    (
+                        CombineMode::BackMinusFront,
+                        "menu.object.back_minus_front",
+                        "layer_fx.combine_cut_desc",
+                    ),
+                    (
+                        CombineMode::Intersect,
+                        "menu.object.intersect",
+                        "layer_fx.combine_intersect_desc",
+                    ),
+                    (CombineMode::Exclude, "menu.object.exclude", "layer_fx.combine_exclude_desc"),
+                ] {
+                    changed |= ui
+                        .selectable_value(mode, m, tr(key))
+                        .rich_tip(tr(tip))
+                        .changed();
+                }
             });
         }
         Effect::OffsetPath {

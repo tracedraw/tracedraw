@@ -667,8 +667,13 @@ impl App {
                     .map(move |(i, q)| ((s.id, i), q))
             })
             .collect();
+        // The Envelope tool takes only a mesh envelope's grid points.
+        let envelope_tool = self.tool == Tool::Envelope;
+        if envelope_tool {
+            points.retain(|((_, i), _)| is_mesh_envelope_node(*i));
+        }
         // After the nodes: a node and a handle as near win the node.
-        if let Some((id, i)) = self.selected_mesh_node() {
+        if let Some((id, i)) = self.selected_mesh_node().filter(|_| !envelope_tool) {
             if let Some(s) = self.doc().find_shape(id) {
                 points.extend(
                     mesh_handle_points(s, i)
@@ -923,9 +928,19 @@ fn mesh_node_near(m: &tracedraw_core::Mesh, p: Point, tol: f64) -> Option<usize>
     })
 }
 
-/// Page-space positions of the editable nodes of a shape's perspective
-/// and mesh fill, with a global index: perspective 100..104, mesh 200 + k
-/// (envelopes have their own editing, see `envelope_edit`).
+/// The grid points of a mesh envelope count from here in the effect node
+/// numbers (at most 81 of them, below the mesh fill's 200).
+pub const MESH_ENVELOPE_BASE: usize = 110;
+
+/// The effect node number is a mesh envelope's grid point.
+pub fn is_mesh_envelope_node(index: usize) -> bool {
+    (MESH_ENVELOPE_BASE..crate::mesh_tool::MESH_NODE_BASE).contains(&index)
+}
+
+/// Page-space positions of the editable nodes of a shape's perspective,
+/// mesh envelope and mesh fill, with a global index: perspective
+/// 100..104, mesh envelope 110 + k (its last one), mesh 200 + k (frame
+/// envelopes have their own editing, see `envelope_edit`).
 pub fn effect_nodes(s: &Shape) -> Vec<(usize, Point)> {
     let mut out = Vec::new();
     for e in &s.effects {
@@ -933,6 +948,16 @@ pub fn effect_nodes(s: &Shape) -> Vec<(usize, Point)> {
             for (i, c) in corners.iter().enumerate() {
                 out.push((100 + i, s.transform * *c));
             }
+        }
+    }
+    if let Some(Effect::MeshEnvelope { points, .. }) = s
+        .effects
+        .iter()
+        .rev()
+        .find(|e| matches!(e, Effect::MeshEnvelope { .. }))
+    {
+        for (k, q) in points.iter().enumerate() {
+            out.push((MESH_ENVELOPE_BASE + k, s.transform * *q));
         }
     }
     if let Fill::Mesh(m) = &s.fill {
@@ -984,6 +1009,18 @@ fn move_effect_node(effects: &mut [Effect], fill: &mut Fill, index: usize, d: Ve
     if let Some((i, h)) = crate::mesh_tool::mesh_handle_of(index) {
         if let Fill::Mesh(m) = fill {
             m.move_handle(i, h, d);
+        }
+        return;
+    }
+    if is_mesh_envelope_node(index) {
+        if let Some(Effect::MeshEnvelope { points, .. }) = effects
+            .iter_mut()
+            .rev()
+            .find(|e| matches!(e, Effect::MeshEnvelope { .. }))
+        {
+            if let Some(q) = points.get_mut(index - MESH_ENVELOPE_BASE) {
+                *q += d;
+            }
         }
         return;
     }

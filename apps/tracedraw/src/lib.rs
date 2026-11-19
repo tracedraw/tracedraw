@@ -174,6 +174,8 @@ mod palm;
 mod pen;
 mod pen_look;
 mod perspective_draw;
+mod pieces;
+mod cut_tools;
 #[cfg(test)]
 mod pick_drag_tests;
 mod picture_mosaic;

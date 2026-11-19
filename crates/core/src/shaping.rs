@@ -1178,6 +1178,127 @@ fn enclosed_area_within(paths: &[BezPath], sources: &[BezPath], p: Point) -> Enc
     Enclosed::OnOutline
 }
 
+/// How a live Combine joins the objects of a group (see
+/// [`combine_areas`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CombineMode {
+    /// Everything any object covers.
+    #[default]
+    Weld,
+    /// The bottom object with the others cut out of it.
+    BackMinusFront,
+    /// Only where all the objects overlap.
+    Intersect,
+    /// Where an odd number of objects overlap: overlaps of two cut out.
+    Exclude,
+}
+
+impl CombineMode {
+    pub const ALL: [CombineMode; 4] = [
+        CombineMode::Weld,
+        CombineMode::BackMinusFront,
+        CombineMode::Intersect,
+        CombineMode::Exclude,
+    ];
+}
+
+/// The `areas` (bottom first, each read with the even-odd rule) combined
+/// as `mode` says, as one clean outline.
+pub fn combine_areas(areas: &[BezPath], mode: CombineMode) -> BezPath {
+    let empty = BezPath::new();
+    let mut it = areas.iter().filter(|a| !a.elements().is_empty());
+    let Some(first) = it.next() else {
+        return BezPath::new();
+    };
+    let start = overlay(first, &empty, Op::Weld);
+    it.fold(start, |acc, a| {
+        let op = match mode {
+            CombineMode::Weld => Op::Weld,
+            CombineMode::BackMinusFront => Op::Trim,
+            CombineMode::Intersect => Op::Intersect,
+            CombineMode::Exclude => Op::Exclude,
+        };
+        overlay(&acc, a, op)
+    })
+}
+
+/// Pieces smaller than this (square units) are dropped as slivers.
+const PIECE_MIN_AREA: f64 = 1e-4;
+
+/// The pieces the `areas` (bottom first, each read with the even-odd
+/// rule) cut each other into, each one connected piece of the plane
+/// with the index of the top area that covers it: where a top area lies
+/// over lower ones, the edges of the lower ones still cut it into
+/// pieces. Break into Pieces makes an object of each.
+pub fn divide_pieces(areas: &[BezPath]) -> Vec<(BezPath, usize)> {
+    use kurbo::Shape as _;
+    let empty = BezPath::new();
+    let mut faces: Vec<(BezPath, usize)> = Vec::new();
+    for (i, a) in areas.iter().enumerate() {
+        let a = overlay(a, &empty, Op::Weld);
+        if a.elements().is_empty() {
+            continue;
+        }
+        let ab = a.bounding_box();
+        let mut next = Vec::with_capacity(faces.len() * 2 + 1);
+        let mut rest = a.clone();
+        for (f, k) in faces {
+            if f.bounding_box().intersect(ab).area() <= 0.0 {
+                next.push((f, k));
+                continue;
+            }
+            let inside = overlay(&f, &a, Op::Intersect);
+            let outside = overlay(&f, &a, Op::Trim);
+            rest = overlay(&rest, &f, Op::Trim);
+            if !inside.elements().is_empty() {
+                next.push((inside, i));
+            }
+            if !outside.elements().is_empty() {
+                next.push((outside, k));
+            }
+        }
+        if !rest.elements().is_empty() {
+            next.push((rest, i));
+        }
+        faces = next;
+    }
+    faces
+        .into_iter()
+        .flat_map(|(f, k)| {
+            overlay_parts(&f, &empty, Op::Weld)
+                .into_iter()
+                .map(move |p| (p, k))
+        })
+        .filter(|(p, _)| filled_area(p, FillRule::EvenOdd) > PIECE_MIN_AREA)
+        .collect()
+}
+
+/// What shows of each of the `areas` (bottom first, even-odd): each with
+/// the areas above it cut out; an area covered entirely is empty.
+pub fn visible_parts(areas: &[BezPath]) -> Vec<BezPath> {
+    use kurbo::Shape as _;
+    let empty = BezPath::new();
+    let mut out = Vec::with_capacity(areas.len());
+    for (i, a) in areas.iter().enumerate() {
+        let mut part = overlay(a, &empty, Op::Weld);
+        for above in &areas[i + 1..] {
+            if part.elements().is_empty() {
+                break;
+            }
+            if part.bounding_box().intersect(above.bounding_box()).area() <= 0.0 {
+                continue;
+            }
+            part = overlay(&part, above, Op::Trim);
+        }
+        if filled_area(&part, FillRule::EvenOdd) <= PIECE_MIN_AREA {
+            part = BezPath::new();
+        }
+        out.push(part);
+    }
+    out
+}
+
 /// How an offset outline turns its corners.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -3110,6 +3231,31 @@ pub fn nonzero_as_even_odd(path: &BezPath) -> BezPath {
 
 #[cfg(test)]
 mod tests {
+    /// Two overlapping squares cut into three pieces, the overlap taking
+    /// the top one; what shows of each; and the live combine modes.
+    #[test]
+    fn overlapping_squares_divide_into_pieces_and_combine() {
+        use kurbo::Shape as _;
+        let sq = |x: f64| kurbo::Rect::new(x, 0.0, x + 10.0, 10.0).to_path(0.01);
+        let areas = [sq(0.0), sq(5.0)];
+        let pieces = divide_pieces(&areas);
+        assert_eq!(pieces.len(), 3, "{pieces:?}");
+        let mut by: Vec<(usize, i64)> = pieces
+            .iter()
+            .map(|(p, k)| (*k, filled_area(p, FillRule::EvenOdd).round() as i64))
+            .collect();
+        by.sort();
+        assert_eq!(by, vec![(0, 50), (1, 50), (1, 50)]);
+        let shown = visible_parts(&areas);
+        assert_eq!(filled_area(&shown[0], FillRule::EvenOdd).round(), 50.0);
+        assert_eq!(filled_area(&shown[1], FillRule::EvenOdd).round(), 100.0);
+        let area = |m| filled_area(&combine_areas(&areas, m), FillRule::EvenOdd).round();
+        assert_eq!(area(CombineMode::Weld), 150.0);
+        assert_eq!(area(CombineMode::BackMinusFront), 50.0);
+        assert_eq!(area(CombineMode::Intersect), 50.0);
+        assert_eq!(area(CombineMode::Exclude), 100.0);
+    }
+
 
     /// A shaky stroke of the round eraser across a circle (#2831): the
     /// smoothed band leaves straight, smooth edges with few nodes, where
