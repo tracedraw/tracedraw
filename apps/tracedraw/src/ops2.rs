@@ -5962,6 +5962,48 @@ mod tests {
         assert_eq!(app.engine.history_labels().0.len(), steps + 1);
     }
 
+    /// Turning a PowerClip whose contents are not locked to it is one
+    /// Undo: the contents put back where they were joined the turn as a
+    /// step of their own, so one Undo left the frame turned and the
+    /// contents turned with it.
+    #[test]
+    fn transforming_an_unlocked_clip_frame_is_one_undo() {
+        let mut app = App::headless();
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(x, 0.0, x + 30.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let frame = rect(&mut app, 0.0);
+        let inner = rect(&mut app, 5.0);
+        app.place_inside(vec![inner], frame);
+        let clip = app.doc().top_level_of(inner).expect("clip");
+        app.select(vec![clip]);
+        app.toggle_clip_frame_lock();
+        assert!(!app.clip_frame_locked(clip));
+        let inner_at = |app: &App| {
+            let p = app.doc().shape_on_page(inner).expect("inner").page_path();
+            p.elements()
+                .iter()
+                .map(|e| format!("{e:.6?}"))
+                .collect::<Vec<_>>()
+        };
+        let before = app.doc().to_json().unwrap();
+        let still = inner_at(&app);
+        let steps = app.engine.history_labels().0.len();
+        app.transform_selection(Affine::rotate(0.5));
+        assert_eq!(app.engine.history_labels().0.len(), steps + 1);
+        assert_eq!(inner_at(&app), still, "the contents stay where they are");
+        app.undo();
+        assert_eq!(app.doc().to_json().unwrap(), before, "one Undo: as before");
+        app.redo();
+        assert_eq!(inner_at(&app), still);
+        assert_ne!(app.doc().to_json().unwrap(), before);
+    }
+
     /// #2761: the 100% button makes the size an object has now read
     /// 100% in the scale fields; later scaling reads from it, one Undo
     /// brings the old reading back, and an object at its drawn size

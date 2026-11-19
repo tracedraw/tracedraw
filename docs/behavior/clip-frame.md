@@ -105,7 +105,9 @@ frame is edited node by node, and the clip frame stays one
   the object data when off): with the lock on, moving, scaling or
   rotating the frame transforms the contents too. With it off, the frame
   moves alone and the contents stay where they are
-  (`compensate_unlocked_clip_frames` undoes the transform on them).
+  (`compensate_unlocked_clip_frames` undoes the transform on them). The
+  contents put back are part of the transform: one Undo takes back both
+  (`ops2::tests::transforming_an_unlocked_clip_frame_is_one_undo`).
 
 ## The clip frame bar
 

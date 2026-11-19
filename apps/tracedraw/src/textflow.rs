@@ -610,7 +610,10 @@ impl App {
         };
         let cmds = self.flow_commands(&chain, all);
         if !cmds.is_empty() {
-            let _ = self.engine.run_batch("Text Flow", &cmds);
+            // The flow is part of the change that made it (a link, an
+            // edit, a resize): one Undo takes both back. It is a step of
+            // its own only when something else happened in between.
+            let _ = self.engine.amend_batch("Text Flow", &cmds);
         }
     }
 
@@ -785,7 +788,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tracedraw_core::geometry::{Point, Size};
+    use tracedraw_core::geometry::{Affine, Point, Size};
     use tracedraw_core::TextAlign;
 
     fn frame(app: &mut App, text: &str, w: f64, h: f64) -> ShapeId {
@@ -928,6 +931,81 @@ mod tests {
     }
 
     const LONG: &str = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty";
+
+    /// Linking two frames, editing the text of a linked frame and
+    /// resizing one are one Undo each, the text flow with them: the flow
+    /// was a step of its own, so one Undo left the frames linked or
+    /// resized with their text flowed as before.
+    #[test]
+    fn a_change_to_linked_frames_and_its_flow_are_one_undo() {
+        tracedraw_text::install();
+        let mut app = App::headless();
+        let a = frame(&mut app, LONG, 30.0, 8.0);
+        let b = frame(&mut app, "", 60.0, 60.0);
+        let unlinked = app.doc().to_json().unwrap();
+        assert!(app.link_frames(a, b));
+        assert_eq!(app.engine.undo_label(), Some("Link Frames"));
+        let linked = app.doc().to_json().unwrap();
+        app.undo();
+        assert_eq!(app.doc().to_json().unwrap(), unlinked, "one Undo unlinks");
+        app.redo();
+        assert_eq!(app.doc().to_json().unwrap(), linked);
+
+        // Editing the text.
+        let other = LONG.replace("one", "zero");
+        app.set_text_spans(a, vec![TextSpan::new(&other, "DejaVu Sans", 12.0)]);
+        assert!(text_of(&app, b).ends_with("twenty"), "the text flowed on");
+        app.undo();
+        assert_eq!(
+            app.doc().to_json().unwrap(),
+            linked,
+            "one Undo: the old text"
+        );
+
+        // Resizing the first frame: it shows less, the second more.
+        let tb = text_of(&app, b);
+        app.select(vec![a]);
+        app.transform_selection(Affine::scale_non_uniform(0.5, 1.0));
+        assert_ne!(text_of(&app, b), tb, "the text flowed again");
+        app.undo();
+        assert_eq!(
+            app.doc().to_json().unwrap(),
+            linked,
+            "one Undo: the old size and the old flow"
+        );
+    }
+
+    /// Copies made by the Transformations docker of a whole chain are a
+    /// chain of their own, as Step and Repeat makes them: they came out
+    /// unlinked, each holding the piece of text it showed.
+    #[test]
+    fn transformation_copies_of_a_chain_are_linked() {
+        tracedraw_text::install();
+        let mut app = App::headless();
+        let a = frame(&mut app, LONG, 30.0, 8.0);
+        let b = frame(&mut app, "", 60.0, 60.0);
+        assert!(app.link_frames(a, b));
+        app.select(vec![a, b]);
+        app.transform.tab = crate::app::TransformTab::Position;
+        app.transform.position = [0.0, 80.0];
+        app.transform.copies = 2;
+        crate::ui::transform_docker::apply(&mut app);
+        let copies = app.selection.clone();
+        assert_eq!(copies.len(), 2);
+        assert_eq!(app.next_frame(copies[0]), Some(copies[1]));
+        assert_eq!(app.prev_frame(copies[1]), Some(copies[0]));
+        assert_eq!(app.chain_of(a), vec![a, b], "the original chain as it was");
+        // The first round of copies is a chain too, of its own.
+        let all: Vec<ShapeId> = app.doc().pages[0].layers[0]
+            .shapes
+            .iter()
+            .map(|s| s.id)
+            .collect();
+        assert_eq!(all.len(), 6);
+        assert_eq!(app.chain_of(all[2]), vec![all[2], all[3]]);
+        app.undo();
+        assert_eq!(app.doc().pages[0].layers[0].shapes.len(), 2);
+    }
 
     /// A chain of three frames, the first two a line high, the third
     /// large enough for the rest; with the text each shows.

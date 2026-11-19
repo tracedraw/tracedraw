@@ -7874,6 +7874,11 @@ impl App {
         }
         let shapes = self.selection.clone();
         let pivot = self.moved_rotation_center();
+        // What follows the transform (the contents of an unlocked
+        // PowerClip put back, hinted objects snapped to the pixels, the
+        // text of linked frames flowed again) is part of it: one Undo
+        // takes it all back.
+        let mark = self.engine.begin_group();
         // Paragraph text takes a scale as a new frame (see text_frames.rs).
         if !self.transform_with_frames(&shapes, t) {
             self.run(Command::TransformShapes {
@@ -7881,9 +7886,11 @@ impl App {
                 transform: t,
             });
         }
+        let label = self.engine.undo_label().unwrap_or("Transform");
         self.compensate_unlocked_clip_frames(&shapes, t);
         self.apply_hinting(&shapes);
         self.reflow_chains_of(&shapes);
+        self.engine.end_group(mark, label);
         // A centre of rotation that was moved goes where the transform
         // takes it: several objects kept it as a place in their box, which
         // a turn about it moved away from the point they turned round

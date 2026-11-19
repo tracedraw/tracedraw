@@ -604,6 +604,16 @@ on its own line, which is why the lines are joined first.
   afterwards flows on into the empty one (picked first, the empty frame
   took the whole text and the frame it came from was left empty;
   `textflow::tests::linking_to_an_empty_frame_keeps_the_source_text_whatever_the_order`).
+- The flow joins the step of the change that made it: linking, an edit
+  of the text (typing, Edit Text) and a move, scale or resize of a frame
+  are one Undo each, the text going back to the frames it was in. The
+  flow was a step of its own, so one Undo left the frames linked, or the
+  frame at its new size, with the text flowed as before
+  (`textflow::tests::a_change_to_linked_frames_and_its_flow_are_one_undo`).
+- Copies of a whole chain (Duplicate, Paste, Step and Repeat and the
+  Transformations docker's copies) are a chain of their own; a copy of
+  only some of its frames is in no chain
+  (`textflow::tests::transformation_copies_of_a_chain_are_linked`).
 - Deleting a frame of a chain (Delete, Cut, a group or clip frame
   holding it, or the page or layer it is on) removes only the frame: the frames left are linked to one
   another in their order and the chain's whole text flows anew over them,
