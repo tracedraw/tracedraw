@@ -320,6 +320,7 @@ only the Welcome Screen is open. The menus can show your own shortcuts; see
 | [[menu.bitmaps.convert_to_bitmap]] | [Converting to bitmaps](../bitmaps/convert-to-bitmap.md) |
 | [[menu.bitmaps.straighten_image]] | [Resampling](../bitmaps/resample-and-straighten.md) |
 | [[menu.bitmaps.edit_bitmap]] | [Resampling](../bitmaps/resample-and-straighten.md) |
+| [[menu.bitmaps.edit_inside]] | [Resampling](../bitmaps/resample-and-straighten.md) |
 | [[menu.bitmaps.crop_bitmap]] | [Resampling](../bitmaps/resample-and-straighten.md) |
 | [[menu.bitmaps.resample]] | [Resampling](../bitmaps/resample-and-straighten.md) |
 | [[menu.bitmaps.remove_background_local]] | [Remove Background](../bitmaps/remove-background.md) |

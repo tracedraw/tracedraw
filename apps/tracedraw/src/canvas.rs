@@ -146,6 +146,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     // objects stay where they are and their outline shows where they
     // would go; the handles wait for the release.
     draw_page(app, painter, rect, None);
+    crate::pixel_edit_app::draw(app, painter);
     let doc: &Document = app.doc();
     draw_text_frames(app, painter, preview);
 
@@ -671,7 +672,13 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     // copies (the canvas outlines them in red); a revision of its own so
     // the picture is not taken for the full one.
     let without_copies = app.symmetry_without_copies();
-    let doc: &Document = without_copies.as_deref().unwrap_or(app.doc());
+    // A picture edited in place: the page without it, its pixels drawn
+    // over the page as they are edited.
+    let without_picture = app.pixel_edit_doc();
+    let doc: &Document = without_picture
+        .as_deref()
+        .or(without_copies.as_deref())
+        .unwrap_or(app.doc());
     // Nodes being dragged: the drawing as it was before the drag, its
     // picture already made, until the button is released (#1259).
     let revision = app
@@ -679,6 +686,11 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
         .unwrap_or_else(|| app.engine.revision())
         ^ if without_copies.is_some() {
             1u64 << 62
+        } else {
+            0
+        }
+        ^ if without_picture.is_some() {
+            1u64 << 61
         } else {
             0
         };

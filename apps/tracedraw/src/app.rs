@@ -1658,6 +1658,11 @@ pub struct App {
     /// preview off), kept for the revision it was made at.
     pub symmetry_doc:
         std::cell::RefCell<Option<(u64, ShapeId, std::rc::Rc<tracedraw_core::Document>)>>,
+    /// Bitmaps > Edit Inside: the picture whose pixels are being edited
+    /// in place (see pixel_edit_app.rs).
+    pub pixel_edit: Option<Box<crate::pixel_edit_app::PixelEdit>>,
+    /// The brush settings of picture editing, kept between pictures.
+    pub pixel_opts: crate::pixel_edit::BrushOpts,
     pub show_guides: bool,
     /// Selected guidelines of the active page (indices).
     pub selected_guides: Vec<usize>,
@@ -3294,6 +3299,8 @@ impl App {
             symmetry_step: None,
             symmetry_turning: false,
             symmetry_doc: Default::default(),
+            pixel_edit: None,
+            pixel_opts: Default::default(),
             show_guides: true,
             selected_guides: Vec::new(),
             edit_master_guides: true,

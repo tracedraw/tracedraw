@@ -174,6 +174,8 @@ mod perspective_draw;
 mod pick_drag_tests;
 mod picture_mosaic;
 mod picture_plates;
+mod pixel_edit;
+mod pixel_edit_app;
 mod placeholder;
 mod plugins;
 mod pmd_open;

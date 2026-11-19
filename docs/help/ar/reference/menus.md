@@ -319,6 +319,7 @@
 | [[menu.bitmaps.convert_to_bitmap]] | [Converting objects to bitmaps](../bitmaps/convert-to-bitmap.md) |
 | [[menu.bitmaps.straighten_image]] | [Resampling, straightening and inflating bitmaps](../bitmaps/resample-and-straighten.md) |
 | [[menu.bitmaps.edit_bitmap]] | [Resampling, straightening and inflating bitmaps](../bitmaps/resample-and-straighten.md) |
+| [[menu.bitmaps.edit_inside]] | [Resampling, straightening and inflating bitmaps](../bitmaps/resample-and-straighten.md) |
 | [[menu.bitmaps.crop_bitmap]] | [Resampling, straightening and inflating bitmaps](../bitmaps/resample-and-straighten.md) |
 | [[menu.bitmaps.resample]] | [Resampling, straightening and inflating bitmaps](../bitmaps/resample-and-straighten.md) |
 | [[menu.bitmaps.remove_background_local]] | [إزالة الخلفية](../bitmaps/remove-background.md) |

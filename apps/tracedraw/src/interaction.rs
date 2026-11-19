@@ -1859,6 +1859,11 @@ impl App {
             }
             return;
         }
+        // A picture edited in place takes the pointer.
+        if self.pixel_edit.is_some() {
+            self.pixel_edit_input(response, pointer, mods);
+            return;
+        }
         if self.selecting() {
             self.selection_drag_input(response, hover, mods);
             return;
@@ -2714,6 +2719,16 @@ impl App {
                         .is_some_and(|s| matches!(s.kind, ShapeKind::SymbolInstance { .. }))
                 {
                     self.edit_symbol_instance(id);
+                    return;
+                }
+                // A picture: editing its pixels in place.
+                if self.clip_frame_edit.is_none()
+                    && self
+                        .doc()
+                        .find_shape(id)
+                        .is_some_and(|s| matches!(s.kind, ShapeKind::Bitmap { .. }))
+                    && self.edit_bitmap_inside(id)
+                {
                     return;
                 }
                 // A group or clip frame: into focus mode.
@@ -4754,6 +4769,11 @@ impl App {
             && matches!(self.tool, Tool::Table | Tool::Text)
             && self.table_keyboard(ctx)
         {
+            return;
+        }
+        // A picture edited in place has the keys while no field has them.
+        if !dialog_open && !ctx.egui_wants_keyboard_input() && self.pixel_edit.is_some() {
+            self.pixel_edit_keys(ctx);
             return;
         }
         // Command shortcuts the field gave up last frame run now, on

@@ -321,6 +321,7 @@ próprios atalhos; veja
 | [[menu.bitmaps.convert_to_bitmap]] | [Converter objetos em bitmaps](../bitmaps/convert-to-bitmap.md) |
 | [[menu.bitmaps.straighten_image]] | [Reamostrar, endireitar e expandir bitmaps](../bitmaps/resample-and-straighten.md) |
 | [[menu.bitmaps.edit_bitmap]] | [Reamostrar, endireitar e expandir bitmaps](../bitmaps/resample-and-straighten.md) |
+| [[menu.bitmaps.edit_inside]] | [Reamostrar, endireitar e expandir bitmaps](../bitmaps/resample-and-straighten.md) |
 | [[menu.bitmaps.crop_bitmap]] | [Reamostrar, endireitar e expandir bitmaps](../bitmaps/resample-and-straighten.md) |
 | [[menu.bitmaps.resample]] | [Reamostrar, endireitar e expandir bitmaps](../bitmaps/resample-and-straighten.md) |
 | [[menu.bitmaps.remove_background_local]] | [Remover fundo](../bitmaps/remove-background.md) |

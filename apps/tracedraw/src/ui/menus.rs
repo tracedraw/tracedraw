@@ -4103,6 +4103,17 @@ fn bitmaps_menu(app: &mut App, ui: &mut Ui) {
     ) {
         app.edit_bitmap_externally();
     }
+    // The picture's pixels edited in place, in the drawing window.
+    if item(
+        ui,
+        "menu.bitmaps.edit_inside",
+        "",
+        app.selected_bitmap().is_some() && app.pixel_edit.is_none(),
+    ) {
+        if let Some(id) = app.selected_bitmap() {
+            app.edit_bitmap_inside(id);
+        }
+    }
     // Another picture in its place (#2598).
     if item(
         ui,

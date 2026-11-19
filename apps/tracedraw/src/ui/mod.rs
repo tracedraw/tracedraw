@@ -114,6 +114,7 @@ pub mod sizes;
 pub mod slider;
 pub mod status;
 pub mod straighten_dialog;
+pub mod pixel_bar;
 pub mod symmetry_bar;
 pub mod tab_focus;
 pub mod table_bar;
@@ -901,6 +902,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
 
     if app.has_document() && !app.show_welcome {
         symmetry_bar::show(app, &ctx);
+        pixel_bar::show(app, &ctx);
         clip_bar::show(app, &ctx);
         focus_bar::show(app, &ctx);
         effect_picker::show(app, &ctx);
