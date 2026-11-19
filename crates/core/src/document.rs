@@ -6187,7 +6187,7 @@ impl GuideStyle {
 
 /// A guideline on a page: its line, and how it looks. A guideline
 /// without its own colour uses the document's default guideline colour.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Guide {
     #[serde(flatten)]
     pub line: GuideLine,
@@ -6202,6 +6202,10 @@ pub struct Guide {
     /// or snapped to, while the others of its set show (#1775).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hidden: bool,
+    /// The name given in the Objects docker (Rename), shown in its row
+    /// instead of where the guideline is (#3574).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 impl From<GuideLine> for Guide {
@@ -6212,6 +6216,7 @@ impl From<GuideLine> for Guide {
             style: GuideStyle::default(),
             locked: false,
             hidden: false,
+            name: None,
         }
     }
 }
@@ -6239,13 +6244,16 @@ impl Guide {
     pub fn through(&self, p: crate::geometry::Point) -> Guide {
         Guide {
             line: self.line.through(p),
-            ..*self
+            ..self.clone()
         }
     }
 
     /// The same guideline with another line.
     pub fn with_line(&self, line: GuideLine) -> Guide {
-        Guide { line, ..*self }
+        Guide {
+            line,
+            ..self.clone()
+        }
     }
 }
 
@@ -7010,7 +7018,7 @@ impl Document {
             .iter()
             .chain(own.iter())
             .filter(|g| !g.hidden)
-            .copied()
+            .cloned()
             .collect())
     }
 
@@ -9934,6 +9942,7 @@ mod tests {
             style: GuideStyle::Dotted,
             locked: true,
             hidden: true,
+            name: Some("Fold".into()),
         };
         let json = serde_json::to_string(&g).unwrap();
         assert!(json.contains("\"dir\":\"vertical\""));

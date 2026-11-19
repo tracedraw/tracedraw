@@ -1749,11 +1749,11 @@ impl Command {
                     any_mut(doc, *id)?.shadow = *shadow;
                 }
             }
-            Command::AddGuide { page, guide } => doc.page_mut(*page)?.guides.push(*guide),
+            Command::AddGuide { page, guide } => doc.page_mut(*page)?.guides.push(guide.clone()),
             Command::MoveGuide { page, index, guide } => {
                 let p = doc.page_mut(*page)?;
                 if let Some(g) = p.guides.get_mut(*index) {
-                    *g = *guide;
+                    *g = guide.clone();
                 }
             }
             Command::DeleteGuide { page, index } => {

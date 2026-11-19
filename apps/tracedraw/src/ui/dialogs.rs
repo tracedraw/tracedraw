@@ -1392,6 +1392,12 @@ pub enum Dialog {
         shape: tracedraw_core::ShapeId,
         name: String,
     },
+    /// A guideline's Rename from its menu in the Objects docker (#3574):
+    /// its index among the guidelines being edited.
+    RenameGuide {
+        index: usize,
+        name: String,
+    },
     /// How a PDF's text is read in (#386).
     PdfText(crate::ui::pdf_import_dialog::PdfTextState),
     /// Which pages of a PDF of several pages File > Import brings in,
@@ -2552,6 +2558,17 @@ pub fn show(app: &mut App, ctx: &Context) {
                         shape: *shape,
                         name: (!trimmed.is_empty()).then(|| trimmed.to_string()),
                     });
+                }
+            });
+        }
+        Dialog::RenameGuide { index, name } => {
+            window(ctx, tr("guides.rename_title")).show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(tr("dialog.object_name"));
+                    ui.text_edit_singleline(name);
+                });
+                if ok_cancel(ui, &mut close) {
+                    app.rename_guide(*index, name);
                 }
             });
         }

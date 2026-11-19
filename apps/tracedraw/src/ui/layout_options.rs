@@ -1303,7 +1303,7 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
             || (alt_modify && single.is_some())
         {
             if let Some(i) = single {
-                if let Some(g) = app.page_guides().get(i).copied() {
+                if let Some(g) = app.page_guides().get(i).cloned() {
                     if g.locked {
                         app.status = tr("status.guideline_locked");
                     } else {
@@ -1377,14 +1377,15 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
         .selected_guides
         .first()
         .and_then(|i| guides.get(*i))
-        .copied();
+        .cloned();
     egui::Grid::new("guide_look")
         .num_columns(2)
         .spacing([6.0, 4.0])
         .show(ui, |ui| {
             row_label(ui, "guides.color");
             let current = first
-                .map(|g| app.guide_color(&g))
+                .as_ref()
+                .map(|g| app.guide_color(g))
                 .unwrap_or(app.doc().metadata.guides.color);
             let picked = crate::ui::tips::tip_over(
                 ui,
@@ -1402,7 +1403,7 @@ pub fn guidelines_docker(app: &mut App, ui: &mut Ui) {
             }
             ui.end_row();
             row_label(ui, "guides.style");
-            let style = first.map(|g| g.style).unwrap_or_default();
+            let style = first.as_ref().map(|g| g.style).unwrap_or_default();
             ui.add_enabled_ui(any, |ui| {
                 crate::ui::keynav::ComboBox::from_id_salt("guide_style")
                     .selected_text(tr(style_key(style)))
