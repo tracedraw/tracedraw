@@ -4200,7 +4200,15 @@ impl<'a> Importer<'a> {
             }
             *text_matrix *= Affine::translate((advance, 0.0));
             if !path.elements().is_empty() {
+                // Glyph outlines fill by the nonzero rule: where letters
+                // touch or overlap (script fonts, tight spacing) or a
+                // letter's own contours cross, the overlap stays filled
+                // rather than becoming a hole (#3525).
+                let nonzero = crate::nonzero_matters(&path);
                 let mut shape = self.new_shape(ShapeKind::Path { path, closed: true });
+                if nonzero {
+                    shape.fill_rule = tracedraw_core::shaping::FillRule::NonZero;
+                }
                 shape.fill = if text_filled(gs) {
                     Fill::Solid(gs.fill.unwrap_or(Color::BLACK))
                 } else {

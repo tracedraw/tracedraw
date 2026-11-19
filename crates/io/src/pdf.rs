@@ -5435,6 +5435,22 @@ pub(crate) mod text_tests {
             .filter(|s| matches!(s.kind, tracedraw_core::ShapeKind::Path { .. }))
             .collect();
         assert!(!paths.is_empty());
+        // Letters fill by the nonzero rule, so overlapping letters stay
+        // filled where they cross (#3525).
+        // (A one-contour letter is the same under both rules.)
+        let subpaths = |p: &&tracedraw_core::Shape| match &p.kind {
+            tracedraw_core::ShapeKind::Path { path, .. } => path
+                .elements()
+                .iter()
+                .filter(|e| matches!(e, tracedraw_core::geometry::PathEl::MoveTo(_)))
+                .count(),
+            _ => 0,
+        };
+        assert!(paths.iter().any(|p| subpaths(p) > 1));
+        assert!(paths
+            .iter()
+            .filter(|p| subpaths(p) > 1)
+            .all(|p| p.fill_rule == tracedraw_core::shaping::FillRule::NonZero));
         // The letters stand about as high as 24 pt capitals (8.5 mm em).
         let b = paths
             .iter()

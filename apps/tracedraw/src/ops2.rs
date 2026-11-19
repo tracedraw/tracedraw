@@ -2512,11 +2512,12 @@ impl App {
     /// colours of its palette and is stored as an indexed PNG, so it is an
     /// indexed bitmap, no longer RGB or CMYK; one undo step. A bitmap
     /// left with more than 256 colours (its see-through levels counted)
-    /// stays RGB with the palette's colours (#2607).
+    /// stayed RGB (#2607): its soft edges are now made clear or opaque so
+    /// it is an indexed bitmap all the same (#3539).
     pub fn paletted_bitmaps(&mut self, settings: &crate::bitmap_modes::PalettedSettings) {
         self.recode_bitmaps("Paletted", |img, _| {
             let out = crate::bitmap_modes::paletted(img, settings);
-            crate::bitmap_fx::encode_indexed(&out).or_else(|| crate::bitmap_fx::encode(&out))
+            crate::bitmap_fx::encode_indexed_fitted(&out)
         });
     }
 
@@ -2526,7 +2527,13 @@ impl App {
     /// CMYK; one undo step. It stayed an RGB picture before (#2922).
     pub fn black_and_white_bitmaps(&mut self, settings: &crate::bitmap_modes::BwSettings) {
         self.recode_bitmaps("Black and White", |img, dpi| {
-            crate::bitmap_fx::encode_bw(&crate::bitmap_modes::black_and_white(img, settings, dpi))
+            // A 1-bit bitmap holds no transparency: a see-through one was
+            // stored as grayscale (#3539). It goes onto white paper first,
+            // as Convert to Bitmap's black and white does (#3204).
+            let on_white = crate::bitmap_fx::flatten_on_white(img);
+            crate::bitmap_fx::encode_bw(&crate::bitmap_modes::black_and_white(
+                &on_white, settings, dpi,
+            ))
         });
     }
 
@@ -2803,12 +2810,12 @@ impl App {
                 ConvertMode::Grayscale => {
                     crate::bitmap_fx::encode_gray(&crate::bitmap_modes::convert_pixels(&img, o))
                 }
-                // Indexed: a PNG with a palette while the colours fit one
-                // (#2607).
+                // Indexed: a PNG with a palette (#2607), also with a
+                // see-through background, whose soft edges made it RGB
+                // (#3504).
                 ConvertMode::Paletted => {
                     let out = crate::bitmap_modes::convert_pixels(&img, o);
-                    crate::bitmap_fx::encode_indexed(&out)
-                        .or_else(|| crate::bitmap_fx::encode(&out))
+                    crate::bitmap_fx::encode_indexed_fitted(&out)
                 }
                 // Black and white: a 1-bit bitmap (#2922).
                 ConvertMode::BlackWhite => {

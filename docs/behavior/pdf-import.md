@@ -159,7 +159,10 @@ the dialog keeps what was read until OK or Cancel.
   simple CFF fonts (`pdf_glyphs.rs`). Each glyph sits at
   `Trm * translate(advance) * scale(Tfs * Th, Tfs)` with the font's units
   per em (CFF: its FontMatrix); the fill colour and opacity are the
-  text's, clipping as for text. Text whose font is not embedded (or a
+  text's, clipping as for text. The curve fills by the nonzero rule, as
+  the font does, so letters that touch or overlap, and a letter whose own
+  contours cross, stay filled there instead of showing a hole (#3525).
+  Text whose font is not embedded (or a
   Type 3 font) stays text, and the app turns it into curves with the
   installed font that stands in (`remaining_text_to_curves`).
 - Paragraph text (#2323, `ImportOptions::text_as_paragraphs`, the Join
