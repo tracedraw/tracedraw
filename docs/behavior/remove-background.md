@@ -104,6 +104,15 @@ result is cached under a hash of the settings and the copy, made again only
 when they change; while a slider is dragged it is worked on a small copy,
 and the shown size follows when the pointer is released.
 
+The result shown once the pointer is let go is OK's own: the background is
+removed from the bitmap at its own size (decoded once per bitmap,
+`bitmap_dialogs::bg_full_bitmap`) and the result is shrunk to the copy with
+its colours weighted by opacity (`bitmap_dialogs::bg_preview_result`,
+`bg_remove::shrink_result`). Automatic finds the subject from the pixels it
+is given, so a subject found on the smaller copy could differ from the one
+OK finds (until 0.49 the preview kept grass and a corner of the backdrop
+that OK removed).
+
 ## Algorithm
 
 Two ways of telling background, used together when the list holds both:
@@ -282,6 +291,10 @@ A7. Clean edge colors, where Automatic took the backdrop: by the opacity
   `strokes_follow_the_picture_at_any_size`,
   `the_brushes_work_on_a_transparent_picture`,
   `a_backdrop_fills_behind_the_subject`
+- `bitmap_dialogs::tests::the_remove_background_preview_shows_what_ok_makes`:
+  the preview of a copy is OK's result on the bitmap, shrunk; the quick
+  copy of a slider drag is worked on directly.
+- `bg_remove::tests::a_shrunk_result_keeps_removed_colours_out`
 - `pick_drag_tests::remove_background_brushes_paint_on_the_preview`: Erase
   drag paints a stroke without panning, Restore click is a dab, the brush
   turns off, Clear strokes, Fill background.

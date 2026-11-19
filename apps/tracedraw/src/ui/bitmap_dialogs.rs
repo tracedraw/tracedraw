@@ -616,6 +616,53 @@ fn bg_brush_paint(
     }
 }
 
+/// The selected bitmap at its own size, decoded once per bitmap: what
+/// OK changes, so the preview can show its result (#3422 follow-up).
+fn bg_full_bitmap(app: &App, ctx: &Context) -> Option<std::sync::Arc<RgbaImage>> {
+    type Full = (u64, std::sync::Arc<RgbaImage>);
+    let (id, _, png) = crate::ui::bitmap_preview::selected_bitmap(app)?;
+    let key = settings_key(&(id, png.len(), png.as_ptr() as usize));
+    let cache = egui::Id::new("bg_remove_full_bitmap");
+    if let Some((k, img)) = ctx.data(|d| d.get_temp::<Full>(cache)) {
+        if k == key {
+            return Some(img);
+        }
+    }
+    let img = std::sync::Arc::new(crate::bitmap_fx::decode(&png)?);
+    ctx.data_mut(|d| d.insert_temp(cache, (key, img.clone())));
+    Some(img)
+}
+
+/// The preview's result for the copy `img` (at `scale` of the bitmap):
+/// the background is removed from the bitmap at its own size, as OK
+/// does, and the result is shrunk to the copy, so the preview shows what
+/// OK will make. Automatic finds the subject from the pixels it is given,
+/// and a copy finds a different one (#3422 follow-up). While a slider is
+/// dragged (the quick copy, at most `THUMB` across) the copy is worked on
+/// directly, so the preview keeps up; the exact result follows on
+/// release.
+pub fn bg_preview_result(
+    full: Option<&RgbaImage>,
+    img: &RgbaImage,
+    scale: f32,
+    settings: &crate::bg_remove::BgSettings,
+) -> RgbaImage {
+    use crate::bg_remove::{remove_background, shrink_result};
+    let quick = img.width().max(img.height()) <= crate::ui::bitmap_preview::THUMB;
+    match full {
+        Some(full)
+            if scale < 1.0
+                && !quick
+                && full.width() >= img.width()
+                && full.height() >= img.height() =>
+        {
+            let out = remove_background(full, settings, 1.0);
+            shrink_result(&out, img.width(), img.height())
+        }
+        _ => remove_background(img, settings, scale),
+    }
+}
+
 /// Open Remove Background with this session's last settings (the list
 /// of colours too), or the defaults the first time.
 pub fn open_remove_background(app: &mut App) {
@@ -686,6 +733,7 @@ pub fn remove_background_dialog(
     use crate::bg_remove::remove_background;
     before_after::window(ctx, tr("dialog.remove_background_title")).show(ctx, |ui| {
         let settings = bg_preview_settings(st);
+        let full = bg_full_bitmap(app, ctx);
         before_after::columns(ui, RIGHT_W, BOTTOM_H, |left, right| {
             let p = preview(
                 left,
@@ -693,7 +741,7 @@ pub fn remove_background_dialog(
                 "bg_remove_preview",
                 settings_key(&settings),
                 &mut st.picking,
-                |img, scale| remove_background(img, &settings, scale),
+                |img, scale| bg_preview_result(full.as_deref(), img, scale, &settings),
             );
             // The brush paints while it is on (the panes then neither
             // pan nor pick colours).
@@ -1115,5 +1163,61 @@ fn bg_backdrop(ui: &mut Ui, st: &mut BgRemoveState) {
             ui.color_edit_button_srgb(&mut b.bottom)
                 .rich_tip(crate::ui::tips::keyed("dialog.bg_backdrop_bottom"));
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bg_remove::{remove_background, shrink_result, BgSettings};
+    use image::Rgba;
+
+    /// A person-like shape (light skin and a blue shirt touching the
+    /// bottom) on grass and blurred greenery, 600 x 400.
+    fn photo() -> RgbaImage {
+        RgbaImage::from_fn(600, 400, |x, y| {
+            let n = ((x.wrapping_mul(7919) ^ y.wrapping_mul(104_729)) % 23) as u8;
+            let (dx, dy) = (x as f32 - 300.0, y as f32 - 170.0);
+            if dx * dx + dy * dy < 70.0 * 70.0 {
+                Rgba([235 - n, 190 - n, 160, 255])
+            } else if (200..400).contains(&x) && y > 230 {
+                Rgba([70, 100 + n, 170, 255])
+            } else if y > 300 {
+                Rgba([60 + n * 2, 150 + n * 3, 40, 255])
+            } else {
+                Rgba([40 + n, 90 + n * 2, 30 + n, 255])
+            }
+        })
+    }
+
+    /// The preview of a copy is OK's result on the bitmap at its own
+    /// size, shrunk to the copy: Automatic finds the subject on the
+    /// pixels it is given, so working on the copy could show another
+    /// result (#3422 follow-up). The quick copy of a slider drag is
+    /// worked on directly.
+    #[test]
+    fn the_remove_background_preview_shows_what_ok_makes() {
+        let full = photo();
+        let s = BgSettings::default();
+        let ok = remove_background(&full, &s, 1.0);
+        let scale = 0.64;
+        let copy = image::imageops::resize(&full, 384, 256, image::imageops::FilterType::Triangle);
+        let shown = bg_preview_result(Some(&full), &copy, scale, &s);
+        assert_eq!(shown.dimensions(), copy.dimensions());
+        assert_eq!(shown, shrink_result(&ok, 384, 256));
+        // The face stays, in the preview as by OK.
+        assert_eq!(ok.get_pixel(300, 170).0[3], 255);
+        assert_eq!(shown.get_pixel(192, 109).0[3], 255);
+        // While a slider is dragged: the quick copy.
+        let quick = image::imageops::resize(&full, 240, 160, image::imageops::FilterType::Triangle);
+        assert_eq!(
+            bg_preview_result(Some(&full), &quick, 0.4, &s),
+            remove_background(&quick, &s, 0.4)
+        );
+        // No bitmap at its own size: the copy.
+        assert_eq!(
+            bg_preview_result(None, &copy, scale, &s),
+            remove_background(&copy, &s, scale)
+        );
     }
 }

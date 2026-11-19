@@ -483,6 +483,44 @@ fn remove_by_colour(img: &RgbaImage, s: &BgSettings, scale: f32) -> RgbaImage {
     out
 }
 
+/// `img` shrunk to `w` x `h` with its colours weighted by their opacity,
+/// so the colour a removed pixel kept does not bleed into the edge (the
+/// preview of the result, see `bitmap_dialogs::bg_preview_result`).
+pub fn shrink_result(img: &RgbaImage, w: u32, h: u32) -> RgbaImage {
+    let (w, h) = (w.max(1), h.max(1));
+    if img.dimensions() == (w, h) {
+        return img.clone();
+    }
+    // (The resize keeps float channels within 0 to 1.)
+    let mut pre = image::Rgba32FImage::new(img.width(), img.height());
+    for (to, from) in pre.pixels_mut().zip(img.pixels()) {
+        let a = from.0[3] as f32 / 255.0;
+        to.0 = [
+            from.0[0] as f32 / 255.0 * a,
+            from.0[1] as f32 / 255.0 * a,
+            from.0[2] as f32 / 255.0 * a,
+            a,
+        ];
+    }
+    let small = image::imageops::resize(&pre, w, h, image::imageops::FilterType::Triangle);
+    let mut out = RgbaImage::new(w, h);
+    for (to, from) in out.pixels_mut().zip(small.pixels()) {
+        let a = from.0[3].clamp(0.0, 1.0);
+        if a <= 1.0 / 512.0 {
+            to.0 = [0, 0, 0, 0];
+            continue;
+        }
+        let ch = |v: f32| (v / a * 255.0).round().clamp(0.0, 255.0) as u8;
+        to.0 = [
+            ch(from.0[0]),
+            ch(from.0[1]),
+            ch(from.0[2]),
+            (a * 255.0).round() as u8,
+        ];
+    }
+    out
+}
+
 /// Take what is near a picked colour out of `keep` (which holds what
 /// Automatic left, or 1 everywhere): `which` gets the colour that took
 /// each pixel. What Automatic took counts as background here, so with
@@ -1476,5 +1514,27 @@ mod tests {
         let out = remove_background(&img, &s, 1.0);
         assert_eq!(out.get_pixel(10, 10).0[3], 0);
         assert_eq!(out.get_pixel(6, 6).0[3], 255);
+    }
+
+    /// A result shrunk for the preview: a removed pixel keeps its old
+    /// colour with no opacity, and that colour does not tint the edge;
+    /// an opaque area keeps its colour and a removed one stays clear.
+    #[test]
+    fn a_shrunk_result_keeps_removed_colours_out() {
+        let img = RgbaImage::from_fn(40, 20, |x, _| {
+            if x < 20 {
+                Rgba([0, 255, 0, 0])
+            } else {
+                Rgba([200, 30, 30, 255])
+            }
+        });
+        let small = shrink_result(&img, 20, 10);
+        assert_eq!(small.dimensions(), (20, 10));
+        assert_eq!(small.get_pixel(2, 5).0[3], 0);
+        assert_eq!(small.get_pixel(17, 5).0, [200, 30, 30, 255]);
+        for p in small.pixels().filter(|p| p.0[3] > 0) {
+            assert!(p.0[1] <= 31, "green bled into the edge: {:?}", p.0);
+        }
+        assert_eq!(shrink_result(&img, 40, 20), img);
     }
 }
