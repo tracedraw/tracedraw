@@ -93,6 +93,7 @@ mod fill_page;
 mod shape_gen;
 mod shape_gen_cells;
 mod shape_gen_curves;
+mod shape_gen_fill;
 mod fill_tool;
 mod pattern_fill_tool;
 mod fit_path;
