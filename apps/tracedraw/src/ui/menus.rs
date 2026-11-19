@@ -4019,6 +4019,15 @@ fn effects_menu(app: &mut App, ui: &mut Ui) {
     ) {
         app.apply_effects_to_all_pages();
     }
+    // Shapes joined live into one outline with rounded necks.
+    let can_merge = app.selection.len() >= 2
+        || app
+            .selected_shapes()
+            .first()
+            .is_some_and(|s| app.selection.len() == 1 && matches!(s.kind, ShapeKind::Group { .. }));
+    if item(ui, "menu.effects.merge_shapes", "", can_merge) {
+        app.merge_shapes();
+    }
     sep(ui);
     // Bitmap effect groups.
     for (key, group) in crate::fx::groups() {

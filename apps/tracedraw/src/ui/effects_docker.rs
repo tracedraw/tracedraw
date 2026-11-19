@@ -37,6 +37,8 @@ pub fn effect_key(e: &Effect) -> &'static str {
         Effect::Spray { .. } => "media.sprayer",
         Effect::Lens(_) => "effect.lens",
         Effect::Transparency { .. } => "effect.transparency",
+        Effect::OffsetPath { merge: true, .. } => "effect.merge_shapes",
+        Effect::OffsetPath { .. } => "effect.offset_path",
     }
 }
 

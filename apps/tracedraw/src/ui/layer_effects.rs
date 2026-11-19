@@ -35,10 +35,11 @@ pub enum Kind {
     ColorOverlay,
     GradientOverlay,
     GaussianBlur,
+    OffsetPath,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 10] = [
+    pub const ALL: [Kind; 11] = [
         Kind::Bevel,
         Kind::Outline,
         Kind::ThreeD,
@@ -49,6 +50,7 @@ impl Kind {
         Kind::ColorOverlay,
         Kind::GradientOverlay,
         Kind::GaussianBlur,
+        Kind::OffsetPath,
     ];
 
     pub fn key(self) -> &'static str {
@@ -63,6 +65,7 @@ impl Kind {
             Kind::ColorOverlay => "effect.color_overlay",
             Kind::GradientOverlay => "effect.gradient_overlay",
             Kind::GaussianBlur => "effect.gaussian_blur",
+            Kind::OffsetPath => "effect.offset_path",
         }
     }
 
@@ -88,6 +91,7 @@ impl Kind {
                 | (Kind::ColorOverlay, Effect::ColorOverlay { .. })
                 | (Kind::GradientOverlay, Effect::GradientOverlay { .. })
                 | (Kind::GaussianBlur, Effect::GaussianBlur { .. })
+                | (Kind::OffsetPath, Effect::OffsetPath { .. })
         )
     }
 
@@ -164,6 +168,12 @@ impl Kind {
                 opacity: 0.5,
             },
             Kind::GaussianBlur => Effect::GaussianBlur { radius: 1.0 },
+            Kind::OffsetPath => Effect::OffsetPath {
+                distance: 1.0,
+                smooth: 0.0,
+                join: tracedraw_core::shaping::Join::Round,
+                merge: false,
+            },
         }
     }
 }
@@ -611,6 +621,53 @@ fn settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
             ui.horizontal(|ui| {
                 changed |= length(app, ui, "layer_fx.radius", radius, 50.0);
             });
+        }
+        Effect::OffsetPath {
+            distance,
+            smooth,
+            join,
+            merge,
+        } => {
+            use tracedraw_core::shaping::{Join, MAX_OFFSET};
+            ui.horizontal(|ui| {
+                // Out when positive, in when negative.
+                ui.label(tr("layer_fx.offset"));
+                let mut v = app.units.world_from_mm(*distance);
+                let max = app.units.world_from_mm(MAX_OFFSET);
+                if ui
+                    .add(
+                        NumField::new(&mut v)
+                            .range(-max..=max)
+                            .length_decimals(app.settings.precision.min(10) as usize)
+                            .unit_mm(app.units.world_to_mm(1.0))
+                            .suffix(format!(" {}", app.units.short()))
+                            .width(70.0),
+                    )
+                    .rich_tip(tr("layer_fx.offset_desc"))
+                    .changed()
+                {
+                    *distance = app.units.world_to_mm(v).clamp(-MAX_OFFSET, MAX_OFFSET);
+                    changed = true;
+                }
+                changed |= length(app, ui, "layer_fx.smooth", smooth, MAX_OFFSET);
+            });
+            ui.horizontal(|ui| {
+                ui.label(tr("layer_fx.joins"));
+                for (v, key) in [
+                    (Join::Miter, "layer_fx.join_miter"),
+                    (Join::Round, "layer_fx.join_round"),
+                    (Join::Bevel, "layer_fx.join_bevel"),
+                ] {
+                    changed |= ui
+                        .selectable_value(join, v, tr(key))
+                        .rich_tip(tr(key))
+                        .changed();
+                }
+            });
+            changed |= ui
+                .checkbox(merge, tr("layer_fx.merge_group"))
+                .rich_tip(tr("layer_fx.merge_group_desc"))
+                .changed();
         }
         _ => {}
     }

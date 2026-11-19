@@ -174,6 +174,7 @@ Counts: works 193, partial 9 (`.cdr` content coverage; `.cdr` tables; CMX import
 | Symbols (Object > Symbol menu, create, insert, edit in place from the Symbols panel, the right-click menu or a double-click with the Pick tool, every instance following on Finish, #1980, revert, Symbols panel, Ctrl+F3) | works |
 | Symbol libraries (`.csl`, #2709): listed by File > Open and Import; opened untitled with the Symbols panel showing their symbols; imported, every symbol they define goes to the Symbols panel (ones the drawing has already are not added twice), one undo step; read through the `.cdr` reader | partial: no real `.csl` file checked yet |
 | Copy effect (drop shadow, transparency, envelope, perspective, distortion, extrude, contour, blend settings, lens, bevel, block shadow; pinned points carried by the box), Clone effect (shadow and transparency follow the source until edited), Clear effect, Clear transformations, Symmetry (live, 1 to 12 mirror lines) | works (see `behavior/copy-effect.md`) |
+| Offset Path (live, any object, group or text: offset out or in, smooth, sharp, round or bevelled corners; on a group with Merge, the objects become one outline in the bottom object's paint) and Effects > Merge Shapes (groups the selection and merges it with a rounded neck where shapes meet, metaballs that follow as the objects move), an entry of the layer effects; Convert to Curves bakes it (see `help/en/effects/effects-docker.md`) | works |
 | Rollover | not applicable: web-page interactivity with no HTML export target |
 
 ## 7. Colour

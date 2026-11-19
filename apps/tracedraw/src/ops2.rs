@@ -655,6 +655,49 @@ impl App {
 
     // ----- effects on the stack ------------------------------------------------------
 
+    /// Effects > Merge Shapes: the selected objects grouped (or the one
+    /// selected group) and given a live Offset Path that joins them into
+    /// one outline with rounded necks where they come near each other
+    /// (metaballs), in the paint of the bottom object. Moving an object
+    /// of the group later changes the merge; the smoothing is set in the
+    /// Effects panel, which opens.
+    pub fn merge_shapes(&mut self) {
+        let sel = self.selected_shapes();
+        let one_group = sel.len() == 1 && matches!(sel[0].kind, ShapeKind::Group { .. });
+        if sel.len() >= 2 {
+            self.group_selection();
+        } else if !one_group {
+            return;
+        }
+        // Smoothing from the size of the parts: a quarter of the smallest.
+        let smallest = self
+            .selected_shapes()
+            .first()
+            .and_then(|g| match &g.kind {
+                ShapeKind::Group { children } => children
+                    .iter()
+                    .map(|c| {
+                        let b = c.bounds();
+                        b.width().min(b.height())
+                    })
+                    .filter(|v| v.is_finite() && *v > 0.0)
+                    .min_by(f64::total_cmp),
+                _ => None,
+            })
+            .unwrap_or(20.0);
+        let smooth = (smallest * 0.25).clamp(0.5, 100.0);
+        self.push_effect(
+            Effect::OffsetPath {
+                distance: 0.0,
+                smooth,
+                join: tracedraw_core::shaping::Join::Round,
+                merge: true,
+            },
+            true,
+        );
+        self.open_docker(crate::app::DockerTab::Effects);
+    }
+
     /// Add or replace a live effect on the selected objects.
     pub fn push_effect(&mut self, effect: Effect, replace_same_kind: bool) {
         let shapes = self.selected_shapes();

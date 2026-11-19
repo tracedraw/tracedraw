@@ -30,6 +30,12 @@ wearing the look; one undo removes it. Your own saved presets come after them.
 
 - [[menu.effects > menu.effects.flatten]] turns the effects of the selected
   objects into plain objects.
+- [[menu.effects > menu.effects.merge_shapes]] groups the selected objects
+  and gives the group a live [[effect.offset_path]] that joins them into one
+  outline, rounded where they meet and painted like the bottom object: move
+  an object of the group and the shapes flow together or apart. Set
+  **Smooth** in the layer effects at the top of the panel; on any object,
+  **Offset** grows the outline (or shrinks it, below zero) live.
 - [[menu.effects.picker]] shows a list of effects to apply to the selection.
 - [[menu.object > menu.object.clear_effect]] removes the effect of the
   selection.

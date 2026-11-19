@@ -180,6 +180,24 @@ pub enum Effect {
         angle: f64,
         lines: u8,
     },
+    /// Offset Path: the outline moved out (positive `distance`, mm) or in
+    /// (negative), its corners turned as `join` says, then smoothed by
+    /// `smooth` mm (grown and shrunk back by that much with round
+    /// corners, which rounds the hollows where parts meet). On a group
+    /// with `merge` the group's objects first become one outline, drawn
+    /// with the paint of the bottom object, so shapes near each other
+    /// flow into one another as they move (metaballs). The effect can be
+    /// stacked; each one works on what the ones before it made.
+    #[serde(rename = "offsetpath")]
+    OffsetPath {
+        distance: f64,
+        #[serde(default)]
+        smooth: f64,
+        #[serde(default)]
+        join: crate::shaping::Join,
+        #[serde(default, skip_serializing_if = "is_false")]
+        merge: bool,
+    },
     /// Outer shadow (#1141): a soft shadow cast beneath the object by its
     /// shape, moved by `offset`; one of a stack of them, beside the
     /// object's own drop shadow. Drawn by the renderer.
@@ -528,7 +546,10 @@ impl Effect {
     pub fn warps_outline(&self) -> bool {
         matches!(
             self,
-            Effect::Envelope { .. } | Effect::Perspective { .. } | Effect::Distort(_)
+            Effect::Envelope { .. }
+                | Effect::Perspective { .. }
+                | Effect::Distort(_)
+                | Effect::OffsetPath { .. }
         )
     }
 
@@ -730,6 +751,18 @@ pub fn outline_warp(shape: &Shape) -> Option<OutlineWarp> {
 /// One outline warp of `p` with the box `b` (as [`evaluate`] does).
 fn warp_outline(e: &Effect, p: &BezPath, b: Rect) -> Option<BezPath> {
     match e {
+        Effect::OffsetPath {
+            distance,
+            smooth,
+            join,
+            ..
+        } => Some(crate::shaping::offset_smooth(
+            p,
+            *distance,
+            *smooth,
+            *join,
+            crate::shaping::FillRule::EvenOdd,
+        )),
         Effect::Distort(how) => Some(crate::effects::distort_in(p, b, *how)),
         Effect::Envelope {
             nodes,
@@ -1245,6 +1278,39 @@ pub fn warp_box(shape: &Shape, at: usize) -> Rect {
 /// `main` in the box of its outline; other effects change nothing.
 fn warp_shape(main: &mut Shape, effect: &Effect) {
     match effect {
+        Effect::OffsetPath {
+            distance,
+            smooth,
+            join,
+            merge,
+        } => {
+            let (distance, smooth, join) = (*distance, *smooth, *join);
+            if *merge && merge_group(main) {
+                // One outline now, its parts adding up under the nonzero rule.
+                reshape(main, &|p, _| {
+                    crate::shaping::offset_smooth(
+                        p,
+                        distance,
+                        smooth,
+                        join,
+                        crate::shaping::FillRule::NonZero,
+                    )
+                });
+                main.fill_rule = crate::shaping::FillRule::EvenOdd;
+            } else {
+                let fill = if matches!(main.kind, ShapeKind::Text { .. }) {
+                    crate::shaping::FillRule::NonZero
+                } else {
+                    main.fill_rule
+                };
+                reshape(main, &|p, _| {
+                    crate::shaping::offset_smooth(p, distance, smooth, join, fill)
+                });
+                if !matches!(main.kind, ShapeKind::Group { .. } | ShapeKind::ClipFrame { .. }) {
+                    main.fill_rule = crate::shaping::FillRule::EvenOdd;
+                }
+            }
+        }
         Effect::Distort(how) => {
             reshape(main, &|p, b| crate::effects::distort_in(p, b, *how));
         }
@@ -1334,7 +1400,10 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
     let mut warped_ahead = false;
     for (at, effect) in shape.effects.iter().enumerate() {
         match effect {
-            Effect::Distort(_) | Effect::Envelope { .. } | Effect::Perspective { .. } => {
+            Effect::Distort(_)
+            | Effect::Envelope { .. }
+            | Effect::Perspective { .. }
+            | Effect::OffsetPath { .. } => {
                 // An extrusion before it already took it into its outline.
                 if !warped_ahead {
                     warp_shape(&mut main, effect);
@@ -1625,6 +1694,74 @@ pub fn transparency_parts(shape: &Shape, target: u8) -> Vec<(Shape, bool)> {
         (false, true) => vec![(shape.clone(), !fill_faded)],
         (false, false) => vec![(shape.clone(), true)],
     }
+}
+
+/// A group (Offset Path with merge) as one curve: the outlines of all its
+/// objects, in the group's space, joined into one outline that fills
+/// with the nonzero rule, painted as the bottom object that has a fill
+/// (its fill, extra fills and outlines). False, and nothing changes, for
+/// anything but a group with an outline to join.
+fn merge_group(main: &mut Shape) -> bool {
+    fn collect(
+        s: &Shape,
+        t: Affine,
+        out: &mut BezPath,
+        paint: &mut Option<Shape>,
+    ) {
+        let t = t * s.transform;
+        match &s.kind {
+            ShapeKind::Group { children } => {
+                for c in children {
+                    collect(c, t, out, paint);
+                }
+            }
+            ShapeKind::ClipFrame { frame, .. } => collect(frame, t, out, paint),
+            ShapeKind::Bitmap { .. } => {}
+            _ => {
+                if !s.visible {
+                    return;
+                }
+                // Each part as the area it fills, turned outer contours
+                // one way and holes the other, so the parts add up under
+                // the nonzero rule.
+                let rule = if matches!(s.kind, ShapeKind::Text { .. }) {
+                    crate::shaping::FillRule::NonZero
+                } else {
+                    s.fill_rule
+                };
+                let area = crate::shaping::oriented_area(&(t * s.local_path()), rule);
+                if area.elements().is_empty() {
+                    return;
+                }
+                out.extend(area.elements().iter().copied());
+                if paint.is_none() && !matches!(s.fill, crate::style::Fill::None) {
+                    *paint = Some(s.clone());
+                }
+            }
+        }
+    }
+    if !matches!(main.kind, ShapeKind::Group { .. }) {
+        return false;
+    }
+    let mut path = BezPath::new();
+    let mut paint = None;
+    if let ShapeKind::Group { children } = &main.kind {
+        for c in children {
+            collect(c, Affine::IDENTITY, &mut path, &mut paint);
+        }
+    }
+    if path.elements().is_empty() {
+        return false;
+    }
+    if let Some(p) = paint {
+        main.fill = p.fill.clone();
+        main.extra_fills = p.extra_fills.clone();
+        main.stroke = p.stroke.clone();
+        main.extra_strokes = p.extra_strokes.clone();
+    }
+    main.fill_rule = crate::shaping::FillRule::NonZero;
+    set_path(main, path);
+    true
 }
 
 /// Reshape `shape` by `f`, which works in the shape's own space. A group
@@ -3466,6 +3603,83 @@ mod tests {
         assert!(near(center.y, 6.0), "{center:?}");
     }
     use crate::geometry::Rect;
+
+    /// Offset Path: on one object it grows or shrinks the outline live;
+    /// on a group with merge the objects become one outline in the bottom
+    /// object's paint, and the smoothing joins two circles near each
+    /// other with a rounded neck (metaballs) while circles far apart stay
+    /// two; Convert to Curves bakes it.
+    #[test]
+    fn offset_path_grows_and_merges_a_group_into_metaballs() {
+        use crate::geometry::Shape as _;
+        let mut s = rect_shape();
+        s.effects.push(Effect::OffsetPath {
+            distance: 1.0,
+            smooth: 0.0,
+            join: crate::shaping::Join::Miter,
+            merge: false,
+        });
+        let b = evaluate(&s).main.local_path().bounding_box();
+        assert!((b.width() - 22.0).abs() < 0.05, "{b:?}");
+        let circle = |id: u64, cx: f64, color: Color| {
+            let mut c = Shape::new(
+                crate::ShapeId(id),
+                ShapeKind::Ellipse {
+                    rect: Rect::new(cx - 10.0, -10.0, cx + 10.0, 10.0),
+                    arc: None,
+                },
+            );
+            c.fill = Fill::Solid(color);
+            c
+        };
+        let group = |gap: f64| {
+            let mut g = Shape::new(
+                crate::ShapeId(9),
+                ShapeKind::Group {
+                    children: vec![
+                        circle(2, 0.0, Color::rgb8(0, 160, 0)),
+                        circle(3, 20.0 + gap, Color::rgb8(0, 0, 200)),
+                    ],
+                },
+            );
+            g.effects.push(Effect::OffsetPath {
+                distance: 0.0,
+                smooth: 6.0,
+                join: crate::shaping::Join::Round,
+                merge: true,
+            });
+            g
+        };
+        let contours = |p: &BezPath| {
+            p.elements()
+                .iter()
+                .filter(|e| matches!(e, PathEl::MoveTo(_)))
+                .count()
+        };
+        // 4 mm apart: one shape, the neck filled in.
+        let near = evaluate(&group(4.0)).main;
+        assert!(matches!(near.kind, ShapeKind::Path { .. }));
+        assert_eq!(near.fill, Fill::Solid(Color::rgb8(0, 160, 0)));
+        let path = near.local_path();
+        assert_eq!(contours(&path), 1);
+        let two_circles = 2.0 * std::f64::consts::PI * 100.0;
+        assert!(path.area().abs() > two_circles + 20.0, "{}", path.area());
+        // The middle of the gap is inside, on the line between centres.
+        assert!(path.winding(Point::new(22.0, 0.0)) != 0);
+        // 30 mm apart: still two.
+        assert_eq!(contours(&evaluate(&group(30.0)).main.local_path()), 2);
+        // Saved and read back; baked by Convert to Curves.
+        let g = group(4.0);
+        let json = serde_json::to_string(&g.effects).expect("json");
+        assert!(json.contains("\"offsetpath\""), "{json}");
+        let back: Vec<Effect> = serde_json::from_str(&json).expect("read");
+        assert_eq!(back, g.effects);
+        let min: Effect =
+            serde_json::from_str(r#"{"effect":"offsetpath","distance":2}"#).expect("min");
+        assert!(matches!(min, Effect::OffsetPath { smooth, merge: false, .. } if smooth == 0.0));
+        let baked = bake_outline_warps(&g).expect("bake");
+        assert!(baked.effects.is_empty());
+    }
 
     fn rect_shape() -> Shape {
         let mut s = Shape::new(

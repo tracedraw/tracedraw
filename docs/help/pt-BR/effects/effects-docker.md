@@ -32,6 +32,12 @@ com o visual; um desfazer o remove. As suas predefinições salvas vêm depois.
 
 - [[menu.effects > menu.effects.flatten]] transforma os efeitos dos objetos
   selecionados em objetos simples.
+- [[menu.effects > menu.effects.merge_shapes]] agrupa os objetos
+  selecionados e dá ao grupo um [[effect.offset_path]] ao vivo que os junta
+  num só contorno, arredondado onde se encontram e pintado como o objeto de
+  baixo: mova um objeto do grupo e as formas se fundem ou se separam. Ajuste
+  **Suavizar** nos efeitos de camada no alto do painel; em qualquer objeto,
+  **Deslocamento** aumenta o contorno (ou o diminui, abaixo de zero) ao vivo.
 - [[menu.effects.picker]] mostra uma lista de efeitos para aplicar à seleção.
 - [[menu.object > menu.object.clear_effect]] remove o efeito da seleção.
 - [[menu.object > menu.object.copy_effect]] copia um efeito de outro objeto, e
