@@ -1267,6 +1267,11 @@ pub struct App {
     /// them since (moved, scaled, turned), as the reference program's
     /// smart duplicate does (#559). Deselecting them ends it (#1494).
     pub last_duplicate: Vec<(ShapeId, ShapeId)>,
+    /// [`last_duplicate`](Self::last_duplicate) was made in place (the
+    /// + key): until the copies are moved, turned or scaled, the next
+    /// Duplicate uses the duplicate offset; after, it repeats that step
+    /// (#3520).
+    pub last_duplicate_in_place: bool,
     /// [`last_duplicate`](Self::last_duplicate) as it was when its copies
     /// were deselected, with the drawing's revision and the selection
     /// then: Undo with nothing changed since selects the copies again and
@@ -3126,6 +3131,7 @@ impl App {
             // scaled or turned; the next one repeats that (#1494).
             duplicate_offset: Vec2::ZERO,
             last_duplicate: Vec::new(),
+            last_duplicate_in_place: false,
             snap_held_off: false,
             forgotten_duplicate: None,
             selection_steps: Default::default(),
@@ -7324,9 +7330,19 @@ impl App {
             (o.transform.determinant().abs() > 1e-12).then(|| c.transform * o.transform.inverse())
         };
         let steps: Vec<Option<Affine>> = shapes.iter().map(|s| step_of(s.id)).collect();
+        // Copies made in place and not changed since: the offset (#3520).
+        let untouched = |m: &Option<Affine>| {
+            m.is_some_and(|m| {
+                m.as_coeffs()
+                    .iter()
+                    .zip(Affine::IDENTITY.as_coeffs())
+                    .all(|(a, b)| (a - b).abs() < 1e-9)
+            })
+        };
         let smart = !self.last_duplicate.is_empty()
             && self.selection.len() == self.last_duplicate.len()
-            && steps.iter().all(Option::is_some);
+            && steps.iter().all(Option::is_some)
+            && !(self.last_duplicate_in_place && steps.iter().all(untouched));
         let mut ids = Vec::new();
         let mut copies = Vec::new();
         let mut pairs = Vec::new();
@@ -7360,6 +7376,7 @@ impl App {
         self.carry_pivots(&pairs);
         self.select(ids.clone());
         self.last_duplicate = pairs;
+        self.last_duplicate_in_place = false;
         self.forgotten_duplicate = None;
         if self.symmetry_edit.is_some() {
             self.join_symmetry(&ids);
@@ -11987,6 +12004,44 @@ mod tests {
         app.duplicate();
         let g = app.selection[0];
         assert!((x0(&app, g) - app.duplicate_offset.x).abs() < 1e-9);
+    }
+
+    /// A copy made in place (+) and turned: the next Duplicate turns a
+    /// new copy as much again, as after Ctrl+D; left as it is, the next
+    /// Duplicate uses the offset (#3520).
+    #[test]
+    fn a_copy_in_place_turned_repeats_its_turn() {
+        let mut app = App::headless();
+        let a = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.duplicate_offset = Vec2::new(5.0, 5.0);
+        app.select(vec![a]);
+        app.duplicate_in_place();
+        let b = app.selection[0];
+        let pivot = Point::new(30.0, 5.0);
+        let turn = Affine::translate(pivot.to_vec2())
+            * Affine::rotate(30f64.to_radians())
+            * Affine::translate(-pivot.to_vec2());
+        app.transform_selection(turn);
+        app.duplicate();
+        let c = app.selection[0];
+        let t = |app: &App, id: ShapeId| app.doc().find_shape(id).expect("shape").transform;
+        let want = turn * turn * t(&app, a);
+        for (x, y) in t(&app, c).as_coeffs().iter().zip(want.as_coeffs()) {
+            assert!((x - y).abs() < 1e-6, "{:?} {:?}", t(&app, c), want);
+        }
+        // In place and untouched: the offset.
+        app.select(vec![a]);
+        app.duplicate_in_place();
+        app.duplicate();
+        let d = app.selection[0];
+        let off = t(&app, d) * t(&app, a).inverse();
+        assert!((off.translation() - Vec2::new(5.0, 5.0)).hypot() < 1e-9, "{off:?}");
     }
 
     /// The reporter's steps (#1494): Duplicate leaves the copy on the

@@ -76,7 +76,8 @@ Text tool keep their clicks.
   first), with <kbd>Shift</kbd> by the super nudge distance and with
   <kbd>Ctrl</kbd> by the micro nudge distance. Set them on the
   [[options.rulers]] page of the document options.
-- <kbd>+</kbd> duplicates the selection in place.
+- <kbd>+</kbd> duplicates the selection in place. Move, turn or scale the copy
+  while it is selected, and each <kbd>Ctrl+D</kbd> after that does the same again.
 
 ### Dragging with the right button {#right-drag}
 

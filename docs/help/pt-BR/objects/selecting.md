@@ -81,7 +81,8 @@ ferramenta Texto mantêm os cliques delas.
   mm de início), com <kbd>Shift</kbd> pela distância maior e com
   <kbd>Ctrl</kbd> pela menor. Defina-as na página [[options.rulers]] das opções
   do documento.
-- <kbd>+</kbd> duplica a seleção no mesmo lugar.
+- <kbd>+</kbd> duplica a seleção no mesmo lugar. Mova, gire ou redimensione a
+  cópia enquanto está selecionada, e cada <kbd>Ctrl+D</kbd> depois faz o mesmo de novo.
 
 ### Arrastar com o botão direito {#right-drag}
 

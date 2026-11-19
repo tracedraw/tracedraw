@@ -208,6 +208,10 @@ moved or turned as much again by each next Duplicate (#559, #1494,
 `app::tests::duplicate_repeats_what_was_done_to_the_copy`,
 `app::tests::smart_duplicate_repeats_a_turn_and_scale_until_deselected`,
 `guides::tests::duplicating_guidelines_repeats_their_move_and_turn`).
+Copies made in place with + start the same: moved, turned or scaled
+while selected, each next Duplicate repeats that step from them; left as
+they are, the next Duplicate uses the offset (#3520,
+`app::tests::a_copy_in_place_turned_repeats_its_turn`).
 A deselect by accident is taken back by Undo: right after the copies
 are deselected, with no change of the drawing and no other selection
 made since, Edit > Undo selects the copies again and the next Duplicate
