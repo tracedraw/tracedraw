@@ -2261,9 +2261,23 @@ fn blend(
             st.color = blend_color(x, y, tc as f32, options.color_blend);
             st.width = wa + (wb - wa) * to;
         }
+        // The uniform transparency goes from the start's to the end's
+        // with the colours: every step took the start's, so a blend to a
+        // faded end never faded.
+        s.opacity = clean_opacity(start.opacity)
+            + (clean_opacity(end.opacity) - clean_opacity(start.opacity)) * tc;
         out.push(s);
     }
     out
+}
+
+/// An object's opacity held to 0..1 (1 for a value that is no number).
+fn clean_opacity(o: f64) -> f64 {
+    if o.is_finite() {
+        o.clamp(0.0, 1.0)
+    } else {
+        1.0
+    }
 }
 
 /// Where the centre of a looped blend's step `t` of the way (0 to 1)
@@ -5420,6 +5434,84 @@ mod tests {
             let q = symmetry_back_to(c, 0.0, 3, origin, p) * p;
             assert_eq!(slice(q), slice(origin), "{p:?} -> {q:?}");
             assert!(((q - c).hypot() - 15.0).abs() < 1e-9);
+        }
+    }
+
+    /// Two open curves with a yellow outline, the end one faded, blended
+    /// in 146 steps along an S curve: every step is an open curve on the
+    /// path with the outline, the transparency fades from end to end, and
+    /// it takes well under a second (#2946).
+    #[test]
+    fn a_ribbon_of_many_faded_steps_along_an_s_curve() {
+        let curve = |dx: f64| {
+            let mut p = BezPath::new();
+            p.move_to((0.0 + dx, 0.0));
+            p.curve_to((20.0 + dx, -30.0), (60.0 + dx, 30.0), (80.0 + dx, 0.0));
+            p
+        };
+        let yellow = Color::rgb8(240, 200, 30);
+        let line = |dx: f64, opacity: f64| {
+            let mut s = rect_shape();
+            s.kind = ShapeKind::Path {
+                path: curve(dx),
+                closed: false,
+            };
+            s.fill = Fill::None;
+            s.stroke = Some(crate::style::Stroke {
+                color: yellow,
+                width: 0.5,
+                ..Default::default()
+            });
+            s.opacity = opacity;
+            s
+        };
+        let b = line(0.0, 0.1);
+        let mut a = line(0.0, 1.0);
+        let mut s_curve = BezPath::new();
+        s_curve.move_to((40.0, 0.0));
+        s_curve.curve_to((140.0, 60.0), (-60.0, 140.0), (40.0, 200.0));
+        a.effects.push(Effect::Blend {
+            end: Box::new(b.clone()),
+            steps: 146,
+            accel_objects: 0.0,
+            accel_colors: 0.0,
+            rotation: 0.0,
+            path: Some(s_curve.clone()),
+            rotate_on_path: false,
+            end_id: Some(b.id),
+            options: BlendOptions::default(),
+        });
+        let t0 = std::time::Instant::now();
+        let ev = evaluate(&a);
+        let took = t0.elapsed();
+        assert!(took.as_secs_f64() < 5.0, "{took:?}");
+        assert_eq!(ev.above.len(), 146);
+        let mut last = 1.0 + 1e-9;
+        for st in &ev.above {
+            assert!(matches!(st.kind, ShapeKind::Path { closed: false, .. }));
+            assert_eq!(st.stroke.as_ref().map(|s| s.color), Some(yellow));
+            assert!(st.opacity <= last && st.opacity >= 0.1 - 1e-9, "{}", st.opacity);
+            last = st.opacity;
+        }
+        assert!(ev.above[0].opacity > 0.95 && ev.above[145].opacity < 0.15);
+        // Each step's centre lies on the S curve.
+        let near = |p: Point| {
+            let mut pts = Vec::new();
+            kurbo::flatten(s_curve.elements().iter().copied(), 0.05, |el| {
+                if let PathEl::LineTo(q) | PathEl::MoveTo(q) = el {
+                    pts.push(q);
+                }
+            });
+            pts.windows(2)
+                .map(|w| {
+                    use kurbo::ParamCurveNearest;
+                    kurbo::Line::new(w[0], w[1]).nearest(p, 1e-6).distance_sq.sqrt()
+                })
+                .fold(f64::MAX, f64::min)
+        };
+        for st in &ev.above {
+            let c = st.page_path().bounding_box().center();
+            assert!(near(c) < 0.5, "{c:?} {}", near(c));
         }
     }
 
