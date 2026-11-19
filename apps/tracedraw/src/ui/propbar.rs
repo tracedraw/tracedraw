@@ -2784,6 +2784,7 @@ pub fn polygon_part(app: &mut App, ui: &mut Ui, star: bool) {
         f64,
         Option<u32>,
         f64,
+        f64,
     );
     let selected: Vec<Sel> = app
         .selected_rc()
@@ -2795,7 +2796,8 @@ pub fn polygon_part(app: &mut App, ui: &mut Ui, star: bool) {
                 sharpness,
                 complex,
                 twist,
-            } => Some((s.id, *rect, *points, *sharpness, *complex, *twist)),
+                bend,
+            } => Some((s.id, *rect, *points, *sharpness, *complex, *twist, *bend)),
             _ => None,
         })
         .collect();
@@ -2854,6 +2856,7 @@ pub fn polygon_part(app: &mut App, ui: &mut Ui, star: bool) {
                         sharpness: 0.0,
                         complex: Some(k),
                         twist: 0.0,
+                        bend: 0.0,
                     },
                 })
                 .collect();
@@ -2902,7 +2905,7 @@ pub fn polygon_part(app: &mut App, ui: &mut Ui, star: bool) {
         let cmds: Vec<Command> = selected
             .iter()
             .filter(|s| s.4.is_none())
-            .map(|(id, rect, _, old, _, twist)| Command::SetShapeKind {
+            .map(|(id, rect, _, old, _, twist, bend)| Command::SetShapeKind {
                 shape: *id,
                 kind: ShapeKind::Polygon {
                     rect: *rect,
@@ -2913,8 +2916,10 @@ pub fn polygon_part(app: &mut App, ui: &mut Ui, star: bool) {
                         0.0
                     },
                     complex: None,
-                    // A twisted star keeps its turn.
+                    // A twisted star keeps its turn, and bent sides
+                    // their bend (#2451).
                     twist: *twist,
+                    bend: *bend,
                 },
             })
             .collect();
@@ -3971,6 +3976,7 @@ mod tests {
                 sharpness: 0.5,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             })
             .expect("star");
         app.select(vec![id]);

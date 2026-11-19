@@ -246,6 +246,10 @@ pub struct FormatPrefs {
     /// File > Import waits for a click, a drag or Space to place what
     /// came (#1936); off, it comes in at once where `import_place` says.
     pub import_with_cursor: bool,
+    /// A picture File > Import brings in stays linked to its file (Image >
+    /// Update from Link, read again when the file changes); off, it is
+    /// embedded only (#3089).
+    pub import_link_pictures: bool,
     /// The `.cdr` version Save As starts at (#613).
     pub cdr_version: u16,
     /// Save As starts at `.cdr` rather than TraceDraw for a drawing
@@ -296,6 +300,7 @@ impl Default for FormatPrefs {
             remember_last: true,
             import_place: ImportPlace::AsInFile,
             import_with_cursor: true,
+            import_link_pictures: true,
             cdr_version: tracedraw_cdr::write::NEWEST_VERSION,
             save_new_as_cdr: false,
             skip_export_dialog: false,

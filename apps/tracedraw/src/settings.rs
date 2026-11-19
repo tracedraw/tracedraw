@@ -636,6 +636,11 @@ pub struct Settings {
     /// front of the page's own layers (#1132, #1477).
     #[serde(default)]
     pub master_in_front: [bool; 3],
+    /// Objects moved or pasted wholly beside the page go onto the
+    /// desktop layer, shown from every page, and objects of the desktop
+    /// moved onto the page go back to the page's layer (#3100).
+    #[serde(default)]
+    pub desktop_takes_objects_beside_page: bool,
     /// The Objects docker lists every page, not only the current one
     /// (#1477).
     #[serde(default = "default_true")]
@@ -2307,6 +2312,7 @@ impl Default for Settings {
             hyphens_when_pasting: true,
             object_thumb_size: default_object_thumb(),
             master_in_front: [false; 3],
+            desktop_takes_objects_beside_page: false,
             objects_all_pages: true,
             edit_across_layers: true,
             page_size_all: false,

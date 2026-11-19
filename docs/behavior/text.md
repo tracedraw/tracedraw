@@ -1663,6 +1663,16 @@ stand-in next to each missing family: "Arial (Liberation Sans)".
   the end one (and back), the centre one staying
   (`ops2::tests::text_goes_where_the_path_is_clicked_and_mirrors_keep_it_there`,
   `ops2::tests::the_horizontal_mirror_keeps_text_on_a_line_in_place`).
+  The Pick tool's own Mirror horizontally and Mirror vertically (the
+  object fields, the Arrange menu, the toolbar) on a selection holding a
+  fitted text, alone or with its circle or curve, mirror the text's path
+  and leave its letters reading (#3255): mirrored top to bottom, a text
+  on the outside of a circle's top comes to the inside of its bottom,
+  reading left to right as Bottom centre puts it; mirrored left to right
+  it keeps its side of the path and goes to the mirrored place along it.
+  The other objects mirror as before, all in one undo step ("Mirror";
+  `ops2::tests::mirroring_a_fitted_text_with_its_circle_keeps_it_readable`).
+  The letters themselves came out upside down or back to front.
   Each change is one undo step and is stored with the
   text, so the bar shows it again when the text is selected again
   (`text_path::tests::the_bar_settings_edit_the_text_with_undo_and_come_back_on_reselect`).
@@ -1682,8 +1692,11 @@ stand-in next to each missing family: "Arial (Liberation Sans)".
   (`text_path::tests::fit_text_to_path_with_nothing_selected_leaves_no_stray_text`).
 - With the Text tool, a click on the outline of a path (within 4 pixels;
   not a text, a bitmap or a group) starts an empty text on that path,
-  placed the same way, ready to type. A click elsewhere starts an
-  artistic text as before
+  placed the same way, ready to type. While the pointer is over such an
+  outline the path shows outlined in blue, "Click to type along the
+  path" stands by the pointer and the status bar says so, so the way to
+  put text on a path is seen before the click (#3255). A click elsewhere
+  starts an artistic text as before
   (`ops2::tests::closed_paths_turn_clockwise_and_start_at_the_top`,
   `ops2::tests::text_fitted_to_an_ellipse_sits_centred_on_its_top_outside`,
   `ops2::tests::text_on_a_straight_line_stands_on_it_from_the_start`,

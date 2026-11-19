@@ -883,7 +883,8 @@ impl App {
             }
         }
         // Remember where it came from: Image > Update from Link re-reads it.
-        if !dropped {
+        // Options > Global > File Formats can embed it only (#3089).
+        if !dropped && self.settings.formats.import_link_pictures {
             self.run(Command::SetObjectData {
                 shape: id,
                 data: vec![("bitmap.link".into(), path.display().to_string())],

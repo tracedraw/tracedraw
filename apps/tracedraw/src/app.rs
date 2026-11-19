@@ -500,10 +500,19 @@ pub enum Drag {
         from: Point,
         begun: bool,
     },
-    /// A press on an edge of a polygon or star (Shape tool): the first
-    /// move turns it into a curve and bends the edge grabbed (page point
-    /// the press began at); a plain click converts nothing.
-    PolygonEdge { shape: ShapeId, from: Point },
+    /// A press on an edge of a polygon or star (Shape tool, page point
+    /// the press began at): a drag bends every side the same way, the
+    /// shape staying a polygon (`start` its kind at the press, `to_local`
+    /// from the page into its own space, #2451); a complex star becomes
+    /// a curve on the first move and the edge grabbed bends. A plain
+    /// click changes nothing.
+    PolygonEdge {
+        shape: ShapeId,
+        from: Point,
+        start: ShapeKind,
+        to_local: Affine,
+        begun: bool,
+    },
     /// Dragging a node transform handle (Shape tool).
     NodeTransform {
         handle: Handle,
@@ -6177,6 +6186,7 @@ impl App {
                 sharpness: 0.0,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             },
             // A complex star's vertices are those of a polygon.
             Tool::Star if self.star_complex => ShapeKind::Polygon {
@@ -6185,6 +6195,7 @@ impl App {
                 sharpness: 0.0,
                 complex: Some(self.complex_sharpness),
                 twist: 0.0,
+                bend: 0.0,
             },
             Tool::Star => ShapeKind::Polygon {
                 rect: self.polygon_model_rect(rect, self.polygon_points, self.star_sharpness),
@@ -6192,6 +6203,7 @@ impl App {
                 sharpness: self.star_sharpness,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             },
             Tool::GraphPaper => {
                 self.create_graph_paper(rect);
@@ -6956,6 +6968,14 @@ impl App {
         let connectors = self.connector_copies(&originals, &copies);
         let mut copies: Vec<Shape> = copies.into_iter().chain(connectors).collect();
         self.bring_into_edited_frame(&mut copies);
+        // Pasted wholly beside the page, with the desktop taking such
+        // objects: onto the desktop layer (#3100).
+        let layer = match copies.iter().map(|s| s.bounds()).reduce(|a, b| a.union(b)) {
+            Some(all) if !self.editing_clip_contents() && self.symmetry_edit.is_none() => {
+                self.layer_beside_page(layer, all)
+            }
+            _ => layer,
+        };
         for shape in copies {
             cmds.push(Command::AddShape { layer, shape });
         }
@@ -7880,7 +7900,29 @@ impl App {
                 * Affine::scale_non_uniform(1.0, -1.0)
                 * Affine::translate((0.0, -c.y))
         };
-        self.transform_selection(t);
+        // Texts fitted to a path mirror their path, not their letters, so
+        // they still read (#3255); the rest mirrors as usual, one step.
+        let (cmds, texts) = self.mirror_fitted_texts(t, horizontal);
+        if texts.is_empty() {
+            self.transform_selection(t);
+            return;
+        }
+        let all = self.selection.clone();
+        let mark = self.engine.begin_group();
+        let rest: Vec<ShapeId> = all
+            .iter()
+            .copied()
+            .filter(|id| !texts.contains(id))
+            .collect();
+        if !rest.is_empty() {
+            self.selection = rest;
+            self.transform_selection(t);
+        }
+        if let Err(e) = self.engine.run_batch("Mirror", &cmds) {
+            self.status = e.to_string();
+        }
+        self.engine.end_group(mark, "Mirror");
+        self.selection = all;
     }
 
     pub fn undo(&mut self) {

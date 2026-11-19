@@ -678,11 +678,24 @@ impl App {
                     return;
                 }
             }
-            // An edge of a selected polygon or star bends once dragged: it
-            // becomes a curve then (#2451).
+            // An edge of a selected polygon or star: a drag bends all its
+            // sides alike (#2451).
             if let Some(shape) = self.polygon_edge_at(p) {
-                self.drag = Drag::PolygonEdge { shape, from: p };
-                return;
+                let start = self
+                    .doc()
+                    .find_shape(shape)
+                    .map(|s| (s.kind.clone(), s.transform));
+                let parent = self.doc().parent_transform(shape);
+                if let (Some((start, t)), Some(parent)) = (start, parent) {
+                    self.drag = Drag::PolygonEdge {
+                        shape,
+                        from: p,
+                        start,
+                        to_local: (parent * t).inverse(),
+                        begun: false,
+                    };
+                    return;
+                }
             }
             // A marquee over the selected objects' nodes. It keeps the
             // selection, also when it starts over another object (the one
@@ -751,8 +764,44 @@ impl App {
                     };
                 }
                 Drag::NodeMove { .. } => self.node_move_to(p, mods),
+                Drag::PolygonEdge {
+                    shape,
+                    from,
+                    start,
+                    to_local,
+                    begun,
+                } if !matches!(
+                    start,
+                    ShapeKind::Polygon {
+                        complex: Some(_),
+                        ..
+                    }
+                ) =>
+                {
+                    // Every side bends alike as the pointer goes across
+                    // the edge grabbed; one undo step for the drag.
+                    if begun || (p - from).hypot() * self.view.zoom as f64 >= 2.0 {
+                        if let Some(kind) =
+                            crate::kind_nodes::polygon_bent(&start, to_local * from, to_local * p)
+                        {
+                            let cmd = Command::SetShapeKind { shape, kind };
+                            let _ = if begun {
+                                self.engine.amend(&cmd)
+                            } else {
+                                self.engine.run_with_label(&cmd, "Bend Sides")
+                            };
+                        }
+                        self.drag = Drag::PolygonEdge {
+                            shape,
+                            from,
+                            start,
+                            to_local,
+                            begun: true,
+                        };
+                    }
+                }
                 Drag::PolygonEdge { from, .. } => {
-                    // The first move: curve first, then the edge bends.
+                    // A complex star: curve first, then the edge bends.
                     if (p - from).hypot() * self.view.zoom as f64 >= 2.0 {
                         self.drag = Drag::None;
                         if self.polygon_edge_to_curve(from) {

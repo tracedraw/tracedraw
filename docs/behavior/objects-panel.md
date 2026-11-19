@@ -62,6 +62,16 @@ the right.
   (`Layer::desktop`), and in `.cdr` files goes on the master page's
   desktop layer
   (`ui::objects_docker::tests::a_new_drawing_has_a_desktop_shared_by_every_page`).
+- The Desktop layer's menu has "Objects put beside the page go here"
+  (off by default, kept after TraceDraw is closed; #3100). On, an object
+  moved with the Pick tool or pasted so that it lies wholly beside the
+  page goes onto the Desktop layer, in the move's or paste's own undo
+  step, so pictures pasted together can wait beside the pages and be
+  taken from any of them; an object of the Desktop moved onto the page
+  goes back to the page's active layer. Objects dropped into a PowerClip,
+  pasted while its contents are edited, or moved onto another page of
+  the Multipage View go where they did before
+  (`pick_drag_tests::objects_put_beside_the_page_go_on_the_desktop_when_it_takes_them`).
 - Double-click a layer to rename it; double-click an object to name it
   (Rename Object; an empty name goes back to the description).
 - Double-click the page node, or pick Rename in its context menu, to

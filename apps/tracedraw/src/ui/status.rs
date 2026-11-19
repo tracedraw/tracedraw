@@ -52,6 +52,14 @@ impl StatusInfo {
 /// shaping brushes add how their nib is sized, with the wheel's key of
 /// the wheel setting (see `brushes::wheel_resizes`).
 pub fn tool_hint(app: &App) -> String {
+    // Over a path's outline the Text tool types along it (#3255).
+    if app.tool == Tool::Text
+        && app
+            .pointer_page
+            .is_some_and(|p| app.text_tool_path_at(p).is_some())
+    {
+        return tr("status_hint.text_on_path");
+    }
     let hint = tool_hint_for(app.tool, app.selection.is_empty());
     if !app.tool.is_shaping_brush() {
         return hint;

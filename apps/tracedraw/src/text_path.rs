@@ -298,6 +298,70 @@ impl App {
         });
     }
 
+    /// The commands that mirror, by the page transform `m` (a reflection,
+    /// left to right when `horizontal`), the selected texts fitted to a
+    /// path (not ones inside groups), each text's path mirrored instead
+    /// of its letters, so they still read (#3255): mirrored top to bottom
+    /// a text on the outside of a circle's top comes to the inside of its
+    /// bottom, reading left to right; mirrored left to right it keeps its
+    /// side and moves to the mirrored place along the path (its path
+    /// followed the other way, measured from the other end). The ids of
+    /// the texts so mirrored come with them.
+    pub(crate) fn mirror_fitted_texts(
+        &self,
+        m: Affine,
+        horizontal: bool,
+    ) -> (Vec<Command>, Vec<ShapeId>) {
+        let mut cmds = Vec::new();
+        let mut ids = Vec::new();
+        for id in &self.selection {
+            let Ok((_, s)) = self.doc().shape(*id) else {
+                continue;
+            };
+            let ShapeKind::Text {
+                spans,
+                origin,
+                frame,
+                align,
+                para,
+                on_path: Some(tp),
+            } = s.kind.clone()
+            else {
+                continue;
+            };
+            let to_page = s.transform * Affine::translate(origin.to_vec2());
+            if to_page.determinant().abs() < 1e-12 {
+                continue;
+            }
+            let local = to_page.inverse() * m * to_page;
+            let mut tp = tp;
+            tp.path = local * tp.path.clone();
+            let mut align = align;
+            if horizontal {
+                tp.path = tp.path.reverse_subpaths();
+                tp.offset = -tp.offset;
+                align = match align {
+                    TextAlign::Center => TextAlign::Center,
+                    TextAlign::Right => TextAlign::Left,
+                    _ => TextAlign::Right,
+                };
+            }
+            ids.push(*id);
+            cmds.push(Command::SetShapeKind {
+                shape: *id,
+                kind: ShapeKind::Text {
+                    spans,
+                    origin,
+                    frame,
+                    align,
+                    para,
+                    on_path: Some(tp),
+                },
+            });
+        }
+        (cmds, ids)
+    }
+
     /// Whether the selected fitted text follows a closed path.
     pub fn fitted_text_closed(&self) -> bool {
         self.fitted_text().is_some_and(|ft| {

@@ -2395,6 +2395,33 @@ mod linked_watch_tests {
         let _ = std::fs::remove_file(path);
     }
 
+    /// File > Import links a picture to its file; with Options > Global >
+    /// File Formats > Link imported pictures off it is embedded only, the
+    /// link menu items pale (#3089).
+    #[test]
+    fn imported_pictures_are_linked_unless_the_option_is_off() {
+        if crate::files::WEB {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tracedraw-link3089-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("scan.png");
+        std::fs::write(&path, png(4, 3)).expect("png");
+        let mut app = App::headless();
+        assert!(app.settings.formats.import_link_pictures, "on by default");
+        app.import_bitmap(&path);
+        let linked = *app.selection.first().expect("imported");
+        assert_eq!(app.bitmap_link(linked), Some(path.display().to_string()));
+        assert!(app.selected_bitmap_is_linked());
+        app.settings.formats.import_link_pictures = false;
+        app.import_bitmap(&path);
+        let embedded = *app.selection.first().expect("imported");
+        assert_ne!(embedded, linked);
+        assert!(app.bitmap_link(embedded).is_none());
+        assert!(!app.selected_bitmap_is_linked());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     /// A picture file opened (Open With from the file manager, #2600): a
     /// new untitled drawing named after it, the page the picture's size,
     /// the picture on it, nothing to undo or save; a file that cannot be

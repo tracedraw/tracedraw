@@ -70,6 +70,7 @@ pub fn nodes(s: &Shape) -> Vec<(KindNode, Point)> {
             sharpness,
             complex,
             twist,
+            bend: _,
         } => {
             let n = (*points).max(3) as usize;
             let inner = inner_ratio(n, *sharpness);
@@ -435,6 +436,7 @@ pub fn drag_constrained(
                 sharpness,
                 complex,
                 twist,
+                bend,
             },
             KindNode::Polygon { outer, index },
         ) => {
@@ -466,6 +468,7 @@ pub fn drag_constrained(
                         sharpness: *sharpness,
                         complex: *complex,
                         twist: *twist,
+                        bend: *bend,
                     });
                 }
                 // The vertices move, the points between them stay (and
@@ -477,6 +480,7 @@ pub fn drag_constrained(
                     sharpness: geometry::star_sharpness_for_ratio(k),
                     complex: None,
                     twist: *twist,
+                    bend: *bend,
                 })
             } else if complex.is_some() {
                 None
@@ -520,11 +524,84 @@ pub fn drag_constrained(
                     sharpness: geometry::star_sharpness_for_ratio(ratio),
                     complex: None,
                     twist,
+                    bend: *bend,
                 })
             }
         }
         _ => None,
     }
+}
+
+/// A polygon or star (`start`, not a complex star) with every side bent
+/// alike (#2451) by a drag across one of them from `from` to `to`, both
+/// in the shape's own space: the side nearest `from` bows out or in with
+/// the pointer, its middle following it, and every other side takes the
+/// same curve, so the shape keeps its symmetry. `None` for other shapes.
+pub fn polygon_bent(start: &ShapeKind, from: Point, to: Point) -> Option<ShapeKind> {
+    let ShapeKind::Polygon {
+        rect,
+        points,
+        sharpness,
+        complex: None,
+        twist,
+        bend,
+    } = start
+    else {
+        return None;
+    };
+    let c = rect.center();
+    let (rx, ry) = (rect.width() / 2.0, rect.height() / 2.0);
+    if rx.abs() < 1e-9 || ry.abs() < 1e-9 {
+        return None;
+    }
+    let unit = |p: Point| ((p.x - c.x) / rx, (p.y - c.y) / ry);
+    let pts = geometry::polygon_unit_points(*points, *sharpness, *twist);
+    let n = pts.len();
+    if n < 3 {
+        return None;
+    }
+    let (ax, ay) = unit(from);
+    let (bx, by) = unit(to);
+    // The side nearest the press.
+    let side = (0..n)
+        .min_by(|&i, &j| {
+            let d = |k: usize| {
+                let (p, q) = (pts[k], pts[(k + 1) % n]);
+                let l = kurbo::Line::new((p.0, p.1), (q.0, q.1));
+                kurbo::ParamCurveNearest::nearest(&l, (ax, ay).into(), 1e-9).distance_sq
+            };
+            d(i).total_cmp(&d(j))
+        })
+        .unwrap_or(0);
+    let (p, q) = (pts[side], pts[(side + 1) % n]);
+    let (dx, dy) = (q.0 - p.0, q.1 - p.1);
+    let len = dx.hypot(dy);
+    if len < 1e-9 {
+        return None;
+    }
+    // Out of the outline, the way geometry::bent_polygon_path bends.
+    let area: f64 = (0..n)
+        .map(|i| {
+            let (a, b) = (pts[i], pts[(i + 1) % n]);
+            a.0 * b.1 - b.0 * a.1
+        })
+        .sum();
+    let s = if area < 0.0 { -1.0 } else { 1.0 };
+    let (nx, ny) = (s * dy / len, -s * dx / len);
+    let across = (bx - ax) * nx + (by - ay) * ny;
+    // A cubic's middle stands off its chord by 3/4 of its control points.
+    let bend = (bend + across / (0.75 * len))
+        .clamp(-geometry::MAX_POLYGON_BEND, geometry::MAX_POLYGON_BEND);
+    // Near straight it is straight again.
+    let bend = if bend.abs() < 0.005 { 0.0 } else { bend };
+    Some(ShapeKind::Polygon {
+        rect: *rect,
+        points: *points,
+        sharpness: *sharpness,
+        complex: None,
+        twist: *twist,
+        bend,
+    })
 }
 
 /// The undo step's name for dragging a node of `s`.
@@ -1196,6 +1273,7 @@ mod tests {
                 sharpness: 0.0,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             },
         );
         let n = nodes(&s);
@@ -1253,6 +1331,7 @@ mod tests {
                 sharpness: 0.5,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             },
         );
         let mut turn = 0.0;
@@ -1333,6 +1412,7 @@ mod tests {
                 sharpness: 0.5,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             },
         );
         let between = KindNode::Polygon {
@@ -1400,6 +1480,7 @@ mod tests {
                 sharpness: -0.7,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             },
             ..s.clone()
         };

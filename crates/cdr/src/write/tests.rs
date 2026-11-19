@@ -798,6 +798,7 @@ fn complex_stars_are_written_as_curves() {
             sharpness: 0.0,
             complex: Some(1),
             twist: 0.0,
+            bend: 0.0,
         },
     );
     star.fill = Fill::Solid(Color::BLACK);
@@ -823,6 +824,7 @@ fn inverted_stars_are_written_as_the_curves_they_draw() {
             sharpness: -0.6,
             complex: None,
             twist: 0.0,
+            bend: 0.0,
         },
     );
     star.fill = Fill::Solid(Color::BLACK);

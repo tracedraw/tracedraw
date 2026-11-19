@@ -6182,6 +6182,7 @@ pub(crate) mod tests {
                 sharpness: 50.0,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             })
             .expect("polygon");
         app.start_text(Point::new(20.0, 80.0), None);

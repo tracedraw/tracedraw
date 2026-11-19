@@ -4257,6 +4257,7 @@ fn a_drawing_tool_resizes_by_the_handles() {
         Tool::CommonShapes,
         Tool::ThreePointRectangle,
         Tool::ThreePointEllipse,
+        Tool::Text,
     ] {
         let (ctx, mut app, id) = setup();
         app.set_tool(tool);
@@ -4304,6 +4305,38 @@ fn a_drawing_tool_resizes_by_the_handles() {
             assert_eq!(shape_count(&app), count + 1, "{tool:?}");
         }
     }
+}
+
+/// A text just typed with the Text tool shows its handles, and a drag
+/// from one resizes it with the Text tool still chosen (#3258).
+#[test]
+fn a_text_just_typed_resizes_by_its_handles_with_the_text_tool() {
+    let (ctx, mut app, _) = setup();
+    app.set_tool(Tool::Text);
+    let at = app.view.to_screen(Point::new(100.0, 150.0));
+    click_at(&ctx, &mut app, at, Modifiers::NONE);
+    frame(
+        &ctx,
+        &mut app,
+        vec![Event::Text("Hello".into())],
+        Modifiers::NONE,
+    );
+    let id = app.text_edit.as_ref().map(|t| t.shape).expect("editing");
+    assert_eq!(app.selection, vec![id]);
+    let count = shape_count(&app);
+    let before = bounds(&app, id);
+    let from = handle(&app, Handle::E);
+    assert_eq!(
+        for_tool(&app, false, false, false, Some(from)),
+        ToolCursor::System(resize_icon(Handle::E))
+    );
+    let to = from + egui::vec2(80.0, 0.0);
+    drag(&ctx, &mut app, from, to, Modifiers::NONE, Vec::new());
+    let after = bounds(&app, id);
+    assert_eq!(shape_count(&app), count, "no new text");
+    assert_eq!(app.tool, Tool::Text);
+    assert!(after.width() > before.width() + 1.0, "{before:?} {after:?}");
+    assert!(close(after.x0, before.x0), "{before:?} {after:?}");
 }
 
 /// The middle button pans while a new rectangle is dragged: the shape
@@ -22380,6 +22413,7 @@ fn ctrl_held_after_the_press_constrains_ellipse_and_star_nodes() {
             sharpness: 0.5,
             complex: None,
             twist: 0.0,
+            bend: 0.0,
         })
         .expect("star");
     app.select(vec![star]);
@@ -27517,6 +27551,73 @@ fn an_object_dropped_on_another_page_of_the_multipage_view_becomes_that_page_s()
 }
 
 #[test]
+fn objects_put_beside_the_page_go_on_the_desktop_when_it_takes_them() {
+    // #3100: an object moved or pasted wholly beside the page goes onto
+    // the desktop layer, shown from every page, while the desktop takes
+    // such objects; moved back onto the page it is the page's again.
+    let (ctx, mut app, id) = setup();
+    let page_layer = app.doc().pages[0].layers[0].id;
+    let desktop = app.desktop_layer().expect("desktop layer");
+    let holder = |app: &App, id: ShapeId| {
+        app.doc()
+            .all_layers()
+            .find(|l| l.shapes.iter().any(|s| s.id == id))
+            .map(|l| l.id)
+    };
+    // Room beside the page on screen.
+    let mid = app.view.to_screen(app.page_rect().center());
+    app.view.zoom_at(mid, 0.4);
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let beside = app.view.to_screen(Point::new(-60.0, 25.0));
+    let inside = app.view.to_screen(Point::new(35.0, 25.0));
+    // Off by default: beside the page it stays on the page's layer.
+    drag(&ctx, &mut app, inside, beside, Modifiers::NONE, Vec::new());
+    assert!(bounds(&app, id).x1 < 0.0, "{:?}", bounds(&app, id));
+    assert_eq!(holder(&app, id), Some(page_layer));
+    drag(&ctx, &mut app, beside, inside, Modifiers::NONE, Vec::new());
+    assert_eq!(holder(&app, id), Some(page_layer));
+    // On: let go beside the page, it goes onto the desktop, selected, in
+    // the move's one undo step.
+    app.settings.desktop_takes_objects_beside_page = true;
+    let steps = app.engine.history_labels().0.len();
+    drag(&ctx, &mut app, inside, beside, Modifiers::NONE, Vec::new());
+    assert_eq!(holder(&app, id), Some(desktop));
+    assert_eq!(app.selection, vec![id]);
+    assert_eq!(app.engine.history_labels().0.len(), steps + 1);
+    // Shown and picked from a new page.
+    app.add_page();
+    assert_eq!(app.hit_test(Point::new(-60.0, 25.0)), Some(id));
+    app.goto_page(0);
+    // A paste of it lands beside the page too: on the desktop.
+    app.select(vec![id]);
+    app.copy();
+    app.paste();
+    let copy = app.selection[0];
+    assert_ne!(copy, id);
+    assert_eq!(holder(&app, copy), Some(desktop));
+    // The copy goes again, out of the way.
+    app.undo();
+    assert!(app.doc().find_shape(copy).is_none());
+    // Moved back onto the page: the page's layer again; one undo puts it
+    // back on the desktop beside the page. (The page change may have
+    // moved the view.)
+    app.select(vec![id]);
+    for _ in 0..2 {
+        frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
+    }
+    let beside = app.view.to_screen(Point::new(-60.0, 25.0));
+    let inside = app.view.to_screen(Point::new(35.0, 25.0));
+    drag(&ctx, &mut app, beside, inside, Modifiers::NONE, Vec::new());
+    assert_eq!(holder(&app, id), Some(page_layer));
+    assert!(bounds(&app, id).x1 > 0.0);
+    app.undo();
+    assert_eq!(holder(&app, id), Some(desktop));
+    assert!(bounds(&app, id).x1 < 0.0);
+}
+
+#[test]
 fn break_curve_opens_a_closed_curve_at_the_chosen_nodes() {
     // #2314: a rectangle as a curve with a node in the middle of its
     // bottom side, broken there, came apart at that node and at its first
@@ -27877,20 +27978,52 @@ fn dragging_a_polygon_edge_bends_it() {
     let at = pentagon_edge_point(&ctx, &mut app);
     drag(&ctx, &mut app, at, at, Modifiers::NONE, Vec::new());
     assert!(
-        matches!(app.selected_shapes()[0].kind, ShapeKind::Polygon { .. }),
-        "a click converts nothing"
+        matches!(
+            app.selected_shapes()[0].kind,
+            ShapeKind::Polygon { bend, .. } if bend == 0.0
+        ),
+        "a click changes nothing"
     );
+    // Out of the pentagon: every side bows out alike, still a polygon
+    // (#2451: the reporter asked for the sides to follow each other).
     drag_between(&ctx, &mut app, at, at + egui::vec2(0.0, -40.0));
     let s = app.selected_shapes()[0].clone();
-    let ShapeKind::Path { path, .. } = &s.kind else {
+    let ShapeKind::Polygon {
+        bend, points, rect, ..
+    } = s.kind
+    else {
         panic!("{:?}", s.kind);
     };
+    assert_eq!(points, 5);
+    assert!(bend > 0.05, "bowed out: {bend}");
+    assert_eq!(app.engine.undo_label(), Some("Bend Sides"));
+    // The middles of the sides mirror each other across the pentagon's
+    // upright axis (its box is a little wider than tall, so they do not
+    // all lie as far from the centre).
+    let path = s.page_path();
+    let c = s.transform * rect.center();
+    let mids: Vec<f64> = path
+        .segments()
+        .map(|seg| (kurbo::ParamCurve::eval(&seg, 0.5) - c).hypot())
+        .collect();
+    assert_eq!(mids.len(), 5, "{mids:?}");
+    assert!((mids[0] - mids[4]).abs() < 0.01, "{mids:?}");
+    assert!((mids[1] - mids[3]).abs() < 0.01, "{mids:?}");
+    // Back in past straight: the sides bow in.
+    let side = path.segments().next().expect("side");
+    let at2 = app.view.to_screen(kurbo::ParamCurve::eval(&side, 0.5));
+    drag_between(&ctx, &mut app, at2, at2 + egui::vec2(-30.0, 60.0));
     assert!(
-        path.elements()
-            .iter()
-            .any(|e| matches!(e, kurbo::PathEl::CurveTo(..))),
-        "the edge is a curve now"
+        matches!(app.selected_shapes()[0].kind, ShapeKind::Polygon { bend, .. } if bend < 0.0),
+        "{:?}",
+        app.selected_shapes()[0].kind
     );
+    // One undo takes the whole second drag back.
+    app.undo();
+    assert!(matches!(
+        app.selected_shapes()[0].kind,
+        ShapeKind::Polygon { bend: b, .. } if (b - bend).abs() < 1e-9
+    ));
 }
 
 /// #2471: Copy Fill on the Interactive Fill bar waits for a click; the

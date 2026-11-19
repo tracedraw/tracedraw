@@ -5793,6 +5793,7 @@ impl<'a> Ctx<'a> {
                     sharpness,
                     complex: None,
                     twist: 0.0,
+                    bend: 0.0,
                 })
             }
             // Bitmap: two corners, 32 unknown bytes, image id, a version
@@ -11742,6 +11743,7 @@ pub(crate) mod tests {
                 sharpness: 0.0,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             },
         );
         let [a, b] = blend_nodes(&poly).expect("nodes");

@@ -3763,29 +3763,32 @@ impl App {
         self.selection = vec![text.id];
     }
 
-    /// The Text tool clicked on the outline of a path (not a text): a new
-    /// text starts on that path. True when it did.
-    pub fn start_text_on_path_at(&mut self, p: Point) -> bool {
+    /// The path whose outline is at `p` (within 4 screen pixels) that
+    /// the Text tool would start a text on: not a text, a picture or a
+    /// group.
+    pub fn text_tool_path_at(&self, p: Point) -> Option<ShapeId> {
         let tolerance = 4.0 / f64::from(self.view.zoom).max(1e-6);
-        let Some(id) = self.hit_test(p) else {
-            return false;
-        };
-        let Ok((_, s)) = self.doc().shape(id) else {
-            return false;
-        };
+        let id = self.hit_test(p)?;
+        let (_, s) = self.doc().shape(id).ok()?;
         if matches!(
             s.kind,
             ShapeKind::Text { .. } | ShapeKind::Bitmap { .. } | ShapeKind::Group { .. }
         ) {
-            return false;
+            return None;
         }
         let path = s.page_path();
         let near = path.segments().any(|seg| {
             kurbo::ParamCurveNearest::nearest(&seg, p, 1e-3).distance_sq <= tolerance * tolerance
         });
-        if !near {
+        near.then_some(id)
+    }
+
+    /// The Text tool clicked on the outline of a path (not a text): a new
+    /// text starts on that path. True when it did.
+    pub fn start_text_on_path_at(&mut self, p: Point) -> bool {
+        let Some(id) = self.text_tool_path_at(p) else {
             return false;
-        }
+        };
         self.selection.clear();
         self.text_onto_path(id, Some(p), true);
         true
@@ -6675,6 +6678,68 @@ mod tests {
         assert!(b.height() < 10.0, "{b:?}");
     }
 
+    /// #3255: the Pick tool's mirrors on a circle and the text fitted to
+    /// it mirror the text's path, not its letters: top to bottom the text
+    /// on the top's outside comes to the bottom's inside, reading left to
+    /// right as Bottom centre puts it, in one undo step.
+    #[test]
+    fn mirroring_a_fitted_text_with_its_circle_keeps_it_readable() {
+        tracedraw_text::install();
+        let mut app = App::headless();
+        let e = app
+            .new_shape(ShapeKind::Ellipse {
+                rect: tracedraw_core::geometry::Rect::new(40.0, 100.0, 140.0, 200.0),
+                arc: None,
+            })
+            .expect("circle");
+        app.start_text(Point::new(60.0, 260.0), None);
+        app.text_insert("Abdullah");
+        app.finish_text();
+        let t = app.selection[0];
+        app.selection = vec![t, e];
+        app.begin_fit_text_to_path();
+        let before = fitted(&app, t);
+        app.selection = vec![e, t];
+        app.mirror(false);
+        assert_eq!(app.engine.undo_label(), Some("Mirror"));
+        assert_eq!(app.selection, vec![e, t]);
+        let after = fitted(&app, t);
+        assert_ne!(after.path, before.path);
+        assert_eq!(after.mirrors(), before.mirrors());
+        let bounds = |app: &App| {
+            let s = app.doc().shape(t).expect("text").1.clone();
+            app.visual_bounds(&s)
+        };
+        let fonts = !tracedraw_text::fonts().families().is_empty();
+        if fonts {
+            // Inside the bottom, centred.
+            let b = bounds(&app);
+            assert!((b.center().x - 90.0).abs() < 1.0, "{b:?}");
+            assert!(b.y0 > 99.0 && b.y1 < 125.0, "{b:?}");
+            // Bottom centre puts it just so: it reads left to right.
+            app.selection = vec![t];
+            app.place_fitted_text_round(true);
+            let c = bounds(&app);
+            assert!(
+                (c.x0 - b.x0).abs() < 1.0 && (c.y0 - b.y0).abs() < 1.0 && (c.x1 - b.x1).abs() < 1.0,
+                "{b:?} {c:?}"
+            );
+            app.undo();
+            app.selection = vec![e, t];
+        }
+        // Left to right it stays inside the bottom, centred.
+        app.mirror(true);
+        if fonts {
+            let b = bounds(&app);
+            assert!((b.center().x - 90.0).abs() < 1.0, "{b:?}");
+            assert!(b.y0 > 99.0 && b.y1 < 125.0, "{b:?}");
+        }
+        // Two undos give the text back as it was fitted.
+        app.undo();
+        app.undo();
+        assert_eq!(fitted(&app, t).path, before.path);
+    }
+
     #[test]
     fn text_on_a_straight_line_stands_on_it_from_the_start() {
         tracedraw_text::install();
@@ -6716,9 +6781,24 @@ mod tests {
                 arc: None,
             })
             .expect("ellipse");
-        let _ = e;
         // Inside, far from the outline: not on the path.
         app.selection.clear();
+        // Over the outline the Text tool shows the path and says a click
+        // types along it (#3255); inside it does not.
+        app.set_tool(crate::tools::Tool::Text);
+        assert_eq!(app.text_tool_path_at(Point::new(90.0, 160.0)), Some(e));
+        assert_eq!(app.text_tool_path_at(Point::new(90.0, 130.0)), None);
+        app.pointer_page = Some(Point::new(90.0, 160.0));
+        assert_eq!(
+            crate::ui::status::tool_hint(&app),
+            crate::i18n::tr("status_hint.text_on_path")
+        );
+        app.pointer_page = Some(Point::new(90.0, 130.0));
+        assert_eq!(
+            crate::ui::status::tool_hint(&app),
+            crate::i18n::tr("status_hint.text")
+        );
+        app.pointer_page = None;
         assert!(!app.start_text_on_path_at(Point::new(90.0, 130.0)));
         // On the outline at the top.
         assert!(app.start_text_on_path_at(Point::new(90.0, 160.0)));

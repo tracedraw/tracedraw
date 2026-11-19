@@ -2,7 +2,9 @@
 
 File > Import (Ctrl+I) of a PNG, JPEG, BMP, GIF, TIFF or WebP file
 embeds the image as a bitmap object centred on the page and remembers
-the file (Image > Update from Link reads it again). PNG files of 8 or
+the file (Image > Update from Link reads it again; Options > Global >
+File Formats > Link imported pictures to their files, on by default,
+can embed it only, #3089). PNG files of 8 or
 16 bits, grey or colour, with or without alpha or with a palette, and
 baseline or progressive JPEG files all come in
 (`bitmap_file::tests::every_common_png_and_jpeg_imports`, #2167).

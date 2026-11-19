@@ -225,6 +225,17 @@ once the last is in, everything the files brought is selected together
 `pick_drag_tests::several_imported_files_are_placed_one_after_another`,
 `pick_drag_tests::several_imported_files_come_in_at_once_without_the_cursor`).
 
+Link imported pictures to their files (`import_link_pictures`, on): a
+picture File > Import brings in remembers its file, so Image > Update
+from Link reads it again and a change to the file is read again by
+itself. Off, the picture is embedded only, as after Image > Break Link,
+and those two items stay pale for it. The drawing keeps the whole
+picture either way, so it shows and prints at its full resolution with
+no low resolution preview. The choice sits here because the Import
+dialog is the system's own file dialog, which takes no options of ours
+(#3089,
+`clipboard::tests::imported_pictures_are_linked_unless_the_option_is_off`).
+
 Imported objects go (File > Import with the import cursor off, Ctrl+I):
 where the file has them (the default), or centred in the middle of the
 view; the move is part of the import's undo step. Files dropped or

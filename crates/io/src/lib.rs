@@ -416,6 +416,7 @@ mod tests {
                 sharpness: -0.7,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             },
         );
         s.fill = Fill::Solid(Color::rgb8(255, 0, 0));

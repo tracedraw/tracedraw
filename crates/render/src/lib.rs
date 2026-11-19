@@ -8838,6 +8838,7 @@ mod tests {
                 sharpness: 0.6,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             },
         );
         s.fill = Fill::Solid(Color::rgb8(255, 0, 0));
@@ -9441,6 +9442,7 @@ mod tests {
                 sharpness: 0.5,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             },
         ];
         for kind in kinds {

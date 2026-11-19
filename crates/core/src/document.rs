@@ -1101,7 +1101,10 @@ pub enum ShapeKind {
     /// counter-clockwise): a twisted star. `sharpness` 0 is a polygon,
     /// 0 to 1 a star whose inner points come in toward the centre, 0 to
     /// -1 an inverted star whose inner points lie past it
-    /// (`geometry::star_inner_ratio`).
+    /// (`geometry::star_inner_ratio`). `bend` curves every side the same
+    /// way, so the shape keeps its symmetry: each side bows out to its
+    /// left (outward on a polygon) by `bend` times its length, inward
+    /// when negative (`geometry::bent_polygon_path`, #2451).
     Polygon {
         rect: Rect,
         points: u32,
@@ -1110,6 +1113,8 @@ pub enum ShapeKind {
         complex: Option<u32>,
         #[serde(default, skip_serializing_if = "is_zero")]
         twist: f64,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        bend: f64,
     },
     /// Free path (lines and cubic Beziers) in local space.
     Path { path: BezPath, closed: bool },
@@ -4089,9 +4094,10 @@ impl Shape {
                 sharpness,
                 complex,
                 twist,
+                bend,
             } => match complex {
                 Some(k) => geometry::complex_star_path(*rect, *points, *k),
-                None => geometry::twisted_polygon_path(*rect, *points, *sharpness, *twist),
+                None => geometry::bent_polygon_path(*rect, *points, *sharpness, *twist, *bend),
             },
             ShapeKind::Path { path, .. } => path.clone(),
             ShapeKind::Text {
@@ -9762,6 +9768,7 @@ mod tests {
             sharpness: 0.0,
             complex: Some(3),
             twist: 0.0,
+            bend: 0.0,
         };
         let back: ShapeKind = serde_json::from_str(&serde_json::to_string(&k).unwrap()).unwrap();
         assert_eq!(back, k);
@@ -9773,6 +9780,7 @@ mod tests {
             sharpness: 0.4,
             complex: None,
             twist: 0.25,
+            bend: 0.0,
         };
         let json = serde_json::to_string(&twisted).unwrap();
         assert!(json.contains("twist"));
@@ -9786,6 +9794,7 @@ mod tests {
             sharpness: -0.3,
             complex: None,
             twist: 0.0,
+            bend: 0.0,
         };
         let json = serde_json::to_string(&inverted).unwrap();
         assert!(json.contains("\"sharpness\":-0.3"), "{json}");

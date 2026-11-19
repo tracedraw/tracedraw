@@ -577,6 +577,7 @@ fn polygons_and_stars_go_out_as_the_curve_they_draw() {
                 sharpness: 0.5,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             },
         );
         star.fill = Fill::Solid(Color::rgb8(250, 200, 0));
@@ -588,6 +589,7 @@ fn polygons_and_stars_go_out_as_the_curve_they_draw() {
                 sharpness: 0.0,
                 complex: None,
                 twist: 0.0,
+                bend: 0.0,
             },
         );
         hexagon.fill = Fill::Solid(Color::rgb8(0, 120, 250));

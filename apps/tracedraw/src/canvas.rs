@@ -143,6 +143,13 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
             draw_text_path_preview(app, painter, p);
         }
     }
+    // The Text tool over a path's outline: the path lights up, as a
+    // click there starts a text along it (#3255).
+    if app.tool == Tool::Text && !app.pending_text_path && matches!(app.drag, Drag::None) {
+        if let Some(p) = app.pointer_page {
+            draw_text_tool_path_hover(app, painter, p);
+        }
+    }
     // 3-point tools: base segment waiting for the third click, previewed to the pointer.
     if let (Some((a, b)), Some(c)) = (app.three_point_base, app.pointer_page) {
         // On a white line, as while it was dragged (#672).
@@ -1987,6 +1994,30 @@ fn draw_along_path(app: &App, painter: &Painter, start: Point, current: Point) {
             Tokens::DRAG_OUTLINE,
         );
     }
+}
+
+/// The path the Text tool would start a text on at `p`, outlined in the
+/// drag colour, with a word by the pointer saying what a click does.
+fn draw_text_tool_path_hover(app: &App, painter: &Painter, p: Point) {
+    let Some(id) = app.text_tool_path_at(p) else {
+        return;
+    };
+    let Some(s) = app.doc().find_shape(id) else {
+        return;
+    };
+    let path = s.page_path();
+    for (pts, closed) in flatten(&path, &app.view) {
+        if pts.len() > 1 {
+            haloed_polyline(painter, &pts, closed, Tokens::DRAG_OUTLINE);
+        }
+    }
+    painter.text(
+        app.view.to_screen(p) + egui::vec2(12.0, 14.0),
+        egui::Align2::LEFT_TOP,
+        crate::i18n::tr("canvas.type_along_path"),
+        egui::FontId::proportional(11.0),
+        Tokens::DRAG_OUTLINE,
+    );
 }
 
 /// Fit Text to Path waiting for its path, the pointer near one: the

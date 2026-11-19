@@ -603,7 +603,9 @@ bar move (`ui/bars.rs`).
   line marks the gap it would go to, and on release it moves there (along
   its bar or to the other one) or, released off both bars, goes away.
   Commands and tools dragged from the Commands page join the bar at the
-  gap; a command already on that bar only moves. Added buttons show the
+  gap; a command already on that bar only moves. The docked toolbox
+  takes them too, after its tools (see "Commands on the toolbox" in
+  `toolbox.md`, #3211). Added buttons show the
   command's menu picture (its name when it has none) and run it as its
   menu item would; a tool's button selects the tool and stays pushed in
   while it is the tool. Reset (Command Bars page) and Reset Bar Positions

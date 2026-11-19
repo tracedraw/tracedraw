@@ -117,6 +117,71 @@ pub fn twisted_polygon_path(rect: Rect, points: u32, sharpness: f64, twist: f64)
     path
 }
 
+/// [`twisted_polygon_path`] with every side bent the same way (#2451):
+/// each side from one point to the next becomes a curve whose control
+/// points stand off the side's thirds by `bend` times the side's length,
+/// away from the inside of the outline (towards it when negative). Every
+/// side gets the same curve, so a polygon or star keeps its mirror
+/// symmetry. The curves are made in the unit circle and then stretched
+/// to `rect`, as the points are.
+pub fn bent_polygon_path(
+    rect: Rect,
+    points: u32,
+    sharpness: f64,
+    twist: f64,
+    bend: f64,
+) -> BezPath {
+    let bend = if bend.is_finite() {
+        bend.clamp(-MAX_POLYGON_BEND, MAX_POLYGON_BEND)
+    } else {
+        0.0
+    };
+    if bend == 0.0 {
+        return twisted_polygon_path(rect, points, sharpness, twist);
+    }
+    let c = rect.center();
+    let (rx, ry) = (rect.width() / 2.0, rect.height() / 2.0);
+    let page = |x: f64, y: f64| Point::new(c.x + rx * x, c.y + ry * y);
+    let unit: Vec<(f64, f64)> = polygon_unit_vertices(points, sharpness, twist).collect();
+    let mut path = BezPath::new();
+    let Some(&(x0, y0)) = unit.first() else {
+        return path;
+    };
+    path.move_to(page(x0, y0));
+    // Which side is out: the way the points go round.
+    let area: f64 = (0..unit.len())
+        .map(|i| {
+            let (ax, ay) = unit[i];
+            let (bx, by) = unit[(i + 1) % unit.len()];
+            ax * by - bx * ay
+        })
+        .sum();
+    let out = if area < 0.0 { -bend } else { bend };
+    for i in 0..unit.len() {
+        let (ax, ay) = unit[i];
+        let (bx, by) = unit[(i + 1) % unit.len()];
+        let (dx, dy) = (bx - ax, by - ay);
+        let (nx, ny) = (dy * out, -dx * out);
+        path.curve_to(
+            page(ax + dx / 3.0 + nx, ay + dy / 3.0 + ny),
+            page(bx - dx / 3.0 + nx, by - dy / 3.0 + ny),
+            page(bx, by),
+        );
+    }
+    path.close_path();
+    path
+}
+
+/// The points a polygon or star's outline goes through, in the unit
+/// circle (y down, centre at 0), in order: its vertices and, on a star,
+/// the points between them.
+pub fn polygon_unit_points(points: u32, sharpness: f64, twist: f64) -> Vec<(f64, f64)> {
+    polygon_unit_vertices(points, sharpness, twist).collect()
+}
+
+/// The most a polygon's sides bend either way, as a part of their length.
+pub const MAX_POLYGON_BEND: f64 = 2.0;
+
 /// Whether `sharpness` makes a polygon a star: any finite value but 0
 /// (a negative one an inverted star).
 pub fn is_star_sharpness(sharpness: f64) -> bool {
@@ -521,6 +586,67 @@ fn open_bspline_path(points: &[Point]) -> BezPath {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #2451: a polygon's sides bent alike bow out (in when negative) by
+    /// the same curve each, as far at every side's middle; unbent it is
+    /// the plain polygon, and the bend is kept in a native file only when
+    /// it is not 0.
+    #[test]
+    fn bent_polygon_sides_all_take_the_same_curve() {
+        let r = Rect::new(-10.0, -10.0, 10.0, 10.0);
+        assert_eq!(
+            bent_polygon_path(r, 6, 0.0, 0.0, 0.0),
+            twisted_polygon_path(r, 6, 0.0, 0.0)
+        );
+        let mid = |bend: f64| -> Vec<f64> {
+            bent_polygon_path(r, 6, 0.0, 0.0, bend)
+                .segments()
+                .map(|s| kurbo::ParamCurve::eval(&s, 0.5).to_vec2().hypot())
+                .collect()
+        };
+        let flat = mid(0.0);
+        let out = mid(0.2);
+        let inward = mid(-0.2);
+        assert_eq!(out.len(), 6);
+        for k in 0..6 {
+            assert!((out[k] - out[0]).abs() < 1e-9 && (inward[k] - inward[0]).abs() < 1e-9);
+        }
+        // A side 10 long, its middle 0.75 * 0.2 * 10 = 1.5 further out.
+        assert!((out[0] - flat[0] - 1.5).abs() < 1e-6, "{out:?} {flat:?}");
+        assert!(
+            (flat[0] - inward[0] - 1.5).abs() < 1e-6,
+            "{inward:?} {flat:?}"
+        );
+        // A star's sides bend alike too: its outline stays mirror symmetric.
+        let star: Vec<f64> = bent_polygon_path(r, 5, 0.5, 0.0, 0.3)
+            .segments()
+            .map(|s| kurbo::ParamCurve::eval(&s, 0.5).to_vec2().hypot())
+            .collect();
+        for k in 0..10 {
+            assert!((star[k] - star[0]).abs() < 1e-9, "{star:?}");
+        }
+        let kind = crate::document::ShapeKind::Polygon {
+            rect: r,
+            points: 6,
+            sharpness: 0.0,
+            complex: None,
+            twist: 0.0,
+            bend: 0.0,
+        };
+        assert!(!serde_json::to_string(&kind).unwrap().contains("bend"));
+        let bent = crate::document::ShapeKind::Polygon {
+            rect: r,
+            points: 6,
+            sharpness: 0.0,
+            complex: None,
+            twist: 0.0,
+            bend: 0.25,
+        };
+        let json = serde_json::to_string(&bent).unwrap();
+        assert!(json.contains("\"bend\":0.25"), "{json}");
+        let back: crate::document::ShapeKind = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, bent);
+    }
 
     /// The corner points of a closed polygon path, in order.
     fn corners(p: &BezPath) -> Vec<Point> {

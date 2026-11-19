@@ -54,6 +54,8 @@ struct Actions {
     locked: Option<(LayerId, bool)>,
     scope: Option<(LayerId, MasterScope)>,
     in_front: Option<(LayerId, bool)>,
+    /// The desktop takes objects put beside the page, or not (#3100).
+    desktop_takes: Option<bool>,
     pick: Option<LayerId>,
     select: Option<ShapeId>,
     /// An object's eye or padlock was clicked (#832).
@@ -912,6 +914,17 @@ fn layer_rows(
             {
                 act.in_front = Some((layer.id, front));
                 ui.close();
+            }
+            if layer.desktop {
+                let mut takes = app.settings.desktop_takes_objects_beside_page;
+                if ui
+                    .checkbox(&mut takes, tr("docker.desktop_takes_beside_page"))
+                    .on_hover_text(tr("docker.desktop_takes_beside_page_tip"))
+                    .clicked()
+                {
+                    act.desktop_takes = Some(takes);
+                    ui.close();
+                }
             }
             // Its objects become a layer of the page shown (#1477).
             if ui.button(tr("docker.master_to_page")).clicked() {
@@ -1843,7 +1856,7 @@ fn select_layer_objects(app: &mut App, layer: LayerId) {
 /// The commands that move the top-level objects `ids` to the top of
 /// `layer`, keeping their order (bottom first) and their place on the
 /// page; objects already there stay.
-fn move_commands(app: &App, ids: &[ShapeId], layer: LayerId) -> Vec<Command> {
+pub(crate) fn move_commands(app: &App, ids: &[ShapeId], layer: LayerId) -> Vec<Command> {
     let doc = app.doc();
     let mut found: Vec<(usize, usize, Shape)> = Vec::new();
     for (rank, l) in doc.all_layers().enumerate() {
@@ -2654,6 +2667,9 @@ fn apply(app: &mut App, ui: &Ui, mut act: Actions) {
     }
     if let Some((layer, in_front)) = act.in_front {
         app.run(Command::SetLayerInFront { layer, in_front });
+    }
+    if let Some(takes) = act.desktop_takes {
+        app.settings.desktop_takes_objects_beside_page = takes;
     }
     if let Some(layer) = act.collapse {
         if !app.objects_collapsed.remove(&layer) {

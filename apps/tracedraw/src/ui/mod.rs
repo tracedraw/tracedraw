@@ -1925,6 +1925,75 @@ mod tests {
         frame(&ctx, &mut app);
     }
 
+    /// #3211: the toolbox takes commands dragged onto it, after its
+    /// tools; one without a picture (Page Border) shows the start of its
+    /// name and runs with a click, and dragged off it goes.
+    #[test]
+    fn the_toolbox_takes_commands_after_its_tools() {
+        use crate::ui::bar_items::{apply_drop, drop_target, items, ItemBar, ItemDrag};
+        let ctx = crate::theme::ui_context();
+        let mut app = mixed_app();
+        app.show_welcome = false;
+        frame(&ctx, &mut app);
+        frame(&ctx, &mut app);
+        let drawn = |app: &App| {
+            app.shown_bar_slots
+                .iter()
+                .find(|s| s.bar == ItemBar::Toolbox)
+                .cloned()
+                .expect("the toolbox takes drops")
+        };
+        let toolbox = drawn(&app);
+        assert!(toolbox.items.is_empty(), "no commands at first");
+        assert!(toolbox.vertical, "a column on the left");
+        // A drop anywhere on the toolbox goes after its tools.
+        assert_eq!(
+            drop_target(&app.shown_bar_slots, toolbox.rect.center()).map(|t| (t.0, t.1)),
+            Some((ItemBar::Toolbox, 0))
+        );
+        let key = "menu.view.page_border";
+        let page_border = ItemDrag {
+            item: key.into(),
+            from: None,
+        };
+        apply_drop(&mut app, &page_border, Some((ItemBar::Toolbox, 0)));
+        assert_eq!(items(&app, ItemBar::Toolbox), vec![key.to_string()]);
+        frame(&ctx, &mut app);
+        frame(&ctx, &mut app);
+        let r = drawn(&app).items[0];
+        assert!(
+            r.top() > toolbox.rect.top() + 100.0,
+            "after the tools: {r:?}"
+        );
+        let shown = app.show_page_border;
+        frame_with(&ctx, &mut app, vec![egui::Event::PointerMoved(r.center())]);
+        frame_with(
+            &ctx,
+            &mut app,
+            vec![button(r.center(), true, egui::PointerButton::Primary)],
+        );
+        frame_with(
+            &ctx,
+            &mut app,
+            vec![button(r.center(), false, egui::PointerButton::Primary)],
+        );
+        frame(&ctx, &mut app);
+        assert_ne!(app.show_page_border, shown, "the button runs Page Border");
+        // Off the toolbox it goes; Reset leaves it with its tools only.
+        apply_drop(
+            &mut app,
+            &ItemDrag {
+                item: key.into(),
+                from: Some((ItemBar::Toolbox, 0)),
+            },
+            None,
+        );
+        assert!(items(&app, ItemBar::Toolbox).is_empty());
+        apply_drop(&mut app, &page_border, Some((ItemBar::Toolbox, 0)));
+        crate::ui::bars::reset(&mut app);
+        assert!(items(&app, ItemBar::Toolbox).is_empty());
+    }
+
     /// #3264: a toolbar the user makes in Options > Customization >
     /// Command Bars is drawn in a row of its own, empty at first; a menu
     /// command without a picture dragged onto it from the Commands page

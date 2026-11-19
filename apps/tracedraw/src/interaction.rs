@@ -4123,11 +4123,17 @@ impl App {
                 if std::mem::take(&mut self.ctrl_copy) {
                     self.drag_copy = true;
                 }
+                let before_move = self.engine.last_step_id();
                 if total.hypot() > 1e-6 {
                     self.finish_transform(Affine::translate(total));
                 }
                 if let Some((idx, r)) = to_page {
                     self.give_selection_to_shown_page(idx, r);
+                } else if self.drop_frame.is_none() && self.page_drag_group.is_none() {
+                    // Let go beside the page, or back on it from the
+                    // desktop, with the desktop taking such objects:
+                    // they change layer in the move's step (#3100).
+                    self.settle_beside_page(before_move);
                 }
                 if let Some(mark) = mark {
                     self.engine.end_group(mark, "Move to Page");

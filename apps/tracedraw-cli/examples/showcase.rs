@@ -476,6 +476,7 @@ fn star(cx: f64, cy: f64, r: f64, points: u32, sharpness: f64) -> ShapeKind {
         sharpness,
         complex: None,
         twist: 0.0,
+        bend: 0.0,
     }
 }
 
