@@ -2157,10 +2157,32 @@ fn blend(
         (nodes.is_none() && local == end.local_path()).then(|| local.bounding_box().center());
     let fa = start.fill.preview_color();
     let fb = end.fill.preview_color();
-    let ca = start.stroke.as_ref().map(|s| s.color);
-    let cb = end.stroke.as_ref().map(|s| s.color);
-    let wa = start.stroke.as_ref().map(|s| s.width).unwrap_or(0.0);
-    let wb = end.stroke.as_ref().map(|s| s.width).unwrap_or(0.0);
+    // An outline on one object only: the steps take it, so a blend from
+    // an object without an outline to an outlined one draws every step
+    // outlined (they drew none when the start had none).
+    let stroke = start.stroke.clone().or_else(|| end.stroke.clone());
+    let ca = start
+        .stroke
+        .as_ref()
+        .or(end.stroke.as_ref())
+        .map(|s| s.color);
+    let cb = end
+        .stroke
+        .as_ref()
+        .or(start.stroke.as_ref())
+        .map(|s| s.color);
+    let wa = start
+        .stroke
+        .as_ref()
+        .or(end.stroke.as_ref())
+        .map(|s| s.width)
+        .unwrap_or(0.0);
+    let wb = end
+        .stroke
+        .as_ref()
+        .or(start.stroke.as_ref())
+        .map(|s| s.width)
+        .unwrap_or(0.0);
     let ba = a.bounding_box();
     let bb = b.bounding_box();
     let ca_center = ba.center();
@@ -2175,6 +2197,7 @@ fn blend(
         s.effects.clear();
         s.shadow = None;
         s.transform = Affine::IDENTITY;
+        s.stroke = stroke.clone();
         let mut geo = match turned {
             Some(pivot) => {
                 let g = lerp_transform(start.transform, end.transform, pivot, m) * local.clone();
@@ -5471,6 +5494,109 @@ mod tests {
         let (p, d) = point_along(&line, 0.25).expect("a point");
         assert!((p.x - 25.0).abs() < 1e-6 && d.x > 0.0, "{p:?}");
         assert!(point_along(&BezPath::new(), 0.5).is_none());
+    }
+
+    /// A rectangle without an outline blended into an outlined letter
+    /// (text converted to curves): every step is outlined, with the
+    /// letter's outline, and the steps follow when the letter moves or
+    /// the rectangle's corners are rounded afterwards.
+    #[test]
+    fn a_blend_into_an_outlined_letter_outlines_every_step_and_follows_edits() {
+        let mut a = rect_shape();
+        a.kind = ShapeKind::Rect {
+            rect: Rect::new(-100.0, -100.0, 200.0, 150.0),
+            radius: 0.0,
+            corners: None,
+        };
+        a.stroke = None;
+        let mut m = BezPath::new();
+        for (i, (x, y)) in [
+            (0.0, 0.0),
+            (0.0, 40.0),
+            (10.0, 40.0),
+            (20.0, 20.0),
+            (30.0, 40.0),
+            (40.0, 40.0),
+            (40.0, 0.0),
+            (30.0, 0.0),
+            (30.0, 25.0),
+            (20.0, 8.0),
+            (10.0, 25.0),
+            (10.0, 0.0),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if i == 0 {
+                m.move_to((x, y));
+            } else {
+                m.line_to((x, y));
+            }
+        }
+        m.close_path();
+        let mut b = Shape::new(
+            crate::ShapeId(2),
+            ShapeKind::Path {
+                path: m,
+                closed: true,
+            },
+        );
+        b.fill = Fill::Solid(Color::rgb8(255, 255, 255));
+        b.stroke = Some(crate::style::Stroke {
+            width: 0.35,
+            ..Default::default()
+        });
+        let with_end = |a: &Shape, b: &Shape| {
+            let mut s = a.clone();
+            s.effects.push(Effect::Blend {
+                end: Box::new(b.clone()),
+                steps: 6,
+                accel_objects: 0.0,
+                accel_colors: 0.0,
+                rotation: 0.0,
+                path: None,
+                rotate_on_path: false,
+                end_id: Some(b.id),
+                options: BlendOptions::default(),
+            });
+            evaluate(&s).above
+        };
+        let steps = with_end(&a, &b);
+        assert_eq!(steps.len(), 6);
+        for s in &steps {
+            let st = s.stroke.as_ref().expect("every step outlined");
+            assert!((st.width - 0.35).abs() < 1e-9, "{}", st.width);
+        }
+        // The letter moved: the step next to it moves with it.
+        let near = |steps: &[Shape]| steps[5].page_path().bounding_box();
+        let before = near(&steps);
+        let mut moved = b.clone();
+        moved.transform = Affine::translate((30.0, 20.0));
+        let after = near(&with_end(&a, &moved));
+        let shift = after.center() - before.center();
+        assert!(
+            (shift.x - 30.0 * 6.0 / 7.0).abs() < 0.5 && (shift.y - 20.0 * 6.0 / 7.0).abs() < 0.5,
+            "{shift:?}"
+        );
+        // The rectangle's corners rounded: the step next to it rounds
+        // too (its corner no longer reaches the box's corner).
+        let first = |steps: &[Shape]| steps[0].page_path();
+        let sharp = first(&steps);
+        let corner = sharp.bounding_box().origin();
+        assert!(sharp.winding(corner + Vec2::new(3.0, 3.0)) != 0);
+        let mut round = a.clone();
+        round.kind = ShapeKind::Rect {
+            rect: Rect::new(-100.0, -100.0, 200.0, 150.0),
+            radius: 30.0,
+            corners: None,
+        };
+        let rounded = first(&with_end(&round, &b));
+        let corner = rounded.bounding_box().origin();
+        assert_eq!(
+            rounded.winding(corner + Vec2::new(3.0, 3.0)),
+            0,
+            "{rounded:?}"
+        );
     }
 
     #[test]
