@@ -981,7 +981,7 @@ mod tests {
             hue: 90.0,
             ..Default::default()
         };
-        assert!(app.recolor_shapes(vec![s.blue_r], r));
+        assert!(app.recolor_shapes(vec![s.blue_r], r.clone()));
         assert_eq!(app.repeat_on_similar(Similar::Fill), 0, "no other blue");
         app.select(vec![s.red_a]);
         assert!(app.recolor_shapes(vec![s.red_a], r));
