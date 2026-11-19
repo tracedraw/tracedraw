@@ -552,6 +552,14 @@ impl App {
         let Some(layer) = self.active_layer() else {
             return;
         };
+        // Inside a symmetry the area goes on the original, mirrored back
+        // from the copy clicked, and joins the symmetry: its mirrors fill
+        // the same area in every copy (#2998).
+        let symmetry = self.area_fill_symmetry(&shapes, p);
+        let path = match symmetry {
+            Some((_, back)) => back * path,
+            None => path,
+        };
         let id = self.engine.new_shape_id();
         let mut s = Shape::new(id, ShapeKind::Path { path, closed: true });
         // The bar's choices: the default fill (a colour when the default
@@ -576,6 +584,55 @@ impl App {
         s.name = Some("Area Fill".into());
         self.run(Command::AddShape { layer, shape: s });
         self.select(vec![id]);
+        if let Some((sym, _)) = symmetry {
+            let editing = self.symmetry_edit;
+            self.symmetry_edit = Some(sym);
+            self.join_symmetry(&[id]);
+            if editing.is_none() {
+                // Not being edited: the symmetry is selected as a whole.
+                if let Some(g) = self.symmetry_edit.take() {
+                    self.select(vec![g]);
+                }
+            }
+        }
+    }
+
+    /// The symmetry object an Area Fill click at `p` falls in, among the
+    /// page's top-level `shapes` (the one being edited first), and the
+    /// transformation taking the click's copy back to the original's side
+    /// (#2998).
+    fn area_fill_symmetry(&self, shapes: &[Shape], p: Point) -> Option<(ShapeId, Affine)> {
+        let sym_of = |s: &Shape| {
+            s.effects.iter().find_map(|e| match e {
+                Effect::Symmetry {
+                    center,
+                    angle,
+                    lines,
+                } => Some((*center, *angle, *lines)),
+                _ => None,
+            })
+        };
+        let mut order: Vec<&Shape> = shapes.iter().filter(|s| sym_of(s).is_some()).collect();
+        // The topmost first, the edited one before all.
+        order.reverse();
+        if let Some(edit) = self.symmetry_edit {
+            order.sort_by_key(|s| s.id != edit);
+        }
+        for s in order {
+            let (center, angle, lines) = sym_of(s)?;
+            let ev = tracedraw_core::live::evaluate(s);
+            let mut whole = ev.main.bounds();
+            for part in ev.above.iter().chain(&ev.below) {
+                whole = whole.union(part.bounds());
+            }
+            if self.symmetry_edit != Some(s.id) && !whole.contains(p) {
+                continue;
+            }
+            let origin = ev.main.bounds().center();
+            let back = tracedraw_core::live::symmetry_back_to(center, angle, lines, origin, p);
+            return Some((s.id, back));
+        }
+        None
     }
 
     /// Effect nodes (perspective, mesh) under the pointer, for the Shape

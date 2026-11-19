@@ -1612,6 +1612,35 @@ fn blend_pic(
 
 use egui::Color32;
 
+/// Where the blend's start and end objects sit along its path, in % of
+/// its length: changing either moves the object there (#2946).
+pub(crate) fn blend_path_ends(app: &mut App, ui: &mut Ui, opt: &tracedraw_core::live::BlendOptions) {
+    let (a, b) = opt.path_ends();
+    let (mut from, mut to) = (a * 100.0, b * 100.0);
+    let mut moved = false;
+    for (key, v) in [
+        ("docker.blend_path_start", &mut from),
+        ("docker.blend_path_end", &mut to),
+    ] {
+        ui.horizontal(|ui| {
+            ui.label(tr(key));
+            moved |= ui
+                .add(
+                    crate::ui::field::NumField::new(v)
+                        .range(0.0..=100.0)
+                        .speed(0.5)
+                        .max_decimals(1)
+                        .suffix(" %"),
+                )
+                .rich_tip(crate::ui::tips::keyed(key))
+                .changed();
+        });
+    }
+    if moved {
+        app.set_blend_path_ends(from / 100.0, to / 100.0);
+    }
+}
+
 /// The Blend docker: steps or spacing, rotation with Loop, the path
 /// options, the acceleration of objects and colours (with Apply to
 /// sizing, Link acceleration and Reset), the way the colours turn, and
@@ -1771,6 +1800,9 @@ fn blend(app: &mut App, ui: &mut Ui) {
         .rich_tip(crate::ui::tips::keyed("docker.rotate_all_objects"))
         .rich_disabled_tip(crate::ui::tips::keyed("docker.rotate_all_objects"))
         .changed();
+    if has_path {
+        blend_path_ends(app, ui, &opt);
+    }
     section(ui, Some(&tr("docker.blend_acceleration")));
     ui.spacing_mut().slider_width = (ui.available_width() - 80.0).clamp(80.0, 200.0);
     ui.horizontal(|ui| {
@@ -1957,6 +1989,14 @@ fn blend(app: &mut App, ui: &mut Ui) {
             {
                 app.pending_blend_path = true;
                 app.status = tr("status.click_blend_path");
+            }
+            if has_path
+                && ui
+                    .button(tr("docker.detach_path"))
+                    .rich_tip(crate::ui::tips::keyed("docker.detach_path"))
+                    .clicked()
+            {
+                app.detach_blend_path();
             }
             if ui
                 .button(tr("docker.clear_blend"))

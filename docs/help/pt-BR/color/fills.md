@@ -128,6 +128,9 @@ Com **Até a borda do contorno** ligado na barra de propriedades, os contornos
 contam com a largura com que são desenhados: a área para nas bordas internas
 deles, e linhas que só se tocam pela largura ainda a fecham.
 
+Dentro de uma [simetria](../objects/symmetry.md), um clique numa cópia preenche
+a mesma área em todas as cópias: o novo objeto passa a fazer parte da simetria.
+
 ## Preenchimentos de malha {#mesh-fill}
 
 Um preenchimento de malha é uma grade de nós sobre um objeto, cada nó com cor e

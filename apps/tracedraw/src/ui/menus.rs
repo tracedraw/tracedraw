@@ -3607,7 +3607,7 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
             ui,
             "menu.object.symmetry_create",
             "Alt+S",
-            has && !has_sym && !editing,
+            !has_sym && !editing,
         ) {
             app.create_symmetry();
         }

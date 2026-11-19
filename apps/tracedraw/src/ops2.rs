@@ -1075,6 +1075,10 @@ impl App {
     pub fn create_symmetry(&mut self) {
         let mut shapes = self.selected_shapes();
         if shapes.is_empty() {
+            // Nothing selected: an empty symmetry, its mirror line down
+            // the middle of the page, straight into editing it; what is
+            // drawn then joins it (#2995).
+            self.create_empty_symmetry();
             return;
         }
         let Some(b) = self.selection_bounds() else {
@@ -1121,6 +1125,41 @@ impl App {
             }
         }
         // Straight into editing it, as Edit Symmetry does.
+        self.edit_symmetry();
+    }
+
+    /// Object > Symmetry > Create New Symmetry with nothing selected
+    /// (#2995): an empty symmetry group on the active layer, mirroring
+    /// about a vertical line through the page's centre, in editing. A
+    /// symmetry finished with nothing drawn in it goes away.
+    fn create_empty_symmetry(&mut self) {
+        let Some(layer) = self.active_layer() else {
+            return;
+        };
+        let center = self.page_rect().center();
+        let id = self.engine.new_shape_id();
+        let mut g = Shape::new(
+            id,
+            ShapeKind::Group {
+                children: Vec::new(),
+            },
+        );
+        g.fill = Fill::None;
+        g.stroke = None;
+        g.name = Some("Symmetry".into());
+        g.effects.push(Effect::Symmetry {
+            center,
+            angle: 90.0,
+            lines: 1,
+        });
+        if let Err(e) = self
+            .engine
+            .run_with_label(&Command::AddShape { layer, shape: g }, "Symmetry")
+        {
+            self.status = e.to_string();
+            return;
+        }
+        self.selection = vec![id];
         self.edit_symmetry();
     }
 
@@ -1253,6 +1292,18 @@ impl App {
         *self.symmetry_doc.borrow_mut() = None;
         if let Some(id) = self.symmetry_edit.take() {
             self.status.clear();
+            // An empty symmetry (#2995) finished with nothing drawn in it
+            // goes, in the step that made it when nothing came between.
+            let empty = self
+                .doc()
+                .find_shape(id)
+                .is_some_and(|s| matches!(&s.kind, ShapeKind::Group { children } if children.is_empty()));
+            if empty {
+                if let Err(e) = self.engine.amend(&Command::DeleteShapes { shapes: vec![id] }) {
+                    self.status = e.to_string();
+                }
+                self.selection.retain(|s| *s != id);
+            }
             self.raster.borrow_mut().invalidate();
             // Nothing of the editing stays. The boxes measured while it was
             // edited are the object's own (without the copies): measured
@@ -5384,20 +5435,30 @@ impl App {
             return;
         };
         let path = path_shape.page_path();
-        for s in self.selected_shapes() {
-            if s.id == curve {
+        // The blends of the selection, also one picked by its end object;
+        // a new path starts from its two ends again (#2946).
+        let mut cmds = Vec::new();
+        for (id, _) in self.selected_blends() {
+            if id == curve {
                 continue;
             }
+            let Some(s) = self.doc().find_shape(id) else {
+                continue;
+            };
             let mut effects = s.effects.clone();
             for e in effects.iter_mut() {
-                if let Effect::Blend { path: p, .. } = e {
+                if let Effect::Blend {
+                    path: p, options, ..
+                } = e
+                {
                     *p = Some(path.clone());
+                    options.path_range = None;
                 }
             }
-            self.run(Command::SetEffects {
-                shape: s.id,
-                effects,
-            });
+            cmds.push(Command::SetEffects { shape: id, effects });
+        }
+        if let Err(e) = self.engine.run_batch("Blend Path", &cmds) {
+            self.status = e.to_string();
         }
     }
 
@@ -8614,7 +8675,7 @@ mod clip_frame_tests {
 #[cfg(test)]
 mod symmetry_tests {
     use crate::app::App;
-    use tracedraw_core::geometry::Rect;
+    use tracedraw_core::geometry::{Rect, Shape as _};
     use tracedraw_core::live::Effect;
     use tracedraw_core::{ShapeId, ShapeKind};
 
@@ -8640,6 +8701,122 @@ mod symmetry_tests {
             Some(ShapeKind::Group { children }) => children.iter().map(|c| c.id).collect(),
             _ => Vec::new(),
         }
+    }
+
+    /// Area Fill in a copy of a symmetry fills the same area on the
+    /// original, inside the symmetry, so every copy shows it filled, in
+    /// one undo step; in editing or not (#2998: only the area clicked was
+    /// filled).
+    #[test]
+    fn area_fill_in_a_symmetry_fills_every_copy() {
+        for editing in [true, false] {
+            let mut app = App::headless();
+            let a = rect(&mut app, Rect::new(10.0, 10.0, 30.0, 30.0));
+            app.run(tracedraw_core::Command::SetFill {
+                shapes: vec![a],
+                fill: tracedraw_core::Fill::None,
+            });
+            app.run(tracedraw_core::Command::SetStroke {
+                shapes: vec![a],
+                stroke: Some(tracedraw_core::Stroke::new(tracedraw_core::Color::BLACK, 0.2)),
+            });
+            app.select(vec![a]);
+            // The line at x = 30: the copy spans 30..50.
+            app.create_symmetry();
+            if !editing {
+                app.finish_symmetry_edit();
+            }
+            app.area_fill_mode = 1;
+            let depth = app.engine.history_labels().0.len();
+            app.area_fill_at(tracedraw_core::geometry::Point::new(40.0, 20.0));
+            assert_eq!(app.engine.history_labels().0.len(), depth + 1, "one step");
+            let sym = app
+                .doc()
+                .all_layers()
+                .flat_map(|l| &l.shapes)
+                .find(|s| s.effects.iter().any(|e| matches!(e, Effect::Symmetry { .. })))
+                .cloned()
+                .expect("the symmetry");
+            let ShapeKind::Group { children } = &sym.kind else {
+                panic!("a group: {:?}", sym.kind);
+            };
+            assert_eq!(children.len(), 2, "editing {editing}");
+            let filled = &children[1];
+            let b = filled.bounds();
+            assert!(
+                (b.x0 - 10.0).abs() < 0.5 && (b.x1 - 30.0).abs() < 0.5,
+                "on the original: {b:?}"
+            );
+            assert!(matches!(filled.fill, tracedraw_core::Fill::Solid(_)));
+            // Its mirror fills the copy clicked.
+            let ev = tracedraw_core::live::evaluate(&sym);
+            let copy = ev.above.iter().any(|m| {
+                let ShapeKind::Group { children } = &m.kind else {
+                    return false;
+                };
+                children.iter().any(|c| {
+                    let mb = (m.transform * c.transform * c.local_path()).bounding_box();
+                    matches!(c.fill, tracedraw_core::Fill::Solid(_))
+                        && (mb.x0 - 30.0).abs() < 0.5
+                        && (mb.x1 - 50.0).abs() < 0.5
+                })
+            });
+            assert!(copy, "editing {editing}");
+            let none_there = app
+                .doc()
+                .all_layers()
+                .flat_map(|l| &l.shapes)
+                .all(|s| s.bounds().x0 < 29.0);
+            assert!(none_there, "no area left on the copy");
+        }
+    }
+
+    /// Create New Symmetry with nothing selected: an empty symmetry about
+    /// the page's middle, in editing; what is drawn joins it and is
+    /// mirrored; finished empty it goes (#2995: an object had to be
+    /// selected first).
+    #[test]
+    fn a_new_symmetry_starts_empty_with_nothing_selected() {
+        let mut app = App::headless();
+        app.select(Vec::new());
+        let depth = app.engine.history_labels().0.len();
+        app.create_symmetry();
+        assert_eq!(app.engine.history_labels().0.len(), depth + 1, "one step");
+        let g = app.symmetry_edit.expect("editing the new symmetry");
+        assert!(has_symmetry(&app, g));
+        assert!(members(&app, g).is_empty());
+        let page = app.page_rect();
+        let (_, centre, angle, _) = app.edited_symmetry().expect("symmetry");
+        assert!((centre - page.center()).hypot() < 1e-9, "{centre:?}");
+        assert!((angle - 90.0).abs() < 1e-9);
+        // Drawn now: it joins the symmetry and its mirror is drawn.
+        let a = rect(&mut app, Rect::new(10.0, 10.0, 30.0, 30.0));
+        let g = app.symmetry_edit.expect("still editing");
+        assert_eq!(members(&app, g), vec![a]);
+        let sym = app.doc().find_shape(g).cloned().expect("group");
+        let ev = tracedraw_core::live::evaluate(&sym);
+        let mirrored = ev.above.iter().chain(ev.below.iter()).any(|m| {
+            let b = m.bounds();
+            (b.x1 - (2.0 * page.center().x - 10.0)).abs() < 0.01
+        });
+        assert!(mirrored, "{:?}", ev.above);
+        app.finish_symmetry_edit();
+        assert!(app.doc().find_shape(g).is_some());
+        // Started and finished with nothing drawn: nothing stays.
+        let groups = |app: &App| {
+            app.doc()
+                .all_layers()
+                .flat_map(|l| &l.shapes)
+                .filter(|s| matches!(s.kind, ShapeKind::Group { .. }))
+                .count()
+        };
+        let before = groups(&app);
+        app.select(Vec::new());
+        app.create_symmetry();
+        assert_eq!(groups(&app), before + 1);
+        app.finish_symmetry_edit();
+        assert_eq!(groups(&app), before);
+        assert!(app.selection.is_empty());
     }
 
     /// Several objects become one symmetry group in one step, each still

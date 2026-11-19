@@ -69,7 +69,21 @@ lines
    The object is put on top of the active layer, selected, with the
    fill and outline the bar says; one undo step.
 
+## Inside a symmetry (#2998)
+
+A click that falls in a symmetry object (the one being edited, or the
+topmost whose original and copies cover the click) fills every copy:
+the area is taken back to the original's side by the mirror or turn
+that made the copy clicked (`live::symmetry_back_to`: the slice
+between two mirror lines holding the original's middle) and joins the
+symmetry as one of its objects, so its mirrors fill the same area in
+each copy. One undo step; out of editing the symmetry is selected
+afterwards, in editing the new object inside it.
+
 ## Checks
+
+- `ops2::symmetry_tests::area_fill_in_a_symmetry_fills_every_copy` and
+  `live::tests::a_point_in_a_symmetry_copy_goes_back_to_the_original`
 
 - `ui::fill_tool_bars::tests::smart_fill_takes_the_bars_fill_and_outline`
   (a 40 mm square's inside becomes a 40 mm object; the bar's fill and

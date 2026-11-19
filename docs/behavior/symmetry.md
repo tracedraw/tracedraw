@@ -40,6 +40,13 @@ running toward a mirror line runs toward it from the other side too
   group (one "Symmetry" undo step), so they mirror together; Ctrl+click
   picks one of them inside the group (round handles) to move or colour
   it alone, the copies following.
+- With nothing selected (#2995) Create New Symmetry (enabled then, as
+  Alt+S) adds an empty symmetry group named "Symmetry" to the active
+  layer, its vertical line through the page's centre, and goes into
+  editing it: what is drawn then joins it and is mirrored. Finished
+  with nothing in it, the empty group goes again, folded into the step
+  that made it when nothing came between
+  (`ops2::symmetry_tests::a_new_symmetry_starts_empty_with_nothing_selected`).
 - While a symmetry is edited, an object drawn, pasted or duplicated
   joins it: the group takes it in (an object that was alone with the
   symmetry becomes a group of it and the newcomer, the symmetry moving

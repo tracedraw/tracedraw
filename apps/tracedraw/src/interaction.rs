@@ -5059,7 +5059,7 @@ impl App {
         if pressed(Key::S, cmd | Modifiers::SHIFT) {
             self.save(true);
         }
-        if pressed(Key::S, Modifiers::ALT) && !self.selection.is_empty() {
+        if pressed(Key::S, Modifiers::ALT) && self.symmetry_edit.is_none() {
             self.create_symmetry();
         }
         if pressed(Key::E, Modifiers::ALT) {

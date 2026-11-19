@@ -2078,10 +2078,14 @@ fn blend(
         }
         (pts, cum)
     });
+    // The part of the path the blend runs along: from where its start
+    // sits to where its end sits (#2946).
+    let (r0, r1) = options.path_ends();
     let path_len = path_samples
         .as_ref()
         .and_then(|(_, cum)| cum.last().copied())
-        .unwrap_or(0.0);
+        .unwrap_or(0.0)
+        * (r1 - r0).abs();
     // Fixed spacing along a path sets the number of steps.
     let n = match options.spacing {
         Some(d) if d > 1e-6 && path_len > 0.0 => ((path_len / d).floor() as usize)
@@ -2223,7 +2227,7 @@ fn blend(
         if let Some((pts, cum)) = &path_samples {
             if pts.len() >= 2 {
                 let total = *cum.last().unwrap_or(&0.0);
-                let s_at = to * total;
+                let s_at = (r0 + (r1 - r0) * to) * total;
                 let k = cum
                     .partition_point(|c| *c <= s_at)
                     .saturating_sub(1)
@@ -2353,6 +2357,50 @@ pub struct BlendOptions {
     /// the steps do not twist.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub map_nodes: Option<BlendNodes>,
+    /// Along a path: where the start and the end of the blend sit on it,
+    /// as shares of its length (0 its start, 1 its end), so the two
+    /// objects can stand anywhere along it (#2946). `None`: its two ends.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_range: Option<[f64; 2]>,
+}
+
+impl BlendOptions {
+    /// [`BlendOptions::path_range`] made safe: two shares from 0 to 1.
+    pub fn path_ends(&self) -> (f64, f64) {
+        let clean = |v: f64, or: f64| if v.is_finite() { v.clamp(0.0, 1.0) } else { or };
+        match self.path_range {
+            Some([a, b]) => (clean(a, 0.0), clean(b, 1.0)),
+            None => (0.0, 1.0),
+        }
+    }
+}
+
+/// The point `share` of the way along `path` (0 its start, 1 its end), by
+/// length, and the direction it runs there; `None` for a path of no
+/// length (#2946).
+pub fn point_along(path: &BezPath, share: f64) -> Option<(Point, Vec2)> {
+    let mut pts = Vec::new();
+    kurbo::flatten(path.elements().iter().copied(), 0.05, |el| match el {
+        PathEl::MoveTo(q) | PathEl::LineTo(q) => pts.push(q),
+        _ => {}
+    });
+    let mut cum = vec![0.0];
+    for w in pts.windows(2) {
+        cum.push(cum.last().copied().unwrap_or(0.0) + (w[1] - w[0]).hypot());
+    }
+    let total = cum.last().copied().unwrap_or(0.0);
+    if pts.len() < 2 || total <= 1e-9 || !share.is_finite() {
+        return None;
+    }
+    let s_at = share.clamp(0.0, 1.0) * total;
+    let k = cum
+        .partition_point(|c| *c <= s_at)
+        .saturating_sub(1)
+        .min(pts.len() - 2);
+    let seg = pts[k + 1] - pts[k];
+    let len = seg.hypot().max(1e-9);
+    let u = ((s_at - cum[k]) / len).clamp(0.0, 1.0);
+    Some((pts[k] + seg * u, seg))
 }
 
 /// See [`BlendOptions::map_nodes`]: each pair is a first node and a point
@@ -2605,6 +2653,33 @@ pub fn carry_effects<'a>(effects: impl IntoIterator<Item = &'a mut Effect>, t: A
 /// line and the rotations they generate (2n - 1 copies).
 /// The mirror maps of a symmetry, page to page: one reflection a mirror
 /// line, then the rotations between them (the identity left out).
+/// The transformation that takes the point `p`, in one of a symmetry's
+/// copies, back to the original's side: the slice between two mirror
+/// lines that holds `origin` (the original's middle). The identity when
+/// `p` is on that side already (#2998: an area filled in a copy goes on
+/// the original, so its mirrors fill the other copies).
+pub fn symmetry_back_to(center: Point, angle: f64, lines: u8, origin: Point, p: Point) -> Affine {
+    let n = lines.clamp(1, 12) as usize;
+    let slice = std::f64::consts::PI / n as f64;
+    let a0 = angle.to_radians();
+    let wedge = |q: Point| -> Option<i64> {
+        let d = q - center;
+        if d.hypot() < 1e-9 {
+            return None;
+        }
+        let a = (d.y.atan2(d.x) - a0).rem_euclid(std::f64::consts::TAU);
+        Some(((a / slice).floor() as i64).rem_euclid(2 * n as i64))
+    };
+    let Some(target) = wedge(origin) else {
+        return Affine::IDENTITY;
+    };
+    std::iter::once(Affine::IDENTITY)
+        .chain(symmetry_mirrors(center, angle, lines))
+        .map(|m| m.inverse())
+        .find(|back| wedge(*back * p) == Some(target))
+        .unwrap_or(Affine::IDENTITY)
+}
+
 fn symmetry_mirrors(center: Point, angle: f64, lines: u8) -> Vec<Affine> {
     let n = lines.clamp(1, 12) as usize;
     let mut out = Vec::with_capacity(2 * n);
@@ -5318,6 +5393,84 @@ mod tests {
                 "{i}: {c:?}"
             );
         }
+    }
+
+    /// A point in any copy of a symmetry goes back to the original's side
+    /// by the one mirror or turn that made that copy (#2998).
+    #[test]
+    fn a_point_in_a_symmetry_copy_goes_back_to_the_original() {
+        let c = Point::new(50.0, 50.0);
+        // One vertical line: the right half mirrors back to the left.
+        let back = symmetry_back_to(c, 90.0, 1, Point::new(20.0, 50.0), Point::new(70.0, 40.0));
+        let q = back * Point::new(70.0, 40.0);
+        assert!((q.x - 30.0).abs() < 1e-9 && (q.y - 40.0).abs() < 1e-9, "{q:?}");
+        // On the original's side: as it is.
+        let same = symmetry_back_to(c, 90.0, 1, Point::new(20.0, 50.0), Point::new(30.0, 60.0));
+        assert_eq!(same, Affine::IDENTITY);
+        // Three lines (six slices): every point lands in the original's
+        // slice, at the same distance from the centre.
+        let origin = c + Vec2::new(20.0, 5.0);
+        let slice = |q: Point| {
+            let a = ((q - c).y.atan2((q - c).x)).rem_euclid(std::f64::consts::TAU);
+            (a / (std::f64::consts::PI / 3.0)).floor() as i64
+        };
+        for k in 0..12 {
+            let a = k as f64 * 0.5 + 0.1;
+            let p = c + Vec2::new(a.cos(), a.sin()) * 15.0;
+            let q = symmetry_back_to(c, 0.0, 3, origin, p) * p;
+            assert_eq!(slice(q), slice(origin), "{p:?} -> {q:?}");
+            assert!(((q - c).hypot() - 15.0).abs() < 1e-9);
+        }
+    }
+
+    /// Along a path, the steps run between where the start and the end
+    /// sit on it, anywhere along it, either way round (#2946).
+    #[test]
+    fn a_blend_runs_along_the_part_of_its_path_between_its_ends() {
+        let a = rect_shape();
+        let mut b = rect_shape();
+        b.transform = Affine::translate((100.0, 0.0));
+        let mut line = BezPath::new();
+        line.move_to((0.0, 50.0));
+        line.line_to((100.0, 50.0));
+        let centres = |range: Option<[f64; 2]>| {
+            let mut s = a.clone();
+            s.effects.push(Effect::Blend {
+                end: Box::new(b.clone()),
+                steps: 3,
+                accel_objects: 0.0,
+                accel_colors: 0.0,
+                rotation: 0.0,
+                path: Some(line.clone()),
+                rotate_on_path: false,
+                end_id: Some(b.id),
+                options: BlendOptions {
+                    path_range: range,
+                    ..Default::default()
+                },
+            });
+            evaluate(&s)
+                .above
+                .iter()
+                .map(|c| c.bounds().center().x)
+                .collect::<Vec<_>>()
+        };
+        let near = |xs: Vec<f64>, want: [f64; 3]| {
+            for (x, w) in xs.iter().zip(want) {
+                assert!((x - w).abs() < 0.5, "{xs:?} {want:?}");
+            }
+        };
+        // The whole path: at a quarter, half and three quarters.
+        near(centres(None), [25.0, 50.0, 75.0]);
+        // From 20 % to 60 %: between 20 and 60 mm.
+        near(centres(Some([0.2, 0.6])), [30.0, 40.0, 50.0]);
+        // The other way round: from 60 mm back to 20 mm.
+        near(centres(Some([0.6, 0.2])), [50.0, 40.0, 30.0]);
+        // A share out of range is held to the path.
+        near(centres(Some([-1.0, f64::NAN])), [25.0, 50.0, 75.0]);
+        let (p, d) = point_along(&line, 0.25).expect("a point");
+        assert!((p.x - 25.0).abs() < 1e-6 && d.x > 0.0, "{p:?}");
+        assert!(point_along(&BezPath::new(), 0.5).is_none());
     }
 
     #[test]

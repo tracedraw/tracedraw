@@ -121,6 +121,9 @@ With **Up to outline edges** on the property bar, outlines count as wide as
 they are drawn: the area stops at their inner edges, and lines that only touch
 through their width still close it.
 
+Inside a [symmetry](../objects/symmetry.md), a click in one copy fills the same
+area in every copy: the new object becomes part of the symmetry.
+
 ## Mesh fills {#mesh-fill}
 
 A mesh fill is a grid of nodes over an object, each node with its own color
