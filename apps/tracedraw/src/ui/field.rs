@@ -44,6 +44,8 @@ pub struct NumField<'a, N: Numeric> {
     /// The wheel over the box steps it without the box having the focus
     /// (on unless turned off).
     wheel_on_hover: bool,
+    /// The box takes the keyboard focus, its text selected.
+    focus: bool,
 }
 
 /// The width of the spin arrows at the right of a field, points.
@@ -147,6 +149,7 @@ impl<'a, N: Numeric> NumField<'a, N> {
             step: 1.0,
             fine_step: None,
             wheel_on_hover: true,
+            focus: false,
         }
     }
 
@@ -156,6 +159,14 @@ impl<'a, N: Numeric> NumField<'a, N> {
         if step.is_finite() && step > 0.0 {
             self.fine_step = Some(step);
         }
+        self
+    }
+
+    /// The box takes the keyboard focus now, its text selected to be
+    /// typed over (the Guidelines panel after a double click on a
+    /// guideline, #2883).
+    pub fn focus(mut self, on: bool) -> Self {
+        self.focus = on;
         self
     }
 
@@ -349,6 +360,9 @@ impl<N: Numeric> NumField<'_, N> {
                 .vertical_align(egui::Align::Center)
                 .desired_width(width),
         );
+        if self.focus {
+            resp.request_focus();
+        }
         // The arrows: up over down, each half the box's height. They take
         // clicks and drags but no focus: Tab from the box goes to the next
         // box, not to the arrows beside it (#1537).

@@ -699,22 +699,29 @@ impl App {
                     self.eyedropper_apply = false;
                 }
             } else if let Some(c) = self.sample_color_at(p, shift) {
-                self.eyedropper_color = Some(c);
-                self.eyedropper_apply = true;
-                self.status = crate::i18n::trf(
-                    "status.sampled_color",
-                    &[("c", &crate::app::color_description(c))],
-                );
-                // With objects selected the colour goes straight onto them,
-                // as a palette swatch would: the fill, or the outline with
-                // Shift, in one undo step (#2551).
-                if !self.selection.is_empty() {
-                    if shift {
-                        self.apply_outline_color(Some(c));
-                    } else {
-                        self.apply_fill(Fill::Solid(c));
-                    }
-                }
+                self.took_sampled_color(c, shift);
+            }
+        }
+    }
+
+    /// A colour the Color Eyedropper sampled, from an object or from the
+    /// window's pixels (#3040): it is kept, the tool goes on to Apply, and
+    /// with objects selected it goes straight onto them.
+    pub fn took_sampled_color(&mut self, c: Color, shift: bool) {
+        self.eyedropper_color = Some(c);
+        self.eyedropper_apply = true;
+        self.status = crate::i18n::trf(
+            "status.sampled_color",
+            &[("c", &crate::app::color_description(c))],
+        );
+        // With objects selected the colour goes straight onto them, as a
+        // palette swatch would: the fill, or the outline with Shift, in
+        // one undo step (#2551).
+        if !self.selection.is_empty() {
+            if shift {
+                self.apply_outline_color(Some(c));
+            } else {
+                self.apply_fill(Fill::Solid(c));
             }
         }
     }

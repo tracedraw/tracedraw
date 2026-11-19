@@ -85,6 +85,7 @@ mod export;
 mod export_assets;
 mod extrude_tool;
 mod eyedropper;
+mod screen_sample;
 mod file_hold;
 mod file_presence;
 mod files;
