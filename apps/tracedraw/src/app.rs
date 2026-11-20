@@ -2316,6 +2316,10 @@ pub struct App {
     /// Smart Fill stops at the edges of the outlines as they are drawn,
     /// their width, not at their middle line (#3321).
     pub area_fill_outline_edges: bool,
+    /// Smart Fill with Live on: a click paints the area the lines of a
+    /// group close off as a live fill of the group, which follows its
+    /// lines when they move ([`tracedraw_core::live_paint`]).
+    pub area_fill_live: bool,
     pub mesh_rows: u32,
     pub mesh_cols: u32,
     /// Mesh Fill bar: the colours Shuffle draws from (an index into
@@ -3662,6 +3666,7 @@ impl App {
             area_outline_width: 0.2,
             area_outline_color: Color::BLACK,
             area_fill_outline_edges: false,
+            area_fill_live: false,
             mesh_rows: 2,
             mesh_cols: 2,
             mesh_palette: 0,
@@ -4296,6 +4301,7 @@ impl App {
             smart_outline_width: self.area_outline_width,
             smart_outline_color: self.area_outline_color,
             smart_outline_edges: self.area_fill_outline_edges,
+            smart_fill_live: self.area_fill_live,
             brush_radius: self.brush_radius,
             roughen_amount: self.roughen_amount,
             brush: self.brush,
@@ -4405,6 +4411,7 @@ impl App {
         self.area_outline_width = finite(t.smart_outline_width, 0.0, 1000.0, 0.2);
         self.area_outline_color = t.smart_outline_color;
         self.area_fill_outline_edges = t.smart_outline_edges;
+        self.area_fill_live = t.smart_fill_live;
         self.brush_radius = finite(t.brush_radius, 0.5, 500.0, 10.0);
         self.roughen_amount = finite(t.roughen_amount, 0.05, 50.0, 2.0);
         self.brush = t.brush.clamped();

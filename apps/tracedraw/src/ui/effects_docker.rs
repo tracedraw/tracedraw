@@ -40,6 +40,7 @@ pub fn effect_key(e: &Effect) -> &'static str {
         Effect::Grid { .. } => "effect.grid",
         Effect::Spray { .. } => "media.sprayer",
         Effect::Tiles { .. } => "media.tiles",
+        Effect::LivePaint { .. } => "effect.live_paint",
         Effect::Lens(_) => "effect.lens",
         Effect::Transparency { .. } => "effect.transparency",
         Effect::OffsetPath { merge: true, .. } => "effect.merge_shapes",

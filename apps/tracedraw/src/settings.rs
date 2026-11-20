@@ -1916,6 +1916,8 @@ pub struct ToolPrefs {
     pub smart_outline_color: tracedraw_core::Color,
     /// Smart Fill stops at the outlines' edges, their width (#3321).
     pub smart_outline_edges: bool,
+    /// Smart Fill paints live fills of a group.
+    pub smart_fill_live: bool,
     /// The shaping brushes: nib radius (mm), Roughen's spike size (mm) and
     /// the rest of their bars.
     pub brush_radius: f64,
@@ -2054,6 +2056,7 @@ impl Default for ToolPrefs {
             smart_outline_width: 0.2,
             smart_outline_color: tracedraw_core::Color::BLACK,
             smart_outline_edges: false,
+            smart_fill_live: false,
             brush_radius: 10.0,
             roughen_amount: 2.0,
             brush: Default::default(),

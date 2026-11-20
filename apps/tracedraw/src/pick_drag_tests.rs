@@ -22643,6 +22643,70 @@ fn smart_fill_lists_offer_specify_then_default_then_none() {
     assert_eq!(app.area_fill_mode, 1);
 }
 
+/// Smart Fill with Live on: a click inside a group's square paints the
+/// cell its lines close off as a live fill of the group, no new object;
+/// the fill follows a line of the group that moves, and one undo takes
+/// the fill away.
+#[test]
+fn live_smart_fill_paints_a_cell_that_follows_its_lines() {
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    let line = |a: (f64, f64), b: (f64, f64)| {
+        let mut p = tracedraw_core::BezPath::new();
+        p.move_to(a);
+        p.line_to(b);
+        ShapeKind::Path {
+            path: p,
+            closed: false,
+        }
+    };
+    let mut ids = Vec::new();
+    for (a, b) in [
+        ((100.0, 100.0), (130.0, 100.0)),
+        ((130.0, 100.0), (130.0, 130.0)),
+        ((130.0, 130.0), (100.0, 130.0)),
+        ((100.0, 130.0), (100.0, 100.0)),
+        ((110.0, 95.0), (110.0, 135.0)),
+    ] {
+        ids.push(app.new_shape(line(a, b)).expect("line"));
+    }
+    app.select(ids.clone());
+    app.group_selection();
+    let group = app.selection[0];
+    app.select(Vec::new());
+    let count = shape_count(&app);
+    app.set_tool(Tool::AreaFill);
+    app.area_fill_live = true;
+    app.area_fill_mode = 1;
+    app.area_fill_color = tracedraw_core::Color::rgb8(255, 0, 0);
+    click_page(&ctx, &mut app, Point::new(105.0, 115.0));
+    assert_eq!(shape_count(&app), count);
+    let painted = |app: &App| {
+        let g = app.doc().find_shape(group).expect("group").clone();
+        tracedraw_core::live::evaluate(&g)
+            .below
+            .iter()
+            .map(|s| tracedraw_core::geometry::Shape::bounding_box(&s.page_path()))
+            .collect::<Vec<_>>()
+    };
+    let cells = painted(&app);
+    assert_eq!(cells.len(), 1, "{cells:?}");
+    assert!((cells[0].x1 - 110.0).abs() < 1e-6, "{:?}", cells[0]);
+    // The middle line moves right: the painted cell widens with it.
+    let mut doc_group = app.doc().find_shape(group).expect("group").clone();
+    if let ShapeKind::Group { children } = &mut doc_group.kind {
+        children[4].transform = Affine::translate((8.0, 0.0));
+    }
+    let cells = tracedraw_core::live::evaluate(&doc_group)
+        .below
+        .iter()
+        .map(|s| tracedraw_core::geometry::Shape::bounding_box(&s.page_path()))
+        .collect::<Vec<_>>();
+    assert!((cells[0].x1 - 118.0).abs() < 1e-6, "{:?}", cells[0]);
+    app.undo();
+    assert!(painted(&app).is_empty());
+}
+
 /// The Shape tool reads Ctrl while a node is dragged, not only at the
 /// press, and on every kind of node: Ctrl held only after the press snaps
 /// an ellipse's arc to the constrain angle (#1340, #1325) and keeps a

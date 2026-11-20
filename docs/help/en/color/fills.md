@@ -127,6 +127,13 @@ through their width still close it.
 Inside a [symmetry](../objects/symmetry.md), a click in one copy fills the same
 area in every copy: the new object becomes part of the symmetry.
 
+With **Live** on, a click inside a group paints the area its lines close off
+as a live fill of the group (the selected group, or else the topmost group
+under the click) instead of making a new object. When you move or reshape
+the lines of the group, the fills follow them. Click a painted area again to
+give it the bar's fill color, or with the Fill set to None to take the fill
+away. Each click is one undo step.
+
 ## Mesh fills {#mesh-fill}
 
 A mesh fill is a grid of nodes over an object, each node with its own color

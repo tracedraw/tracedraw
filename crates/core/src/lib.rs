@@ -31,6 +31,7 @@ pub mod jpeg_source;
 pub mod join;
 pub mod linked_text;
 pub mod live;
+pub mod live_paint;
 pub mod nodes;
 pub mod painterly;
 pub mod paragraphs;

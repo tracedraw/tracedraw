@@ -307,6 +307,12 @@ pub enum Effect {
     /// follow it, `width` mm across, in `color`, drawn above it as one
     /// group (see [`crate::tiles`]).
     Tiles { preset: u8, width: f64, color: Color },
+    /// Live paint (the Smart Fill tool with Live ticked), on a group:
+    /// each fill a point in the group's own space with its colour; the
+    /// area the group's lines close around each point is drawn filled
+    /// under its objects, following the lines as they change (see
+    /// [`crate::live_paint`]).
+    LivePaint { fills: Vec<(f64, f64, Color)> },
     /// Gaussian blur (#1141): the object drawn blurred by `radius` mm.
     /// Drawn by the renderer.
     GaussianBlur { radius: f64 },
@@ -1911,6 +1917,9 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
                 color,
             } => {
                 above.extend(crate::tiles::tiles_group(&main, *preset, *width, *color));
+            }
+            Effect::LivePaint { fills } => {
+                below.extend(crate::live_paint::paint_shapes(&main, fills));
             }
             Effect::FillOpacity { .. } | Effect::BlendIf { .. } => {}
             Effect::Lens(_)

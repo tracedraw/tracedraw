@@ -135,6 +135,14 @@ deles, e linhas que só se tocam pela largura ainda a fecham.
 Dentro de uma [simetria](../objects/symmetry.md), um clique numa cópia preenche
 a mesma área em todas as cópias: o novo objeto passa a fazer parte da simetria.
 
+Com **Ao vivo** ligado, um clique dentro de um grupo pinta a área que as linhas
+dele fecham como um preenchimento ao vivo do grupo (o grupo selecionado, ou
+então o grupo mais acima sob o clique) em vez de criar um objeto novo. Quando
+você move ou remodela as linhas do grupo, os preenchimentos as acompanham.
+Clique de novo numa área pintada para dar a ela a cor de preenchimento da
+barra, ou com o Preenchimento em Nenhum para retirá-la. Cada clique é um passo
+de desfazer.
+
 ## Preenchimentos de malha {#mesh-fill}
 
 Um preenchimento de malha é uma grade de nós sobre um objeto, cada nó com cor e
