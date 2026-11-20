@@ -7,6 +7,176 @@ full, row-by-row status.
 ## Unreleased
 
 - Effects > 3D Revolve and Inflate: ready-made views (front, back, sides, top, bottom, six off-axis and four isometric), Roll, Offset (the axis away from the curve makes a ring or a hollow tube) and Cap; a surface of Plastic, Diffuse, No shading or Wireframe; the light's colour, intensity, softness and an ambient light (the default look is unchanged); a document symbol as the art, groups and symbols drawn out into their pieces, Fit and Stretch over the whole surface, Shade art and Only the art. The 3D object keeps its curve and settings: selected, the panel shows them, Update makes it again in place and Release gives the curve back. Halftone sphere makes a lit ball of halftone dots, as curves, in one click (#3668).
+- PDF, EPS and WMF import keep nonzero fills: letters of a text in curves no longer lose the places where their parts overlap; WMF and EPS export fill each curve as it is drawn (#3224).
+- A blend of two rectangles of different proportions keeps four corners on every step (#3223).
+- Shape tool: the ring round a control handle stays while the handle is held and dragged, and goes when the button is let go (#3141).
+- Paste works in the Find and Replace fields (#3331, regression test for the #3198 fix).
+- Ctrl+wheel and Shift+wheel scroll sideways and Alt+wheel up and down; a touchpad pinch still zooms (#3087).
+- Linked text frames: linking them, editing their text and resizing one are one Undo each. The text flow was an undo step of its own, so one Undo left the frames linked, or the frame at its new size, with the text flowed as before (#3297).
+- Moving, turning or scaling a PowerClip whose contents are not locked to it is one Undo. One Undo used to put back only the contents, and they then moved with the frame (#3298).
+- Transformations docker: copies of linked text frames copied together are linked to each other, as with Step and Repeat. They came out unlinked, each holding the piece of text it showed (#3299).
+- A double click on a guideline opens the Guidelines panel on it again; it only selected the guideline (#3008).
+- Saving as .cdr: an RGB drawing is saved as an RGB document, so the other program's eyedropper reads RGB colours, also inside PowerClips (#3425).
+- Symbols panel: each symbol shows a small picture of its objects (#3249); while a symbol is edited, Cancel beside Finish drops the changes; Duplicate makes a new symbol with the same objects; a selected instance, or a group holding one, is outlined around its objects instead of a square (#3437).
+- EPS and PostScript name the drawing's spot inks in their header (%%DocumentCustomColors, %%CMYKCustomColor), so a RIP that lists spot channels from the header finds them (#3458).
+- Windows: a copy pasted in a spreadsheet comes in as the drawing, not as SVG source in the cells; the SVG text goes to the clipboard only when no picture can be made (#3461).
+- Pick tool: a click on a guideline over an object that is not selected selects the guideline, as a press already took it (#3424).
+- Going to another page keeps the zoom (a page shown before comes back as it was left), and Portrait or Landscape keep the zoom and the page's centre; each fitted the page to the window (#3434).
+- .cdr import: arrowheads keep the file's own shape, size and place; they were replaced by our presets at a fixed size (#3436).
+- Full justify: a right-to-left paragraph's last line is set from the right edge (#3216).
+- The page bar (Pick tool, nothing selected) has the Drawing Scale list beside Units (#3450).
+- Pick tool: Ctrl+Alt on a corner handle adds the same distance to the width and the height, an even border (with Shift on every side) (#3330).
+- Lenses, transparency masks and Gaussian blurs work on the area of their object only; each copied, masked or blurred a buffer the size of the whole page (#3439, #3441, #3442).
+- The canvas draws every picture after the first on a thread of its own, the Pixels view too, and a render shares the drawing instead of copying it at each change: edits and pans no longer hold the window (#3440).
+- Dimensions: a label or lines picked with Ctrl+click delete on their own, the rest staying as objects (#3348).
+- Data Merge: the last button of the dialog reads Continue, as it goes on to the print (#3183).
+- View > Zoom 1:1 shows the drawing at its real size, and can take a shortcut (#3103).
+- The mouse wheel over the outline width goes on past 16 pt, in steps of the last gap (#3050).
+- Text > Show Non-Printing Characters marks spaces, tabs, paragraph ends and line breaks while a text is edited (#3271).
+- Resample: Size on page in any unit and Fit to (this page or a paper) set the bitmap's size on the page, keeping the resolution (#3138).
+- Area Fill: Up to outline edges stops the area at the edges of wide outlines, so lines that touch only through their width close it (#3321).
+- Print > Color: Color profile converts the colours and pictures to the printer's ICC profile, with its intent, for printers whose driver does not manage colour (#3374).
+- Contour: a fourth direction, Both, draws the steps inside and outside the outline at once (#3085).
+- JPEG XL pictures open and import, read by a pure Rust decoder (#3210).
+- Export writes JPEG XL, lossless, with the transparent background (#3063).
+- Interactive Fill edits a pattern or bitmap fill's tiles (move, turn and scale, height) instead of replacing it with a gradient (#3379).
+- Options: the page's shadow colour, offset and softness and the border's colour and width can be set; unset they follow the theme (#3078).
+- A Round dots line style; choosing it gives the outline round caps so the dots show (#3404).
+- The Welcome Screen's title is no longer selectable text (#3206).
+- Edit Text dialog: the window can be resized, and a second row sets the text's alignment, changes the case of the selected characters, zooms the box, shows spaces and tabs, imports a text file and opens Spell Check (#3270).
+- Options > Commands: a Node editing shortcut table, whose keys hold only with the Shape tool, so one key can do one thing on objects and another on nodes (#3243).
+- Options > Zoom/Pan: Ctrl+wheel zooms, so Ctrl+wheel can zoom like the plain wheel instead of scrolling sideways (#3473).
+- The status bar and the Objects docker name symmetries ("Symmetry group: Curve") and object clones ("Clone: Rectangle"), and a clone's master says how many clones follow it (#2997, #2877).
+- Object > Thicker Outline and Thinner Outline step the outline width, and can take shortcuts (#2905).
+- A label drawn beside a number field (a bar's picture, a dialog's row label) slides the field's value when dragged (#3044).
+- Groups take a contour, round all their objects together (#3245).
+- Envelope: several nodes can be chosen (Shift+click, marquee) and moved together (#3001).
+- Freehand by clicks: Space ends the line at the pointer (#3192).
+- Shape tool: the first and last nodes of an open curve point along it, showing its direction (#3038).
+- Scale handles snap to the selection's own nodes and edges where they stood (#3074).
+- File > Combine Files adds the pages of other drawings; File > Save Pages as Files saves each page as a drawing of its own (#3358).
+- Options > General > "Use the system's save dialog" (on by default on macOS): Save As opens the system's own save dialog (#2965).
+- Options > Nodes and Handles > "Colour nodes by type": cusp, smooth and symmetrical nodes get their own outline colours (#3000).
+- The text spacing handles' arrows point both ways (#2985).
+- Object Data docker: Copy to Selection gives the first object's fields to the other selected objects (#3262).
+- A rectangle's Edge Bulge handle can be grabbed just outside its edge, where a small arc shows it (#2978).
+- Shape Generator panel (Object > Create): dot grids with falloff, Truchet tiles, tessellations, line waves, wavy rings, field lines, iso blocks and cone templates with a design wrapped onto them, drawn as editable curves with a live preview (#3412, #3413).
+- Pages docker and page tab tips show each page's miniature (#2932).
+- Color Eyedropper: picks the colour shown where no object gives one, and Sample from Screen picks any point of the window (#3040).
+- Shape tool: Bulge bows the chosen segments of any curve into arcs by a percentage (#3335).
+- Guidelines panel: focus on the position after a double click, Enter adds, Alt+A adds, Alt+M modifies, Shift+click selects a range (#2883).
+- Shape Builder: Add/Delete mode, Keep originals, Accept and Cancel on its bar; the objects taking part are edged in grey (#3220).
+- Objects docker: PowerClip contents listed; drag a row into an object to PowerClip it (#3053).
+- Sprayer: the objects stay along the path drawn as a live effect: edit its nodes and they follow, and Break Apart turns them into one group (#3435).
+- Print > Booklet: Pages per side 4 or 8 prints large offset sheets that fold into signatures of 8 or 16 pages (#3380).
+- Draw Inside: a button on the drawing tools' property bar draws straight into the selected closed shape, clipped by it (#3407).
+- Ctrl+C in a size field of the property bar copies the number, not the object (#3460, test).
+- Blend: New path on the Blend tool's property bar; Start on path and End on path place the start and end objects anywhere along the path, and Detach from path makes the blend straight again (#2946).
+- Create New Symmetry works with nothing selected: an empty symmetry about the middle of the page that takes what you draw (#2995).
+- Area Fill inside a symmetry fills the same area in every copy (#2998).
+- Object > Transformations > Rotate by Two Lines: draw a base line and a target line and the selection turns so the base takes the target's angle (#2870).
+- The Eraser now erases pictures too, with Hardness and Strength on its bar for a soft edge (#3043).
+- A click on the Time Tracker's stopwatch folds it to a mini bar and back (#3261).
+- Convert to Bitmap in Indexed (8-bit) with a transparent background now gives an indexed bitmap, not RGB (#3504).
+- Image > Mode: Indexed keeps see-through pictures indexed, Black and White gives a true 1-bit picture on white, and a Lab picture stays Lab through Edit Bitmap (#3539).
+- Color Eyedropper inside an object with no fill no longer picks up its outline colour (#3499).
+- PDF opened with text as curves: overlapping letters stay filled instead of showing holes (#3525).
+- A copy made in place with + and then moved, turned or scaled is repeated by each next Duplicate (#3520).
+- Split docker columns keep their split when either tab is clicked; the lower docker's tab sits last in the strip (#3524).
+- Blend steps fade from the start object's transparency to the end's (#2946).
+- The handles of a selected straight vertical or horizontal line stand apart instead of on top of each other (#3523).
+- Facing pages: Shift+click and a marquee select objects of both pages of a spread together, to align them (#3488).
+- Fit Text to Path keeps the letters of a text squeezed with a side handle instead of distorting them on a circle (#3485).
+- Drop-down lists: the names no longer move a point as the pointer goes over them, and a list that fits the window opens whole with no scroll bar (#3491, #3492).
+- Options > Display can show the touch bars beside the selection with a mouse too (off at first) (#3456).
+- A right click on a toolbox button offers the tool's Properties, to give it a shortcut (#3326).
+- PDF import: labels a drawing program sets far apart in one text array (the pin names of a schematic) keep their places (#3508).
+- PDF import: a font whose name holds a number ("Raj-01") keeps its whole name in the missing fonts list (#3554).
+- PDF import with paragraph text: a bulleted line starts a list item of its own instead of running on into the item above (#3551).
+- Faster bounding boxes of long curves (#3559).
+- VBA macros make horizontal, vertical and parallel dimensions from numbers, as scripts do (#3517).
+- Scripts and VBA macros set a text's character background apart from its fill, and the macro recorder records the Text panel's character style (#3518).
+- Plugin commands can be given keyboard shortcuts in Options > Customization (#3519).
+- Dimension tool options: how far Add Dimensions puts its lines from the objects, and a background colour behind the label (#3530, #3531).
+- The right-click menu of a selected table has the Table commands: insert, select and delete rows and columns, merge, unmerge and split cells (#2976).
+- Text on a path: Follow path on its property bar (off by default) fits the text again whenever the path is moved, resized or reshaped (#3571).
+- Shape tool: dragging an edge of a picture crops it from that side, both corners of the edge moving together (#3532).
+- Symmetry: a Rotational option turns the copies round the centre instead of mirroring them (#2999).
+- Dragging a large selection on a drawing of tens of thousands of objects no longer stutters (#3601).
+- Shape Builder: a merged shape keeps one curve for each stretch of an object, without extra nodes where other objects crossed it (#3587).
+- Print Preview opens with the rulers, the strip of sheets and the options panel as its View button last left them (#3603).
+- DXF export: the Export dialog offers the drawing unit (millimetres, centimetres, metres, inches or feet); the file is written in it (#3583).
+- Objects docker: a guideline row dragged onto another Guides row moves it there (also to or from the master page); a Guides row's menu pastes guidelines, also into an empty one (#3599).
+- Object > Insert > Insert Object: Insert What It Saves (off by default) opens the program on a blank picture; what it saves comes into the drawing, linked, and each later save updates it (#3391).
+- Edit Inside: Light tool. Paint light on a photo and it shows where you paint; several coloured lights, each with its own mask, strength, mix (Lighten, Glow, Tint), direction and relief from the photo's brightness; erase light, fill with light, strokes undone one by one (#3596).
+- Property bar: Bullets and Drop Cap sit right after the alignment, so they stay in view with paragraph text picked (#3586, #3592); the mouse wheel over the bar slides it and changes a box only after you click into it, Shift+wheel always slides (#3589); « and » show only when there is more that way (#3588) and cut items fade at the edge (#3591).
+- Text > Bullets On/Off (Ctrl+Shift+L) turns bullets on or off for the selected paragraphs or the ones at the cursor (#3593).
+- Columns dialog: the panel fills the window, the boxes line up and Close sits at the right (#3590).
+- Displace by a photo: a new layer effect bends the outline of any object or text by the lightness of the photo beneath it, so a print follows the folds of a cloth, a paper or a wall, with the photo's shadows and highlights taken onto it (#3595).
+- Tools > Workflow: picture steps joined by wires on a canvas of their own (Input from the selection or a picture file, Vectorize, Recolor, any bitmap effect, Compare up to four results side by side, Export onto the page or to PNG/SVG), with branches, Preview, Run, Run on Picture File and workflows saved as .tdflow to run again on other pictures (#3597).
+- Save: a drawing opened from a .cdr file saves back over it without a second question about replacing it (#3618).
+- While dragging, an object reshaped by an envelope, perspective or distortion shows its reshaped outline; Options > Display > Show objects while transforming (off by default) draws the objects themselves while the drag lasts (#3569).
+- Transparency: a merge mode picked on the property bar for an object with no transparency now mixes it with what lies beneath, and is kept when a transparency kind is chosen after it (discussion #3581).
+- Recolor: the dialog lists each colour of the selection with a colour button beside it, so any colour can be swapped for another exactly; the others still take the tint and hue changes (#3609).
+- Options: Save as Default keeps the drawing's guidelines (master page and current page) for new drawings, and is no longer undone when the dialog is then cancelled (discussion #3522).
+- Layer effects: the Transform effect gets Turn about H and V, the point the copies turn about, so copies can be set in a ring round a centre of their own (#3607).
+- Envelope: pictures bend with the envelope too, alone or inside a group or clip frame; they used to stay as they were (#3608).
+- Curve tools: Parallel lines on the property bar of the Freehand, Bezier, Pen, Polyline, 2-Point Line and 3-Point Curve tools draws lines alongside each new curve (how many on each side, the gap, one side or both; #3626).
+- Pen and Bezier: while the first node's handle is pulled, the opposite handle shows too (#3620).
+- Document palette: its eyedropper is also Window > Color Palettes > Add Colors from the Drawing to the Document Palette, which can take a shortcut (#3621).
+- Object > Apply Uniform Transparency and Remove Transparency, commands that can take shortcuts (#3622).
+- Convert Outline to Object: a thick line's arrowhead keeps its tip; the line's square end no longer stands out past it (#3604).
+- PDF import: a font named with a word after its dash keeps its whole family name (Lohit-Devanagari is Lohit Devanagari, not Lohit), so the missing fonts list names the right font (#3651).
+- Drawing window: while a new picture of the page comes in a band at a time, a bitmap with transparency or a fill with opacity no longer shows twice as dark under the bands that have come, so it no longer flickers while kerning or dragging (#3639).
+- Window > Dockers checks every open docker, not only the one whose tab is in front (#3663).
+- Default CMYK palette: new last swatch Registration Black (C100 M100 Y100 K100), for marks that print on every plate (#3666).
+- Contour bar: Apply is offered for a selected group too, and a new Copy Contour From... button gives the selected objects the contour of the object clicked next (Discussion #3667).
+- `.cdr` files: an Artistic Media stroke linked to its curve (version 27) opens with its objects kept on the curve as a live Fit Objects to Path, at the spacing and turn the file had, so editing the curve places them again (#3680).
+- Remove Background: the preview shows exactly what OK makes (it was worked out on a smaller copy and could keep or remove other parts).
+- Shape Generator: Voronoi cells (point modes, relax, density gradient, inset and rounded corners, sites and Delaunay edges, fill the selection's outline, edit sites in the preview), stippling and vector halftone (shapes, line halftone, CMYK screens) from the selection's picture.
+- Shape Generator: spirograph (wheel inside or outside a ring, Lissajous, roses, mandalas), guilloché rosettes, fractals and custom L-systems, Penrose rhombs and star tilings.
+- Bitmap effects: new Glitch group (RGB Split, Scanlines, Pixel Sort, Compression Blocks, Band Shift); Gradient Map and Dither in Color Transform; Polar Coordinates in Distort.
+- Vector Mosaic: Glyphs tiles (built-in symbols picked by darkness or at random) and Characters tiles (text art from a character set), Invert tones and One color.
+- Mesh Fill: a Colors list (six sets or the document palette) and a Shuffle button give the selected objects a random mesh gradient, another mix each click.
+- Shape Generator: fills inside a shape (parallel, crossed or tone hatching; offset or tone contour lines; mazes with walls or paths; Hilbert, Moore and Peano curves), clipped to the selection's outline.
+- Shape Generator: Slice grid cuts the selection (curves, text and bitmaps alike) into rows, columns or a grid of clipped pieces moved by a random, wave, ramp or alternating pattern, still editable.
+- Effects > Symbol Scatter: fills shapes, curves and text with copies of a built-in symbol or picked objects, at a minimum spacing with random size and turn, holes left empty, in one undo step.
+- Effects docker: built-in looks (Chrome, Liquid metal, Gold, Liquid glass that blurs what lies beneath, Clear glass), applied with one click in one undo step.
+- Effects > Color Transform: Riso Print (two inks as dots, out of register, grainy, on tinted paper) and Newsprint (black or four-colour dots with dot gain and paper fibres).
+- Bitmaps > Edit Inside (or a double click on a picture): edit its pixels in place on the drawing, with rectangle, ellipse, freehand and magic wand selections (feather, grow, invert), brush, soft eraser, clone, heal, dodge, burn, sponge, blur, sharpen, smudge, red eye, fill, gradient and eyedropper, content fill, crop, flip and any bitmap effect inside the selection; Finish is one undo step.
+- Effects > Light: Lighting (omni, spot or from one side, with relief), Lens Flare, Light Rays, Bloom and Light Leak.
+- Effects > Frame Generator: decorative frames round the selection or inside the page as vector curves (ruled lines, classic corner scrolls, art deco, beads, Greek key, scallops, interlaced waves), with corner styles, side ornaments and a preview.
+- Customization > Appearance: Translucent menus (off by default) lets open menus show the drawing through them, with a Menu opacity field (50 to 100 %).
+- Effects > Vector Mosaic: Remove background leaves out the tiles of the background's color (found along the selection's edges or picked, with a tolerance), so a logo becomes tiles only where it is.
+- Effects > 3D Revolve and Inflate: ready-made positions (front, off-axis, isometric), Roll, Cap, Offset, surfaces (plastic, diffuse, no shading, wireframe), light colour, intensity, softness and ambient light; art from a symbol, Fit and Stretch, Shade art, Only the art; the 3D object stays editable (Update, Release); Halftone sphere makes a lit ball of halftone dots in one click.
+- Lens panel: new Cut lens. Drag a band over text or shapes: they are cut along its middle line, each cut edge grows a curved spur and a shadow fades from the cut, with spur length, thickness and shape, cut width, shadow strength, colour and side; the text stays editable.
+- Layer effects: Transform makes live copies of the object, each scaled (H/V), moved, turned and mirrored from the one before, with copies, random steps and Scale outlines; the object stays editable.
+- 2-Point Line tool: Arc and Flip arc on its property bar draw a quarter arc; holding C while dragging an arc or a box shape (rectangle, ellipse, polygon, star…) leaves a copy at each move, one undo step.
+- Alt and a drag on a gradient node copies the node, for hard edges and solid bands.
+- Blend from a shape into text converted to curves: the shape morphs into every letter of the word (not only the first), letter counters open in the steps, and an outline on only one of the two objects goes on every step.
+- Edit Inside: layers of pixels inside the picture being edited (opacity, merge modes, show, lock, order, merge down, flatten, copy or cut to layer, paste as layer) and a Move tool.
+- Effects > Merge Shapes: the selected objects flow into one outline with rounded necks where they meet (metaballs), live as you move them, in the bottom object's paint; layer effects get Offset Path (live offset out or in, smoothing, corner style, merge a group into one outline).
+- Pies get a Ring field (inner radius) on the property bar: a thick arc, or a whole ring when the angles meet; .cdr files get it as its curve.
+- Draw in Perspective: 4 Corners plane clicked over a photo, Ctrl+drag a side's middle to pull up a plane standing square to it; objects moved with the Pick tool into the plane go onto it and slide along it, staying editable (a text stays text).
+- Layer effects: Blend If shows an object only where its own lightness and the lightness beneath fall in split ranges, so a light text on a photo takes its grain.
+- Transformations, Skew page: isometric face buttons (Left, Right, Top, each two ways) and Reset, keeping text editable.
+- Fit Objects to Path: a Live option keeps the objects (and copies) on the path as the path or the objects are moved or edited, with Pick tool handles for the spacing and the turn of all the objects.
+- Layer effects: Grid repeats the object live in columns and rows, with gaps (overlap below zero) and every other row or column shifted for brick and honeycomb layouts; with the Pick tool, handles on the canvas drag the gaps and the number of cells.
+- Roughen tool: an Edge choice on its bar, Jagged as before or Thorns (sharp points out of the shape), Petals (points pulled in with round lobes between) and Crumple (soft random waves).
+- Graph Paper tool: Radial draws a grid of rings round the middle crossed by spokes, with the number of each on the bar.
+- Bitmap effects: 25 new looks in the existing groups (Art Strokes: Paper Layers, Bristle Paint, Mural, Luminous Wash, Inked Poster, Diagonal Smear, Blotted Color, Primed Canvas, Chalked Edges, Diagonal Hatching, Pencil Weave, Light and Shadow Strokes, Spray Streaks, Ink Wash, Copier Toner, Rubber Print, Wet Fiber Paper; Texture: Embossed Paper, Gypsum Cast, Film Clumping, Cracked Surface, Quilt Squares; Grit Screen in Color Transform; Neon Outline in Contour; Broadcast Safe Colors in Transform).
+- Edit > Select Similar > Close Look: picks the objects whose fill and outline colours, outline widths and transparency are close to the selected object's, within a Tolerance set at the bottom of the submenu (also in Repeat on Similar and the right-click menu).
+- Brush Strokes: new Tiles mode (chain, rope, zigzag, dash and dot, waves, beads repeated end to end along the path, as a live effect) and Merge mode (the stroke becomes one object with same-coloured shapes it touches).
+- Gradient fill: Dither against banding.
+- Smart Fill: the new Live option paints the areas the lines of a group close off as live fills of the group, which follow the lines when they move.
+- File > Import: several files picked at once can be laid out in a grid; while dragging the box for the first, the arrow keys add or take away columns and rows, and each file comes in fitted in its own cell.
+- AI photo commands, shown only while AI features are on: Turn Object in 3D, Remove Object (with its shadow, reflection and traces), Depth Map for the photo editor brush and stamp, and Sketch to Curves from a request in words (Image menu and a bitmap context menu).
+- Pattern fills: Row or column overlap under the row or column offset; with a 50% offset and a 25% overlap hexagonal tiles interlock with no gaps.
+- Object > Group > Draw as One (the group's transparency on the whole, its merge modes kept inside it) and Members Hide Those Beneath (each member hides the members beneath it, even where see-through).
+- Object > Symbol > Stretch Zones: four lines set in from a symbol's sides; a stretched instance keeps its corners their size.
+- Draw Behind: a button beside Draw Inside on the drawing tools' property bar; what they draw goes behind the selected objects of the layer, or to its back with nothing selected (off at first).
+- Shape Recognition: Scribble erases (property bar, off at first); a scribble back and forth over objects deletes them.
+- Properties docker: arrows beside each further fill and outline paint it one place earlier or later; the second trades places with the first.
 
 ## 0.49.0 (2026-11-19)
 
