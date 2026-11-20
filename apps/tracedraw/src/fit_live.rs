@@ -247,7 +247,7 @@ fn imported_fit(guide: &Shape, objects: &[Shape]) -> Option<LiveFit> {
     })
 }
 
-/// Turn the Artistic Media strokes the `.cdr` reader marked on their
+/// Turn the brush strokes the `.cdr` reader marked on their
 /// guides (`tracedraw_cdr::artistic::DATA_KEY`) into live fits of their
 /// objects to the guides, where the objects lie on the guide as a fit
 /// would place them (#3680). The marks go either way; strokes that do not
@@ -1155,7 +1155,7 @@ mod tests {
     }
 
     /// A drawing whose guide carries the `.cdr` reader's mark of an
-    /// Artistic Media stroke: triangles every 5 mm along a bent path,
+    /// A brush stroke: triangles every 5 mm along a bent path,
     /// turned half round from it and lying a little off it, listed from
     /// the far end (as the file of #3680 lists them).
     fn stroke_drawing(nudge: f64) -> (tracedraw_core::Document, Uid) {
@@ -1206,7 +1206,7 @@ mod tests {
     }
 
     #[test]
-    fn an_artistic_media_stroke_read_from_a_cdr_file_opens_live() {
+    fn a_brush_stroke_read_from_a_cdr_file_opens_live() {
         let (mut doc, guide_uid) = stroke_drawing(0.0);
         assert_eq!(adopt_imported_strokes(&mut doc), 1);
         let guide = doc

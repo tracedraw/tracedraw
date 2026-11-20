@@ -9198,7 +9198,7 @@ impl App {
         };
         match result {
             Ok((mut doc, msg)) => {
-                // Artistic Media strokes of a `.cdr` file open live (#3680).
+                // Brush strokes of a `.cdr` file open live (#3680).
                 if ext == "cdr" {
                     crate::fit_live::adopt_imported_strokes(&mut doc);
                 }

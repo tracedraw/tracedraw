@@ -21,6 +21,18 @@ full, row-by-row status.
 - Envelope: the mesh envelope bends pictures too, alone or inside groups and clip frames.
 - Texture fill: two fixed holographic foil looks, Holographic (a smooth rainbow film over dark foil and silver) and Holo glitter (the same film broken into fine sparkling grains); they do not change with the viewing angle, export to SVG as an embedded picture and to PDF like the other textures.
 - SVG import reads a file on a thread with a stack of its own, so files with groups nested deep read the same from any part of the program.
+- Fit Objects to Path: a Live option keeps the objects on the path as it is moved or reshaped, with on-canvas handles for spacing and turn (#3584).
+- VBA macros make horizontal, vertical and parallel dimensions from numbers, as scripts do (#3517).
+- Scripts and VBA macros set a text's character background apart from its fill, and the macro recorder records the Text panel's character style (#3518).
+- Plugin commands can be given keyboard shortcuts in Options > Customization (#3519).
+- Dimension tool options: how far Add Dimensions puts its lines from the objects, and a background colour behind the label (#3530, #3531).
+- The right-click menu of a selected table has the Table commands: insert, select and delete rows and columns, merge, unmerge and split cells (#2976).
+- Text on a path: Follow path on its property bar (off by default) fits the text again whenever the path is moved, resized or reshaped (#3571).
+- Shape tool: dragging an edge of a picture crops it from that side, both corners of the edge moving together (#3532).
+- Symmetry: a Rotational option turns the copies round the centre instead of mirroring them (#2999).
+- Object > Insert > Insert Object: Insert What It Saves (off by default) opens the program on a blank picture; what it saves comes into the drawing, linked, and each later save updates it (#3391).
+- While dragging, an object reshaped by an envelope, perspective or distortion shows its reshaped outline; Options > Display > Show objects while transforming (off by default) draws the objects themselves while the drag lasts (#3569).
+- `.cdr` files: a brush stroke whose objects are linked to its curve (version 27) opens with its objects kept on the curve as a live Fit Objects to Path, at the spacing and turn the file had, so editing the curve places them again (#3680).
 - Missing fonts can take their automatic stand-ins without asking: "Always use the automatic fonts" in the Missing Fonts dialog, or Options > Global > Warnings, applies them for the session or replaces them in the drawing when a file opens (#3725).
 - Trace Bitmap: a flat-colour logo, also one saved as a compressed picture, no longer shows white specks and broken light lines where its colours meet. A few blots of the ground left inside the art put the ground over the outline it surrounds, and the page showed along the edge they share; the ground now goes under the art as one shape and such blots are covered (#3727).
 - Workspace files carry every other preference too, such as the color mode of new drawings, the document defaults, units and tool settings, as a new part to check on export and import; files, window and computer-specific settings stay out (#3721).

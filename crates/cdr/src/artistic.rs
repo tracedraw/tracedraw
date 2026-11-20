@@ -1,4 +1,4 @@
-//! Linked Artistic Media strokes (#2878, #3680): the objects an artistic
+//! Linked brush strokes (#2878, #3680): the objects an artistic
 //! brush repeats along a curve, which the file keeps as a linked group
 //! (`LIST lnkg` whose own `lgob` holds a `loda` of object type 28) beside
 //! the curve, its guide. The document's link table (`lnkt`) pairs the
@@ -26,7 +26,7 @@ pub(crate) const OBJ_ARTISTIC_GROUP: u32 = 28;
 /// The object data key the reader puts on the guide: a JSON object whose
 /// `objects` lists the identities (32 hexadecimal digits) of the objects
 /// the stroke repeats, in their order along the guide.
-pub const DATA_KEY: &str = "cdr.artistic_media";
+pub const DATA_KEY: &str = "cdr.brush_stroke";
 
 /// The most entries read from one link table.
 const MAX_LINKS: usize = 10_000;

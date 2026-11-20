@@ -4989,7 +4989,7 @@ impl<'a> Ctx<'a> {
         // Contours found in this list: where their steps start and end
         // among the objects read, and their offset (see `contour_record`).
         let mut contours: Vec<(usize, usize, f64)> = Vec::new();
-        // Artistic Media strokes: where their objects start and end, and
+        // Brush strokes: where their objects start and end, and
         // their linked group's number (see `crate::artistic`).
         let mut strokes: Vec<(usize, usize, u32)> = Vec::new();
         for c in &list.children {
@@ -5261,7 +5261,7 @@ impl<'a> Ctx<'a> {
                 },
             });
         }
-        self.mark_artistic_media(out, first, &strokes);
+        self.mark_brush_strokes(out, first, &strokes);
         self.make_contours_live(out, &contours);
     }
 
@@ -5289,7 +5289,7 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    /// The number (`spnd`) of a linked group that is an Artistic Media
+    /// The number (`spnd`) of a linked group that is a brush
     /// stroke (its own `lgob` holds a `loda` of object type 28) linked
     /// to a guide in the link table.
     fn artistic_group(&mut self, group: &Chunk) -> Option<u32> {
@@ -5307,11 +5307,11 @@ impl<'a> Ctx<'a> {
         self.links.contains_key(&n).then_some(n)
     }
 
-    /// Mark the guide of each Artistic Media stroke of `strokes` (its
+    /// Mark the guide of each brush stroke of `strokes` (its
     /// objects `out[start..end]`) with them, the guide being among the
     /// objects of this list read from `first` (see `crate::artistic`).
     /// The objects stay as the file draws them.
-    fn mark_artistic_media(&mut self, out: &mut [Shape], first: usize, strokes: &[(usize, usize, u32)]) {
+    fn mark_brush_strokes(&mut self, out: &mut [Shape], first: usize, strokes: &[(usize, usize, u32)]) {
         for &(start, end, number) in strokes {
             let guide = self
                 .links
@@ -5339,7 +5339,7 @@ impl<'a> Ctx<'a> {
             }
             let objects = out[start..end].to_vec();
             if crate::artistic::mark(&mut out[gi], &objects) {
-                log::debug!("Artistic Media stroke of {} objects on a guide", objects.len());
+                log::debug!("Brush stroke of {} objects on a guide", objects.len());
             }
         }
     }
@@ -11942,14 +11942,14 @@ pub(crate) mod tests {
         assert!(shapes.iter().all(|s| s.effects.is_empty()));
     }
 
-    /// An Artistic Media stroke as the version 27 file of #3680 keeps it:
+    /// A brush stroke as the version 27 file of #3680 keeps it:
     /// the guide curve (numbered 2), then a linked group (numbered 1)
     /// whose `loda` is of object type 28 holding the objects the brush
     /// repeats, the document's link table pairing the group with the
     /// guide. The objects stay as drawn; the guide is marked with them by
     /// the file's identities (`spid`), which they take (#3680).
     #[test]
-    fn an_artistic_media_group_marks_its_guide_with_its_objects() {
+    fn a_brush_stroke_group_marks_its_guide_with_its_objects() {
         let v = 9u16;
         let identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
         let spid = |n: u8| {
