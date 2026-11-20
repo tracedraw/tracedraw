@@ -109,9 +109,40 @@ fn element_depth(xml: &str) -> usize {
     deepest
 }
 
+/// The stack of the thread an SVG file is read on: groups nested up to
+/// [`MAX_ELEMENT_DEPTH`] are read by recursion, whatever thread asks.
+#[cfg(not(target_arch = "wasm32"))]
+const PARSE_STACK: usize = 32 << 20;
+
 /// Parse SVG text. `ids` allocates shape identifiers so the result can be
-/// added to an existing document.
+/// added to an existing document. Outside the browser the file is read on
+/// a thread with a stack of its own ([`PARSE_STACK`]), so deeply nested
+/// groups have a known room whatever thread asks for the import; when
+/// that thread cannot be started the file is read here.
 pub fn parse(svg: &str, ids: &mut IdSource) -> std::result::Result<Imported, String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let spawned = std::thread::scope(|s| {
+            let handle = std::thread::Builder::new()
+                .name("svg-import".into())
+                .stack_size(PARSE_STACK)
+                .spawn_scoped(s, || parse_here(svg, ids))
+                .ok()?;
+            Some(
+                handle
+                    .join()
+                    .unwrap_or_else(|_| Err("the SVG reader stopped unexpectedly".into())),
+            )
+        });
+        if let Some(result) = spawned {
+            return result;
+        }
+    }
+    parse_here(svg, ids)
+}
+
+/// [`parse`] on the current thread.
+fn parse_here(svg: &str, ids: &mut IdSource) -> std::result::Result<Imported, String> {
     let depth = element_depth(svg);
     if depth > MAX_ELEMENT_DEPTH {
         return Err(format!(
