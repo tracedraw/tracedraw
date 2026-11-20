@@ -890,36 +890,43 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     }
 
     if let Some((tex, at)) = main {
+        // The bands of the new picture done so far, sharp over the last
+        // one while it is shown scaled after a zoom (#2389). Under them
+        // the last picture is left out: both are see-through, and a
+        // see-through object showed twice as dark there until the whole
+        // picture came (#3639).
+        #[cfg(not(target_arch = "wasm32"))]
+        let incoming = app.raster.borrow().incoming(view);
+        #[cfg(not(target_arch = "wasm32"))]
+        let covered: &[ERect] = incoming.as_ref().map_or(&[], |i| &i.2);
+        #[cfg(target_arch = "wasm32")]
+        let covered: &[ERect] = &[];
+        let full = ERect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
         // Where the picture does not reach (it is shown scaled or shifted
         // into place while the view moves): the whole page drawn small,
         // instead of blank paper until the new picture comes (#2048).
         #[cfg(not(target_arch = "wasm32"))]
         if let Some((back, back_at)) = backdrop {
             for part in backdrop_parts(rect, at, back_at) {
-                painter.with_clip_rect(part).image(
-                    back,
-                    back_at,
-                    ERect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                    Color32::WHITE,
-                );
+                for part in outside(part, covered) {
+                    painter
+                        .with_clip_rect(part)
+                        .image(back, back_at, full, Color32::WHITE);
+                }
             }
         }
-        painter.image(
-            tex,
-            at,
-            ERect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-            Color32::WHITE,
-        );
-        // The bands of the new picture done so far, sharp over the last
-        // one while it is shown scaled after a zoom (#2389).
+        if covered.is_empty() {
+            painter.image(tex, at, full, Color32::WHITE);
+        } else {
+            for part in outside(at.intersect(rect), covered) {
+                painter
+                    .with_clip_rect(part)
+                    .image(tex, at, full, Color32::WHITE);
+            }
+        }
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some((bands, bands_at)) = app.raster.borrow().incoming(view) {
-            painter.image(
-                bands,
-                bands_at,
-                ERect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                Color32::WHITE,
-            );
+        if let Some((bands, bands_at, _)) = incoming {
+            painter.image(bands, bands_at, full, Color32::WHITE);
         }
     }
 
