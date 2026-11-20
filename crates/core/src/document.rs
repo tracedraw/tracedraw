@@ -6371,6 +6371,11 @@ impl TimeTracker {
 
 /// `s` itself when it is `id`, or the object `id` in it (in its groups
 /// and clip frames).
+/// Whether `s` is `id` or holds it (in a group or clip frame).
+pub(crate) fn holds(s: &Shape, id: ShapeId) -> bool {
+    find_in(s, id).is_some()
+}
+
 fn find_in(s: &Shape, id: ShapeId) -> Option<&Shape> {
     if s.id == id {
         return Some(s);

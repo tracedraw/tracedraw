@@ -304,6 +304,30 @@ pub enum Effect {
     /// Fill opacity (#1141): the object itself drawn at `opacity` 0..1
     /// while what its other effects draw keeps its own.
     FillOpacity { opacity: f64 },
+    /// Blend If: the object shows only where its own lightness (`this`)
+    /// and the lightness of what lies beneath it (`below`) fall in a
+    /// range. Each range is four lightnesses 0..1: where the dark end
+    /// starts to show and where it shows fully, where the light end starts
+    /// to fade and where it is gone (see [`blend_if_weight`]). Drawn by
+    /// the renderer, so a light text on a photo takes the photo's grain.
+    BlendIf { this: [f64; 4], below: [f64; 4] },
+    /// Displace by a photo (#3595): the outline pushed by the lightness of
+    /// a photo beneath it (light up and right, dark down and left, by up
+    /// to `horizontal` and `vertical` mm on the page), so a print follows
+    /// the folds of a cloth, the grain of a paper or a wall; `shade` then
+    /// takes the photo's shadows (Multiply) and highlights (Screen) onto
+    /// it, by `strength` 0..1, drawn by the renderer from what lies
+    /// beneath. The map is the photo sampled when the effect was set.
+    Displace {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        map: Option<SurfaceMap>,
+        horizontal: f64,
+        vertical: f64,
+        #[serde(default)]
+        shade: SurfaceShade,
+        #[serde(default)]
+        strength: f64,
+    },
     /// Lens over everything beneath (evaluated by the renderer).
     Lens(Lens),
     /// Non-uniform transparency: the fill's luminance is the opacity.
@@ -644,6 +668,7 @@ impl Effect {
                 | Effect::Perspective { .. }
                 | Effect::Distort(_)
                 | Effect::OffsetPath { .. }
+                | Effect::Displace { .. }
         )
     }
 
@@ -663,6 +688,7 @@ impl Effect {
                     | Effect::Glow { .. }
                     | Effect::GaussianBlur { .. }
                     | Effect::FillOpacity { .. }
+                    | Effect::BlendIf { .. }
             )
     }
 
@@ -677,8 +703,148 @@ impl Effect {
                 | Effect::OuterShadow { .. }
                 | Effect::Glow { .. }
                 | Effect::GaussianBlur { .. }
+                | Effect::BlendIf { .. }
         )
     }
+}
+
+/// How Displace takes the photo's light onto the object (#3595).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SurfaceShade {
+    /// The object keeps its colours.
+    #[default]
+    None,
+    /// Darkened where the photo is darker than its middle grey.
+    Multiply,
+    /// Lightened where the photo is lighter than its middle grey.
+    Screen,
+    /// Both.
+    Both,
+}
+
+impl SurfaceShade {
+    pub const ALL: [SurfaceShade; 4] = [
+        SurfaceShade::None,
+        SurfaceShade::Multiply,
+        SurfaceShade::Screen,
+        SurfaceShade::Both,
+    ];
+}
+
+/// A photo's lightness sampled on a grid over a box of an object's own
+/// space, for Displace (#3595): `light` holds `cols * rows` values 0..255,
+/// row by row from the box's `y0` side, each the photo's lightness at
+/// the middle of its cell; `mean` is the photo's average lightness 0..1
+/// there (the grey that pushes nothing); `to_local` takes a page
+/// direction to the object's own space (the inverse of its transform's
+/// linear part when the photo was sampled).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SurfaceMap {
+    pub rect: Rect,
+    pub cols: u32,
+    pub rows: u32,
+    pub light: Vec<u8>,
+    pub mean: f64,
+    pub to_local: [f64; 4],
+}
+
+impl SurfaceMap {
+    /// The lightness 0..1 at `p` (the object's own space), bilinear
+    /// between the cells' middles and kept at the edge value outside.
+    pub fn lightness(&self, p: Point) -> f64 {
+        let (c, r) = (self.cols as usize, self.rows as usize);
+        if c == 0 || r == 0 || self.light.len() < c * r {
+            return self.mean;
+        }
+        let (w, h) = (self.rect.width(), self.rect.height());
+        if !(w > 0.0 && h > 0.0) {
+            return self.mean;
+        }
+        let fx = ((p.x - self.rect.x0) / w * c as f64 - 0.5).clamp(0.0, (c - 1) as f64);
+        let fy = ((p.y - self.rect.y0) / h * r as f64 - 0.5).clamp(0.0, (r - 1) as f64);
+        if !fx.is_finite() || !fy.is_finite() {
+            return self.mean;
+        }
+        let (i, j) = (fx.floor() as usize, fy.floor() as usize);
+        let (i1, j1) = ((i + 1).min(c - 1), (j + 1).min(r - 1));
+        let (tx, ty) = (fx - i as f64, fy - j as f64);
+        let at = |x: usize, y: usize| f64::from(self.light[y * c + x]) / 255.0;
+        let top = at(i, j) * (1.0 - tx) + at(i1, j) * tx;
+        let bottom = at(i, j1) * (1.0 - tx) + at(i1, j1) * tx;
+        top * (1.0 - ty) + bottom * ty
+    }
+
+    /// Where Displace takes `p` (the object's own space): pushed along
+    /// the page's right and up by `horizontal` and `vertical` mm times
+    /// how far the photo there is from its middle grey (twice the
+    /// difference, so full white over a mid grey photo pushes the whole
+    /// amount).
+    pub fn displace(&self, p: Point, horizontal: f64, vertical: f64) -> Point {
+        let d = ((self.lightness(p) - self.mean) * 2.0).clamp(-1.0, 1.0);
+        let (dx, dy) = (horizontal * d, vertical * d);
+        let [a, b, c, e] = self.to_local;
+        let v = Vec2::new(a * dx + c * dy, b * dx + e * dy);
+        if v.x.is_finite() && v.y.is_finite() {
+            p + v
+        } else {
+            p
+        }
+    }
+}
+
+/// The factor Displace's shading scales a colour channel by (Multiply)
+/// and the amount it screens it with (Screen), for a photo lightness `l`
+/// against its `mean`, at `strength` 0..1 (#3595): the shadows darken by
+/// how far below the middle grey they are, the highlights lighten by how
+/// far above it.
+pub fn surface_shade(shade: SurfaceShade, strength: f64, mean: f64, l: f64) -> (f64, f64) {
+    let s = if strength.is_finite() { strength.clamp(0.0, 1.0) } else { 0.0 };
+    let m = if mean.is_finite() { mean.clamp(0.01, 0.99) } else { 0.5 };
+    let l = if l.is_finite() { l.clamp(0.0, 1.0) } else { m };
+    let dark = matches!(shade, SurfaceShade::Multiply | SurfaceShade::Both);
+    let light = matches!(shade, SurfaceShade::Screen | SurfaceShade::Both);
+    let mul = if dark && l < m { 1.0 - s * (1.0 - l / m) } else { 1.0 };
+    let scr = if light && l > m { s * (l - m) / (1.0 - m) } else { 0.0 };
+    (mul, scr)
+}
+
+/// Blend If's full range: every lightness shows.
+pub const BLEND_IF_ALL: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+
+/// How much a pixel of lightness `l` (0..1) shows under a Blend If range
+/// `[dark_from, dark_full, light_full, light_to]`: nothing below
+/// `dark_from`, rising to fully at `dark_full`, fully up to `light_full`,
+/// falling to nothing at `light_to`. A split end (`from` short of
+/// `full`) fades in smoothly; a joined one cuts sharply. The values are
+/// put in order first, so a range dragged over itself stays a range.
+pub fn blend_if_weight(range: &[f64; 4], l: f64) -> f64 {
+    let mut r = range.map(|v| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 });
+    r[1] = r[1].max(r[0]);
+    r[2] = r[2].max(r[1]);
+    r[3] = r[3].max(r[2]);
+    let l = if l.is_finite() { l } else { 0.0 };
+    let rise = if l < r[0] {
+        0.0
+    } else if l >= r[1] {
+        1.0
+    } else {
+        (l - r[0]) / (r[1] - r[0])
+    };
+    let fall = if l > r[3] {
+        0.0
+    } else if l <= r[2] {
+        1.0
+    } else {
+        (r[3] - l) / (r[3] - r[2])
+    };
+    rise.min(fall)
+}
+
+/// The lightness Blend If reads from a colour, 0..1 (Rec. 601 weights,
+/// the grey a picture's channels mix to).
+pub fn blend_if_lightness(r: f64, g: f64, b: f64) -> f64 {
+    (0.299 * r + 0.587 * g + 0.114 * b).clamp(0.0, 1.0)
 }
 
 /// Which entries of an effect stack a bake takes: the warps switched on
@@ -875,6 +1041,12 @@ fn warp_outline(e: &Effect, p: &BezPath, b: Rect) -> Option<BezPath> {
             ))
         }
         Effect::Perspective { corners } => Some(perspective_in(p, b, corners)),
+        Effect::Displace {
+            map: Some(map),
+            horizontal,
+            vertical,
+            ..
+        } => Some(warp(p, b, |q| map.displace(q, *horizontal, *vertical))),
         _ => None,
     }
 }
@@ -1428,6 +1600,17 @@ fn warp_shape(main: &mut Shape, effect: &Effect) {
             perspective_pictures(main, None, b, corners);
             reshape(main, &|p, b| perspective_in(p, b, corners));
         }
+        Effect::Displace {
+            map: Some(map),
+            horizontal,
+            vertical,
+            ..
+        } => {
+            let (h, v) = (*horizontal, *vertical);
+            if h != 0.0 || v != 0.0 {
+                reshape(main, &|p, b| warp(p, b, |q| map.displace(q, h, v)));
+            }
+        }
         _ => {}
     }
 }
@@ -1497,6 +1680,7 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             Effect::Distort(_)
             | Effect::Envelope { .. }
             | Effect::Perspective { .. }
+            | Effect::Displace { .. }
             | Effect::OffsetPath { .. } => {
                 // An extrusion before it already took it into its outline.
                 if !warped_ahead {
@@ -1694,7 +1878,7 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             } => {
                 above.extend(crate::tiles::tiles_group(&main, *preset, *width, *color));
             }
-            Effect::FillOpacity { .. } => {}
+            Effect::FillOpacity { .. } | Effect::BlendIf { .. } => {}
             Effect::Lens(_)
             | Effect::Transparency { .. }
             | Effect::InnerShadow { .. }
@@ -3918,6 +4102,41 @@ mod tests {
         assert!(json.contains("\"effect\":\"transform\""), "{json}");
         let back: Effect = serde_json::from_str(&json).expect("read");
         assert_eq!(back, s.effects[0]);
+    }
+
+    /// Blend If's weight: nothing outside the range, all inside it, a
+    /// smooth rise and fall over split ends, and a range dragged over
+    /// itself kept in order.
+    #[test]
+    fn blend_if_weight_rises_and_falls_over_split_ends() {
+        let all = BLEND_IF_ALL;
+        for l in [0.0, 0.3, 1.0] {
+            assert_eq!(blend_if_weight(&all, l), 1.0);
+        }
+        // Dark pixels hidden below 0.25, fading in up to 0.5.
+        let r = [0.25, 0.5, 1.0, 1.0];
+        assert_eq!(blend_if_weight(&r, 0.1), 0.0);
+        assert!((blend_if_weight(&r, 0.375) - 0.5).abs() < 1e-9);
+        assert_eq!(blend_if_weight(&r, 0.7), 1.0);
+        // Joined ends cut sharply.
+        let r = [0.4, 0.4, 0.6, 0.6];
+        assert_eq!(blend_if_weight(&r, 0.39), 0.0);
+        assert_eq!(blend_if_weight(&r, 0.5), 1.0);
+        assert_eq!(blend_if_weight(&r, 0.61), 0.0);
+        // Out of order and out of range values.
+        let r = [0.8, 0.2, f64::NAN, 3.0];
+        assert_eq!(blend_if_weight(&r, 0.5), 0.0);
+        assert_eq!(blend_if_weight(&r, 0.8), 1.0);
+        assert!((blend_if_lightness(1.0, 1.0, 1.0) - 1.0).abs() < 1e-9);
+        assert_eq!(blend_if_lightness(0.0, 0.0, 0.0), 0.0);
+        let e = Effect::BlendIf {
+            this: all,
+            below: [0.3, 0.6, 1.0, 1.0],
+        };
+        assert!(e.drawn_by_renderer());
+        let json = serde_json::to_string(&e).expect("json");
+        let back: Effect = serde_json::from_str(&json).expect("back");
+        assert_eq!(back, e);
     }
 
     /// Colour and gradient overlays draw the object's shape over it at

@@ -4242,6 +4242,12 @@ impl App {
                 let before_move = self.engine.last_step_id();
                 if total.hypot() > 1e-6 {
                     self.finish_transform(Affine::translate(total));
+                    // Drawing in perspective: onto the active plane, or
+                    // along it (in the move's step).
+                    if to_page.is_none() && self.drop_frame.is_none() {
+                        self.perspective_after_move(total);
+                        self.displace_after_move();
+                    }
                 }
                 if let Some((idx, r)) = to_page {
                     self.give_selection_to_shown_page(idx, r);

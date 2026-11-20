@@ -507,6 +507,40 @@ fn snap_upright(m: [f64; 6], w: u32, h: u32) -> Option<([f64; 6], Option<tiny_sk
     Some(([a, 0.0, 0.0, d, e, f], area))
 }
 
+/// The Blend If ranges `shape` is drawn with (its own lightness, what
+/// lies beneath), when it has the effect and it hides anything.
+fn blend_if(shape: &Shape) -> Option<([f64; 4], [f64; 4])> {
+    shape.effects.iter().find_map(|e| match e {
+        tracedraw_core::live::Effect::BlendIf { this, below }
+            if *this != tracedraw_core::live::BLEND_IF_ALL
+                || *below != tracedraw_core::live::BLEND_IF_ALL =>
+        {
+            Some((*this, *below))
+        }
+        _ => None,
+    })
+}
+
+/// How a Displace effect of `shape` shades it from the photo beneath:
+/// the shading, its strength and the photo's middle grey, when it does
+/// (#3595).
+fn surface_shading(
+    shape: &Shape,
+) -> Option<(tracedraw_core::live::SurfaceShade, f64, f64)> {
+    use tracedraw_core::live::{Effect, SurfaceShade};
+    shape.effects.iter().find_map(|e| match e {
+        Effect::Displace {
+            map,
+            shade,
+            strength,
+            ..
+        } if *shade != SurfaceShade::None && *strength > 0.0 => {
+            Some((*shade, *strength, map.as_ref().map_or(0.5, |m| m.mean)))
+        }
+        _ => None,
+    })
+}
+
 /// The radius (mm) of the Gaussian blur `shape` is drawn with, when it
 /// has one switched on (#1141).
 fn gaussian_blur(shape: &Shape) -> Option<f64> {
@@ -1104,6 +1138,14 @@ impl Renderer<'_> {
                         self.draw_shape(&part, parent);
                     }
                 }
+            } else if let Some((this, below)) = blend_if(shape) {
+                // Blend If: the object shown by its own lightness and
+                // that of what lies beneath it.
+                self.draw_blend_if(&main, parent, &this, &below);
+            } else if let Some((shade, strength, mean)) = surface_shading(shape) {
+                // Displace's shading: the photo's shadows and highlights
+                // taken onto the object (#3595).
+                self.draw_surface_shaded(&main, parent, shade, strength, mean);
             } else if let Some(radius) = gaussian_blur(shape) {
                 // Gaussian blur (#1141): the object drawn on its own
                 // and blurred.
@@ -2237,6 +2279,137 @@ impl Renderer<'_> {
         }
         if px > 0 {
             accel::box_blur(&mut layer, px, 3);
+        }
+        composite_layer(
+            self.pixmap,
+            &layer,
+            (x as i32, y as i32),
+            tracedraw_core::live::MergeMode::Normal,
+        );
+    }
+
+    /// Blend If: the object drawn on a layer of its own, each pixel kept
+    /// as much as its lightness falls in `this` and the lightness of the
+    /// target beneath it (over white paper where nothing is drawn yet)
+    /// falls in `below`, then laid over the target.
+    fn draw_blend_if(&mut self, shape: &Shape, parent: Affine, this: &[f64; 4], below: &[f64; 4]) {
+        let (x, y, w, h) = self.layer_area_grown(shape, parent, 1.0);
+        if w == 0 || h == 0 {
+            return;
+        }
+        note_scratch(w, h);
+        let Some(mut layer) = Pixmap::new(w, h) else {
+            self.draw_shape(shape, parent);
+            return;
+        };
+        {
+            let mut sub = self.sub(&mut layer);
+            sub.screen = Affine::translate((-f64::from(x), -f64::from(y))) * self.screen;
+            sub.origin = (self.origin.0 + x as i32, self.origin.1 + y as i32);
+            sub.draw_shape(shape, parent);
+        }
+        let tw = self.pixmap.width() as usize;
+        let back = self.pixmap.pixels();
+        let (x0, y0) = (x as usize, y as usize);
+        let lw = w as usize;
+        for (i, px) in layer.pixels_mut().iter_mut().enumerate() {
+            let a = px.alpha();
+            if a == 0 {
+                continue;
+            }
+            let fa = f64::from(a);
+            let own = tracedraw_core::live::blend_if_lightness(
+                f64::from(px.red()) / fa,
+                f64::from(px.green()) / fa,
+                f64::from(px.blue()) / fa,
+            );
+            let (bx, by) = (x0 + i % lw, y0 + i / lw);
+            let under = back.get(by * tw + bx).map_or(1.0, |b| {
+                let paper = 255.0 - f64::from(b.alpha());
+                tracedraw_core::live::blend_if_lightness(
+                    (f64::from(b.red()) + paper) / 255.0,
+                    (f64::from(b.green()) + paper) / 255.0,
+                    (f64::from(b.blue()) + paper) / 255.0,
+                )
+            });
+            let k = tracedraw_core::live::blend_if_weight(this, own)
+                * tracedraw_core::live::blend_if_weight(below, under);
+            if k >= 1.0 {
+                continue;
+            }
+            let scale = |c: u8| (f64::from(c) * k).round().clamp(0.0, 255.0) as u8;
+            let (r, g, b, a) = (scale(px.red()), scale(px.green()), scale(px.blue()), scale(a));
+            *px = tiny_skia::PremultipliedColorU8::from_rgba(r.min(a), g.min(a), b.min(a), a)
+                .unwrap_or(tiny_skia::PremultipliedColorU8::TRANSPARENT);
+        }
+        composite_layer(
+            self.pixmap,
+            &layer,
+            (x as i32, y as i32),
+            tracedraw_core::live::MergeMode::Normal,
+        );
+    }
+
+    /// Displace's shading (#3595): the object drawn on a layer of its own,
+    /// each pixel's colour multiplied down where the target beneath it
+    /// (over white paper) is darker than the photo's middle grey `mean`
+    /// and screened up where it is lighter, by `strength`, then laid over
+    /// the target.
+    fn draw_surface_shaded(
+        &mut self,
+        shape: &Shape,
+        parent: Affine,
+        shade: tracedraw_core::live::SurfaceShade,
+        strength: f64,
+        mean: f64,
+    ) {
+        let (x, y, w, h) = self.layer_area_grown(shape, parent, 1.0);
+        if w == 0 || h == 0 {
+            return;
+        }
+        note_scratch(w, h);
+        let Some(mut layer) = Pixmap::new(w, h) else {
+            self.draw_shape(shape, parent);
+            return;
+        };
+        {
+            let mut sub = self.sub(&mut layer);
+            sub.screen = Affine::translate((-f64::from(x), -f64::from(y))) * self.screen;
+            sub.origin = (self.origin.0 + x as i32, self.origin.1 + y as i32);
+            sub.draw_shape(shape, parent);
+        }
+        let tw = self.pixmap.width() as usize;
+        let back = self.pixmap.pixels();
+        let (x0, y0) = (x as usize, y as usize);
+        let lw = w as usize;
+        for (i, px) in layer.pixels_mut().iter_mut().enumerate() {
+            let a = px.alpha();
+            if a == 0 {
+                continue;
+            }
+            let (bx, by) = (x0 + i % lw, y0 + i / lw);
+            let Some(b) = back.get(by * tw + bx) else {
+                continue;
+            };
+            let paper = 255.0 - f64::from(b.alpha());
+            let under = tracedraw_core::live::blend_if_lightness(
+                (f64::from(b.red()) + paper) / 255.0,
+                (f64::from(b.green()) + paper) / 255.0,
+                (f64::from(b.blue()) + paper) / 255.0,
+            );
+            let (mul, scr) = tracedraw_core::live::surface_shade(shade, strength, mean, under);
+            if mul >= 1.0 && scr <= 0.0 {
+                continue;
+            }
+            // Premultiplied: c' = c * mul, then screened as a + (A - a) * scr.
+            let fa = f64::from(a);
+            let tone = |c: u8| {
+                let c = f64::from(c) * mul;
+                (c + (fa - c) * scr).round().clamp(0.0, fa) as u8
+            };
+            let (r, g, bl) = (tone(px.red()), tone(px.green()), tone(px.blue()));
+            *px = tiny_skia::PremultipliedColorU8::from_rgba(r, g, bl, a)
+                .unwrap_or(tiny_skia::PremultipliedColorU8::TRANSPARENT);
         }
         composite_layer(
             self.pixmap,
@@ -7447,6 +7620,78 @@ mod tests {
         let edge = px(&pm, 6, 50).0;
         assert!(edge > 0 && edge < 255, "{edge}");
         assert_eq!(px(&pm, 30, 50), (255, 255, 255));
+    }
+
+    /// Blend If: a red bar over a page half black, half white shows only
+    /// over the white half with the range of what lies beneath set to
+    /// the light half, and nowhere with its own range set past its
+    /// lightness; split ends fade.
+    #[test]
+    fn blend_if_shows_the_object_where_the_lightness_falls_in_range() {
+        use tracedraw_core::live::{Effect, BLEND_IF_ALL};
+        let dark = rect(1, Rect::new(0.0, 0.0, 50.0, 100.0), Color::BLACK);
+        let light = rect(2, Rect::new(50.0, 0.0, 100.0, 100.0), Color::WHITE);
+        let bar = |this: [f64; 4], below: [f64; 4]| {
+            let mut b = rect(3, Rect::new(0.0, 40.0, 100.0, 60.0), Color::rgb8(255, 0, 0));
+            b.effects.push(Effect::BlendIf { this, below });
+            b
+        };
+        let draw = |b: Shape| {
+            let (doc, page) = doc_with(vec![dark.clone(), light.clone(), b]);
+            render_page_image(&doc, page, 25.4).unwrap()
+        };
+        let pm = draw(bar(BLEND_IF_ALL, [0.5, 0.5, 1.0, 1.0]));
+        assert_eq!(px(&pm, 25, 50), (0, 0, 0));
+        assert_eq!(px(&pm, 75, 50), (255, 0, 0));
+        let pm = draw(bar([0.5, 0.5, 1.0, 1.0], BLEND_IF_ALL));
+        assert_eq!(px(&pm, 25, 50), (0, 0, 0));
+        assert_eq!(px(&pm, 75, 50), (255, 255, 255));
+        // The full range draws it as it is, both halves.
+        let pm = draw(bar(BLEND_IF_ALL, BLEND_IF_ALL));
+        assert_eq!(px(&pm, 25, 50), (255, 0, 0));
+        // A split dark end over a lightness half way shows it half.
+        let grey = rect(1, Rect::new(0.0, 0.0, 100.0, 100.0), Color::rgb8(128, 128, 128));
+        let (doc, page) = doc_with(vec![grey, bar(BLEND_IF_ALL, [0.0, 1.0, 1.0, 1.0])]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        let (r, g, _) = px(&pm, 50, 50);
+        assert!(r > 150 && r < 230 && g > 40 && g < 100, "{:?}", px(&pm, 50, 50));
+    }
+
+    /// Displace's shading (#3595): a white bar over a page half dark
+    /// grey, half white takes the shadow of the dark half (Multiply) and
+    /// stays white over the light half; Screen lightens a black bar over
+    /// the light half only; None leaves it as it is.
+    #[test]
+    fn displace_shading_takes_the_shadows_and_highlights_beneath() {
+        use tracedraw_core::live::{Effect, SurfaceShade};
+        let dark = rect(1, Rect::new(0.0, 0.0, 50.0, 100.0), Color::rgb8(64, 64, 64));
+        let light = rect(2, Rect::new(50.0, 0.0, 100.0, 100.0), Color::WHITE);
+        let bar = |color: Color, shade: SurfaceShade| {
+            let mut b = rect(3, Rect::new(0.0, 40.0, 100.0, 60.0), color);
+            b.effects.push(Effect::Displace {
+                map: None,
+                horizontal: 0.0,
+                vertical: 0.0,
+                shade,
+                strength: 1.0,
+            });
+            b
+        };
+        let draw = |b: Shape| {
+            let (doc, page) = doc_with(vec![dark.clone(), light.clone(), b]);
+            render_page_image(&doc, page, 25.4).unwrap()
+        };
+        // The photo's middle grey is 0.5 with no map: the dark half (0.25)
+        // halves the white bar.
+        let pm = draw(bar(Color::WHITE, SurfaceShade::Multiply));
+        let (r, _, _) = px(&pm, 25, 50);
+        assert!((120..=136).contains(&r), "{r}");
+        assert_eq!(px(&pm, 75, 50), (255, 255, 255));
+        let pm = draw(bar(Color::BLACK, SurfaceShade::Screen));
+        assert_eq!(px(&pm, 25, 50), (0, 0, 0));
+        assert_eq!(px(&pm, 75, 50), (255, 255, 255));
+        let pm = draw(bar(Color::WHITE, SurfaceShade::None));
+        assert_eq!(px(&pm, 25, 50), (255, 255, 255));
     }
 
     #[test]

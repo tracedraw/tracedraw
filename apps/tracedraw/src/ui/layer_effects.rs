@@ -19,7 +19,7 @@ use crate::ui::field::NumField;
 use crate::ui::tips::RichTip;
 use egui::Ui;
 use tracedraw_core::geometry::{Affine, Vec2};
-use tracedraw_core::live::{Effect, MergeMode};
+use tracedraw_core::live::{Effect, MergeMode, SurfaceShade, BLEND_IF_ALL};
 use tracedraw_core::{Color, Command, Shape};
 
 /// An entry of the list.
@@ -38,10 +38,12 @@ pub enum Kind {
     OffsetPath,
     Transform,
     Grid,
+    BlendIf,
+    Displace,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 13] = [
+    pub const ALL: [Kind; 15] = [
         Kind::Bevel,
         Kind::Outline,
         Kind::ThreeD,
@@ -55,6 +57,8 @@ impl Kind {
         Kind::OffsetPath,
         Kind::Transform,
         Kind::Grid,
+        Kind::BlendIf,
+        Kind::Displace,
     ];
 
     pub fn key(self) -> &'static str {
@@ -72,6 +76,8 @@ impl Kind {
             Kind::OffsetPath => "effect.offset_path",
             Kind::Transform => "effect.transform",
             Kind::Grid => "effect.grid",
+            Kind::BlendIf => "effect.blend_if",
+            Kind::Displace => "effect.displace",
         }
     }
 
@@ -100,6 +106,8 @@ impl Kind {
                 | (Kind::OffsetPath, Effect::OffsetPath { .. })
                 | (Kind::Transform, Effect::Transform { .. })
                 | (Kind::Grid, Effect::Grid { .. })
+                | (Kind::BlendIf, Effect::BlendIf { .. })
+                | (Kind::Displace, Effect::Displace { .. })
         )
     }
 
@@ -204,6 +212,57 @@ impl Kind {
                 shift_x: 0.0,
                 shift_y: 0.0,
             },
+            // What lies beneath hides the object where it is dark, fading
+            // in to a quarter of the way up: a light text laid on a photo
+            // takes its grain.
+            Kind::BlendIf => Effect::BlendIf {
+                this: BLEND_IF_ALL,
+                below: [0.0, 0.25, 1.0, 1.0],
+            },
+            // Pushed up to 2 mm by the photo beneath, its shadows taken
+            // on at 60 % (#3595); the map is sampled when it is set.
+            Kind::Displace => Effect::Displace {
+                map: None,
+                horizontal: 2.0,
+                vertical: 2.0,
+                shade: SurfaceShade::Multiply,
+                strength: 0.6,
+            },
+        }
+    }
+}
+
+/// Each Displace of `stack`, on the object `id`, given its photo map
+/// (#3595): its own from `before` when the edit kept one (a map stays
+/// with the object it was sampled for, though the values shown came
+/// from another), a new one sampled from the photo beneath when it had
+/// none or the edit cleared it.
+pub fn fill_displace_maps(
+    doc: &tracedraw_core::Document,
+    id: tracedraw_core::ShapeId,
+    before: &[(Effect, bool)],
+    stack: &mut [(Effect, bool)],
+) {
+    let own = before.iter().find_map(|(e, _)| match e {
+        Effect::Displace { map: Some(m), .. } => Some(m.clone()),
+        _ => None,
+    });
+    for (e, _) in stack.iter_mut() {
+        if let Effect::Displace {
+            map,
+            horizontal,
+            vertical,
+            ..
+        } = e
+        {
+            *map = match (map.is_some(), &own) {
+                (true, Some(m)) => Some(m.clone()),
+                _ => tracedraw_core::surface_map::sample(
+                    doc,
+                    id,
+                    horizontal.abs().max(vertical.abs()),
+                ),
+            };
         }
     }
 }
@@ -230,10 +289,12 @@ impl App {
     /// one undo step; objects `edit` leaves as they were are not touched.
     fn edit_layer_effects(&mut self, edit: impl Fn(&mut Vec<(Effect, bool)>)) {
         let mut cmds = Vec::new();
+        let doc = self.doc();
         for s in self.selected_shapes() {
             let before = s.effect_stack();
             let mut stack = before.clone();
             edit(&mut stack);
+            fill_displace_maps(doc, s.id, &before, &mut stack);
             if stack != before {
                 let (effects, parked) = Shape::split_stack(stack);
                 cmds.push(Command::SetEffectStack {
@@ -266,6 +327,46 @@ impl App {
                 stack[i].0 = effect.clone();
             }
         });
+    }
+
+    /// After a move with the Pick tool: each moved object with Displace
+    /// takes the photo now beneath it, in the move's undo step, so a
+    /// print slid over a cloth follows the folds where it lands (#3595).
+    pub fn displace_after_move(&mut self) {
+        let ids = self.selection.clone();
+        for id in ids {
+            let doc = self.doc();
+            let Some(shape) = doc.find_shape(id) else {
+                continue;
+            };
+            if !shape
+                .effects
+                .iter()
+                .any(|e| matches!(e, Effect::Displace { map: Some(_), .. }))
+            {
+                continue;
+            }
+            let mut effects = shape.effects.clone();
+            for e in effects.iter_mut() {
+                if let Effect::Displace {
+                    map,
+                    horizontal,
+                    vertical,
+                    ..
+                } = e
+                {
+                    let margin = horizontal.abs().max(vertical.abs());
+                    *map = tracedraw_core::surface_map::sample(doc, id, margin);
+                }
+            }
+            if effects == shape.effects {
+                continue;
+            }
+            let cmd = Command::SetEffects { shape: id, effects };
+            if self.engine.amend(&cmd).is_err() {
+                self.run(cmd);
+            }
+        }
     }
 
     /// Take the entry's effect off the selection.
@@ -701,6 +802,77 @@ fn settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
         }
         Effect::Transform { .. } => changed |= transform_settings(app, ui, e),
         Effect::Grid { .. } => changed |= grid_settings(app, ui, e),
+        Effect::BlendIf { this, below } => {
+            ui.label(tr("layer_fx.blend_if_this"))
+                .rich_tip(tr("layer_fx.blend_if_desc"));
+            changed |= range_bar(ui, "blend_if_this", this);
+            ui.label(tr("layer_fx.blend_if_below"))
+                .rich_tip(tr("layer_fx.blend_if_desc"));
+            changed |= range_bar(ui, "blend_if_below", below);
+            if ui
+                .small_button(tr("layer_fx.blend_if_reset"))
+                .rich_tip(tr("layer_fx.blend_if_reset"))
+                .clicked()
+            {
+                *this = BLEND_IF_ALL;
+                *below = BLEND_IF_ALL;
+                changed = true;
+            }
+            ui.label(egui::RichText::new(tr("layer_fx.blend_if_hint")).color(Tokens::text_dim()));
+        }
+        Effect::Displace {
+            map,
+            horizontal,
+            vertical,
+            shade,
+            strength,
+        } => {
+            ui.label(egui::RichText::new(tr("layer_fx.displace_desc")).color(Tokens::text_dim()));
+            ui.horizontal(|ui| {
+                changed |= length(app, ui, "layer_fx.displace_horizontal", horizontal, 50.0);
+                changed |= length(app, ui, "layer_fx.displace_vertical", vertical, 50.0);
+            });
+            ui.horizontal(|ui| {
+                ui.label(tr("layer_fx.displace_shade"))
+                    .rich_tip(tr("layer_fx.displace_shade_tip"));
+                let name = |m: SurfaceShade| {
+                    tr(match m {
+                        SurfaceShade::None => "layer_fx.displace_shade_none",
+                        SurfaceShade::Multiply => "layer_fx.displace_shade_multiply",
+                        SurfaceShade::Screen => "layer_fx.displace_shade_screen",
+                        SurfaceShade::Both => "layer_fx.displace_shade_both",
+                    })
+                };
+                crate::ui::keynav::ComboBox::from_id_salt("layer_fx_displace_shade")
+                    .selected_text(name(*shade))
+                    .width(110.0)
+                    .show_ui(ui, |ui| {
+                        for m in SurfaceShade::ALL {
+                            if ui.selectable_label(*shade == m, name(m)).clicked() {
+                                *shade = m;
+                                changed = true;
+                            }
+                        }
+                    })
+                    .response
+                    .rich_tip(tr("layer_fx.displace_shade_tip"));
+                changed |= percent(ui, "layer_fx.displace_strength", strength);
+            });
+            ui.horizontal(|ui| {
+                if ui
+                    .small_button(tr("layer_fx.displace_resample"))
+                    .rich_tip(tr("layer_fx.displace_resample_tip"))
+                    .clicked()
+                {
+                    // Cleared, each object takes the photo beneath it now.
+                    *map = None;
+                    changed = true;
+                }
+                if map.is_none() {
+                    ui.label(egui::RichText::new(tr("layer_fx.displace_no_photo")).color(Tokens::text_dim()));
+                }
+            });
+        }
         _ => {}
     }
     changed
@@ -904,11 +1076,259 @@ fn grid_settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
     changed
 }
 
+/// Which of a Blend If range's four markers a drag moves, and whether
+/// its partner of the same end goes with it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RangeDrag {
+    marker: usize,
+    together: bool,
+    /// Where the pointer was when the drag began, 0..1, until the first
+    /// move tells which half of a joined end Alt splits off.
+    start: Option<f64>,
+}
+
+/// The marker of `range` a press at `at` (0..1) takes: the nearest; of
+/// two in one place, the dark end's inner one when the press is right of
+/// it and its outer one left of it (the light end the other way round).
+fn pick_marker(range: &[f64; 4], at: f64) -> usize {
+    let mut best = 0;
+    for i in 1..4 {
+        if (range[i] - at).abs() < (range[best] - at).abs() {
+            best = i;
+        }
+    }
+    best
+}
+
+/// The marker a drag of a joined end with Alt moves: the one on the
+/// side the pointer goes.
+fn split_marker(marker: usize, right: bool) -> usize {
+    match (marker < 2, right) {
+        (true, true) => 1,
+        (true, false) => 0,
+        (false, true) => 3,
+        (false, false) => 2,
+    }
+}
+
+/// Move `marker` of `range` to `v`, keeping the four in order; with
+/// `together`, its partner of the same end moves by as much.
+fn move_marker(range: &mut [f64; 4], marker: usize, together: bool, v: f64) {
+    let v = v.clamp(0.0, 1.0);
+    let marker = marker.min(3);
+    let partner = if marker < 2 { 1 - marker } else { 5 - marker };
+    let d = v - range[marker];
+    range[marker] = v;
+    if together {
+        range[partner] = (range[partner] + d).clamp(0.0, 1.0);
+    }
+    // Keep the order: the moved marker pushes the ones it passes.
+    for i in (0..marker).rev() {
+        if range[i] > range[i + 1] {
+            range[i] = range[i + 1];
+        }
+    }
+    for i in marker + 1..4 {
+        if range[i] < range[i - 1] {
+            range[i] = range[i - 1];
+        }
+    }
+}
+
+/// A lightness range: a strip from black to white with the range's four
+/// markers under it. A marker drags its end; the two markers of an end
+/// in one place move together, and Alt splits them apart so the end
+/// fades in over the gap. The values show as 0 to 255.
+fn range_bar(ui: &mut Ui, salt: &str, range: &mut [f64; 4]) -> bool {
+    let id = ui.id().with(("blend_if_bar", salt));
+    let width = ui.available_width().clamp(120.0, 240.0);
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(width, 26.0), egui::Sense::click_and_drag());
+    let strip = egui::Rect::from_min_size(rect.min + egui::vec2(6.0, 0.0), egui::vec2(width - 12.0, 10.0));
+    let to_x = |v: f64| strip.left() + strip.width() * v as f32;
+    let to_v = |x: f32| f64::from(((x - strip.left()) / strip.width()).clamp(0.0, 1.0));
+    let mut changed = false;
+    let mut drag = ui.data(|d| d.get_temp::<RangeDrag>(id));
+    if let Some(p) = response.interact_pointer_pos() {
+        let at = to_v(p.x);
+        if response.drag_started() || response.clicked() || drag.is_none() {
+            let marker = pick_marker(range, at);
+            let partner = if marker < 2 { 1 - marker } else { 5 - marker };
+            let joined = (range[marker] - range[partner]).abs() < 1e-9;
+            let alt = ui.input(|i| i.modifiers.alt);
+            drag = Some(RangeDrag {
+                marker,
+                together: joined && !alt,
+                start: (joined && alt).then_some(at),
+            });
+        }
+        if let Some(d) = drag.as_mut() {
+            if let Some(s) = d.start {
+                if (at - s).abs() > 1e-3 {
+                    d.marker = split_marker(d.marker, at > s);
+                    d.start = None;
+                }
+            }
+            if d.start.is_none() && (response.dragged() || response.clicked()) {
+                let before = *range;
+                move_marker(range, d.marker, d.together, at);
+                changed |= *range != before;
+            }
+        }
+    }
+    if response.drag_stopped() || !response.is_pointer_button_down_on() {
+        drag = None;
+    }
+    ui.data_mut(|d| match drag {
+        Some(v) => {
+            d.insert_temp(id, v);
+        }
+        None => d.remove::<RangeDrag>(id),
+    });
+    let painter = ui.painter_at(rect.expand(2.0));
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(strip.left_top(), egui::Color32::BLACK);
+    mesh.colored_vertex(strip.right_top(), egui::Color32::WHITE);
+    mesh.colored_vertex(strip.right_bottom(), egui::Color32::WHITE);
+    mesh.colored_vertex(strip.left_bottom(), egui::Color32::BLACK);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.add(mesh);
+    painter.rect_stroke(
+        strip,
+        0.0,
+        egui::Stroke::new(1.0, Tokens::text_dim()),
+        egui::StrokeKind::Outside,
+    );
+    for (i, v) in range.iter().enumerate() {
+        let x = to_x(*v);
+        let top = strip.bottom() + 1.0;
+        // The dark end's markers dark, the light end's light.
+        let fill = if i < 2 {
+            egui::Color32::from_gray(40)
+        } else {
+            egui::Color32::from_gray(235)
+        };
+        painter.add(egui::epaint::PathShape::convex_polygon(
+            vec![
+                egui::pos2(x, top),
+                egui::pos2(x + 5.0, top + 8.0),
+                egui::pos2(x - 5.0, top + 8.0),
+            ],
+            fill,
+            egui::Stroke::new(1.0, Tokens::text_dim()),
+        ));
+    }
+    let byte = |v: f64| (v * 255.0).round() as i32;
+    let end = |a: f64, b: f64| {
+        if byte(a) == byte(b) {
+            byte(a).to_string()
+        } else {
+            format!("{} / {}", byte(a), byte(b))
+        }
+    };
+    response.rich_tip(tr("layer_fx.blend_if_desc"));
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(end(range[0], range[1])).small());
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(egui::RichText::new(end(range[2], range[3])).small());
+        });
+    });
+    changed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use tracedraw_core::geometry::Rect;
     use tracedraw_core::ShapeKind;
+
+    /// Displace (#3595): ticked on an object over a photo it takes the
+    /// photo beneath as its map; setting values keeps each object's own
+    /// map; Use Photo Beneath and a move with the Pick tool sample it
+    /// again where the object is; the panel draws its controls.
+    #[test]
+    fn displace_takes_the_photo_beneath_and_samples_it_again_after_a_move() {
+        let mut app = App::headless();
+        let (w, h) = (8u32, 4u32);
+        let mut px = Vec::new();
+        for _ in 0..h {
+            for x in 0..w {
+                let v = if x < w / 2 { 0 } else { 255 };
+                px.extend_from_slice(&[v, v, v, 255]);
+            }
+        }
+        let png = tracedraw_core::bitmap_warp::encode_rgba(w, h, &px).expect("png");
+        app.new_shape(ShapeKind::Bitmap {
+            rect: Rect::new(0.0, 0.0, 40.0, 20.0),
+            width_px: w,
+            height_px: h,
+            png: png.into(),
+            fx: None,
+        })
+        .expect("photo");
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(10.0, 5.0, 30.0, 15.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape");
+        app.select(vec![id]);
+        let map = |app: &App| {
+            app.doc()
+                .find_shape(id)
+                .expect("shape")
+                .effects
+                .iter()
+                .find_map(|e| match e {
+                    Effect::Displace { map, .. } => Some(map.clone()),
+                    _ => None,
+                })
+                .expect("displace")
+        };
+        app.set_layer_effect_on(Kind::Displace, true, &Kind::Displace.default_effect());
+        let first = map(&app).expect("map");
+        assert!((first.mean - 0.5).abs() < 0.1, "{}", first.mean);
+        // A value set from another object's effect keeps this one's map.
+        let mut other = Kind::Displace.default_effect();
+        if let Effect::Displace { map, vertical, .. } = &mut other {
+            *map = Some(tracedraw_core::live::SurfaceMap {
+                rect: Rect::new(0.0, 0.0, 1.0, 1.0),
+                cols: 1,
+                rows: 1,
+                light: vec![0],
+                mean: 0.0,
+                to_local: [1.0, 0.0, 0.0, 1.0],
+            });
+            *vertical = 4.0;
+        }
+        app.set_layer_effect(Kind::Displace, &other);
+        assert_eq!(map(&app).as_ref(), Some(&first));
+        // Moved onto the white half: sampled again, in the move's step.
+        app.run(Command::TransformShapes {
+            shapes: vec![id],
+            transform: Affine::translate((15.0, 0.0)),
+        });
+        app.displace_after_move();
+        assert!(map(&app).expect("map").mean > 0.6);
+        app.undo();
+        assert_eq!(map(&app).as_ref(), Some(&first));
+        // Use Photo Beneath clears the map and each object samples anew.
+        let mut again = other.clone();
+        if let Effect::Displace { map, .. } = &mut again {
+            *map = None;
+        }
+        app.set_layer_effect(Kind::Displace, &again);
+        // Read anew, over the box grown by the new 4 mm.
+        let anew = map(&app).expect("map");
+        assert!((anew.rect.x0 - 6.0).abs() < 1e-9, "{:?}", anew.rect);
+        assert!((anew.mean - first.mean).abs() < 1e-6);
+        let ctx = crate::theme::ui_context();
+        ctx.data_mut(|d| d.insert_temp(highlighted_id(), Kind::ALL.len() - 1));
+        let mut out = ctx.run_ui(Default::default(), |ui| layer_effects(&mut app, ui));
+        out.textures_delta.clear();
+    }
 
     /// Ticking an entry adds its effect; clearing it keeps the values,
     /// switched off, and ticking it again brings them back; a value set
@@ -963,6 +1383,18 @@ mod tests {
         assert!((d - 2.0).abs() < 1e-9 && (a - 270.0).abs() < 1e-9);
         let v = from_polar(d, a);
         assert!(v.x.abs() < 1e-9 && (v.y + 2.0).abs() < 1e-9);
+        // Blend If's markers: a joined end moves together, a split one
+        // alone, and the order holds.
+        let mut r = BLEND_IF_ALL;
+        move_marker(&mut r, 0, true, 0.2);
+        assert_eq!(r, [0.2, 0.2, 1.0, 1.0]);
+        move_marker(&mut r, split_marker(0, true), false, 0.5);
+        assert_eq!(r, [0.2, 0.5, 1.0, 1.0]);
+        move_marker(&mut r, 3, true, 0.3);
+        assert_eq!(r, [0.2, 0.3, 0.3, 0.3]);
+        assert_eq!(pick_marker(&[0.0, 0.25, 0.9, 1.0], 0.3), 1);
+        assert_eq!(split_marker(2, false), 2);
+        assert_eq!(split_marker(3, true), 3);
         // The panel draws with each entry highlighted, and with nothing
         // selected.
         let ctx = crate::theme::ui_context();
