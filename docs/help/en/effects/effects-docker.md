@@ -67,3 +67,31 @@ wearing the look; one undo removes it. Your own saved presets come after them.
 - [[menu.object > menu.object.copy_effect]] copies an effect from another
   object, and [[menu.object.clone_effect]] makes a clone that follows it; see
   [Copying and cloning effects](copy-and-clone.md).
+
+## Hand-made looks and frames
+
+The layer effects at the top of the panel also hold these, each live and
+each changing as you edit the object:
+
+- [[effect.roughen]] redraws the outline with small random bumps. **Size**
+  sets how far they reach, **Detail** how many there are per 10 mm, and
+  **Smooth** makes them waves instead of points.
+- [[effect.jitter_nodes]] moves the nodes the curve already has, at random,
+  up to the distances you set; **Handles too** moves each handle on its own.
+- [[effect.scribble]] draws the fill as one loose zigzag line in the fill's
+  colour, at the angle, spacing and width you set. **Looseness** lets the
+  strokes run past or stop short of the edge. **Round turns** curves each
+  turn of the line, up to a wide loop like a pastel pencil's; **Past the
+  edge** runs every stroke that far beyond the edge (below zero, it stops
+  that far inside); **Spacing variation** and **Width variation** make the
+  gaps and the strokes uneven, as by hand. The outline stays.
+- [[effect.shape_frame]] replaces the outline with a rectangle, rounded
+  rectangle or ellipse round the object, with the margin you set. On a group
+  it makes one shape painted like the top object.
+- [[effect.trim_marks]] draws lines at the corners of the object, outside
+  it, for cutting it out after printing.
+- [[effect.feather]] fades the object out towards its edge over the radius
+  you set.
+
+**Variation** gives the random effects another pattern. The same value always
+draws the same result. Convert to Curves makes the outline effects permanent.

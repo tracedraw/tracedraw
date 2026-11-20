@@ -505,6 +505,7 @@ pub fn for_tool_with_ctrl(
         t @ (Tool::Freehand
         | Tool::Bezier
         | Tool::BSpline
+        | Tool::CurvaturePen
         | Tool::Polyline
         | Tool::TwoPointLine) => match curve_mark(app, pos) {
             Some(m) => ToolCursor::CurveBadge(t, m),

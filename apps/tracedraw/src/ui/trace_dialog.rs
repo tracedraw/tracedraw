@@ -864,6 +864,14 @@ fn settings_tab(app: &mut App, ui: &mut Ui, st: &mut TraceState) {
     });
     before_after::rule(ui);
     ui.label(tr("dialog.trace_image"));
+    // A pencil sketch made clean (no machine learning): off at first.
+    ui.add_enabled_ui(outline, |ui| {
+        ui.checkbox(
+            &mut st.settings.clean_sketch,
+            tr("dialog.trace_clean_sketch"),
+        )
+        .rich_tip(crate::ui::tips::keyed("dialog.trace_clean_sketch"));
+    });
     let r = ui
         .checkbox(
             &mut st.settings.delete_original,

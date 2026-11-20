@@ -55,6 +55,7 @@ pub(crate) fn frame_only(s: &tracedraw_core::Shape) -> bool {
             e,
             tracedraw_core::live::Effect::Envelope { .. }
                 | tracedraw_core::live::Effect::Perspective { .. }
+                | tracedraw_core::live::Effect::MeshEnvelope { .. }
         )
     })
 }
