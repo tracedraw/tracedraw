@@ -2995,6 +2995,11 @@ pub struct FloatingDocker {
     /// The window is put at `pos` on the next frame (it was just dropped
     /// or moved); otherwise it keeps where egui has it.
     pub place: bool,
+    /// In a window of the system of its own, which can go to another
+    /// monitor (#2884), instead of floating inside the main window.
+    pub own_window: bool,
+    /// Where that window was last seen on the desktop.
+    pub desktop: Option<Pos2>,
 }
 
 impl FloatingDocker {
@@ -4688,6 +4693,8 @@ impl App {
                     tab: f.tab.key().to_string(),
                     pos: [f.pos.x, f.pos.y],
                     size: [f.size.x, f.size.y],
+                    own_window: f.own_window,
+                    desktop: f.desktop.map(|p| [p.x, p.y]),
                 })
                 .collect(),
         }
@@ -4760,6 +4767,11 @@ impl App {
                     },
                     size,
                     place: true,
+                    own_window: f.own_window,
+                    desktop: f
+                        .desktop
+                        .filter(|p| p.iter().all(|v| v.is_finite()))
+                        .map(|p| Pos2::new(p[0], p[1])),
                 })
             })
             .collect();
@@ -4925,6 +4937,26 @@ impl App {
         }
     }
 
+    /// Give the panel `tab` a window of the system of its own, to put it
+    /// on another monitor (#2884), or bring it back to float inside the
+    /// main window (`on` false). A panel in a column floats first.
+    pub fn set_docker_own_window(&mut self, tab: DockerTab, on: bool) {
+        if on && self.docker_place(tab) != Some(DockerPlace::Floating) {
+            self.move_docker(tab, DockerPlace::Floating, None);
+        }
+        if let Some(f) = self.floating_dockers.iter_mut().find(|f| f.tab == tab) {
+            f.own_window = on;
+            f.place = true;
+        }
+    }
+
+    /// Whether the panel `tab` is in a window of its own.
+    pub fn docker_in_own_window(&self, tab: DockerTab) -> bool {
+        self.floating_dockers
+            .iter()
+            .any(|f| f.tab == tab && f.own_window)
+    }
+
     /// `tab` is open somewhere (in a column, in front or behind, or
     /// floating).
     pub fn docker_open(&self, tab: DockerTab) -> bool {
@@ -5035,6 +5067,12 @@ impl App {
             .iter()
             .find(|f| f.tab == tab)
             .map(|f| (f.pos, f.size));
+        let own = self
+            .floating_dockers
+            .iter()
+            .find(|f| f.tab == tab)
+            .map(|f| (f.own_window, f.desktop))
+            .unwrap_or_default();
         self.take_docker(tab);
         match place {
             DockerPlace::Right => {
@@ -5064,6 +5102,8 @@ impl App {
                     pos: Pos2::new(pos.x.max(0.0), pos.y.max(0.0)),
                     size,
                     place: true,
+                    own_window: own.0,
+                    desktop: own.1,
                 });
             }
         }

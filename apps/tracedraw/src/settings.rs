@@ -887,13 +887,18 @@ pub struct StackSetup {
 }
 
 /// A floating docker as it was left: its name key, the window's top left
-/// corner and its size (screen points).
+/// corner and its size (screen points); whether it was in a window of its
+/// own (#2884) and where that window was on the desktop.
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct FloatingSetup {
     pub tab: String,
     pub pos: [f32; 2],
     pub size: [f32; 2],
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub own_window: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub desktop: Option<[f32; 2]>,
 }
 
 /// Which bars are shown (Window > Toolbars, the bars' menu). The palette
