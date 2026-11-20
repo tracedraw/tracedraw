@@ -922,6 +922,10 @@ struct TextRun {
     /// Where each character of `text` starts along the baseline, in the
     /// units of `end_x`; `None` once they no longer match.
     xs: Option<Vec<f64>>,
+    /// Where the first glyph that is not a space or a tab starts along
+    /// the baseline, in the units of `end_x`: a text that starts with
+    /// the space glyph of a tab starts there instead (#3718).
+    ink_x: Option<f64>,
     /// Filled and outlined (render mode 2 or 6): the way a word processor
     /// draws bold in a font that has no bold face (#2569).
     stroked_bold: bool,
@@ -4369,6 +4373,7 @@ impl<'a> Importer<'a> {
                     typed: Vec::new(),
                     reph_glyph: false,
                     xs: Some(Vec::new()),
+                    ink_x: None,
                     stroked_bold: fake_bold(gs),
                     filled: text_filled(gs),
                     outline: text_outline(gs),
@@ -4401,6 +4406,12 @@ impl<'a> Importer<'a> {
                 // a visible virama.
                 if own == "\u{0930}\u{094D}" && w0.abs() < 0.15 {
                     r.reph_glyph = true;
+                }
+                // The first glyph that draws something, by its own
+                // character (inside an ActualText too, whose text starts
+                // with the tab its space glyph stands for).
+                if r.ink_x.is_none() && !own.trim().is_empty() {
+                    r.ink_x = Some(r.end_x + advance);
                 }
                 match (given.is_some(), self.actual.as_mut()) {
                     (true, Some(a)) => {
@@ -4510,12 +4521,36 @@ impl<'a> Importer<'a> {
         } else {
             text
         };
-        // The characters' places hold only while the text is as drawn.
-        let text_chars = if text == r.text {
-            text.chars().count()
-        } else {
-            usize::MAX
+        // A text that starts with spaces or tabs (the space glyph a word
+        // processor draws for a tab before a list item's words) starts at
+        // its first letter, where the file draws it, without them: the
+        // tab went to a tab stop of TraceDraw's and a space did not, so
+        // the words of one item stood further on than the file has them
+        // and those of another (an item whose tab glyph came in as a
+        // space, as "डॉ." did) over the bullet before it (#3718).
+        let lead = text.len() - text.trim_start_matches([' ', '\t']).len();
+        let shift = match r.ink_x {
+            Some(x) if lead > 0 && x > 0.0 && x.is_finite() => x,
+            _ => 0.0,
         };
+        let (text, xs) = if shift > 0.0 {
+            let dropped = text[..lead].chars().count();
+            let xs = r.xs.map(|xs| {
+                xs.into_iter()
+                    .skip(dropped)
+                    .map(|x| x - shift)
+                    .collect::<Vec<_>>()
+            });
+            let rest = text[lead..].to_string();
+            let same = text == r.text;
+            (rest, xs.filter(|_| same))
+        } else {
+            let same = text == r.text;
+            (text, r.xs.filter(|_| same))
+        };
+        transform *= Affine::translate((shift * scale, 0.0));
+        // The characters' places hold only while the text is as drawn.
+        let text_chars = text.chars().count();
         let span = TextSpan {
             bold: r.font.bold || r.stroked_bold,
             italic: r.font.italic || slanted,
@@ -4539,8 +4574,8 @@ impl<'a> Importer<'a> {
         shape.opacity = r.alpha;
         masked(&mut shape, &r.mask);
         let _ = r.font.type3_matrix;
-        self.line_widths.insert(shape.id, r.reach * scale);
-        if let Some(xs) = r.xs.filter(|xs| xs.len() == text_chars) {
+        self.line_widths.insert(shape.id, (r.reach - shift) * scale);
+        if let Some(xs) = xs.filter(|xs| xs.len() == text_chars) {
             self.char_xs
                 .insert(shape.id, xs.iter().map(|x| x * scale).collect());
         }
@@ -7535,6 +7570,51 @@ mod tests {
                 *b = n;
             }
         })
+    }
+
+    /// #3718: a list item's text began with a tab, marked text drawn as
+    /// a space glyph, then the letters moved on with `Td`. The text
+    /// kept the tab at the start, so in another font it pushed the
+    /// letters back over the bullet. A leading tab or space is now left
+    /// out and the text starts where its first letter was drawn.
+    #[test]
+    fn leading_tab_or_space_is_left_out_and_text_starts_at_its_first_letter() {
+        let font =
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
+        let bytes = one_page(
+            "BT /F1 10 Tf 1 0 0 1 20 80 Tm /Span << /ActualText <FEFF0009> >> BDC ( ) Tj EMC \
+             30 0 Td (Dr.) Tj ET \
+             BT /F1 10 Tf 1 0 0 1 20 50 Tm [( ) -2722.2 (Pro)] TJ ET \
+             BT /F1 10 Tf 1 0 0 1 50 20 Tm (Ref) Tj ET",
+            "<< /Font << /F1 5 0 R >> >>",
+            &[font.to_string()],
+        );
+        let mut ids = IdSource::default();
+        let imp = parse(&bytes, &mut ids).expect("parse");
+        let texts: Vec<(String, f64)> = imp.pages[0]
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.kind {
+                ShapeKind::Text { spans, .. } => Some((
+                    spans.iter().map(|p| p.text.as_str()).collect(),
+                    s.transform.as_coeffs()[4],
+                )),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts.len(), 3, "{texts:?}");
+        let x = |t: &str| {
+            texts
+                .iter()
+                .find(|(s, _)| s == t)
+                .unwrap_or_else(|| panic!("{t} in {texts:?}"))
+                .1
+        };
+        let refx = x("Ref");
+        assert!((x("Dr.") - refx).abs() < 1e-6, "{texts:?}");
+        // The space is 278 thousandths of an em wide, so the letters
+        // start 30 points on, as the reference does.
+        assert!((x("Pro") - refx).abs() < 1e-3, "{texts:?}");
     }
 
     /// Bold and italic a word processor makes up for a font with no such
