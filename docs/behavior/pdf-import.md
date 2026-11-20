@@ -148,7 +148,10 @@ the dialog keeps what was read until OK or Cancel.
   subset prefix (`Arial-BoldMT` becomes Arial, bold); a part after the
   dash that holds a number stays, so `Raj-01` keeps its
   whole name in the missing fonts list (#3554,
-  `pdf_import::tests::a_numbered_font_keeps_its_number`). Bold and italic
+  `pdf_import::tests::a_numbered_font_keeps_its_number`). Only the parts
+  that name a style go: a word of the family's own name stays, its dash
+  read as a space, so `Lohit-Devanagari` is Lohit Devanagari, not Lohit,
+  while `Khand-Bold` is Khand, bold (#3651). Bold and italic
   come from the name, the descriptor flags and StemV. Characters decode
   through ToUnicode CMaps (bfchar, bfrange), then the font's Encoding
   (WinAnsi, MacRoman, Standard, Differences with glyph names), then

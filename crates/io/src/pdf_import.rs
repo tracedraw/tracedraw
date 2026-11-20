@@ -3918,6 +3918,9 @@ impl<'a> Importer<'a> {
             .and_then(|o| o.as_name().ok())
             .map(|n| String::from_utf8_lossy(n).into_owned());
         if let Some(base) = base {
+            // The whole family ("Lohit Devanagari", #3651), then its first
+            // word as before.
+            families.push(split_font_name(&base).0);
             let name = base.split_once('+').map_or(base.as_str(), |(_, n)| n);
             let name = name.split([',', '-']).next().unwrap_or(name);
             families.push(name.to_string());
@@ -4884,17 +4887,31 @@ fn split_font_name(base: &str) -> (String, bool, bool) {
         || lower.contains("heavy")
         || lower.contains("semibold");
     let italic = lower.contains("italic") || lower.contains("oblique");
-    // The part after a dash or comma is the style ("-BoldItalicMT"), except
-    // when it holds a number that tells one font of a series from the next:
-    // "Raj-01" is not the same font as "Raj-02" (#3554).
-    let mut family = match name.find([',', '-']) {
-        Some(at) if !style_words_only(&name[at + 1..]) => match name.rfind(',') {
-            Some(c) if c > at && style_words_only(&name[c + 1..]) => name[..c].to_string(),
-            _ => name.to_string(),
-        },
-        Some(at) => name[..at].to_string(),
-        None => name.to_string(),
-    };
+    // The parts after the last dashes or commas that only name a style
+    // go ("-BoldItalicMT", ",Bold"). The rest is the family's own name: a
+    // number tells one font of a series from the next ("Raj-01" is not
+    // "Raj-02", #3554), and a word is part of the name ("Lohit-Devanagari"
+    // is the family Lohit Devanagari, not Lohit, #3651).
+    let mut family = name.to_string();
+    while let Some(at) = family.rfind([',', '-']) {
+        if !style_words_only(&family[at + 1..]) {
+            break;
+        }
+        family.truncate(at);
+    }
+    // A dash before a word is a space in the family's name; one before a
+    // number stays ("Raj-01").
+    let family_parts: Vec<&str> = family.split('-').collect();
+    let mut family = family_parts.first().copied().unwrap_or("").to_string();
+    for part in &family_parts[1..] {
+        let sep = if part.chars().any(|c| c.is_ascii_digit()) {
+            '-'
+        } else {
+            ' '
+        };
+        family.push(sep);
+        family.push_str(part);
+    }
     for suffix in ["MT", "PSMT", "PS"] {
         if family.len() > suffix.len() + 2 && family.ends_with(suffix) {
             family.truncate(family.len() - suffix.len());
@@ -4914,19 +4931,21 @@ fn split_font_name(base: &str) -> (String, bool, bool) {
 }
 
 /// Whether what follows a font name's dash or comma only names a style, so
-/// that it can go: "BoldItalicMT" and "Regular" go, "01" and "55Roman" stay.
+/// that it can go: "BoldItalicMT" and "Regular" go; "01", "55Roman" and
+/// a word of the name such as "Devanagari" stay (#3651).
 fn style_words_only(tail: &str) -> bool {
     // Longer words first, so "semibold" is not read as "semi" and "bold".
     const WORDS: &str = "semibold demibold extrabold ultrabold extralight ultralight \
+        semicondensed extracondensed ultracondensed semiexpanded \
         bolditalic bold italic oblique regular roman light medium black heavy thin book \
-        condensed cond narrow extended normal demi psmt mt ps it bd semi -";
+        condensed cond narrow extended expanded normal demi psmt mt ps it bd semi -";
     let mut rest = tail.to_ascii_lowercase();
     rest.retain(|c| c != ',' && c != ' ');
     while !rest.is_empty() {
         match WORDS.split_whitespace().find(|w| rest.starts_with(w)) {
             Some(w) => rest.drain(..w.len()),
-            // Anything else keeps the tail only when it holds a digit.
-            None => return !rest.chars().any(|c| c.is_ascii_digit()),
+            // Anything else is part of the family's name.
+            None => return false,
         };
     }
     true
@@ -7455,6 +7474,13 @@ mod tests {
             ("MitraUni-Bold", "MitraUni", true, false),
             ("Wingdings-Regular", "Wingdings", false, false),
             ("Raj01", "Raj01", false, false),
+            // A word after the dash is part of the name (#3651).
+            ("ABCDEF+Lohit-Devanagari", "Lohit Devanagari", false, false),
+            ("Khand-Bold", "Khand", true, false),
+            ("NotoSans-Devanagari", "NotoSans Devanagari", false, false),
+            ("KrutiDev010", "KrutiDev010", false, false),
+            ("Roboto-SemiBoldItalic", "Roboto", true, true),
+            ("OpenSans-SemiCondensedBold", "OpenSans", true, false),
         ] {
             let want = (family.to_string(), bold, italic);
             assert_eq!(split_font_name(base), want, "{base}");
