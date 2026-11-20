@@ -67,6 +67,7 @@ pub fn steps(tool: Tool) -> &'static [Option<Pic>] {
         Tool::Bezier => &[p!(bezier_corners), p!(bezier_smooth), p!(bezier_close)],
         Tool::Pen => &[p!(pen_corners), p!(pen_preview), p!(bezier_close)],
         Tool::BSpline => &[p!(bspline_points), p!(bspline_loop)],
+        Tool::CurvaturePen => &[p!(curvature_points), p!(curvature_corner), None],
         Tool::Polyline => &[p!(polyline_clicks), None],
         Tool::ThreePointCurve => &[p!(curve3_line), p!(curve3_bend)],
         Tool::BrushStrokes => &[p!(brush_modes), p!(brush_drag), None],
@@ -1525,6 +1526,45 @@ fn bspline_loop(k: &K) {
     }
     k.p.circle_stroke(k.pt(c[0]), k.px(7.0), Stroke::new(1.2, ACCENT));
     k.tool_cursor(c[0], Tool::BSpline);
+}
+
+/// The Curvature Pen's curve through `c` (corners where `fixed`), as
+/// points to draw.
+fn through(c: &[P], fixed: &[bool]) -> Vec<P> {
+    let pts: Vec<tracedraw_core::geometry::Point> = c
+        .iter()
+        .map(|q| tracedraw_core::geometry::Point::new(f64::from(q.0), f64::from(q.1)))
+        .collect();
+    let path = tracedraw_core::geometry::curvature_path(&pts, fixed, false);
+    let mut out = Vec::new();
+    kurbo::flatten(path.elements().iter().copied(), 0.25, |el| match el {
+        kurbo::PathEl::MoveTo(q) | kurbo::PathEl::LineTo(q) => {
+            out.push((q.x as f32, q.y as f32));
+        }
+        _ => {}
+    });
+    out
+}
+
+fn curvature_points(k: &K) {
+    let c = bspline_ctrl();
+    k.line(&through(&c, &[]), 1.5, INK);
+    for &q in &c {
+        k.node(q, false);
+    }
+    k.click(c[4]);
+    k.tool_cursor(c[4], Tool::CurvaturePen);
+}
+
+fn curvature_corner(k: &K) {
+    let c = bspline_ctrl();
+    k.line(&through(&c, &[false, false, true]), 1.5, INK);
+    for (i, &q) in c.iter().enumerate() {
+        k.node(q, i == 2);
+    }
+    k.click(c[2]);
+    k.text((100.0, 92.0), "Alt", 10.0, ACCENT, Align2::CENTER_CENTER);
+    k.tool_cursor(c[4], Tool::CurvaturePen);
 }
 
 fn polyline_clicks(k: &K) {

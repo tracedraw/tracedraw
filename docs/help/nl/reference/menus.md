@@ -225,6 +225,15 @@ eigen sneltoetsen tonen; zie [Aanpassingsopties](../customize/customization.md#c
 | [[menu.object.front_minus_back]] | [Combining shapes: weld, trim and intersect](../lines-shapes/shaping.md) |
 | [[menu.object.back_minus_front]] | [Combining shapes: weld, trim and intersect](../lines-shapes/shaping.md) |
 | [[menu.object.boundary]] | [Combining shapes: weld, trim and intersect](../lines-shapes/shaping.md) |
+| [[menu.object.break_pieces]] | [Combining shapes: weld, trim and intersect](../lines-shapes/shaping.md) |
+| [[menu.object.merge_colors]] | [Combining shapes: weld, trim and intersect](../lines-shapes/shaping.md) |
+| [[menu.object.cut_to_top]] | [Combining shapes: weld, trim and intersect](../lines-shapes/shaping.md) |
+| [[menu.object.piece_outlines]] | [Combining shapes: weld, trim and intersect](../lines-shapes/shaping.md) |
+| [[menu.object.exclude]] | [Combining shapes: weld, trim and intersect](../lines-shapes/shaping.md) |
+| [[menu.object.combine_live]] | [Combining shapes: weld, trim and intersect](../lines-shapes/shaping.md) |
+| [[menu.object.cut_below]] | [Combining shapes: weld, trim and intersect](../lines-shapes/shaping.md) |
+| [[menu.object.cut_grid]] | [Combining shapes: weld, trim and intersect](../lines-shapes/shaping.md) |
+| [[menu.object.remove_strays]] | [Combining shapes: weld, trim and intersect](../lines-shapes/shaping.md) |
 | [[menu.object.shaping_docker]] | [Combining shapes: weld, trim and intersect](../lines-shapes/shaping.md) |
 | [[menu.object.combine]] | [Organizing objects and layers](../objects/objects-and-layers.md) |
 | [[menu.object.break_apart]] | [Organizing objects and layers](../objects/objects-and-layers.md) |

@@ -12,6 +12,8 @@ Intermediate objects between a start and an end object.
 | Loop | off | with a rotation, the steps' centres leave the straight way and curve from the start to the end (a half circle at 180 degrees, a curl through the middle at 360) |
 | Blend along full path | off | along a path, the first and last steps sit on the path's ends |
 | Start / End on path | 0 %, 100 % | along a path, where the start and end objects sit, in % of its length, either way round (#2946) |
+| Bend (no path) | straight | the round handle in the middle of the line, Blend tool: the steps follow a curve from the start object's centre to the end object's through the handle (`BlendOptions::bend`, the curve's middle offset from the straight line's); spacing and Rotate all objects apply along it; dropped within 4 screen pixels of the straight line, or Straighten in the panel, straight again |
+| Blend object by object | off | two groups: each object of the start group (at any depth) blends into the matching one of the end group, the fewer spread over the more in order, each in its own colours; step `k` is a group of the pairs' steps `k`, turned and placed along the path or bend as a whole (`BlendOptions::by_parts`); off, or with one end not a group, each end blends as one outline |
 | Apply to sizing | off | the object acceleration changes the steps' outlines and sizes too |
 | Color blend | Direct | Direct (straight through RGB), Clockwise (hue increasing), Counterclockwise (hue decreasing), through HSB |
 
@@ -25,7 +27,8 @@ Not yet: mapping nodes, splitting and fusing.
 Two picture buttons choose Steps or Spacing (Spacing only for a blend
 on a path), then the Steps and Spacing fields (the one not chosen is
 greyed), Rotation, Loop (with a rotation), Blend along full path,
-Rotate all objects and Start on path / End on path (with a path). Under "Acceleration" the Object and
+Rotate all objects and Start on path / End on path (with a path),
+Blend object by object, and Straighten (with a bent line). Under "Acceleration" the Object and
 Color sliders, Apply to sizing, Link acceleration (the colour slider
 follows the object one and is greyed) and Reset (both back to even).
 Under "Color Blend" three picture buttons: Direct, Clockwise and
