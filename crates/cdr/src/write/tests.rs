@@ -10468,3 +10468,42 @@ fn palette_inks_and_styles_open_again() {
     let (back, _) = crate::open_bytes(&document_to_cdr_version(&doc, 13), "back").expect("reads");
     assert!(back.palette.is_empty() && back.object_styles.is_empty());
 }
+
+/// A spot ink, which these files get as its process tint, and the
+/// registration colour, which they get as 100% of each process ink, come
+/// back as themselves in TraceDraw from version 14 (the package's own
+/// member keeps the object); other programs see the process colours.
+#[test]
+fn spot_and_registration_colours_open_again_as_saved() {
+    let spot = Color::Spot {
+        ink: 1,
+        tint: 0.6,
+        c: 0.0,
+        m: 0.8,
+        y: 1.0,
+        k: 0.0,
+    };
+    let mut doc = kept_rect(Fill::Solid(spot));
+    doc.pages[0].layers[0].shapes[0].stroke = Some(Stroke::new(Color::Registration, 0.5));
+    for v in versions() {
+        let bytes = document_to_cdr_version(&doc, v);
+        let shown = open_as_drawn(&bytes);
+        let s = &shown.pages[0].layers[0].shapes[0];
+        assert!(
+            matches!(s.fill, Fill::Solid(Color::Cmyk { .. })),
+            "{v}: {:?}",
+            s.fill
+        );
+        if v < 14 {
+            continue;
+        }
+        let (back, _) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let s = &back.pages[0].layers[0].shapes[0];
+        assert_eq!(s.fill, Fill::Solid(spot), "{v}");
+        assert_eq!(
+            s.stroke.as_ref().map(|st| st.color),
+            Some(Color::Registration),
+            "{v}"
+        );
+    }
+}

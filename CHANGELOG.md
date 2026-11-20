@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Saving as .cdr (version 14 and later): spot colours and the registration colour open again in TraceDraw as they were saved, in fills (solid or fountain) and outlines. They came back as plain process colours. Other programs still get the process stand-in (#3194).
 - The interface comes in Vietnamese (Tiếng Việt): Options > Global, the Windows installer and the system language offer it, with a system font found for its letters (#3692).
 - Envelope: mesh envelope (Envelope panel, Columns and Rows, Add Mesh; drag the grid points with the Envelope tool) and Object > Copy Effect > Envelope from Top Object.
 - Object > Combine Shapes: Break into Pieces, Merge Same Colors, Cut to Top Object, Piece Outlines, Exclude Overlaps, and Combine Live (a group drawn as one combined curve, objects kept). The live outline offset is now named Grow Outline.
