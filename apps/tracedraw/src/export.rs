@@ -3007,18 +3007,117 @@ pub fn parse_csv(text: &str) -> (Vec<String>, Vec<Vec<String>>) {
 // ----- find and replace ----------------------------------------------------------
 
 pub(crate) fn matches_text(hay: &str, needle: &str, match_case: bool, whole_word: bool) -> bool {
-    if needle.is_empty() {
-        return false;
+    let want = find_codes(needle);
+    let letters: Vec<char> = hay.chars().collect();
+    !find_matches(&letters, &want, match_case, whole_word).is_empty()
+}
+
+/// One thing a Find looks for: a letter, or a run of two or more spaces.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Want {
+    Char(char),
+    /// `^w`: two or more spaces in a row, all of them (#3679).
+    Spaces,
+}
+
+/// What a Find field asks for, its special characters read (#3679):
+/// `^p` a paragraph break (Enter), `^l` a line break (Shift+Enter), `^t`
+/// a tab, `^s` a non-breaking space, `^w` two or more spaces in a row and
+/// `^^` a caret. Any other caret stays as typed.
+pub(crate) fn find_codes(s: &str) -> Vec<Want> {
+    let mut out = Vec::new();
+    let mut it = s.chars().peekable();
+    while let Some(c) = it.next() {
+        if c != '^' {
+            out.push(Want::Char(c));
+            continue;
+        }
+        let code = match it.peek() {
+            Some('p') => Want::Char('\n'),
+            Some('l') => Want::Char('\u{2028}'),
+            Some('t') => Want::Char('\t'),
+            Some('s') => Want::Char('\u{00A0}'),
+            Some('w') => Want::Spaces,
+            Some('^') => Want::Char('^'),
+            _ => {
+                out.push(Want::Char('^'));
+                continue;
+            }
+        };
+        it.next();
+        out.push(code);
     }
-    let (h, n) = if match_case {
-        (hay.to_string(), needle.to_string())
-    } else {
-        (hay.to_lowercase(), needle.to_lowercase())
+    out
+}
+
+/// A Replace field with its special characters read as in
+/// [`find_codes`]; `^w` puts one space (#3679).
+pub(crate) fn replace_codes(s: &str) -> String {
+    find_codes(s)
+        .into_iter()
+        .map(|w| match w {
+            Want::Char(c) => c,
+            Want::Spaces => ' ',
+        })
+        .collect()
+}
+
+/// Where `want` is found in `letters`, first letter and length, each
+/// match after the one before it. Letters match one for one, ignoring
+/// case unless `match_case`; with `whole_word` a match has no letter or
+/// digit right before or after it.
+pub(crate) fn find_matches(
+    letters: &[char],
+    want: &[Want],
+    match_case: bool,
+    whole_word: bool,
+) -> Vec<(usize, usize)> {
+    let mut found = Vec::new();
+    if want.is_empty() {
+        return found;
+    }
+    let same = |a: char, b: char| a == b || (!match_case && a.to_lowercase().eq(b.to_lowercase()));
+    let word = |at: Option<&char>| at.is_some_and(|c| c.is_alphanumeric());
+    let length_at = |i: usize| -> Option<usize> {
+        let mut j = i;
+        for w in want {
+            match *w {
+                Want::Char(c) => {
+                    if j < letters.len() && same(letters[j], c) {
+                        j += 1;
+                    } else {
+                        return None;
+                    }
+                }
+                Want::Spaces => {
+                    let from = j;
+                    while j < letters.len() && letters[j] == ' ' {
+                        j += 1;
+                    }
+                    if j - from < 2 {
+                        return None;
+                    }
+                }
+            }
+        }
+        Some(j - i)
     };
-    if !whole_word {
-        return h.contains(&n);
+    let mut i = 0;
+    while i < letters.len() {
+        let hit = length_at(i).filter(|n| {
+            !(whole_word
+                && (word(i.checked_sub(1).and_then(|p| letters.get(p)))
+                    || word(letters.get(i + n))))
+        });
+        match hit {
+            Some(n) => {
+                found.push((i, n));
+                i += n;
+            }
+            None => i += 1,
+        }
     }
-    h.split(|c: char| !c.is_alphanumeric()).any(|w| w == n)
+    found
 }
 
 /// Find text objects containing `needle` (kind 0) or objects whose kind or
@@ -3186,35 +3285,16 @@ pub(crate) fn replace_in_spans(
     match_case: bool,
     whole_word: bool,
 ) -> Option<Vec<TextSpan>> {
-    let want: Vec<char> = needle.chars().collect();
-    if want.is_empty() {
-        return None;
-    }
+    let want = find_codes(needle);
+    let replacement = replace_codes(replacement);
     // Every letter of the text with the run it is in.
     let letters: Vec<(char, usize)> = spans
         .iter()
         .enumerate()
         .flat_map(|(k, sp)| sp.text.chars().map(move |c| (c, k)))
         .collect();
-    let same = |a: char, b: char| a == b || (!match_case && a.to_lowercase().eq(b.to_lowercase()));
-    let word = |at: Option<&(char, usize)>| at.is_some_and(|(c, _)| c.is_alphanumeric());
-    let mut found: Vec<usize> = Vec::new();
-    let mut i = 0;
-    while i + want.len() <= letters.len() {
-        let hit = want
-            .iter()
-            .enumerate()
-            .all(|(k, w)| same(letters[i + k].0, *w))
-            && !(whole_word
-                && (word(i.checked_sub(1).and_then(|p| letters.get(p)))
-                    || word(letters.get(i + want.len()))));
-        if hit {
-            found.push(i);
-            i += want.len();
-        } else {
-            i += 1;
-        }
-    }
+    let chars: Vec<char> = letters.iter().map(|(c, _)| *c).collect();
+    let found = find_matches(&chars, &want, match_case, whole_word);
     if found.is_empty() {
         return None;
     }
@@ -3222,9 +3302,9 @@ pub(crate) fn replace_in_spans(
     let mut next = found.into_iter().peekable();
     let mut i = 0;
     while i < letters.len() {
-        if next.next_if_eq(&i).is_some() {
-            texts[letters[i].1].push_str(replacement);
-            i += want.len();
+        if let Some((_, n)) = next.next_if(|(at, _)| *at == i) {
+            texts[letters[i].1].push_str(&replacement);
+            i += n;
         } else {
             texts[letters[i].1].push(letters[i].0);
             i += 1;
@@ -5501,6 +5581,51 @@ mod tests {
             replace_in("cat concat", "cat", "dog", false, true),
             "dog concat"
         );
+    }
+
+    /// The special characters of Find and Replace (#3679): ^p paragraph
+    /// breaks, ^l line breaks, ^t tabs, ^s non-breaking spaces, ^w runs
+    /// of two or more spaces and ^^ a caret; a caret before any other
+    /// letter stays as typed.
+    #[test]
+    fn find_and_replace_read_the_special_characters() {
+        assert_eq!(
+            find_codes("a^p^l^t^s^w^^^x"),
+            vec![
+                Want::Char('a'),
+                Want::Char('\n'),
+                Want::Char('\u{2028}'),
+                Want::Char('\t'),
+                Want::Char('\u{00A0}'),
+                Want::Spaces,
+                Want::Char('^'),
+                Want::Char('^'),
+                Want::Char('x'),
+            ]
+        );
+        assert!(matches_text("one\ntwo", "one^ptwo", false, false));
+        assert!(!matches_text("one two", "one^ptwo", false, false));
+        // A paragraph break joins two paragraphs into one line.
+        assert_eq!(replace_in("one\ntwo", "^p", " ", false, false), "one two");
+        // Runs of spaces become one; a lone space is left.
+        assert_eq!(
+            replace_in("a  b c     d", "^w", "^w", false, false),
+            "a b c d"
+        );
+        // Tabs to line breaks, and a caret found and put as ^^.
+        assert_eq!(
+            replace_in("x\ty^z", "^t", "^l", false, false),
+            "x\u{2028}y^z"
+        );
+        assert_eq!(replace_in("2^3", "^^", "**", false, false), "2**3");
+        // A match may spread over runs of different styles.
+        let spans = [
+            TextSpan::new("end  ", "A", 1.0),
+            TextSpan::new("  start", "A", 1.0),
+        ];
+        let out = replace_in_spans(&spans, "end^wstart", "end start", false, false).expect("found");
+        let text: String = out.iter().map(|s| s.text.as_str()).collect();
+        assert_eq!(text, "end start");
     }
 
     /// WebP takes the quality: lower values make smaller files (colours

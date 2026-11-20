@@ -673,6 +673,109 @@ fn styles_list(app: &mut App, ui: &mut Ui) {
     }
 }
 
+/// The special characters a Find or Replace field's right-click menu
+/// puts in (#3679), with their codes; `^w` only in Find.
+pub(crate) const FIND_CODES: [(&str, &str); 5] = [
+    ("find.code_paragraph", "^p"),
+    ("menu.text.code_line_break", "^l"),
+    ("find.code_tab", "^t"),
+    ("menu.text.code_nonbreaking_space", "^s"),
+    ("find.code_spaces", "^w"),
+];
+
+/// `text` with the letters `from..to` (counted in characters) replaced
+/// by `put`, and where the cursor goes after it.
+pub(crate) fn put_in_field(text: &mut String, from: usize, to: usize, put: &str) -> usize {
+    let byte = |n: usize| text.char_indices().nth(n).map_or(text.len(), |(b, _)| b);
+    let (a, b) = (byte(from.min(to)), byte(from.max(to)));
+    text.replace_range(a..b, put);
+    from.min(to) + put.chars().count()
+}
+
+/// A Find or Replace field with a right-click menu: Cut, Copy, Paste,
+/// Select All, and the special characters as their codes (#3678, #3679).
+/// `spaces`: the menu offers `^w` (two or more spaces), a Find code only.
+fn find_field(ui: &mut Ui, text: &mut String, name: &str, spaces: bool) -> egui::Response {
+    let id = ui.make_persistent_id(name);
+    let out = egui::TextEdit::singleline(text).id(id).show(ui);
+    let all = text.chars().count();
+    let (from, to) = egui::TextEdit::load_state(ui.ctx(), id)
+        .and_then(|s| s.cursor.char_range())
+        .map(|r| {
+            let (a, b) = (r.primary.index.0, r.secondary.index.0);
+            (a.min(b), a.max(b))
+        })
+        .unwrap_or((all, all));
+    let mut put: Option<(usize, usize, String)> = None;
+    let mut select_all = false;
+    let response = out.response.response.clone();
+    response.context_menu(|ui| {
+        let picked: String = text.chars().skip(from).take(to - from).collect();
+        if ui
+            .add_enabled(from < to, egui::Button::new(tr("menu.edit.cut")))
+            .clicked()
+        {
+            ui.ctx().copy_text(picked.clone());
+            put = Some((from, to, String::new()));
+            ui.close();
+        }
+        if ui
+            .add_enabled(from < to, egui::Button::new(tr("menu.edit.copy")))
+            .clicked()
+        {
+            ui.ctx().copy_text(picked);
+            ui.close();
+        }
+        if ui.button(tr("menu.edit.paste")).clicked() {
+            if let Some(t) = crate::clipboard::system_text() {
+                // One line: the field has no room for line ends.
+                put = Some((from, to, t.replace(['\r', '\n'], " ")));
+            }
+            ui.close();
+        }
+        if ui.button(tr("menu.edit.select_all")).clicked() {
+            select_all = true;
+            ui.close();
+        }
+        ui.separator();
+        ui.menu_button(tr("find.special_character"), |ui| {
+            for (key, code) in FIND_CODES {
+                if code == "^w" && !spaces {
+                    continue;
+                }
+                if ui.button(format!("{}  {code}", tr(key))).clicked() {
+                    put = Some((from, to, code.to_string()));
+                    ui.close();
+                }
+            }
+        })
+        .response
+        .rich_tip(crate::ui::tips::pair(
+            "find.special_character",
+            "find.special_character_desc",
+        ));
+    });
+    let cursor = match put {
+        Some((a, b, s)) => Some(put_in_field(text, a, b, &s)),
+        None => None,
+    };
+    if cursor.is_some() || select_all {
+        if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
+            let range = match cursor {
+                Some(c) => egui::text::CCursorRange::one(egui::text::CCursor::new(c)),
+                None => egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(0),
+                    egui::text::CCursor::new(text.chars().count()),
+                ),
+            };
+            state.cursor.set_char_range(Some(range));
+            state.store(ui.ctx(), id);
+        }
+        ui.memory_mut(|m| m.request_focus(id));
+    }
+    response
+}
+
 fn find_replace(app: &mut App, ui: &mut Ui) {
     let mut st = std::mem::take(&mut app.find_state);
     ui.horizontal(|ui| {
@@ -699,20 +802,17 @@ fn find_replace(app: &mut App, ui: &mut Ui) {
     }
     ui.horizontal(|ui| {
         ui.label(tr("dialog.find"));
-        ui.text_edit_singleline(&mut st.find)
-            .rich_tip(crate::ui::tips::pair(
-                "docker.find_field",
-                "docker.find_field_desc",
-            ));
+        find_field(ui, &mut st.find, "find_replace_find", true).rich_tip(crate::ui::tips::pair(
+            "docker.find_field",
+            "docker.find_field_desc",
+        ));
     });
     if st.kind == 0 {
         ui.horizontal(|ui| {
             ui.label(tr("dialog.replace_with"));
-            ui.text_edit_singleline(&mut st.replace)
-                .rich_tip(crate::ui::tips::pair(
-                    "docker.replace_field",
-                    "docker.replace_field_desc",
-                ));
+            find_field(ui, &mut st.replace, "find_replace_replace", false).rich_tip(
+                crate::ui::tips::pair("docker.replace_field", "docker.replace_field_desc"),
+            );
         });
         ui.checkbox(&mut st.match_case, tr("dialog.match_case"))
             .rich_tip(crate::ui::tips::pair(
@@ -4293,5 +4393,34 @@ mod object_data_copy_tests {
         app.undo();
         let data = app.doc().find_shape(b).expect("b").data.clone();
         assert_eq!(data.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod find_field_tests {
+    use super::*;
+
+    /// The Find and Replace fields' right-click menu puts its text where
+    /// the cursor is, or over the letters picked, counted in characters
+    /// (#3678); the special characters go in as their codes (#3679).
+    #[test]
+    fn the_find_fields_menu_puts_text_at_the_cursor() {
+        let mut t = "größe text".to_string();
+        assert_eq!(put_in_field(&mut t, 5, 5, "^p"), 7);
+        assert_eq!(t, "größe^p text");
+        // Over a selection made backwards: the selection goes.
+        assert_eq!(put_in_field(&mut t, 12, 8, "^t"), 10);
+        assert_eq!(t, "größe^p ^t");
+        // Cut: nothing put over the picked letters.
+        assert_eq!(put_in_field(&mut t, 0, 5, ""), 0);
+        assert_eq!(t, "^p ^t");
+        // At the end.
+        assert_eq!(put_in_field(&mut t, 5, 5, "^w"), 7);
+        assert_eq!(t, "^p ^t^w");
+        let codes: Vec<&str> = FIND_CODES.iter().map(|(_, c)| *c).collect();
+        assert_eq!(codes, ["^p", "^l", "^t", "^s", "^w"]);
+        for (key, _) in FIND_CODES {
+            assert_ne!(tr(key), key, "{key} is in the language files");
+        }
     }
 }
