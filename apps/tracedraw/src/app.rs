@@ -1676,6 +1676,10 @@ pub struct App {
     /// Clip frame being edited in place: (frame id, the page's other
     /// objects when editing began; see `clip_edit_contents`).
     pub clip_frame_edit: Option<(ShapeId, std::collections::HashSet<ShapeId>)>,
+    /// Draw Behind on the drawing tools' property bar: what they draw
+    /// goes behind the selected objects of its layer, or to the back of
+    /// the layer with nothing selected there. Off at first.
+    pub draw_behind: bool,
     /// The undo steps that began and finished editing a clip frame's
     /// contents, so undo and redo across them leave or enter the edit
     /// (#851).
@@ -3378,6 +3382,7 @@ impl App {
             marquee_moved_from: None,
             tab_ruler_menu: None,
             clip_frame_edit: None,
+            draw_behind: false,
             clip_edit_marks: Vec::new(),
             symmetry_edit: None,
             symmetry_step: None,
@@ -4420,6 +4425,7 @@ impl App {
         self.recognize = crate::recognize::RecognizeSettings {
             recognition: t.recognize.recognition.min(5),
             smoothing: t.recognize.smoothing.min(5),
+            scribble_erases: t.recognize.scribble_erases,
         };
         self.knife = crate::knife::KnifeSettings {
             gap: finite(t.knife.gap, 0.0, 1000.0, 0.0),
@@ -6218,6 +6224,11 @@ impl App {
             return;
         }
         if let Some(k) = keep {
+            if let Err(e) = self.engine.amend(&k) {
+                self.status = e.to_string();
+            }
+        }
+        if let Some(k) = self.drawn_behind(&cmd) {
             if let Err(e) = self.engine.amend(&k) {
                 self.status = e.to_string();
             }
