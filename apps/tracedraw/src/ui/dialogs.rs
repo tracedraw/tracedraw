@@ -1483,6 +1483,8 @@ pub enum Dialog {
         width: f64,
         height: f64,
     },
+    /// Object > Symbol > Stretch Zones.
+    StretchZones(crate::ui::stretch_zones_dialog::StretchZonesState),
     PasteSpecial(PasteSpecialState),
     /// Bitmaps > Picture Captions (#2180).
     PictureCaptions(crate::captions::Captions),
@@ -3176,6 +3178,9 @@ pub fn show(app: &mut App, ctx: &Context) {
             if help {
                 app.open_dialog_help();
             }
+        }
+        Dialog::StretchZones(st) => {
+            crate::ui::stretch_zones_dialog::dialog(app, ctx, st, &mut close)
         }
         Dialog::PasteSpecial(st) => {
             if !st.loaded {
@@ -9173,6 +9178,7 @@ pub(crate) mod tests {
             }),
             Dialog::CreatePattern { vector: true },
             Dialog::CreatePattern { vector: false },
+            Dialog::StretchZones(Default::default()),
             Dialog::PasteSpecial(PasteSpecialState::default()),
             Dialog::Barcode(BarcodeState::default()),
             Dialog::Formula(Default::default()),

@@ -39,6 +39,7 @@ pub mod picture_inks;
 mod press;
 pub mod procedural;
 pub mod recolor;
+pub mod scale_grid;
 pub mod shadow;
 pub mod shaping;
 pub mod spreads;
@@ -101,6 +102,8 @@ pub enum Error {
     SelectionGroup(u8),
     #[error("object {0:?} is not a clip frame")]
     NotClipFrame(ShapeId),
+    #[error("object {0:?} is not a group")]
+    NotGroup(ShapeId),
     #[error("object {0:?} is not a bitmap")]
     NotBitmap(ShapeId),
     #[error("object {0:?} is not a text")]

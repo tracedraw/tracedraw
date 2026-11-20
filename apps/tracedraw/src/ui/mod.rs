@@ -114,6 +114,7 @@ pub mod sizes;
 pub mod slider;
 pub mod status;
 pub mod straighten_dialog;
+pub mod stretch_zones_dialog;
 pub mod pixel_bar;
 pub mod symmetry_bar;
 pub mod tab_focus;

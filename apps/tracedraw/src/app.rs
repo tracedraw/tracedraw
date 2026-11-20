@@ -13585,6 +13585,32 @@ mod tests {
         assert!(mask(&app).is_some_and(|m| m.invert));
     }
 
+    #[test]
+    fn groups_take_a_look_in_one_step_each() {
+        let mut app = App::headless();
+        let r = Shape::new(
+            ShapeId(0),
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let g = app
+            .new_shape(ShapeKind::Group { children: vec![r] })
+            .expect("group");
+        app.select(vec![g]);
+        let look = |app: &App| app.doc().find_shape(g).and_then(|s| s.group_look);
+        app.set_group_looks(Some(true), None);
+        assert!(look(&app).is_some_and(|l| l.as_one && !l.knockout));
+        app.set_group_looks(None, Some(true));
+        assert!(look(&app).is_some_and(|l| l.as_one && l.knockout));
+        app.set_group_looks(Some(false), Some(false));
+        assert_eq!(look(&app), None);
+        app.undo();
+        assert!(look(&app).is_some_and(|l| l.knockout));
+    }
+
     /// The files left in an auto-backup folder.
     fn files_in(dir: &std::path::Path) -> Vec<String> {
         let mut names: Vec<String> = std::fs::read_dir(dir)

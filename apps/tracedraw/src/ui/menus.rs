@@ -3724,6 +3724,15 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         if item(ui, "menu.object.symbol_revert", "", has_instance) {
             app.revert_symbol_instances();
         }
+        // Corners that keep their size when an instance is stretched.
+        if item(
+            ui,
+            "menu.object.symbol_stretch_zones",
+            "",
+            app.can_edit_stretch_zones(),
+        ) {
+            app.open_stretch_zones_dialog();
+        }
         if item(ui, "menu.object.symbol_manager", "Ctrl+F3", true) {
             app.show_dockers = true;
             app.docker_tab = DockerTab::Symbols;
@@ -3895,6 +3904,22 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         }
         if item(ui, "menu.object.group_ungroup_all", "", has) {
             app.ungroup_all();
+        }
+        // How the selected groups put their members together.
+        let looks: Vec<_> = app
+            .selected_shapes()
+            .iter()
+            .filter(|s| matches!(s.kind, ShapeKind::Group { .. }))
+            .map(|s| s.group_look.unwrap_or_default())
+            .collect();
+        let any_group = !looks.is_empty();
+        let as_one = any_group && looks.iter().all(|l| l.as_one);
+        if check(ui, "menu.object.group_as_one", "", as_one) && any_group {
+            app.set_group_looks(Some(!as_one), None);
+        }
+        let knockout = any_group && looks.iter().all(|l| l.knockout);
+        if check(ui, "menu.object.group_knockout", "", knockout) && any_group {
+            app.set_group_looks(None, Some(!knockout));
         }
     });
     sep(ui);

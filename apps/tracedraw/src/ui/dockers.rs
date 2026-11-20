@@ -3657,6 +3657,26 @@ pub(crate) fn pattern_editor(
             }
         }
     });
+    // Rows (columns) lying over one another: hexagonal tiles interlock.
+    ui.horizontal(|ui| {
+        let shift_mixed = differs(FillField::TileShift);
+        ui.label(tr("docker.tile_overlap"));
+        if ui
+            .add(field(
+                &mut pl.overlap_percent,
+                shift_mixed,
+                0.0..=90.0,
+                " %",
+            ))
+            .rich_tip(tr("docker.tile_overlap_tip"))
+            .changed()
+        {
+            changed = true;
+            if shift_mixed {
+                touched.push(FillField::TileShift);
+            }
+        }
+    });
     let two_mixed = differs(FillField::TransformWithObject);
     let mut with_object = pl.transform_with_object && !two_mixed;
     if ui

@@ -990,6 +990,57 @@ impl Renderer<'_> {
         (x0, y0, x1.saturating_sub(x0), y1.saturating_sub(y0))
     }
 
+    /// A group with a look (see `GroupLook`): its members drawn into a
+    /// layer of their own (each hiding what it covers of the ones before
+    /// it with a knockout), the layer then laid down with the group's
+    /// `opacity`.
+    fn draw_group_on_its_own(
+        &mut self,
+        children: &[Shape],
+        look: tracedraw_core::document::GroupLook,
+        transform: Affine,
+        opacity: f64,
+    ) {
+        let (w, h) = (self.pixmap.width(), self.pixmap.height());
+        let Some(mut layer) = Pixmap::new(w, h) else {
+            return;
+        };
+        let sight = self.sight();
+        for c in children {
+            if sight.is_some_and(|v| self.out_of_sight_in(c, transform, &v)) {
+                continue;
+            }
+            let t = self.child_transform(c, transform);
+            if !look.knockout {
+                let mut sub = self.sub(&mut layer);
+                sub.draw_shape(c, t);
+                continue;
+            }
+            // The member as it paints, and where it lies: drawn solid, its
+            // coverage hides what came before, see-through or not.
+            let (Some(mut paint), Some(mut cover)) = (Pixmap::new(w, h), Pixmap::new(w, h)) else {
+                continue;
+            };
+            {
+                let mut sub = self.sub(&mut paint);
+                sub.draw_shape(c, t);
+            }
+            {
+                let mut solid = c.clone();
+                solid.opacity = 1.0;
+                let mut sub = self.sub(&mut cover);
+                sub.draw_shape(&solid, t);
+            }
+            knock_out(&mut layer, &paint, &cover);
+        }
+        let pp = tiny_skia::PixmapPaint {
+            opacity: opacity.clamp(0.0, 1.0) as f32,
+            ..Default::default()
+        };
+        self.pixmap
+            .draw_pixmap(0, 0, layer.as_ref(), &pp, Transform::identity(), None);
+    }
+
     fn child_transform(&self, child: &Shape, transform: Affine) -> Affine {
         match self.preview {
             Some(p) if p.shapes.contains(&child.id) => p.transform * transform,
@@ -1186,6 +1237,17 @@ impl Renderer<'_> {
         {
             if let Some(sh) = shape.shadow.as_ref().filter(|sh| sh.opacity > 0.0) {
                 self.draw_group_shadow(sh, shape, parent);
+            }
+        }
+        if let (ShapeKind::Group { children }, Some(look)) = (&shape.kind, shape.group_look) {
+            // A group drawn on its own first, then laid down as one
+            // picture (its transparency on the whole), its members
+            // hiding the ones beneath them with a knockout.
+            if !look.is_plain() && !self.flags.wireframe {
+                if shape.opacity > 0.0 {
+                    self.draw_group_on_its_own(children, look, transform, shape.opacity);
+                }
+                return;
             }
         }
         if let ShapeKind::Group { children } = &shape.kind {
@@ -5449,6 +5511,34 @@ fn clip_segment(a: Point, b: Point, m: f64) -> Option<(Point, Point, bool, bool)
 /// Rasterise a fill over `bounds` (page mm) at `dpi`, y up mapped to image
 /// rows top-down. Used by exporters that have no native pattern or
 /// texture support (PDF, SVG fallback).
+/// `paint` laid into `layer` where `cover` lies, hiding what `layer` held
+/// there: the layer keeps `1 - cover` of itself under the paint
+/// (premultiplied pixels of the same size).
+fn knock_out(layer: &mut Pixmap, paint: &Pixmap, cover: &Pixmap) {
+    for ((d, s), k) in layer
+        .pixels_mut()
+        .iter_mut()
+        .zip(paint.pixels())
+        .zip(cover.pixels())
+    {
+        let ka = u32::from(k.alpha());
+        if ka == 0 {
+            continue;
+        }
+        let keep = 255 - ka;
+        let mix = |dv: u8, sv: u8| (u32::from(sv) + (u32::from(dv) * keep + 127) / 255).min(255) as u8;
+        let a = mix(d.alpha(), s.alpha());
+        let (r, g, b) = (
+            mix(d.red(), s.red()).min(a),
+            mix(d.green(), s.green()).min(a),
+            mix(d.blue(), s.blue()).min(a),
+        );
+        if let Some(c) = tiny_skia::PremultipliedColorU8::from_rgba(r, g, b, a) {
+            *d = c;
+        }
+    }
+}
+
 pub fn render_fill_image(fill: &Fill, bounds: Rect, dpi: f64) -> Option<Pixmap> {
     let zoom = dpi / 25.4;
     let w = (bounds.width() * zoom).ceil().max(1.0) as u32;
@@ -8523,6 +8613,123 @@ mod tests {
         assert_eq!(px(&columns, 2, 17), (0, 0, 0));
         assert_eq!(px(&columns, 12, 12), (0, 0, 0));
         assert_eq!(px(&columns, 12, 17), (255, 255, 255));
+    }
+
+    /// Hexagonal tiles laid with half a tile of row offset and a quarter
+    /// of row overlap cover the page with no gaps; without the overlap
+    /// the corners between the rows stay empty.
+    #[test]
+    fn overlapping_rows_interlock_hexagons() {
+        use tracedraw_core::style::PatternPlacement;
+        let r = 10.0;
+        let (w, h) = (3f64.sqrt() * r, 2.0 * r);
+        let mut hex = tracedraw_core::geometry::BezPath::new();
+        for k in 0..6 {
+            let a = std::f64::consts::FRAC_PI_2 + f64::from(k) * std::f64::consts::FRAC_PI_3;
+            let q = tracedraw_core::geometry::Point::new(w / 2.0 + r * a.cos(), h / 2.0 + r * a.sin());
+            if k == 0 {
+                hex.move_to(q);
+            } else {
+                hex.line_to(q);
+            }
+        }
+        hex.close_path();
+        let mut cell = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(7),
+            tracedraw_core::ShapeKind::Path {
+                path: hex,
+                closed: true,
+            },
+        );
+        cell.fill = Fill::Solid(Color::rgb8(255, 0, 0));
+        cell.stroke = None;
+        let red_share = |overlap: f64| {
+            let mut s = rect(1, Rect::new(0.0, 0.0, 60.0, 60.0), Color::WHITE);
+            s.fill = Fill::Pattern(Pattern::Vector {
+                shapes: vec![cell.clone()],
+                tile: tracedraw_core::geometry::Size::new(w, h),
+                placement: PatternPlacement {
+                    shift_percent: 50.0,
+                    overlap_percent: overlap,
+                    ..PatternPlacement::default()
+                },
+            });
+            let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(60.0, 60.0));
+            let page = doc.pages[0].id;
+            let layer = doc.pages[0].layers[0].id;
+            doc.layer_mut(layer).unwrap().shapes.push(s);
+            let pm = render_page_image(&doc, page, 25.4 * 4.0).unwrap();
+            let red = pm
+                .pixels()
+                .iter()
+                .filter(|p| p.red() > 200 && p.green() < 60)
+                .count();
+            red as f64 / pm.pixels().len() as f64
+        };
+        let gaps = red_share(0.0);
+        let hexes = red_share(25.0);
+        assert!(gaps < 0.8, "{gaps}");
+        assert!(hexes > 0.97, "{hexes}");
+    }
+
+    /// A red and a blue square overlapping in a group: drawn as one, the
+    /// group's transparency goes on the whole and the red does not show
+    /// through the blue; with a knockout, a see-through blue shows the
+    /// page beneath the group, not the red.
+    #[test]
+    fn group_looks_draw_the_group_as_one_and_knock_out() {
+        use tracedraw_core::document::GroupLook;
+        let page_with = |member_opacity: f64, group_opacity: f64, look: Option<GroupLook>| {
+            let mut red = rect(2, Rect::new(0.0, 0.0, 20.0, 10.0), Color::rgb8(255, 0, 0));
+            let mut blue = rect(3, Rect::new(10.0, 0.0, 30.0, 10.0), Color::rgb8(0, 0, 255));
+            red.opacity = member_opacity;
+            blue.opacity = member_opacity;
+            let mut g = tracedraw_core::Shape::new(
+                tracedraw_core::ShapeId(1),
+                tracedraw_core::ShapeKind::Group {
+                    children: vec![red, blue],
+                },
+            );
+            g.opacity = group_opacity;
+            g.group_look = look;
+            let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(30.0, 10.0));
+            let page = doc.pages[0].id;
+            let layer = doc.pages[0].layers[0].id;
+            doc.layer_mut(layer).unwrap().shapes.push(g);
+            render_page_image(&doc, page, 25.4).unwrap()
+        };
+        let as_one = Some(GroupLook {
+            as_one: true,
+            knockout: false,
+        });
+        let knockout = Some(GroupLook {
+            as_one: false,
+            knockout: true,
+        });
+        // A plain half-transparent group: the red shows through the blue.
+        let plain = px(&page_with(1.0, 0.5, None), 15, 5);
+        assert!(plain.0 > 40 && plain.2 > 100, "{plain:?}");
+        // As one: the blue alone at half strength over the white page.
+        let one = px(&page_with(1.0, 0.5, as_one), 15, 5);
+        assert!(one.0 > 120 && one.1 > 120 && one.2 > 250, "{one:?}");
+        assert!((i32::from(one.0) - i32::from(one.1)).abs() < 4, "{one:?}");
+        // The left part is the red alone at half strength either way.
+        assert_eq!(px(&page_with(1.0, 0.5, as_one), 5, 5), px(&plain_page(), 5, 5));
+        // Knockout: half-transparent members, the blue hides the red.
+        let ko = px(&page_with(0.5, 1.0, knockout), 15, 5);
+        assert!((i32::from(ko.0) - i32::from(ko.1)).abs() < 4 && ko.2 > 250, "{ko:?}");
+        let mixed = px(&page_with(0.5, 1.0, None), 15, 5);
+        assert!(mixed.0 > mixed.1 + 30, "the red shows without: {mixed:?}");
+
+        fn plain_page() -> Pixmap {
+            let mut red = rect(2, Rect::new(0.0, 0.0, 20.0, 10.0), Color::rgb8(255, 0, 0));
+            red.opacity = 0.5;
+            let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(30.0, 10.0));
+            let page = doc.pages[0].id;
+            let layer = doc.pages[0].layers[0].id;
+            doc.layer_mut(layer).unwrap().shapes.push(red);
+            render_page_image(&doc, page, 25.4).unwrap()
+        }
     }
 
     /// The offset moves the tiles, the rotation turns them and the tile

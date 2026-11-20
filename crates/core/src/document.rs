@@ -3121,6 +3121,16 @@ pub struct Shape {
     /// frame itself is not drawn.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opacity_mask: Option<OpacityMask>,
+    /// How a group's members are put together (see [`GroupLook`]);
+    /// `None` draws them one after another onto what lies beneath.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_look: Option<GroupLook>,
+    /// On a symbol's definition: its stretch zones (see [`ScaleGrid`]),
+    /// which keep the corners of a stretched instance their size. Boxed:
+    /// few objects have them, and every object's size counts where
+    /// drawings nest deep.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale_grid: Option<Box<ScaleGrid>>,
     /// Effects switched off in the effect stack, each with the place it
     /// holds in the stack; they are kept but not drawn.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -3356,6 +3366,55 @@ pub struct ParkedEffect {
     pub effect: crate::live::Effect,
 }
 
+/// How a group's members are put together before the group goes onto
+/// what lies beneath it (see `Shape::group_look`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct GroupLook {
+    /// The group is drawn on its own first, then laid down as one
+    /// picture: its transparency goes on the whole (members that overlap
+    /// do not show through each other) and its members' merge modes mix
+    /// only with the group's own members.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub as_one: bool,
+    /// Each member hides the members beneath it where it lies, even where
+    /// it is see-through: see-through members show what lies beneath the
+    /// group, not the other members. Drawn on its own first, as `as_one`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub knockout: bool,
+}
+
+impl GroupLook {
+    /// Neither set: the same as no look.
+    pub fn is_plain(&self) -> bool {
+        !self.as_one && !self.knockout
+    }
+}
+
+/// A symbol's stretch zones: four lines set in from the sides of its
+/// objects, in millimetres of the symbol's own size. A stretched instance
+/// keeps the corner zones their size, stretches the side zones along
+/// their side and the middle zone both ways (see `scale_grid`).
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+pub struct ScaleGrid {
+    pub left: f64,
+    pub right: f64,
+    pub top: f64,
+    pub bottom: f64,
+}
+
+impl ScaleGrid {
+    /// Every inset finite and not below zero.
+    pub fn sanitized(self) -> ScaleGrid {
+        let ok = |v: f64| if v.is_finite() { v.max(0.0) } else { 0.0 };
+        ScaleGrid {
+            left: ok(self.left),
+            right: ok(self.right),
+            top: ok(self.top),
+            bottom: ok(self.bottom),
+        }
+    }
+}
+
 /// How a clip frame masks its contents (see `Shape::opacity_mask`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct OpacityMask {
@@ -3467,6 +3526,8 @@ impl Shape {
             spline_fixed: Vec::new(),
             uid: None,
             opacity_mask: None,
+            group_look: None,
+            scale_grid: None,
             parked_effects: Vec::new(),
             cmyk_bitmap: false,
             picture_inks: None,
@@ -4223,7 +4284,13 @@ impl Shape {
             }
             ShapeKind::SymbolInstance { index } => symbols
                 .get(*index)
-                .map(|s| vec![s.shape.clone()])
+                .map(|s| {
+                    // Stretch zones keep a stretched instance's corners.
+                    let shaped = s.shape.scale_grid.as_deref().and_then(|g| {
+                        crate::scale_grid::stretched(&s.shape, *g, self.transform, symbols)
+                    });
+                    vec![shaped.unwrap_or_else(|| s.shape.clone())]
+                })
                 .unwrap_or_default(),
             _ => Vec::new(),
         }

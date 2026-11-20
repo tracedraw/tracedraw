@@ -38,11 +38,13 @@ objects/index
   objects/objects-and-layers
   objects/properties-docker
   objects/clip-frames
+  objects/group-looks
   objects/symmetry
   objects/focus-mode
   objects/symbols
   objects/object-data
   objects/links
+  objects/stretch-zones
   objects/paste-special
   objects/shelf
   objects/find-replace

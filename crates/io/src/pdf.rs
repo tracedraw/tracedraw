@@ -1183,6 +1183,17 @@ impl PageWriter<'_> {
         {
             self.drop_shadow(shape, parent);
         }
+        if let (ShapeKind::Group { .. }, Some(look)) = (&shape.kind, shape.group_look) {
+            // A knockout, or a see-through group drawn as one, has no
+            // plain PDF form here: it goes in as a picture with its
+            // transparency, as the canvas draws it.
+            if look.knockout || (look.as_one && shape.opacity < 1.0) {
+                if let Some(raster) = raster_of(shape, parent, self.symbols, MASK_DPI) {
+                    self.shape(&raster, Affine::IDENTITY);
+                }
+                return;
+            }
+        }
         if let ShapeKind::Group { children } = &shape.kind {
             for c in children {
                 // The group's uniform transparency goes on each member.
@@ -2489,7 +2500,7 @@ fn pdf_blend_mode(merge: tracedraw_core::live::MergeMode) -> &'static str {
 /// `shape` (placed by `parent`) drawn on its own as a bitmap object with
 /// its transparency, covering its bounds; the resolution drops so the
 /// picture stays within 40 million pixels.
-fn raster_of(
+pub(crate) fn raster_of(
     shape: &Shape,
     parent: Affine,
     symbols: &[tracedraw_core::Symbol],
@@ -4129,6 +4140,40 @@ mod tests {
         assert!(!text.contains("/Separation"));
         assert_eq!(pdf_name("A/B c"), "/A#2FB#20c");
         assert_eq!(pdf_name(""), "/Spot");
+    }
+
+    #[test]
+    fn knockout_groups_go_in_as_pictures() {
+        use tracedraw_core::document::GroupLook;
+        let pdf_of = |look: Option<GroupLook>| {
+            let mut doc = Document::default();
+            let layer = doc.pages[0].layers[0].id;
+            let mut kids = Vec::new();
+            for x in [10.0, 20.0] {
+                let mut r = Shape::new(
+                    doc.ids_mut().shape(),
+                    ShapeKind::Rect {
+                        rect: tracedraw_core::geometry::Rect::new(x, 10.0, x + 20.0, 30.0),
+                        radius: 0.0,
+                        corners: None,
+                    },
+                );
+                r.fill = Fill::Solid(Color::rgb8(200, 0, 0));
+                r.opacity = 0.5;
+                kids.push(r);
+            }
+            let mut g = Shape::new(doc.ids_mut().shape(), ShapeKind::Group { children: kids });
+            g.group_look = look;
+            doc.layer_mut(layer).unwrap().shapes.push(g);
+            String::from_utf8_lossy(&document_to_pdf(&doc)).into_owned()
+        };
+        let ko = pdf_of(Some(GroupLook {
+            as_one: false,
+            knockout: true,
+        }));
+        assert!(ko.contains("/Subtype /Image"), "a picture");
+        let plain = pdf_of(None);
+        assert!(!plain.contains("/Subtype /Image"), "vector members");
     }
 
     #[test]
