@@ -1552,6 +1552,9 @@ pub struct App {
     /// and the selection they were gathered for (see
     /// [`App::selected_rc`]).
     pub selected_cache: std::cell::RefCell<Option<SelectedCache>>,
+    /// Mesh guides flattened at the current zoom, reused while panning
+    /// and between frames; only changed edges need new subdivision.
+    pub mesh_grid_cache: std::cell::RefCell<crate::canvas::MeshGridCache>,
     /// The selection's outlines flattened for Mask Outside Page, with the
     /// gathered selection and the zoom they were made for (see
     /// [`App::selected_outlines`]).
@@ -3372,6 +3375,7 @@ impl App {
             recolor_preview: false,
             fx_preview: Default::default(),
             selected_cache: std::cell::RefCell::new(None),
+            mesh_grid_cache: Default::default(),
             outline_cache: std::cell::RefCell::new(None),
             view_anchor: None,
             window_layout: Default::default(),

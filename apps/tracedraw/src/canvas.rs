@@ -4376,6 +4376,146 @@ fn draw_snap_glyph_halo(painter: &Painter, c: Pos2, mode: crate::snap_points::Sn
     draw_snap_glyph_width(painter, c, mode, Tokens::HANDLE, 1.3);
 }
 
+#[derive(Default)]
+pub(crate) struct MeshGridCache {
+    selection: Option<std::rc::Rc<Vec<tracedraw_core::document::Shape>>>,
+    zoom: f32,
+    grids: std::collections::HashMap<tracedraw_core::ShapeId, Vec<MeshGridEdge>>,
+}
+
+struct MeshGridEdge {
+    curve: kurbo::CubicBez,
+    points: Vec<Pos2>,
+}
+
+impl MeshGridCache {
+    fn update(&mut self, shapes: &std::rc::Rc<Vec<tracedraw_core::document::Shape>>, view: &View) {
+        let zoom_changed = self.zoom != view.zoom;
+        if !zoom_changed
+            && self
+                .selection
+                .as_ref()
+                .is_some_and(|previous| std::rc::Rc::ptr_eq(previous, shapes))
+        {
+            return;
+        }
+        self.grids.retain(|id, _| {
+            shapes
+                .iter()
+                .any(|s| s.id == *id && matches!(s.fill, tracedraw_core::Fill::Mesh(_)))
+        });
+        let view = View {
+            zoom: view.zoom,
+            origin: Pos2::ZERO,
+        };
+        for shape in shapes.iter() {
+            let tracedraw_core::Fill::Mesh(mesh) = &shape.fill else {
+                continue;
+            };
+            if mesh.nodes.is_empty() {
+                self.grids.remove(&shape.id);
+                continue;
+            }
+            let edges = self.grids.entry(shape.id).or_default();
+            let mut index = 0;
+            let mut update_edge = |r, c, across| {
+                let Some(curve) = mesh.edge(r, c, across).map(|e| shape.transform * e) else {
+                    return;
+                };
+                if let Some(edge) = edges.get_mut(index) {
+                    if zoom_changed || edge.curve != curve {
+                        edge.points = mesh_edge_points(curve, &view);
+                        edge.curve = curve;
+                    }
+                } else {
+                    edges.push(MeshGridEdge {
+                        curve,
+                        points: mesh_edge_points(curve, &view),
+                    });
+                }
+                index += 1;
+            };
+            for r in 0..=mesh.rows {
+                for c in 0..mesh.cols {
+                    update_edge(r, c, true);
+                }
+            }
+            for c in 0..=mesh.cols {
+                for r in 0..mesh.rows {
+                    update_edge(r, c, false);
+                }
+            }
+            edges.truncate(index);
+        }
+        self.zoom = view.zoom;
+        self.selection = Some(shapes.clone());
+    }
+
+    fn draw(&self, id: tracedraw_core::ShapeId, painter: &Painter, origin: Pos2, color: Color32) {
+        let Some(edges) = self.grids.get(&id) else {
+            return;
+        };
+        let offset = origin.to_vec2();
+        let stroke = EStroke::new(1.0, color);
+        for edge in edges {
+            if let [a, b] = edge.points.as_slice() {
+                painter.line_segment([*a + offset, *b + offset], stroke);
+            } else if !edge.points.is_empty() {
+                let points = edge.points.iter().map(|p| *p + offset).collect();
+                painter.add(egui::Shape::line(points, stroke));
+            }
+        }
+    }
+}
+
+/// A mesh edge flattened to a quarter of a screen point. The edge is
+/// already in page space so scaled objects get the same screen accuracy.
+fn mesh_edge_points(edge: kurbo::CubicBez, view: &View) -> Vec<Pos2> {
+    if !edge.is_finite()
+        || !view.zoom.is_finite()
+        || view.zoom <= 0.0
+        || [edge.p0, edge.p1, edge.p2, edge.p3]
+            .into_iter()
+            .map(|p| view.to_screen(p))
+            .any(|p| !p.x.is_finite() || !p.y.is_finite())
+    {
+        return Vec::new();
+    }
+    fn append(
+        edge: kurbo::CubicBez,
+        view: &View,
+        tolerance: f64,
+        depth: u8,
+        points: &mut Vec<Pos2>,
+    ) {
+        // A Bezier stays in its control hull, so these distances bound
+        // the curve's error from the chord. Straight edges need no split.
+        if depth == 0
+            || (seg_dist(edge.p0, edge.p3, edge.p1) <= tolerance
+                && seg_dist(edge.p0, edge.p3, edge.p2) <= tolerance)
+        {
+            points.push(view.to_screen(edge.p3));
+        } else {
+            use kurbo::ParamCurve;
+            let (left, right) = edge.subdivide();
+            append(left, view, tolerance, depth - 1, points);
+            append(right, view, tolerance, depth - 1, points);
+        }
+    }
+    let mut points = Vec::with_capacity(2);
+    points.push(view.to_screen(edge.p0));
+    // At most 4096 segments, including pathological coordinates from a
+    // file; the depth limit also bounds stack usage and work per edge.
+    append(
+        edge,
+        view,
+        0.25 / view.zoom.max(0.05) as f64,
+        12,
+        &mut points,
+    );
+    points
+}
+
 /// Effect nodes (perspective, mesh) of the selection with the Shape tool
 /// (and the mesh with the Mesh Fill tool): small blue squares joined by
 /// a frame.
@@ -4387,11 +4527,19 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
             | crate::tools::Tool::InteractiveFill
             | crate::tools::Tool::Envelope
     ) {
+        if let Ok(mut cache) = app.mesh_grid_cache.try_borrow_mut() {
+            *cache = MeshGridCache::default();
+        }
         return;
     }
     // The Envelope tool edits only a mesh envelope's grid.
     let envelope_tool = app.tool == crate::tools::Tool::Envelope;
-    for s in app.selected_rc().iter() {
+    let shapes = app.selected_rc();
+    let Ok(mut mesh_grids) = app.mesh_grid_cache.try_borrow_mut() else {
+        return;
+    };
+    mesh_grids.update(&shapes, &app.view);
+    for s in shapes.iter() {
         let mut nodes = crate::interaction2::effect_nodes(s);
         if envelope_tool {
             nodes.retain(|(i, _)| crate::interaction2::is_mesh_envelope_node(*i));
@@ -4446,33 +4594,10 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
                 }
             }
         }
-        // Mesh grid lines: the curves between the nodes, as a few
-        // straight pieces each when they bend (plain segments stay cheap
-        // in an overlay redrawn every frame).
-        if let (tracedraw_core::Fill::Mesh(m), false) = (&s.fill, envelope_tool) {
-            use tracedraw_core::geometry::ParamCurve;
-            let curved = m.is_curved();
-            let line = |r: u32, c: u32, across: bool| {
-                let Some(edge) = m.edge(r, c, across) else {
-                    return;
-                };
-                let pieces = if curved { 8 } else { 1 };
-                let pts: Vec<egui::Pos2> = (0..=pieces)
-                    .map(|i| edge.eval(i as f64 / pieces as f64))
-                    .map(|p| app.view.to_screen(s.transform * p))
-                    .collect();
-                painter.add(egui::Shape::line(pts, egui::Stroke::new(1.0, blue)));
-            };
-            for r in 0..=m.rows {
-                for c in 0..m.cols {
-                    line(r, c, true);
-                }
-            }
-            for c in 0..=m.cols {
-                for r in 0..m.rows {
-                    line(r, c, false);
-                }
-            }
+        // Mesh grid lines follow the curves at this zoom; straight edges
+        // remain one segment, even when another edge in the mesh bends.
+        if !envelope_tool {
+            mesh_grids.draw(s.id, painter, app.view.origin, blue);
         }
         // The selected mesh node's handles: one on each grid line leaving
         // it, dragged to bend the line (discussion #2073).
@@ -4679,6 +4804,119 @@ mod tests {
         assert!((b1.x - b2.x).abs() > 9.0, "the base is across the way");
     }
 
+    /// Non-finite screen geometry is skipped before subdivision.
+    #[test]
+    fn malformed_mesh_grid_edges_are_skipped() {
+        let view = View::default();
+        for edge in [
+            kurbo::CubicBez::new((0.0, 0.0), (1e200, 1e200), (0.0, 1.0), (1.0, 1.0)),
+            kurbo::CubicBez::new((0.0, 0.0), (f64::NAN, 1.0), (1.0, 1.0), (1.0, 0.0)),
+            kurbo::CubicBez::new((0.0, 0.0), (0.0, f64::INFINITY), (1.0, 1.0), (1.0, 0.0)),
+        ] {
+            assert!(mesh_edge_points(edge, &view).is_empty(), "{edge:?}");
+        }
+        let edge = kurbo::CubicBez::new((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0));
+        for zoom in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            assert!(mesh_edge_points(edge, &View { zoom, ..view }).is_empty());
+        }
+    }
+
+    #[test]
+    fn an_empty_mesh_does_not_enumerate_missing_edges() {
+        use tracedraw_core::{Fill, Mesh, Shape, ShapeId};
+        let bounds = Rect::new(0.0, 0.0, 100.0, 100.0);
+        let mut mesh = Mesh::new(bounds, 1, 1, Color::WHITE);
+        mesh.nodes.clear();
+        mesh.rows = u32::MAX;
+        mesh.cols = u32::MAX;
+        let mut shape = Shape::new(
+            ShapeId(1),
+            ShapeKind::Rect {
+                rect: bounds,
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        shape.fill = Fill::Mesh(mesh);
+        let mut cache = MeshGridCache::default();
+        cache.update(&std::rc::Rc::new(vec![shape]), &View::default());
+        assert!(cache.grids.is_empty());
+    }
+
+    /// Huge finite edges remain bounded, including an exactly quadratic
+    /// curve that does not need cubic-to-quadratic subdivision.
+    #[test]
+    fn extreme_mesh_grid_edges_have_bounded_subdivision() {
+        let view = View::default();
+        for edge in [
+            kurbo::CubicBez::new((0.0, 0.0), (0.0, 1e15), (1e15, 1e15), (3e15, 0.0)),
+            kurbo::QuadBez::new((0.0, 0.0), (1e15, 1e15), (2e15, 0.0)).raise(),
+        ] {
+            let points = mesh_edge_points(edge, &view);
+            assert!(
+                (2..=4097).contains(&points.len()),
+                "{} points",
+                points.len()
+            );
+            assert!(points.iter().all(|p| p.x.is_finite() && p.y.is_finite()));
+            assert_eq!(points.first(), Some(&view.to_screen(edge.p0)));
+            assert_eq!(points.last(), Some(&view.to_screen(edge.p3)));
+        }
+    }
+
+    fn mesh_curve_screen_error(edge: kurbo::CubicBez, view: &View, points: &[Pos2]) -> f64 {
+        use kurbo::ParamCurve;
+        (0..=4096)
+            .map(|i| {
+                let p = view.to_screen(edge.eval(i as f64 / 4096.0));
+                let p = Point::new(p.x as f64, p.y as f64);
+                points
+                    .windows(2)
+                    .map(|w| {
+                        seg_dist(
+                            Point::new(w[0].x as f64, w[0].y as f64),
+                            Point::new(w[1].x as f64, w[1].y as f64),
+                            p,
+                        )
+                    })
+                    .fold(f64::INFINITY, f64::min)
+            })
+            .fold(0.0, f64::max)
+    }
+
+    /// Mesh guides follow the actual curve within a quarter of a screen
+    /// point, including inflections and scaled, sheared and rotated objects.
+    #[test]
+    fn mesh_grid_curves_stay_smooth_at_every_zoom() {
+        let curves = [
+            kurbo::CubicBez::new((0.0, 0.0), (0.0, 100.0), (100.0, 100.0), (100.0, 0.0)),
+            kurbo::CubicBez::new((0.0, 0.0), (100.0, 80.0), (-80.0, 160.0), (20.0, 240.0)),
+        ];
+        let transforms = [
+            Affine::IDENTITY,
+            Affine::rotate(0.63) * Affine::skew(0.35, -0.2) * Affine::scale_non_uniform(2.7, 0.4),
+        ];
+        for curve in curves {
+            for transform in transforms {
+                let edge = transform * curve;
+                let mut previous = 0;
+                for zoom in [0.05, 3.0, 40.0, 400.0] {
+                    let view = View {
+                        zoom,
+                        origin: egui::pos2(80.0, 900.0),
+                    };
+                    let points = mesh_edge_points(edge, &view);
+                    assert_eq!(points.first(), Some(&view.to_screen(edge.p0)));
+                    assert_eq!(points.last(), Some(&view.to_screen(edge.p3)));
+                    let error = mesh_curve_screen_error(edge, &view, &points);
+                    assert!(error <= 0.27, "{zoom}: {error} screen points, {edge:?}");
+                    assert!(points.len() > previous, "zoom {zoom} adds curve detail");
+                    previous = points.len();
+                }
+            }
+        }
+    }
+
     /// A slanted guideline crossing the window is drawn at any zoom, far
     /// from the point it was made at too (#3337, #3342).
     #[test]
@@ -4703,6 +4941,376 @@ mod tests {
                 assert!(a.distance(b) > 500.0, "zoom {zoom}, {along} mm: {a:?} {b:?}");
             }
         }
+    }
+
+    /// Exercise the actual overlay, not only its sampler: one bent edge
+    /// gets more detail while the other eleven edges stay single lines.
+    #[test]
+    fn mesh_tools_draw_smooth_curves_and_keep_straight_edges_cheap() {
+        use tracedraw_core::{Command, Fill, Mesh, MeshHandle};
+        let ctx = egui::Context::default();
+        let mut app = App::headless();
+        let bounds = Rect::new(0.0, 0.0, 100.0, 100.0);
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: bounds,
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rectangle");
+        let mut mesh = Mesh::new(bounds, 2, 2, Color::WHITE);
+        mesh.nodes[0].set_handle(MeshHandle::Right, Point::new(15.0, 70.0));
+        let edge = mesh.edge(0, 0, true).expect("bent edge");
+        app.run(Command::SetFill {
+            shapes: vec![id],
+            fill: Fill::Mesh(mesh),
+        });
+        let transform = Affine::rotate(0.3) * Affine::scale_non_uniform(2.0, 0.5);
+        app.run(Command::TransformShapes {
+            shapes: vec![id],
+            transform,
+        });
+        app.select(vec![id]);
+        app.selected_effect_node = None;
+        app.view = View {
+            zoom: 40.0,
+            origin: egui::pos2(200.0, 3000.0),
+        };
+        for tool in [Tool::MeshFill, Tool::Shape, Tool::InteractiveFill] {
+            app.tool = tool;
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                draw_effect_nodes(&app, ui.painter());
+            });
+            out.textures_delta.clear();
+            let paths: Vec<_> = out
+                .shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::Shape::Path(p) => Some(p.points.clone()),
+                    egui::Shape::LineSegment { points, .. } => Some(points.to_vec()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(paths.len(), 12, "{tool:?}: every grid edge");
+            assert!(paths[0].len() > 9, "the old eight chords are insufficient");
+            let placed = app.doc().find_shape(id).expect("rectangle").transform * edge;
+            assert!(mesh_curve_screen_error(placed, &app.view, &paths[0]) <= 0.27);
+            assert!(
+                paths[1..].iter().all(|p| p.len() == 2),
+                "{tool:?}: straight edges"
+            );
+        }
+    }
+
+    /// Reused guides still follow panning, zoom, handle edits and object
+    /// transforms. Every check reads the real overlay's painted paths.
+    #[test]
+    fn mesh_grid_overlay_updates_after_view_and_geometry_changes() {
+        use tracedraw_core::{Command, Fill, Mesh, MeshHandle};
+        let ctx = egui::Context::default();
+        let mut app = App::headless();
+        app.tool = Tool::MeshFill;
+        let bounds = Rect::new(0.0, 0.0, 100.0, 100.0);
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: bounds,
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rectangle");
+        let mut mesh = Mesh::new(bounds, 1, 1, Color::WHITE);
+        mesh.nodes[0].set_handle(MeshHandle::Right, Point::new(15.0, 90.0));
+        app.run(Command::SetFill {
+            shapes: vec![id],
+            fill: Fill::Mesh(mesh.clone()),
+        });
+        app.select(vec![id]);
+        app.selected_effect_node = None;
+        app.view = View {
+            zoom: 3.0,
+            origin: egui::pos2(200.0, 500.0),
+        };
+        let drawn = |app: &App| -> Vec<Vec<Pos2>> {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                draw_effect_nodes(app, ui.painter());
+            });
+            out.textures_delta.clear();
+            out.shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::Shape::Path(p) => Some(p.points.clone()),
+                    egui::Shape::LineSegment { points, .. } => Some(points.to_vec()),
+                    _ => None,
+                })
+                .collect()
+        };
+        let original = drawn(&app);
+        let cached_allocations = |app: &App| {
+            app.mesh_grid_cache.borrow().grids[&id]
+                .iter()
+                .map(|e| e.points.as_ptr())
+                .collect::<Vec<_>>()
+        };
+        let allocations = cached_allocations(&app);
+        assert_eq!(original, drawn(&app), "unchanged guides are reused");
+        assert_eq!(allocations, cached_allocations(&app));
+        let pan = egui::vec2(37.0, -29.0);
+        app.view.origin += pan;
+        let panned = drawn(&app);
+        assert_eq!(
+            allocations,
+            cached_allocations(&app),
+            "panning reuses samples"
+        );
+        for (before, after) in original.iter().zip(&panned) {
+            assert_eq!(before.len(), after.len(), "panning keeps curve detail");
+            for (a, b) in before.iter().zip(after) {
+                assert!((*b - (*a + pan)).length() < 0.001);
+            }
+        }
+        mesh.nodes[0].color = Color::BLACK;
+        app.run(Command::SetFill {
+            shapes: vec![id],
+            fill: Fill::Mesh(mesh.clone()),
+        });
+        assert_eq!(panned, drawn(&app), "colour does not change guide geometry");
+        assert_eq!(
+            allocations,
+            cached_allocations(&app),
+            "colour keeps samples"
+        );
+        app.view.zoom = 40.0;
+        let zoomed = drawn(&app);
+        assert!(zoomed[0].len() > panned[0].len(), "zoom refreshes detail");
+        let edge = mesh.edge(0, 0, true).expect("edge");
+        assert!(mesh_curve_screen_error(edge, &app.view, &zoomed[0]) <= 0.27);
+        let zoomed_allocations = cached_allocations(&app);
+        mesh.nodes[0].set_handle(MeshHandle::Right, Point::new(80.0, -50.0));
+        app.run(Command::SetFill {
+            shapes: vec![id],
+            fill: Fill::Mesh(mesh.clone()),
+        });
+        let edited = drawn(&app);
+        assert_ne!(edited[0], zoomed[0], "a handle edit refreshes its edge");
+        assert_eq!(edited[1..], zoomed[1..], "the other edges stay unchanged");
+        assert_eq!(
+            zoomed_allocations[1..],
+            cached_allocations(&app)[1..],
+            "a handle edit reuses the other edges' samples"
+        );
+        let edge = mesh.edge(0, 0, true).expect("edited edge");
+        assert!(mesh_curve_screen_error(edge, &app.view, &edited[0]) <= 0.27);
+        app.run(Command::TransformShapes {
+            shapes: vec![id],
+            transform: Affine::rotate(0.7) * Affine::scale_non_uniform(2.0, 0.5),
+        });
+        let transformed = drawn(&app);
+        assert_ne!(edited, transformed);
+        let placed = app.doc().find_shape(id).expect("rectangle").transform * edge;
+        assert!(mesh_curve_screen_error(placed, &app.view, &transformed[0]) <= 0.27);
+    }
+
+    /// Compare warmed cached drawing with the former fixed-chord overlay,
+    /// both at rest and with one handle edited per frame. No fill is timed.
+    #[test]
+    #[ignore]
+    fn frame_times_of_mesh_grid_overlay() {
+        use kurbo::ParamCurve;
+        use std::rc::Rc;
+        use tracedraw_core::{Fill, Mesh, MeshHandle};
+        let view = View {
+            zoom: 1.0,
+            origin: egui::pos2(20.0, 1020.0),
+        };
+        for scene in ["straight", "locally curved", "all curved"] {
+            let mut mesh = Mesh::new(Rect::new(0.0, 0.0, 1000.0, 1000.0), 50, 50, Color::WHITE);
+            for (i, node) in mesh.nodes.iter_mut().enumerate() {
+                if scene == "all curved" || (scene == "locally curved" && i == 1300) {
+                    node.set_handle(MeshHandle::Right, node.pos + kurbo::Vec2::new(7.0, 8.0));
+                    node.set_handle(MeshHandle::Down, node.pos + kurbo::Vec2::new(8.0, 7.0));
+                }
+            }
+            let mut app = App::headless();
+            let id = app
+                .new_shape(ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, 1000.0, 1000.0),
+                    radius: 0.0,
+                    corners: None,
+                })
+                .expect("rectangle");
+            let mut shape = app.doc().find_shape(id).expect("rectangle").clone();
+            shape.fill = Fill::Mesh(mesh.clone());
+            let initial = Rc::new(vec![shape]);
+            for changing_handle in [false, true] {
+                // Prepare the same document revisions for both renderers;
+                // fixture construction is outside the measured frames.
+                let frames: Vec<_> = (0..100)
+                    .map(|frame| {
+                        if !changing_handle {
+                            return initial.clone();
+                        }
+                        let mut shapes = initial.as_ref().clone();
+                        if let Fill::Mesh(m) = &mut shapes[0].fill {
+                            let at = m.nodes[1300].pos;
+                            m.nodes[1300].set_handle(
+                                MeshHandle::Right,
+                                at + kurbo::Vec2::new(7.0, 8.0 + frame as f64 * 0.05),
+                            );
+                        }
+                        Rc::new(shapes)
+                    })
+                    .collect();
+                for adaptive in [false, true] {
+                    let ctx = egui::Context::default();
+                    let mut cache = MeshGridCache::default();
+                    let mut frame = |shapes: &Rc<Vec<tracedraw_core::Shape>>| {
+                        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                            if adaptive {
+                                cache.update(shapes, &view);
+                                cache.draw(id, ui.painter(), view.origin, Color32::BLUE);
+                            } else {
+                                let s = &shapes[0];
+                                let Fill::Mesh(m) = &s.fill else {
+                                    return;
+                                };
+                                let pieces = if m.is_curved() { 8 } else { 1 };
+                                let line = |r, c, across| {
+                                    let edge = m.edge(r, c, across).expect("edge");
+                                    let points = (0..=pieces)
+                                        .map(|i| {
+                                            view.to_screen(
+                                                s.transform * edge.eval(i as f64 / pieces as f64),
+                                            )
+                                        })
+                                        .collect();
+                                    ui.painter().add(egui::Shape::line(
+                                        points,
+                                        egui::Stroke::new(1.0, Color32::BLUE),
+                                    ));
+                                };
+                                for r in 0..=m.rows {
+                                    for c in 0..m.cols {
+                                        line(r, c, true);
+                                    }
+                                }
+                                for c in 0..=m.cols {
+                                    for r in 0..m.rows {
+                                        line(r, c, false);
+                                    }
+                                }
+                            }
+                        });
+                        out.textures_delta.clear();
+                        std::hint::black_box(out);
+                    };
+                    frame(&initial);
+                    let start = std::time::Instant::now();
+                    for shapes in &frames {
+                        frame(shapes);
+                    }
+                    eprintln!(
+                        "mesh grid 50x50, {scene}, changing handle {changing_handle}, adaptive {adaptive}: {:.3} ms a frame",
+                        start.elapsed().as_secs_f64() * 1000.0 / frames.len() as f64
+                    );
+                }
+            }
+        }
+    }
+
+    /// Optional visual evidence from the real egui overlay. Set
+    /// MESH_OVERLAY_SHOT to a PNG path, then run this ignored test.
+    #[test]
+    #[ignore]
+    fn mesh_grid_smoothing_comparison() {
+        use kurbo::ParamCurve;
+        use tracedraw_core::{Command, Fill, Mesh, MeshHandle};
+        let Some(path) = std::env::var_os("MESH_OVERLAY_SHOT") else {
+            return;
+        };
+        let mut app = App::headless();
+        app.tool = Tool::MeshFill;
+        let bounds = Rect::new(0.0, 0.0, 700.0, 700.0);
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: bounds,
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rectangle");
+        let mut mesh = Mesh::new(bounds, 4, 4, Color::WHITE);
+        mesh.nodes[7].set_handle(MeshHandle::Down, Point::new(660.0, 205.0));
+        mesh.nodes[12].set_handle(MeshHandle::Up, Point::new(660.0, 350.0));
+        mesh.nodes[12].set_handle(MeshHandle::Down, Point::new(510.0, 385.0));
+        mesh.nodes[17].set_handle(MeshHandle::Up, Point::new(510.0, 515.0));
+        app.run(Command::SetFill {
+            shapes: vec![id],
+            fill: Fill::Mesh(mesh.clone()),
+        });
+        app.select(vec![id]);
+        app.selected_effect_node = None;
+        app.view = View {
+            zoom: 1.0,
+            origin: egui::pos2(850.0, 780.0),
+        };
+        let image = crate::help_shots::rasterise(1600, 830, 1.0, |painter| {
+            painter.rect_filled(
+                ERect::from_min_max(Pos2::ZERO, egui::pos2(1600.0, 830.0)),
+                0.0,
+                Color32::WHITE,
+            );
+            let blue = Color32::from_rgb(40, 110, 220);
+            let old_view = View {
+                zoom: 1.0,
+                origin: egui::pos2(50.0, 780.0),
+            };
+            for (view, label) in [
+                (old_view, "Fixed 8 segments"),
+                (app.view, "Adaptive curves"),
+            ] {
+                painter.text(
+                    egui::pos2(view.origin.x, 28.0),
+                    egui::Align2::LEFT_CENTER,
+                    label,
+                    egui::FontId::proportional(22.0),
+                    Color32::BLACK,
+                );
+                painter.rect_filled(
+                    view.rect_to_screen(bounds),
+                    18.0,
+                    Color32::from_rgb(255, 242, 0),
+                );
+            }
+            let old_line = |r, c, across| {
+                let edge = mesh.edge(r, c, across).expect("grid edge");
+                let points = (0..=8)
+                    .map(|i| old_view.to_screen(edge.eval(i as f64 / 8.0)))
+                    .collect();
+                painter.add(egui::Shape::line(points, egui::Stroke::new(1.0, blue)));
+            };
+            for r in 0..=mesh.rows {
+                for c in 0..mesh.cols {
+                    old_line(r, c, true);
+                }
+            }
+            for c in 0..=mesh.cols {
+                for r in 0..mesh.rows {
+                    old_line(r, c, false);
+                }
+            }
+            for node in &mesh.nodes {
+                let rect =
+                    ERect::from_center_size(old_view.to_screen(node.pos), egui::vec2(7.0, 7.0));
+                painter.rect_filled(rect, 0.0, Color32::WHITE);
+                painter.rect_stroke(
+                    rect,
+                    0.0,
+                    egui::Stroke::new(1.0, blue),
+                    egui::StrokeKind::Outside,
+                );
+            }
+            draw_effect_nodes(&app, painter);
+        });
+        image.save(std::path::Path::new(&path));
     }
 
     /// The ring round a chosen control handle sits on the handle's head,
