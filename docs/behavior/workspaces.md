@@ -39,7 +39,10 @@ with their « and » buttons, the wheel, or a finger dragged along them
 (#1997, `toolbars.md`, "Bars longer than the window"); the menu titles
 that do not fit go under » at the end of the menu bar; an open panel is
 a sheet over the whole room beside its tab strip instead of a column
-beside the drawing; the Welcome Screen's tabs wrap and Get Started puts
+beside the drawing, and a drawing opened or started closes the sheet so
+it shows in front (the panel's tab opens it again; before, a drawing
+opened from the browser on a phone stayed behind the Hints panel and
+seemed not to open, #3735); the Welcome Screen's tabs wrap and Get Started puts
 the recent drawings under its buttons, the page scrolling; a dialog
 larger than the screen is drawn at the screen's size and its body
 scrolls both ways. A tablet (600 dp and more) keeps its layout.

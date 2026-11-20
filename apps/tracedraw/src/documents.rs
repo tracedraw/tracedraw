@@ -343,6 +343,17 @@ impl App {
         self.docs.push(DocSlot::default());
         self.active_doc = self.docs.len() - 1;
         self.show_welcome = false;
+        // On a phone an open docker is a sheet over the whole room beside
+        // its tab strip, so a drawing opened or started behind it seemed
+        // not to open at all (#3735): the drawing comes in front, and the
+        // docker's tab opens the sheet again.
+        if crate::ui::phone::phone() {
+            for place in crate::app::DockerPlace::COLUMNS {
+                if self.docker_column(place).2 {
+                    self.set_docker_column(place, false, None);
+                }
+            }
+        }
         // The status bar's message was about the drawing before, such as
         // where it was saved (#1128); who opens a file says so after.
         self.status.clear();
@@ -1375,5 +1386,25 @@ mod tests {
         let a = app.next_untitled_name();
         let b = app.next_untitled_name();
         assert_ne!(a, b);
+    }
+
+    /// On a phone a drawing opened or started comes in front of the
+    /// docker sheet that covered the room (#3735); elsewhere the dockers
+    /// stay open beside it.
+    #[test]
+    fn a_drawing_opened_on_a_phone_comes_in_front_of_the_docker_sheet() {
+        use crate::app::DockerPlace;
+        for phone in [false, true] {
+            let mut app = App::headless();
+            app.set_docker_column(DockerPlace::Right, true, None);
+            assert!(app.docker_column(DockerPlace::Right).2);
+            crate::ui::phone::set_phone(phone);
+            app.open_document(
+                tracedraw_core::Document::new("Art", Size::new(100.0, 100.0)),
+                None,
+            );
+            crate::ui::phone::set_phone(false);
+            assert_eq!(app.docker_column(DockerPlace::Right).2, !phone, "phone {phone}");
+        }
     }
 }
