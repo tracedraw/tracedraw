@@ -179,6 +179,10 @@ bar shows the path's fields first, then the usual text fields:
 - The two mirror buttons, which put the text on the other side of the path
   or turn it round, and [[menu.text.straighten_text]], which takes it off the
   path.
+- **Follow path** (off): pressed, the text is fitted to the path again
+  whenever the path is moved, resized or reshaped, keeping its place along
+  it. Undo takes back the path's change and the text's together. Deleting
+  the path leaves the text as it is.
 
 Drag the text to slide it along the path, or across the path to move it away
 from it.

@@ -1688,8 +1688,15 @@ stand-in next to each missing family: "Arial (Liberation Sans)".
   preferences: a drag off the path then moves the text away from it in
   whole steps,
   `text_path::tests::tick_snapping_moves_the_text_off_the_path_in_steps`),
-  Mirror horizontally and Mirror vertically (pressed while on) and
-  Straighten Text. Mirror horizontally flips the letters left to right
+  Mirror horizontally and Mirror vertically (pressed while on),
+  Follow path and Straighten Text. Follow path (off by default, shown
+  while the path the text was fitted to is in the drawing; the text keeps
+  the path's identity in its object data, `text_path.follow`) fits the
+  text again whenever the path's outline changes, in the step that
+  changed it: moved, resized or reshaped, the distance, offset and
+  placement kept; on a closed path the start keeps its share of the
+  outline's length. Undo takes both back; a deleted path leaves the text
+  as it is (#3571, `text_follow::tests`). Mirror horizontally flips the letters left to right
   (the text reads the other way along the path), Mirror vertically
   turns them upside down onto the path's other side, and both together
   turn the text round by 180 degrees. The mirrors keep the letters where they are along

@@ -4708,6 +4708,8 @@ toolbar.path_rotate = "Döndürülmüş harfler"
 toolbar.path_straighten_tip = "Metni yoldan döndürmeden çıkar"
 toolbar.path_tick_snap = "Adımlı yapışma"
 toolbar.path_tick_snap_tip = "Metni yoldan uzağa sürüklemek onu tam adımlarla taşır"
+toolbar.path_follow = "Yolu izle" # mt
+toolbar.path_follow_tip = "Yolu taşındığında veya yeniden biçimlendirildiğinde metni yeniden sığdır" # mt
 toolbar.path_tick_spacing = "Adım aralığı"
 toolbar.path_upright = "Dik harfler"
 toolbar.path_vertical = "Dikey konum"
@@ -5202,6 +5204,8 @@ menu.object.symmetry_break = "Simetri bağını kopar"
 symmetry.finish = "Bitir"
 symmetry.full_preview = "Tam önizlemeyi göster: kopyalar tam çizilir (kapalı: dış hatlar)" # mt
 symmetry.show_lines = "Simetri çizgilerini göster" # mt
+symmetry.rotational = "Dönel" # mt
+symmetry.rotational_tip = "Kopyaları yansıtmak yerine merkez etrafında döndür: çizgi sayısı kadar kopya, nesne de dahil" # mt
 status.editing_symmetry = "Simetri düzenleniyor: aslını (kırmızı çerçeveli) değiştirin; kopyalar izler. Bitir sonlandırır."
 
 options.center_dialogs = "İletişim kutularını ortala"

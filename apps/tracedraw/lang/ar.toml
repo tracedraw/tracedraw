@@ -4708,6 +4708,8 @@ toolbar.path_rotate = "أحرف مدوّرة"
 toolbar.path_straighten_tip = "إزالة النص عن المسار دون تدوير"
 toolbar.path_tick_snap = "الالتقاط بخطوات"
 toolbar.path_tick_snap_tip = "سحب النص بعيدًا عن المسار يحركه بخطوات كاملة"
+toolbar.path_follow = "اتباع المسار" # mt
+toolbar.path_follow_tip = "إعادة ملاءمة النص كلما نُقل مساره أو تغيّر شكله" # mt
 toolbar.path_tick_spacing = "مسافة الخطوة"
 toolbar.path_upright = "أحرف قائمة"
 toolbar.path_vertical = "الموضع العمودي"
@@ -5202,6 +5204,8 @@ menu.object.symmetry_break = "فصل رابط التناظر"
 symmetry.finish = "إنهاء"
 symmetry.full_preview = "إظهار المعاينة الكاملة: تُرسم النسخ كاملة (إيقاف: الخطوط الخارجية)" # mt
 symmetry.show_lines = "إظهار خطوط التناظر" # mt
+symmetry.rotational = "دوراني" # mt
+symmetry.rotational_tip = "تدوير النسخ حول المركز بدلًا من عكسها: عدد النسخ بعدد الخطوط، والكائن واحد منها" # mt
 status.editing_symmetry = "تحرير التناظر: غيّر الأصل (المحدد بالأحمر)؛ تتبعه النسخ. «إنهاء» يُنهيه."
 
 options.center_dialogs = "توسيط مربعات الحوار"

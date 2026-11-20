@@ -4708,6 +4708,8 @@ toolbar.path_rotate = "Lettere ruotate"
 toolbar.path_straighten_tip = "Togli il testo dal tracciato, senza rotazione"
 toolbar.path_tick_snap = "Aggancio a passi"
 toolbar.path_tick_snap_tip = "Trascinato lontano dal tracciato, il testo si sposta a passi interi"
+toolbar.path_follow = "Segui tracciato" # mt
+toolbar.path_follow_tip = "Adattare di nuovo il testo ogni volta che il tracciato viene spostato o rimodellato" # mt
 toolbar.path_tick_spacing = "Ampiezza del passo"
 toolbar.path_upright = "Lettere diritte"
 toolbar.path_vertical = "Posizione verticale"
@@ -5202,6 +5204,8 @@ menu.object.symmetry_break = "Interrompi collegamento simmetria"
 symmetry.finish = "Fine"
 symmetry.full_preview = "Mostra anteprima completa: copie disegnate per intero (disattivato: contorni)" # mt
 symmetry.show_lines = "Mostra linee di simmetria" # mt
+symmetry.rotational = "Rotazionale" # mt
+symmetry.rotational_tip = "Ruotare le copie attorno al centro invece di rifletterle: tante copie quante linee, l'oggetto compreso" # mt
 status.editing_symmetry = "Modifica della simmetria: cambia l'originale (contorno rosso); le copie seguono. Fine la chiude."
 
 options.center_dialogs = "Centra le finestre di dialogo"

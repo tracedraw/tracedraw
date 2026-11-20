@@ -4708,6 +4708,8 @@ toolbar.path_rotate = "Huruf diputar"
 toolbar.path_straighten_tip = "Lepas teks dari jalur, tanpa diputar"
 toolbar.path_tick_snap = "Jepret per langkah"
 toolbar.path_tick_snap_tip = "Menyeret teks menjauhi jalur menggesernya per langkah penuh"
+toolbar.path_follow = "Ikuti jalur" # mt
+toolbar.path_follow_tip = "Sesuaikan ulang teks setiap kali jalurnya dipindah atau diubah bentuknya" # mt
 toolbar.path_tick_spacing = "Jarak langkah"
 toolbar.path_upright = "Huruf tegak"
 toolbar.path_vertical = "Penempatan vertikal"
@@ -5202,6 +5204,8 @@ menu.object.symmetry_break = "Putuskan tautan simetri"
 symmetry.finish = "Selesai"
 symmetry.full_preview = "Tampilkan pratinjau penuh: salinan digambar utuh (mati: garis luar)" # mt
 symmetry.show_lines = "Tampilkan garis simetri" # mt
+symmetry.rotational = "Rotasi" # mt
+symmetry.rotational_tip = "Putar salinan mengelilingi pusat alih-alih mencerminkannya: salinan sebanyak garis, objek termasuk salah satunya" # mt
 status.editing_symmetry = "Mengedit simetri: ubah aslinya (garis merah); salinan mengikuti. Selesai mengakhirinya."
 
 options.center_dialogs = "Tengahkan kotak dialog"

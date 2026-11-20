@@ -4708,6 +4708,8 @@ toolbar.path_rotate = "旋轉字母"
 toolbar.path_straighten_tip = "將文字從路徑上取下，不旋轉"
 toolbar.path_tick_snap = "刻度對齊"
 toolbar.path_tick_snap_tip = "將文字拖離路徑時按整步移動"
+toolbar.path_follow = "跟隨路徑" # mt
+toolbar.path_follow_tip = "每當路徑被移動或改變形狀時重新貼合文字" # mt
 toolbar.path_tick_spacing = "刻度間距"
 toolbar.path_upright = "直立字母"
 toolbar.path_vertical = "垂直位置"
@@ -5202,6 +5204,8 @@ menu.object.symmetry_break = "中斷對稱連結"
 symmetry.finish = "完成"
 symmetry.full_preview = "顯示完整預覽：完整繪製副本（關閉：外框）" # mt
 symmetry.show_lines = "顯示對稱線" # mt
+symmetry.rotational = "旋轉" # mt
+symmetry.rotational_tip = "圍繞中心旋轉副本而非鏡像：副本數與線數相同，物件本身算一個" # mt
 status.editing_symmetry = "正在編輯對稱：修改原始物件（紅色輪廓），副本隨之變化。按「完成」結束。"
 
 options.center_dialogs = "對話方塊置中"

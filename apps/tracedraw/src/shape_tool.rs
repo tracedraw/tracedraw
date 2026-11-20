@@ -220,6 +220,53 @@ impl App {
         })
     }
 
+    /// A selected picture's edge under the pointer, away from its
+    /// corners: the picture and the edge (0 to 3, from corner `i` to
+    /// corner `i + 1` in [`bitmap_corners`] order), #3532.
+    fn bitmap_edge_at(&self, p: Point) -> Option<(ShapeId, usize)> {
+        let tol = self.settings.nodes.pick_px() / self.view.zoom as f64;
+        self.selected_shapes().iter().find_map(|s| {
+            if frame_only(s) {
+                return None;
+            }
+            let c = bitmap_corners(s)?;
+            (0..4).find_map(|i| {
+                let (a, b) = (c[i], c[(i + 1) % 4]);
+                let ab = b - a;
+                let len2 = ab.hypot2();
+                if len2 <= 1e-12 {
+                    return None;
+                }
+                let t = (p - a).dot(ab) / len2;
+                let near = (a + ab * t.clamp(0.0, 1.0) - p).hypot() <= tol;
+                let away = (p - a).hypot() > tol && (p - b).hypot() > tol;
+                (near && away && (0.0..=1.0).contains(&t)).then_some((s.id, i))
+            })
+        })
+    }
+
+    /// A press on a selected picture's edge (#3532): the picture goes
+    /// into a clip frame of its rectangle and the edge's two corners are
+    /// chosen and dragged together. False when no edge is at `p`.
+    pub(crate) fn begin_bitmap_edge_crop(&mut self, p: Point) -> bool {
+        let Some((id, edge)) = self.bitmap_edge_at(p) else {
+            return false;
+        };
+        let Some(frame) = self.crop_bitmap_to_frame(id) else {
+            return false;
+        };
+        self.node_selection = vec![(frame, edge), (frame, (edge + 1) % 4)];
+        self.segment_spot = None;
+        self.drag = Drag::NodeMove {
+            start: self.start_curves(),
+            from: p,
+            grab: p,
+            begun: false,
+            still: None,
+        };
+        true
+    }
+
     /// Put the picture `id` in a clip frame whose frame is the picture's
     /// rectangle (an undo step of its own); the frame's id, whose nodes 0
     /// to 3 are the picture's corners.
@@ -557,6 +604,12 @@ impl App {
                     };
                     return;
                 }
+            }
+            // A picture's edge: cropped the same way, the edge's two
+            // corners moving together (Ctrl keeps the move to one axis),
+            // #3532.
+            if self.begin_bitmap_edge_crop(p) {
+                return;
             }
             if let Some((s, node)) = self.kind_node_at(p) {
                 // A B-spline's control point is chosen as a node is: a
@@ -3098,6 +3151,40 @@ mod bitmap_node_tests {
         let mut chosen: Vec<usize> = app.node_selection.iter().map(|(_, i)| *i).collect();
         chosen.sort_unstable();
         assert_eq!(chosen, indices);
+    }
+
+    /// A press on a picture's edge (away from its corners) crops it from
+    /// that side: the top edge dragged down leaves the picture below it,
+    /// unstretched (#3532).
+    #[test]
+    fn an_edge_of_a_picture_drags_to_crop_it() {
+        let mut app = App::headless();
+        let id = picture(&mut app);
+        app.select(vec![id]);
+        app.view.zoom = 1.0;
+        // Near a corner it is the corner, in the middle of a side an edge.
+        assert_eq!(app.bitmap_edge_at(Point::new(10.5, 10.5)), None);
+        assert_eq!(app.bitmap_edge_at(Point::new(30.0, 40.2)), Some((id, 2)));
+        assert_eq!(app.bitmap_edge_at(Point::new(30.0, 25.0)), None);
+        assert!(app.begin_bitmap_edge_crop(Point::new(30.0, 40.0)));
+        let start = app.start_curves();
+        app.move_start_nodes(&start, Vec2::new(0.0, -15.0), Point::new(30.0, 25.0), false);
+        let s = app.doc().find_shape(id).expect("clip frame");
+        let ShapeKind::ClipFrame { frame, contents } = &s.kind else {
+            panic!("not a clip frame: {:?}", s.kind);
+        };
+        let b = tracedraw_core::geometry::Shape::bounding_box(&frame.page_path());
+        assert!(
+            (b.y1 - 25.0).abs() < 1e-9 && (b.y0 - 10.0).abs() < 1e-9,
+            "{b:?}"
+        );
+        assert!((b.x0 - 10.0).abs() < 1e-9 && (b.x1 - 50.0).abs() < 1e-9);
+        // The picture itself keeps its size.
+        let ShapeKind::Bitmap { rect, .. } = &contents[0].kind else {
+            panic!("picture");
+        };
+        assert_eq!(*rect, Rect::new(10.0, 10.0, 50.0, 40.0));
+        assert!(!app.begin_bitmap_edge_crop(Point::new(500.0, 500.0)));
     }
 
     /// #1491: a picture with a gradient transparency, cut down by moving

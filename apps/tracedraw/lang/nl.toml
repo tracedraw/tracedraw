@@ -4708,6 +4708,8 @@ toolbar.path_rotate = "Gedraaide letters"
 toolbar.path_straighten_tip = "Tekst van het pad halen, niet gedraaid"
 toolbar.path_tick_snap = "Stapsgewijs uitlijnen"
 toolbar.path_tick_snap_tip = "Tekst van het pad af slepen verplaatst hem in hele stappen"
+toolbar.path_follow = "Pad volgen" # mt
+toolbar.path_follow_tip = "De tekst opnieuw passen telkens als het pad wordt verplaatst of vervormd" # mt
 toolbar.path_tick_spacing = "Stapgrootte"
 toolbar.path_upright = "Rechtopstaande letters"
 toolbar.path_vertical = "Verticale plaatsing"
@@ -5202,6 +5204,8 @@ menu.object.symmetry_break = "Symmetriekoppeling verbreken"
 symmetry.finish = "Voltooien"
 symmetry.full_preview = "Volledig voorbeeld: kopieën volledig getekend (uit: omtrekken)" # mt
 symmetry.show_lines = "Symmetrielijnen tonen" # mt
+symmetry.rotational = "Rotatie" # mt
+symmetry.rotational_tip = "De kopieën rond het midden draaien in plaats van ze te spiegelen: evenveel kopieën als lijnen, het object meegerekend" # mt
 status.editing_symmetry = "Symmetrie bewerken: wijzig het origineel (rood omlijnd); de kopieën volgen. Voltooien stopt."
 
 options.center_dialogs = "Dialoogvensters centreren"

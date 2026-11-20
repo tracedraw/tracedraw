@@ -4708,6 +4708,8 @@ toolbar.path_rotate = "घुमाए गए अक्षर"
 toolbar.path_straighten_tip = "पाठ को बिना घुमाए पथ से हटाएँ"
 toolbar.path_tick_snap = "चरणों में स्नैप"
 toolbar.path_tick_snap_tip = "पथ से दूर खींचने पर पाठ पूरे चरणों में खिसकता है"
+toolbar.path_follow = "पथ का अनुसरण करें" # mt
+toolbar.path_follow_tip = "जब भी पथ हिलाया जाए या उसका आकार बदले, टेक्स्ट को फिर से फिट करें" # mt
 toolbar.path_tick_spacing = "चरण दूरी"
 toolbar.path_upright = "सीधे अक्षर"
 toolbar.path_vertical = "ऊर्ध्वाधर स्थिति"
@@ -5202,6 +5204,8 @@ menu.object.symmetry_break = "सिमेट्री लिंक तोड़
 symmetry.finish = "समाप्त"
 symmetry.full_preview = "पूरा पूर्वावलोकन दिखाएँ: प्रतियाँ पूरी बनाई जाती हैं (बंद: रूपरेखा)" # mt
 symmetry.show_lines = "समरूपता रेखाएँ दिखाएँ" # mt
+symmetry.rotational = "घूर्णी" # mt
+symmetry.rotational_tip = "प्रतियों को दर्पण करने के बजाय केंद्र के चारों ओर घुमाएँ: जितनी रेखाएँ उतनी प्रतियाँ, वस्तु उनमें से एक" # mt
 status.editing_symmetry = "सिमेट्री संपादन: मूल (लाल रूपरेखा) बदलें; प्रतियाँ साथ चलती हैं। समाप्त इसे बंद करता है।"
 
 options.center_dialogs = "डायलॉग बॉक्स को बीच में रखें"

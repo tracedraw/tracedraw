@@ -4708,6 +4708,8 @@ toolbar.path_rotate = "Повёрнутые буквы"
 toolbar.path_straighten_tip = "Снять текст с контура без поворота"
 toolbar.path_tick_snap = "Привязка с шагом"
 toolbar.path_tick_snap_tip = "Текст, отводимый от контура, смещается целыми шагами"
+toolbar.path_follow = "Следовать за контуром" # mt
+toolbar.path_follow_tip = "Заново подгонять текст каждый раз, когда контур перемещают или меняют его форму" # mt
 toolbar.path_tick_spacing = "Шаг привязки"
 toolbar.path_upright = "Прямые буквы"
 toolbar.path_vertical = "Вертикальное положение"
@@ -5202,6 +5204,8 @@ menu.object.symmetry_break = "Разорвать связь симметрии"
 symmetry.finish = "Готово"
 symmetry.full_preview = "Полный предпросмотр: копии рисуются целиком (выкл.: контуры)" # mt
 symmetry.show_lines = "Показывать линии симметрии" # mt
+symmetry.rotational = "Поворотная" # mt
+symmetry.rotational_tip = "Поворачивать копии вокруг центра вместо отражения: столько копий, сколько линий, включая сам объект" # mt
 status.editing_symmetry = "Правка симметрии: меняйте оригинал (красный контур); копии следуют за ним. «Готово» завершает."
 
 options.center_dialogs = "Центрировать диалоговые окна"

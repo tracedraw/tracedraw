@@ -181,6 +181,10 @@ de texto de sempre:
   círculo continua centralizada ao se afastar ou se aproximar.
 - Os dois botões de espelhar, que põem o texto do outro lado do caminho ou o
   viram, e [[menu.text.straighten_text]], que o tira do caminho.
+- **Seguir caminho** (desligado): pressionado, o texto é ajustado de novo ao
+  caminho sempre que o caminho é movido, redimensionado ou remodelado,
+  mantendo seu lugar ao longo dele. Desfazer volta a mudança do caminho e a do
+  texto juntas. Apagar o caminho deixa o texto como está.
 
 Arraste o texto para deslizá-lo pelo caminho, ou através do caminho para
 afastá-lo dele.

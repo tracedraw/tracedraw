@@ -4718,6 +4718,8 @@ toolbar.path_rotate = "ຕົວອັກສອນໝູນຕາມ"
 toolbar.path_straighten_tip = "ເອົາຂໍ້ຄວາມອອກຈາກເສັ້ນທາງ ໂດຍບໍ່ມີການໝູນ"
 toolbar.path_tick_snap = "ດຶງດູດຕາມຂີດ"
 toolbar.path_tick_snap_tip = "ການລາກຂໍ້ຄວາມອອກຈາກເສັ້ນທາງຈະຍ້າຍໄປເທື່ອລະຂັ້ນເຕັມ"
+toolbar.path_follow = "ຕິດຕາມເສັ້ນທາງ" # mt
+toolbar.path_follow_tip = "ປັບຂໍ້ຄວາມໃໝ່ທຸກຄັ້ງທີ່ເສັ້ນທາງຖືກຍ້າຍ ຫຼື ປ່ຽນຮູບຮ່າງ" # mt
 toolbar.path_tick_spacing = "ໄລຍະຫ່າງຂີດໝາຍ"
 toolbar.path_upright = "ຕົວອັກສອນຕັ້ງຊື່"
 toolbar.path_vertical = "ການຈັດວາງລວງຕັ້ງ"
@@ -5212,6 +5214,8 @@ menu.object.symmetry_break = "ຍົກເລີກການເຊື່ອມ�
 symmetry.finish = "ສຳເລັດ"
 symmetry.full_preview = "ສະແດງຕົວຢ່າງເຕັມຮູບແບບ: ສຳເນົາຈະຖືກແຕ້ມແບບສົມບູນ (ປິດ: ສະແດງສະເພາະເສັ້ນຂອບ)"
 symmetry.show_lines = "ສະແດງເສັ້ນສົມມາດ"
+symmetry.rotational = "ໝູນ" # mt
+symmetry.rotational_tip = "ໝູນສຳເນົາອ້ອມຈຸດກາງແທນການສະທ້ອນ: ຈຳນວນສຳເນົາເທົ່າກັບຈຳນວນເສັ້ນ, ວັດຖຸນັບເປັນໜຶ່ງ" # mt
 status.editing_symmetry = "ກຳລັງແກ້ໄຂຄວາມສົມມາດ: ປ່ຽນແປງຕົ້ນສະບັບ (ຂອບສີແດງ); ສ່ວນສຳເນົາຈະປ່ຽນຕາມ. ກົດ 'ສຳເລັດ' ເພື່ອສິ້ນສຸດ."
 
 options.center_dialogs = "ຈັດກ່ອງຂໍ້ຄວາມໄວ້ເຄິ່ງກາງ"
