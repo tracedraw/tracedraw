@@ -2676,6 +2676,7 @@ menu.edit.duplicate = "Duplicar"
 menu.edit.find_and_replace = "Localizar e substituir"
 menu.edit.paste = "Colar"
 menu.edit.paste_in_view = "Colar na visualização"
+menu.edit.paste_above_selection = "Colar acima da seleção" # mt
 menu.edit.paste_special = "Colar especial..."
 menu.edit.redo = "Refazer"
 menu.edit.repeat = "Repetir"

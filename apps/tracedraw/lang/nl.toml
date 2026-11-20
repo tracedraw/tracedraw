@@ -2676,6 +2676,7 @@ menu.edit.duplicate = "Dupliceren"
 menu.edit.find_and_replace = "Zoeken en vervangen"
 menu.edit.paste = "Plakken"
 menu.edit.paste_in_view = "Plakken in weergave"
+menu.edit.paste_above_selection = "Plakken boven selectie" # mt
 menu.edit.paste_special = "Plakken speciaal..."
 menu.edit.redo = "Opnieuw"
 menu.edit.repeat = "Herhalen"

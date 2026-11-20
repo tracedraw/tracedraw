@@ -3030,6 +3030,10 @@ fn edit_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.edit.paste_in_view", "Ctrl+Shift+V", true) {
         app.paste_in_view();
     }
+    // Pasted just in front of the topmost selected object (#3673).
+    if item(ui, "menu.edit.paste_above_selection", "", true) {
+        app.paste_above_selection();
+    }
     if item(ui, "menu.edit.paste_special", "", true) {
         app.dialog = Dialog::PasteSpecial(Default::default());
     }

@@ -2679,6 +2679,7 @@ menu.edit.duplicate = "ສ້າງສໍາເນົາ"
 menu.edit.find_and_replace = "ຊອກຫາ ແລະ ປ່ຽນແທນ"
 menu.edit.paste = "ວາງ"
 menu.edit.paste_in_view = "ວາງໃນມຸມມອງ"
+menu.edit.paste_above_selection = "ວາງເທິງສິ່ງທີ່ເລືອກ" # mt
 menu.edit.paste_special = "ວາງແບບພິເສດ..."
 menu.edit.redo = "ເຮັດຄືນ"
 menu.edit.repeat = "ເຮັດຊໍ້າ"

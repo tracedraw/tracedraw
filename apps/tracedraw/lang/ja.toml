@@ -2676,6 +2676,7 @@ menu.edit.duplicate = "複製"
 menu.edit.find_and_replace = "検索と置換"
 menu.edit.paste = "貼り付け"
 menu.edit.paste_in_view = "表示位置に貼り付け"
+menu.edit.paste_above_selection = "選択範囲の上に貼り付け" # mt
 menu.edit.paste_special = "形式を選択して貼り付け..."
 menu.edit.redo = "やり直し"
 menu.edit.repeat = "繰り返し"

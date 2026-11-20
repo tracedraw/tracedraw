@@ -2676,6 +2676,7 @@ menu.edit.duplicate = "تكرار النسخ"
 menu.edit.find_and_replace = "بحث واستبدال"
 menu.edit.paste = "لصق"
 menu.edit.paste_in_view = "لصق في العرض"
+menu.edit.paste_above_selection = "لصق فوق التحديد" # mt
 menu.edit.paste_special = "لصق خاص..."
 menu.edit.redo = "إعادة"
 menu.edit.repeat = "تكرار"

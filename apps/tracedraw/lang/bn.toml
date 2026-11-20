@@ -2676,6 +2676,7 @@ menu.edit.duplicate = "ডুপ্লিকেট"
 menu.edit.find_and_replace = "খুঁজুন ও প্রতিস্থাপন"
 menu.edit.paste = "পেস্ট"
 menu.edit.paste_in_view = "দৃশ্যে পেস্ট করুন"
+menu.edit.paste_above_selection = "নির্বাচনের উপরে পেস্ট করুন" # mt
 menu.edit.paste_special = "বিশেষ পেস্ট..."
 menu.edit.redo = "পুনরায় করুন"
 menu.edit.repeat = "পুনরাবৃত্তি"

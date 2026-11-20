@@ -2676,6 +2676,7 @@ menu.edit.duplicate = "डुप्लिकेट"
 menu.edit.find_and_replace = "खोजें और बदलें"
 menu.edit.paste = "पेस्ट"
 menu.edit.paste_in_view = "दृश्य में पेस्ट करें"
+menu.edit.paste_above_selection = "चयन के ऊपर चिपकाएँ" # mt
 menu.edit.paste_special = "विशेष पेस्ट..."
 menu.edit.redo = "फिर से करें"
 menu.edit.repeat = "दोहराएँ"

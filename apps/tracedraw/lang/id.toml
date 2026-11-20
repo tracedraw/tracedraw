@@ -2676,6 +2676,7 @@ menu.edit.duplicate = "Duplikat"
 menu.edit.find_and_replace = "Cari dan Ganti"
 menu.edit.paste = "Tempel"
 menu.edit.paste_in_view = "Tempel di Tampilan"
+menu.edit.paste_above_selection = "Tempel di atas pilihan" # mt
 menu.edit.paste_special = "Tempel Khusus..."
 menu.edit.redo = "Ulangi"
 menu.edit.repeat = "Lakukan Lagi"

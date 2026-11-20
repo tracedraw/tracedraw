@@ -2676,6 +2676,7 @@ menu.edit.duplicate = "Duplica"
 menu.edit.find_and_replace = "Trova e sostituisci"
 menu.edit.paste = "Incolla"
 menu.edit.paste_in_view = "Incolla nella vista"
+menu.edit.paste_above_selection = "Incolla sopra la selezione" # mt
 menu.edit.paste_special = "Incolla speciale..."
 menu.edit.redo = "Ripeti"
 menu.edit.repeat = "Ripeti l'ultima azione"

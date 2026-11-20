@@ -2676,6 +2676,7 @@ menu.edit.duplicate = "再制副本"
 menu.edit.find_and_replace = "查找和替换"
 menu.edit.paste = "粘贴"
 menu.edit.paste_in_view = "粘贴到视图中"
+menu.edit.paste_above_selection = "粘贴到所选对象上方" # mt
 menu.edit.paste_special = "选择性粘贴..."
 menu.edit.redo = "重做"
 menu.edit.repeat = "重复"

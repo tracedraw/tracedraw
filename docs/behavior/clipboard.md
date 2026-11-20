@@ -79,6 +79,13 @@ Ctrl+Shift+V pastes the objects copied here in the middle of the view.
 Paste on the page's context menu centres what it pastes where the menu
 was opened.
 
+Edit > Paste Above Selection pastes as Paste does, then lays what came
+just in front of the topmost selected object, in its layer or group,
+instead of at the top of the active layer; one Undo takes it back. With
+nothing selected it is Paste. It has no shortcut of its own; one can be
+given in Options > Customization (#3673,
+`clipboard::tests::paste_above_selection_lands_in_front_of_the_selection`).
+
 ### In a browser and on Android (#1403)
 
 A browser hands the clipboard only to a paste event and to its

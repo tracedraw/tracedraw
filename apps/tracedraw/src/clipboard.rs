@@ -891,6 +891,51 @@ impl App {
         self.move_pasted_to(&before, at);
     }
 
+    /// Edit > Paste Above Selection: paste, then lay what came just in
+    /// front of the topmost selected object, in its layer or group,
+    /// instead of at the top of the active layer (#3673). One Undo takes
+    /// the paste back. With nothing selected it pastes as Paste does.
+    pub fn paste_above_selection(&mut self) {
+        let reference = self.topmost_selected();
+        let before = self.selection.clone();
+        self.paste_with_event_text(None);
+        let Some(reference) = reference else {
+            return;
+        };
+        if self.selection.is_empty() || self.selection == before {
+            return;
+        }
+        let shapes: Vec<ShapeId> = self
+            .selection
+            .iter()
+            .copied()
+            .filter(|s| *s != reference)
+            .collect();
+        let cmd = Command::PlaceBeside {
+            shapes,
+            reference,
+            in_front: true,
+        };
+        if let Err(e) = self.engine.amend_batch("Paste", &[cmd]) {
+            self.status = e.to_string();
+        }
+    }
+
+    /// The selected object drawn on top of the others: on the highest
+    /// layer, then the latest in it.
+    fn topmost_selected(&self) -> Option<ShapeId> {
+        let doc = self.doc();
+        let layers: Vec<_> = doc.all_layers().map(|l| l.id).collect();
+        self.selection
+            .iter()
+            .filter_map(|&id| {
+                let (layer, i) = doc.locate(id).ok()?;
+                Some((layers.iter().position(|l| *l == layer)?, i, id))
+            })
+            .max_by_key(|&(l, i, _)| (l, i))
+            .map(|(_, _, id)| id)
+    }
+
     /// Centre what a paste selected on `at`, when given and the paste
     /// selected something new.
     fn move_pasted_to(&mut self, before: &[ShapeId], at: Option<Point>) {
@@ -1931,6 +1976,55 @@ mod tests {
         let b = app.selection_bounds().expect("pasted");
         let c = app.view_center();
         assert!((b.center() - c).hypot() < 1e-6, "{:?} at {c:?}", b.center());
+    }
+
+    /// Paste Above Selection lays the copy just in front of the topmost
+    /// selected object, not at the top of the layer, in one Undo step
+    /// (#3673).
+    #[test]
+    fn paste_above_selection_lands_in_front_of_the_selection() {
+        let mut app = App::headless();
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::geometry::Rect::new(x, 10.0, x + 20.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let (a, b, c) = (
+            rect(&mut app, 0.0),
+            rect(&mut app, 30.0),
+            rect(&mut app, 60.0),
+        );
+        app.select(vec![c]);
+        app.copy();
+        // Pasted with A and B selected: between B and C.
+        app.select(vec![b, a]);
+        let steps = app.engine.history_labels().0.len();
+        app.paste_above_selection();
+        let pasted = app.selection.clone();
+        assert_eq!(pasted.len(), 1);
+        assert!(pasted[0] != c);
+        let order: Vec<ShapeId> = app
+            .doc()
+            .all_layers()
+            .flat_map(|l| l.shapes.iter().map(|s| s.id))
+            .collect();
+        let at = |id| order.iter().position(|x| *x == id).expect("on a layer");
+        assert_eq!(at(pasted[0]), at(b) + 1, "just in front of B");
+        assert!(at(pasted[0]) < at(c), "behind C, which was on top");
+        assert_eq!(app.engine.history_labels().0.len(), steps + 1, "one step");
+        // With nothing selected it pastes as Paste does: on top.
+        app.select(vec![]);
+        app.paste_above_selection();
+        let top = app.selection[0];
+        let order: Vec<ShapeId> = app
+            .doc()
+            .all_layers()
+            .flat_map(|l| l.shapes.iter().map(|s| s.id))
+            .collect();
+        assert_eq!(order.last(), Some(&top));
     }
 
     fn png_file(name: &str) -> PastedFile {

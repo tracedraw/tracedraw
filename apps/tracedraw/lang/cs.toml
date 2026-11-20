@@ -2676,6 +2676,7 @@ menu.edit.duplicate = "Duplikovat"
 menu.edit.find_and_replace = "Najít a nahradit"
 menu.edit.paste = "Vložit"
 menu.edit.paste_in_view = "Vložit do zobrazení"
+menu.edit.paste_above_selection = "Vložit nad výběr" # mt
 menu.edit.paste_special = "Vložit jinak..."
 menu.edit.redo = "Znovu"
 menu.edit.repeat = "Opakovat"
