@@ -10,6 +10,10 @@ full, row-by-row status.
 - Insert Formula: Hindi and other scripts are shaped as text, vowel signs with their letters and spaces kept (#3572).
 - .cdr: paragraph frames of several columns from version 27 files keep their columns (#3506).
 - Paste: a drawing a CAD program copies as DXF text comes in as objects instead of a text of codes (#3544).
+- Draw Behind: a button beside Draw Inside on the drawing tools' property bar; what they draw goes behind the selected objects of the layer, or to its back with nothing selected (off at first).
+- Shape Recognition: Scribble erases (property bar, off at first); a scribble back and forth over objects deletes them.
+- Properties docker: arrows beside each further fill and outline paint it one place earlier or later; the second trades places with the first.
+- Properties docker: each further fill has a look of its own, Grow, Move and Blur under it, which grow (or shrink), move and blur that fill alone, on screen and in SVG and PDF.
 - Edit > Paste Above Selection pastes in front of the topmost selected object, in its layer or group, instead of at the top of the active layer; one Undo takes it back, and with nothing selected it is Paste (#3673).
 - Effects > 3D Revolve and Inflate: ready-made views (front, back, sides, top, bottom, six off-axis and four isometric), Roll, Offset (the axis away from the curve makes a ring or a hollow tube) and Cap; a surface of Plastic, Diffuse, No shading or Wireframe; the light's colour, intensity, softness and an ambient light (the default look is unchanged); a document symbol as the art, groups and symbols drawn out into their pieces, Fit and Stretch over the whole surface, Shade art and Only the art. The 3D object keeps its curve and settings: selected, the panel shows them, Update makes it again in place and Release gives the curve back. Halftone sphere makes a lit ball of halftone dots, as curves, in one click (#3668).
 - PDF, EPS and WMF import keep nonzero fills: letters of a text in curves no longer lose the places where their parts overlap; WMF and EPS export fill each curve as it is drawn (#3224).

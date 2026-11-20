@@ -976,6 +976,7 @@ impl App {
                         shapes: id.clone(),
                         fills: Vec::new(),
                         strokes: Vec::new(),
+                        looks: None,
                     },
                     Command::SetShadow {
                         shapes: id.clone(),

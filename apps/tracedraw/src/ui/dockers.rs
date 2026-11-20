@@ -7,6 +7,7 @@ use crate::ui::pattern_pick::{PatternAction, PatternPickers};
 use crate::ui::slider::Settled;
 use crate::ui::tips::RichTip;
 use egui::Ui;
+use tracedraw_core::document::FillLook;
 use tracedraw_core::patch::{FillField, FillMix, StrokeField, StrokeMix};
 use tracedraw_core::{
     document::ShapeKind, Arrowhead, Color, ColorBlend, Command, Fill, Fountain, FountainKind,
@@ -1299,13 +1300,52 @@ fn color_row_mixed(ui: &mut Ui, label: &str, c: &mut Color, mixed: bool) -> bool
 }
 
 /// Give the selection these further fills and outlines (one undo step).
-fn set_extra_paint(app: &mut App, fills: Vec<Fill>, strokes: Vec<tracedraw_core::Stroke>) {
+fn set_extra_paint(
+    app: &mut App,
+    fills: Vec<Fill>,
+    strokes: Vec<tracedraw_core::Stroke>,
+    looks: Option<Vec<FillLook>>,
+) {
     let shapes = app.selection.clone();
     app.run(Command::SetExtraPaint {
         shapes,
         fills,
         strokes,
+        looks,
     });
+}
+
+/// Grow, Move and Blur under a further fill: its look of its own (see
+/// [`FillLook`]). Whether a field changed.
+fn fill_look_row(app: &App, ui: &mut Ui, look: &mut FillLook) -> bool {
+    let units = app.units;
+    let mut changed = false;
+    let mut field = |ui: &mut Ui, v: &mut f64, lo: f64, key: &str| {
+        let mut x = units.from_mm(*v);
+        let r = ui
+            .add(
+                crate::ui::field::NumField::new(&mut x)
+                    .speed(0.1)
+                    .max_decimals(2)
+                    .range(units.from_mm(lo)..=units.from_mm(500.0))
+                    .suffix(format!(" {}", units.short())),
+            )
+            .rich_tip(crate::ui::tips::keyed(key));
+        if r.changed() {
+            *v = units.to_mm(x).clamp(lo, 500.0);
+            changed = true;
+        }
+    };
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr("docker.fill_grow"));
+        field(ui, &mut look.grow, -500.0, "docker.fill_grow");
+        ui.label(tr("docker.fill_move"));
+        field(ui, &mut look.move_x, -500.0, "docker.fill_move_x");
+        field(ui, &mut look.move_y, -500.0, "docker.fill_move_y");
+        ui.label(tr("docker.fill_blur"));
+        field(ui, &mut look.blur, 0.0, "docker.fill_blur");
+    });
+    changed
 }
 
 /// The further fills of the selection (the first object's): each with
@@ -1484,6 +1524,7 @@ fn extra_fills(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_fi
     let mut remove = None;
     let count = fills.len();
     let mut moved = None;
+    let mut looks: Vec<FillLook> = (0..count).map(|i| first.fill_look(i)).collect();
     for (i, f) in fills.iter_mut().enumerate() {
         ui.separator();
         ui.horizontal(|ui| {
@@ -1499,15 +1540,20 @@ fn extra_fills(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_fi
         });
         ui.push_id(("extra_fill", i), |ui| {
             changed |= fill_editor(ui, f);
+            changed |= fill_look_row(app, ui, &mut looks[i]);
         });
     }
     if let Some(i) = remove {
         fills.remove(i);
+        looks.remove(i);
         changed = true;
     }
     if let Some((i, earlier)) = moved.filter(|_| remove.is_none()) {
         let mut base = first.fill.clone();
         paint_order_step(Some(&mut base), &mut fills, i, earlier);
+        // The looks move with the further fills; the first fill has none,
+        // so trading with it leaves the look in its place.
+        paint_order_step(None, &mut looks, i, earlier);
         let shapes = app.selection.clone();
         let cmds = [
             Command::SetFill {
@@ -1518,6 +1564,7 @@ fn extra_fills(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_fi
                 shapes,
                 fills,
                 strokes: first.extra_strokes.clone(),
+                looks: Some(looks),
             },
         ];
         if let Err(e) = app.run_batch_keeping_lines("Fill Order", &cmds) {
@@ -1535,10 +1582,11 @@ fn extra_fills(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_fi
             .clicked()
     {
         fills.push(first.fill.clone());
+        looks.push(FillLook::default());
         changed = true;
     }
     if changed {
-        set_extra_paint(app, fills, first.extra_strokes.clone());
+        set_extra_paint(app, fills, first.extra_strokes.clone(), Some(looks));
     }
 }
 
@@ -1592,6 +1640,7 @@ fn extra_strokes(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_
                 shapes,
                 fills: first.extra_fills.clone(),
                 strokes,
+                looks: None,
             },
         ];
         if let Err(e) = app.run_batch_keeping_lines("Outline Order", &cmds) {
@@ -1616,7 +1665,7 @@ fn extra_strokes(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_
         changed = true;
     }
     if changed {
-        set_extra_paint(app, first.extra_fills.clone(), strokes);
+        set_extra_paint(app, first.extra_fills.clone(), strokes, None);
     }
 }
 
@@ -6689,9 +6738,14 @@ pub(crate) mod tests {
             vec![tracedraw_core::Stroke::hairline(
                 tracedraw_core::Color::WHITE,
             )],
+            Some(vec![FillLook {
+                grow: 1.0,
+                ..Default::default()
+            }]),
         );
         let s = app.doc().find_shape(id).expect("shape").clone();
         assert_eq!((s.extra_fills.len(), s.extra_strokes.len()), (1, 1));
+        assert_eq!(s.fill_look(0).grow, 1.0, "the further fill's look");
         draw(&ctx, &mut app);
         app.undo();
         assert!(app

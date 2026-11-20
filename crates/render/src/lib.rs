@@ -6912,6 +6912,39 @@ mod tests {
         assert_eq!(px(&pm, 50, 91), (0, 0, 0));
     }
 
+    /// A further fill with a look of its own: grown and moved, it paints
+    /// beside the first fill, which stays where it is.
+    #[test]
+    fn a_further_fill_draws_with_its_own_look() {
+        let mut r = rect(1, Rect::new(10.0, 40.0, 30.0, 60.0), Color::rgb8(255, 0, 0));
+        r.stroke = None;
+        r.extra_fills = vec![Fill::Solid(Color::rgb8(0, 0, 255))];
+        r.fill_looks = Some(Box::new(vec![tracedraw_core::document::FillLook {
+            grow: 5.0,
+            move_x: 50.0,
+            move_y: 0.0,
+            blur: 0.0,
+        }]));
+        let (doc, page) = doc_with(vec![r]);
+        let opts = RenderOptions {
+            width: 100,
+            height: 100,
+            view: ViewTransform {
+                zoom: 1.0,
+                origin_x: 0.0,
+                origin_y: 100.0,
+                stretch_y: 1.0,
+            },
+            ..RenderOptions::default()
+        };
+        let pm = render_page(&doc, page, &opts).unwrap();
+        assert_eq!(px(&pm, 20, 50), (255, 0, 0), "the first fill in place");
+        assert_eq!(px(&pm, 70, 50), (0, 0, 255), "the further fill moved");
+        // Grown by 5 mm: past the moved box's edge (x 80).
+        assert_eq!(px(&pm, 83, 50), (0, 0, 255));
+        assert_eq!(pm.pixel(40, 50).unwrap().alpha(), 0);
+    }
+
     /// A clip frame as an opacity mask: the contents show where the
     /// frame is light, not where it is dark, and nothing outside it; the
     /// frame is not drawn. Inverted, the other way round.

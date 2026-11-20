@@ -180,5 +180,10 @@ The arrows beside each further fill or outline paint it one place earlier or
 later; the second trades places with the first, so any of them can go
 bottom or top.
 
+Under each further fill, Grow, Move and Blur give it a look of its own:
+its area grown (or shrunk, below zero), moved and blurred, while the
+object and its other fills stay as they are. A smaller fill of another colour,
+moved and blurred a little, makes a soft highlight, for example.
+
 Fills can also be painted on outlines; see
 [Setting outlines](../lines-shapes/outlines.md#outline-pen).

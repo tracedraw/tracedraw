@@ -331,6 +331,10 @@ pub enum Command {
         shapes: Vec<ShapeId>,
         fills: Vec<Fill>,
         strokes: Vec<Stroke>,
+        /// The further fills' looks of their own (`Shape::fill_looks`);
+        /// `None` keeps them, as many as there are fills.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        looks: Option<Vec<crate::document::FillLook>>,
     },
     SetOverprint {
         shapes: Vec<ShapeId>,
@@ -1251,11 +1255,18 @@ impl Command {
                 shapes,
                 fills,
                 strokes,
+                looks,
             } => {
                 for id in shapes {
                     let s = any_mut(doc, *id)?;
                     s.extra_fills = fills.clone();
                     s.extra_strokes = strokes.clone();
+                    let mut l = match looks {
+                        Some(l) => l.clone(),
+                        None => s.fill_looks.as_deref().cloned().unwrap_or_default(),
+                    };
+                    l.truncate(fills.len());
+                    s.fill_looks = (!l.iter().all(|x| x.is_plain())).then(|| Box::new(l));
                 }
             }
             Command::SetOverprint {

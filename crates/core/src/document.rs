@@ -3039,6 +3039,61 @@ impl Baseline {
     }
 }
 
+/// A further fill's look of its own (the Properties docker's Grow, Move
+/// and Blur under the fill): its area grown (or, below nothing, shrunk)
+/// by `grow` mm, moved by `move_x` / `move_y` mm and blurred by `blur`
+/// mm, as live effects on that fill alone, after the object's own.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FillLook {
+    pub grow: f64,
+    pub move_x: f64,
+    pub move_y: f64,
+    pub blur: f64,
+}
+
+impl FillLook {
+    /// No look of its own: the fill drawn as the object is.
+    pub fn is_plain(&self) -> bool {
+        *self == FillLook::default()
+    }
+
+    /// The live effects that draw the look, in order: grow, move, blur.
+    pub fn effects(&self) -> Vec<crate::live::Effect> {
+        use crate::live::Effect;
+        let mut out = Vec::new();
+        if self.grow.abs() > 1e-9 {
+            out.push(Effect::OffsetPath {
+                distance: self.grow,
+                smooth: 0.0,
+                join: Default::default(),
+                merge: false,
+            });
+        }
+        if self.move_x.abs() > 1e-9 || self.move_y.abs() > 1e-9 {
+            out.push(Effect::Transform {
+                scale_x: 100.0,
+                scale_y: 100.0,
+                move_x: self.move_x,
+                move_y: self.move_y,
+                angle: 0.0,
+                copies: 0,
+                reflect_x: false,
+                reflect_y: false,
+                random: false,
+                seed: 0,
+                scale_strokes: false,
+                pivot_x: 0.0,
+                pivot_y: 0.0,
+            });
+        }
+        if self.blur > 1e-9 {
+            out.push(Effect::GaussianBlur { radius: self.blur });
+        }
+        out
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Shape {
     pub id: ShapeId,
@@ -3153,6 +3208,10 @@ pub struct Shape {
     /// Further outlines, drawn over `stroke` in order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra_strokes: Vec<Stroke>,
+    /// The looks of the further fills of their own, one for each of
+    /// `extra_fills` in order (missing ones plain; see [`FillLook`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill_looks: Option<Box<Vec<FillLook>>>,
     /// Bitmap effects on an object that is not a bitmap: the object stays
     /// as it is and is drawn as the picture they make of it (see
     /// [`Shape::drawn_as`]).
@@ -3533,6 +3592,7 @@ impl Shape {
             picture_inks: None,
             extra_fills: Vec::new(),
             extra_strokes: Vec::new(),
+            fill_looks: None,
             raster_fx: None,
             qr: None,
             fill_rule: crate::shaping::FillRule::EvenOdd,
@@ -3588,6 +3648,7 @@ impl Shape {
         s.stroke = None;
         s.extra_fills.clear();
         s.extra_strokes.clear();
+        s.fill_looks = None;
         s.shadow = None;
         s.effects.clear();
         s.parked_effects.clear();
@@ -3739,6 +3800,14 @@ impl Shape {
         (effects, parked)
     }
 
+    /// The look of further fill `i` (plain when it has none).
+    pub fn fill_look(&self, i: usize) -> FillLook {
+        self.fill_looks
+            .as_ref()
+            .and_then(|v| v.get(i).copied())
+            .unwrap_or_default()
+    }
+
     /// An object with further fills or outlines as the plain objects that
     /// draw it, bottom first: the outlines drawn behind the fill, its
     /// fill, each further fill, then the other outlines, its own first
@@ -3751,6 +3820,7 @@ impl Shape {
         let mut plain = self.clone();
         plain.extra_fills.clear();
         plain.extra_strokes.clear();
+        plain.fill_looks = None;
         plain.shadow = None;
         let strokes: Vec<&Stroke> = self.stroke.iter().chain(&self.extra_strokes).collect();
         let stroke_part = |st: &Stroke| {
@@ -3769,10 +3839,12 @@ impl Shape {
         let mut fill = plain.clone();
         fill.stroke = None;
         out.push(fill);
-        for f in &self.extra_fills {
+        for (i, f) in self.extra_fills.iter().enumerate() {
             let mut s = plain.clone();
             s.fill = f.clone();
             s.stroke = None;
+            // A look of its own: live effects on this fill alone.
+            s.effects.extend(self.fill_look(i).effects());
             out.push(s);
         }
         out.extend(
@@ -8784,6 +8856,55 @@ mod tests {
         };
         assert_eq!(children[0].effects.len(), 1, "the twister stays live");
         assert!(matches!(children[0].kind, ShapeKind::Path { .. }));
+    }
+
+    /// A further fill's look of its own: its part gets the live effects
+    /// that draw it, after the object's own; the other parts stay plain.
+    /// Set Extra Paint keeps the looks with as many fills as there are.
+    #[test]
+    fn a_further_fill_has_a_look_of_its_own() {
+        use crate::Color;
+        let mut s = Shape::new(
+            ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        s.stroke = None;
+        s.extra_fills = vec![Fill::Solid(Color::BLACK), Fill::Solid(Color::WHITE)];
+        let look = FillLook {
+            grow: 2.0,
+            move_x: 1.0,
+            move_y: 0.0,
+            blur: 0.5,
+        };
+        s.fill_looks = Some(Box::new(vec![look]));
+        assert!(FillLook::default().effects().is_empty());
+        let parts = s.layers().expect("parts");
+        assert_eq!(parts.len(), 3);
+        assert!(parts[0].effects.is_empty() && parts[2].effects.is_empty());
+        assert_eq!(parts[1].effects, look.effects());
+        assert_eq!(parts[1].effects.len(), 3);
+        assert!(parts.iter().all(|p| p.fill_looks.is_none()));
+        // Saved and read back.
+        let back: Shape = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back.fill_look(0), look);
+        assert!(back.fill_look(1).is_plain());
+        // Fewer fills: the looks go with them; none left plain stays None.
+        let mut doc = Document::new("t", crate::geometry::Size::new(50.0, 50.0));
+        let layer = doc.pages[0].layers[0].id;
+        doc.pages[0].layers[0].shapes.push(s.clone());
+        crate::Command::SetExtraPaint {
+            shapes: vec![s.id],
+            fills: vec![],
+            strokes: vec![],
+            looks: None,
+        }
+        .apply(&mut doc)
+        .unwrap();
+        assert!(doc.layer(layer).unwrap().shapes[0].fill_looks.is_none());
     }
 
     #[test]

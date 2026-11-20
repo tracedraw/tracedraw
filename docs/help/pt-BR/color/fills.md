@@ -189,5 +189,11 @@ As setas ao lado de cada preenchimento ou contorno extra pintam-no uma posição
 antes ou depois; o segundo troca de lugar com o primeiro, então qualquer um
 pode ir para baixo ou para cima.
 
+Sob cada preenchimento extra, Crescer, Mover e Desfocar dão a ele uma
+aparência própria: a área crescida (ou encolhida, abaixo de zero), movida e
+desfocada, enquanto o objeto e os outros preenchimentos ficam como estão. Um
+preenchimento menor de outra cor, movido e um pouco desfocado, faz um brilho
+suave, por exemplo.
+
 Os preenchimentos também podem ser pintados em contornos; veja
 [Definir contornos](../lines-shapes/outlines.md#outline-pen).
