@@ -15977,7 +15977,7 @@ fn a_double_click_on_a_mesh_node_removes_its_grid_lines() {
     assert_eq!((mesh(&app).rows, mesh(&app).cols), (3, 3));
 }
 
-/// Discussion #2387, Mesh Fill as in CorelDRAW: Shift+click adds mesh
+/// Discussion #2387, Mesh Fill: Shift+click adds mesh
 /// nodes to the chosen ones (and takes a chosen one out), a marquee
 /// chooses the nodes inside it, a palette colour, the transparency and
 /// the mesh eyedropper act on every chosen node, and a drag moves them
@@ -28643,8 +28643,7 @@ fn a_drag_with_the_inner_shadow_tool_casts_a_shadow_inside_the_object() {
 
 /// A right-click on a menu row, greyed or not, opens Options >
 /// Customization > Commands at that command, on its Shortcut Keys tab,
-/// to give it a key, as CorelDRAW's Customize > Menu Item Properties
-/// (#2504).
+/// to give it a key (#2504).
 #[test]
 fn a_right_click_on_a_menu_row_opens_its_shortcut_keys() {
     use crate::ui::dialogs::Dialog;
@@ -28856,7 +28855,7 @@ fn a_guideline_over_a_picture_is_dragged_and_the_picture_stays() {
 fn a_guideline_over_a_shape_or_a_group_is_dragged_and_they_stay() {
     // #2640 (tested in 0.48): a guideline across a filled shape or a
     // group showed no arrows and took no press, as only pictures let a
-    // guideline win. Guidelines lie above the layers, as in CorelDRAW:
+    // guideline win. Guidelines lie above the layers:
     // over any object that is not selected the guideline moves.
     let (ctx, mut app, _) = setup();
     let fill = tracedraw_core::Fill::Solid(tracedraw_core::Color::rgb8(200, 30, 30));
@@ -29510,7 +29509,7 @@ fn several_imported_files_come_in_at_once_without_the_cursor() {
     assert!(app.import_batch.is_none());
 }
 
-/// The result of a node edit stays chosen, as in CorelDRAW (#2358): the
+/// The result of a node edit stays chosen (#2358): the
 /// node two ends were joined into, both ends a Break makes, the ends
 /// Extend Curve to Close links, the nodes Reverse Direction turns.
 #[test]

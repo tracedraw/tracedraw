@@ -761,7 +761,7 @@ impl App {
         // double-click also is.
         if response.double_clicked() {
             // Double-click on a mesh node: the grid lines through it go,
-            // as with Delete and as in CorelDRAW; a row or column could
+            // as with Delete; a row or column could
             // not be taken out with the mouse (d#2889).
             let on_node = self.effect_node_at(p).filter(|h| {
                 !crate::mesh_tool::is_mesh_handle(h.1)
@@ -778,7 +778,7 @@ impl App {
             if let Some(hit) = self.effect_node_at(p) {
                 // A handle keeps its node selected. Shift+click on a
                 // mesh node adds it to (or takes it out of) the chosen
-                // nodes, as in CorelDRAW (discussion #2387).
+                // nodes (discussion #2387).
                 if !crate::mesh_tool::is_mesh_handle(hit.1) {
                     let shift = response.ctx.input(|i| i.modifiers.shift);
                     match crate::mesh_tool::mesh_node_of(hit.1) {

@@ -4399,8 +4399,7 @@ impl Shape {
 
     /// Whether Convert to Curves changes this object: curves already are
     /// curves, a bitmap has no outline to become one, and a group changes
-    /// when something it holds does (as in CorelDRAW, a group converts
-    /// whole and stays a group, #1324).
+    /// when something it holds does.
     pub fn converts_to_curves(&self) -> bool {
         match &self.kind {
             // A B-spline becomes an ordinary curve: its nodes instead of

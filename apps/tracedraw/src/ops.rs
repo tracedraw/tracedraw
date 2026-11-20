@@ -896,8 +896,8 @@ impl App {
     }
 
     /// Double-clicking the Rectangle tool: a rectangle exactly the size of
-    /// the page (a page frame), behind every object of the layer, as
-    /// CorelDRAW puts it (#2640: it came in front and hid the drawing),
+    /// the page (a page frame), behind every object of the layer
+    /// (#2640: it came in front and hid the drawing),
     /// selected; one undo step.
     pub fn add_page_frame(&mut self) {
         let size = self.page_size();
@@ -1366,7 +1366,7 @@ impl App {
     }
 
     /// The one selected object is a group of two or more objects that an
-    /// operation needing two acts on, as in CorelDRAW: Weld, Trim,
+    /// operation needing two acts on: Weld, Trim,
     /// Intersect and the others from the menus or the property bar take
     /// the group's objects, as if they were selected with a marquee (the
     /// bottom one the target), instead of waiting for a target (#2306).
@@ -1901,7 +1901,7 @@ impl App {
             shape
         };
         // Create Boundary draws an outline around the selection, with no
-        // fill, as in CorelDRAW: it took the target's fill, so the new
+        // fill: it took the target's fill, so the new
         // object covered what it was drawn around (#2640). The outline is
         // the target's, or a hairline when the target has none.
         let unfilled = |mut s: Shape| {

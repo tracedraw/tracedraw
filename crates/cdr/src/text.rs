@@ -298,7 +298,7 @@ pub(crate) struct RunStyle {
     /// Hebrew...): the `RTL` section of a version 16+ style string, when
     /// it is not the Latin one. A version 27 file sets its Persian title
     /// at 154 pt there with the Latin slot at 24 pt on some letters, and
-    /// CorelDRAW draws them all at 154 pt (#2886).
+    /// the file means them all at 154 pt (#2886).
     pub rtl: Option<ScriptFont>,
 }
 

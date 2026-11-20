@@ -767,7 +767,7 @@ impl App {
     /// A click of the Color Mask's eyedropper (#2479): the colour under
     /// `p` (a picture's pixel) goes into the chosen slot, which is turned
     /// on, and the tool used before comes back, the picture still
-    /// selected for Apply, as CorelDRAW's Bitmap Color Mask does. Each
+    /// selected for Apply. Each
     /// pick samples: the second one applied the first colour to the
     /// picture as a fill instead, the Colour Eyedropper being in its
     /// Apply mode, so only one colour of an imported picture could be

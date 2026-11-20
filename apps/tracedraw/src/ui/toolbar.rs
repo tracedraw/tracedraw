@@ -29,7 +29,7 @@ fn std_frame(ui: &Ui, rect: egui::Rect, hovered: bool, pressed: bool) {
 }
 
 /// The Save button is lit while the drawing has changes to save (or has
-/// never been saved) and pale once it is saved, as in CorelDRAW: it
+/// never been saved) and pale once it is saved: it
 /// looked the same whether the drawing was saved or not (#2640).
 pub(crate) fn save_button_lit(app: &App) -> bool {
     app.engine.is_dirty() || app.file.is_none()

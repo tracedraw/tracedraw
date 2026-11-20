@@ -4318,7 +4318,7 @@ impl FontSystem {
             });
             // Character spacing goes between letters: a space takes the
             // word spacing alone, and the letter before it gives back its
-            // character spacing, as CorelDRAW lays text out (#2586).
+            // character spacing (#2586).
             let word_break = ch == ' ' || ch == '\u{3000}';
             let spacing = if word_break { 0.0 } else { char_spacing };
             if word_break && !rtl {
@@ -5242,7 +5242,7 @@ impl FontSystem {
             let total_w = content_w + hyphen_w;
             // A centred or right-set line is placed by its letters: the
             // spaces it ends with and the character spacing after its last
-            // letter take no room, as in CorelDRAW (#2586).
+            // letter take no room (#2586).
             let total_w = match align {
                 TextAlign::Center | TextAlign::Right if line.hyphen.is_none() => {
                     let kept = glyphs

@@ -1992,7 +1992,7 @@ impl App {
     }
 
     /// After a node edit, choose the nodes now sitting at `spots`, so the
-    /// result stays chosen as in CorelDRAW (#2358): the joined node after
+    /// result stays chosen (#2358): the joined node after
     /// Join, both ends after Break, the nodes left after Reduce Nodes.
     pub(crate) fn choose_nodes_at(&mut self, spots: &[(ShapeId, Point)]) {
         let mut sel = Vec::new();

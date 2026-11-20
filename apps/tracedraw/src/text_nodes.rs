@@ -293,7 +293,7 @@ impl App {
         true
     }
 
-    /// The letter spacing keys on some letters only, as in CorelDRAW
+    /// The letter spacing keys on some letters only
     /// (#2171): in the text being edited, the selected characters, or
     /// with no selection the gap at the caret (the space after the
     /// letter before it; nothing before the first letter); with the
@@ -976,7 +976,7 @@ mod tests {
         assert!(!app.step_char_spacing(true));
     }
 
-    /// The letter spacing keys on one letter, as in CorelDRAW (#2171):
+    /// The letter spacing keys on one letter (#2171):
     /// with the caret in the text being edited, only the gap at the caret
     /// widens (the letter before it gets range kerning); with letters
     /// selected, or chosen with the Shape tool, only those. The whole

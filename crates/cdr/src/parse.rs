@@ -8082,7 +8082,7 @@ fn paragraph_spacing(style: &text::RunStyle, base: &ParagraphStyle) -> Paragraph
     }
     // Character and word spacing count in widths of the font's space
     // character, as the paragraph's spacing does (#2586; they were read
-    // as a quarter of the em, which made text wider than in CorelDRAW).
+    // as a quarter of the em, which made text too wide).
     if let Some(cs) = style.char_spacing {
         p.char_spacing_pct = (cs * 100.0).clamp(-100.0, 2000.0);
     }

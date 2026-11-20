@@ -131,7 +131,7 @@ pub fn drawing_scale() -> f64 {
 }
 
 /// The inner shadow the Inner Shadow tool gives the next object dragged
-/// on (#2473), as CorelDRAW's Inner Shadow tool starts: black, half
+/// on (#2473): black, half
 /// opaque, feathered and multiplied with the object.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct InnerShadowStyle {
@@ -7604,7 +7604,7 @@ impl App {
     /// Copies take the centre of rotation moved for their originals, at
     /// the same place of each copy (or of the copies' box): a copy made
     /// with Duplicate and turned, then repeated, goes on round the point
-    /// the original was turned about, as in CorelDRAW. The copies turned
+    /// the original was turned about. The copies turned
     /// about the middle of their box (#2375, #2376).
     fn carry_pivots(&mut self, pairs: &[(ShapeId, ShapeId)]) {
         for (orig, copy) in pairs {

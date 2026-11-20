@@ -929,7 +929,7 @@ fn the_blend_tool_s_end_squares_move_and_pick_the_end_objects() {
 
 /// Copy Envelope Properties from a shape with no envelope fits the text
 /// into that shape (#993): text taking a circle's outline takes the
-/// circle's shape and size where the text is, as in CorelDRAW (#2178),
+/// circle's shape and size where the text is (#2178),
 /// and leaves the corners of its box empty.
 #[test]
 fn text_takes_the_shape_of_an_object_as_its_envelope() {

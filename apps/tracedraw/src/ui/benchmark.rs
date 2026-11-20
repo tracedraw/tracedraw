@@ -3,7 +3,7 @@
 //! real tasks on two large drawings, a minute or more), all in this
 //! window. It shows the time of each task with a coloured bar, about how
 //! many objects stay comfortable, a score for each part, suggests the
-//! zoom that suits the computer (smooth, as in CorelDRAW, or light) and
+//! zoom that suits the computer (smooth, instant or light) and
 //! measures with and without the graphics card, starting TraceDraw again
 //! the other way when there is a card. See docs/behavior/benchmark.md.
 
@@ -513,8 +513,8 @@ fn zoom(app: &mut App, ui: &mut Ui) {
     let current = ZoomStyle::of(&app.settings);
     let suggested = app.benchmark.done.as_ref().map(|m| m.suggested_zoom());
     for style in ZoomStyle::ALL {
+        let tip = format!("{}_tip", style.key());
         ui.horizontal(|ui| {
-            let tip = format!("{}_tip", style.key());
             if ui
                 .radio(current == style, tr(style.key()))
                 .rich_tip(crate::ui::tips::pair(style.key(), &tip))
@@ -532,12 +532,15 @@ fn zoom(app: &mut App, ui: &mut Ui) {
                 );
             }
         });
+        // What the style does, always shown under it.
+        ui.label(RichText::new(tr(&tip)).color(Tokens::text_dim()));
     }
+    ui.label(RichText::new(tr("benchmark.zoom_change_later")).color(Tokens::text_dim()));
     if let Some(s) = suggested {
         let why = if s == ZoomStyle::Light {
             "benchmark.zoom_why_light"
         } else {
-            "benchmark.zoom_why_corel"
+            "benchmark.zoom_why_instant"
         };
         ui.label(RichText::new(tr(why)).color(Tokens::text_dim()));
     }
@@ -856,19 +859,19 @@ mod tests {
         app.settings.smooth_zoom = true;
         app.settings.light_zoom = false;
         assert_eq!(ZoomStyle::of(&app.settings), ZoomStyle::Smooth);
-        ZoomStyle::Corel.apply(&mut app.settings);
+        ZoomStyle::Instant.apply(&mut app.settings);
         assert!(!app.settings.smooth_zoom && !app.settings.light_zoom);
-        assert_eq!(ZoomStyle::of(&app.settings), ZoomStyle::Corel);
+        assert_eq!(ZoomStyle::of(&app.settings), ZoomStyle::Instant);
         ZoomStyle::Light.apply(&mut app.settings);
         assert_eq!(ZoomStyle::of(&app.settings), ZoomStyle::Light);
-        // A slow computer is told Light, the others as in CorelDRAW.
+        // A slow computer is told Light, the others Instant.
         let mut m = slow_run();
         assert_eq!(m.suggested_zoom(), ZoomStyle::Light);
         m.all_cores_seconds = 0.1;
         m.one_core_seconds = 0.2;
         m.memory_gbs = 16.0;
         m.fps = 60.0;
-        assert_eq!(m.suggested_zoom(), ZoomStyle::Corel);
+        assert_eq!(m.suggested_zoom(), ZoomStyle::Instant);
     }
 
     /// TraceDraw started again for the benchmark opens it and runs the

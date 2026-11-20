@@ -3760,7 +3760,7 @@ fn command_items(app: &App, category: Option<&str>, filter: &str) -> Vec<Command
 }
 
 /// The commands the Commands page lists: [`command_items`] in
-/// alphabetical order, as CorelDRAW lists them. In menu order a command
+/// alphabetical order. In menu order a command
 /// was slow to find in a long category (#3212).
 fn listed_commands(app: &App, category: Option<&str>, filter: &str) -> Vec<CommandItem> {
     let mut out = command_items(app, category, filter);

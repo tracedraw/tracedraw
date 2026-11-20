@@ -178,16 +178,16 @@ pub const COMFORT_SECONDS: f64 = 0.25;
 pub enum ZoomStyle {
     /// A wheel notch zooms in a short glide, drawn at every step.
     Smooth,
-    /// As in CorelDRAW: a wheel notch zooms at once, drawn sharp at
+    /// A wheel notch zooms at once by a fixed step, drawn sharp at
     /// once, the point under the pointer kept.
-    Corel,
+    Instant,
     /// For slow computers: a notch zooms at once and the drawing is drawn
     /// again only once the zoom stops.
     Light,
 }
 
 impl ZoomStyle {
-    pub const ALL: [ZoomStyle; 3] = [ZoomStyle::Smooth, ZoomStyle::Corel, ZoomStyle::Light];
+    pub const ALL: [ZoomStyle; 3] = [ZoomStyle::Smooth, ZoomStyle::Instant, ZoomStyle::Light];
 
     /// The style the settings give.
     pub fn of(s: &crate::settings::Settings) -> ZoomStyle {
@@ -196,7 +196,7 @@ impl ZoomStyle {
         } else if s.smooth_zoom {
             ZoomStyle::Smooth
         } else {
-            ZoomStyle::Corel
+            ZoomStyle::Instant
         }
     }
 
@@ -204,7 +204,7 @@ impl ZoomStyle {
     pub fn apply(self, s: &mut crate::settings::Settings) {
         s.light_zoom = self == ZoomStyle::Light;
         s.smooth_zoom = self == ZoomStyle::Smooth;
-        if self == ZoomStyle::Corel {
+        if self == ZoomStyle::Instant {
             s.wheel_zoom_centers = false;
         }
     }
@@ -212,7 +212,7 @@ impl ZoomStyle {
     pub fn key(self) -> &'static str {
         match self {
             ZoomStyle::Smooth => "benchmark.zoom_smooth",
-            ZoomStyle::Corel => "benchmark.zoom_corel",
+            ZoomStyle::Instant => "benchmark.zoom_instant",
             ZoomStyle::Light => "benchmark.zoom_light",
         }
     }
@@ -276,14 +276,13 @@ impl Measured {
         }
     }
 
-    /// The zoom to suggest: Light on a slow computer; else as in
-    /// CorelDRAW, which most people coming from it prefer, and which
-    /// draws less than the glide.
+    /// The zoom to suggest: Light on a slow computer; else Instant,
+    /// which draws less than the glide.
     pub fn suggested_zoom(&self) -> ZoomStyle {
         if self.slow() {
             ZoomStyle::Light
         } else {
-            ZoomStyle::Corel
+            ZoomStyle::Instant
         }
     }
 

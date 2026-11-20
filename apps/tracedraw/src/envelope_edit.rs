@@ -804,7 +804,7 @@ impl App {
     /// The selected objects take `source`'s last envelope, its frame
     /// stretched from `source`'s box to each object's, one undo step. A
     /// source with no envelope gives the shape of its outline, so text
-    /// can be fitted into a drawn shape (#993): as in CorelDRAW, each
+    /// can be fitted into a drawn shape (#993): each
     /// object takes that shape at its size, centred where the object is
     /// (#2178).
     pub fn copy_envelope_from(&mut self, source: ShapeId) {
@@ -862,7 +862,7 @@ impl App {
             let to = box_at(s, at);
             // The frame of an outline keeps the outline's size and shape,
             // centred where the object is: from the page into the
-            // object's own space. As in CorelDRAW (#2178, and the video
+            // object's own space. As in #2178 (and the video
             // of #2344, where the object was moved into the shape by
             // hand afterwards), the object stays where it is; it was
             // moved into the outline.

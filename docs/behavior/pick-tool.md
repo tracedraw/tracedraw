@@ -117,8 +117,7 @@ move its letters further apart or closer, 5 % of a space's width a
 press (the Text docker's Character spacing), for a text fitted to a
 path too
 (`text_nodes::tests::the_spacing_keys_step_the_character_spacing_of_selected_texts`,
-#193). While a text is edited they space single letters, as in
-CorelDRAW: with the caret, only the gap at the caret (the letter before
+#193). While a text is edited they space single letters: with the caret, only the gap at the caret (the letter before
 it gets 2 % of the size more or less range kerning a press); with
 characters selected, or chosen with the Shape tool, only those (#2171,
 `text_nodes::tests::the_spacing_keys_space_one_letter_at_the_caret_or_the_chosen_ones`).
@@ -299,7 +298,7 @@ object under the pointer, the topmost object there is selected first
 (#1684, `pick_drag_tests::a_right_click_on_a_covered_selected_object_keeps_the_selection`).
 
 Keys held as the right button is let go over another object skip the
-menu, as in CorelDRAW: Shift gives that object the outline of the first
+menu: Shift gives that object the outline of the first
 selected object (Copy Outline Here), Alt its fill (Copy Fill Here) and
 Ctrl (Cmd on macOS) its fill, outline and transparency (Copy All
 Properties). While the keys are held the object that would take them is

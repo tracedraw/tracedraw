@@ -233,7 +233,7 @@ window shows.
   it, each laid over the last picture as soon as it is done
   (`Raster::incoming`, a see-through texture the picture's size). After
   a zoom on a large drawing the window sharpens from the middle out
-  while the rest is still drawn, as CorelDRAW fills its window in,
+  while the rest is still drawn,
   instead of showing the scaled, blurry picture until the whole new one
   is ready (discussion #2389). The bands of a render that gave up are
   not shown; the pages beside the current one come whole.

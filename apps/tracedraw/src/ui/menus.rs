@@ -435,8 +435,7 @@ thread_local! {
 
 /// A right-click on the menu row `id`, greyed or not, closes the menu and
 /// asks for the row's properties: Options > Customization > Commands at
-/// that command, on its Shortcut Keys tab, as CorelDRAW's Customize >
-/// Menu Item Properties does (#2504).
+/// that command, on its Shortcut Keys tab (#2504).
 fn row_properties(ui: &mut Ui, r: &egui::Response, id: &str, enabled: bool) {
     #[cfg(test)]
     ROWS.with(|rows| rows.borrow_mut().push((id.to_string(), r.rect)));

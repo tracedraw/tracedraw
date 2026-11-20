@@ -363,7 +363,7 @@ impl App {
     /// the run of nodes from the last one selected to it (the shorter way
     /// round a closed subpath); Shift+clicking the end of that run again
     /// selects the other way round instead. Ctrl+Shift selects every node
-    /// of its subpath, as in CorelDRAW (#3007).
+    /// of its subpath (#3007).
     pub fn click_node(&mut self, key: (ShapeId, usize), mods: Modifiers) {
         if (mods.command || mods.ctrl) && mods.shift {
             self.node_run = None;

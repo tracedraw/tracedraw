@@ -340,7 +340,7 @@ pub fn render_page_cancellable(
 /// (#2389). A zoom on a large drawing showed the last picture scaled,
 /// blurry, until the whole new one was ready: the canvas now lays each
 /// band over it as it comes, sharp where it is done, the middle of the
-/// window first, as CorelDRAW fills its window in while it draws. The
+/// window first. The
 /// bands are a few times as many as the cores, so the first comes in a
 /// fraction of the time; each is drawn with the rows of margin shadow
 /// blurs need. Drawn whole (no bands handed over) where bands cannot be

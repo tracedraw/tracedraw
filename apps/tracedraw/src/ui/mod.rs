@@ -1525,7 +1525,7 @@ pub(crate) fn view_navigator(app: &mut App, ui: &mut Ui, corner: egui::Rect, can
         egui::pos2(corner.max.x - thumb_w - 8.0, corner.min.y - thumb_h - 8.0),
         egui::pos2(corner.max.x, corner.min.y),
     );
-    // Opened with its key, it comes up at the pointer, as in CorelDRAW,
+    // Opened with its key, it comes up at the pointer,
     // with the spot of the view's centre under the pointer so the view
     // does not jump: it always came up in the corner (#3086). The place
     // is kept while it is open, so moving over it pans.
