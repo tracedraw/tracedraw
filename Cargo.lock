@@ -4596,6 +4596,7 @@ dependencies = [
  "getrandom 0.3.4",
  "getrandom 0.4.3",
  "image",
+ "kurbo",
  "lopdf",
  "md-5 0.10.6",
  "roxmltree 0.21.1",
