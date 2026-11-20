@@ -774,13 +774,27 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     // pixels as on the CPU, so nothing drawn needs drawing again).
     #[cfg(not(target_arch = "wasm32"))]
     crate::gpu_fx::set_enabled(app.settings.gpu_effects);
-    app.raster.borrow_mut().light_zoom = app.settings.light_zoom;
-    // While the wheel's glide is on its way, the picture is drawn for the
-    // view it lands at: the turn's render is not spent on a zoom the
-    // glide has already passed, and when the glide ends the view is put
-    // at the same view the picture was drawn for.
-    let glide_target = app.zoom_glide.target_view();
-    app.raster.borrow_mut().zoom_target = glide_target;
+    {
+        let mut raster = app.raster.borrow_mut();
+        raster.light_zoom = app.settings.light_zoom;
+        // A fill or an outline colour dragged in a colour picker: the
+        // part of the page the selection covers, so each move renders
+        // only it anew, not the whole page (#3559).
+        let was = raster.live_region.is_some();
+        raster.live_region = live_colour_region(app, preview);
+        // The drag is over: the fast path patched only what it could
+        // prove the colour changes. Forget the key, keep the picture,
+        // so the next frame renders the whole page once and nothing the
+        // patch could have missed stays stale (#3559).
+        if was && raster.live_region.is_none() {
+            raster.end_live_colour_drag();
+        }
+        // While the wheel's glide is on its way, the picture is drawn for the
+        // view it lands at: the turn's render is not spent on a zoom the
+        // glide has already passed, and when the glide ends the view is put
+        // at the same view the picture was drawn for.
+        raster.zoom_target = app.zoom_glide.target_view();
+    }
     let main = app.raster.borrow_mut().texture(
         painter.ctx(),
         doc,
@@ -952,6 +966,63 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     }
     draw_pixel_grid(app, painter, rect);
     draw_empty_clip_frames(app, painter);
+}
+
+/// The part of the page a fill or an outline colour dragged in a colour
+/// picker can change (page mm): the selection's boxes, widened by its
+/// outlines, mitered corners, shadows and a hair for the antialiased
+/// edges. `None` while nothing is dragged so (or a drag preview moves
+/// the selection), and for a selection the fast path cannot bound: one
+/// with live effects (their copies and warped outlines reach far past
+/// the object's box, and a symmetry being edited draws them in the full
+/// preview while its bounds keep the object's own) or holding a symbol
+/// instance (what it draws is its definition, whose effects the
+/// instance's box does not know). The raster renders only this part
+/// anew at every move of the pointer (#3559).
+fn live_colour_region(app: &App, preview: Option<Affine>) -> Option<Rect> {
+    if preview.is_some() || (app.live_fill.is_none() && app.live_stroke.is_none()) {
+        return None;
+    }
+    let shapes = app.selected_rc();
+    if shapes.is_empty() {
+        return None;
+    }
+    // Two pixels against the antialiased edge of the region's box.
+    let mut pad = 2.0 / app.view.zoom.max(0.01) as f64;
+    let mut region: Option<Rect> = None;
+    for s in shapes.iter() {
+        if s.has_live_effects() || holds_a_symbol(s) {
+            return None;
+        }
+        let b = app.visual_bounds(s);
+        if b.is_finite() {
+            region = Some(region.map_or(b, |r| r.union(b)));
+        }
+        if let Some(st) = &s.stroke {
+            // A mitered corner spikes past the outline by the stroke's
+            // miter ratio times its half width (#3559).
+            pad = pad.max(st.width * st.miter_ratio() / 2.0);
+        }
+        if let Some(sh) = &s.shadow {
+            pad = pad.max(sh.offset.hypot() + 4.0 * sh.blur.max(0.0));
+        }
+    }
+    Some(region?.inflate(pad, pad))
+}
+
+/// The object, or one held in its groups and clip frames, is a symbol
+/// instance (#3559).
+fn holds_a_symbol(s: &tracedraw_core::Shape) -> bool {
+    if matches!(s.kind, ShapeKind::SymbolInstance { .. }) {
+        return true;
+    }
+    match &s.kind {
+        ShapeKind::Group { children } => children.iter().any(holds_a_symbol),
+        ShapeKind::ClipFrame { frame, contents } => {
+            holds_a_symbol(frame) || contents.iter().any(holds_a_symbol)
+        }
+        _ => false,
+    }
 }
 
 /// The colour Mask Outside Page paints when the desktop is white or
@@ -4700,6 +4771,83 @@ mod node_look_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The colour drag fast path only takes what it can bound: a
+    /// selection with a live effect renders as always, a plain one gives
+    /// the selection's box widened by the antialiasing hair (#3559).
+    #[test]
+    fn a_colour_drag_region_leaves_out_what_the_fast_path_cannot_bound() {
+        use tracedraw_core::live::Effect;
+        use tracedraw_core::Command;
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 50.0, 40.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        app.live_fill = Some((0, Some(Color::rgb8(0, 0, 0))));
+        app.view.zoom = 4.0;
+        let region = live_colour_region(&app, None).expect("a plain selection is bounded");
+        assert!(
+            (region.x0 - -0.5).abs() < 1e-6
+                && (region.y0 - -0.5).abs() < 1e-6
+                && (region.x1 - 50.5).abs() < 1e-6
+                && (region.y1 - 40.5).abs() < 1e-6,
+            "{region:?}"
+        );
+        app.run(Command::SetEffects {
+            shape: id,
+            effects: vec![Effect::Symmetry {
+                center: Point::new(25.0, 20.0),
+                angle: 45.0,
+                lines: 6,
+                rotate: false,
+            }],
+        });
+        assert!(
+            live_colour_region(&app, None).is_none(),
+            "a symmetry's copies reach past the object's box"
+        );
+    }
+
+    /// A symbol instance, alone or held in a group or a clip frame, is
+    /// out of the fast path: what it draws is its definition, whose
+    /// bounds the instance's box does not carry (#3559).
+    #[test]
+    fn a_symbol_instance_in_the_selection_leaves_the_fast_path() {
+        let sym = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(1),
+            ShapeKind::SymbolInstance { index: 0 },
+        );
+        let group = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(2),
+            ShapeKind::Group {
+                children: vec![sym.clone()],
+            },
+        );
+        let clip = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(3),
+            ShapeKind::ClipFrame {
+                frame: Box::new(sym.clone()),
+                contents: Vec::new(),
+            },
+        );
+        let plain = tracedraw_core::Shape::new(
+            tracedraw_core::ShapeId(4),
+            ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        assert!(holds_a_symbol(&sym));
+        assert!(holds_a_symbol(&group));
+        assert!(holds_a_symbol(&clip));
+        assert!(!holds_a_symbol(&plain));
+    }
 
     /// The drag outline of an object a perspective (or an envelope)
     /// reshapes shows the reshaped object, not the plain one beneath it

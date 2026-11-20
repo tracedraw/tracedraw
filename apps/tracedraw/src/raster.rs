@@ -299,6 +299,15 @@ pub struct Raster {
     /// window's thread (a copy of a large drawing takes a frame's time).
     #[cfg(not(target_arch = "wasm32"))]
     kept: Option<(u64, std::sync::Arc<Document>)>,
+    /// While a fill (or an outline colour) is dragged in a colour picker,
+    /// the part of the page the drag can change (page mm: the selection's
+    /// boxes, widened by its outlines and shadows; set by the canvas every
+    /// frame, `None` otherwise): only it is rendered anew at every move of
+    /// the pointer, into the picture already shown, instead of the whole
+    /// page being drawn again for each move (#3559). The Pixels view, a
+    /// drag preview, a focus and the pages beside the current one never
+    /// take this path.
+    pub live_region: Option<tracedraw_core::geometry::Rect>,
     /// Renders started so far, on this thread or another.
     renders: u64,
     /// Since when (egui time) the picture has been the one asked for,
@@ -499,6 +508,67 @@ pub fn pixel_window(view: &View, rect: Rect, dpi: f64, ppp: f32) -> Option<Pixel
 }
 
 impl Raster {
+    /// One move of a fill (or an outline colour) dragged in a colour
+    /// picker: the selection's part of the page (`region`, page mm)
+    /// rendered anew into the picture shown, which the next moves render
+    /// into again. `None` when the render failed: the caller then
+    /// renders the whole page as usual.
+    #[allow(clippy::too_many_arguments)]
+    fn live_frame(
+        &mut self,
+        doc: &Document,
+        page: PageId,
+        region: tracedraw_core::geometry::Rect,
+        key: &Key,
+        vt: ViewTransform,
+        screen: Rect,
+    ) -> Option<(TextureId, Rect)> {
+        let (w, h) = key.size;
+        let Some((x0, y0, rw, rh, sub)) = sub_view(vt, w, h, region) else {
+            // The objects lie off the canvas: the picture shown already
+            // is the page as it stands.
+            self.key = Some(key.clone());
+            return Some((self.texture.as_ref()?.id(), screen));
+        };
+        let opts = RenderOptions {
+            width: rw,
+            height: rh,
+            view: sub,
+            preview: None,
+            wireframe: key.wireframe,
+            simulate_overprints: key.simulate_overprints,
+            complex_effects: key.complex_effects,
+            anti_alias: true,
+            draft: true,
+            focus: None,
+        };
+        let lut = key.proof.then(|| {
+            self.proof
+                .get_or_insert_with(|| std::sync::Arc::new(ProofLut::new()))
+                .clone()
+        });
+        let t = web_time::Instant::now();
+        let pixmap = render_page(doc, page, &opts)?;
+        let image = to_image(&pixmap, lut.as_deref());
+        self.last_seconds = t.elapsed().as_secs_f64();
+        self.renders += 1;
+        let texture = self.texture.as_mut()?;
+        texture.set_partial([x0 as usize, y0 as usize], image, TextureOptions::LINEAR);
+        self.key = Some(key.clone());
+        self.settle = None;
+        Some((texture.id(), screen))
+    }
+
+    /// The colour drag is over: forget the key of the picture shown, and
+    /// keep the picture itself, so the next frame renders the whole page
+    /// once. The live region covers only what the fast path can prove
+    /// the colour changes; a corner of a mitered join, a faint shadow
+    /// tail or anything rarer the bounds miss can reach a little past
+    /// it, and this draws it as the page stands (#3559).
+    pub fn end_live_colour_drag(&mut self) {
+        self.key = None;
+    }
+
     /// Drop the cached texture so the next frame re-renders (and the
     /// proofed colours, which the colour settings decide).
     pub fn invalidate(&mut self) {
@@ -612,6 +682,54 @@ impl Raster {
                 .zip(pixel_dpi)
                 .map(|(win, dpi)| ((dpi * 1000.0).round() as u64, win.ix0, win.iy1)),
         };
+        let vt = match (window, pixel_dpi) {
+            // One render pixel per document pixel, the window's top-left
+            // one at the corner.
+            (Some(win), Some(dpi)) => ViewTransform {
+                zoom: dpi / 25.4,
+                origin_x: -(win.ix0 as f64),
+                origin_y: win.iy1 as f64,
+                stretch_y: 1.0,
+            },
+            _ => ViewTransform {
+                zoom: (key_view.zoom * ppp) as f64,
+                origin_x: ((key_view.origin.x - rect.min.x) * ppp) as f64,
+                origin_y: ((key_view.origin.y - rect.min.y) * ppp) as f64,
+                stretch_y: 1.0,
+            },
+        };
+        // A fill or an outline colour dragged in a colour picker changes
+        // only the selection's look: the part of the page it covers is
+        // rendered anew into the picture shown, the rest of which still
+        // is the page as it stands (each move only takes the move before
+        // back and colours the same objects again, #3559). Skipped while
+        // the picture shown is of another view or drawing state: the
+        // usual render brings it up to date first.
+        let live = self.live_region.filter(|r| {
+            window.is_none()
+                && key.preview.is_none()
+                && key.focus.is_none()
+                && !self.follows_zoom
+                && !self.defer
+                && r.is_finite()
+                && self.texture.is_some()
+                && self
+                    .key
+                    .as_ref()
+                    .is_some_and(|k| k.same_but_revision(&key))
+        });
+        if let Some(region) = live {
+            // A render of the whole page still on its thread is of a
+            // state the drag has left behind: its picture would paint
+            // over the region rendered here.
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(job) = self.job.take() {
+                job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            if let Some(out) = self.live_frame(doc, page, region, &key, vt, screen) {
+                return Some(out);
+            }
+        }
         // Rested only while the picture stays the one asked for.
         #[cfg(not(target_arch = "wasm32"))]
         let rested = self.rested.take();
@@ -743,22 +861,6 @@ impl Raster {
         }
         self.settle = None;
         self.zoom_step = None;
-        let vt = match (window, pixel_dpi) {
-            // One render pixel per document pixel, the window's top-left
-            // one at the corner.
-            (Some(win), Some(dpi)) => ViewTransform {
-                zoom: dpi / 25.4,
-                origin_x: -(win.ix0 as f64),
-                origin_y: win.iy1 as f64,
-                stretch_y: 1.0,
-            },
-            _ => ViewTransform {
-                zoom: (key_view.zoom * ppp) as f64,
-                origin_x: ((key_view.origin.x - rect.min.x) * ppp) as f64,
-                origin_y: ((key_view.origin.y - rect.min.y) * ppp) as f64,
-                stretch_y: 1.0,
-            },
-        };
         let opts = RenderOptions {
             width: w,
             height: h,
@@ -1263,6 +1365,66 @@ fn band_rects(at: Rect, h: u32, rows: &[(u32, u32)]) -> Vec<Rect> {
         .collect()
 }
 
+/// The pixels of a `w` by `h` picture rendered with `vt` that the page
+/// rectangle `region` (page mm) covers, widened to whole pixels: their
+/// place in the picture, their size, and the view that renders exactly
+/// them. `None` when the region lies off the picture.
+fn sub_view(
+    vt: ViewTransform,
+    w: u32,
+    h: u32,
+    region: tracedraw_core::geometry::Rect,
+) -> Option<(u32, u32, u32, u32, ViewTransform)> {
+    // The picture's y runs down, the page's up.
+    let (x0, x1) = (
+        (vt.zoom * region.x0 + vt.origin_x).floor().clamp(0.0, w as f64),
+        (vt.zoom * region.x1 + vt.origin_x).ceil().clamp(0.0, w as f64),
+    );
+    let (y0, y1) = (
+        (vt.origin_y - vt.zoom * region.y1)
+            .floor()
+            .clamp(0.0, h as f64),
+        (vt.origin_y - vt.zoom * region.y0)
+            .ceil()
+            .clamp(0.0, h as f64),
+    );
+    let (x0, x1, y0, y1) = (x0 as u32, x1 as u32, y0 as u32, y1 as u32);
+    (x1 > x0 && y1 > y0).then(|| {
+        (
+            x0,
+            y0,
+            x1 - x0,
+            y1 - y0,
+            ViewTransform {
+                zoom: vt.zoom,
+                origin_x: vt.origin_x - x0 as f64,
+                origin_y: vt.origin_y - y0 as f64,
+                stretch_y: vt.stretch_y,
+            },
+        )
+    })
+}
+
+impl Key {
+    /// True when `other` asks for the same page shown the same way, only
+    /// the drawing's revision moved on: the steps a colour dragged in a
+    /// picker makes and takes back leave the picture's every pixel but
+    /// the selection's part as it is (#3559).
+    fn same_but_revision(&self, other: &Key) -> bool {
+        self.page == other.page
+            && self.zoom == other.zoom
+            && self.offset == other.offset
+            && self.size == other.size
+            && self.preview == other.preview
+            && self.wireframe == other.wireframe
+            && self.simulate_overprints == other.simulate_overprints
+            && self.complex_effects == other.complex_effects
+            && self.proof == other.proof
+            && self.focus == other.focus
+            && self.pixels == other.pixels
+    }
+}
+
 impl Key {
     /// True when `other` shows the same drawing the same way, only from
     /// another place or at another zoom (the canvas the same size, unless
@@ -1507,6 +1669,177 @@ mod tests {
             delay <= KEEP_FOR_CURRENT,
             "no repaint asked for: waits {delay:?}"
         );
+    }
+
+    /// The region a colour drag renders: exactly the pixels of the whole
+    /// page's picture the region covers, whole pixels at its edge
+    /// (#3559).
+    #[test]
+    fn a_live_region_render_matches_the_full_pages_pixels() {
+        use tracedraw_core::document::ShapeKind;
+        use tracedraw_core::{Color, Fill, Shape};
+        let mut doc = Document::new("t", Size::new(100.0, 50.0));
+        let page = doc.pages[0].id;
+        let layer = doc.pages[0].layers[0].id;
+        let mut a = Shape::new(
+            ShapeId(1),
+            ShapeKind::Path {
+                path: tracedraw_core::geometry::rect_path(
+                    tracedraw_core::geometry::Rect::new(5.0, 3.0, 40.0, 30.0),
+                    0.0,
+                ),
+                closed: true,
+            },
+        );
+        a.fill = Fill::Solid(Color::rgb8(200, 30, 30));
+        a.stroke = None;
+        let mut b = Shape::new(
+            ShapeId(2),
+            ShapeKind::Path {
+                path: tracedraw_core::geometry::rect_path(
+                    tracedraw_core::geometry::Rect::new(30.0, 20.0, 60.0, 45.0),
+                    0.0,
+                ),
+                closed: true,
+            },
+        );
+        b.fill = Fill::Solid(Color::rgb8(30, 30, 200));
+        b.stroke = None;
+        doc.layer_mut(layer).unwrap().shapes.extend([a, b]);
+        let vt = ViewTransform {
+            zoom: 3.7,
+            origin_x: 11.0,
+            origin_y: 190.0,
+            stretch_y: 1.0,
+        };
+        let opts = |width, height, view| RenderOptions {
+            width,
+            height,
+            view,
+            preview: None,
+            wireframe: false,
+            simulate_overprints: false,
+            complex_effects: false,
+            anti_alias: true,
+            draft: true,
+            focus: None,
+        };
+        let full = render_page(&doc, page, &opts(320, 200, vt)).expect("rendered");
+        // A region part of it covered by a shape, part of it bare page.
+        let region = tracedraw_core::geometry::Rect::new(5.2, 3.1, 45.7, 33.9);
+        let (x0, y0, w, h, sub) = sub_view(vt, 320, 200, region).expect("on the page");
+        let part = render_page(&doc, page, &opts(w, h, sub)).expect("rendered");
+        assert_eq!(part.width(), w);
+        assert_eq!(part.height(), h);
+        for y in 0..h {
+            for x in 0..w {
+                let want = full.pixels()[(y0 + y) as usize * 320 + (x0 + x) as usize];
+                let got = part.pixels()[(y * w + x) as usize];
+                assert_eq!(got, want, "pixel ({x}, {y})");
+            }
+        }
+        // Off the picture: nothing to render.
+        let off = tracedraw_core::geometry::Rect::new(1000.0, 1000.0, 1010.0, 1010.0);
+        assert!(sub_view(vt, 320, 200, off).is_none());
+    }
+
+    /// A colour dragged in a picker: every move renders only the
+    /// selection's part of the page, into the picture shown, on the
+    /// window's thread, without waiting for the view to rest or a render
+    /// on a thread of its own (#3559).
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn a_colour_dragged_in_a_picker_renders_only_the_selections_part() {
+        use tracedraw_core::document::ShapeKind;
+        use tracedraw_core::{Color, Fill, Shape};
+        static TURNS: Turns = Turns::new();
+        let ctx = Context::default();
+        let mut doc = Document::new("t", Size::new(100.0, 50.0));
+        let page = doc.pages[0].id;
+        let layer = doc.pages[0].layers[0].id;
+        let mut a = Shape::new(
+            ShapeId(1),
+            ShapeKind::Path {
+                path: tracedraw_core::geometry::rect_path(
+                    tracedraw_core::geometry::Rect::new(10.0, 10.0, 40.0, 30.0),
+                    0.0,
+                ),
+                closed: true,
+            },
+        );
+        a.fill = Fill::Solid(Color::rgb8(200, 30, 30));
+        a.stroke = None;
+        doc.layer_mut(layer).unwrap().shapes.push(a);
+        let rect = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(320.0, 200.0));
+        let view = View {
+            zoom: 4.0,
+            origin: egui::pos2(10.0, 190.0),
+        };
+        let mut raster = Raster {
+            turns: Some(&TURNS),
+            ..Default::default()
+        };
+        let pass = |raster: &mut Raster, doc: &Document, revision: u64| {
+            let mut out = None;
+            let mut full = ctx.run_ui(egui::RawInput::default(), |ui| {
+                out = raster.texture(
+                    ui.ctx(),
+                    doc,
+                    page,
+                    &view,
+                    rect,
+                    None,
+                    revision,
+                    false,
+                    false,
+                    false,
+                    false,
+                    None,
+                    None,
+                );
+            });
+            full.textures_delta.clear();
+            out.expect("texture")
+        };
+        let (first, _) = pass(&mut raster, &doc, 1);
+        assert_eq!(raster.render_count(), 1);
+        // The drag's moves: each colours the shape again and renders only
+        // the shape's part of the page.
+        raster.live_region = Some(tracedraw_core::geometry::Rect::new(5.0, 5.0, 45.0, 35.0));
+        for (revision, c) in [(2, (30, 200, 30)), (3, (30, 30, 200))] {
+            doc.layer_mut(layer).unwrap().shapes[0].fill =
+                Fill::Solid(Color::rgb8(c.0, c.1, c.2));
+            let (tex, at) = pass(&mut raster, &doc, revision);
+            assert_eq!(tex, first, "the picture shown, rendered into");
+            assert_eq!(at, rect);
+            assert!(raster.job.is_none(), "no render on a thread of its own");
+            assert!(raster.settle.is_none(), "no waiting for the view to rest");
+            assert_eq!(
+                raster.key.as_ref().map(|k| k.revision),
+                Some(revision),
+                "the picture is of the drawing as it stands"
+            );
+        }
+        assert_eq!(raster.render_count(), 3, "one render a move");
+        // A move whose objects lie off the canvas renders nothing.
+        raster.live_region =
+            Some(tracedraw_core::geometry::Rect::new(1000.0, 1000.0, 1010.0, 1010.0));
+        pass(&mut raster, &doc, 4);
+        assert_eq!(raster.render_count(), 3);
+        assert_eq!(raster.key.as_ref().map(|k| k.revision), Some(4));
+        // The drag over: the raster alone takes the picture as it is;
+        // the canvas then calls end_live_colour_drag, and the next frame
+        // renders the whole page once, so nothing the fast path could
+        // have missed (a corner of a mitered join, a faint shadow tail)
+        // stays stale (#3559).
+        raster.live_region = None;
+        let (tex, _) = pass(&mut raster, &doc, 4);
+        assert_eq!(tex, first);
+        assert_eq!(raster.render_count(), 4 - 1);
+        raster.end_live_colour_drag();
+        let (_, _) = pass(&mut raster, &doc, 4);
+        assert_eq!(raster.render_count(), 4, "one whole-page render at the end");
+        assert_eq!(raster.key.as_ref().map(|k| k.revision), Some(4));
     }
 
     #[test]
