@@ -1893,6 +1893,11 @@ fn frame(app: &mut App, ui: &mut Ui, first: Option<&tracedraw_core::Shape>) {
             pc = true;
         }
     });
+    // Type block: each line its own size, filling the frame's width.
+    pc |= ui
+        .checkbox(&mut p.type_block, tr("docker.type_block"))
+        .rich_tip(crate::ui::tips::keyed("docker.type_block"))
+        .changed();
     egui::Grid::new("text_frame")
         .num_columns(2)
         .spacing([6.0, 4.0])

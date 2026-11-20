@@ -1668,6 +1668,7 @@ pub fn property_bar(app: &mut App, ui: &mut Ui) {
             | Tool::Polyline
             | Tool::TwoPointLine
             | Tool::BSpline
+            | Tool::CurvaturePen
             | Tool::ThreePointCurve => curve_tool_properties(app, ui),
             Tool::Blend => crate::ui::effect_bars::blend_bar(app, ui),
             Tool::Extrude => crate::ui::extrude_bar::extrude_bar(app, ui),
@@ -2523,6 +2524,11 @@ fn text_properties(app: &mut App, ui: &mut Ui) {
             app.text_default_align = a;
         }
     }
+    // Curve Text: with artistic text selected, a curve for it (circle,
+    // arch, bowl, wave) with no path to draw.
+    if let Some(curve) = app.text_curve() {
+        curve_text_button(app, ui, curve);
+    }
     // Horizontal or vertical text, offered with a CJK interface language
     // or for text in those scripts (#257).
     if app.vertical_text_offered() {
@@ -2582,6 +2588,70 @@ fn text_properties(app: &mut App, ui: &mut Ui) {
     if changed {
         app.apply_text_style();
     }
+}
+
+/// The little picture of curve `k` (straight with `None`) in `r`.
+fn curve_picture(p: &egui::Painter, r: egui::Rect, k: Option<tracedraw_core::CurvePreset>, c: egui::Color32) {
+    use tracedraw_core::CurvePreset as K;
+    let s = egui::Stroke::new(1.4, c);
+    let r = r.shrink(4.0);
+    let pts: Vec<egui::Pos2> = (0..=24)
+        .map(|i| {
+            let t = i as f32 / 24.0;
+            match k {
+                Some(K::Circle) => {
+                    let a = std::f32::consts::TAU * t;
+                    r.center() + Vec2::new(a.cos(), a.sin()) * r.width().min(r.height()) / 2.0
+                }
+                Some(K::ArcUp) | Some(K::ArcDown) => {
+                    let x = r.left() + r.width() * t;
+                    let bump = (std::f32::consts::PI * t).sin() * r.height() * 0.7;
+                    let y = if k == Some(K::ArcUp) {
+                        r.bottom() - bump
+                    } else {
+                        r.top() + bump
+                    };
+                    egui::pos2(x, y)
+                }
+                Some(K::Wave) => egui::pos2(
+                    r.left() + r.width() * t,
+                    r.center().y - (std::f32::consts::TAU * t).sin() * r.height() * 0.35,
+                ),
+                None => egui::pos2(r.left() + r.width() * t, r.center().y),
+            }
+        })
+        .collect();
+    p.add(egui::Shape::line(pts, s));
+}
+
+/// The text bar's Curve Text button: its curve's picture; a click lists
+/// the curves, straight first.
+fn curve_text_button(app: &mut App, ui: &mut Ui, curve: Option<tracedraw_core::CurvePreset>) {
+    let resp = ui
+        .add_sized([22.0, 22.0], egui::Button::selectable(curve.is_some(), ""))
+        .rich_tip(crate::ui::tips::keyed("toolbar.curve_text"));
+    curve_picture(ui.painter(), resp.rect, curve.or(Some(tracedraw_core::CurvePreset::ArcUp)), Tokens::text());
+    egui::Popup::menu(&resp)
+        .id(egui::Id::new("curve_text_menu"))
+        .show(|ui| {
+            let mut pick = None;
+            for k in std::iter::once(None).chain(tracedraw_core::CurvePreset::ALL.map(Some)) {
+                ui.horizontal(|ui| {
+                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(20.0), egui::Sense::hover());
+                    curve_picture(ui.painter(), rect, k, Tokens::text());
+                    if ui
+                        .selectable_label(curve == k, tr(crate::text_curve::preset_key(k)))
+                        .clicked()
+                    {
+                        pick = Some(k);
+                    }
+                });
+            }
+            if let Some(k) = pick {
+                app.set_text_curve(k);
+                ui.close();
+            }
+        });
 }
 
 /// The transparency settings of the Transparency tool's bar: the kind
@@ -2782,8 +2852,11 @@ fn transparency_controls(app: &mut App, ui: &mut Ui, stacked: bool) {
                     f.angle = angle;
                     field = Some(F::MaskAngle);
                 }
-                let kinds = tracedraw_core::style::FountainKind::ALL
-                    .map(|k| (k, crate::ui::dockers::fountain_kind_key(k)));
+                let kinds: Vec<_> = tracedraw_core::style::FountainKind::ALL
+                    .into_iter()
+                    .filter(|k| *k != tracedraw_core::style::FountainKind::Points)
+                    .map(|k| (k, crate::ui::dockers::fountain_kind_key(k)))
+                    .collect();
                 let kind_shown = !mixed.contains(&F::MaskKind);
                 let name = kinds
                     .iter()

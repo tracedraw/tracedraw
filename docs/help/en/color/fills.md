@@ -33,8 +33,13 @@ the [[docker.properties]] panel:
 
 - The type: [[fill.linear]] (along a line), [[fill.radial]] (from the center
   out), [[fill.conical]] (around the center), [[fill.square]] (in growing
-  squares) or [[fill.shaped]] (following the outline of the object, from the
-  edge inwards).
+  squares), [[fill.shaped]] (following the outline of the object, from the
+  edge inwards) or **Color points** (each color at a point of its own
+  anywhere in the object, blending into the others around it). With the
+  Interactive Fill or Shape tool the color points show on the object: drag
+  one to move it, click one and then a palette color to recolor it,
+  double-click inside the object to add one, and press Delete to remove the
+  chosen one (two always stay).
 - [[docker.gradient_presets]]: ready-made gradients to start from.
 - The **stops**: the colors and where they sit along the gradient, 2 to 64.
   Select a stop to change its color or position; [[docker.add_stop]] and

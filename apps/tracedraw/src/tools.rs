@@ -34,6 +34,7 @@ pub enum Tool {
     Bezier,
     Pen,
     BSpline,
+    CurvaturePen,
     Polyline,
     ThreePointCurve,
     // Drawing group
@@ -138,6 +139,7 @@ pub const GROUPS: &[ToolGroup] = &[
             Tool::Bezier,
             Tool::Pen,
             Tool::BSpline,
+            Tool::CurvaturePen,
             Tool::Polyline,
             Tool::ThreePointCurve,
         ],
@@ -233,7 +235,7 @@ pub const GROUPS: &[ToolGroup] = &[
 ];
 
 impl Tool {
-    pub const ALL: [Tool; 68] = [
+    pub const ALL: [Tool; 69] = [
         Tool::Pick,
         Tool::FreeformPick,
         Tool::FreeTransform,
@@ -258,6 +260,7 @@ impl Tool {
         Tool::Bezier,
         Tool::Pen,
         Tool::BSpline,
+        Tool::CurvaturePen,
         Tool::Polyline,
         Tool::ThreePointCurve,
         Tool::BrushStrokes,
@@ -331,6 +334,7 @@ impl Tool {
             Tool::Bezier => "bezier",
             Tool::Pen => "pen",
             Tool::BSpline => "bspline",
+            Tool::CurvaturePen => "curvature_pen",
             Tool::Polyline => "polyline",
             Tool::ThreePointCurve => "three_point_curve",
             Tool::BrushStrokes => "brush_strokes",

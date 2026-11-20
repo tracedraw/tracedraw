@@ -70,7 +70,8 @@ pub fn midpoint_params(f: &Fountain) -> Vec<(usize, f64)> {
 /// The nodes of a fountain on the object's page bounds: start, end and
 /// skew handle; none for a shaped fountain (it follows the outline).
 pub fn fountain_handles(f: &Fountain, b: Rect) -> Vec<(FountainHandle, Point)> {
-    if f.kind == FountainKind::Shaped {
+    // Colour points have their own nodes (`crate::color_points`).
+    if matches!(f.kind, FountainKind::Shaped | FountainKind::Points) {
         return Vec::new();
     }
     let h = f.handles.unwrap_or_else(|| f.default_handles(b));
@@ -676,7 +677,9 @@ impl App {
         };
         let b = s.page_path().bounding_box();
         let mut f = match &s.fill {
-            Fill::Fountain(f) if f.kind != FountainKind::Shaped => f.clone(),
+            Fill::Fountain(f) if !matches!(f.kind, FountainKind::Shaped | FountainKind::Points) => {
+                f.clone()
+            }
             other => {
                 let first = match (other, &self.default_fill()) {
                     (Fill::Solid(c), _) | (_, Fill::Solid(c)) => *c,
