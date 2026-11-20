@@ -1772,3 +1772,56 @@ in each chosen font, one under the other, on white cards.
 - A font that is not installed shows in its stand-in, and says which.
 - A click on a sample gives the selected text that font (or makes it the
   text font when nothing is selected); the text font is ticked.
+
+## Curve Text
+
+With artistic text selected, the text property bar shows a Curve Text
+button after the alignment list (its picture is the current curve, an
+arch while straight). Its list: Straight, Circle, Arch, Bowl, Wave. A
+curve makes the text text on a path of its own (`TextOnPath::preset`
+names it; no path object), centred, its middle kept where the text's box
+middle was, one undo step "Curve Text" (`text_curve.rs`):
+
+- Circle: a whole circle of circumference `w / 0.85` (`w` the straight
+  text's width), from the top clockwise, the text centred over the top,
+  letters outward.
+- Arch / Bowl: a third of a circle, `1.15 w` long, over the top of a
+  circle below / along the bottom of one above.
+- Wave: two sine waves `1.05 w` long, half the letter size high.
+
+Straight drops a Curve Text curve (a path of the text's own from Fit
+Text to Path stays). Distance and mirrors of an earlier curve are kept.
+
+A circle text let go after a move with its circle's middle within half
+the radius of a round object's middle (an ellipse, or a closed shape
+whose box is square within 10 % and covers pi/4 of it within 0.05; the
+topmost under it) takes that centre, its circle `r - 1.15 size` round
+(`size` the letter size), so the letter tops run just inside the edge;
+undo step "Fit Text to Shape" after the move's
+(`text_curve::tests::circle_text_fits_a_round_object_it_is_dropped_on`).
+
+## Type block
+
+The text panel's frame settings, under the vertical alignment row: Type
+block (`ParagraphStyle::type_block`, off at first, a setting of the whole
+frame as Fit Text to Frame is). On, paragraph text is laid out by
+`FontSystem::type_block` (text crate) before its lines are broken:
+
+- Words are the runs between spaces; a line break or paragraph break
+  always breaks. Each word's natural width is measured in its own fonts.
+- For 49 target widths from the widest word to the longest paragraph,
+  each paragraph is broken greedily into lines nearest the target; a line
+  scaled to the frame's width stands `1.3 size w / natural` high. The line
+  sets are ranked: those whose estimated height fits the frame first,
+  then the nearest to its height.
+- For the best sets in turn (at most 8), each line's characters are
+  scaled so that its width as laid out is 99 % of the frame's width, the
+  space before each line but a paragraph's first becomes a line break
+  (one character for another, so carets and selections keep their
+  places), and the block is laid out with forced justification, no
+  indents, no space between paragraphs; the first that does not overflow
+  is drawn. None fits: the best set scaled down by 8 % at a time.
+- Laid out anew on every change of the frame or the text.
+
+Test: `tracedraw_text::tests::a_type_block_fills_the_frame_width_line_by_line`.
+

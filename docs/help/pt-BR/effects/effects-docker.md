@@ -70,3 +70,33 @@ com o visual; um desfazer o remove. As suas predefinições salvas vêm depois.
 - [[menu.object > menu.object.copy_effect]] copia um efeito de outro objeto, e
   [[menu.object.clone_effect]] faz um clone que o acompanha; veja
   [Copiar e clonar efeitos](copy-and-clone.md).
+
+## Aparência feita à mão e molduras
+
+Os efeitos de camada no alto do painel também têm estes, todos ao vivo e
+atualizados enquanto você edita o objeto:
+
+- [[effect.roughen]] redesenha o contorno com pequenas ondulações
+  aleatórias. **Tamanho** define até onde elas vão, **Detalhe** quantas são
+  a cada 10 mm, e **Suave** as transforma em ondas em vez de pontas.
+- [[effect.jitter_nodes]] move os nós que a curva já tem, ao acaso, até as
+  distâncias que você definir; **Alças também** move cada alça sozinha.
+- [[effect.scribble]] desenha o preenchimento como uma linha em zigue-zague
+  solta, na cor do preenchimento, com o ângulo, o espaçamento e a largura
+  que você definir. **Folga** deixa os traços passarem da borda ou pararem
+  antes. **Voltas arredondadas** curva cada volta da linha, até um laço
+  largo como o de um lápis pastel; **Passar da borda** leva cada traço até
+  essa distância além da borda (abaixo de zero, para antes, do lado de
+  dentro); **Variação do espaçamento** e **Variação da espessura** deixam os
+  intervalos e os traços desiguais, como à mão. O contorno continua.
+- [[effect.shape_frame]] troca o contorno por um retângulo, retângulo
+  arredondado ou elipse em volta do objeto, com a margem que você definir.
+  Num grupo, faz uma só forma pintada como o objeto de cima.
+- [[effect.trim_marks]] desenha linhas nos cantos do objeto, do lado de
+  fora, para recortá-lo depois de impresso.
+- [[effect.feather]] faz o objeto sumir aos poucos em direção à borda, ao
+  longo do raio que você definir.
+
+**Variação** dá outro padrão aos efeitos aleatórios. O mesmo valor sempre
+desenha o mesmo resultado. Converter em curvas torna os efeitos de contorno
+definitivos.

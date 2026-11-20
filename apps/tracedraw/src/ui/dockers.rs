@@ -3154,6 +3154,7 @@ pub fn fountain_kind_key(k: FountainKind) -> &'static str {
         FountainKind::Conical => "fill.conical",
         FountainKind::Square => "fill.square",
         FountainKind::Shaped => "fill.shaped",
+        FountainKind::Points => "fill.points",
     }
 }
 
@@ -3498,6 +3499,10 @@ fn fountain_blend_editor(ui: &mut Ui, f: &mut Fountain) -> bool {
     changed |= ui
         .checkbox(&mut f.smooth, tr("docker.smooth_transition"))
         .rich_tip(tr("docker.smooth_transition_tip"))
+        .changed();
+    changed |= ui
+        .checkbox(&mut f.dither, tr("docker.fountain_dither"))
+        .rich_tip(tr("docker.fountain_dither_tip"))
         .changed();
     ui.horizontal(|ui| {
         ui.label(tr("docker.fountain_acceleration"))

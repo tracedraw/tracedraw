@@ -15,6 +15,19 @@ full, row-by-row status.
 - Shape Recognition: Scribble erases (property bar, off at first); a scribble back and forth over objects deletes them.
 - Properties docker: arrows beside each further fill and outline paint it one place earlier or later; the second trades places with the first.
 - Properties docker: each further fill has a look of its own, Grow, Move and Blur under it, which grow (or shrink), move and blur that fill alone, on screen and in SVG and PDF.
+- Envelope: mesh envelope (Envelope panel, Columns and Rows, Add Mesh; drag the grid points with the Envelope tool) and Object > Copy Effect > Envelope from Top Object.
+- Object > Combine Shapes: Break into Pieces, Merge Same Colors, Cut to Top Object, Piece Outlines, Exclude Overlaps, and Combine Live (a group drawn as one combined curve, objects kept). The live outline offset is now named Grow Outline.
+- Combine Shapes: Cut Objects Below, Cut into Grid and Remove Strays.
+- Layer effects: rough edge, jitter nodes, sketch fill, shape frame, trim marks and soft edge.
+- Gradient fill: Dither against banding.
+- Gradient fill: a colour points type, each colour at a free point in the object blended by distance; points dragged, added with a double click, coloured from the palette and deleted on the canvas.
+- Blend: groups blended object by object in their own colours, and a round handle on the Blend tool's line that bends it into a curve the steps follow.
+- Text: Curve Text on the text bar (circle, arch, bowl, wave, no path to draw); a circle text dropped on a round object fits inside its edge.
+- Trace: Clean up a pencil sketch (hatching made solid, construction lines and specks removed, edges smoothed, traced black on white).
+- Paragraph text: Type block (words shared out between lines, each line its own size filling the frame width, set anew on resize).
+- Curve tools: Curvature Pen, in the curve group: a smooth curve through the points clicked, Alt+click for a corner.
+- Layer effects: Sketch fill gets Round turns, Past the edge, Spacing variation and Width variation.
+- Envelope: the mesh envelope bends pictures too, alone or inside groups and clip frames.
 - Edit > Paste Above Selection pastes in front of the topmost selected object, in its layer or group, instead of at the top of the active layer; one Undo takes it back, and with nothing selected it is Paste (#3673).
 - Large drawings: an object's box is worked out without copying its outline and kept until the drawing changes, a rectangle, ellipse or picture answers from its own rectangle, and banded rendering walks the page once instead of once per band, so snapping, picking and redrawing stay quicker (#3559; PR #3627 by ratmanz0000).
 - Colour panel: the hex field can be typed in, erased and pasted into; a colour sampled with the Color Eyedropper becomes the panel's new colour; hiding the default palette leaves the document palette shown; Window > Color Palettes no longer lists the document palette twice under the same name (PR #3549 by fegrifo, merged in #3660).

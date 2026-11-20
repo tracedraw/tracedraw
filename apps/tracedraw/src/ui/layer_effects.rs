@@ -40,10 +40,17 @@ pub enum Kind {
     Grid,
     BlendIf,
     Displace,
+    Combine,
+    Roughen,
+    JitterNodes,
+    Scribble,
+    ShapeFrame,
+    TrimMarks,
+    Feather,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 15] = [
+    pub const ALL: [Kind; 22] = [
         Kind::Bevel,
         Kind::Outline,
         Kind::ThreeD,
@@ -59,6 +66,13 @@ impl Kind {
         Kind::Grid,
         Kind::BlendIf,
         Kind::Displace,
+        Kind::Combine,
+        Kind::Roughen,
+        Kind::JitterNodes,
+        Kind::Scribble,
+        Kind::ShapeFrame,
+        Kind::TrimMarks,
+        Kind::Feather,
     ];
 
     pub fn key(self) -> &'static str {
@@ -78,6 +92,13 @@ impl Kind {
             Kind::Grid => "effect.grid",
             Kind::BlendIf => "effect.blend_if",
             Kind::Displace => "effect.displace",
+            Kind::Combine => "effect.combine",
+            Kind::Roughen => "effect.roughen",
+            Kind::JitterNodes => "effect.jitter_nodes",
+            Kind::Scribble => "effect.scribble",
+            Kind::ShapeFrame => "effect.shape_frame",
+            Kind::TrimMarks => "effect.trim_marks",
+            Kind::Feather => "effect.feather",
         }
     }
 
@@ -108,6 +129,13 @@ impl Kind {
                 | (Kind::Grid, Effect::Grid { .. })
                 | (Kind::BlendIf, Effect::BlendIf { .. })
                 | (Kind::Displace, Effect::Displace { .. })
+                | (Kind::Combine, Effect::Combine { .. })
+                | (Kind::Roughen, Effect::Roughen { .. })
+                | (Kind::JitterNodes, Effect::JitterNodes { .. })
+                | (Kind::Scribble, Effect::Scribble { .. })
+                | (Kind::ShapeFrame, Effect::ShapeFrame { .. })
+                | (Kind::TrimMarks, Effect::TrimMarks { .. })
+                | (Kind::Feather, Effect::Feather { .. })
         )
     }
 
@@ -184,6 +212,43 @@ impl Kind {
                 opacity: 0.5,
             },
             Kind::GaussianBlur => Effect::GaussianBlur { radius: 1.0 },
+            Kind::Combine => Effect::Combine {
+                mode: tracedraw_core::shaping::CombineMode::Weld,
+            },
+            Kind::Roughen => Effect::Roughen {
+                size: 1.0,
+                detail: 5,
+                smooth: true,
+                seed: 1,
+            },
+            Kind::JitterNodes => Effect::JitterNodes {
+                across: 2.0,
+                down: 2.0,
+                handles: false,
+                seed: 1,
+            },
+            Kind::Scribble => Effect::Scribble {
+                angle: 30.0,
+                spacing: 1.5,
+                width: 0.5,
+                loose: 0.5,
+                seed: 1,
+                curvy: 0.0,
+                overlap: 0.0,
+                spacing_var: 0.0,
+                width_var: 0.0,
+            },
+            Kind::ShapeFrame => Effect::ShapeFrame {
+                form: tracedraw_core::rough::FrameForm::Rounded,
+                pad: 3.0,
+                radius: 2.0,
+            },
+            Kind::TrimMarks => Effect::TrimMarks {
+                length: 5.0,
+                gap: 2.0,
+                width: 0.1,
+            },
+            Kind::Feather => Effect::Feather { radius: 3.0 },
             Kind::OffsetPath => Effect::OffsetPath {
                 distance: 1.0,
                 smooth: 0.0,
@@ -508,6 +573,26 @@ fn length(app: &App, ui: &mut Ui, label: &str, mm: &mut f64, max: f64) -> bool {
     }
 }
 
+/// A whole number from `min` to `max`.
+fn whole(ui: &mut Ui, label: &str, v: &mut u32, min: u32, max: u32) -> bool {
+    ui.label(tr(label));
+    let mut f = f64::from(*v);
+    if ui
+        .add(
+            NumField::new(&mut f)
+                .range(f64::from(min)..=f64::from(max))
+                .width(50.0),
+        )
+        .rich_tip(tr(label))
+        .changed()
+    {
+        *v = (f.round().clamp(f64::from(min), f64::from(max))) as u32;
+        true
+    } else {
+        false
+    }
+}
+
 /// A 0..1 value as a percentage.
 fn percent(ui: &mut Ui, label: &str, v: &mut f64) -> bool {
     ui.label(tr(label));
@@ -753,6 +838,143 @@ fn settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
         Effect::GaussianBlur { radius } => {
             ui.horizontal(|ui| {
                 changed |= length(app, ui, "layer_fx.radius", radius, 50.0);
+            });
+        }
+        Effect::Combine { mode } => {
+            use tracedraw_core::shaping::CombineMode;
+            // Each mode as the Combine Shapes command of the same name.
+            ui.horizontal_wrapped(|ui| {
+                for (m, key, tip) in [
+                    (CombineMode::Weld, "menu.object.weld", "layer_fx.combine_weld_desc"),
+                    (
+                        CombineMode::BackMinusFront,
+                        "menu.object.back_minus_front",
+                        "layer_fx.combine_cut_desc",
+                    ),
+                    (
+                        CombineMode::Intersect,
+                        "menu.object.intersect",
+                        "layer_fx.combine_intersect_desc",
+                    ),
+                    (CombineMode::Exclude, "menu.object.exclude", "layer_fx.combine_exclude_desc"),
+                ] {
+                    changed |= ui
+                        .selectable_value(mode, m, tr(key))
+                        .rich_tip(tr(tip))
+                        .changed();
+                }
+            });
+        }
+        Effect::Roughen {
+            size,
+            detail,
+            smooth: round,
+            seed,
+        } => {
+            use tracedraw_core::rough::{DETAIL_MAX, ROUGH_MAX};
+            ui.horizontal(|ui| {
+                changed |= length(app, ui, "layer_fx.rough_size", size, ROUGH_MAX);
+                changed |= whole(ui, "layer_fx.rough_detail", detail, 1, DETAIL_MAX);
+            });
+            ui.horizontal(|ui| {
+                changed |= ui
+                    .checkbox(round, tr("layer_fx.rough_smooth"))
+                    .rich_tip(tr("layer_fx.rough_smooth_desc"))
+                    .changed();
+                changed |= whole(ui, "layer_fx.seed", seed, 0, 9999);
+            });
+        }
+        Effect::JitterNodes {
+            across,
+            down,
+            handles,
+            seed,
+        } => {
+            use tracedraw_core::rough::ROUGH_MAX;
+            ui.horizontal(|ui| {
+                changed |= length(app, ui, "layer_fx.jitter_across", across, ROUGH_MAX);
+                changed |= length(app, ui, "layer_fx.jitter_down", down, ROUGH_MAX);
+            });
+            ui.horizontal(|ui| {
+                changed |= ui
+                    .checkbox(handles, tr("layer_fx.jitter_handles"))
+                    .rich_tip(tr("layer_fx.jitter_handles_desc"))
+                    .changed();
+                changed |= whole(ui, "layer_fx.seed", seed, 0, 9999);
+            });
+        }
+        Effect::Scribble {
+            angle,
+            spacing,
+            width,
+            loose,
+            seed,
+            curvy,
+            overlap,
+            spacing_var,
+            width_var,
+        } => {
+            use tracedraw_core::rough::ROUGH_MAX;
+            ui.horizontal(|ui| {
+                changed |= degrees(ui, "layer_fx.angle", angle);
+                changed |= length(app, ui, "layer_fx.scribble_spacing", spacing, ROUGH_MAX);
+            });
+            ui.horizontal(|ui| {
+                changed |= length(app, ui, "layer_fx.width", width, 50.0);
+                changed |= length(app, ui, "layer_fx.scribble_loose", loose, ROUGH_MAX);
+            });
+            ui.horizontal(|ui| {
+                changed |= percent(ui, "layer_fx.scribble_curvy", curvy);
+                changed |= signed_length(
+                    app,
+                    ui,
+                    "layer_fx.scribble_overlap",
+                    "layer_fx.scribble_overlap_desc",
+                    overlap,
+                );
+            });
+            ui.horizontal(|ui| {
+                changed |= percent(ui, "layer_fx.scribble_spacing_var", spacing_var);
+                changed |= percent(ui, "layer_fx.scribble_width_var", width_var);
+            });
+            ui.horizontal(|ui| {
+                changed |= whole(ui, "layer_fx.seed", seed, 0, 9999);
+            });
+        }
+        Effect::ShapeFrame { form, pad, radius } => {
+            use tracedraw_core::rough::{FrameForm, ROUGH_MAX};
+            ui.horizontal(|ui| {
+                for (v, key) in [
+                    (FrameForm::Rectangle, "layer_fx.frame_rectangle"),
+                    (FrameForm::Rounded, "layer_fx.frame_rounded"),
+                    (FrameForm::Ellipse, "layer_fx.frame_ellipse"),
+                ] {
+                    changed |= ui
+                        .selectable_value(form, v, tr(key))
+                        .rich_tip(tr(key))
+                        .changed();
+                }
+            });
+            ui.horizontal(|ui| {
+                changed |= length(app, ui, "layer_fx.frame_pad", pad, ROUGH_MAX);
+                if *form == FrameForm::Rounded {
+                    changed |= length(app, ui, "layer_fx.radius", radius, ROUGH_MAX);
+                }
+            });
+        }
+        Effect::TrimMarks { length: len, gap, width } => {
+            use tracedraw_core::rough::ROUGH_MAX;
+            ui.horizontal(|ui| {
+                changed |= length(app, ui, "layer_fx.marks_length", len, ROUGH_MAX);
+                changed |= length(app, ui, "layer_fx.marks_gap", gap, ROUGH_MAX);
+            });
+            ui.horizontal(|ui| {
+                changed |= length(app, ui, "layer_fx.width", width, 10.0);
+            });
+        }
+        Effect::Feather { radius } => {
+            ui.horizontal(|ui| {
+                changed |= length(app, ui, "layer_fx.radius", radius, 100.0);
             });
         }
         Effect::OffsetPath {

@@ -99,6 +99,7 @@ impl Preset {
             merged: Vec::new(),
             recolored: Vec::new(),
             pixel_scale: 1.0,
+            clean_sketch: false,
         }
     }
 }
@@ -188,6 +189,10 @@ pub struct Settings {
     /// patch kept, how far a curve may stray, how wide a corner the blur
     /// rounded) is in pixels of the art.
     pub pixel_scale: f64,
+    /// A pencil sketch cleaned up first (hatching and doubled outlines
+    /// made solid, construction lines and specks gone, edges smoothed)
+    /// and traced black on white: see [`crate::trace_sketch`].
+    pub clean_sketch: bool,
 }
 
 impl Settings {
@@ -357,6 +362,10 @@ pub fn trace(img: &RgbaImage, s: &Settings) -> Vec<Traced> {
 pub fn trace_unless(img: &RgbaImage, s: &Settings, cancel: Option<&Cancel>) -> Option<Vec<Traced>> {
     if s.centerline {
         return centerline(img, s, cancel);
+    }
+    if s.clean_sketch {
+        let clean = crate::trace_sketch::clean_sketch(img);
+        return trace_unless(&clean, &crate::trace_sketch::sketch_settings(s), cancel);
     }
     let mut traced = if s.optimize {
         let best = optimize(img, s, cancel)?;

@@ -5274,6 +5274,60 @@ fn bspline_clicks_place_control_points_of_a_smooth_curve() {
     assert!(!on(pts[1]) && !on(pts[2]));
 }
 
+/// The Curvature Pen: each click places a point the curve runs through,
+/// smooth there; a point placed with Alt held is a corner; the curve
+/// made is a plain curve with those points as its nodes, as previewed.
+#[test]
+fn the_curvature_pen_draws_a_smooth_curve_through_its_clicks() {
+    use tracedraw_core::geometry::curvature_path;
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::CurvaturePen);
+    let pts = [
+        Point::new(100.0, 150.0),
+        Point::new(130.0, 190.0),
+        Point::new(160.0, 150.0),
+        Point::new(190.0, 190.0),
+        Point::new(220.0, 150.0),
+    ];
+    for (i, p) in pts.iter().enumerate() {
+        let mods = if i == 2 {
+            Modifiers::ALT
+        } else {
+            Modifiers::NONE
+        };
+        let at = app.view.to_screen(*p);
+        click_at(&ctx, &mut app, at, mods);
+        assert!(app.curve.is_some(), "still drawing after point {i}");
+    }
+    let want = vec![false, false, true, false, false];
+    let c = app.curve.as_ref().expect("a curve being drawn");
+    assert_eq!(c.spline_fixed_flags(), Some(want.clone()));
+    let placed: Vec<Point> = c.nodes.iter().map(|n| n.0).collect();
+    assert_eq!(c.path(None), curvature_path(&placed, &want, false));
+    frame(
+        &ctx,
+        &mut app,
+        vec![key(egui::Key::Enter, Modifiers::NONE)],
+        Modifiers::NONE,
+    );
+    assert!(app.curve.is_none());
+    let made = last_path(&app);
+    assert_eq!(made, curvature_path(&placed, &want, false));
+    let ends: Vec<Point> = made
+        .elements()
+        .iter()
+        .filter_map(|e| e.end_point())
+        .collect();
+    assert_eq!(ends.len(), pts.len());
+    for (e, p) in ends.iter().zip(&pts) {
+        assert!((*e - *p).hypot() < 1e-3, "the curve runs through every click");
+    }
+    let id = app.selection[0];
+    let s = app.doc().find_shape(id).expect("the curve");
+    assert!(s.spline.is_none(), "a plain curve, its points its nodes");
+}
+
 /// The curve the B-Spline tool previews, as the canvas draws it.
 fn bspline_preview(app: &App) -> tracedraw_core::BezPath {
     let c = app.curve.as_ref().expect("a B-spline being drawn");
