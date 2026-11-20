@@ -5184,6 +5184,7 @@ workspace.file_filter = "TraceDraw ওয়ার্কস্পেস"
 workspace.part_appearance = "চেহারা (ইন্টারফেসের আকার, ডেস্কটপের রং, পৃষ্ঠার সীমানা)"
 workspace.part_bars = "টুলবার, টুলবক্স ও স্ট্যাটাস বার"
 workspace.part_palette = "রঙের প্যালেটের বিকল্প"
+workspace.part_preferences = "অন্যান্য পছন্দ (রঙ মোড, নথির ডিফল্ট, একক, টুল এবং বাকি সব)" # mt
 workspace.part_shortcuts = "কীবোর্ড শর্টকাট"
 updates.checking = "TraceDraw-এর নতুন সংস্করণ খোঁজা হচ্ছে..."
 updates.latest = "TraceDraw {version} সর্বশেষ সংস্করণ।"

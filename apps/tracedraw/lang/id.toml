@@ -5184,6 +5184,7 @@ workspace.file_filter = "Ruang kerja TraceDraw"
 workspace.part_appearance = "Tampilan (ukuran antarmuka, warna desktop, batas halaman)"
 workspace.part_bars = "Bilah alat, kotak alat, dan bilah status"
 workspace.part_palette = "Opsi palet warna"
+workspace.part_preferences = "Preferensi lainnya (mode warna, default dokumen, satuan, alat, dan lainnya)" # mt
 workspace.part_shortcuts = "Pintasan keyboard"
 updates.checking = "Mencari TraceDraw yang lebih baru..."
 updates.latest = "TraceDraw {version} adalah versi terbaru."

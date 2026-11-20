@@ -5184,6 +5184,7 @@ workspace.file_filter = "Pracovní prostor TraceDraw"
 workspace.part_appearance = "Vzhled (velikost rozhraní, barva plochy, okraj stránky)"
 workspace.part_bars = "Panely nástrojů, sada nástrojů a stavový řádek"
 workspace.part_palette = "Možnosti barevné palety"
+workspace.part_preferences = "Ostatní předvolby (barevný režim, výchozí nastavení dokumentu, jednotky, nástroje a ostatní)" # mt
 workspace.part_shortcuts = "Klávesové zkratky"
 updates.checking = "Hledání novější verze TraceDraw..."
 updates.latest = "TraceDraw {version} je nejnovější verze."

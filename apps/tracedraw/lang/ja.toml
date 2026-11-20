@@ -5184,6 +5184,7 @@ workspace.file_filter = "TraceDraw ワークスペース"
 workspace.part_appearance = "外観 (インターフェイスのサイズ、デスクトップの色、ページの境界線)"
 workspace.part_bars = "ツールバー、ツールボックス、ステータス バー"
 workspace.part_palette = "カラー パレットのオプション"
+workspace.part_preferences = "その他の設定 (カラーモード、ドキュメントの既定値、単位、ツールなど)" # mt
 workspace.part_shortcuts = "キーボード ショートカット"
 updates.checking = "新しい TraceDraw を確認しています..."
 updates.latest = "TraceDraw {version} は最新バージョンです。"

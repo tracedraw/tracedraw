@@ -5184,6 +5184,7 @@ workspace.file_filter = "Espace de travail TraceDraw"
 workspace.part_appearance = "Apparence (taille de l'interface, couleur du bureau, bordure de page)"
 workspace.part_bars = "Barres d'outils, boîte à outils et barre d'état"
 workspace.part_palette = "Options de la palette de couleurs"
+workspace.part_preferences = "Autres préférences (mode de couleur, valeurs par défaut du document, unités, outils et le reste)" # mt
 workspace.part_shortcuts = "Raccourcis clavier"
 updates.checking = "Recherche d'une version plus récente de TraceDraw..."
 updates.latest = "TraceDraw {version} est la dernière version."

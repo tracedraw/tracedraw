@@ -5184,6 +5184,7 @@ workspace.file_filter = "TraceDraw कार्यक्षेत्र"
 workspace.part_appearance = "रूप (इंटरफ़ेस का आकार, डेस्कटॉप रंग, पृष्ठ सीमा)"
 workspace.part_bars = "टूलबार, टूलबॉक्स और स्टेटस बार"
 workspace.part_palette = "रंग पैलेट विकल्प"
+workspace.part_preferences = "अन्य प्राथमिकताएँ (रंग मोड, दस्तावेज़ डिफ़ॉल्ट, इकाइयाँ, उपकरण और बाकी)" # mt
 workspace.part_shortcuts = "कीबोर्ड शॉर्टकट"
 updates.checking = "TraceDraw का नया संस्करण खोजा जा रहा है..."
 updates.latest = "TraceDraw {version} नवीनतम संस्करण है।"

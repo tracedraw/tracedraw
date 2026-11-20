@@ -5184,6 +5184,7 @@ workspace.file_filter = "TraceDraw çalışma alanı"
 workspace.part_appearance = "Görünüm (arayüz boyutu, masaüstü rengi, sayfa kenarlığı)"
 workspace.part_bars = "Araç çubukları, araç kutusu ve durum çubuğu"
 workspace.part_palette = "Renk paleti seçenekleri"
+workspace.part_preferences = "Diğer tercihler (renk modu, belge varsayılanları, birimler, araçlar ve geri kalanı)" # mt
 workspace.part_shortcuts = "Klavye kısayolları"
 updates.checking = "Daha yeni bir TraceDraw aranıyor..."
 updates.latest = "TraceDraw {version} en son sürüm."

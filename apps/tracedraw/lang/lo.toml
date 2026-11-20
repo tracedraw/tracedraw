@@ -5194,6 +5194,7 @@ workspace.file_filter = "ພື້ນທີ່ເຮັດວຽກ TraceDraw"
 workspace.part_appearance = "ຮູບລັກສະນະ (ຂະໜາດສ່ວນຕິດຕໍ່ຜູ້ໃຊ້, ສີໜ້າຈໍ, ຂອບໜ້າເຈ້ຍ)"
 workspace.part_bars = "ແຖບເຄື່ອງມື, ກ່ອງເຄື່ອງມື ແລະ ແຖບສະຖານະ"
 workspace.part_palette = "ຕົວເລືອກຖາດສີ"
+workspace.part_preferences = "ການຕັ້ງຄ່າອື່ນໆ (ໂໝດສີ, ຄ່າເລີ່ມຕົ້ນຂອງເອກະສານ, ຫົວໜ່ວຍ, ເຄື່ອງມື ແລະ ອື່ນໆ)" # mt
 workspace.part_shortcuts = "ປຸ່ມລັດແປ້ນພິມ"
 updates.checking = "ກຳລັງກວດສອບການອັບເດດ..."
 updates.latest = "TraceDraw {version} ເປັນລຸ້ນຫຼ້າສຸດແລ້ວ."

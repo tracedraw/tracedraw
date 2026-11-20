@@ -5184,6 +5184,7 @@ workspace.file_filter = "TraceDraw 工作区"
 workspace.part_appearance = "外观（界面大小、桌面颜色、页面边框）"
 workspace.part_bars = "工具栏、工具箱和状态栏"
 workspace.part_palette = "调色板选项"
+workspace.part_preferences = "其他首选项（颜色模式、文档默认值、单位、工具等）" # mt
 workspace.part_shortcuts = "键盘快捷键"
 updates.checking = "正在检查更新的 TraceDraw..."
 updates.latest = "TraceDraw {version} 是最新版本。"

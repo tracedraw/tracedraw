@@ -5184,6 +5184,7 @@ workspace.file_filter = "TraceDraw-werkruimte"
 workspace.part_appearance = "Weergave (interfacegrootte, kleur bureaublad, paginarand)"
 workspace.part_bars = "Werkbalken, gereedschapskist en statusbalk"
 workspace.part_palette = "Opties voor kleurenpalet"
+workspace.part_preferences = "Overige voorkeuren (kleurmodus, documentstandaarden, eenheden, gereedschappen en de rest)" # mt
 workspace.part_shortcuts = "Sneltoetsen"
 updates.checking = "Zoeken naar een nieuwere TraceDraw..."
 updates.latest = "TraceDraw {version} is de nieuwste versie."
