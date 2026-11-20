@@ -30286,6 +30286,9 @@ fn the_guidelines_panel_works_from_the_keyboard() {
 #[test]
 fn the_handles_of_a_straight_line_do_not_overlap() {
     let (ctx, mut app, rect) = setup();
+    // The line is stretched by a set distance, which would otherwise end
+    // within the snapping radius of the rectangle's bottom.
+    app.snap.objects = false;
     app.select(Vec::new());
     let mut ids = Vec::new();
     for (a, b) in [((40.0, 20.0), (40.0, 120.0)), ((20.0, 150.0), (120.0, 150.0))] {

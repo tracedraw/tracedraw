@@ -27,14 +27,18 @@ pub struct SnapSettings {
 }
 
 impl Default for SnapSettings {
-    /// A first start: guidelines and the page snap, objects do not, so a
-    /// move goes where the pointer puts it (#1814). Alt+Z, the Snap To
-    /// list and Options > Snapping turn objects on, and that is kept.
+    /// A first start: guidelines, the page and objects snap. Objects
+    /// were off at first (#1814) because a moved box was pulled sideways
+    /// onto the edges of objects anywhere on the page; now only the
+    /// objects it faces attract it (see [`App::snap_candidates_near`]),
+    /// so a move still goes where the pointer puts it away from them.
+    /// Alt+Z, the Snap To list and Options > Snapping turn objects off,
+    /// and that is kept.
     fn default() -> Self {
         SnapSettings {
             grid: false,
             guides: true,
-            objects: false,
+            objects: true,
             page: true,
             pixels: false,
             baseline_grid: false,
@@ -258,6 +262,25 @@ impl App {
         guides: bool,
         bounds: bool,
     ) -> (Vec<f64>, Vec<f64>) {
+        self.snap_candidates_near(exclude, guides, bounds, None)
+    }
+
+    /// [`App::snap_candidates`] for a box being moved to `near`: an
+    /// object's box edges and centre attract it only where the two boxes
+    /// face each other, its x values where their heights overlap (or
+    /// come within the snapping radius) and its y values where their
+    /// widths do. An object far above or below the moved one no longer
+    /// pulls it sideways just because one of its edges is level with
+    /// the moved box somewhere on the page; lining up from afar is what
+    /// alignment guides are for.
+    fn snap_candidates_near(
+        &self,
+        exclude: &[ShapeId],
+        guides: bool,
+        bounds: bool,
+        near: Option<Rect>,
+    ) -> (Vec<f64>, Vec<f64>) {
+        let tol = self.snap_tolerance();
         let mut xs = Vec::new();
         let mut ys = Vec::new();
         let s = self.snap;
@@ -292,8 +315,13 @@ impl App {
                     continue;
                 }
                 let b = self.snap_bounds(sh);
-                xs.extend([b.x0, b.x1, b.center().x]);
-                ys.extend([b.y0, b.y1, b.center().y]);
+                let faces = |lo: f64, hi: f64, a: f64, z: f64| lo <= z + tol && a <= hi + tol;
+                if near.is_none_or(|m| faces(b.y0, b.y1, m.y0, m.y1)) {
+                    xs.extend([b.x0, b.x1, b.center().x]);
+                }
+                if near.is_none_or(|m| faces(b.x0, b.x1, m.x0, m.x1)) {
+                    ys.extend([b.y0, b.y1, b.center().y]);
+                }
             }
         }
         (xs, ys)
@@ -1447,13 +1475,15 @@ impl App {
     }
 
     /// Snap a translation of the selection so an edge or centre of its
-    /// bounds lands on a candidate.
+    /// bounds lands on a candidate: a guideline, the grids, the page, or
+    /// an edge or centre of an object it faces (see
+    /// [`App::snap_candidates_near`]).
     pub fn snap_move(&self, bounds: Rect, d: Vec2) -> Vec2 {
         if !self.snap_enabled() {
             return d;
         }
-        let (xs, ys) = self.snap_candidates(&self.selection, true, true);
         let moved = bounds + d;
+        let (xs, ys) = self.snap_candidates_near(&self.selection, true, true, Some(moved));
         let mut best_dx: Option<f64> = None;
         for edge in [moved.x0, moved.x1, moved.center().x] {
             if let Some(t) = self.snap_axis(edge, &xs, true) {
@@ -1804,11 +1834,11 @@ mod tests {
         assert!((b.x1 + d.x - 50.0).abs() < 1e-9, "{d:?}");
     }
 
-    /// At first a node near the pointer does not pull it, the page does;
-    /// with objects on, the 10 px radius catches a node 9 px away and
-    /// leaves the pointer alone 11 px away (#1814).
+    /// At first objects snap as the page does, within 10 px: a node
+    /// 9 px from the pointer catches it, one 11 px away leaves it alone;
+    /// with snapping to objects turned off, only the page does (#1814).
     #[test]
-    fn a_first_start_snaps_to_the_page_not_to_objects_within_10_px() {
+    fn a_first_start_snaps_to_objects_and_the_page_within_10_px() {
         let mut app = app();
         app.snap = SnapSettings::default();
         app.settings.snap = crate::settings::SnapPrefs::default();
@@ -1816,16 +1846,57 @@ mod tests {
         // A rectangle well inside the page, far from its points.
         let (x, y) = (page.x0 + 100.0, page.y0 + 100.0);
         rect(&mut app, x, y, x + 40.0, y + 20.0);
-        let near = Point::new(x + 3.0, y + 4.0);
-        assert_eq!(app.snap_point(near), near, "objects do not snap at first");
         let corner = Point::new(page.x0 + 3.0, page.y0 + 4.0);
         assert_eq!(app.snap_point(corner), Point::new(page.x0, page.y0));
-        // Objects on: 9 px from the node snaps, 11 px does not.
-        app.snap.objects = true;
+        // 9 px from the node snaps, 11 px does not.
         let p = Point::new(x + 9.0, y - 0.5);
         assert_eq!(app.snap_point(p), Point::new(x, y));
         let far = Point::new(x - 11.0, y - 11.0);
         assert_eq!(app.snap_point(far), far);
+        // Objects off (Alt+Z): the node no longer pulls, the page still does.
+        app.snap.objects = false;
+        assert_eq!(app.snap_point(p), p, "objects off do not snap");
+        assert_eq!(app.snap_point(corner), Point::new(page.x0, page.y0));
+    }
+
+    /// A moved box snaps to the edges and centres of the objects it
+    /// faces, and only to those: an object far above it, one of whose
+    /// sides is level with the box's right side, leaves the move as the
+    /// pointer makes it; one beside it catches the side, at first, with
+    /// no setting changed. This is what made a first start feel sticky
+    /// before snapping to objects was turned off at first (#1814).
+    #[test]
+    fn a_moved_box_snaps_only_to_the_objects_it_faces() {
+        let mut app = app();
+        app.snap = SnapSettings::default();
+        app.settings.snap = crate::settings::SnapPrefs::default();
+        // Snapping radius 3 mm at 1 px per mm.
+        app.settings.snap.threshold_px = 3.0;
+        let page = app.page_rect();
+        let (x, y) = (page.x0 + 20.0, page.y0 + 20.0);
+        let id = rect(&mut app, x, y, x + 20.0, y + 20.0);
+        // Far above, its left side at x + 42.
+        rect(&mut app, x + 42.0, y + 180.0, x + 70.0, y + 200.0);
+        app.select(vec![id]);
+        let b = app.selection_bounds().expect("the square's box");
+        // The right side moved to x + 41, 1 mm off the far object's
+        // left side: nothing pulls it.
+        let d = app.snap_move_from(None, b, Vec2::new(21.0, 0.0), None);
+        assert!((d.x - 21.0).abs() < 1e-9 && d.y.abs() < 1e-9, "{d:?}");
+        // The same object brought down beside the square: the right side
+        // lands on its left side.
+        let beside = rect(&mut app, x + 42.0, y + 5.0, x + 70.0, y + 25.0);
+        let d = app.snap_move_from(None, b, Vec2::new(21.0, 0.0), None);
+        assert!((d.x - 22.0).abs() < 1e-9 && d.y.abs() < 1e-9, "{d:?}");
+        // Just under it, within the radius, still faces it: the square
+        // stacked below lines its left side up with the object's.
+        app.run(Command::DeleteShapes {
+            shapes: vec![beside],
+        });
+        rect(&mut app, x + 30.0, y + 41.5, x + 60.0, y + 60.0);
+        let d = app.snap_move_from(None, b, Vec2::new(31.0, 20.0), None);
+        assert!((d.x - 30.0).abs() < 1e-9, "left sides line up: {d:?}");
+        assert!((d.y - 21.5).abs() < 1e-9, "top meets bottom: {d:?}");
     }
 
     #[test]
@@ -1866,13 +1937,15 @@ mod tests {
 
     /// The centre of rotation snaps to the centre, the corners and the
     /// middles of the sides of the selection and to the centre of another
-    /// object, even with Snap to Objects off as on a first start, and
-    /// names the point it took; with snapping off it goes where it is
-    /// put (#2352).
+    /// object, even with Snap to Objects off, and names the point it
+    /// took; with snapping off it goes where it is put (#2352).
     #[test]
     fn the_centre_of_rotation_snaps_to_object_centres_and_edges() {
         let mut app = app();
-        app.snap = SnapSettings::default();
+        app.snap = SnapSettings {
+            objects: false,
+            ..SnapSettings::default()
+        };
         app.settings.snap = crate::settings::SnapPrefs::default();
         let page = app.page_rect();
         let (x, y) = (page.x0 + 60.0, page.y0 + 60.0);

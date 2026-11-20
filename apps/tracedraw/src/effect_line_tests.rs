@@ -71,6 +71,9 @@ fn setup(tool: Tool) -> (egui::Context, App, ShapeId) {
     app.show_welcome = false;
     let id = rect(&mut app, Rect::new(10.0, 10.0, 60.0, 40.0));
     app.select(vec![id]);
+    // The lines are dragged by set distances near the object's own
+    // edges, which snapping to objects (on at first) would catch.
+    app.snap.objects = false;
     for _ in 0..3 {
         frame(&ctx, &mut app, Vec::new(), Modifiers::NONE);
     }
