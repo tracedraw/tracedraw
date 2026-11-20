@@ -7,6 +7,8 @@ full, row-by-row status.
 ## Unreleased
 
 - Edit > Paste Above Selection pastes in front of the topmost selected object, in its layer or group, instead of at the top of the active layer; one Undo takes it back, and with nothing selected it is Paste (#3673).
+- Large drawings: an object's box is worked out without copying its outline and kept until the drawing changes, a rectangle, ellipse or picture answers from its own rectangle, and banded rendering walks the page once instead of once per band, so snapping, picking and redrawing stay quicker (#3559; PR #3627 by ratmanz0000).
+- Colour panel: the hex field can be typed in, erased and pasted into; a colour sampled with the Color Eyedropper becomes the panel's new colour; hiding the default palette leaves the document palette shown; Window > Color Palettes no longer lists the document palette twice under the same name (PR #3549 by fegrifo, merged in #3660).
 - Effects > 3D Revolve and Inflate: ready-made views (front, back, sides, top, bottom, six off-axis and four isometric), Roll, Offset (the axis away from the curve makes a ring or a hollow tube) and Cap; a surface of Plastic, Diffuse, No shading or Wireframe; the light's colour, intensity, softness and an ambient light (the default look is unchanged); a document symbol as the art, groups and symbols drawn out into their pieces, Fit and Stretch over the whole surface, Shade art and Only the art. The 3D object keeps its curve and settings: selected, the panel shows them, Update makes it again in place and Release gives the curve back. Halftone sphere makes a lit ball of halftone dots, as curves, in one click (#3668).
 
 ## 0.49.0 (2026-11-19)

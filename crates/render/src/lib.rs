@@ -85,9 +85,9 @@ impl ViewTransform {
     }
 }
 
-/// Objects to draw displaced by a transform (live drag preview).
-/// `shapes` is a set: a frame asks membership of it once per object,
-/// so a Vec made a drag of a large selection quadratic (#3559, step 5).
+/// Objects to draw displaced by a transform (live drag preview). The ids
+/// are a set: every object of the page is looked up in it each frame, so
+/// a drag of tens of thousands of objects stays quick (#3601).
 #[derive(Debug, Clone, Default)]
 pub struct Preview {
     pub shapes: std::collections::HashSet<ShapeId>,
