@@ -1117,6 +1117,13 @@ pub struct WarningPrefs {
     /// own, so "Do not show this message again" ticked on the plain note
     /// before the dialog existed does not silence the dialog (#1243).
     pub ask_missing_fonts: bool,
+    /// Take the automatic font for each missing one without asking
+    /// (#3725): the Missing Fonts dialog's choices made at once, as OK
+    /// with the automatic fonts would, when every missing family has one.
+    pub accept_missing_fonts: bool,
+    /// With [`Self::accept_missing_fonts`]: replace the families in the
+    /// drawing (saved with it) rather than for this session only.
+    pub accept_missing_fonts_keep: bool,
     /// Before an item is taken off the Shelf.
     pub shelf_remove: bool,
     /// The hint to turn on hardware acceleration when the window is
@@ -1131,6 +1138,8 @@ impl Default for WarningPrefs {
             unread_objects: true,
             missing_fonts: true,
             ask_missing_fonts: true,
+            accept_missing_fonts: false,
+            accept_missing_fonts_keep: true,
             shelf_remove: true,
             hardware_acceleration: true,
         }

@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Missing fonts can take their automatic stand-ins without asking: "Always use the automatic fonts" in the Missing Fonts dialog, or Options > Global > Warnings, applies them for the session or replaces them in the drawing when a file opens (#3725).
 - Workspace files carry every other preference too, such as the color mode of new drawings, the document defaults, units and tool settings, as a new part to check on export and import; files, window and computer-specific settings stay out (#3721).
 - Dragging a shadow or an object no longer makes the drawing window flicker in bands (#3562).
 - Insert Formula: Hindi and other scripts are shaped as text, vowel signs with their letters and spaces kept (#3572).

@@ -42,6 +42,16 @@ after opening, and the command line tool has no dialogs.
   a picker answering on a later frame works too; with no row left the
   dialog closes as Cancel would, the drawing unchanged
   (`missing_fonts::tests::a_font_added_from_the_dialog_takes_its_row_away`).
+- Always use the automatic fonts, without asking (#3725) turns on
+  Options > Global > Warnings, "Use the automatic font for each missing
+  one without asking" (`WarningPrefs::accept_missing_fonts`), keeping the dialog's choice of
+  this session only or replaced in the drawing
+  (`accept_missing_fonts_keep`). From then on a drawing whose missing
+  families all have an automatic stand-in opens without the dialog: the
+  automatic fonts are applied as OK would apply them, and the status line
+  says so. When any family has no automatic stand-in the dialog still
+  shows. In Options the choice of session or drawing sits under the
+  checkbox while it is on.
 - Do not show this message again turns the dialog off (its own choice
   in Options > Global > Warnings; the plain note keeps its choice).
 - OK applies the choices; Cancel, Esc or the close button changes

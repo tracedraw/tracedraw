@@ -10075,13 +10075,34 @@ impl App {
         if !matches!(self.dialog, crate::ui::dialogs::Dialog::None) {
             return;
         }
+        // Options > Global > Warnings may take the automatic font for each
+        // missing one without asking (#3725), as OK in the dialog would
+        // with its automatic choices; a family with no font to stand in
+        // for it is still asked about.
+        let mut accepted = false;
+        if self.ask_missing_fonts
+            && self.settings.warnings.accept_missing_fonts
+            && !self.missing_fonts.is_empty()
+        {
+            let mut st =
+                crate::ui::missing_fonts::MissingFontsState::new(name.clone(), 0, &self.missing_fonts);
+            if st.rows.iter().all(|r| r.automatic.is_some()) {
+                st.keep = self.settings.warnings.accept_missing_fonts_keep;
+                self.apply_font_choices(&st);
+                accepted = true;
+            }
+        }
         let w = &self.settings.warnings;
         // The windowed application asks which font draws each missing
         // one (#936), as long as Options > Global > Warnings asks for the
         // dialog itself (its own choice, not the plain note's: a "Do not
         // show again" ticked on the note before the dialog existed left
         // the dialog unseen, #1243); the note about unread objects follows.
-        if self.ask_missing_fonts && w.ask_missing_fonts && !self.missing_fonts.is_empty() {
+        if !accepted
+            && self.ask_missing_fonts
+            && w.ask_missing_fonts
+            && !self.missing_fonts.is_empty()
+        {
             self.dialog = crate::ui::dialogs::Dialog::MissingFonts(
                 crate::ui::missing_fonts::MissingFontsState::new(
                     name,
@@ -10098,7 +10119,7 @@ impl App {
         // when they were checked) opens the Warnings page when clicked,
         // so the dialog can be turned on again from where its absence is
         // noticed.
-        if self.ask_missing_fonts && !self.missing_fonts.is_empty() {
+        if !accepted && self.ask_missing_fonts && !self.missing_fonts.is_empty() {
             self.status_opens_options = Some((
                 self.status.clone(),
                 crate::ui::dialogs::OptionsPage::Warnings,
@@ -10107,7 +10128,7 @@ impl App {
         let notes = crate::ui::dialogs::OpenNotes {
             name,
             unread: if w.unread_objects { unread } else { 0 },
-            fonts: if w.missing_fonts {
+            fonts: if w.missing_fonts && !accepted {
                 self.missing_fonts.clone()
             } else {
                 Vec::new()
