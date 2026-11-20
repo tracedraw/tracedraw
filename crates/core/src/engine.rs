@@ -233,7 +233,7 @@ impl Engine {
             self.doc = before;
             return Err(e);
         }
-        self.settle_after(&before);
+        self.settle_after(&before, cmd.leaves_text_alone());
         let id = self.next_step;
         self.next_step += 1;
         let bytes = self.bytes_of(&before);
@@ -248,14 +248,21 @@ impl Engine {
     }
 
     /// After a change from `before`: linked texts, new objects' ids and
-    /// text flow brought up to date.
-    fn settle_after(&mut self, before: &Document) {
+    /// text flow brought up to date. `text_untouched` (see
+    /// [`Command::leaves_text_alone`]) skips the two text passes: they
+    /// walk every shape, which a paint command on a heavy drawing does
+    /// not deserve.
+    fn settle_after(&mut self, before: &Document, text_untouched: bool) {
         self.doc_mut();
         let uid_state = &mut self.uid_state;
         let doc = Arc::make_mut(&mut self.doc);
-        doc.sync_linked_text(before);
+        if !text_untouched {
+            doc.sync_linked_text(before);
+        }
         doc.assign_uids(uid_state);
-        doc.refresh_text_flow();
+        if !text_untouched {
+            doc.refresh_text_flow();
+        }
     }
 
     fn finish_step(&mut self) {
@@ -275,7 +282,7 @@ impl Engine {
                 return Err(e);
             }
         }
-        self.settle_after(&before);
+        self.settle_after(&before, cmds.iter().all(Command::leaves_text_alone));
         let id = self.next_step;
         self.next_step += 1;
         let bytes = self.bytes_of(&before);
@@ -310,9 +317,13 @@ impl Engine {
         }
         cmd.apply(&mut doc)?;
         self.ids_ahead = None;
-        doc.sync_linked_text(&self.doc);
+        if !cmd.leaves_text_alone() {
+            doc.sync_linked_text(&self.doc);
+        }
         doc.assign_uids(&mut self.uid_state);
-        doc.refresh_text_flow();
+        if !cmd.leaves_text_alone() {
+            doc.refresh_text_flow();
+        }
         self.doc = Arc::new(doc);
         self.revision += 1;
         self.step_revision = self.revision;
@@ -361,7 +372,9 @@ impl Engine {
             c.apply(&mut doc)?;
         }
         self.ids_ahead = None;
-        doc.sync_linked_text(&self.doc);
+        if !cmds.iter().all(Command::leaves_text_alone) {
+            doc.sync_linked_text(&self.doc);
+        }
         doc.assign_uids(&mut self.uid_state);
         self.doc = Arc::new(doc);
         self.clear_redo();
@@ -789,6 +802,74 @@ mod tests {
     use super::*;
     use crate::document::{Shape, ShapeKind};
     use crate::geometry::Rect;
+
+    /// A paint command (and a batch of paint commands) skips the text
+    /// passes: they walk every shape, and a fill cannot change their
+    /// result. A geometry command still pays for them.
+    #[test]
+    fn a_paint_command_skips_the_text_flow_walk() {
+        use crate::geometry::Affine;
+        use crate::style::Fill;
+        use crate::text_flow::refreshes_for_test;
+        let mut e = Engine::default();
+        let layer = e.document().pages[0].layers[0].id;
+        let id = e.new_shape_id();
+        e.run(&Command::AddShape {
+            layer,
+            shape: Shape::new(
+                id,
+                ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            ),
+        })
+        .unwrap();
+        refreshes_for_test(true);
+        e.run(&Command::SetFill {
+            shapes: vec![id],
+            fill: Fill::Solid(crate::Color::BLACK),
+        })
+        .unwrap();
+        assert_eq!(refreshes_for_test(true), 0, "a fill is no text change");
+        e.run_batch(
+            "Fill",
+            &[
+                Command::SetFill {
+                    shapes: vec![id],
+                    fill: Fill::None,
+                },
+                Command::SetStroke {
+                    shapes: vec![id],
+                    stroke: None,
+                },
+            ],
+        )
+        .unwrap();
+        assert_eq!(refreshes_for_test(true), 0, "a paint batch neither");
+        e.run(&Command::TransformShapes {
+            shapes: vec![id],
+            transform: Affine::translate((5.0, 0.0)),
+        })
+        .unwrap();
+        assert_eq!(refreshes_for_test(true), 1, "a move still refreshes");
+        e.run_batch(
+            "Fill and move",
+            &[
+                Command::SetFill {
+                    shapes: vec![id],
+                    fill: Fill::Solid(crate::Color::BLACK),
+                },
+                Command::TransformShapes {
+                    shapes: vec![id],
+                    transform: Affine::translate((5.0, 0.0)),
+                },
+            ],
+        )
+        .unwrap();
+        assert_eq!(refreshes_for_test(true), 1, "one mover refreshes a batch");
+    }
 
     /// #3440: the drawing a render takes is shared, not copied, and an
     /// edit, an undo and a redo leave it as it was taken.

@@ -571,6 +571,66 @@ impl Command {
         )
     }
 
+    /// True when the command cannot change any text's characters, content
+    /// links, geometry, stacking, visibility or wrap, nor the baseline
+    /// grid: the engine then skips the linked-text sync and the text-flow
+    /// walk after it, which on a heavy drawing is the difference between
+    /// a paint command and a full document pass. Anything touching a
+    /// path, a transform, the order of shapes or layers, a visibility or
+    /// wrap flag, a text or the document grid is NOT text alone and is
+    /// left out of this list on purpose.
+    pub fn leaves_text_alone(&self) -> bool {
+        matches!(
+            self,
+            Command::SetTitle { .. }
+                | Command::MovePage { .. }
+                | Command::RenamePage { .. }
+                | Command::RenameLayer { .. }
+                | Command::SetLayerLocked { .. }
+                | Command::SetLayerPrintable { .. }
+                | Command::SetPageBackground { .. }
+                | Command::SetCmykProfile { .. }
+                | Command::SetSelectionGroup { .. }
+                | Command::SetTimeTracker { .. }
+                | Command::SetSavedView { .. }
+                | Command::SetComments { .. }
+                | Command::SetObjectStyles { .. }
+                | Command::LinkObjectStyle { .. }
+                | Command::SetObjectDefaults { .. }
+                | Command::SetColorStyles { .. }
+                | Command::SetDocumentPalette { .. }
+                | Command::SetDocumentPaletteNames { .. }
+                | Command::SetInks { .. }
+                | Command::SetOpacityMask { .. }
+                | Command::SetRasterFx { .. }
+                | Command::SetFill { .. }
+                | Command::SetStroke { .. }
+                | Command::PatchStroke { .. }
+                | Command::PatchFill { .. }
+                | Command::SwapColors { .. }
+                | Command::SetOpacity { .. }
+                | Command::SetLocked { .. }
+                | Command::SetExtraPaint { .. }
+                | Command::SetOverprint { .. }
+                | Command::SetLink { .. }
+                | Command::SetFillRule { .. }
+                | Command::SetObjectData { .. }
+                | Command::SetPictureInks { .. }
+                | Command::ConvertColors { .. }
+                | Command::Recolor { .. }
+                | Command::ReplaceColors { .. }
+                | Command::SetShadow { .. }
+                | Command::SetShapeName { .. }
+                | Command::SetTocLevel { .. }
+                | Command::AddGuide { .. }
+                | Command::MoveGuide { .. }
+                | Command::DeleteGuide { .. }
+                | Command::SetGuides { .. }
+                | Command::SetMasterGuides { .. }
+                | Command::SetGuidesShown { .. }
+        )
+    }
+
     /// Short label for the History panel and the Edit menu ("Undo Move").
     pub fn label(&self) -> &'static str {
         match self {

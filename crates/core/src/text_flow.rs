@@ -430,11 +430,38 @@ fn store(shapes: &mut [Shape], flows: &mut std::vec::IntoIter<Option<FrameFlow>>
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Times the flow was worked out again in this thread: the engine's
+    /// tests check a paint command does not pay for this walk.
+    static REFRESHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn refreshes_for_test_bump() {
+    REFRESHES.with(|c| c.set(c.get() + 1));
+}
+
+/// Times [`Document::refresh_text_flow`] ran in this thread, reset by the
+/// caller (engine tests only).
+#[cfg(test)]
+pub(crate) fn refreshes_for_test(reset: bool) -> usize {
+    REFRESHES.with(|c| {
+        let n = c.get();
+        if reset {
+            c.set(0);
+        }
+        n
+    })
+}
+
 impl Document {
     /// Work out again what every paragraph frame's text wraps around and
     /// where the page's baseline grid falls for it (see the module
     /// documentation). Cheap when nothing wraps.
     pub fn refresh_text_flow(&mut self) {
+        #[cfg(test)]
+        refreshes_for_test_bump();
         let start = self.metadata.grid.baseline_start;
         let mut all: Vec<Vec<Option<FrameFlow>>> = Vec::new();
         for page in &self.pages {
