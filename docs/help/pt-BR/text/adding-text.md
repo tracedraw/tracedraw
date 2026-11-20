@@ -126,6 +126,11 @@ cabe não é desenhado, impresso nem exportado. Para fazê-lo caber:
   mantêm o tamanho;
 - escolha [[menu.text > menu.text.paragraph_text_frame > menu.text.frame_fit_text]]
   para redimensionar o texto até preencher a moldura;
+- marque **Bloco tipográfico** nas configurações de quadro do painel de texto:
+  as palavras são distribuídas entre as linhas e cada linha ganha um tamanho
+  próprio, de modo que cada linha preenche exatamente a largura do quadro e as
+  linhas juntas preenchem a altura. Redimensione o quadro e o bloco se refaz;
+  cada palavra mantém a sua fonte;
 - ligue a moldura a outra, para o texto continuar nela:
   [[menu.text.frame_link]]. [[menu.text.frame_unlink]] desfaz a ligação.
   Ou clique na pequena aba sob a borda de baixo do quadro e depois clique
@@ -155,6 +160,13 @@ verticais.
 
 1. Selecione um texto e uma curva ou forma.
 2. Escolha [[menu.text > menu.text.fit_text_to_path]].
+
+Para curvar um texto sem desenhar caminho, selecione-o e clique no botão
+**Curvar texto** da barra de propriedades do texto (ao lado do alinhamento):
+escolha círculo, arco para cima, arco para baixo ou onda, ou Reto para desfazer.
+O texto continua editável, fica no mesmo lugar e ganha os campos de caminho.
+Arraste um texto em círculo para cima de um objeto redondo e solte perto do
+meio: o texto pega o centro do objeto e corre por dentro da borda.
 
 Ou clique no contorno de um caminho com a ferramenta [[tool.text]] e digite. O
 texto em uma forma fechada fica do lado de fora dela, centralizado no alto;
