@@ -57,6 +57,51 @@ mantém todos e [[menu.object.boundary]] mantém todos.
 Áreas preenchidas lado a lado, e os resultados de Soldar, Aparar e Interseção,
 se encontram exatamente onde os contornos se cruzam, sem fresta entre eles.
 
+## Pedaços e combinação ao vivo {#pieces}
+
+Estes comandos ficam no mesmo submenu. Cada um troca os objetos selecionados
+num só passo de desfazer:
+
+- [[menu.object.break_pieces]] corta os objetos sobrepostos em todos os
+  pedaços que os contornos formam, cada um com o preenchimento do objeto de
+  cima. Mesmo embaixo do objeto de cima, as bordas dos objetos de baixo
+  continuam cortando.
+- [[menu.object.merge_colors]] mantém o que aparece de cada objeto e junta
+  os pedaços que se tocam e têm o mesmo preenchimento.
+- [[menu.object.cut_to_top]] recorta os objetos de baixo pelo contorno do
+  objeto de cima, depois remove o objeto de cima.
+- [[menu.object.piece_outlines]] transforma cada pedaço num contorno sem
+  preenchimento, na cor do pedaço.
+- [[menu.object.exclude]] faz uma só curva onde um número ímpar de objetos
+  se sobrepõe: onde dois se sobrepõem, a sobreposição é recortada.
+
+Os resultados ficam juntos num grupo, sem contorno (menos em Excluir
+sobreposições, que mantém o contorno do objeto de cima).
+
+[[menu.object.combine_live]] mantém os objetos. Ele os agrupa e desenha o
+grupo como uma curva combinada, com a pintura do objeto de cima. Na entrada
+[[effect.combine]] do painel Efeitos, escolha [[menu.object.weld]],
+[[menu.object.back_minus_front]] (com a pintura do objeto de baixo),
+[[menu.object.intersect]] ou [[menu.object.exclude]]. Mover ou editar um
+objeto dentro do grupo atualiza a curva, e Converter em curvas a torna
+definitiva.
+
+
+## Cortar por um objeto, em grade, e limpar {#cutting}
+
+- [[menu.object.cut_below]] usa o único objeto selecionado como faca. Cada
+  objeto embaixo dele na página que ele cobre é cortado pelo contorno nas
+  partes de dentro e de fora. Cada parte mantém a pintura e o lugar do
+  objeto. A faca é removida. Grupos, textos e imagens ficam como estão.
+- [[menu.object.cut_grid]] transforma cada objeto selecionado em linhas e
+  colunas de caixas que preenchem os limites dele, com o espaço que você
+  definir entre elas, na pintura e no lugar do objeto.
+- [[menu.object.remove_strays]] remove pontos isolados, curvas sem
+  preenchimento, sem contorno e sem efeito, e textos artísticos vazios das
+  camadas destravadas da página. A barra de status diz quantos saíram.
+
+Cada um é um só passo de desfazer.
+
 ## O painel Modelagem {#shaping-docker}
 
 Abra o painel [[docker.shaping]] com

@@ -182,6 +182,19 @@ full, row-by-row status.
 - Draw Behind: a button beside Draw Inside on the drawing tools' property bar; what they draw goes behind the selected objects of the layer, or to its back with nothing selected (off at first).
 - Shape Recognition: Scribble erases (property bar, off at first); a scribble back and forth over objects deletes them.
 - Properties docker: arrows beside each further fill and outline paint it one place earlier or later; the second trades places with the first.
+- Envelope: mesh envelope (Envelope panel, Columns and Rows, Add Mesh; drag the grid points with the Envelope tool) and Object > Copy Effect > Envelope from Top Object.
+- Object > Combine Shapes: Break into Pieces, Merge Same Colors, Cut to Top Object, Piece Outlines, Exclude Overlaps, and Combine Live (a group drawn as one combined curve, objects kept). The live outline offset is now named Grow Outline.
+- Combine Shapes: Cut Objects Below, Cut into Grid and Remove Strays.
+- Layer effects: rough edge, jitter nodes, sketch fill, shape frame, trim marks and soft edge.
+- Gradient fill: Dither against banding.
+- Gradient fill: a colour points type, each colour at a free point in the object blended by distance; points dragged, added with a double click, coloured from the palette and deleted on the canvas.
+- Blend: groups blended object by object in their own colours, and a round handle on the Blend tool's line that bends it into a curve the steps follow.
+- Text: Curve Text on the text bar (circle, arch, bowl, wave, no path to draw); a circle text dropped on a round object fits inside its edge.
+- Trace: Clean up a pencil sketch (hatching made solid, construction lines and specks removed, edges smoothed, traced black on white).
+- Paragraph text: Type block (words shared out between lines, each line its own size filling the frame width, set anew on resize).
+- Curve tools: Curvature Pen, in the curve group: a smooth curve through the points clicked, Alt+click for a corner.
+- Layer effects: Sketch fill gets Round turns, Past the edge, Spacing variation and Width variation.
+- Envelope: the mesh envelope bends pictures too, alone or inside groups and clip frames.
 
 ## 0.49.0 (2026-11-19)
 

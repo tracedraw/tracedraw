@@ -40,6 +40,7 @@ pub mod patch;
 pub mod picture_inks;
 mod press;
 pub mod procedural;
+pub mod rough;
 pub mod recolor;
 pub mod scale_grid;
 pub mod shadow;
@@ -63,7 +64,7 @@ pub use document::{
     FollowBlack, FontVariation, Layer, LeadingUnit, LineStyle, MasterScope, Metadata, Numbering,
     ObjectDefaults, ObjectStyle, Page, ParagraphStyle, PathTextOrientation, PathTextVertical,
     QrCode, QrKind, Shadow, Shape, ShapeKind, StyleParts, Symbol, TabKind, TabStop, Table,
-    TableCell, TextAlign, TextDirection, TextOnPath, TextPosition, TextSpan, TimeTracker,
+    TableCell, TextAlign, TextDirection, TextOnPath, CurvePreset, TextPosition, TextSpan, TimeTracker,
     TrackedTask, VerticalAlign, VerticalColumns, DEFAULT_TAB_STEP,
 };
 pub use engine::Engine;
