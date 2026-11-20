@@ -441,7 +441,13 @@ fn tools(app: &mut App, ui: &mut Ui, dock: crate::ui::bars::Dock, fitted: Option
             ui.add_space(2.0);
         }
     }
-    commands(app, ui, side, horizontal);
+    commands(
+        app,
+        ui,
+        crate::ui::bar_items::ItemBar::Toolbox,
+        side,
+        horizontal,
+    );
     quick_customize(app, ui, horizontal);
 }
 
@@ -450,10 +456,17 @@ fn tools(app: &mut App, ui: &mut Ui, dock: crate::ui::bars::Dock, fitted: Option
 /// icon for a tool, the start of its name when it has no picture); a
 /// click runs it as its menu item would. In customize mode a button
 /// moves or leaves as on the toolbars, and the whole toolbox takes a
-/// command dragged from the Commands page.
-fn commands(app: &mut App, ui: &mut Ui, side: f32, horizontal: bool) {
-    use crate::ui::bar_items::{self, ItemBar};
-    let list = bar_items::items(app, ItemBar::Toolbox);
+/// command dragged from the Commands page. A toolbar the user made
+/// docked at a side draws its buttons the same way, as `bar` (#3723).
+pub(crate) fn commands(
+    app: &mut App,
+    ui: &mut Ui,
+    bar: crate::ui::bar_items::ItemBar,
+    side: f32,
+    horizontal: bool,
+) {
+    use crate::ui::bar_items;
+    let list = bar_items::items(app, bar);
     let custom = bar_items::customizing(app, ui.ctx());
     let size = Vec2::new(button_width(app), side);
     let icon = Tokens::tool_icon().min(side - 4.0).max(12.0);
@@ -532,7 +545,7 @@ fn commands(app: &mut App, ui: &mut Ui, side: f32, horizontal: bool) {
             if resp.drag_started() && !crate::ui::overflow::finger_sliding(ui.ctx()) {
                 app.bar_item_drag = Some(bar_items::ItemDrag {
                     item: id.clone(),
-                    from: Some((ItemBar::Toolbox, i)),
+                    from: Some((bar, i)),
                 });
             }
         } else if resp.clicked() {
@@ -551,7 +564,7 @@ fn commands(app: &mut App, ui: &mut Ui, side: f32, horizontal: bool) {
     // The whole toolbox takes a dropped command (after the tools when it
     // has none yet).
     app.bar_slots.push(bar_items::Slot {
-        bar: ItemBar::Toolbox,
+        bar,
         rect: ui.min_rect(),
         items: rects,
         vertical: !horizontal,
@@ -981,10 +994,23 @@ fn quick_customize_button(app: &mut App, ui: &mut Ui) {
                 app.settings.show_outline_flyout = false;
                 ui.close();
             }
+            // Commands to drag onto the toolbox, or onto a toolbar of
+            // one's own docked beside it (#3723).
+            if ui.button(tr("bars.customize_options")).clicked() {
+                open_commands_page(app);
+                ui.close();
+            }
         },
     )
     .response
     .rich_tip(tr("toolbox.quick_customize"));
+}
+
+/// The "+" menu > Customize...: Options > Customization > Commands on
+/// its General tab, the list whose commands drag onto the bars.
+pub(crate) fn open_commands_page(app: &mut App) {
+    app.shortcut_editor.keys_tab = false;
+    app.open_options_page(crate::ui::dialogs::OptionsPage::Commands);
 }
 
 fn set_group_visible(app: &mut App, gi: usize, on: bool) {

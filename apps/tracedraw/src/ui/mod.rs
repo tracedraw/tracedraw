@@ -737,6 +737,8 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
             palette_bars::mark_bar(app, dock, r);
         }
     }
+    // Toolbars the user made docked at a side: columns inside the toolbox.
+    bars::docked_columns(app, ui);
     bars_at(app, ui, COLUMNS, BarSlot::AfterToolbox);
 
     // The docker columns: the default one at the right (right-to-left

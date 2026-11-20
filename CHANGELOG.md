@@ -186,6 +186,7 @@ full, row-by-row status.
 - Draw Behind: a button beside Draw Inside on the drawing tools' property bar; what they draw goes behind the selected objects of the layer, or to its back with nothing selected (off at first).
 - Shape Recognition: Scribble erases (property bar, off at first); a scribble back and forth over objects deletes them.
 - Properties docker: arrows beside each further fill and outline paint it one place earlier or later; the second trades places with the first.
+- Toolbars you make dock at the left or the right too, a column of buttons beside the toolbox (drag one to a side, or its menu > Left / Right); the toolbox's "+" menu ends with Customize..., which opens Options > Customization > Commands, whose commands drag onto the toolbox or such a column (#3723).
 
 ## 0.49.0 (2026-11-19)
 
