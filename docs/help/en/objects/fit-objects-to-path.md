@@ -133,6 +133,11 @@ the ring under the path to turn all the objects (Ctrl turns in steps of
 15 degrees). Turn [[docker.fit_to_path_live]] off to leave the objects
 where they are.
 
+An Artistic Media stroke in a `.cdr` file, whose objects are repeated
+along a curve and linked to it, opens this way too: the curve keeps the
+objects on it, at the spacing and turn the file had, so editing the curve
+places them again.
+
 ## Tips and limits {#tips}
 
 - On a closed shape the objects go all the way round, the closing side

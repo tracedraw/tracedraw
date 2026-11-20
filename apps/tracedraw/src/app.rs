@@ -9127,7 +9127,11 @@ impl App {
                 .map(|d| (d, crate::i18n::tr("status.opened")))
         };
         match result {
-            Ok((doc, msg)) => {
+            Ok((mut doc, msg)) => {
+                // Artistic Media strokes of a `.cdr` file open live (#3680).
+                if ext == "cdr" {
+                    crate::fit_live::adopt_imported_strokes(&mut doc);
+                }
                 self.open_document(doc, None);
                 if ext == "pmd" {
                     self.open_limits = Some(crate::i18n::tr("pmd.limits"));
