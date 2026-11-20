@@ -7,6 +7,7 @@ full, row-by-row status.
 ## Unreleased
 
 - Workspace files carry every other preference too, such as the color mode of new drawings, the document defaults, units and tool settings, as a new part to check on export and import; files, window and computer-specific settings stay out (#3721).
+- Layer effects: a live Halftone effect turns an object, with its other effects, into round, square, diamond or line dots in RGB light, CMYK ink or one colour; the inner shadow gains Spread, which keeps the shadow solid over part of its blur before it fades.
 - Dragging a shadow or an object no longer makes the drawing window flicker in bands (#3562).
 - Insert Formula: Hindi and other scripts are shaped as text, vowel signs with their letters and spaces kept (#3572).
 - .cdr: paragraph frames of several columns from version 27 files keep their columns (#3506).

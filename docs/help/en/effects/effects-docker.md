@@ -51,6 +51,29 @@ look with one click: chrome, liquid metal, gold, liquid glass (which blurs
 what lies beneath it) and clear glass. Each picture shows the selected object
 wearing the look; one undo removes it. Your own saved presets come after them.
 
+## Halftone
+
+In the Layer effects list, **Halftone** turns the selected object, as it
+looks with its other effects (an inner shadow for a rounded tube look, a
+glow, an overlay), into a screen of dots, and stays live: change the object
+or its other effects and the dots follow.
+
+- **Dot**: round, square, diamond or line.
+- **Color mode**: RGB light makes red, green and blue light dots, as large
+  as each color channel, for a dotted look on a dark background; CMYK ink
+  prints cyan, magenta, yellow and black dots on white; One color draws dots
+  of the color beside it, as large as the darkness.
+- **Dot spacing**, **Dot scale** (at 100 % a full tone covers its cell),
+  **Softness** of the dot edges and **Angle** of the screen.
+- **Center X** and **Center Y** place a dot across the object's width and
+  height.
+- **Cut by the object's edge**: on, the dots end at the edge; off, whole
+  dots, smaller where the object covers less of them.
+
+An inner shadow in the Layer effects list also has **Spread**: it keeps
+the shadow solid over that share of its blur before it fades, for a
+deeper, rounder edge.
+
 ## Other effect commands {#commands}
 
 - [[menu.effects > menu.effects.flatten]] turns the effects of the selected
