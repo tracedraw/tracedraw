@@ -661,10 +661,9 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
     let palette_edge = palette_spot == bars::PaletteSpot::Edge;
     let show_palette = app.settings.palette.show_palette;
     // A document palette taken out into a bar of its own shows there, not
-    // in the row as well.
-    let show_doc_palette = show_palette
-        && app.settings.palette.show_document
-        && !app.extra_palettes.iter().any(|r| r.document);
+    // in the row as well. Hiding the default palette leaves it shown.
+    let show_doc_palette =
+        app.settings.palette.show_document && !app.extra_palettes.iter().any(|r| r.document);
     // Palette bars lie at the places `BarSlot` names along each side,
     // from the edge inwards; each bar drawn at a side is noted for the
     // drops of a dragged palette bar beside it (`palette_bars::side_target`).

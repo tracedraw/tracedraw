@@ -721,6 +721,7 @@ impl App {
     pub fn took_sampled_color(&mut self, c: Color, shift: bool) {
         self.eyedropper_color = Some(c);
         self.eyedropper_apply = true;
+        crate::ui::color_docker::take_sampled_color(self, c);
         self.status = crate::i18n::trf(
             "status.sampled_color",
             &[("c", &crate::app::color_description(c))],
@@ -835,6 +836,23 @@ mod tests {
         app.eyedropper_click(Point::new(45.0, 5.0), false, false, false);
         let sb = app.doc().find_shape(b).expect("b");
         assert_eq!(sb.fill, Fill::Solid(Color::rgb8(r, g, b8)));
+    }
+
+    /// A colour the Color Eyedropper samples shows in the Colour panel
+    /// as its new colour too, ready to apply or tweak; the panel kept
+    /// the colour it had before.
+    #[test]
+    fn a_sampled_colour_becomes_the_colour_panels_new_colour() {
+        let mut app = App::headless();
+        let a = rect(&mut app, Rect::new(0.0, 0.0, 20.0, 20.0));
+        app.run(Command::SetFill {
+            shapes: vec![a],
+            fill: Fill::Solid(Color::rgb8(30, 120, 210)),
+        });
+        app.select(Vec::new());
+        app.color_model = 0;
+        app.eyedropper_click(Point::new(10.0, 10.0), false, false, false);
+        assert_eq!(app.mixer_color.to_rgb8(), [30, 120, 210]);
     }
 
     /// #3499: with Treat All Objects as Filled, a click inside an

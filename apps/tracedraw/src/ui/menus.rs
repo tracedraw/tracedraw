@@ -5082,7 +5082,13 @@ fn window_menu(app: &mut App, ui: &mut Ui) {
             }
         }
         let doc_open = app.extra_palettes.iter().any(|r| r.document);
-        let doc_name = app.document_palette_name();
+        // The entry above shows the document palette in the default
+        // palette's row under the same name; this one is its bar of its
+        // own, so an unrenamed palette is not listed twice alike.
+        let mut doc_name = app.document_palette_name();
+        if doc_name == tr("palette.show_document") {
+            doc_name = tr("palette.document_bar");
+        }
         if check_label(ui, &doc_name, "palette.document_bar", doc_open) {
             match app.extra_palettes.iter().position(|r| r.document) {
                 Some(k) => crate::ui::palette_bars::close_bar(app, k),
