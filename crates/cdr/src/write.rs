@@ -2964,11 +2964,111 @@ fn stlt(v: Ver, uses: StyleUses) -> Vec<u8> {
     t.done()
 }
 
+/// The ink bytes (C, M, Y, K for each pixel, rows from the top) a CMYK
+/// picture is written with: the inks it was read with when they still
+/// fit its pixels (`Shape::picture_inks`, #1659), else its pixels taken to
+/// CMYK through the colour engine (the drawing's profiles, or the press
+/// model), as Convert Colors took them (#3699).
+fn cmyk_inks(s: &Shape, png: &[u8]) -> Option<Vec<u8>> {
+    use tracedraw_core::picture_inks::PictureInk;
+    let pm = tiny_skia::Pixmap::decode_png(png).ok()?;
+    let (w, h) = (pm.width() as usize, pm.height() as usize);
+    let n = w * h;
+    let kept = s
+        .picture_inks
+        .as_ref()
+        .filter(|i| i.fits(png) && i.inks == (0..4).map(PictureInk::Process).collect::<Vec<_>>());
+    // The planes are one grey picture, the four one under the other.
+    if let Some(planes) = kept.and_then(|i| tiny_skia::Pixmap::decode_png(&i.png).ok()) {
+        if planes.width() as usize == w && planes.height() as usize == h * 4 {
+            let g = planes.pixels();
+            let mut out = vec![0u8; n * 4];
+            for (at, px) in out.chunks_exact_mut(4).enumerate() {
+                for (ch, v) in px.iter_mut().enumerate() {
+                    *v = g.get(ch * n + at).map(|p| p.red()).unwrap_or(0);
+                }
+            }
+            return Some(out);
+        }
+    }
+    let grid = cmyk_grid();
+    let mut out = Vec::with_capacity(n * 4);
+    for p in pm.pixels() {
+        let p = p.demultiply();
+        out.extend_from_slice(&grid.ink([p.red(), p.green(), p.blue()]));
+    }
+    Some(out)
+}
+
+/// Grid points per channel of [`CmykGrid`].
+const CMYK_GRID: usize = 17;
+
+/// RGB to CMYK through the colour engine, sampled on a grid of
+/// `CMYK_GRID` points per channel and read by trilinear interpolation, so
+/// a large photo takes milliseconds.
+struct CmykGrid(Vec<[f32; 4]>);
+
+fn cmyk_grid() -> CmykGrid {
+    let n = CMYK_GRID;
+    let step = 255.0 / (n - 1) as f32;
+    let mut g = Vec::with_capacity(n * n * n);
+    for r in 0..n {
+        for gr in 0..n {
+            for b in 0..n {
+                let c = Color::rgb8(
+                    (r as f32 * step).round() as u8,
+                    (gr as f32 * step).round() as u8,
+                    (b as f32 * step).round() as u8,
+                )
+                .convert_to("CMYK");
+                g.push(match c {
+                    Color::Cmyk { c, m, y, k } => [c, m, y, k],
+                    _ => [0.0, 0.0, 0.0, 1.0],
+                });
+            }
+        }
+    }
+    CmykGrid(g)
+}
+
+impl CmykGrid {
+    /// The ink bytes of an RGB pixel, 0 for no ink and 255 for full.
+    fn ink(&self, rgb: [u8; 3]) -> [u8; 4] {
+        let n = CMYK_GRID;
+        let step = 255.0 / (n - 1) as f32;
+        let pos = |v: u8| {
+            let x = v as f32 / step;
+            let i = (x.floor() as usize).min(n - 2);
+            (i, x - i as f32)
+        };
+        let (ri, rf) = pos(rgb[0]);
+        let (gi, gf) = pos(rgb[1]);
+        let (bi, bf) = pos(rgb[2]);
+        let at = |r: usize, g: usize, b: usize| {
+            self.0.get((r * n + g) * n + b).copied().unwrap_or([0.0; 4])
+        };
+        let mut out = [0u8; 4];
+        for (ch, o) in out.iter_mut().enumerate() {
+            let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+            let c = |r, g, b| at(r, g, b)[ch];
+            let x00 = lerp(c(ri, gi, bi), c(ri + 1, gi, bi), rf);
+            let x10 = lerp(c(ri, gi + 1, bi), c(ri + 1, gi + 1, bi), rf);
+            let x01 = lerp(c(ri, gi, bi + 1), c(ri + 1, gi, bi + 1), rf);
+            let x11 = lerp(c(ri, gi + 1, bi + 1), c(ri + 1, gi + 1, bi + 1), rf);
+            let v = lerp(lerp(x00, x10, gf), lerp(x01, x11, gf), bf);
+            *o = (v * 255.0).round().clamp(0.0, 255.0) as u8;
+        }
+        out
+    }
+}
+
 /// A picture written as a `bmp ` record: its bytes, the box size in mm
 /// (as bits) it was written at, and the record's id and pixel size.
 struct WrittenImage {
     png: SharedBytes,
     size_mm: (u64, u64),
+    /// Written as a CMYK image (colour model 3).
+    cmyk: bool,
     record: (u32, u32, u32),
 }
 
@@ -2981,13 +3081,30 @@ struct WrittenImage {
 /// 8 bits, stride, bytes, 64 at 62) and one byte per pixel, 255 opaque,
 /// rows bottom-up padded to 4 bytes.
 /// Returns the record and the image's width and height in pixels.
+#[cfg(test)]
 pub(crate) fn bmp_record(id: u32, png: &[u8], size_mm: (f64, f64)) -> Option<(Vec<u8>, u32, u32)> {
+    bmp_record_with(id, png, size_mm, None)
+}
+
+/// [`bmp_record`], or with `inks` (C, M, Y and K bytes for each pixel,
+/// rows from the top, 0 for no ink) a CMYK image: colour model 3, 32
+/// bits, the four ink bytes of each pixel in that order, as the reading
+/// table has the CMYK images of files (#3699). The transparency block is
+/// the same.
+pub(crate) fn bmp_record_with(
+    id: u32,
+    png: &[u8],
+    size_mm: (f64, f64),
+    inks: Option<&[u8]>,
+) -> Option<(Vec<u8>, u32, u32)> {
     let pm = tiny_skia::Pixmap::decode_png(png).ok()?;
     let (w, h) = (pm.width(), pm.height());
     if w == 0 || h == 0 {
         return None;
     }
-    let stride = (w as usize * 24).div_ceil(32) * 4;
+    let inks = inks.filter(|i| i.len() == w as usize * h as usize * 4);
+    let (model, bpp) = if inks.is_some() { (3, 32) } else { (1, 24) };
+    let stride = (w as usize * bpp as usize).div_ceil(32) * 4;
     let mut pixels = vec![0u8; stride * h as usize];
     let src = pm.pixels();
     let mask_stride = (w as usize).div_ceil(4) * 4;
@@ -3010,8 +3127,21 @@ pub(crate) fn bmp_record(id: u32, png: &[u8], size_mm: (f64, f64)) -> Option<(Ve
             if let Some(m) = mask.get_mut(mask_at + x) {
                 *m = p.alpha();
             }
-            if let Some(px) = pixels.get_mut(at + x * 3..at + x * 3 + 3) {
-                px.copy_from_slice(&[p.blue(), p.green(), p.red()]);
+            match inks {
+                Some(ink) => {
+                    let from = (row * w as usize + x) * 4;
+                    if let (Some(px), Some(i)) = (
+                        pixels.get_mut(at + x * 4..at + x * 4 + 4),
+                        ink.get(from..from + 4),
+                    ) {
+                        px.copy_from_slice(i);
+                    }
+                }
+                None => {
+                    if let Some(px) = pixels.get_mut(at + x * 3..at + x * 3 + 3) {
+                        px.copy_from_slice(&[p.blue(), p.green(), p.red()]);
+                    }
+                }
             }
         }
     }
@@ -3043,12 +3173,12 @@ pub(crate) fn bmp_record(id: u32, png: &[u8], size_mm: (f64, f64)) -> Option<(Ve
         .u32((image_len - 40) as u32)
         .u32(0)
         .u32((image_len - pixels.len() - 40) as u32);
-    b.u32(1)
+    b.u32(model)
         .u32(1)
         .u32(w)
         .u32(h)
         .u32(1)
-        .u32(24)
+        .u32(bpp)
         .u32(stride as u32)
         .u32(pixels.len() as u32);
     b.u32(0)
@@ -4268,22 +4398,34 @@ impl<'a> Writer<'a> {
     /// record, as files of the program that reads them share one image
     /// among its copies; writing it once per object made a 17 MB file
     /// with repeated pictures hundreds of MB (#2923).
-    fn bitmap_id(&mut self, png: &SharedBytes, size_mm: (f64, f64)) -> Option<(u32, u32, u32)> {
+    ///
+    /// A CMYK picture (`Shape::cmyk_bitmap`) is written as a CMYK image
+    /// with its inks (`cmyk_inks`), so it opens as CMYK; it went out as
+    /// RGB pixels and opened as RGB (#3699).
+    fn bitmap_id(
+        &mut self,
+        s: &Shape,
+        png: &SharedBytes,
+        size_mm: (f64, f64),
+    ) -> Option<(u32, u32, u32)> {
         let key = (size_mm.0.to_bits(), size_mm.1.to_bits());
+        let cmyk = s.cmyk_bitmap;
         if let Some(found) = self
             .bitmap_images
             .iter()
-            .find(|b| b.size_mm == key && b.png == *png)
+            .find(|b| b.size_mm == key && b.cmyk == cmyk && b.png == *png)
         {
             return Some(found.record);
         }
         let id = self.next_bitmap;
-        let (rec, w, h) = bmp_record(id, png, size_mm)?;
+        let inks = if cmyk { cmyk_inks(s, png) } else { None };
+        let (rec, w, h) = bmp_record_with(id, png, size_mm, inks.as_deref())?;
         self.next_bitmap += 1;
         self.bitmaps.push(rec);
         self.bitmap_images.push(WrittenImage {
             png: png.clone(),
             size_mm: key,
+            cmyk,
             record: (id, w, h),
         });
         Some((id, w, h))
@@ -5377,7 +5519,8 @@ impl<'a> Writer<'a> {
         // image's own (#1222). The resolution was taken from the size on
         // the page, so a scaled picture's box and image disagreed, and the
         // pixel size from the shape, which need not match its picture.
-        let Some((image, width_px, height_px)) = self.bitmap_id(png, (rect.width(), rect.height()))
+        let Some((image, width_px, height_px)) =
+            self.bitmap_id(s, png, (rect.width(), rect.height()))
         else {
             return Placed {
                 nodes: Vec::new(),
@@ -5416,8 +5559,10 @@ impl<'a> Writer<'a> {
         let mut c = Buf::default();
         corners(&mut c);
         corners(&mut c);
+        // A CMYK image has 32 bits per pixel (#3699).
+        let bits = if s.cmyk_bitmap { 32 } else { 24 };
         c.u16(2)
-            .u16(24)
+            .u16(bits)
             .u32(width_px)
             .u32(height_px)
             .u32(number)

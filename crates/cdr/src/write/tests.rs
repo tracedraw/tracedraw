@@ -10468,3 +10468,92 @@ fn palette_inks_and_styles_open_again() {
     let (back, _) = crate::open_bytes(&document_to_cdr_version(&doc, 13), "back").expect("reads");
     assert!(back.palette.is_empty() && back.object_styles.is_empty());
 }
+
+/// A picture in the CMYK colour mode (Convert Colors to CMYK, or a CMYK
+/// image read from a file) is written as a CMYK image, colour model 3 with
+/// 32 bits, so it opens as CMYK again; it went out as RGB pixels and
+/// opened in RGB (#3699). The inks it was read with are written as they
+/// are while they fit its pixels; without them its pixels are taken to
+/// CMYK, white to no ink.
+#[test]
+fn a_cmyk_picture_is_written_as_a_cmyk_image() {
+    let pixmap = |px: &[[u8; 3]], w: u32, h: u32| {
+        let mut pm = tiny_skia::Pixmap::new(w, h).expect("pixmap");
+        for (p, c) in pm.pixels_mut().iter_mut().zip(px) {
+            *p = tiny_skia::ColorU8::from_rgba(c[0], c[1], c[2], 255).premultiply();
+        }
+        pm.encode_png().expect("png")
+    };
+    // Cyan, then half black; the planes one under the other.
+    let png = pixmap(&[[0, 255, 255], [127, 127, 127]], 2, 1);
+    let want = [255u8, 0, 0, 0, 0, 0, 0, 128];
+    let grey: Vec<[u8; 3]> = want.iter().map(|&v| [v, v, v]).collect();
+    let planes = pixmap(&grey, 2, 4);
+    let picture = |inks: bool| {
+        let mut ids = tracedraw_core::id::IdSource::default();
+        let mut bm = Shape::new(
+            ids.shape(),
+            ShapeKind::Bitmap {
+                rect: Rect::new(0.0, 0.0, 20.0, 10.0),
+                width_px: 2,
+                height_px: 1,
+                png: png.clone().into(),
+                fx: None,
+            },
+        );
+        bm.fill = Fill::None;
+        bm.stroke = None;
+        bm.cmyk_bitmap = true;
+        if inks {
+            bm.picture_inks = Some(Box::new(tracedraw_core::picture_inks::PictureInks::cmyk(
+                &png,
+                planes.clone().into(),
+            )));
+        }
+        bm
+    };
+    for v in versions() {
+        let bytes = document_to_cdr_version(&doc_with(vec![picture(true)]), v);
+        let b = bitmap_coords(&bytes);
+        let i = |at: usize| i32::from_le_bytes(b[at..at + 4].try_into().expect("4 bytes"));
+        assert_eq!(i(32), 32 << 16 | 2, "{v}: 2 and 32 bits");
+        assert!(
+            crate::check::check_bytes(&bytes)
+                .expect("checks")
+                .is_empty(),
+            "{v}: {:?}",
+            crate::check::check_bytes(&bytes)
+        );
+        let (back, rep) = crate::open_bytes(&bytes, "back").expect("reads back");
+        let s = &back.pages[0].layers[0].shapes[0];
+        assert!(s.cmyk_bitmap, "{v}: {:?}", rep.warnings);
+        let inks = s.picture_inks.as_ref().expect("inks read");
+        let got: Vec<u8> = tiny_skia::Pixmap::decode_png(&inks.png)
+            .expect("planes")
+            .pixels()
+            .iter()
+            .map(|p| p.red())
+            .collect();
+        assert_eq!(got, want, "{v}");
+        // Without inks of its own the pixels are taken to CMYK.
+        let plain = document_to_cdr_version(&doc_with(vec![picture(false)]), v);
+        let (back, _) = crate::open_bytes(&plain, "back").expect("reads back");
+        let s = &back.pages[0].layers[0].shapes[0];
+        assert!(s.cmyk_bitmap, "{v}");
+        let inks = s.picture_inks.as_ref().expect("inks read");
+        let got: Vec<u8> = tiny_skia::Pixmap::decode_png(&inks.png)
+            .expect("planes")
+            .pixels()
+            .iter()
+            .map(|p| p.red())
+            .collect();
+        // Cyan is mostly cyan ink, grey has black in it.
+        assert!(got[0] > 128 && got[2] < 128 && got[4] < 128, "{v}: {got:?}");
+        assert!(got[7] > 32, "{v}: {got:?}");
+    }
+    // An RGB picture stays an RGB image of 24 bits.
+    let mut rgb = picture(false);
+    rgb.cmyk_bitmap = false;
+    let b = bitmap_coords(&document_to_cdr_version(&doc_with(vec![rgb]), 27));
+    assert_eq!(&b[32..36], &(24u32 << 16 | 2).to_le_bytes());
+}
