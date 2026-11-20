@@ -104,8 +104,36 @@ keeps its settings), Flatten; Copy to Layer and Cut to Layer (the
 selected pixels, soft edges kept, on a new layer above), Paste as Layer
 (the picture on the clipboard, its top left at the selection's).
 
-Crop and flip reach every layer. Finish puts the layers together into
+Clip to layer below: the layer shows only where the nearest layer
+beneath it that is not clipped has pixels (its coverage after its mask).
+
+Layer mask: Add Mask gives the layer in use a mask shaped like the
+selection (all shown with none); while Paint Mask is on, the brush hides
+(paints 0) and the eraser shows again (255), with the brush's size,
+hardness, opacity and flow, inside the selection, and the mask shows in
+red where it hides. Invert Mask, Apply Mask (multiplies the pixels'
+alpha by the mask and drops it) and Delete Mask. Merge Down applies the
+top layer's mask and clip first.
+
+Crop and flip reach every layer and mask. Finish puts the layers together into
 the picture's pixels, as they were seen; the drawing keeps no layers.
+
+## More selections
+
+- Quick Mask (Q): the selection painted with the brush (selects, 255)
+  and the eraser (takes out, 0), shown in red where it leaves out; the
+  other painting tools say only the brush and the eraser paint a mask.
+  Turned on with no selection, nothing is selected; turned off with
+  nothing painted, there is no selection.
+- By tone: Shadows (full below 25 % lightness, gone at 50 %),
+  Midtones (full within 15 % of the middle, gone at 35 %), Highlights
+  (from 50 %, full at 75 %), smoothstep between.
+- By channel: red, green, blue or alpha of the layer in use as the
+  selection.
+- Border: `grow(r) - grow(-r)` with r the Feather value. Smooth: feather
+  by r, then cut at half.
+- Save Selection keeps it for the editing session; Load puts it back
+  (only while the picture keeps its size).
 
 ## Undo
 
@@ -155,6 +183,11 @@ All keep the size and alpha of the picture.
   `merge_down_flatten_delete_and_order`,
   `copy_and_cut_to_layer_and_move_a_layer`,
   `crop_and_flip_reach_every_layer`.
+- Masks: `a_layer_mask_hides_without_erasing_and_applies`,
+  `a_clipped_layer_shows_only_over_the_layer_beneath`,
+  `a_mask_stroke_moves_towards_its_value_up_to_the_opacity`,
+  `tone_channel_border_and_smooth_selections`,
+  `quick_mask_turns_painting_into_a_selection`.
 - Clone, heal, dodge, burn, sponge, blur, sharpen, smudge, red eye,
   bucket, gradient, content fill, feather, grow and history each have a
   test in `pixel_edit::tests`; the light effects in `fx::light::tests`.
