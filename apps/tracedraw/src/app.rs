@@ -1397,6 +1397,8 @@ pub struct App {
     pub join_pending: Option<crate::join_tool::JoinEnd>,
     /// The formula settings used last, for the next new formula (#2183).
     pub last_formula: Option<crate::formula::FormulaSpec>,
+    /// The settings of the chart inserted last.
+    pub last_chart: Option<crate::chart::ChartSpec>,
     pub blend_steps: u32,
     /// The Blend docker's options for the next blend (and the shown one).
     pub blend_options: tracedraw_core::live::BlendOptions,
@@ -3268,6 +3270,7 @@ impl App {
             dimension_points: Vec::new(),
             join_pending: None,
             last_formula: None,
+            last_chart: None,
             blend_steps: 20,
             blend_options: Default::default(),
             blend_spacing_mm: 5.0,

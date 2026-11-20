@@ -42,6 +42,8 @@ objects/index
   objects/symmetry
   objects/focus-mode
   objects/symbols
+  objects/symbol-copies
+  objects/weave
   objects/object-data
   objects/links
   objects/stretch-zones
@@ -53,6 +55,7 @@ objects/index
   objects/tables
   objects/barcodes
   objects/formulas
+  objects/charts
   objects/tracecut
   objects/shape-generator
 color/index
@@ -73,6 +76,7 @@ effects/index
   effects/contour
   effects/distort
   effects/envelope
+  effects/bend-with-pins
   effects/mockup
   effects/extrude
   effects/block-shadow

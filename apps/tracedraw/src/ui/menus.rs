@@ -3548,6 +3548,11 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         if item(ui, "menu.object.insert_formula", "", true) {
             app.open_formula_dialog();
         }
+        // A chart from a table typed or pasted; with one selected, the
+        // same item edits it.
+        if item(ui, "menu.object.insert_chart", "", true) {
+            app.open_chart_dialog();
+        }
         if item(ui, "menu.object.insert_qr", "", true) {
             app.insert_qr_code();
             // Its settings are edited in Properties.
@@ -3721,6 +3726,16 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
             .any(|s| matches!(s.kind, ShapeKind::SymbolInstance { .. }));
         if item(ui, "menu.object.symbol_new", "", has) {
             app.create_symbol_from_selection();
+        }
+        // The selected object and its copies all over the drawing become
+        // instances of one symbol: edit one, they all change.
+        if item(
+            ui,
+            "menu.object.symbol_from_copies",
+            "",
+            app.can_symbol_from_copies(),
+        ) {
+            app.symbol_from_copies();
         }
         if item(ui, "menu.object.symbol_insert", "", has_symbols) {
             let last = app.doc().symbols.len().saturating_sub(1);
@@ -3931,6 +3946,10 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         }
         if item(ui, "menu.object.reverse_order", "", many) {
             app.reverse_order();
+        }
+        // Crossing objects passing over and under in turn.
+        if item(ui, "menu.object.weave", "", many && app.can_weave()) {
+            app.weave();
         }
     });
     sub(ui, "menu.object.group", |ui| {
@@ -4148,6 +4167,10 @@ fn effects_menu(app: &mut App, ui: &mut Ui) {
             .is_some_and(|s| app.selection.len() == 1 && matches!(s.kind, ShapeKind::Group { .. }));
     if item(ui, "menu.effects.merge_shapes", "", can_merge) {
         app.merge_shapes();
+    }
+    // Pins stuck in the selection and dragged bend it.
+    if item(ui, "menu.effects.bend_pins", "", has && !has_bitmap) {
+        app.open_pins_dialog();
     }
     sep(ui);
     // Bitmap effect groups.
