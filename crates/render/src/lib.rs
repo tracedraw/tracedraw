@@ -6,6 +6,7 @@
 #![allow(clippy::field_reassign_with_default)]
 pub mod accel;
 pub mod bitmap_effects;
+pub mod halftone;
 mod image_cache;
 
 use tiny_skia::{
@@ -216,6 +217,11 @@ struct Flags {
     /// Drawing the warped outline of a text: filled with the nonzero rule
     /// as the text is, so letters that overlap leave no hole (#647).
     text_outline: bool,
+    /// Drawing on a layer of its own that starts see-through (a halftone
+    /// screens it next): an inner shadow keeps each pixel's coverage and
+    /// darkens the object's edge pixels as fully as their insides, so the
+    /// edge shows no light rim once the layer is screened.
+    atop: bool,
 }
 
 impl Flags {
@@ -228,6 +234,7 @@ impl Flags {
             anti_alias: opts.anti_alias,
             draft: opts.draft,
             text_outline: false,
+            atop: false,
         }
     }
 }
@@ -242,6 +249,7 @@ impl Default for Flags {
             anti_alias: true,
             draft: false,
             text_outline: false,
+            atop: false,
         }
     }
 }
@@ -590,6 +598,21 @@ fn surface_shading(
     })
 }
 
+/// The first Halftone effect of `shape`, when it has one switched on.
+fn halftone_of(shape: &Shape) -> Option<tracedraw_core::live::Effect> {
+    shape
+        .effects
+        .iter()
+        .find(|e| {
+            matches!(
+                e,
+                tracedraw_core::live::Effect::Halftone { size, .. }
+                    if size.is_finite() && *size > 0.0
+            )
+        })
+        .cloned()
+}
+
 /// The radius (mm) of the Gaussian blur `shape` is drawn with, when it
 /// has one switched on (#1141).
 fn gaussian_blur(shape: &Shape) -> Option<f64> {
@@ -628,6 +651,8 @@ fn reach_walk(s: &Shape, lens: &mut bool, blur: &mut f64) {
         let r = match e {
             Effect::OuterShadow { offset, blur, .. } => blur.abs() + offset.hypot(),
             Effect::Glow { blur, .. } | Effect::GaussianBlur { radius: blur } => blur.abs(),
+            // Whole dots reach half a cell past the edge.
+            Effect::Halftone { size, .. } => size.abs(),
             _ => 0.0,
         };
         if r.is_finite() {
@@ -1191,6 +1216,17 @@ impl Renderer<'_> {
         if !shape.visible {
             return;
         }
+        // Halftone: the object as drawn with all its other effects, on a
+        // layer of its own, turned into dots.
+        if self.flags.complex_effects && !self.flags.wireframe {
+            if let Some(ht) = halftone_of(shape) {
+                let mut plain = shape.clone();
+                plain
+                    .effects
+                    .retain(|e| !matches!(e, tracedraw_core::live::Effect::Halftone { .. }));
+                return self.draw_halftoned(&plain, parent, &ht);
+            }
+        }
         // Character backgrounds go under the text, in its transform.
         if matches!(shape.kind, ShapeKind::Text { .. }) && !self.flags.wireframe {
             for (rect, fill) in tracedraw_core::document::text_backgrounds(&shape.kind) {
@@ -1305,12 +1341,14 @@ impl Renderer<'_> {
                             opacity,
                             blur,
                             merge,
+                            spread,
                         } => InnerShadow {
                             offset: *offset,
                             color: *color,
                             opacity: *opacity,
                             blur: *blur,
                             merge: *merge,
+                            spread: *spread,
                         },
                         tracedraw_core::live::Effect::Glow {
                             inner: true,
@@ -1324,6 +1362,7 @@ impl Renderer<'_> {
                             opacity: *opacity,
                             blur: *blur,
                             merge: *merge,
+                            spread: 0.0,
                         },
                         _ => continue,
                     };
@@ -2363,6 +2402,14 @@ impl Renderer<'_> {
         };
         let [cr, cg, cb] = ish.color.to_rgb8();
         let alpha = layer_alpha_sampler(&layer, k, pad);
+        // Spread chokes the feathered edge: the shadow is solid over that
+        // share of it and fades over the rest.
+        let keep = 1.0
+            - if ish.spread.is_finite() {
+                ish.spread.clamp(0.0, 0.99)
+            } else {
+                0.0
+            };
         let data = mask.data();
         for (n, px) in out.pixels_mut().iter_mut().enumerate() {
             let m = data[n];
@@ -2370,11 +2417,52 @@ impl Renderer<'_> {
                 continue;
             }
             let (x, y) = ((n as u32) % ow, (n as u32) / ow);
-            let a = alpha(x, y) / 255.0 * f64::from(m) / 255.0 * opacity;
+            let cast = (alpha(x, y) / 255.0 / keep).min(1.0);
+            let cover = if self.flags.atop {
+                1.0
+            } else {
+                f64::from(m) / 255.0
+            };
+            let a = cast * cover * opacity;
             *px =
                 tiny_skia::ColorU8::from_rgba(cr, cg, cb, (a * 255.0).round() as u8).premultiply();
         }
+        if !self.flags.atop {
+            composite_layer(self.pixmap, &out, (x0 as i32, y0 as i32), ish.merge);
+            return;
+        }
+        // Each pixel keeps the coverage it had: the shadow lands on the
+        // object only.
+        let pw = self.pixmap.width() as usize;
+        let before: Vec<u8> = (y0..y1)
+            .flat_map(|y| {
+                let row = &self.pixmap.pixels()[y as usize * pw..];
+                (x0..x1).map(move |x| row[x as usize].alpha())
+            })
+            .collect();
         composite_layer(self.pixmap, &out, (x0 as i32, y0 as i32), ish.merge);
+        let pixels = self.pixmap.pixels_mut();
+        for (n, &was) in before.iter().enumerate() {
+            let (x, y) = (x0 as usize + n % ow as usize, y0 as usize + n / ow as usize);
+            let p = &mut pixels[y * pw + x];
+            let now = p.alpha();
+            if now == was {
+                continue;
+            }
+            let k = if now == 0 {
+                0.0
+            } else {
+                f32::from(was) / f32::from(now)
+            };
+            let c = |v: u8| ((f32::from(v) * k).round() as u8).min(was);
+            *p = tiny_skia::PremultipliedColorU8::from_rgba(
+                c(p.red()),
+                c(p.green()),
+                c(p.blue()),
+                was,
+            )
+            .unwrap_or(*p);
+        }
     }
 
     /// The stacked outer shadows and outer glows of `shape` (#1141),
@@ -2649,6 +2737,75 @@ impl Renderer<'_> {
             *px = tiny_skia::PremultipliedColorU8::from_rgba(r, g, bl, a)
                 .unwrap_or(tiny_skia::PremultipliedColorU8::TRANSPARENT);
         }
+        composite_layer(
+            self.pixmap,
+            &layer,
+            (x as i32, y as i32),
+            tracedraw_core::live::MergeMode::Normal,
+        );
+    }
+
+    /// `shape` (its Halftone taken off) drawn on a layer of its own with
+    /// all it reaches (shadows, glows), and the layer turned into the
+    /// halftone `ht` before it goes onto the target.
+    fn draw_halftoned(&mut self, shape: &Shape, parent: Affine, ht: &tracedraw_core::live::Effect) {
+        let tracedraw_core::live::Effect::Halftone {
+            pattern,
+            mode,
+            size,
+            scale,
+            softness,
+            angle,
+            center_x,
+            center_y,
+            clip,
+            color,
+        } = ht
+        else {
+            return self.draw_shape(shape, parent);
+        };
+        let (mut lens, mut reach) = (false, 0.0);
+        reach_walk(shape, &mut lens, &mut reach);
+        let grow = ((reach + size.abs()) * self.zoom).ceil().clamp(0.0, 4096.0) + 2.0;
+        let (x, y, w, h) = self.layer_area_grown(shape, parent, grow);
+        if w == 0 || h == 0 {
+            return;
+        }
+        note_scratch(w, h);
+        let Some(mut layer) = Pixmap::new(w, h) else {
+            return self.draw_shape(shape, parent);
+        };
+        let to_layer = Affine::translate((-f64::from(x), -f64::from(y))) * self.screen;
+        {
+            let mut sub = self.sub(&mut layer);
+            sub.screen = to_layer;
+            sub.origin = (self.origin.0 + x as i32, self.origin.1 + y as i32);
+            sub.flags.atop = true;
+            sub.draw_shape(shape, parent);
+        }
+        // The screen's centre across the object's bounds, and its angle,
+        // both in the layer's pixels (y down there).
+        let b = (parent * shape.page_path()).bounding_box();
+        let c = to_layer
+            * tracedraw_core::geometry::Point::new(
+                b.x0 + center_x.clamp(0.0, 1.0) * b.width(),
+                b.y0 + center_y.clamp(0.0, 1.0) * b.height(),
+            );
+        let rgb = color.to_rgb8();
+        halftone::halftone(
+            &mut layer,
+            &halftone::Params {
+                pattern: *pattern,
+                mode: *mode,
+                cell: size * self.zoom,
+                scale: *scale,
+                softness: *softness,
+                angle: -angle.to_radians(),
+                origin: (c.x, c.y),
+                clip: *clip,
+                color: [rgb[0], rgb[1], rgb[2]],
+            },
+        );
         composite_layer(
             self.pixmap,
             &layer,
@@ -4142,6 +4299,8 @@ struct InnerShadow {
     opacity: f64,
     blur: f64,
     merge: tracedraw_core::live::MergeMode,
+    /// 0..1, see `Effect::InnerShadow`.
+    spread: f64,
 }
 
 /// An object as its shadow sees it: `shape`, its outline `path` on the
@@ -8245,6 +8404,73 @@ mod tests {
     }
 
     #[test]
+    fn halftone_turns_the_object_and_its_effects_into_dots() {
+        use tracedraw_core::live::Effect;
+        let page_white = rect(1, Rect::new(0.0, 0.0, 100.0, 100.0), Color::WHITE);
+        let mut grey = rect(
+            2,
+            Rect::new(20.0, 20.0, 80.0, 80.0),
+            Color::rgb8(128, 128, 128),
+        );
+        grey.effects.push(Effect::Halftone {
+            pattern: 0,
+            mode: 2,
+            size: 2.0,
+            scale: 1.0,
+            softness: 0.0,
+            angle: 45.0,
+            center_x: 0.5,
+            center_y: 0.5,
+            clip: true,
+            color: Color::BLACK,
+        });
+        let (doc, page) = doc_with(vec![page_white.clone(), grey.clone()]);
+        let pm = render_page_image(&doc, page, 254.0).unwrap();
+        // Inside: black dots on the white page, about half of it inked.
+        let (mut dark, mut light) = (0, 0);
+        for y in (300..700).step_by(3) {
+            for x in (300..700).step_by(3) {
+                match px(&pm, x, y).0 {
+                    0..=60 => dark += 1,
+                    200..=255 => light += 1,
+                    _ => {}
+                }
+            }
+        }
+        let inked = f64::from(dark) / f64::from(dark + light);
+        assert!((inked - 0.5).abs() < 0.12, "{inked}");
+        // Outside, nothing.
+        assert_eq!(px(&pm, 100, 100), (255, 255, 255));
+        // An inner shadow on it darkens the edges first: bigger dots there.
+        grey.effects.insert(
+            0,
+            Effect::InnerShadow {
+                offset: tracedraw_core::geometry::Vec2::ZERO,
+                color: Color::BLACK,
+                opacity: 1.0,
+                blur: 6.0,
+                merge: tracedraw_core::live::MergeMode::Multiply,
+                spread: 0.0,
+            },
+        );
+        let (doc, page) = doc_with(vec![page_white, grey]);
+        let pm = render_page_image(&doc, page, 254.0).unwrap();
+        let ink = |x0: u32, x1: u32| {
+            let mut n = 0u32;
+            for y in (300..700).step_by(2) {
+                for x in (x0..x1).step_by(2) {
+                    if px(&pm, x, y).0 < 128 {
+                        n += 1;
+                    }
+                }
+            }
+            n
+        };
+        let (edge, middle) = (ink(205, 240), ink(480, 515));
+        assert!(edge > middle, "{edge} {middle}");
+    }
+
+    #[test]
     fn complex_effects_off_skips_the_transparency_mask() {
         let mut s = rect(1, Rect::new(0.0, 0.0, 100.0, 10.0), Color::rgb8(0, 0, 0));
         s.effects.push(tracedraw_core::live::Effect::Transparency {
@@ -8361,6 +8587,7 @@ mod tests {
             opacity: 1.0,
             blur: 0.0,
             merge: tracedraw_core::live::MergeMode::Normal,
+            spread: 0.0,
         });
         let (doc, page) = doc_with(vec![s]);
         let pm = render_page_image(&doc, page, 25.4).unwrap();
@@ -8379,6 +8606,7 @@ mod tests {
             opacity: 1.0,
             blur: 4.0,
             merge: tracedraw_core::live::MergeMode::Normal,
+            spread: 0.0,
         });
         let (doc, page) = doc_with(vec![f]);
         let pm = render_page_image(&doc, page, 25.4).unwrap();
@@ -8400,6 +8628,34 @@ mod tests {
         let (edge, inside) = (px(&pm, 21, 50).0, px(&pm, 26, 50).0);
         assert!(edge > 150 && inside < edge, "fades from {inside} to {edge}");
         assert_eq!(px(&pm, 15, 50), (255, 255, 255), "outside is untouched");
+    }
+
+    /// Spread makes an inner shadow's feathered edge solid further in:
+    /// darker at the same depth, still fading toward the middle and
+    /// still nothing outside the object.
+    #[test]
+    fn inner_shadow_spread_darkens_the_feathered_edge() {
+        let shade = |spread: f64| {
+            let mut s = rect(1, Rect::new(20.0, 20.0, 80.0, 80.0), Color::WHITE);
+            s.effects.push(tracedraw_core::live::Effect::InnerShadow {
+                offset: tracedraw_core::geometry::Vec2::ZERO,
+                color: Color::BLACK,
+                opacity: 1.0,
+                blur: 8.0,
+                merge: tracedraw_core::live::MergeMode::Normal,
+                spread,
+            });
+            let (doc, page) = doc_with(vec![s]);
+            render_page_image(&doc, page, 25.4).unwrap()
+        };
+        let (plain, spread) = (shade(0.0), shade(0.6));
+        let (a, b) = (px(&plain, 24, 50).0, px(&spread, 24, 50).0);
+        assert!(b + 20 < a, "spread is darker near the edge: {b} against {a}");
+        assert_eq!(px(&spread, 50, 50), (255, 255, 255), "middle stays lit");
+        assert_eq!(px(&spread, 15, 50), (255, 255, 255), "outside is untouched");
+        // Out of range values are kept in range.
+        let wild = shade(f64::NAN);
+        assert_eq!(px(&wild, 24, 50), px(&plain, 24, 50));
     }
 
     /// The layer effects drawn by the renderer (#1141): an outer shadow
@@ -12859,6 +13115,7 @@ mod inner_shadow_view_tests {
             opacity: 0.8,
             blur: 2.0,
             merge: tracedraw_core::live::MergeMode::Normal,
+            spread: 0.0,
         });
         let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(100.0, 100.0));
         let layer = doc.pages[0].layers[0].id;
@@ -12928,6 +13185,7 @@ mod inner_shadow_view_tests {
                 opacity: 1.0,
                 blur: 2.0,
                 merge: tracedraw_core::live::MergeMode::Normal,
+                spread: 0.0,
             });
         } else {
             s.shadow = Some(tracedraw_core::Shadow {

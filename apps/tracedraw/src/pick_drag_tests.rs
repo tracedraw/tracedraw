@@ -28691,6 +28691,7 @@ fn a_drag_with_the_inner_shadow_tool_casts_a_shadow_inside_the_object() {
         opacity: 0.0,
         blur: 0.0,
         merge: tracedraw_core::live::MergeMode::Normal,
+        spread: 0.0,
     });
     assert!(inner(&app).is_empty());
 }

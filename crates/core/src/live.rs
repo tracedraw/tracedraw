@@ -181,6 +181,10 @@ pub enum Effect {
         /// Feathering, millimetres.
         blur: f64,
         merge: MergeMode,
+        /// Spread, 0..1: the shadow's feathered edge made solid that far
+        /// toward its outer end before it fades (0 a plain blur).
+        #[serde(default)]
+        spread: f64,
     },
     /// Symmetry: mirrored copies of the object across `lines` mirror lines
     /// through `center` (page space), the first at `angle` degrees and the
@@ -399,6 +403,34 @@ pub enum Effect {
     /// under its objects, following the lines as they change (see
     /// [`crate::live_paint`]).
     LivePaint { fills: Vec<(f64, f64, Color)> },
+    /// Halftone: the object as drawn with its other effects (shadows,
+    /// glows, overlays) turned into a screen of dots, live. Drawn by the
+    /// renderer.
+    Halftone {
+        /// The dot: 0 round, 1 square, 2 diamond, 3 line.
+        pattern: u8,
+        /// 0 RGB (red, green and blue light dots, each as large as its
+        /// channel), 1 CMYK (cyan, magenta, yellow and black ink dots on
+        /// white, screens at 15, 75, 0 and 45 degrees), 2 one colour
+        /// (dots of `color` as large as the darkness).
+        mode: u8,
+        /// Distance between dots, millimetres.
+        size: f64,
+        /// Dot scale: 1 lets a full tone cover its cell, 0 to 2.
+        scale: f64,
+        /// Edge softness, 0 (crisp) to 1 (a cell wide).
+        softness: f64,
+        /// Screen angle, degrees counterclockwise.
+        angle: f64,
+        /// The screen's centre across the object's bounds, 0 to 1.
+        center_x: f64,
+        center_y: f64,
+        /// Cut the dots by the object's own edge (else whole dots sized by
+        /// how much of their cell the object covers).
+        clip: bool,
+        /// One colour mode: the dots' colour.
+        color: Color,
+    },
     /// Gaussian blur (#1141): the object drawn blurred by `radius` mm.
     /// Drawn by the renderer.
     GaussianBlur { radius: f64 },
@@ -793,6 +825,7 @@ impl Effect {
                     | Effect::OuterShadow { .. }
                     | Effect::Glow { .. }
                     | Effect::GaussianBlur { .. }
+                    | Effect::Halftone { .. }
                     | Effect::FillOpacity { .. }
                     | Effect::BlendIf { .. }
                     | Effect::Feather { .. }
@@ -809,6 +842,7 @@ impl Effect {
                 | Effect::InnerShadow { .. }
                 | Effect::OuterShadow { .. }
                 | Effect::Glow { .. }
+                | Effect::Halftone { .. }
                 | Effect::GaussianBlur { .. }
                 | Effect::BlendIf { .. }
         )
@@ -2167,7 +2201,8 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             | Effect::InnerShadow { .. }
             | Effect::OuterShadow { .. }
             | Effect::Glow { .. }
-            | Effect::GaussianBlur { .. } => {}
+            | Effect::GaussianBlur { .. }
+            | Effect::Halftone { .. } => {}
         }
     }
     // Fill opacity: the object alone, after the overlays and the other
@@ -5446,6 +5481,28 @@ mod tests {
                 emboss_color,
                 ..
             }) => assert_eq!((level, emboss_color), (1, None)),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// An inner shadow saved before it had a spread reads back with none.
+    #[test]
+    fn an_inner_shadow_saved_without_spread_reads_back() {
+        let json = serde_json::to_string(&Effect::InnerShadow {
+            offset: Vec2::new(1.0, -1.0),
+            color: Color::BLACK,
+            opacity: 0.5,
+            blur: 1.0,
+            merge: MergeMode::Multiply,
+            spread: 0.0,
+        })
+        .unwrap_or_default();
+        let old = json.replace(",\"spread\":0.0", "");
+        assert!(!old.contains("spread"), "{old}");
+        match serde_json::from_str::<Effect>(&old) {
+            Ok(Effect::InnerShadow { spread, blur, .. }) => {
+                assert_eq!((spread, blur), (0.0, 1.0))
+            }
             other => panic!("{other:?}"),
         }
     }

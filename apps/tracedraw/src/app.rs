@@ -141,6 +141,8 @@ pub struct InnerShadowStyle {
     /// Feathering, millimetres.
     pub blur: f64,
     pub merge: tracedraw_core::live::MergeMode,
+    /// 0..1, see `Effect::InnerShadow`.
+    pub spread: f64,
 }
 
 impl Default for InnerShadowStyle {
@@ -150,6 +152,7 @@ impl Default for InnerShadowStyle {
             opacity: 0.5,
             blur: 2.0,
             merge: tracedraw_core::live::MergeMode::Multiply,
+            spread: 0.0,
         }
     }
 }

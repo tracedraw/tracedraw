@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Layer effects: a live Halftone effect turns an object, with its other effects, into round, square, diamond or line dots in RGB light, CMYK ink or one colour; the inner shadow gains Spread, which keeps the shadow solid over part of its blur before it fades.
 - Trace dialog: with AI turned on and a service that makes pictures, Clean up a pencil sketch shows a words field and Clean up with AI, which has the service redraw the sketch and traces the result into curves; hidden while AI is off.
 - The interface comes in Vietnamese (Tiếng Việt): Options > Global, the Windows installer and the system language offer it, with a system font found for its letters (#3692).
 - Envelope: mesh envelope (Envelope panel, Columns and Rows, Add Mesh; drag the grid points with the Envelope tool) and Object > Copy Effect > Envelope from Top Object.

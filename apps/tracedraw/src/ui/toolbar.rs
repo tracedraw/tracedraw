@@ -4346,6 +4346,7 @@ fn inner_shadow_bar(app: &mut App, ui: &mut Ui) {
         opacity: st.opacity,
         blur: st.blur,
         merge: st.merge,
+        spread: st.spread,
     };
     if changed {
         app.inner_shadow = st;
