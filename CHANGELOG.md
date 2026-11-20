@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Layer effects: a live Halftone effect turns an object, with its other effects, into round, square, diamond or line dots in RGB light, CMYK ink or one colour; the inner shadow gains Spread, which keeps the shadow solid over part of its blur before it fades.
 - Missing fonts can take their automatic stand-ins without asking: "Always use the automatic fonts" in the Missing Fonts dialog, or Options > Global > Warnings, applies them for the session or replaces them in the drawing when a file opens (#3725).
 - Workspace files carry every other preference too, such as the color mode of new drawings, the document defaults, units and tool settings, as a new part to check on export and import; files, window and computer-specific settings stay out (#3721).
 - Dragging a shadow or an object no longer makes the drawing window flicker in bands (#3562).
