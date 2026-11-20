@@ -23,3 +23,14 @@ All measures are in a unit `u` of the picture's longer side / 300 pixels
 
 Tests: `trace_sketch::tests::a_hatched_letter_becomes_solid_and_the_guides_go`,
 `a_cleaned_sketch_traces_as_black_shapes`, `distances_are_exact`.
+
+## With AI
+
+Only when AI is turned on in Tools > Options > AI and the service set up
+there makes pictures: with Clean up a pencil sketch ticked, a words field
+and a Clean up with AI button show under it (hidden otherwise, greyed while
+no bitmap is selected or a request is waiting). The button runs Sketch to
+Curves (see ai-photo.md): the service redraws the selected sketch from the
+words (empty: the lines inked and filled in solid black) and the result is
+traced into curves over the sketch. The words are kept for the next time.
+Nothing is sent unless the button is pressed.
