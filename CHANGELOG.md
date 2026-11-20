@@ -4,6 +4,10 @@ Versions follow the tags of this repository; every push to `main` also
 publishes a nightly build. [`docs/features.md`](docs/features.md) has the
 full, row-by-row status.
 
+## Unreleased
+
+- Effects > 3D Revolve and Inflate: ready-made views (front, back, sides, top, bottom, six off-axis and four isometric), Roll, Offset (the axis away from the curve makes a ring or a hollow tube) and Cap; a surface of Plastic, Diffuse, No shading or Wireframe; the light's colour, intensity, softness and an ambient light (the default look is unchanged); a document symbol as the art, groups and symbols drawn out into their pieces, Fit and Stretch over the whole surface, Shade art and Only the art. The 3D object keeps its curve and settings: selected, the panel shows them, Update makes it again in place and Release gives the curve back. Halftone sphere makes a lit ball of halftone dots, as curves, in one click (#3668).
+
 ## 0.49.0 (2026-11-19)
 
 - Remove Background: Automatic now finds the subject of the picture instead of removing the colours seen on its edges. A person's shoulders, arms or torso that leave the picture are no longer taken for background, backdrop of another shade (a sky with clouds, a studio backdrop that darkens) goes whole, the backdrop seen through a gap (between an arm and the head) goes too, and hair keeps no fringe in the old backdrop's colour. Nothing needs tuning for it: Tolerance only says how much of the soft edge goes for Automatic, and still works as before for picked colours. The Erase and Restore brushes are buttons that show which one is on, the pointer shows the brush in its colour, and the result follows the brush while it paints. Fill background fills only what was removed (#3422).
