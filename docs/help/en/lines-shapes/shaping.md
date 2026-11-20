@@ -53,6 +53,51 @@ keeps all of them, and [[menu.object.boundary]] keeps them all.
 Areas filled side by side, and the results of Weld, Trim and Intersect, meet
 exactly where outlines cross, with no hairline gap between them.
 
+## Pieces and live combine {#pieces}
+
+These commands are in the same submenu. Each one replaces the selected
+objects in one undo step:
+
+- [[menu.object.break_pieces]] cuts overlapping objects into every piece
+  their outlines make, each with the fill of the top object over it. Even
+  under the top object, the edges of the objects below still cut it.
+- [[menu.object.merge_colors]] keeps what shows of each object and joins
+  touching pieces that have the same fill.
+- [[menu.object.cut_to_top]] cuts the objects below to the outline of the
+  top object, then removes the top object.
+- [[menu.object.piece_outlines]] turns every piece into an outline with no
+  fill, drawn in the piece's colour.
+- [[menu.object.exclude]] makes one curve where an odd number of objects
+  overlap: where two objects overlap, the overlap is cut out.
+
+The results stay together in a group, without outlines (except for Exclude
+Overlaps, which keeps the top object's outline).
+
+[[menu.object.combine_live]] keeps the objects. It groups them and draws the
+group as one combined curve, in the top object's paint. In the
+[[effect.combine]] entry of the Effects panel, choose [[menu.object.weld]],
+[[menu.object.back_minus_front]] (painted like the bottom object),
+[[menu.object.intersect]] or [[menu.object.exclude]]. Moving or editing an
+object inside the group updates the combined curve, and Convert to Curves
+makes it permanent.
+
+
+## Cutting along an object, into a grid, and cleaning up {#cutting}
+
+- [[menu.object.cut_below]] uses the one selected object as a cutter. Every
+  object under it on the page that it overlaps is cut along its outline
+  into the parts inside and outside it. Each part keeps the object's paint
+  and place. The cutter is removed. Groups, texts and pictures stay as they
+  are.
+- [[menu.object.cut_grid]] turns each selected object into rows and columns
+  of boxes that fill its bounds, with the gap you set between them, in the
+  object's paint and place.
+- [[menu.object.remove_strays]] removes lone points, curves with no fill, no
+  outline and no effect, and empty artistic texts from the unlocked layers
+  of the page. The status bar says how many went.
+
+Each of these is one undo step.
+
 ## The Shaping panel {#shaping-docker}
 
 Open the [[docker.shaping]] panel from

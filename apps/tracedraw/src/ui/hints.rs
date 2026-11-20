@@ -280,6 +280,7 @@ impl Topic {
                 Tool::Bezier,
                 Tool::Pen,
                 Tool::BSpline,
+                Tool::CurvaturePen,
                 Tool::Polyline,
                 Tool::ThreePointCurve,
                 Tool::BrushStrokes,
