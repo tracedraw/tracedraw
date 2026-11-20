@@ -2859,6 +2859,10 @@ pub(crate) fn symbol_uses(doc: &tracedraw_core::Document, index: usize) -> usize
 
 fn symbols(app: &mut App, ui: &mut Ui) {
     let has = !app.selection.is_empty();
+    let group_selected = app
+        .selected_shapes()
+        .iter()
+        .any(|s| matches!(s.kind, ShapeKind::Group { .. }));
     ui.horizontal(|ui| {
         if ui
             .add_enabled(has, egui::Button::new(tr("docker.new_symbol")))
@@ -2867,6 +2871,19 @@ fn symbols(app: &mut App, ui: &mut Ui) {
             .clicked()
         {
             app.create_symbol_from_selection();
+        }
+        // Find the same: the selected group and every group copying it
+        // become instances of one symbol (#2343).
+        if ui
+            .add_enabled(
+                group_selected && app.clip_frame_edit.is_none(),
+                egui::Button::new(tr("docker.find_same")),
+            )
+            .rich_tip(crate::ui::tips::keyed("docker.find_same"))
+            .rich_disabled_tip(crate::ui::tips::keyed("docker.find_same"))
+            .clicked()
+        {
+            app.symbolize_selection();
         }
         if ui
             .button(tr("docker.revert_to_objects"))
@@ -2884,6 +2901,8 @@ fn symbols(app: &mut App, ui: &mut Ui) {
         .map(|(i, s)| (i, s.name.clone()))
         .collect();
     let editing = app.symbol_edit_index();
+    let picking = app.symbol_replace_from;
+    let editing_active = editing.is_some();
     let mut thumbs = std::mem::take(&mut app.symbol_thumbs);
     thumbs.begin_frame();
     let drawing = (app.engine.instance(), app.engine.revision());
@@ -2944,6 +2963,37 @@ fn symbols(app: &mut App, ui: &mut Ui) {
                 .clicked()
             {
                 app.duplicate_symbol(i);
+            }
+            // Replace another symbol with this one: the first click picks
+            // the source, the second (a different symbol) does the
+            // replace.
+            let picking_this = picking == Some(i);
+            let label = if picking_this {
+                tr("docker.replace_here")
+            } else if picking.is_some() {
+                tr("docker.replace_into")
+            } else {
+                tr("docker.replace_pick")
+            };
+            let enabled =
+                app.clip_frame_edit.is_none() && app.doc().symbols.len() > 1 && !editing_active;
+            if ui
+                .add_enabled(enabled, egui::Button::new(label).small())
+                .rich_tip(crate::ui::tips::keyed(if picking.is_some() && !picking_this {
+                    "docker.replace_into"
+                } else {
+                    "docker.replace_pick"
+                }))
+                .clicked()
+            {
+                match picking {
+                    Some(from) if from != i => app.replace_symbol(i, from),
+                    Some(_) => app.symbol_replace_from = None,
+                    None => {
+                        app.symbol_replace_from = Some(i);
+                        app.status = tr("docker.replace_pick_hint");
+                    }
+                }
             }
             let uses = symbol_uses(app.doc(), i);
             dim(ui, trf("docker.instances_n", &[("n", &uses.to_string())]));

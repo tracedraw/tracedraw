@@ -1962,6 +1962,9 @@ pub struct App {
     pub object_thumbs: crate::object_thumbs::ObjectThumbs,
     /// Symbols docker: the cached pictures of the symbols (#3249).
     pub symbol_thumbs: crate::object_thumbs::ObjectThumbs,
+    /// Symbols docker: the first of two symbols picked for "replace
+    /// another symbol with this one"; `None` when nothing is picked.
+    pub symbol_replace_from: Option<usize>,
     /// When `autosave_settings` last wrote the preferences, and the
     /// preferences as last saved or looked at (JSON), to save them only
     /// when they changed.
@@ -3510,6 +3513,7 @@ impl App {
             objects_closed_pages: Default::default(),
             object_thumbs: Default::default(),
             symbol_thumbs: Default::default(),
+            symbol_replace_from: None,
             objects_master_closed: false,
             picked_layer: None,
             navigator_tex: None,

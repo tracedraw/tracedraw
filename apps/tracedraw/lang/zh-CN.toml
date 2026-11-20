@@ -975,6 +975,13 @@ docker.edit = "编辑..."
 docker.edit_effect = "编辑效果"
 docker.edit_line_style = "编辑线条样式..."
 docker.edit_symbol = "编辑" # mt
+
+docker.find_same = "Find the same"
+docker.find_same_desc = "Every group whose objects copy the selected one becomes an instance of a symbol; text of a group stays text."
+docker.replace_pick = "Replace"
+docker.replace_pick_hint = "The symbol you click next has its copies take this one's place. Click the same symbol again to cancel."
+docker.replace_here = "Here"
+docker.replace_into = "Into this"
 docker.cancel_symbol_edit = "取消" # mt
 docker.cancel_symbol_edit_tip = "结束编辑并保持符号原样：为编辑而放到页面上的对象会消失。" # mt
 docker.duplicate_symbol = "复制" # mt
@@ -4327,6 +4334,10 @@ status.style_created = "已创建样式并链接到所选对象"
 status.swatch_fill = "填充"
 status.swatch_outline = "轮廓"
 status.symbol_holds_itself = "符号不能包含它自身的副本：请移除该副本后再完成" # mt
+
+status.symbolized = "Symbol {name}: {replaced} replaced, {skipped} skipped"
+status.symbolize_need_group = "Select one group of objects, then Find the same"
+status.symbol_replaced = "Copies of {from} now draw as {to}"
 status.tool_hints = "工具提示"
 status.tool_not_implemented = "{t}工具尚未实现"
 status.undo_n = "撤销 {l}"

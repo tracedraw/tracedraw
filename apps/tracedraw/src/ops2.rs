@@ -9,7 +9,7 @@ use tracedraw_core::{
     document::{Shape, ShapeKind},
     geometry::{Affine, BezPath, Point, Rect, Shape as _, Size},
     live::Effect,
-    Color, Command, Fill, ShapeId, Stroke, TextSpan,
+    Color, Command, Fill, LayerId, ShapeId, Stroke, TextSpan,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5909,6 +5909,163 @@ impl App {
             "Duplicate Symbol",
         );
     }
+
+    /// Symbols docker > Find the same: the selected group's objects that
+    /// are not text become a symbol (or join one that draws the same),
+    /// and every group that copies them, on any layer and at any depth,
+    /// becomes an instance. Text of a group stays text, grouped with
+    /// the instance (#2343).
+    pub fn symbolize_selection(&mut self) {
+        let sample = match self.selected_shapes().as_slice() {
+            [s] if matches!(s.kind, ShapeKind::Group { .. }) => s.clone(),
+            _ => {
+                self.status = tr("status.symbolize_need_group");
+                return;
+            }
+        };
+        let Some((graphics, _)) = crate::scripting::extra::split_group(&sample) else {
+            return;
+        };
+        let Some((key, origin)) = crate::scripting::extra::fingerprint(&graphics) else {
+            self.status = tr("status.symbolize_need_group");
+            return;
+        };
+        let doc = self.doc();
+        let found = doc.symbols.iter().position(|sym| {
+            let objs = crate::scripting::extra::definition_objects(&sym.shape);
+            crate::scripting::extra::fingerprint(&objs).is_some_and(|(k, _)| k == key)
+        });
+        let (index, name, def) = match found {
+            Some(i) => (i, doc.symbols[i].name.clone(), None),
+            None => {
+                let index = doc.symbols.len();
+                let name = sample
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("Symbol {}", index + 1));
+                let children: Vec<Shape> = graphics.iter().map(|c| (*c).clone()).collect();
+                let mut def = Shape::new(ShapeId(0), ShapeKind::Group { children });
+                def.fill = Fill::None;
+                def.stroke = None;
+                def.transform_by(Affine::translate((-origin.x, -origin.y)));
+                (index, name, Some(def))
+            }
+        };
+        // Matching groups at any depth, with their layer and the
+        // transform to the page: a copy in another layer, and a copy
+        // inside another group, is still a copy.
+        let mut groups: Vec<(LayerId, Shape, Affine)> = Vec::new();
+        fn collect(
+            shapes: &[Shape],
+            layer: LayerId,
+            parent: Affine,
+            key: &str,
+            out: &mut Vec<(LayerId, Shape, Affine)>,
+        ) {
+            for s in shapes {
+                if let ShapeKind::Group { children } = &s.kind {
+                    let t = parent * s.transform;
+                    if let Some((graphics, _)) = crate::scripting::extra::split_group(s) {
+                        if crate::scripting::extra::fingerprint(&graphics)
+                            .is_some_and(|(k, _)| k == key)
+                        {
+                            out.push((layer, s.clone(), t));
+                        }
+                    }
+                    collect(children, layer, t, key, out);
+                }
+            }
+        }
+        for p in &self.doc().pages {
+            for l in &p.layers {
+                collect(&l.shapes, l.id, Affine::IDENTITY, &key, &mut groups);
+            }
+        }
+        for l in &self.doc().master {
+            collect(&l.shapes, l.id, Affine::IDENTITY, &key, &mut groups);
+        }
+        let mut cmds = Vec::new();
+        if let Some(def) = def {
+            cmds.push(Command::AddSymbol {
+                symbol: tracedraw_core::Symbol {
+                    name: name.clone(),
+                    shape: def,
+                },
+            });
+        }
+        let (mut replaced, mut skipped) = (0, 0);
+        let mut ids = Vec::new();
+        for (layer, g, t) in groups {
+            let Some((graphics, texts)) = crate::scripting::extra::split_group(&g) else {
+                continue;
+            };
+            let Some((k, at)) = crate::scripting::extra::fingerprint(&graphics) else {
+                skipped += 1;
+                continue;
+            };
+            if k != key {
+                skipped += 1;
+                continue;
+            }
+            let texts: Vec<Shape> = texts.into_iter().cloned().collect();
+            cmds.push(Command::DeleteShapes { shapes: vec![g.id] });
+            let place = Affine::translate((at.x, at.y));
+            let id = self.engine.new_shape_id();
+            if texts.is_empty() {
+                let mut inst = crate::scripting::extra::instance(id, index, t * place);
+                inst.opacity = g.opacity;
+                inst.shadow = g.shadow.clone();
+                cmds.push(Command::AddShape {
+                    layer,
+                    shape: inst,
+                });
+            } else {
+                let mut children = vec![crate::scripting::extra::instance(id, index, place)];
+                children.extend(texts);
+                let mut grouped =
+                    Shape::new(self.engine.new_shape_id(), ShapeKind::Group { children });
+                grouped.transform = t;
+                grouped.name = g.name.clone();
+                grouped.fill = Fill::None;
+                grouped.stroke = None;
+                grouped.opacity = g.opacity;
+                grouped.shadow = g.shadow.clone();
+                cmds.push(Command::AddShape {
+                    layer,
+                    shape: grouped,
+                });
+            }
+            replaced += 1;
+            ids.push(id);
+        }
+        if let Err(e) = self.engine.run_batch("Symbolize", &cmds) {
+            self.status = e.to_string();
+            return;
+        }
+        self.selection = ids.clone();
+        self.status = trf(
+            "status.symbolized",
+            &[
+                ("name", &name),
+                ("replaced", &replaced.to_string()),
+                ("skipped", &skipped.to_string()),
+            ],
+        );
+    }
+
+    /// Symbols docker: every instance of symbol `drop` becomes an
+    /// instance of `keep`, and `drop` is taken out. One undo step.
+    pub fn replace_symbol(&mut self, keep: usize, drop: usize) {
+        let n = self.doc().symbols.len();
+        if keep == drop || keep >= n || drop >= n {
+            return;
+        }
+        let from = self.doc().symbols[drop].name.clone();
+        let to = self.doc().symbols[keep].name.clone();
+        self.run(Command::ReplaceSymbol { keep, drop });
+        self.symbol_replace_from = None;
+        self.status = trf("status.symbol_replaced", &[("from", &from), ("to", &to)]);
+    }
 }
 
 /// Whether `t` can be undone (an instance scaled to nothing cannot).
@@ -6637,6 +6794,207 @@ mod tests {
         assert_eq!(app.symbol_thumbs.renders, 2);
         app.undo();
         assert_eq!(app.doc().symbols.len(), 1);
+    }
+
+    /// Find the same: the sample group and every group that copies it
+    /// become instances of one symbol, on the layer each copy lives on
+    /// and inside another group too; a group that draws something else
+    /// stays a group, and every copy keeps its place.
+    #[test]
+    fn find_the_same_reaches_groups_on_other_layers_and_inside_groups() {
+        let mut app = App::headless();
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(x, 0.0, x + 10.0, 5.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let a = rect(&mut app, 0.0);
+        let b = rect(&mut app, 20.0);
+        app.select(vec![a, b]);
+        app.group_selection();
+        assert_eq!(app.selection.len(), 1, "the sample grouped");
+        let sample = app.selection[0];
+        let c = rect(&mut app, 100.0);
+        let d = rect(&mut app, 120.0);
+        let e = rect(&mut app, 140.0);
+        app.select(vec![c, d, e]);
+        app.group_selection();
+        let other = app.selection[0];
+        let layer1 = app.active_layer().expect("layer");
+        // A second layer with a plain copy of the sample, and a copy of
+        // the sample inside another group.
+        let page = app.doc().pages[0].id;
+        app.run(Command::AddLayer {
+            page,
+            name: "L2".into(),
+        });
+        let layer2 = app.doc().pages[0].layers.last().expect("layer").id;
+        let child = |app: &App, id: ShapeId| app.doc().find_shape(id).expect("rect").clone();
+        let mut plain = Shape::new(
+            app.engine.new_shape_id(),
+            ShapeKind::Group {
+                children: vec![child(&app, a), child(&app, b)],
+            },
+        );
+        plain.transform = Affine::translate((50.0, 10.0));
+        app.run(Command::AddShape {
+            layer: layer2,
+            shape: plain.clone(),
+        });
+        let mut nested = plain.clone();
+        nested.id = app.engine.new_shape_id();
+        nested.transform = Affine::translate((0.0, -20.0));
+        let (plain_id, nested_id) = (plain.id, nested.id);
+        let mut holder = Shape::new(
+            app.engine.new_shape_id(),
+            ShapeKind::Group {
+                children: vec![nested, child(&mut app, c)],
+            },
+        );
+        holder.transform = Affine::translate((0.0, 40.0));
+        app.run(Command::AddShape {
+            layer: layer2,
+            shape: holder,
+        });
+        // Where each copy drew on the page: the sample at (0, 0); the
+        // plain copy moved by (50, 10); the nested copy moved by (0, -20)
+        // inside the holder moved by (0, 40), so (0, 20).
+        let mut was: Vec<Rect> = vec![
+            Rect::new(0.0, 0.0, 30.0, 5.0),
+            Rect::new(0.0, 20.0, 30.0, 25.0),
+            Rect::new(50.0, 10.0, 80.0, 15.0),
+        ];
+        was.sort_by(|p, q| p.x0.total_cmp(&q.x0).then(p.y0.total_cmp(&q.y0)));
+        app.select(vec![sample]);
+        app.symbolize_selection();
+        assert_eq!(app.doc().symbols.len(), 1);
+        assert_eq!(
+            app.status,
+            trf(
+                "status.symbolized",
+                &[("name", "Symbol 1"), ("replaced", "3"), ("skipped", "0")]
+            )
+        );
+        // The copies are gone, the different group stays a group.
+        assert!(app.doc().find_shape(sample).is_none());
+        assert!(app.doc().find_shape(plain_id).is_none());
+        assert!(app.doc().find_shape(nested_id).is_none());
+        assert!(matches!(
+            app.doc().find_shape(other).expect("kept").kind,
+            ShapeKind::Group { .. }
+        ));
+        // Three instances of the one symbol, two of them on the second
+        // layer; each where its group drew.
+        let mut now: Vec<Rect> = app
+            .selection
+            .iter()
+            .filter_map(|id| app.doc().find_shape(*id))
+            .map(|s| {
+                assert!(matches!(s.kind, ShapeKind::SymbolInstance { index: 0 }));
+                app.visual_bounds(s)
+            })
+            .collect();
+        assert_eq!(now.len(), 3);
+        now.sort_by(|p, q| p.x0.total_cmp(&q.x0).then(p.y0.total_cmp(&q.y0)));
+        for (w, n) in was.iter().zip(&now) {
+            assert!(
+                (w.x0 - n.x0).abs() < 1e-6 && (w.y0 - n.y0).abs() < 1e-6,
+                "{w:?} {n:?}"
+            );
+            assert!((w.width() - n.width()).abs() < 1e-6, "{w:?} {n:?}");
+        }
+        let on = |app: &App, layer: LayerId| {
+            app.doc().pages[0]
+                .layers
+                .iter()
+                .find(|l| l.id == layer)
+                .expect("layer")
+                .shapes
+                .iter()
+                .filter(|s| matches!(s.kind, ShapeKind::SymbolInstance { .. }))
+                .count()
+        };
+        assert_eq!(on(&app, layer1), 1);
+        assert_eq!(on(&app, layer2), 2);
+        // One undo puts the three groups back.
+        app.undo();
+        assert!(app.doc().symbols.is_empty());
+        assert!(app.doc().find_shape(sample).is_some());
+        assert!(app.doc().find_shape(plain_id).is_some());
+        assert!(app.doc().find_shape(nested_id).is_some());
+    }
+
+    /// Symbolize keeps what a copy looked like as a whole: the
+    /// transparency and shadow set on the group go on the instance it
+    /// becomes, so find-and-replace does not change how a copy draws
+    /// (#3497). A copy without them stays without.
+    #[test]
+    fn symbolize_keeps_the_groups_opacity_and_shadow_on_the_instance() {
+        let mut app = App::headless();
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(x, 0.0, x + 10.0, 5.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let a = rect(&mut app, 0.0);
+        let b = rect(&mut app, 20.0);
+        let child = |app: &App, id: ShapeId| app.doc().find_shape(id).expect("rect").clone();
+        let layer = app.active_layer().expect("layer");
+        let mut styled = Shape::new(
+            app.engine.new_shape_id(),
+            ShapeKind::Group {
+                children: vec![child(&app, a), child(&app, b)],
+            },
+        );
+        styled.transform = Affine::translate((0.0, 30.0));
+        styled.opacity = 0.5;
+        styled.shadow = Some(tracedraw_core::Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(2.0, 2.0),
+            blur: 2.0,
+            ..Default::default()
+        });
+        let styled_id = styled.id;
+        app.run(Command::AddShape {
+            layer,
+            shape: styled,
+        });
+        let mut plain = Shape::new(
+            app.engine.new_shape_id(),
+            ShapeKind::Group {
+                children: vec![child(&app, a), child(&app, b)],
+            },
+        );
+        plain.transform = Affine::translate((0.0, 60.0));
+        app.run(Command::AddShape { layer, shape: plain });
+        app.select(vec![styled_id]);
+        app.symbolize_selection();
+        assert_eq!(app.doc().symbols.len(), 1);
+        let inst_at = |y: f64| {
+            app.selection
+                .iter()
+                .filter_map(|id| app.doc().find_shape(*id))
+                .find(|s| {
+                    matches!(s.kind, ShapeKind::SymbolInstance { index: 0 })
+                        && (app.visual_bounds(s).y0 - y).abs() < 1e-6
+                })
+                .unwrap_or_else(|| panic!("no instance at y {y}"))
+        };
+        let see_through = inst_at(30.0);
+        assert!(
+            (see_through.opacity - 0.5).abs() < 1e-6,
+            "the instance lost the group's transparency"
+        );
+        let sh = see_through.shadow.as_ref().expect("the group's shadow");
+        assert!((sh.offset.x - 2.0).abs() < 1e-6 && (sh.blur - 2.0).abs() < 1e-6);
+        let solid = inst_at(60.0);
+        assert!((solid.opacity - 1.0).abs() < 1e-6);
+        assert!(solid.shadow.is_none(), "the plain copy grew a shadow");
     }
 
     /// New Symbol is one step to undo: the symbol goes with its instance.

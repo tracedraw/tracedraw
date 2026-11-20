@@ -975,6 +975,13 @@ docker.edit = "編集..."
 docker.edit_effect = "効果を編集"
 docker.edit_line_style = "線種を編集..."
 docker.edit_symbol = "編集" # mt
+
+docker.find_same = "Find the same"
+docker.find_same_desc = "Every group whose objects copy the selected one becomes an instance of a symbol; text of a group stays text."
+docker.replace_pick = "Replace"
+docker.replace_pick_hint = "The symbol you click next has its copies take this one's place. Click the same symbol again to cancel."
+docker.replace_here = "Here"
+docker.replace_into = "Into this"
 docker.cancel_symbol_edit = "キャンセル" # mt
 docker.cancel_symbol_edit_tip = "編集を終了し、シンボルを元のままにします。編集のためにページに置かれたオブジェクトは消えます。" # mt
 docker.duplicate_symbol = "複製" # mt
@@ -4327,6 +4334,10 @@ status.style_created = "スタイルを作成し、選択範囲にリンクし�
 status.swatch_fill = "塗り"
 status.swatch_outline = "輪郭"
 status.symbol_holds_itself = "シンボルは自分自身のコピーを含められません: そのコピーを削除してから終了してください" # mt
+
+status.symbolized = "Symbol {name}: {replaced} replaced, {skipped} skipped"
+status.symbolize_need_group = "Select one group of objects, then Find the same"
+status.symbol_replaced = "Copies of {from} now draw as {to}"
 status.tool_hints = "ツールのヒント"
 status.tool_not_implemented = "{t}ツールはまだ実装されていません"
 status.undo_n = "元に戻す: {l}"

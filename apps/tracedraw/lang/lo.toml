@@ -977,6 +977,13 @@ docker.edit = "ແກ້ໄຂ..."
 docker.edit_effect = "ແກ້ໄຂເອັບເຟັກ"
 docker.edit_line_style = "ແກ້ໄຂຮູບແບບເສັ້ນ..."
 docker.edit_symbol = "ແກ້ໄຂ" # mt
+
+docker.find_same = "Find the same"
+docker.find_same_desc = "Every group whose objects copy the selected one becomes an instance of a symbol; text of a group stays text."
+docker.replace_pick = "Replace"
+docker.replace_pick_hint = "The symbol you click next has its copies take this one's place. Click the same symbol again to cancel."
+docker.replace_here = "Here"
+docker.replace_into = "Into this"
 docker.cancel_symbol_edit = "ຍົກເລີກ" # mt
 docker.cancel_symbol_edit_tip = "ຈົບການແກ້ໄຂ ແລະ ຮັກສາສັນຍາລັກໄວ້ຄືເກົ່າ: ວັດຖຸທີ່ວາງໃສ່ໜ້າເພື່ອແກ້ໄຂຈະຫາຍໄປ." # mt
 docker.duplicate_symbol = "ສຳເນົາ" # mt
@@ -4337,6 +4344,10 @@ status.style_created = "ສ້າງຮູບແບບ ແລະ ເຊື່ອ
 status.swatch_fill = "ສີພື້ນ"
 status.swatch_outline = "ເສັ້ນຂອບ"
 status.symbol_holds_itself = "ສັນຍະລັກບໍ່ສາມາດມີສຳເນົາຂອງຕົວມັນເອງໄດ້: ລຶບສຳເນົານັ້ນອອກ, ແລ້ວຈຶ່ງສຳເລັດ" # mt
+
+status.symbolized = "Symbol {name}: {replaced} replaced, {skipped} skipped"
+status.symbolize_need_group = "Select one group of objects, then Find the same"
+status.symbol_replaced = "Copies of {from} now draw as {to}"
 status.tool_hints = "ຄໍາແນະນໍາເຄື່ອງມື"
 status.tool_not_implemented = "ເຄື່ອງມື {t} ຍັງບໍ່ທັນໄດ້ພັດທະນາເທື່ອ"
 status.undo_n = "ຍົກເລີກ {l}"

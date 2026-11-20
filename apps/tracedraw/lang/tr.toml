@@ -975,6 +975,13 @@ docker.edit = "Düzenle..."
 docker.edit_effect = "Efekti düzenle"
 docker.edit_line_style = "Çizgi stilini düzenle..."
 docker.edit_symbol = "Düzenle" # mt
+
+docker.find_same = "Find the same"
+docker.find_same_desc = "Every group whose objects copy the selected one becomes an instance of a symbol; text of a group stays text."
+docker.replace_pick = "Replace"
+docker.replace_pick_hint = "The symbol you click next has its copies take this one's place. Click the same symbol again to cancel."
+docker.replace_here = "Here"
+docker.replace_into = "Into this"
 docker.cancel_symbol_edit = "İptal" # mt
 docker.cancel_symbol_edit_tip = "Düzenlemeyi bitir ve sembolü olduğu gibi bırak: düzenlemek için sayfaya konan nesneler kaldırılır." # mt
 docker.duplicate_symbol = "Çoğalt" # mt
@@ -4327,6 +4334,10 @@ status.style_created = "Stil oluşturuldu ve seçime bağlandı"
 status.swatch_fill = "Dolgu"
 status.swatch_outline = "Anahat"
 status.symbol_holds_itself = "Bir sembol kendi kopyasını içeremez: o kopyayı kaldırın, ardından bitirin" # mt
+
+status.symbolized = "Symbol {name}: {replaced} replaced, {skipped} skipped"
+status.symbolize_need_group = "Select one group of objects, then Find the same"
+status.symbol_replaced = "Copies of {from} now draw as {to}"
 status.tool_hints = "Araç İpuçları"
 status.tool_not_implemented = "Bu araç henüz uygulanmadı: {t}"
 status.undo_n = "Geri al: {l}"

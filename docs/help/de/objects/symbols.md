@@ -61,6 +61,26 @@ Klicken Sie im Andockfenster neben einem Symbol auf [[docker.duplicate_symbol]],
 um ein neues Symbol mit denselben Objekten zu erstellen, benannt nach dem
 ersten. Bearbeiten Sie die Kopie, ohne die Instanzen des ersten zu ändern.
 
+## Das Gleiche finden {#find-same}
+
+Wählen Sie eine Gruppe von Objekten aus und klicken Sie im Andockfenster auf
+[[docker.find_same]]. Die Nicht-Text-Objekte der Gruppe werden zu einem Symbol
+(bzw. schließen sich dem Symbol an, das bereits dasselbe zeichnet), und jede
+Gruppe, deren Objekte die ausgewählte kopieren, wird zu einer Instanz davon:
+eine Kopie auf einer anderen Ebene und eine Kopie in einer anderen Gruppe
+werden ebenso gefunden. Der Text einer Gruppe bleibt Text und wird mit der
+neuen Instanz gruppiert. Die Statuszeile meldet, wie viele Gruppen ersetzt und
+wie viele übersprungen wurden; eine umgefärbte oder umgeformte Gruppe wird
+übersprungen, nicht verändert.
+
+## Ein Symbol durch ein anderes ersetzen {#replace}
+
+Klicken Sie bei einem Symbol auf [[docker.replace_pick]], dann bei einem
+anderen. Jede Instanz des ersten Symbols, auch in Gruppen und Rahmen, wird
+zur Instanz des zweiten, und das erste Symbol verlässt die Tafel; die
+Symbole dahinter rücken einen Platz auf. Ein Rückgängig stellt alles wieder
+her. Ein erneuter Klick auf dasselbe Symbol bricht die Auswahl ab.
+
 ## Instanzen wieder in Objekte umwandeln {#revert}
 
 Wählen Sie Instanzen aus und klicken Sie auf [[docker.revert_to_objects]], oder

@@ -975,6 +975,13 @@ docker.edit = "Upravit..."
 docker.edit_effect = "Upravit efekt"
 docker.edit_line_style = "Upravit styl čáry..."
 docker.edit_symbol = "Upravit" # mt
+
+docker.find_same = "Find the same"
+docker.find_same_desc = "Every group whose objects copy the selected one becomes an instance of a symbol; text of a group stays text."
+docker.replace_pick = "Replace"
+docker.replace_pick_hint = "The symbol you click next has its copies take this one's place. Click the same symbol again to cancel."
+docker.replace_here = "Here"
+docker.replace_into = "Into this"
 docker.cancel_symbol_edit = "Zrušit" # mt
 docker.cancel_symbol_edit_tip = "Ukončit úpravy a ponechat symbol, jaký byl: objekty vložené na stránku k úpravě zmizí." # mt
 docker.duplicate_symbol = "Duplikovat" # mt
@@ -4327,6 +4334,10 @@ status.style_created = "Styl vytvořen a propojen s výběrem"
 status.swatch_fill = "Výplň"
 status.swatch_outline = "Obrys"
 status.symbol_holds_itself = "Symbol nemůže obsahovat kopii sám sebe: odstraňte tuto kopii a pak dokončete" # mt
+
+status.symbolized = "Symbol {name}: {replaced} replaced, {skipped} skipped"
+status.symbolize_need_group = "Select one group of objects, then Find the same"
+status.symbol_replaced = "Copies of {from} now draw as {to}"
 status.tool_hints = "Rady k nástrojům"
 status.tool_not_implemented = "Nástroj {t} zatím není implementován"
 status.undo_n = "Zpět: {l}"

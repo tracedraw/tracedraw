@@ -174,6 +174,13 @@ pub enum Command {
     AddSymbol {
         symbol: Symbol,
     },
+    /// Every instance of symbol `drop` becomes an instance of `keep`, and
+    /// `drop` is taken out of the document's symbols (the symbols after
+    /// it move down one). The two indices must be different and in range.
+    ReplaceSymbol {
+        keep: usize,
+        drop: usize,
+    },
     /// Replace the objects of symbol `index` (Edit Symbol): every
     /// instance draws the new ones. The symbol keeps its name. A
     /// definition that would draw an instance of the symbol itself, at
@@ -591,6 +598,7 @@ impl Command {
             Command::SetSymbolScaleGrid { .. } => "Stretch Zones",
             Command::SetRasterFx { .. } => "Effect",
             Command::AddSymbol { .. } => "New Symbol",
+            Command::ReplaceSymbol { .. } => "Replace Symbol",
             Command::SetSymbolShape { .. } => "Edit Symbol",
             Command::MovePage { .. } => "Move Page",
             Command::DeleteLayer { .. } => "Delete Layer",
@@ -878,6 +886,63 @@ impl Command {
             }
             Command::AddSymbol { symbol } => {
                 doc.symbols.push(symbol.clone());
+            }
+            Command::ReplaceSymbol { keep, drop } => {
+                if *keep >= doc.symbols.len() || *drop >= doc.symbols.len() || keep == drop {
+                    let bad = if *keep > *drop { *keep } else { *drop };
+                    return Err(Error::SymbolNotFound(bad));
+                }
+                fn walk(s: &mut Shape, keep: usize, drop: usize) {
+                    match &mut s.kind {
+                        ShapeKind::SymbolInstance { index } if *index == drop => *index = keep,
+                        ShapeKind::Group { children } => {
+                            children.iter_mut().for_each(|c| walk(c, keep, drop))
+                        }
+                        ShapeKind::ClipFrame { frame, contents } => {
+                            walk(frame, keep, drop);
+                            contents.iter_mut().for_each(|c| walk(c, keep, drop));
+                        }
+                        _ => {}
+                    }
+                }
+                for p in &mut doc.pages {
+                    for l in &mut p.layers {
+                        for s in &mut l.shapes {
+                            walk(s, *keep, *drop);
+                        }
+                    }
+                }
+                for l in &mut doc.master {
+                    for s in &mut l.shapes {
+                        walk(s, *keep, *drop);
+                    }
+                }
+                doc.symbols.remove(*drop);
+                fn reindex(s: &mut Shape, drop: usize) {
+                    match &mut s.kind {
+                        ShapeKind::SymbolInstance { index } if *index > drop => *index -= 1,
+                        ShapeKind::Group { children } => {
+                            children.iter_mut().for_each(|c| reindex(c, drop))
+                        }
+                        ShapeKind::ClipFrame { frame, contents } => {
+                            reindex(frame, drop);
+                            contents.iter_mut().for_each(|c| reindex(c, drop));
+                        }
+                        _ => {}
+                    }
+                }
+                for p in &mut doc.pages {
+                    for l in &mut p.layers {
+                        for s in &mut l.shapes {
+                            reindex(s, *drop);
+                        }
+                    }
+                }
+                for l in &mut doc.master {
+                    for s in &mut l.shapes {
+                        reindex(s, *drop);
+                    }
+                }
             }
             Command::SetSymbolShape { index, shape } => {
                 if *index >= doc.symbols.len() {
@@ -5398,5 +5463,100 @@ mod tests {
             Err(Error::SymbolNotFound(7))
         ));
         assert_eq!(widths(&e), vec![30.0, 30.0]);
+    }
+
+    /// Replace Symbol: every instance of the dropped symbol, in a group
+    /// too, draws as the kept one; the dropped symbol is taken out and
+    /// the symbols after it move down. One undo puts it all back.
+    #[test]
+    fn replacing_a_symbol_moves_its_instances_and_undoes() {
+        use crate::document::{ShapeKind, Symbol};
+        let rect = |w: f64| {
+            Shape::new(
+                ShapeId(0),
+                ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, w, 5.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            )
+        };
+        let instance = |index: usize| Shape::new(ShapeId(0), ShapeKind::SymbolInstance { index });
+        let mut e = crate::Engine::default();
+        let layer = e.document().pages[0].layers[0].id;
+        for (name, w) in [("A", 10.0), ("B", 20.0), ("C", 30.0)] {
+            e.run(&Command::AddSymbol {
+                symbol: Symbol {
+                    name: name.into(),
+                    shape: rect(w),
+                },
+            })
+            .unwrap();
+        }
+        let add = |e: &mut crate::Engine, index: usize| {
+            let id = e.new_shape_id();
+            let mut inst = instance(index);
+            inst.id = id;
+            e.run(&Command::AddShape { layer, shape: inst }).unwrap();
+            id
+        };
+        let a = add(&mut e, 0);
+        let b = add(&mut e, 1);
+        // An instance of B inside a group: counted and replaced too.
+        let grouped = Shape::new(
+            ShapeId(0),
+            ShapeKind::Group {
+                children: vec![instance(1)],
+            },
+        );
+        let gid = e.new_shape_id();
+        let mut grouped = grouped;
+        grouped.id = gid;
+        e.run(&Command::AddShape {
+            layer,
+            shape: grouped,
+        })
+        .unwrap();
+        e.run(&Command::ReplaceSymbol { keep: 2, drop: 1 }).unwrap();
+        assert_eq!(e.undo_label(), Some("Replace Symbol"));
+        assert_eq!(e.document().symbols.len(), 2);
+        assert_eq!(e.document().symbols[0].name, "A");
+        assert_eq!(e.document().symbols[1].name, "C");
+        let kind_of =
+            |e: &crate::Engine, id: ShapeId| match e.document().find_shape(id).unwrap().kind {
+                ShapeKind::SymbolInstance { index } => index,
+                _ => panic!("not an instance"),
+            };
+        assert_eq!(kind_of(&e, a), 0);
+        assert_eq!(kind_of(&e, b), 1);
+        // The grouped instance of B is an instance of C now (C moved from
+        // index 2 to 1 when B was taken out).
+        let grouped = e.document().find_shape(gid).unwrap();
+        let ShapeKind::Group { children } = &grouped.kind else {
+            panic!("group")
+        };
+        assert!(children
+            .iter()
+            .all(|c| matches!(c.kind, ShapeKind::SymbolInstance { index } if index == 1)));
+        e.undo().unwrap();
+        assert_eq!(e.document().symbols.len(), 3);
+        assert_eq!(kind_of(&e, b), 1);
+        let grouped = e.document().find_shape(gid).unwrap();
+        let ShapeKind::Group { children } = &grouped.kind else {
+            panic!("group")
+        };
+        assert!(children
+            .iter()
+            .all(|c| matches!(c.kind, ShapeKind::SymbolInstance { index } if index == 1)));
+        // Same symbol, or a symbol that is not there: nothing changes.
+        assert!(matches!(
+            e.run(&Command::ReplaceSymbol { keep: 1, drop: 1 }),
+            Err(Error::SymbolNotFound(1))
+        ));
+        assert!(matches!(
+            e.run(&Command::ReplaceSymbol { keep: 0, drop: 7 }),
+            Err(Error::SymbolNotFound(7))
+        ));
+        assert_eq!(e.document().symbols.len(), 3);
     }
 }

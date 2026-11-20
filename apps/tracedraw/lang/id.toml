@@ -975,6 +975,13 @@ docker.edit = "Sunting..."
 docker.edit_effect = "Edit efek"
 docker.edit_line_style = "Edit gaya garis..."
 docker.edit_symbol = "Edit" # mt
+
+docker.find_same = "Find the same"
+docker.find_same_desc = "Every group whose objects copy the selected one becomes an instance of a symbol; text of a group stays text."
+docker.replace_pick = "Replace"
+docker.replace_pick_hint = "The symbol you click next has its copies take this one's place. Click the same symbol again to cancel."
+docker.replace_here = "Here"
+docker.replace_into = "Into this"
 docker.cancel_symbol_edit = "Batal" # mt
 docker.cancel_symbol_edit_tip = "Akhiri pengeditan dan biarkan simbol seperti semula: objek yang ditaruh di halaman untuk mengeditnya hilang." # mt
 docker.duplicate_symbol = "Duplikat" # mt
@@ -4327,6 +4334,10 @@ status.style_created = "Gaya dibuat dan ditautkan ke pilihan"
 status.swatch_fill = "Isian"
 status.swatch_outline = "Garis luar"
 status.symbol_holds_itself = "Simbol tidak dapat berisi salinan dirinya sendiri: hapus salinan itu, lalu selesaikan" # mt
+
+status.symbolized = "Symbol {name}: {replaced} replaced, {skipped} skipped"
+status.symbolize_need_group = "Select one group of objects, then Find the same"
+status.symbol_replaced = "Copies of {from} now draw as {to}"
 status.tool_hints = "Petunjuk alat"
 status.tool_not_implemented = "Alat {t} belum diterapkan"
 status.undo_n = "Urungkan {l}"

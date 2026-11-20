@@ -975,6 +975,13 @@ docker.edit = "Modifier..."
 docker.edit_effect = "Modifier l'effet"
 docker.edit_line_style = "Modifier le style de ligne..."
 docker.edit_symbol = "Modifier" # mt
+
+docker.find_same = "Find the same"
+docker.find_same_desc = "Every group whose objects copy the selected one becomes an instance of a symbol; text of a group stays text."
+docker.replace_pick = "Replace"
+docker.replace_pick_hint = "The symbol you click next has its copies take this one's place. Click the same symbol again to cancel."
+docker.replace_here = "Here"
+docker.replace_into = "Into this"
 docker.cancel_symbol_edit = "Annuler" # mt
 docker.cancel_symbol_edit_tip = "Termine la modification et laisse le symbole tel qu'il était : les objets placés sur la page pour le modifier disparaissent." # mt
 docker.duplicate_symbol = "Dupliquer" # mt
@@ -4327,6 +4334,10 @@ status.style_created = "Style créé et lié à la sélection"
 status.swatch_fill = "Surface"
 status.swatch_outline = "Contour"
 status.symbol_holds_itself = "Un symbole ne peut pas contenir une copie de lui-même : supprimez cette copie, puis terminez" # mt
+
+status.symbolized = "Symbol {name}: {replaced} replaced, {skipped} skipped"
+status.symbolize_need_group = "Select one group of objects, then Find the same"
+status.symbol_replaced = "Copies of {from} now draw as {to}"
 status.tool_hints = "Conseils sur l'outil"
 status.tool_not_implemented = "L'outil {t} n'est pas encore implémenté"
 status.undo_n = "Annuler {l}"

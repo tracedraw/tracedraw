@@ -60,6 +60,25 @@ Clique em [[docker.duplicate_symbol]] ao lado de um símbolo no painel para
 criar um novo símbolo com os mesmos objetos, com o nome do primeiro. Edite a
 cópia sem mudar as instâncias do primeiro.
 
+## Encontrar as iguais {#find-same}
+
+Selecione um grupo de objetos e clique em [[docker.find_same]] no painel. Os
+objetos do grupo que não são texto viram um símbolo (ou se juntam ao símbolo
+que já desenha o mesmo), e todo grupo cujos objetos copiam o selecionado vira
+uma instância dele: uma cópia em outra camada, e uma cópia dentro de outro
+grupo, são encontradas do mesmo jeito. O texto de um grupo continua texto,
+agrupado com a nova instância. A linha de status informa quantos grupos foram
+substituídos e quantos foram ignorados; um grupo recolorido ou remodelado é
+ignorado, não alterado.
+
+## Substituir um símbolo por outro {#replace}
+
+Clique em [[docker.replace_pick]] ao lado de um símbolo e depois ao lado de
+outro. Toda instância do primeiro símbolo, inclusive dentro de grupos e
+molduras, vira instância do segundo, e o primeiro símbolo sai do painel; os
+símbolos depois dele sobem uma posição. Um Desfazer devolve tudo. Clicar no
+mesmo símbolo de novo, em vez de um segundo, cancela a escolha.
+
 ## Transformar instâncias em objetos de novo {#revert}
 
 Selecione instâncias e clique em [[docker.revert_to_objects]], ou escolha

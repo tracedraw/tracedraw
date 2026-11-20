@@ -54,6 +54,25 @@ changing the instances of the first.
 A symbol cannot hold an instance of itself; Finish says so and the edit
 goes on until that instance is removed.
 
+## Find the same {#find-same}
+
+Select one group of objects and click [[docker.find_same]] in the panel.
+The group's objects that are not text become a symbol (or join the symbol
+that already draws the same), and every group whose objects copy the
+selected one becomes an instance of it: a copy on another layer, and a copy
+inside another group, are found just the same. The text of a group stays
+text, grouped with the new instance. The status line tells how many groups
+were replaced and how many were skipped; a group that was recoloured or
+reshaped is skipped, not changed.
+
+## Replacing one symbol with another {#replace}
+
+Click [[docker.replace_pick]] beside one symbol, then beside another. Every
+instance of the first symbol, inside groups and clip frames included,
+becomes an instance of the second, and the first symbol leaves the panel;
+the symbols after it move up one place. One Undo puts everything back.
+Click the same symbol again instead of a second one to cancel the pick.
+
 ## Turning instances back into objects {#revert}
 
 Select instances and click [[docker.revert_to_objects]], or choose
