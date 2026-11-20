@@ -5216,7 +5216,8 @@ impl App {
         // New drawings start with this drawing's grid, rulers and
         // guideline settings.
         if self.has_document() {
-            self.settings.document_defaults = crate::settings::DocumentDefaults::of(self.doc());
+            self.settings.document_defaults =
+                crate::settings::DocumentDefaults::of_page(self.doc(), Some(self.page));
         }
         self.save_settings();
         self.status = crate::i18n::tr("status.settings_saved");

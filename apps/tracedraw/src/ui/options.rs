@@ -541,9 +541,7 @@ pub fn options_dialog(app: &mut App, ctx: &Context, close: &mut bool) {
                             .rich_tip(crate::ui::tips::keyed("options.save_as_default"))
                             .clicked()
                     {
-                        app.settings.document_defaults =
-                            crate::settings::DocumentDefaults::of(app.doc());
-                        app.status = tr("status.settings_saved");
+                        save_as_default(app);
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         // The buttons bring their own tips (#2367).
@@ -570,6 +568,21 @@ pub fn options_dialog(app: &mut App, ctx: &Context, close: &mut bool) {
         }
         *close = true;
     }
+}
+
+/// The Document set's Save as Default: new drawings start with this
+/// drawing's grid, rulers, guideline settings, object defaults and its
+/// guidelines (those of the master page and of the current page). It is
+/// saved at once and kept when the dialog is then cancelled or closed
+/// (#3522).
+pub(crate) fn save_as_default(app: &mut App) {
+    let defaults = crate::settings::DocumentDefaults::of_page(app.doc(), Some(app.page));
+    if let Some(s) = app.options_snapshot.as_mut() {
+        s.settings.document_defaults = defaults.clone();
+    }
+    app.settings.document_defaults = defaults;
+    app.save_settings();
+    app.status = tr("status.settings_saved");
 }
 
 /// How far the page drawn last reached past the right edge of its
@@ -6922,6 +6935,42 @@ mod tests {
         snap.restore(&mut app);
         assert_eq!(app.settings.undo_levels, 150);
         assert!(!app.doc().metadata.fill_open_curves);
+    }
+
+    /// Save as Default keeps the drawing's guidelines for new drawings,
+    /// and what it saved stays when the dialog is then cancelled (#3522).
+    #[test]
+    fn save_as_default_keeps_guidelines_and_survives_cancel() {
+        use tracedraw_core::document::Guide;
+        let mut app = App::headless();
+        app.options_snapshot = Some(OptionsSnapshot::take(&app));
+        app.choose_master_guides(false);
+        app.add_guide(Guide::vertical(3.0));
+        app.add_guide(Guide::horizontal(3.0));
+        app.choose_master_guides(true);
+        app.add_guide(Guide::vertical(87.0));
+        save_as_default(&mut app);
+        // Cancel: the snapshot goes back, the saved defaults stay.
+        if let Some(s) = app.options_snapshot.take() {
+            s.restore(&mut app);
+        }
+        let d = &app.settings.document_defaults;
+        assert_eq!(d.page_guidelines.len(), 2, "{d:?}");
+        assert_eq!(d.master_guidelines.len(), 1);
+        // A new drawing starts with them.
+        app.new_document();
+        assert_eq!(app.doc().pages[0].guides.len(), 2);
+        assert_eq!(app.doc().master_guides.len(), 1);
+        // Saved settings read back with them; older settings without them
+        // read as none.
+        let json = serde_json::to_string(&app.settings.document_defaults).unwrap();
+        let back: crate::settings::DocumentDefaults = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.page_guidelines,
+            app.settings.document_defaults.page_guidelines
+        );
+        let old: crate::settings::DocumentDefaults = serde_json::from_str("{}").unwrap();
+        assert!(old.page_guidelines.is_empty() && old.master_guidelines.is_empty());
     }
 
     /// The Smart Drawing, Dimension, Connector and Mesh Fill pages edit

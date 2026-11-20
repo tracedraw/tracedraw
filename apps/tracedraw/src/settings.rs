@@ -1730,16 +1730,34 @@ pub struct DocumentDefaults {
     /// default 30 mm).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_spacing: Option<f64>,
+    /// The guidelines of the master page, which every page shows (#3522).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub master_guidelines: Vec<tracedraw_core::document::Guide>,
+    /// The guidelines of the page saved from, which a new drawing's
+    /// first page gets (#3522).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub page_guidelines: Vec<tracedraw_core::document::Guide>,
 }
 
 impl DocumentDefaults {
+    /// The defaults of `doc`, with the guidelines of its first page.
     pub fn of(doc: &tracedraw_core::Document) -> Self {
+        Self::of_page(doc, doc.pages.first().map(|p| p.id))
+    }
+
+    /// The defaults of `doc`, with the guidelines of `page`.
+    pub fn of_page(doc: &tracedraw_core::Document, page: Option<tracedraw_core::PageId>) -> Self {
         DocumentDefaults {
             grid: doc.metadata.grid,
             rulers: doc.metadata.rulers.clone(),
             guides: doc.metadata.guides,
             objects: doc.defaults.clone(),
             page_spacing: doc.metadata.page_spacing,
+            master_guidelines: doc.master_guides.clone(),
+            page_guidelines: page
+                .and_then(|p| doc.page(p).ok())
+                .map(|p| p.guides.clone())
+                .unwrap_or_default(),
         }
     }
 
@@ -1748,6 +1766,15 @@ impl DocumentDefaults {
         doc.metadata.rulers = self.rulers.clone();
         doc.metadata.guides = self.guides;
         doc.metadata.page_spacing = self.page_spacing;
+        // The guidelines saved as the default (#3522).
+        if doc.master_guides.is_empty() {
+            doc.master_guides = self.master_guidelines.clone();
+        }
+        if let Some(first) = doc.pages.first_mut() {
+            if first.guides.is_empty() {
+                first.guides = self.page_guidelines.clone();
+            }
+        }
         doc.defaults = defaults_for(&self.objects, doc.metadata.primary_color_mode);
     }
 }
