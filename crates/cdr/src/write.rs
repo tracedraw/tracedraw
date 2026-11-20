@@ -5354,14 +5354,15 @@ impl<'a> Writer<'a> {
     /// A bitmap object: image rectangle, image id and crop path (the whole
     /// rectangle, or `crop` in the bitmap's local space).
     ///
-    /// From version 14 the record is laid out as the files of every
-    /// version seen (14, 18, 19 and 27) hold their bitmaps: the image's box starts
-    /// at the origin and spans its size, the object's transform placing it
-    /// on the page; so the shape's own `rect` offset moves into the
-    /// transform here and the crop path moves with it (#1226, #1268). No
-    /// file of versions 7 to 13 with a bitmap was at hand to check, so
-    /// those versions keep the box where the picture lies on the page,
-    /// the shape's transform and the number 0.
+    /// The record is laid out as the files of every version seen (14,
+    /// 18, 19 and 27) hold their bitmaps: the image's box starts at the
+    /// origin and spans its size, the object's transform placing it on
+    /// the page; so the shape's own `rect` offset moves into the
+    /// transform here and the crop path moves with it (#1226, #1268).
+    /// Versions 7 to 13 kept the box where the picture lay on the page
+    /// and the number 0 until #3696 and #3698: a version 13 file so
+    /// written opened without its cropped or converted pictures, while
+    /// the same drawing saved as version 15 showed them.
     fn bitmap_object(&mut self, s: &Shape, centre: Point, crop: Option<&BezPath>) -> Placed {
         let ShapeKind::Bitmap { rect, png, .. } = &s.kind else {
             return Placed {
@@ -5389,16 +5390,11 @@ impl<'a> Writer<'a> {
             Some(p) => (s.transform * p.clone()).bounding_box(),
             None => (s.transform * rect.to_path(0.01)).bounding_box(),
         };
-        let from_origin = v.0 >= 14;
-        let (shift, local, number) = if from_origin {
-            (
-                Affine::translate((rect.x0, rect.y0)),
-                Rect::new(0.0, 0.0, rect.width(), rect.height()),
-                image,
-            )
-        } else {
-            (Affine::IDENTITY, *rect, 0)
-        };
+        let (shift, local, number) = (
+            Affine::translate((rect.x0, rect.y0)),
+            Rect::new(0.0, 0.0, rect.width(), rect.height()),
+            image,
+        );
         let transform = s.transform * shift;
         // As files of versions 7 to 27 hold it: the top-left and the
         // bottom-right corner, the image's own box the same way, 2 and
@@ -5408,8 +5404,8 @@ impl<'a> Writer<'a> {
         // then 0, 0, -1, 0, 0. The program that wrote the samples shows
         // no image when the pixel size is left at zero. Images get their
         // ids in order of first use and copies share them (#2923), so the
-        // number is the image id (from version 14; before it 0, as
-        // written before #1226).
+        // number is the image id, in every version (versions 7 to 13
+        // wrote 0 until #3696).
         let corners = |c: &mut Buf| {
             c.i32(units(local.x0))
                 .i32(units(local.y1))

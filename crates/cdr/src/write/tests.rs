@@ -3593,13 +3593,12 @@ fn bitmap_objects_carry_their_pixel_size() {
         );
         assert_eq!([i(32), i(36), i(40)], [24 << 16 | 2, 3, 2], "{v}");
         // The image's number among the bitmap objects' images (never 0 in
-        // files) and its id; then 0, 0, -1, 0, 0.
-        // Before version 14 the number stays 0 (no file of those
-        // versions with a bitmap was seen).
-        let number = if v >= 14 { 1 } else { 0 };
+        // files) and its id; then 0, 0, -1, 0, 0. In every version: a
+        // version 13 file with the number 0 opened without its pictures
+        // (#3696, #3698).
         assert_eq!(
             [i(44), i(48), i(52), i(56), i(60)],
-            [number, 1, 0, 0, -1],
+            [1, 1, 0, 0, -1],
             "{v}"
         );
         // The crop outline: the box as five points with a node byte each,
@@ -3772,14 +3771,10 @@ fn bitmap_boxes_start_at_the_origin_and_their_transform_places_them() {
     clipped.fill = Fill::None;
     clipped.stroke = None;
     for v in versions() {
-        // Before version 14 the box stays where the shape's rectangle is
-        // (no file of those versions with a bitmap was seen).
-        let (ox, oy) = if v >= 14 {
-            (0, 0)
-        } else {
-            (1_000_000, 500_000)
-        };
-        let want_box = [ox, oy + 200_000, ox + 400_000, oy];
+        // In every version: a version 13 file with the box where the
+        // shape's rectangle is opened without its cropped and converted
+        // pictures (#3696, #3698).
+        let want_box = [0, 200_000, 400_000, 0];
         let plain = document_to_cdr_version(&doc_with(vec![bm.clone()]), v);
         let b = bitmap_coords(&plain);
         let i = |at: usize| i32::from_le_bytes(b[at..at + 4].try_into().expect("4 bytes"));
@@ -3819,7 +3814,7 @@ fn bitmap_boxes_start_at_the_origin_and_their_transform_places_them() {
         for k in 0..n {
             let (x, y) = (i(count_at + 4 + k * 8), i(count_at + 8 + k * 8));
             assert!(
-                (ox - 1..=ox + 400_001).contains(&x) && (oy - 1..=oy + 200_001).contains(&y),
+                (-1..=400_001).contains(&x) && (-1..=200_001).contains(&y),
                 "{v}: point {k} at ({x}, {y}) outside the image box"
             );
         }
