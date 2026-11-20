@@ -323,7 +323,7 @@ PNG/PDF/SVG and cached CDR output keep its appearance. See
 | 3D Revolve and Inflate: a curve spun round a vertical axis (facets, tilt, turn, sweep, axis side) or a shape puffed up like a cushion (depth), lit (light direction and height, shine), drawn as shaded vector shapes; picked art wrapped onto the surface (place and size, hidden round the back) or swelling on the cushion; one group in one undo step | works (see `behavior/revolve-inflate.md`) |
 | Picture Mosaic (bitmap mosaics from an image library folder): columns and rows from the shape, blending, duplicates with tile spacing, Single, Stack and Array composition, Stretch and Remove edges, document, custom, tile and output size priorities, keep original | works (see `behavior/picture-mosaic.md`); a library is one folder, read on worker threads |
 | Bitmap plug-ins (third-party filters) | not applicable: no plug-in host; the built-in bitmap effects cover the stock filters |
-| User interface in 19 languages with system fallback fonts | works |
+| User interface in 20 languages with system fallback fonts | works |
 | Keyboard shortcuts (every menu shortcut bound; Esc closes dialogs) | works (see `behavior/shortcuts.md`) |
 | Shortcuts of your own for every menu command (Options > Customization > Commands: search, press the keys, conflicts named, shown in the menus) | works (see `behavior/shortcuts.md`) |
 | Workspace export and import (`.tdws`: shortcuts, bars and toolbox, palette options, appearance; part by part) and the bars shown kept across restarts | works (see `behavior/workspaces.md`) |

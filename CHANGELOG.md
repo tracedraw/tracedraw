@@ -6,6 +6,7 @@ full, row-by-row status.
 
 ## Unreleased
 
+- The interface comes in Vietnamese (Tiếng Việt): Options > Global, the Windows installer and the system language offer it, with a system font found for its letters (#3692).
 - Envelope: mesh envelope (Envelope panel, Columns and Rows, Add Mesh; drag the grid points with the Envelope tool) and Object > Copy Effect > Envelope from Top Object.
 - Object > Combine Shapes: Break into Pieces, Merge Same Colors, Cut to Top Object, Piece Outlines, Exclude Overlaps, and Combine Live (a group drawn as one combined curve, objects kept). The live outline offset is now named Grow Outline.
 - Combine Shapes: Cut Objects Below, Cut into Grid and Remove Strays.

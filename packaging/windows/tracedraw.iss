@@ -238,6 +238,7 @@ begin
       $1F: Result := 'tr';
       $05: Result := 'cs';
       $54: Result := 'lo';
+      $2A: Result := 'vi';
     else
       Result := '';
     end;
@@ -289,6 +290,7 @@ begin
   AddAppLanguage('tr', 'Türkçe');
   AddAppLanguage('cs', 'Čeština');
   AddAppLanguage('lo', 'ພາສາລາວ');
+  AddAppLanguage('vi', 'Tiếng Việt');
   SystemCode := AppLanguageForLangId(GetUILanguage);
   if SystemCode = '' then
     SystemCode := 'en';
