@@ -489,7 +489,10 @@ fn frame_copied(
     };
     crate::pen::filter_raw_input(ctx, &mut input);
     crate::interaction::release_chorded_left(ctx, &mut input);
-    let out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+    let mut out = ctx.run_ui(input, |ui| crate::ui::root(app, ui));
+    // A picture finished on its thread may upload a texture in this
+    // frame: the test has no painter to hand it to.
+    out.textures_delta.clear();
     out.platform_output
         .commands
         .iter()

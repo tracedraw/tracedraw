@@ -12020,35 +12020,54 @@ mod band_tests {
             assert!(got.is_empty(), "one core: drawn whole");
             return;
         }
-        assert!(
-            got.len() > cores.min(16),
-            "more bands than cores: {}",
-            got.len()
-        );
         let row = 900 * 4;
-        let mut covered = vec![0u8; 700];
-        for (y0, rows) in &got {
-            assert_eq!(rows.width(), 900);
-            let (a, b) = (*y0 as usize, *y0 as usize + rows.height() as usize);
-            for c in &mut covered[a..b] {
-                *c += 1;
-            }
+        // Every run hands over every row once, each band as the picture
+        // has it.
+        let check = |got: &[(u32, Pixmap)], picture: &Pixmap| {
             assert!(
-                rows.data() == &picture.data()[a * row..b * row],
-                "rows {a}..{b}"
+                got.len() > cores.min(16),
+                "more bands than cores: {}",
+                got.len()
             );
-        }
-        assert!(covered.iter().all(|c| *c == 1), "every row once");
-        // The band done first is the one holding the middle row, or one
-        // drawn beside it at the same time: the first few handed over
-        // include it.
-        let first_few = &got[..cores.min(got.len())];
-        assert!(
-            first_few
+            let mut covered = vec![0u8; 700];
+            for (y0, rows) in got {
+                assert_eq!(rows.width(), 900);
+                let (a, b) = (*y0 as usize, *y0 as usize + rows.height() as usize);
+                for c in &mut covered[a..b] {
+                    *c += 1;
+                }
+                assert!(
+                    rows.data() == &picture.data()[a * row..b * row],
+                    "rows {a}..{b}"
+                );
+            }
+            assert!(covered.iter().all(|c| *c == 1), "every row once");
+        };
+        check(&got, &picture);
+        // The band holding the middle row is the first one taken, so it
+        // is handed over among the first few, unless the test machine
+        // holds its thread back while the others finish theirs. A busy
+        // machine may do that now and then, so the middle is looked for
+        // over a few runs, each run checked whole.
+        let middle_first = |got: &[(u32, Pixmap)]| {
+            got[..cores.min(got.len())]
                 .iter()
-                .any(|(y0, r)| (*y0..*y0 + r.height()).contains(&350)),
-            "the middle comes among the first"
-        );
+                .any(|(y0, r)| (*y0..*y0 + r.height()).contains(&350))
+        };
+        let mut seen = middle_first(&got);
+        for _ in 0..8 {
+            if seen {
+                break;
+            }
+            let again: std::sync::Mutex<Vec<(u32, Pixmap)>> = std::sync::Mutex::new(Vec::new());
+            let band = |y0: u32, rows: &Pixmap| again.lock().unwrap().push((y0, rows.clone()));
+            let picture =
+                render_page_progressive(&doc, page, &opts, &cancel, 350, &band).expect("drawn");
+            let again = again.into_inner().unwrap();
+            check(&again, &picture);
+            seen = middle_first(&again);
+        }
+        assert!(seen, "the middle comes among the first");
         cancel.store(true, std::sync::atomic::Ordering::Relaxed);
         assert!(render_page_progressive(&doc, page, &opts, &cancel, 0, &|_, _| ()).is_none());
     }
