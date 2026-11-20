@@ -179,7 +179,16 @@ where they are and their outline shows where they would go: a blue line
 on a white halo, which reads as two light lines on a dark fill. The
 outline is the one the release makes: a rectangle's corners that keep
 their size stay round while it is stretched
-(`Shape::page_path_after`). The handles return on release.
+(`Shape::page_path_after`), and an object an envelope, a perspective or
+a distortion reshapes shows its reshaped outline, not the plain object
+beneath it (#3569,
+`canvas::tests::the_drag_outline_of_a_warped_object_is_its_warped_shape`).
+The handles return on release.
+
+With Options > Display > Show objects while transforming (off by
+default, #3569) the objects themselves are also drawn where they would
+go while the drag lasts, fills, effects and blends included, and drawn
+where they were no longer; slower on large drawings.
 
 A move grabbed on a mark (see below) carries that point: a node,
 midpoint, centre or the point of an edge lands on other objects' points
