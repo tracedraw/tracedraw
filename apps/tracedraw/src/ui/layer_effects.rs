@@ -38,10 +38,11 @@ pub enum Kind {
     OffsetPath,
     Transform,
     Grid,
+    Halftone,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 13] = [
+    pub const ALL: [Kind; 14] = [
         Kind::Bevel,
         Kind::Outline,
         Kind::ThreeD,
@@ -55,6 +56,7 @@ impl Kind {
         Kind::OffsetPath,
         Kind::Transform,
         Kind::Grid,
+        Kind::Halftone,
     ];
 
     pub fn key(self) -> &'static str {
@@ -72,6 +74,7 @@ impl Kind {
             Kind::OffsetPath => "effect.offset_path",
             Kind::Transform => "effect.transform",
             Kind::Grid => "effect.grid",
+            Kind::Halftone => "effect.halftone",
         }
     }
 
@@ -100,6 +103,7 @@ impl Kind {
                 | (Kind::OffsetPath, Effect::OffsetPath { .. })
                 | (Kind::Transform, Effect::Transform { .. })
                 | (Kind::Grid, Effect::Grid { .. })
+                | (Kind::Halftone, Effect::Halftone { .. })
         )
     }
 
@@ -143,6 +147,7 @@ impl Kind {
                 opacity: 0.5,
                 blur: 1.0,
                 merge: MergeMode::Multiply,
+                spread: 0.0,
             },
             Kind::OuterShadow => Effect::OuterShadow {
                 offset: Vec2::new(1.5, -1.5),
@@ -203,6 +208,18 @@ impl Kind {
                 gap_y: 2.0,
                 shift_x: 0.0,
                 shift_y: 0.0,
+            },
+            Kind::Halftone => Effect::Halftone {
+                pattern: 0,
+                mode: 0,
+                size: 1.0,
+                scale: 1.0,
+                softness: 0.1,
+                angle: 45.0,
+                center_x: 0.5,
+                center_y: 0.5,
+                clip: true,
+                color: Color::BLACK,
             },
         }
     }
@@ -437,6 +454,27 @@ fn degrees(ui: &mut Ui, label: &str, v: &mut f64) -> bool {
     }
 }
 
+/// One of a few named values, kept as its index.
+fn choice(ui: &mut Ui, label: &str, v: &mut u8, keys: &[&str]) -> bool {
+    ui.label(tr(label));
+    let mut changed = false;
+    let shown = keys.get(usize::from(*v)).copied().unwrap_or(keys[0]);
+    crate::ui::keynav::ComboBox::from_id_salt(("layer_fx_choice", label))
+        .selected_text(tr(shown))
+        .width(110.0)
+        .show_ui(ui, |ui| {
+            for (i, key) in keys.iter().enumerate() {
+                if ui.selectable_label(usize::from(*v) == i, tr(key)).clicked() {
+                    *v = i as u8;
+                    changed = true;
+                }
+            }
+        })
+        .response
+        .rich_tip(crate::ui::tips::keyed(label));
+    changed
+}
+
 fn color(ui: &mut Ui, label: &str, c: &mut Color) -> bool {
     ui.label(tr(label));
     crate::ui::color_picker::color_button(ui, c)
@@ -592,8 +630,22 @@ fn settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
             opacity,
             blur,
             merge: m,
+            spread,
+        } => {
+            changed |= offset(app, ui, off);
+            ui.horizontal(|ui| {
+                changed |= length(app, ui, "layer_fx.blur", blur, 100.0);
+                changed |= percent(ui, "layer_fx.opacity", opacity);
+            });
+            ui.horizontal(|ui| {
+                changed |= percent(ui, "layer_fx.spread", spread);
+            });
+            ui.horizontal(|ui| {
+                changed |= color(ui, "layer_fx.color", c);
+                changed |= merge(ui, m, "shadow");
+            });
         }
-        | Effect::OuterShadow {
+        Effect::OuterShadow {
             offset: off,
             color: c,
             opacity,
@@ -701,6 +753,72 @@ fn settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
         }
         Effect::Transform { .. } => changed |= transform_settings(app, ui, e),
         Effect::Grid { .. } => changed |= grid_settings(app, ui, e),
+        Effect::Halftone {
+            pattern,
+            mode,
+            size,
+            scale,
+            softness,
+            angle,
+            center_x,
+            center_y,
+            clip,
+            color: c,
+        } => {
+            ui.horizontal(|ui| {
+                changed |= choice(
+                    ui,
+                    "layer_fx.halftone_pattern",
+                    pattern,
+                    &[
+                        "layer_fx.halftone_round",
+                        "layer_fx.halftone_square",
+                        "layer_fx.halftone_diamond",
+                        "layer_fx.halftone_line",
+                    ],
+                );
+            });
+            ui.horizontal(|ui| {
+                changed |= choice(
+                    ui,
+                    "layer_fx.halftone_mode",
+                    mode,
+                    &[
+                        "layer_fx.halftone_rgb",
+                        "layer_fx.halftone_cmyk",
+                        "layer_fx.halftone_mono",
+                    ],
+                );
+                if *mode == 2 {
+                    changed |= color(ui, "layer_fx.color", c);
+                }
+            });
+            ui.horizontal(|ui| {
+                changed |= length(app, ui, "layer_fx.halftone_size", size, 50.0);
+                ui.label(tr("layer_fx.halftone_scale"));
+                let mut pct = (*scale * 100.0).round();
+                if ui
+                    .add(NumField::new(&mut pct).range(0.0..=200.0).suffix(" %"))
+                    .rich_tip(crate::ui::tips::keyed("layer_fx.halftone_scale"))
+                    .changed()
+                {
+                    *scale = (pct / 100.0).clamp(0.0, 2.0);
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                changed |= percent(ui, "layer_fx.halftone_softness", softness);
+                changed |= degrees(ui, "layer_fx.angle", angle);
+            });
+            ui.horizontal(|ui| {
+                changed |= percent(ui, "layer_fx.halftone_center_x", center_x);
+                changed |= percent(ui, "layer_fx.halftone_center_y", center_y);
+            });
+            changed |= ui
+                .checkbox(clip, tr("layer_fx.halftone_clip"))
+                .rich_tip(crate::ui::tips::keyed("layer_fx.halftone_clip"))
+                .changed();
+        }
         _ => {}
     }
     changed
