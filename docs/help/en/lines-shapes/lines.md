@@ -127,6 +127,11 @@ handles.
 
 The result is an ordinary curve; the control points are not kept.
 
+Tick **Through points** on the property bar to draw a curve that passes
+through every point you click instead of running near them: each point
+becomes a smooth node, and the curve bends gently from one to the next.
+Points placed with <kbd>C</kbd> or <kbd>V</kbd> held are corners.
+
 ## Polyline {#polyline}
 
 The [[tool.polyline]] tool draws straight segments one after the other:

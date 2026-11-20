@@ -5274,6 +5274,46 @@ fn bspline_clicks_place_control_points_of_a_smooth_curve() {
     assert!(!on(pts[1]) && !on(pts[2]));
 }
 
+/// B-Spline with Through points: the curve made runs through every
+/// point clicked, a node on each, and is an ordinary curve (no control
+/// points kept); off, the tool draws as before.
+#[test]
+fn bspline_through_points_puts_a_node_on_every_click() {
+    let (ctx, mut app, _) = setup();
+    app.select(Vec::new());
+    app.set_tool(Tool::BSpline);
+    assert!(!app.settings.curves.spline_through);
+    app.settings.curves.spline_through = true;
+    let pts = [
+        Point::new(100.0, 150.0),
+        Point::new(130.0, 190.0),
+        Point::new(180.0, 180.0),
+        Point::new(190.0, 140.0),
+    ];
+    for p in pts {
+        let at = app.view.to_screen(p);
+        click_at(&ctx, &mut app, at, Modifiers::NONE);
+    }
+    app.finish_curve();
+    let path = last_path(&app);
+    let segs: Vec<_> = path.segments().collect();
+    use tracedraw_core::geometry::ParamCurve;
+    assert_eq!(segs.len(), 3, "{segs:?}");
+    let near = |a: Point, b: Point| (a - b).hypot() < 0.5;
+    assert!(near(segs[0].start(), pts[0]));
+    for (s, p) in segs.iter().zip(&pts[1..]) {
+        assert!(near(s.end(), *p), "{segs:?}");
+    }
+    let made = app
+        .doc()
+        .all_layers()
+        .flat_map(|l| &l.shapes)
+        .filter(|s| matches!(s.kind, ShapeKind::Path { .. }))
+        .last()
+        .expect("the curve");
+    assert!(made.spline.is_none());
+}
+
 /// The curve the B-Spline tool previews, as the canvas draws it.
 fn bspline_preview(app: &App) -> tracedraw_core::BezPath {
     let c = app.curve.as_ref().expect("a B-spline being drawn");

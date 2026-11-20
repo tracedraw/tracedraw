@@ -1191,6 +1191,10 @@ pub struct CurvePrefs {
     /// drawn alongside each new curve. Off at first.
     #[serde(default)]
     pub parallel: ParallelLines,
+    /// B-Spline tool: Through points, the curve passes through every
+    /// point clicked, each a smooth node, in place of running near them.
+    #[serde(default)]
+    pub spline_through: bool,
 }
 
 /// Lines drawn alongside each curve made with the Freehand, Bezier, Pen,
@@ -1281,6 +1285,7 @@ impl Default for CurvePrefs {
             corner_threshold: 0,
             straight_threshold: 0,
             parallel: ParallelLines::default(),
+            spline_through: false,
         }
     }
 }

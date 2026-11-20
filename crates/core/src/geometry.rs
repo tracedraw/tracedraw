@@ -522,6 +522,74 @@ pub fn bspline_path_fixed(points: &[Point], fixed: &[bool], closed: bool) -> Bez
     bspline_path(&all, closed)
 }
 
+/// A smooth curve that passes through every point of `points`, as the
+/// B-Spline tool draws with Through points on: each point a smooth node
+/// whose handles lie along the line from the point before to the point
+/// after, each a third of its segment long, so the curve bends gently
+/// through the points. An open curve's end nodes aim at the next node's
+/// handle. A point `fixed` marks is a corner with no handles. Two points
+/// make a line; a closed curve needs three.
+pub fn through_points_path(points: &[Point], fixed: &[bool], closed: bool) -> BezPath {
+    let mut path = BezPath::new();
+    let n = points.len();
+    let Some(&first) = points.first() else {
+        return path;
+    };
+    path.move_to(first);
+    if n == 1 {
+        return path;
+    }
+    let closed = closed && n >= 3;
+    let is_fixed = |i: usize| fixed.get(i).copied().unwrap_or(false);
+    let unit = |v: Vec2| {
+        let l = v.hypot();
+        if l > 1e-12 {
+            v / l
+        } else {
+            Vec2::ZERO
+        }
+    };
+    // Each node's incoming and outgoing handle.
+    let mut ins = points.to_vec();
+    let mut outs = points.to_vec();
+    for i in 0..n {
+        let inner = closed || (i > 0 && i + 1 < n);
+        if !inner || is_fixed(i) {
+            continue;
+        }
+        let prev = points[(i + n - 1) % n];
+        let next = points[(i + 1) % n];
+        let dir = unit(next - prev);
+        ins[i] = points[i] - dir * ((points[i] - prev).hypot() / 3.0);
+        outs[i] = points[i] + dir * ((next - points[i]).hypot() / 3.0);
+    }
+    if !closed && n >= 3 {
+        // The ends aim at the handle of the node next to them.
+        if !is_fixed(0) {
+            let len = (points[1] - points[0]).hypot() / 3.0;
+            outs[0] = points[0] + unit(ins[1] - points[0]) * len;
+        }
+        let l = n - 1;
+        if !is_fixed(l) {
+            let len = (points[l] - points[l - 1]).hypot() / 3.0;
+            ins[l] = points[l] + unit(outs[l - 1] - points[l]) * len;
+        }
+    }
+    let segs = if closed { n } else { n - 1 };
+    for i in 0..segs {
+        let j = (i + 1) % n;
+        if outs[i] == points[i] && ins[j] == points[j] {
+            path.line_to(points[j]);
+        } else {
+            path.curve_to(outs[i], ins[j], points[j]);
+        }
+    }
+    if closed {
+        path.close_path();
+    }
+    path
+}
+
 /// A cubic B-spline over the control points `points` as Bezier
 /// segments. Open: the uniform spline with each end point taken three
 /// times, so it starts at the first point and ends at the last, its ends
@@ -789,6 +857,42 @@ mod tests {
         let closed = bspline_path_fixed(&pts, &[false, true], true);
         assert!(dist(&closed, pts[1]) < 1e-6);
         assert!(dist(&bspline_path(&pts, true), pts[1]) > 1.0);
+    }
+
+    /// Through points: the curve has a node on every point, smooth ones
+    /// in between (handles in line), a fixed point a corner, closed all
+    /// round smooth; two points a line.
+    #[test]
+    fn a_through_points_curve_runs_through_each_point() {
+        let pts = [
+            Point::new(0.0, 0.0),
+            Point::new(10.0, 10.0),
+            Point::new(20.0, 0.0),
+            Point::new(30.0, 10.0),
+        ];
+        let path = through_points_path(&pts, &[], false);
+        let ends: Vec<Point> = path.segments().map(|s| s.end()).collect();
+        assert_eq!(ends, pts[1..].to_vec());
+        let els = path.elements();
+        // Node 1: the handle in and the handle out on one line through it.
+        let (PathEl::CurveTo(_, a, _), PathEl::CurveTo(b, _, _)) = (els[1], els[2]) else {
+            panic!("{els:?}");
+        };
+        let (u, v) = (pts[1] - a, b - pts[1]);
+        assert!((u.x * v.y - u.y * v.x).abs() < 1e-9 && u.dot(v) > 0.0);
+        // Fixed: a corner, the segments meet it with no handles.
+        let fixed = through_points_path(&pts, &[false, true], false);
+        let els = fixed.elements();
+        let (PathEl::CurveTo(_, a, p), PathEl::CurveTo(b, _, _)) = (els[1], els[2]) else {
+            panic!("{els:?}");
+        };
+        assert_eq!((a, b), (p, p));
+        let closed = through_points_path(&pts, &[], true);
+        assert_eq!(closed.segments().count(), 4);
+        assert!(matches!(closed.elements().last(), Some(PathEl::ClosePath)));
+        let two = through_points_path(&pts[..2], &[], false);
+        assert!(matches!(two.elements()[1], PathEl::LineTo(_)));
+        assert_eq!(through_points_path(&[], &[], false).elements().len(), 0);
     }
 
     #[test]

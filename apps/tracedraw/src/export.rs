@@ -46,6 +46,42 @@ pub(crate) fn selection_document(app: &App) -> (Document, Rect) {
     (tmp, bounds)
 }
 
+/// A slice: the area `area` of the current page as a page of its own,
+/// with every shown object of the page's shown layers in
+/// their order, moved so the area's corner is the page's; what reaches
+/// past the area is cut off by the page's edge.
+pub(crate) fn area_document(app: &App, area: Rect) -> (Document, Rect) {
+    let doc = app.engine.document();
+    let mut tmp = Document::new(
+        doc.title.clone(),
+        Size::new(area.width().max(0.1), area.height().max(0.1)),
+    );
+    tmp.symbols = doc.symbols.clone();
+    tmp.inks = doc.inks.clone();
+    tmp.cmyk_profile = doc.cmyk_profile.clone();
+    tmp.color_styles = doc.color_styles.clone();
+    let l = tmp.pages[0].layers[0].id;
+    let shift = Affine::translate((-area.x0, -area.y0));
+    let shapes: Vec<tracedraw_core::Shape> = doc
+        .page(app.page)
+        .map(|p| {
+            p.layers
+                .iter()
+                .filter(|l| l.visible)
+                .flat_map(|l| l.shapes.iter().filter(|s| s.visible).cloned())
+                .collect()
+        })
+        .unwrap_or_default();
+    for mut c in shapes {
+        c.transform_by(shift);
+        carry_blend_ends(&mut c, shift);
+        if let Ok(layer) = tmp.layer_mut(l) {
+            layer.shapes.push(c);
+        }
+    }
+    (tmp, area)
+}
+
 /// The box a selection exported alone is sized to: what each selected
 /// object draws, its outline included. The selection's own box leaves the
 /// outline out (an outline straddles the path), so a selected rectangle
@@ -77,7 +113,9 @@ fn outline_reach_within(s: &tracedraw_core::Shape, to_page: Affine) -> f64 {
 /// Document limited to the selection or the current page, for exports.
 pub(crate) fn export_document(app: &App, st: &ExportState) -> (Document, Rect) {
     let doc = app.engine.document();
-    if st.selection_only {
+    if let Some(area) = st.area {
+        area_document(app, area)
+    } else if st.selection_only {
         selection_document(app)
     } else {
         // Facing pages (#1972): each spread as one page, or each page

@@ -121,6 +121,11 @@ controle, sem alças.
 
 O resultado é uma curva comum; os pontos de controle não são guardados.
 
+Marque **Pelos pontos** na barra de propriedades para desenhar uma curva que
+passa por cada ponto que você clica em vez de correr perto deles: cada ponto
+vira um nó suave, e a curva se dobra suavemente de um para o outro. Pontos
+colocados com <kbd>C</kbd> ou <kbd>V</kbd> pressionado são cantos.
+
 ## Polilinha {#polyline}
 
 A ferramenta [[tool.polyline]] desenha segmentos retos um após o outro: clique

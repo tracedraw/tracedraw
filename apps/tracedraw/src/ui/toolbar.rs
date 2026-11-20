@@ -2213,6 +2213,13 @@ fn curve_tool_properties(app: &mut App, ui: &mut Ui) {
             .rich_tip(tr("toolbar.freehand_smoothing"));
         app.settings.curves.smoothing = v;
     }
+    if app.tool == Tool::BSpline {
+        // Through points: the curve passes through each point clicked.
+        sep(ui);
+        let c = &mut app.settings.curves;
+        ui.checkbox(&mut c.spline_through, tr("toolbar.spline_through"))
+            .rich_tip(tr("toolbar.spline_through_desc"));
+    }
     if app.tool == Tool::Pen {
         // Preview mode and automatic adding and deleting of nodes, also in
         // Options > Tools > Curve tools.

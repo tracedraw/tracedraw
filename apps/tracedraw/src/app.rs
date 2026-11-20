@@ -752,6 +752,10 @@ pub struct CurveInProgress {
     /// the curve passes through with a corner (fixed points, #2060); one
     /// flag a node, missing ones floating.
     pub spline_fixed: Vec<bool>,
+    /// B-Spline tool with Through points on: the curve passes through the
+    /// points, each a smooth node (a fixed one a corner), and is made an
+    /// ordinary curve of those nodes.
+    pub through: bool,
     /// B-Spline tool: Ctrl+C or Ctrl+V pressed while Ctrl is held to
     /// keep a line straight. The window turns those keys into copy and
     /// paste, never a held C or V, so the press is kept here: the next
@@ -869,6 +873,13 @@ impl CurveInProgress {
     pub fn path_closed(&self, preview: Option<Point>, closed: bool) -> tracedraw_core::BezPath {
         if closed && self.bspline {
             let pts: Vec<Point> = self.nodes.iter().map(|n| n.0).collect();
+            if self.through {
+                return tracedraw_core::geometry::through_points_path(
+                    &pts,
+                    &self.spline_fixed,
+                    true,
+                );
+            }
             return tracedraw_core::geometry::bspline_path_fixed(&pts, &self.spline_fixed, true);
         }
         let mut path = self.open_path(preview);
@@ -925,6 +936,13 @@ impl CurveInProgress {
         }
         if self.bspline {
             let pts = self.bspline_controls(preview);
+            if self.through {
+                return tracedraw_core::geometry::through_points_path(
+                    &pts,
+                    &self.spline_fixed,
+                    false,
+                );
+            }
             return tracedraw_core::geometry::bspline_path_fixed(&pts, &self.spline_fixed, false);
         }
         for (i, (p, _)) in nodes.iter().enumerate() {
@@ -2354,6 +2372,13 @@ pub struct App {
     pub vector_mosaic: crate::vector_mosaic::VectorMosaicSettings,
     /// The Symbol Scatter docker's settings (and picked symbols).
     pub symbol_scatter: crate::symbol_scatter::ScatterSettings,
+    /// The symbol brush's stroke: where the nib was last, and whether the
+    /// stroke has made its undo step yet.
+    pub symbol_brush_last: Option<Point>,
+    pub symbol_brush_stepped: bool,
+    /// The Export docker's Add Slices grid: rows and columns each
+    /// selected object's area is cut into.
+    pub slice_grid: (u32, u32),
     /// The Frame Generator docker's settings.
     pub frame_gen: crate::frame_gen::FrameSettings,
     /// The 3D Revolve and Inflate docker's settings (and picked art).
@@ -3687,6 +3712,9 @@ impl App {
             coords: Default::default(),
             vector_mosaic: Default::default(),
             symbol_scatter: Default::default(),
+            symbol_brush_last: None,
+            symbol_brush_stepped: false,
+            slice_grid: (1, 1),
             frame_gen: Default::default(),
             shape_3d: Default::default(),
             picture_mosaic: Default::default(),
@@ -6866,9 +6894,10 @@ impl App {
             let redo_to = c.nodes.last().copied().filter(|_| !closes);
             self.note_pen_curve_step(id, c.nodes.first().copied(), redo_to);
         }
-        if c.bspline {
+        if c.bspline && !c.through {
             // A B-spline of its own keeps its control points (one that
-            // went on from another curve is a curve like that one).
+            // went on from another curve is a curve like that one); one
+            // drawn through its points is an ordinary curve.
             if let Some(id) = id {
                 let points = c.nodes.iter().map(|n| n.0).collect();
                 self.keep_spline(id, &line, points, c.spline_fixed_flags());

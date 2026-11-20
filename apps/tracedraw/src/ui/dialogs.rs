@@ -95,6 +95,10 @@ pub struct ExportState {
     /// JPEG and TIFF: the colours written, an index into
     /// [`EXPORT_COLOR_MODES`] (0 RGB, 1 CMYK, 2 Grayscale; #1763).
     pub color_mode: usize,
+    /// An area of the current page (page millimetres) exported with
+    /// everything that shows in it, cut to it: a slice of the Export
+    /// docker.
+    pub area: Option<tracedraw_core::geometry::Rect>,
     /// The file chosen in the Save dialog before the options were shown
     /// (File > Export on the desktop): OK writes it, its extension
     /// following the format chosen. `None`: OK asks where to save (the
@@ -150,6 +154,7 @@ impl Default for ExportState {
             size_unit: 0,
             scale: 1.0,
             color_mode: 0,
+            area: None,
             target: None,
             dont_show: false,
             plt_scale: 1.0,

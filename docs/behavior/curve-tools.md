@@ -234,6 +234,17 @@ delete the selection as everywhere (#1527,
   [shape-tool.md](shape-tool.md), "B-splines"). A B-spline that goes on
   from the end node of the selected curve joins that curve and keeps no
   control points.
+- Through points (a checkbox on the B-spline tool's property bar, off
+  at first, kept in `settings.curves.spline_through`): the curve
+  passes through every point clicked, each a smooth node whose handles
+  lie along the line from the point before to the point after, each a
+  third of its segment long; an open curve's end nodes aim at the next
+  node's handle; a fixed point (C or V held) is a corner with no
+  handles; two points make a line. The preview is the curve a click
+  would make, and the result is an ordinary curve with a node on each
+  point, no control points kept
+  (`geometry::tests::a_through_points_curve_runs_through_each_point`,
+  `pick_drag_tests::bspline_through_points_puts_a_node_on_every_click`).
 - Checked by `geometry::tests::bsplines_start_and_end_on_their_ends_and_stay_inside`,
   `pick_drag_tests::bspline_clicks_place_control_points_of_a_smooth_curve`,
   `pick_drag_tests::bspline_preview_is_the_curve_that_is_made`,
