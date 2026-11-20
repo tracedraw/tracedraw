@@ -144,8 +144,11 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
     };
     // While the selection is moved, scaled, turned or slanted, the
     // objects stay where they are and their outline shows where they
-    // would go; the handles wait for the release.
-    draw_page(app, painter, rect, None);
+    // would go; the handles wait for the release. With Show objects
+    // while transforming on (Options > Display, #3569), the objects
+    // themselves are drawn there too.
+    let live = preview.filter(|_| app.settings.live_transform_preview);
+    draw_page(app, painter, rect, live);
     crate::pixel_edit_app::draw(app, painter);
     let doc: &Document = app.doc();
     draw_text_frames(app, painter, preview);
@@ -2208,16 +2211,7 @@ pub fn draw_transform_outline(app: &App, painter: &Painter, t: Affine) {
         // What the release will make: rounded corners keep their size,
         // and a paragraph text flows anew in the frame it is given (when
         // that is quick enough to do every frame, #1327).
-        let mut paths = vec![match app.live_frame(s.id, t) {
-            Some(live) => live.outline.clone(),
-            None => s.page_path_after(t),
-        }];
-        // A symmetry out of edit mode goes whole: its copies too, also
-        // those of one inside a group.
-        let mut moved = s.clone();
-        moved.transform_by(t);
-        symmetry_copy_paths(&moved, app.symmetry_edit, &mut paths);
-        for path in &paths {
+        for path in &transform_outline_paths(app, s, t) {
             for (mut pts, closed) in flatten(path, &app.view) {
                 if closed {
                     if let Some(first) = pts.first().copied() {
@@ -2229,6 +2223,51 @@ pub fn draw_transform_outline(app: &App, painter: &Painter, t: Affine) {
             }
         }
     }
+}
+
+/// The outlines of the selected `s` once `t` is applied, as the drag
+/// outline draws them. What the release will make: rounded corners keep
+/// their size, a paragraph text flows anew in the frame it is given
+/// (when that is quick enough to do every frame, #1327), and an object
+/// an envelope, a perspective or a distortion reshapes shows that shape,
+/// not the one beneath it (#3569). A symmetry out of edit mode goes
+/// whole: its copies too, also those of one inside a group.
+pub fn transform_outline_paths(app: &App, s: &tracedraw_core::Shape, t: Affine) -> Vec<BezPath> {
+    let mut moved = s.clone();
+    moved.transform_by(t);
+    let mut paths = Vec::new();
+    match app.live_frame(s.id, t) {
+        Some(live) => paths.push(live.outline.clone()),
+        None if holds_outline_warp(&moved) => warped_outlines(&moved, &mut paths),
+        None => paths.push(s.page_path_after(t)),
+    }
+    symmetry_copy_paths(&moved, app.symmetry_edit, &mut paths);
+    paths
+}
+
+/// Whether `s` or an object inside it is reshaped by an outline warp.
+fn holds_outline_warp(s: &tracedraw_core::Shape) -> bool {
+    s.has_outline_warp()
+        || matches!(&s.kind, ShapeKind::Group { children } if children.iter().any(holds_outline_warp))
+}
+
+/// The page outlines of `s` (in page space) as its outline warps shape
+/// them, object by object inside a group.
+fn warped_outlines(s: &tracedraw_core::Shape, out: &mut Vec<BezPath>) {
+    if let ShapeKind::Group { children } = &s.kind {
+        for c in children {
+            let mut c = c.clone();
+            c.transform_by(s.transform);
+            warped_outlines(&c, out);
+        }
+        return;
+    }
+    let warped = s
+        .has_outline_warp()
+        .then(|| tracedraw_core::live::outline_warp(s))
+        .flatten()
+        .map(|w| s.transform * w.apply(&s.local_path()));
+    out.push(warped.unwrap_or_else(|| s.page_path()));
 }
 
 /// A fitted text dragged along its path: its letters where they would go,
@@ -4470,6 +4509,73 @@ mod node_look_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The drag outline of an object a perspective (or an envelope)
+    /// reshapes shows the reshaped object, not the plain one beneath it
+    /// (#3569); without the warp it is the plain outline as before.
+    #[test]
+    fn the_drag_outline_of_a_warped_object_is_its_warped_shape() {
+        use kurbo::Shape as _;
+        use tracedraw_core::live::Effect;
+        use tracedraw_core::{Command, Point, Rect};
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 100.0, 100.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        let s = app.doc().find_shape(id).expect("rect").clone();
+        let t = Affine::scale(2.0);
+        let plain = transform_outline_paths(&app, &s, t);
+        assert_eq!(plain.len(), 1);
+        let b = plain[0].bounding_box();
+        assert!(
+            (b.x1 - 200.0).abs() < 1e-6 && (b.y1 - 200.0).abs() < 1e-6,
+            "{b:?}"
+        );
+        // A trapezoid: the bottom edge drawn in by 20 on each side.
+        app.run(Command::SetEffects {
+            shape: id,
+            effects: vec![Effect::Perspective {
+                corners: [
+                    Point::new(0.0, 0.0),
+                    Point::new(100.0, 0.0),
+                    Point::new(80.0, 100.0),
+                    Point::new(20.0, 100.0),
+                ],
+            }],
+        });
+        let s = app.doc().find_shape(id).expect("rect").clone();
+        let warped = transform_outline_paths(&app, &s, t);
+        assert_eq!(warped.len(), 1);
+        let b = warped[0].bounding_box();
+        assert!(
+            (b.x1 - 200.0).abs() < 1e-6,
+            "the top keeps its width: {b:?}"
+        );
+        let bottom: Vec<f64> = warped[0]
+            .elements()
+            .iter()
+            .filter_map(|e| e.end_point())
+            .filter(|p| (p.y - 200.0).abs() < 1e-6)
+            .map(|p| p.x)
+            .collect();
+        assert!(
+            bottom
+                .iter()
+                .all(|x| (40.0 - 1e-6..=160.0 + 1e-6).contains(x))
+                && !bottom.is_empty(),
+            "the bottom drawn in, scaled: {bottom:?}"
+        );
+    }
+
+    /// Show objects while transforming is off by default (#3569).
+    #[test]
+    fn objects_are_not_drawn_while_transforming_by_default() {
+        assert!(!crate::settings::Settings::default().live_transform_preview);
+    }
 
     /// The direction shows on the end nodes themselves (#3038): each
     /// first node and each last node of an open part has a direction

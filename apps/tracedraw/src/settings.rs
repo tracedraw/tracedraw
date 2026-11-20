@@ -401,6 +401,11 @@ pub struct Settings {
     /// selected curve (node tracking).
     #[serde(default)]
     pub node_tracking: bool,
+    /// Options > Display: while the selection is moved, scaled, turned or
+    /// slanted, the objects themselves are drawn where they would go, not
+    /// only their outline (#3569). Off by default.
+    #[serde(default)]
+    pub live_transform_preview: bool,
     /// Options > Display: Shift, Ctrl, Alt and Delete on the drawing,
     /// where there is a touch screen (#1996).
     #[serde(default = "default_true")]
@@ -2407,6 +2412,7 @@ impl Default for Settings {
             tracecut: Default::default(),
             hide_bbox_curve_tools: false,
             node_tracking: false,
+            live_transform_preview: false,
             touch_keys: true,
             touch_selection_bar: true,
             selection_bar_mouse: false,

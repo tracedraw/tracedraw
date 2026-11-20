@@ -1250,6 +1250,14 @@ fn display_page(app: &mut App, ui: &mut Ui) {
                 "options.node_tracking",
                 "options.node_tracking_tip",
             ));
+        ui.checkbox(
+            &mut app.settings.live_transform_preview,
+            tr("options.live_transform_preview"),
+        )
+        .rich_tip(crate::ui::tips::pair(
+            "options.live_transform_preview",
+            "options.live_transform_preview_tip",
+        ));
         ui.checkbox(&mut app.settings.touch_keys, tr("options.touch_keys"))
             .rich_tip(crate::ui::tips::pair(
                 "options.touch_keys",
