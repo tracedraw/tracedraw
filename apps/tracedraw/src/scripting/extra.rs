@@ -17,7 +17,7 @@ use tracedraw_core::{
 /// the corner of their common box (to a tenth of a millimetre) and its
 /// fill. A copy only moved (by itself or its objects) matches; a
 /// recoloured or reshaped one does not.
-fn fingerprint(objects: &[&Shape]) -> Option<(String, Point)> {
+pub(crate) fn fingerprint(objects: &[&Shape]) -> Option<(String, Point)> {
     let boxes: Vec<Rect> = objects.iter().map(|s| s.bounds()).collect();
     let all = boxes.iter().copied().reduce(|a, b| a.union(b))?;
     if !all.is_finite() {
@@ -45,7 +45,7 @@ fn is_text(s: &Shape) -> bool {
 }
 
 /// A group's objects that are not text, and its text objects.
-fn split_group(s: &Shape) -> Option<(Vec<&Shape>, Vec<&Shape>)> {
+pub(crate) fn split_group(s: &Shape) -> Option<(Vec<&Shape>, Vec<&Shape>)> {
     let ShapeKind::Group { children } = &s.kind else {
         return None;
     };
@@ -54,7 +54,7 @@ fn split_group(s: &Shape) -> Option<(Vec<&Shape>, Vec<&Shape>)> {
 
 /// The objects a symbol draws, for matching: a group's objects that are
 /// not text, or the one object.
-fn definition_objects(def: &Shape) -> Vec<&Shape> {
+pub(crate) fn definition_objects(def: &Shape) -> Vec<&Shape> {
     match split_group(def) {
         Some((graphics, _)) => graphics,
         None => vec![def],
@@ -359,7 +359,7 @@ impl HostInner {
 }
 
 /// An instance of symbol `index` placed by `t`.
-fn instance(id: ShapeId, index: usize, t: Affine) -> Shape {
+pub(crate) fn instance(id: ShapeId, index: usize, t: Affine) -> Shape {
     let mut inst = Shape::new(id, ShapeKind::SymbolInstance { index });
     inst.transform = t;
     inst.fill = Fill::None;

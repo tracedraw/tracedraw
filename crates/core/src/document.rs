@@ -4,7 +4,7 @@
 use crate::geometry::{self, Affine, BezPath, Point, Rect, Shape as _, Vec2};
 use crate::id::{IdSource, LayerId, PageId, ShapeId};
 use crate::style::{Fill, Stroke};
-use crate::{Error, Result};
+use crate::{Error, PageRanges, Result};
 use serde::{Deserialize, Serialize};
 
 /// Hook for the text engine. The core cannot depend on fonts, so the app
@@ -2749,6 +2749,9 @@ pub enum PathTextVertical {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TextOnPath {
     pub path: BezPath,
+    /// The editable outline, if the text was attached by dropping onto it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<crate::text_path::PathSource>,
     /// Start offset along the baseline, mm (with centred or right-aligned
     /// text, added to the alignment's own start).
     #[serde(default)]
@@ -4138,6 +4141,7 @@ impl Shape {
         c.id = next();
         c.uid = None;
         match &mut c.kind {
+            ShapeKind::Text { on_path: Some(tp), .. } => tp.source = None,
             ShapeKind::Group { children } => {
                 let copies: Vec<Shape> =
                     children.iter().map(|ch| ch.with_fresh_ids(next)).collect();
@@ -5029,6 +5033,9 @@ pub struct Layer {
     /// For master layers: which pages show this layer.
     #[serde(default)]
     pub scope: MasterScope,
+    /// For master layers: the document positions where the layer appears.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_range: Option<PageRanges>,
     /// For master layers: drawn in front of the page's own layers
     /// instead of behind them (#1132).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -5865,6 +5872,15 @@ impl Shape {
 }
 
 impl Layer {
+    /// Whether this master layer appears at the 0-based page position.
+    pub fn applies_to(&self, index: usize) -> bool {
+        self.scope.applies(index)
+            && self
+                .page_range
+                .as_ref()
+                .is_none_or(|range| range.contains(index))
+    }
+
     pub fn master(id: LayerId, name: impl Into<String>, scope: MasterScope) -> Self {
         let mut l = Layer::new(id, name);
         l.scope = scope;
@@ -5880,6 +5896,7 @@ impl Layer {
             locked: false,
             shapes: Vec::new(),
             scope: MasterScope::All,
+            page_range: None,
             in_front: false,
             desktop: false,
         }
@@ -6231,6 +6248,10 @@ pub struct Document {
     pub color_styles: Vec<ColorStyle>,
     #[serde(default)]
     pub symbols: Vec<Symbol>,
+    /// Dedicated motif library. None reads the earlier symbol-backed library;
+    /// Some(empty) is an explicitly empty library, including after deletion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pattern_motifs: Option<Vec<crate::pattern_stroke::PatternMotif>>,
     #[serde(default)]
     pub metadata: Metadata,
     /// Document-level palette (the bottom "document palette").
@@ -6655,6 +6676,7 @@ impl Document {
             defaults: ObjectDefaults::default(),
             color_styles: Vec::new(),
             symbols: Vec::new(),
+            pattern_motifs: None,
             metadata: Metadata {
                 resolution_dpi: 300.0,
                 ..Default::default()
@@ -6845,7 +6867,7 @@ impl Document {
         let masters = |front: bool| {
             self.master
                 .iter()
-                .filter(move |l| l.scope.applies(idx) && l.in_front == front)
+                .filter(move |l| l.applies_to(idx) && l.in_front == front)
         };
         let mut out: Vec<&Layer> = masters(false).collect();
         out.extend(self.pages[idx].layers.iter());

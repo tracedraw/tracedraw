@@ -9,7 +9,7 @@ the right.
 
 | Row | Contents |
 |---|---|
-| Page, Master Page | open or close arrow, a sheet (cream for the Master Page), name (in bold for the current page and the Master Page); a click opens or closes it |
+| Page, Master Page, Range Pages | open or close arrow, a sheet (cream for the Master Page), name (in bold for the current page and the shared-layer groups); a click opens or closes it |
 | Layer (light grey), one step in | collapse arrow, eye (show or hide), printer (print and export or not), padlock (lock or unlock), layer icon (its top sheet blue for a page's layers, amber for master layers), name |
 | Active layer | as a layer, on `#D4E6F7` with a 3 px accent bar at the left, name in bold |
 | Master layer for odd or even pages | as a layer, followed by "Odd pages" or "Even pages" in small grey; dimmed on the pages it does not show on |
@@ -177,6 +177,14 @@ the right.
     nothing it can delete.
 - Which layers are closed, which groups are open and which page nodes
   and the Master Page node are closed lasts for the session.
+
+## Range pages
+
+The **Range Pages** group contains shared layers limited to named page
+positions, such as `1-8, 12, 15-20`. Its menu and the New Master Layer
+button's menu create a range layer. Layer Properties edits the range.
+See [Page range layers](page-range-layers.md) for page-order rules,
+validation, saving and output behavior.
 
 ## Thumbnails
 

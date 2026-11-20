@@ -9,7 +9,8 @@ use tracedraw_core::{
     document::{Shape, ShapeKind},
     geometry::{Affine, BezPath, Point, Rect, Shape as _, Size},
     live::Effect,
-    Color, Command, Fill, ShapeId, Stroke, TextSpan,
+    text_path::path_for_text_at,
+    Color, Command, Fill, LayerId, ShapeId, Stroke, TextSpan,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -414,7 +415,7 @@ impl App {
         let master = self
             .active_layer()
             .and_then(|l| self.doc().master.iter().find(|m| m.id == l))
-            .map(|m| (m.id, m.scope));
+            .map(|m| m.id);
         // All, odd or even pages with no master layer active: a master
         // layer of its own showing on those pages, in front, holding one
         // field that shows each page's number, as one undo step (#1709).
@@ -465,18 +466,21 @@ impl App {
             return;
         }
         let mut cmds = Vec::new();
-        if let Some((layer, scope)) = master {
+        if let Some(layer) = master {
+            let Ok(master_layer) = self.doc().layer(layer) else {
+                return;
+            };
             // The field lines up as on the page in view, or on the first
             // page the layer shows on when that is not one of them.
             let i = pages
                 .iter()
                 .position(|(_, p)| *p == active)
-                .filter(|i| scope.applies(*i) && self.page_numbers.field().numbers(*i))
+                .filter(|i| master_layer.applies_to(*i) && self.page_numbers.field().numbers(*i))
                 .or_else(|| {
                     let first = self.page_numbers.first_page.max(1) - 1;
                     (first..pages.len())
                         .chain(0..first)
-                        .find(|i| scope.applies(*i))
+                        .find(|i| master_layer.applies_to(*i))
                 })
                 .unwrap_or(0);
             let size = pages
@@ -605,7 +609,11 @@ impl App {
             let groups: Vec<ShapeId> = self
                 .selected_shapes()
                 .iter()
-                .filter(|s| matches!(s.kind, ShapeKind::Group { .. }) || s.is_clip_frame_of_group())
+                .filter(|s| {
+                    matches!(s.kind, ShapeKind::Group { .. })
+                        || s.is_clip_frame_of_group()
+                        || tracedraw_core::pattern_stroke::is_pattern(s)
+                })
                 .map(|s| s.id)
                 .collect();
             if groups.is_empty() {
@@ -5458,116 +5466,6 @@ fn tiny_skia_white(w: u32, h: u32) -> tiny_skia::Pixmap {
     pm
 }
 
-/// The path text is fitted to, in page space: its first subpath, and for a
-/// closed one turned to run clockwise (so the letters stand on its
-/// outside) and started at the point nearest to `at` (where the path was
-/// clicked), or at its highest point without one. Returns the path and
-/// whether it is closed.
-pub fn path_for_text_at(path: &BezPath, at: Option<Point>) -> (BezPath, bool) {
-    use kurbo::{ParamCurve, ParamCurveExtrema, ParamCurveNearest, PathSeg};
-    let mut first = BezPath::new();
-    let mut closed = false;
-    for el in path.elements() {
-        match el {
-            tracedraw_core::geometry::PathEl::MoveTo(_) if !first.elements().is_empty() => break,
-            tracedraw_core::geometry::PathEl::ClosePath => {
-                closed = true;
-                break;
-            }
-            e => first.push(*e),
-        }
-    }
-    let mut segs: Vec<PathSeg> = first.segments().collect();
-    if let (Some(a), Some(b)) = (segs.first(), segs.last()) {
-        if (a.start() - b.end()).hypot() < 1e-6 && segs.len() > 1 {
-            closed = true;
-        }
-    }
-    if !closed || segs.is_empty() {
-        return (first, false);
-    }
-    if let (Some(a), Some(b)) = (segs.first(), segs.last()) {
-        if (a.start() - b.end()).hypot() >= 1e-6 {
-            segs.push(PathSeg::Line(tracedraw_core::geometry::Line::new(
-                b.end(),
-                a.start(),
-            )));
-        }
-    }
-    // Shoelace over the flattened outline: positive runs anticlockwise
-    // (y up), whose left side, where letters stand, is the inside.
-    let mut area = 0.0;
-    let mut prev: Option<Point> = None;
-    let mut start: Option<Point> = None;
-    tracedraw_core::geometry::flatten(&first, 0.1, &mut |el| match el {
-        tracedraw_core::geometry::PathEl::MoveTo(p) => {
-            start = Some(p);
-            prev = Some(p);
-        }
-        tracedraw_core::geometry::PathEl::LineTo(p) => {
-            if let Some(q) = prev {
-                area += q.x * p.y - p.x * q.y;
-            }
-            prev = Some(p);
-        }
-        _ => {}
-    });
-    if let (Some(q), Some(p)) = (prev, start) {
-        area += q.x * p.y - p.x * q.y;
-    }
-    if area > 0.0 {
-        segs = segs.iter().rev().map(|s| s.reverse()).collect();
-    }
-    // The start: the point nearest to `at`, or the highest point (the
-    // segment and parameter where y is largest).
-    let mut best = (0usize, 0.0f64, f64::NEG_INFINITY);
-    match at.filter(|p| p.x.is_finite() && p.y.is_finite()) {
-        Some(p) => {
-            for (i, seg) in segs.iter().enumerate() {
-                let n = seg.nearest(p, 1e-6);
-                if -n.distance_sq > best.2 {
-                    best = (i, n.t, -n.distance_sq);
-                }
-            }
-        }
-        None => {
-            for (i, seg) in segs.iter().enumerate() {
-                let mut ts = vec![0.0, 1.0];
-                ts.extend(seg.extrema());
-                for t in ts {
-                    let y = seg.eval(t).y;
-                    if y > best.2 + 1e-9 {
-                        best = (i, t, y);
-                    }
-                }
-            }
-        }
-    }
-    let (k, t, _) = best;
-    let mut order: Vec<PathSeg> = Vec::new();
-    if t < 1.0 - 1e-9 {
-        order.push(segs[k].subsegment(t..1.0));
-    }
-    order.extend(segs[k + 1..].iter().copied());
-    order.extend(segs[..k].iter().copied());
-    if t > 1e-9 {
-        order.push(segs[k].subsegment(0.0..t));
-    }
-    let mut out = BezPath::new();
-    if let Some(s0) = order.first() {
-        out.move_to(s0.start());
-    }
-    for seg in order {
-        match seg {
-            PathSeg::Line(l) => out.line_to(l.p1),
-            PathSeg::Quad(q) => out.quad_to(q.p1, q.p2),
-            PathSeg::Cubic(c) => out.curve_to(c.p1, c.p2, c.p3),
-        }
-    }
-    out.close_path();
-    (out, true)
-}
-
 /// Where text fitted to `path` (its local space) is placed: on a closed
 /// path centred on the start (the highest point), on an open one with the
 /// text's own alignment from the start. Returns the alignment and offset.
@@ -6038,6 +5936,163 @@ impl App {
             "Duplicate Symbol",
         );
     }
+
+    /// Symbols docker > Find the same: the selected group's objects that
+    /// are not text become a symbol (or join one that draws the same),
+    /// and every group that copies them, on any layer and at any depth,
+    /// becomes an instance. Text of a group stays text, grouped with
+    /// the instance (#2343).
+    pub fn symbolize_selection(&mut self) {
+        let sample = match self.selected_shapes().as_slice() {
+            [s] if matches!(s.kind, ShapeKind::Group { .. }) => s.clone(),
+            _ => {
+                self.status = tr("status.symbolize_need_group");
+                return;
+            }
+        };
+        let Some((graphics, _)) = crate::scripting::extra::split_group(&sample) else {
+            return;
+        };
+        let Some((key, origin)) = crate::scripting::extra::fingerprint(&graphics) else {
+            self.status = tr("status.symbolize_need_group");
+            return;
+        };
+        let doc = self.doc();
+        let found = doc.symbols.iter().position(|sym| {
+            let objs = crate::scripting::extra::definition_objects(&sym.shape);
+            crate::scripting::extra::fingerprint(&objs).is_some_and(|(k, _)| k == key)
+        });
+        let (index, name, def) = match found {
+            Some(i) => (i, doc.symbols[i].name.clone(), None),
+            None => {
+                let index = doc.symbols.len();
+                let name = sample
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("Symbol {}", index + 1));
+                let children: Vec<Shape> = graphics.iter().map(|c| (*c).clone()).collect();
+                let mut def = Shape::new(ShapeId(0), ShapeKind::Group { children });
+                def.fill = Fill::None;
+                def.stroke = None;
+                def.transform_by(Affine::translate((-origin.x, -origin.y)));
+                (index, name, Some(def))
+            }
+        };
+        // Matching groups at any depth, with their layer and the
+        // transform to the page: a copy in another layer, and a copy
+        // inside another group, is still a copy.
+        let mut groups: Vec<(LayerId, Shape, Affine)> = Vec::new();
+        fn collect(
+            shapes: &[Shape],
+            layer: LayerId,
+            parent: Affine,
+            key: &str,
+            out: &mut Vec<(LayerId, Shape, Affine)>,
+        ) {
+            for s in shapes {
+                if let ShapeKind::Group { children } = &s.kind {
+                    let t = parent * s.transform;
+                    if let Some((graphics, _)) = crate::scripting::extra::split_group(s) {
+                        if crate::scripting::extra::fingerprint(&graphics)
+                            .is_some_and(|(k, _)| k == key)
+                        {
+                            out.push((layer, s.clone(), t));
+                        }
+                    }
+                    collect(children, layer, t, key, out);
+                }
+            }
+        }
+        for p in &self.doc().pages {
+            for l in &p.layers {
+                collect(&l.shapes, l.id, Affine::IDENTITY, &key, &mut groups);
+            }
+        }
+        for l in &self.doc().master {
+            collect(&l.shapes, l.id, Affine::IDENTITY, &key, &mut groups);
+        }
+        let mut cmds = Vec::new();
+        if let Some(def) = def {
+            cmds.push(Command::AddSymbol {
+                symbol: tracedraw_core::Symbol {
+                    name: name.clone(),
+                    shape: def,
+                },
+            });
+        }
+        let (mut replaced, mut skipped) = (0, 0);
+        let mut ids = Vec::new();
+        for (layer, g, t) in groups {
+            let Some((graphics, texts)) = crate::scripting::extra::split_group(&g) else {
+                continue;
+            };
+            let Some((k, at)) = crate::scripting::extra::fingerprint(&graphics) else {
+                skipped += 1;
+                continue;
+            };
+            if k != key {
+                skipped += 1;
+                continue;
+            }
+            let texts: Vec<Shape> = texts.into_iter().cloned().collect();
+            cmds.push(Command::DeleteShapes { shapes: vec![g.id] });
+            let place = Affine::translate((at.x, at.y));
+            let id = self.engine.new_shape_id();
+            if texts.is_empty() {
+                let mut inst = crate::scripting::extra::instance(id, index, t * place);
+                inst.opacity = g.opacity;
+                inst.shadow = g.shadow.clone();
+                cmds.push(Command::AddShape {
+                    layer,
+                    shape: inst,
+                });
+            } else {
+                let mut children = vec![crate::scripting::extra::instance(id, index, place)];
+                children.extend(texts);
+                let mut grouped =
+                    Shape::new(self.engine.new_shape_id(), ShapeKind::Group { children });
+                grouped.transform = t;
+                grouped.name = g.name.clone();
+                grouped.fill = Fill::None;
+                grouped.stroke = None;
+                grouped.opacity = g.opacity;
+                grouped.shadow = g.shadow.clone();
+                cmds.push(Command::AddShape {
+                    layer,
+                    shape: grouped,
+                });
+            }
+            replaced += 1;
+            ids.push(id);
+        }
+        if let Err(e) = self.engine.run_batch("Symbolize", &cmds) {
+            self.status = e.to_string();
+            return;
+        }
+        self.selection = ids.clone();
+        self.status = trf(
+            "status.symbolized",
+            &[
+                ("name", &name),
+                ("replaced", &replaced.to_string()),
+                ("skipped", &skipped.to_string()),
+            ],
+        );
+    }
+
+    /// Symbols docker: every instance of symbol `drop` becomes an
+    /// instance of `keep`, and `drop` is taken out. One undo step.
+    pub fn replace_symbol(&mut self, keep: usize, drop: usize) {
+        let n = self.doc().symbols.len();
+        if keep == drop || keep >= n || drop >= n {
+            return;
+        }
+        let from = self.doc().symbols[drop].name.clone();
+        let to = self.doc().symbols[keep].name.clone();
+        self.run(Command::ReplaceSymbol { keep, drop });
+        self.symbol_replace_from = None;
+        self.status = trf("status.symbol_replaced", &[("from", &from), ("to", &to)]);
+    }
 }
 
 /// Whether `t` can be undone (an instance scaled to nothing cannot).
@@ -6260,6 +6315,7 @@ fn scale_base(s: &tracedraw_core::document::Shape) -> Option<(f64, f64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::Tool;
 
     /// #3622, #3621: uniform transparency on and off, and the document
     /// palette's eyedropper, run as menu commands (so a shortcut can run
@@ -6820,6 +6876,207 @@ mod tests {
         assert_eq!(app.doc().symbols.len(), 1);
     }
 
+    /// Find the same: the sample group and every group that copies it
+    /// become instances of one symbol, on the layer each copy lives on
+    /// and inside another group too; a group that draws something else
+    /// stays a group, and every copy keeps its place.
+    #[test]
+    fn find_the_same_reaches_groups_on_other_layers_and_inside_groups() {
+        let mut app = App::headless();
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(x, 0.0, x + 10.0, 5.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let a = rect(&mut app, 0.0);
+        let b = rect(&mut app, 20.0);
+        app.select(vec![a, b]);
+        app.group_selection();
+        assert_eq!(app.selection.len(), 1, "the sample grouped");
+        let sample = app.selection[0];
+        let c = rect(&mut app, 100.0);
+        let d = rect(&mut app, 120.0);
+        let e = rect(&mut app, 140.0);
+        app.select(vec![c, d, e]);
+        app.group_selection();
+        let other = app.selection[0];
+        let layer1 = app.active_layer().expect("layer");
+        // A second layer with a plain copy of the sample, and a copy of
+        // the sample inside another group.
+        let page = app.doc().pages[0].id;
+        app.run(Command::AddLayer {
+            page,
+            name: "L2".into(),
+        });
+        let layer2 = app.doc().pages[0].layers.last().expect("layer").id;
+        let child = |app: &App, id: ShapeId| app.doc().find_shape(id).expect("rect").clone();
+        let mut plain = Shape::new(
+            app.engine.new_shape_id(),
+            ShapeKind::Group {
+                children: vec![child(&app, a), child(&app, b)],
+            },
+        );
+        plain.transform = Affine::translate((50.0, 10.0));
+        app.run(Command::AddShape {
+            layer: layer2,
+            shape: plain.clone(),
+        });
+        let mut nested = plain.clone();
+        nested.id = app.engine.new_shape_id();
+        nested.transform = Affine::translate((0.0, -20.0));
+        let (plain_id, nested_id) = (plain.id, nested.id);
+        let mut holder = Shape::new(
+            app.engine.new_shape_id(),
+            ShapeKind::Group {
+                children: vec![nested, child(&mut app, c)],
+            },
+        );
+        holder.transform = Affine::translate((0.0, 40.0));
+        app.run(Command::AddShape {
+            layer: layer2,
+            shape: holder,
+        });
+        // Where each copy drew on the page: the sample at (0, 0); the
+        // plain copy moved by (50, 10); the nested copy moved by (0, -20)
+        // inside the holder moved by (0, 40), so (0, 20).
+        let mut was: Vec<Rect> = vec![
+            Rect::new(0.0, 0.0, 30.0, 5.0),
+            Rect::new(0.0, 20.0, 30.0, 25.0),
+            Rect::new(50.0, 10.0, 80.0, 15.0),
+        ];
+        was.sort_by(|p, q| p.x0.total_cmp(&q.x0).then(p.y0.total_cmp(&q.y0)));
+        app.select(vec![sample]);
+        app.symbolize_selection();
+        assert_eq!(app.doc().symbols.len(), 1);
+        assert_eq!(
+            app.status,
+            trf(
+                "status.symbolized",
+                &[("name", "Symbol 1"), ("replaced", "3"), ("skipped", "0")]
+            )
+        );
+        // The copies are gone, the different group stays a group.
+        assert!(app.doc().find_shape(sample).is_none());
+        assert!(app.doc().find_shape(plain_id).is_none());
+        assert!(app.doc().find_shape(nested_id).is_none());
+        assert!(matches!(
+            app.doc().find_shape(other).expect("kept").kind,
+            ShapeKind::Group { .. }
+        ));
+        // Three instances of the one symbol, two of them on the second
+        // layer; each where its group drew.
+        let mut now: Vec<Rect> = app
+            .selection
+            .iter()
+            .filter_map(|id| app.doc().find_shape(*id))
+            .map(|s| {
+                assert!(matches!(s.kind, ShapeKind::SymbolInstance { index: 0 }));
+                app.visual_bounds(s)
+            })
+            .collect();
+        assert_eq!(now.len(), 3);
+        now.sort_by(|p, q| p.x0.total_cmp(&q.x0).then(p.y0.total_cmp(&q.y0)));
+        for (w, n) in was.iter().zip(&now) {
+            assert!(
+                (w.x0 - n.x0).abs() < 1e-6 && (w.y0 - n.y0).abs() < 1e-6,
+                "{w:?} {n:?}"
+            );
+            assert!((w.width() - n.width()).abs() < 1e-6, "{w:?} {n:?}");
+        }
+        let on = |app: &App, layer: LayerId| {
+            app.doc().pages[0]
+                .layers
+                .iter()
+                .find(|l| l.id == layer)
+                .expect("layer")
+                .shapes
+                .iter()
+                .filter(|s| matches!(s.kind, ShapeKind::SymbolInstance { .. }))
+                .count()
+        };
+        assert_eq!(on(&app, layer1), 1);
+        assert_eq!(on(&app, layer2), 2);
+        // One undo puts the three groups back.
+        app.undo();
+        assert!(app.doc().symbols.is_empty());
+        assert!(app.doc().find_shape(sample).is_some());
+        assert!(app.doc().find_shape(plain_id).is_some());
+        assert!(app.doc().find_shape(nested_id).is_some());
+    }
+
+    /// Symbolize keeps what a copy looked like as a whole: the
+    /// transparency and shadow set on the group go on the instance it
+    /// becomes, so find-and-replace does not change how a copy draws
+    /// (#3497). A copy without them stays without.
+    #[test]
+    fn symbolize_keeps_the_groups_opacity_and_shadow_on_the_instance() {
+        let mut app = App::headless();
+        let rect = |app: &mut App, x: f64| {
+            app.new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(x, 0.0, x + 10.0, 5.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect")
+        };
+        let a = rect(&mut app, 0.0);
+        let b = rect(&mut app, 20.0);
+        let child = |app: &App, id: ShapeId| app.doc().find_shape(id).expect("rect").clone();
+        let layer = app.active_layer().expect("layer");
+        let mut styled = Shape::new(
+            app.engine.new_shape_id(),
+            ShapeKind::Group {
+                children: vec![child(&app, a), child(&app, b)],
+            },
+        );
+        styled.transform = Affine::translate((0.0, 30.0));
+        styled.opacity = 0.5;
+        styled.shadow = Some(tracedraw_core::Shadow {
+            offset: tracedraw_core::geometry::Vec2::new(2.0, 2.0),
+            blur: 2.0,
+            ..Default::default()
+        });
+        let styled_id = styled.id;
+        app.run(Command::AddShape {
+            layer,
+            shape: styled,
+        });
+        let mut plain = Shape::new(
+            app.engine.new_shape_id(),
+            ShapeKind::Group {
+                children: vec![child(&app, a), child(&app, b)],
+            },
+        );
+        plain.transform = Affine::translate((0.0, 60.0));
+        app.run(Command::AddShape { layer, shape: plain });
+        app.select(vec![styled_id]);
+        app.symbolize_selection();
+        assert_eq!(app.doc().symbols.len(), 1);
+        let inst_at = |y: f64| {
+            app.selection
+                .iter()
+                .filter_map(|id| app.doc().find_shape(*id))
+                .find(|s| {
+                    matches!(s.kind, ShapeKind::SymbolInstance { index: 0 })
+                        && (app.visual_bounds(s).y0 - y).abs() < 1e-6
+                })
+                .unwrap_or_else(|| panic!("no instance at y {y}"))
+        };
+        let see_through = inst_at(30.0);
+        assert!(
+            (see_through.opacity - 0.5).abs() < 1e-6,
+            "the instance lost the group's transparency"
+        );
+        let sh = see_through.shadow.as_ref().expect("the group's shadow");
+        assert!((sh.offset.x - 2.0).abs() < 1e-6 && (sh.blur - 2.0).abs() < 1e-6);
+        let solid = inst_at(60.0);
+        assert!((solid.opacity - 1.0).abs() < 1e-6);
+        assert!(solid.shadow.is_none(), "the plain copy grew a shadow");
+    }
+
     /// New Symbol is one step to undo: the symbol goes with its instance.
     #[test]
     fn undoing_new_symbol_removes_the_symbol() {
@@ -6900,6 +7157,347 @@ mod tests {
         assert_eq!(
             back.master[0].shapes[0].page_number,
             Some(app.page_numbers.field())
+        );
+    }
+
+    #[test]
+    fn a_page_number_on_a_range_layer_uses_only_its_page_positions() {
+        let mut app = crate::ui::objects_docker::tests::without_desktop();
+        for _ in 0..3 {
+            app.add_page();
+        }
+        app.goto_page(1);
+        app.run(Command::AddRangeLayer {
+            name: "Chapter footer".into(),
+            page_range: tracedraw_core::PageRanges::parse("2-3").expect("range"),
+        });
+        let layer = app.doc().master.last().expect("range layer").id;
+        app.picked_layer = Some(layer);
+        app.insert_page_number(PageNumberWhere::Active);
+        assert_eq!(app.doc().layer(layer).expect("layer").shapes.len(), 1);
+        let shown: Vec<Option<String>> = app
+            .doc()
+            .pages
+            .iter()
+            .map(|page| {
+                app.doc()
+                    .layers_drawn_for_page(page.id)
+                    .expect("drawn layers")
+                    .iter()
+                    .flat_map(|layer| &layer.shapes)
+                    .find_map(|shape| match &shape.kind {
+                        ShapeKind::Text { spans, .. } => {
+                            Some(tracedraw_core::document::spans_text(spans))
+                        }
+                        _ => None,
+                    })
+            })
+            .collect();
+        assert_eq!(shown, [None, Some("2".into()), Some("3".into()), None]);
+    }
+
+    fn app_with_first_page_range() -> (App, tracedraw_core::LayerId) {
+        let mut app = crate::ui::objects_docker::tests::without_desktop();
+        app.add_page();
+        app.goto_page(0);
+        app.run(Command::AddRangeLayer {
+            name: "Chapter header".into(),
+            page_range: tracedraw_core::PageRanges::parse("1").expect("range"),
+        });
+        let layer = app.doc().master.last().expect("range layer").id;
+        app.picked_layer = Some(layer);
+        (app, layer)
+    }
+
+    #[test]
+    fn changing_a_range_command_clears_editing_state_on_an_excluded_page() {
+        let (mut app, layer) = app_with_first_page_range();
+        let shape = app
+            .new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(5.0, 5.0, 20.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("range object");
+        app.select(vec![shape]);
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("2"),
+        });
+        assert!(app.selection.is_empty());
+        assert_ne!(app.picked_layer, Some(layer));
+        assert!(app.doc().find_shape(shape).is_some());
+        assert!(!app.doc().layer(layer).expect("layer").applies_to(0));
+        app.undo();
+        assert!(app
+            .doc()
+            .layer(layer)
+            .expect("restored layer")
+            .applies_to(0));
+        app.picked_layer = Some(layer);
+        app.focus_on(shape);
+        app.select(vec![shape]);
+        app.redo();
+        assert!(app.selection.is_empty());
+        assert!(app.focus.is_empty());
+        assert_ne!(app.picked_layer, Some(layer));
+        app.undo();
+        app.picked_layer = Some(layer);
+        app.select(vec![shape]);
+        app.run(Command::InsertPage {
+            at: 0,
+            name: None,
+            size: app.page_size(),
+            layer: None,
+            shapes: Vec::new(),
+        });
+        assert_eq!(app.page_index(), 1);
+        assert!(app.selection.is_empty());
+        assert_ne!(app.picked_layer, Some(layer));
+        assert!(app.doc().find_shape(shape).is_some());
+    }
+
+    #[test]
+    fn a_hidden_range_header_finishes_text_editing_and_composition() {
+        let (mut app, layer) = app_with_first_page_range();
+        let shape = app.page_number_text(0, app.page_size());
+        let text = shape.id;
+        app.run(Command::AddShape { layer, shape });
+        app.begin_text_edit(text);
+        assert!(app.text_edit.is_some());
+        app.ime_preedit = "pending composition".into();
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("2"),
+        });
+        assert!(app.text_edit.is_none());
+        assert!(app.ime_preedit.is_empty());
+        assert!(app.doc().find_shape(text).is_some());
+    }
+
+    #[test]
+    fn range_page_navigation_finishes_hidden_text_editing() {
+        for multipage in [false, true] {
+            let (mut app, layer) = app_with_first_page_range();
+            app.start_text(Point::new(20.0, 20.0), None);
+            app.insert_text("Header");
+            let text = app.text_edit.as_ref().expect("header editor").shape;
+            app.ime_preedit = "pending composition".into();
+            if multipage {
+                app.multipage = true;
+                app.multipage_activate(app.doc().pages[1].id);
+            } else {
+                app.goto_page(1);
+            }
+            assert_eq!(app.page_index(), 1);
+            assert!(app.text_edit.is_none(), "hidden header editor, {multipage}");
+            assert!(app.ime_preedit.is_empty());
+            assert_ne!(app.picked_layer, Some(layer));
+            let header = app.doc().find_shape(text).expect("saved header").clone();
+            app.insert_text("Hidden edit");
+            assert_eq!(app.doc().find_shape(text), Some(&header));
+            app.start_text(Point::new(30.0, 30.0), None);
+            app.insert_text("Body");
+            let body = app.text_edit.as_ref().expect("body editor").shape;
+            assert_eq!(
+                app.doc().locate(body).expect("body layer").0,
+                app.doc().pages[1].layers[0].id
+            );
+        }
+    }
+
+    #[test]
+    fn range_page_navigation_finishes_curves_and_cancels_crops() {
+        for multipage in [false, true] {
+            let (mut app, layer) = app_with_first_page_range();
+            app.tool = Tool::Bezier;
+            app.curve = Some(crate::app::CurveInProgress {
+                nodes: vec![
+                    (Point::new(5.0, 10.0), None),
+                    (Point::new(30.0, 10.0), None),
+                ],
+                smooth: true,
+                ..Default::default()
+            });
+            app.multipage = multipage;
+            app.goto_page(1);
+            assert!(app.curve.is_none(), "hidden curve, {multipage}");
+            assert_eq!(app.doc().layer(layer).expect("range").shapes.len(), 1);
+            assert!(app
+                .doc()
+                .pages
+                .iter()
+                .all(|page| { page.layers.iter().all(|layer| layer.shapes.is_empty()) }));
+            app.goto_page(0);
+            app.picked_layer = Some(layer);
+            let shape = app.doc().layer(layer).expect("range").shapes[0].clone();
+            app.select(vec![shape.id]);
+            app.crop_area = Some(Rect::new(0.0, 0.0, 10.0, 10.0));
+            app.goto_page(1);
+            assert!(app.crop_area.is_none(), "hidden crop, {multipage}");
+            assert!(app.crop_drag.is_none());
+            assert_eq!(app.doc().find_shape(shape.id), Some(&shape));
+        }
+    }
+
+    #[test]
+    fn range_page_navigation_keeps_editing_on_an_applicable_page() {
+        let (mut app, layer) = app_with_first_page_range();
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("1-2"),
+        });
+        app.start_text(Point::new(20.0, 20.0), None);
+        app.insert_text("Shared header");
+        let text = app.text_edit.as_ref().expect("shared editor").shape;
+        app.goto_page(usize::MAX);
+        assert_eq!(app.page_index(), 0);
+        assert_eq!(app.text_edit.as_ref().expect("editor").shape, text);
+        app.goto_page(1);
+        assert_eq!(app.text_edit.as_ref().expect("editor").shape, text);
+    }
+
+    #[test]
+    fn a_range_change_finishes_a_pending_curve_on_its_original_layer() {
+        let (mut app, layer) = app_with_first_page_range();
+        app.tool = Tool::Bezier;
+        app.curve = Some(crate::app::CurveInProgress {
+            nodes: vec![
+                (Point::new(5.0, 10.0), None),
+                (Point::new(30.0, 10.0), None),
+            ],
+            smooth: true,
+            ..Default::default()
+        });
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("2"),
+        });
+        assert!(app.curve.is_none());
+        assert_eq!(app.doc().layer(layer).expect("range layer").shapes.len(), 1);
+        assert!(app
+            .doc()
+            .pages
+            .iter()
+            .all(|page| page.layers.iter().all(|l| l.shapes.is_empty())));
+        app.undo();
+        assert!(app
+            .doc()
+            .layer(layer)
+            .expect("restored range")
+            .applies_to(0));
+        assert_eq!(app.doc().layer(layer).expect("saved curve").shapes.len(), 1);
+    }
+
+    #[test]
+    fn a_hidden_range_table_stops_receiving_cell_input() {
+        let (mut app, layer) = app_with_first_page_range();
+        let table = tracedraw_core::Table::new(Rect::new(10.0, 10.0, 100.0, 40.0), 2, 2, None);
+        let id = app
+            .new_shape(ShapeKind::Table(table))
+            .expect("header table");
+        app.select(vec![id]);
+        app.table_edit = Some(crate::table::TableEdit::new(id, vec![(0, 0)], 0));
+        app.tool = Tool::Table;
+        app.cell_insert("Kept");
+        let before = app.doc().find_shape(id).expect("table").kind.clone();
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("2"),
+        });
+        assert!(app.table_edit.is_none());
+        app.cell_insert("Leak");
+        assert_eq!(app.doc().find_shape(id).expect("kept table").kind, before);
+    }
+
+    #[test]
+    fn a_range_curve_history_stays_out_of_edit_mode_on_excluded_pages() {
+        let (mut app, layer) = app_with_first_page_range();
+        app.tool = Tool::Bezier;
+        app.curve = Some(crate::app::CurveInProgress {
+            nodes: vec![
+                (Point::new(5.0, 10.0), None),
+                (Point::new(20.0, 10.0), None),
+                (Point::new(30.0, 20.0), None),
+            ],
+            smooth: true,
+            ..Default::default()
+        });
+        app.finish_curve();
+        assert_eq!(app.doc().layer(layer).expect("curve layer").shapes.len(), 1);
+        app.goto_page(1);
+        app.undo();
+        assert!(app.curve.is_none());
+        assert!(app.selection.is_empty());
+        // Redoing the page insertion would land on the first page, where
+        // the range applies; the curve's own step is redone from page 2.
+        app.goto_page(1);
+        app.redo();
+        assert!(app.curve.is_none());
+        assert!(app.selection.is_empty());
+        assert_eq!(
+            app.doc().layer(layer).expect("restored curve").shapes.len(),
+            1
+        );
+        assert!(app
+            .doc()
+            .pages
+            .iter()
+            .all(|page| page.layers.iter().all(|l| l.shapes.is_empty())));
+    }
+
+    #[test]
+    fn hiding_a_range_cancels_a_crop_instead_of_cropping_the_page() {
+        let (mut app, layer) = app_with_first_page_range();
+        let kind = ShapeKind::Rect {
+            rect: Rect::new(5.0, 5.0, 25.0, 20.0),
+            radius: 0.0,
+            corners: None,
+        };
+        let shared = app.new_shape(kind.clone()).expect("range object");
+        let own_layer = app.doc().pages[0].layers[0].id;
+        app.picked_layer = Some(own_layer);
+        let ordinary = app.new_shape(kind).expect("ordinary object");
+        let before = app
+            .doc()
+            .find_shape(ordinary)
+            .expect("ordinary object")
+            .clone();
+        app.picked_layer = Some(layer);
+        app.select(vec![shared]);
+        app.tool = Tool::Crop;
+        app.crop_area = Some(Rect::new(10.0, 10.0, 20.0, 20.0));
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("2"),
+        });
+        assert!(app.crop_area.is_none());
+        app.apply_crop();
+        assert_eq!(app.doc().find_shape(ordinary), Some(&before));
+    }
+
+    #[test]
+    fn hiding_a_range_finishes_symmetry_editing_before_new_objects() {
+        let (mut app, layer) = app_with_first_page_range();
+        let kind = ShapeKind::Rect {
+            rect: Rect::new(5.0, 5.0, 25.0, 20.0),
+            radius: 0.0,
+            corners: None,
+        };
+        let shape = app.new_shape(kind.clone()).expect("range object");
+        app.select(vec![shape]);
+        app.create_symmetry();
+        assert!(app.symmetry_edit.is_some());
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: tracedraw_core::PageRanges::parse("2"),
+        });
+        assert!(app.symmetry_edit.is_none());
+        assert!(app.selection.is_empty());
+        let ordinary = app.new_shape(kind).expect("ordinary object");
+        assert_eq!(
+            app.doc().locate(ordinary).expect("page layer").0,
+            app.doc().pages[0].layers[0].id
         );
     }
 

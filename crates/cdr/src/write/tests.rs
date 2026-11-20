@@ -4,6 +4,8 @@ use tracedraw_core::{
     geometry::Size,
 };
 
+mod page_range_tests;
+
 fn doc_with(shapes: Vec<Shape>) -> Document {
     let mut doc = Document::new("w", Size::new(200.0, 100.0));
     doc.pages[0].layers[0].name = "Ink".into();
@@ -10467,4 +10469,51 @@ fn palette_inks_and_styles_open_again() {
     }
     let (back, _) = crate::open_bytes(&document_to_cdr_version(&doc, 13), "back").expect("reads");
     assert!(back.palette.is_empty() && back.object_styles.is_empty());
+}
+/// A native pattern uses ordinary vector copies in interchange, and the
+/// existing source member restores its guide and motif in package files.
+#[test]
+fn pattern_stroke_package_round_trip_keeps_editable_source() {
+    use tracedraw_core::{live::Effect, pattern_stroke::PatternOptions};
+    let mut path = BezPath::new();
+    path.move_to((20.0, 30.0));
+    path.line_to((60.0, 30.0));
+    let mut guide = Shape::new(
+        tracedraw_core::ShapeId(1),
+        ShapeKind::Path {
+            path,
+            closed: false,
+        },
+    );
+    guide.fill = Fill::None;
+    guide.stroke = None;
+    let mut motif = Shape::new(
+        tracedraw_core::ShapeId(2),
+        ShapeKind::Ellipse {
+            rect: Rect::new(-2.0, -2.0, 2.0, 2.0),
+            arc: None,
+        },
+    );
+    motif.fill = Fill::Solid(Color::rgb8(20, 180, 70));
+    motif.stroke = None;
+    guide.effects.push(Effect::PatternStroke {
+        motif: Box::new(motif),
+        options: PatternOptions::default(),
+        original: None,
+    });
+    let doc = doc_with(vec![guide.clone()]);
+    for v in [13, 17, 27] {
+        let bytes = document_to_cdr_version(&doc, v);
+        let (back, report) = crate::open_bytes(&bytes, "pattern stroke").unwrap();
+        assert_eq!(report.skipped_objects, 0, "{v}: {:?}", report.warnings);
+        let shapes = &back.pages[0].layers[0].shapes;
+        if v >= 14 {
+            assert_eq!(shapes.len(), 1, "{v}");
+            assert_eq!(shapes[0].effects, guide.effects, "{v}");
+            assert_eq!(tracedraw_core::live::evaluate(&shapes[0]).above.len(), 6);
+        } else {
+            assert!(shapes.iter().all(|s| s.effects.is_empty()));
+            assert!(shapes.len() >= 6, "{v}: {}", shapes.len());
+        }
+    }
 }

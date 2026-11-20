@@ -5926,15 +5926,26 @@ fn layout_page(app: &mut App, ui: &mut Ui) {
         String,
         tracedraw_core::MasterScope,
         bool,
+        bool,
+        bool,
     );
     let masters: Vec<MasterRow> = app
         .doc()
         .master
         .iter()
-        .map(|l| (l.id, l.name.clone(), l.scope, l.in_front))
+        .map(|l| {
+            (
+                l.id,
+                l.name.clone(),
+                l.scope,
+                l.in_front,
+                l.page_range.is_some(),
+                l.desktop,
+            )
+        })
         .collect();
-    for (id, name, scope, front) in masters {
-        ui.horizontal(|ui| {
+    for (id, name, scope, front, ranged, desktop) in masters {
+        ui.horizontal_wrapped(|ui| {
             ui.label(&name);
             // Drawn over the page's own layers or behind them (#1132).
             let mut on = front;
@@ -5954,7 +5965,7 @@ fn layout_page(app: &mut App, ui: &mut Ui) {
                 (tracedraw_core::MasterScope::Even, "options.scope_even"),
             ] {
                 if ui
-                    .selectable_label(scope == s, tr(k))
+                    .selectable_label(!ranged && scope == s, tr(k))
                     .rich_tip_with(|| format!("{}\n{}", tr(k), tr(&format!("{k}_tip"))))
                     .clicked()
                 {
@@ -5963,6 +5974,27 @@ fn layout_page(app: &mut App, ui: &mut Ui) {
                         scope: s,
                     });
                 }
+            }
+            if !desktop
+                && ui
+                    .selectable_label(ranged, tr("docker.range_pages"))
+                    .rich_tip_with(|| {
+                        let range = app
+                            .doc()
+                            .layer(id)
+                            .ok()
+                            .and_then(|layer| layer.page_range.as_ref())
+                            .map(ToString::to_string)
+                            .unwrap_or_default();
+                        format!(
+                            "{}\n{range}\n{}",
+                            tr("docker.range_pages"),
+                            tr("docker.page_range_desc")
+                        )
+                    })
+                    .clicked()
+            {
+                crate::ui::objects_docker::open_layer_range(app, id);
             }
         });
     }
@@ -5979,6 +6011,16 @@ fn layout_page(app: &mut App, ui: &mut Ui) {
             {
                 crate::ui::objects_docker::new_master_layer(app, s);
             }
+        }
+        if ui
+            .button(tr("docker.new_range_layer"))
+            .rich_tip(crate::ui::tips::pair(
+                "docker.new_range_layer",
+                "docker.page_range_desc",
+            ))
+            .clicked()
+        {
+            crate::ui::objects_docker::open_new_range_layer(app);
         }
     });
     // Which kinds of master layer are drawn in front of the page's

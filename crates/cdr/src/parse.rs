@@ -16,6 +16,7 @@ use crate::container::Version;
 use crate::riff::{Chunk, Tree};
 use crate::text::{self, RunStyle, StyleRec};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tracedraw_core::{
     document::{
         Corners, EllipseArc, Layer, LeadingUnit, Page, ParagraphStyle, Shape, ShapeKind, TextAlign,
@@ -68,6 +69,55 @@ const FILE_BLEND_STEPS: u32 = 100_000;
 /// pages of 20 m and more, and a larger value means a misread record. The
 /// CMX reader takes the same bound.
 const MAX_PAGE_MM: f64 = 100_000.0;
+
+/// Free physical RAM the app saw before opening, bytes; 0 = unknown.
+pub static FREE_RAM: AtomicU64 = AtomicU64::new(0);
+
+pub fn set_free_ram(bytes: u64) {
+    FREE_RAM.store(bytes, Ordering::Relaxed);
+}
+
+/// How much the file's pictures may shrink so they fit the RAM the caller
+/// saw and the 8192 px texture side. 1.0 = draw as stored.
+fn plan_bitmap_scale(datas: &[&[u8]], v: u16, free_ram: u64) -> f64 {
+    let mut px = 0u64;
+    let mut max_side = 0u64;
+    let mut n = 0usize;
+    for d in datas {
+        if let Some(h) = bitmap_header(d, v) {
+            n += 1;
+            px = px.saturating_add(h.width as u64 * h.height as u64);
+            max_side = max_side.max(h.width.max(h.height) as u64);
+        }
+    }
+    if px == 0 {
+        return 1.0;
+    }
+    // Unknown RAM: assume 2 GiB free (a small desktop).
+    let free = if free_ram >= 512 << 20 {
+        free_ram
+    } else {
+        2 << 30
+    };
+    // Pictures together may take 35% of free RAM, 96 MiB at least,
+    // 1536 MiB at most.
+    let budget = (free * 35 / 100).clamp(96 << 20, 1536 << 20);
+    let rgba = px.saturating_mul(4);
+    let mut k = if rgba > budget {
+        (budget as f64 / rgba as f64).sqrt()
+    } else {
+        1.0
+    };
+    // The pixels view's texture is 8192 on a side.
+    if max_side as f64 * k > 8192.0 {
+        k = 8192.0 / max_side as f64;
+    }
+    let k = k.clamp(0.02, 1.0);
+    if k < 1.0 {
+        log::warn!("bitmaps: {n} picture(s), {px} px, sampling to {k:.2} (free {free} bytes)");
+    }
+    k
+}
 /// CDR coordinate unit (version 6 and later) to millimetres.
 const UNIT_MM: f64 = 25.4 / 254000.0;
 /// Coordinate unit of versions before 6 (1/1000 inch) to millimetres.
@@ -587,6 +637,8 @@ struct Ctx<'a> {
     /// The shape each static id (`usdn`) was read as, gathered only when
     /// the package names blends by them (#986).
     static_ids: Option<HashMap<u32, tracedraw_core::ShapeId>>,
+    pattern_links: HashMap<u32, u32>,
+    pattern_shapes: HashMap<u32, tracedraw_core::ShapeId>,
     report: ParseReport,
 }
 
@@ -662,6 +714,8 @@ impl<'a> Ctx<'a> {
             cmyk_profile: None,
             cmyk_lut: None,
             static_ids: None,
+            pattern_links: HashMap::new(),
+            pattern_shapes: HashMap::new(),
             report: ParseReport::default(),
         }
     }
@@ -714,6 +768,14 @@ pub(crate) fn parse_document_kept_data(
     let mut ctx = Ctx::new(main, tree, version.0);
     if !kept.is_empty() || !kept_effects.is_empty() || !kept_data.is_empty() {
         ctx.static_ids = Some(HashMap::new());
+    }
+    if version.0 == 27 {
+        tree.root.walk(&mut |c, _| {
+            if c.is(b"lnkt") {
+                ctx.pattern_links
+                    .extend(crate::pattern_record::links(ctx.data(c)));
+            }
+        });
     }
     ctx.report.version = Some(version);
     ctx.cmyk_profile = cmyk_profile
@@ -5028,6 +5090,14 @@ impl<'a> Ctx<'a> {
                         shape.visible &= visible;
                         self.note_static_id(c, shape.id);
                         self.note_link_number(c, shape.id);
+                        if !self.pattern_links.is_empty() {
+                            if let Some(id) = c
+                                .find(b"spnd")
+                                .and_then(|k| self.reader(self.data(k)).u32())
+                            {
+                                self.pattern_shapes.insert(id, shape.id);
+                            }
+                        }
                         out.push(shape);
                     }
                     None if std::mem::take(&mut self.last_was_guide) => {}
@@ -5193,6 +5263,51 @@ impl<'a> Ctx<'a> {
                     }
                 }
                 self.outer_transform = saved;
+                // A checked uniform pattern keeps its guide and original
+                // vectors together, with editable placement parameters.
+                if self.v == 27 && perspective.is_none() {
+                    let group_id = c
+                        .find(b"spnd")
+                        .and_then(|k| self.reader(self.data(k)).u32());
+                    let guide_id = group_id
+                        .and_then(|id| self.pattern_links.get(&id))
+                        .and_then(|id| self.pattern_shapes.get(id))
+                        .copied();
+                    let record = c.find(b"lgob").and_then(|k| k.find(b"loda"));
+                    if let Some(record) = record {
+                        let data = self.data(record);
+                        let table = tracedraw_cdr_format::loda::table(data, self.v);
+                        if let Some(table) = table.filter(|t| t.kind == 28) {
+                            let settings = table
+                                .args
+                                .iter()
+                                .find(|a| a.ty == 3000)
+                                .and_then(|a| data.get(a.off..a.end))
+                                .and_then(crate::pattern_record::settings);
+                            let recovered = guide_id
+                                .and_then(|id| out.get(..before)?.iter().position(|s| s.id == id))
+                                .and_then(|i| {
+                                    let (spacing, rotation) = settings?;
+                                    let guide = out.get(i)?;
+                                    crate::pattern_record::recover(
+                                        guide,
+                                        out.get(before..)?,
+                                        spacing,
+                                        rotation,
+                                    )
+                                    .map(|effect| (i, effect))
+                                });
+                            if let Some((i, effect)) = recovered {
+                                if let Some(guide) = out.get_mut(i) {
+                                    guide.effects.push(effect);
+                                }
+                                out.truncate(before);
+                                continue;
+                            }
+                            self.report.warn("a linked pattern stays as separate vectors: its parameters or placements are not yet supported");
+                        }
+                    }
+                }
                 // A blend keeps no steps of its own: an empty linked group
                 // between its two end objects, its `loda` of object type 7
                 // holding the step count (#597).
@@ -6037,7 +6152,8 @@ impl<'a> Ctx<'a> {
             });
         }
         let lut = self.cmyk_lut.as_ref();
-        for decoded in parallel_map(&datas, |d| decode_bitmap(d, v, lut)) {
+        let scale = plan_bitmap_scale(&datas, v, FREE_RAM.load(Ordering::Relaxed));
+        for decoded in parallel_map(&datas, |d| decode_bitmap(d, v, lut, scale)) {
             match decoded {
                 Some(Ok((id, def))) => {
                     self.bitmaps.insert(id, def);
@@ -6107,10 +6223,25 @@ fn decode_bitmap(
     d: &[u8],
     v: u16,
     lut: Option<&tracedraw_core::icc::CmykLut>,
+    scale: f64,
 ) -> Option<Result<(u32, BitmapDef), String>> {
     let h = bitmap_header(d, v)?;
     let (image_id, width, height, bpp) = (h.id, h.width, h.height, h.bpp);
-    if width == 0 || height == 0 || width > 32_768 || height > 32_768 {
+    if width == 0 || height == 0 {
+        return Some(Err(format!(
+            "bitmap {image_id}: size {width}x{height} rejected"
+        )));
+    }
+    // A scale under 1 samples the picture down as it is read, so a
+    // 1600 mm scan does not allocate its full RGBA first. Large sources
+    // are then allowed: the output is the smaller one.
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale.min(1.0)
+    } else {
+        1.0
+    };
+    let full = scale >= 1.0;
+    if full && (width > 32_768 || height > 32_768) {
         return Some(Err(format!(
             "bitmap {image_id}: size {width}x{height} rejected"
         )));
@@ -6148,26 +6279,50 @@ fn decode_bitmap(
         )));
     }
     let cmyk = h.model == BITMAP_CMYK && bpp == 32;
-    let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
+    let out_w = if full {
+        width
+    } else {
+        ((width as f64 * scale).ceil() as u32).clamp(1, width)
+    };
+    let out_h = if full {
+        height
+    } else {
+        ((height as f64 * scale).ceil() as u32).clamp(1, height)
+    };
+    let step_x = width as f64 / out_w as f64;
+    let step_y = height as f64 / out_h as f64;
+    let mut rgba = Vec::with_capacity(out_w as usize * out_h as usize * 4);
     // A CMYK image's inks, plane after plane (cyan, magenta, yellow,
-    // black), for separations (#1659).
+    // black), for separations (#1659). Sampled pictures skip the planes.
     let plane = width as usize * height as usize;
-    let mut planes = if cmyk {
+    let mut planes = if cmyk && full {
         vec![0u8; plane * 4]
     } else {
         Vec::new()
     };
-    for row in 0..height as usize {
+    for oy in 0..out_h as usize {
+        let sy = if full {
+            oy
+        } else {
+            (oy as f64 * step_y) as usize
+        };
         // Bottom-up rows.
-        let src = &pixels[(height as usize - 1 - row) * stride..][..stride];
-        for x in 0..width as usize {
+        let src = &pixels[(height as usize - 1 - sy) * stride..][..stride];
+        for ox in 0..out_w as usize {
+            let x = if full {
+                ox
+            } else {
+                (ox as f64 * step_x) as usize
+            };
             let px: [u8; 4] = match bpp {
                 32 if cmyk => {
                     let ink = [src[x * 4], src[x * 4 + 1], src[x * 4 + 2], src[x * 4 + 3]];
-                    let at = row * width as usize + x;
-                    for (i, v) in ink.iter().enumerate() {
-                        if let Some(p) = planes.get_mut(i * plane + at) {
-                            *p = *v;
+                    if full {
+                        let at = oy * width as usize + ox;
+                        for (i, v) in ink.iter().enumerate() {
+                            if let Some(p) = planes.get_mut(i * plane + at) {
+                                *p = *v;
+                            }
                         }
                     }
                     cmyk_pixel(ink, lut)
@@ -6195,21 +6350,36 @@ fn decode_bitmap(
             rgba.extend_from_slice(&px);
         }
     }
-    if let Some(alpha) = bitmap_mask(d, width, height) {
-        for (px, a) in rgba.chunks_exact_mut(4).zip(alpha) {
-            px[3] = a;
+    if full {
+        if let Some(alpha) = bitmap_mask(d, width, height) {
+            for (px, a) in rgba.chunks_exact_mut(4).zip(alpha) {
+                px[3] = a;
+            }
+        }
+    } else if let Some(alpha) = bitmap_mask(d, width, height) {
+        for oy in 0..out_h as usize {
+            let sy = (oy as f64 * step_y) as usize;
+            for ox in 0..out_w as usize {
+                let x = (ox as f64 * step_x) as usize;
+                let at = (oy * out_w as usize + ox) * 4 + 3;
+                if let Some(a) = alpha.get(sy * width as usize + x) {
+                    if let Some(slot) = rgba.get_mut(at) {
+                        *slot = *a;
+                    }
+                }
+            }
         }
     }
-    let png = encode_png(width, height, &rgba);
-    let inks = cmyk.then(|| {
+    let png = encode_png(out_w, out_h, &rgba);
+    let inks = (cmyk && full).then(|| {
         let planes = encode_gray_png(width, height.saturating_mul(4), &planes);
         tracedraw_core::picture_inks::PictureInks::cmyk(&png, planes.into())
     });
     Some(Ok((
         image_id,
         BitmapDef {
-            width_px: width,
-            height_px: height,
+            width_px: out_w,
+            height_px: out_h,
             png: png.into(),
             cmyk,
             inks,
@@ -8525,6 +8695,100 @@ pub(crate) mod tests {
             .flat_map(|l| &l.shapes)
             .next()
             .expect("one shape")
+    }
+
+    /// Original records built from the documented layout, with no copied artwork.
+    #[test]
+    fn pattern_stroke_linked_group_recovers_the_guide_and_falls_back_safely() {
+        let mut coords = u32s(&[2]);
+        coords.extend(i32s(&[0, 0, 400_000, 0]));
+        coords.extend([0, 0x40]);
+        let guide = list(
+            b"obj ",
+            &[
+                chunk(b"spnd", &u32s(&[2])),
+                chunk(b"usdn", &u32s(&[70])),
+                chunk(b"loda", &loda(OBJ_CURVE, &[(ARG_COORDS, coords)])),
+            ]
+            .concat(),
+        );
+        let mut parameters = vec![0; 692];
+        for (at, value) in [
+            (0, 4u32),
+            (4, u32::MAX),
+            (8, 100000),
+            (16, 2),
+            (20, 2),
+            (548, 32),
+            (552, 1),
+            (556, 2),
+            (560, 0x00640001),
+            (564, 99),
+            (568, 80000),
+            (572, 63500),
+            (576, 0),
+            (588, 1),
+            (688, 1),
+        ] {
+            parameters[at..at + 4].copy_from_slice(&value.to_le_bytes());
+        }
+        let mut square = u32s(&[5]);
+        square.extend(i32s(&[0, 0, 40_000, 0, 40_000, 20_000, 0, 20_000, 0, 0]));
+        square.extend([0x08, 0x40, 0x40, 0x40, 0x48]);
+        let copies: Vec<_> = (0..=5)
+            .map(|i| {
+                list(
+                    b"obj ",
+                    &[
+                        chunk(b"loda", &loda(OBJ_CURVE, &[(ARG_COORDS, square.clone())])),
+                        chunk(
+                            b"trfd",
+                            &trfd(
+                                27,
+                                [1.0, 0.0, (i * 80_000 - 20_000) as f64, 0.0, 1.0, -10_000.0],
+                            ),
+                        ),
+                    ]
+                    .concat(),
+                )
+            })
+            .collect();
+        let read = |mut parameters: Vec<u8>, linked: bool| {
+            if !linked {
+                parameters[592] = 1;
+            }
+            let group = list(
+                b"lnkg",
+                &[
+                    chunk(b"spnd", &u32s(&[1])),
+                    list(b"lgob", &chunk(b"loda", &loda(28, &[(3000, parameters)]))),
+                    copies.concat(),
+                ]
+                .concat(),
+            );
+            let body = [
+                chunk(b"mcfg", &mcfg(27, 1_000_000, 1_000_000)),
+                chunk(
+                    b"lnkt",
+                    &u32s(&[52, 1, 12, 20, 52, 256, 1, 2, 0, 0, 0, 0, 0]),
+                ),
+                list(b"page", &list(b"layr", &[guide.clone(), group].concat())),
+            ]
+            .concat();
+            parse(&riff(b"CDRD", &body), 27)
+        };
+        let (doc, report) = read(parameters.clone(), true);
+        let shapes = &doc.pages[0].layers[0].shapes;
+        assert_eq!(shapes.len(), 1, "{:?}", report.warnings);
+        let result = tracedraw_core::live::evaluate(&shapes[0]);
+        assert_eq!(result.above.len(), 6);
+        assert!(matches!(
+            shapes[0].effects[0],
+            tracedraw_core::live::Effect::PatternStroke { .. }
+        ));
+        let (fallback, report) = read(parameters, false);
+        assert_eq!(fallback.pages[0].layers[0].shapes.len(), 7);
+        assert!(report.warnings.iter().any(|w| w.contains("linked pattern")));
     }
 
     #[test]
@@ -13283,7 +13547,10 @@ pub(crate) mod tests {
                 assert_eq!(spans[0].tracking_pct, 0.0);
                 // The distance in points: 1.5 times 1.15 times 36 pt.
                 assert_eq!(para.leading_unit, LeadingUnit::Points);
-                assert!((para.leading_pct - 36.0 * 1.15 * 1.5).abs() < 1e-3, "{para:?}");
+                assert!(
+                    (para.leading_pct - 36.0 * 1.15 * 1.5).abs() < 1e-3,
+                    "{para:?}"
+                );
             }
             other => panic!("{other:?}"),
         }
@@ -17203,7 +17470,11 @@ pub(crate) mod tests {
         assert_eq!(s.opacity, 1.0);
         let f = mask(&s).unwrap_or_else(|| panic!("{:?}", s.effects));
         assert_eq!(f.stops.len(), 3, "{:?}", f.stops);
-        assert!((grey(f.stops[1].color) - 128.0 / 255.0).abs() < 0.02, "{:?}", f.stops);
+        assert!(
+            (grey(f.stops[1].color) - 128.0 / 255.0).abs() < 0.02,
+            "{:?}",
+            f.stops
+        );
     }
 
     /// #2960: an object's vector pattern transparency read from its

@@ -51,6 +51,7 @@ Status tracked in `docs/features.md`.
 
 ## M6 Editing, colour and effects (planned)
 - Pick and Shape tool parity: every interaction checked side by side, one behaviour at a time (in progress)
+- Select Same panel: combine appearance, dimensions and text properties, restrict the search to the page or active layer, and undo the resulting selection (#3203; see `behavior/select-same.md`)
 - Extrude: 3D rotation, several lights and bevels (done; see `behavior/extrude.md`)
 - Opacity masks as objects of their own, next to transparency (done: a clip frame drawn as an opacity mask; see `behavior/clip-frame.md`)
 - Artboards: not planned (decided 2026-10-14: pages stay the only drawing areas, as in `.cdr`)
@@ -82,3 +83,9 @@ Status tracked in `docs/features.md`.
 - Automatic updates from inside the app (checking and downloading done, see `behavior/updates.md`; installing in place done for the Linux AppImage; Windows and macOS wait for code signing and a test on real machines)
 - User documentation (done; see `guide/README.md`)
 - Public launch and announcement once Pick and Shape tool parity is reached
+
+- Pattern strokes: reusable plain-vector motifs, a live editable guide and
+  conservative version-27 linked-pattern recovery are implemented with
+  synthetic tests and an owned drawing checked locally. Full brush-record
+  coverage, motif sequences and native linked-pattern export remain open;
+  see `behavior/pattern-strokes.md`.

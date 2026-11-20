@@ -10,12 +10,20 @@ use crate::geometry::{Affine, BezPath, PathEl, Size};
 use crate::id::{LayerId, PageId, ShapeId};
 use crate::style::{Fill, Stroke};
 use crate::Color;
-use crate::{Document, Error, Result};
+use crate::{Document, Error, PageRanges, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Command {
+    /// Read-only selection query. Run through the engine and retrieve its
+    /// result with `Engine::take_selection_result`; drawing history is untouched.
+    SelectSame {
+        page: PageId,
+        references: Vec<ShapeId>,
+        active_layer: Option<LayerId>,
+        options: crate::select_same::SelectSameOptions,
+    },
     // Document
     SetTitle {
         title: String,
@@ -60,9 +68,19 @@ pub enum Command {
         name: String,
         scope: MasterScope,
     },
+    /// A master layer constrained to document page positions.
+    AddRangeLayer {
+        name: String,
+        page_range: PageRanges,
+    },
     SetLayerScope {
         layer: LayerId,
         scope: MasterScope,
+    },
+    /// Limit a master layer to document page positions, or clear its limit.
+    SetLayerPageRange {
+        layer: LayerId,
+        page_range: Option<PageRanges>,
     },
     /// A master layer in front of the pages' own layers, or behind them
     /// (#1132).
@@ -173,6 +191,22 @@ pub enum Command {
     },
     AddSymbol {
         symbol: Symbol,
+    },
+    /// Every instance of symbol `drop` becomes an instance of `keep`, and
+    /// `drop` is taken out of the document's symbols (the symbols after
+    /// it move down one). The two indices must be different and in range.
+    ReplaceSymbol {
+        keep: usize,
+        drop: usize,
+    },
+    /// Edit the independent motif library without changing symbol indices or
+    /// existing pattern-stroke snapshots. Also migrates the earlier library.
+    SetPatternMotifs {
+        motifs: Vec<crate::pattern_stroke::PatternMotif>,
+    },
+    /// Keep the guide and other effects, removing its live pattern.
+    RemovePatternStroke {
+        shape: ShapeId,
     },
     /// Replace the objects of symbol `index` (Edit Symbol): every
     /// instance draws the new ones. The symbol keeps its name. A
@@ -558,19 +592,24 @@ impl Command {
     pub fn outside_history(&self) -> bool {
         matches!(
             self,
-            Command::SetTimeTracker { .. } | Command::SetSavedView { .. }
+            Command::SetTimeTracker { .. }
+                | Command::SetSavedView { .. }
+                | Command::SelectSame { .. }
         )
     }
 
     /// Short label for the History panel and the Edit menu ("Undo Move").
     pub fn label(&self) -> &'static str {
         match self {
+            Command::SelectSame { .. } => "Select Same",
             Command::SetTitle { .. } => "Rename Document",
             Command::AddPage { .. } | Command::InsertPage { .. } => "Insert Page",
             Command::DeletePage { .. } => "Delete Page",
             Command::ResizePage { .. } => "Resize Page",
             Command::AddLayer { .. } => "New Layer",
             Command::AddMasterLayer { .. } => "New Master Layer",
+            Command::AddRangeLayer { .. } => "New Range Layer",
+            Command::SetLayerPageRange { .. } => "Layer Page Range",
             Command::SetLayerScope { .. } => "Master Layer Scope",
             Command::SetLayerInFront { .. } => "Master Layer Order",
             Command::SetLayerPrintable { .. } => "Layer Printable",
@@ -595,6 +634,9 @@ impl Command {
             Command::SetSymbolScaleGrid { .. } => "Stretch Zones",
             Command::SetRasterFx { .. } => "Effect",
             Command::AddSymbol { .. } => "New Symbol",
+            Command::ReplaceSymbol { .. } => "Replace Symbol",
+            Command::SetPatternMotifs { .. } => "Pattern Motifs",
+            Command::RemovePatternStroke { .. } => "Remove Pattern",
             Command::SetSymbolShape { .. } => "Edit Symbol",
             Command::MovePage { .. } => "Move Page",
             Command::DeleteLayer { .. } => "Delete Layer",
@@ -669,6 +711,16 @@ impl Command {
     /// when it refers to objects that do not exist.
     pub fn apply(&self, doc: &mut Document) -> Result<()> {
         match self {
+            Command::SelectSame {
+                page,
+                references,
+                active_layer,
+                options,
+            } => {
+                // Direct application validates the query; the engine owns its
+                // ephemeral result rather than serializing it into the drawing.
+                crate::select_same::matching_ids(doc, *page, references, *active_layer, options)?;
+            }
             Command::SetTitle { title } => doc.title = title.clone(),
 
             Command::AddPage { name, size, layer } => {
@@ -739,8 +791,36 @@ impl Command {
                 let id = doc.ids_mut().layer();
                 doc.master.push(Layer::master(id, name.clone(), *scope));
             }
+            Command::AddRangeLayer { name, page_range } => {
+                if page_range.is_empty() {
+                    return Err(Error::InvalidPageRange);
+                }
+                let id = doc.ids_mut().layer();
+                let mut layer = Layer::master(id, name.clone(), MasterScope::All);
+                layer.page_range = Some(page_range.clone());
+                doc.master.push(layer);
+            }
             Command::SetLayerScope { layer, scope } => {
-                doc.layer_mut(*layer)?.scope = *scope;
+                let layer = doc.layer_mut(*layer)?;
+                layer.scope = *scope;
+                layer.page_range = None;
+            }
+            Command::SetLayerPageRange { layer, page_range } => {
+                if !doc
+                    .master
+                    .iter()
+                    .any(|candidate| candidate.id == *layer && !candidate.desktop)
+                {
+                    return Err(Error::LayerNotFound(*layer));
+                }
+                if page_range.as_ref().is_some_and(PageRanges::is_empty) {
+                    return Err(Error::InvalidPageRange);
+                }
+                let layer = doc.layer_mut(*layer)?;
+                layer.page_range = page_range.clone();
+                if layer.page_range.is_some() {
+                    layer.scope = MasterScope::All;
+                }
             }
             Command::SetLayerInFront { layer, in_front } => {
                 let (_, master) = layer_list_mut(doc, *layer)?;
@@ -882,6 +962,76 @@ impl Command {
             }
             Command::AddSymbol { symbol } => {
                 doc.symbols.push(symbol.clone());
+            }
+            Command::ReplaceSymbol { keep, drop } => {
+                if *keep >= doc.symbols.len() || *drop >= doc.symbols.len() || keep == drop {
+                    let bad = if *keep > *drop { *keep } else { *drop };
+                    return Err(Error::SymbolNotFound(bad));
+                }
+                fn walk(s: &mut Shape, keep: usize, drop: usize) {
+                    match &mut s.kind {
+                        ShapeKind::SymbolInstance { index } if *index == drop => *index = keep,
+                        ShapeKind::Group { children } => {
+                            children.iter_mut().for_each(|c| walk(c, keep, drop))
+                        }
+                        ShapeKind::ClipFrame { frame, contents } => {
+                            walk(frame, keep, drop);
+                            contents.iter_mut().for_each(|c| walk(c, keep, drop));
+                        }
+                        _ => {}
+                    }
+                }
+                for p in &mut doc.pages {
+                    for l in &mut p.layers {
+                        for s in &mut l.shapes {
+                            walk(s, *keep, *drop);
+                        }
+                    }
+                }
+                for l in &mut doc.master {
+                    for s in &mut l.shapes {
+                        walk(s, *keep, *drop);
+                    }
+                }
+                doc.symbols.remove(*drop);
+                fn reindex(s: &mut Shape, drop: usize) {
+                    match &mut s.kind {
+                        ShapeKind::SymbolInstance { index } if *index > drop => *index -= 1,
+                        ShapeKind::Group { children } => {
+                            children.iter_mut().for_each(|c| reindex(c, drop))
+                        }
+                        ShapeKind::ClipFrame { frame, contents } => {
+                            reindex(frame, drop);
+                            contents.iter_mut().for_each(|c| reindex(c, drop));
+                        }
+                        _ => {}
+                    }
+                }
+                for p in &mut doc.pages {
+                    for l in &mut p.layers {
+                        for s in &mut l.shapes {
+                            reindex(s, *drop);
+                        }
+                    }
+                }
+                for l in &mut doc.master {
+                    for s in &mut l.shapes {
+                        reindex(s, *drop);
+                    }
+                }
+            }
+            Command::SetPatternMotifs { motifs } => {
+                doc.pattern_motifs = Some(motifs.clone());
+            }
+            Command::RemovePatternStroke { shape } => {
+                let s = any_mut(doc, *shape)?;
+                if s.effects
+                    .iter()
+                    .chain(s.parked_effects.iter().map(|p| &p.effect))
+                    .any(|e| matches!(e, crate::live::Effect::PatternStroke { .. }))
+                {
+                    crate::pattern_stroke::remove(s);
+                }
             }
             Command::SetSymbolShape { index, shape } => {
                 if *index >= doc.symbols.len() {
@@ -1483,6 +1633,12 @@ impl Command {
                 target.insert(insert_at.min(target.len()), combined);
             }
             Command::BreakApart { shape } => {
+                if doc
+                    .find_shape(*shape)
+                    .is_some_and(crate::pattern_stroke::is_pattern)
+                {
+                    return break_pattern(doc, *shape);
+                }
                 let (layer_id, idx) = doc.locate(*shape)?;
                 let s = doc.shape(*shape)?.1.clone();
                 // A brush stroke: its band becomes a group of plain filled
@@ -1764,6 +1920,12 @@ impl Command {
                 }
             },
             Command::Ungroup { group } => {
+                if doc
+                    .find_shape(*group)
+                    .is_some_and(crate::pattern_stroke::is_pattern)
+                {
+                    return break_pattern(doc, *group);
+                }
                 let (layer_id, idx) = doc.locate(*group)?;
                 let g = doc.layer_mut(layer_id)?.shapes.remove(idx);
                 // The group's perspective stays on each of its objects, which
@@ -2363,8 +2525,86 @@ fn swap_own_colors(shape: &mut Shape) {
     });
 }
 
+/// Bake in place, including inside a group or clip contents. Generated objects
+/// get fresh ids throughout, keep their drawing order and inherit no live effect.
+fn break_pattern(doc: &mut Document, id: ShapeId) -> Result<()> {
+    let source = any(doc, id)?.clone();
+    let evaluated = crate::live::evaluate(&source);
+    let mut parts = Vec::new();
+    for mut shape in evaluated.below {
+        shape.effects.clear();
+        shape.parked_effects.clear();
+        parts.push(shape.with_fresh_ids(&mut || doc.ids_mut().shape()));
+    }
+    let mut guide = evaluated.main;
+    guide.effects.clear();
+    guide.parked_effects.clear();
+    parts.push(guide);
+    for mut shape in evaluated.above {
+        shape.effects.clear();
+        shape.parked_effects.clear();
+        parts.push(shape.with_fresh_ids(&mut || doc.ids_mut().shape()));
+    }
+    fn replace(list: &mut Vec<Shape>, id: ShapeId, parts: &mut Option<Vec<Shape>>) -> bool {
+        if let Some(index) = list.iter().position(|s| s.id == id) {
+            if let Some(parts) = parts.take() {
+                list.splice(index..=index, parts);
+            }
+            return true;
+        }
+        for shape in list {
+            let found = match &mut shape.kind {
+                ShapeKind::Group { children } => replace(children, id, parts),
+                ShapeKind::ClipFrame { contents, .. } => replace(contents, id, parts),
+                _ => false,
+            };
+            if found {
+                return true;
+            }
+        }
+        false
+    }
+    let mut parts = Some(parts);
+    for layer in doc.all_layers_mut() {
+        if replace(&mut layer.shapes, id, &mut parts) {
+            return Ok(());
+        }
+    }
+    Err(Error::ShapeNotFound(id))
+}
+
 fn for_group_deep(shape: &mut Shape, f: &mut dyn FnMut(&mut Shape)) {
     f(shape);
+    // A live pattern paints its motif snapshots. Keep imported placements
+    // unchanged when only their paint changes, including the cache's source.
+    for effect in shape
+        .effects
+        .iter_mut()
+        .chain(shape.parked_effects.iter_mut().map(|p| &mut p.effect))
+    {
+        if let crate::live::Effect::PatternStroke {
+            motif, original, ..
+        } = effect
+        {
+            if crate::pattern_stroke::valid_motif(motif) {
+                for_group_deep(motif, f);
+            }
+            if let Some(original) = original {
+                if crate::pattern_stroke::valid_motif(&original.motif) {
+                    for_group_deep(&mut original.motif, f);
+                }
+                for copy in original
+                    .copies
+                    .iter_mut()
+                    .take(crate::pattern_stroke::MAX_COPIES)
+                {
+                    if crate::pattern_stroke::valid_motif(copy) {
+                        for_group_deep(copy, f);
+                    }
+                }
+            }
+        }
+    }
     match &mut shape.kind {
         ShapeKind::Group { children } => {
             for c in children {
@@ -5409,5 +5649,100 @@ mod tests {
             Err(Error::SymbolNotFound(7))
         ));
         assert_eq!(widths(&e), vec![30.0, 30.0]);
+    }
+
+    /// Replace Symbol: every instance of the dropped symbol, in a group
+    /// too, draws as the kept one; the dropped symbol is taken out and
+    /// the symbols after it move down. One undo puts it all back.
+    #[test]
+    fn replacing_a_symbol_moves_its_instances_and_undoes() {
+        use crate::document::{ShapeKind, Symbol};
+        let rect = |w: f64| {
+            Shape::new(
+                ShapeId(0),
+                ShapeKind::Rect {
+                    rect: Rect::new(0.0, 0.0, w, 5.0),
+                    radius: 0.0,
+                    corners: None,
+                },
+            )
+        };
+        let instance = |index: usize| Shape::new(ShapeId(0), ShapeKind::SymbolInstance { index });
+        let mut e = crate::Engine::default();
+        let layer = e.document().pages[0].layers[0].id;
+        for (name, w) in [("A", 10.0), ("B", 20.0), ("C", 30.0)] {
+            e.run(&Command::AddSymbol {
+                symbol: Symbol {
+                    name: name.into(),
+                    shape: rect(w),
+                },
+            })
+            .unwrap();
+        }
+        let add = |e: &mut crate::Engine, index: usize| {
+            let id = e.new_shape_id();
+            let mut inst = instance(index);
+            inst.id = id;
+            e.run(&Command::AddShape { layer, shape: inst }).unwrap();
+            id
+        };
+        let a = add(&mut e, 0);
+        let b = add(&mut e, 1);
+        // An instance of B inside a group: counted and replaced too.
+        let grouped = Shape::new(
+            ShapeId(0),
+            ShapeKind::Group {
+                children: vec![instance(1)],
+            },
+        );
+        let gid = e.new_shape_id();
+        let mut grouped = grouped;
+        grouped.id = gid;
+        e.run(&Command::AddShape {
+            layer,
+            shape: grouped,
+        })
+        .unwrap();
+        e.run(&Command::ReplaceSymbol { keep: 2, drop: 1 }).unwrap();
+        assert_eq!(e.undo_label(), Some("Replace Symbol"));
+        assert_eq!(e.document().symbols.len(), 2);
+        assert_eq!(e.document().symbols[0].name, "A");
+        assert_eq!(e.document().symbols[1].name, "C");
+        let kind_of =
+            |e: &crate::Engine, id: ShapeId| match e.document().find_shape(id).unwrap().kind {
+                ShapeKind::SymbolInstance { index } => index,
+                _ => panic!("not an instance"),
+            };
+        assert_eq!(kind_of(&e, a), 0);
+        assert_eq!(kind_of(&e, b), 1);
+        // The grouped instance of B is an instance of C now (C moved from
+        // index 2 to 1 when B was taken out).
+        let grouped = e.document().find_shape(gid).unwrap();
+        let ShapeKind::Group { children } = &grouped.kind else {
+            panic!("group")
+        };
+        assert!(children
+            .iter()
+            .all(|c| matches!(c.kind, ShapeKind::SymbolInstance { index } if index == 1)));
+        e.undo().unwrap();
+        assert_eq!(e.document().symbols.len(), 3);
+        assert_eq!(kind_of(&e, b), 1);
+        let grouped = e.document().find_shape(gid).unwrap();
+        let ShapeKind::Group { children } = &grouped.kind else {
+            panic!("group")
+        };
+        assert!(children
+            .iter()
+            .all(|c| matches!(c.kind, ShapeKind::SymbolInstance { index } if index == 1)));
+        // Same symbol, or a symbol that is not there: nothing changes.
+        assert!(matches!(
+            e.run(&Command::ReplaceSymbol { keep: 1, drop: 1 }),
+            Err(Error::SymbolNotFound(1))
+        ));
+        assert!(matches!(
+            e.run(&Command::ReplaceSymbol { keep: 0, drop: 7 }),
+            Err(Error::SymbolNotFound(7))
+        ));
+        assert_eq!(e.document().symbols.len(), 3);
     }
 }

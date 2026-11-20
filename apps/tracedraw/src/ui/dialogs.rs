@@ -1388,6 +1388,7 @@ pub enum Dialog {
     },
     /// A layer's Properties from its menu in the Objects docker (#1477).
     LayerProperties(crate::ui::objects_docker::LayerProps),
+    NewRangeLayer(crate::ui::objects_docker::NewRangeLayer),
     RenameObject {
         shape: tracedraw_core::ShapeId,
         name: String,
@@ -2529,14 +2530,40 @@ pub fn show(app: &mut App, ctx: &Context) {
         }
         Dialog::LayerProperties(st) => {
             window(ctx, tr("docker.layer_properties")).show(ctx, |ui| {
-                crate::ui::objects_docker::layer_properties_fields(ui, st);
+                crate::ui::objects_docker::layer_properties_fields(ui, st, app.doc().pages.len());
                 if ok_cancel(ui, &mut close) {
-                    let cmds = st.commands(app);
-                    if !cmds.is_empty() {
-                        if let Err(e) = app.engine.run_batch("Layer Properties", &cmds) {
-                            app.status = e.to_string();
+                    if !st.valid() {
+                        close = false;
+                    } else {
+                        let cmds = st.commands(app);
+                        if !cmds.is_empty() {
+                            if cmds.iter().any(|command| {
+                                matches!(
+                                    command,
+                                    Command::SetLayerScope { .. }
+                                        | Command::SetLayerPageRange { .. }
+                                )
+                            }) {
+                                app.prepare_layer_range_change(st.layer);
+                            }
+                            if let Err(e) = app.engine.run_batch("Layer Properties", &cmds) {
+                                app.status = e.to_string();
+                                close = false;
+                            } else {
+                                app.sync_layer_range(st.layer);
+                            }
                         }
                     }
+                }
+            });
+        }
+        Dialog::NewRangeLayer(st) => {
+            window(ctx, tr("docker.new_range_layer")).show(ctx, |ui| {
+                crate::ui::objects_docker::new_range_layer_fields(ui, st, app.doc().pages.len());
+                if ok_cancel(ui, &mut close)
+                    && !crate::ui::objects_docker::create_range_layer(app, st)
+                {
+                    close = false;
                 }
             });
         }
@@ -9191,7 +9218,10 @@ pub(crate) mod tests {
                 printable: true,
                 locked: false,
                 master: true,
+                desktop: false,
                 scope: tracedraw_core::MasterScope::All,
+                use_page_range: false,
+                page_range: "1".into(),
                 in_front: false,
             }),
             Dialog::DocumentProperties(Box::default()),

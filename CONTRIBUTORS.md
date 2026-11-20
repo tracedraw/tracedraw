@@ -20,6 +20,10 @@ contributor's own GitHub identity.
 | Bone NI | The interface in Lao (#2062) |
 | [@viethuongdesign-ship-it](https://github.com/viethuongdesign-ship-it) | The interface in Vietnamese (#3692) |
 | [@LaMka21](https://github.com/LaMka21) | Moving goes on after a right click during a drag (#174); files dropped on the window are opened or imported (#177); Paste takes what was copied last, files and pictures included (#183) |
+| [@muchenkezhan](https://github.com/muchenkezhan) | Android startup before the first resume, scale fields of rotated and skewed objects, tools picked while a toolbox flyout is open; smooth Mesh Fill guides at every zoom (PR #3201); large pictures paste reliably and paste at the pointer (PR #3193); the full-screen preview keeps the canvas scale (PR #3197); text dropped on an outline with the right button goes on the path (PR #3274); clearer node marks (PR #3267); the Properties docker layout (PR #2824); layers for a range of pages (PR #2950); the Select Same panel (PR #3226) |
+| [@ratmanz0000](https://github.com/ratmanz0000) | Symbols docker: Find the same, Replace, and instances that draw their own transparency and shadow (PR #3475); `.cdr` and `.cmx` files open on a worker thread (PR #3247) |
+| [@fegrifo](https://github.com/fegrifo) | Bullets and numbers advance the pen in text (#2987); perimeter or curve length in the Properties docker (PR #3034) |
+| [@awd-studio](https://github.com/awd-studio) | Editable pattern strokes with a library of motifs (PR #2880) |
 
 ## Other pull requests
 

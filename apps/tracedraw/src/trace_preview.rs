@@ -258,10 +258,10 @@ impl Live {
                     }
                 }
             }
-            // The last result in ends the job at once, without waiting for
-            // its thread to let go of the channel, so the preview rests as
-            // soon as the trace on show is whole.
-            if ended || (job.finished && !stale) {
+            // The worker requests a repaint after sending its result. Wait
+            // for it to release the channel before reporting an idle preview,
+            // so its final wakeup cannot arrive after the job has ended.
+            if ended {
                 // A trace that ended with no last result and was not
                 // stopped died on the way: asking again every frame
                 // would only repeat that.
@@ -269,6 +269,11 @@ impl Live {
                 if let Some(j) = job.filter(|j| !j.finished && !stale) {
                     self.failed = Some((j.key, j.look));
                 }
+            } else if job.finished && !stale {
+                // The worker may still be between its result and channel
+                // release. Keep polling so the close cannot leave us busy
+                // without another frame.
+                ctx.request_repaint();
             }
             for o in results {
                 self.failed = None;
@@ -841,6 +846,80 @@ mod tests {
         assert_eq!(live.started, 1, "traced once");
     }
 
+    /// Receiving the last result does not mean its repaint was sent yet.
+    /// The preview rests only after the worker releases its result channel.
+    #[test]
+    fn a_finished_trace_waits_for_its_final_repaint() {
+        for defer_full in [false, true] {
+            let ctx = egui::Context::default();
+            let cancel = Arc::new(AtomicBool::new(false));
+            let mut got = Vec::new();
+            run(
+                request(disc(if defer_full { 700 } else { 32 }), 1),
+                &cancel,
+                |o| got.push(o),
+                defer_full,
+            );
+            let last = got.pop().expect("the final trace result");
+            assert!(last.done);
+            let (tx, rx) = mpsc::channel();
+            let mut live = Live {
+                job: Some(Job {
+                    key: last.key,
+                    look: last.look,
+                    cancel,
+                    rx,
+                    finished: false,
+                }),
+                defer_full,
+                ..Live::default()
+            };
+            tx.send(last).expect("the result channel");
+            assert!(live.poll(&ctx));
+            assert!(live.shown.as_ref().is_some_and(|shown| shown.done));
+            assert!(live.busy(), "the worker has not sent its final repaint");
+
+            let frame = |live: &mut Live| {
+                let mut output = ctx.run_ui(egui::RawInput::default(), |_| {
+                    live.poll(&ctx);
+                });
+                output.textures_delta.clear();
+                output
+                    .viewport_output
+                    .get(&egui::ViewportId::ROOT)
+                    .expect("the root viewport")
+                    .repaint_delay
+            };
+            // Hold the sender like a worker paused between publishing and waking.
+            for _ in 0..20 {
+                assert_ne!(
+                    frame(&mut live),
+                    Duration::MAX,
+                    "defer {defer_full}: waiting for channel close"
+                );
+                assert!(live.busy(), "defer {defer_full}");
+            }
+
+            ctx.request_repaint();
+            drop(tx);
+            assert!(!live.poll(&ctx));
+            assert!(!live.busy());
+            assert_eq!(live.failed, None);
+            // Consume the notification before checking subsequent idle frames.
+            for _ in 0..5 {
+                let _ = frame(&mut live);
+            }
+            for _ in 0..20 {
+                assert_eq!(
+                    frame(&mut live),
+                    Duration::MAX,
+                    "defer {defer_full}: {:?}",
+                    ctx.repaint_causes()
+                );
+            }
+        }
+    }
+
     /// A trace whose thread ended without a result (it died) is not
     /// started again every frame: the same settings are asked for in
     /// vain until they change.
@@ -913,7 +992,7 @@ mod tests {
         assert_eq!(live.started, 1);
         assert!(live.busy());
         let t0 = Instant::now();
-        while live.full(1, 0).is_none() && t0.elapsed() < Duration::from_secs(20) {
+        while (live.full(1, 0).is_none() || live.busy()) && t0.elapsed() < Duration::from_secs(20) {
             std::thread::sleep(Duration::from_millis(2));
             live.poll(&ctx);
         }
@@ -933,7 +1012,7 @@ mod tests {
         live.poll(&ctx);
         assert_eq!(live.started, 2);
         let t0 = Instant::now();
-        while live.full(3, 0).is_none() && t0.elapsed() < Duration::from_secs(20) {
+        while (live.full(3, 0).is_none() || live.busy()) && t0.elapsed() < Duration::from_secs(20) {
             std::thread::sleep(Duration::from_millis(2));
             live.poll(&ctx);
         }
@@ -944,7 +1023,9 @@ mod tests {
 
     fn settle(live: &mut Live, ctx: &egui::Context, key: u64, look: u64) {
         let t0 = Instant::now();
-        while live.full(key, look).is_none() && t0.elapsed() < Duration::from_secs(20) {
+        while (live.full(key, look).is_none() || live.busy())
+            && t0.elapsed() < Duration::from_secs(20)
+        {
             std::thread::sleep(Duration::from_millis(2));
             live.poll(ctx);
         }

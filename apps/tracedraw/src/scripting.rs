@@ -16,7 +16,7 @@
 //! undo step. Scripts an AI service wrote run untrusted
 //! ([`run_untrusted`]): without file access, with limits, all or nothing.
 
-mod extra;
+pub(crate) mod extra;
 pub mod vba_run;
 mod vg;
 pub mod vg_catalog;

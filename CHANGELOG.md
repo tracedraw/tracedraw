@@ -6,6 +6,18 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Shape tool: node marks are easier to read, for one selected node and for several (#3258; PR #3267 by muchenkezhan).
+- Properties docker: one closed vector object shows its perimeter (all its subpaths, an ellipse measured exactly), an open curve or arc its length, in the document's unit (PR #3034 by fegrifo).
+- Text on a path: a text dragged onto an outline with the right mouse button can be put on that path, and the text on a path bar shows its choices with pictures (PR #3274 by muchenkezhan).
+- Symbols docker: Find the same turns the copies of a selected group, on any layer and at any depth, into instances of one symbol, and Replace moves the instances of one symbol to another (#2343; PR #3475 by ratmanz0000).
+- Properties docker: its fields are grouped in framed rows, with pictures for the outline settings (PR #2824 by muchenkezhan).
+- Mesh Fill: the grid of a mesh fill being edited is drawn as smooth curves at any zoom instead of jagged segments (PR #3201 by muchenkezhan).
+- `.cdr` and `.cmx` files always open on a worker thread with the progress window and Cancel, so a large file no longer freezes the window, and their pictures are sampled to a share of the free memory as they are decoded (PR #3247 by ratmanz0000).
+- Paste: large pictures from the clipboard paste without failing, and a paste can go where the pointer is (PR #3193 by muchenkezhan).
+- Full-screen preview (F9) keeps the drawing at the canvas scale in borderless full screen, and its exit hint goes away after 1.5 seconds (PR #3197 by muchenkezhan).
+- Master layers can show on a range of pages (for example 1-8, 12), for artwork shared by some pages only; kept in `.tdraw`, `.cdr`, PDF and the render (PR #2950 by muchenkezhan).
+- Pattern strokes: a curve can repeat a saved vector motif along itself as a live, editable pattern stroke, with a gallery of named motifs (PR #2880 by Anton Karpov).
+- Select Same panel: selects the objects that match the selection on several properties at once (PR #3226 by muchenkezhan).
 - Envelope: mesh envelope (Envelope panel, Columns and Rows, Add Mesh; drag the grid points with the Envelope tool) and Object > Copy Effect > Envelope from Top Object.
 - Object > Combine Shapes: Break into Pieces, Merge Same Colors, Cut to Top Object, Piece Outlines, Exclude Overlaps, and Combine Live (a group drawn as one combined curve, objects kept). The live outline offset is now named Grow Outline.
 - Combine Shapes: Cut Objects Below, Cut into Grid and Remove Strays.

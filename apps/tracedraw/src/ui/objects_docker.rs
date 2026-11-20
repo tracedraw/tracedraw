@@ -25,7 +25,9 @@ use crate::ui::dockers::kind_name;
 use crate::ui::tips::RichTip;
 use egui::{Color32, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use tracedraw_core::document::GuideLine;
-use tracedraw_core::{Command, Layer, LayerId, MasterScope, PageId, Shape, ShapeId, ShapeKind};
+use tracedraw_core::{
+    Command, Layer, LayerId, MasterScope, PageId, PageRanges, Shape, ShapeId, ShapeKind,
+};
 
 /// Height of a row.
 const ROW_H: f32 = 22.0;
@@ -82,6 +84,7 @@ struct Actions {
     expand_group: Option<ShapeId>,
     toggle_page: Option<PageId>,
     toggle_master: bool,
+    toggle_ranges: bool,
     /// A row of another page was used: that page becomes the current one
     /// first.
     goto: Option<PageId>,
@@ -90,6 +93,8 @@ struct Actions {
     layer_clip: Option<(LayerId, LayerClip)>,
     new_layer: bool,
     new_master: Option<MasterScope>,
+    new_range: bool,
+    edit_range: Option<LayerId>,
     /// An object row was right-clicked there: its context menu (#2601).
     object_menu: Option<(ShapeId, Pos2)>,
     layer_to_master: Option<LayerId>,
@@ -601,6 +606,7 @@ pub fn objects(app: &mut App, ui: &mut Ui) {
                 page_open,
                 false,
                 current || !all,
+                "docker.page_row_desc",
             );
             if toggle {
                 act.toggle_page = Some(page.id);
@@ -651,22 +657,86 @@ pub fn objects(app: &mut App, ui: &mut Ui) {
             master_open,
             true,
             true,
+            "docker.page_row_desc",
         )
         .0;
         if master_open {
             let count = doc.master.len();
-            for (i, layer) in doc.master.iter().enumerate().rev() {
+            for (i, layer) in doc
+                .master
+                .iter()
+                .enumerate()
+                .rev()
+                .filter(|(_, l)| l.page_range.is_none())
+            {
                 let place = Place {
                     index: i,
                     count,
                     master: true,
-                    shown: layer.scope.applies(index),
+                    shown: layer.applies_to(index),
                     page: None,
                 };
                 layer_rows(app, ui, layer, place, active, &mut act);
             }
             guides_row(app, ui, &doc.master_guides, None, &mut act);
             grid_row(app, ui, &mut act);
+        }
+        let ranges_open = !app.objects_ranges_closed;
+        let (toggle, response) = node_row(
+            ui,
+            "objects_ranges",
+            &tr("docker.range_pages"),
+            ranges_open,
+            true,
+            true,
+            "docker.range_pages_desc",
+        );
+        act.toggle_ranges = toggle;
+        response.context_menu(|ui| {
+            if ui.button(tr("docker.new_range_layer")).clicked() {
+                act.new_range = true;
+                ui.close();
+            }
+        });
+        if ranges_open {
+            if !doc.master.iter().any(|layer| layer.page_range.is_some()) {
+                ui.horizontal(|ui| {
+                    ui.add_space(INDENT + 20.0);
+                    if ui
+                        .small_button(tr("docker.new_range_layer"))
+                        .rich_tip(crate::ui::tips::pair(
+                            "docker.new_range_layer",
+                            "docker.page_range_desc",
+                        ))
+                        .clicked()
+                    {
+                        act.new_range = true;
+                    }
+                });
+            }
+            let count = doc.master.len();
+            for (i, layer) in doc
+                .master
+                .iter()
+                .enumerate()
+                .rev()
+                .filter(|(_, l)| l.page_range.is_some())
+            {
+                layer_rows(
+                    app,
+                    ui,
+                    layer,
+                    Place {
+                        index: i,
+                        count,
+                        master: true,
+                        shown: layer.applies_to(index),
+                        page: None,
+                    },
+                    active,
+                    &mut act,
+                );
+            }
         }
     }
     let mut thumbs = std::mem::take(&mut act.thumbs);
@@ -688,9 +758,10 @@ fn node_row(
     open: bool,
     master: bool,
     bold: bool,
+    tip_key: &str,
 ) -> (bool, egui::Response) {
     let (rect, resp) = row(ui, Look::Node);
-    let resp = resp.rich_tip_with(|| format!("{title}\n{}", tr("docker.page_row_desc")));
+    let resp = resp.rich_tip_with(|| format!("{title}\n{}", tr(tip_key)));
     let x = rect.left() + 3.0;
     let (ar, a) = hot(ui, rect, x, 14.0, egui::Id::new((id, "arrow")));
     let a = a.rich_tip_with(|| crate::ui::tips::keyed("docker.expand_row"));
@@ -725,7 +796,14 @@ fn layer_rows(
     let open = !app.objects_collapsed.contains(&layer.id);
     let is_active = active == Some(layer.id);
     let (rect, resp) = row(ui, Look::Layer { active: is_active });
-    let resp = resp.rich_tip_with(|| format!("{}\n{}", layer.name, tr("docker.layer_row_desc")));
+    let resp = resp.rich_tip_with(|| {
+        let range = layer
+            .page_range
+            .as_ref()
+            .map(|range| format!("\n{range}"))
+            .unwrap_or_default();
+        format!("{}{range}\n{}", layer.name, tr("docker.layer_row_desc"))
+    });
     let base = egui::Id::new(("objects_layer", layer.id.raw()));
     let mut x = rect.left() + 3.0 + INDENT;
     let (ar, a) = hot(ui, rect, x, 14.0, base.with("arrow"));
@@ -775,7 +853,9 @@ fn layer_rows(
     // A master layer's pages and, when it is drawn over the page's own
     // layers, "In front" (it is listed under them all the same, #1132).
     let mut notes = Vec::new();
-    if at.master && layer.scope != MasterScope::All {
+    if let Some(range) = &layer.page_range {
+        notes.push(range.to_string());
+    } else if at.master && layer.scope != MasterScope::All {
         notes.push(tr(scope_key(layer.scope)));
     }
     if at.master && layer.in_front {
@@ -809,14 +889,20 @@ fn layer_rows(
         }
         // A new layer beside this one: on its page, or a master layer
         // showing on the same pages.
-        let new_key = if at.master {
+        let new_key = if at.master && layer.page_range.is_some() {
+            "docker.new_range_layer"
+        } else if at.master {
             "docker.new_master_layer_short"
         } else {
             "docker.new_layer"
         };
         if ui.button(tr(new_key)).clicked() {
             if at.master {
-                act.new_master = Some(layer.scope);
+                if layer.page_range.is_some() {
+                    act.new_range = true;
+                } else {
+                    act.new_master = Some(layer.scope);
+                }
             } else {
                 act.goto = elsewhere;
                 act.new_layer = true;
@@ -838,13 +924,25 @@ fn layer_rows(
         // the layer (#1992).
         ui.separator();
         let has = !layer.shapes.is_empty();
-        let can_paste = app.clipboard.is_some() && !layer.locked;
+        let range_available = layer
+            .page_range
+            .as_ref()
+            .is_none_or(|range| range.count_within(app.doc().pages.len()) > 0);
+        let range_visible = layer.page_range.is_none() || layer.visible;
+        let can_paste =
+            app.clipboard.is_some() && !layer.locked && range_available && range_visible;
         for (what, key, on) in [
             (LayerClip::Cut, "menu.edit.cut", has && !layer.locked),
             (LayerClip::Copy, "menu.edit.copy", has),
             (LayerClip::Paste, "menu.edit.paste", can_paste),
         ] {
-            if ui.add_enabled(on, egui::Button::new(tr(key))).clicked() {
+            let action = ui.add_enabled(on, egui::Button::new(tr(key)));
+            let action = if what == LayerClip::Paste && !range_available {
+                action.rich_disabled_tip(tr("docker.range_no_current_page"))
+            } else {
+                action
+            };
+            if action.clicked() {
                 act.goto = elsewhere;
                 act.layer_clip = Some((layer.id, what));
                 ui.close();
@@ -905,12 +1003,23 @@ fn layer_rows(
             ui.menu_button(tr("docker.show_on"), |ui| {
                 for scope in [MasterScope::All, MasterScope::Odd, MasterScope::Even] {
                     if ui
-                        .selectable_label(layer.scope == scope, tr(scope_key(scope)))
+                        .selectable_label(
+                            layer.page_range.is_none() && layer.scope == scope,
+                            tr(scope_key(scope)),
+                        )
                         .clicked()
                     {
                         act.scope = Some((layer.id, scope));
                         ui.close();
                     }
+                }
+                if !layer.desktop
+                    && ui
+                        .selectable_label(layer.page_range.is_some(), tr("docker.range_pages"))
+                        .clicked()
+                {
+                    act.edit_range = Some(layer.id);
+                    ui.close();
                 }
             });
             let mut front = layer.in_front;
@@ -989,6 +1098,17 @@ fn layer_rows(
 /// selected first, unless it is part of the selection already (then the
 /// menu is for the whole selection, as on the drawing).
 pub(crate) fn open_row_menu(app: &mut App, id: ShapeId, pos: Pos2) {
+    if let Some(layer) = layer_holding(app, id) {
+        let outside_range = app
+            .doc()
+            .layer(layer)
+            .is_ok_and(|layer| layer.page_range.is_some() && !layer.applies_to(app.page_index()));
+        if outside_range && !activate_range_layer(app, layer) {
+            app.context_menu = None;
+            app.context_docker = None;
+            return;
+        }
+    }
     let Some(s) = app.doc().find_shape(id) else {
         return;
     };
@@ -1014,8 +1134,21 @@ fn layer_targets(app: &App) -> Vec<(Option<String>, LayerId, String)> {
             out.push((Some(page.name.clone()), l.id, l.name.clone()));
         }
     }
-    for l in doc.master.iter().rev() {
+    for l in doc
+        .master
+        .iter()
+        .rev()
+        .filter(|layer| layer.page_range.is_none())
+    {
         out.push((None, l.id, l.name.clone()));
+    }
+    for l in doc
+        .master
+        .iter()
+        .rev()
+        .filter(|layer| layer.page_range.is_some())
+    {
+        out.push((Some(tr("docker.range_pages")), l.id, l.name.clone()));
     }
     out
 }
@@ -1676,6 +1809,7 @@ fn bottom_bar(app: &mut App, ui: &mut Ui) {
     paint_plus_badge(p, icon(master_r));
     paint_bin(p, icon(delete_r), can_delete);
     let mut scoped = None;
+    let mut new_range = false;
     master.context_menu(|ui| {
         for (scope, key) in [
             (MasterScope::All, "options.new_master_all"),
@@ -1686,6 +1820,10 @@ fn bottom_bar(app: &mut App, ui: &mut Ui) {
                 scoped = Some(scope);
                 ui.close();
             }
+        }
+        if ui.button(tr("docker.new_range_layer")).clicked() {
+            new_range = true;
+            ui.close();
         }
         // Which kinds of master layer are drawn over the page's own
         // layers: the ones the drawing has and the new ones (#1132).
@@ -1703,6 +1841,9 @@ fn bottom_bar(app: &mut App, ui: &mut Ui) {
     }
     if let Some(scope) = scoped {
         new_master_layer(app, scope);
+    }
+    if new_range {
+        open_new_range_layer(app);
     }
     if can_delete && delete.clicked() {
         delete_current(app);
@@ -1818,6 +1959,159 @@ pub fn new_master_layer(app: &mut App, scope: MasterScope) {
     }
 }
 
+/// The editable draft of a new shared layer for a page range.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewRangeLayer {
+    pub name: String,
+    pub page_range: String,
+}
+
+impl NewRangeLayer {
+    pub fn of(app: &App) -> Self {
+        let names = app
+            .doc()
+            .master
+            .iter()
+            .map(|layer| layer.name.clone())
+            .collect::<Vec<_>>();
+        Self {
+            name: free_name(&names, "docker.range_layer_n", 1),
+            page_range: (app.page_index() + 1).to_string(),
+        }
+    }
+
+    pub fn valid(&self) -> bool {
+        !self.name.trim().is_empty() && parsed_range(&self.page_range).is_some()
+    }
+}
+
+pub fn open_new_range_layer(app: &mut App) {
+    app.dialog = crate::ui::dialogs::Dialog::NewRangeLayer(NewRangeLayer::of(app));
+}
+
+pub fn open_layer_range(app: &mut App, layer: LayerId) {
+    if let Some(mut state) = LayerProps::of(app, layer) {
+        if state.master && !state.desktop {
+            state.use_page_range = true;
+            app.dialog = crate::ui::dialogs::Dialog::LayerProperties(state);
+        }
+    }
+}
+
+/// Create the complete layer as one document command and one undo step.
+pub fn create_range_layer(app: &mut App, state: &NewRangeLayer) -> bool {
+    if !state.valid() {
+        return false;
+    }
+    let Some(page_range) = parsed_range(&state.page_range) else {
+        return false;
+    };
+    let before = app.doc().master.len();
+    app.run(Command::AddRangeLayer {
+        name: state.name.trim().to_string(),
+        page_range,
+    });
+    if app.doc().master.len() == before {
+        return false;
+    }
+    if let Some(layer) = app.doc().master.last().map(|layer| layer.id) {
+        activate_range_layer(app, layer);
+    }
+    app.objects_ranges_closed = false;
+    true
+}
+
+/// Picking a range layer takes the view to a page where it can be edited.
+fn activate_range_layer(app: &mut App, id: LayerId) -> bool {
+    let first = app
+        .doc()
+        .master
+        .iter()
+        .find(|layer| layer.id == id)
+        .and_then(|layer| {
+            let range = layer.page_range.as_ref()?;
+            if range.contains(app.page_index()) {
+                Some(app.page_index())
+            } else {
+                app.doc()
+                    .pages
+                    .iter()
+                    .enumerate()
+                    .find_map(|(index, _)| range.contains(index).then_some(index))
+            }
+        });
+    if let Some(source) = app.active_layer() {
+        app.prepare_layer_range_change(source);
+    }
+    if let Some(index) = first {
+        if index != app.page_index() {
+            app.goto_page(index);
+        }
+        app.select(Vec::new());
+        app.picked_layer = Some(id);
+        true
+    } else {
+        app.select(Vec::new());
+        app.picked_layer = None;
+        app.status = tr("docker.range_no_current_page");
+        false
+    }
+}
+
+fn parsed_range(text: &str) -> Option<PageRanges> {
+    PageRanges::parse(text).filter(|range| !range.is_empty())
+}
+
+/// The range field is shared by creation and Layer Properties.
+pub fn page_range_field(ui: &mut Ui, text: &mut String, page_count: usize) {
+    ui.horizontal(|ui| {
+        ui.label(tr("docker.page_range"));
+        ui.add(
+            egui::TextEdit::singleline(text)
+                .desired_width(250.0)
+                .hint_text(tr("docker.page_range_example")),
+        )
+        .rich_tip(tr("docker.page_range_desc"));
+    });
+    ui.label(
+        egui::RichText::new(tr("docker.page_range_desc"))
+            .size(11.0)
+            .color(Tokens::text_dim()),
+    );
+    let parsed = parsed_range(text);
+    let (message, color) = match parsed {
+        None => (tr("docker.page_range_invalid"), ui.visuals().error_fg_color),
+        Some(range) => {
+            let matching = range.count_within(page_count);
+            (
+                trf(
+                    "docker.page_range_matches",
+                    &[
+                        ("n", &matching.to_string()),
+                        ("total", &page_count.to_string()),
+                    ],
+                ),
+                Tokens::text_dim(),
+            )
+        }
+    };
+    ui.label(egui::RichText::new(message).size(12.0).color(color));
+}
+
+pub fn new_range_layer_fields(ui: &mut Ui, state: &mut NewRangeLayer, page_count: usize) {
+    ui.horizontal(|ui| {
+        ui.label(tr("dialog.layer_name"));
+        ui.text_edit_singleline(&mut state.name);
+    });
+    if state.name.trim().is_empty() {
+        ui.colored_label(
+            ui.visuals().error_fg_color,
+            tr("docker.range_name_required"),
+        );
+    }
+    page_range_field(ui, &mut state.page_range, page_count);
+}
+
 /// Which preference holds the in-front choice of master layers showing
 /// on `scope`'s pages.
 fn scope_slot(scope: MasterScope) -> usize {
@@ -1843,7 +2137,7 @@ pub fn set_master_front(app: &mut App, scope: MasterScope, front: bool) {
         .doc()
         .master
         .iter()
-        .filter(|l| l.scope == scope && l.in_front != front && !l.desktop)
+        .filter(|l| l.page_range.is_none() && l.scope == scope && l.in_front != front && !l.desktop)
         .map(|l| Command::SetLayerInFront {
             layer: l.id,
             in_front: front,
@@ -1891,7 +2185,15 @@ enum LayerClip {
 }
 
 /// Select the objects of `layer` that can be (shown and not locked).
-fn select_layer_objects(app: &mut App, layer: LayerId) {
+fn select_layer_objects(app: &mut App, layer: LayerId) -> bool {
+    if app
+        .doc()
+        .layer(layer)
+        .is_ok_and(|layer| layer.page_range.is_some())
+        && !activate_range_layer(app, layer)
+    {
+        return false;
+    }
     let ids: Vec<ShapeId> = app
         .doc()
         .all_layers()
@@ -1906,6 +2208,23 @@ fn select_layer_objects(app: &mut App, layer: LayerId) {
         .unwrap_or_default();
     app.picked_layer = Some(layer);
     app.select(ids);
+    true
+}
+
+fn paste_layer(app: &mut App, layer: LayerId) -> bool {
+    if app
+        .doc()
+        .layer(layer)
+        .is_ok_and(|layer| layer.page_range.is_some())
+    {
+        if !activate_range_layer(app, layer) || app.active_layer() != Some(layer) {
+            return false;
+        }
+    } else {
+        app.picked_layer = Some(layer);
+    }
+    app.paste();
+    true
 }
 
 /// The commands that move the top-level objects `ids` to the top of
@@ -1943,13 +2262,46 @@ pub(crate) fn move_commands(app: &App, ids: &[ShapeId], layer: LayerId) -> Vec<C
 /// of the master page), one undo step; they stay selected, on the page
 /// they now are on (#1477).
 pub fn move_to_layer(app: &mut App, ids: &[ShapeId], layer: LayerId) {
-    let cmds = move_commands(app, ids, layer);
+    let mut requested_ids = ids.to_vec();
+    let mut cmds = move_commands(app, &requested_ids, layer);
     if cmds.is_empty() {
         return;
+    }
+    if app
+        .doc()
+        .layer(layer)
+        .is_ok_and(|layer| layer.page_range.is_some())
+        && app.prepare_shapes_for_range_move(&requested_ids)
+    {
+        requested_ids.retain(|id| app.doc().find_shape(*id).is_some());
+        cmds = move_commands(app, &requested_ids, layer);
+        if cmds.is_empty() {
+            return;
+        }
     }
     if let Err(e) = app.engine.run_batch("Move to Layer", &cmds) {
         app.status = e.to_string();
         return;
+    }
+    if !activate_destination_layer(app, layer) {
+        return;
+    }
+    let moved: Vec<ShapeId> = requested_ids
+        .iter()
+        .copied()
+        .filter(|id| layer_holding(app, *id) == Some(layer))
+        .collect();
+    app.select(moved);
+}
+
+/// Make a destination editable after its objects have been transferred.
+fn activate_destination_layer(app: &mut App, layer: LayerId) -> bool {
+    if app
+        .doc()
+        .layer(layer)
+        .is_ok_and(|layer| layer.page_range.is_some())
+    {
+        return activate_range_layer(app, layer);
     }
     let page = app
         .doc()
@@ -1962,12 +2314,7 @@ pub fn move_to_layer(app: &mut App, ids: &[ShapeId], layer: LayerId) {
         }
     }
     app.picked_layer = Some(layer);
-    let moved: Vec<ShapeId> = ids
-        .iter()
-        .copied()
-        .filter(|id| layer_holding(app, *id) == Some(layer))
-        .collect();
-    app.select(moved);
+    true
 }
 
 /// Objects panel > Edit Across Layers on or off, kept in the settings;
@@ -2114,6 +2461,13 @@ fn layer_to_master(app: &mut App, layer: LayerId) {
 /// objects, name and look), one undo step: what it held shows on that
 /// page only (#1477).
 fn master_to_page(app: &mut App, layer: LayerId) {
+    if app
+        .doc()
+        .layer(layer)
+        .is_ok_and(|layer| layer.page_range.is_some())
+    {
+        app.prepare_layer_range_change(layer);
+    }
     let Some(from) = app.doc().master.iter().find(|l| l.id == layer).cloned() else {
         return;
     };
@@ -2145,10 +2499,17 @@ fn master_to_page(app: &mut App, layer: LayerId) {
 /// `page` (with its objects, name and look), one undo step, and that
 /// page is shown; a page's last layer stays behind, empty (#1477).
 pub(crate) fn layer_to_page(app: &mut App, layer: LayerId, page: PageId) {
-    let doc = app.doc();
-    if doc.page(page).is_err() {
+    if app.doc().page(page).is_err() {
         return;
     }
+    if app
+        .doc()
+        .layer(layer)
+        .is_ok_and(|layer| layer.page_range.is_some())
+    {
+        app.prepare_layer_range_change(layer);
+    }
+    let doc = app.doc();
     let (from, keep) = match doc.master.iter().find(|l| l.id == layer) {
         Some(l) => (l.clone(), false),
         None => {
@@ -2208,7 +2569,10 @@ pub struct LayerProps {
     pub printable: bool,
     pub locked: bool,
     pub master: bool,
+    pub desktop: bool,
     pub scope: MasterScope,
+    pub use_page_range: bool,
+    pub page_range: String,
     pub in_front: bool,
 }
 
@@ -2225,13 +2589,23 @@ impl LayerProps {
             printable: l.printable,
             locked: l.locked,
             master,
+            desktop: l.desktop,
             scope: l.scope,
+            use_page_range: l.page_range.is_some(),
+            page_range: l
+                .page_range
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| (app.page_index() + 1).to_string()),
             in_front: l.in_front,
         })
     }
 
     /// What changes the layer to these values, nothing when it has them.
     pub fn commands(&self, app: &App) -> Vec<Command> {
+        if !self.valid() {
+            return Vec::new();
+        }
         let Some(now) = LayerProps::of(app, self.layer) else {
             return Vec::new();
         };
@@ -2262,11 +2636,27 @@ impl LayerProps {
                 locked: self.locked,
             });
         }
-        if now.master && self.scope != now.scope {
-            cmds.push(Command::SetLayerScope {
-                layer,
-                scope: self.scope,
-            });
+        if now.master {
+            if self.use_page_range {
+                if let Some(page_range) = parsed_range(&self.page_range) {
+                    let current = app
+                        .doc()
+                        .layer(layer)
+                        .ok()
+                        .and_then(|layer| layer.page_range.as_ref());
+                    if current != Some(&page_range) {
+                        cmds.push(Command::SetLayerPageRange {
+                            layer,
+                            page_range: Some(page_range),
+                        });
+                    }
+                }
+            } else if self.scope != now.scope || now.use_page_range {
+                cmds.push(Command::SetLayerScope {
+                    layer,
+                    scope: self.scope,
+                });
+            }
         }
         if now.master && self.in_front != now.in_front {
             cmds.push(Command::SetLayerInFront {
@@ -2276,10 +2666,15 @@ impl LayerProps {
         }
         cmds
     }
+
+    pub fn valid(&self) -> bool {
+        !self.use_page_range
+            || (self.master && !self.desktop && parsed_range(&self.page_range).is_some())
+    }
 }
 
 /// The Layer Properties dialog's fields (#1477).
-pub fn layer_properties_fields(ui: &mut Ui, st: &mut LayerProps) {
+pub fn layer_properties_fields(ui: &mut Ui, st: &mut LayerProps, page_count: usize) {
     egui::Grid::new("layer_properties")
         .num_columns(2)
         .show(ui, |ui| {
@@ -2296,14 +2691,34 @@ pub fn layer_properties_fields(ui: &mut Ui, st: &mut LayerProps) {
         .rich_tip(tr("docker.lock_layer"));
     if st.master {
         ui.separator();
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(tr("docker.show_on"));
             for scope in [MasterScope::All, MasterScope::Odd, MasterScope::Even] {
                 let key = scope_key(scope);
-                ui.radio_value(&mut st.scope, scope, tr(key))
-                    .rich_tip_with(|| tr(&format!("{key}_tip")));
+                if ui
+                    .radio(!st.use_page_range && st.scope == scope, tr(key))
+                    .rich_tip_with(|| tr(&format!("{key}_tip")))
+                    .clicked()
+                {
+                    st.use_page_range = false;
+                    st.scope = scope;
+                }
+            }
+            if !st.desktop
+                && ui
+                    .radio(st.use_page_range, tr("docker.range_pages"))
+                    .rich_tip(crate::ui::tips::pair(
+                        "docker.range_pages",
+                        "docker.page_range_desc",
+                    ))
+                    .clicked()
+            {
+                st.use_page_range = true;
             }
         });
+        if st.use_page_range {
+            page_range_field(ui, &mut st.page_range, page_count);
+        }
         ui.checkbox(&mut st.in_front, tr("docker.master_in_front"))
             .rich_tip(tr("docker.master_in_front"));
     }
@@ -2555,28 +2970,33 @@ fn drop_rows(app: &mut App, ids: &[ShapeId], drop: RowDrop) {
         }
         RowDrop::Layer(l) => Some(l),
     };
-    let cmds = drop_commands(app, ids, drop);
+    let mut requested_ids = ids.to_vec();
+    let mut cmds = drop_commands(app, &requested_ids, drop);
     let Some(layer) = layer.filter(|_| !cmds.is_empty()) else {
         return;
     };
+    if app
+        .doc()
+        .layer(layer)
+        .is_ok_and(|layer| layer.page_range.is_some())
+        && app.prepare_shapes_for_range_move(&requested_ids)
+    {
+        requested_ids.retain(|id| app.doc().find_shape(*id).is_some());
+        cmds = drop_commands(app, &requested_ids, drop);
+        if cmds.is_empty() {
+            return;
+        }
+    }
     if let [one] = cmds.as_slice() {
         app.run(one.clone());
     } else if let Err(e) = app.engine.run_batch("Move to Layer", &cmds) {
         app.status = e.to_string();
         return;
     }
-    let page = app
-        .doc()
-        .pages
-        .iter()
-        .position(|p| p.layers.iter().any(|l| l.id == layer));
-    if let Some(i) = page {
-        if app.doc().pages.get(i).map(|p| p.id) != Some(app.page) {
-            app.goto_page(i);
-        }
+    if !activate_destination_layer(app, layer) {
+        return;
     }
-    app.picked_layer = Some(layer);
-    app.select(ids.to_vec());
+    app.select(requested_ids);
 }
 
 /// Whether rows carrying `ids` can be dropped into `target` as a
@@ -2832,6 +3252,9 @@ fn apply(app: &mut App, ui: &Ui, mut act: Actions) {
     if act.toggle_master {
         app.objects_master_closed = !app.objects_master_closed;
     }
+    if act.toggle_ranges {
+        app.objects_ranges_closed = !app.objects_ranges_closed;
+    }
     if let Some((page, shown)) = act.toggle_guides {
         app.set_guides_shown(page, shown);
     }
@@ -2887,6 +3310,9 @@ fn apply(app: &mut App, ui: &Ui, mut act: Actions) {
             app.dialog = crate::ui::dialogs::Dialog::LayerProperties(st);
         }
     }
+    if let Some(layer) = act.edit_range {
+        open_layer_range(app, layer);
+    }
     if let Some((master, locked)) = act.lock_guides {
         app.choose_master_guides(master);
         let all: Vec<usize> = (0..app.page_guides().len()).collect();
@@ -2908,8 +3334,16 @@ fn apply(app: &mut App, ui: &Ui, mut act: Actions) {
         app.run(Command::ReorderLayer { layer, index });
     }
     if let Some(layer) = act.pick {
-        app.picked_layer = Some(layer);
-        app.select(Vec::new());
+        if app
+            .doc()
+            .layer(layer)
+            .is_ok_and(|layer| layer.page_range.is_some())
+        {
+            activate_range_layer(app, layer);
+        } else {
+            app.picked_layer = Some(layer);
+            app.select(Vec::new());
+        }
     }
     if act.new_layer {
         new_layer(app);
@@ -2917,22 +3351,26 @@ fn apply(app: &mut App, ui: &Ui, mut act: Actions) {
     if let Some(scope) = act.new_master {
         new_master_layer(app, scope);
     }
+    if act.new_range {
+        open_new_range_layer(app);
+    }
     if let Some(layer) = act.select_layer {
         select_layer_objects(app, layer);
     }
     if let Some((layer, what)) = act.layer_clip {
         match what {
             LayerClip::Cut => {
-                select_layer_objects(app, layer);
-                app.cut();
+                if select_layer_objects(app, layer) {
+                    app.cut();
+                }
             }
             LayerClip::Copy => {
-                select_layer_objects(app, layer);
-                app.copy();
+                if select_layer_objects(app, layer) {
+                    app.copy();
+                }
             }
             LayerClip::Paste => {
-                app.picked_layer = Some(layer);
-                app.paste();
+                paste_layer(app, layer);
             }
         }
     }
@@ -2946,6 +3384,14 @@ fn apply(app: &mut App, ui: &Ui, mut act: Actions) {
         master_to_page(app, layer);
     }
     if let Some(id) = act.select.filter(|id| !select_clip_content(app, *id)) {
+        if let Some(layer) = layer_holding(app, id) {
+            let outside_range = app.doc().layer(layer).is_ok_and(|layer| {
+                layer.page_range.is_some() && !layer.applies_to(app.page_index())
+            });
+            if outside_range && !activate_range_layer(app, layer) {
+                return;
+            }
+        }
         let (shift, ctrl) = ui.input(|i| (i.modifiers.shift, i.modifiers.command));
         let key = egui::Id::new("objects_docker_anchor");
         let anchor: Option<ShapeId> = ui.data(|d| d.get_temp(key));
@@ -2971,8 +3417,34 @@ fn select_row(
     shift: bool,
     ctrl: bool,
 ) -> ShapeId {
-    let locked = app.locked_ids();
-    let free = |i: &ShapeId| !locked.contains(i);
+    fn exclude(shape: &Shape, unavailable: &mut std::collections::HashSet<ShapeId>) {
+        unavailable.insert(shape.id);
+        match &shape.kind {
+            ShapeKind::Group { children } => {
+                for child in children {
+                    exclude(child, unavailable);
+                }
+            }
+            ShapeKind::ClipFrame { frame, contents } => {
+                exclude(frame, unavailable);
+                for child in contents {
+                    exclude(child, unavailable);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut unavailable = app.locked_ids();
+    let index = app.page_index();
+    for layer in &app.doc().master {
+        if layer.page_range.is_some() && !layer.applies_to(index) {
+            for shape in &layer.shapes {
+                exclude(shape, &mut unavailable);
+            }
+        }
+    }
+    let free = |i: &ShapeId| !unavailable.contains(i);
     if shift {
         let from = anchor.and_then(|a| rows.iter().position(|r| *r == a));
         let to = rows.iter().position(|r| *r == id);
@@ -2990,6 +3462,7 @@ fn select_row(
                 picked.push(r);
             }
         }
+        picked.retain(free);
         app.select(picked);
         // The range keeps counting from where it started.
         return anchor.filter(|a| rows.contains(a)).unwrap_or(id);
@@ -3001,9 +3474,12 @@ fn select_row(
         } else if free(&id) {
             picked.push(id);
         }
+        picked.retain(free);
         app.select(picked);
     } else {
-        app.select(vec![id]);
+        let mut picked = vec![id];
+        picked.retain(free);
+        app.select(picked);
     }
     id
 }
@@ -4844,5 +5320,559 @@ mod drag_tests {
         app2.run(Command::SetLocked { shapes: vec![x], locked: true });
         assert!(!can_clip_into(&app2, &[y], x));
         assert!(!can_clip_into(&app2, &[y], y), "not into itself");
+    }
+}
+
+#[cfg(test)]
+mod range_layer_tests {
+    use super::*;
+
+    fn book(count: usize) -> App {
+        let mut app = App::headless();
+        while app.doc().pages.len() < count {
+            app.add_page();
+        }
+        app.goto_page(0);
+        app
+    }
+
+    fn draft(range: &str) -> NewRangeLayer {
+        NewRangeLayer {
+            name: "Chapter header".into(),
+            page_range: range.into(),
+        }
+    }
+
+    fn dialog_frame(ctx: &egui::Context, app: &mut App, key: egui::Key) {
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900.0, 800.0))),
+            events: vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| crate::ui::dialogs::show(app, ui.ctx()));
+        out.textures_delta.clear();
+    }
+
+    #[test]
+    fn range_row_selection_excludes_hidden_shared_objects_after_navigation() {
+        let mut app = book(2);
+        let rectangle = || ShapeKind::Rect {
+            rect: tracedraw_core::Rect::new(0.0, 0.0, 10.0, 10.0),
+            radius: 0.0,
+            corners: None,
+        };
+        let ordinary = app.new_shape(rectangle()).expect("page object");
+        new_master_layer(&mut app, MasterScope::All);
+        let shared = app.new_shape(rectangle()).expect("shared object");
+        assert!(create_range_layer(&mut app, &draft("1")));
+        let first = app.doc().master.last().expect("first range").id;
+        let child = Shape::new(app.engine.new_shape_id(), rectangle());
+        let hidden_child = child.id;
+        let hidden_group = app
+            .new_shape(ShapeKind::Group {
+                children: vec![child],
+            })
+            .expect("first range group");
+        assert!(create_range_layer(&mut app, &draft("2")));
+        let second = app.doc().master.last().expect("second range").id;
+        let target = app.new_shape(rectangle()).expect("second range object");
+        let rows = [ordinary, shared, target, hidden_group, hidden_child];
+
+        assert!(activate_range_layer(&mut app, first));
+        let anchor = select_row(&mut app, hidden_child, &rows, None, false, false);
+        assert!(activate_range_layer(&mut app, second));
+        assert_eq!(app.page_index(), 1);
+        select_row(&mut app, target, &rows, Some(anchor), true, false);
+        assert_eq!(app.selection, vec![target]);
+
+        // Ctrl+Shift keeps ordinary cross-page and unrestricted shared objects.
+        app.select(vec![ordinary, shared, hidden_child]);
+        select_row(&mut app, target, &rows, Some(anchor), true, true);
+        assert_eq!(app.selection, vec![ordinary, shared, target]);
+        select_row(&mut app, target, &rows, Some(anchor), false, true);
+        assert_eq!(app.selection, vec![ordinary, shared]);
+
+        select_row(&mut app, target, &rows, Some(ordinary), true, false);
+        assert_eq!(app.selection, vec![ordinary, shared, target]);
+    }
+
+    #[test]
+    fn range_layer_selection_finishes_source_text_before_navigation() {
+        for (source_range, target_range) in [
+            (None, "1"),
+            (Some("1-2"), "1-2"),
+            (Some("1"), "2"),
+            (Some("1"), "10"),
+        ] {
+            let mut app = book(2);
+            assert!(create_range_layer(&mut app, &draft(target_range)));
+            let target = app.doc().master.last().expect("target range").id;
+            if let Some(source) = source_range {
+                assert!(create_range_layer(&mut app, &draft(source)));
+            } else {
+                app.goto_page(0);
+                app.picked_layer = Some(app.doc().pages[0].layers[0].id);
+            }
+            let source = app.active_layer().expect("source layer");
+            app.start_text(tracedraw_core::Point::new(20.0, 20.0), None);
+            app.text_insert("Header");
+            let text = app.text_edit.as_ref().expect("editing header").shape;
+            app.ime_preedit = "pending composition".into();
+
+            assert_eq!(activate_range_layer(&mut app, target), target_range != "10");
+            assert!(
+                app.text_edit.is_none(),
+                "{source_range:?} to {target_range}"
+            );
+            assert!(app.ime_preedit.is_empty());
+            assert_eq!(layer_holding(&app, text), Some(source));
+            let before = app
+                .doc()
+                .find_shape(text)
+                .expect("preserved header")
+                .clone();
+            app.text_insert("Leak");
+            assert_eq!(app.doc().find_shape(text), Some(&before));
+            let ShapeKind::Text { spans, .. } = &before.kind else {
+                panic!("header text");
+            };
+            assert_eq!(tracedraw_core::document::spans_text(spans), "Header");
+        }
+    }
+
+    #[test]
+    fn range_layer_navigation_finishes_a_crop_before_clearing_its_selection() {
+        let mut app = book(2);
+        assert!(create_range_layer(&mut app, &draft("2")));
+        let target = app.doc().master.last().expect("target range").id;
+        assert!(create_range_layer(&mut app, &draft("1")));
+        let source = app.doc().master.last().expect("source range").id;
+        let shape = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("crop object");
+        app.select(vec![shape]);
+        app.crop_area = Some(tracedraw_core::Rect::new(1.0, 1.0, 9.0, 9.0));
+
+        assert!(activate_range_layer(&mut app, target));
+        assert_eq!(app.page_index(), 1);
+        assert!(app.crop_area.is_none());
+        assert!(app.selection.is_empty());
+        assert_eq!(layer_holding(&app, shape), Some(source));
+    }
+
+    #[test]
+    fn a_range_layer_starts_on_the_current_page_and_undoes_in_one_step() {
+        let mut app = book(4);
+        app.goto_page(1);
+        let state = NewRangeLayer::of(&app);
+        assert_eq!(state.page_range, "2");
+        let before = app.doc().clone();
+        assert!(create_range_layer(&mut app, &state));
+        let layer = app.doc().master.last().expect("range layer");
+        assert_eq!(layer.scope, MasterScope::All);
+        assert!(!layer.in_front && !layer.desktop);
+        assert!(layer.page_range.as_ref().expect("range").contains(1));
+        assert_eq!(app.active_layer(), Some(layer.id));
+        app.undo();
+        assert_eq!(app.doc().master, before.master);
+        assert_eq!(app.doc().pages, before.pages);
+    }
+
+    #[test]
+    fn future_ranges_survive_and_become_editable_when_pages_are_added() {
+        let mut app = book(4);
+        let page = app.page;
+        assert!(create_range_layer(&mut app, &draft("10-12")));
+        let layer = app.doc().master.last().expect("range layer").id;
+        assert_eq!(app.page, page);
+        assert!(app.picked_layer.is_none());
+        assert!(!app.status.is_empty());
+        while app.doc().pages.len() < 10 {
+            app.add_page();
+        }
+        app.goto_page(0);
+        activate_range_layer(&mut app, layer);
+        assert_eq!(app.page_index(), 9);
+        assert_eq!(app.active_layer(), Some(layer));
+    }
+
+    #[test]
+    fn range_layers_have_their_own_tree_group_and_ordinary_front_settings() {
+        let mut app = book(3);
+        new_master_layer(&mut app, MasterScope::All);
+        let ordinary = app.doc().master.last().expect("ordinary master").id;
+        assert!(create_range_layer(&mut app, &draft("2-3")));
+        let ranged = app.doc().master.last().expect("range master").id;
+        app.objects_master_closed = true;
+        let ctx = crate::theme::ui_context();
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 1000.0))),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| objects_docker(&mut app, ui));
+        out.textures_delta.clear();
+        assert!(ctx
+            .read_response(egui::Id::new(("objects_ranges", "arrow")))
+            .is_some());
+        assert!(ctx
+            .read_response(egui::Id::new(("objects_layer", ranged.raw())).with("eye"))
+            .is_some());
+        assert!(ctx
+            .read_response(egui::Id::new(("objects_layer", ordinary.raw())).with("eye"))
+            .is_none());
+        set_master_front(&mut app, MasterScope::All, true);
+        assert!(app.doc().layer(ordinary).expect("ordinary").in_front);
+        assert!(!app.doc().layer(ranged).expect("range").in_front);
+        let targets = layer_targets(&app);
+        assert!(targets.iter().any(|(heading, id, _)| *id == ranged
+            && heading.as_deref() == Some(tr("docker.range_pages").as_str())));
+    }
+
+    #[test]
+    fn editing_a_range_clears_off_page_selection_and_scope_restores_an_ordinary_master() {
+        let mut app = book(3);
+        assert!(create_range_layer(&mut app, &draft("1-2")));
+        let layer = app.doc().master.last().expect("range").id;
+        let shape = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape");
+        app.select(vec![shape]);
+        let mut state = LayerProps::of(&app, layer).expect("properties");
+        state.page_range = "3".into();
+        app.engine
+            .run_batch("Layer Properties", &state.commands(&app))
+            .expect("edit");
+        app.sync_layer_range(layer);
+        assert!(app.selection.is_empty());
+        assert!(app.picked_layer.is_none());
+        let mut state = LayerProps::of(&app, layer).expect("properties");
+        state.use_page_range = false;
+        state.scope = MasterScope::Odd;
+        app.engine
+            .run_batch("Layer Properties", &state.commands(&app))
+            .expect("ordinary scope");
+        assert!(app.doc().layer(layer).expect("layer").page_range.is_none());
+        assert_eq!(
+            app.doc().layer(layer).expect("layer").scope,
+            MasterScope::Odd
+        );
+    }
+
+    #[test]
+    fn invalid_ranges_keep_the_properties_dialog_open_and_cancel_preserves_the_drawing() {
+        let mut app = book(3);
+        assert!(create_range_layer(&mut app, &draft("1-2")));
+        let layer = app.doc().master.last().expect("range").id;
+        let before = app.doc().clone();
+        let mut state = LayerProps::of(&app, layer).expect("properties");
+        state.page_range = "0, bad".into();
+        state.name = "Uncommitted name".into();
+        assert!(!state.valid());
+        assert!(state.commands(&app).is_empty());
+        app.dialog = crate::ui::dialogs::Dialog::LayerProperties(state);
+        let ctx = crate::theme::ui_context();
+        dialog_frame(&ctx, &mut app, egui::Key::Enter);
+        assert!(matches!(
+            app.dialog,
+            crate::ui::dialogs::Dialog::LayerProperties(_)
+        ));
+        assert_eq!(app.doc(), &before);
+        dialog_frame(&ctx, &mut app, egui::Key::Escape);
+        assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::None));
+        assert_eq!(app.doc(), &before);
+        app.dialog = crate::ui::dialogs::Dialog::NewRangeLayer(draft("1-2"));
+        dialog_frame(&ctx, &mut app, egui::Key::Escape);
+        assert!(matches!(app.dialog, crate::ui::dialogs::Dialog::None));
+        assert_eq!(app.doc(), &before);
+        for range in ["", "0", "x", "1-"] {
+            assert!(!create_range_layer(&mut app, &draft(range)));
+        }
+        assert_eq!(app.doc(), &before);
+    }
+
+    #[test]
+    fn an_object_rows_menu_opens_on_a_page_in_its_range() {
+        let mut app = book(3);
+        assert!(create_range_layer(&mut app, &draft("2-3")));
+        let layer = app.doc().master.last().expect("range").id;
+        let shape = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape");
+        app.goto_page(0);
+        open_row_menu(&mut app, shape, Pos2::new(100.0, 100.0));
+        assert_eq!(app.page_index(), 1);
+        assert_eq!(app.selection, vec![shape]);
+        assert_eq!(app.context_docker, Some(shape));
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: PageRanges::parse("10-12"),
+        });
+        let page = app.page;
+        open_row_menu(&mut app, shape, Pos2::new(100.0, 100.0));
+        assert_eq!(app.page, page);
+        assert!(app.selection.is_empty());
+        assert!(app.context_menu.is_none());
+    }
+
+    fn assert_transfer_activates_the_range(transfer: fn(&mut App, &[ShapeId], LayerId)) {
+        for (range, from, expected, editable) in [
+            ("3-5", 0, 2, true),
+            ("3-5", 3, 3, true),
+            ("10-12", 0, 0, false),
+        ] {
+            let mut app = book(5);
+            app.goto_page(from);
+            let shape = app
+                .new_shape(ShapeKind::Rect {
+                    rect: tracedraw_core::Rect::new(0.0, 0.0, 10.0, 10.0),
+                    radius: 0.0,
+                    corners: None,
+                })
+                .expect("source object");
+            assert!(create_range_layer(&mut app, &draft(range)));
+            let layer = app.doc().master.last().expect("range layer").id;
+            app.goto_page(from);
+            app.select(vec![shape]);
+            transfer(&mut app, &[shape], layer);
+            assert_eq!(layer_holding(&app, shape), Some(layer));
+            assert_eq!(app.page_index(), expected, "{range} from {from}");
+            if editable {
+                assert_eq!(app.active_layer(), Some(layer));
+                assert_eq!(app.selection, vec![shape]);
+            } else {
+                assert!(app.selection.is_empty());
+                assert!(app.picked_layer.is_none());
+                assert!(!app.status.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn move_to_a_range_layer_activates_a_matching_page_or_clears_editing_state() {
+        assert_transfer_activates_the_range(move_to_layer);
+    }
+
+    #[test]
+    fn dropping_into_a_range_layer_activates_a_matching_page_or_clears_editing_state() {
+        assert_transfer_activates_the_range(|app, ids, layer| {
+            drop_rows(app, ids, RowDrop::Layer(layer));
+        });
+    }
+
+    #[test]
+    fn layer_selection_and_paste_use_a_matching_range_page() {
+        let mut app = book(5);
+        let source = app
+            .new_shape(ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("source object");
+        app.select(vec![source]);
+        app.copy();
+        assert!(app.clipboard.is_some());
+        assert!(create_range_layer(&mut app, &draft("3-5")));
+        let layer = app.doc().master.last().expect("range layer").id;
+        app.goto_page(0);
+        assert!(paste_layer(&mut app, layer));
+        assert_eq!(app.page_index(), 2);
+        assert_eq!(app.active_layer(), Some(layer));
+        assert!(!app.selection.is_empty());
+        assert!(app
+            .selection
+            .iter()
+            .all(|id| layer_holding(&app, *id) == Some(layer)));
+        app.goto_page(0);
+        assert!(select_layer_objects(&mut app, layer));
+        assert_eq!(app.page_index(), 2);
+        assert!(!app.selection.is_empty());
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: PageRanges::parse("10-12"),
+        });
+        let page = app.page;
+        let document = app.doc().clone();
+        assert!(!paste_layer(&mut app, layer));
+        assert_eq!(app.page, page);
+        assert_eq!(app.doc(), &document);
+        assert!(app.selection.is_empty());
+        assert!(app.picked_layer.is_none());
+        app.select(vec![source]);
+        assert!(!select_layer_objects(&mut app, layer));
+        assert_eq!(app.doc(), &document);
+        assert!(app.selection.is_empty());
+        assert!(app.picked_layer.is_none());
+    }
+
+    fn clip_with_contents(app: &mut App) -> (ShapeId, ShapeId) {
+        let frame = Shape::new(
+            app.engine.new_shape_id(),
+            ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(0.0, 0.0, 20.0, 20.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let content = Shape::new(
+            app.engine.new_shape_id(),
+            ShapeKind::Rect {
+                rect: tracedraw_core::Rect::new(2.0, 2.0, 8.0, 8.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        let content_id = content.id;
+        let clip = app
+            .new_shape(ShapeKind::ClipFrame {
+                frame: Box::new(frame),
+                contents: vec![content],
+            })
+            .expect("clip frame");
+        (clip, content_id)
+    }
+
+    fn assert_clip_contents(app: &App, clip: ShapeId, content: ShapeId) {
+        let ShapeKind::ClipFrame { contents, .. } =
+            &app.doc().find_shape(clip).expect("frame").kind
+        else {
+            panic!("clip frame");
+        };
+        assert_eq!(
+            contents.iter().map(|shape| shape.id).collect::<Vec<_>>(),
+            vec![content]
+        );
+    }
+
+    #[test]
+    fn moving_edited_text_to_a_range_finishes_editing_before_navigation() {
+        let mut app = book(5);
+        assert!(create_range_layer(&mut app, &draft("3-5")));
+        let layer = app.doc().master.last().expect("range").id;
+        app.goto_page(0);
+        app.start_text(tracedraw_core::Point::new(20.0, 20.0), None);
+        app.insert_text("Header");
+        let text = app.text_edit.as_ref().expect("text edit").shape;
+        move_to_layer(&mut app, &[text], layer);
+        assert!(app.text_edit.is_none());
+        assert_eq!(app.page_index(), 2);
+        assert_eq!(layer_holding(&app, text), Some(layer));
+        let ShapeKind::Text { spans, .. } = &app.doc().find_shape(text).expect("text").kind else {
+            panic!("text");
+        };
+        assert_eq!(
+            spans
+                .iter()
+                .map(|span| span.text.as_str())
+                .collect::<String>(),
+            "Header"
+        );
+        app.goto_page(0);
+        app.start_text(tracedraw_core::Point::new(30.0, 30.0), None);
+        let empty = app.text_edit.as_ref().expect("empty text edit").shape;
+        move_to_layer(&mut app, &[empty], layer);
+        assert!(app.text_edit.is_none());
+        assert!(app.doc().find_shape(empty).is_none());
+        assert_eq!(app.doc().layer(layer).expect("range").shapes.len(), 1);
+    }
+
+    #[test]
+    fn dropping_an_edited_clip_frame_into_a_future_range_keeps_its_contents() {
+        let mut app = book(5);
+        assert!(create_range_layer(&mut app, &draft("10-12")));
+        let layer = app.doc().master.last().expect("range").id;
+        let (clip, content) = clip_with_contents(&mut app);
+        app.select(vec![clip]);
+        app.edit_clip_frame();
+        assert!(app.clip_frame_edit.is_some());
+        assert_eq!(app.selection, vec![content]);
+        drop_rows(&mut app, &[clip], RowDrop::Layer(layer));
+        assert!(app.clip_frame_edit.is_none());
+        assert_eq!(layer_holding(&app, clip), Some(layer));
+        assert_eq!(app.page_index(), 0);
+        assert!(app.selection.is_empty());
+        assert!(app.picked_layer.is_none());
+        assert_clip_contents(&app, clip, content);
+        assert!(!app
+            .doc()
+            .pages
+            .iter()
+            .flat_map(|page| &page.layers)
+            .flat_map(|layer| &layer.shapes)
+            .any(|shape| shape.id == content));
+    }
+
+    #[test]
+    fn hiding_a_range_during_clip_editing_restores_the_original_frame_contents() {
+        let mut app = book(5);
+        assert!(create_range_layer(&mut app, &draft("1-2")));
+        let layer = app.doc().master.last().expect("range").id;
+        let (clip, content) = clip_with_contents(&mut app);
+        app.select(vec![clip]);
+        app.edit_clip_frame();
+        assert!(app.clip_frame_edit.is_some());
+        app.run(Command::SetLayerPageRange {
+            layer,
+            page_range: PageRanges::parse("3-5"),
+        });
+        assert!(app.clip_frame_edit.is_none());
+        assert!(app.selection.is_empty());
+        assert!(app.picked_layer.is_none());
+        assert_clip_contents(&app, clip, content);
+        assert_eq!(app.doc().layer(layer).expect("range").shapes.len(), 1);
+    }
+
+    #[test]
+    fn moving_a_range_layer_to_a_page_finishes_clip_editing_before_copying_the_layer() {
+        for other_page in [false, true] {
+            let mut app = book(5);
+            assert!(create_range_layer(&mut app, &draft("1-2")));
+            let layer = app.doc().master.last().expect("range").id;
+            let (clip, content) = clip_with_contents(&mut app);
+            app.select(vec![clip]);
+            app.edit_clip_frame();
+            assert!(app.clip_frame_edit.is_some());
+            let target = if other_page {
+                app.doc().pages[3].id
+            } else {
+                app.page
+            };
+            if other_page {
+                layer_to_page(&mut app, layer, target);
+            } else {
+                master_to_page(&mut app, layer);
+            }
+            assert!(app.clip_frame_edit.is_none());
+            assert_eq!(app.page, target);
+            assert_clip_contents(&app, clip, content);
+            let destination = layer_holding(&app, clip).expect("destination");
+            assert!(app
+                .doc()
+                .page(target)
+                .expect("page")
+                .layers
+                .iter()
+                .any(|layer| layer.id == destination));
+            assert_eq!(app.doc().layer(destination).expect("layer").shapes.len(), 1);
+            assert!(app.doc().layer(layer).is_err());
+        }
     }
 }

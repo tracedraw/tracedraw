@@ -18,6 +18,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "effect", rename_all = "lowercase")]
 pub enum Effect {
+    /// Repeat a saved vector motif along the editable source path.
+    PatternStroke {
+        motif: Box<Shape>,
+        options: crate::pattern_stroke::PatternOptions,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        original: Option<Box<crate::pattern_stroke::PatternOriginal>>,
+    },
     /// Concentric copies inside or outside the outline.
     Contour {
         steps: u32,
@@ -1891,6 +1898,23 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
     let mut warped_ahead = false;
     for (at, effect) in shape.effects.iter().enumerate() {
         match effect {
+            Effect::PatternStroke {
+                motif,
+                options,
+                original,
+            } => {
+                if let Some(original) = original
+                    .as_ref()
+                    .filter(|o| o.unchanged(&main, motif, options))
+                {
+                    above.extend(original.placed(&main));
+                } else {
+                    above.extend(crate::pattern_stroke::copies(&main, motif, options));
+                }
+                // Keep the guide for node editing, but draw only the motifs.
+                main.fill = Fill::None;
+                main.stroke = None;
+            }
             Effect::Distort(_)
             | Effect::Envelope { .. }
             | Effect::Perspective { .. }

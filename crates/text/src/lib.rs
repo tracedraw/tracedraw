@@ -6721,6 +6721,13 @@ fn letter_frame(
     }
 }
 
+/// How a letter on a path with unit direction `dir` is turned or
+/// sheared, away from any centre (radial letters then turn with the
+/// path): the pictures of the text on a path bar.
+pub fn path_letter_frame(o: PathTextOrientation, dir: tracedraw_core::geometry::Vec2) -> Affine {
+    letter_frame(o, dir, Point::ZERO, Point::ZERO)
+}
+
 struct OutlineSink {
     path: BezPath,
     scale: f64,

@@ -617,3 +617,30 @@ Native saves preserve the source and settings. CDR output uses a prepared
 bitmap appearance plus TraceDraw's private source member from version 14,
 not the source application's native filter records. See
 [`behavior/cdr-bitmap-effects.md`](behavior/cdr-bitmap-effects.md).
+
+## Linked uniform patterns (version 27, limited coverage)
+
+Observed in an owned drawing, 2026-11-15: an open curve precedes a `LIST lnkg`
+whose own `lgob/loda` has object type 28 and an argument 3000 of 692 bytes.
+The drawing also has `nmsf`, an embedded motif drawing, and the linked group
+contains the 120 already-rendered vectors. The embedded library is not decoded.
+
+The `lnkt` payload has length and count u32 fields, an offset-table pointer
+at byte 8, and offsets delimiting 32-byte entries. The observed entry begins
+with u32 0x100, then the group's `spnd` id and its guide's `spnd` id. These
+are not `usdn` static ids. Only entries of this size and kind are used, and
+recovery must also validate the geometry and placement of every motif.
+
+In the observed 692-byte argument, u32 at 568 is 31000 (3.1 mm in the
+format's coordinate units), and i32 at 576 is 180 (the screenshot's constant
+path-relative angle, degrees). The other fields are not assigned general
+meanings: `pattern_record::settings` accepts the observed signature only.
+The regenerated placements must agree within 0.05 mm at all motif-box
+corners. Original vector placements are kept for an unchanged initial
+render; edits regenerate from the curve. Unsupported signatures and
+nonuniform geometry remain as separate vectors with a warning. Controlled
+parameter variants are still needed before broadening this decoder.
+
+Native pattern strokes exported to package `.cdr` use the existing
+`tracedraw/effects.json` mechanism for TraceDraw editability, with ordinary
+vectors for other readers. They are not written as native type-28 effects.

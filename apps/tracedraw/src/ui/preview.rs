@@ -6,20 +6,91 @@ use crate::theme::Tokens;
 use egui::Ui;
 use tracedraw_core::Command;
 
-/// What the full-screen preview shows: the selection's box with Preview
-/// Selected Only, else the page and every object of it, those lying off
-/// the page too, as the drawing window shows them. Only the page showed,
-/// so a drawing made beside or larger than its page was previewed as an
-/// empty sheet (#2317).
+/// Capture the editor's center and scale before the window changes size.
+/// The larger screen reveals more canvas without moving the editor's view.
+pub struct PreviewSession {
+    pub(crate) bounds: tracedraw_core::geometry::Rect,
+    pub(crate) zoom: f64,
+    was_fullscreen: bool,
+    hint_until: f64,
+    texture: Option<(PreviewKey, egui::TextureHandle)>,
+}
+
+#[derive(PartialEq, Eq)]
+struct PreviewKey {
+    width: u32,
+    height: u32,
+    pixels_per_point: u32,
+    document: (u64, u64),
+    page: tracedraw_core::PageId,
+    font_generation: u64,
+}
+
+pub fn begin(app: &mut App, ctx: &egui::Context, selected_only: bool) {
+    if app.preview_session.is_some() {
+        return;
+    }
+    app.zoom_glide.stop();
+    app.pan_inertia.stop();
+    app.preview_selected_only = selected_only;
+    app.preview_session = Some(PreviewSession {
+        bounds: preview_bounds(app),
+        zoom: f64::from(app.view.zoom),
+        was_fullscreen: ctx.input(|i| i.viewport().fullscreen.unwrap_or(false)),
+        hint_until: ctx.input(|i| i.time) + 1.5,
+        texture: None,
+    });
+    app.fullscreen_preview = true;
+    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
+}
+
+pub fn end(app: &mut App, ctx: &egui::Context) {
+    if let Some(session) = app.preview_session.take() {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(session.was_fullscreen));
+    }
+    app.fullscreen_preview = false;
+    app.preview_selected_only = false;
+}
+
+/// The editor's visible canvas when preview starts. Distant objects do
+/// not change its center or scale.
 pub fn preview_bounds(app: &App) -> tracedraw_core::geometry::Rect {
+    if let Some(session) = &app.preview_session {
+        return session.bounds;
+    }
     let page = app.page_rect();
     if app.preview_selected_only {
         return app.selection_bounds().unwrap_or(page);
     }
-    match app.doc().content_bounds(app.page).ok().flatten() {
-        Some(b) if b.width().is_finite() && b.height().is_finite() => page.union(b),
-        _ => page,
+    let bounds = app.view.visible_page_rect(app.canvas_rect);
+    if bounds.is_finite() && bounds.width() > 0.0 && bounds.height() > 0.0 {
+        bounds
+    } else {
+        page
     }
+}
+
+/// Expand the canvas to the available screen while keeping its center
+/// and zoom. Selection preview keeps fitting its own bounds instead.
+fn frame_bounds(app: &App, size: egui::Vec2) -> tracedraw_core::geometry::Rect {
+    let bounds = preview_bounds(app);
+    if app.preview_selected_only {
+        return bounds;
+    }
+    let zoom = app
+        .preview_session
+        .as_ref()
+        .map_or(f64::from(app.view.zoom), |session| session.zoom)
+        .max(1e-6);
+    let center = bounds.center();
+    let half_width = f64::from(size.x) / (2.0 * zoom);
+    let half_height = f64::from(size.y) / (2.0 * zoom);
+    tracedraw_core::geometry::Rect::new(
+        center.x - half_width,
+        center.y - half_height,
+        center.x + half_width,
+        center.y + half_height,
+    )
 }
 
 /// A page's miniature as it is cached for the Pages docker and the page
@@ -134,25 +205,50 @@ pub fn paint_page_thumb(
 
 pub fn fullscreen(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
+    if app.preview_session.is_none() {
+        begin(app, &ctx, app.preview_selected_only);
+    }
     egui::CentralPanel::default()
-        .frame(egui::Frame::new().fill(egui::Color32::from_gray(40)))
+        .frame(
+            egui::Frame::new()
+                .fill(if app.preview_selected_only {
+                    egui::Color32::from_gray(40)
+                } else {
+                    egui::Color32::WHITE
+                })
+                .inner_margin(0.0),
+        )
         .show(ui, |ui| {
             let rect = ui.available_rect_before_wrap();
             let page = app.page_rect();
-            let bounds = preview_bounds(app);
+            let bounds = frame_bounds(app, rect.size());
             let painter = ui.painter_at(rect);
-            // Fit the page into the screen.
-            let margin = 20.0;
+            // Only selection preview fits a crop. Ordinary preview uses
+            // every screen pixel at the editor's original scale.
+            let margin = if app.preview_selected_only { 20.0 } else { 0.0 };
             let sx = (rect.width() - 2.0 * margin) as f64 / bounds.width().max(1e-6);
             let sy = (rect.height() - 2.0 * margin) as f64 / bounds.height().max(1e-6);
-            let zoom = sx.min(sy);
-            let w = (bounds.width() * zoom).ceil() as u32;
-            let h = (bounds.height() * zoom).ceil() as u32;
-            let doc = app.engine.document().clone();
+            let zoom = sx.min(sy).max(1e-6);
+            let size = egui::vec2(
+                (bounds.width() * zoom) as f32,
+                (bounds.height() * zoom) as f32,
+            );
+            let pixels_per_point = ctx.pixels_per_point() as f64;
+            let pixel_zoom = zoom * pixels_per_point;
+            let w = (bounds.width() * pixel_zoom).ceil().max(1.0) as u32;
+            let h = (bounds.height() * pixel_zoom).ceil().max(1.0) as u32;
+            let key = PreviewKey {
+                width: w,
+                height: h,
+                pixels_per_point: ctx.pixels_per_point().to_bits(),
+                document: (app.engine.instance(), app.engine.revision()),
+                page: app.page,
+                font_generation: app.font_generation,
+            };
             let view = tracedraw_render::ViewTransform {
-                zoom,
-                origin_x: -bounds.x0 * zoom,
-                origin_y: bounds.y1 * zoom,
+                zoom: pixel_zoom,
+                origin_x: -bounds.x0 * pixel_zoom,
+                origin_y: bounds.y1 * pixel_zoom,
                 stretch_y: 1.0,
             };
             let opts = tracedraw_render::RenderOptions {
@@ -163,31 +259,34 @@ pub fn fullscreen(app: &mut App, ui: &mut Ui) {
                 wireframe: false,
                 ..tracedraw_render::RenderOptions::default()
             };
-            let page_id = app.page;
-            if let Some(mut pm) = tracedraw_render::render_page(&doc, page_id, &opts) {
-                if !app.preview_selected_only {
-                    let mut white = tiny_skia::Pixmap::new(pm.width(), pm.height())
-                        .unwrap_or_else(|| tiny_skia::Pixmap::new(1, 1).expect("pixmap"));
-                    white.fill(tiny_skia::Color::WHITE);
-                    white.draw_pixmap(
-                        0,
-                        0,
-                        pm.as_ref(),
-                        &Default::default(),
-                        tiny_skia::Transform::identity(),
-                        None,
+            let cached = app
+                .preview_session
+                .as_ref()
+                .is_some_and(|s| s.texture.as_ref().is_some_and(|(k, _)| *k == key));
+            if !cached {
+                if let Some(pm) = tracedraw_render::render_page(app.doc(), app.page, &opts) {
+                    let image = egui::ColorImage::from_rgba_premultiplied(
+                        [pm.width() as usize, pm.height() as usize],
+                        pm.data(),
                     );
-                    pm = white;
+                    let tex =
+                        ctx.load_texture("fullscreen_preview", image, egui::TextureOptions::LINEAR);
+                    if let Some(session) = &mut app.preview_session {
+                        session.texture = Some((key, tex));
+                    }
                 }
-                let image = egui::ColorImage::from_rgba_premultiplied(
-                    [pm.width() as usize, pm.height() as usize],
-                    pm.data(),
-                );
-                let tex =
-                    ctx.load_texture("fullscreen_preview", image, egui::TextureOptions::LINEAR);
-                let size = egui::vec2(pm.width() as f32, pm.height() as f32);
+            }
+            if let Some((_, tex)) = app
+                .preview_session
+                .as_ref()
+                .and_then(|s| s.texture.as_ref())
+            {
                 let pos = rect.center() - size / 2.0;
                 let page_rect = egui::Rect::from_min_size(pos, size);
+                let painter = painter.with_clip_rect(page_rect);
+                if !app.preview_selected_only {
+                    painter.rect_filled(page_rect, 0.0, egui::Color32::WHITE);
+                }
                 painter.image(
                     tex.id(),
                     page_rect,
@@ -214,22 +313,41 @@ pub fn fullscreen(app: &mut App, ui: &mut Ui) {
                     );
                 }
             }
-            painter.text(
-                egui::pos2(rect.center().x, rect.max.y - 10.0),
-                egui::Align2::CENTER_BOTTOM,
-                tr("preview.exit_hint"),
-                egui::FontId::proportional(12.0),
-                egui::Color32::from_gray(200),
-            );
+            let now = ctx.input(|i| i.time);
+            let hint_left = app
+                .preview_session
+                .as_ref()
+                .map_or(0.0, |session| session.hint_until - now);
+            if hint_left > 0.0 {
+                ctx.request_repaint_after(std::time::Duration::from_secs_f64(hint_left));
+                let hint = painter.layout_no_wrap(
+                    tr("preview.exit_hint"),
+                    egui::FontId::proportional(12.0),
+                    egui::Color32::from_gray(200),
+                );
+                let hint_pos = egui::pos2(
+                    rect.center().x - hint.size().x / 2.0,
+                    rect.max.y - hint.size().y - 10.0,
+                );
+                painter.rect_filled(
+                    egui::Rect::from_min_size(hint_pos, hint.size()).expand2(egui::vec2(8.0, 4.0)),
+                    4.0,
+                    egui::Color32::from_gray(40),
+                );
+                painter.galley(hint_pos, hint, egui::Color32::from_gray(200));
+            }
         });
     let exit = ctx.input(|i| {
         i.key_pressed(egui::Key::Escape) || i.key_pressed(egui::Key::F9) || i.pointer.any_click()
     });
     if exit {
-        app.fullscreen_preview = false;
-        app.preview_selected_only = false;
+        end(app, &ctx);
     }
 }
+
+#[cfg(test)]
+#[path = "preview_tests.rs"]
+mod viewport_tests;
 
 pub fn page_sorter(app: &mut App, ui: &mut Ui) {
     ui.horizontal(|ui| {
@@ -394,7 +512,10 @@ mod tests {
                 corners: None,
             })
             .expect("a rectangle");
+        app.canvas_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
+        app.view.fit(page.union(bar), app.canvas_rect);
         let b = preview_bounds(&app);
+        assert_eq!(b, app.view.visible_page_rect(app.canvas_rect));
         assert!(
             b.x0 <= bar.x0 + 1e-6 && b.x1 >= bar.x1 - 1e-6 && b.y1 >= bar.y1 - 1e-6,
             "{b:?} {bar:?}"

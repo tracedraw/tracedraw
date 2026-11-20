@@ -1485,6 +1485,34 @@ mod tests {
     }
 
     #[test]
+    fn select_same_opens_from_edit_menu_and_restores_its_panel_layout() {
+        let ctx = crate::theme::ui_context();
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(10.0, 10.0, 30.0, 30.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("reference rectangle");
+        app.select(vec![id]);
+        let mut ran = false;
+        run_frame(&ctx, |ui| {
+            let _guard = invoke::Guard;
+            invoke::start_trigger("docker.select_same");
+            edit_menu(&mut app, ui);
+            ran = invoke::finish().1;
+        });
+        assert!(ran);
+        assert_eq!(app.selection, vec![id]);
+        assert!(app.docker_shown(DockerTab::SelectSame));
+        let layout = app.docker_setup();
+        app.close_docker(DockerTab::SelectSame);
+        app.set_docker_setup(&layout);
+        assert!(app.docker_shown(DockerTab::SelectSame));
+    }
+
+    #[test]
     fn the_panels_menu_lists_every_panel_once() {
         let mut listed: Vec<DockerTab> = DockerTab::MENU_GROUPS
             .iter()
@@ -3092,6 +3120,9 @@ fn edit_menu(app: &mut App, ui: &mut Ui) {
         }
         crate::select_similar::tolerance_row(ui, &mut app.settings.similar_tolerance);
     });
+    if item(ui, "docker.select_same", "", app.has_document()) {
+        app.open_docker(DockerTab::SelectSame);
+    }
     sep(ui);
     if item(ui, "menu.edit.find_and_replace", "Ctrl+F", true) {
         app.show_dockers = true;
@@ -3121,7 +3152,7 @@ fn view_menu(app: &mut App, ui: &mut Ui) {
     }
     sep(ui);
     if item(ui, "menu.view.fullscreen_preview", "F9", true) {
-        app.fullscreen_preview = true;
+        super::preview::begin(app, ui.ctx(), false);
     }
     if item(
         ui,
@@ -3129,8 +3160,7 @@ fn view_menu(app: &mut App, ui: &mut Ui) {
         "",
         !app.selection.is_empty(),
     ) {
-        app.preview_selected_only = true;
-        app.fullscreen_preview = true;
+        super::preview::begin(app, ui.ctx(), true);
     }
     if check(ui, "menu.view.page_sorter", "", app.page_sorter) {
         app.page_sorter = !app.page_sorter;

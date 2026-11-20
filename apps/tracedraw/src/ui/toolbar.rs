@@ -682,7 +682,7 @@ pub(crate) fn draw_item(app: &mut App, ui: &mut Ui, bar: &str, id: &str) {
             )
             .clicked()
             {
-                app.fullscreen_preview = true;
+                super::preview::begin(app, ui.ctx(), false);
             }
         }
         "rulers" => {
@@ -1402,7 +1402,8 @@ fn brush_strokes_bar(app: &mut App, ui: &mut Ui) {
         MediaMode::Preset | MediaMode::Brush => &crate::media::BRUSH_KEYS,
         MediaMode::Sprayer => &crate::media::SPRAY_KEYS,
         MediaMode::Tiles => &crate::media::TILE_KEYS,
-        MediaMode::Calligraphic | MediaMode::Expression | MediaMode::Merge => &[],
+        MediaMode::Calligraphic | MediaMode::Expression | MediaMode::Merge
+        | MediaMode::Pattern => &[],
     };
     if !shapes.is_empty() {
         dim_labelled_as(
@@ -1437,6 +1438,15 @@ fn brush_strokes_bar(app: &mut App, ui: &mut Ui) {
                         .speed(1.0)
                         .range(0.0..=180.0)
                         .suffix("°"),
+                )
+            });
+        }
+        MediaMode::Pattern => {
+            dim_labelled_as(ui, "docker.spacing", "media.pattern_spacing_desc", |ui| {
+                ui.add(
+                    crate::ui::field::NumField::new(&mut app.media_pattern.spacing)
+                        .range(0.1..=1000.0)
+                        .suffix(" mm"),
                 )
             });
         }

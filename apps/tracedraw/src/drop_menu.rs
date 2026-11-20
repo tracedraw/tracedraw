@@ -3,7 +3,8 @@
 //! put; on release a menu asks what to do there: Move Here, Copy Here,
 //! Copy Fill Here, Copy Outline Here, Copy All Properties (onto the object
 //! under the pointer), Place Inside (that object becomes the selection's
-//! clip frame), or Cancel. Ctrl keeps the drag horizontal or vertical;
+//! clip frame), Fit Text to Path, or Cancel. Ctrl keeps the drag
+//! horizontal or vertical;
 //! Esc cancels it. Let go over another object with Shift held, that
 //! object takes the outline of the selection without the menu, with Alt
 //! the fill and with Ctrl fill and outline. A move with
@@ -15,7 +16,7 @@ use crate::app::App;
 use egui::{Painter, Response, Ui};
 use tracedraw_core::{
     geometry::{Affine, Point, Vec2},
-    Command, ShapeId,
+    Command, ShapeId, ShapeKind,
 };
 
 /// A right-button drag in progress (page space).
@@ -40,6 +41,11 @@ impl RightDrag {
             d
         }
     }
+
+    fn menu_offset(&self, zoom: f32, constrain: bool) -> Option<Vec2> {
+        let offset = self.offset(constrain);
+        (offset.hypot() * f64::from(zoom) >= 2.0).then_some(offset)
+    }
 }
 
 /// The menu shown where a right-button drag ended.
@@ -50,6 +56,8 @@ pub struct DropMenu {
     pub offset: Vec2,
     /// The object under the pointer that is not being dragged.
     pub target: Option<ShapeId>,
+    /// The release point in page space when this drop can fit text to a path.
+    fit_text_at: Option<Point>,
 }
 
 /// What the drop menu does.
@@ -61,17 +69,19 @@ pub enum DropAction {
     CopyOutline,
     CopyProperties,
     PlaceInside,
+    FitTextToPath,
     Cancel,
 }
 
 impl DropAction {
-    pub const ALL: [DropAction; 7] = [
+    pub const ALL: [DropAction; 8] = [
         DropAction::Move,
         DropAction::Copy,
         DropAction::CopyFill,
         DropAction::CopyOutline,
         DropAction::CopyProperties,
         DropAction::PlaceInside,
+        DropAction::FitTextToPath,
         DropAction::Cancel,
     ];
 
@@ -83,6 +93,7 @@ impl DropAction {
             DropAction::CopyOutline => "drop.copy_outline_here",
             DropAction::CopyProperties => "drop.copy_all_properties",
             DropAction::PlaceInside => "drop.place_inside",
+            DropAction::FitTextToPath => "menu.text.fit_text_to_path",
             DropAction::Cancel => "drop.cancel",
         }
     }
@@ -110,6 +121,7 @@ impl DropAction {
                 | DropAction::CopyOutline
                 | DropAction::CopyProperties
                 | DropAction::PlaceInside
+                | DropAction::FitTextToPath
         )
     }
 }
@@ -165,6 +177,45 @@ impl App {
         self.hit_test_where(p, |id| selection.contains(&id))
     }
 
+    /// A single editable text dropped on a different vector outline.
+    fn text_drop_pair(
+        &self,
+        target: impl FnOnce() -> Option<ShapeId>,
+    ) -> Option<(ShapeId, ShapeId)> {
+        if self.selection.len() != 1 {
+            return None;
+        }
+        let selected = self.selected_rc();
+        let [text] = selected.as_slice() else {
+            return None;
+        };
+        if !matches!(text.kind, ShapeKind::Text { .. }) || text.locked {
+            return None;
+        }
+        let path = self.doc().find_shape(target()?)?;
+        matches!(
+            path.kind,
+            ShapeKind::Path { .. }
+                | ShapeKind::Ellipse { .. }
+                | ShapeKind::Rect { .. }
+                | ShapeKind::Polygon { .. }
+                | ShapeKind::ClipFrame { .. }
+        )
+        .then_some((text.id, path.id))
+    }
+
+    /// The path that would offer Fit Text to Path on release. Check the
+    /// source before picking a target so other right drags stay as cheap.
+    pub(crate) fn right_drag_text_target(&self, mods: egui::Modifiers) -> Option<ShapeId> {
+        if self.right_drag_style.is_some() || DropAction::for_right_drop(mods).is_some() {
+            return None;
+        }
+        let drag = self.right_drag?;
+        drag.menu_offset(self.view.zoom, mods.command)?;
+        self.text_drop_pair(|| self.right_drop_target(drag.current))
+            .map(|(_, path)| path)
+    }
+
     /// What a right-button drag that ended with the keys `mods` held does
     /// there, and the object it does it to (shown while dragging).
     pub fn right_drop_style(
@@ -197,33 +248,40 @@ impl App {
             self.copy_style_onto(target, action);
             return;
         }
-        let offset = drag.offset(mods.command);
-        if offset.hypot() * self.view.zoom as f64 >= 2.0 {
+        if let Some(offset) = drag.menu_offset(self.view.zoom, mods.command) {
+            let target = self.right_drop_target(p);
             self.drop_menu = Some(DropMenu {
                 screen: self.view.to_screen(p),
                 offset,
-                target: self.right_drop_target(p),
+                target,
+                fit_text_at: self.text_drop_pair(|| target).map(|_| p),
             });
         }
     }
 
-    /// The selection's outline where a right-button drag would put it;
-    /// with Shift, Alt or Ctrl held over another object, that object
-    /// marked and what the drop will copy onto it instead (#2066).
-    pub fn draw_right_drag(&self, painter: &Painter) {
+    /// The moved selection's outline, or the drop target with its action.
+    pub fn draw_right_drag(
+        &self,
+        painter: &Painter,
+        mods: egui::Modifiers,
+        text_target: Option<ShapeId>,
+    ) {
         let Some(drag) = self.right_drag else {
             return;
         };
-        let mods = painter.ctx().input(|i| i.modifiers);
+        if let Some(target) = text_target {
+            crate::canvas::draw_drop_target(self, painter, DropAction::FitTextToPath, target);
+            return;
+        }
         if self.right_drag_style.is_some() {
             let action = DropAction::for_right_drop(mods).unwrap_or(DropAction::CopyFill);
             if let Some(target) = self.hit_test(drag.current) {
-                crate::canvas::draw_drop_style(self, painter, action, target);
+                crate::canvas::draw_drop_target(self, painter, action, target);
             }
             return;
         }
         if let Some((action, target)) = self.right_drop_style(drag.current, mods) {
-            crate::canvas::draw_drop_style(self, painter, action, target);
+            crate::canvas::draw_drop_target(self, painter, action, target);
             return;
         }
         let t = Affine::translate(drag.offset(mods.command));
@@ -256,6 +314,50 @@ impl App {
                 if !contents.is_empty() {
                     self.place_inside(contents, target);
                     self.select(vec![target]);
+                }
+            }
+            DropAction::FitTextToPath => {
+                let (Some(at), Some((source, target))) =
+                    (menu.fit_text_at, self.text_drop_pair(|| menu.target))
+                else {
+                    return;
+                };
+                let doc = self.doc();
+                let (Some(text), Some(path)) =
+                    (doc.shape_on_page(source), doc.shape_on_page(target))
+                else {
+                    return;
+                };
+                let Some((mut kind, transform)) = crate::text_path::fit(&text, &path, Some(at))
+                else {
+                    return;
+                };
+                // The drop locates the text along the path, not away from it.
+                if let ShapeKind::Text {
+                    on_path: Some(on_path),
+                    ..
+                } = &mut kind
+                {
+                    on_path.set_distance(0.0);
+                    on_path.source = path.uid.map(|uid| tracedraw_core::text_path::PathSource {
+                        shape: target,
+                        uid,
+                    });
+                }
+                let mut cmds = vec![Command::SetShapeKind {
+                    shape: source,
+                    kind,
+                }];
+                // A squeezed text's squeeze went into its letters: the
+                // transform keeps the rest.
+                if transform != text.transform {
+                    cmds.push(Command::TransformShapes {
+                        shapes: vec![source],
+                        transform: transform * text.transform.inverse(),
+                    });
+                }
+                if let Err(e) = self.engine.run_batch("Fit Text to Path", &cmds) {
+                    self.status = e.to_string();
                 }
             }
             DropAction::Cancel => {}
@@ -371,6 +473,9 @@ pub fn drop_menu_ui(app: &mut App, ui: &mut Ui) {
         ui.set_min_width(190.0);
         crate::ui::menus::body(ui, |ui| {
             for action in DropAction::ALL {
+                if action == DropAction::FitTextToPath && menu.fit_text_at.is_none() {
+                    continue;
+                }
                 if matches!(action, DropAction::CopyFill | DropAction::Cancel) {
                     crate::ui::menus::sep(ui);
                 }
@@ -448,6 +553,7 @@ mod tests {
             screen: egui::Pos2::ZERO,
             offset: Vec2::new(20.0, 5.0),
             target: None,
+            fit_text_at: None,
         };
         app.drop_action(menu, DropAction::Copy);
         // A copy, selected, where the drop was; the original stays.
@@ -477,6 +583,7 @@ mod tests {
             screen: egui::Pos2::ZERO,
             offset: Vec2::new(dx, dy),
             target: None,
+            fit_text_at: None,
         };
         app.drop_action(menu(80.0, 0.0), DropAction::Copy);
         let first = app.selection[0];
@@ -506,6 +613,7 @@ mod tests {
             screen: egui::Pos2::ZERO,
             offset: Vec2::new(55.0, 5.0),
             target: Some(b),
+            fit_text_at: None,
         };
         app.drop_action(menu, DropAction::CopyFill);
         let shape = |app: &App, id| app.doc().shape(id).map(|(_, s)| s.clone()).ok();
@@ -536,6 +644,7 @@ mod tests {
             screen: egui::Pos2::ZERO,
             offset: Vec2::new(55.0, 5.0),
             target: Some(b),
+            fit_text_at: None,
         };
         app.drop_action(menu, DropAction::PlaceInside);
         let frame = app.doc().shape(b).map(|(_, s)| s.clone()).expect("frame");
@@ -660,6 +769,7 @@ mod tests {
                 screen: egui::Pos2::ZERO,
                 offset: Vec2::new(55.0, 5.0),
                 target: Some(b),
+                fit_text_at: None,
             };
             app.drop_action(menu, DropAction::CopyProperties);
             let s = app.doc().find_shape(b).expect("b").clone();

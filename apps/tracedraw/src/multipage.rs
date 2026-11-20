@@ -407,6 +407,10 @@ impl App {
         if page == self.page {
             return;
         }
+        let Some(index) = self.doc().pages.iter().position(|p| p.id == page) else {
+            return;
+        };
+        let restricted = self.prepare_range_page_change(index);
         let Some(r) = self
             .shown_pages()
             .into_iter()
@@ -430,6 +434,9 @@ impl App {
                 self.focus.clear();
                 self.picked_layer = None;
             }
+            if restricted {
+                self.sync_layer_ranges(None);
+            }
             return;
         };
         self.view.origin = self
@@ -439,6 +446,9 @@ impl App {
         self.selection.clear();
         self.focus.clear();
         self.picked_layer = None;
+        if restricted {
+            self.sync_layer_ranges(None);
+        }
     }
 
     /// In the Multipage View and a spread of facing pages, a press on

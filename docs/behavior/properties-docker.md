@@ -9,6 +9,25 @@ objects are shown; `outline-pen.md`, `gradient-fill.md`,
 `vector-pattern-fill.md` and `transparency.md` have the sections'
 controls.
 
+## Layout
+
+The selection summary groups the object kind, position, size and area at
+the top. Each section has a bordered surface, an icon and a titled header
+with its disclosure arrow at the right. Long translated headers wrap.
+The section buttons use the theme's active, hover and focus treatment.
+Editor rows share a label column. Outline choices use equal-width framed
+buttons, and the start and end arrow controls each occupy their own row.
+Line caps, joins and outline positions use the same pictograms as the
+Outline Pen dialog. Dash choices preview their actual line pattern. Each
+choice has a translated name for accessibility and detailed hover tips.
+Pictograms use a square 16-unit grid and solid silhouettes. Compact
+buttons keep the same drawing proportions in the docker and the dialog.
+They use 20 px boxes at 100% interface size. A subdued path line through
+caps and joins shows the outline's placement.
+Position choices keep one outline size while their reference path moves.
+Section bodies size to their content and scroll within the docker.
+Surfaces, borders, fields and text use the shared theme tokens.
+
 ## The buttons at the top (#2200)
 
 A row of buttons at the top has one button per section the selection

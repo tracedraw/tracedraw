@@ -17,6 +17,7 @@ use tracedraw_core::{Command, Shape};
 /// The name an effect goes by in the stack.
 pub fn effect_key(e: &Effect) -> &'static str {
     match e {
+        Effect::PatternStroke { .. } => "media.pattern_stroke",
         Effect::Contour { .. } => "effect.contour",
         Effect::Blend { .. } => "effect.blend",
         Effect::Distort(_) => "effect.distort",

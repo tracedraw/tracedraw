@@ -1144,6 +1144,8 @@ pub struct App {
     /// A paste event or paste shortcut press came and its key is still
     /// down (see `interaction::paste_without_text`).
     pub paste_seen: bool,
+    /// A system clipboard read and picture preparation running in the background.
+    pub clipboard_paste: Option<crate::clipboard::PendingPaste>,
     pub curve: Option<CurveInProgress>,
     /// Undo and redo steps of `curve`, node by node.
     pub curve_steps: CurveSteps,
@@ -1544,6 +1546,9 @@ pub struct App {
     /// and the selection they were gathered for (see
     /// [`App::selected_rc`]).
     pub selected_cache: std::cell::RefCell<Option<SelectedCache>>,
+    /// Mesh guides flattened at the current zoom, reused while panning
+    /// and between frames; only changed edges need new subdivision.
+    pub mesh_grid_cache: std::cell::RefCell<crate::canvas::MeshGridCache>,
     /// The selection's outlines flattened for Mask Outside Page, with the
     /// gathered selection and the zoom they were made for (see
     /// [`App::selected_outlines`]).
@@ -1760,6 +1765,7 @@ pub struct App {
     pub settings: crate::settings::Settings,
     pub welcome_tab: WelcomeTab,
     pub fullscreen_preview: bool,
+    pub preview_session: Option<crate::ui::preview::PreviewSession>,
     /// File > Print Preview, while it is open.
     pub print_preview: Option<crate::ui::print_preview::PrintPreview>,
     /// The printer list being read off the interface's thread for the
@@ -1992,10 +1998,14 @@ pub struct App {
     /// Objects docker: the pages and the Master Page nodes shown closed.
     pub objects_closed_pages: std::collections::HashSet<tracedraw_core::PageId>,
     pub objects_master_closed: bool,
+    pub objects_ranges_closed: bool,
     /// Objects docker: the cached thumbnails of the objects.
     pub object_thumbs: crate::object_thumbs::ObjectThumbs,
     /// Symbols docker: the cached pictures of the symbols (#3249).
     pub symbol_thumbs: crate::object_thumbs::ObjectThumbs,
+    /// Symbols docker: the first of two symbols picked for "replace
+    /// another symbol with this one"; `None` when nothing is picked.
+    pub symbol_replace_from: Option<usize>,
     /// When `autosave_settings` last wrote the preferences, and the
     /// preferences as last saved or looked at (JSON), to save them only
     /// when they changed.
@@ -2074,6 +2084,8 @@ pub struct App {
     #[cfg(not(target_arch = "wasm32"))]
     pub mcp_link: Option<crate::mcp_link::Link>,
     pub find_state: crate::ui::dialogs::FindReplaceState,
+    /// Combined criteria for the Select Same docker.
+    pub select_same: crate::select_same::SelectSameState,
     pub step_repeat: crate::ops2::StepRepeat,
     /// Repeat Copies' preview of the copies (#1197): the cached
     /// outlines, whether the panel asked for it this frame, and whether
@@ -2196,6 +2208,12 @@ pub struct App {
     pub media_mode: crate::media::MediaMode,
     pub media_preset: usize,
     pub media_spacing: f64,
+    pub media_motif: Option<Shape>,
+    pub media_motif_name: String,
+    pub media_motif_index: Option<usize>,
+    pub media_pattern_loaded_from: Option<ShapeId>,
+    pub media_pattern_original: Option<Box<tracedraw_core::pattern_stroke::PatternOriginal>>,
+    pub media_pattern: tracedraw_core::pattern_stroke::PatternOptions,
     pub media_pressure: f64,
     pub media_smoothing: f64,
     /// The pen's pressure right now (0 to 1), from the stylus of a
@@ -2562,6 +2580,7 @@ pub enum DockerTab {
     ColorStyles,
     ObjectStyles,
     FindReplace,
+    SelectSame,
     Scripts,
     Palettes,
     Lens,
@@ -2599,7 +2618,7 @@ pub enum DockerTab {
 }
 
 impl DockerTab {
-    pub const ALL: [DockerTab; 48] = [
+    pub const ALL: [DockerTab; 49] = [
         DockerTab::Properties,
         DockerTab::Objects,
         DockerTab::Hints,
@@ -2614,6 +2633,7 @@ impl DockerTab {
         DockerTab::ColorStyles,
         DockerTab::ObjectStyles,
         DockerTab::FindReplace,
+        DockerTab::SelectSame,
         DockerTab::AiGenerate,
         DockerTab::Export,
         DockerTab::Comments,
@@ -2663,6 +2683,7 @@ impl DockerTab {
             DockerTab::ObjectStyles,
             DockerTab::Symbols,
             DockerTab::FindReplace,
+            DockerTab::SelectSame,
             DockerTab::Export,
             DockerTab::PrintMerge,
             DockerTab::AiGenerate,
@@ -2735,6 +2756,7 @@ impl DockerTab {
             DockerTab::ColorStyles => "docker.color_styles",
             DockerTab::ObjectStyles => "docker.object_styles",
             DockerTab::FindReplace => "docker.find_replace",
+            DockerTab::SelectSame => "docker.select_same",
             DockerTab::Scripts => "docker.scripts",
             DockerTab::Palettes => "docker.palettes",
             DockerTab::Lens => "docker.lens",
@@ -3189,6 +3211,7 @@ impl App {
             drop_colour_target: None,
             pen_editing: false,
             paste_seen: false,
+            clipboard_paste: None,
             curve: None,
             text_edit: None,
             ime_preedit: String::new(),
@@ -3363,6 +3386,7 @@ impl App {
             recolor_preview: false,
             fx_preview: Default::default(),
             selected_cache: std::cell::RefCell::new(None),
+            mesh_grid_cache: Default::default(),
             outline_cache: std::cell::RefCell::new(None),
             view_anchor: None,
             window_layout: Default::default(),
@@ -3447,6 +3471,7 @@ impl App {
             settings: crate::settings::Settings::default(),
             welcome_tab: WelcomeTab::GetStarted,
             fullscreen_preview: false,
+            preview_session: None,
             print_preview: None,
             printer_fetch: None,
             print_job: None,
@@ -3560,7 +3585,9 @@ impl App {
             objects_closed_pages: Default::default(),
             object_thumbs: Default::default(),
             symbol_thumbs: Default::default(),
+            symbol_replace_from: None,
             objects_master_closed: false,
+            objects_ranges_closed: false,
             picked_layer: None,
             navigator_tex: None,
             options_label_index: 0,
@@ -3600,6 +3627,7 @@ impl App {
             #[cfg(not(target_arch = "wasm32"))]
             mcp_link: None,
             find_state: Default::default(),
+            select_same: Default::default(),
             step_repeat: Default::default(),
             step_preview: None,
             step_preview_shown: false,
@@ -3648,6 +3676,12 @@ impl App {
             media_mode: crate::media::MediaMode::Calligraphic,
             media_preset: 0,
             media_spacing: 8.0,
+            media_motif: None,
+            media_motif_name: String::new(),
+            media_motif_index: None,
+            media_pattern_loaded_from: None,
+            media_pattern_original: None,
+            media_pattern: Default::default(),
             media_pressure: 0.5,
             pen_pressure: None,
             pen_stroke: crate::pen::PenStroke::default(),
@@ -5688,10 +5722,20 @@ impl App {
     }
 
     /// Edit > Paste in View: what Edit > Paste pastes (the copy here or
-    /// what another program copied), centred on the visible area.
+    /// what another program copied), centred on the pointer in the drawing
+    /// window, or on the visible area when no drawing pointer is available.
     pub fn paste_in_view(&mut self) {
-        let at = self.view_center();
+        let at = self.pointer_page.unwrap_or_else(|| self.view_center());
         self.paste_any_at(Some(at));
+    }
+
+    /// The destination of a pointer paste, using the pointer of the shortcut's
+    /// frame rather than the previous frame's canvas hover.
+    pub(crate) fn paste_pointer_target(&self, pointer: Option<egui::Pos2>) -> Point {
+        pointer
+            .filter(|p| self.canvas_rect.contains(*p))
+            .map(|p| self.view.to_page(p))
+            .unwrap_or_else(|| self.view_center())
     }
 
     pub fn select_all_of(&mut self, pred: impl Fn(&Shape) -> bool) {
@@ -6268,6 +6312,28 @@ impl App {
     }
 
     pub fn run(&mut self, cmd: Command) {
+        let range_layer = match &cmd {
+            Command::SetLayerScope { layer, .. } => Some(*layer),
+            Command::SetLayerPageRange { layer, page_range }
+                if page_range.as_ref().is_none_or(|range| !range.is_empty()) =>
+            {
+                Some(*layer)
+            }
+            _ => None,
+        };
+        if let Some(layer) = range_layer {
+            if self
+                .doc()
+                .master
+                .iter()
+                .any(|master| master.id == layer && !master.desktop)
+            {
+                self.prepare_layer_range_change(layer);
+            }
+        }
+        if crate::page_names::changes_page_order(&cmd) {
+            self.prepare_shared_layer_editing();
+        }
         // The box a move, turn or resize starts from, for its Repeat.
         let before = match &cmd {
             Command::TransformShapes { shapes, .. } if *shapes == self.selection => {
@@ -6315,9 +6381,15 @@ impl App {
         // Default page names follow the pages' order (#2374).
         if crate::page_names::changes_page_order(&cmd) {
             self.renumber_default_pages();
+            self.sync_layer_ranges(None);
         }
         self.sync_effect_clones_for(&cmd);
         self.sync_object_clones();
+        if let Command::SetLayerScope { layer, .. } | Command::SetLayerPageRange { layer, .. } =
+            &cmd
+        {
+            self.sync_layer_range(*layer);
+        }
         if let (Command::TransformShapes { transform, .. }, Some(before)) = (&cmd, before) {
             self.note_repeatable(Repeatable::Transform {
                 transform: *transform,
@@ -6338,6 +6410,214 @@ impl App {
         self.repeat_refs.clear();
         if let Some(rec) = &mut self.recording {
             rec.push(cmd);
+        }
+    }
+
+    /// Clear editing state for a shared layer excluded from the current page.
+    pub(crate) fn sync_layer_range(&mut self, id: LayerId) {
+        self.sync_layer_ranges(Some(id));
+    }
+
+    /// Finish editor modes before moving their objects into a restricted layer.
+    pub(crate) fn prepare_shapes_for_range_move(&mut self, ids: &[ShapeId]) -> bool {
+        let moving = |id: ShapeId| {
+            ids.contains(&id) || self.doc().ancestors(id).iter().any(|id| ids.contains(id))
+        };
+        let clip = self
+            .clip_frame_edit
+            .as_ref()
+            .is_some_and(|(frame, _)| moving(*frame));
+        let text = self
+            .text_edit
+            .as_ref()
+            .is_some_and(|edit| moving(edit.shape));
+        let table = self
+            .table_edit
+            .as_ref()
+            .is_some_and(|edit| clip || moving(edit.shape));
+        let symmetry = self.symmetry_edit.is_some_and(|id| clip || moving(id));
+        let crop = self.crop_area.is_some() && (clip || self.selection.iter().copied().any(moving));
+        let curve = self.curve.is_some() && (clip || self.selection.iter().copied().any(moving));
+        let focused = (clip && !self.focus.is_empty()) || self.focus.iter().copied().any(moving);
+        if curve {
+            self.finish_curve();
+        }
+        if text || clip {
+            self.finish_text();
+        }
+        if clip {
+            self.finish_clip_frame_edit();
+        }
+        if table {
+            self.table_edit = None;
+            self.ime_preedit.clear();
+        }
+        if symmetry {
+            self.finish_symmetry_edit();
+        }
+        if focused {
+            self.exit_focus();
+        }
+        if crop {
+            self.crop_area = None;
+            self.crop_drag = None;
+        }
+        text || clip || curve || table || symmetry || crop || focused
+    }
+
+    pub(crate) fn prepare_layer_range_change(&mut self, id: LayerId) {
+        if self.curve.is_some() && self.active_layer() == Some(id) {
+            self.finish_curve();
+        }
+        if self.text_edit.is_none()
+            && self.clip_frame_edit.is_none()
+            && self.curve.is_none()
+            && self.table_edit.is_none()
+            && self.symmetry_edit.is_none()
+            && self.crop_area.is_none()
+        {
+            return;
+        }
+        let Ok(layer) = self.doc().layer(id) else {
+            return;
+        };
+        let ids: Vec<_> = layer.shapes.iter().map(|shape| shape.id).collect();
+        self.prepare_shapes_for_range_move(&ids);
+    }
+
+    /// Commit editor modes on range layers before leaving their applicable pages.
+    pub(crate) fn prepare_range_page_change(&mut self, index: usize) -> bool {
+        let layers: Vec<_> = self
+            .doc()
+            .master
+            .iter()
+            .filter(|layer| layer.page_range.is_some() && !layer.applies_to(index))
+            .map(|layer| layer.id)
+            .collect();
+        let restricted = !layers.is_empty();
+        for layer in layers {
+            self.prepare_layer_range_change(layer);
+        }
+        restricted
+    }
+
+    fn prepare_shared_layer_editing(&mut self) {
+        if self.curve.is_some()
+            && self
+                .active_layer()
+                .is_some_and(|id| self.doc().master.iter().any(|layer| layer.id == id))
+        {
+            self.finish_curve();
+        }
+        let text = self.text_edit.as_ref().map(|edit| edit.shape);
+        let clip = self.clip_frame_edit.as_ref().map(|(frame, _)| *frame);
+        let table = self.table_edit.as_ref().map(|edit| edit.shape);
+        let mut layers: Vec<_> = text
+            .into_iter()
+            .chain(clip)
+            .chain(table)
+            .chain(self.symmetry_edit)
+            .chain(
+                self.selection
+                    .iter()
+                    .copied()
+                    .filter(|_| self.curve.is_some() || self.crop_area.is_some()),
+            )
+            .filter_map(|id| self.doc().top_level_of(id))
+            .filter_map(|id| self.doc().locate(id).ok().map(|(layer, _)| layer))
+            .filter(|id| self.doc().master.iter().any(|layer| layer.id == *id))
+            .collect();
+        layers.dedup();
+        for id in layers {
+            self.prepare_layer_range_change(id);
+        }
+    }
+
+    pub(crate) fn sync_layer_ranges(&mut self, only: Option<LayerId>) {
+        fn collect(shape: &Shape, out: &mut std::collections::HashSet<ShapeId>) {
+            out.insert(shape.id);
+            match &shape.kind {
+                ShapeKind::Group { children } => {
+                    for child in children {
+                        collect(child, out);
+                    }
+                }
+                ShapeKind::ClipFrame { frame, contents } => {
+                    collect(frame, out);
+                    for child in contents {
+                        collect(child, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if self.selection.is_empty()
+            && self.picked_layer.is_none()
+            && self.text_edit.is_none()
+            && self.table_edit.is_none()
+            && self.symmetry_edit.is_none()
+            && self.focus.is_empty()
+        {
+            return;
+        }
+        let mut layers = std::collections::HashSet::new();
+        let mut shapes = std::collections::HashSet::new();
+        let index = self.page_index();
+        for layer in &self.doc().master {
+            if only.is_none_or(|id| id == layer.id) && !layer.applies_to(index) {
+                layers.insert(layer.id);
+                for shape in &layer.shapes {
+                    collect(shape, &mut shapes);
+                }
+            }
+        }
+        let picked = self
+            .picked_layer
+            .is_some_and(|id| layers.contains(&id) || self.doc().layer(id).is_err());
+        let text = self
+            .text_edit
+            .as_ref()
+            .is_some_and(|edit| shapes.contains(&edit.shape));
+        let table = self
+            .table_edit
+            .as_ref()
+            .is_some_and(|edit| shapes.contains(&edit.shape));
+        let symmetry = self.symmetry_edit.is_some_and(|id| shapes.contains(&id));
+        let focused = self.focus.iter().any(|id| shapes.contains(id));
+        if symmetry {
+            self.finish_symmetry_edit();
+        }
+        let selection = self
+            .selection
+            .iter()
+            .copied()
+            .filter(|id| !shapes.contains(id))
+            .collect::<Vec<_>>();
+        let changed = selection.len() != self.selection.len();
+        if !(picked || text || table || symmetry || focused || changed) {
+            return;
+        }
+        if changed {
+            self.select(selection);
+        }
+        if picked {
+            self.picked_layer = None;
+        }
+        if text {
+            self.text_edit = None;
+            self.ime_preedit.clear();
+        }
+        if table {
+            self.table_edit = None;
+            self.ime_preedit.clear();
+        }
+        self.crop_area = None;
+        self.crop_drag = None;
+        if focused {
+            self.exit_focus();
+        }
+        if only.is_some() {
+            self.status = crate::i18n::tr("docker.range_no_current_page");
         }
     }
 
@@ -6474,9 +6754,9 @@ impl App {
             }
             let holds = match &s.kind {
                 // Every child walked, not only up to the first locked one.
-                ShapeKind::Group { children } => children
-                    .iter()
-                    .fold(false, |held, c| walk(c, out) | held),
+                ShapeKind::Group { children } => {
+                    children.iter().fold(false, |held, c| walk(c, out) | held)
+                }
                 ShapeKind::ClipFrame { frame, contents } => contents
                     .iter()
                     .fold(walk(frame, out), |held, c| walk(c, out) | held),
@@ -7039,11 +7319,22 @@ impl App {
     /// [`Self::pen_curve_steps`]): a curve drawn with the Pen or Bezier
     /// tool goes on being drawn with it, from where it stood then.
     fn resume_pen_step(&mut self, step: Option<u64>, undone: bool) {
+        if !self.pen_step_shown_on_current_page(step) {
+            return;
+        }
         let key = step.map(|s| (self.engine.instance(), s));
         if let Some(&ps) = key.and_then(|k| self.pen_curve_steps.get(&k)) {
             let to = if undone { ps.undo_to } else { ps.redo_to };
             self.resume_curve(ps.shape, ps.tool, to);
         }
+    }
+
+    fn pen_step_shown_on_current_page(&self, step: Option<u64>) -> bool {
+        step.and_then(|step| self.pen_curve_steps.get(&(self.engine.instance(), step)))
+            .and_then(|step| self.doc().top_level_of(step.shape))
+            .and_then(|id| self.doc().locate(id).ok())
+            .and_then(|(id, _)| self.doc().master.iter().find(|layer| layer.id == id))
+            .is_none_or(|layer| layer.applies_to(self.page_index()))
     }
 
     /// The curve `id`, just made with the outline `line` from the B-spline
@@ -7708,10 +7999,23 @@ impl App {
     /// frame is a group, which come apart into one clip frame per object
     /// of the frame (#1605). The members come out selected.
     pub fn ungroup_selection(&mut self) {
+        if !self.selection.is_empty()
+            && self
+                .selected_rc()
+                .iter()
+                .all(tracedraw_core::pattern_stroke::is_pattern)
+        {
+            self.break_selected_patterns();
+            return;
+        }
         let groups: Vec<ShapeId> = self
             .selected_shapes()
             .iter()
-            .filter(|s| matches!(s.kind, ShapeKind::Group { .. }) || s.is_clip_frame_of_group())
+            .filter(|s| {
+                matches!(s.kind, ShapeKind::Group { .. })
+                    || s.is_clip_frame_of_group()
+                    || tracedraw_core::pattern_stroke::is_pattern(s)
+            })
             .map(|s| s.id)
             .collect();
         if groups.is_empty() {
@@ -7727,6 +8031,7 @@ impl App {
             match &s.kind {
                 ShapeKind::Group { children } => members.extend(children.iter().map(|c| c.id)),
                 ShapeKind::ClipFrame { .. } if s.is_clip_frame_of_group() => members.push(s.id),
+                _ if tracedraw_core::pattern_stroke::is_pattern(&s) => members.push(s.id),
                 _ => {}
             }
         }
@@ -8434,6 +8739,9 @@ impl App {
             return;
         }
         let step = self.engine.last_step_id();
+        // The creation step may remove the curve, so check its source layer
+        // before swapping the document rather than looking it up afterwards.
+        let resume_pen = self.pen_step_shown_on_current_page(step);
         let at = self.page_index_now();
         let undone = match self.engine.undo() {
             Ok(l) => {
@@ -8455,9 +8763,10 @@ impl App {
             if self.curve.as_ref().is_some_and(|c| c.resumed) {
                 self.curve = None;
             }
-            if self.curve.is_none() {
+            if self.curve.is_none() && resume_pen {
                 self.resume_pen_step(step, true);
             }
+            self.sync_layer_ranges(None);
         }
     }
 
@@ -8474,6 +8783,9 @@ impl App {
         self.curve_steps.clear();
         if self.redo_selection_step() {
             return;
+        }
+        if self.engine.redo_label().is_some() {
+            self.prepare_shared_layer_editing();
         }
         let at = self.page_index_now();
         let redone = match self.engine.redo() {
@@ -8496,6 +8808,7 @@ impl App {
             if self.curve.is_none() {
                 self.resume_pen_step(self.engine.last_step_id(), false);
             }
+            self.sync_layer_ranges(None);
         }
     }
 
@@ -8735,15 +9048,24 @@ impl App {
             return;
         }
         // A drawing read already off the interface's thread (#2849).
-        let opened_read = match self.opened_read.take() {
-            Some((p, read)) if p == path && ext == "tdraw" => Some(read),
+        let opened_read: Option<crate::opening::OpenRead> = match self.opened_read.take() {
+            Some((p, read)) if p == path && matches!(ext.as_str(), "tdraw" | "cdr" | "cmx") => {
+                Some(read)
+            }
             _ => None,
         };
         // A large drawing is read off the interface's thread, with a
         // window that shows how far it got (#2849); the open ends when
-        // it is read ([`App::poll_opening`]).
-        if ext == "tdraw" && opened_read.is_none() {
-            if let Some(size) = crate::opening::wants_background(&path) {
+        // it is read ([`App::poll_opening`]). A `.cdr` or `.cmx` always:
+        // 76 000 objects in a 5 MB file froze the window just the same
+        // as a large picture did.
+        if matches!(ext.as_str(), "tdraw" | "cdr" | "cmx") && opened_read.is_none() {
+            let from = if ext == "tdraw" {
+                crate::opening::BACKGROUND_FROM
+            } else {
+                0
+            };
+            if let Some(size) = crate::opening::wants_background_from(&path, from) {
                 if let Some(old) = self.opening.take() {
                     old.cancel();
                 }
@@ -9125,63 +9447,78 @@ impl App {
                     (o.doc, msg)
                 })
         } else if ext == "cmx" {
-            Self::open_cdr(&path)
-                .map(|(doc, report)| {
+            match opened_read {
+                Some(Ok(crate::opening::OpenedFile::Cdr(doc, report))) => {
                     for w in &report.warnings {
                         log::warn!("cmx: {w}");
                     }
                     unread = report.skipped_objects;
-                    (
-                        doc,
-                        crate::i18n::trf(
-                            "status.opened_pages",
-                            &[
-                                ("format", "CMX"),
-                                ("pages", &report.pages.to_string()),
-                                ("objects", &report.shapes.to_string()),
-                            ],
-                        ),
-                    )
-                })
-                .map_err(|e| e.to_string())
-        } else if ext == "cdr" {
-            Self::open_cdr(&path)
-                .map(|(doc, report)| {
-                    let ver = report.version.map(|v| v.name()).unwrap_or_default();
-                    for w in &report.warnings {
-                        log::warn!("cdr: {w}");
-                    }
-                    unread = report.skipped_objects;
-                    cdr_version = report.version.map(|v| writable_cdr_version(v.0));
-                    opened_version = report.version.map(|v| v.0);
-                    let mut msg = crate::i18n::trf(
-                        "status.opened_cdr",
+                    let msg = crate::i18n::trf(
+                        "status.opened_pages",
                         &[
-                            ("version", &ver.to_string()),
+                            ("format", "CMX"),
                             ("pages", &report.pages.to_string()),
                             ("objects", &report.shapes.to_string()),
-                            ("skipped", &report.skipped_objects.to_string()),
                         ],
                     );
-                    // An older version than TraceDraw saves: say which
-                    // version Save will write.
-                    if let (Some(v), Some(w)) = (report.version, cdr_version) {
-                        if v.0 != w {
-                            msg.push(' ');
-                            msg.push_str(&crate::i18n::trf(
-                                "status.cdr_saves_as",
-                                &[("version", &w.to_string())],
-                            ));
+                    Ok((doc, msg))
+                }
+                Some(Err(e)) => Err(e),
+                _ => Self::open_cdr(&path)
+                    .map(|(doc, report)| {
+                        for w in &report.warnings {
+                            log::warn!("cmx: {w}");
                         }
-                    }
+                        unread = report.skipped_objects;
+                        (
+                            doc,
+                            crate::i18n::trf(
+                                "status.opened_pages",
+                                &[
+                                    ("format", "CMX"),
+                                    ("pages", &report.pages.to_string()),
+                                    ("objects", &report.shapes.to_string()),
+                                ],
+                            ),
+                        )
+                    })
+                    .map_err(|e| e.to_string()),
+            }
+        } else if ext == "cdr" {
+            match opened_read {
+                Some(Ok(crate::opening::OpenedFile::Cdr(doc, report))) => {
+                    let (doc, msg) = Self::cdr_opened(
+                        doc,
+                        *report,
+                        &mut unread,
+                        &mut cdr_version,
+                        &mut opened_version,
+                    );
+                    Ok((doc, msg))
+                }
+                Some(Err(e)) => Err(e),
+                _ => Self::open_cdr(&path).map(|(doc, report)| {
+                    let (doc, msg) = Self::cdr_opened(
+                        doc,
+                        report,
+                        &mut unread,
+                        &mut cdr_version,
+                        &mut opened_version,
+                    );
                     (doc, msg)
-                })
-                .map_err(|e| e.to_string())
+                }),
+            }
         } else if let Some(read) = opened_read {
-            read.map(|(d, known)| {
-                tdraw_version = Some(known);
-                (d, crate::i18n::tr("status.opened"))
-            })
+            match read {
+                Ok(crate::opening::OpenedFile::Tdraw(d, known)) => {
+                    tdraw_version = Some(known);
+                    Ok((d, crate::i18n::tr("status.opened")))
+                }
+                Ok(crate::opening::OpenedFile::Cdr(..)) => {
+                    Err("the opened file is not a drawing of TraceDraw's own".into())
+                }
+                Err(e) => Err(e),
+            }
         } else {
             crate::files::read(&path)
                 .and_then(|bytes| tracedraw_core::document::tdraw_text(&bytes))
@@ -10659,10 +10996,56 @@ impl App {
         }
     }
 
+    /// Free physical RAM in bytes; 0 when the OS will not say.
+    fn free_ram() -> u64 {
+        crate::opening::free_ram()
+    }
+
+    /// The document and the status line an opened `.cdr` leaves, from
+    /// what the reader reported. `unread`, `cdr_version` and
+    /// `opened_version` are the open's own, filled from the report.
+    fn cdr_opened(
+        doc: tracedraw_core::Document,
+        report: tracedraw_cdr::ParseReport,
+        unread: &mut usize,
+        cdr_version: &mut Option<u16>,
+        opened_version: &mut Option<u16>,
+    ) -> (tracedraw_core::Document, String) {
+        let ver = report.version.map(|v| v.name()).unwrap_or_default();
+        for w in &report.warnings {
+            log::warn!("cdr: {w}");
+        }
+        *unread = report.skipped_objects;
+        *cdr_version = report.version.map(|v| writable_cdr_version(v.0));
+        *opened_version = report.version.map(|v| v.0);
+        let mut msg = crate::i18n::trf(
+            "status.opened_cdr",
+            &[
+                ("version", &ver.to_string()),
+                ("pages", &report.pages.to_string()),
+                ("objects", &report.shapes.to_string()),
+                ("skipped", &report.skipped_objects.to_string()),
+            ],
+        );
+        // An older version than TraceDraw saves: say which version Save
+        // will write.
+        if let (Some(v), Some(w)) = (report.version, *cdr_version) {
+            if v.0 != w {
+                msg.push(' ');
+                msg.push_str(&crate::i18n::trf(
+                    "status.cdr_saves_as",
+                    &[("version", &w.to_string())],
+                ));
+            }
+        }
+        (doc, msg)
+    }
+
     /// Read a `.cdr` file through the file layer (uploads in a browser).
     pub(crate) fn open_cdr(
         path: &std::path::Path,
     ) -> std::result::Result<(tracedraw_core::Document, tracedraw_cdr::ParseReport), String> {
+        tracedraw_cdr::set_open_ram(Self::free_ram());
         let bytes = crate::files::read(path).map_err(|e| e.to_string())?;
         let title = path
             .file_stem()
@@ -11461,11 +11844,15 @@ impl App {
         // The zoom stays: the page is shown as it was left, else at the
         // same zoom, centred in the window; it was fitted to the window
         // each time (#3434).
+        let restricted = new != self.page && self.prepare_range_page_change(idx);
         if new != self.page {
             self.page_views.insert(self.page, self.view);
         }
         self.page = new;
         self.selection.clear();
+        if restricted {
+            self.sync_layer_ranges(None);
+        }
         match self.page_views.get(&new) {
             Some(v) => self.view = *v,
             None => self.centre_page_at_zoom(),
@@ -11652,12 +12039,10 @@ pub fn fill_description(fill: &Fill) -> String {
             tracedraw_core::FountainKind::Shaped => tr("fill.shaped_fountain"),
             tracedraw_core::FountainKind::Points => tr("fill.points_fountain"),
         },
-        Fill::Pattern(tracedraw_core::Pattern::TwoColor { tile, .. }) => {
-            trf(
-                "fill.two_color_pattern",
-                &[("t", &crate::ui::dockers::pattern_tile_name(*tile))],
-            )
-        }
+        Fill::Pattern(tracedraw_core::Pattern::TwoColor { tile, .. }) => trf(
+            "fill.two_color_pattern",
+            &[("t", &crate::ui::dockers::pattern_tile_name(*tile))],
+        ),
         Fill::Pattern(tracedraw_core::Pattern::Bitmap { .. }) => tr("fill.bitmap_pattern"),
         Fill::Pattern(tracedraw_core::Pattern::Vector { .. }) => tr("fill.vector_pattern"),
         Fill::Texture(_) => tr("fill.texture_fill"),
@@ -12911,20 +13296,29 @@ mod tests {
         app.open_docker(DockerTab::Objects);
         app.stack_docker(DockerTab::Properties, DockerPlace::Right);
         assert_eq!(app.docker_tab, DockerTab::Objects);
-        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(
+            app.docker_below(DockerPlace::Right),
+            Some(DockerTab::Properties)
+        );
         assert!(app.docker_shown(DockerTab::Objects) && app.docker_shown(DockerTab::Properties));
         // Opening the lower one keeps both; its toggle takes it out of
         // the lower part only.
         app.open_docker(DockerTab::Properties);
         assert_eq!(app.docker_tab, DockerTab::Objects);
-        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(
+            app.docker_below(DockerPlace::Right),
+            Some(DockerTab::Properties)
+        );
         app.docker_stacks[0].split = 0.7;
         // Saved and read back.
         let setup = app.docker_setup();
         assert_eq!(setup.stacks.len(), 1);
         let mut next = App::headless();
         next.set_docker_setup(&setup);
-        assert_eq!(next.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(
+            next.docker_below(DockerPlace::Right),
+            Some(DockerTab::Properties)
+        );
         assert!((next.docker_stacks[0].split - 0.7).abs() < 1e-6);
         app.toggle_docker(DockerTab::Properties);
         assert_eq!(app.docker_below(DockerPlace::Right), None);
@@ -12933,7 +13327,10 @@ mod tests {
         // Brought to the front, it leaves the lower part.
         app.stack_docker(DockerTab::Properties, DockerPlace::Right);
         app.open_docker(DockerTab::Hints);
-        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(
+            app.docker_below(DockerPlace::Right),
+            Some(DockerTab::Properties)
+        );
         app.set_docker_column(DockerPlace::Right, true, Some(DockerTab::Properties));
         assert_eq!(app.docker_below(DockerPlace::Right), None);
         // A docker from another column joins this one, under the front.
@@ -12949,19 +13346,28 @@ mod tests {
         // The front docker itself goes below: the next tab comes up.
         app.stack_docker(DockerTab::Properties, DockerPlace::Right);
         assert_ne!(app.docker_tab, DockerTab::Properties);
-        assert_eq!(app.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(
+            app.docker_below(DockerPlace::Right),
+            Some(DockerTab::Properties)
+        );
         // A second column that empties into the edge column keeps its
         // stack.
         let mut side = App::headless();
         side.move_docker(DockerTab::Properties, DockerPlace::RightInner, None);
         side.move_docker(DockerTab::Undo, DockerPlace::RightInner, None);
         side.stack_docker(DockerTab::Properties, DockerPlace::RightInner);
-        assert_eq!(side.docker_below(DockerPlace::RightInner), Some(DockerTab::Properties));
+        assert_eq!(
+            side.docker_below(DockerPlace::RightInner),
+            Some(DockerTab::Properties)
+        );
         for t in side.open_dockers.clone() {
             side.close_docker(t);
         }
         assert_eq!(side.docker_tab, DockerTab::Undo);
-        assert_eq!(side.docker_below(DockerPlace::Right), Some(DockerTab::Properties));
+        assert_eq!(
+            side.docker_below(DockerPlace::Right),
+            Some(DockerTab::Properties)
+        );
         assert_eq!(side.docker_below(DockerPlace::RightInner), None);
     }
 

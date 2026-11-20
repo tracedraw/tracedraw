@@ -33,16 +33,19 @@ pub mod linked_text;
 pub mod live;
 pub mod live_paint;
 pub mod nodes;
+pub mod page_range;
 pub mod painterly;
 pub mod paragraphs;
 pub mod parallel;
 pub mod patch;
+pub mod pattern_stroke;
 pub mod picture_inks;
 mod press;
 pub mod procedural;
 pub mod rough;
 pub mod recolor;
 pub mod scale_grid;
+pub mod select_same;
 pub mod shadow;
 pub mod shaping;
 pub mod spreads;
@@ -50,6 +53,7 @@ pub mod style;
 pub mod surface_map;
 pub mod table;
 pub mod text_flow;
+pub mod text_path;
 pub mod tiles;
 pub mod toc;
 
@@ -71,6 +75,7 @@ pub use engine::Engine;
 pub use geometry::{Affine, BezPath, Point, Rect, Size, Vec2};
 pub use icc::{Intent as RenderingIntent, Profile as IccProfile, Transform as IccTransform};
 pub use id::{LayerId, PageId, ShapeId};
+pub use page_range::PageRanges;
 pub use paragraphs::ParagraphFormat;
 pub use style::{
     arrowhead_paths, arrowhead_stroke_path, Arrowhead, ArrowheadPlacement, ColorBlend, Fill,
@@ -96,6 +101,8 @@ pub enum Error {
     LastPage,
     #[error("cannot delete the last layer of a page")]
     LastLayer,
+    #[error("page range must include at least one positive page number")]
+    InvalidPageRange,
     #[error("nothing to undo")]
     NothingToUndo,
     #[error("nothing to redo")]
@@ -114,6 +121,10 @@ pub enum Error {
     NotText(ShapeId),
     #[error("a B-spline needs two finite control points or more")]
     BadSpline,
+    #[error("selection size tolerance must be finite and non-negative")]
+    BadSelectionTolerance,
+    #[error("a selection query must run on its own, outside a document edit batch")]
+    SelectionQueryInBatch,
     #[error("symbol {0} not found")]
     SymbolNotFound(usize),
     #[error("symbol {0} cannot hold an instance of itself")]

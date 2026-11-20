@@ -71,6 +71,10 @@ pub fn dialog_topic(d: &Dialog, options: OptionsPage) -> &'static str {
         Dialog::EditFill(_) => "color/fills#edit-fill",
         Dialog::TableCount(_) => "objects/tables",
         Dialog::OldCdrVersion { .. } => "get-started/open-and-save#save-as",
+        Dialog::NewRangeLayer(_) => "objects/objects-and-layers#range-pages",
+        Dialog::LayerProperties(st) if st.use_page_range => {
+            "objects/objects-and-layers#range-pages"
+        }
         Dialog::RenameLayer { .. } | Dialog::LayerProperties(_) | Dialog::RenameObject { .. } => {
             "objects/objects-and-layers#rename"
         }
@@ -217,6 +221,7 @@ pub fn docker_topic(t: DockerTab) -> &'static str {
         DockerTab::ColorStyles => "color/color-styles",
         DockerTab::ObjectStyles => "templates-styles/object-styles",
         DockerTab::FindReplace => "objects/find-replace",
+        DockerTab::SelectSame => "objects/selecting#select-same",
         DockerTab::Scripts => "customize/scripts",
         DockerTab::Macros => "customize/scripts#macros",
         DockerTab::PrintMerge => "printing/print-merge#docker",
@@ -483,7 +488,8 @@ mod tests {
     fn dialog_topics_in_source() -> Vec<String> {
         let src =
             std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/help.rs"))
-                .unwrap();
+                .unwrap()
+                .replace("\r\n", "\n");
         let start = src.find("pub fn dialog_topic").unwrap();
         let end = src[start..].find("\n}\n").unwrap() + start;
         let body = &src[start..end];
