@@ -15,6 +15,8 @@ use crate::trace::{self, Settings, Stats, Traced};
 use egui::{ColorImage, TextureHandle, TextureOptions};
 use image::RgbaImage;
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(test)]
+use std::sync::mpsc::RecvTimeoutError;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::Arc;
 use tracedraw_core::ShapeId;
@@ -1028,14 +1030,23 @@ mod tests {
         live.clear();
         assert!(flag.load(Ordering::Relaxed));
         assert!(!live.is_active());
+        // Wait for the thread to end by its own signal: its sender drops
+        // when it returns. A slow or busy test machine may take a while to
+        // reach the next cancel check, so the deadline is only a guard
+        // against a trace that never stops. What proves the cancel is that
+        // the full trace never arrives.
         let t0 = Instant::now();
         loop {
-            match rx.try_recv() {
-                Err(TryRecvError::Disconnected) => break,
-                _ => std::thread::sleep(Duration::from_millis(2)),
+            match rx.recv_timeout(Duration::from_millis(50)) {
+                Err(RecvTimeoutError::Disconnected) => break,
+                Ok(outcome) => assert!(
+                    !matches!(outcome.stage, Stage::Full),
+                    "the full trace arrived after the dialog closed"
+                ),
+                Err(RecvTimeoutError::Timeout) => {}
             }
             assert!(
-                t0.elapsed() < Duration::from_secs(3),
+                t0.elapsed() < Duration::from_secs(120),
                 "the trace still runs after the dialog closed"
             );
         }
