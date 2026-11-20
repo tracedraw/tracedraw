@@ -248,10 +248,30 @@ pub fn starting_printer(remembered: Option<&str>, printers: &[Printer]) -> Optio
 /// The program and arguments that open `printer`'s own settings (the
 /// Print dialog's Properties button): on Windows the printer's printing
 /// preferences, on macOS the system's Printers & Scanners settings, on
-/// Linux and other CUPS systems the printer's page of the CUPS web
-/// interface in the browser.
+/// Linux and other CUPS systems the printer's own settings window (its
+/// driver's options) when the desktop has the printer settings tool,
+/// else the printer's page of the CUPS web interface in the browser.
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub fn properties_command(printer: &str) -> (String, Vec<String>) {
+    properties_command_with(printer, settings_tool_installed())
+}
+
+/// The desktop's printer settings tool, which opens one printer's
+/// properties with the options of its driver.
+const SETTINGS_TOOL: &str = "system-config-printer";
+
+/// Whether [`SETTINGS_TOOL`] is on the PATH (never on Windows or macOS).
+fn settings_tool_installed() -> bool {
+    if cfg!(any(target_os = "windows", target_os = "macos")) {
+        return false;
+    }
+    std::env::var_os("PATH").is_some_and(|paths| {
+        std::env::split_paths(&paths).any(|d| d.join(SETTINGS_TOOL).is_file())
+    })
+}
+
+/// [`properties_command`], told whether the settings tool is installed.
+fn properties_command_with(printer: &str, settings_tool: bool) -> (String, Vec<String>) {
     if cfg!(target_os = "windows") {
         (
             "rundll32.exe".into(),
@@ -266,6 +286,11 @@ pub fn properties_command(printer: &str) -> (String, Vec<String>) {
         (
             "open".into(),
             vec!["x-apple.systempreferences:com.apple.Print-Scan-Settings.extension".into()],
+        )
+    } else if settings_tool {
+        (
+            SETTINGS_TOOL.into(),
+            vec!["--configure-printer".into(), printer.into()],
         )
     } else {
         let mut url = String::from("http://localhost:631/printers/");
@@ -1209,10 +1234,20 @@ mod tests {
 
     /// Properties opens the printer's own settings: its printing
     /// preferences on Windows, Printers & Scanners on macOS, its CUPS web
-    /// page elsewhere (#614).
+    /// page elsewhere (#614), or the printer's own settings window with
+    /// its driver's options when the desktop has the tool (#3764).
     #[test]
     fn properties_open_the_printers_own_settings() {
-        let (program, args) = properties_command("Office HP/2");
+        if !cfg!(any(target_os = "windows", target_os = "macos")) {
+            assert_eq!(
+                properties_command_with("Office HP/2", true),
+                (
+                    "system-config-printer".to_string(),
+                    vec!["--configure-printer".to_string(), "Office HP/2".to_string()]
+                )
+            );
+        }
+        let (program, args) = properties_command_with("Office HP/2", false);
         if cfg!(target_os = "windows") {
             assert_eq!(program, "rundll32.exe");
             assert_eq!(

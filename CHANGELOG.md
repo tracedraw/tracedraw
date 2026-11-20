@@ -232,6 +232,7 @@ full, row-by-row status.
 - Toolbars you make dock at the left or the right too, a column of buttons beside the toolbox (drag one to a side, or its menu > Left / Right); the toolbox's "+" menu ends with Customize..., which opens Options > Customization > Commands, whose commands drag onto the toolbox or such a column (#3723).
 - Export: the AI compatibility option for the classic PostScript-based file is called Classic AI (EPS); the file it writes is the same.
 - Benchmark: the zoom style that zooms at once by a fixed step is called Instant, and under each zoom style a line says what it does and that it can be changed later in Options > Tools > Zoom/Pan.
+- Print: on Linux the printer's Properties button opens the printer's own settings window with its driver's options (paper, quality, trays) when the desktop has the printer settings tool, instead of the CUPS web page (#3764).
 
 ## 0.49.0 (2026-11-19)
 

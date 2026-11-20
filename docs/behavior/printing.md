@@ -79,9 +79,11 @@ Next to the list a Properties button (a gear, available when a system
 printer is chosen) opens the printer's own settings: on Windows its
 printing preferences (`rundll32 printui.dll,PrintUIEntry /e /n name`),
 on macOS the system's Printers & Scanners settings, on Linux and other
-CUPS systems the printer's page of the CUPS web interface in the browser
-(`http://localhost:631/printers/name`, a web page, not a system dialog;
-`properties_command`). Under
+CUPS systems the printer's own properties window with its driver's
+options (`system-config-printer --configure-printer name`, when the
+desktop has it, #3764), else the printer's page of the CUPS web interface
+in the browser (`http://localhost:631/printers/name`, a web page, not a
+system dialog; `properties_command`). Under
 Orientation, Status, Location and Comment show what the system says of
 the printer chosen (empty for the PDF viewer and the files, #614).
 
