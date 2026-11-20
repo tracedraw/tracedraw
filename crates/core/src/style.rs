@@ -2843,6 +2843,10 @@ pub struct Stroke {
     /// and line ends fall in the middle of a dash.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub align_dashes: bool,
+    /// A gradient of the outline's own fill runs along the line, from its
+    /// start to its end, instead of across the drawing.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fill_along: bool,
 }
 
 /// Where an outline lies relative to the path of a closed object.
@@ -3155,6 +3159,7 @@ impl Default for Stroke {
             position: OutlinePosition::Center,
             miter_limit: Self::DEFAULT_MITER_LIMIT,
             align_dashes: false,
+            fill_along: false,
         }
     }
 }

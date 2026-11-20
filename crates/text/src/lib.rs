@@ -1852,6 +1852,8 @@ pub struct PathPlacement {
     lift: f64,
     flip: bool,
     orientation: PathTextOrientation,
+    /// The middle of the path's box, which radial letters line up with.
+    centre: Point,
 }
 
 impl PathPlacement {
@@ -1860,7 +1862,11 @@ impl PathPlacement {
         let (at, dir) = self.baseline.at(self.start + p.x - self.line_x0)?;
         let flip = if self.flip { -1.0 } else { 1.0 };
         let local = Point::new(0.0, flip * (p.y - self.line_y + self.lift));
-        Some(Affine::translate(at.to_vec2()) * letter_frame(self.orientation, dir) * local)
+        Some(
+            Affine::translate(at.to_vec2())
+                * letter_frame(self.orientation, dir, at, self.centre)
+                * local,
+        )
     }
 
     /// The point of the straight layout placed nearest the point `p`
@@ -6317,6 +6323,7 @@ fn place_on_path(
     } else {
         Affine::IDENTITY
     };
+    let centre = tp.path.bounding_box().center();
     let mut pen = start;
     let order = display_order(&line.glyphs);
     for k in 0..line.glyphs.len() {
@@ -6328,7 +6335,7 @@ fn place_on_path(
         let Some((p, dir)) = baseline.at(mid) else {
             continue;
         };
-        let along = letter_frame(tp.orientation, dir);
+        let along = letter_frame(tp.orientation, dir, p, centre);
         let place = Affine::translate(p.to_vec2())
             * along
             * flip
@@ -6349,6 +6356,7 @@ fn place_on_path(
         lift,
         flip: tp.flipped(),
         orientation: tp.orientation,
+        centre,
     };
     (out, Some(placement))
 }
@@ -6375,9 +6383,15 @@ fn place_glyph(collect: bool, a: Affine, g: &Glyph, out: &mut GlyphLayout) {
     }
 }
 
-/// How a letter centred at a point of the path with unit direction `dir`
-/// is turned or sheared there (before the letter's own flip).
-fn letter_frame(o: PathTextOrientation, dir: tracedraw_core::geometry::Vec2) -> Affine {
+/// How a letter centred at the point `at` of the path with unit direction
+/// `dir` is turned or sheared there (before the letter's own flip);
+/// `centre` is the middle of the path's box, for radial letters.
+fn letter_frame(
+    o: PathTextOrientation,
+    dir: tracedraw_core::geometry::Vec2,
+    at: Point,
+    centre: Point,
+) -> Affine {
     // The direction's horizontal part, kept away from zero so a nearly
     // vertical stretch of path does not shear a letter to a line.
     let cx = if dir.x.abs() < 0.2 {
@@ -6392,6 +6406,18 @@ fn letter_frame(o: PathTextOrientation, dir: tracedraw_core::geometry::Vec2) -> 
         PathTextOrientation::VerticalSkew => Affine::new([1.0, dir.y / cx, 0.0, 1.0, 0.0, 0.0]),
         // x stays horizontal, y leans along the path's normal.
         PathTextOrientation::HorizontalSkew => Affine::new([1.0, 0.0, -dir.y / cx, 1.0, 0.0, 0.0]),
+        // The letter's upright lies on the line through the centre, its
+        // top on the side of the path the letters stand on (its left); at
+        // the centre itself, turned with the path.
+        PathTextOrientation::Radial => {
+            let out = at - centre;
+            if out.hypot() < 1e-9 {
+                return Affine::rotate(dir.y.atan2(dir.x));
+            }
+            let left = tracedraw_core::geometry::Vec2::new(-dir.y, dir.x);
+            let up = if out.dot(left) < 0.0 { -out } else { out };
+            Affine::rotate(up.y.atan2(up.x) - std::f64::consts::FRAC_PI_2)
+        }
     }
 }
 
@@ -9111,6 +9137,42 @@ mod tests {
         let hs = on_path(f, "I", &tp, TextAlign::Left).bounding_box();
         assert!((hs.height() - straight.height()).abs() < 1e-6, "{hs:?}");
         assert!(hs.width() > straight.width() + 1.0, "{hs:?}");
+    }
+
+    #[test]
+    fn radial_letters_line_up_with_the_middle_of_the_path() {
+        if !has_fonts() {
+            return;
+        }
+        let f = fonts();
+        // An L: along the bottom, then up the right side. Near its start
+        // the middle of the box is up and to the right, on the side the
+        // letters stand on, so a radial letter leans its top towards it;
+        // a turned one stands straight on the flat bottom.
+        let mut l = BezPath::new();
+        l.move_to((0.0, 0.0));
+        l.line_to((100.0, 0.0));
+        l.line_to((100.0, 100.0));
+        let mut tp = TextOnPath {
+            path: l,
+            ..Default::default()
+        };
+        let straight = f.outline(&[span("I")]).path.bounding_box();
+        let turned = on_path(f, "I", &tp, TextAlign::Left).bounding_box();
+        assert!((turned.width() - straight.width()).abs() < 1e-6);
+        tp.orientation = PathTextOrientation::Radial;
+        let radial = on_path(f, "I", &tp, TextAlign::Left);
+        let b = radial.bounding_box();
+        assert!(b.width() > straight.width() + 1.0, "{b:?}");
+        // The highest point is right of the lowest one.
+        let pts: Vec<Point> = radial
+            .elements()
+            .iter()
+            .filter_map(|e| e.end_point())
+            .collect();
+        let top = pts.iter().copied().fold(pts[0], |a, p| if p.y > a.y { p } else { a });
+        let bottom = pts.iter().copied().fold(pts[0], |a, p| if p.y < a.y { p } else { a });
+        assert!(top.x > bottom.x, "{top:?} {bottom:?}");
     }
 
     #[test]

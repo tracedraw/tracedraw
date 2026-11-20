@@ -709,9 +709,12 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
     // A picture edited in place: the page without it, its pixels drawn
     // over the page as they are edited.
     let without_picture = app.pixel_edit_doc();
+    // View > Separations: the page as one ink prints it.
+    let one_ink = app.separation_view_doc();
     let doc: &Document = without_picture
         .as_deref()
         .or(without_copies.as_deref())
+        .or(one_ink.as_deref())
         .unwrap_or(app.doc());
     // Nodes being dragged: the drawing as it was before the drag, its
     // picture already made, until the button is released (#1259).
@@ -727,6 +730,10 @@ fn draw_page(app: &App, painter: &Painter, rect: ERect, preview: Option<Affine>)
             1u64 << 61
         } else {
             0
+        }
+        ^ match (one_ink.is_some(), app.view_plate) {
+            (true, Some(p)) => (1u64 << 60) ^ ((p as u64 + 1) << 48),
+            _ => 0,
         };
     // Paragraph text being resized keeps its letters while the frame
     // follows the drag (the drag outline shows the text flowed anew); a

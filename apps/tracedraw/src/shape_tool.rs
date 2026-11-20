@@ -1388,6 +1388,34 @@ impl App {
         self.choose_nodes_at(&spots);
     }
 
+    /// Object > Nodes > Add Node to Every Segment: a node in the middle of
+    /// every segment of the selected curves (their shape unchanged), with
+    /// any tool; one undo step. Run again, it halves the segments again.
+    pub fn add_node_every_segment(&mut self) {
+        let mut cmds = Vec::new();
+        for id in self.selection.clone() {
+            let Some((path, closed, _)) = self.path_of(id) else {
+                continue;
+            };
+            let more = nodes::add_node_every_segment(&path);
+            if more.elements().len() > path.elements().len() {
+                cmds.push(Command::SetShapeKind {
+                    shape: id,
+                    kind: ShapeKind::Path { path: more, closed },
+                });
+            }
+        }
+        if !cmds.is_empty() {
+            let _ = self.engine.run_batch("Add Node to Every Segment", &cmds);
+            self.node_selection.clear();
+        }
+    }
+
+    /// Whether Add Node to Every Segment has a curve to work on.
+    pub fn can_add_node_every_segment(&self) -> bool {
+        self.selection.iter().any(|id| self.path_of(*id).is_some())
+    }
+
     /// Align Nodes: move the selected nodes onto a common horizontal and/or vertical.
     pub fn align_selected_nodes(&mut self, horizontal: bool, vertical: bool) {
         let sel = self.node_selection.clone();
@@ -3363,5 +3391,51 @@ mod soft_eraser_tests {
         assert!((nib.amount(0.0) - 1.0).abs() < 1e-9);
         assert!((nib.amount(5.0) - 0.5).abs() < 1e-9);
         assert_eq!(nib.amount(10.0), 0.0);
+    }
+}
+
+#[cfg(test)]
+mod every_segment_tests {
+    use crate::app::App;
+    use tracedraw_core::geometry::{BezPath, Rect};
+    use tracedraw_core::ShapeKind;
+
+    /// Object > Nodes > Add Node to Every Segment, with the Pick tool: a
+    /// node in the middle of each segment of the selected curve, one undo
+    /// step; a rectangle (not a curve) leaves the command off.
+    #[test]
+    fn every_segment_of_the_selected_curves_gets_a_node() {
+        let mut app = App::headless();
+        let r = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![r]);
+        assert!(!app.can_add_node_every_segment());
+        let mut p = BezPath::new();
+        p.move_to((0.0, 0.0));
+        p.line_to((10.0, 0.0));
+        p.line_to((10.0, 10.0));
+        let id = app
+            .new_shape(ShapeKind::Path {
+                path: p,
+                closed: false,
+            })
+            .expect("curve");
+        app.select(vec![id]);
+        assert!(app.can_add_node_every_segment());
+        let len = |app: &App| match &app.doc().find_shape(id).expect("curve").kind {
+            ShapeKind::Path { path, .. } => path.elements().len(),
+            _ => 0,
+        };
+        app.add_node_every_segment();
+        assert_eq!(len(&app), 5);
+        app.add_node_every_segment();
+        assert_eq!(len(&app), 9);
+        app.undo();
+        assert_eq!(len(&app), 5);
     }
 }

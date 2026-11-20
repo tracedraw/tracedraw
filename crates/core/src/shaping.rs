@@ -2799,6 +2799,115 @@ pub fn stroke_area(path: &BezPath, stroke: &crate::style::Stroke) -> BezPath {
     kurbo::stroke(path.iter(), &style, &kurbo::StrokeOpts::default(), tol)
 }
 
+/// An outline whose gradient runs along the line (see
+/// [`Stroke::fill_along`](crate::style::Stroke::fill_along)), as short
+/// pieces of its area from start to end, each with the gradient's colour
+/// and opacity at its middle; the outline is `width` wide (page units).
+/// `None` unless the outline has a gradient of its own to run along it.
+/// Dashes are left out: the pieces cover the whole line.
+pub fn along_slices(
+    path: &BezPath,
+    stroke: &crate::style::Stroke,
+    width: f64,
+) -> Option<Vec<(BezPath, crate::color::Color, f32)>> {
+    let crate::style::Fill::Fountain(f) = stroke.fill.as_deref()? else {
+        return None;
+    };
+    // A calligraphic or variable outline keeps its own band.
+    let band = !stroke.widths.is_empty() || stroke.stretch < 0.999;
+    if !stroke.fill_along || band || !(width.is_finite() && width > 0.0) {
+        return None;
+    }
+    // The line as polylines, one per subpath.
+    let tol = (width / 50.0).clamp(1e-3, 0.05);
+    let mut lines: Vec<Vec<Point>> = Vec::new();
+    kurbo::flatten(path.iter(), tol, |el| match el {
+        PathEl::MoveTo(p) => lines.push(vec![p]),
+        PathEl::LineTo(p) => {
+            if let Some(l) = lines.last_mut() {
+                l.push(p);
+            }
+        }
+        PathEl::ClosePath => {
+            if let Some(l) = lines.last_mut() {
+                if let Some(&first) = l.first() {
+                    l.push(first);
+                }
+            }
+        }
+        _ => {}
+    });
+    let length = |l: &[Point]| l.windows(2).map(|w| (w[1] - w[0]).hypot()).sum::<f64>();
+    let total: f64 = lines.iter().map(|l| length(l)).sum();
+    if total.is_nan() || total <= 1e-9 {
+        return None;
+    }
+    let n = ((total / (width * 0.5).max(0.25)).ceil() as usize).clamp(8, 400);
+    let step = total / n as f64;
+    // Neighbouring pieces overlap a little, so no seam shows between them.
+    let overlap = (step * 0.1).min(0.02);
+    let blended = f.blended_stops();
+    let mut piece_stroke = stroke.clone();
+    piece_stroke.width = width;
+    piece_stroke.dash.clear();
+    piece_stroke.fill = None;
+    piece_stroke.fill_along = false;
+    let mut out = Vec::new();
+    let mut done = 0.0;
+    for line in &lines {
+        let len = length(line);
+        if len <= 1e-9 {
+            continue;
+        }
+        // Cumulative lengths of the polyline's points.
+        let mut at = vec![0.0];
+        for w in line.windows(2) {
+            let last = *at.last().unwrap_or(&0.0);
+            at.push(last + (w[1] - w[0]).hypot());
+        }
+        let point = |d: f64| -> Point {
+            let d = d.clamp(0.0, len);
+            let i = at.partition_point(|&a| a < d).clamp(1, line.len() - 1);
+            let span = at[i] - at[i - 1];
+            let u = if span > 1e-12 {
+                (d - at[i - 1]) / span
+            } else {
+                0.0
+            };
+            line[i - 1].lerp(line[i], u)
+        };
+        let closed = line.len() > 2 && line.first() == line.last();
+        let pieces = (len / step).ceil().max(1.0) as usize;
+        let size = len / pieces as f64;
+        for k in 0..pieces {
+            let a = k as f64 * size;
+            let b = ((k + 1) as f64 * size + overlap).min(len);
+            let mut piece = BezPath::new();
+            piece.move_to(point(a));
+            for (i, &d) in at.iter().enumerate() {
+                if d > a && d < b {
+                    piece.line_to(line[i]);
+                }
+            }
+            piece.line_to(point(b));
+            // Only an open line's own ends keep its caps.
+            let mut st = piece_stroke.clone();
+            if closed || (k > 0 && k + 1 < pieces) {
+                st.cap = crate::style::LineCap::Butt;
+            }
+            let area = stroke_area(&piece, &st);
+            if area.elements().is_empty() {
+                continue;
+            }
+            let t = (done + (a + b) / 2.0) / total;
+            let stop = f.sample_blended(&blended, t);
+            out.push((area, stop.color, stop.opacity));
+        }
+        done += len;
+    }
+    Some(out)
+}
+
 /// Corners sharper than this (degrees between the tangents) split a path
 /// into runs for dash alignment; smooth nodes do not.
 const DASH_CORNER_DEG: f64 = 3.0;
@@ -3125,6 +3234,37 @@ pub fn nonzero_as_even_odd(path: &BezPath) -> BezPath {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_gradient_along_the_line_colours_it_from_start_to_end() {
+        use crate::color::Color;
+        use crate::style::{Fill, Fountain, FountainKind, Stroke};
+        let mut line = super::BezPath::new();
+        line.move_to((0.0, 0.0));
+        line.line_to((100.0, 0.0));
+        let mut st = Stroke::new(Color::BLACK, 4.0);
+        st.fill = Some(Box::new(Fill::Fountain(Fountain::two(
+            FountainKind::Linear,
+            Color::rgb8(255, 0, 0),
+            Color::rgb8(0, 0, 255),
+            90.0,
+        ))));
+        // Off: no pieces, the gradient lies across the drawing as before.
+        assert!(super::along_slices(&line, &st, 4.0).is_none());
+        st.fill_along = true;
+        let pieces = super::along_slices(&line, &st, 4.0).expect("pieces");
+        assert!(pieces.len() >= 8);
+        let (first, c0, _) = &pieces[0];
+        let (last, c1, _) = pieces.last().expect("last");
+        use kurbo::Shape as _;
+        assert!(first.bounding_box().x0 < 1.0 && last.bounding_box().x1 > 99.0);
+        // Red at the start, blue at the end, whatever the gradient's angle.
+        let [r0, _, b0] = c0.to_rgb8();
+        let [r1, _, b1] = c1.to_rgb8();
+        assert!(r0 > 200 && b0 < 50, "{c0:?}");
+        assert!(b1 > 200 && r1 < 50, "{c1:?}");
+        // The pieces cover the line's width.
+        assert!((first.bounding_box().height() - 4.0).abs() < 1e-6);
+    }
 
     /// A shaky stroke of the round eraser across a circle (#2831): the
     /// smoothed band leaves straight, smooth edges with few nodes, where

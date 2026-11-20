@@ -235,6 +235,7 @@ mod builtin_looks;
 mod style_presets;
 mod styles;
 mod symbol_paste;
+mod separation_view;
 mod symmetry_edit;
 mod system_chars;
 mod system_locale;

@@ -165,8 +165,9 @@ shape on the path: the change goes into the character width.
 With text on a path selected (also with the [[tool.pick]] tool), the property
 bar shows the path's fields first, then the usual text fields:
 
-- The orientation of the letters: rotated, vertical skew, horizontal skew or
-  upright.
+- The orientation of the letters: rotated, vertical skew, horizontal skew,
+  upright, or radial (each letter's upright on a line through the middle of
+  the path's box, like the numbers round a dial).
 - The vertical placement: on the baseline, the ascender, the descender, or
   centred on the path.
 - The placement along the path: at its start, centre or end, and on a closed

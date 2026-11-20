@@ -1497,6 +1497,10 @@ pub enum Dialog {
     Barcode(BarcodeState),
     /// Object > Insert > Formula (#2183).
     Formula(crate::ui::formula_dialog::FormulaState),
+    /// Object > Transformations > Transform Each.
+    TransformEach(crate::ui::transform_each::TransformEach),
+    /// Object > Insert > Light Flare.
+    Flare(crate::ui::flare::Flare),
     ConvertToBitmap(crate::bitmap_modes::ConvertOptions),
     StraightenImage(crate::ui::straighten_dialog::StraightenState),
     Resample(crate::resample::ResampleState),
@@ -3246,6 +3250,8 @@ pub fn show(app: &mut App, ctx: &Context) {
         }
         Dialog::Barcode(st) => crate::ui::barcode_wizard::dialog(app, ctx, st, &mut close),
         Dialog::Formula(st) => crate::ui::formula_dialog::dialog(app, ctx, st, &mut close),
+        Dialog::TransformEach(st) => crate::ui::transform_each::dialog(app, ctx, st, &mut close),
+        Dialog::Flare(st) => crate::ui::flare::dialog(app, ctx, st, &mut close),
         Dialog::CopyProperties(c) => {
             window(ctx, tr("dialog.copy_properties")).show(ctx, |ui| {
                 ui.checkbox(&mut c.outline_pen, tr("dialog.copy_outline_pen"));
@@ -9228,6 +9234,8 @@ pub(crate) mod tests {
             Dialog::PasteSpecial(PasteSpecialState::default()),
             Dialog::Barcode(BarcodeState::default()),
             Dialog::Formula(Default::default()),
+            Dialog::TransformEach(Default::default()),
+            Dialog::Flare(Default::default()),
             Dialog::ConvertToBitmap(crate::bitmap_modes::ConvertOptions {
                 dpi: 150.0,
                 mode: crate::bitmap_modes::ConvertMode::BlackWhite,

@@ -31,7 +31,9 @@ section of the [[docker.properties]] panel.
 - [[docker.outline_fill]]: the outline can be painted like a fill: none,
   uniform color, gradient, pattern, texture or mesh. See
   [Fills](../color/fills.md). Hairlines and arrowheads keep the plain
-  outline color.
+  outline color. With a gradient, [[docker.outline_fill_along]] runs it along
+  the line, from its start to its end and round every turn, instead of across
+  the drawing; such an outline is drawn solid, without dashes.
 - [[docker.caps]], the ends of open lines: [[docker.cap_butt]] (at first),
   [[docker.cap_round]] or [[docker.cap_square]].
 - [[docker.corners]]: [[docker.join_miter]] (at first), [[docker.join_round]]

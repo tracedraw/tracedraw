@@ -2973,6 +2973,123 @@ impl App {
         self.selection = vec![id];
     }
 
+    /// Object > Flatten Transparency: the selected objects become one
+    /// opaque bitmap of how they look over what lies beneath them (at 300
+    /// dpi, shaped like them), in their place in the stack; the objects
+    /// beneath stay. One undo step. For printers and files that cannot mix
+    /// transparency.
+    pub fn flatten_transparency(&mut self) {
+        let shapes = self.selected_shapes();
+        let Some(layer) = self.active_layer() else {
+            return;
+        };
+        let Some(area) = self.convert_to_bitmap_area() else {
+            return;
+        };
+        let Some(alone) = self.selection_alone(area) else {
+            return;
+        };
+        let ids: Vec<ShapeId> = shapes.iter().map(|s| s.id).collect();
+        // What lies beneath: the objects on the page's visible layers
+        // below the topmost selected one, with the selection on top.
+        let doc = self.doc();
+        let tops: Vec<ShapeId> = ids
+            .iter()
+            .map(|id| doc.ancestors(*id).first().copied().unwrap_or(*id))
+            .collect();
+        let mut tmp = alone.clone();
+        let l = tmp.pages[0].layers[0].id;
+        let mut beneath = Vec::new();
+        let mut below_top = Vec::new();
+        for lay in self.page_layers() {
+            for sh in &lay.shapes {
+                if tops.contains(&sh.id) {
+                    beneath.append(&mut below_top);
+                } else if lay.visible {
+                    below_top.push(sh.clone());
+                }
+            }
+        }
+        let dpi = 300.0;
+        if let Ok(tl) = tmp.layer_mut(l) {
+            let mut all: Vec<Shape> = beneath
+                .into_iter()
+                .filter(|s| self.visual_bounds(s).overlaps(area))
+                .map(|mut c| {
+                    c.transform_by(Affine::translate((-area.x0, -area.y0)));
+                    c
+                })
+                .collect();
+            all.append(&mut tl.shapes);
+            tl.shapes = all;
+        }
+        let Some((whole, w, h)) = render_alone_png(&tmp, dpi, false, true) else {
+            return;
+        };
+        // The selection's shape: drawn alone without its transparency.
+        let mut solid = alone;
+        for lay in &mut solid.pages[0].layers {
+            for sh in &mut lay.shapes {
+                sh.opacity = 1.0;
+                sh.effects
+                    .retain(|e| !matches!(e, Effect::Transparency { .. }));
+            }
+        }
+        let Some((mask, _, _)) = render_alone_png(&solid, dpi, true, true) else {
+            return;
+        };
+        let (Some(mut img), Some(mask)) = (
+            crate::bitmap_fx::decode(&whole),
+            crate::bitmap_fx::decode(&mask),
+        ) else {
+            return;
+        };
+        if img.dimensions() != mask.dimensions() {
+            return;
+        }
+        // Only where the selection draws.
+        for (px, m) in img.pixels_mut().zip(mask.pixels()) {
+            px.0[3] = m.0[3];
+        }
+        let Some(png) = crate::bitmap_fx::encode(&img) else {
+            return;
+        };
+        let id = self.engine.new_shape_id();
+        let mut bitmap = Shape::new(
+            id,
+            ShapeKind::Bitmap {
+                rect: area,
+                width_px: w,
+                height_px: h,
+                png: png.into(),
+                fx: None,
+            },
+        );
+        bitmap.fill = Fill::None;
+        bitmap.stroke = None;
+        let mut cmds = vec![
+            Command::DeleteShapes {
+                shapes: ids.clone(),
+            },
+            Command::AddShape {
+                layer,
+                shape: bitmap,
+            },
+        ];
+        if let Some((at_layer, index)) = self.stack_place_of(&ids) {
+            cmds.push(Command::Reorder {
+                shape: id,
+                layer: at_layer,
+                index,
+            });
+        }
+        if let Err(e) = self.engine.run_batch("Flatten Transparency", &cmds) {
+            self.status = e.to_string();
+            return;
+        }
+        self.selection = vec![id];
+    }
+
     /// Where an object that replaces `ids` goes in the stack: the layer of
     /// the topmost of them (each counted by its object on the layer, the
     /// group or clip frame it is in), at the place it has once `ids` are
@@ -6184,6 +6301,58 @@ mod tests {
         assert!(app.pending_palette_sample);
         run(&mut app, "menu.window.palette_sample");
         assert!(!app.pending_palette_sample);
+    }
+
+    /// Object > Flatten Transparency: a see-through blue square over a
+    /// red one becomes an opaque purple bitmap in its place; the red one
+    /// stays; one undo step.
+    #[test]
+    fn flatten_transparency_bakes_what_lies_beneath() {
+        let mut app = App::headless();
+        let square = |app: &mut App, c: tracedraw_core::Color| {
+            let id = app
+                .new_shape(ShapeKind::Rect {
+                    rect: kurbo::Rect::new(0.0, 0.0, 10.0, 10.0),
+                    radius: 0.0,
+                    corners: None,
+                })
+                .expect("rect");
+            app.run(Command::SetFill {
+                shapes: vec![id],
+                fill: Fill::Solid(c),
+            });
+            app.run(Command::SetStroke {
+                shapes: vec![id],
+                stroke: None,
+            });
+            id
+        };
+        let red = square(&mut app, tracedraw_core::Color::rgb8(255, 0, 0));
+        let blue = square(&mut app, tracedraw_core::Color::rgb8(0, 0, 255));
+        app.select(vec![blue]);
+        app.transparency_default.amount = 50.0;
+        app.apply_uniform_transparency();
+        app.flatten_transparency();
+        let [bid] = app.selection[..] else {
+            panic!("{:?}", app.selection);
+        };
+        let b = app.doc().find_shape(bid).expect("bitmap").clone();
+        assert!(app.doc().find_shape(blue).is_none());
+        assert!(app.doc().find_shape(red).is_some());
+        assert_eq!(b.opacity, 1.0);
+        let ShapeKind::Bitmap { png, .. } = &b.kind else {
+            panic!("{:?}", b.kind);
+        };
+        let img = crate::bitmap_fx::decode(png).expect("png");
+        let (w, h) = img.dimensions();
+        let c = img.get_pixel(w / 2, h / 2).0;
+        assert!(
+            c[0] > 100 && c[0] < 160 && c[1] < 20 && c[2] > 100 && c[2] < 160,
+            "{c:?}"
+        );
+        assert_eq!(c[3], 255);
+        app.undo();
+        assert!(app.doc().find_shape(blue).is_some());
     }
 
     fn symbol_of(app: &mut App, rect: kurbo::Rect) -> ShapeId {

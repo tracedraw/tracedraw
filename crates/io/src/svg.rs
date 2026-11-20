@@ -593,9 +593,16 @@ fn write_unlinked(
                 (band, paint)
             })
         });
+    // A gradient along the line: pieces of the outline, each in its colour.
+    let along = drawn
+        .as_ref()
+        .filter(|_| calligraphic.is_none())
+        .and_then(|(s, _)| tracedraw_core::shaping::along_slices(&shape.page_path(), s, s.width));
     let stroke_attr = match drawn.as_ref().map(|(s, _)| s) {
         None => "stroke=\"none\"".to_string(),
-        Some(s) if calligraphic.is_some() || s.painterly.is_some() => "stroke=\"none\"".to_string(),
+        Some(s) if calligraphic.is_some() || s.painterly.is_some() || along.is_some() => {
+            "stroke=\"none\"".to_string()
+        }
         Some(s) => {
             let cap = match s.cap {
                 LineCap::Butt => "butt",
@@ -638,6 +645,7 @@ fn write_unlinked(
         && matches!(shape.kind, ShapeKind::Text { .. })
         && calligraphic.is_none()
         && !drawn.as_ref().is_some_and(|(s, _)| s.painterly.is_some())
+        && along.is_none()
         && plain_paint(&fill_attr)
         && plain_paint(&stroke_attr)
     {
@@ -677,7 +685,8 @@ fn write_unlinked(
         .unwrap_or_default();
     let painterly = drawn.as_ref().is_some_and(|(s, _)| s.painterly.is_some());
     let see_through = shape.opacity < 1.0;
-    let wrapped = see_through && (calligraphic.is_some() || painterly || !heads.is_empty());
+    let wrapped = see_through
+        && (calligraphic.is_some() || painterly || along.is_some() || !heads.is_empty());
     let opacity = if see_through && !wrapped {
         format!(" opacity=\"{}\"", fmt(shape.opacity.max(0.0)))
     } else {
@@ -697,6 +706,19 @@ fn write_unlinked(
             out,
             "{pad}<path d=\"{}\" fill=\"{paint}\" stroke=\"none\"/>",
             path_data(&band)
+        );
+    }
+    for (piece, color, alpha) in along.unwrap_or_default() {
+        let opacity = if alpha < 1.0 {
+            format!(" fill-opacity=\"{}\"", fmt(f64::from(alpha.max(0.0))))
+        } else {
+            String::new()
+        };
+        let _ = writeln!(
+            out,
+            "{pad}<path d=\"{}\" fill=\"{}\"{opacity} stroke=\"none\"/>",
+            path_data(&(parent * piece)),
+            color.to_hex()
         );
     }
     // A painterly outline: its marks, one path per opacity step.
@@ -1890,6 +1912,56 @@ pub(crate) mod tests {
         let pdf = crate::pdf::document_to_pdf(&doc);
         let text = String::from_utf8_lossy(&pdf);
         assert!(text.contains("/ca "));
+    }
+
+    #[test]
+    fn a_gradient_along_the_line_is_written_as_pieces_in_its_colours() {
+        let mut doc = Document::default();
+        let layer = doc.pages[0].layers[0].id;
+        let id = doc.ids_mut().shape();
+        let mut path = tracedraw_core::geometry::BezPath::new();
+        path.move_to(tracedraw_core::Point::new(10.0, 50.0));
+        path.line_to(tracedraw_core::Point::new(110.0, 50.0));
+        let mut s = Shape::new(
+            id,
+            ShapeKind::Path {
+                path,
+                closed: false,
+            },
+        );
+        let mut st = Stroke::new(Color::BLACK, 6.0);
+        let mut f = tracedraw_core::Fountain::two(
+            tracedraw_core::FountainKind::Linear,
+            Color::rgb8(255, 0, 0),
+            Color::rgb8(0, 0, 255),
+            90.0,
+        );
+        // Fading to half at the end.
+        f.stops[1].opacity = 0.5;
+        st.fill = Some(Box::new(tracedraw_core::Fill::Fountain(f)));
+        st.fill_along = true;
+        s.stroke = Some(st);
+        doc.layer_mut(layer).unwrap().shapes.push(s);
+        let svg = page_to_svg(&doc, 0);
+        assert!(!svg.contains("stroke-width=\"6\""));
+        // The pieces' colours, in order: red at the start, blue at the end.
+        let fills: Vec<[u8; 3]> = svg
+            .split("fill=\"#")
+            .skip(1)
+            .filter_map(|t| {
+                let h = t.get(..6)?;
+                let v = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
+                Some([v(0)?, v(2)?, v(4)?])
+            })
+            .collect();
+        assert!(fills.len() >= 8, "{svg}");
+        let (first, last) = (fills[0], fills[fills.len() - 1]);
+        assert!(first[0] > 200 && first[2] < 50, "{first:?}");
+        assert!(last[2] > 200 && last[0] < 50, "{last:?}");
+        let pdf = crate::pdf::document_to_pdf(&doc);
+        let text = String::from_utf8_lossy(&pdf);
+        assert!(svg.contains("fill-opacity=\"0.5"), "{svg}");
+        assert!(text.contains("/ca 0.5"), "{text}");
     }
 
     /// A line from (10, 50) to (60, 50), 2 mm wide, with a custom

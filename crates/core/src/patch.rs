@@ -75,7 +75,9 @@ impl StrokeField {
     /// True when `a` and `b` have the same value for this field.
     pub fn same(self, a: &Stroke, b: &Stroke) -> bool {
         match self {
-            StrokeField::Paint => a.color == b.color && a.fill == b.fill,
+            StrokeField::Paint => {
+                a.color == b.color && a.fill == b.fill && a.fill_along == b.fill_along
+            }
             StrokeField::Width => a.width == b.width,
             StrokeField::Cap => a.cap == b.cap,
             StrokeField::Join => a.join == b.join,
@@ -106,6 +108,7 @@ impl StrokeField {
             StrokeField::Paint => {
                 to.color = from.color;
                 to.fill = from.fill.clone();
+                to.fill_along = from.fill_along;
             }
             StrokeField::Width => to.width = from.width,
             StrokeField::Cap => to.cap = from.cap,

@@ -168,7 +168,8 @@ barra de propriedades mostra primeiro os campos do caminho e depois os campos
 de texto de sempre:
 
 - A orientação das letras: giradas, inclinação vertical, inclinação
-  horizontal ou em pé.
+  horizontal, em pé ou radiais (a haste de cada letra numa linha que passa
+  pelo meio da caixa do caminho, como os números de um mostrador).
 - A posição vertical: na linha de base, na ascendente, na descendente ou
   centralizada no caminho.
 - A posição ao longo do caminho: no início, no centro ou no fim e, em um

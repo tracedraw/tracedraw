@@ -34,7 +34,9 @@ cor, a largura, o estilo, os cantos, as pontas e as setas na seção
 - [[docker.outline_fill]]: o contorno pode ser pintado como um preenchimento:
   nenhum, cor uniforme, gradiente, padrão, textura ou malha. Veja
   [Preenchimentos](../color/fills.md). Linhas finíssimas e setas mantêm a cor
-  simples do contorno.
+  simples do contorno. Com um gradiente, [[docker.outline_fill_along]] faz ele
+  correr ao longo da linha, do início ao fim e em cada curva, em vez de
+  atravessar o desenho; esse contorno é desenhado contínuo, sem tracejado.
 - [[docker.caps]], as pontas das linhas abertas: [[docker.cap_butt]] (de
   início), [[docker.cap_round]] ou [[docker.cap_square]].
 - [[docker.corners]]: [[docker.join_miter]] (de início),

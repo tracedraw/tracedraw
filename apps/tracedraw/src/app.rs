@@ -1397,6 +1397,10 @@ pub struct App {
     pub join_pending: Option<crate::join_tool::JoinEnd>,
     /// The formula settings used last, for the next new formula (#2183).
     pub last_formula: Option<crate::formula::FormulaSpec>,
+    /// The Transform Each settings used last.
+    pub last_transform_each: crate::ui::transform_each::TransformEach,
+    /// The Light Flare settings used last.
+    pub last_flare: crate::ui::flare::Flare,
     pub blend_steps: u32,
     /// The Blend docker's options for the next blend (and the shown one).
     pub blend_options: tracedraw_core::live::BlendOptions,
@@ -1806,6 +1810,19 @@ pub struct App {
     /// without the shadow, or the other way round (#1906).
     pub show_page_shadow: bool,
     pub simulate_overprints: bool,
+    /// View > Separations: the ink the drawing window shows alone, an
+    /// index of [`App::separation_names`]; `None` shows every ink.
+    pub view_plate: Option<usize>,
+    /// The drawing as that ink shows it, kept for the drawing's revision
+    /// and page (see [`App::separation_view_doc`]).
+    pub view_plate_doc: std::cell::RefCell<
+        Option<(
+            u64,
+            usize,
+            tracedraw_core::PageId,
+            std::rc::Rc<tracedraw_core::Document>,
+        )>,
+    >,
     pub rasterize_complex_effects: bool,
     pub show_bleed: bool,
     pub show_printable_area: bool,
@@ -3268,6 +3285,8 @@ impl App {
             dimension_points: Vec::new(),
             join_pending: None,
             last_formula: None,
+            last_transform_each: Default::default(),
+            last_flare: Default::default(),
             blend_steps: 20,
             blend_options: Default::default(),
             blend_spacing_mm: 5.0,
@@ -3441,6 +3460,8 @@ impl App {
             show_page_border: true,
             show_page_shadow: true,
             simulate_overprints: false,
+            view_plate: None,
+            view_plate_doc: std::cell::RefCell::new(None),
             rasterize_complex_effects: true,
             show_bleed: false,
             show_printable_area: false,

@@ -99,6 +99,7 @@ próprios atalhos; veja
 | [[menu.view.navigator]] | [Desfazer, zoom e deslocamento](../get-started/undo-and-views.md#views) |
 | [[menu.view.proof_colors]] | [Gerenciamento de cores](../color/color-management.md#proof) |
 | [[menu.view.simulate_overprints]] | [Gerenciamento de cores](../color/color-management.md#proof) |
+| [[menu.view.separations]] | [Gerenciamento de cores](../color/color-management.md#proof) |
 | [[menu.view.rasterize_complex_effects]] | [Réguas, grades e linhas-guia](../pages-layout/guidelines-and-grid.md) |
 | [[menu.view.page]] | [Réguas, grades e linhas-guia](../pages-layout/guidelines-and-grid.md) |
 | [[menu.view.page_border]] | [Réguas, grades e linhas-guia](../pages-layout/guidelines-and-grid.md) |

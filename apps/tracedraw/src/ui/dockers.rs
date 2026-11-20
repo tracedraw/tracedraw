@@ -4173,6 +4173,21 @@ fn outline_editor_mixed(
             touched.push(StrokeField::Paint);
             remove = set_outline_paint(s, paint);
         }
+        // A gradient can run along the line instead of across it.
+        if !remove && matches!(s.fill.as_deref(), Some(Fill::Fountain(_))) {
+            let along_mixed = mix.has(StrokeField::Paint);
+            if ui
+                .add(
+                    egui::Checkbox::new(&mut s.fill_along, tr("docker.outline_fill_along"))
+                        .indeterminate(along_mixed),
+                )
+                .rich_tip(crate::ui::tips::keyed("docker.outline_fill_along"))
+                .changed()
+            {
+                changed = true;
+                touched.push(StrokeField::Paint);
+            }
+        }
     }
     if remove {
         *stroke = None;

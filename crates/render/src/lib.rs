@@ -1794,6 +1794,33 @@ impl Renderer<'_> {
             } else {
                 1.0
             };
+            if let Some(pieces) = (!self.flags.wireframe)
+                .then(|| {
+                    tracedraw_core::shaping::along_slices(
+                        &page_path,
+                        stroke,
+                        stroke.width * object_scale,
+                    )
+                })
+                .flatten()
+            {
+                // A gradient along the line: each piece in its colour.
+                for (piece, color, alpha) in pieces {
+                    let Some(pp) = to_sk_path(&(self.screen * piece)) else {
+                        continue;
+                    };
+                    let [r, g, b] = color.to_rgb8();
+                    paint.set_color_rgba8(r, g, b, (alpha.clamp(0.0, 1.0) * 255.0).round() as u8);
+                    self.pixmap.fill_path(
+                        &pp,
+                        &paint,
+                        FillRule::Winding,
+                        Transform::identity(),
+                        None,
+                    );
+                }
+                return;
+            }
             if let Some(band) =
                 tracedraw_core::shaping::outline_band(&page_path, stroke, object_scale)
             {
@@ -9634,6 +9661,49 @@ mod tests {
         assert!(left.green() < 30, "not the outline colour");
         // Outside the stroke nothing is painted.
         assert_eq!(img.pixel(50, 2).unwrap().green(), 255);
+    }
+
+    #[test]
+    fn a_gradient_along_the_line_follows_it_round_a_turn() {
+        // Right along the top, down, and back left along the bottom: the
+        // gradient runs from the start (red) to the end (blue), so the
+        // two left ends differ, where a gradient across would match them.
+        let mut doc = Document::new("t", tracedraw_core::geometry::Size::new(100.0, 20.0));
+        let layer = doc.pages[0].layers[0].id;
+        let id = doc.ids_mut().shape();
+        let mut path = tracedraw_core::BezPath::new();
+        path.move_to((5.0, 5.0));
+        path.line_to((95.0, 5.0));
+        path.line_to((95.0, 15.0));
+        path.line_to((5.0, 15.0));
+        let mut s = Shape::new(
+            id,
+            ShapeKind::Path {
+                path,
+                closed: false,
+            },
+        );
+        s.fill = Fill::None;
+        let mut stroke = Stroke::new(Color::rgb8(0, 255, 0), 4.0);
+        stroke.fill = Some(Box::new(Fill::Fountain(tracedraw_core::Fountain::two(
+            tracedraw_core::FountainKind::Linear,
+            Color::rgb8(255, 0, 0),
+            Color::rgb8(0, 0, 255),
+            0.0,
+        ))));
+        stroke.fill_along = true;
+        s.stroke = Some(stroke);
+        doc.layer_mut(layer).unwrap().shapes.push(s);
+        let img = render_page_image(&doc, doc.pages[0].id, 25.4).unwrap();
+        let a = img.pixel(7, 5).unwrap();
+        let b = img.pixel(7, 15).unwrap();
+        let (red, blue) = if a.red() > b.red() { (a, b) } else { (b, a) };
+        assert!(red.red() > 200 && red.blue() < 60, "{red:?}");
+        assert!(blue.blue() > 200 && blue.red() < 60, "{blue:?}");
+        assert!(red.green() < 30 && blue.green() < 30, "not the outline colour");
+        // The far end of the turn is half way.
+        let mid = img.pixel(95, 10).unwrap();
+        assert!(mid.red() > 80 && mid.blue() > 80, "{mid:?}");
     }
 
     /// A 100 x 10 mm rectangle filled with `fill`, drawn at 1 px/mm.

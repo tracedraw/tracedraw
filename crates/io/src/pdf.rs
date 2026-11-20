@@ -1662,7 +1662,32 @@ impl PageWriter<'_> {
         use tracedraw_core::geometry::Shape as _;
         let (drawn, scale) = crate::svg::drawn_stroke(s, transform);
         self.stroke_state(&drawn);
-        if let Some(brush) = &s.painterly {
+        let along = if s.painterly.is_none()
+            && tracedraw_core::shaping::outline_band(&shape.page_path(), s, scale).is_none()
+        {
+            tracedraw_core::shaping::along_slices(&shape.page_path(), s, drawn.width)
+        } else {
+            None
+        };
+        if let Some(pieces) = along {
+            // A gradient along the line: each piece filled in its colour.
+            for (piece, color, alpha) in pieces {
+                self.content.push_str("q\n");
+                if self.pdf.allow_alpha && alpha < 1.0 {
+                    let a = f64::from(alpha.max(0.0));
+                    let name = format!("GS{}", self.gstates.len());
+                    let id = self
+                        .pdf
+                        .add_str(format!("<< /Type /ExtGState /CA {} /ca {} >>", f(a), f(a)));
+                    self.gstates.push((name.clone(), id));
+                    let _ = writeln!(self.content, "/{name} gs");
+                }
+                let op = self.color_op(color, true);
+                let _ = writeln!(self.content, "{op}");
+                self.path_ops(&(parent * piece));
+                self.content.push_str("f\nQ\n");
+            }
+        } else if let Some(brush) = &s.painterly {
             // Painterly brush: the marks, one filled path per opacity.
             for (alpha, marks) in tracedraw_core::painterly::marks_by_opacity_along(
                 &shape.page_path(),

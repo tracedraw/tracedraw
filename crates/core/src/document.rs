@@ -2721,6 +2721,9 @@ pub enum PathTextOrientation {
     HorizontalSkew,
     /// Letters stay upright, only moved along the path.
     Upright,
+    /// Each letter turned so its upright lies on a line through the
+    /// middle of the path's box, like the numbers round a dial.
+    Radial,
 }
 
 /// Which line of the letters sits on the path.
