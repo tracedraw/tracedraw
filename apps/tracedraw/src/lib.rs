@@ -156,6 +156,9 @@ mod mcp;
 mod mcp_link;
 mod media;
 mod mesh_tool;
+mod color_points;
+mod text_curve;
+mod trace_sketch;
 mod mixed;
 #[cfg(test)]
 mod mockup_tests;
@@ -180,6 +183,8 @@ mod parallel_lines;
 mod pen;
 mod pen_look;
 mod perspective_draw;
+mod pieces;
+mod cut_tools;
 #[cfg(test)]
 mod pick_drag_tests;
 mod picture_mosaic;

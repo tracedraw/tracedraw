@@ -227,6 +227,15 @@ próprios atalhos; veja
 | [[menu.object.front_minus_back]] | [Combinar formas: soldar, aparar e interseção](../lines-shapes/shaping.md) |
 | [[menu.object.back_minus_front]] | [Combinar formas: soldar, aparar e interseção](../lines-shapes/shaping.md) |
 | [[menu.object.boundary]] | [Combinar formas: soldar, aparar e interseção](../lines-shapes/shaping.md) |
+| [[menu.object.break_pieces]] | [Combinar formas: soldar, aparar e interseção](../lines-shapes/shaping.md) |
+| [[menu.object.merge_colors]] | [Combinar formas: soldar, aparar e interseção](../lines-shapes/shaping.md) |
+| [[menu.object.cut_to_top]] | [Combinar formas: soldar, aparar e interseção](../lines-shapes/shaping.md) |
+| [[menu.object.piece_outlines]] | [Combinar formas: soldar, aparar e interseção](../lines-shapes/shaping.md) |
+| [[menu.object.exclude]] | [Combinar formas: soldar, aparar e interseção](../lines-shapes/shaping.md) |
+| [[menu.object.combine_live]] | [Combinar formas: soldar, aparar e interseção](../lines-shapes/shaping.md) |
+| [[menu.object.cut_below]] | [Combinar formas: soldar, aparar e interseção](../lines-shapes/shaping.md) |
+| [[menu.object.cut_grid]] | [Combinar formas: soldar, aparar e interseção](../lines-shapes/shaping.md) |
+| [[menu.object.remove_strays]] | [Combinar formas: soldar, aparar e interseção](../lines-shapes/shaping.md) |
 | [[menu.object.shaping_docker]] | [Combinar formas: soldar, aparar e interseção](../lines-shapes/shaping.md) |
 | [[menu.object.combine]] | [Organizar objetos e camadas](../objects/objects-and-layers.md) |
 | [[menu.object.break_apart]] | [Organizar objetos e camadas](../objects/objects-and-layers.md) |

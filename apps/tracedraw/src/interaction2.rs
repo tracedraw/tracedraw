@@ -738,8 +738,13 @@ impl App {
                     .map(move |(i, q)| ((s.id, i), q))
             })
             .collect();
+        // The Envelope tool takes only a mesh envelope's grid points.
+        let envelope_tool = self.tool == Tool::Envelope;
+        if envelope_tool {
+            points.retain(|((_, i), _)| is_mesh_envelope_node(*i));
+        }
         // After the nodes: a node and a handle as near win the node.
-        if let Some((id, i)) = self.selected_mesh_node() {
+        if let Some((id, i)) = self.selected_mesh_node().filter(|_| !envelope_tool) {
             if let Some(s) = self.doc().find_shape(id) {
                 points.extend(
                     mesh_handle_points(s, i)
@@ -818,6 +823,13 @@ impl App {
                     return true;
                 }
             }
+            // Double-click inside an object with colour points: a point
+            // there (on the Shape tool, not on its outline, where a
+            // double click adds a node).
+            let on_line = self.tool == Tool::Shape && self.segment_at(p).is_some();
+            if !on_line && self.add_color_point(p) {
+                return true;
+            }
         }
         if response.drag_started_by(PointerButton::Primary) {
             let press = response
@@ -894,6 +906,25 @@ impl App {
         };
         let to = self.snap_point(p + self.effect_node_grab);
         let delta = to - at;
+        // A colour point goes where it is dragged, one undo step too.
+        let point = crate::mesh_tool::mesh_node_of(index)
+            .filter(|_| !crate::color_points::point_nodes(&s).is_empty());
+        if let Some(i) = point {
+            if delta.hypot() > 0.0 {
+                if let Some(cmd) = self.move_color_point(id, i, to) {
+                    if self.effect_node_stepped && self.engine.undo_label() == Some("Edit Effect")
+                    {
+                        let _ = self.engine.undo();
+                    }
+                    self.effect_node_stepped = true;
+                    if let Err(e) = self.engine.run_batch("Edit Effect", &[cmd]) {
+                        self.status = e.to_string();
+                    }
+                }
+            }
+            self.drag = Drag::Node { last: p };
+            return;
+        }
         if delta.hypot() > 0.0 {
             let inv = s.transform.inverse();
             let ld = (inv * (Point::ZERO + delta)) - (inv * Point::ZERO);
@@ -994,9 +1025,19 @@ fn mesh_node_near(m: &tracedraw_core::Mesh, p: Point, tol: f64) -> Option<usize>
     })
 }
 
-/// Page-space positions of the editable nodes of a shape's perspective
-/// and mesh fill, with a global index: perspective 100..104, mesh 200 + k
-/// (envelopes have their own editing, see `envelope_edit`).
+/// The grid points of a mesh envelope count from here in the effect node
+/// numbers (at most 81 of them, below the mesh fill's 200).
+pub const MESH_ENVELOPE_BASE: usize = 110;
+
+/// The effect node number is a mesh envelope's grid point.
+pub fn is_mesh_envelope_node(index: usize) -> bool {
+    (MESH_ENVELOPE_BASE..crate::mesh_tool::MESH_NODE_BASE).contains(&index)
+}
+
+/// Page-space positions of the editable nodes of a shape's perspective,
+/// mesh envelope and mesh fill, with a global index: perspective
+/// 100..104, mesh envelope 110 + k (its last one), mesh 200 + k (frame
+/// envelopes have their own editing, see `envelope_edit`).
 pub fn effect_nodes(s: &Shape) -> Vec<(usize, Point)> {
     let mut out = Vec::new();
     for e in &s.effects {
@@ -1006,11 +1047,23 @@ pub fn effect_nodes(s: &Shape) -> Vec<(usize, Point)> {
             }
         }
     }
+    if let Some(Effect::MeshEnvelope { points, .. }) = s
+        .effects
+        .iter()
+        .rev()
+        .find(|e| matches!(e, Effect::MeshEnvelope { .. }))
+    {
+        for (k, q) in points.iter().enumerate() {
+            out.push((MESH_ENVELOPE_BASE + k, s.transform * *q));
+        }
+    }
     if let Fill::Mesh(m) = &s.fill {
         for (k, n) in m.nodes.iter().enumerate() {
             out.push((200 + k, s.transform * n.pos));
         }
     }
+    // A colour points gradient's points, numbered as mesh nodes are.
+    out.extend(crate::color_points::point_nodes(s));
     out
 }
 
@@ -1055,6 +1108,18 @@ fn move_effect_node(effects: &mut [Effect], fill: &mut Fill, index: usize, d: Ve
     if let Some((i, h)) = crate::mesh_tool::mesh_handle_of(index) {
         if let Fill::Mesh(m) = fill {
             m.move_handle(i, h, d);
+        }
+        return;
+    }
+    if is_mesh_envelope_node(index) {
+        if let Some(Effect::MeshEnvelope { points, .. }) = effects
+            .iter_mut()
+            .rev()
+            .find(|e| matches!(e, Effect::MeshEnvelope { .. }))
+        {
+            if let Some(q) = points.get_mut(index - MESH_ENVELOPE_BASE) {
+                *q += d;
+            }
         }
         return;
     }

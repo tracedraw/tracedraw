@@ -427,7 +427,7 @@ pub fn draw_canvas(app: &App, painter: &Painter, rect: ERect) {
         let ctrl = painter.ctx().input(|i| app.constrain_held(&i.modifiers));
         let preview = app.curve_preview_point(ctrl);
         let path = c.path(preview);
-        if c.bspline {
+        if c.bspline && !c.curvature {
             // The control polygon, dashed, as the curve is drawn.
             let poly: Vec<egui::Pos2> = c
                 .bspline_controls(preview)
@@ -1951,7 +1951,8 @@ fn draw_blend_controls(app: &App, painter: &Painter) {
     };
     let view = &app.view;
     let (a, z) = (view.to_screen(c.start), view.to_screen(c.end));
-    haloed_polyline(painter, &[a, z], false, Tokens::SELECTION);
+    let line: Vec<egui::Pos2> = c.line_points().into_iter().map(|q| view.to_screen(q)).collect();
+    haloed_polyline(painter, &line, false, Tokens::SELECTION);
     let n = screen_normal(a, z);
     if (z - a).length() >= 14.0 {
         let along = (z - a).normalized();
@@ -1972,6 +1973,16 @@ fn draw_blend_controls(app: &App, painter: &Painter) {
                 EStroke::new(1.0, Tokens::SELECTION),
             ));
         }
+    }
+    // The round bend handle in the middle of the line.
+    if c.can_bend && (z - a).length() >= 14.0 {
+        let m = view.to_screen(c.bend_point());
+        let fill = if app.blend_handle_drag == Some(BlendHandle::Bend) {
+            Tokens::SELECTION
+        } else {
+            Color32::WHITE
+        };
+        painter.circle(m, 3.5, fill, EStroke::new(1.0, Tokens::SELECTION));
     }
     for (h, p) in [(BlendHandle::Start, a), (BlendHandle::End, z)] {
         let rect = ERect::from_center_size(p, egui::vec2(9.0, 9.0));
@@ -2431,6 +2442,7 @@ fn draw_selection(app: &App, painter: &Painter, preview: Option<Affine>) {
                 | Tool::Bezier
                 | Tool::Pen
                 | Tool::BSpline
+                | Tool::CurvaturePen
                 | Tool::Polyline
                 | Tool::ThreePointCurve
                 | Tool::ShapeRecognition
@@ -4373,11 +4385,17 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
         crate::tools::Tool::Shape
             | crate::tools::Tool::MeshFill
             | crate::tools::Tool::InteractiveFill
+            | crate::tools::Tool::Envelope
     ) {
         return;
     }
+    // The Envelope tool edits only a mesh envelope's grid.
+    let envelope_tool = app.tool == crate::tools::Tool::Envelope;
     for s in app.selected_rc().iter() {
-        let nodes = crate::interaction2::effect_nodes(s);
+        let mut nodes = crate::interaction2::effect_nodes(s);
+        if envelope_tool {
+            nodes.retain(|(i, _)| crate::interaction2::is_mesh_envelope_node(*i));
+        }
         if nodes.is_empty() {
             continue;
         }
@@ -4388,15 +4406,50 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
             .filter(|(i, _)| (100..200).contains(i))
             .map(|(_, p)| app.view.to_screen(*p))
             .collect();
-        if persp.len() == 4 {
+        if persp.len() == 4 && !envelope_tool {
             let mut pts = persp.clone();
             pts.push(persp[0]);
             painter.add(egui::Shape::line(pts, egui::Stroke::new(1.0, blue)));
         }
+        // The mesh envelope's grid lines, bent as the mesh bends them.
+        let mesh_env = s.effects.iter().enumerate().rev().find_map(|(at, e)| match e {
+            tracedraw_core::live::Effect::MeshEnvelope { cols, rows, points } => {
+                Some((at, *cols, *rows, points))
+            }
+            _ => None,
+        });
+        if let Some((at, cols, rows, points)) = mesh_env {
+            use tracedraw_core::geometry::Point;
+            let b = tracedraw_core::live::warp_box(s, at);
+            let grid = |c: f64, r: f64| {
+                Point::new(
+                    b.x0 + b.width() * c / cols.max(1) as f64,
+                    b.y0 + b.height() * r / rows.max(1) as f64,
+                )
+            };
+            let line = |a: Point, z: Point| {
+                let pts: Vec<egui::Pos2> = (0..=8)
+                    .map(|i| a.lerp(z, i as f64 / 8.0))
+                    .map(|q| tracedraw_core::envelope::mesh_point(points, cols, rows, b, q))
+                    .map(|q| app.view.to_screen(s.transform * q))
+                    .collect();
+                painter.add(egui::Shape::line(pts, egui::Stroke::new(1.0, blue)));
+            };
+            for r in 0..=rows {
+                for c in 0..cols {
+                    line(grid(c as f64, r as f64), grid(c as f64 + 1.0, r as f64));
+                }
+            }
+            for c in 0..=cols {
+                for r in 0..rows {
+                    line(grid(c as f64, r as f64), grid(c as f64, r as f64 + 1.0));
+                }
+            }
+        }
         // Mesh grid lines: the curves between the nodes, as a few
         // straight pieces each when they bend (plain segments stay cheap
         // in an overlay redrawn every frame).
-        if let tracedraw_core::Fill::Mesh(m) = &s.fill {
+        if let (tracedraw_core::Fill::Mesh(m), false) = (&s.fill, envelope_tool) {
             use tracedraw_core::geometry::ParamCurve;
             let curved = m.is_curved();
             let line = |r: u32, c: u32, across: bool| {

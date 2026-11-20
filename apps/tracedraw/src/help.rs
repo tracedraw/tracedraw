@@ -281,6 +281,7 @@ pub fn tool_topic(t: Tool) -> &'static str {
         Tool::Bezier => "lines-shapes/lines#bezier",
         Tool::Pen => "lines-shapes/lines#pen",
         Tool::BSpline => "lines-shapes/lines#b-spline",
+        Tool::CurvaturePen => "lines-shapes/lines#curvature-pen",
         Tool::Polyline => "lines-shapes/lines#polyline",
         Tool::ThreePointCurve => "lines-shapes/lines#three-point-curve",
         Tool::BrushStrokes => "lines-shapes/artistic-media#brush-strokes",

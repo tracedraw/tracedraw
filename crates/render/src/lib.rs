@@ -603,6 +603,17 @@ fn gaussian_blur(shape: &Shape) -> Option<f64> {
     })
 }
 
+/// The width (mm) over which `shape` fades out towards its edge, when it
+/// has a Feather effect.
+fn feather(shape: &Shape) -> Option<f64> {
+    shape.effects.iter().find_map(|e| match e {
+        tracedraw_core::live::Effect::Feather { radius } if radius.is_finite() && *radius > 0.0 => {
+            Some(radius.min(1000.0))
+        }
+        _ => None,
+    })
+}
+
 /// What `s` reaches past its own pixels: sets `lens` when it or an
 /// object in it has a lens, and grows `blur` to its widest drop shadow
 /// blur (mm).
@@ -1275,6 +1286,8 @@ impl Renderer<'_> {
                 // Gaussian blur (#1141): the object drawn on its own
                 // and blurred.
                 self.draw_blurred(&main, parent, radius);
+            } else if let Some(radius) = feather(shape) {
+                self.draw_feathered(&main, parent, radius);
             } else {
                 self.draw_shape(&main, parent);
             }
@@ -2451,6 +2464,68 @@ impl Renderer<'_> {
         );
     }
 
+    /// Feather: the object drawn on its own and faded out towards its
+    /// edge over `radius` mm: its pixels kept as much as a mask of its
+    /// outline, shrunk by half the radius and blurred, covers them. An
+    /// object with no fill, or too thin for the shrunk outline, is drawn
+    /// as it is.
+    fn draw_feathered(&mut self, shape: &Shape, parent: Affine, radius: f64) {
+        use tracedraw_core::shaping::{offset_smooth, Join};
+        if matches!(shape.fill, tracedraw_core::Fill::None) {
+            self.draw_shape(shape, parent);
+            return;
+        }
+        let (x, y, w, h) = self.layer_area(shape, parent);
+        if w == 0 || h == 0 {
+            return;
+        }
+        let inset = offset_smooth(
+            &(parent * shape.page_path()),
+            -radius / 2.0,
+            0.0,
+            Join::Round,
+            shape.fill_rule,
+        );
+        let to_layer = Affine::translate((-f64::from(x), -f64::from(y))) * self.screen;
+        let sk = if inset.elements().is_empty() {
+            None
+        } else {
+            to_sk_path(&(to_layer * inset))
+        };
+        note_scratch(w, h);
+        let (Some(sk), Some(mut layer), Some(mut mask)) = (sk, Pixmap::new(w, h), Pixmap::new(w, h))
+        else {
+            self.draw_shape(shape, parent);
+            return;
+        };
+        {
+            let mut sub = self.sub(&mut layer);
+            sub.screen = to_layer;
+            sub.origin = (self.origin.0 + x as i32, self.origin.1 + y as i32);
+            sub.draw_shape(shape, parent);
+        }
+        let mut paint = tiny_skia::Paint::default();
+        paint.set_color_rgba8(0, 0, 0, 255);
+        paint.anti_alias = self.flags.anti_alias;
+        mask.fill_path(&sk, &paint, FillRule::Winding, Transform::identity(), None);
+        let px = (radius * self.zoom / 6.0).round().clamp(0.0, 64.0) as i32;
+        if px > 0 {
+            accel::box_blur(&mut mask, px, 3);
+        }
+        for (d, m) in layer.data_mut().chunks_exact_mut(4).zip(mask.data().chunks_exact(4)) {
+            let a = u16::from(m[3]);
+            for c in d.iter_mut() {
+                *c = ((u16::from(*c) * a + 127) / 255) as u8;
+            }
+        }
+        composite_layer(
+            self.pixmap,
+            &layer,
+            (x as i32, y as i32),
+            tracedraw_core::live::MergeMode::Normal,
+        );
+    }
+
     /// Blend If: the object drawn on a layer of its own, each pixel kept
     /// as much as its lightness falls in `this` and the lightness of the
     /// target beneath it (over white paper where nothing is drawn yet)
@@ -3026,6 +3101,44 @@ impl Renderer<'_> {
         composite_layer(self.pixmap, &layer, (ox as i32, oy as i32), merge);
     }
 
+    /// Dither the pixels the screen-space path `sk` covers: each colour
+    /// channel moved up or down by up to two levels, by an even pattern
+    /// fixed to the page (the same wherever the view is drawn in bands).
+    fn dither_area(&mut self, sk: &SkPath, rule: FillRule) {
+        let (w, h) = (self.pixmap.width(), self.pixmap.height());
+        let Some(mut mask) = tiny_skia::Mask::new(w, h) else {
+            return;
+        };
+        mask.fill_path(sk, rule, self.flags.anti_alias, Transform::identity());
+        let (ox, oy) = self.origin;
+        let m = mask.data();
+        let data = self.pixmap.data_mut();
+        for y in 0..h as usize {
+            for x in 0..w as usize {
+                let i = y * w as usize + x;
+                let cover = m[i];
+                if cover == 0 {
+                    continue;
+                }
+                let d = &mut data[i * 4..i * 4 + 4];
+                let a = i32::from(d[3]);
+                if a == 0 {
+                    continue;
+                }
+                // A hash of the page pixel: an even noise from -2 to 2.
+                let (px, py) = ((x as i32 + ox) as u32, (y as i32 + oy) as u32);
+                let mut z = px.wrapping_mul(0x8DA6_B343) ^ py.wrapping_mul(0xD816_3841);
+                z ^= z >> 13;
+                z = z.wrapping_mul(0x9E37_79B1);
+                z ^= z >> 16;
+                let n = ((z & 0xFF) as i32 - 128) * 2 * i32::from(cover) / (128 * 255);
+                for c in d.iter_mut().take(3) {
+                    *c = (i32::from(*c) + n).clamp(0, a) as u8;
+                }
+            }
+        }
+    }
+
     /// Fill a screen-space path with any fill type.
     fn draw_fill(&mut self, fill: &Fill, page_path: &BezPath, sk: &SkPath, rule: FillRule) {
         self.draw_fill_blended(fill, page_path, sk, rule, tiny_skia::BlendMode::SourceOver);
@@ -3057,6 +3170,17 @@ impl Renderer<'_> {
         blend: tiny_skia::BlendMode,
         object: Affine,
     ) {
+        // A dithered fountain: drawn as it is, then a faint even noise
+        // over what it covers, so close colours show no steps.
+        if let Fill::Fountain(f) = fill {
+            if f.dither {
+                let mut plain = f.clone();
+                plain.dither = false;
+                self.draw_fill_of(&Fill::Fountain(plain), page_path, sk, rule, blend, object);
+                self.dither_area(sk, rule);
+                return;
+            }
+        }
         if blend != tiny_skia::BlendMode::SourceOver && !matches!(fill, Fill::Solid(_)) {
             let (w, h) = (self.pixmap.width(), self.pixmap.height());
             let Some(mut layer) = Pixmap::new(w, h) else {
@@ -3152,6 +3276,15 @@ impl Renderer<'_> {
                 match f.kind {
                     tracedraw_core::FountainKind::Shaped => {
                         self.fill_shaped(f, sk, sk, rule);
+                    }
+                    tracedraw_core::FountainKind::Points => {
+                        let f2 = f.clone();
+                        let places = f.point_places();
+                        let key = format!("{f:?}");
+                        self.fill_procedural(page_path, sk, rule, &key, move |u, v| {
+                            let p = Point::new(b.x0 + u * b.width(), b.y0 + v * b.height());
+                            f2.points_sample(&places, b, p)
+                        });
                     }
                     tracedraw_core::FountainKind::Linear => {
                         let a = f.angle.to_radians();
@@ -8254,6 +8387,21 @@ mod tests {
         assert_eq!(px(&pm, 15, 50), (255, 255, 255), "outside is untouched");
     }
 
+    /// Soft edge: a black square fades out towards its edge over the
+    /// radius, black in the middle, untouched outside.
+    #[test]
+    fn soft_edge_fades_the_object_towards_its_edge() {
+        let mut f = rect(1, Rect::new(20.0, 20.0, 80.0, 80.0), Color::BLACK);
+        f.effects
+            .push(tracedraw_core::live::Effect::Feather { radius: 10.0 });
+        let (doc, page) = doc_with(vec![f]);
+        let pm = render_page_image(&doc, page, 25.4).unwrap();
+        assert!(px(&pm, 50, 50).0 < 10, "{:?}", px(&pm, 50, 50));
+        let (edge, inside) = (px(&pm, 21, 50).0, px(&pm, 26, 50).0);
+        assert!(edge > 150 && inside < edge, "fades from {inside} to {edge}");
+        assert_eq!(px(&pm, 15, 50), (255, 255, 255), "outside is untouched");
+    }
+
     /// The layer effects drawn by the renderer (#1141): an outer shadow
     /// and an outer glow beneath, outside the object; an inner glow along
     /// the inside edge; a Gaussian blur softening the edge; fill opacity
@@ -8953,6 +9101,32 @@ mod tests {
                 assert!(a(50) > a(1), "{} {}", a(50), a(1));
             }
         }
+    }
+
+    /// A dithered gradient differs from the plain one by at most two
+    /// levels a channel, in some pixels, the same every time.
+    #[test]
+    fn a_dithered_gradient_adds_faint_noise() {
+        let b = Rect::new(0.0, 0.0, 100.0, 10.0);
+        let mut f = Fountain::two(
+            FountainKind::Linear,
+            Color::rgb8(100, 100, 100),
+            Color::rgb8(110, 110, 110),
+            0.0,
+        );
+        let plain = render_fill_image(&Fill::Fountain(f.clone()), b, 25.4).unwrap();
+        f.dither = true;
+        let dithered = render_fill_image(&Fill::Fountain(f.clone()), b, 25.4).unwrap();
+        let again = render_fill_image(&Fill::Fountain(f), b, 25.4).unwrap();
+        assert_eq!(dithered.data(), again.data());
+        let diffs: Vec<i32> = plain
+            .data()
+            .iter()
+            .zip(dithered.data())
+            .map(|(a, b)| (i32::from(*a) - i32::from(*b)).abs())
+            .collect();
+        assert!(diffs.iter().all(|d| *d <= 2), "{:?}", diffs.iter().max());
+        assert!(diffs.iter().filter(|d| **d > 0).count() > 100);
     }
 
     #[test]

@@ -3771,6 +3771,7 @@ impl App {
             own.column_gutters = para.column_gutters.clone();
             own.columns_right_to_left = para.columns_right_to_left;
             own.fit_to_frame = para.fit_to_frame;
+            own.type_block = para.type_block;
             own.baseline_grid_mm = para.baseline_grid_mm;
             own.vertical_align = para.vertical_align;
             own.vertical = para.vertical;

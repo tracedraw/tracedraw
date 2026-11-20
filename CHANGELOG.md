@@ -6,6 +6,19 @@ full, row-by-row status.
 
 ## Unreleased
 
+- Envelope: mesh envelope (Envelope panel, Columns and Rows, Add Mesh; drag the grid points with the Envelope tool) and Object > Copy Effect > Envelope from Top Object.
+- Object > Combine Shapes: Break into Pieces, Merge Same Colors, Cut to Top Object, Piece Outlines, Exclude Overlaps, and Combine Live (a group drawn as one combined curve, objects kept). The live outline offset is now named Grow Outline.
+- Combine Shapes: Cut Objects Below, Cut into Grid and Remove Strays.
+- Layer effects: rough edge, jitter nodes, sketch fill, shape frame, trim marks and soft edge.
+- Gradient fill: Dither against banding.
+- Gradient fill: a colour points type, each colour at a free point in the object blended by distance; points dragged, added with a double click, coloured from the palette and deleted on the canvas.
+- Blend: groups blended object by object in their own colours, and a round handle on the Blend tool's line that bends it into a curve the steps follow.
+- Text: Curve Text on the text bar (circle, arch, bowl, wave, no path to draw); a circle text dropped on a round object fits inside its edge.
+- Trace: Clean up a pencil sketch (hatching made solid, construction lines and specks removed, edges smoothed, traced black on white).
+- Paragraph text: Type block (words shared out between lines, each line its own size filling the frame width, set anew on resize).
+- Curve tools: Curvature Pen, in the curve group: a smooth curve through the points clicked, Alt+click for a corner.
+- Layer effects: Sketch fill gets Round turns, Past the edge, Spacing variation and Width variation.
+- Envelope: the mesh envelope bends pictures too, alone or inside groups and clip frames.
 - Texture fill: two fixed holographic foil looks, Holographic (a smooth rainbow film over dark foil and silver) and Holo glitter (the same film broken into fine sparkling grains); they do not change with the viewing angle, export to SVG as an embedded picture and to PDF like the other textures.
 - Missing fonts can take their automatic stand-ins without asking: "Always use the automatic fonts" in the Missing Fonts dialog, or Options > Global > Warnings, applies them for the session or replaces them in the drawing when a file opens (#3725).
 - Trace Bitmap: a flat-colour logo, also one saved as a compressed picture, no longer shows white specks and broken light lines where its colours meet. A few blots of the ground left inside the art put the ground over the outline it surrounds, and the page showed along the edge they share; the ground now goes under the art as one shape and such blots are covered (#3727).

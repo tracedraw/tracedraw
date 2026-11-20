@@ -1737,7 +1737,8 @@ fn pref() -> Vec<u8> {
 fn fountain_type(kind: FountainKind) -> u8 {
     match kind {
         FountainKind::Linear => 1,
-        FountainKind::Radial => 2,
+        // Colour points are written as a radial gradient (`to_plain`).
+        FountainKind::Radial | FountainKind::Points => 2,
         FountainKind::Conical => 3,
         // A shaped gradient is written as a square one (`Fountain::to_plain`).
         FountainKind::Square | FountainKind::Shaped => 4,

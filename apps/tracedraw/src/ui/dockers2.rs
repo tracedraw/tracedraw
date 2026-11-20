@@ -1835,6 +1835,9 @@ fn blend(app: &mut App, ui: &mut Ui) {
             ),
         };
     let mut changed = false;
+    // A bent line is followed as a path is: spacing and turning with it
+    // apply.
+    let follows = has_path || opt.bend.is_some();
     let mut spacing_mm = opt.spacing.unwrap_or(app.blend_spacing_mm);
     // Steps or spacing: spacing needs a path.
     ui.horizontal(|ui| {
@@ -1865,7 +1868,7 @@ fn blend(app: &mut App, ui: &mut Ui) {
             ui,
             &tr("docker.blend_by_spacing"),
             by_spacing,
-            has_path,
+            follows,
             |p, r, c| {
                 let s = egui::Stroke::new(1.3, c);
                 let y = r.center().y;
@@ -1949,12 +1952,28 @@ fn blend(app: &mut App, ui: &mut Ui) {
         .changed();
     changed |= ui
         .add_enabled(
-            has_path,
+            follows,
             egui::Checkbox::new(&mut rotate_on_path, tr("docker.rotate_all_objects")),
         )
         .rich_tip(crate::ui::tips::keyed("docker.rotate_all_objects"))
         .rich_disabled_tip(crate::ui::tips::keyed("docker.rotate_all_objects"))
         .changed();
+    // Two groups: object by object, each in its own colours.
+    changed |= ui
+        .checkbox(&mut opt.by_parts, tr("docker.blend_by_parts"))
+        .rich_tip(crate::ui::tips::keyed("docker.blend_by_parts"))
+        .changed();
+    // A bent line (the round handle in its middle, Blend tool) made
+    // straight again.
+    if opt.bend.is_some()
+        && ui
+            .button(tr("docker.blend_straighten"))
+            .rich_tip(crate::ui::tips::keyed("docker.blend_straighten"))
+            .clicked()
+    {
+        opt.bend = None;
+        changed = true;
+    }
     if has_path {
         blend_path_ends(app, ui, &opt);
     }

@@ -3838,6 +3838,15 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         if item(ui, "menu.object.copy_envelope_from", "", has) {
             app.start_copy_envelope();
         }
+        // The top object's outline as the others' envelope.
+        if item(
+            ui,
+            "menu.object.envelope_from_top",
+            "",
+            app.selection.len() >= 2,
+        ) {
+            app.envelope_from_top_object();
+        }
         for kind in CopyKind::LIVE {
             if item(ui, kind.key(), "", has) {
                 app.pending_copy_effect = Some(kind);
@@ -4041,6 +4050,31 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
             if item(ui, key, "", on) {
                 app.shaping(op);
             }
+        }
+        sep(ui);
+        // Pieces of overlapping objects, and the live combine.
+        for op in crate::pieces::Pieces::ALL {
+            if item(ui, op.key(), "", app.pieces_ready(op)) {
+                app.pieces(op);
+            }
+        }
+        let can_live = app.selection.len() >= 2
+            || app
+                .selected_shapes()
+                .first()
+                .is_some_and(|s| app.selection.len() == 1 && matches!(s.kind, ShapeKind::Group { .. }));
+        if item(ui, "menu.object.combine_live", "", can_live) {
+            app.combine_live();
+        }
+        sep(ui);
+        if item(ui, "menu.object.cut_below", "", app.cut_below_ready()) {
+            app.cut_objects_below();
+        }
+        if item(ui, "menu.object.cut_grid", "", app.grid_cut_ready()) {
+            app.grid_cut.open = true;
+        }
+        if item(ui, "menu.object.remove_strays", "", true) {
+            app.remove_strays();
         }
         sep(ui);
         if item(ui, "menu.object.shaping_docker", "", true) {

@@ -926,6 +926,7 @@ fn root_frame(app: &mut App, ui: &mut Ui) {
         clip_bar::show(app, &ctx);
         focus_bar::show(app, &ctx);
         effect_picker::show(app, &ctx);
+        crate::cut_tools::grid_cut_window(app, &ctx);
         crate::perspective_draw::show_bar(app, &ctx);
     }
     update_card::show(app, &ctx);

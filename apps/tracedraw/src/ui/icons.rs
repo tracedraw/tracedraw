@@ -306,6 +306,13 @@ pub fn draw_on(painter: &Painter, r: Rect, tool: Tool, color: Color32, bg: Color
             }
             pen.node(11.0, 12.0, true);
         }
+        Tool::CurvaturePen => {
+            // A smooth curve running through the points clicked.
+            pen.line("M3 18C5 10 8 6 11 10S17 19 21 6", ink);
+            pen.node(3.0, 18.0, false);
+            pen.node(11.0, 10.0, false);
+            pen.node(21.0, 6.0, true);
+        }
         Tool::Polyline => {
             pen.line("M3 19L7 6 13 15 20 4", ink);
             pen.node(3.0, 19.0, false);

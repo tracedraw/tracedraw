@@ -748,6 +748,11 @@ pub struct CurveInProgress {
     pub dragging_handle: bool,
     /// B-Spline tool: the nodes are control points the curve runs near.
     pub bspline: bool,
+    /// Curvature Pen (with `bspline`, whose clicks it shares): the curve
+    /// runs through the points placed, smooth at each, with a corner at
+    /// the fixed ones (placed with Alt, C or V held); it is made a plain
+    /// curve, its points its nodes.
+    pub curvature: bool,
     /// B-Spline tool: the control points placed with C or V held, which
     /// the curve passes through with a corner (fixed points, #2060); one
     /// flag a node, missing ones floating.
@@ -869,6 +874,9 @@ impl CurveInProgress {
     pub fn path_closed(&self, preview: Option<Point>, closed: bool) -> tracedraw_core::BezPath {
         if closed && self.bspline {
             let pts: Vec<Point> = self.nodes.iter().map(|n| n.0).collect();
+            if self.curvature {
+                return tracedraw_core::geometry::curvature_path(&pts, &self.spline_fixed, true);
+            }
             return tracedraw_core::geometry::bspline_path_fixed(&pts, &self.spline_fixed, true);
         }
         let mut path = self.open_path(preview);
@@ -925,6 +933,9 @@ impl CurveInProgress {
         }
         if self.bspline {
             let pts = self.bspline_controls(preview);
+            if self.curvature {
+                return tracedraw_core::geometry::curvature_path(&pts, &self.spline_fixed, false);
+            }
             return tracedraw_core::geometry::bspline_path_fixed(&pts, &self.spline_fixed, false);
         }
         for (i, (p, _)) in nodes.iter().enumerate() {
@@ -2090,6 +2101,10 @@ pub struct App {
     pub envelope_mode: tracedraw_core::envelope::Mode,
     /// The mapping new envelopes take.
     pub envelope_mapping: tracedraw_core::envelope::Mapping,
+    /// The columns and rows a new mesh envelope takes.
+    pub envelope_mesh: (u8, u8),
+    /// Cut into Grid's window and settings.
+    pub grid_cut: crate::cut_tools::GridCut,
     /// An envelope node or handle being dragged.
     pub envelope_drag: Option<crate::envelope_edit::EnvelopeDrag>,
     /// The boxes of selected objects with no envelope yet, for the frame
@@ -3598,6 +3613,8 @@ impl App {
             lens: Default::default(),
             envelope_mode: Default::default(),
             envelope_mapping: Default::default(),
+            envelope_mesh: (3, 3),
+            grid_cut: crate::cut_tools::GridCut::default(),
             envelope_drag: None,
             envelope_box_cache: std::cell::RefCell::new((u64::MAX, u64::MAX, Default::default())),
             bevel: Default::default(),
@@ -6887,7 +6904,7 @@ impl App {
             let redo_to = c.nodes.last().copied().filter(|_| !closes);
             self.note_pen_curve_step(id, c.nodes.first().copied(), redo_to);
         }
-        if c.bspline {
+        if c.bspline && !c.curvature {
             // A B-spline of its own keeps its control points (one that
             // went on from another curve is a curve like that one).
             if let Some(id) = id {
@@ -7980,7 +7997,7 @@ impl App {
             if matches!(
                 self.tool,
                 Tool::MeshFill | Tool::Shape | Tool::InteractiveFill
-            ) && self.color_mesh_node(*c)
+            ) && (self.color_mesh_node(*c) || self.color_color_point(*c))
             {
                 return;
             }
@@ -11633,6 +11650,7 @@ pub fn fill_description(fill: &Fill) -> String {
             tracedraw_core::FountainKind::Conical => tr("fill.conical_fountain"),
             tracedraw_core::FountainKind::Square => tr("fill.square_fountain"),
             tracedraw_core::FountainKind::Shaped => tr("fill.shaped_fountain"),
+            tracedraw_core::FountainKind::Points => tr("fill.points_fountain"),
         },
         Fill::Pattern(tracedraw_core::Pattern::TwoColor { tile, .. }) => {
             trf(

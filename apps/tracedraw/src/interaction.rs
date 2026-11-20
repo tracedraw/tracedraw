@@ -2177,9 +2177,12 @@ impl App {
                 self.three_point_input(response, p, mods)
             }
             Tool::Freehand => self.freehand_input(response, p, mods),
-            Tool::Bezier | Tool::Pen | Tool::Polyline | Tool::TwoPointLine | Tool::BSpline => {
-                self.curve_input(response, p, mods)
-            }
+            Tool::Bezier
+            | Tool::Pen
+            | Tool::Polyline
+            | Tool::TwoPointLine
+            | Tool::BSpline
+            | Tool::CurvaturePen => self.curve_input(response, p, mods),
             Tool::Text => self.text_input(response, p, mods),
             Tool::ColorEyedropper | Tool::AttributesEyedropper => {
                 // A press let go counts as a click also when the pointer
@@ -3541,7 +3544,10 @@ impl App {
         };
         // B-Spline: each click (or the start of a drag) places a control
         // point; there are no handles to pull.
-        let bspline = self.tool == Tool::BSpline;
+        // The Curvature Pen places its points as the B-Spline tool does;
+        // its curve runs through them.
+        let bspline = matches!(self.tool, Tool::BSpline | Tool::CurvaturePen);
+        let curvature = self.tool == Tool::CurvaturePen;
         let smooth = matches!(self.tool, Tool::Bezier | Tool::Pen);
         if response.double_clicked_by(PointerButton::Primary) {
             self.finish_curve();
@@ -3646,10 +3652,12 @@ impl App {
                 smooth,
                 dragging_handle: false,
                 bspline,
+                curvature,
                 ..Default::default()
             });
             c.smooth = smooth;
             c.bspline = bspline;
+            c.curvature = curvature;
             let drag = response.drag_started_by(PointerButton::Primary);
             // A click places a node without a handle: the segment to it
             // is the one the preview showed, shaped by the handle of the
@@ -3808,6 +3816,8 @@ impl App {
             i.key_down(egui::Key::C)
                 || i.key_down(egui::Key::V)
                 || (c.spline_fix_key && i.modifiers.command)
+                // Curvature Pen: Alt held makes the point a corner.
+                || (c.curvature && i.modifiers.alt)
         })
     }
 
@@ -3832,7 +3842,7 @@ impl App {
                 closed: true,
             },
         ) {
-            if c.bspline {
+            if c.bspline && !c.curvature {
                 let points = c.nodes.iter().map(|n| n.0).collect();
                 self.keep_spline(id, &path, points, c.spline_fixed_flags());
             }
@@ -3970,7 +3980,9 @@ impl App {
         // A mesh fill's nodes are picked and dragged here too, as with the
         // Mesh Fill and Shape tools; a palette colour then goes to the
         // chosen nodes, the fill staying a mesh (#2506).
-        if self.selected_mesh().is_some() && self.effect_node_input(response, p) {
+        if (self.selected_mesh().is_some() || self.has_color_points())
+            && self.effect_node_input(response, p)
+        {
             return;
         }
         // A double click on a colour node removes it; on the line, it adds
@@ -4266,6 +4278,8 @@ impl App {
                     if to_page.is_none() && self.drop_frame.is_none() {
                         self.perspective_after_move(total);
                         self.displace_after_move();
+                        // A circle text let go on a round object fits it.
+                        self.fit_curved_text_to_round();
                     }
                 }
                 if let Some((idx, r)) = to_page {
@@ -5560,6 +5574,11 @@ impl App {
                 && self.selected_mesh_node().is_some()
             {
                 self.delete_mesh_lines();
+            } else if matches!(self.tool, Tool::InteractiveFill | Tool::Shape)
+                && self.selected_color_point().is_some()
+            {
+                // The chosen colour point goes, while two stay.
+                self.delete_color_point();
             } else if matches!(self.tool, Tool::Envelope | Tool::Shape)
                 && self.selected_envelope_node().is_some()
             {

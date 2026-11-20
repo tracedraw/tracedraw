@@ -2033,6 +2033,13 @@ pub struct ParagraphStyle {
     pub hyphenate: bool,
     /// Fit text to frame: scale the font so the text fills the frame height.
     pub fit_to_frame: bool,
+    /// Type block (paragraph text): the words are shared out between the
+    /// lines and each line takes a size of its own so that it fills the
+    /// frame's width exactly, the lines together filling its height as
+    /// nearly as they can; laid out anew whenever the frame changes. Each
+    /// word keeps its own font.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub type_block: bool,
     /// Align baselines to a grid of this pitch in mm (Text > Align to
     /// Baseline Grid); 0 = off. Only paragraph text snaps. The grid is the
     /// page's (from its top and the grid's start offset) for a frame that
@@ -2342,6 +2349,7 @@ impl Default for ParagraphStyle {
             tabs: Vec::new(),
             hyphenate: false,
             fit_to_frame: false,
+            type_block: false,
             baseline_grid_mm: 0.0,
             vertical_align: VerticalAlign::Top,
             vertical: false,
@@ -2765,6 +2773,34 @@ pub struct TextOnPath {
     pub orientation: PathTextOrientation,
     #[serde(default)]
     pub vertical: PathTextVertical,
+    /// The text was curved by Curve Text (no path object): which curve
+    /// it took, so the bar shows it and a circle fits round a round
+    /// object it is dropped on. `None`: a path of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preset: Option<CurvePreset>,
+}
+
+/// The curves of Curve Text (see [`TextOnPath::preset`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CurvePreset {
+    /// Round a whole circle, reading clockwise over the top.
+    Circle,
+    /// Over the top of an arch.
+    ArcUp,
+    /// Along the bottom of a bowl.
+    ArcDown,
+    /// Along a wave.
+    Wave,
+}
+
+impl CurvePreset {
+    pub const ALL: [CurvePreset; 4] = [
+        CurvePreset::Circle,
+        CurvePreset::ArcUp,
+        CurvePreset::ArcDown,
+        CurvePreset::Wave,
+    ];
 }
 
 impl TextOnPath {

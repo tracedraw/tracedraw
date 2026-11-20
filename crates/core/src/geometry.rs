@@ -522,6 +522,104 @@ pub fn bspline_path_fixed(points: &[Point], fixed: &[bool], closed: bool) -> Bez
     bspline_path(&all, closed)
 }
 
+/// A smooth curve through every point of `points` (the Curvature Pen):
+/// cubic segments whose handles at a point lie along the chord from the
+/// point before to the point after, each as long as a third of its own
+/// segment times that direction's length per millimetre of the two
+/// chords (a chord-length cardinal spline), so the curve passes each
+/// point without a kink and bends least where the points are even. At a
+/// point flagged in `fixed` (and at the ends of an open curve) the curve
+/// has a corner: the run of points up to it ends there, its last handle
+/// pointing so the end bends as a parabola would. Two points of a run
+/// make a straight segment. Closed: the curve runs on from the last
+/// point to the first (smooth there unless that point is fixed).
+pub fn curvature_path(points: &[Point], fixed: &[bool], closed: bool) -> BezPath {
+    let mut path = BezPath::new();
+    // Points on top of the one before are left out: they give no way on.
+    let mut pts: Vec<Point> = Vec::with_capacity(points.len());
+    let mut fix: Vec<bool> = Vec::with_capacity(points.len());
+    for (i, p) in points.iter().enumerate() {
+        let f = fixed.get(i).copied().unwrap_or(false);
+        match pts.last() {
+            Some(q) if (*q - *p).hypot() < 1e-9 => {
+                if let Some(l) = fix.last_mut() {
+                    *l |= f;
+                }
+            }
+            _ => {
+                pts.push(*p);
+                fix.push(f);
+            }
+        }
+    }
+    if closed && pts.len() > 2 && (pts[0] - pts[pts.len() - 1]).hypot() < 1e-9 {
+        pts.pop();
+        let f = fix.pop().unwrap_or(false);
+        fix[0] |= f;
+    }
+    let n = pts.len();
+    if n == 0 {
+        return path;
+    }
+    path.move_to(pts[0]);
+    if n == 1 {
+        return path;
+    }
+    let closed = closed && n > 2;
+    let segs = if closed { n } else { n - 1 };
+    let at = |i: usize| pts[i % n];
+    // A corner where fixed, and at the two ends of an open curve.
+    let corner = |i: usize| fix[i % n] || (!closed && (i == 0 || i == n - 1));
+    // The direction (per unit of chord) at a smooth point.
+    let smooth_dir = |i: usize| -> Vec2 {
+        let prev = at((i + n - 1) % n);
+        let next = at(i + 1);
+        let cur = at(i);
+        let (d0, d1) = ((cur - prev).hypot(), (next - cur).hypot());
+        (next - prev) / (d0 + d1).max(1e-12)
+    };
+    // The handle leaving point `i` along segment `i` and the one arriving
+    // at its end.
+    let handles = |i: usize| -> (Point, Point) {
+        let (a, b) = (at(i), at(i + 1));
+        let d = (b - a).hypot();
+        let (ca, cb) = (corner(i), corner(i + 1));
+        let chord = (b - a) / d.max(1e-12);
+        let out_dir = if !ca { Some(smooth_dir(i)) } else { None };
+        let in_dir = if !cb { Some(smooth_dir(i + 1)) } else { None };
+        // At a corner the handle points so the segment bends as a
+        // parabola through the smooth side: mirrored about the chord.
+        let reflect = |m: Vec2| chord * (2.0 * m.dot(chord)) - m;
+        let out = match (out_dir, in_dir) {
+            (Some(m), _) => m,
+            (None, Some(m)) => reflect(m),
+            (None, None) => chord,
+        };
+        let inn = match (in_dir, out_dir) {
+            (Some(m), _) => m,
+            (None, Some(m)) => reflect(m),
+            (None, None) => chord,
+        };
+        if ca && cb {
+            return (a, b);
+        }
+        (a + out * (d / 3.0), b - inn * (d / 3.0))
+    };
+    for i in 0..segs {
+        let (c1, c2) = handles(i);
+        let b = at(i + 1);
+        if c1 == at(i) && c2 == b {
+            path.line_to(b);
+        } else {
+            path.curve_to(c1, c2, b);
+        }
+    }
+    if closed {
+        path.close_path();
+    }
+    path
+}
+
 /// A cubic B-spline over the control points `points` as Bezier
 /// segments. Open: the uniform spline with each end point taken three
 /// times, so it starts at the first point and ends at the last, its ends
@@ -758,6 +856,57 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The Curvature Pen's curve passes through every point, smooth at
+    /// each (the handles on either side in line), with a corner at a
+    /// fixed point; two points make a line; closed, it runs on round.
+    #[test]
+    fn a_curvature_curve_runs_through_its_points() {
+        let pts = [
+            Point::new(0.0, 0.0),
+            Point::new(10.0, 10.0),
+            Point::new(20.0, 0.0),
+            Point::new(30.0, 10.0),
+        ];
+        let p = curvature_path(&pts, &[], false);
+        let els = p.elements();
+        assert_eq!(els.len(), 4);
+        let ends: Vec<Point> = els.iter().filter_map(|e| e.end_point()).collect();
+        assert_eq!(ends, pts.to_vec());
+        // Smooth at the inner points: the arriving and leaving handles
+        // lie on one line through the point.
+        for k in 1..3 {
+            let (PathEl::CurveTo(_, c2, at), PathEl::CurveTo(c1, _, _)) = (els[k], els[k + 1])
+            else {
+                panic!("curves");
+            };
+            let cross = (at - c2).cross(c1 - at);
+            assert!(cross.abs() < 1e-9, "kink at {k}: {cross}");
+            assert!((c1 - at).dot(at - c2) > 0.0);
+        }
+        // A fixed point: a corner there.
+        let mut five = pts.to_vec();
+        five.push(Point::new(40.0, 0.0));
+        let q = curvature_path(&five, &[false, false, true], false);
+        let (PathEl::CurveTo(_, c2, at), PathEl::CurveTo(c1, _, _)) =
+            (q.elements()[2], q.elements()[3])
+        else {
+            panic!("curves");
+        };
+        let (a, b) = (at - c2, c1 - at);
+        assert!(
+            a.cross(b).abs() > 1.0 || a.dot(b) < 0.0,
+            "a corner at the fixed point"
+        );
+        // Two points: a line.
+        let two = curvature_path(&pts[..2], &[], false);
+        assert!(matches!(two.elements()[1], PathEl::LineTo(_)));
+        // Closed: one more segment back to the first point, then closed.
+        let c = curvature_path(&pts, &[], true);
+        assert_eq!(c.elements().len(), 6);
+        assert!(matches!(c.elements()[5], PathEl::ClosePath));
+        assert_eq!(c.elements()[4].end_point(), Some(pts[0]));
     }
 
     /// A fixed control point is on the curve, a floating one is not; an

@@ -1088,7 +1088,9 @@ fn paint_value(
                     );
                     let _ = writeln!(defs, "    <linearGradient id=\"{id}\" gradientUnits=\"userSpaceOnUse\" x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\">\n{stop_xml}    </linearGradient>");
                 }
-                tracedraw_core::FountainKind::Radial => {
+                tracedraw_core::FountainKind::Radial | tracedraw_core::FountainKind::Points => {
+                    // Colour points have no SVG gradient: a radial one
+                    // with the same colours.
                     let cx = bounds.center().x + f.offset.x * bounds.width() / 2.0;
                     let cy = bounds.center().y - f.offset.y * bounds.height() / 2.0;
                     let r = bounds.width().max(bounds.height()) / 2.0 * std::f64::consts::SQRT_2;
