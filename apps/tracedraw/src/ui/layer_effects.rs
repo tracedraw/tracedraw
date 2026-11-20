@@ -18,8 +18,10 @@ use crate::theme::Tokens;
 use crate::ui::field::NumField;
 use crate::ui::tips::RichTip;
 use egui::Ui;
-use tracedraw_core::geometry::{Affine, Vec2};
-use tracedraw_core::live::{Effect, MergeMode, SurfaceShade, BLEND_IF_ALL};
+use tracedraw_core::geometry::{Affine, Point, Rect, Shape as _, Vec2};
+use tracedraw_core::live::{
+    BlurPin, Effect, MergeMode, SurfaceShade, BLEND_IF_ALL, MAX_BLUR_PINS,
+};
 use tracedraw_core::{Color, Command, Shape};
 
 /// An entry of the list.
@@ -40,10 +42,11 @@ pub enum Kind {
     Grid,
     BlendIf,
     Displace,
+    Grain,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 15] = [
+    pub const ALL: [Kind; 16] = [
         Kind::Bevel,
         Kind::Outline,
         Kind::ThreeD,
@@ -59,6 +62,7 @@ impl Kind {
         Kind::Grid,
         Kind::BlendIf,
         Kind::Displace,
+        Kind::Grain,
     ];
 
     pub fn key(self) -> &'static str {
@@ -78,6 +82,7 @@ impl Kind {
             Kind::Grid => "effect.grid",
             Kind::BlendIf => "effect.blend_if",
             Kind::Displace => "effect.displace",
+            Kind::Grain => "effect.grain",
         }
     }
 
@@ -108,6 +113,7 @@ impl Kind {
                 | (Kind::Grid, Effect::Grid { .. })
                 | (Kind::BlendIf, Effect::BlendIf { .. })
                 | (Kind::Displace, Effect::Displace { .. })
+                | (Kind::Grain, Effect::Grain { .. })
         )
     }
 
@@ -183,7 +189,10 @@ impl Kind {
                 angle: 90.0,
                 opacity: 0.5,
             },
-            Kind::GaussianBlur => Effect::GaussianBlur { radius: 1.0 },
+            Kind::GaussianBlur => Effect::GaussianBlur {
+                radius: 1.0,
+                pins: Vec::new(),
+            },
             Kind::OffsetPath => Effect::OffsetPath {
                 distance: 1.0,
                 smooth: 0.0,
@@ -229,6 +238,12 @@ impl Kind {
                 vertical: 2.0,
                 shade: SurfaceShade::Multiply,
                 strength: 0.6,
+            },
+            Kind::Grain => Effect::Grain {
+                amount: 0.25,
+                size: 0.1,
+                mono: true,
+                seed: 0,
             },
         }
     }
@@ -589,6 +604,79 @@ fn offset(app: &App, ui: &mut Ui, v: &mut Vec2) -> bool {
     changed
 }
 
+/// Where pin number `n` of a variable blur goes when added, in the
+/// object's coordinates: the first in the middle of `bounds`, the next
+/// ones spread round it so they do not cover each other.
+pub fn new_pin_place(bounds: Rect, n: usize) -> Point {
+    let c = bounds.center();
+    if n == 0 {
+        return c;
+    }
+    let a = n as f64 * 2.399_963; // the golden angle, radians
+    let (rx, ry) = (bounds.width() * 0.3, bounds.height() * 0.3);
+    Point::new(c.x + rx * a.cos(), c.y + ry * a.sin())
+}
+
+/// The pins of a variable Gaussian blur: each with its radius and a ×,
+/// and a button adding one (it starts with `radius`). The pins are
+/// dragged on the page with the Shape tool. True when one changed.
+fn blur_pins(app: &App, ui: &mut Ui, radius: f64, pins: &mut Vec<BlurPin>) -> bool {
+    let mut changed = false;
+    let mut remove = None;
+    for (i, pin) in pins.iter_mut().enumerate() {
+        ui.horizontal(|ui| {
+            ui.label(format!("{} {}:", tr("layer_fx.pin"), i + 1));
+            let mut v = app.units.world_from_mm(pin.radius);
+            if ui
+                .add(
+                    NumField::new(&mut v)
+                        .range(0.0..=app.units.world_from_mm(50.0))
+                        .length_decimals(app.settings.precision.min(10) as usize)
+                        .unit_mm(app.units.world_to_mm(1.0))
+                        .suffix(format!(" {}", app.units.short()))
+                        .width(70.0),
+                )
+                .rich_tip(tr("layer_fx.radius"))
+                .changed()
+            {
+                pin.radius = app.units.world_to_mm(v).clamp(0.0, 50.0);
+                changed = true;
+            }
+            if ui
+                .small_button("\u{00D7}")
+                .rich_tip(tr("layer_fx.remove_pin"))
+                .clicked()
+            {
+                remove = Some(i);
+            }
+        });
+    }
+    if let Some(i) = remove {
+        pins.remove(i);
+        changed = true;
+    }
+    let room = pins.len() < MAX_BLUR_PINS;
+    if ui
+        .add_enabled(room, egui::Button::new(tr("layer_fx.add_pin")))
+        .rich_tip(tr("layer_fx.add_pin_desc"))
+        .clicked()
+    {
+        let bounds = app
+            .selected_shapes()
+            .into_iter()
+            .next()
+            .map(|s| s.local_path().bounding_box())
+            .filter(|b| b.width().is_finite() && b.height().is_finite())
+            .unwrap_or(Rect::new(0.0, 0.0, 10.0, 10.0));
+        pins.push(BlurPin {
+            at: new_pin_place(bounds, pins.len()),
+            radius: if pins.is_empty() { radius } else { 0.0 },
+        });
+        changed = true;
+    }
+    changed
+}
+
 /// The highlighted effect's own controls; true when one changed.
 fn settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
     let mut changed = false;
@@ -750,9 +838,35 @@ fn settings(app: &App, ui: &mut Ui, e: &mut Effect) -> bool {
                 changed |= percent(ui, "layer_fx.opacity", opacity);
             });
         }
-        Effect::GaussianBlur { radius } => {
+        Effect::GaussianBlur { radius, pins } => {
             ui.horizontal(|ui| {
                 changed |= length(app, ui, "layer_fx.radius", radius, 50.0);
+            });
+            changed |= blur_pins(app, ui, *radius, pins);
+        }
+        Effect::Grain {
+            amount,
+            size,
+            mono,
+            seed,
+        } => {
+            ui.horizontal(|ui| {
+                changed |= percent(ui, "layer_fx.grain_amount", amount);
+                changed |= length(app, ui, "layer_fx.grain_size", size, 10.0);
+            });
+            ui.horizontal(|ui| {
+                changed |= ui
+                    .checkbox(mono, tr("layer_fx.mono"))
+                    .rich_tip(tr("layer_fx.mono"))
+                    .changed();
+                if ui
+                    .button(tr("layer_fx.new_grain"))
+                    .rich_tip(tr("layer_fx.new_grain"))
+                    .clicked()
+                {
+                    *seed = seed.wrapping_add(1);
+                    changed = true;
+                }
             });
         }
         Effect::OffsetPath {
@@ -1416,5 +1530,76 @@ mod tests {
         app.select(Vec::new());
         let mut out = ctx.run_ui(Default::default(), |ui| layer_effects(&mut app, ui));
         out.textures_delta.clear();
+    }
+
+    /// Blur pins are effect nodes of the Shape tool: they sit on the
+    /// object where they are, follow it when it moves, and a drag takes
+    /// a pin along, one undo step; added pins do not cover each other.
+    #[test]
+    fn blur_pins_are_dragged_on_the_page() {
+        use crate::interaction2::{effect_nodes, BLUR_PIN_BASE};
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: Rect::new(0.0, 0.0, 40.0, 20.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("shape");
+        app.select(vec![id]);
+        let b = Rect::new(0.0, 0.0, 40.0, 20.0);
+        let first = new_pin_place(b, 0);
+        assert_eq!(first, Point::new(20.0, 10.0));
+        let places: Vec<Point> = (0..6).map(|n| new_pin_place(b, n)).collect();
+        for (i, p) in places.iter().enumerate() {
+            assert!(b.contains(*p), "{p:?}");
+            for q in &places[i + 1..] {
+                assert!((*p - *q).hypot() > 1.0, "{p:?} {q:?}");
+            }
+        }
+        let blur = Effect::GaussianBlur {
+            radius: 2.0,
+            pins: vec![
+                BlurPin {
+                    at: first,
+                    radius: 2.0,
+                },
+                BlurPin {
+                    at: Point::new(5.0, 5.0),
+                    radius: 0.0,
+                },
+            ],
+        };
+        app.set_layer_effect_on(Kind::GaussianBlur, true, &blur);
+        let shape = |app: &App| app.doc().find_shape(id).expect("shape").clone();
+        let nodes = effect_nodes(&shape(&app));
+        assert_eq!(
+            nodes,
+            vec![
+                (BLUR_PIN_BASE, first),
+                (BLUR_PIN_BASE + 1, Point::new(5.0, 5.0))
+            ]
+        );
+        // The pins move with the object.
+        let _ = app.engine.run(&Command::TransformShapes {
+            shapes: vec![id],
+            transform: Affine::translate((10.0, 0.0)),
+        });
+        let nodes = effect_nodes(&shape(&app));
+        assert_eq!(nodes[0].1, Point::new(30.0, 10.0));
+        // A drag of the second pin.
+        app.snap.off = true;
+        app.effect_node_grab = Vec2::ZERO;
+        app.effect_node_drag = Some((id, BLUR_PIN_BASE + 1));
+        app.effect_node_stepped = false;
+        app.effect_node_drag_to(Point::new(25.0, 15.0));
+        app.effect_node_drag_to(Point::new(27.0, 16.0));
+        app.effect_node_drag = None;
+        let nodes = effect_nodes(&shape(&app));
+        assert!((nodes[1].1 - Point::new(27.0, 16.0)).hypot() < 1e-6, "{:?}", nodes[1]);
+        assert_eq!(nodes[0].1, Point::new(30.0, 10.0), "the other pin stays");
+        app.undo();
+        let nodes = effect_nodes(&shape(&app));
+        assert!((nodes[1].1 - Point::new(15.0, 5.0)).hypot() < 1e-6, "{:?}", nodes[1]);
     }
 }

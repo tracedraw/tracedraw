@@ -314,8 +314,27 @@ pub enum Effect {
     /// [`crate::live_paint`]).
     LivePaint { fills: Vec<(f64, f64, Color)> },
     /// Gaussian blur (#1141): the object drawn blurred by `radius` mm.
-    /// Drawn by the renderer.
-    GaussianBlur { radius: f64 },
+    /// Drawn by the renderer. With `pins` the blur varies over the
+    /// object: each pin holds its own radius and the radius between them
+    /// changes smoothly from one to the next (`radius` is then what a new
+    /// pin starts with). Older files have no pins.
+    GaussianBlur {
+        radius: f64,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pins: Vec<BlurPin>,
+    },
+    /// Grain: noise over the object as it is drawn (after its blur),
+    /// `amount` 0..1 strong, grains about `size` mm across, the same in
+    /// every colour channel (`mono`) or apart in each. The grain stays put
+    /// on the page as the view moves; `seed` picks another grain.
+    Grain {
+        amount: f64,
+        size: f64,
+        #[serde(default)]
+        mono: bool,
+        #[serde(default)]
+        seed: u32,
+    },
     /// Fill opacity (#1141): the object itself drawn at `opacity` 0..1
     /// while what its other effects draw keeps its own.
     FillOpacity { opacity: f64 },
@@ -352,6 +371,57 @@ pub enum Effect {
         /// Apply to fill, outline or both (0, 1, 2).
         target: u8,
     },
+}
+
+/// A pin of a variable Gaussian blur: where it is, in the object's own
+/// coordinates (it moves, scales and turns with the object), and the blur
+/// radius there, mm.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct BlurPin {
+    pub at: Point,
+    pub radius: f64,
+}
+
+/// The most pins a variable blur keeps.
+pub const MAX_BLUR_PINS: usize = 64;
+
+/// The blur radius (mm) at `p` (object coordinates) of a blur with
+/// `pins`: each pin's radius weighed by the inverse square of the
+/// distance to it, so the radius is the pin's own on a pin and changes
+/// smoothly between them. `None` without pins.
+pub fn pinned_blur_radius(pins: &[BlurPin], p: Point) -> Option<f64> {
+    let mut sum = 0.0;
+    let mut weights = 0.0;
+    for pin in pins {
+        let r = if pin.radius.is_finite() {
+            pin.radius.max(0.0)
+        } else {
+            0.0
+        };
+        let d2 = (pin.at - p).hypot2();
+        if !d2.is_finite() {
+            continue;
+        }
+        if d2 < 1e-12 {
+            return Some(r);
+        }
+        let w = 1.0 / d2;
+        sum += w * r;
+        weights += w;
+    }
+    (weights > 0.0).then(|| sum / weights)
+}
+
+/// How far a Gaussian blur reaches past the object, mm: its radius, or
+/// its widest pin's.
+pub fn blur_reach(radius: f64, pins: &[BlurPin]) -> f64 {
+    if pins.is_empty() {
+        return radius.abs();
+    }
+    pins.iter()
+        .map(|p| p.radius.abs())
+        .filter(|r| r.is_finite())
+        .fold(0.0, f64::max)
 }
 
 /// How a transparency (or a drop shadow) mixes with what lies beneath.
@@ -702,6 +772,7 @@ impl Effect {
                     | Effect::OuterShadow { .. }
                     | Effect::Glow { .. }
                     | Effect::GaussianBlur { .. }
+                    | Effect::Grain { .. }
                     | Effect::FillOpacity { .. }
                     | Effect::BlendIf { .. }
             )
@@ -719,6 +790,7 @@ impl Effect {
                 | Effect::Glow { .. }
                 | Effect::GaussianBlur { .. }
                 | Effect::BlendIf { .. }
+                | Effect::Grain { .. }
         )
     }
 }
@@ -1927,7 +1999,8 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             | Effect::InnerShadow { .. }
             | Effect::OuterShadow { .. }
             | Effect::Glow { .. }
-            | Effect::GaussianBlur { .. } => {}
+            | Effect::GaussianBlur { .. }
+            | Effect::Grain { .. } => {}
         }
     }
     // Fill opacity: the object alone, after the overlays and the other
@@ -4288,7 +4361,10 @@ mod tests {
                 blur: 2.0,
                 merge: MergeMode::Screen,
             },
-            Effect::GaussianBlur { radius: 1.0 },
+            Effect::GaussianBlur {
+                radius: 1.0,
+                pins: Vec::new(),
+            },
         ];
         let ev = evaluate(&s);
         assert!(ev.below.is_empty());
@@ -7498,5 +7574,51 @@ mod symmetry_tests {
             (c.x0 + 22.0).abs() < 0.1 && (c.x1 + 8.0).abs() < 0.1,
             "{c:?}"
         );
+    }
+
+    /// A Gaussian blur from older files (no pins) reads as before and
+    /// writes as before; pins and grain go through a file.
+    #[test]
+    fn blur_pins_and_grain_round_trip() {
+        let old: Effect = serde_json::from_str(r#"{"effect":"gaussianblur","radius":2.0}"#)
+            .expect("old blur");
+        assert_eq!(
+            old,
+            Effect::GaussianBlur {
+                radius: 2.0,
+                pins: Vec::new()
+            }
+        );
+        assert!(!serde_json::to_string(&old).expect("json").contains("pins"));
+        for e in [
+            Effect::GaussianBlur {
+                radius: 1.0,
+                pins: vec![BlurPin {
+                    at: Point::new(1.0, 2.0),
+                    radius: 3.0,
+                }],
+            },
+            Effect::Grain {
+                amount: 0.3,
+                size: 0.2,
+                mono: true,
+                seed: 4,
+            },
+        ] {
+            let json = serde_json::to_string(&e).expect("json");
+            assert_eq!(serde_json::from_str::<Effect>(&json).expect("back"), e);
+        }
+        assert_eq!(blur_reach(2.0, &[]), 2.0);
+        assert_eq!(
+            blur_reach(
+                9.0,
+                &[BlurPin {
+                    at: Point::ZERO,
+                    radius: 5.0
+                }]
+            ),
+            5.0
+        );
+        assert_eq!(pinned_blur_radius(&[], Point::ZERO), None);
     }
 }

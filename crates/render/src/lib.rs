@@ -590,17 +590,213 @@ fn surface_shading(
     })
 }
 
-/// The radius (mm) of the Gaussian blur `shape` is drawn with, when it
-/// has one switched on (#1141).
-fn gaussian_blur(shape: &Shape) -> Option<f64> {
+/// The Gaussian blur `shape` is drawn with, when it has one switched on
+/// (#1141): one radius (mm), or pins each with its own.
+fn gaussian_blur(shape: &Shape) -> Option<Blur> {
     shape.effects.iter().find_map(|e| match e {
-        tracedraw_core::live::Effect::GaussianBlur { radius }
+        tracedraw_core::live::Effect::GaussianBlur { pins, .. } if !pins.is_empty() => {
+            let pins: Vec<_> = pins
+                .iter()
+                .filter(|p| p.at.x.is_finite() && p.at.y.is_finite())
+                .take(tracedraw_core::live::MAX_BLUR_PINS)
+                .copied()
+                .collect();
+            pins.iter()
+                .any(|p| p.radius.is_finite() && p.radius > 0.0)
+                .then_some(Blur::Pins(pins, shape.transform))
+        }
+        tracedraw_core::live::Effect::GaussianBlur { radius, .. }
             if radius.is_finite() && *radius > 0.0 =>
         {
-            Some(*radius)
+            Some(Blur::Even(*radius))
         }
         _ => None,
     })
+}
+
+/// A blur to draw an object with: one radius (mm) all over, or pins in
+/// the object's coordinates (the object's transformation with them).
+enum Blur {
+    Even(f64),
+    Pins(Vec<tracedraw_core::live::BlurPin>, Affine),
+}
+
+/// The grain `shape` is drawn with, when it has some switched on.
+fn grain_of(shape: &Shape) -> Option<Grain> {
+    shape.effects.iter().find_map(|e| match e {
+        tracedraw_core::live::Effect::Grain {
+            amount,
+            size,
+            mono,
+            seed,
+        } if amount.is_finite() && *amount > 0.0 => Some(Grain {
+            amount: amount.min(1.0),
+            size: if size.is_finite() && *size > 1e-4 {
+                *size
+            } else {
+                0.1
+            },
+            mono: *mono,
+            seed: *seed,
+        }),
+        _ => None,
+    })
+}
+
+#[derive(Clone, Copy)]
+struct Grain {
+    amount: f64,
+    size: f64,
+    mono: bool,
+    seed: u32,
+}
+
+/// A number from -1 to 1 for grain cell (`x`, `y`) of colour `channel`.
+fn grain_hash(x: i64, y: i64, seed: u32, channel: u32) -> f64 {
+    let mut h = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F)
+        ^ u64::from(seed).wrapping_mul(0x1656_67B1_9E37_79F9)
+        ^ u64::from(channel).wrapping_mul(0xD6E8_FEB8_6659_FD93);
+    h ^= h >> 31;
+    h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    h ^= h >> 29;
+    h = h.wrapping_mul(0x94D0_49BB_1331_11EB);
+    h ^= h >> 32;
+    (h & 0xFFFF) as f64 / 32767.5 - 1.0
+}
+
+/// Smooth grain at (`u`, `v`), in grain cells: the corners' numbers
+/// blended between them, -1 to 1.
+fn grain_noise(u: f64, v: f64, seed: u32, channel: u32) -> f64 {
+    let (x0, y0) = (u.floor(), v.floor());
+    let (fx, fy) = (u - x0, v - y0);
+    let (fx, fy) = (fx * fx * (3.0 - 2.0 * fx), fy * fy * (3.0 - 2.0 * fy));
+    let (ix, iy) = (x0 as i64, y0 as i64);
+    let a = grain_hash(ix, iy, seed, channel);
+    let b = grain_hash(ix + 1, iy, seed, channel);
+    let c = grain_hash(ix, iy + 1, seed, channel);
+    let d = grain_hash(ix + 1, iy + 1, seed, channel);
+    let top = a + (b - a) * fx;
+    let bottom = c + (d - c) * fx;
+    top + (bottom - top) * fy
+}
+
+/// Grain over the drawn pixels of `layer` (premultiplied); `to_page`
+/// takes a pixel of the layer to the page, so the grain stays where it
+/// is on the page as the view moves.
+fn apply_grain(layer: &mut Pixmap, to_page: Affine, g: Grain) {
+    let w = layer.width() as usize;
+    let [a, b, c, d, e, f] = to_page.as_coeffs();
+    // Grain cells per layer pixel along x, and the start of each row.
+    let (du, dv) = (a / g.size, b / g.size);
+    let strength = g.amount * 0.5;
+    for (row, px) in layer.data_mut().chunks_exact_mut(w * 4).enumerate() {
+        let (x0, y0) = (0.5, row as f64 + 0.5);
+        let mut u = (a * x0 + c * y0 + e) / g.size;
+        let mut v = (b * x0 + d * y0 + f) / g.size;
+        for p in px.chunks_exact_mut(4) {
+            let alpha = p[3];
+            if alpha > 0 {
+                let al = f64::from(alpha);
+                let n0 = grain_noise(u, v, g.seed, 0);
+                for (ch, value) in p.iter_mut().take(3).enumerate() {
+                    let n = if g.mono || ch == 0 {
+                        n0
+                    } else {
+                        grain_noise(u, v, g.seed, ch as u32)
+                    };
+                    let out = f64::from(*value) + n * strength * al;
+                    *value = out.round().clamp(0.0, al) as u8;
+                }
+            }
+            u += du;
+            v += dv;
+        }
+    }
+}
+
+/// The blur radius, in pixels, of each pixel of a `w` by `h` layer with
+/// pins at `pins` (layer pixels, radius in pixels): worked out on a grid
+/// every few pixels and blended between, the pins' weights falling with
+/// the square of the distance.
+fn pinned_radius_map(w: usize, h: usize, pins: &[(f64, f64, f64)]) -> Vec<f32> {
+    const STEP: usize = 4;
+    let at = |x: f64, y: f64| -> f64 {
+        let (mut sum, mut weights) = (0.0, 0.0);
+        for &(px, py, r) in pins {
+            let d2 = (px - x) * (px - x) + (py - y) * (py - y);
+            if d2 < 1e-6 {
+                return r;
+            }
+            let wgt = 1.0 / d2;
+            sum += wgt * r;
+            weights += wgt;
+        }
+        if weights > 0.0 {
+            sum / weights
+        } else {
+            0.0
+        }
+    };
+    let (gw, gh) = (w / STEP + 2, h / STEP + 2);
+    let mut grid = vec![0.0f64; gw * gh];
+    for gy in 0..gh {
+        for gx in 0..gw {
+            grid[gy * gw + gx] = at((gx * STEP) as f64 + 0.5, (gy * STEP) as f64 + 0.5);
+        }
+    }
+    let mut out = vec![0.0f32; w * h];
+    for y in 0..h {
+        let (gy, fy) = (y / STEP, (y % STEP) as f64 / STEP as f64);
+        for x in 0..w {
+            let (gx, fx) = (x / STEP, (x % STEP) as f64 / STEP as f64);
+            let g = |dx: usize, dy: usize| grid[(gy + dy) * gw + gx + dx];
+            let top = g(0, 0) + (g(1, 0) - g(0, 0)) * fx;
+            let bottom = g(0, 1) + (g(1, 1) - g(0, 1)) * fx;
+            out[y * w + x] = (top + (bottom - top) * fy) as f32;
+        }
+    }
+    out
+}
+
+/// Blur `layer` by pins (layer pixels, radius in pixels; `max` the
+/// widest, at least 1): the layer is blurred at a few radii from none to
+/// `max`, and each pixel takes the two nearest its own radius, blended.
+fn blur_by_pins(layer: &mut Pixmap, pins: &[(f64, f64, f64)], max: i32) {
+    let (w, h) = (layer.width() as usize, layer.height() as usize);
+    let max = max.max(1);
+    let steps = max.min(6) as usize;
+    let radii = pinned_radius_map(w, h, pins);
+    // Each pixel's place among the steps, 0 to `steps`.
+    let place: Vec<f32> = radii
+        .iter()
+        .map(|r| (r / max as f32 * steps as f32).clamp(0.0, steps as f32))
+        .collect();
+    let sharp = layer.clone();
+    let mut prev = sharp.clone();
+    for i in 1..=steps {
+        let mut cur = sharp.clone();
+        let r = ((max as f64) * i as f64 / steps as f64).round() as i32;
+        if r > 0 {
+            accel::box_blur(&mut cur, r, 3);
+        }
+        let out = layer.data_mut();
+        let (a, b) = (prev.data(), cur.data());
+        for (k, t) in place.iter().enumerate() {
+            // Between steps i - 1 and i (the widest takes its own edge).
+            let below = (t.floor() as usize).min(steps - 1);
+            if below + 1 != i {
+                continue;
+            }
+            let f = (*t - below as f32).clamp(0.0, 1.0);
+            for c in 0..4 {
+                let j = k * 4 + c;
+                let v = f32::from(a[j]) + (f32::from(b[j]) - f32::from(a[j])) * f;
+                out[j] = v.round().clamp(0.0, 255.0) as u8;
+            }
+        }
+        prev = cur;
+    }
 }
 
 /// What `s` reaches past its own pixels: sets `lens` when it or an
@@ -616,7 +812,8 @@ fn reach_walk(s: &Shape, lens: &mut bool, blur: &mut f64) {
         use tracedraw_core::live::Effect;
         let r = match e {
             Effect::OuterShadow { offset, blur, .. } => blur.abs() + offset.hypot(),
-            Effect::Glow { blur, .. } | Effect::GaussianBlur { radius: blur } => blur.abs(),
+            Effect::Glow { blur, .. } => blur.abs(),
+            Effect::GaussianBlur { radius, pins } => tracedraw_core::live::blur_reach(*radius, pins),
             _ => 0.0,
         };
         if r.is_finite() {
@@ -1271,10 +1468,12 @@ impl Renderer<'_> {
                 // Displace's shading: the photo's shadows and highlights
                 // taken onto the object (#3595).
                 self.draw_surface_shaded(&main, parent, shade, strength, mean);
-            } else if let Some(radius) = gaussian_blur(shape) {
-                // Gaussian blur (#1141): the object drawn on its own
-                // and blurred.
-                self.draw_blurred(&main, parent, radius);
+            } else if let (blur, grain @ Some(_)) | (blur @ Some(_), grain) =
+                (gaussian_blur(shape), grain_of(shape))
+            {
+                // Gaussian blur (#1141), even or by pins, and grain: the
+                // object drawn on its own, blurred, then grained.
+                self.draw_blurred(&main, parent, blur, grain);
             } else {
                 self.draw_shape(&main, parent);
             }
@@ -2417,8 +2616,19 @@ impl Renderer<'_> {
     /// `shape` drawn inside `parent` on a layer of its own, blurred by
     /// `radius` mm (three box passes), and merged over the target
     /// (#1141).
-    fn draw_blurred(&mut self, shape: &Shape, parent: Affine, radius: f64) {
-        let px = (radius * self.zoom).round().clamp(0.0, 64.0) as i32;
+    fn draw_blurred(
+        &mut self,
+        shape: &Shape,
+        parent: Affine,
+        blur: Option<Blur>,
+        grain: Option<Grain>,
+    ) {
+        let reach = match &blur {
+            None => 0.0,
+            Some(Blur::Even(r)) => *r,
+            Some(Blur::Pins(pins, _)) => tracedraw_core::live::blur_reach(0.0, pins),
+        };
+        let px = (reach * self.zoom).round().clamp(0.0, 64.0) as i32;
         // The layer covers the object and what its blur spreads over (3
         // passes of `px` each way, and one more), not the whole target:
         // a page-sized layer was made and blurred for each object
@@ -2434,14 +2644,35 @@ impl Renderer<'_> {
             self.draw_shape(shape, parent);
             return;
         };
+        let to_layer = Affine::translate((-f64::from(x), -f64::from(y))) * self.screen;
         {
             let mut sub = self.sub(&mut layer);
-            sub.screen = Affine::translate((-f64::from(x), -f64::from(y))) * self.screen;
+            sub.screen = to_layer;
             sub.origin = (self.origin.0 + x as i32, self.origin.1 + y as i32);
             sub.draw_shape(shape, parent);
         }
-        if px > 0 {
-            accel::box_blur(&mut layer, px, 3);
+        match blur {
+            Some(Blur::Pins(pins, local)) if px > 0 => {
+                let m = to_layer * parent * local;
+                let pins: Vec<(f64, f64, f64)> = pins
+                    .iter()
+                    .map(|p| {
+                        let q = m * p.at;
+                        let r = if p.radius.is_finite() {
+                            (p.radius.max(0.0) * self.zoom).min(64.0)
+                        } else {
+                            0.0
+                        };
+                        (q.x, q.y, r)
+                    })
+                    .collect();
+                blur_by_pins(&mut layer, &pins, px);
+            }
+            Some(_) if px > 0 => accel::box_blur(&mut layer, px, 3),
+            _ => {}
+        }
+        if let Some(g) = grain {
+            apply_grain(&mut layer, to_layer.inverse(), g);
         }
         composite_layer(
             self.pixmap,
@@ -8016,7 +8247,10 @@ mod tests {
         use tracedraw_core::live::Effect;
         let page_white = rect(1, Rect::new(0.0, 0.0, 100.0, 100.0), Color::WHITE);
         let mut small = rect(2, Rect::new(40.0, 40.0, 50.0, 50.0), Color::BLACK);
-        small.effects.push(Effect::GaussianBlur { radius: 1.0 });
+        small.effects.push(Effect::GaussianBlur {
+            radius: 1.0,
+            pins: Vec::new(),
+        });
         let (doc, page) = doc_with(vec![page_white.clone(), small]);
         let _one_at_a_time = SCRATCH_TEST.lock().unwrap_or_else(|e| e.into_inner());
         LARGEST_SCRATCH.store(0, std::sync::atomic::Ordering::Relaxed);
@@ -8030,7 +8264,10 @@ mod tests {
         assert_eq!(px(&pm, 300, 550), (255, 255, 255));
         // Partly off the page's left edge, it blurs where it shows.
         let mut off = rect(2, Rect::new(-10.0, 40.0, 5.0, 60.0), Color::BLACK);
-        off.effects.push(Effect::GaussianBlur { radius: 2.0 });
+        off.effects.push(Effect::GaussianBlur {
+            radius: 2.0,
+            pins: Vec::new(),
+        });
         let (doc, page) = doc_with(vec![page_white, off]);
         let pm = render_page_image(&doc, page, 25.4).unwrap();
         assert!(px(&pm, 0, 50).0 < 10, "{:?}", px(&pm, 0, 50));
@@ -8306,7 +8543,10 @@ mod tests {
         assert!(px(&inner, 50, 50).0 < 30, "{:?}", px(&inner, 50, 50));
         assert_eq!(px(&inner, 25, 50), (255, 255, 255));
         // Gaussian blur: grey across the edge, still black in the middle.
-        let blurred = with(vec![Effect::GaussianBlur { radius: 3.0 }]);
+        let blurred = with(vec![Effect::GaussianBlur {
+            radius: 3.0,
+            pins: Vec::new(),
+        }]);
         let edge = px(&blurred, 71, 50).0;
         assert!(edge > 0 && edge < 255, "{edge}");
         assert!(px(&blurred, 50, 50).0 < 10);
@@ -8324,6 +8564,93 @@ mod tests {
         assert!(px(&faded, 72, 50).0 > 200);
         // The object gone, its glow (solid up to the edge) shows.
         assert_eq!(px(&faded, 50, 50), (255, 0, 0), "the object is gone");
+    }
+
+    /// A Gaussian blur by pins: sharp at a pin of no radius, soft at a
+    /// pin of a wide one, in between half way; grain changes the pixels
+    /// of the object only, and another seed changes the grain.
+    #[test]
+    fn blur_pins_vary_the_blur_and_grain_marks_the_object() {
+        use tracedraw_core::geometry::Point;
+        use tracedraw_core::live::{BlurPin, Effect};
+        let with = |e: Vec<Effect>, c: Color| {
+            let mut s = rect(1, Rect::new(30.0, 30.0, 70.0, 70.0), c);
+            s.effects = e;
+            let (doc, page) = doc_with(vec![s]);
+            render_page_image(&doc, page, 25.4).unwrap()
+        };
+        let pins = vec![
+            BlurPin {
+                at: Point::new(30.0, 50.0),
+                radius: 0.0,
+            },
+            BlurPin {
+                at: Point::new(70.0, 50.0),
+                radius: 6.0,
+            },
+        ];
+        let pm = with(
+            vec![Effect::GaussianBlur { radius: 1.0, pins }],
+            Color::BLACK,
+        );
+        // The left edge (no blur) stays sharp.
+        assert_eq!(px(&pm, 27, 50), (255, 255, 255));
+        assert!(px(&pm, 32, 50).0 < 20, "{:?}", px(&pm, 32, 50));
+        // The right edge (6 mm) spreads out.
+        let out = px(&pm, 73, 50).0;
+        assert!(out > 0 && out < 250, "{out}");
+        assert!(px(&pm, 67, 50).0 > 10, "{:?}", px(&pm, 67, 50));
+        // All pins at nothing: drawn as it is.
+        let none = with(
+            vec![Effect::GaussianBlur {
+                radius: 3.0,
+                pins: vec![BlurPin {
+                    at: Point::new(50.0, 50.0),
+                    radius: 0.0,
+                }],
+            }],
+            Color::BLACK,
+        );
+        assert_eq!(px(&none, 71, 50), (255, 255, 255));
+        // Grain on grey: the object's pixels differ, outside stays white.
+        let grey = Color::rgb8(128, 128, 128);
+        let grain = |seed| {
+            with(
+                vec![Effect::Grain {
+                    amount: 0.5,
+                    size: 1.0,
+                    mono: true,
+                    seed,
+                }],
+                grey,
+            )
+        };
+        let g = grain(0);
+        let row: Vec<u8> = (32..68).map(|x| px(&g, x, 50).0).collect();
+        let (lo, hi) = (row.iter().min().unwrap(), row.iter().max().unwrap());
+        assert!(hi - lo > 20, "grain {lo}..{hi}");
+        assert_eq!(px(&g, 20, 50), (255, 255, 255));
+        let mono = px(&g, 40, 45);
+        assert!(mono.0 == mono.1 && mono.1 == mono.2, "{mono:?}");
+        assert_eq!(g.data(), grain(0).data(), "the same grain each time");
+        assert_ne!(g.data(), grain(7).data(), "another seed, another grain");
+        // The variable blur's radius: the pin's own on it, between them
+        // in between.
+        let pins = [
+            BlurPin {
+                at: Point::new(0.0, 0.0),
+                radius: 0.0,
+            },
+            BlurPin {
+                at: Point::new(10.0, 0.0),
+                radius: 4.0,
+            },
+        ];
+        let r = |x| tracedraw_core::live::pinned_blur_radius(&pins, Point::new(x, 0.0)).unwrap();
+        assert_eq!(r(0.0), 0.0);
+        assert_eq!(r(10.0), 4.0);
+        assert!((r(5.0) - 2.0).abs() < 1e-9);
+        assert!(r(2.0) < r(5.0) && r(5.0) < r(8.0));
     }
 
     #[test]

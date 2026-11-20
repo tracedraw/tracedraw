@@ -994,8 +994,9 @@ fn mesh_node_near(m: &tracedraw_core::Mesh, p: Point, tol: f64) -> Option<usize>
     })
 }
 
-/// Page-space positions of the editable nodes of a shape's perspective
-/// and mesh fill, with a global index: perspective 100..104, mesh 200 + k
+/// Page-space positions of the editable nodes of a shape's perspective,
+/// blur pins and mesh fill, with a global index: perspective 100..104,
+/// blur pins 110 + k, mesh 200 + k
 /// (envelopes have their own editing, see `envelope_edit`).
 pub fn effect_nodes(s: &Shape) -> Vec<(usize, Point)> {
     let mut out = Vec::new();
@@ -1006,12 +1007,33 @@ pub fn effect_nodes(s: &Shape) -> Vec<(usize, Point)> {
             }
         }
     }
+    // The pins of a variable Gaussian blur, 110 + k.
+    for e in &s.effects {
+        if let Effect::GaussianBlur { pins, .. } = e {
+            for (k, pin) in pins.iter().take(BLUR_PIN_COUNT).enumerate() {
+                out.push((BLUR_PIN_BASE + k, s.transform * pin.at));
+            }
+        }
+    }
     if let Fill::Mesh(m) = &s.fill {
         for (k, n) in m.nodes.iter().enumerate() {
             out.push((200 + k, s.transform * n.pos));
         }
     }
     out
+}
+
+/// The effect node number of a variable blur's first pin; its pins
+/// count on from it, up to [`BLUR_PIN_COUNT`] of them (below the mesh
+/// nodes' numbers).
+pub const BLUR_PIN_BASE: usize = 110;
+pub const BLUR_PIN_COUNT: usize = tracedraw_core::live::MAX_BLUR_PINS;
+
+/// The blur pin an effect node number stands for.
+pub fn blur_pin_of(index: usize) -> Option<usize> {
+    index
+        .checked_sub(BLUR_PIN_BASE)
+        .filter(|k| *k < BLUR_PIN_COUNT)
 }
 
 /// The handles of mesh node `i` of `s` on the page, with their effect
@@ -1059,10 +1081,22 @@ fn move_effect_node(effects: &mut [Effect], fill: &mut Fill, index: usize, d: Ve
         return;
     }
     for e in effects.iter_mut() {
-        if let Effect::Perspective { corners } = e {
-            if let Some(c) = index.checked_sub(100).and_then(|i| corners.get_mut(i)) {
-                *c += d;
+        match e {
+            Effect::Perspective { corners } => {
+                if let Some(c) = index
+                    .checked_sub(100)
+                    .filter(|i| *i < 4)
+                    .and_then(|i| corners.get_mut(i))
+                {
+                    *c += d;
+                }
             }
+            Effect::GaussianBlur { pins, .. } => {
+                if let Some(pin) = blur_pin_of(index).and_then(|k| pins.get_mut(k)) {
+                    pin.at += d;
+                }
+            }
+            _ => {}
         }
     }
     if let Fill::Mesh(m) = fill {

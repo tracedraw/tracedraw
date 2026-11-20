@@ -4364,9 +4364,9 @@ fn draw_snap_glyph_halo(painter: &Painter, c: Pos2, mode: crate::snap_points::Sn
     draw_snap_glyph_width(painter, c, mode, Tokens::HANDLE, 1.3);
 }
 
-/// Effect nodes (perspective, mesh) of the selection with the Shape tool
-/// (and the mesh with the Mesh Fill tool): small blue squares joined by
-/// a frame.
+/// Effect nodes (perspective, blur pins, mesh) of the selection with the
+/// Shape tool (and the mesh with the Mesh Fill tool): small blue squares
+/// joined by a frame, the blur pins round.
 pub fn draw_effect_nodes(app: &App, painter: &Painter) {
     if !matches!(
         app.tool,
@@ -4385,7 +4385,7 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
         // The perspective frame (envelopes: `ui::envelope_ui`).
         let persp: Vec<egui::Pos2> = nodes
             .iter()
-            .filter(|(i, _)| (100..200).contains(i))
+            .filter(|(i, _)| (100..104).contains(i))
             .map(|(_, p)| app.view.to_screen(*p))
             .collect();
         if persp.len() == 4 {
@@ -4446,8 +4446,39 @@ pub fn draw_effect_nodes(app: &App, painter: &Painter) {
             .filter(|(id, _)| *id == s.id)
             .map(|(_, v)| v)
             .unwrap_or_default();
+        // Blur pins: a round handle each, with a thin ring as wide as
+        // its blur radius.
+        let pin_radii: Vec<f64> = s
+            .effects
+            .iter()
+            .find_map(|e| match e {
+                tracedraw_core::live::Effect::GaussianBlur { pins, .. } => {
+                    Some(pins.iter().map(|p| p.radius).collect())
+                }
+                _ => None,
+            })
+            .unwrap_or_default();
         for (i, p) in nodes {
             let sp = app.view.to_screen(p);
+            if let Some(k) = crate::interaction2::blur_pin_of(i) {
+                let held = app.effect_node_drag == Some((s.id, i))
+                    || app.selected_effect_node == Some((s.id, i));
+                let ring = pin_radii.get(k).copied().unwrap_or(0.0) * app.view.zoom as f64;
+                if ring.is_finite() && ring > 5.0 {
+                    painter.circle_stroke(
+                        sp,
+                        ring.min(4000.0) as f32,
+                        egui::Stroke::new(1.0, blue.gamma_multiply(0.6)),
+                    );
+                }
+                painter.circle(
+                    sp,
+                    4.5,
+                    if held { blue } else { egui::Color32::WHITE },
+                    egui::Stroke::new(1.0, blue),
+                );
+                continue;
+            }
             let r = egui::Rect::from_center_size(sp, egui::vec2(7.0, 7.0));
             let selected = app
                 .effect_node_drag
