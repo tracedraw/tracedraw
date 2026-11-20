@@ -4775,6 +4775,8 @@ toolbar.path_rotate = "Obrócone litery"
 toolbar.path_straighten_tip = "Zdejmij tekst ze ścieżki, bez obrotu"
 toolbar.path_tick_snap = "Przyciąganie skokowe"
 toolbar.path_tick_snap_tip = "Odsuwanie tekstu od ścieżki przesuwa go o pełne kroki"
+toolbar.path_follow = "Podążaj za ścieżką" # mt
+toolbar.path_follow_tip = "Dopasuj tekst ponownie za każdym razem, gdy ścieżka zostanie przesunięta lub zmieni kształt" # mt
 toolbar.path_tick_spacing = "Wielkość kroku"
 toolbar.path_upright = "Litery pionowo"
 toolbar.path_vertical = "Położenie w pionie"
@@ -5269,6 +5271,8 @@ menu.object.symmetry_break = "Przerwij połączenie symetrii"
 symmetry.finish = "Zakończ"
 symmetry.full_preview = "Pokaż pełny podgląd: kopie rysowane w całości (wyłączone: kontury)" # mt
 symmetry.show_lines = "Pokaż linie symetrii" # mt
+symmetry.rotational = "Obrotowa" # mt
+symmetry.rotational_tip = "Obracaj kopie wokół środka zamiast je odbijać: tyle kopii, ile linii, łącznie z obiektem" # mt
 status.editing_symmetry = "Edycja symetrii: zmieniaj oryginał (czerwony kontur); kopie podążają. Zakończ kończy."
 
 options.center_dialogs = "Wyśrodkuj okna dialogowe"

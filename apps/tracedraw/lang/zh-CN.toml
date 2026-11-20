@@ -4775,6 +4775,8 @@ toolbar.path_rotate = "旋转字母"
 toolbar.path_straighten_tip = "将文本从路径上取下，不旋转"
 toolbar.path_tick_snap = "刻度对齐"
 toolbar.path_tick_snap_tip = "将文本拖离路径时按整步移动"
+toolbar.path_follow = "跟随路径" # mt
+toolbar.path_follow_tip = "每当路径被移动或改变形状时重新适配文本" # mt
 toolbar.path_tick_spacing = "刻度间距"
 toolbar.path_upright = "直立字母"
 toolbar.path_vertical = "垂直放置"
@@ -5269,6 +5271,8 @@ menu.object.symmetry_break = "断开对称链接"
 symmetry.finish = "完成"
 symmetry.full_preview = "显示完整预览：完整绘制副本（关闭：轮廓）" # mt
 symmetry.show_lines = "显示对称线" # mt
+symmetry.rotational = "旋转" # mt
+symmetry.rotational_tip = "围绕中心旋转副本而不是镜像：副本数与线数相同，对象本身算一个" # mt
 status.editing_symmetry = "正在编辑对称：修改原始对象（红色轮廓），副本随之变化。点“完成”结束。"
 
 options.center_dialogs = "对话框居中"

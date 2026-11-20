@@ -4775,6 +4775,8 @@ toolbar.path_rotate = "Gedrehte Buchstaben"
 toolbar.path_straighten_tip = "Text vom Pfad lösen, ungedreht"
 toolbar.path_tick_snap = "Schrittweise ausrichten"
 toolbar.path_tick_snap_tip = "Text vom Pfad weggezogen bewegt sich in ganzen Schritten"
+toolbar.path_follow = "Pfad folgen" # mt
+toolbar.path_follow_tip = "Den Text jedes Mal neu anpassen, wenn sein Pfad verschoben oder umgeformt wird" # mt
 toolbar.path_tick_spacing = "Schrittweite"
 toolbar.path_upright = "Aufrechte Buchstaben"
 toolbar.path_vertical = "Vertikale Platzierung"
@@ -5269,6 +5271,8 @@ menu.object.symmetry_break = "Symmetrieverknüpfung aufheben"
 symmetry.finish = "Fertig"
 symmetry.full_preview = "Vollständige Vorschau: Kopien vollständig gezeichnet (aus: Umrisse)" # mt
 symmetry.show_lines = "Symmetrielinien anzeigen" # mt
+symmetry.rotational = "Rotation" # mt
+symmetry.rotational_tip = "Die Kopien um die Mitte drehen statt sie zu spiegeln: so viele Kopien wie Linien, das Objekt eingeschlossen" # mt
 status.editing_symmetry = "Symmetrie wird bearbeitet: das Original (rot umrandet) ändern; die Kopien folgen. Fertig beendet sie."
 
 options.center_dialogs = "Dialogfelder zentrieren"

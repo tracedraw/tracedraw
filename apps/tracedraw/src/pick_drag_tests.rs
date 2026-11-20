@@ -11135,6 +11135,31 @@ fn finished_symmetry() -> (egui::Context, App, ShapeId) {
     (ctx, app, id)
 }
 
+/// Rotational on the symmetry bar (#2999) turns the copy round the
+/// centre instead of mirroring it: two at least, none a mirror image,
+/// one undo step that brings the mirror back.
+#[test]
+fn a_symmetry_turned_rotational_turns_its_copies() {
+    use tracedraw_core::live::Effect;
+    let (_ctx, mut app, id) = setup();
+    app.create_symmetry();
+    assert!(!app.edited_symmetry_turns());
+    app.set_symmetry_turns(id, true);
+    assert!(app.edited_symmetry_turns());
+    assert_eq!(app.edited_symmetry().map(|s| s.3), Some(2));
+    let s = app.doc().find_shape(id).expect("shape").clone();
+    let ev = tracedraw_core::live::evaluate(&s);
+    assert_eq!(ev.above.len(), 1);
+    let [a, b, c, d, _, _] = ev.above[0].transform.as_coeffs();
+    assert!(a * d - b * c > 0.0, "turned, not mirrored");
+    app.undo();
+    let s = app.doc().find_shape(id).expect("shape");
+    assert!(s
+        .effects
+        .iter()
+        .any(|e| matches!(e, Effect::Symmetry { rotate: false, .. })));
+}
+
 /// After Finish a drag on the copy moves the whole symmetry: the copy and
 /// the mirror line go with the rectangle (the copy used to mirror the
 /// move about the line left where it was, as while editing), and the
@@ -11355,6 +11380,7 @@ fn joining_curves_leaves_a_symmetry_where_it_was() {
                 center: Point::new(5.0, 60.0),
                 angle: 0.0,
                 lines: 1,
+                rotate: false,
             }],
         });
         id

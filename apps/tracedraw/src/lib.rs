@@ -249,6 +249,7 @@ mod templates;
 mod text_editing;
 #[cfg(test)]
 mod text_effect_tests;
+mod text_follow;
 mod text_frames;
 mod text_nodes;
 mod text_path;
@@ -1204,6 +1205,8 @@ impl eframe::App for Shell {
         app.refresh_blends();
         // Live fits follow their paths and objects.
         app.refresh_live_fits();
+        // Texts set to follow their paths are fitted again (#3571).
+        app.refresh_text_follow();
         // The window's state is kept once it has settled; until then it
         // is maximized when it should start so, and checked (#787).
         #[cfg(not(target_arch = "wasm32"))]

@@ -1152,6 +1152,7 @@ impl App {
                 center,
                 angle: 90.0,
                 lines: 1,
+                rotate: false,
             });
             let cmd = Command::SetEffects {
                 shape: s.id,
@@ -1194,6 +1195,7 @@ impl App {
             center,
             angle: 90.0,
             lines: 1,
+            rotate: false,
         });
         if let Err(e) = self
             .engine
@@ -1414,6 +1416,7 @@ impl App {
                     center,
                     angle,
                     lines,
+                    ..
                 } => Some((s.id, *center, *angle, *lines)),
                 _ => None,
             })
@@ -3955,6 +3958,7 @@ impl App {
                 ..Default::default()
             }),
         }) {
+            self.note_text_path_source(id, path_id);
             self.text_edit = Some(crate::app::TextEdit::at_end(id, 0));
             self.select(vec![id]);
         }
@@ -3991,22 +3995,28 @@ impl App {
             self.selection = vec![text.id];
             return;
         }
+        let (text_id, curve_id) = (text.id, curve.id);
+        let before = self.engine.revision();
         let mut cmds = vec![Command::SetShapeKind {
-            shape: text.id,
+            shape: text_id,
             kind,
         }];
         // A squeezed text's squeeze went into its letters (#3485): the
         // transform keeps the rest.
         if transform != text.transform {
             cmds.push(Command::TransformShapes {
-                shapes: vec![text.id],
+                shapes: vec![text_id],
                 transform: transform * text.transform.inverse(),
             });
         }
         if let Err(e) = self.engine.run_batch("Fit Text to Path", &cmds) {
             self.status = e.to_string();
         }
-        self.selection = vec![text.id];
+        // Where the text came from, for Follow Path (#3571).
+        if self.engine.revision() != before {
+            self.note_text_path_source(text_id, curve_id);
+        }
+        self.selection = vec![text_id];
     }
 
     /// The path whose outline is at `p` (within 4 screen pixels) that

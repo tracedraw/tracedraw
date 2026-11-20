@@ -4775,6 +4775,8 @@ toolbar.path_rotate = "ঘোরানো অক্ষর"
 toolbar.path_straighten_tip = "লেখাটি না ঘুরিয়ে পথ থেকে সরান"
 toolbar.path_tick_snap = "ধাপে স্ন্যাপ"
 toolbar.path_tick_snap_tip = "পাথ থেকে লেখা টেনে সরালে তা পূর্ণ ধাপে সরে"
+toolbar.path_follow = "পথ অনুসরণ" # mt
+toolbar.path_follow_tip = "পথ সরানো বা আকার বদলানো হলেই লেখাটি আবার মানিয়ে নিন" # mt
 toolbar.path_tick_spacing = "ধাপের ব্যবধান"
 toolbar.path_upright = "খাড়া অক্ষর"
 toolbar.path_vertical = "উল্লম্ব অবস্থান"
@@ -5269,6 +5271,8 @@ menu.object.symmetry_break = "সিমেট্রি লিংক ভাঙু
 symmetry.finish = "শেষ"
 symmetry.full_preview = "পূর্ণ প্রিভিউ দেখান: অনুলিপি পুরোপুরি আঁকা হয় (বন্ধ: রূপরেখা)" # mt
 symmetry.show_lines = "প্রতিসাম্য রেখা দেখান" # mt
+symmetry.rotational = "ঘূর্ণন" # mt
+symmetry.rotational_tip = "প্রতিলিপিগুলো প্রতিফলিত না করে কেন্দ্রের চারপাশে ঘোরান: যতগুলো রেখা ততগুলো প্রতিলিপি, বস্তুটি তার একটি" # mt
 status.editing_symmetry = "সিমেট্রি সম্পাদনা: মূলটি (লাল রেখায়) বদলান; কপিগুলো অনুসরণ করে। শেষ চাপলে বন্ধ হয়।"
 
 options.center_dialogs = "ডায়ালগ বক্স মাঝখানে রাখুন"

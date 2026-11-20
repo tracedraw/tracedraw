@@ -4775,6 +4775,8 @@ toolbar.path_rotate = "Otočená písmena"
 toolbar.path_straighten_tip = "Sejmout text z křivky, bez otočení"
 toolbar.path_tick_snap = "Přichytávání po krocích"
 toolbar.path_tick_snap_tip = "Tažení textu od cesty jej posouvá po celých krocích"
+toolbar.path_follow = "Sledovat cestu" # mt
+toolbar.path_follow_tip = "Znovu přizpůsobit text pokaždé, když se cesta posune nebo změní tvar" # mt
 toolbar.path_tick_spacing = "Velikost kroku"
 toolbar.path_upright = "Svislá písmena"
 toolbar.path_vertical = "Svislé umístění"
@@ -5269,6 +5271,8 @@ menu.object.symmetry_break = "Zrušit propojení symetrie"
 symmetry.finish = "Dokončit"
 symmetry.full_preview = "Zobrazit úplný náhled: kopie kreslené celé (vypnuto: obrysy)" # mt
 symmetry.show_lines = "Zobrazit osy symetrie" # mt
+symmetry.rotational = "Rotační" # mt
+symmetry.rotational_tip = "Otáčet kopie kolem středu místo zrcadlení: tolik kopií, kolik je čar, včetně objektu" # mt
 status.editing_symmetry = "Úprava symetrie: měňte originál (červený obrys); kopie jej následují. Dokončit ji ukončí."
 
 options.center_dialogs = "Vycentrovat dialogová okna"

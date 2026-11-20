@@ -174,11 +174,15 @@ pub enum Effect {
     },
     /// Symmetry: mirrored copies of the object across `lines` mirror lines
     /// through `center` (page space), the first at `angle` degrees and the
-    /// others spread evenly; the object itself stays where it is.
+    /// others spread evenly; the object itself stays where it is. With
+    /// `rotate` the copies are turned round the centre instead, `lines`
+    /// in all counting the object, and none is a mirror image (#2999).
     Symmetry {
         center: Point,
         angle: f64,
         lines: u8,
+        #[serde(default, skip_serializing_if = "is_false")]
+        rotate: bool,
     },
     /// Offset Path: the outline moved out (positive `distance`, mm) or in
     /// (negative), its corners turned as `join` says, then smoothed by
@@ -1951,6 +1955,7 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             center,
             angle,
             lines,
+            rotate,
         } = effect
         {
             let mut original = main.clone();
@@ -1960,7 +1965,7 @@ fn evaluate_now(shape: &Shape) -> Evaluated {
             original
                 .effects
                 .retain(|e| matches!(e, Effect::Lens(_) | Effect::Transparency { .. }));
-            let mirrors = symmetry_mirrors(*center, *angle, *lines);
+            let mirrors = symmetry_mirrors(*center, *angle, *lines, *rotate);
             let (mut under, mut over) = (Vec::new(), Vec::new());
             for m in &mirrors {
                 // A fountain fill or a gradient transparency is placed on
@@ -3418,8 +3423,22 @@ pub fn carry_effects<'a>(effects: impl IntoIterator<Item = &'a mut Effect>, t: A
 /// `p` is on that side already (#2998: an area filled in a copy goes on
 /// the original, so its mirrors fill the other copies).
 pub fn symmetry_back_to(center: Point, angle: f64, lines: u8, origin: Point, p: Point) -> Affine {
+    symmetry_back_to_turned(center, angle, lines, false, origin, p)
+}
+
+/// [`symmetry_back_to`] for a symmetry that turns its copies when
+/// `rotate` is set (#2999): the slices are then whole turns shared out.
+pub fn symmetry_back_to_turned(
+    center: Point,
+    angle: f64,
+    lines: u8,
+    rotate: bool,
+    origin: Point,
+    p: Point,
+) -> Affine {
     let n = lines.clamp(1, 12) as usize;
-    let slice = std::f64::consts::PI / n as f64;
+    let slice = std::f64::consts::PI / n as f64 * if rotate { 2.0 } else { 1.0 };
+    let wedges = if rotate { n } else { 2 * n } as i64;
     let a0 = angle.to_radians();
     let wedge = |q: Point| -> Option<i64> {
         let d = q - center;
@@ -3427,23 +3446,32 @@ pub fn symmetry_back_to(center: Point, angle: f64, lines: u8, origin: Point, p: 
             return None;
         }
         let a = (d.y.atan2(d.x) - a0).rem_euclid(std::f64::consts::TAU);
-        Some(((a / slice).floor() as i64).rem_euclid(2 * n as i64))
+        Some(((a / slice).floor() as i64).rem_euclid(wedges))
     };
     let Some(target) = wedge(origin) else {
         return Affine::IDENTITY;
     };
     std::iter::once(Affine::IDENTITY)
-        .chain(symmetry_mirrors(center, angle, lines))
+        .chain(symmetry_mirrors(center, angle, lines, rotate))
         .map(|m| m.inverse())
         .find(|back| wedge(*back * p) == Some(target))
         .unwrap_or(Affine::IDENTITY)
 }
 
-fn symmetry_mirrors(center: Point, angle: f64, lines: u8) -> Vec<Affine> {
+fn symmetry_mirrors(center: Point, angle: f64, lines: u8, rotate: bool) -> Vec<Affine> {
     let n = lines.clamp(1, 12) as usize;
     let mut out = Vec::with_capacity(2 * n);
     let to_center = Affine::translate(center.to_vec2());
     let from_center = Affine::translate(-center.to_vec2());
+    if rotate {
+        // Turned copies only: `n` in all, the object the first (#2999).
+        return (1..n)
+            .map(|k| {
+                let rot = Affine::rotate(std::f64::consts::TAU * k as f64 / n as f64);
+                to_center * rot * from_center
+            })
+            .collect();
+    }
     let reflect = |theta: f64| -> Affine {
         // Reflection across a line through the origin at angle theta.
         let (s, c) = (2.0 * theta).sin_cos();
@@ -4339,6 +4367,7 @@ mod tests {
             center,
             angle,
             lines: 2,
+            rotate: false,
         };
         let angle_of = |e: &Effect| match e {
             Effect::Symmetry { center, angle, .. } => (*center, *angle),
@@ -4380,6 +4409,7 @@ mod tests {
             center: Point::new(4.0, 1.0),
             angle: 90.0,
             lines: 1,
+            rotate: false,
         }];
         let t = Affine::translate((10.0, 3.0)) * Affine::rotate(0.7);
         let before: Vec<Rect> = evaluate(&s)
@@ -7263,6 +7293,7 @@ mod symmetry_tests {
             center: Point::new(0.0, 0.0),
             angle: 90.0,
             lines: 1,
+            rotate: false,
         });
         let ev = evaluate(&s);
         assert_eq!(ev.above.len(), 1);
@@ -7278,9 +7309,58 @@ mod symmetry_tests {
             center: Point::new(0.0, 0.0),
             angle: 0.0,
             lines: 2,
+            rotate: false,
         };
         let ev = evaluate(&s);
         assert_eq!(ev.above.len(), 3);
+    }
+
+    /// Rotational symmetry (#2999): three lines make three turned
+    /// objects in all, a third of a turn apart, none a mirror image; the
+    /// setting is left out of a saved symmetry that mirrors.
+    #[test]
+    fn rotational_symmetry_turns_the_copies() {
+        let mut s = Shape::new(
+            crate::ShapeId(1),
+            ShapeKind::Rect {
+                rect: Rect::new(10.0, -1.0, 20.0, 1.0),
+                radius: 0.0,
+                corners: None,
+            },
+        );
+        s.effects.push(Effect::Symmetry {
+            center: Point::new(0.0, 0.0),
+            angle: 0.0,
+            lines: 3,
+            rotate: true,
+        });
+        let ev = evaluate(&s);
+        assert_eq!(ev.above.len(), 2);
+        for (copy, deg) in ev.above.iter().zip([120.0f64, 240.0]) {
+            let [a, b, c, d, _, _] = copy.transform.as_coeffs();
+            assert!(a * d - b * c > 0.0, "not mirrored");
+            let mid = copy.bounds().center();
+            let want = Point::new(15.0 * deg.to_radians().cos(), 15.0 * deg.to_radians().sin());
+            assert!((mid - want).hypot() < 1e-6, "{mid:?} {want:?}");
+        }
+        // A point in a copy goes back to the object's slice by a turn.
+        let back = symmetry_back_to_turned(
+            Point::ZERO,
+            0.0,
+            3,
+            true,
+            Point::new(15.0, 0.0),
+            Point::new(-7.5, 12.99),
+        );
+        let q = back * Point::new(-7.5, 12.99);
+        assert!((q - Point::new(15.0, 0.0)).hypot() < 0.01, "{q:?}");
+        let mirror = Effect::Symmetry {
+            center: Point::ZERO,
+            angle: 0.0,
+            lines: 1,
+            rotate: false,
+        };
+        assert!(!serde_json::to_string(&mirror).unwrap().contains("rotate"));
     }
 
     /// A mirrored copy's fountain fill and gradient transparency are
@@ -7308,6 +7388,7 @@ mod symmetry_tests {
                 center: Point::new(40.0, 0.0),
                 angle: 90.0,
                 lines: 1,
+                rotate: false,
             },
             Effect::Transparency {
                 mask: Fill::linear(Color::WHITE, Color::BLACK, 0.0),
@@ -7369,6 +7450,7 @@ mod symmetry_tests {
                 center: Point::new(0.0, 0.0),
                 angle: 90.0,
                 lines: 1,
+                rotate: false,
             },
             Effect::Transparency {
                 mask: crate::style::Fill::Solid(crate::color::Color::rgb8(128, 128, 128)),

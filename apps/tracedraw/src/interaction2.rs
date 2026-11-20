@@ -616,7 +616,8 @@ impl App {
                     center,
                     angle,
                     lines,
-                } => Some((*center, *angle, *lines)),
+                    rotate,
+                } => Some((*center, *angle, *lines, *rotate)),
                 _ => None,
             })
         };
@@ -627,7 +628,7 @@ impl App {
             order.sort_by_key(|s| s.id != edit);
         }
         for s in order {
-            let (center, angle, lines) = sym_of(s)?;
+            let (center, angle, lines, rotate) = sym_of(s)?;
             let ev = tracedraw_core::live::evaluate(s);
             let mut whole = ev.main.bounds();
             for part in ev.above.iter().chain(&ev.below) {
@@ -637,7 +638,9 @@ impl App {
                 continue;
             }
             let origin = ev.main.bounds().center();
-            let back = tracedraw_core::live::symmetry_back_to(center, angle, lines, origin, p);
+            let back = tracedraw_core::live::symmetry_back_to_turned(
+                center, angle, lines, rotate, origin, p,
+            );
             return Some((s.id, back));
         }
         None

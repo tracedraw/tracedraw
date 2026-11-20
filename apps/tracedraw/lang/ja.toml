@@ -4775,6 +4775,8 @@ toolbar.path_rotate = "文字を回転"
 toolbar.path_straighten_tip = "テキストを回転せずにパスから外す"
 toolbar.path_tick_snap = "目盛りスナップ"
 toolbar.path_tick_snap_tip = "パスから離すドラッグで文字が一定の刻みで動きます"
+toolbar.path_follow = "パスに追従" # mt
+toolbar.path_follow_tip = "パスを移動または変形するたびにテキストを合わせ直します" # mt
 toolbar.path_tick_spacing = "目盛り間隔"
 toolbar.path_upright = "文字を直立"
 toolbar.path_vertical = "垂直方向の配置"
@@ -5269,6 +5271,8 @@ menu.object.symmetry_break = "対称のリンクを解除"
 symmetry.finish = "終了"
 symmetry.full_preview = "完全プレビューを表示: コピーを完全に描画 (オフ: アウトライン)" # mt
 symmetry.show_lines = "対称線を表示" # mt
+symmetry.rotational = "回転" # mt
+symmetry.rotational_tip = "コピーを鏡映せずに中心の周りに回転させます。線の数だけコピーし、オブジェクトもその一つです" # mt
 status.editing_symmetry = "対称を編集中: 元のオブジェクト (赤い輪郭) を変更すると複製が追従します。終了で終わります。"
 
 options.center_dialogs = "ダイアログ ボックスを中央に表示"

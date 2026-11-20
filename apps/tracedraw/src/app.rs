@@ -2257,6 +2257,9 @@ pub struct App {
     #[allow(clippy::type_complexity)]
     pub live_handle_cache:
         std::cell::RefCell<Option<((u64, Vec<ShapeId>), Option<crate::fit_live::LiveHandles>)>>,
+    /// The document revision texts following their paths were last
+    /// fitted at (see [`App::refresh_text_follow`]).
+    pub text_follow_checked: u64,
     /// Rounded connectors' corner radius, mm.
     pub connector_radius: f64,
     /// The document revision connectors were last checked at (see
@@ -3635,6 +3638,7 @@ impl App {
             blends_checked: 0,
             live_fits_checked: 0,
             live_handle_cache: Default::default(),
+            text_follow_checked: 0,
             connector_radius: 3.0,
             connectors_checked: u64::MAX,
             connector_radius_step: None,

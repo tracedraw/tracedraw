@@ -7869,6 +7869,7 @@ mod tests {
             center: tracedraw_core::geometry::Point::new(50.0, 0.0),
             angle: 90.0,
             lines: 1,
+            rotate: false,
         });
         s.effects.push(tracedraw_core::live::Effect::Transparency {
             mask: Fill::Solid(Color::rgb8(128, 128, 128)),
