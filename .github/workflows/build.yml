@@ -14,12 +14,17 @@ on:
         required: false
         default: ""
 
+# On a pull request only test and app-test run (the required checks); the
+# platform builds, web and Android run on main and tags, or on a pull
+# request labelled full-ci. A newer push to a pull request cancels its
+# older run.
+#
 # One run per branch or tag at a time: a newer push to main cancels the
 # run still going, so two runs never replace the nightly release at once.
 # Version tags have groups of their own and always finish.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -61,6 +66,7 @@ jobs:
 
   build:
     needs: test
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
@@ -365,6 +371,7 @@ jobs:
   # and attached to the releases as tracedraw-<version>-web.zip.
   web:
     needs: test
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -498,6 +505,7 @@ jobs:
   # tracedraw-*): uploading to Play is the owner's step.
   android:
     needs: test
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
