@@ -58,13 +58,13 @@ pub use command::Command;
 pub use document::{
     bullet_numbers, default_tab_step, merge_equal_spans, normalized_tabs, set_default_tab_step,
     spans_apply, spans_char_count, spans_delete, spans_insert, spans_text, split_spans_at,
-    Baseline, BitmapEffect, BitmapFxStack, BulletStyle, ColorStyle, CornerKind, Corners,
-    DefaultKind, DefaultProperties, Document, DocumentFont, DocumentProfile, EllipseArc,
+    Baseline, BitmapEffect, BitmapFxStack, BulletPart, BulletStyle, ColorStyle, CornerKind,
+    Corners, DefaultKind, DefaultProperties, Document, DocumentFont, DocumentProfile, EllipseArc,
     FollowBlack, FontVariation, Layer, LeadingUnit, LineStyle, MasterScope, Metadata, Numbering,
     ObjectDefaults, ObjectStyle, Page, ParagraphStyle, PathTextOrientation, PathTextVertical,
     QrCode, QrKind, Shadow, Shape, ShapeKind, StyleParts, Symbol, TabKind, TabStop, Table,
     TableCell, TextAlign, TextDirection, TextOnPath, TextPosition, TextSpan, TimeTracker,
-    TrackedTask, VerticalAlign, VerticalColumns, DEFAULT_TAB_STEP,
+    TrackedTask, VerticalAlign, VerticalColumns, DEFAULT_TAB_STEP, MAX_LIST_LEVEL,
 };
 pub use engine::Engine;
 pub use geometry::{Affine, BezPath, Point, Rect, Size, Vec2};
