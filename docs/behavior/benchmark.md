@@ -80,14 +80,14 @@ The window lists three zoom styles, the one in use picked
 (`benchmark::ZoomStyle`); a click uses one at once:
 
 - **Smooth (TraceDraw)**: Smooth zoom on, Light zoom off.
-- **As in CorelDRAW**: both off: a wheel notch zooms at once by the
+- **Instant**: both off: a wheel notch zooms at once by the
   fixed step and is drawn sharp at once, the point under the pointer
   kept (Wheel zoom centers off).
 - **Light (slow computers)**: Light zoom on.
 
 Once a test has run, one is marked Recommended, with why: Light on a
-slow computer (under 4.0), else As in CorelDRAW, which people coming
-from CorelDRAW prefer and which draws less than the glide
+slow computer (under 4.0), else Instant, which draws less than the
+glide
 (`Measured::suggested_zoom`).
 
 ## With and without hardware acceleration
@@ -132,7 +132,7 @@ from CorelDRAW prefer and which draws less than the glide
   the result: 50 000 objects drawn in 2.5 s give "about 5 000"
   (`ui::benchmark::tests::the_window_draws_runs_and_shows_the_scores`).
 - A zoom style sets the options it stands for; a slow computer is told
-  Light, the others As in CorelDRAW
+  Light, the others Instant
   (`ui::benchmark::tests::a_zoom_style_is_used_from_the_window`).
 - A start for the benchmark opens it and runs the test once
   (`ui::benchmark::tests::a_start_for_the_benchmark_runs_it`).
