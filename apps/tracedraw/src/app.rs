@@ -430,12 +430,17 @@ pub enum Drag {
     /// Rotating the selection about `center`. `grab` is the selection's
     /// own point (a node) the turn started from in rotate mode, which the
     /// turn carries onto other objects' points and edges (#933); `None`
-    /// for a rotate handle.
+    /// for a rotate handle. With Shift held the selection is also
+    /// scaled, keeping its proportions, by how far the pointer is from
+    /// `center` against `start_radius` (#3772); `scale` is that factor,
+    /// 1 without Shift.
     Rotate {
         center: Point,
         start_angle: f64,
         current_angle: f64,
         grab: Option<Point>,
+        start_radius: f64,
+        scale: f64,
     },
     /// Rubber-band selection; with `touching` (Alt) objects it touches
     /// count too.

@@ -317,6 +317,8 @@ impl App {
                     start_angle: 0.0,
                     current_angle: 0.0,
                     grab: None,
+                    start_radius: 0.0,
+                    scale: 1.0,
                 };
                 self.free_transform_last = p;
                 self.free_transform_reflected = false;

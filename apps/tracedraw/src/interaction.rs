@@ -1480,6 +1480,8 @@ impl App {
             start_angle: a,
             current_angle: a,
             grab: Some(g),
+            start_radius: (p - c).hypot(),
+            scale: 1.0,
         };
         true
     }
@@ -2497,6 +2499,8 @@ impl App {
                             start_angle: a,
                             current_angle: a,
                             grab: None,
+                            start_radius: (p - c).hypot(),
+                            scale: 1.0,
                         };
                     } else {
                         self.drag = Drag::Skew {
@@ -3041,6 +3045,8 @@ impl App {
                 center,
                 start_angle,
                 current_angle,
+                start_radius,
+                scale,
                 ..
             } => {
                 let mut a = (snapped_handle - *center).atan2();
@@ -3050,6 +3056,10 @@ impl App {
                     a = *start_angle + ((a - *start_angle) / step).round() * step;
                 }
                 *current_angle = a;
+                // Shift scales while turning, keeping the proportions:
+                // the pointer's distance from the centre against where
+                // the turn started (#3772).
+                *scale = rotate_drag_scale(mods.shift, *start_radius, (p - *center).hypot());
             }
             _ => {}
         }
@@ -4581,12 +4591,19 @@ impl App {
                 center,
                 start_angle,
                 current_angle,
+                scale,
                 ..
             } => {
                 let a = current_angle - start_angle;
+                let s = if scale.is_finite() && *scale > 0.0 {
+                    *scale
+                } else {
+                    1.0
+                };
                 Some(
                     Affine::translate(center.to_vec2())
                         * Affine::rotate(a)
+                        * Affine::scale(s)
                         * Affine::translate(-center.to_vec2()),
                 )
             }
@@ -6104,4 +6121,15 @@ fn drawn_path_of(
         c.transform_by(s.transform);
         drawn_path_of(&c, id, depth + 1)
     })
+}
+
+/// The scale factor of a rotate drag: with Shift, the pointer's distance
+/// from the centre of rotation against its distance when the turn
+/// started, kept away from zero; 1 without Shift or when the turn
+/// started on the centre itself (#3772).
+pub(crate) fn rotate_drag_scale(shift: bool, start_radius: f64, radius: f64) -> f64 {
+    if !shift || !(start_radius > 1e-6) || !radius.is_finite() {
+        return 1.0;
+    }
+    (radius / start_radius).max(0.01)
 }

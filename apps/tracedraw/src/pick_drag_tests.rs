@@ -1274,6 +1274,8 @@ fn the_pointer_shows_what_a_press_would_do() {
         start_angle: 0.0,
         current_angle: 0.0,
         grab: None,
+        start_radius: 0.0,
+        scale: 1.0,
     };
     assert_eq!(cursor(&app, empty), ToolCursor::Rotate);
     // Moving: the arrow with a dotted box; once a right click makes the
@@ -1333,6 +1335,8 @@ fn the_status_bar_tells_how_far_how_much_and_what_angle() {
         start_angle: 0.0,
         current_angle: 30f64.to_radians(),
         grab: None,
+        start_radius: 0.0,
+        scale: 1.0,
     };
     assert!(info(&app).contains("30.0"), "{}", info(&app));
     app.drag = Drag::Skew {
@@ -29838,6 +29842,8 @@ fn windows_keys_swap_ctrl_and_shift_for_transforms() {
         start_angle: 0.0,
         current_angle: 0.0,
         grab: None,
+        start_radius: 0.0,
+        scale: 1.0,
     };
     assert_eq!(app.pick_mods(Modifiers::CTRL), Modifiers::CTRL);
     app.settings.pick_windows_keys = true;
@@ -30473,4 +30479,30 @@ fn the_handles_of_a_straight_line_do_not_overlap() {
     let grown = 30.0 / app.view.zoom as f64;
     assert!(close(after.height(), before.height() + grown), "{before:?} {after:?}");
     assert!(close(after.width(), before.width()), "{before:?} {after:?}");
+}
+
+/// In rotate mode Shift scales the selection while it turns, keeping its
+/// proportions, by the pointer's distance from the centre (#3772).
+#[test]
+fn shift_scales_while_rotating() {
+    use crate::interaction::rotate_drag_scale;
+    assert_eq!(rotate_drag_scale(false, 10.0, 20.0), 1.0);
+    assert_eq!(rotate_drag_scale(true, 10.0, 20.0), 2.0);
+    assert_eq!(rotate_drag_scale(true, 0.0, 20.0), 1.0);
+    assert!(rotate_drag_scale(true, 10.0, 0.0) > 0.0);
+    let app = App::headless();
+    let drag = Drag::Rotate {
+        center: Point::new(10.0, 10.0),
+        start_angle: 0.0,
+        current_angle: std::f64::consts::FRAC_PI_2,
+        grab: None,
+        start_radius: 10.0,
+        scale: 2.0,
+    };
+    let t = app.preview_transform_of(&drag).unwrap();
+    let q = t * Point::new(20.0, 10.0);
+    assert!((q.x - 10.0).abs() < 1e-9 && (q.y - 30.0).abs() < 1e-9, "{q:?}");
+    // The centre stays put.
+    let c = t * Point::new(10.0, 10.0);
+    assert!((c.x - 10.0).abs() < 1e-9 && (c.y - 10.0).abs() < 1e-9, "{c:?}");
 }
