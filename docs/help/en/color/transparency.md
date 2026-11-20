@@ -14,6 +14,10 @@ pattern or texture.
   node; drag the bar between two nodes (the midpoint) to move where the blend
   is half way; double-click the line to add a node, a node to remove it.
 - In the [[docker.transparency]] section of the [[docker.properties]] panel.
+- With **Object > Apply Uniform Transparency** (a uniform transparency over
+  fill and outline, at the amount used last, 50% at first) and **Object >
+  Remove Transparency**. Both can be given a keyboard shortcut in
+  Customization > Commands.
 
 ## Settings {#settings}
 

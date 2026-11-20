@@ -3821,6 +3821,9 @@ impl App {
                 self.keep_spline(id, &path, points, c.spline_fixed_flags());
             }
             self.select(vec![id]);
+            if !c.bspline {
+                self.add_parallel_lines(id);
+            }
         }
     }
 
@@ -4367,7 +4370,12 @@ impl App {
                         .zip(self.default_stroke())
                         .map(|(pen, st)| pen.freehand_widths(st.width))
                         .unwrap_or_default();
-                    self.add_drawn_line_with_widths(path, widths);
+                    let joined = self.join_candidate().map(|c| c.id);
+                    if let Some(id) = self.add_drawn_line_with_widths(path, widths) {
+                        if joined != Some(id) {
+                            self.add_parallel_lines(id);
+                        }
+                    }
                 }
             }
             Drag::FillGradient {

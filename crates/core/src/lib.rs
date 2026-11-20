@@ -34,6 +34,7 @@ pub mod live;
 pub mod nodes;
 pub mod painterly;
 pub mod paragraphs;
+pub mod parallel;
 pub mod patch;
 pub mod picture_inks;
 mod press;

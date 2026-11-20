@@ -1178,6 +1178,54 @@ pub struct CurvePrefs {
     /// segment, so higher values make more lines.
     #[serde(default)]
     pub straight_threshold: u32,
+    /// Parallel Lines on the curve tools' property bar (#3626): lines
+    /// drawn alongside each new curve. Off at first.
+    #[serde(default)]
+    pub parallel: ParallelLines,
+}
+
+/// Lines drawn alongside each curve made with the Freehand, Bezier, Pen,
+/// Polyline, 2-Point Line and 3-Point Curve tools (`parallel_lines.rs`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ParallelLines {
+    pub on: bool,
+    /// Lines on each side drawn on, 1 to 10.
+    pub count: u32,
+    /// The distance from one line to the next, mm.
+    pub gap: f64,
+    /// Lines on both sides of the curve, else on its left only.
+    pub both_sides: bool,
+}
+
+impl Default for ParallelLines {
+    fn default() -> Self {
+        ParallelLines {
+            on: false,
+            count: 1,
+            gap: 5.0,
+            both_sides: false,
+        }
+    }
+}
+
+impl ParallelLines {
+    /// The distances of the lines from the curve, left positive, nearest
+    /// first: none while off.
+    pub fn distances(&self) -> Vec<f64> {
+        if !self.on || !self.gap.is_finite() || self.gap <= 0.0 {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for k in 1..=self.count.clamp(1, 10) {
+            let d = f64::from(k) * self.gap;
+            out.push(d);
+            if self.both_sides {
+                out.push(-d);
+            }
+        }
+        out
+    }
 }
 
 /// The modifier key that constrains the angle while drawing curves.
@@ -1223,6 +1271,7 @@ impl Default for CurvePrefs {
             pen_ignores_hand: true,
             corner_threshold: 0,
             straight_threshold: 0,
+            parallel: ParallelLines::default(),
         }
     }
 }

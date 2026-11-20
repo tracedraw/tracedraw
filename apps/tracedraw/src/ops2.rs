@@ -1512,6 +1512,28 @@ impl App {
         }
     }
 
+    /// Object > Apply Uniform Transparency (#3622): the selected objects
+    /// (bitmaps and groups too) get a uniform transparency over fill and
+    /// outline in the Normal merge mode, at the amount last used (50% at
+    /// first); one undo step.
+    pub fn apply_uniform_transparency(&mut self) {
+        use crate::mixed::TransparencyField as F;
+        let last = self.transparency_default.amount;
+        let amount = if last > 0.0 && last <= 100.0 {
+            last
+        } else {
+            50.0
+        };
+        let set = crate::effects_ui::TransparencySettings {
+            kind: 0,
+            amount,
+            merge: tracedraw_core::live::MergeMode::Normal,
+            target: 2,
+            ..Default::default()
+        };
+        self.patch_transparency(&set, &[F::Kind, F::Amount, F::Merge, F::Target]);
+    }
+
     /// Object > Clip to Frame > Edit Contents: take the contents out so they can
     /// be moved and edited; Finish Editing puts them back in the frame.
     pub fn edit_clip_frame(&mut self) {
@@ -6046,6 +6068,49 @@ fn scale_base(s: &tracedraw_core::document::Shape) -> Option<(f64, f64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #3622, #3621: uniform transparency on and off, and the document
+    /// palette's eyedropper, run as menu commands (so a shortcut can run
+    /// them), each one undo step.
+    #[test]
+    fn transparency_and_palette_sampling_run_as_commands() {
+        let ctx = crate::theme::ui_context();
+        // A command run inside a frame, as a shortcut runs it.
+        let run = |app: &mut App, key: &str| {
+            let mut ran = false;
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                ran = crate::ui::menus::run_command(app, ui.ctx(), key);
+            });
+            out.textures_delta.clear();
+            ran
+        };
+        let mut app = App::headless();
+        let id = app
+            .new_shape(ShapeKind::Rect {
+                rect: kurbo::Rect::new(0.0, 0.0, 10.0, 10.0),
+                radius: 0.0,
+                corners: None,
+            })
+            .expect("rect");
+        app.select(vec![id]);
+        let opacity = |app: &App| app.doc().find_shape(id).map(|s| s.opacity);
+        assert!(run(&mut app, "menu.object.transparency_apply"));
+        assert_eq!(opacity(&app), Some(0.5), "50% at first");
+        assert!(run(&mut app, "menu.object.transparency_remove"));
+        assert_eq!(opacity(&app), Some(1.0));
+        app.undo();
+        assert_eq!(opacity(&app), Some(0.5));
+        // The amount last used in the docker.
+        app.transparency_default.amount = 30.0;
+        app.apply_uniform_transparency();
+        assert!((opacity(&app).unwrap() - 0.7).abs() < 1e-9);
+        // The palette's eyedropper starts and stops as its button does.
+        assert!(!app.pending_palette_sample);
+        assert!(run(&mut app, "menu.window.palette_sample"));
+        assert!(app.pending_palette_sample);
+        run(&mut app, "menu.window.palette_sample");
+        assert!(!app.pending_palette_sample);
+    }
 
     fn symbol_of(app: &mut App, rect: kurbo::Rect) -> ShapeId {
         let a = app

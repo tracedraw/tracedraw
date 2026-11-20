@@ -3794,6 +3794,18 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
     if item(ui, "menu.object.clear_effect", "", has) {
         app.clear_effects();
     }
+    // Commands a shortcut can be given to (#3622).
+    if item(ui, "menu.object.transparency_apply", "", has) {
+        app.apply_uniform_transparency();
+    }
+    if item(
+        ui,
+        "menu.object.transparency_remove",
+        "",
+        app.can_clear_transparency(),
+    ) {
+        app.clear_transparency();
+    }
     sep(ui);
     sub(ui, "menu.object.align_distribute", |ui| {
         use crate::ops::{Align, Distribute};
@@ -5108,6 +5120,20 @@ fn window_menu(app: &mut App, ui: &mut Ui) {
             !app.selection.is_empty(),
         ) {
             app.palette_from_selection();
+        }
+        // The document palette's eyedropper as a command, so it can take a
+        // shortcut (#3621); Esc or a right-click cancels it.
+        if check(
+            ui,
+            "menu.window.palette_sample",
+            "",
+            app.pending_palette_sample,
+        ) && app.drawing_shown()
+        {
+            app.pending_palette_sample = !app.pending_palette_sample;
+            if app.pending_palette_sample {
+                app.status = tr("status.palette_sample");
+            }
         }
     });
     sep(ui);

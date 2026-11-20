@@ -171,6 +171,17 @@ uma curva aberta. A ferramenta [[tool.freehand]] acrescenta a suavização. Sem
 nada selecionado, ela lembra como terminar uma curva. Veja
 [Contornos](outlines.md) para as configurações de contorno.
 
+**Linhas paralelas** (com as ferramentas Mão livre, Bézier, Caneta, Polilinha,
+Linha de 2 pontos e Curva de 3 pontos) desenha linhas ao lado de cada nova
+curva: defina quantas **Linhas** de cada lado, a **Distância** de uma linha à
+seguinte e se ficam **Dos dois lados** ou só à esquerda da curva. As linhas são
+curvas próprias com o contorno da curva, selecionadas com ela; um Desfazer
+tira-as e deixa a curva. Vem desligado.
+
+Enquanto puxa a alça do primeiro nó de uma curva com a Caneta ou a Bézier, a
+alça oposta também aparece, para ver a direção em que a curva sai para os dois
+lados.
+
 ## Editar curvas depois {#edit}
 
 Use a ferramenta [[tool.shape]] para mover, acrescentar e excluir nós, mudar o

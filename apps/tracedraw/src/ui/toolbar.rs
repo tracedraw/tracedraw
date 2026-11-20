@@ -2230,6 +2230,37 @@ fn curve_tool_properties(app: &mut App, ui: &mut Ui) {
             c.pen_auto_add_delete = !c.pen_auto_add_delete;
         }
     }
+    if app.draws_parallel_lines() {
+        // Lines drawn alongside each new curve (#3626).
+        sep(ui);
+        let units = app.units;
+        let p = &mut app.settings.curves.parallel;
+        ui.toggle_value(&mut p.on, tr("toolbar.parallel_lines"))
+            .rich_tip(crate::ui::tips::pair(
+                "toolbar.parallel_lines",
+                "toolbar.parallel_lines_desc",
+            ));
+        ui.add_enabled_ui(p.on, |ui| {
+            dim_labelled(ui, "toolbar.parallel_count", |ui| {
+                ui.add(crate::ui::field::NumField::new(&mut p.count).range(1..=10))
+            });
+            let mut gap = units.from_mm(p.gap);
+            if dim_labelled(ui, "toolbar.parallel_gap", |ui| {
+                ui.add(
+                    crate::ui::field::NumField::new(&mut gap)
+                        .speed(0.1)
+                        .range(0.01..=1000.0)
+                        .suffix(format!(" {}", units.short())),
+                )
+            })
+            .changed()
+            {
+                p.gap = units.to_mm(gap).max(0.01);
+            }
+            ui.toggle_value(&mut p.both_sides, tr("toolbar.parallel_both"))
+                .rich_tip(tr("toolbar.parallel_both_desc"));
+        });
+    }
     if !selected {
         vsep(ui);
         let hint = if app.tool == Tool::ThreePointCurve {

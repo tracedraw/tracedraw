@@ -175,6 +175,7 @@ mod page_names;
 mod painterly_tool;
 mod palette;
 mod palm;
+mod parallel_lines;
 mod pen;
 mod pen_look;
 mod perspective_draw;
