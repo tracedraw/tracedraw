@@ -1808,6 +1808,27 @@ mod tests {
         assert!(!invoke::active());
     }
 
+    /// Window > Dockers checks every open docker, its tab in front or
+    /// behind another; choosing one behind brings it to the front, and
+    /// a closed column's dockers are unchecked (#3663).
+    #[test]
+    fn the_dockers_menu_checks_every_open_tab() {
+        let mut app = App::headless();
+        for tab in [DockerTab::Hints, DockerTab::Properties, DockerTab::Objects] {
+            app.open_docker(tab);
+        }
+        assert_eq!(app.docker_tab, DockerTab::Objects);
+        for tab in [DockerTab::Hints, DockerTab::Properties, DockerTab::Objects] {
+            assert!(effect_docker_open(&app, tab), "{tab:?}");
+        }
+        assert!(!effect_docker_open(&app, DockerTab::Blend));
+        app.open_docker(DockerTab::Hints);
+        assert_eq!(app.docker_tab, DockerTab::Hints);
+        assert!(effect_docker_open(&app, DockerTab::Objects));
+        app.show_dockers = false;
+        assert!(!effect_docker_open(&app, DockerTab::Objects));
+    }
+
     /// The Effects menu: Flatten Effects, the bitmap groups, then the
     /// effect panels, checked while open; Object > Create holds Arrowhead
     /// and Pattern Fill, which asks for the pattern's type.
@@ -4082,7 +4103,7 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         ui,
         "menu.object.properties",
         "Alt+Enter",
-        app.docker_shown(DockerTab::Properties),
+        effect_docker_open(app, DockerTab::Properties),
     ) {
         app.open_docker(DockerTab::Properties);
     }
@@ -4090,7 +4111,7 @@ fn object_menu(app: &mut App, ui: &mut Ui) {
         ui,
         "menu.object.objects",
         "",
-        app.docker_shown(DockerTab::Objects),
+        effect_docker_open(app, DockerTab::Objects),
     ) {
         app.open_docker(DockerTab::Objects);
     }
@@ -4181,7 +4202,8 @@ fn effects_menu(app: &mut App, ui: &mut Ui) {
     }
 }
 
-/// An effect panel's tab is in an open docker column, or floating.
+/// A docker's tab is in an open docker column (in front or behind
+/// another tab), or floating: what the menus check it for (#3663).
 pub(crate) fn effect_docker_open(app: &App, tab: DockerTab) -> bool {
     match app.docker_place(tab) {
         Some(crate::app::DockerPlace::Right) => app.show_dockers,
@@ -4970,7 +4992,15 @@ fn panels_menu(app: &mut App, ui: &mut Ui) {
         let pic = pic
             .as_ref()
             .map(|f| f as &dyn Fn(&egui::Painter, egui::Rect));
-        if check_pic(ui, tab.key(), tab.shortcut(), app.docker_shown(tab), pic) {
+        // Checked while open, its tab in front or behind another in an
+        // open column, or floating (#3663).
+        if check_pic(
+            ui,
+            tab.key(),
+            tab.shortcut(),
+            effect_docker_open(app, tab),
+            pic,
+        ) {
             app.open_docker(tab);
         }
     };

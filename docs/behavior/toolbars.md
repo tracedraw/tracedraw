@@ -168,9 +168,14 @@ a click lower on the tab brings the panel to the front
   lies in the other column or floats is put in front where it is, and
   the default column stays as it was; a panel open nowhere joins the
   default column (`App::open_docker`, `App::reconcile_dockers`). Window >
-  Panels and the Help > Hints check show a panel as on when it is in
-  front of an open column or floating (`App::docker_shown`); the plus
-  button of a column opens a ticked panel in front of that column.
+  Dockers (and Object > Properties, Object > Objects and the Effects
+  menu's panels) checks every panel open in an open column, its tab in
+  front or behind another, or floating; choosing a checked one behind
+  another brings it to the front (`menus::effect_docker_open`, #3663:
+  only the panel in front was checked, so the open ones behind looked
+  closed). The Help > Hints check shows Hints as on when it is in front
+  of an open column or floating (`App::docker_shown`); the plus button
+  of a column opens a ticked panel in front of that column.
 - The places are kept in the preferences (`dockers`: `open`, `front`,
   `left`, `left_front`, `left_shown`, `inner`, `inner_front`,
   `inner_shown`, `left_inner`, `left_inner_front`, `left_inner_shown`
