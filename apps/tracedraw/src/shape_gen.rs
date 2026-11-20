@@ -55,10 +55,11 @@ pub enum GenKind {
     Contour,
     Maze,
     SpaceCurve,
+    SliceGrid,
 }
 
 impl GenKind {
-    pub const ALL: [GenKind; 19] = [
+    pub const ALL: [GenKind; 20] = [
         GenKind::DotGrid,
         GenKind::Truchet,
         GenKind::Tessellation,
@@ -78,6 +79,7 @@ impl GenKind {
         GenKind::Contour,
         GenKind::Maze,
         GenKind::SpaceCurve,
+        GenKind::SliceGrid,
     ];
     pub fn key(self) -> &'static str {
         match self {
@@ -100,6 +102,7 @@ impl GenKind {
             GenKind::Contour => "shapegen.kind_contour",
             GenKind::Maze => "shapegen.kind_maze",
             GenKind::SpaceCurve => "shapegen.kind_space_curve",
+            GenKind::SliceGrid => "shapegen.kind_slice",
         }
     }
     /// Whether the generator works from the panel's picked selection (an
@@ -507,6 +510,22 @@ pub struct ShapeGenSettings {
     pub curve_type: crate::shape_gen_fill::SpaceCurve,
     pub curve_order: u32,
     pub curve_round: bool,
+
+    // Slice grid.
+    pub slice_layout: crate::shape_gen_slice::SliceLayout,
+    /// Columns and rows, 1 to 200.
+    pub slice_cols: u32,
+    pub slice_rows: u32,
+    pub slice_pattern: crate::shape_gen_slice::SlicePattern,
+    /// The largest move sideways and up or down, mm.
+    pub slice_dx: f64,
+    pub slice_dy: f64,
+    /// Waves across the strips, for the wave pattern.
+    pub slice_waves: f64,
+    /// Space between pieces, mm.
+    pub slice_gap: f64,
+    /// Leave the selection in place.
+    pub slice_keep: bool,
 }
 
 impl Default for ShapeGenSettings {
@@ -643,6 +662,15 @@ impl Default for ShapeGenSettings {
             curve_type: crate::shape_gen_fill::SpaceCurve::Hilbert,
             curve_order: 5,
             curve_round: false,
+            slice_layout: crate::shape_gen_slice::SliceLayout::Rows,
+            slice_cols: 8,
+            slice_rows: 12,
+            slice_pattern: crate::shape_gen_slice::SlicePattern::Random,
+            slice_dx: 6.0,
+            slice_dy: 0.0,
+            slice_waves: 1.0,
+            slice_gap: 0.0,
+            slice_keep: false,
         }
     }
 }
@@ -867,6 +895,12 @@ impl ShapeGenSettings {
         let cell = (side / 300.0).max(0.1);
         s.maze_cell = clampf(s.maze_cell, cell, 1000.0, d.maze_cell).max(cell);
         s.curve_order = s.curve_order.clamp(1, s.curve_type.max_order());
+        s.slice_cols = s.slice_cols.clamp(1, 200);
+        s.slice_rows = s.slice_rows.clamp(1, 200);
+        s.slice_dx = clampf(s.slice_dx, -1000.0, 1000.0, d.slice_dx);
+        s.slice_dy = clampf(s.slice_dy, -1000.0, 1000.0, 0.0);
+        s.slice_waves = clampf(s.slice_waves, 0.1, 50.0, d.slice_waves);
+        s.slice_gap = clampf(s.slice_gap, 0.0, 1000.0, 0.0);
         s
     }
 }
@@ -895,6 +929,7 @@ pub fn generate(settings: &ShapeGenSettings) -> Generated {
         GenKind::Contour => crate::shape_gen_fill::contour(&s, &mut out),
         GenKind::Maze => crate::shape_gen_fill::maze(&s, &mut out),
         GenKind::SpaceCurve => crate::shape_gen_fill::space_curve(&s, &mut out),
+        GenKind::SliceGrid => crate::shape_gen_slice::slice_grid(&s, &mut out),
     }
     out
 }

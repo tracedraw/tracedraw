@@ -169,3 +169,20 @@ the settings) and `ui/shape_gen_docker.rs`. Issues #3412 and #3413.
   corners: straight to each segment's middle, a quadratic round each
   corner.
 
+## Slice grid (`shape_gen_slice.rs`)
+
+- Cells over the selection's box (the preview: the Width x Height box):
+  1 x rows (Rows), columns x 1 (Columns) or columns x rows (Grid), each
+  shrunk by half the gap on every side (at most 45 % of the cell).
+- Move of strip k of n, t = (k + 0.5) / n: Random a seeded value in -1 to
+  1, Wave sin(2 pi waves t), Ramp 2t - 1, Alternate +1 for even k, -1
+  for odd. Rows move by their row (Random draws x and y apart), Columns
+  by their column; in a Grid x follows the row and y the column. Moves
+  are the values times Move across and Move up or down.
+- Slice Selection: per cell a ClipFrame whose frame is the moved cell
+  rectangle (no fill, no outline) and whose contents are copies of the
+  selected top-level objects with new ids, each moved by the cell's
+  move; all in one group named after the generator, added to the active
+  layer in one undo step with the originals deleted (kept with Keep
+  original).
+

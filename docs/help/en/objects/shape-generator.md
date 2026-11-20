@@ -53,6 +53,8 @@ preview counts the curves.
 - [[shapegen.kind_hatch]], [[shapegen.kind_contour]], [[shapegen.kind_maze]]
   and [[shapegen.kind_space_curve]]: lines that fill a shape, see
   [Filling a shape](#fills).
+- [[shapegen.kind_slice]]: cuts the selection into strips or a grid and
+  moves each piece, see [Slicing a selection](#slice).
 
 Generators that make random choices have a [[shapegen.seed]]: the same seed
 always gives the same result, and [[shapegen.new_seed]] picks another one.
@@ -156,3 +158,17 @@ with its holes left empty; Create puts the result over the selection.
 - [[shapegen.kind_space_curve]]: one line that winds through every cell of
   a grid without crossing itself. Each [[shapegen.curve_order]] makes it
   finer; inside an outline it breaks where it leaves the shape.
+
+## Slicing a selection {#slice}
+
+Select objects, text or pictures, choose how to [[shapegen.slice_layout]]
+(rows, columns or a grid) and the [[shapegen.slice_pattern]], then click
+[[shapegen.slice_apply]]. Each piece moves by up to
+[[shapegen.slice_dx]] and [[shapegen.slice_dy]]: at random, along a wave,
+from one side to the other, or every other piece each way. A
+[[shapegen.slice_gap]] leaves space between the pieces. The preview shows
+the cells as they will move.
+
+Every piece is a PowerClip holding a copy of the selection, so text stays
+editable text and pictures keep their pixels; the pieces come in one
+group, and [[shapegen.slice_keep]] leaves the original in place.

@@ -16,6 +16,7 @@ use crate::shape_gen::{
 use crate::shape_gen_cells::{Gradient, HtShape, PointMode};
 use crate::shape_gen_curves::{FractalType, SpiroType, TilingType};
 use crate::shape_gen_fill::{ContourMode, HatchMode, MazeStyle, SpaceCurve};
+use crate::shape_gen_slice::{SliceLayout, SlicePattern};
 use crate::theme::Tokens;
 use crate::ui::docker_form::{indented, row, section, wide_button};
 use crate::ui::tips::RichTip;
@@ -1536,6 +1537,90 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
                         .rich_tip(crate::ui::tips::keyed("shapegen.curve_round"));
                 });
             }
+            GenKind::SliceGrid => {
+                row(ui, &tr("shapegen.slice_layout"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_slice_layout",
+                        &mut s.slice_layout,
+                        &SliceLayout::ALL,
+                        SliceLayout::key,
+                        "shapegen.slice_layout",
+                    );
+                });
+                if s.slice_layout != SliceLayout::Rows {
+                    row(ui, &tr("shapegen.slice_cols"), |ui| {
+                        count(ui, &mut s.slice_cols, 1..=200, "shapegen.slice_cols")
+                    });
+                }
+                if s.slice_layout != SliceLayout::Columns {
+                    row(ui, &tr("shapegen.slice_rows"), |ui| {
+                        count(ui, &mut s.slice_rows, 1..=200, "shapegen.slice_rows")
+                    });
+                }
+                row(ui, &tr("shapegen.slice_pattern"), |ui| {
+                    combo(
+                        ui,
+                        "shapegen_slice_pattern",
+                        &mut s.slice_pattern,
+                        &SlicePattern::ALL,
+                        SlicePattern::key,
+                        "shapegen.slice_pattern",
+                    );
+                });
+                if s.slice_pattern == SlicePattern::Wave {
+                    row(ui, &tr("shapegen.slice_waves"), |ui| {
+                        slider(
+                            ui,
+                            &mut s.slice_waves,
+                            0.1..=20.0,
+                            1,
+                            "",
+                            "shapegen.slice_waves",
+                        )
+                    });
+                }
+                row(ui, &tr("shapegen.slice_dx"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.slice_dx,
+                        -1000.0,
+                        1000.0,
+                        "shapegen.slice_dx",
+                    )
+                });
+                row(ui, &tr("shapegen.slice_dy"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.slice_dy,
+                        -1000.0,
+                        1000.0,
+                        "shapegen.slice_dy",
+                    )
+                });
+                row(ui, &tr("shapegen.slice_gap"), |ui| {
+                    length(
+                        ui,
+                        units,
+                        precision,
+                        &mut s.slice_gap,
+                        0.0,
+                        1000.0,
+                        "shapegen.slice_gap",
+                    )
+                });
+                indented(ui, |ui| {
+                    ui.checkbox(&mut s.slice_keep, tr("shapegen.slice_keep"))
+                        .rich_tip(crate::ui::tips::keyed("shapegen.slice_keep"));
+                });
+                if s.slice_pattern == SlicePattern::Random {
+                    seed_row(ui, s);
+                }
+            }
         }
         if !matches!(
             s.kind,
@@ -1616,7 +1701,17 @@ pub fn shape_generator(app: &mut App, ui: &mut Ui) {
             }
         });
     }
-    if app.shape_gen.kind == GenKind::ConeTemplate {
+    if app.shape_gen.kind == GenKind::SliceGrid {
+        let can = has_doc && !app.selection.is_empty() && selected.is_none();
+        if wide_button(
+            ui,
+            &tr("shapegen.slice_apply"),
+            can,
+            &crate::ui::tips::keyed("shapegen.slice_apply"),
+        ) {
+            app.shape_gen_slice_selection();
+        }
+    } else if app.shape_gen.kind == GenKind::ConeTemplate {
         let can = has_doc && !app.selection.is_empty() && selected.is_none();
         if wide_button(
             ui,
