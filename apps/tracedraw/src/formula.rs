@@ -575,9 +575,44 @@ impl Parser<'_> {
             let t: String = self.chars[start..self.pos].iter().collect();
             return Some(upright(&t));
         }
+        // A word in a script of its own (Hindi, Russian, Arabic...): one
+        // run, shaped as text with the spaces between its words, as the
+        // letters and vowel signs of Devanagari join only when shaped
+        // together. One sign at a time left the vowel signs apart from
+        // their letters and the spaces out (#3572).
+        if in_script_word(c) {
+            let start = self.pos;
+            loop {
+                while self.peek().is_some_and(in_script_word) {
+                    self.pos += 1;
+                }
+                let mut ahead = self.pos;
+                while self.chars.get(ahead).is_some_and(|c| *c == ' ') {
+                    ahead += 1;
+                }
+                if ahead > self.pos && self.chars.get(ahead).is_some_and(|c| in_script_word(*c)) {
+                    self.pos = ahead;
+                } else {
+                    break;
+                }
+            }
+            let t: String = self.chars[start..self.pos].iter().collect();
+            return Some(upright(&t));
+        }
         self.pos += 1;
         Some(sym_for_char(c))
     }
+}
+
+/// A character of a word written in a script other than Latin and Greek
+/// (whose letters are the formula's variables) and not a mathematical
+/// sign: Devanagari, Cyrillic, Arabic and the like, with their marks.
+fn in_script_word(c: char) -> bool {
+    let u = c as u32;
+    u >= 0x0400
+        && !c.is_whitespace()
+        && !(0x2000..=0x2BFF).contains(&u)
+        && !(0x1D400..=0x1D7FF).contains(&u)
 }
 
 fn upright(t: &str) -> Node {
@@ -1113,6 +1148,25 @@ mod tests {
             source: src.into(),
             ..Default::default()
         }
+    }
+
+    /// #3572: Hindi in a formula is one word shaped as text, its vowel
+    /// signs with their letters and the spaces between its words kept;
+    /// Greek letters and signs stay one at a time.
+    #[test]
+    fn a_hindi_word_is_one_run_with_its_spaces() {
+        let (lines, _) = parse("मेरा नाम = \\alpha + β");
+        let Node::Row(items) = &lines[0] else {
+            panic!()
+        };
+        let texts: Vec<&str> = items
+            .iter()
+            .filter_map(|n| match n {
+                Node::Sym { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, ["मेरा नाम", "=", "α", "+", "β"]);
     }
 
     #[test]

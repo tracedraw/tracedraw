@@ -244,6 +244,11 @@ window shows.
   showed twice as dark there, with a seam where the bands ended, and
   flickered while kerning or dragging re-rendered it every frame
   (#3639, `raster::tests::the_bands_so_far_cover_their_rows_on_screen`).
+  Bands come only over a picture of the same drawing (the
+  view moved): the picture of a change (each step of a shadow or object
+  being dragged) comes whole, since bands over the picture from before
+  it showed both at once, cut along the bands' edges (#3562,
+  `raster::tests::a_change_comes_whole_and_a_moved_view_in_bands`).
 - Only what can show is drawn: an object (or, inside a group, each of
   its objects) whose bounds, grown by what its outline may reach, lie
   wholly off the canvas is skipped, while objects with effects or a

@@ -3805,7 +3805,9 @@ fn frame_record_7(n: u16, f: Size) -> Vec<u8> {
 
 /// The settings of a paragraph frame (version 16+ `txsm` frame record):
 /// the columns, each one's width and the gap after it (the last one's 0,
-/// one column as wide as the frame in the files seen), equal columns,
+/// one column as wide as the frame in the files seen; columns apart by a
+/// bar, `"556846,127000|556846,0"`, as a version 27 file of two columns
+/// lists them, #3506), equal columns,
 /// left to right, the text from the top (`v_justify` 0, the one value
 /// seen; `writes_frame` lets other vertical placings go out as lines).
 fn frame_json(f: Size, para: &tracedraw_core::ParagraphStyle) -> String {
@@ -3820,7 +3822,7 @@ fn frame_json(f: Size, para: &tracedraw_core::ParagraphStyle) -> String {
         .collect();
     format!(
         r#"{{"frame":{{"columns":"{}","equalWidthColumns":"1","rtlColumns":"0","v_justify":"0"}}}}"#,
-        columns.join(",")
+        columns.join("|")
     )
 }
 

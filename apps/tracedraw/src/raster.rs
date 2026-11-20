@@ -750,8 +750,16 @@ impl Raster {
             let gives_up = cancel.clone();
             // The main canvas's picture comes a band at a time, the middle
             // of the window first, laid over the last one as it comes
-            // (#2389); the pages beside it come whole.
-            let (bands_tx, bands) = if self.follows_zoom {
+            // (#2389); the pages beside it come whole. Only over a picture
+            // of the same drawing (the view moved): over one from before a
+            // change, the bands showed two drawings at once, cut along the
+            // bands' edges, so a shadow being dragged flickered in pieces
+            // as each step of the drag came (#3562).
+            let same_drawing = self
+                .key
+                .as_ref()
+                .is_some_and(|old| old.same_but_view(&key, true));
+            let (bands_tx, bands) = if self.follows_zoom || !same_drawing {
                 (None, None)
             } else {
                 let (t, r) = std::sync::mpsc::channel();
@@ -1671,6 +1679,76 @@ mod tests {
         }
         assert!(done, "the picture from the thread was taken");
         assert!(raster.last_seconds < 1.0, "its time measured");
+    }
+
+    /// #3562: a change to the drawing is not laid over the last picture
+    /// a band at a time: the bands showed the drawing before and after
+    /// the change at once, cut along their edges (a shadow being dragged
+    /// flickered in pieces). A view that moved still comes in bands.
+    #[test]
+    fn a_change_comes_whole_and_a_moved_view_in_bands() {
+        static TURNS: Turns = Turns::new();
+        let ctx = Context::default();
+        let doc = Document::new("t", Size::new(100.0, 50.0));
+        let page = doc.pages[0].id;
+        let rect = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(320.0, 200.0));
+        let mut raster = Raster {
+            turns: Some(&TURNS),
+            threaded: true,
+            ..Default::default()
+        };
+        let mut pass = |raster: &mut Raster, revision: u64, zoom: f32, time: f64| {
+            let view = View {
+                zoom,
+                origin: egui::pos2(0.0, 400.0),
+            };
+            let input = egui::RawInput {
+                time: Some(time),
+                ..Default::default()
+            };
+            let mut full = ctx.run_ui(input, |ui| {
+                raster.texture(
+                    ui.ctx(),
+                    &doc,
+                    page,
+                    &view,
+                    rect,
+                    None,
+                    revision,
+                    false,
+                    false,
+                    false,
+                    false,
+                    None,
+                    None,
+                );
+            });
+            full.textures_delta.clear();
+        };
+        let wait = |raster: &mut Raster, pass: &mut dyn FnMut(&mut Raster)| {
+            for _ in 0..500 {
+                if raster.job.is_none() {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                pass(raster);
+            }
+            panic!("the render ends");
+        };
+        pass(&mut raster, 1, 40.0, 0.0);
+        pass(&mut raster, 2, 40.0, 0.1);
+        let job = raster.job.as_ref().expect("on its thread");
+        assert!(job.bands.is_none(), "a change comes whole");
+        wait(&mut raster, &mut |r| pass(r, 2, 40.0, 0.2));
+        // The same drawing at another zoom, once the view rests.
+        let mut t = 1.0;
+        while raster.job.is_none() && t < 100.0 {
+            pass(&mut raster, 2, 60.0, t);
+            t += 1.0;
+        }
+        let job = raster.job.as_ref().expect("the new zoom on its thread");
+        assert!(job.bands.is_some(), "a moved view comes in bands");
+        wait(&mut raster, &mut |r| pass(r, 2, 60.0, 200.0));
     }
 
     /// #3440: every picture after the first is drawn on its thread, as

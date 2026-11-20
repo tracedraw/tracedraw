@@ -2697,16 +2697,24 @@ pub(crate) fn frame_columns(style: &str) -> Option<(u32, f64)> {
     let Json::Str(cols) = &frame.iter().find(|(k, _)| k == "columns")?.1 else {
         return None;
     };
-    let v: Vec<f64> = cols
-        .split(',')
-        .map(|p| p.trim().parse::<f64>().ok())
-        .collect::<Option<Vec<f64>>>()?;
+    let v = column_numbers(cols)?;
     let n = v.len().div_ceil(2);
     if !(2..=64).contains(&n) {
         return None;
     }
     let gap = v.get(1).copied().filter(|g| g.is_finite() && *g >= 0.0)?;
     Some((n as u32, gap))
+}
+
+/// The numbers of a frame's `columns` setting, each column's width and
+/// the gap after it. A file of version 27 with two columns lists them
+/// `"556846,127000|556846,0"`, a bar between columns; a comma between all
+/// of them is read too. The bar was not, so such a frame lost its columns
+/// (#3506).
+fn column_numbers(cols: &str) -> Option<Vec<f64>> {
+    cols.split([',', '|'])
+        .map(|p| p.trim().parse::<f64>().ok())
+        .collect()
 }
 
 /// The width of a paragraph frame from an object's version 16+ style
@@ -2726,10 +2734,7 @@ pub(crate) fn frame_width_units(style: &str) -> Option<f64> {
     let Json::Str(cols) = &frame.iter().find(|(k, _)| k == "columns")?.1 else {
         return None;
     };
-    let v: Vec<f64> = cols
-        .split(',')
-        .map(|p| p.trim().parse::<f64>().ok())
-        .collect::<Option<Vec<f64>>>()?;
+    let v = column_numbers(cols)?;
     if v.is_empty() {
         return None;
     }
@@ -3212,6 +3217,10 @@ mod tests {
             Some(210.0)
         );
         assert_eq!(frame_width_units(r#"{"frame":{}}"#), None);
+        // Version 27, two columns: a bar between the columns (#3506).
+        let two = r#"{"frame":{"columns":"556846,127000|556846,0","equalWidthColumns":"1"}}"#;
+        assert_eq!(frame_columns(two), Some((2, 127000.0)));
+        assert_eq!(frame_width_units(two), Some(556846.0 * 2.0 + 127000.0));
         assert_eq!(frame_width_units(r#"{"frame":{"columns":"x"}}"#), None);
         assert_eq!(frame_width_units("not json"), None);
     }

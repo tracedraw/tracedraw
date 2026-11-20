@@ -70,9 +70,13 @@ alone goes there.
      (the first page of a PDF). Data they cannot read leaves the
      picture to be pasted
      (`clipboard::tests::vectors_another_program_copied_paste_as_objects`);
-  3. SVG text: its objects;
-  4. an image: a bitmap object;
-  5. other text: artistic text in the middle of the page, one step to
+  3. DXF text (text whose first two lines are `0` and `SECTION`, as a
+     CAD program such as Cadcraft copies a drawing): its objects, read
+     by the DXF reader of File > Import; text it cannot read goes on as
+     below (#3544, `clipboard::tests::dxf_text_pastes_as_objects`);
+  4. SVG text: its objects;
+  5. an image: a bitmap object;
+  6. other text: artistic text in the middle of the page, one step to
      undo with its fill and outline (`clipboard::tests::pasted_text_is_one_step`).
 
 Ctrl+Shift+V pastes the objects copied here in the middle of the view.

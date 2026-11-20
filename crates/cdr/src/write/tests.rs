@@ -7967,7 +7967,7 @@ fn paragraph_columns_round_trip_from_version_16() {
                 ..ParagraphStyle::default()
             }
         ),
-        r#"{"frame":{"columns":"330000,40000,330000,0","equalWidthColumns":"1","rtlColumns":"0","v_justify":"0"}}"#
+        r#"{"frame":{"columns":"330000,40000|330000,0","equalWidthColumns":"1","rtlColumns":"0","v_justify":"0"}}"#
     );
 }
 

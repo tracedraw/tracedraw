@@ -53,6 +53,17 @@ impl ClipboardContent {
     }
 }
 
+/// Text that is a DXF drawing: its first two lines, group code 0 and
+/// `SECTION`, as every DXF file starts.
+fn is_dxf_text(t: &str) -> bool {
+    let mut lines = t
+        .trim_start_matches('\u{feff}')
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty());
+    lines.next() == Some("0") && lines.next() == Some("SECTION")
+}
+
 /// What the system clipboard held when TraceDraw copied, so that a paste
 /// can tell whether something was copied elsewhere since (#183). Where
 /// the system counts clipboard changes (Windows) the count decides and
@@ -818,6 +829,10 @@ impl App {
             tracedraw_io::svg_import::parse(svg, &mut ids)
                 .map(|i| i.shapes)
                 .ok()
+        } else if let Some(dxf) = std::str::from_utf8(bytes).ok().filter(|t| is_dxf_text(t)) {
+            tracedraw_io::dxf::parse(dxf, &mut ids)
+                .map(|i| i.shapes)
+                .ok()
         } else if tracedraw_io::pdf_import::is_pdf(bytes) {
             tracedraw_io::pdf_import::parse(bytes, &mut ids)
                 .ok()
@@ -1148,6 +1163,12 @@ impl App {
             for path in &content.files {
                 self.import_path(path);
             }
+            return;
+        }
+        // A drawing a CAD program copied as DXF text (Cadcraft, #3544):
+        // its objects, not a text of its codes.
+        let dxf = content.text.as_deref().filter(|t| is_dxf_text(t));
+        if dxf.is_some_and(|t| self.paste_vector(t.as_bytes())) {
             return;
         }
         if content.is_svg() {
@@ -1752,6 +1773,29 @@ mod tests {
             cb.system = system.mark(None);
         }
         app
+    }
+
+    /// #3544: a drawing a CAD program copied as DXF text (as Cadcraft
+    /// does, lines ended by CR LF and codes indented) pastes as its
+    /// objects, not as a text of its codes.
+    #[test]
+    fn dxf_text_pastes_as_objects() {
+        let mut app = App::headless();
+        let dxf = "  0\r\nSECTION\r\n  2\r\nENTITIES\r\n  0\r\nLINE\r\n  8\r\n0\r\n 10\r\n0.0\r\n 20\r\n0.0\r\n 11\r\n10.0\r\n 21\r\n5.0\r\n  0\r\nENDSEC\r\n  0\r\nEOF\r\n";
+        assert!(is_dxf_text(dxf));
+        assert!(!is_dxf_text("0 SECTION is not a drawing"));
+        app.paste_from(ClipboardContent {
+            text: Some(dxf.into()),
+            ..Default::default()
+        });
+        let shapes: Vec<&tracedraw_core::Shape> =
+            app.doc().all_layers().flat_map(|l| &l.shapes).collect();
+        assert_eq!(shapes.len(), 1);
+        assert!(
+            !matches!(shapes[0].kind, ShapeKind::Text { .. }),
+            "{:?}",
+            shapes[0].kind
+        );
     }
 
     fn svg_text() -> ClipboardContent {
