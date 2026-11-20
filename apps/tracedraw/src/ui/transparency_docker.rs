@@ -1149,6 +1149,8 @@ fn texture(ui: &mut Ui, set: &mut TransparencySettings, field: &mut Option<F>) {
         TextureKind::Marble => "texture.marble",
         TextureKind::Noise => "texture.noise",
         TextureKind::Wood => "texture.wood",
+        TextureKind::Holographic => "texture.holographic",
+        TextureKind::HoloGlitter => "texture.holo_glitter",
     };
     crate::ui::keynav::ComboBox::from_id_salt("transparency_docker_texture")
         .selected_text(tr(key(t.kind)))

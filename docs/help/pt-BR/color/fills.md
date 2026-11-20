@@ -176,6 +176,10 @@ mistura, ou desfaça para voltar.
 - Um preenchimento [[docker.fill_texture]] é uma textura gerada, de aparência
   natural: [[texture.clouds]], [[texture.marble]], [[texture.noise]] ou
   [[texture.wood]], com cores e escala.
+- [[texture.holographic]] e [[texture.holo_glitter]] dão um visual fixo de foil holográfico: cores do arco-íris
+  correndo entre manchas escuras e claras (cores A e B), o glitter com
+  grãos brilhantes. Não muda com o ângulo de visão; PDF e SVG levam como
+  imagem.
 
 ## Vários preenchimentos em um objeto {#several-fills}
 

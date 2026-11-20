@@ -1084,7 +1084,30 @@ fn paint_value(
         }
         Fill::Pattern(p) => pattern_paint(p, object, symbols, defs, ctx),
         Fill::Texture(t) => {
-            // Approximate with the average of the two colours.
+            // A holographic texture is its look, so it goes in as the
+            // renderer's picture (150 dpi, as in PDF) over the object's
+            // bounds; other textures, and a picture too large to make,
+            // are approximated with the average of the two colours.
+            if t.kind.is_holographic() && bounds.width() > 0.0 && bounds.height() > 0.0 {
+                if let Some(png) = tracedraw_render::render_fill_image(fill, bounds, 150.0)
+                    .and_then(|pm| pm.encode_png().ok())
+                {
+                    use base64::Engine;
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(png);
+                    let id = ctx.next("pat");
+                    let (x, y, w, h) = (
+                        fmt(bounds.x0),
+                        fmt(bounds.y0),
+                        fmt(bounds.width()),
+                        fmt(bounds.height()),
+                    );
+                    let _ = writeln!(
+                        defs,
+                        "    <pattern id=\"{id}\" patternUnits=\"userSpaceOnUse\" x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\">\n      <image width=\"{w}\" height=\"{h}\" preserveAspectRatio=\"none\" href=\"data:image/png;base64,{b64}\"/>\n    </pattern>"
+                    );
+                    return format!("url(#{id})");
+                }
+            }
             tracedraw_core::style::lerp_color(t.color_a, t.color_b, 0.5).to_hex()
         }
         Fill::Procedural(p) => {
@@ -2381,5 +2404,30 @@ pub(crate) mod tests {
         // A plain gradient keeps its two stops.
         let svg = one_shape_svg(Fill::linear(red, blue, 0.0), None);
         assert_eq!(svg.matches("<stop ").count(), 2, "{svg}");
+    }
+
+    /// A holographic texture is written as its picture over the object,
+    /// not as a flat colour; the other textures stay a colour.
+    #[test]
+    fn holographic_texture_goes_in_as_a_picture() {
+        let holo = |kind| {
+            Fill::Texture(tracedraw_core::Texture {
+                kind,
+                color_a: Color::rgb8(28, 30, 44),
+                color_b: Color::rgb8(236, 238, 242),
+                scale: 20.0,
+                seed: 3,
+            })
+        };
+        for kind in [
+            tracedraw_core::TextureKind::Holographic,
+            tracedraw_core::TextureKind::HoloGlitter,
+        ] {
+            let svg = one_shape_svg(holo(kind), None);
+            assert!(svg.contains("fill=\"url(#pat"), "{svg}");
+            assert!(svg.contains("<image ") && svg.contains("data:image/png;base64,"));
+        }
+        let svg = one_shape_svg(holo(tracedraw_core::TextureKind::Clouds), None);
+        assert!(!svg.contains("<image "), "{svg}");
     }
 }

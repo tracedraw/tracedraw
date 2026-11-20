@@ -3830,16 +3830,38 @@ pub(crate) fn pattern_editor(
     changed
 }
 
+/// The colours a holographic texture starts with: the dark of the foil's
+/// shadows and the silver of its highlights.
+pub(crate) const HOLO_DARK: Color = Color::Rgb {
+    r: 28.0 / 255.0,
+    g: 30.0 / 255.0,
+    b: 44.0 / 255.0,
+};
+pub(crate) const HOLO_LIGHT: Color = Color::Rgb {
+    r: 236.0 / 255.0,
+    g: 238.0 / 255.0,
+    b: 242.0 / 255.0,
+};
+
 pub(crate) fn texture_editor(ui: &mut Ui, t: &mut Texture) -> bool {
     let mut changed = false;
-    ui.horizontal(|ui| {
+    // Six kinds: the row wraps in a narrow docker.
+    ui.horizontal_wrapped(|ui| {
         for (k, n) in [
             (TextureKind::Clouds, "texture.clouds"),
             (TextureKind::Marble, "texture.marble"),
             (TextureKind::Noise, "texture.noise"),
             (TextureKind::Wood, "texture.wood"),
+            (TextureKind::Holographic, "texture.holographic"),
+            (TextureKind::HoloGlitter, "texture.holo_glitter"),
         ] {
             if ui.selectable_label(t.kind == k, tr(n)).clicked() && t.kind != k {
+                // A holographic texture starts as a dark foil with silver
+                // highlights, which is what makes the rainbow read as foil.
+                if k.is_holographic() && !t.kind.is_holographic() {
+                    t.color_a = HOLO_DARK;
+                    t.color_b = HOLO_LIGHT;
+                }
                 t.kind = k;
                 changed = true;
             }

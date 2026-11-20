@@ -167,6 +167,10 @@ go back.
 - A [[docker.fill_texture]] fill is a generated, natural-looking texture:
   [[texture.clouds]], [[texture.marble]], [[texture.noise]] or
   [[texture.wood]], with its colors and scale.
+- [[texture.holographic]] and [[texture.holo_glitter]] give a fixed holographic foil look: rainbow colors flowing
+  through dark and light patches (colors A and B), the glitter with
+  sparkling grains. It does not change with the viewing angle; PDF and SVG
+  carry it as a picture.
 
 ## Several fills on one object {#several-fills}
 

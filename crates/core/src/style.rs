@@ -1502,21 +1502,41 @@ pub enum TextureKind {
     Marble,
     Noise,
     Wood,
+    /// A fixed holographic (iridescent) foil look: rainbow bands that
+    /// flow through dark and light patches like a film of oil on metal,
+    /// from colour A (the dark patches) to colour B (the light ones).
+    /// It does not change with the viewing angle: the picture is the
+    /// same on screen, in print and in every export.
+    Holographic,
+    /// [`TextureKind::Holographic`] with fine sparkling grains of
+    /// spectral colour over it (holographic glitter).
+    HoloGlitter,
 }
 
 impl TextureKind {
-    pub const ALL: [TextureKind; 4] = [
+    pub const ALL: [TextureKind; 6] = [
         TextureKind::Clouds,
         TextureKind::Marble,
         TextureKind::Noise,
         TextureKind::Wood,
+        TextureKind::Holographic,
+        TextureKind::HoloGlitter,
     ];
+
+    /// The holographic kinds, which are coloured from the spectrum and
+    /// not only mixed from the two colours.
+    pub fn is_holographic(self) -> bool {
+        matches!(self, TextureKind::Holographic | TextureKind::HoloGlitter)
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             TextureKind::Clouds => "Clouds",
             TextureKind::Marble => "Marble",
             TextureKind::Noise => "Noise",
             TextureKind::Wood => "Wood",
+            TextureKind::Holographic => "Holographic",
+            TextureKind::HoloGlitter => "Holo glitter",
         }
     }
 }

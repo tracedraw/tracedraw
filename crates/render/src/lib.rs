@@ -3206,6 +3206,12 @@ impl Renderer<'_> {
                 self.fill_procedural(page_path, sk, rule, &key, move |u, v| {
                     let x = u * b.width() / t2.scale.max(0.1);
                     let y = v * b.height() / t2.scale.max(0.1);
+                    if t2.kind.is_holographic() {
+                        let f = |c: [u8; 3]| c.map(|v| v as f32 / 255.0);
+                        let glitter = t2.kind == tracedraw_core::TextureKind::HoloGlitter;
+                        let [r, g, bl] = holo_color(x, y, t2.seed, glitter, f(ca), f(cb));
+                        return (Color::Rgb { r, g, b: bl }, 1.0);
+                    }
                     let n = texture_value(t2.kind, x, y, t2.seed) as f32;
                     let l = |x: u8, y: u8| {
                         (x as f32 + (y as f32 - x as f32) * n)
@@ -5509,7 +5515,114 @@ pub fn texture_value(kind: tracedraw_core::TextureKind, x: f64, y: f64, seed: u3
             let r = ((x - 0.5).powi(2) + (y * 0.2).powi(2)).sqrt() * 6.0 + fbm(x, y, seed) * 1.5;
             r.fract()
         }
+        tracedraw_core::TextureKind::Holographic | tracedraw_core::TextureKind::HoloGlitter => {
+            holo_field(x, y, seed).shade as f64
+        }
     }
+}
+
+/// The numbers of the holographic texture at one point (feature units):
+/// how light the foil is there (0 colour A, 1 colour B), the phase of
+/// the rainbow and how strongly it shows.
+struct HoloField {
+    shade: f32,
+    phase: f32,
+    strength: f32,
+}
+
+fn smoothstep(e0: f64, e1: f64, x: f64) -> f64 {
+    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+fn holo_field(x: f64, y: f64, seed: u32) -> HoloField {
+    // The coordinates bent by two slow noise fields, so the bands flow
+    // in curls as a film of oil does.
+    let wx = fbm(x * 0.7 + 5.2, y * 0.7 + 1.3, seed);
+    let wy = fbm(x * 0.7 + 9.1, y * 0.7 + 4.7, seed ^ 0x51ED);
+    let (px, py) = (x + 1.8 * wx, y + 1.8 * wy);
+    // The film's thickness sets the colour; a slight slope across the
+    // object adds the long sweep of a foil lit from one side.
+    let film = fbm(px * 0.9, py * 0.9, seed ^ 0xA3C5);
+    let phase = film * 1.8 + x * 0.06 + y * 0.04;
+    // Broad light and dark patches, as the foil catches the light.
+    let sheen = fbm(px * 0.45 + 3.3, py * 0.45 + 7.7, seed ^ 0x7719);
+    let shade = smoothstep(0.32, 0.66, sheen);
+    // The rainbow shows most in the half tones, less in the brightest
+    // highlights and the deepest shadows.
+    let strength = 0.15 + 0.85 * (1.0 - (2.0 * shade - 1.0).abs()).powf(0.6);
+    HoloField {
+        shade: shade as f32,
+        phase: phase as f32,
+        strength: strength as f32,
+    }
+}
+
+/// A colour of the spectrum at `phase` (one turn per unit) as a thin
+/// film shows it: three cosines a little apart, so the turn runs through
+/// gold, magenta, deep blue and cyan more than through green.
+fn spectrum(phase: f32) -> [f32; 3] {
+    let t = std::f32::consts::TAU * phase;
+    [
+        0.5 + 0.5 * t.cos(),
+        0.5 + 0.5 * (t - 0.9).cos(),
+        0.5 + 0.5 * (t - 2.2).cos(),
+    ]
+}
+
+fn grain_hash(ix: i64, iy: i64, seed: u32, k: u64) -> f32 {
+    let mut h = (ix as u64).wrapping_mul(0x9E3779B97F4A7C15)
+        ^ (iy as u64).wrapping_mul(0xC2B2AE3D27D4EB4F)
+        ^ ((seed as u64) << 8 | k).wrapping_mul(0x165667B19E3779F9);
+    h ^= h >> 31;
+    h = h.wrapping_mul(0xD6E8FEB86659FD93);
+    h ^= h >> 32;
+    (h & 0xFFFF) as f32 / 65535.0
+}
+
+/// The colour (RGB, 0 to 1) of a holographic texture at `x`, `y`
+/// (feature units, as [`texture_value`]): the foil from `dark` to
+/// `light`, the spectrum laid over it, and with `glitter` fine grains
+/// of spectral colour sparkling on top. The same numbers always give
+/// the same colour: the look is fixed, not tied to a viewing angle.
+pub fn holo_color(
+    x: f64,
+    y: f64,
+    seed: u32,
+    glitter: bool,
+    dark: [f32; 3],
+    light: [f32; 3],
+) -> [f32; 3] {
+    let f = holo_field(x, y, seed);
+    let spec = spectrum(f.phase);
+    // The rainbow is as bright as the foil under it: dim and deep in the
+    // dark patches, pale in the light ones.
+    let lum = 0.3 + 0.7 * f.shade;
+    let k = 0.85 * f.strength;
+    let mut c = [0.0f32; 3];
+    for i in 0..3 {
+        let base = dark[i] + (light[i] - dark[i]) * f.shade;
+        let tint = lum * (0.1 + spec[i].powf(1.4));
+        c[i] = base + (tint - base) * k;
+    }
+    if glitter {
+        // Square grains, 80 to a feature, about a quarter of them lit.
+        // Each catches the light in a hue near the film's there and is
+        // brighter or darker than it, so the grain sparkles where the
+        // rainbow shows and fades in the plain patches.
+        let (gx, gy) = ((x * 80.0).floor() as i64, (y * 80.0).floor() as i64);
+        if grain_hash(gx, gy, seed, 1) < 0.25 {
+            let g = spectrum(f.phase + 0.35 * (grain_hash(gx, gy, seed, 2) - 0.5));
+            let up = grain_hash(gx, gy, seed, 3);
+            let a = f.strength * (0.3 + 0.6 * grain_hash(gx, gy, seed, 4));
+            let lift = if up < 0.6 { 1.1 } else { 0.45 };
+            for i in 0..3 {
+                let target = (0.25 + 0.75 * g[i]) * lift;
+                c[i] += (target - c[i]) * a;
+            }
+        }
+    }
+    c.map(|v| v.clamp(0.0, 1.0))
 }
 
 fn bbox(p: &BezPath) -> Rect {
@@ -12733,5 +12846,102 @@ mod whole_page_tests {
                 "{w} x {h} mm at {dpi} dpi: right column at {right}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod holo_tests {
+    use super::*;
+
+    const DARK: [f32; 3] = [0.11, 0.12, 0.17];
+    const LIGHT: [f32; 3] = [0.93, 0.93, 0.95];
+
+    fn hue_and_sat(c: [f32; 3]) -> (f32, f32) {
+        let (mx, mn) = (c[0].max(c[1]).max(c[2]), c[0].min(c[1]).min(c[2]));
+        let d = mx - mn;
+        if d < 1e-6 {
+            return (0.0, 0.0);
+        }
+        let h = if mx == c[0] {
+            ((c[1] - c[2]) / d).rem_euclid(6.0)
+        } else if mx == c[1] {
+            (c[2] - c[0]) / d + 2.0
+        } else {
+            (c[0] - c[1]) / d + 4.0
+        };
+        (h * 60.0, d / mx.max(1e-6))
+    }
+
+    /// The holographic look is fixed: the same point and seed always give
+    /// the same colour, and another seed another picture.
+    #[test]
+    fn holographic_colour_is_fixed() {
+        for glitter in [false, true] {
+            let a = holo_color(1.3, 2.7, 5, glitter, DARK, LIGHT);
+            assert_eq!(a, holo_color(1.3, 2.7, 5, glitter, DARK, LIGHT));
+        }
+        let differs = (0..50).any(|i| {
+            let (x, y) = (i as f64 * 0.37, i as f64 * 0.21);
+            holo_color(x, y, 1, false, DARK, LIGHT) != holo_color(x, y, 2, false, DARK, LIGHT)
+        });
+        assert!(differs);
+    }
+
+    /// Across an object the foil runs from dark to light and shows the
+    /// spectrum: coloured pixels of hues far apart, not two colours mixed.
+    #[test]
+    fn holographic_texture_shows_the_spectrum() {
+        let mut hues = [false; 6];
+        let (mut darkest, mut lightest) = (1.0f32, 0.0f32);
+        for i in 0..80 {
+            for j in 0..80 {
+                let c = holo_color(i as f64 * 0.05, j as f64 * 0.05, 1, false, DARK, LIGHT);
+                let l = (c[0] + c[1] + c[2]) / 3.0;
+                darkest = darkest.min(l);
+                lightest = lightest.max(l);
+                let (h, s) = hue_and_sat(c);
+                if s > 0.35 && l > 0.15 {
+                    hues[((h / 60.0) as usize).min(5)] = true;
+                }
+            }
+        }
+        assert!(darkest < 0.3 && lightest > 0.8, "{darkest} {lightest}");
+        assert!(hues.iter().filter(|h| **h).count() >= 3, "{hues:?}");
+    }
+
+    /// The glitter changes single grains, not the whole picture.
+    #[test]
+    fn holo_glitter_sparkles_in_grains() {
+        let (mut changed, mut n) = (0, 0);
+        for i in 0..200 {
+            let (x, y) = (i as f64 * 0.0131, i as f64 * 0.0077);
+            n += 1;
+            if holo_color(x, y, 1, true, DARK, LIGHT) != holo_color(x, y, 1, false, DARK, LIGHT) {
+                changed += 1;
+            }
+        }
+        assert!(changed > n / 20 && changed < n / 2, "{changed} of {n}");
+    }
+
+    /// The renderer paints a holographic texture fill in colour.
+    #[test]
+    fn holographic_texture_fill_renders_in_colour() {
+        let fill = Fill::Texture(tracedraw_core::Texture {
+            kind: tracedraw_core::TextureKind::Holographic,
+            color_a: Color::rgb8(28, 30, 44),
+            color_b: Color::rgb8(236, 238, 242),
+            scale: 20.0,
+            seed: 1,
+        });
+        let pm = render_fill_image(&fill, Rect::new(0.0, 0.0, 60.0, 60.0), 50.0).unwrap();
+        let coloured = pm
+            .pixels()
+            .iter()
+            .filter(|p| {
+                let (r, g, b) = (p.red() as i32, p.green() as i32, p.blue() as i32);
+                r.max(g).max(b) - r.min(g).min(b) > 60
+            })
+            .count();
+        assert!(coloured > pm.pixels().len() / 50, "{coloured}");
     }
 }
