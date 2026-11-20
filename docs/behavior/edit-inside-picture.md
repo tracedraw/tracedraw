@@ -57,6 +57,7 @@ pixel y runs down, page y runs up.
 | Gradient | | from the colour to clear, or to white |
 | Eyedropper | I | picks the colour seen (all layers) |
 | Move | V | drags the pixels of the layer in use; what leaves the picture is lost |
+| Light | | paints light on the layer in use with the active light (see Light tool) |
 
 Brush options: Size 1 to 1000 px (default 40), Hardness 0 to 100 %
 (50), Opacity 0 to 100 % (100), Flow 0 to 100 % (60). `[` and `]` change
@@ -130,6 +131,45 @@ Effects > Light (also quick buttons in the panel):
 
 All keep the size and alpha of the picture.
 
+## Light tool
+
+Light painted on the photo (`pixel_light.rs`, options in
+`ui/pixel_lights.rs`). The light shows where the brush paints, as it
+paints. There are one or more lights; each has:
+
+- a colour (default orange, then blue, magenta, green, warm white),
+- Strength 0 to 300 % (100),
+- a mix: Lighten (screen: `1 - (1 - c)(1 - min(1, l * a))`, never past
+  white), Glow (adds `l * a`, burns out to white) or Tint (overlay of the
+  light's colour, mixed in by `min(1, a)`, keeps darks dark),
+- Direction, where the light comes from (0° right, 90° top; default
+  135°) and Relief 0 to 100 % (50),
+- On / off, and a mask, one byte per pixel, that the brush paints.
+
+`a = mask / 255 * strength`, times the relief factor
+`clamp(1 - (g . L) * 14 * relief, 0, 2.5)`, where `g` is the slope of the
+photo's brightness (luma, softened by two box blur passes of radius
+`clamp(min(w, h) / 250, 1, 8)`) and `L` the unit vector towards the light
+(y down): the side of a shape turned to the light gets more light, the
+side turned away less. The lights are applied in order over the picture
+as it was when the first stroke started.
+
+The light brush uses Size, Hardness and Flow (the same dab weight as the
+brushes); each stroke raises the mask to `cover * 255` (never past full),
+multiplied by the selection. Alt+drag, or Erase light, takes light away
+(`mask * (1 - cover)`). Fill with light fills the active light inside the
+selection (the whole picture with none); Clear light empties it. + Light
+adds a light, Remove light takes the active one away (one is always
+left).
+
+The lights stay live while the Light tool is in use: changing a light's
+colour, strength, mix, direction, relief or On lights the painted part
+again, and Ctrl+Z undoes the strokes one at a time (the last 20); with no
+stroke left, Ctrl+Z goes on with the picture's own undo, which takes the
+lights back in one step. Choosing another tool, any command that changes
+the picture, Redo, or Finish keeps the lit pixels; the lights keep their
+settings with nothing painted.
+
 ## Checks
 
 - Given a picture, when a page point is mapped to pixels and back, then
@@ -155,6 +195,11 @@ All keep the size and alpha of the picture.
   `merge_down_flatten_delete_and_order`,
   `copy_and_cut_to_layer_and_move_a_layer`,
   `crop_and_flip_reach_every_layer`.
+- Given light painted with the Light tool, then it shows only where it
+  was painted, in its colour, inside the selection; two lights add up,
+  a light turned off goes out; erasing and undo take it back; relief
+  lights the side turned to the light; Tint keeps darks dark; keeping
+  the lights leaves the pixels (`pixel_light::tests`).
 - Clone, heal, dodge, burn, sponge, blur, sharpen, smudge, red eye,
   bucket, gradient, content fill, feather, grow and history each have a
   test in `pixel_edit::tests`; the light effects in `fx::light::tests`.

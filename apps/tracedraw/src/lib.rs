@@ -184,6 +184,7 @@ mod picture_mosaic;
 mod picture_plates;
 mod pixel_edit;
 mod pixel_edit_app;
+mod pixel_light;
 mod placeholder;
 mod plugins;
 mod pmd_open;

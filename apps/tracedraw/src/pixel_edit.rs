@@ -34,10 +34,12 @@ pub enum PixelTool {
     Eyedropper,
     /// Drags the pixels of the layer in use.
     Move,
+    /// Paints light (see `pixel_light.rs`).
+    Light,
 }
 
 impl PixelTool {
-    pub const ALL: [PixelTool; 19] = [
+    pub const ALL: [PixelTool; 20] = [
         PixelTool::RectSelect,
         PixelTool::EllipseSelect,
         PixelTool::Lasso,
@@ -57,6 +59,7 @@ impl PixelTool {
         PixelTool::RedEye,
         PixelTool::Eyedropper,
         PixelTool::Move,
+        PixelTool::Light,
     ];
 
     /// The tool's i18n key (`pixel.tool.<name>`).
@@ -81,6 +84,7 @@ impl PixelTool {
             PixelTool::RedEye => "pixel.tool.red_eye",
             PixelTool::Eyedropper => "pixel.tool.eyedropper",
             PixelTool::Move => "pixel.tool.move",
+            PixelTool::Light => "pixel.tool.light",
         }
     }
 

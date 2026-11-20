@@ -72,6 +72,8 @@ pub struct PixelEdit {
     pub view: RefCell<PixelView>,
     /// The drawing without the picture, for the page under the edit.
     pub hidden: RefCell<Option<(u64, std::rc::Rc<Document>)>>,
+    /// The Light tool's lights (see `pixel_light.rs`).
+    pub lights: crate::pixel_light::Lights,
 }
 
 impl PixelEdit {
@@ -114,6 +116,7 @@ impl PixelEdit {
 
     /// Remember the picture before a change.
     fn step(&mut self) {
+        self.lights.bake();
         self.history.push(&self.pi);
         self.changed = true;
         self.preview = None;
@@ -126,6 +129,10 @@ impl PixelEdit {
     }
 
     pub fn undo(&mut self) {
+        // Live lights undo their strokes one by one first.
+        if self.lights.is_live() && self.undo_light() {
+            return;
+        }
         if self.history.undo(&mut self.pi) {
             self.mark_all();
             self.preview = None;
@@ -133,6 +140,7 @@ impl PixelEdit {
     }
 
     pub fn redo(&mut self) {
+        self.lights.bake();
         if self.history.redo(&mut self.pi) {
             self.mark_all();
             self.preview = None;
@@ -156,6 +164,7 @@ impl PixelEdit {
         full: bool,
         f: impl FnOnce(&mut PixelImage) -> Option<Dirty>,
     ) -> bool {
+        self.lights.bake();
         let before = self.pi.clone();
         let dims = self.pi.img.dimensions();
         match f(&mut self.pi) {
@@ -269,6 +278,7 @@ impl App {
                 ..Default::default()
             }),
             hidden: RefCell::new(None),
+            lights: Default::default(),
         }));
         // No selection handles over the pixels being edited.
         self.selection.clear();
@@ -387,6 +397,7 @@ impl App {
         };
         let Some(p) = pointer else {
             if response.drag_stopped() {
+                pe.lights.end_stroke();
                 pixel_release(pe, mods);
             }
             return;
@@ -418,6 +429,7 @@ impl App {
         // A locked layer keeps its pixels: only the selections and the
         // eyedropper work on it.
         let paints = tool.is_brush()
+            || tool == PixelTool::Light
             || matches!(
                 tool,
                 PixelTool::Fill | PixelTool::Gradient | PixelTool::Move
@@ -447,6 +459,27 @@ impl App {
             if stopped {
                 pe.move_base = None;
                 pe.drag_from = None;
+            }
+            return;
+        }
+        if tool == PixelTool::Light {
+            use crate::pixel_light::LightEvent;
+            let ev = if started || (clicked && !dragged) {
+                Some(if started {
+                    LightEvent::Press
+                } else {
+                    LightEvent::Click
+                })
+            } else if dragged {
+                Some(LightEvent::Drag)
+            } else {
+                None
+            };
+            if let Some(ev) = ev {
+                pe.light_input(x, y, ev, mods.alt);
+            }
+            if stopped {
+                pe.light_input(x, y, LightEvent::Release, mods.alt);
             }
             return;
         }
@@ -807,7 +840,7 @@ pub fn draw(app: &App, painter: &egui::Painter) {
         painter.add(egui::Shape::line(pts, ink));
     }
     // The brush's size under the pointer, and the clone source.
-    if pe.tool.is_brush() {
+    if pe.tool.is_brush() || pe.tool == PixelTool::Light {
         if let Some(pp) = app.pointer_page {
             let (x, y) = pe.to_px(pp);
             let r = pe.opts.size / 2.0;

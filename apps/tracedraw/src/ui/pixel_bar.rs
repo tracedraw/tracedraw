@@ -28,6 +28,12 @@ pub fn show(app: &mut App, ctx: &Context) {
         app.cancel_pixel_edit();
         return;
     }
+    // The lights stay live only while the Light tool is in use.
+    if let Some(pe) = app.pixel_edit.as_mut() {
+        if pe.tool != PixelTool::Light {
+            pe.lights.bake();
+        }
+    }
     bar(app, ctx);
     panel(app, ctx);
 }
@@ -142,6 +148,10 @@ fn percent(ui: &mut egui::Ui, key: &str, v: &mut f32) {
 
 fn tool_options(ui: &mut egui::Ui, pe: &mut crate::pixel_edit_app::PixelEdit) {
     let t = pe.tool;
+    if t == PixelTool::Light {
+        super::pixel_lights::options(ui, pe);
+        return;
+    }
     let o = &mut pe.opts;
     if t.is_brush() {
         ui.add(

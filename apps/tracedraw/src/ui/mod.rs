@@ -115,6 +115,7 @@ pub mod slider;
 pub mod status;
 pub mod straighten_dialog;
 pub mod pixel_bar;
+pub mod pixel_lights;
 pub mod symmetry_bar;
 pub mod tab_focus;
 pub mod table_bar;
