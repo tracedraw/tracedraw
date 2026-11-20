@@ -177,5 +177,9 @@ você mudar. Os preenchimentos extras aparecem como "Preenchimento 2",
 "Preenchimento 3" e assim por diante, cada um com seu editor e um botão para
 removê-lo. A seção de contorno pode acrescentar contornos extras da mesma forma.
 
+As setas ao lado de cada preenchimento ou contorno extra pintam-no uma posição
+antes ou depois; o segundo troca de lugar com o primeiro, então qualquer um
+pode ir para baixo ou para cima.
+
 Os preenchimentos também podem ser pintados em contornos; veja
 [Definir contornos](../lines-shapes/outlines.md#outline-pen).

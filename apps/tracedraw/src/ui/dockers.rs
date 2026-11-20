@@ -1442,10 +1442,48 @@ fn overprint_row(app: &mut App, ui: &mut Ui, fill: bool) {
     }
 }
 
+/// The two arrows beside a further fill or outline (`i` of `count`): the
+/// first paints it one place earlier (the second fill or outline trades
+/// places with the first), the second one place later. `Some((i, true))`
+/// for earlier, `Some((i, false))` for later.
+fn order_buttons(ui: &mut Ui, i: usize, count: usize) -> Option<(usize, bool)> {
+    let mut out = None;
+    if ui
+        .small_button("\u{2191}")
+        .rich_tip(crate::ui::tips::keyed("docker.paint_earlier"))
+        .clicked()
+    {
+        out = Some((i, true));
+    }
+    if ui
+        .add_enabled(i + 1 < count, egui::Button::new("\u{2193}").small())
+        .rich_tip(crate::ui::tips::keyed("docker.paint_later"))
+        .rich_disabled_tip(crate::ui::tips::keyed("docker.paint_later"))
+        .clicked()
+    {
+        out = Some((i, false));
+    }
+    out
+}
+
+/// Further paint `i` one place earlier (the first trades places with
+/// `base`, when there is one) or later, in paint order.
+fn paint_order_step<T>(base: Option<&mut T>, extras: &mut [T], i: usize, earlier: bool) {
+    match (earlier, i, base) {
+        (true, 0, Some(b)) => std::mem::swap(b, &mut extras[0]),
+        (true, 0, None) => {}
+        (true, _, _) => extras.swap(i - 1, i),
+        (false, _, _) if i + 1 < extras.len() => extras.swap(i, i + 1),
+        (false, _, _) => {}
+    }
+}
+
 fn extra_fills(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_fill: bool) {
     let mut fills = first.extra_fills.clone();
     let mut changed = false;
     let mut remove = None;
+    let count = fills.len();
+    let mut moved = None;
     for (i, f) in fills.iter_mut().enumerate() {
         ui.separator();
         ui.horizontal(|ui| {
@@ -1457,6 +1495,7 @@ fn extra_fills(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_fi
             {
                 remove = Some(i);
             }
+            moved = moved.or(order_buttons(ui, i, count));
         });
         ui.push_id(("extra_fill", i), |ui| {
             changed |= fill_editor(ui, f);
@@ -1465,6 +1504,26 @@ fn extra_fills(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_fi
     if let Some(i) = remove {
         fills.remove(i);
         changed = true;
+    }
+    if let Some((i, earlier)) = moved.filter(|_| remove.is_none()) {
+        let mut base = first.fill.clone();
+        paint_order_step(Some(&mut base), &mut fills, i, earlier);
+        let shapes = app.selection.clone();
+        let cmds = [
+            Command::SetFill {
+                shapes: shapes.clone(),
+                fill: base,
+            },
+            Command::SetExtraPaint {
+                shapes,
+                fills,
+                strokes: first.extra_strokes.clone(),
+            },
+        ];
+        if let Err(e) = app.run_batch_keeping_lines("Fill Order", &cmds) {
+            app.status = e.to_string();
+        }
+        return;
     }
     if has_fill {
         ui.add_space(4.0);
@@ -1491,6 +1550,8 @@ fn extra_strokes(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_
     let custom = crate::ui::line_style::OutlineLib::of(app);
     let mut changed = false;
     let mut remove = None;
+    let count = strokes.len();
+    let mut moved = None;
     for (i, st) in strokes.iter_mut().enumerate() {
         ui.separator();
         ui.horizontal(|ui| {
@@ -1502,6 +1563,7 @@ fn extra_strokes(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_
             {
                 remove = Some(i);
             }
+            moved = moved.or(order_buttons(ui, i, count));
         });
         ui.push_id(("extra_stroke", i), |ui| {
             let mut s = Some(st.clone());
@@ -1516,6 +1578,26 @@ fn extra_strokes(app: &mut App, ui: &mut Ui, first: &tracedraw_core::Shape, has_
     if let Some(i) = remove {
         strokes.remove(i);
         changed = true;
+    }
+    if let Some((i, earlier)) = moved.filter(|_| remove.is_none()) {
+        let mut base = first.stroke.clone();
+        paint_order_step(base.as_mut(), &mut strokes, i, earlier);
+        let shapes = app.selection.clone();
+        let cmds = [
+            Command::SetStroke {
+                shapes: shapes.clone(),
+                stroke: base,
+            },
+            Command::SetExtraPaint {
+                shapes,
+                fills: first.extra_fills.clone(),
+                strokes,
+            },
+        ];
+        if let Err(e) = app.run_batch_keeping_lines("Outline Order", &cmds) {
+            app.status = e.to_string();
+        }
+        return;
     }
     if has_outline {
         ui.add_space(4.0);
@@ -6548,6 +6630,25 @@ pub(crate) mod tests {
         assert_eq!(open(&app), ["fill"]);
         click(&mut app, "fill", egui::Modifiers::NONE);
         assert!(app.settings.properties_closed.is_empty(), "all again");
+    }
+
+    /// The arrows beside a further fill or outline move it one place in
+    /// paint order; the second trades places with the first, and with no
+    /// first outline it stays.
+    #[test]
+    fn further_paint_moves_one_place_at_a_time() {
+        let mut base = 1;
+        let mut extras = [2, 3, 4];
+        paint_order_step(Some(&mut base), &mut extras, 2, true);
+        assert_eq!((base, extras), (1, [2, 4, 3]));
+        paint_order_step(Some(&mut base), &mut extras, 0, true);
+        assert_eq!((base, extras), (2, [1, 4, 3]));
+        paint_order_step(Some(&mut base), &mut extras, 1, false);
+        assert_eq!((base, extras), (2, [1, 3, 4]));
+        paint_order_step(Some(&mut base), &mut extras, 2, false);
+        assert_eq!((base, extras), (2, [1, 3, 4]));
+        paint_order_step(None, &mut extras, 0, true);
+        assert_eq!(extras, [1, 3, 4]);
     }
 
     /// The Properties sections come open; a button or a header closes and

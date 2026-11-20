@@ -169,5 +169,9 @@ Further fills show as "Fill 2", "Fill 3" and so on, each with its own editor
 and a button to remove it. The outline section can add further outlines the
 same way.
 
+The arrows beside each further fill or outline paint it one place earlier or
+later; the second trades places with the first, so any of them can go
+bottom or top.
+
 Fills can also be painted on outlines; see
 [Setting outlines](../lines-shapes/outlines.md#outline-pen).
